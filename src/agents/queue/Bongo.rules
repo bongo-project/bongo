@@ -1,0 +1,35 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongoqueue
+
+bongoqueue_SOURCES :=				\
+	src/agents/queue/conf.c			\
+	src/agents/queue/conf.h			\
+	src/agents/queue/domain.c		\
+	src/agents/queue/domain.h		\
+	src/agents/queue/queued.c		\
+	src/agents/queue/queued.h		\
+	src/agents/queue/management.c		\
+	src/agents/queue/mime.c			\
+	src/agents/queue/mime.h			\
+	src/agents/queue/queue.c		\
+	src/agents/queue/queue.h		\
+	src/agents/queue/messages.h
+
+bongoqueue_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/queue/all: bongoqueue
+src/agents/queue/clean: clean
+src/agents/queue/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongoqueue install-sbinPROGRAMS

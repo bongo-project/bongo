@@ -1,0 +1,28 @@
+{
+	"translate": true,
+	"recur" :  { 	
+			"start":  "20060201T000000Z",
+			"end":  "20060506T000000Z",
+
+			"expect":[
+				{
+					"dtstart":
+					{
+						"type":"DATE",
+						"value":"20060212",
+						"value-utc":"20060312"
+					},
+					"recurid":
+					{
+						"type":"DATE",
+						"value":"20060312"
+					},
+					"dtend":
+					{
+						"type":"DATE",
+						"value":"20060213",
+						"value-utc":"20060213"
+					}
+				}],
+		}
+}	

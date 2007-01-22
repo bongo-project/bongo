@@ -1,0 +1,99 @@
+From bongo-general-bounces@forge.novell.com Mon May 22 18:44:54 2006
+Return-Path: <adam@hydroblaster.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 0808C63072 for
+	<Dave@ximian.com>; Mon, 22 May 2006 18:44:54 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id F276E70043;
+	Mon, 22 May 2006 18:44:53 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 8049470013
+	for <Dave@ximian.com>; Mon, 22 May 2006 18:44:48 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Mon, 22 May 2006 16:44:42 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Mon, 22 May 2006 16:44:13 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id E0E471B013E; Mon, 22 May
+	2006 16:37:34 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from bigmac.hydroblaster.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	823F71B013E for <bongo-general@forge.novell.com>; Mon, 22 May 2006 15:42:13
+	-0600 (MDT)
+Received: from [192.168.2.4] (c-67-171-119-3.hsd1.ut.comcast.net
+	[67.171.119.3]) (authenticated bits=0) by bigmac.hydroblaster.com
+	(8.12.8/8.12.8) with ESMTP id k4MLg8AZ022230 for
+	<bongo-general@forge.novell.com>; Mon, 22 May 2006 15:42:09 -0600
+Message-ID: <44723038.9020900@hydroblaster.com>
+Date: Mon, 22 May 2006 15:42:16 -0600
+From: Adam Taft <adam@hydroblaster.com>
+User-Agent: Thunderbird 1.5.0.2 (Windows/20060308)
+MIME-Version: 1.0
+To: bongo-general@forge.novell.com
+Subject: Re: [Bongo-general] Editing a Calendar Item
+References: <446AAB0F.807@hydroblaster.com>
+In-Reply-To: <446AAB0F.807@hydroblaster.com>
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+X-Greylist: Sender succeeded SMTP AUTH authentication, not delayed by
+	milter-greylist-2.0.2 (bigmac.hydroblaster.com [192.168.1.11]); Mon, 22 May
+	2006 15:42:10 -0600 (MDT)
+X-Hydroblaster-MailScanner-Information: Please contact the ISP for more
+	information
+X-Hydroblaster-MailScanner: Found to be clean
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+
+I'm still needing help on this issue.  Does anyone know how to edit a 
+calendar item through the web interface?  I'm sure I'm just missing 
+something obvious.  Or, is the functionality only available using 
+another client (like Outlook) or something?  Or, not at all?
+
+Looking forward to the answer.  Thanks,
+
+Adam
+
+
+Adam Taft wrote:
+> Hi,
+> 
+> I just setup Bongo.  Was pretty easy to do.
+> 
+> I was having a hard time figuring how to edit a calendar item or task 
+> with the web interface.  I see the ability to delete (among other 
+> things), but don't see any ability to edit the calendar item.
+> 
+> I would appreciate knowing if this is possible to do and how to do it if 
+> so.
+> 
+> Thanks in advance,
+> 
+> Adam
+> _______________________________________________
+> Bongo-general mailing list
+> Bongo-general@forge.novell.com
+> http://forge.novell.com/mailman/listinfo/bongo-general
+> 
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

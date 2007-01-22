@@ -1,0 +1,16 @@
+<%@ include file="../header.psp" %>
+
+<form method="post">
+  <div id="login" name="login">
+    <img src="/img/bongo-logo.png" alt="Bongo">
+      <h2 id="login-banner">Log in to use Bongo Admin</h2>
+      <table cellpadding="0" cellspacing="6">
+          <tr><th><label>Name:</label></th><td><input type="text" class="text-entry" name="bongo-username"></td></tr>
+
+          <tr><th><label>Password:</label></th><td><input type="password" class="text-entry" name="bongo-password"></td></tr>
+          <tr><td colspan="2"><input id="login-button" type="submit" value="Login" id="login-button"></td>
+      </table>
+    </div>
+</form>
+
+<%@ include file="../footer.psp" %>

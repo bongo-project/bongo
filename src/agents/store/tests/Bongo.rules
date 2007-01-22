@@ -1,0 +1,50 @@
+# -*- Makefile -*-
+TESTS += checktest-store
+check_PROGRAMS += checktest-store
+checktest_store_SOURCES := \
+	src/agents/store/tests/checktest.c
+
+checktest_store_LDADD := $(CHECK_LIBS)			   \
+	libbongostore.la				   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(GNUTLS_OPENSSL_LIBS)				   \
+	$(LIBSQLITE_LIBS)				   \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+checktest_store_CPPFLAGS := $(AM_CPPFLAGS) $(CHECK_CFLAGS) 
+
+noinst_PROGRAMS += mkauthhash
+
+mkauthhash_CFLAGS := $(AM_CPPFLAGS) 
+
+mkauthhash_SOURCES :=  \
+	src/agents/store/tests/mkauthhash.c
+
+mkauthhash_LDADD =					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(LIBSQLITE_LIBS)				   \
+	$(GNUTLS_OPENSSL_LIBS)				   \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/store/tests/all:
+src/agents/store/tests/clean: clean

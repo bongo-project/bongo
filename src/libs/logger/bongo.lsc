@@ -1,0 +1,148 @@
+#^Bongo^0002^Bongo^EN
+# Variables:
+# 
+# Syntax: $FV
+# 
+# Format (F):
+# T - Time (UTC localized)
+# D - Date (UTC localized)
+# N - Number (32bit unsigned)
+# S - String
+# X - Hexdecimal Number
+# R - RFC822 format date/time
+# I - IPv4 Internet Address (network order)
+# i - IPv4 Internet Address (host order)
+# P - Password
+# 
+# Value (V):
+# C - Platform Agent Date
+# A - Audit Service Date
+# 1 - Numerical value 1
+# 2 - Numerical value 2
+# S - Text 1
+# T - Text 2
+# O - Component
+# I - Event ID
+# L - Log Level
+# M - MIME Hint
+# X - Data Size
+# D - Data
+# 
+# 
+# EventID, Description, Text1 Title, Text2 Title, Value1 Title, Value1 Type, Value2 Title, Value2 Type, Group Title, Group Type, Data Title, Data Type, Display Schema
+
+0002,Bongo,Bongo Project Version 0.1.0,,,,,,,,,,
+00020001,Bad Password,Account,Password,IP Address,i,,,,,,,"$XI: Bad password \"$PT\" for account \"$SS\" from $i1\n"
+00020002,Unhandled Request,Account,Request,IP Addres,i,,,,,,,"$XI: Unhandled request \"$ST\" for account \"$SS\" from $i1\n"
+00020003,Login,Account,,IP Address,i,,,,,,,"$XI: Valid login for account \"$SS\" from $i1\n"
+00020004,Max Bad Passwords,Account,,IP Address,i,Failed Attempts,,,,,,"$XI: $N2 failed logins for account \"$SS\" from $i1\n"
+00020005,Feature not Enabled,,,,,,,,,,,"$XI: Feature disabled for account \"$SS\" from $i1\n"
+00020006,Unknown User,Account,Password,IP Address,i,,,,,,,"$XI: Account \"$SS\" does not exist; attempt from $i1 with password \"$PT\"\n"
+00020007,NMAP Unavailable,,,,,,,,,,,"$XI: Could not connect to NMAP server $i1 (code:$N2)\n"
+00020008,Out of Memory,,,,,,,,,,,"$XI: Could not allocated $N1 bytes (file:$SS line:$N2)\n"
+00020009,Component not Configured,,,,,,,,,,,"$XI: Component not configured: $SS\n"
+0002000A,Session Limit Reached,,,,,,,,,,,"$XI: Session limit ($N1) reached\n"
+0002000B,Password Change,Account,,IP Address,i,Result,,,,,,"$XI: User \"$SS\" at $i1 changed password; result:$N2\n"
+0002000C,Secret Change,Account,Old Question,IP Address,i,,,,,,,"$XI: User \"$SS\" at $i1 changed secret Q/A (Old question: $ST)\n"
+0002000D,Account Created,Account,EMail,IP Address,i,,,,,,,"$XI: User \"$SS\" created from address $i1 using \"$ST\"; assigned \"$PD\" as the password.\n"
+0002000E,Account Disabled,Account,,IP Address,i,,,,,,,"$XI: User \"$SS\" disabled from $i1\n"
+0002000F,Memory Leaked,,,,,,,,,,,"$XI: Memory allocated by file $SS on line $N1 for $N2 bytes was not freed\n"
+00020010,Memory Null Destination,,,,,,,,,,,"$XI: Null pointer used as destination by file $SS on line $N1\n"
+00020011,Memory Buffer Overflowed,,,,,,,,,,,"$XI: Memory allocated by file $SS on line $N1 overflowed\n"
+00020012,Memory Free by Non-Owner,,,,,,,,,,,"$XI: Memory allocated by file $SS on line $N1 was freed by file $ST on line $N2\n"
+00020013,Memory Questionable Free,,,,,,,,,,,"$XI: Memory allocated by file $SS on line $N1 was questionably freed\n"
+00020014,Memory Questionable Alloc,,,,,,,,,,,"$XI: Questionable allocation requested by file $SS on line $N1 for $N2 bytes\n"
+00020015,Message Received,Sender,,IP Address,i,Size,,,,,,"$XI: Received message from \"$SS\", size $N2 (IP:$i1)\n"
+00020016,Message Sent,Sender,Recipient,Size,,Status,,,,,,"$XI: Delivered message for \"$SS\" to \"$ST\", size $N1; status $N2\n"
+00020017,Connection Blocked,Block Source,,IP Address,i,Reason,,,,,,"$XI: Blocked connection from $i1, reason $N2 (detail: $SS)\n"
+00020018,Recipient Blocked,Recipient,,IP Address,i,,,,,,,"$XI: Blocked relay for recipient \"$SS\" from address $i1\n"
+00020019,Message Relayed,Sender,Recipient,IP Address,i,,,,,,,"$XI: Relayed message for \"$SS\" to recipient \"$ST\" from address $i1\n"
+0002001A,Recipient Limit Reached,,,,,,,,,,,"$XI: Blocked relay for \"$SS\" to recipient \"$ST\" from address $i1\n"
+0002001B,New Connection,,,IP Address,i,,,,,,,"$XI: New connection from address $i1\n"
+0002001C,Register NMAP Server,,,,,,,,,,,"$XI: Registered NMAP Server $i1 for queue $N2 with SSL $SS\n"
+0002001D,Anti-Virus Restart Failed,,,,,,,,,,,"$XI: Failed to restart the anti-virus engine \"$SS\"\n"
+0002001E,Duplicate Alias,,,,,,,,,,,"$XI: Have duplicate alias: user: \"$SS\", alias: \"$ST\"\n"
+0002001F,Database Open Error,,,,,,,,,,,"$XI: Open database \"$SS\" returned $N1\n"
+00020020,Alias Working Contexts,,,,,,,,,,,"$XI: Enumerating context \"$ST\"\n"
+00020021,Received Bounce,,,,,,,,,,,"$XI: Received bounce from \"$SS\" at $i1, auth from \"$ST\"\n"
+00020022,Spam Blocked,,,,,,,,,,,"$XI: Blocked spam from \"$SS\" at $i1\n"
+00020023,Virus Blocked,Sender,Virus,,,,,,,,,"$XI: Blocked virus $ST from \"$SD\" to \"$SS\"\n"
+00020024,Message forwarded,Sender,Recipient,,,,,,,,,"$XI: Forwarding for \"$SS\" to \"$ST\"\n"
+00020025,Auto replied to message,Sender,Recipient,,,,,,,,,"$XI: Auto reply for \"$SS\" to \"$ST\"\n"
+00020026,Received Control Request,,,,,,,,,,,"$XI: Received control request from \"$SS\" at $i1; auth from \"$ST\"\n"
+00020027,Processing Error,,,,,,,,,,,"$XI: Processing error on request from \"$SS\" at $i1, queue ID: $ST\n"
+00020028,List Send Blocked,,,,,,,,,,,"$XI: Blocked send by \"$ST\" to \"$SS\" reason $N1\n"
+00020029,Configuration String,,,,,,,,,,,"$XI: Configuration for \"$SS\": \"$ST\"\n"
+0002002A,Configuration Value,,,,,,,,,,,"$XI: Configuration for \"$SS\": $N1\n"
+0002002B,Queue Limits Adjusted,,,,,,,,,,,"$XI: Not enough memory; tuning parameters adjusted; concurrent limit: $N1, sequential limit: $N2\n"
+0002002C,New SSL Connection,,,IP Address,i,,,,,,,"$XI: New SSL connection from address $i1\n"
+0002002D,List Message Received,,,,,,,,,,,"$XI: Message for list \"$SS\" received from \"$ST\"\n"
+0002002E,List Message Delivered,,,,,,,,,,,"$XI: Message from list \"$SS\" for user \"$ST\" delivered\n"
+0002002F,Reloaded Queue Agent,,,,,,,,,,,"$XI: Reloaded Queue Agent $i1:$ND for queue $N2\n"
+00020030,Queue Entry From,,,,,,,,,,,"$XI: Queue $N1, entry \"$SS\" from \"$ST\"; auth from \"$SD\"\n"
+00020031,Over Quota,,,,,,,,,,,"$XI: User \"$SS\" quota of $N1 exceeds allotment of $N2, message returned to \"$ST\"\n"
+00020032,Bongo Debug,,,,,,,,,,,"$XI: \"$SS\" \"$ST\" $N1 $N2\n"
+00020033,Wrong System Auth,,,,,,,,,,,"$XI: Wrong system auth from IP Address $i1\n"
+00020034,Switch User Denied,,,,,,,,,,,"$XI: Denied attempt to switch from user \"$SS\" to user \"$ST\" from IP Address $i1\n"
+00020035,Wrong User Auth,,,,,,,,,,,"$XI: Wrong auth user \"$SS\" from IP Address $i1\n"
+00020036,Diskspace Low,,,,,,,,,,,"$XI: Diskspace low for path \"$SS\"; currently $N1 free blocks, minimum $N2 free blocks required\n"
+00020037,Write File Error,,,,,,,,,,,"$XI: Could not write to \"$SS\" for user \"$ST\"; line $N1 from $N2\n"
+00020038,Add Queue Agent,,,,,,,,,,,"$XI: Adding Queue Agent $i1:$ND for queue $N2\n"
+00020039,Bad Hostname,Hostname,User,,,,,,,,,"$XI: Hostname \"$SS\" is unusable, specified by user \"$ST\"\n"
+0002003A,Proxy Localhost,User,,IP Address,i,,,,,,,"$XI: User \"$SS\" attempted to proxy $i1 (the localhost)\n"
+0002003B,NMAP Error,,,,,,,,,,,"$XI: User \"$SS\" received NMAP error $N1 (detail: $ST)\n"
+0002003C,DDB Initialization,,,,,,,,,,,"$XI: DDB initialization failed (detail: $SS)\n"
+0002003D,Disallowed Hostname,Hostname,User,,,,,,,,,"$XI: Hostname \"$SS\" is not allowed, specified by user \"$ST\"\n"
+0002003E,Executing Rule,Account,Rule,,,,,,,,,"$XI: User \"$SS\" executing rule \"$ST\"\n"
+0002003F,Rule Delete Message,Recipient,,,,,,,,,,"$XI: Removing recipient \"$SS\"\n"
+00020040,Rule Forward Message,From,To,,,,,,,,,"$XI: Forwarding from \"$SS\" to \"$ST\"\n"
+00020041,Rule Copy Message,From,,,,,,,,,,"$XI: Copy from \"$SS\"\n"
+00020042,Rule Move Message,Account,Mailbox,,,,,,,,,"$XI: Moving into mailbox \"$SS:$ST\"\n"
+00020043,Reregister Queue Agent,,,,,,,,,,,"$XI: Removed Queue Agent $i1:$ND, queue $N2; agent re-registered\n"
+00020044,Removed Queue Agent,,,,,,,,,,,"$XI: Removed Queue Agent $i1:$ND, queue $N2\n"
+00020045,Database Find Error,,,,,,,,,,,"$XI: Find \"$SS\"  returned $N1\n"
+00020046,Database Alias Error,,,,,,,,,,,"$XI: Insert \"$SS\" with alias \"$ST\" returned $N1\n"
+00020047,Database Close Error,,,,,,,,,,,"$XI: Close database \"$SS\" returned $N1\n"
+00020048,Item Stored,,,,,,,,,,,"$XI: Storing item from \"$ST\" for \"$SS\" with size of $N1; location $SD\n"
+00020049,Database Insert Error,,,,,,,,,,,"$XI: Insert \"$SS\" into database returned $N1\n"
+0002004A,Database Create Error,,,,,,,,,,,"$XI: Create database \"$SS\" returned $N1\n"
+0002004B,Queue Entry Start,,,,,,,,,,,"$XI: Processing queue $N1 entry \"$N2\"\n"
+0002004C,Queue Entry Find Object,,,,,,,,,,,"$XI: Recipient \"$SS\" was not found for queue $N1 from \"$ST\" at IP Address $i2\n"
+0002004D,Queue Entry to Remote NMAP,,,,,,,,,,,"$XI: Sending queue $N1 entry \"$SS\" via NMAP link to $N2 for \"$ST\"\n"
+0002004E,Queue Entry Delivery Failed,,,,,,,,,,,"$XI: Failed to delivery for queue $N1, entry \"$SS\"; status $N2\n"
+0002004F,Queue Entry Failed Connect,,,,,,,,,,,"$XI: Queue $N1 entry \"$SS\" failed to connect to $i2:$ND\n"
+00020050,Queue Entry Failed,,,,,,,,,,,"$XI: Queue agent $i1:$ND failed to process queue $N2 entry \"$SS\"\n"
+00020051,Missing Strings.TXT,,,,,,,,,,,"$XI: Missing strings.txt for language $N1\n"
+00020052,Wrong String Count,,,,,,,,,,,"$XI: \"$SS\" is missing strings; found $N1, expected $N2\n"
+00020053,Digest Sent,,,,,,,,,,,"$XI: Sent digest for list \"$SS\"\n"
+00020054,Create Socket Failed,,,,,,,,,,,"$XI: Unable to create a socket; file \"$SS\", line $N1\n"
+00020055,CarrierScan Connect Failed,,,,,,,,,,,"$XI: Unable to connect to the Symantec CarrierScan host at $i1\n"
+00020056,Illegal EMail Address,Account,EMail Address,,,,,,,,,"$XI: User \"$SS\" has an illegal e-mail address of \"$ST\"\n"
+00020057,Open Strings File Failed,,,,,,,,,,,"$XI: Open strings file for language $N1 returned $SS\n"
+00020058,Message Delivery Retry Later,Sender,Recipient,Size,,Status,,,,,,"$XI: Delivery retry needed for \"$SS\" to \"$ST\", size $N1; status $N2\n"
+00020059,Message Delivery Failed,Sender,Recipient,Size,,Status,,,,,,"$XI: Delivery failed for \"$SS\" to \"$ST\", size $N1; st"
+0002005A,Memory Buffer will Overflow,,,,,,,,,,,"$XI: Memory allocated by file $SS on line $N1 will overflow due to write from $ST on line $N2; attempted to write $ND bytes\n"
+0002005B,Memory Null Destination,,,,,,,,,,,"$XI: Null pointer used as source by file $SS on line $N1\n"
+0002005C,Added To Block List,,,,,,,,,,,"$XI: IP Address $i1 blocked due to message from \"$SS\" with $N2 recipients\n"
+0002005D,Accept Failed,,,,,,,,,,,"$XI: accept() failed with error $N1; SSL connection state $N2\n"
+0002005E,Corrupted Index,Account,Mailbox,Index,N,,,,,,,"$XI: Index file \"$ST\" for user \"$SS\", index $N1, is invalid\n"
+0002005F,NMAP Out of Memory,Account,Mailbox,Size,N,,,,,,,"$XI: NMAP failed to allocate $N1 bytes for user \"$SS\", mailbox \"$ST\"; unloading\n"
+00020060,File Failed to Open,File Path,,Source Line,N,,,,,,,"$XI: File $SS failed to open on line $N1\n"
+00020061,File IO Error, Function,,Source Line,N,errno,N,,,,,"$XI: $SS set errno $N2 on line $N1\n"
+00020062,Connection Timeout,,,IP Address,i,Timeout,N,,,,N,"$XI: Address $i1 timed out, connection was alive for $N2 seconds\n"
+00020063,Connection Error,,,IP Address,i,Timeout,N,,,,N,"$XI: Connection error from $i1, connection was alive for $N2 seconds\n"
+00020064,Queue Entry Lock Flooded,,,Entry ID,N,,,,,,N,"$XI: Unable to lock queue entry $N1; lock table full\n"
+00020065,Agent HeartBeat,,,,,,,,,,N,"$XI: Agent heartbeat.\n"
+00020066,Invalid Mailbox,Account,Mailbox,Message,,,,,,,,"$XI: Mailbox file \"$ST\" for user \"$SS\", Message $N1, is invalid\n"
+00020067,Proxy HeartBeat,,,,,,,,,,N,"$XI: Proxy heartbeat.\n"
+00020068,Local Connection,,,,,,,,,,N,"$XI: DNS resolved $SS to your server ($i1). \n"
+00020069,DNS Configuration Error,,,,,,,,,,N,"$XI: DNS resolved $SS to your server ($i1). Configure Bongo to accept mail for this domain or change the DNS record.\n"
+0002006A,Message with Unknown Users,,,,,,,,,,N,"$XI: Message from $i1 had $N2 unknown users.\n"
+0002006B,IP Connect Failure,,,,,,,,,,N,"$XI: Attempt to connect to $i1 ($ST) failed! Reason: $SS\n"
+0002006C,SMTP Connect Error,,,,,,,,,,N,"$XI: SMTP server returned greeting $N1 $SS  Recipient: $ST\n"
+0002006D,Negotiation Error,Host,Message,IP Address,,,,,,,N,"$XI: Protocol negotiation with $i1 ($SS) failed! Reason: $ST\n"
+0002006E,Network Error,Host,Message,IP Address,,,,,,,N,"$XI: Network communication with $i1 ($SS) failed! Reason: $ST\n"
+0002006F,Proxied Mail,User,Host,Messages,KiloBytes,,,,,,N,"$XI: Proxied $N1 messages for \"$SS\" from \"$ST\"; $N2 KiloBytes\n"
+00020070,Server Termination,,,,,,,,,,N,"$XI: Server Shutting Down: state=$N1 errno=$N2\n"
+00020071,User Error,,,,,,,,,,N,"$XI: Could not drop to unprivileged user '$SS'\n"
+00020072,Port Error,,,,,,,,,,N,"$XI: Could not bind to $SSport $N1\n"

@@ -1,0 +1,20 @@
+# -*- Makefile -*-
+TESTS += checktest-imap
+check_PROGRAMS += checktest-imap
+
+dist_noinst_DATA += \
+	src/agents/imap/tests/uid_test.c
+
+CLEANFILES += \
+	src/agents/imap/tests/checklog.xml
+
+checktest_imap_SOURCES = \
+	src/agents/imap/tests/checktest.c
+
+checktest_imap_LDADD = $(CHECK_LIBS)		\
+	libbongomemmgr.la			\
+	libbongoutil.la				\
+	libbongoxpl.la				
+
+src/agents/imap/tests/all:
+src/agents/imap/tests/clean: clean

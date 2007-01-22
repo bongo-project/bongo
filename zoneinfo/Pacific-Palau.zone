@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19010101T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0900"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+085756"
+			},
+			"tzname":[
+				{
+					"value":"PWT"
+				}],
+			"rdates":[
+				{
+					"value":"19010101T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Pacific/Palau"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Pacific/Palau"
+	}
+}] }

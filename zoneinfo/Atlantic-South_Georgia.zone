@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"18900101T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0200"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0226"
+			},
+			"tzname":[
+				{
+					"value":"GST"
+				}],
+			"rdates":[
+				{
+					"value":"18900101T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Atlantic/South_Georgia"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Atlantic/South_Georgia"
+	}
+}] }

@@ -1,0 +1,43 @@
+#!/usr/bin/env python
+"""
+Converts Dragonfly development files into a release package suitable for
+deployment in a production environment.  Note: This tool is written to be used 
+with Dragonfly only; it is not a general html/js/css processing tool.
+"""
+
+import sys, os, re, os.path as path
+
+dfpath = path.abspath(path.dirname(__file__))
+
+def load(relpath):
+	stream = open(path.join(dfpath, relpath), 'r')
+	result = stream.read()
+	stream.close()
+	return result
+	
+def loadcss(match):
+	css = load(match.group(1))
+	css = re.sub(r'/[*]([^*]|(\*[^/]))*[*]/', '', css) # Strip C-style comments
+	css = re.sub(r'url\(../', 'url(', css)             # rewrite relative urls
+	css = re.sub(r'\s+', ' ', css)                     # compress whitespace
+	return css
+
+def loadjs(match):
+	jspath = match.group(1)
+	if jspath == 'js/lib/MochiKit/MochiKit.js':
+		return '<script type="text/javascript" src="js/lib/MochiKit/MochiKit-packed.js"></script>'
+	js = load(jspath)
+	js = re.sub(r'/[*]([^*]|(\*[^/]))*[*]/', '', js)   # Strip C-style comments
+#	js = re.sub('//.*?\n', '\n', js) # there are some // items in strings
+	return ''.join(['<script type="text/javascript">\n', js, '</script>\n'])
+
+# Load Dragonfly, remove html comments
+dragonfly = load('dragonfly.html')
+dragonfly = re.sub('<!--.*?-->', '', dragonfly, re.DOTALL)
+
+# Process CSS and Javascript Files
+dragonfly = re.sub(r'@import url\((.*?.css)\);', loadcss, dragonfly)
+dragonfly = re.sub(r'<script type="text/javascript" src="(.*?)"></script>', loadjs, dragonfly)
+
+# write out the index file
+open(path.join(dfpath, 'index.html'), 'w').write(dragonfly)

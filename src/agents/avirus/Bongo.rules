@@ -1,0 +1,29 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongoavirus
+
+bongoavirus_SOURCES :=				\
+	src/agents/avirus/avirus.c		\
+	src/agents/avirus/avirus.h		\
+	src/agents/avirus/management.c		\
+	src/agents/avirus/mime.c		\
+	src/agents/avirus/stream.c
+
+bongoavirus_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongostreamio.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/avirus/all: bongoavirus
+src/agents/avirus/clean: clean
+src/agents/avirus/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongoavirus install-sbinPROGRAMS

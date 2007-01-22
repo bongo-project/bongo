@@ -1,0 +1,712 @@
+{
+	"translate": true,
+	"recur" :  { 	
+			"start":  "20040101T000000Z",
+			"end":  "20990101T000000Z",
+
+			"objectStart" : {
+				"value":"20060418T133000",
+				"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+			},
+			"objectEnd" : {
+				"value":"20061205T143000",
+				"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+			},		
+
+	
+			"expect": [
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060418T153000",
+			"value":"20060418T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060418T163000",
+			"value":"20060418T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":false,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"00000100T000000"
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060425T153000",
+			"value":"20060425T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060425T163000",
+			"value":"20060425T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060425T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060502T153000",
+			"value":"20060502T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060502T163000",
+			"value":"20060502T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060502T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060509T153000",
+			"value":"20060509T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060509T163000",
+			"value":"20060509T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060509T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060516T153000",
+			"value":"20060516T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060516T163000",
+			"value":"20060516T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060516T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060523T153000",
+			"value":"20060523T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060523T163000",
+			"value":"20060523T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060523T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060530T153000",
+			"value":"20060530T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060530T163000",
+			"value":"20060530T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060530T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060606T153000",
+			"value":"20060606T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060606T163000",
+			"value":"20060606T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060606T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060613T153000",
+			"value":"20060613T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060613T163000",
+			"value":"20060613T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060613T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060620T153000",
+			"value":"20060620T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060620T163000",
+			"value":"20060620T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060620T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060627T153000",
+			"value":"20060627T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060627T163000",
+			"value":"20060627T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060627T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060711T153000",
+			"value":"20060711T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060711T163000",
+			"value":"20060711T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060711T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060718T153000",
+			"value":"20060718T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060718T163000",
+			"value":"20060718T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060718T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060725T153000",
+			"value":"20060725T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060725T163000",
+			"value":"20060725T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060725T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060801T153000",
+			"value":"20060801T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060801T163000",
+			"value":"20060801T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060801T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060808T153000",
+			"value":"20060808T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060808T163000",
+			"value":"20060808T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060808T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060815T153000",
+			"value":"20060815T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060815T163000",
+			"value":"20060815T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060815T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060822T153000",
+			"value":"20060822T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060822T163000",
+			"value":"20060822T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060822T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060829T153000",
+			"value":"20060829T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060829T163000",
+			"value":"20060829T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060829T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060905T153000",
+			"value":"20060905T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060905T163000",
+			"value":"20060905T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060905T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060912T153000",
+			"value":"20060912T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060912T163000",
+			"value":"20060912T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060912T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060919T153000",
+			"value":"20060919T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060919T163000",
+			"value":"20060919T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060919T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20060926T153000",
+			"value":"20060926T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20060926T163000",
+			"value":"20060926T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20060926T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061003T153000",
+			"value":"20061003T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061003T163000",
+			"value":"20061003T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061003T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061010T153000",
+			"value":"20061010T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061010T163000",
+			"value":"20061010T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061010T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061017T153000",
+			"value":"20061017T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061017T163000",
+			"value":"20061017T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061017T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061024T153000",
+			"value":"20061024T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061024T163000",
+			"value":"20061024T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061024T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061031T153000",
+			"value":"20061031T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061031T163000",
+			"value":"20061031T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061031T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061107T153000",
+			"value":"20061107T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061107T163000",
+			"value":"20061107T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061107T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061114T153000",
+			"value":"20061114T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061114T163000",
+			"value":"20061114T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061114T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061121T153000",
+			"value":"20061121T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061121T163000",
+			"value":"20061121T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061121T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061128T153000",
+			"value":"20061128T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061128T163000",
+			"value":"20061128T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061128T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	},
+	{
+		"dtstart":
+		{
+			"valueLocal":"20061205T153000",
+			"value":"20061205T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"dtend":
+		{
+			"valueLocal":"20061205T163000",
+			"value":"20061205T143000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		},
+		"generated":true,
+		"uid":"20060412T152036Z_E8B50023",
+		"recurid":
+		{
+			"value":"20061205T133000",
+			"params":{"tzid":"(GMT-0700) Mountain Time (US & Canada)"}
+		}
+	}]
+			}
+		}
+}	

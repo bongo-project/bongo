@@ -1,0 +1,82 @@
+From bongo-general-bounces@forge.novell.com Mon May 22 16:54:32 2006
+Return-Path: <per@borup.nu>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id B17DF63095 for
+	<Dave@ximian.com>; Mon, 22 May 2006 16:54:32 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id AD2E570013;
+	Mon, 22 May 2006 16:54:32 -0400 (EDT)
+Received: from victor.provo.novell.com (victor.provo.novell.com
+	[137.65.250.26]) by herald.ximian.com (Postfix) with ESMTP id E52A07001F
+	for <Dave@ximian.com>; Mon, 22 May 2006 16:54:26 -0400 (EDT)
+Received: from INET-PRV3-MTA by victor.provo.novell.com with
+	Novell_GroupWise; Mon, 22 May 2006 14:54:26 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Mon, 22 May 2006 14:54:06 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id BF8441B013E; Mon, 22 May
+	2006 14:47:16 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from borup.local (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	23CD81B013E for <bongo-general@forge.novell.com>; Mon, 22 May 2006 13:57:43
+	-0600 (MDT)
+Received: from xp per@borup.nu [192.168.250.100] by borup.local with
+	NetMail SMTP Agent $Revision: 1.7 $; Mon, 22 May 2006 21:57:29 +0200
+From: "Per Borup" <per@borup.nu>
+To: <bongo-general@forge.novell.com>
+Subject: SV: [Bongo-general] RBL in Bongo ?
+Date: Mon, 22 May 2006 22:00:45 +0200
+Message-ID: <001001c67dda$695e7b60$64faa8c0@xp>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="iso-8859-1"
+X-Mailer: Microsoft Office Outlook 11
+In-Reply-To: <16a711710605220653s1687ad4an6e9163a2302af10f@mail.gmail.com>
+Thread-Index: AcZ9rrYgQS7Mo3qxTLiaBsTPNW64LAAK2WsQ
+X-MimeOLE: Produced By Microsoft MimeOLE V6.00.2900.2869
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+Dont now if it works, but look under:
+ /Tree/Bongo Messaging Server/Connection Manager/ RBL Module
+
+/Per 
+
+-----Oprindelig meddelelse-----
+Fra: bongo-general-bounces@forge.novell.com
+[mailto:bongo-general-bounces@forge.novell.com] På vegne af Lionel Dricot
+Sendt: 22. maj 2006 15:53
+Til: bongo-general@forge.novell.com
+Emne: [Bongo-general] RBL in Bongo ?
+
+Hello,
+
+I wanted to configure RBL in Bongo and I found this :
+http://www.bongo-project.org/SMTP_Agent
+
+but the described options are not available in the smtp configuration.
+Any idea about this?
+
+
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

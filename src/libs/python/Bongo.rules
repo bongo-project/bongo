@@ -1,0 +1,147 @@
+# -*- Makefile -*-
+# This file needs a lot of help.  We need a single list of the python
+# files we ship, and a target that compiles them at install-time.  In
+# the meantime, we'll have this packagedir monstrosity.
+
+pkgpythondir = $(pythondir)/bongo
+pkgpythonadmindir = $(pythondir)/bongo/admin
+pkgpythonexternaldir = $(pythondir)/bongo/external
+pkgpythonexternaldateutildir = $(pythondir)/bongo/external/dateutil
+pkgpythonexternalemaildir = $(pythondir)/bongo/external/email
+pkgpythonexternalemailmimedir = $(pythondir)/bongo/external/email/mime
+pkgpythonexternaldateutilzoneinfodir = $(pythondir)/bongo/external/dateutil/zoneinfo
+pkgpythonexternalsimplejsondir = $(pythondir)/bongo/external/simplejson
+pkgpythonexternalvobjectdir = $(pythondir)/bongo/external/vobject
+pkgpythonnmapdir = $(pythondir)/bongo/nmap
+pkgpythonstoredir = $(pythondir)/bongo/store
+
+pkgpython_PYTHON :=				\
+	src/libs/python/bongo/__init__.py	\
+	src/libs/python/bongo/CalCmd.py		\
+	src/libs/python/bongo/cmdparse.py	\
+	src/libs/python/bongo/Console.py		\
+	src/libs/python/bongo/Contact.py		\
+	src/libs/python/bongo/BongoError.py	\
+	src/libs/python/bongo/MDB.py		\
+	src/libs/python/bongo/Privs.py		\
+	src/libs/python/bongo/StreamIO.py	\
+	src/libs/python/bongo/table.py
+
+nodist_pkgpython_PYTHON := \
+	src/libs/python/bongo/Xpl.py
+
+pkgpythonadmin_PYTHON :=			   \
+	src/libs/python/bongo/admin/__init__.py	   \
+	src/libs/python/bongo/admin/Addressbook.py  \
+	src/libs/python/bongo/admin/Alias.py	   \
+	src/libs/python/bongo/admin/Antispam.py	   \
+	src/libs/python/bongo/admin/Calcmd.py	   \
+	src/libs/python/bongo/admin/Collector.py	   \
+	src/libs/python/bongo/admin/Handler.py	   \
+	src/libs/python/bongo/admin/BongoSession.py  \
+	src/libs/python/bongo/admin/Imap.py	   \
+	src/libs/python/bongo/admin/Itip.py	   \
+	src/libs/python/bongo/admin/JsonUtil.py	   \
+	src/libs/python/bongo/admin/ManagedSlapd.py \
+	src/libs/python/bongo/admin/Mdb.py	   \
+	src/libs/python/bongo/admin/Msgserver.py	   \
+	src/libs/python/bongo/admin/Pop3.py	   \
+	src/libs/python/bongo/admin/Proxy.py	   \
+	src/libs/python/bongo/admin/Queue.py	   \
+	src/libs/python/bongo/admin/Schema.py	   \
+	src/libs/python/bongo/admin/Security.py	   \
+	src/libs/python/bongo/admin/Smtp.py	   \
+	src/libs/python/bongo/admin/Store.py	   \
+	src/libs/python/bongo/admin/Template.py	   \
+	src/libs/python/bongo/admin/User.py	   \
+	src/libs/python/bongo/admin/Util.py	   \
+	src/libs/python/bongo/admin/Webadmin.py	   \
+	src/libs/python/bongo/admin/Webservices.py  \
+	src/libs/python/bongo/admin/bongoutil.py
+
+pkgpythonexternal_PYTHON := \
+	src/libs/python/bongo/external/__init__.py
+
+pkgpythonexternaldateutil_PYTHON :=				\
+	src/libs/python/bongo/external/dateutil/__init__.py	\
+	src/libs/python/bongo/external/dateutil/easter.py	\
+	src/libs/python/bongo/external/dateutil/parser.py	\
+	src/libs/python/bongo/external/dateutil/relativedelta.py	\
+	src/libs/python/bongo/external/dateutil/rrule.py		\
+	src/libs/python/bongo/external/dateutil/tz.py		\
+	src/libs/python/bongo/external/dateutil/tzwin.py
+
+pkgpythonexternaldateutilzoneinfo_PYTHON := \
+	src/libs/python/bongo/external/dateutil/zoneinfo/__init__.py
+
+pkgpythonexternalemail_PYTHON :=			     \
+	src/libs/python/bongo/external/email/feedparser.py    \
+	src/libs/python/bongo/external/email/_parseaddr.py    \
+	src/libs/python/bongo/external/email/parser.py	     \
+	src/libs/python/bongo/external/email/message.py	     \
+	src/libs/python/bongo/external/email/header.py	     \
+	src/libs/python/bongo/external/email/iterators.py     \
+	src/libs/python/bongo/external/email/encoders.py	     \
+	src/libs/python/bongo/external/email/payloads.py	     \
+	src/libs/python/bongo/external/email/quoprimime.py    \
+	src/libs/python/bongo/external/email/generator.py     \
+	src/libs/python/bongo/external/email/filegenerator.py \
+	src/libs/python/bongo/external/email/charset.py	     \
+	src/libs/python/bongo/external/email/base64mime.py    \
+	src/libs/python/bongo/external/email/__init__.py	     \
+	src/libs/python/bongo/external/email/errors.py	     \
+	src/libs/python/bongo/external/email/utils.py
+
+pkgpythonexternalemailmime_PYTHON :=				 \
+	src/libs/python/bongo/external/email/mime/audio.py	 \
+	src/libs/python/bongo/external/email/mime/message.py	 \
+	src/libs/python/bongo/external/email/mime/nonmultipart.py \
+	src/libs/python/bongo/external/email/mime/multipart.py	 \
+	src/libs/python/bongo/external/email/mime/text.py	 \
+	src/libs/python/bongo/external/email/mime/image.py	 \
+	src/libs/python/bongo/external/email/mime/base.py	 \
+	src/libs/python/bongo/external/email/mime/__init__.py	 \
+	src/libs/python/bongo/external/email/mime/application.py
+
+pkgpythonexternalsimplejson_PYTHON :=			       \
+	src/libs/python/bongo/external/simplejson/__init__.py   \
+	src/libs/python/bongo/external/simplejson/decoder.py    \
+	src/libs/python/bongo/external/simplejson/encoder.py    \
+	src/libs/python/bongo/external/simplejson/jsonfilter.py \
+	src/libs/python/bongo/external/simplejson/scanner.py
+
+pkgpythonexternalvobject_PYTHON :=			   \
+	src/libs/python/bongo/external/vobject/__init__.py  \
+	src/libs/python/bongo/external/vobject/base.py	   \
+	src/libs/python/bongo/external/vobject/behavior.py  \
+	src/libs/python/bongo/external/vobject/icalendar.py \
+	src/libs/python/bongo/external/vobject/vcard.py	   \
+	src/libs/python/bongo/external/vobject/win32tz.py
+
+pkgpythonnmap_PYTHON :=				    \
+	src/libs/python/bongo/nmap/__init__.py	    \
+	src/libs/python/bongo/nmap/CommandStream.py  \
+	src/libs/python/bongo/nmap/NmapClient.py	    \
+	src/libs/python/bongo/nmap/NmapConnection.py \
+	src/libs/python/bongo/nmap/QueueClient.py
+
+pkgpythonstore_PYTHON :=			      \
+	src/libs/python/bongo/store/__init__.py	      \
+	src/libs/python/bongo/store/CommandStream.py   \
+	src/libs/python/bongo/store/QueueClient.py     \
+	src/libs/python/bongo/store/StoreClient.py     \
+	src/libs/python/bongo/store/StoreConnection.py
+
+CLEANFILES +=						\
+	src/libs/python/bongo-python-wrapper		\
+	src/libs/python/bongo/*.pyc			\
+	src/libs/python/bongo/external/*.pyc		\
+	src/libs/python/bongo/external/simplejson/*.pyc	\
+	src/libs/python/bongo/nmap/*.pyc			\
+	src/libs/python/bongoy/store/*.pyc
+
+src/libs/python/bongo-python-wrapper: $(top_builddir)/config.status $(srcdir)/src/libs/python/bongo-python-wrapper.in
+	cd $(top_builddir) && $(SHELL) ./config.status $@
+
+src/libs/python/all: src/libs/python/bongo/all
+src/libs/python/clean: clean

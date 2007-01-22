@@ -1,0 +1,24 @@
+<html>
+    <head>
+      <title>|summary|</title>
+      <style type="text/css">
+        @import url(|clientloc|css/interpreter.css);
+        @import url(|clientloc|css/layout.css;)
+        @import url(|clientloc|css/widgets.css);
+        @import url(|clientloc|css/login.css);
+        @import url(|clientloc|css/composer.css);
+        @import url(|clientloc|css/conversation.css);
+        @import url(|clientloc|css/contacts.css);
+        @import url(|clientloc|css/calendar.css);
+        @import url(|clientloc|css/summary.css);
+      </style>
+    </head>
+    <body>
+       <div id="event">
+       |ifdef:summary| <b>|summary|</b> <p>|endif|
+       |ifdef:location| <i>|location|</i> <p> |endif|
+       |timerange|<p>
+       |note|
+       </div>
+    </body>
+</html>

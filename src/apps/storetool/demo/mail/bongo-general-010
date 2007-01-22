@@ -1,0 +1,79 @@
+From bongo-general-bounces@forge.novell.com Wed May 17 01:34:34 2006
+Return-Path: <adam@hydroblaster.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id DE7B363085 for
+	<Dave@ximian.com>; Wed, 17 May 2006 01:34:34 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id D83E37004B;
+	Wed, 17 May 2006 01:34:34 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 1581270045
+	for <Dave@ximian.com>; Wed, 17 May 2006 01:34:29 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Tue, 16 May 2006 23:34:25 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Tue, 16 May 2006 23:33:54 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id ED7DC1B013E; Tue, 16 May
+	2006 23:26:35 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from bigmac.hydroblaster.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	76F8B1B013E for <bongo-general@forge.novell.com>; Tue, 16 May 2006 22:48:10
+	-0600 (MDT)
+Received: from [192.168.2.4] (c-67-171-119-3.hsd1.ut.comcast.net
+	[67.171.119.3]) (authenticated bits=0) by bigmac.hydroblaster.com
+	(8.12.8/8.12.8) with ESMTP id k4H4m4AZ024711 for
+	<bongo-general@forge.novell.com>; Tue, 16 May 2006 22:48:05 -0600
+Message-ID: <446AAB0F.807@hydroblaster.com>
+Date: Tue, 16 May 2006 22:48:15 -0600
+From: Adam Taft <adam@hydroblaster.com>
+User-Agent: Thunderbird 1.5.0.2 (Windows/20060308)
+MIME-Version: 1.0
+To: bongo-general@forge.novell.com
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+X-Greylist: Sender succeeded SMTP AUTH authentication, not delayed by
+	milter-greylist-2.0.2 (bigmac.hydroblaster.com [192.168.1.11]); Tue, 16 May
+	2006 22:48:06 -0600 (MDT)
+X-Hydroblaster-MailScanner-Information: Please contact the ISP for more
+	information
+X-Hydroblaster-MailScanner: Found to be clean
+Subject: [Bongo-general] Editing a Calendar Item
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+Hi,
+
+I just setup Bongo.  Was pretty easy to do.
+
+I was having a hard time figuring how to edit a calendar item or task 
+with the web interface.  I see the ability to delete (among other 
+things), but don't see any ability to edit the calendar item.
+
+I would appreciate knowing if this is possible to do and how to do it if so.
+
+Thanks in advance,
+
+Adam
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

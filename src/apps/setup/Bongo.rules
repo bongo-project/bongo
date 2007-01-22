@@ -1,0 +1,30 @@
+# -*- Makefile -*-
+sbin_SCRIPTS += src/apps/setup/bongo-setup
+
+schemadir := $(XPL_DEFAULT_CONF_DIR)
+dist_schema_DATA :=			\
+	src/apps/setup/bongo-setup.xml	\
+	src/apps/setup/base-schema.xml	\
+	src/apps/setup/bongo-schema.xml
+
+nodist_schema_DATA := \
+	src/apps/setup/bongo-setup.xml
+
+dist_noinst_DATA += src/apps/setup/bongo-setup.xml.in
+
+src/apps/setup/bongo-setup: $(top_builddir)/src/libs/python/bongo-python-wrapper
+	$(INSTALL) -m 755 $< $@
+
+dist_pkglibexec_SCRIPTS += src/apps/setup/bongo-setup.py
+
+CLEANFILES +=					\
+	src/apps/setup/bongo-setup		\
+	src/apps/setup/*.pyc
+
+src/apps/setup/all:
+src/apps/setup/clean: clean
+src/apps/setup/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS)			\
+		sbin_SCRIPTS=src/apps/setup/bongo-setup			\
+		dist_pkglibexec_SCRIPTS=src/apps/setup/bongo-setup.py 	\
+		install-dist_sbinSCRIPTS install-dist_schemaDATA

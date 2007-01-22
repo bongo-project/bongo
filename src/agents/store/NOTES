@@ -1,0 +1,8 @@
+Changes from David's API:
+
+
+Commands no longer accept list arguments.
+
+Row counts are not printed before sending data.  (This is faster, b/c
+rowcount might not always be needed)
+

@@ -1,0 +1,15 @@
+<%@ include file="../header.psp" %>
+
+<p>
+This is a new web administration interface for Bongo.  You can't do
+much with it yet, but you can modify existing agents and users.
+</p>
+
+<p> For more administrative flexibility, please look into the
+bongo-admin commandline tool.
+</p>
+
+<a href="/admin/agents">Administer Bongo Agents</a><br/>
+<a href="/admin/users">Administer Bongo Users</a>
+
+<%@ include file="../footer.psp" %>

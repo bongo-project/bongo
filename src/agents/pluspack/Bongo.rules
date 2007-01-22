@@ -1,0 +1,26 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongopluspack
+
+bongopluspack_SOURCES :=				\
+	src/agents/pluspack/management.c	\
+	src/agents/pluspack/pluspack.c		\
+	src/agents/pluspack/pluspack.h
+
+bongopluspack_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/pluspack/all: bongopluspack
+src/agents/pluspack/clean: clean
+src/agents/pluspack/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongopluspack install-sbinPROGRAMS

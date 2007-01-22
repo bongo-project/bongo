@@ -1,0 +1,35 @@
+# -*- Makefile -*-
+pkgpythonstoretooldir := $(pkgpythondir)/storetool
+
+pkgpythonstoretool_PYTHON := \
+	src/apps/storetool/bongo/storetool/__init__.py \
+	src/apps/storetool/bongo/storetool/CalendarCommands.py \
+	src/apps/storetool/bongo/storetool/ContactCommands.py \
+	src/apps/storetool/bongo/storetool/InteractiveCommands.py \
+	src/apps/storetool/bongo/storetool/MailCommands.py
+
+src/apps/storetool/bongo-storetool: $(top_builddir)/src/libs/python/bongo-python-wrapper
+	$(INSTALL) -m 755 $< $@
+
+dist_pkglibexec_SCRIPTS += src/apps/storetool/bongo-storetool.py
+
+sbin_SCRIPTS += \
+	src/apps/storetool/bongo-storetool
+
+dist_noinst_DATA += \
+	src/apps/storetool/bongo/__init__.py
+
+CLEANFILES +=					\
+	src/apps/storetool/bongo-storetool	\
+	src/apps/storetool/*.pyc		\
+	src/apps/storetool/bongo/*.pyc		\
+	src/apps/storetool/bongo/storetool/*.pyc
+
+src/apps/storetool/all:
+src/apps/storetool/clean: clean
+src/apps/storetool/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS)			      \
+		 sbin_SCRIPTS=src/apps/storetool/bongo-storetool		      \
+		 dist_pkglibexec_SCRIPTS=src/apps/storetool/bongo-storetool.py \
+		 install-sbinSCRIPTS					      \
+		 install-pkgpythonstoretoolPYTHON

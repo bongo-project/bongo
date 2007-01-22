@@ -1,0 +1,78 @@
+From james.henstridge@gmail.com  Thu May 18 09:10:33 2006
+Return-Path: <james.henstridge@gmail.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 60D6E3B1215
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 09:10:33 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 11715-02 for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 09:10:30 -0400 (EDT)
+Received: from wx-out-0102.google.com (wx-out-0102.google.com [66.249.82.197])
+	by menubar.gnome.org (Postfix) with ESMTP id 2B4913B1233
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 09:10:29 -0400 (EDT)
+Received: by wx-out-0102.google.com with SMTP id s11so616843wxc
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 06:10:29 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:sender:to:subject:cc:in-reply-to:mime-version:content-type:content-transfer-encoding:content-disposition:references:x-google-sender-auth;
+	b=grM3dYBg+0/coslGSpsxOg399TzxwG9Azpfkf0sMljMxHlbm9wJKuafCmC7IwL0/el8Vzg/xtf8NhFmfkgxEXjnWZsPeI4L9JgxD4l4J/S6evjR/Ft0oTrt2J+3a0DKQ0IzFbbFV9otMavdwOGr+loywHibS1vfSgN+pQIppq6s=
+Received: by 10.70.51.14 with SMTP id y14mr649041wxy;
+	Thu, 18 May 2006 06:10:28 -0700 (PDT)
+Received: by 10.70.60.15 with HTTP; Thu, 18 May 2006 06:10:28 -0700 (PDT)
+Message-ID: <a7e835d40605180610t5e2fb932g21ed28393cdc6a66@mail.gmail.com>
+Date: Thu, 18 May 2006 21:10:28 +0800
+From: "James Henstridge" <james@jamesh.id.au>
+Sender: james.henstridge@gmail.com
+To: "Joseph E. Sacco, Ph.D." <joseph_sacco@comcast.net>
+In-Reply-To: <1147956373.28786.7.camel@plantain.jesacco.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Content-Transfer-Encoding: quoted-printable
+Content-Disposition: inline
+References: <1147956373.28786.7.camel@plantain.jesacco.com>
+X-Google-Sender-Auth: 81e2113c039ffdd5
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.6 tagged_above=-999 required=2
+	tests=[BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.6
+X-Spam-Level: 
+Cc: Gnome Desktop Development List <desktop-devel-list@gnome.org>
+Subject: Re: gstreamer-0.10.x tarballs on f.g.o: checksums differ from those
+	on freedesktop.org
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Thu, 18 May 2006 13:10:33 -0000
+
+On 5/18/06, Joseph E. Sacco, Ph.D. <joseph_sacco@comcast.net> wrote:
+> The checksums for the gstreamer-0.10.x tarballs on ftp.gnome.org differ
+> from those on http://gstreamer.freedesktop.org/src/gstreamer/
+>
+> How can that be?
+
+The "install-module" script used to add things to ftp.gnome.org takes
+a .tar.gz archive, puts it in the right place, and creates a matching
+bzip2 archive.
+
+It seems that the bzip2 on the Gnome server produced a slightly
+different output compared to the one used to produce the .tar.bz2 file
+on gstreamer.freedesktop.org.
+
+If you look, the MD5 sums of the .tar.gz files on the two machines are
+identical.  So you can use those if you prefer not to trust the .bz2
+versions.
+
+James.
+

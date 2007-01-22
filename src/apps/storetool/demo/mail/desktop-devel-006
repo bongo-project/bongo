@@ -1,0 +1,65 @@
+From fherrera@gmail.com  Tue May  9 02:38:43 2006
+Return-Path: <fherrera@gmail.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 3E2853B14E7
+	for <desktop-devel-list@gnome.org>;
+	Tue,  9 May 2006 02:38:43 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 16679-10 for <desktop-devel-list@gnome.org>;
+	Tue,  9 May 2006 02:38:33 -0400 (EDT)
+Received: from nz-out-0102.google.com (nz-out-0102.google.com [64.233.162.198])
+	by menubar.gnome.org (Postfix) with ESMTP id A196F3B081B
+	for <desktop-devel-list@gnome.org>;
+	Tue,  9 May 2006 02:38:32 -0400 (EDT)
+Received: by nz-out-0102.google.com with SMTP id 40so2595771nzk
+	for <desktop-devel-list@gnome.org>;
+	Mon, 08 May 2006 23:38:31 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:sender:to:subject:mime-version:content-type:content-transfer-encoding:content-disposition:x-google-sender-auth;
+	b=W1fdl0+edVlpVbzhHu7W4HVoAuVzD99U2tMrF2wLVZZBalYm4lfO1IkaKbkAg/juojaRqgWkxCvZmgPt3LcJ+5ax3HsuYg+DBoVAwFjjb5RH92br7485UP8K7E54U6vou8u/5ZuwGinFmFOAzn14cmO2BICKblYVBqX+eWCTCxc=
+Received: by 10.36.222.1 with SMTP id u1mr4815004nzg;
+	Mon, 08 May 2006 23:38:31 -0700 (PDT)
+Received: by 10.36.58.3 with HTTP; Mon, 8 May 2006 23:38:31 -0700 (PDT)
+Message-ID: <58d389c20605082338g7e21455bh9d3df38869d692a0@mail.gmail.com>
+Date: Tue, 9 May 2006 08:38:31 +0200
+From: "Fernando Herrera" <fherrera@onirica.com>
+Sender: fherrera@gmail.com
+To: release-team@gnome.org, desktop-devel-list@gnome.org,
+	gnome-doc-list@gnome.org, gnome-i18n@gnome.org
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Content-Transfer-Encoding: quoted-printable
+Content-Disposition: inline
+X-Google-Sender-Auth: bfc31d52d39a2a13
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.6 tagged_above=-999 required=2 tests=[AWL=0.000,
+	BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.6
+X-Spam-Level: 
+Cc: 
+Subject: gconf-editor branched
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Tue, 09 May 2006 06:38:43 -0000
+
+Hi all,
+
+I've just branched gconf-editor for gnome-2-14.
+
+New development (mostly bug fixes and maybe some minor features) are
+going to happen on HEAD.
+
+Salu2
+

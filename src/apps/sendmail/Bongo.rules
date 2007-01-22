@@ -1,0 +1,24 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongo-sendmail
+
+bongo_sendmail_SOURCES :=		\
+	src/apps/sendmail/sendmail.h	\
+	src/apps/sendmail/sendmail.c
+
+bongo_sendmail_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/apps/sendmail/all: bongo-sendmail
+src/apps/sendmail/clean: clean
+src/apps/sendmail/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongo-sendmail install-sbinPROGRAMS

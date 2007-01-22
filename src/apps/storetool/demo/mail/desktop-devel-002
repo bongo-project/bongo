@@ -1,0 +1,82 @@
+From davyd@madeley.id.au  Fri May  5 03:45:31 2006
+Return-Path: <davyd@madeley.id.au>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id E6C193B0324
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 03:45:30 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 20166-05 for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 03:45:29 -0400 (EDT)
+Received: from oracle.bridgewayconsulting.com.au
+	(oracle.bridgewayconsulting.com.au [203.56.14.38])
+	by menubar.gnome.org (Postfix) with ESMTP id 4A2693B0099
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 03:45:29 -0400 (EDT)
+Received: by oracle.bridgewayconsulting.com.au (Postfix, from userid 33)
+	id DB1B82E8004; Fri,  5 May 2006 15:45:27 +0800 (WST)
+Received: from 212.189.46.131 ([212.189.46.131]) by
+	mail.bridgewayconsulting.com.au (Horde MIME library) with HTTP for
+	<davyd@mail.bridgewayconsulting.com.au>; Fri, 05 May 2006 15:45:27 +0800
+Message-ID: <20060505154527.yc824iimyds8k88g@mail.bridgewayconsulting.com.au>
+Date: Fri, 05 May 2006 15:45:27 +0800
+From: Davyd Madeley <davyd@madeley.id.au>
+To: desktop-devel-list@gnome.org
+MIME-Version: 1.0
+Content-Type: text/plain;
+	charset=UTF-8
+Content-Disposition: inline
+Content-Transfer-Encoding: 7bit
+User-Agent: Internet Messaging Program (IMP) H3 (4.0.2)
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-0.108 tagged_above=-999 required=2
+	tests=[BAYES_40=-0.185, TW_GT=0.077]
+X-Spam-Score: -0.108
+X-Spam-Level: 
+Subject: Showing multiple groups by default with GOption?
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Fri, 05 May 2006 07:45:31 -0000
+
+With GOption, is it possible to have it display multiple groups of options by
+default. eg. that `myapp --help` would display:
+
+./myapp --help
+Usage:
+  myapp [OPTION...] - Do MyTask GNOME-stylez
+
+Help Options:
+  -?, --help               Show help options
+  --help-all               Show all help options
+  --help-processing        Show processing options
+  --help-plotting          Show plotting options
+  --help-gtk               Show GTK+ Options
+
+Processing Options:
+  --cdptol=10              Tolerance (%)
+  --leap=40                Leap
+  --fold=200               Nominal Fold
+  --masfile=FILENAME       MAS file
+  --smooth=9               Smoothing
+
+Plotting Options:
+  --cmppinc=10             CMP Plotting Increment
+
+Eventually both of these lists are going to be made somewhat larger, and I would
+very much like to display both of them (they're both important sets of options
+and will need to be often referenced by people calling the application from a
+batch file).
+
+--d
+

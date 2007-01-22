@@ -1,0 +1,101 @@
+From Calum.Benson@Sun.COM  Fri May 12 11:18:44 2006
+Return-Path: <Calum.Benson@Sun.COM>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 9FA773B276C
+	for <desktop-devel-list@gnome.org>;
+	Fri, 12 May 2006 11:18:36 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 04477-08 for <desktop-devel-list@gnome.org>;
+	Fri, 12 May 2006 11:18:27 -0400 (EDT)
+Received: from gmpea-pix-1.sun.com (gmpea-pix-1.sun.com [192.18.1.36])
+	by menubar.gnome.org (Postfix) with ESMTP id 6B75A3B274E
+	for <desktop-devel-list@gnome.org>;
+	Fri, 12 May 2006 11:18:24 -0400 (EDT)
+Received: from d1-emea-01.sun.com (d1-emea-01.sun.com [192.18.2.111] (may be
+	forged))
+	by gmpea-pix-1.sun.com (8.12.9/8.12.9) with ESMTP id k4CFINRB003176
+	for <desktop-devel-list@gnome.org>;
+	Fri, 12 May 2006 16:18:23 +0100 (BST)
+Received: from conversion-daemon.d1-emea-01.sun.com by d1-emea-01.sun.com
+	(Sun Java System Messaging Server 6.2-4.02 (built Sep  9 2005))
+	id <0IZ500301QZVKA00@d1-emea-01.sun.com>
+	(original mail from Calum.Benson@Sun.COM) for
+	desktop-devel-list@gnome.org; Fri, 12 May 2006 16:18:23 +0100 (BST)
+Received: from slec-gm-test ([129.156.226.189])
+	by d1-emea-01.sun.com (Sun Java System Messaging Server 6.2-4.02 (built
+	Sep 9
+	2005)) with ESMTPSA id <0IZ5001TGRUNWO20@d1-emea-01.sun.com> for
+	desktop-devel-list@gnome.org; Fri, 12 May 2006 16:18:23 +0100 (BST)
+Date: Fri, 12 May 2006 16:18:15 +0100
+From: Calum Benson <Calum.Benson@Sun.COM>
+Sender: Calum.Benson@Sun.COM
+To: "desktop-devel-list@gnome.org" <desktop-devel-list@gnome.org>
+Message-id: <1147447096.2294.19.camel@cdelab89.ireland.sun.com>
+Organization: Sun Microsystems Ireland Ltd.
+MIME-version: 1.0
+X-Mailer: Evolution 2.6.1
+Content-type: text/plain
+Content-transfer-encoding: 7BIT
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.582 tagged_above=-999 required=2 tests=[AWL=0.016, 
+	BAYES_00=-2.599, UNPARSEABLE_RELAY=0.001]
+X-Spam-Score: -2.582
+X-Spam-Level: 
+Subject: Launcher / main menu tooltips
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Fri, 12 May 2006 15:18:44 -0000
+
+While putting together the UI spec for the OpenSolaris desktop, I took
+the opportunity of reviewing all our .desktop file Comments, which
+appear as menu or launcher tooltips. Needless to say, despite HIG
+guidance on the subject, there isn't much consistency, and some of them
+are less than helpful.
+
+Now, Sun doesn't particularly want to maintain local patches for dozens
+of tooltips; equally, we don't want to go round filing dozens of
+individual bugs (at least not straight away), as some maintainers would
+probably make the change, and others would think it not worth the
+effort, so we'd still end up with a bit of an inconsistent mess.
+
+Instead, I thought it might be better to write up our proposal in full,
+so people could see the big picture of the kind of descriptions and
+consistency I think we should be aiming for:
+
+http://live.gnome.org/UsabilityTeam/Menu
+
+I don't claim all the descriptions are perfect, and it's possible I've
+missed some core apps off the list (or put them in the wrong place) as
+our OpenSolaris builds are still a bit transitional at the moment.  Feel
+free to update the list accordingly in either case... put your name in
+the last column so I know who to harass if I don't agree :)  (There are
+also some non-GNOME apps in there, like OO.o, but I left them in for the
+hell of it.)
+
+If maintainers do want to work straight from this list, just mark the
+"In CVS" column as "Y" when you've made the change, I guess.  Or if
+you'd rather I filed dozens of bugs instead, I'll file dozens of bugs
+instead.  Or if you think it's all a waste of time, I'll shut up...
+
+Cheeri,
+Calum.
+
+-- 
+CALUM BENSON, Usability Engineer       Sun Microsystems Ireland
+mailto:calum.benson@sun.com            Java Desktop System Group
+http://ie.sun.com                      +353 1 819 9771
+
+Any opinions are personal and not necessarily those of Sun Microsystems
+

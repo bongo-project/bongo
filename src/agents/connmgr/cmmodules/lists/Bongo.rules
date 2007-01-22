@@ -1,0 +1,19 @@
+# -*- Makefile -*-
+cmmodule_LTLIBRARIES += libcmlists.la
+
+libcmlists_la_SOURCES :=			     \
+	src/agents/connmgr/cmmodules/lists/cmlists.c \
+	src/agents/connmgr/cmmodules/lists/cmlists.h
+
+libcmlists_la_LDFLAGS := -module -avoid-version
+libcmlists_la_LIBADD :=				\
+	libbongomsgapi.la			\
+	libbongologger.la			\
+	libbongomemmgr.la			\
+	libbongomdb.la				\
+	libbongoxpl.la				\
+	$(PTHREAD_LIBS)				\
+	$(ALL_LIBS)
+
+src/agents/connmgr/cmmodules/lists/all: libcmlists.la
+src/agents/connmgr/cmmodules/lists/clean: clean

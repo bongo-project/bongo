@@ -1,0 +1,23 @@
+# -*- Makefile -*-
+TESTS += checktest-cal
+check_PROGRAMS += checktest-cal
+
+CLEANFILES += checklog.xml
+
+checktest_cal_SOURCES := \
+	src/libs/cal/tests/test-cal.c
+
+checktest_cal_LDADD := $(CHECK_LIBS)				   \
+	libbongomemmgr.la					   \
+        libbongoutil.la						   \
+	libbongoxpl.la						   \
+	libbongo-json.la					   \
+	libbongocal.la						   \
+        $(top_builddir)/import/libical/src/libical/libical-bongo.la \
+        $(PTHREAD_LIBS)						   \
+        $(ALL_LIBS)
+
+checktest_CFLAGS := $(AM_CFLAGS) -g -O0
+
+src/libs/cal/tests/all:
+src/libs/cal/tests/clean: clean

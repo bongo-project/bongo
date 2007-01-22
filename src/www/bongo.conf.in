@@ -1,0 +1,45 @@
+LoadModule python_module @APACHE_MOD_DIR@/mod_python@SHARED_POSTFIX@
+
+<IfModule mod_python.c>
+Alias / @EXPANDED_DATADIR@/@PACKAGE@/htdocs/
+
+<Location />
+    Order allow,deny
+    Allow from all
+    Options +FollowSymlinks
+</Location>
+
+<Location /user>
+    Order allow,deny
+    Allow from all
+
+    SetHandler python-program
+    PythonPath "['@EXPANDED_PYTHONDIR@']+sys.path"
+    PythonHandler bongo.dragonfly.Server
+    PythonOption DragonflyUriRoot "/user"
+    PythonDebug On
+</Location>
+
+<Location /history>
+    Order allow,deny
+    Allow from all
+
+    SetHandler python-program
+    PythonPath "['@EXPANDED_PYTHONDIR@']+sys.path"
+    PythonHandler bongo.dragonfly.HistoryServer
+    PythonOption DragonflyUriRoot "/history"
+    PythonDebug On
+</Location>
+
+<Location /admin>
+    Order allow,deny
+    Allow from all
+
+    SetHandler python-program
+    PythonPath "['@EXPANDED_PYTHONDIR@']+sys.path"
+    PythonHandler bongo.hawkeye.Server
+    PythonOption HawkeyeUriRoot "/admin"
+    PythonOption HawkeyeTmplRoot "@EXPANDED_DATADIR@/@PACKAGE@/hawkeye/psp"
+    PythonDebug On
+</Location>
+</IfModule>

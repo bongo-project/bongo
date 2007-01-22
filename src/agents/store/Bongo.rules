@@ -1,0 +1,74 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongostore
+
+bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
+	-I$(top_srcdir)/src/agents/store	\
+	-I$(top_srcdir)/import/sqlite3		\
+	-I$(top_srcdir)/import/clucene/src
+
+bongostore_SOURCES :=					 \
+	src/agents/store/alarmdb.c			 \
+	src/agents/store/alarmdb.h			 \
+	src/agents/store/auth.c				 \
+	src/agents/store/calendar.c			 \
+	src/agents/store/calendar.h			 \
+	src/agents/store/command.c			 \
+	src/agents/store/command.h			 \
+	src/agents/store/config.c			 \
+	src/agents/store/conversations.c		 \
+	src/agents/store/conversations.h		 \
+	src/agents/store/cookie.c			 \
+	src/agents/store/db.c				 \
+	src/agents/store/dbpool.c			 \
+	src/agents/store/db.h				 \
+	src/agents/store/guid.c				 \
+	src/agents/store/help.h				 \
+	src/agents/store/lock.c				 \
+	src/agents/store/lock.h				 \
+	src/agents/store/mail.c				 \
+	src/agents/store/mail.h				 \
+	src/agents/store/mail-parser.c			 \
+	src/agents/store/mail-parser.h			 \
+	src/agents/store/main.cpp			 \
+	src/agents/store/management.c			 \
+	src/agents/store/messages.h			 \
+	src/agents/store/mime.c				 \
+	src/agents/store/mime.h				 \
+	src/agents/store/search.c			 \
+	src/agents/store/store.c			 \
+	src/agents/store/stored.c			 \
+	src/agents/store/stored.h			 \
+	src/agents/store/index.cpp			 \
+	src/agents/store/index.h			 \
+	src/agents/store/lucene-index.h			 \
+	src/agents/store/lucene-index.cpp		 \
+	src/agents/store/filters/BongoStreamInputStream.h \
+	src/agents/store/filters/filter.cpp		 \
+	src/agents/store/filters/filter.h		 \
+	src/agents/store/filters/contact-filter.cpp	 \
+	src/agents/store/filters/event-filter.cpp	 \
+	src/agents/store/filters/mail-filter.cpp
+
+bongostore_LDADD =					   \
+	libbongo-json.la				   \
+	libbongocal.la					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongostreamio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(LIBSQLITE_LIBS)				   \
+	$(LIBCLUCENE_LIBS) 				   \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/store/all: bongostore
+src/agents/store/clean: clean
+src/agents/store/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongostore install-sbinPROGRAMS

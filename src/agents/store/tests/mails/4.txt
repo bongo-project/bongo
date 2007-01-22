@@ -1,0 +1,40 @@
+@F (John Doe) (jdoe@machine.example)
+@T (Mary Smith) (mary@example.net)
+@T () (cyrus@example.net)
+@T () (foo@example.com)
+@T () (otherpeople@novell.example.com)
+@T () (foo@baz.example.com)
+@j (<message@id>)
+@i (<1139648664.6627.40.camel@localhost>)
+@i (<20060211131337.GT9506@redhat.com>)
+@i (<43EDF0CB.5040509@gnome.org>)
+@i (<1139657754.24063.15.camel@huygens.localdomain>)
+@i (<20060211151802.GW9506@redhat.com>)
+@I (<1234@local.machine.example>)
+@C (no\one "special") (nobody@example.com)
+@S (Saying Hello)
+@D ()
+@U ()
+
+From: John Doe <jdoe@machine.example>
+To: some people: "Mary \Smith" <mary@example.net>, cyrus@example.net,
+  foo@example.com;,
+  "a multi-line
+ quoted string": <otherpeople@novell.example.com>;,
+  foo@baz.example.com
+In-Reply-To: something without a message id at all
+In-Reply-To: some message with a message id of <message@id> and Message-Id: <VERY@BADDATA>
+References: <1139648664.6627.40.camel@localhost>
+         <20060211131337.GT9506@redhat.com> <43EDF0CB.5040509@gnome.org>
+         <1139657754.24063.15.camel@huygens.localdomain>
+         <20060211151802.GW9506@redhat.com>
+Message-Id: <1234@local.machine.example>
+Cc:    
+  "no\\\one
+      \"special\"" <nobody@example.com>
+Subject: 
+   Saying Hello
+Date: Fri, 21 Nov 1997 09:55:06 -0600
+
+This is a message just to say hello.
+So, "Hello".

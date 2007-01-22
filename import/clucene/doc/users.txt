@@ -1,0 +1,12 @@
+Here is a list of projects, applications or companies which use CLucene.
+If you would like to be added to this list, please send me an email:
+ustramooner@users.sourceforge.net
+
+Kat (KDE desktop search engine) - http://kat.mandriva.org/
+ht://Dig (Intranet/Domain search engine) - http://www.htdig.org/
+The Sword Project (Bible tool) - http://www.crosswire.org/
+Flock (Firefox based web browser) - http://www.flock.com/developer/
+kio-clucene (KDE desktop search engine) - http://kio-clucene.sourceforge.net/
+GULP (Das Portal für IT) - http://www.gulp.de/
+Rootsweb.com (genealogy website)- http://archiver.rootsweb.com/cgi-bin/search
+im-brain (intelligent knowledge management, text classification) - http://www.im-brain.de/

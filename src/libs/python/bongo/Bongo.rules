@@ -1,0 +1,82 @@
+# -*- Makefile -*-
+pkgpyexecdir = $(pyexecdir)/bongo
+
+pkgpyexec_LTLIBRARIES :=			\
+	libs.la					\
+	bootstrap.la
+
+libs_la_SOURCES :=				\
+	src/libs/python/bongo/cal.c		\
+	src/libs/python/bongo/calcmd.c		\
+	src/libs/python/bongo/libs.c		\
+	src/libs/python/bongo/libs.h		\
+	src/libs/python/bongo/mdb.c		\
+	src/libs/python/bongo/msgapi.c		\
+	src/libs/python/bongo/msgapi-defs.c	\
+	src/libs/python/bongo/msgapi-defs.h	\
+	src/libs/python/bongo/pybongo.c		\
+	src/libs/python/bongo/pybongo.h		\
+	src/libs/python/bongo/streamio.c		\
+	src/libs/python/bongo/json.c		\
+	src/libs/python/bongo/json.h		\
+	src/libs/python/bongo/bongoutil.c
+
+libs_la_CPPFLAGS := $(AM_CPPFLAGS)		\
+	$(PYTHON_CPPFLAGS)			\
+	$(bongo_CFLAGS)
+
+libs_la_LDFLAGS := -avoid-version -module
+libs_la_LIBADD :=				\
+	$(PYTHON_LIBS)				\
+	libbongocal.la				\
+	libbongocalcmd.la			\
+	libbongoutil.la				\
+	libbongo-json.la				\
+	libbongomdb.la				\
+	libbongomsgapi.la			\
+	libbongostreamio.la
+
+bootstrap_la_SOURCES :=				\
+	src/libs/python/bongo/bootstrap.c	\
+	src/libs/python/bongo/bootstrap.h	\
+	src/libs/python/bongo/mdb.c		\
+	src/libs/python/bongo/msgapi-defs.c	\
+	src/libs/python/bongo/msgapi-defs.h	\
+	src/libs/python/bongo/pybongo.c		\
+	src/libs/python/bongo/pybongo.h
+
+bootstrap_la_CPPFLAGS := $(AM_CPPFLAGS)		\
+	$(PYTHON_CPPFLAGS)			\
+	$(bongo_CFLAGS)
+
+bootstrap_la_LDFLAGS := -avoid-version -module
+bootstrap_la_LIBADD :=				\
+	$(PYTHON_LIBS)				\
+	libbongomdb.la				\
+	libbongomsgapi.la
+
+src/libs/python/bongo/libs.so: libs.la
+	cp .libs/libs.so $@
+
+src/libs/python/bongo/bootstrap.so: bootstrap.la
+	cp .libs/bootstrap.so $@
+
+src/libs/python/bongo/Xpl.py: $(top_builddir)/config.status src/libs/python/bongo/Xpl.py.in
+	cd $(top_builddir) && $(SHELL) ./config.status $@
+
+noinst_DATA +=					\
+	src/libs/python/bongo/libs.so		\
+	src/libs/python/bongo/bootstrap.so	\
+	src/libs/python/bongo/Xpl.py
+
+CLEANFILES +=					\
+	src/libs/python/bongo/libs.so		\
+	src/libs/python/bongo/bootstrap.so	\
+	src/libs/python/bongo/Xpl.py
+
+src/libs/python/bongo/all:			\
+	src/libs/python/bongo/libs.so		\
+	src/libs/python/bongo/bootstrap.so	\
+	src/libs/python/bongo/Xpl.py
+
+src/libs/python/bongo/clean: clean

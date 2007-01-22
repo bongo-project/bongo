@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19110601T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+034152"
+			},
+			"tzname":[
+				{
+					"value":"RET"
+				}],
+			"rdates":[
+				{
+					"value":"19110601T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Indian/Reunion"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Indian/Reunion"
+	}
+}] }

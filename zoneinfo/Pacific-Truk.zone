@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19010101T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+1000"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+100708"
+			},
+			"tzname":[
+				{
+					"value":"TRUT"
+				}],
+			"rdates":[
+				{
+					"value":"19010101T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Pacific/Truk"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Pacific/Truk"
+	}
+}] }

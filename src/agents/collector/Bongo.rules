@@ -1,0 +1,36 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongocollector
+
+bongocollector_SOURCES :=			\
+	src/agents/collector/collector.c	\
+	src/agents/collector/collector.h	\
+	src/agents/collector/management.c
+
+bongocollector_CPPFLAGS := $(AM_CPPFLAGS) \
+	-I$(top_srcdir)/import/curl/include
+
+bongocollector_LDADD :=						   \
+	libbongonmap.la						   \
+	libbongocal.la						   \
+	libbongomanagement.la					   \
+	libbongomsgapi.la					   \
+	libbongomdb.la						   \
+	libbongologger.la					   \
+	libbongoconnio.la					   \
+	libbongomemmgr.la					   \
+	libbongostreamio.la					   \
+	libbongoutil.la						   \
+	libbongoxpl.la						   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la	   \
+	$(LIBCURL_LIBS)						   \
+	$(top_builddir)/import/libical/src/libical/libical-bongo.la \
+	$(PTHREAD_LIBS)						   \
+	$(ALL_LIBS)
+
+install-data-hook::
+	$(mkinstalldirs) $(DESTDIR)$(XPL_DEFAULT_CACHE_DIR)/collector
+
+src/agents/collector/all: bongocollector
+src/agents/collector/clean: clean
+src/agents/collector/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongocollector install-sbinPROGRAMS

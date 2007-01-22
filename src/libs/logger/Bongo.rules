@@ -1,0 +1,16 @@
+# -*- Makefile -*-
+lib_LTLIBRARIES += libbongologger.la
+
+libbongologger_la_SOURCES :=			\
+	src/libs/logger/bongo.lsc		\
+	src/libs/logger/logger-format.pl	\
+	src/libs/logger/logger.c		\
+	src/libs/logger/logger-format.c		\
+	src/libs/logger/loggerp.h
+
+libbongologger_la_LIBADD :=			\
+	libbongoxpl.la				\
+        $(DL_LIBS)
+
+src/libs/logger/all: libbongologger.la
+src/libs/logger/clean: clean

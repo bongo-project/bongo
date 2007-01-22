@@ -1,0 +1,28 @@
+Tests have been successful on the following platforms:
+
+Win32 (MSVC)
+Win32 (Mingw32 based Dev-C++)
+Win32 (Cygwin autobuild)
+
+AMD 64 (Fedora Core 3)
+x86 (FreeBSD 4.8)
+x86 (Fedora Core 2)
+IBM Power5 - Suse Enterprise Server 9
+
+Also reported running on:
+Mandriva Linux LE 2005.
+
+Too many files open on: (other than that, all tests pass)
+NetBSD 1.6.1 - 2 test fail
+Sparc - Sun Solaris 9 - 2 test fail
+x86 - Sun Solaris 9 - 2 test fail
+
+
+Current Build Fails On:
+Alpha (Linux 2.2, Debian 3.0) - implicit declaration of function `int wcstoll
+
+
+Currently Tests Fail on:
+PPC (Mac OsX 10.1 SERVER) - all tests fail, segfault on highfreq test
+PPC (Mac OsX 10.2 SERVER) - segfault on highfreq test
+OpenBSD 3.4 - segfaults on highfreq test

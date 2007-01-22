@@ -1,0 +1,27 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongoantispam
+
+bongoantispam_SOURCES :=				\
+	src/agents/antispam/antispam.c		\
+	src/agents/antispam/antispam.h		\
+	src/agents/antispam/spamd.c		\
+	src/agents/antispam/management.c
+
+bongoantispam_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/antispam/all: bongoantispam
+src/agents/antispam/clean: clean
+src/agents/antispam/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongoantispam install-sbinPROGRAMS

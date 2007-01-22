@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19010101T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+1200"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+115652"
+			},
+			"tzname":[
+				{
+					"value":"TVT"
+				}],
+			"rdates":[
+				{
+					"value":"19010101T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Pacific/Funafuti"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Pacific/Funafuti"
+	}
+}] }

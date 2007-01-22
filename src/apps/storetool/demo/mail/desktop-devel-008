@@ -1,0 +1,86 @@
+From marcus@FreeBSD.org  Sun May 14 16:17:35 2006
+Return-Path: <marcus@FreeBSD.org>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 763523B17C5
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:17:35 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 11469-06 for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:17:33 -0400 (EDT)
+Received: from creme-brulee.marcuscom.com (creme-brulee.marcuscom.com
+	[24.172.16.118])
+	by menubar.gnome.org (Postfix) with ESMTP id A7CBF3B0108
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:17:32 -0400 (EDT)
+Received: from shumai.marcuscom.com (shumai.marcuscom.com [192.168.1.4])
+	by creme-brulee.marcuscom.com (8.13.6/8.13.6) with ESMTP id
+	k4EKHuoY044239 for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:17:56 -0400 (EDT)
+	(envelope-from marcus@FreeBSD.org)
+From: Joe Marcus Clarke <marcus@FreeBSD.org>
+To: desktop-devel-list@gnome.org
+Content-Type: multipart/signed; micalg=pgp-sha1;
+	protocol="application/pgp-signature";
+	boundary="=-4CjDWaGKUm/F4aQen6YF"
+Organization: FreeBSD, Inc.
+Date: Sun, 14 May 2006 16:17:25 -0400
+Message-Id: <1147637845.51775.21.camel@shumai.marcuscom.com>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 FreeBSD GNOME Team Port 
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-1.786 tagged_above=-999 required=2
+	tests=[AWL=-0.571, BAYES_00=-2.599, SPF_SOFTFAIL=1.384]
+X-Spam-Score: -1.786
+X-Spam-Level: 
+Subject: po/LINGUAS fallout
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 14 May 2006 20:17:35 -0000
+
+
+--=-4CjDWaGKUm/F4aQen6YF
+Content-Type: text/plain
+Content-Transfer-Encoding: quoted-printable
+
+Since the move to po/LINGUAS, many GNOME 2.15 distfiles do not install
+translation files.  Some don't even include the files in the dist
+tarball.  The problem seems to stem from use of intltool-0.34.2 instead
+of 0.34.90.  The three most recent offenders are totem-1.5.0,
+sound-juicer-2.15.2, and gnome-terminal-2.15.0.  Is there anything that
+can be done to automatically check these distfiles, and send email to
+the maintainers?
+
+Joe
+
+--=20
+Joe Marcus Clarke
+FreeBSD GNOME Team      ::      gnome@FreeBSD.org
+FreeNode / #freebsd-gnome
+http://www.FreeBSD.org/gnome
+
+--=-4CjDWaGKUm/F4aQen6YF
+Content-Type: application/pgp-signature; name=signature.asc
+Content-Description: This is a digitally signed message part
+
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.3 (FreeBSD)
+
+iD8DBQBEZ5BVb2iPiv4Uz4cRAsVhAJ9X4E/KGM5NOyCvyoKTBSKt+dlebACfRymd
+oDDUI4yVDzgf7o4TEYXyvXs=
+=l2kk
+-----END PGP SIGNATURE-----
+
+--=-4CjDWaGKUm/F4aQen6YF--
+

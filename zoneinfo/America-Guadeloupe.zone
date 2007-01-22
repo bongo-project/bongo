@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19110608T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0406"
+			},
+			"tzname":[
+				{
+					"value":"AST"
+				}],
+			"rdates":[
+				{
+					"value":"19110608T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"America/Guadeloupe"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/America/Guadeloupe"
+	}
+}] }

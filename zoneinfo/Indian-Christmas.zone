@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"18950201T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0700"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+070252"
+			},
+			"tzname":[
+				{
+					"value":"CXT"
+				}],
+			"rdates":[
+				{
+					"value":"18950201T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Indian/Christmas"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Indian/Christmas"
+	}
+}] }

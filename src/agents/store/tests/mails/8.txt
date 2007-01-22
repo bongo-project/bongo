@@ -1,0 +1,198 @@
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@F (Davyd Madeley) (davyd@madeley.id.au)
+@T () (gnome-hackers@gnome.org)
+@j (<1139648664.6627.40.camel@localhost>)
+@i (<1139648664.6627.40.camel@localhost>)
+@U ()
+@D ()
+@I (<1139651030.27545.13.camel@frobisher.madeley.id.au>)
+@U ()
+@U ()
+@U ()
+@L () (gnome-hackers@gnome.org)
+@U ()
+@U ()
+@U ()
+@U ()
+@S (Re: Subversion migration schedule (cut-off Fri 18 Mar))
+@L () (gnome-private-members@gnome.org)
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@f () (gnome-private-members-bounces@gnome.org)
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+
+X-Auth-No: 
+Return-Path: <dave@skeptopotamus.ximian.com>
+Received: from skeptopotamus.ximian.com not authenticated [130.57.169.16]
+	by bongo.ximian.com with NetMail SMTP Agent $Revision: 1.7 $ via secured &
+	encrypted transport (TLS); Sat, 11 Feb 2006 04:44:33 -0500
+Received: by skeptopotamus.ximian.com (Postfix, from userid 1028) id
+	024E663D91; Sat, 11 Feb 2006 04:44:32 -0500 (EST)
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 2C7C763071; Sat, 11 Feb
+	2006 04:44:32 -0500 (EST)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 22416700FB;
+	Sat, 11 Feb 2006 04:44:32 -0500 (EST)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id BE3007007E;
+	Sat, 11 Feb 2006 04:44:30 -0500 (EST)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Sat, 11 Feb 2006 02:44:29 -0700
+Received: from OLYMPUS.novell.com ([130.57.1.24]) by
+	lucius.provo.novell.com with ESMTP; Sat, 11 Feb 2006 02:44:09 -0700
+Received: from menubar.gnome.org (menubar.gnome.org [209.132.176.177]) by
+	OLYMPUS.novell.com (Vircom SMTPRS 4.2.425.10) with ESMTP id
+	<C0053251067@OLYMPUS.novell.com>; Sat, 11 Feb 2006 02:50:41 -0700
+X-Modus-ReverseDNS: OK
+X-Modus-BlackList:
+	209.132.176.177=OK;gnome-private-members-bounces@gnome.org=OK
+X-Modus-RBL: 209.132.176.177=OK
+X-Modus-Trusted: 209.132.176.177=NO
+Received: from localhost (unknown [127.0.0.1]) by menubar.gnome.org
+	(Postfix) with ESMTP id 8E0A53B15E2; Sat, 11 Feb 2006 04:44:05 -0500 (EST)
+Received: from menubar.gnome.org ([127.0.0.1]) by localhost
+	(menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024) with ESMTP id
+	26557-09; Sat, 11 Feb 2006 04:43:53 -0500 (EST)
+Received: from menubar.gnome.org (localhost.localdomain [127.0.0.1]) by
+	menubar.gnome.org (Postfix) with ESMTP id EA3723B0E1B; Sat, 11 Feb 2006
+	04:43:52 -0500 (EST)
+X-Original-To: gnome-private-members@gnome.org
+Delivered-To: gnome-private-members@gnome.org
+Received: from localhost (unknown [127.0.0.1]) by menubar.gnome.org
+	(Postfix) with ESMTP id 736BA3B0A05; Sat, 11 Feb 2006 04:43:50 -0500 (EST)
+Received: from menubar.gnome.org ([127.0.0.1]) by localhost
+	(menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024) with ESMTP id
+	26364-10; Sat, 11 Feb 2006 04:43:48 -0500 (EST)
+Received: from menubar.gnome.org (localhost.localdomain [127.0.0.1]) by
+	menubar.gnome.org (Postfix) with ESMTP id 5318E3B0D59; Sat, 11 Feb 2006
+	04:43:48 -0500 (EST)
+X-Original-To: gnome-hackers@gnome.org
+Delivered-To: gnome-hackers@gnome.org
+Received: from localhost (unknown [127.0.0.1]) by menubar.gnome.org
+	(Postfix) with ESMTP id 5279C3B0A05 for <gnome-hackers@gnome.org>; Sat, 11
+	Feb 2006 04:43:46 -0500 (EST)
+Received: from menubar.gnome.org ([127.0.0.1]) by localhost
+	(menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024) with ESMTP id
+	26634-04 for <gnome-hackers@gnome.org>; Sat, 11 Feb 2006 04:43:44 -0500
+	(EST)
+Received: from oracle.bridgewayconsulting.com.au
+	(oracle.bridgewayconsulting.com.au [203.56.14.38]) by menubar.gnome.org
+	(Postfix) with ESMTP id 951F53B0D03 for <gnome-hackers@gnome.org>; Sat, 11
+	Feb 2006 04:43:43 -0500 (EST)
+Received: from frobisher.madeley (cugglephone.madeley.id.au
+	[203.56.15.217]) (using TLSv1 with cipher RC4-MD5 (128/128 bits)) (No
+	client certificate requested) by oracle.bridgewayconsulting.com.au
+	(Postfix) with ESMTP id 2D70A2E8004 for <gnome-hackers@gnome.org>; Sat, 11
+	Feb 2006 17:43:42 +0800 (WST)
+From: Davyd Madeley <davyd@madeley.id.au>
+To: gnome-hackers@gnome.org
+In-Reply-To: <1139648664.6627.40.camel@localhost>
+References: <1139648664.6627.40.camel@localhost>
+Content-Type: text/plain
+Date: Sat, 11 Feb 2006 17:43:49 +0800
+Message-Id: <1139651030.27545.13.camel@frobisher.madeley.id.au>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.4.1 
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-BeenThere: gnome-hackers@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Archive: <http://mail.gnome.org/archives/gnome-hackers>
+X-Virus-Scanned: by amavisd-new at gnome.org
+Cc: 
+Subject: Re: Subversion migration schedule (cut-off Fri 18 Mar)
+X-BeenThere: gnome-private-members@gnome.org
+List-Id: Members of gnome-hackers and gnome-private
+	<gnome-private-members.gnome.org>
+List-Unsubscribe:
+	<http://mail.gnome.org/mailman/listinfo/gnome-private-members>, 
+	<mailto:gnome-private-members-request@gnome.org?subject=unsubscribe>
+List-Post: <mailto:gnome-private-members@gnome.org>
+List-Help: <mailto:gnome-private-members-request@gnome.org?subject=help>
+List-Subscribe:
+	<http://mail.gnome.org/mailman/listinfo/gnome-private-members>, 
+	<mailto:gnome-private-members-request@gnome.org?subject=subscribe>
+Sender: gnome-private-members-bounces@gnome.org
+Errors-To: gnome-private-members-bounces@gnome.org
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+Content-Transfer-Encoding: 8bit
+
+On Sat, 2006-02-11 at 16:04 +0700, Ross Golder wrote:
+
+> I'm sure it will all come as a bit of a shock to some of you, but CVS
+> will shortly be reaching retirement age. He has agreed to stay on until
+> after the 2.14.0 final release, but will shortly afterwards be heading
+> into retirement to enjoy his gold watch and lump sum. I am sure all of
+> you that have worked with him since the project began will (cough)
+> dearly miss working with him (cough), and will join me in thanking him
+> for his many years good service to our community.
+
+I am quite impressed by how far along this schedule is. I thought we'd
+still be using CVS for some time now.
+
+I AM PRECLARIFYING THIS WITH THE WARNING THAT THIS IS NOT A "I THINK WE
+SHOULD HAVE USED SCM x" THREAD AND ANYONE WHO TURNS IT INTO THAT WILL BE
+PERSONALLY HUNTED DOWN AND STONED.
+
+With that in mind, and since I couldn't find it on the wiki. I was
+wondering what reasons we have chosen to go with Subversion over other
+popular contenders.
+
+Again, no one say "oh, we should have used {Mercurial, Bazaar-ng, &c.}
+instead". I only want the list of strengths that Ross and his team
+identified so those strengths (and possible weaknesses) can be used in
+other people's SCM analyses in the future.
+
+--d
+
+-- 
+Davyd Madeley
+
+http://www.davyd.id.au/
+08B0 341A 0B9B 08BB 2118  C060 2EDD BB4F 5191 6CDA
+
+_______________________________________________
+gnome-hackers mailing list
+gnome-hackers@gnome.org
+http://mail.gnome.org/mailman/listinfo/gnome-hackers
+
+

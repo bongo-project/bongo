@@ -1,0 +1,110 @@
+<schema>
+	<class name="User">
+		<allowed-attributes>
+			<attribute name="Novonyx:EMail Address" />
+			<attribute name="Novonyx:Finger Message" />
+			<attribute name="Novonyx:Reply Message" />
+			<attribute name="Bongo:SMSAuthorizedPhones" />
+			<attribute name="Bongo:CalCmdAddressSuffix" />
+			<attribute name="BongoCalendarSubscriptions" />
+			<attribute name="Novonyx:Forwarding Address" />
+			<attribute name="Novonyx:Forwarding Enabled" />
+			<attribute name="NIMS:WapMessageSize" />
+			<attribute name="Novonyx:Vacation Message Enabled" />
+			<attribute name="Novonyx:Reply Message" />
+			<attribute name="Novonyx:Messaging Disabled" />
+			<attribute name="Novonyx:Use Quota" />
+			<attribute name="Novonyx:Quota Value" />
+			<attribute name="Novonyx:Proxy List" />
+			<attribute name="Novonyx:Language" />
+			<attribute name="Novonyx:Color" />
+			<attribute name="Novonyx:Font" />
+			<attribute name="Novonyx:Preferences" />
+			<attribute name="Novonyx:Timeout" />
+			<attribute name="Novonyx:Privacy" />
+			<attribute name="Novonyx:Addressbook Config" />
+			<attribute name="Novonyx:Addressbook URL Public" />
+			<attribute name="Novonyx:Addressbook" />
+			<attribute name="Novonyx:Phrase" />
+			<attribute name="Novonyx:Accounting Data" />
+			<attribute name="Novonyx:Billing Data" />
+			<attribute name="NIMS:Signature" />
+			<attribute name="NIMS:Default Charset" />
+			<attribute name="NIMS:Rule" />
+			<attribute name="NIMS:FeatureSet" />
+			<attribute name="NIMS:ParentObject" />
+			<attribute name="NIMS:Template" />
+			<attribute name="NIMS:Timezone" />
+			<attribute name="NIMS:Locale" />
+			<attribute name="NIMS:PasswordConfig" />
+			<attribute name="NIMS:Title" />
+			<attribute name="NIMS:TOMManager" />
+			<attribute name="NIMS:TOMContexts" />
+			<attribute name="NIMS:TOMDomains" />
+			<attribute name="NIMS:TOMOptions" />
+			<attribute name="WebAdmin:DefaultTemplate" />
+			<attribute name="WebAdmin:DisallowedTemplates" />
+			<attribute name="NetMail:AvailableShares" />
+			<attribute name="NetMail:OwnedShares" />
+			<attribute name="NetMail:AvailableProxies" />
+			<attribute name="NetMail:OwnedProxies" />
+			<attribute name="NetMail:ManagedResources" />
+		</allowed-attributes>
+	</class>
+	<class name="Group">
+		<allowed-attributes>
+			<attribute name="Novonyx:Finger Message" />
+			<attribute name="Novonyx:Messaging Disabled" />
+			<attribute name="NIMS:Rule" />
+			<attribute name="NIMS:FeatureSet" />
+			<attribute name="NIMS:ParentObject" />
+			<attribute name="WebAdmin:DefaultTemplate" />
+			<attribute name="WebAdmin:DisallowedTemplates" />
+		</allowed-attributes>
+	</class>
+	<class name="Organizational Role">
+		<allowed-attributes>
+			<attribute name="Novonyx:Messaging Disabled" />
+			<attribute name="NIMS:ParentObject" />
+			<attribute name="WebAdmin:DefaultTemplate" />
+			<attribute name="WebAdmin:DisallowedTemplates" />
+		</allowed-attributes>
+	</class>
+	<class name="Organization">
+		<allowed-attributes>
+			<attribute name="Novonyx:Domain" />
+			<attribute name="Novonyx:Message Store" />
+			<attribute name="Bongo:Index Store" />
+			<attribute name="Novonyx:Messaging Disabled" />
+			<attribute name="NIMS:Default Charset" />
+			<attribute name="NIMS:Rule" />
+			<attribute name="NIMS:FeatureSet" />
+			<attribute name="NIMS:ParentObject" />
+			<attribute name="WebAdmin:DefaultTemplate" />
+			<attribute name="WebAdmin:DisallowedTemplates" />
+		</allowed-attributes>
+	</class>
+	<class name="Organizational Unit">
+		<allowed-attributes>
+			<attribute name="Novonyx:Domain" />
+			<attribute name="Novonyx:Message Store" />
+			<attribute name="Bongo:Index Store" />
+			<attribute name="Novonyx:Messaging Disabled" />
+			<attribute name="NIMS:Default Charset" />
+			<attribute name="NIMS:Rule" />
+			<attribute name="NIMS:FeatureSet" />
+			<attribute name="NIMS:ParentObject" />
+			<attribute name="WebAdmin:DefaultTemplate" />
+			<attribute name="WebAdmin:DisallowedTemplates" />
+		</allowed-attributes>
+	</class>
+	<class name="NCP Server">
+		<allowed-attributes>
+			<attribute name="Novonyx:Messaging Server" />
+			<attribute name="NIMS:PKeyFile" />
+			<attribute name="NIMS:CAFile" />
+			<attribute name="NetMail:MessagingServer" />
+			<attribute name="WebAdminConfigDN" />
+		</allowed-attributes>
+	</class>
+</schema>

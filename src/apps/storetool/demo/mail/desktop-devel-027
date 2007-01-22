@@ -1,0 +1,94 @@
+From anne@oestergaard.nu  Wed May 17 09:27:14 2006
+Return-Path: <anne@oestergaard.nu>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 880CC3B1011
+	for <desktop-devel-list@gnome.org>;
+	Wed, 17 May 2006 09:27:14 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 01204-04 for <desktop-devel-list@gnome.org>;
+	Wed, 17 May 2006 09:27:08 -0400 (EDT)
+Received: from cicero1.cybercity.dk (cicero1.cybercity.dk [212.242.40.4])
+	by menubar.gnome.org (Postfix) with ESMTP id AAA793B0FE9
+	for <desktop-devel-list@gnome.org>;
+	Wed, 17 May 2006 09:27:08 -0400 (EDT)
+Received: from user1.cybercity.dk (user1.cybercity.dk [212.242.41.34])
+	by cicero1.cybercity.dk (Postfix) with ESMTP id 7138E63EB41
+	for <desktop-devel-list@gnome.org>;
+	Wed, 17 May 2006 15:27:07 +0200 (CEST)
+Received: from port287.ds1-oebr.adsl.cybercity.dk
+	(port287.ds1-oebr.adsl.cybercity.dk [212.242.116.232])
+	by user1.cybercity.dk (Postfix) with SMTP id 1998C74F8B0
+	for <desktop-devel-list@gnome.org>;
+	Wed, 17 May 2006 15:27:07 +0200 (CEST)
+Received: (qmail 7634 invoked from network); 17 May 2006 13:27:06 -0000
+Received: from star.firstimpact.lan (192.168.1.7)
+	by goofy.firstimpact.lan with SMTP; 17 May 2006 13:27:06 -0000
+From: Anne =?ISO-8859-1?Q?=D8stergaard?= <anne@oestergaard.nu>
+To: Glynn Foster <Glynn.Foster@Sun.COM>
+In-Reply-To: <446A5032.2040906@sun.com>
+References: <1147791173.6903.39.camel@localhost.localdomain>
+	<446A5032.2040906@sun.com>
+Content-Type: text/plain; charset=utf-8
+Date: Wed, 17 May 2006 15:27:06 +0200
+Message-Id: <1147872426.6866.82.camel@localhost.localdomain>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.4.1 
+Content-Transfer-Encoding: 8bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.524 tagged_above=-999 required=2 tests=[AWL=0.075, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.524
+X-Spam-Level: 
+X-Mailman-Approved-At: Thu, 18 May 2006 08:21:09 -0400
+Cc: foundation-announce@gnome.org, foundation-list@gnome.org,
+	desktop-devel-list@gnome.org, gnome-hackers@gnome.org
+Subject: Re: Call for comments on where to have GUADEC in 2007
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Wed, 17 May 2006 13:27:15 -0000
+
+ons, 17 05 2006 kl. 10:20 +1200, skrev Glynn Foster:
+> Hi,
+> 
+> Anne Østergaard wrote:
+> > Dear GNOME Foundation Member,
+> > 
+> > You are invited to comment on where you would prefer to have at GUADEC
+> > in 2007.
+> > 
+> > The period for comments stops on June 15th 2006.
+> > 
+> > The board (minus Dave Neary and Vincent Untz who are behind the French
+> > invitation) will make the final decision.
+> > 
+> > We have got two very fine invitations to choose among: Birmingham in the
+> > UK or Lyon in France. The bids are attached in this mail.
+> 
+> Neither of the bids have any details about financials and budgets - I 
+> think the decisions can't possibly made until we know the details of 
+> what the costs involved of hosting in each of the bids.
+
+I agree with this. Financials and budgets are very important issues.
+
+I think that the two bidders are entitled to make an addendum to their
+original invitations at the ned of the the period for comments and
+questions -
+but not later than June 18th.
+
+
+Anne
+
+
+

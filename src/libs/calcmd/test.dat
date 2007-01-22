@@ -1,0 +1,125 @@
+#!./test.pl
+#****************************************************************************
+#
+# Copyright (c) 2005, 2006 Novell, Inc.
+# All Rights Reserved.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of version 2.1 of the GNU Lesser General Public
+# License as published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program; if not, contact Novell, Inc.
+#
+# To contact Novell about this file by physical or electronic mail,
+# you may find current contact information at www.novell.com
+#
+#****************************************************************************
+#
+# test.data
+#
+# Test driver data for calendar text command parser (see test.pl)
+#
+# reference date is 2005-09-17
+#
+#Begin           End              Summary                      >Input
+#
+2005-09-17 00:00 2005-09-17 23:59                              >today
+2005-09-18 15:00 2005-09-18 15:59                              >Tomorrow at 3
+2005-09-18 15:00 2005-09-18 15:59                              >3pm tomorrow
+2005-09-22 15:00 2005-09-22 15:59                              >3pm thursday
+2005-09-23 12:00 2005-09-23 12:59                              >noon friday
+2005-09-21 18:00 2005-09-21 23:59                              >Wednesday night
+2005-09-17 00:00 2005-09-17 23:59                              >the 17th
+2005-09-18 00:00 2005-09-18 23:59                              >the 18th
+2005-09-19 09:00 2005-09-19 09:59                              >Monday at 10:00 Chicago time
+2005-09-17 00:00 2005-09-17 23:59                              >today
+2005-09-22 00:00 2005-09-22 23:59                              >thursday
+2005-09-11 00:00 2005-09-17 23:59                              >week
+2005-09-17 18:00 2005-09-17 23:59                              >tonight
+2005-09-16 17:00 2005-09-18 23:59                              >this weekend
+2005-09-26 00:00 2005-09-26 23:59                              >3 days from friday
+2005-09-18 12:30 2005-09-18 13:29 lunch with miguel            >tomorrow 12:30 lunch with miguel
+2005-09-30 00:00 2005-09-30 23:59 pick up dry cleaning         >next friday pick up dry cleaning
+2006-07-04 00:00 2006-07-04 23:59 party                        >4th of july party
+2006-07-04 00:00 2006-07-04 23:59 party                        >party July 4th
+2002-07-04 00:00 2002-07-04 23:59                              >2002-07-04
+2006-07-04 00:00 2006-07-04 23:59                              >07/04
+2006-07-22 00:00 2006-07-22 23:59                              >07/22
+2006-07-22 00:00 2006-07-22 23:59                              >22/07
+2001-07-22 00:00 2001-07-22 23:59                              >22/07/2001
+2001-08-22 00:00 2001-08-22 23:59                              >08/22/01
+1999-08-22 00:00 1999-08-22 23:59                              >08/22/99
+2005-12-15 00:00 2005-12-15 23:59                              >12.15
+2006-04-02 00:00 2006-04-02 23:59                              >04.02
+2006-02-12 00:00 2006-02-12 23:59                              >2/12
+2006-03-14 00:00 2006-03-14 23:59                              >14/3
+2005-12-04 00:00 2005-12-04 23:59                              >12/4
+2005-10-01 00:00 2005-10-01 23:59                              >the first
+2005-10-01 00:00 2005-10-01 23:59                              >the 1st
+2005-10-02 00:00 2005-10-02 23:59                              >the 2nd
+2005-10-03 00:00 2005-10-03 23:59                              >the 3rd
+2005-10-04 00:00 2005-10-04 23:59                              >the 4TH
+2005-09-18 00:00 2005-09-18 23:59                              >the eighteenth
+2005-09-22 00:00 2005-09-22 23:59                              >the 22nd
+2005-10-31 00:00 2005-10-31 23:59                              >the 31st        # tricky because this month doesn't have a 31st!
+2005-09-26 00:00 2005-09-26 23:59                              >next monday
+2005-09-30 00:00 2005-09-30 23:59                              >next fri
+2007-05-01 00:00 2007-05-31 23:59                              >next may
+2006-05-08 00:00 2006-05-08 23:59                              >may 8th
+2007-05-08 00:00 2007-05-08 23:59                              >May 8th 2007
+2007-05-08 00:00 2007-05-08 23:59                              >may 8th, 2007
+2005-10-01 00:00 2005-10-31 23:59                              >oct
+2005-10-01 00:00 2005-10-31 23:59                              >october
+2005-10-01 00:00 2005-10-31 23:59                              >October
+2005-09-29 14:00 2005-09-29 14:59 meeting with bob             >2pm meeting with bob next thursday
+2005-09-29 14:00 2005-09-29 14:59 meeting with bob             >next thurs meeting 2pm with bob
+2005-09-29 14:00 2005-09-29 14:59 meeting with bob             >next thurs meeting with bob 2pm
+2005-09-29 14:00 2005-09-29 14:59 meeting with bob             >next thurs 2pm meeting with bob 2pm
+2005-09-29 14:00 2005-09-29 14:59 meeting with bob             >2pm next thurs meeting with bob
+2005-09-29 14:00 2005-09-29 14:59 meeting with bob             >2pm next thurs: meeting with bob
+2005-09-22 14:00 2005-09-22 14:59 meeting with bob             >meeting with bob on thurs at 2pm
+2005-09-19 15:00 2005-09-19 15:59 lecture on physics           >lecture on physics on monday at 3pm
+2005-09-18 00:00 2005-09-18 23:59 lunch with Cindy at Legal's  >tomorrow lunch with Cindy at Legal's
+2005-09-18 00:00 2005-09-18 23:59 lunch with Cindy at Legal's  >lunch with Cindy tomorrow at Legal's
+2005-09-21 13:00 2005-09-21 15:00 interview with Amy           >weds 1 to 3 interview with Amy
+2005-09-27 07:00 2005-09-27 08:00 power breakfast              >next tues 7 to 8 power breakfast
+2005-09-23 00:00 2005-09-25 23:59 Timmy's soccer tournament    >friday through sunday Timmy's soccer tournament
+2005-09-23 12:00 2005-09-25 23:59 Timmy's soccer tournament    >friday afternoon through sunday Timmy's soccer tournament
+2005-09-20 00:00 2005-09-22 23:59                              >tuesday until the 22nd
+2005-09-17 12:00 2005-09-17 12:59                              >noon
+2005-09-17 15:00 2005-09-17 15:59                              >3
+2005-09-17 03:00 2005-09-17 03:59                              >3am
+2005-09-17 15:00 2005-09-17 15:59                              >3pm
+2005-09-17 10:00 2005-09-17 10:59                              >10
+2005-09-17 10:00 2005-09-17 10:59                              >10 o'clock
+2005-09-17 21:00 2005-09-17 21:59 hot date                     >hot date at 9pm
+2005-09-22 23:12 2005-09-23 02:48 lunar eclipse                >lunar eclipse thursday 11:12 pm to 2:48am
+2005-09-22 23:12 2005-09-23 02:48 lunar eclipse                >lunar eclipse 11:12 to 2:48 thursday night
+2005-09-22 23:12 2005-09-23 02:48 lunar eclipse                >lunar eclipse thursday night 11:12 to 2:48
+2005-09-23 01:00 2005-09-23 03:00 lunar eclipse                >lunar eclipse 1 to 3 thursday night
+2005-09-23 01:00 2005-09-23 03:00 lunar eclipse                >lunar eclipse thursday night 1 to 3
+2005-10-14 16:00 2005-10-14 16:59 dentist appt.                > oct 14  dentist appt. 4pm
+2007-03-01 00:00 2007-03-31 23:59                              >march 2007
+2005-09-19 00:00 2005-09-19 23:59                              >this monday
+2005-09-20 05:00 2005-09-20 05:59 crew practice                >crew practice tues morning at 5
+2005-09-20 05:00 2005-09-20 06:00 crew practice                >crew practice tues morning 5 to 6
+2005-09-20 10:00 2005-09-20 12:30 team meeting                 >team meeting tues morning 10 to 12:30
+2005-09-20 00:00 2005-09-20 23:59                              >2 days from tomorrow
+2005-09-23 00:00 2005-09-23 23:59                              >1 week from yesterday
+2005-09-27 00:00 2005-09-27 23:59                              >1 week from tuesday
+2005-09-27 00:00 2005-09-27 23:59                              >a week from tuesday
+2005-09-19 00:00 2005-09-19 23:59                              >the day after tomorrow
+2005-09-18 00:00 2005-09-18 23:59 meet Andy at the Days Inn    >meet Andy tomorrow 1pm at the Days Inn
+2005-09-11 00:00 2005-09-17 23:59                              >week
+2005-09-11 00:00 2005-09-17 23:59                              >this week
+2005-09-19 00:00 2005-09-19 23:59 Donut Monday                 >"Donut Monday" the day after tomorrow
+2005-09-17 07:00 2005-09-17 07:59 wake up                      >wake up this morning at 7
+2005-09-17 05:00 2005-09-17 05:59 try to wake up               >try to wake up at 5am
+2005-04-18 19:00 2005-04-18 19:59 film screening               >Tues,, April 18th, 7pm film screening
+2005-04-18 19:00 2005-04-18 19:59 48H Film Festival Screening  >Tues,, April 18th, 7pm 48H Film Festival Screening

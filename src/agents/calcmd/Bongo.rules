@@ -1,0 +1,27 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongocalcmd
+
+bongocalcmd_SOURCES :=				\
+	src/agents/calcmd/calcmdd.c		\
+	src/agents/calcmd/calcmdd.h		\
+	src/agents/calcmd/management.c
+
+bongocalcmd_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	libbongocalcmd.la				   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/calcmd/all: bongocalcmd
+src/agents/calcmd/clean: clean
+src/agents/calcmd/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongocalcmd install-sbinPROGRAMS

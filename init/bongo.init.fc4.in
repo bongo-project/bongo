@@ -1,0 +1,82 @@
+#!/bin/sh
+#
+# Startup script for bongomanager
+#
+# chkconfig: 345 86 16
+# description: This is the initscript for the Bongo project's bongomanager daemon 
+# processname: bongomanager
+
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+DAEMON_DIR=@prefix@/sbin
+DAEMON_NAME=bongomanager
+DAEMON_SETUP=bongosetup
+DAEMON_LIST="bongomanager bongodmc bongonmap bongosmtp bongowebadmin bongoantispam bongocalcmd bongocalagent bongoforward bongoimap bongomodweb bongopop3 bongomailprox bongorules "
+DATADIR=@XPL_DEFAULT_STATE_DIR@/mdb
+OPTIONS=
+
+[ -f /etc/sysconfig/$DAEMON_NAME ] && . /etc/sysconfig/$DAEMON_NAME
+
+start() {
+        if [ ! -d $DATADIR ] ; then
+		HOSTNAME=`/bin/hostname`
+		DNS_SERVER=`sed -e 's/nameserver//' -e '2,$d' -e 's/ //' < /etc/resolv.conf`
+		action $"Initializing bongo: " $DAEMON_DIR/$DAEMON_SETUP --domain=$HOSTNAME
+		RETVAL=$?
+                if [ $RETVAL -ne 0 ] ; then
+	                return $RETVAL
+	        fi
+	fi
+	$DAEMON_DIR/$DAEMON_NAME $OPTIONS >/dev/null 2>&1 & 
+        RETVAL=$?
+        if [ $RETVAL -eq 0 ]; then
+		action $"Starting bongo: " /bin/true
+        else
+                action $"Starting bongo: " /bin/false
+        fi
+        [ $RETVAL -eq 0 ] && touch /var/lock/subsys/$DAEMON_NAME
+	return $RETVAL
+}
+
+stop() {
+	RETVAL=$?
+	# Try to play nice first
+	$DAEMON_DIR/$DAEMON_NAME -s >/dev/null 2>&1 &
+	sleep 30
+	
+	# Now force all procs down
+	for foo in $DAEMON_LIST;
+	do
+		killproc $foo >/dev/null 2>&1
+	done
+        if [ $RETVAL -eq 0 ]; then
+                action $"Shutting down bongo: " /bin/true
+        else
+                action $"Shutting down bongo: " /bin/false
+        fi
+	[ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/$DAEMON_NAME
+	return $RETVAL
+}
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+        status $DAEMON_NAME
+        ;;
+  reload|restart)
+        $0 stop
+        $0 start
+        ;;
+  *)
+        gprintf "Usage: %s {start|stop|restart|reload|status}\n" "$0"
+        exit 1
+esac
+
+exit 0

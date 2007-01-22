@@ -1,0 +1,89 @@
+From thomas@apestaart.org  Thu May 18 07:54:02 2006
+Return-Path: <thomas@apestaart.org>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id CB66D3B0ADF
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 07:54:02 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 06861-01 for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 07:53:58 -0400 (EDT)
+Received: from mx1.es6.egwn.net (server02.es6.egwn.net [195.10.6.12])
+	by menubar.gnome.org (Postfix) with ESMTP id A3D543B121E
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 07:53:57 -0400 (EDT)
+Received: from mx1.fr4.egwn.net (server07.fr4.egwn.net [62.39.85.77])
+	by mx1.es6.egwn.net (Postfix) with ESMTP id E51E54F8301;
+	Thu, 18 May 2006 13:53:55 +0200 (CEST)
+Received: from localhost (localhost [127.0.0.1])
+	by mx1.fr4.egwn.net (spiffy mail daemon) with ESMTP id 3E28483B85;
+	Thu, 18 May 2006 13:53:49 +0200 (CEST)
+Received: from mx1.fr4.egwn.net ([127.0.0.1])
+	by localhost (server07.fr4.egwn.net [127.0.0.1]) (amavisd-new,
+	port 10024)
+	with ESMTP id 14871-47; Thu, 18 May 2006 13:53:48 +0200 (CEST)
+Received: from thread.fluendo.lan (core.fluendo.com [195.10.6.237])
+	by mx1.fr4.egwn.net (spiffy mail daemon) with ESMTP id F0B7083B82;
+	Thu, 18 May 2006 13:53:42 +0200 (CEST)
+Received: from thomas.fluendo.lan (thomas.fluendo.lan [192.168.1.10])
+	by thread.fluendo.lan (Postfix) with ESMTP id C86D5106354;
+	Thu, 18 May 2006 13:53:48 +0200 (CEST)
+From: Thomas Vander Stichele <thomas@apestaart.org>
+To: Rodney Dawes <dobey@novell.com>
+In-Reply-To: <1147712392.18634.4.camel@nuitari.cam.novell.com>
+References: <1147710220.18634.1.camel@nuitari.cam.novell.com>
+	<1147710763.5931.4.camel@localhost.localdomain>
+	<1147712392.18634.4.camel@nuitari.cam.novell.com>
+Content-Type: text/plain
+Date: Thu, 18 May 2006 13:53:48 +0200
+Message-Id: <1147953228.2630.228.camel@otto.amantes>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 (2.6.1-1.fc5.2) 
+Content-Transfer-Encoding: 7bit
+X-Scanned: By amavis at egwn.net
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=0.617 tagged_above=-999 required=2 tests=[AWL=-0.079, 
+	BAYES_00=-2.599, FORGED_RCVD_HELO=0.135, RCVD_IN_SBL=3.16]
+X-Spam-Score: 0.617
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org, Murray Cumming <murrayc@murrayc.com>
+Subject: Re: intltool 0.35.0
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Thu, 18 May 2006 11:54:03 -0000
+
+On Mon, 2006-05-15 at 12:59 -0400, Rodney Dawes wrote:
+> On Mon, 2006-05-15 at 18:32 +0200, Murray Cumming wrote:
+> > On Mon, 2006-05-15 at 12:23 -0400, Rodney Dawes wrote:
+> > > I just released intltool 0.35.0 to the world. It includes a number of
+> > > bug fixes, as well as the famed LINGUAS support.
+> > > 
+> > > If your project uses the po/LINGUAS file, please specify at least 0.35.0
+> > > as the required version in your configure.{in,ac} file.
+> > 
+> > How?
+> 
+> IT_PROG_INTLTOOL([0.35.0]). The projects should already be requriing
+> 0.34.90 anyway, and just need to bump this number.
+
+Projects that have their own autogen.sh and don't hook into
+gnome-autogen.sh, but copied previous code, that scans for
+AC_PROG_INTLTOOL to decide whether to run intltoolize, should also fix
+their autogen to grep for IT_PROG_INTLTOOL.
+
+I'm sure there was a reason for renaming that macro.
+
+Thomas
+
+

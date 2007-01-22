@@ -1,0 +1,64 @@
+From carlos_garnacho@yahoo.es  Wed May 17 16:42:15 2006
+Return-Path: <carlos_garnacho@yahoo.es>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 056A93B0492; Wed, 17 May 2006 16:42:15 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 28883-04; Wed, 17 May 2006 16:42:14 -0400 (EDT)
+Received: from localhost.localdomain (174.Red-83-46-28.dynamicIP.rima-tde.net
+	[83.46.28.174]) by menubar.gnome.org (Postfix) with ESMTP
+	id EDCDA3B0332; Wed, 17 May 2006 16:42:13 -0400 (EDT)
+Received: by localhost.localdomain (Postfix, from userid 1000)
+	id 94E3E13F54; Wed, 17 May 2006 22:42:11 +0200 (CEST)
+From: Carlos Garnacho <carlos_garnacho@yahoo.es>
+To: release-team@gnome.org
+In-Reply-To: <1147884171.7850.59.camel@localhost>
+References: <1147884171.7850.59.camel@localhost>
+Content-Type: text/plain
+Content-Transfer-Encoding: 7bit
+Date: Wed, 17 May 2006 22:42:10 +0200
+Message-Id: <1147898530.7850.65.camel@localhost>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=1.642 tagged_above=-999 required=2 tests=[AWL=-0.086, 
+	BAYES_00=-2.599, DNS_FROM_RFC_ABUSE=0.2, FORGED_RCVD_HELO=0.135,
+	RCVD_IN_NJABL_DUL=1.946, RCVD_IN_SORBS_DUL=2.046]
+X-Spam-Score: 1.642
+X-Spam-Level: *
+Cc: gnome-i18n@gnome.org, gnome-doc-list@gnome.org,
+	desktop-devel-list@gnome.org, system-tools-list@gnome.org
+Subject: gnome-system-tools branched for 2.14
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Wed, 17 May 2006 20:42:15 -0000
+
+Resent, it seems it didn't arrive, apologies for any duplicate...
+
+
+On Wed, 2006-05-17 at 18:42 +0200, Carlos Garnacho wrote:
+> Hello all,
+> 
+> As usual, there's now a gnome-2-14 branch, which will be left in the
+> cold, being fed with small maintenance patches until it finally dies.
+> 
+> HEAD will get all the love, the big plan for it is to get rid of the
+> cranky XML interface and use liboobs to communicate with
+> system-tools-backends HEAD through DBus. PolicyKit will be studied in
+> depth to replace the g-s-t handmade auth method.
+> 
+> 	Regards
+> 
+

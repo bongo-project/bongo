@@ -1,0 +1,22 @@
+# -*- Makefile -*-
+cmmodule_LTLIBRARIES += libcmrdns.la
+
+libcmrdns_la_SOURCES :=				\
+	src/agents/connmgr/cmmodules/rdns/cmrdns.c	\
+	src/agents/connmgr/cmmodules/rdns/cmrdns.h
+
+libcmrdns_la_CPPFLAGS := $(AM_CPPFLAGS) 
+
+libcmrdns_la_LDFLAGS := -module -avoid-version
+libcmrdns_la_LIBADD :=					 \
+	libbongomsgapi.la				 \
+	libbongologger.la				 \
+	libbongomemmgr.la				 \
+	libbongomdb.la					 \
+	libbongoxpl.la					 \
+	$(LIBSQLITE_LIBS)			      	 \
+	$(PTHREAD_LIBS)					 \
+	$(ALL_LIBS)
+
+src/agents/connmgr/cmmodules/rdns/all: libcmrdns.la
+src/agents/connmgr/cmmodules/rdns/clean: clean

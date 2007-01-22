@@ -1,0 +1,23 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongo-manager
+
+bongo_manager_SOURCES := \
+	src/apps/manager/manager.c
+
+bongo_manager_CPPFLAGS := $(AM_CPPFLAGS) \
+	-DWEBADMIN_MODULE_SYMBOL=BongoManager
+
+bongo_manager_LDADD :=					   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/apps/manager/all: bongo-manager
+src/apps/manager/clean: clean
+src/apps/manager/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongo-manager install-sbinPROGRAMS

@@ -1,0 +1,76 @@
+From bongo-general-bounces@forge.novell.com Sun May 14 00:59:49 2006
+Return-Path: <transeau@gmail.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 12DCB630A5 for
+	<Dave@ximian.com>; Sun, 14 May 2006 00:59:49 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 0CCD270012;
+	Sun, 14 May 2006 00:59:49 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 33DEE7001E
+	for <Dave@ximian.com>; Sun, 14 May 2006 00:59:44 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Sat, 13 May 2006 22:59:43 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Sat, 13 May 2006 22:58:25 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id 949C41B013E; Sat, 13 May
+	2006 22:50:36 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from wx-out-0102.google.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	38D2E1B013E for <bongo-general@forge.novell.com>; Sat, 13 May 2006 22:29:53
+	-0600 (MDT)
+Received: by wx-out-0102.google.com with SMTP id t5so705192wxc for
+	<bongo-general@forge.novell.com>; Sat, 13 May 2006 21:29:52 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:mime-version:content-transfer-encoding:message-id:content-type:to:from:subject:date:x-mailer;
+	b=oSZirF3J1qshKi73UyUxrgkMGNwbbTURvOdznxN4QX8ZRhHdgY5kA8IcYkRQvmUQVLRNQrV8UbdoF5sU2MI8odZ3DQsL1Mv9Saj2Uv6gWMhpHVr03PjKgA/3tgdl54jIuCtD/9n4INrZ1sKXsoEh1X7LBopOirNDEUyI6FWX8Zo=
+Received: by 10.70.36.14 with SMTP id j14mr1947343wxj; Sat, 13 May 2006
+	21:29:52 -0700 (PDT)
+Received: from ?192.168.252.50? ( [71.108.162.99]) by mx.gmail.com with
+	ESMTP id h16sm8489734wxd.2006.05.13.21.29.51; Sat, 13 May 2006 21:29:52
+	-0700 (PDT)
+Mime-Version: 1.0 (Apple Message framework v750)
+Message-Id: <DF7D8792-1C5E-4FD5-B023-AA0E2CA8B11F@gmail.com>
+Content-Type: text/plain; charset=US-ASCII; delsp=yes; format=flowed
+To: bongo-general@forge.novell.com
+From: Bryan Transeau <transeau@gmail.com>
+Date: Sat, 13 May 2006 21:29:47 -0700
+X-Mailer: Apple Mail (2.750)
+Subject: [Bongo-general] Limiting TCP sockets??
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.3 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+Hello
+I have a problem with my bongo install.  my server is limited to 500  
+TCP sockets.
+About every two weeks Bongo maxes out the TCP sockets and is unable to  
+function.
+Is there any way to limit bongo's use or switch them to UNIX sockets?
+
+Thank You
+
+Transeau
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

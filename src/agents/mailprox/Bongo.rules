@@ -1,0 +1,28 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongomailprox
+
+bongomailprox_SOURCES :=				\
+	src/agents/mailprox/imap.c		\
+	src/agents/mailprox/mailprox.c		\
+	src/agents/mailprox/mailprox.h		\
+	src/agents/mailprox/management.c	\
+	src/agents/mailprox/pop.c
+
+bongomailprox_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/mailprox/all: bongomailprox
+src/agents/mailprox/clean: clean
+src/agents/mailprox/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongomailprox install-sbinPROGRAMS

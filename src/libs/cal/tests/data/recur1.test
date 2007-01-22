@@ -1,0 +1,55 @@
+{
+	"translate": true,
+	"recur" :  { 	
+			"start":  "20040101T000000Z",
+			"end":  "20990101T000000Z",
+			"expect": [
+				{ 
+					"dtstart" : {
+						"value":"20050606T100000",
+						"params" : { "tzid":"EST5EDT"}
+					},
+					"dtend" : {
+						"value":"20050606T110000",
+						"params" : { "tzid":"EST5EDT"}
+					}
+				},
+				{
+					"dtstart":
+					{
+						"value":"20050613T100000",
+						"params" : { "tzid":"EST5EDT"}
+					},
+					"dtend":
+					{
+						"value":"20050613T110000",
+						"params" : { "tzid":"EST5EDT"}
+					}
+				},
+				{
+					"dtstart":
+					{
+						"value":"20050620T100000",
+						"params" : { "tzid":"EST5EDT"}
+					},
+					"dtend":
+					{
+						"value":"20050620T110000",
+						"params" : { "tzid":"EST5EDT"}
+					}
+				},
+				{
+					"dtstart":
+					{
+						"value":"20050627T100000",
+						"params" : { "tzid":"EST5EDT"}
+					},
+					"dtend":
+					{
+						"value":"20050627T110000",
+						"params" : { "tzid":"EST5EDT"}
+					}
+				}],
+			}
+		}
+}	

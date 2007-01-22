@@ -1,0 +1,57 @@
+<html>
+  <title>Bongo - |calendar_name|</title>
+  <head>
+    <style type="text/css">
+        @import url(|clientloc|css/interpreter.css);
+        @import url(|clientloc|css/layout.css);
+        @import url(|clientloc|css/widgets.css);
+        @import url(|clientloc|css/login.css);
+        @import url(|clientloc|css/composer.css);
+        @import url(|clientloc|css/conversation.css);
+        @import url(|clientloc|css/contacts.css);
+        @import url(|clientloc|css/calendar.css);
+        @import url(|clientloc|css/summary.css);
+    </style>
+
+    <script type="text/javascript">
+<!--
+open_event = function(link) {
+
+    var href;
+    if (typeof(link) == 'string') {
+        href = link;
+    } else {
+        href = link.href;
+    }
+
+    EventWindow = window.open(href, "bongo-event", "location=0, statusbar=0, menubar=0, width=400, height=300");
+    EventWindow.focus();
+
+    return false;
+};
+-->
+      </script>
+  </head>
+    <body>
+       <div id="calendar">
+           <table class="month-header">
+           <tbody>
+               <tr>
+                   <td class="month-prev"><a href="|prev_link|">&lt;|t:Prev|</a></td>
+                   <td class="month-header-title"><h2 class="month-header">|month_name| |year|</h2></td>
+                   <td class="month-next"><a href="|next_link|">|t:Next|&gt;</td>
+               </tr>
+           </tbody>
+           </table>
+           <div id="calendar-wrapper">
+               <table class="calendar monthview">
+               <tbody>
+               <tr><th>|t:Sunday|</th><th>|t:Monday|</th><th>|t:Tuesday|</th><th>|t:Wednesday|</th><th>|t:Thursday|</th><th>|t:Friday|</th><th>|t:Saturday|</th></tr>
+               |calendar_grid|
+               </tbody>
+               </table>
+           </div>
+       </div>
+    </body>
+</html>
+

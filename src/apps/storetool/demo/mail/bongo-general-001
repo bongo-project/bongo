@@ -1,0 +1,101 @@
+From bongo-general-bounces@forge.novell.com Fri May 19 18:58:43 2006
+Return-Path: <dave@novell.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 11E4263076; Fri, 19 May
+	2006 18:58:43 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 0D46870010;
+	Fri, 19 May 2006 18:58:43 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 3D1A270010;
+	Fri, 19 May 2006 18:58:38 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Fri, 19 May 2006 16:58:35 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Fri, 19 May 2006 16:58:14 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id C0A291B013E; Fri, 19 May
+	2006 16:50:31 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from peabody.ximian.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	5DD2F1B0148 for <bongo-general@forge.novell.com>; Fri, 19 May 2006 15:32:36
+	-0600 (MDT)
+Received: (qmail 2309 invoked from network); 19 May 2006 21:32:35 -0000
+Received: from localhost (HELO ntrails.boston.ximian.com) (dave@127.0.0.1)
+	by localhost with SMTP; 19 May 2006 21:32:35 -0000
+Subject: Re: [Bongo-general] bongosendmail issue
+From: Dave Camp <dave@novell.com>
+To: Lionel Dricot <zeploum@gmail.com>
+In-Reply-To: <16a711710605191116j6689312cqc9a9ffc0f0312063@mail.gmail.com>
+References: <440332E6.4070302@muffti.de>
+	 <16a711710605191116j6689312cqc9a9ffc0f0312063@mail.gmail.com>
+Content-Type: text/plain
+Date: Fri, 19 May 2006 17:32:36 -0400
+Message-Id: <1148074356.32217.0.camel@ntrails.boston.ximian.com>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.0 
+Cc: bongo-general@forge.novell.com
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.4 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+I just committed a patch that should fix that.
+
+Thanks,
+-dave
+
+On Fri, 2006-05-19 at 20:16 +0200, Lionel Dricot wrote:
+> Same problem here.
+> 
+> 0.1.0+svn1319-1
+> 
+> On 2/27/06, Achim Theobald <ath@muffti.de> wrote:
+> > Hi,
+> >
+> > what want bongo from me ?
+> >
+> > achim:/home/AchimTheobald # /opt/bongo/sbin/bongosendmail
+> > ERROR: Sent command QCREA
+> > ERROR: NMAP server returned 3000: 3000 Unknown command
+> > achim:/home/AchimTheobald #
+> >
+> > bongo r1126
+> >
+> > bongo r851 work
+> >
+> >
+> > Cu
+> >
+> > --
+> > _______________________________________________
+> > Bongo-general mailing list
+> > Bongo-general@forge.novell.com
+> > http://forge.novell.com/mailman/listinfo/bongo-general
+> >
+> _______________________________________________
+> Bongo-general mailing list
+> Bongo-general@forge.novell.com
+> http://forge.novell.com/mailman/listinfo/bongo-general
+
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

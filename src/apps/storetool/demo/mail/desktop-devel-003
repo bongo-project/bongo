@@ -1,0 +1,77 @@
+From hughsient@gmail.com  Fri May  5 16:37:36 2006
+Return-Path: <hughsient@gmail.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id CA2133B2175
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 16:37:36 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 29958-02 for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 16:37:31 -0400 (EDT)
+Received: from ug-out-1314.google.com (ug-out-1314.google.com [66.249.92.168])
+	by menubar.gnome.org (Postfix) with ESMTP id E69CA3B08CA
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 16:37:29 -0400 (EDT)
+Received: by ug-out-1314.google.com with SMTP id e2so493659ugf
+	for <desktop-devel-list@gnome.org>;
+	Fri, 05 May 2006 13:37:28 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:subject:from:reply-to:to:content-type:date:message-id:mime-version:x-mailer:content-transfer-encoding;
+	b=AFA4jnV6glBjNI+loiSOHSNr9p7TfR0NOb7Jf0lEgE05D/luil4BXm/XN832nV7AGzjNUPTI1EWmlxIHawqYKKC4DoLzi0yzXymI0FnGIllAHDJ6m9THvo2sgCpGPPZ24A7LTThscBa53lpjANwoOhcu4AZbuEt4gYCSKwI4u9I=
+Received: by 10.67.108.27 with SMTP id k27mr1272425ugm;
+	Fri, 05 May 2006 13:37:28 -0700 (PDT)
+Received: from ?10.0.0.14? ( [86.141.43.10])
+	by mx.gmail.com with ESMTP id s1sm3692248uge.2006.05.05.13.37.27;
+	Fri, 05 May 2006 13:37:27 -0700 (PDT)
+From: Richard Hughes <hughsient@gmail.com>
+To: desktop-devel-list <desktop-devel-list@gnome.org>
+Content-Type: text/plain
+Date: Fri, 05 May 2006 21:37:55 +0100
+Message-Id: <1146861475.4625.27.camel@localhost.localdomain>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 (2.6.1-1.fc5.2) 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.502 tagged_above=-999 required=2 tests=[AWL=0.098, 
+	BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.502
+X-Spam-Level: 
+Subject: Suspend and Hibernate Nomenclature
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+Reply-To: richard@hughsie.com
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Fri, 05 May 2006 20:37:37 -0000
+
+My opinions on the Suspend / Sleep / Hibernate / Standby / SuspendToX
+naming problems: http://live.gnome.org/GnomePowerManager/SleepNames
+
+>From a Ubuntu bugzilla entry:
+>here's from NOTES from 'hotkey-setup'
+>  When the machine should be put to sleep in some fashion:
+>  KEY_SLEEP signals Suspend to RAM (Suspend, technically called
+"standby")
+>   KEY_SUSPEND signals Suspend to Disk (Hibernate, technically called
+"suspend"...)
+
+I want to sort this mess. I'm experiencing first hand the confusion from
+developers *and* users about "sleep modes".
+
+I think the only thing this effects for GNOME would be the panel,
+battstat-applet and (maybe) the logout box, but there is probably other
+stuff I'm forgetting (gdm, documentation etc?)
+
+So, is GNOME opt-in or opt-out? Should I start bugzilla'ing?
+
+Richard.
+

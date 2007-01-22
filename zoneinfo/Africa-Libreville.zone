@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19120101T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0100"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+3748"
+			},
+			"tzname":[
+				{
+					"value":"WAT"
+				}],
+			"rdates":[
+				{
+					"value":"19120101T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"Africa/Libreville"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/Africa/Libreville"
+	}
+}] }

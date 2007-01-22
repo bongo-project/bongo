@@ -1,0 +1,398 @@
+# -*- Makefile -*-
+htdocsdir = $(pkgdatadir)/htdocs
+
+dist_htdocs_DATA :=				\
+	src/www/dragonfly.html			\
+	src/www/favicon.ico
+
+htl10ndir = $(htdocsdir)/l10n
+htl10n_DATA := $(htl10n_jsfiles)
+
+cssdir = $(htdocsdir)/css
+
+dist_css_DATA :=				\
+	src/www/css/calendar.css		\
+	src/www/css/composer.css		\
+	src/www/css/contacts.css		\
+	src/www/css/conversation.css		\
+	src/www/css/interpreter.css		\
+	src/www/css/layout.css			\
+	src/www/css/login.css			\
+	src/www/css/print.css			\
+	src/www/css/summary.css			\
+	src/www/css/widgets.css
+
+imgdir = $(htdocsdir)/img
+
+dist_img_DATA :=					     \
+	src/www/img/accessories-text-editor.gif		     \
+	src/www/img/accessories-text-editor.png		     \
+	src/www/img/addressbook-16.png			     \
+	src/www/img/airplane-emblem.png			     \
+	src/www/img/applications-internet.gif		     \
+	src/www/img/applications-internet.png		     \
+	src/www/img/arrow.png				     \
+	src/www/img/bg-button.png			     \
+	src/www/img/bg-button-pressed.png		     \
+	src/www/img/bg-button-selected.png		     \
+	src/www/img/bg-header.png			     \
+	src/www/img/bg-page.png				     \
+	src/www/img/bg-selected.png			     \
+	src/www/img/bg-shine.png			     \
+	src/www/img/bg-side-title-hover.png		     \
+	src/www/img/bg-side-title.png			     \
+	src/www/img/bg-tab-selected.png			     \
+	src/www/img/bg-timestrip.png			     \
+	src/www/img/bg-timestrip-right.png		     \
+	src/www/img/bg-toolbar.png			     \
+	src/www/img/blank.gif				     \
+	src/www/img/calendar-16.gif			     \
+	src/www/img/calendar-16.png			     \
+	src/www/img/cal-offmonth.png			     \
+	src/www/img/cal-selected.png			     \
+	src/www/img/cal-selected-stipple.png		     \
+	src/www/img/cal-today.png			     \
+	src/www/img/cal-today-stipple.png		     \
+	src/www/img/closed-read.png			     \
+	src/www/img/closed-unread.png			     \
+	src/www/img/contact-16.png			     \
+	src/www/img/contact-new.png			     \
+	src/www/img/contact-unknown.png			     \
+	src/www/img/continued-left.png			     \
+	src/www/img/continued-right.png			     \
+	src/www/img/dialog-information.gif		     \
+	src/www/img/dialog-information.png		     \
+	src/www/img/dragonfly-favicon.png		     \
+	src/www/img/dragonfly.png			     \
+	src/www/img/emblem-readonly.gif			     \
+	src/www/img/emblem-readonly.png			     \
+	src/www/img/event-16.png			     \
+	src/www/img/go-next.png				     \
+	src/www/img/go-previous.png			     \
+	src/www/img/grad-cal.png			     \
+	src/www/img/grad-cal-title.png			     \
+	src/www/img/grad-page.png			     \
+	src/www/img/grad.png				     \
+	src/www/img/grad-tab.png			     \
+	src/www/img/grad-textarea.png			     \
+	src/www/img/grad-toolbar.png			     \
+	src/www/img/grippy.png				     \
+	src/www/img/grippy-h.gif			     \
+	src/www/img/grippy-h.png			     \
+	src/www/img/grippy-v.gif			     \
+	src/www/img/grippy-v.png			     \
+	src/www/img/histogram.png			     \
+	src/www/img/home-16.png				     \
+	src/www/img/home-16.gif				     \
+	src/www/img/bongo-favicon.gif			     \
+	src/www/img/bongo-favicon.ico			     \
+	src/www/img/bongo-favicon.png			     \
+	src/www/img/bongo-logo.png			     \
+	src/www/img/icon-simple-calendars.gif		     \
+	src/www/img/icon-simple-calendars.png		     \
+	src/www/img/icon-simple-contacts.gif		     \
+	src/www/img/icon-simple-contacts.png		     \
+	src/www/img/icon-simple-todos.gif		     \
+	src/www/img/icon-simple-todos.png		     \
+	src/www/img/image-x-generic.png			     \
+	src/www/img/info-bl.gif				     \
+	src/www/img/info-bl.png				     \
+	src/www/img/info-br.gif				     \
+	src/www/img/info-br.png				     \
+	src/www/img/info-cl.gif				     \
+	src/www/img/info-cl.png				     \
+	src/www/img/info-cr.gif				     \
+	src/www/img/info-cr.png				     \
+	src/www/img/info-pointer-down.gif		     \
+	src/www/img/info-pointer-down.png		     \
+	src/www/img/info-pointer-left.gif		     \
+	src/www/img/info-pointer-left.png		     \
+	src/www/img/info-pointer-right.gif		     \
+	src/www/img/info-pointer-right.png		     \
+	src/www/img/info-pointer-up.gif			     \
+	src/www/img/info-pointer-up.png			     \
+	src/www/img/info-tl.gif				     \
+	src/www/img/info-tl.png				     \
+	src/www/img/info-tr.gif				     \
+	src/www/img/info-tr.png				     \
+	src/www/img/lightbulb.png			     \
+	src/www/img/link-underline-view-active.gif	     \
+	src/www/img/link-underline-view.gif		     \
+	src/www/img/login-bg-bottom.png			     \
+	src/www/img/login-bg-middle.png			     \
+	src/www/img/login-bg-top.png			     \
+	src/www/img/login-logo.gif			     \
+	src/www/img/login-logo.png			     \
+	src/www/img/mail-closed-16.png			     \
+	src/www/img/mail-forward-16.png			     \
+	src/www/img/mail-inbox-16.png			     \
+	src/www/img/mail-inbox-22.png			     \
+	src/www/img/mail-reply-all-16.png		     \
+	src/www/img/mail-reply-sender-16.png		     \
+	src/www/img/message-16.gif			     \
+	src/www/img/message-16.png			     \
+	src/www/img/message-closed-16.png		     \
+	src/www/img/minus.png				     \
+	src/www/img/msg-gradient.png			     \
+	src/www/img/navselhilight.png			     \
+	src/www/img/open-read.png			     \
+	src/www/img/open-unread.png			     \
+	src/www/img/plus.png				     \
+	src/www/img/popup.png				     \
+	src/www/img/read-gradient.png			     \
+	src/www/img/side-bl.png				     \
+	src/www/img/side-br.png				     \
+	src/www/img/side-cl.png				     \
+	src/www/img/side-cr.png				     \
+	src/www/img/side-tl.png				     \
+	src/www/img/side-tr.png				     \
+	src/www/img/star.png				     \
+	src/www/img/star-widget.gif			     \
+	src/www/img/star-widget.png			     \
+	src/www/img/system-search.gif			     \
+	src/www/img/system-search.png			     \
+	src/www/img/text-x-generic.png			     \
+	src/www/img/top-gradient.png			     \
+	src/www/img/unread-gradient.png			     \
+	src/www/img/x.png				     \
+	src/www/img/toolbar/edit-redo.png		     \
+	src/www/img/toolbar/edit-undo.png		     \
+	src/www/img/toolbar/format-indent-less.png	     \
+	src/www/img/toolbar/format-indent-more.png	     \
+	src/www/img/toolbar/format-justify-center.png	     \
+	src/www/img/toolbar/format-justify-fill.png	     \
+	src/www/img/toolbar/format-justify-left.png	     \
+	src/www/img/toolbar/format-justify-right.png	     \
+	src/www/img/toolbar/format-text-bold.png	     \
+	src/www/img/toolbar/format-text-italic.png	     \
+	src/www/img/toolbar/format-text-strikethrough.png    \
+	src/www/img/toolbar/format-text-underline.png	     \
+	src/www/img/toolbar/16/edit-redo.png		     \
+	src/www/img/toolbar/16/edit-undo.png		     \
+	src/www/img/toolbar/16/format-indent-less.png	     \
+	src/www/img/toolbar/16/format-indent-more.png	     \
+	src/www/img/toolbar/16/format-justify-center.png     \
+	src/www/img/toolbar/16/format-justify-fill.png	     \
+	src/www/img/toolbar/16/format-justify-left.png	     \
+	src/www/img/toolbar/16/format-justify-right.png	     \
+	src/www/img/toolbar/16/format-text-bold.png	     \
+	src/www/img/toolbar/16/format-text-italic.png	     \
+	src/www/img/toolbar/16/format-text-strikethrough.png \
+	src/www/img/toolbar/16/format-text-underline.png     \
+	src/www/img/toolbar/16/mail-attachment.png
+
+
+jsdir = $(htdocsdir)/js
+
+dist_js_DATA :=					\
+	src/www/js/AddressBook.js		\
+	src/www/js/CalendarDrag.js		\
+	src/www/js/CalendarEditor.js		\
+	src/www/js/Calendar.js			\
+	src/www/js/CalendarLayout.js		\
+	src/www/js/CalendarView.js		\
+	src/www/js/CalendarWidgets.js		\
+	src/www/js/Composer.js			\
+	src/www/js/Cookie.js			\
+	src/www/js/Dragonfly.js			\
+	src/www/js/Format.js			\
+	src/www/js/Gettext.js			\
+	src/www/js/BongoCalendar.js		\
+	src/www/js/JCal.js			\
+	src/www/js/Location.js			\
+	src/www/js/Login.js			\
+	src/www/js/MailConversationView.js	\
+	src/www/js/Mail.js			\
+	src/www/js/MailListView.js		\
+	src/www/js/MailWidgets.js		\
+	src/www/js/OccurrenceEditor.js		\
+	src/www/js/Preferences.js		\
+	src/www/js/Search.js			\
+	src/www/js/Summary.js			\
+	src/www/js/Util.js			\
+	src/www/js/ValidatingEntry.js		\
+	src/www/js/Widgets.js
+
+prototypedir = $(jsdir)/lib/prototype
+
+dist_prototype_DATA := \
+	src/www/js/lib/prototype/prototype.js
+
+mochidir = $(jsdir)/lib/MochiKit
+
+dist_mochi_DATA :=				   \
+	src/www/js/lib/MochiKit/Async.js	   \
+	src/www/js/lib/MochiKit/Base.js		   \
+	src/www/js/lib/MochiKit/Color.js	   \
+	src/www/js/lib/MochiKit/DateTime.js	   \
+	src/www/js/lib/MochiKit/DOM.js		   \
+	src/www/js/lib/MochiKit/Format.js	   \
+	src/www/js/lib/MochiKit/Iter.js		   \
+	src/www/js/lib/MochiKit/interpreter.js	   \
+	src/www/js/lib/MochiKit/Logging.js	   \
+	src/www/js/lib/MochiKit/LoggingPane.js	   \
+	src/www/js/lib/MochiKit/MochiKit.js	   \
+	src/www/js/lib/MochiKit/MochiKit-packed.js \
+	src/www/js/lib/MochiKit/MockDOM.js	   \
+	src/www/js/lib/MochiKit/__package__.js	   \
+	src/www/js/lib/MochiKit/Signal.js	   \
+	src/www/js/lib/MochiKit/SimpleTest.js	   \
+	src/www/js/lib/MochiKit/Test.js		   \
+	src/www/js/lib/MochiKit/TestRunner.js	   \
+	src/www/js/lib/MochiKit/Visual.js
+
+scriptaculousdir = $(jsdir)/lib/script.aculo.us
+
+dist_scriptaculous_DATA :=				\
+	src/www/js/lib/script.aculo.us/builder.js	\
+	src/www/js/lib/script.aculo.us/controls.js	\
+	src/www/js/lib/script.aculo.us/dragdrop.js	\
+	src/www/js/lib/script.aculo.us/effects.js	\
+	src/www/js/lib/script.aculo.us/scriptaculous.js	\
+	src/www/js/lib/script.aculo.us/slider.js	\
+	src/www/js/lib/script.aculo.us/unittest.js
+
+install-data-local:: install-dist_htdocsDATA
+	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"
+
+pkgpythondragonflydir = $(pkgpythondir)/dragonfly
+
+pkgpythondragonfly_PYTHON :=			   \
+	src/www/bongo/dragonfly/__init__.py	   \
+	src/www/bongo/dragonfly/AddressbookView.py  \
+	src/www/bongo/dragonfly/ApacheLogHandler.py \
+	src/www/bongo/dragonfly/Auth.py		   \
+	src/www/bongo/dragonfly/CalendarView.py	   \
+	src/www/bongo/dragonfly/Composer.py	   \
+	src/www/bongo/dragonfly/HistoryHandler.py   \
+	src/www/bongo/dragonfly/HistoryServer.py	   \
+	src/www/bongo/dragonfly/BongoCookie.py	   \
+	src/www/bongo/dragonfly/HttpError.py	   \
+	src/www/bongo/dragonfly/BongoFieldStorage.py \
+	src/www/bongo/dragonfly/BongoPSP.py	   \
+	src/www/bongo/dragonfly/BongoSession.py      \
+	src/www/bongo/dragonfly/BongoUtil.py         \
+	src/www/bongo/dragonfly/MailView.py	   \
+	src/www/bongo/dragonfly/PreferencesView.py  \
+	src/www/bongo/dragonfly/ResourceHandler.py  \
+	src/www/bongo/dragonfly/ResourcePath.py	   \
+	src/www/bongo/dragonfly/Server.py	   \
+	src/www/bongo/dragonfly/SmsHandler.py	   \
+	src/www/bongo/dragonfly/Standalone.py	   \
+	src/www/bongo/dragonfly/SummaryView.py
+
+pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
+
+pkgpythonhawkeye_PYTHON :=			\
+	src/www/bongo/hawkeye/__init__.py	\
+	src/www/bongo/hawkeye/AgentAttributes.py \
+	src/www/bongo/hawkeye/AgentsView.py      \
+	src/www/bongo/hawkeye/Auth.py		\
+	src/www/bongo/hawkeye/Hawkeye.py		\
+	src/www/bongo/hawkeye/HawkeyeHandler.py	\
+	src/www/bongo/hawkeye/HawkeyePath.py	\
+	src/www/bongo/hawkeye/RootView.py	\
+	src/www/bongo/hawkeye/Server.py		\
+	src/www/bongo/hawkeye/SummaryView.py     \
+	src/www/bongo/hawkeye/UserAttributes.py  \
+	src/www/bongo/hawkeye/UsersView.py
+
+hawkeyepspdir = $(pkgdatadir)/hawkeye/psp
+dist_hawkeyepsp_DATA :=				\
+	src/www/hawkeye/psp/footer.psp		\
+	src/www/hawkeye/psp/header.psp
+
+hawkeyeagentspspdir = $(hawkeyepspdir)/agents
+dist_hawkeyeagentspsp_DATA :=			\
+	src/www/hawkeye/psp/agents/agents.psp	\
+	src/www/hawkeye/psp/agents/edit.psp	\
+	src/www/hawkeye/psp/agents/index.psp
+
+hawkeyeuserspspdir = $(hawkeyepspdir)/users
+dist_hawkeyeuserspsp_DATA :=			\
+	src/www/hawkeye/psp/users/users.psp	\
+	src/www/hawkeye/psp/users/edit.psp	\
+	src/www/hawkeye/psp/users/index.psp
+
+hawkeyesummarypspdir = $(hawkeyepspdir)/summary
+dist_hawkeyesummarypsp_DATA := \
+	src/www/hawkeye/psp/summary/index.psp
+
+hawkeyerootpspdir = $(hawkeyepspdir)/root
+dist_hawkeyerootpsp_DATA :=			\
+	src/www/hawkeye/psp/root/index.psp	\
+	src/www/hawkeye/psp/root/login.psp
+
+src/www/bongo-standalone: $(top_builddir)/src/libs/python/bongo-python-wrapper
+	$(INSTALL) -m 755 $< $@
+
+dist_pkglibexec_SCRIPTS += src/www/bongo-standalone.py
+
+sbin_SCRIPTS += \
+	src/www/bongo-standalone
+
+dist_noinst_SCRIPTS += \
+	src/www/l10n/props2json
+
+templatesdir = $(pkgdatadir)/templates
+
+dist_templates_DATA :=				\
+	src/www/templates/month-view.html	\
+	src/www/templates/event.html
+
+exampledir = $(pkgdatadir)/examples
+
+example_DATA := \
+	src/www/bongo.conf
+
+dist_noinst_DATA +=				   \
+	src/www/js/lib/prototype/LICENSE	   \
+	src/www/js/lib/MochiKit/LICENSE.txt	   \
+	src/www/js/lib/script.aculo.us/MIT-LICENSE \
+	src/www/bongo/__init__.py.in		   \
+	src/www/bongo-devel.conf			   \
+	src/www/l10n/dragonfly.properties
+
+noinst_DATA += \
+	src/www/bongo/__init__.py
+
+src/www/bongo/__init__.py: src/www/bongo/__init__.py.in $(top_srcdir)/src/libs/python/bongo/__init__.py
+	cp $< $@.tmp
+	cat $(top_srcdir)/src/libs/python/bongo/__init__.py >> $@.tmp
+	mv $@.tmp $@
+
+src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
+	sed -e "s%\@EXPANDED_DATADIR\@/\@PACKAGE\@/htdocs%${EXPANDED_TOP_SRCDIR}/src/www%" \
+	-e "s%\@APACHE_MOD_DIR\@%${APACHE_MOD_DIR}%" \
+	-e "s%\@EXPANDED_PYTHONDIR\@%${EXPANDED_TOP_SRCDIR}/src/www%" \
+	-e "s%\@SHARED_POSTFIX\@%${SHARED_POSTFIX}%" \
+	-e "s%\@EXPANDED_DATADIR\@/\@PACKAGE\@/hawkeye%${EXPANDED_TOP_SRCDIR}/src/www/hawkeye%" \
+	$< > $@
+
+props2json := $(top_srcdir)/src/www/l10n/props2json
+dfly_props := $(top_srcdir)/src/www/l10n/dragonfly.properties
+
+if USE_NLS
+src/www/l10n/%.js: po/%.gmo $(dfly_props) config.status
+	$(props2json) -i $(dfly_props) -p $(dir $<) -o $@ -l $(patsubst po/%.gmo,%,$<)
+
+src/www/l10n/en.js: $(dfly_props) config.status
+	$(props2json) -i $(dfly_props) -o $@ -l en
+else
+src/www/l10n/%js: $(dfly_props) config.status
+	@echo "Warning: generating fake translations because NLS support was not enabled"
+	$(props2json) -i $(dfly_props) -o $@ -l en
+endif
+
+CLEANFILES +=					\
+	src/www/bongo-standalone			\
+	src/www/*.pyc				\
+	src/www/bongo/__init__.py		\
+	src/www/bongo-devel.conf			\
+	src/www/bongo/*.pyc			\
+	src/www/bongo/__init__.py		\
+	src/www/bongo/dragonfly/*.pyc		\
+	src/www/l10n/*.js
+
+src/www/all: src/www/bongo/__init__.py src/www/bongo-devel.conf src/www/bongo.conf
+src/www/clean: clean

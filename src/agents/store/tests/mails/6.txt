@@ -1,0 +1,205 @@
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@D ()
+@F (Behdad Esfahbod) (behdad@cs.toronto.edu)
+@U ()
+@T (Davyd Madeley) (davyd@madeley.id.au)
+@j (<20060212071606.GE3124@bridgewayconsulting.com.au>)
+@I (<Pine.LNX.4.58.0602120218490.19475@epoch.cs>)
+@i (<1139648664.6627.40.camel@localhost>)
+@i (<1139704624.14012.61.camel@wyatt.hadess.net>)
+@i (<1139726353.5032.59.camel@localhost>)
+@i (<20060212071606.GE3124@bridgewayconsulting.com.au>)
+@U ()
+@U ()
+@U ()
+@U ()
+@L () (gnome-hackers@gnome.org)
+@U ()
+@U ()
+@U ()
+@U ()
+@C () (gnome-hackers@gnome.org)
+@S (Subject: Re: Subversion migration schedule (cut-off Fri 18 Mar))
+@L () (gnome-private-members@gnome.org)
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@f () (gnome-private-members-bounces@gnome.org)
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+
+X-Auth-No: 
+Return-Path: <dave@skeptopotamus.ximian.com>
+Received: from skeptopotamus.ximian.com not authenticated [130.57.169.16]
+	by bongo.ximian.com with NetMail SMTP Agent $Revision: 1.7 $ via secured &
+	encrypted transport (TLS); Sun, 12 Feb 2006 09:44:21 -0500
+Received: by skeptopotamus.ximian.com (Postfix, from userid 1028) id
+	13D2063902; Sun, 12 Feb 2006 09:40:53 -0500 (EST)
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 484546380D; Sun, 12 Feb
+	2006 09:40:52 -0500 (EST)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 428627004D;
+	Sun, 12 Feb 2006 09:40:52 -0500 (EST)
+Received: from mcclure.wal.novell.com (mcclure-nat.wal.novell.com
+	[130.57.22.22]) by herald.ximian.com (Postfix) with ESMTP id 6073370005;
+	Sun, 12 Feb 2006 09:40:44 -0500 (EST)
+Received: from WALTHAM-MTA by mcclure.wal.novell.com with Novell_GroupWise;
+	Sun, 12 Feb 2006 09:40:42 -0500
+Received: from minotaur.novell.com ([130.57.21.1]) by
+	mcclure.wal.novell.com with ESMTP; Sun, 12 Feb 2006 09:40:37 -0500
+Received: from menubar.gnome.org (menubar.gnome.org [209.132.176.177]) by
+	minotaur.novell.com (Vircom SMTPRS 4.2.425.10) with ESMTP id
+	<E0036084861@minotaur.novell.com>; Sun, 12 Feb 2006 09:47:37 -0500
+X-Modus-ReverseDNS: OK
+X-Modus-BlackList:
+	209.132.176.177=OK;gnome-private-members-bounces@gnome.org=OK
+X-Modus-RBL: 209.132.176.177=OK
+X-Modus-Trusted: 209.132.176.177=NO
+Received: from localhost (unknown [127.0.0.1]) by menubar.gnome.org
+	(Postfix) with ESMTP id 6F9F53B2B2B; Sun, 12 Feb 2006 08:17:29 -0500 (EST)
+Received: from menubar.gnome.org ([127.0.0.1]) by localhost
+	(menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024) with ESMTP id
+	21915-10; Sun, 12 Feb 2006 08:17:28 -0500 (EST)
+Received: from menubar.gnome.org (localhost.localdomain [127.0.0.1]) by
+	menubar.gnome.org (Postfix) with ESMTP id E9B183B2BDC; Sun, 12 Feb 2006
+	08:15:26 -0500 (EST)
+X-Original-To: gnome-private-members@gnome.org
+Delivered-To: gnome-private-members@gnome.org
+Received: from localhost (unknown [127.0.0.1]) by menubar.gnome.org
+	(Postfix) with ESMTP id 68FA73B2BC5; Sun, 12 Feb 2006 08:15:18 -0500 (EST)
+Received: from menubar.gnome.org ([127.0.0.1]) by localhost
+	(menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024) with ESMTP id
+	21217-09; Sun, 12 Feb 2006 08:14:57 -0500 (EST)
+Received: from menubar.gnome.org (localhost.localdomain [127.0.0.1]) by
+	menubar.gnome.org (Postfix) with ESMTP id EA60E3B2E3F; Sun, 12 Feb 2006
+	07:14:37 -0500 (EST)
+X-Original-To: gnome-hackers@gnome.org
+Delivered-To: gnome-hackers@gnome.org
+Received: from localhost (unknown [127.0.0.1]) by menubar.gnome.org
+	(Postfix) with ESMTP id 529B03B07E0 for <gnome-hackers@gnome.org>; Sun, 12
+	Feb 2006 02:19:49 -0500 (EST)
+Received: from menubar.gnome.org ([127.0.0.1]) by localhost
+	(menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024) with ESMTP id
+	03156-06 for <gnome-hackers@gnome.org>; Sun, 12 Feb 2006 02:19:47 -0500
+	(EST)
+Received: from cliff.cs.toronto.edu (cliff.cs.toronto.edu [128.100.3.120])
+	by menubar.gnome.org (Postfix) with ESMTP id 99E3F3B1579 for
+	<gnome-hackers@gnome.org>; Sun, 12 Feb 2006 02:19:46 -0500 (EST)
+Received: from epoch.cs (epoch.cs.toronto.edu [128.100.5.203]) by
+	cliff.cs.toronto.edu (Postfix) with ESMTP id 34F395FD0B; Sun, 12 Feb 2006
+	02:19:44 -0500 (EST)
+Received: by epoch.cs (Postfix, from userid 1680) id 5080B7877F; Sun, 12
+	Feb 2006 02:19:44 -0500 (EST)
+Received: from localhost (localhost [127.0.0.1]) by epoch.cs (Postfix) with
+	ESMTP id 47C3B786C2; Sun, 12 Feb 2006 02:19:44 -0500 (EST)
+Date: Sun, 12 Feb 2006 02:19:44 -0500 (EST)
+From: Behdad Esfahbod <behdad@cs.toronto.edu>
+X-X-Sender: behdad@epoch.cs
+To: Davyd Madeley <davyd@madeley.id.au>
+In-Reply-To: <20060212071606.GE3124@bridgewayconsulting.com.au>
+Message-ID: <Pine.LNX.4.58.0602120218490.19475@epoch.cs>
+References: <1139648664.6627.40.camel@localhost>
+	 <1139704624.14012.61.camel@wyatt.hadess.net>
+	 <1139726353.5032.59.camel@localhost>
+	 <20060212071606.GE3124@bridgewayconsulting.com.au>
+MIME-Version: 1.0
+Content-Type: TEXT/PLAIN; charset=US-ASCII
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Mailman-Approved-At: Sun, 12 Feb 2006 07:14:35 -0500
+X-BeenThere: gnome-hackers@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Archive: <http://mail.gnome.org/archives/gnome-hackers>
+X-Virus-Scanned: by amavisd-new at gnome.org
+Cc: gnome-hackers@gnome.org
+Subject: Re: Subversion migration schedule (cut-off Fri 18 Mar)
+X-BeenThere: gnome-private-members@gnome.org
+List-Id: Members of gnome-hackers and gnome-private
+	<gnome-private-members.gnome.org>
+List-Unsubscribe:
+	<http://mail.gnome.org/mailman/listinfo/gnome-private-members>, 
+	<mailto:gnome-private-members-request@gnome.org?subject=unsubscribe>
+List-Post: <mailto:gnome-private-members@gnome.org>
+List-Help: <mailto:gnome-private-members-request@gnome.org?subject=help>
+List-Subscribe:
+	<http://mail.gnome.org/mailman/listinfo/gnome-private-members>, 
+	<mailto:gnome-private-members-request@gnome.org?subject=subscribe>
+Sender: gnome-private-members-bounces@gnome.org
+Errors-To: gnome-private-members-bounces@gnome.org
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+Content-Transfer-Encoding: 8bit
+
+On Sun, 12 Feb 2006, Davyd Madeley wrote:
+
+> On Sun, Feb 12, 2006 at 01:39:13PM +0700, Ross Golder wrote:
+>
+> > How about this:
+> >
+> > http://developer.gnome.org/tools/svn.html
+>
+> > > - how do I tag for release, and branch?
+>
+> It would seem (correct me if I'm wrong) that each of the modules is
+> in effect its own little SVN repo. This begs the question of
+> importing new modules, how do we go about this?
+
+Yeah, and that of don't we want to group any modules together?
+The gnome-python/* ones may want to go into one repo for example.
+Or the Java ones..., etc.  What are the pros/cons of some modules
+sharing the same repo?
+
+> Perhaps http://developer.gnome.org/doc/tutorials/import.html could
+> also be updated?
+>
+> --d
+
+--behdad
+http://behdad.org/
+
+"Commandment Three says Do Not Kill, Amendment Two says Blood Will Spill"
+	-- Dan Bern, "New American Language"
+_______________________________________________
+gnome-hackers mailing list
+gnome-hackers@gnome.org
+http://mail.gnome.org/mailman/listinfo/gnome-hackers
+
+

@@ -1,0 +1,42 @@
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+#The date header of this mail isn't even close to right; the parser should drop it
+@T () (httpeter@example.com)
+@F () (chris.miller@example.com)
+@F () (webshield@example.com)
+@S (Virus Detected by Network Associates, Inc. Webshield SMTP V4.5 MR1a)
+@I (<20060317151630.AEE6C22032E@squirrel.example.com>)
+
+X-Auth-No: 
+X-Mailbox: INBOX
+Return-Path: <httpeter@.example.com>
+Received: from squirrel.example.com not authenticated [127.0.0.1]
+	by squirrel.example.com with NetMail SMTP Agent $Revision: 1.7 $;
+	Fri, 17 Mar 2006 10:16:30 -0500
+Received: by squirrel.example.com (Postfix, from userid 510)
+	id AEE6C22032E; Fri, 17 Mar 2006 10:16:30 -0500 (EST)
+Received: from imap.example.com [130.57.4.228]
+	by localhost with IMAP (fetchmail-6.2.5.2)
+	for httpeter@localhost (single-drop); Fri, 17 Mar 2006 10:16:30 -0500 (EST)
+Received: from HECTOR.example.com ([130.57.1.28])
+	by sinclair.provo.example.com with ESMTP; Wed, 04 Jan 2006 05:52:44 -0700
+Received: from putussmtp01 (unverified [216.126.197.3]) by HECTOR.example.com
+ (Vircom SMTPRS 4.0.346.0) with SMTP id <D0056277747@HECTOR.example.com> for <httpeter@example.com>;
+ Wed, 4 Jan 2006 05:56:41 -0700
+X-Mailer: Network Associates, Inc. Webshield SMTP, Version 4.5 MR1a 
+Date: Wed Jan 04 05:24:56 2006
+To: <httpeter@example.com>
+From: chris.miller@example.com, webshield@example.com
+Subject: Virus Detected by Network Associates, Inc. Webshield SMTP V4.5 MR1a
+Message-Id: <20060317151630.AEE6C22032E@squirrel.example.com>
+
+Network Associates WebShield SMTP V4.5 MR1a on putussmtp01 detected virus
+W32/Lovgate.x@MM!zip in attachment body.zip from <httpeter@example.com> and it was Cleaned and
+Quarantined.
+

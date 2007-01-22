@@ -1,0 +1,59 @@
+<%@ include file="../header.psp" %>
+
+<%
+import bongo.admin.Util as Util
+from bongo.hawkeye.UserAttributes import UserAttributes
+
+context, user = rp.pathInfo
+%>
+
+<table>
+<tr>
+<td>
+<%@ include file="users.psp" %> 
+</td>
+
+<td>
+<%
+dn = rp.path.replace("/", "\\")
+
+if form:
+    props = UserAttributes(mdb, dn, form)
+    if props.Validate():
+        props.Save()
+else:
+    props = UserAttributes(mdb, dn)
+# outdent
+%>
+<b><%= user %></b><br/>
+
+<%
+constant = props.GetConstant()
+
+for (id, name, value) in constant:
+    # indent
+%>
+<%= name %>: <%= value %><br/>
+<%
+#outdent
+%>
+
+<form method="post" action="<%= req.uri %>">
+<%
+editable = props.GetEditable()
+
+for (id, name, value) in editable:
+    # indent
+%>
+<%= name %><input type="text" name="<%= id %>" value="<%= value %>" size="<%= len(value) %>"/><br/>
+<%
+#outdent
+%>
+
+<input type="submit" value="Submit"/>
+</form>
+</td>
+</tr>
+</table>
+
+<%@ include file="../footer.psp" %>

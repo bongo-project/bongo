@@ -1,0 +1,107 @@
+From uws@uwsworld.xs4all.nl  Sat May  6 10:32:46 2006
+Return-Path: <uws@uwsworld.xs4all.nl>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 8E0853B0BF1
+	for <desktop-devel-list@gnome.org>;
+	Sat,  6 May 2006 10:32:46 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 10652-02 for <desktop-devel-list@gnome.org>;
+	Sat,  6 May 2006 10:32:42 -0400 (EDT)
+Received: from uwsworld.xs4all.nl (uwsworld.xs4all.nl [194.109.237.238])
+	by menubar.gnome.org (Postfix) with ESMTP id D1A303B0AE1
+	for <desktop-devel-list@gnome.org>;
+	Sat,  6 May 2006 10:32:41 -0400 (EDT)
+Received: from uws by uwsworld.xs4all.nl with local (Exim 3.35 #1)
+	id 1FcNpo-0000MY-00
+	for <desktop-devel-list@gnome.org>; Sat, 06 May 2006 16:32:40 +0200
+Date: Sat, 6 May 2006 16:32:39 +0200
+From: Wouter Bolsterlee <uws+gnome@xs4all.nl>
+To: desktop-devel-list@gnome.org
+Message-ID: <20060506143239.GA1155@uwsworld.xs4all.nl>
+Mail-Followup-To: desktop-devel-list@gnome.org
+References: <51419b2c0604271410p3c04422ehe07885658395409b@mail.gmail.com>
+	<1146175895.29114.2.camel@nuitari.cam.novell.com>
+	<20060504085149.GA15127@uwsworld.xs4all.nl>
+	<51419b2c0605040757t4ca31944yd7023dedc4a28adc@mail.gmail.com>
+Mime-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha1;
+	protocol="application/pgp-signature"; boundary="huq684BweRXVnRxX"
+Content-Disposition: inline
+In-Reply-To: <51419b2c0605040757t4ca31944yd7023dedc4a28adc@mail.gmail.com>
+X-message-flag: Guvf zrffntr qbrf abg pbagnva rapelcgrq zrffntrf.
+X-PGP: key 0x250A63EB,
+	fingerprint 83C5 C205 47AD 539D A4F0  60BF 3FB4 134E 250A 63EB
+X-Base: All your base are belong to uws
+User-Agent: Mutt/1.5.6+20040907i
+Sender: Wouter Bolsterlee <uws@uwsworld.xs4all.nl>
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.591 tagged_above=-999 required=2 tests=[AWL=0.008, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.591
+X-Spam-Level: 
+Subject: Re: Please review po/LINGUAS patches so that people can build Gnome
+	from CVS
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sat, 06 May 2006 14:32:46 -0000
+
+
+--huq684BweRXVnRxX
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: inline
+Content-Transfer-Encoding: quoted-printable
+
+P=C3=A5 Thu, May 04, 2006 at 08:57:09AM -0600, Elijah Newren skrev:
+> On 5/4/06, Wouter Bolsterlee <uws+gnome@xs4all.nl> wrote:
+> >JFYI, I've commited patches to several modules a few days ago to fix the=
+se
+> >sed problems (at least for me they did).
+>=20
+> If you did so by modifying po/LINGUAS, please revert.  Someone pointed
+> out to me that we _want_ one language listed per line so that diffs
+> are much easier to read.  In that case, the correct fix is to get rid
+> of the buggy AC_SUBST in configure.(in|ac) as specified at
+> http://live.gnome.org/GnomeGoals/PoLinguas.  (If you just fixed the
+> mess in the direct listing of ALL_LINGUAS in configure.(in|ac) created
+> by certain translators, then I see no problem...)
+
+I only changed broken configure.{in,ac} files in the gnome-2-14 branch
+listing all language codes in the file itself (no po/LINGUAS). The only
+thing I changed is joining the ALL_LINGUAS lines together to one single
+line.
+
+  mvrgr, Wouter
+
+--=20
+:wq                                                       mail uws@xs4all.nl
+                                                      web http://uwstopia.nl
+
+tell myself that i'm not ready yet :: i want to live         -- heather nova
+
+--huq684BweRXVnRxX
+Content-Type: application/pgp-signature; name="signature.asc"
+Content-Description: Digital signature
+Content-Disposition: inline
+
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.2.5 (GNU/Linux)
+
+iD8DBQFEXLOHP7QTTiUKY+sRAp+kAJ0cSp5rlhvOF6lij+9wInCY0AheAwCfbpa9
+Fbg75+wooR+WwwSsP5VOKbY=
+=gS53
+-----END PGP SIGNATURE-----
+
+--huq684BweRXVnRxX--
+

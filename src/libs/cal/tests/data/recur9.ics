@@ -1,0 +1,33 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+X-WR-CALNAME:Novell Schedule
+PRODID:-//Apple Computer\, Inc//iCal 2.0//EN
+X-WR-RELCALID:F22A5418-0F5B-487B-B85C-C35F645F6C05
+X-WR-TIMEZONE:US/Eastern
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+DTSTAMP:20060420T182917Z
+UID:F0630AEA-5331-4D46-B6DE-63DD35470414
+SEQUENCE:11
+DTSTART;VALUE=DATE:20060306
+SUMMARY:Nick working on Bongo
+DTEND;VALUE=DATE:20060311
+DESCRIPTION:This is a 5-day untimed event that occurs every two weeks fr
+ om march 6th to June 1st with the exception that instead of occurring on
+  April 3rd\, as it would normally it occurs on March 27th.
+RRULE:FREQ=WEEKLY;INTERVAL=2;UNTIL=20060601;BYDAY=MO;WKST=SU
+END:VEVENT
+BEGIN:VEVENT
+DTSTAMP:20060420T182917Z
+UID:F0630AEA-5331-4D46-B6DE-63DD35470414
+SEQUENCE:10
+RECURRENCE-ID;VALUE=DATE:20060403
+DTSTART;VALUE=DATE:20060327
+SUMMARY:Nick working on Bongo
+DTEND;VALUE=DATE:20060401
+DESCRIPTION:This is a 5-day untimed event that occurs every two weeks fr
+ om march 6th to June 1st with the exception that instead of occurring on
+  April 3rd\, as it would normally it occurs on March 27th.
+END:VEVENT
+END:VCALENDAR

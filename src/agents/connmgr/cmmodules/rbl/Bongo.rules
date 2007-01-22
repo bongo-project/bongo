@@ -1,0 +1,22 @@
+# -*- Makefile -*-
+cmmodule_LTLIBRARIES += libcmrbl.la
+
+libcmrbl_la_SOURCES :=				 \
+	src/agents/connmgr/cmmodules/rbl/cmrbl.c \
+	src/agents/connmgr/cmmodules/rbl/cmrbl.h
+
+libcmrbl_la_CPPFLAGS := $(AM_CPPFLAGS) 
+
+libcmrbl_la_LDFLAGS := -module -avoid-version
+libcmrbl_la_LIBADD :=					 \
+	libbongomsgapi.la				 \
+	libbongologger.la				 \
+	libbongomemmgr.la				 \
+	libbongomdb.la					 \
+	libbongoxpl.la					 \
+	$(LIBSQLITE_LIBS)				 \
+	$(PTHREAD_LIBS)					 \
+	$(ALL_LIBS)
+
+src/agents/connmgr/cmmodules/rbl/all: libcmrbl.la
+src/agents/connmgr/cmmodules/rbl/clean: clean

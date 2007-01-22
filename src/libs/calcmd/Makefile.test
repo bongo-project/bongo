@@ -1,0 +1,8 @@
+CFLAGS=-g -Wall -I ../../../include/ -I ../../..  -DLINUX 
+YACC=bison -y -v
+
+
+all: test
+test: test.o parsecmd.o
+	$(CC) $(CFLAGS) -L ../xpl/.libs -L ../memmgr/.libs -lbongoxpl -lpthread -o test test.o parsecmd.o
+

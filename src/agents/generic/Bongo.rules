@@ -1,0 +1,26 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongogeneric
+
+bongogeneric_SOURCES :=				\
+	src/agents/generic/generic.c		\
+	src/agents/generic/generic.h		\
+	src/agents/generic/management.c
+
+bongogeneric_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/generic/all: bongogeneric
+src/agents/generic/clean: clean
+src/agents/generic/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongogeneric install-sbinPROGRAMS

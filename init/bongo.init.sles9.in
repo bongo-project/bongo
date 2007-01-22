@@ -1,0 +1,109 @@
+#! /bin/sh
+#
+# /etc/init.d/bongo
+#
+### BEGIN INIT INFO
+# Provides:                   bongo
+# Required-Start:             $network
+# Required-Stop:
+# Default-Start:              3 4 5
+# Default-Stop:               0 1 2 6
+# Description: Bongo collaboration system, visit: http://www.bongo-project.com
+### END INIT INFO
+
+# Source SuSE config
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+		
+. /etc/rc.status
+
+if [ -f /etc/sysconfig/bongo ]; then
+  . /etc/sysconfig/bongo
+else
+  OPTIONS=
+fi
+
+BONGO_DIR=@prefix@
+BONGO_BIN=@prefix@/sbin
+BONGO_NAME=bongomanager
+BONGO_SETUP=bongo-setup
+BONGO_LIST="bongomanager bongodmc bongonmap bongosmtp bongowebadmin bongoimap bongomodweb bongopop3 bongoantispam bongoavirus bongocalagent bongogeneric bongomailprox bongorules bongoforward bongopluspack bongosendmail bongoconnmgr"
+BONGO_MDB_CONF=@XPL_DEFAULT_CONF_DIR@/mdb.conf
+OPTIONS=
+echo $BONGO_BIN/$BONGO_NAME
+test -x $BONGO_BIN/$BONGO_NAME || exit 5
+
+# Shell functions sourced from /etc/rc.status:
+#      rc_check         check and set local and overall rc status
+#      rc_status        check and set local and overall rc status
+#      rc_status -v     ditto but be verbose in local rc status
+#      rc_status -v -r  ditto and clear the local rc status
+#      rc_failed        set local and overall rc status to failed
+#      rc_reset         clear local rc status (overall remains)
+#      rc_exit          exit appropriate to overall rc status
+
+# First reset status of this service
+rc_reset
+
+# Return values acc. to LSB for all commands but status:
+# 0 - success
+# 1 - misc error
+# 2 - invalid or excess args
+# 3 - unimplemented feature (e.g. reload)
+# 4 - insufficient privilege
+# 5 - program not installed
+# 6 - program not configured
+#
+# Note that starting an already running service, stopping
+# or restarting a not-running service as well as the restart
+# with force-reload (in case signalling is not supported) are
+# considered a success.
+
+case "$1" in
+    start)
+ 	if [ ! -f $BONGO_MDB_CONF ] ; then
+		echo -n "Initializing bongo: @XPL_DEFAULT_STATE_DIR@"
+		$BONGO_BIN/$BONGO_SETUP -n
+	fi
+	echo -n "Starting Bongo Daemon:"
+	startproc $BONGO_BIN/$BONGO_NAME $OPTIONS
+
+        # Remember status and be verbose
+        rc_status -v
+        ;;
+    stop)
+        echo -n "Shutting down Bongo Daemon"
+	RETVAL=$?
+	# Try to play nice first
+	$BONGO_BIN/$BONGO_NAME -s >/dev/null 2>&1 &
+	sleep 30
+	
+	# Now force all procs down
+	for proc in $BONGO_LIST;
+	do
+		killproc $proc >/dev/null 2>&1
+	done
+	[ $RETVAL -eq 0 ] && rm -f /var/lock/subsys/$BONGO_NAME
+
+        # Remember status and be verbose
+        rc_status -v
+        ;;
+    restart)
+        ## Stop the service and regardless of whether it was
+        ## running or not, start it again.
+        $0 stop
+        $0 start
+
+        # Remember status and be quiet
+        rc_status
+        ;;
+    status)
+        echo -n "Checking for Bongo Daemon: "
+        checkproc $BONGO_NAME
+        rc_status -v
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|status|restart}"
+        exit 1
+        ;;
+esac
+rc_exit 

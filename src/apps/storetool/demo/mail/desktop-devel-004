@@ -1,0 +1,124 @@
+From ben@benmcmillan.com  Fri May  5 19:03:06 2006
+Return-Path: <ben@benmcmillan.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 9506A3B054D
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:03:06 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 04061-03 for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:03:05 -0400 (EDT)
+Received: from deliverator7.gatech.edu (deliverator7.gatech.edu
+	[130.207.165.169])
+	by menubar.gnome.org (Postfix) with ESMTP id 58A323B09FF
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:03:05 -0400 (EDT)
+Received: from hormel2.gatech.edu (hormel2.prism.gatech.edu [130.207.171.12])
+	(using TLSv1 with cipher EDH-RSA-DES-CBC3-SHA (168/168 bits))
+	(Client CN "hormel2.prism.gatech.edu",
+	Issuer "Georgia Tech Internal CA" (not verified))
+	by deliverator7.gatech.edu (Postfix) with ESMTP id 824F7236D
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:03:04 -0400 (EDT)
+	(envelope-from ben@benmcmillan.com)
+Received: from ([130.207.171.121])
+	by hormel2.gatech.edu with ESMTP with TLS id KP-BRAWG.54931592;
+	Fri, 05 May 2006 19:02:38 -0400
+Received: from deliverator1.gatech.edu (localhost [127.0.0.1])
+	by localhost (Postfix) with ESMTP id 3C4381FAB8B
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:02:38 -0400 (EDT)
+	(envelope-from ben@benmcmillan.com)
+Received: from mailprx1.gatech.edu (mailprx1.prism.gatech.edu [130.207.171.15])
+	(using TLSv1 with cipher EDH-RSA-DES-CBC3-SHA (168/168 bits))
+	(Client CN "smtp.mail.gatech.edu",
+	Issuer "RSA Data Security? Inc." (verified OK))
+	by deliverator1.gatech.edu (Postfix) with ESMTP id 25C5E1FAB8A
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:02:38 -0400 (EDT)
+	(envelope-from ben@benmcmillan.com)
+Received: from [192.168.1.104] (router.emperor-sw2.exsbs.net [208.254.201.37])
+	(using TLSv1 with cipher RC4-MD5 (128/128 bits))
+	(No client certificate requested)
+	(sasl: method=PLAIN, username=gtg051h@mailprx1.gatech.edu, sender=n/a)
+	by mailprx1.gatech.edu (Postfix) with ESMTP id C0D4E22A5
+	for <desktop-devel-list@gnome.org>;
+	Fri,  5 May 2006 19:02:36 -0400 (EDT)
+	(envelope-from ben@benmcmillan.com)
+Message-ID: <445BD96B.9010504@benmcmillan.com>
+Date: Fri, 05 May 2006 19:02:03 -0400
+From: Benjamin J McMillan <ben@benmcmillan.com>
+User-Agent: Mail/News 1.5 (X11/20060302)
+MIME-Version: 1.0
+To: desktop-devel-list@gnome.org
+X-Enigmail-Version: 0.94.0.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 7bit
+X-GT-Spam-Details: ESP<-55>=RBL:<-50> SHA:<0> UHA:<0> SLS:<0> BAYES:<-5>
+	SenderID:<0> Spam Dictionary (TRU10):<0> Obscenities
+	Dictionary (TRU10):<0> Scam Dictionary (TRU10):<0>
+	ReDictionary:<0> Adult Dictionary (TRU10):<0> Embed HTML
+	Dictionary (TRU10):<0> Internal:<0> Float Dictionary
+	(TRU10):<0> URL Real-Time Signatures:<0> Spam Dictionary 2
+	(TRU10):<0> 
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.56 tagged_above=-999 required=2 tests=[AWL=-0.038, 
+	BAYES_00=-2.599, TW_GT=0.077, UNPARSEABLE_RELAY=0.001]
+X-Spam-Score: -2.56
+X-Spam-Level: 
+X-Mailman-Approved-At: Sat, 06 May 2006 08:23:30 -0400
+Subject: gnomeapplet: import gtk.EventBox fails
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Fri, 05 May 2006 23:03:06 -0000
+
+NB: This is python related, but PyGTK seems to be a gnome thing, so I
+hope this is the correct list.
+
+I'm having trouble importing gnomeapplet:
+    ImportError: cannot import name EventBox from gtk
+
+The applet.override source for gnomeapplet in gnome-python-desktop
+attempts on line 14:
+    import gtk.EventBox as PyPyGtkEventBox_Type
+
+I've looked at PyGTK's codegen, and after parsing that statement and
+figuring out modulename=gtk, pyname=EventBox, cname=PyPyGtkEventBox_Type,
+it looks at gtk's dictionary, where it doesn't find EventBox, and finally
+returns the ImportError;
+
+So, my question is, why does the applet.override import gtk.EventBox?
+Importing gtk.EventBox doesn't work, at least not for me. I tried changing
+it to from gtk import ... but the regex for the override codegen utility
+doesn't match it (and I don't feel like changing too much just to figure
+this out).
+
+Am I missing something? Should I have separate EventBox (et cetera)
+python files in gtk/ ?
+
+Here are my relevant package versions:
+    python: 2.4.3
+    pygtk: 2.8.6
+    gtk+: 2.8.13
+    gnome-python: 2.12.3
+    gnome-python-desktop: 2.14.0
+
+Thanks!
+
+(PS: If this is not the appropriate list, please tell me! Sorry!)
+
+-- 
+Benjamin Jasper McMillan | "The hardest thing to understand is why we can
+ben@benmcmillan.com      | understand anything at all."        - Einstein
+

@@ -1,0 +1,79 @@
+From sadam@CLEMSON.EDU  Sun May 14 16:50:32 2006
+Return-Path: <sadam@CLEMSON.EDU>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 06FE33B11E4
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:50:32 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 13532-08 for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:50:30 -0400 (EDT)
+Received: from CLEMSON.EDU (mail.clemson.edu [130.127.28.87])
+	by menubar.gnome.org (Postfix) with ESMTP id 4EDDA3B0136
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 16:50:30 -0400 (EDT)
+Received: from [192.168.1.101] (71-14-104-024.dhcp.gnvl.sc.charter.com
+	[71.14.104.24]) (authenticated bits=0)
+	by CLEMSON.EDU (8.13.6/8.13.1) with ESMTP id k4EKoRs7001786
+	(version=TLSv1/SSLv3 cipher=DHE-RSA-AES256-SHA bits=256 verify=NOT);
+	Sun, 14 May 2006 16:50:27 -0400 (EDT)
+Message-ID: <44679810.9000809@clemson.edu>
+Date: Sun, 14 May 2006 16:50:24 -0400
+From: Adam Schreiber <sadam@CLEMSON.EDU>
+User-Agent: Thunderbird 1.5.0.2 (X11/20060425)
+MIME-Version: 1.0
+To: Joe Marcus Clarke <marcus@FreeBSD.org>
+References: <1147637845.51775.21.camel@shumai.marcuscom.com>
+In-Reply-To: <1147637845.51775.21.camel@shumai.marcuscom.com>
+X-Enigmail-Version: 0.94.0.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 7bit
+X-Scanned-By: mail mimedefang 2.52 on 130.127.28.87
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.599 tagged_above=-999 required=2
+	tests=[BAYES_00=-2.599]
+X-Spam-Score: -2.599
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org
+Subject: Re: po/LINGUAS fallout
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 14 May 2006 20:50:32 -0000
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA1
+
+Joe Marcus Clarke wrote:
+> The problem seems to stem from use of intltool-0.34.2 instead
+> of 0.34.90.
+
+Making a release of 0.34.90 would help no doubt.  Grabbing the latest
+cvs of course works, but the latest source tarball available is 0.34.2.
+
+Adam Schreiber
+- --
+Why isn't all of your email protected?
+http://gnupg.org
+http://enigmail.mozdev.org
+http://seahorse.sourceforge.net
+http://live.gnome.org/Seahorse
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.3 (GNU/Linux)
+Comment: Using GnuPG with Mozilla - http://enigmail.mozdev.org
+
+iD8DBQFEZ5gQjU1oaHEI4wgRAiDOAJ9NjjpfJompoe/oMM1XwkZuUwdruwCgnl8A
+T5c4WEr2vAYsPFV/UyhTy3E=
+=Y3eJ
+-----END PGP SIGNATURE-----
+

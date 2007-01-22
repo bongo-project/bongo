@@ -1,0 +1,12 @@
+# -*- Makefile -*-
+lib_LTLIBRARIES += libbongomanagement.la
+
+#libbongomanagement_la_LDFLAGS := -static
+libbongomanagement_la_SOURCES :=       \
+    src/libs/management/bongomanagee.c \
+	src/libs/management/managee.c
+
+libbongomanagement_la_LIBADD := libbongoutil.la libbongo-json.la
+
+src/libs/management/all: libbongomanagement.la
+src/libs/management/clean: clean

@@ -1,0 +1,23 @@
+# -*- Makefile -*-
+TESTS += checktest-connio
+check_PROGRAMS += checktest-connio
+
+checktest_connio_SOURCES := \
+	src/libs/connio/tests/checktest.c
+
+checktest_connio_LDADD := $(CHECK_LIBS)			 \
+	libbongoconnio.la				 \
+	libbongonmap.la					 \
+	libbongomanagement.la				 \
+	libbongomsgapi.la				 \
+	libbongomdb.la					 \
+	libbongologger.la				 \
+	libbongomemmgr.la				 \
+	libbongoutil.la					 \
+	libbongoxpl.la					 \
+	$(LIBSQLITE_LIBS)				 \
+	$(PTHREAD_LIBS)					 \
+	$(ALL_LIBS)
+
+src/libs/connio/tests/all:
+src/libs/connio/tests/clean: clean

@@ -1,0 +1,68 @@
+<schema>
+	<attribute name="Surname" syntax="CaseInsensitiveString" />
+	<attribute name="Given Name" syntax="CaseInsensitiveString" />
+	<attribute name="Title" syntax="CaseInsensitiveString" />
+	<attribute name="Telephone Number" syntax="CaseInsensitiveString" />
+	<attribute name="Facsimile Telephone Number" syntax="CaseInsensitiveString" />
+	<attribute name="SA" syntax="CaseInsensitiveString" />
+	<attribute name="Postal Office Box" syntax="CaseInsensitiveString" />
+	<attribute name="Postal Code" syntax="CaseInsensitiveString" />
+	<attribute name="Postal Address" syntax="CaseInsensitiveString" />
+	<attribute name="Physical Delivery Office Name" syntax="CaseInsensitiveString" />
+	<attribute name="Owner" syntax="CaseInsensitiveString" />
+	<attribute name="O" syntax="CaseInsensitiveString" />
+	<attribute name="OU" syntax="CaseInsensitiveString" />
+	<attribute name="Description" syntax="CaseInsensitiveString" />
+	<attribute name="See Also" syntax="DistinguishedName" />
+        <class name = "Top">
+        </class>
+	<class name="User" super-class="Top">
+		<required-attributes>
+			<attribute name="Surname" />
+		</required-attributes>
+		<allowed-attributes>
+			<attribute name="Given Name" />
+			<attribute name="Title" />
+			<attribute name="Telephone Number" />
+			<attribute name="Facsimile Telephone Number" />
+			<attribute name="SA" />
+			<attribute name="Postal Office Box" />
+			<attribute name="Postal Code" />
+			<attribute name="Postal Address" />
+			<attribute name="Physical Delivery Office Name" />
+			<attribute name="See Also" />
+                        <attribute name="Description" />
+		</allowed-attributes>
+	</class>
+        <class name="Organization" super-class="Top">
+                <allowed-attributes>
+                        <attribute name="Telephone Number" />
+                        <attribute name="Facsimile Telephone Number" />
+			<attribute name="Postal Office Box" />
+			<attribute name="Postal Code" />
+			<attribute name="Postal Address" />
+			<attribute name="Physical Delivery Office Name" />
+                        <attribute name="Description" />
+                </allowed-attributes>
+        </class>
+        <class name="OrganizationalUnit" super-class="Top">
+                <allowed-attributes>
+                        <attribute name="Telephone Number" />
+                        <attribute name="Facsimile Telephone Number" />
+			<attribute name="Postal Office Box" />
+			<attribute name="Postal Code" />
+			<attribute name="Postal Address" />
+			<attribute name="Physical Delivery Office Name" />
+                        <attribute name="Description" />
+                </allowed-attributes>
+        </class>
+        <class name="GroupOfNames" super-class="Top">
+                <allowed-attributes>
+                        <attribute name="See Also" />
+                        <attribute name="Owner" />
+                        <attribute name="OU" />
+                        <attribute name="O" />
+                        <attribute name="Description" />
+                </allowed-attributes>
+        </class>
+</schema>

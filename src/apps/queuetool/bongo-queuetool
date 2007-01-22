@@ -1,0 +1,54 @@
+#!/usr/bin/env python
+
+import logging, os, pwd, sys
+
+# add the development directories or the current prefix to PYTHONPATH
+binpath = os.path.abspath(os.path.dirname(sys.argv[0]))
+if binpath.endswith("bin"):
+    from distutils import sysconfig
+    path = [sysconfig.get_python_lib(0,0,prefix=os.path.abspath(binpath+"/.."))]
+else:
+    path = [os.path.abspath("/".join((binpath, "../../libs/python"))), binpath]
+for p in path:
+    if path not in sys.path: sys.path.insert(0, p)
+
+from bongo.cmdparse import CommandParser, Command
+from bongo.store.QueueClient import QueueClient
+
+parser = CommandParser()
+parser.add_option("", "--host", type="string", default="localhost",
+                  help="hostname [default %default]")
+parser.add_option("", "--port", type="int", default=8670,
+                  help="port [default %default]")
+parser.add_option("", "--debug", action="store_true",
+                  help="enable debugging output")
+
+class FlushCommand(Command):
+    log = logging.getLogger("Bongo.QueueTool")
+
+    def __init__(self):
+        Command.__init__(self, "flush", aliases=["f"],
+                         summary="Flush the mail queue",
+                         usage="%prog %cmd")
+
+    def Run(self, options, args):
+        queue = QueueClient(host=options.host, port=options.port)
+        queue.Flush()
+
+parser.add_command(FlushCommand(), "Queue Management")
+
+if __name__ == '__main__':
+    (command, options, args) = parser.parse_args()
+
+    logging.basicConfig()
+
+    if options.debug:
+        logging.root.setLevel(logging.DEBUG)
+    else:
+        logging.root.setLevel(logging.ERROR)
+
+    if command is None:
+        parser.print_help()
+        parser.exit()
+
+    command.Run(options, args)

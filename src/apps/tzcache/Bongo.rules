@@ -1,0 +1,23 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongo-tzcache
+
+bongo_tzcache_SOURCES :=    \
+	src/apps/tzcache/tzcache.c
+
+bongo_tzcache_LDADD :=					   \
+	libbongomdb.la					   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	libbongomsgapi.la				   \
+	libbongocal.la					   \
+	libbongoconnio.la                   		   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/apps/tzcache/all: bongo-tzcache
+src/apps/tzcache/clean: clean
+src/apps/tzcache/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongo-tzcache install-sbinPROGRAMS

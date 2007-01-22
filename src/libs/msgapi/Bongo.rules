@@ -1,0 +1,32 @@
+# -*- Makefile -*-
+lib_LTLIBRARIES += libbongomsgapi.la
+
+libbongomsgapi_la_SOURCES :=			\
+	src/libs/msgapi/msgaddr.c		\
+	src/libs/msgapi/msgapi.c		\
+	src/libs/msgapi/msgapip.h		\
+	src/libs/msgapi/msgcollector.c		\
+	src/libs/msgapi/msgdate.c		\
+	src/libs/msgapi/msghttp.c		\
+	src/libs/msgapi/msghttp.h
+
+libbongomsgapi_la_CPPFLAGS := $(AM_CPPFLAGS) \
+	-I$(top_srcdir)/import/curl/include
+
+libbongomsgapi_la_LIBADD :=					   \
+	libbongocal.la						   \
+	libbongoconnio.la					   \
+	libbongoutil.la						   \
+	libbongo-json.la						   \
+	libbongomemmgr.la					   \
+	libbongomdb.la						   \
+	libbongonmap.la						   \
+	libbongoxpl.la						   \
+	$(LIBCURL_LIBS)						   \
+	$(top_builddir)/import/libical/src/libical/libical-bongo.la \
+        $(DL_LIBS)						   
+
+src/libs/msgapi/all: libbongomsgapi.la
+src/libs/msgapi/clean: clean
+src/libs/msgapi/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) lib_LTLIBRARIES=libbongomsgapi.la install-libLTLIBRARIES

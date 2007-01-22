@@ -1,0 +1,36 @@
+{ "version": { "value": "2.0" }, "components":[
+{
+	"changes":[
+		{
+			"dtstart":
+			{
+				"value":"19110701T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0407"
+			},
+			"tzname":[
+				{
+					"value":"AST"
+				}],
+			"rdates":[
+				{
+					"value":"19110701T000000"
+				}]
+		}],
+	"type":"timezone",
+	"X-LIC-LOCATION":[
+		{
+			"value":"America/Grenada"
+		}],
+	"tzid":
+	{
+		"value":"/bongo/America/Grenada"
+	}
+}] }

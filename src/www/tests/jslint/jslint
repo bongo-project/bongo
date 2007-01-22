@@ -1,0 +1,39 @@
+#!/usr/bin/env python
+"""
+Run jslint over all javascript files under src/www, printing a report to
+standard out. This script requires the spidermonkey javascript interpreter (js) 
+and python 2.4. Optionally, a list of base filenames (no paths) can be given as
+arguments and only those files will be checked.
+
+usage: jslint [file1.js ...]
+"""
+import sys, os, os.path as path, subprocess
+
+sys.argv.pop(0)
+os.chdir(path.abspath(path.dirname(__file__)) + '/../..')
+output = sys.stdout
+
+
+def jsfiles(dir):
+    for item in os.listdir(dir):
+        item = path.join(dir, item)
+        if path.isfile(item):
+            if (not sys.argv and item.endswith('.js')
+              or path.basename(item) in sys.argv):
+                yield item
+        elif path.isdir(item):
+            if not item.endswith('.svn') and not item.endswith('/lib'):
+                for item2 in jsfiles(item):
+                    yield item2
+
+for jsfile in jsfiles(os.getcwd()):
+    output.write('-' * 72 + '\n')
+    output.write('Checking %s:\n' % jsfile)
+    jsfile = file(jsfile, 'r', 4096)
+    proc = subprocess.Popen(
+        ['/usr/bin/env', 'js', 'tests/jslint/jslint.js', jsfile.read()], 
+        stdout=subprocess.PIPE)
+    proc.wait()
+    output.write(proc.stdout.read())
+    output.write('\n')
+    jsfile.close()

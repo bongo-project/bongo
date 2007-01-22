@@ -1,0 +1,28 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongoitip
+
+bongoitip_SOURCES :=				\
+	src/agents/itip/itip.c			\
+	src/agents/itip/itip.h			\
+	src/agents/itip/management.c
+
+bongoitip_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomanagement.la				   \
+	libbongomsgapi.la				   \
+	libbongomdb.la					   \
+	libbongologger.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	libbongocal.la					   \
+	libbongostreamio.la				   \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	$(PTHREAD_LIBS)					   \
+	$(ALL_LIBS)
+
+src/agents/itip/all: bongoitip
+src/agents/itip/clean: clean
+src/agents/itip/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongoitip install-sbinPROGRAMS

@@ -1,0 +1,63 @@
+Bongo Coders
+============
+
+Alex Hudson
+Pat Felt
+
+Hula Coders
+===========
+
+David Smith
+Rodney Price
+Dave Camp
+Garrett Lesage
+
+NetMail Coders
+==============
+
+Peter Bartok
+ - Most source files in the project were originally created by Peter.
+ Most of the architecture, design, and APIs are his creations.
+
+Jesse Hall
+ - Jesse created the first web interface and web administration tool used by
+ the 1.0 version of the closed source project.
+ 
+David Harris
+ - David wrote much of the code used by the NMAP and IMAP search commands   
+
+Steve Willis
+ - Steve continued work on the first web interface and added the concept of
+ the personal address book.
+
+Rodney Price
+ - Rodney fixed bugs and delivered patches to the NetMail customer base.
+
+Micah Gorrell
+ - Micah contributed signifcant portions of the second generation web
+ administration tool and user interfaces for calendar, preferences, and tom. 
+
+Pat Felt 
+ - Pat create the NetMail installs for Solaris and Linux
+
+Dave Latimer
+ - David maintained the web templates and updated them with localizations
+
+David Smith
+ - David's contributions include, shared folders, shared calendars, resource
+ management, DMC, memory manager, ConIO, performance and scalabilty enhancements.
+
+Joel Thornton
+ - Joel improved reliability and utility the calendaring component of NetMail
+
+Layne Izatt
+ - Converted databases used to index aliases, address book entries, and queued
+ messages. 
+
+NetMail Quality Assurance
+=========================
+
+Matt Misbach
+Greg Patterson
+Jeff Ross
+Jason Brothers

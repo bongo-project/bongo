@@ -1,0 +1,19 @@
+<%
+import bongo.admin.Util as Util
+from bongo.libs import msgapi
+
+if not context:
+    context = msgapi.GetConfigProperty(msgapi.DEFAULT_CONTEXT)
+# outdent
+%>
+<b>Bongo Users</b>
+<ul>
+<%
+for user in Util.ListBongoUsers(mdb, context):
+    # indent
+%>
+<li><a href="<%= Hawkeye.BuildUserUrl(context, user) %>"><%= user %></a></li>
+<%
+# outdent
+%>
+</ul>

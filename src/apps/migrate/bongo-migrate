@@ -1,0 +1,556 @@
+#!/usr/bin/env python
+
+import logging, os, pwd, sys
+import tempfile
+import thread
+import threading
+import socket
+import Queue
+
+# add the development directories or the current prefix to PYTHONPATH
+binpath = os.path.abspath(os.path.dirname(sys.argv[0]))
+if binpath.endswith("bin"):
+    from distutils import sysconfig
+    path = [sysconfig.get_python_lib(0,0,prefix=os.path.abspath(binpath+"/.."))]
+else:
+    path = [os.path.abspath("/".join((binpath, "../../libs/python"))), binpath]
+for p in path:
+    if path not in sys.path: sys.path.insert(0, p)
+
+from optparse import OptionParser, SUPPRESS_HELP
+
+import bongo.BongoError
+from bongo.nmap.NmapClient import NmapClient
+from bongo.nmap.NmapClient import DocTypes as NmapDocTypes
+from bongo.nmap.NmapClient import DocFlags as NmapDocFlags
+
+from bongo.store.StoreClient import *
+
+from bongo.libs import bongojson, JsonArray, JsonObject, msgapi, cal, bongoutil
+
+
+class EventHolder:
+    def __init__(self, event, seqNum):
+        self.wholeEvent = None
+        self.firstEvent = event
+        self.seqNum = seqNum
+        self.count = 1
+
+class Counters:
+    def __init__(self, selfLocking=False):
+        self.useLocks = selfLocking
+        if self.useLocks:
+            self.lock = thread.allocate_lock()
+        self.c = {  'usersMoved'        : 0,
+                    'usersNotMoved'     : 0,
+                    'mailMoved'         : 0,
+                    'mailNotMoved'      : 0,
+                    'mailSkipped'       : 0,
+                    'contactsMoved'     : 0,
+                    'contactsNotMoved'  : 0,
+                    'contactsSkipped'   : 0,
+                    'eventsMoved'       : 0,
+                    'eventsNotMoved'    : 0,
+                    'eventsSkipped'     : 0
+                 }
+
+    def Inc(self, name):
+        if self.useLocks:
+            self.lock.acquire()
+
+        self.c[name] += 1
+
+        if self.useLocks:
+            self.lock.release()
+
+    def Add(self, name, val):
+        if self.useLocks:
+            self.lock.acquire()
+
+        self.c[name] += val
+
+        if self.useLocks:
+            self.lock.release()
+
+    def Update(self, cntr):
+        if self.useLocks:
+            self.lock.acquire()
+        if cntr.useLocks:
+            cntr.lock.acquire()
+
+        for name, val in cntr.c.iteritems():
+            self.c[name] += val
+
+        if self.useLocks:
+            self.lock.release()
+        if cntr.useLocks:
+            cntr.lock.release()
+
+    def Display(self):
+        if self.useLocks:
+            self.lock.acquire()
+
+
+        if self.useLocks:
+            self.lock.release()
+
+
+class User:
+    def __init__(self, userName, useDummy=False):
+        self.user = userName
+
+        try:
+            self.nmap = NmapClient(srcAddr)
+            self.nmap.User(userName)
+        except bongo.BongoError, r:
+            log.error("'%s' opening NMAP connection. User: %s", str(r), userName)
+            raise
+
+        try:
+            self.store = StoreClient(userName, userName)
+        except bongo.BongoError, r:
+            log.error("'%s' opening STORE connection. User: %s", str(r), userName)
+            raise
+
+        self.counters = Counters()
+        self.counters.Inc('usersMoved')
+
+#    def __del__(self):
+#        print "^^^^^User '%s' DELETED!!!" % self.user
+
+    def Mbox(self, mailBox):
+        self.nmap.Rset()
+        self.nmap.User(self.user)
+        self.nmap.Mbox(mailBox)
+
+    def Cal(self, calendar):
+        self.nmap.Rset()
+        self.nmap.User(self.user)
+        self.nmap.Cal(calendar)
+
+    def MigrateMail(self):
+        log.info("Starting Mail Migration. User:%s.", self.user)
+        try:
+            folders = list(self.nmap.Show())
+        except bongo.BongoError, r:
+            log.error("'%s' listing folders. User: %s", str(r), self.user)
+            return
+
+        for f in folders:
+            self.Mbox(f.message)
+            collectionUTF7 = '/mail/' + f.message
+            collection = bongoutil.ModifiedUtf7ToUtf8(collectionUTF7)
+            self.store.Create(collection, True)
+
+            mailUIDs = self.BuildUidDict(collection)
+            mailList = list(self.nmap.Info())
+            for mail in mailList:
+                # Check if mail already migrated
+                if mailUIDs != None:
+                    if mailUIDs.has_key(mail.WUID):
+                        self.counters.Inc('mailSkipped')
+                        continue    # matching UID found on destination server - skip this mail
+
+                # Get the message from nmap
+                try:
+                    msg = self.nmap.List(mail.seqNum)
+                except bongo.BongoError, r:
+                    log.error("'%s' getting mail from NMAP server. User: %s. Folder: %s.", str(r), self.user, f.message)
+                    self.counters.Inc('mailNotMoved')
+                    continue
+
+                # Prep the flags on the newly migrated message
+                storeFlags = 0
+                if (mail.flags & NmapDocFlags.Read):
+                    storeFlags += DocFlags.Seen
+                if (mail.flags & NmapDocFlags.Deleted):
+                    storeFlags += DocFlags.Deleted
+                if (mail.flags & NmapDocFlags.Purged):
+                    storeFlags += DocFlags.Purged
+                if (mail.flags & NmapDocFlags.Recent):
+                    storeFlags += DocFlags.Recent
+                if (mail.flags & NmapDocFlags.Answered):
+                    storeFlags += DocFlags.Answered
+                if (mail.flags & NmapDocFlags.Draft):
+                    storeFlags += DocFlags.Draft
+
+                # Save the message in the store
+                try:
+                    msgGuid = self.store.Write(collection, DocTypes.Mail, msg.message, timeCreated=mail.msgDate, flags=storeFlags)
+                except bongo.BongoError, r:
+                    log.error("'%s' saving mail. User: %s. Folder: %s.", str(r), self.user, f.message)
+                    self.counters.Inc('mailNotMoved')
+                    continue
+                else:
+                    self.counters.Inc('mailMoved')
+
+                # Save the old nmap UID on the new message (to prevent duplication if the utility is re-run)
+                try:
+                    self.store.PropSet(msgGuid, 'bongo.migratedUID', mail.WUID)
+                except bongo.BongoError, r:
+                    log.warning("'%s' saving bongo.migratedUID property on migrated mail. User: %s. GUID: %s.", str(r), self.user, msgGuid)
+
+                log.debug("New message GUID: %s", msgGuid)
+
+
+    def MigrateCalendar(self):
+        log.info("Starting Calendar Migration. User:%s.", self.user)
+
+        srcEvents = {}
+        destEventUIDs = self.BuildEventUidDict()
+        try:
+            folders = list(self.nmap.Csshow())
+        except bongo.BongoError, r:
+            log.error("'%s' listing calendar folders. User: %s", str(r), self.user)
+            return
+
+        for f in folders:
+            try:
+                self.Cal(f.message)
+            except bongo.BongoError, r:
+                log.error("'%s' opening NMAP calendar. User: %s. Folder: %s.", str(r), self.user, f.message)
+                continue
+
+            calendarList = list(self.nmap.Csinfo())
+            for c in calendarList:
+                try:
+                    iCalMsg = self.nmap.Cslist(c.seqNum)
+                except bongo.BongoError, r:
+                    log.error("'%s' reading NMAP calendar. User: %s. seqNum: %s.", str(r), self.user, c.seqNum)
+                    self.counters.Inc('eventsNotMoved')
+                    continue
+
+                # Trim meta data off end
+                endOfEventIndex = iCalMsg.message.rfind("END:VCALENDAR") + 13
+
+                # Get (and use) the iCal UID
+                index = iCalMsg.message.rfind("UID:")
+                if index != -1:
+                    index += 4
+                    srcUID = iCalMsg.message[index:].split(None, 1)
+                    if destEventUIDs != None:
+                        # Check if event already migrated
+                        if destEventUIDs.has_key(srcUID[0]):
+                            self.counters.Inc('eventsSkipped')
+                            continue    # matching UID found on destination server - skip this event
+
+                    if srcEvents.has_key(srcUID[0]):
+                        # We have a duplicate iCal ID, which means we probably have a series of reoccurring events
+                        event = srcEvents[srcUID[0]]
+                        jsobEvent = cal.IcalToJson(iCalMsg.message[:endOfEventIndex])
+                        if event.wholeEvent == None:
+                            event.wholeEvent = cal.IcalToJson(event.firstEvent)
+                            event.firstEvent = None
+                        event.wholeEvent = cal.Merge(event.wholeEvent, jsobEvent)
+                        event.count += 1
+                        continue
+
+                    else:
+                        srcEvents[srcUID[0]] = EventHolder(iCalMsg.message[:endOfEventIndex], c.seqNum)
+                        continue
+
+                # No iCal UID, so just try to send the event (rarely if ever happen)
+                fh = tempfile.TemporaryFile()
+                fh.seek(0)
+                fh.write(iCalMsg.message[:endOfEventIndex])
+                fh.seek(0)
+
+                # migrate the event
+                try:
+                    msgapi.ImportIcs(fh, self.user, "Personal", None)
+                except RuntimeError, inst:
+                    log.error("'%s' from ImportIcs() importing NMAP calendar item. User: %s. seqNum: %s.", inst, self.user, c.seqNum)
+                    self.counters.Inc('eventsNotMoved')
+                else:
+                    self.counters.Inc('eventsMoved')
+
+                fh.close()
+
+            for iCalID, event in srcEvents.iteritems():
+                fh = tempfile.TemporaryFile()
+                fh.seek(0)
+
+                if event.wholeEvent == None:
+                    fh.write(event.firstEvent)
+                else:
+                    fh.write(cal.JsonToIcal(event.wholeEvent))
+
+                fh.seek(0)
+
+                # migrate the event
+                try:
+                    msgapi.ImportIcs(fh, self.user, "Personal", None)
+                except RuntimeError, inst:
+                    log.error("'%s' from ImportIcs() importing NMAP calendar item. User: %s. seqNum: %s.", inst, self.user, event.seqNum)
+                    self.counters.Add('eventsNotMoved', event.count)
+                else:
+                    self.counters.Add('eventsMoved', event.count)
+
+                fh.close()
+
+
+
+    def MigrateAddressBook(self):
+        log.info("Start Personal Address Book Migration. User:%s.", self.user)
+        try:
+            addressBookList = list(self.nmap.Adbk())
+        except bongo.BongoError, r:
+            log.error("'%s' getting Address Book from NMAP server. User: %s.", str(r), self.user)
+            return
+
+        contactUIDs = self.BuildUidDict('/addressbook/personal')
+
+        for contact in addressBookList:
+            # Check if contact already migrated
+            if contactUIDs != None:
+                if contactUIDs.has_key(contact.uid):
+                    self.counters.Inc('contactsSkipped')
+                    continue    # matching UID found on destination server - skip this contact
+
+            contactObj = JsonObject()
+            contactObj['fn'] = contact.firstName + ' ' + contact.lastName
+            contactObj['tel'] = JsonArray()
+
+            tel = JsonObject()
+            tel['type'] = JsonArray()
+            tel['type'].append(phoneTypes[contact.phone1Type])
+            tel['value'] = contact.phone1
+            contactObj['tel'].append(tel)
+
+            tel = JsonObject()
+            tel['type'] = JsonArray()
+            tel['type'].append(phoneTypes[contact.phone2Type])
+            tel['value'] = contact.phone2
+            contactObj['tel'].append(tel)
+
+            email = JsonObject()
+            email['type'] = JsonArray()
+            email['type'].append('')
+            email['value'] = contact.email
+            contactObj['email'] = JsonArray()
+            contactObj['email'].append(email)
+
+            if contact.bdayMonth != '0':
+                contactObj['bday'] = contact.bdayYear + '-' + contact.bdayMonth + '-' + contact.bdayDay
+
+            contactObj['note'] = contact.note
+#            contactObj['migrationID'] = contact.uid
+            try:
+                msgGuid = self.store.Write('/addressbook/personal', DocTypes.Addressbook, str(contactObj))
+            except bongo.BongoError, r:
+                log.error("'%s' saving Address Book entry. User: %s. UID: %s.", str(r), self.user, contact.uid)
+                self.counters.Inc('contactsNotMoved')
+                continue
+            else:
+                self.counters.Inc('contactsMoved')
+
+            try:
+                self.store.PropSet(msgGuid, 'bongo.migratedUID', contact.uid)
+            except bongo.BongoError, r:
+                log.warning("'%s' saving bongo.migratedUID property on migrated contact. User: %s. GUID: %s.", str(r), self.user, msgGuid)
+
+
+    def BuildUidDict(self, collection):
+        if options.noGUIDcheck:
+            return None
+
+        dict = {}
+        docList = list(self.store.List(collection, props=['bongo.migratedUID']))
+
+        for doc in docList:
+            if doc.props.has_key('bongo.migratedUID'):
+                dict[doc.props['bongo.migratedUID']] = None
+
+        if len(dict) == 0:
+            return None
+        return dict
+
+    def BuildEventUidDict(self):
+        if options.noGUIDcheck:
+            return None
+
+        dict = {}
+        try:
+            eventList = list(self.store.List('/events'))
+        except bongo.BongoError, r:
+            log.error("'%s' getting events from Bongo server.", str(r))
+            return None
+
+        for e in eventList:
+            try:
+                event = self.store.Read(e.uid)
+                jsonEvent = bongojson.ParseString(event)
+                comps = jsonEvent['components']
+                comp = comps[0]
+                uid = comp['uid']
+                migratedUID = uid['value']
+                dict[migratedUID] = None
+            except bongo.BongoError, r:
+                log.error("'%s' reading event from Bongo server. UID: %d.", str(r), e.uid)
+            except ValueError:
+                #migrated UID not found in event. skip it and continue
+                continue
+
+        if len(dict) == 0:
+            return None
+        return dict
+
+
+class Worker(threading.Thread):
+    def __init__(self, queue):
+        self.__queue = queue
+        threading.Thread.__init__(self)
+
+    def run(self):
+        while 1:
+            user = self.__queue.get()
+            if user is None:
+                log.debug("Thread '%s' completed", self.getName())
+                break # reached end of queue
+
+            print "User: %s migration START." % user
+            log.debug("User: %s migration START.", user)
+
+            try:
+                u = User(user, options.testMigrate)
+            except bongo.BongoError:
+                log.error("User '%s' not found on destination server.", user)
+                totalsCounter.Inc('usersNotMoved')
+                continue
+
+            u.MigrateMail()
+        
+            u.MigrateCalendar()
+        
+            u.MigrateAddressBook()
+        
+            totalsCounter.Update(u.counters)
+
+            print "User: %s migration FINISH." % user
+            log.debug("User: %s migration FINISH.", user)
+
+
+
+print "Welcome! Lets Migrate!"
+
+
+phoneTypes = {'0':'work', '1':'home', '2':'cell', '3':'fax', '4':'pager'}
+
+usage = "usage: %prog [options] source_ip_address"
+
+parser = OptionParser(usage=usage)
+
+parser.add_option("-g", "--no-guid-check", action="store_true", dest="noGUIDcheck", default=False,
+                  help="disable duplicate checking on destination")
+parser.add_option("-o", "--output", dest="logfilename", default="migrate.log",
+                  help="specify the output log filename [default: %default]")
+parser.add_option("-q", "--quiet", action="store_true", dest="quiet", default=False,
+                  help="disable all screen output")
+parser.add_option("-u", "--user-verify", action="store_true", dest="userVerify", default=False,
+                  help="check user existance only, on source & destination")
+parser.add_option("-U", "--users", action="store", dest="usersString", default=None, type="string",
+                  help="only migrate the specified (comma separated) users", metavar="USERNAME(S)")
+parser.add_option("-t", "--test-migrate", action="store_true", dest="testMigrate", default=False,
+                  help="test migrate. Move each user to a dummy on destination, then delete.")
+parser.add_option("-v", "--verbose", action="store_true", dest="verbose", default=False,
+                  help="enable verbose log file output")
+parser.add_option("-d", "--debug", dest="debug", action="store_true", default=False,
+                  help="enable debugging (more than verbose) log file output")
+parser.add_option("", "--reset", dest="reset", action="store_true", default=False, help=SUPPRESS_HELP)
+
+(options, args) = parser.parse_args()
+
+if len(args) != 1:
+    parser.error("incorrect number of arguments")
+
+logLevel = logging.WARNING
+if options.verbose:
+    logLevel = logging.INFO
+if options.debug:
+    logLevel = logging.DEBUG
+
+if options.usersString != None:
+    users = set(options.usersString.split(','))
+else:
+    users = None
+
+# Setup Logging to file and console
+logging.basicConfig(level=logLevel, format='%(asctime)s %(thread)d %(name)-12s %(levelname)-8s %(message)s', datefmt='%m-%d %H:%M', filename=options.logfilename, filemode='w')
+
+console = logging.StreamHandler()
+if options.quiet:
+    console.setLevel(logging.CRITICAL)
+else:
+    console.setLevel(logLevel)
+
+formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+console.setFormatter(formatter)
+logging.getLogger('').addHandler(console)
+
+log = logging.getLogger("Bongo.Migrate")
+
+if options.testMigrate:
+    log.critical("Sorry, --test-migrate option not implemented yet. Exiting.")
+    sys.exit(1)
+
+
+srcAddr = args[0]
+
+
+totalsCounter = Counters(True)
+
+try:
+    nmap = NmapClient(srcAddr)
+except socket.error, r:
+    log.critical("'%s' connecting to source server. Exiting.", r[1])
+    sys.exit(1)
+except bongo.BongoError, r:
+    log.error("'%s' connecting to source server. Exiting.", str(r))
+    sys.exit(1)
+
+usernameQue = Queue.Queue()
+
+WORKERS = 5
+workers = []
+
+# Start the worker threads
+for i in range(WORKERS):
+    wrkr = Worker(usernameQue)
+    workers.append(wrkr)
+    wrkr.start() # start a worker
+
+#
+for userName in nmap.Ulist():
+    if users != None:
+        if userName.message not in users:
+            continue    # user not listed in -U option, skip it
+
+    if options.userVerify or options.reset:
+        try:
+            u = User(userName.message, options.testMigrate)
+        except bongo.BongoError:
+            log.error("User '%s' not found on destination server.", userName.message)
+            totalsCounter.Inc('usersNotMoved')
+            continue
+    
+        if options.userVerify:
+            continue    # skip actual migration. Just testing or matching users on both systems
+    
+        if options.reset:
+            u.store.Reset()
+            continue    # skip actual migration. Reset (i.e. ERASE) the store for each user on destination server
+
+    # Queue the username for a Worker thread to migrate
+    usernameQue.put(userName.message)
+
+for i in range(WORKERS):
+    usernameQue.put(None) # add end-of-queue markers
+
+# Wait for all worker threads to finish
+for wrkr in workers:
+    wrkr.join()
+
+for name, val in totalsCounter.c.iteritems():
+    print "%s : %d" % (name, val)
+
+

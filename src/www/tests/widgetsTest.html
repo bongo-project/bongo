@@ -1,0 +1,171 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <link rel="icon" href="../img/bongo-favicon.ico" type="image/ico">
+    <link rel="icon" href="../img/bongo-favicon.png" type="image/png">
+    <style type="text/css">
+      @import url(../css/interpreter.css);
+      @import url(../css/layout.css);
+      @import url(../css/widgets.css);
+      @import url(../css/login.css);
+      @import url(../css/composer.css);
+      @import url(../css/conversation.css);
+      @import url(../css/contacts.css);
+      @import url(../css/calendar.css);
+      @import url(../css/summary.css);
+      body { overflow: auto; }
+      h1 {padding-top: 20px; padding-bottom:10px;}
+      .testholder {width:150px; margin-left: auto; margin-right: auto;}
+      .popped-out {border: 1px solid red;}
+    </style>
+
+    <title>Dragonfly Widget Tests</title>
+    <script type="text/javascript" src="../js/lib/prototype/prototype.js"></script>
+
+    <script type="text/javascript" src="../js/lib/script.aculo.us/controls.js"></script>
+    <script type="text/javascript" src="../js/lib/script.aculo.us/effects.js"></script>
+
+    <script type="text/javascript" src="../js/lib/MochiKit/MochiKit.js"></script>
+
+    <script type="text/javascript" src="../js/Dragonfly.js"></script>
+    <script type="text/javascript" src="../js/Util.js"></script>
+    <script type="text/javascript" src="../js/JCal.js"></script>
+    <script type="text/javascript" src="../js/Calendar.js"></script>
+    <script type="text/javascript" src="../js/Widgets.js"></script>
+    
+    <script type="text/javascript" src="../js/Preferences.js"></script>    
+    <script type="text/javascript" src="../js/Location.js"></script>
+    <script type="text/javascript" src="../js/Mail.js"></script>
+    <script type="text/javascript" src="../js/Composer.js"></script>
+    <script type="text/javascript">
+
+    addLoadEvent (Dragonfly.browserDetect);
+    addLoadEvent (function () {
+      new Dragonfly.HtmlZone (document.body);
+    });
+    loremipsum = '<p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
+
+    Dragonfly.PopupBuble.prototype.grow = function ()
+    {
+       this.setContent(loremipsum);
+    };
+
+    // A simple example of using an HTML buildee
+    HelloWorldWidget = function (parent) {
+        this.id = Dragonfly.nextId ('hello-world-widget');
+        if (parent) {
+            Dragonfly.HtmlBuilder.buildChild (parent, this);
+        }
+    };
+        
+    HelloWorldWidget.prototype = { };
+    
+    HelloWorldWidget.prototype.buildHtml = function (html) {
+        html.push ('<p id="', this.id, '"></p>');
+        html.addCallback (bind ('connectHtml', this));
+    }
+    
+    HelloWorldWidget.prototype.connectHtml = function (elem) {
+        $(this.id).innerHTML = 'Hello, World!';
+        return elem;
+    };
+    </script>
+</head>
+<body>
+    <h1>Timezone Selector</h1>
+    <div id="tzselect" class="testholder"></div>
+    <script type="text/javascript">
+    new Dragonfly.TzSelector ('tzselect', Dragonfly.Preferences.prefs.calendar, '/bongo/Europe/London');
+    </script>
+
+    <h1>Hello World Widget</h1>
+    <div id="helloWorldId" class="testholder"></div>
+    <script type="text/javascript">
+    new HelloWorldWidget('helloWorldId');
+    </script>
+
+    <h1>Popup Buble</h1>
+    <div style="float:left;padding-left:15px;"><a id="popup-farleft-vert">Far Left Vertical</a></div>
+    <div style="float:right;padding-right:5px;"><a id="popup-farright-vert">Far Right Vertical</a></div>
+    <div class="testholder">
+    <a id="popup-above">above</a> | 
+    <a id="popup-below">below</a> |
+    <a id="popup-vertical">vertical</a>
+    </div>
+    <div style="float:left;padding-left:15px;"><a id="popup-farleft-hori">Far Left Horizontal</a></div>
+    <div style="float:right;padding-right:5px;"><a id="popup-farright-hori">Far Right Horizontal</a></div>
+    <div class="testholder">
+    <a id="popup-left">left</a> |
+    <a id="popup-right">right</a> |
+    <a id="popup-horizontal">horizontal</a>
+    </div>
+    
+    <script type="text/javascript">
+    var popup1 = new Dragonfly.PopupBuble (null, new HelloWorldWidget());
+    $('popup-above').onclick = function (evt) { popup1.showAbove ('popup-above'); };
+    $('popup-below').onclick = function (evt) { popup1.showBelow ('popup-below'); };
+    $('popup-vertical').onclick = function (evt) { popup1.showVertical ('popup-vertical'); };
+    $('popup-farleft-vert').onclick = function (evt) { popup1.showVertical ('popup-farleft-vert'); };
+    $('popup-farright-vert').onclick = function (evt) { popup1.showVertical ('popup-farright-vert'); };
+
+    $('popup-right').onclick = function (evt) { popup1.showRight ('popup-right'); };
+    $('popup-left').onclick = function (evt) { popup1.showLeft ('popup-left'); };
+    $('popup-horizontal').onclick = function (evt) { popup1.showHorizontal ('popup-horizontal'); };
+    $('popup-farleft-hori').onclick = function (evt) { popup1.showHorizontal ('popup-farleft-hori'); };
+    $('popup-farright-hori').onclick = function (evt) { popup1.showHorizontal ('popup-farright-hori'); };      
+    </script>
+
+    <h1>Toggle Buttons</h1>
+    <div id="togglebuttons" class="testholder"></div>
+    <script type="text/javascript">
+        var labels = ['Click', 'These', 'Toggle', 'Buttons'];
+        new Dragonfly.ToggleButtons('togglebuttons', labels);
+    </script>
+
+    <h1>Notebook</h1>
+    <div id="notebook" class="testholder"></div>
+    <script type="text/javascript">
+    addLoadEvent (function () {
+    nb = new Dragonfly.Notebook();
+
+    var html = new Dragonfly.HtmlBuilder();
+    new HelloWorldWidget (html);
+    html.set (nb.appendPage ('One'));
+
+    html = new Dragonfly.HtmlBuilder (loremipsum, loremipsum);
+    html.set (nb.appendPage ('Two'));
+
+    html = new Dragonfly.HtmlBuilder (loremipsum);
+    html.set (nb.appendPage ('Three'));
+
+    html = new Dragonfly.HtmlBuilder ();
+    nb.buildHtml (html);
+    html.set ('notebook');
+    });
+    </script>
+
+    <h1>List Selector</h1>
+    <div id="listselector" class="testholder"></div>
+    <script type="text/javascript">
+        var labels = list(range(31));
+        new Dragonfly.ListSelector('listselector', labels);
+    </script>
+
+<!--
+    <h1>Occurrence Editor</h1>
+    <div id="occurrenceeditor" class="testholder"></div>
+    <script type="text/javascript">
+        new Dragonfly.Calendar.OccurrenceEditor (null, 'occurrenceeditor');
+    </script>
+-->
+
+    <h1>Message Attachment</h1>
+    <div id="attachment" class="testholder"></div>
+    <script type="text/javascript">
+      addLoadEvent (function () {
+      new Dragonfly.Mail.AttachmentTester ('attachment');
+      });
+    </script>
+</body>
+</html>

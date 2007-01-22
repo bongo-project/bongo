@@ -1,0 +1,93 @@
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@U ()
+@F (MAILER DAEMON) ()
+@I (<20060106222023.BA7ADD02CA31@dilbert.clovisusd.k12.example.com>)
+@S (Banned file: doc.scr in mail from you)
+@U ()
+@T (peter@novell.example.com)
+@D ()
+
+X-Auth-No: 
+X-Mailbox: INBOX
+Return-Path: <peter@squirrel.boston.example.com>
+Received: from squirrel.boston.example.com not authenticated [127.0.0.1]
+	by squirrel.boston.example.com with NetMail SMTP Agent $Revision: 1.7 $;
+	Fri, 17 Mar 2006 14:19:41 -0500
+Received: by squirrel.boston.example.com (Postfix, from userid 510)
+	id 8838C22032E; Fri, 17 Mar 2006 14:19:41 -0500 (EST)
+Received: from imap.novell.example.com [130.57.4.228]
+	by localhost with IMAP (fetchmail-6.2.5.2)
+	for peter@localhost (single-drop); Fri, 17 Mar 2006 14:19:41 -0500 (EST)
+Received: from HECTOR.novell.example.com ([130.57.1.28])
+	by sinclair.provo.novell.example.com with ESMTP; Fri, 06 Jan 2006 15:20:28 -0700
+Received: from dilbert.clovisusd.k12.example.com (unverified [204.110.45.94]) by HECTOR.novell.example.com
+ (Vircom SMTPRS 4.0.346.0) with ESMTP id <D0056512960@HECTOR.novell.example.com> for <peter@novell.example.com>;
+ Fri, 6 Jan 2006 15:24:27 -0700
+MIME-Version: 1.0
+From: MAILER DAEMON <>
+Message-Id: <20060106222023.BA7ADD02CA31@dilbert.clovisusd.k12.example.com>
+Subject: Banned file: doc.scr in mail from you
+Content-Type: multipart/report; report-type=delivery-status;
+    charset=utf-8;
+    boundary="----------=_1136586024-19744-15"
+To: <peter@novell.example.com>
+Date: Fri,  6 Jan 2006 14:20:24 -0800 (PST)
+
+This is a multi-part message in MIME format...
+
+------------=_1136586024-19744-15
+Content-Type: text/plain; charset="utf-8"
+Content-Disposition: inline
+Content-Transfer-Encoding: base64
+
+QkFOTkVEIEZJTEVOQU1FIEFMRVJUCgpZb3VyIG1lc3NhZ2UgdG86IGJhcmJh
+cmFiZXRoZWxAY2xvdmlzdXNkLmsxMi5jYS51cwp3YXMgYmxvY2tlZCBieSBv
+dXIgU3BhbSBGaXJld2FsbC4gVGhlIGVtYWlsIHlvdSBzZW50IHdpdGggdGhl
+IGZvbGxvd2luZyBzdWJqZWN0IGhhcyBOT1QgQkVFTiBERUxJVkVSRUQ6CgpT
+dWJqZWN0OiBHb29kIGRheQoKQW4gYXR0YWNobWVudCBpbiB0aGF0IG1haWwg
+d2FzIG9mIGEgZmlsZSB0eXBlIHRoYXQgdGhlIFNwYW0gRmlyZXdhbGwgaXMg
+c2V0IHRvIGJsb2NrLgoKCg==
+
+------------=_1136586024-19744-15
+Content-Type: message/delivery-status
+Content-Disposition: inline
+Content-Transfer-Encoding: 7bit
+Content-Description: Delivery error report
+
+Reporting-MTA: dns; dilbert.clovisusd.k12.example.com
+Received-From-MTA: smtp; dilbert.clovisusd.k12.example.com ([127.0.0.1])
+Arrival-Date: Fri,  6 Jan 2006 14:20:24 -0800 (PST)
+
+Final-Recipient: rfc822; barbarabethel@clovisusd.k12.example.com
+Action: failed
+Status: 5.7.1
+Diagnostic-Code: smtp; 550 5.7.1 Message content rejected, id=19744-01-32 - BANNED: doc.scr
+Last-Attempt-Date: Fri,  6 Jan 2006 14:20:24 -0800 (PST)
+
+------------=_1136586024-19744-15
+Content-Type: text/rfc822-headers
+Content-Disposition: inline
+Content-Transfer-Encoding: 7bit
+Content-Description: Undelivered-message headers
+
+Received: from novell.example.com (unknown [172.17.48.203])
+	by dilbert.clovisusd.k12.example.com (Spam Firewall) with ESMTP id BA7ADD02CA31
+	for <barbarabethel@clovisusd.k12.example.com>; Fri,  6 Jan 2006 14:20:23 -0800 (PST)
+From: peter@novell.example.com
+To: barbarabethel@clovisusd.k12.example.com
+Subject: Good day
+Date: Fri, 6 Jan 2006 14:22:06 -0800
+MIME-Version: 1.0
+Content-Type: multipart/mixed;
+	boundary="----=_NextPart_000_0009_C3AA5150.4CF3DC0D"
+X-Priority: 3
+X-MSMail-Priority: Normal
+Message-Id: <20060106222023.BA7ADD02CA31@dilbert.clovisusd.k12.example.com>
+
+------------=_1136586024-19744-15--
