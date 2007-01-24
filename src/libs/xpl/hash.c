@@ -19,7 +19,9 @@ GCRY_THREAD_OPTION_PTHREAD_IMPL;
 void 
 XplHashInit(void) 
 {
+	const char *gcry_version;
 	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+	gcry_version = gcry_check_version(NULL);
 }
 
 /**

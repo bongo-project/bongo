@@ -809,7 +809,7 @@ HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char
     unsigned char digest[NMAP_CRED_DIGEST_SIZE];
     unsigned long i;
     unsigned long len;
-    MD5_CTX mdContext;
+    xpl_hash_context ctx;
 
     if (Credential && DN && (DN[0] == '\\') && ((delim = strchr(DN + 1, '\\')) != NULL)) {
         len = strlen(Credential);
@@ -818,10 +818,10 @@ HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char
             dstPtr = Hash;
             dstEnd = Hash + NMAP_HASH_SIZE;
             
-            MD5_Init(&mdContext);
-            MD5_Update(&mdContext, srcPtr,  NMAP_CRED_CHUNK_SIZE);    
-            MD5_Update(&mdContext, DN, delim - DN);
-            MD5_Final(digest, &mdContext);
+            XplHashNew(&ctx, XPLHASH_MD5);
+            XplHashWrite(&ctx, srcPtr, NMAP_CRED_CHUNK_SIZE);
+            XplHashWrite(&ctx, DN, delim - DN);
+            XplHashFinalBytes(&ctx, digest, XPLHASH_MD5BYTES_LENGTH);
 
             srcPtr += NMAP_CRED_CHUNK_SIZE;
 
@@ -833,10 +833,10 @@ HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char
             }
 
              do {
-                MD5_Init(&mdContext);
-                MD5_Update(&mdContext, srcPtr,  NMAP_CRED_CHUNK_SIZE);    
-                MD5_Update(&mdContext, Hash, dstPtr - Hash);
-                MD5_Final(digest, &mdContext);
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, srcPtr, NMAP_CRED_CHUNK_SIZE);
+                XplHashWrite(&ctx, Hash, dstPtr - Hash);
+                XplHashFinalBytes(&ctx, digest, XPLHASH_MD5BYTES_LENGTH);
 
                 srcPtr += NMAP_CRED_CHUNK_SIZE;
 

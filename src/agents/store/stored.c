@@ -228,6 +228,7 @@ _XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
+    XplHashInit();
     strcpy(StoreAgent.nmapAddress, "127.0.0.1");
 
     /* Initialize the Bongo libraries */
@@ -268,8 +269,6 @@ _XplServiceMain(int argc, char *argv[])
                          MsgGetUnprivilegedUser());
         return -1;
     }
-
-    XplHashInit();
 
     /* Create a thread pool for managing connections */
 
