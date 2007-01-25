@@ -767,7 +767,7 @@ Dragonfly.sendFeedback = function ()
 
     var msg = {
         from: Mail.getFromAddress(),
-        to: 'bongopro-feedback@forge.provo.novell.com',
+        to: 'bongo-feedback',
         subject: 'Feedback on Bongo version: ' + Dragonfly.version,
         body: [
         'Thanks for sending feedback!  If you are reporting a problem, ',
