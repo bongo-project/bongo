@@ -1,7 +1,6 @@
 #include <config.h>
 #include <xpl.h>
 #include <bongoutil.h>
-#include <gnutls/openssl.h>
 
 #include <memmgr.h>
 
@@ -22,6 +21,7 @@ const int debugging = 0;
 
 int
 main (int argc, char** argv) {
+    XplInit();
     if (argc != 2) {
         XplConsolePrintf("Usage: ./mkauthhash.c <salt>\n");
         return 1;
@@ -32,9 +32,8 @@ main (int argc, char** argv) {
         unsigned char access[NMAP_HASH_SIZE]; // from libs/nmap/nmap.c
         MDBHandle     directoryHandle;        // ditto
         MDBValueStruct *v;
-        unsigned char digest[16];
-        unsigned char message[33];
-        MD5_CTX context;
+        unsigned char message[XPLHASH_MD5_LENGTH];
+        xpl_hash_context ctx;
         int i;
         BOOL ccode;
 
@@ -87,16 +86,10 @@ main (int argc, char** argv) {
         MDBDestroyValueStruct(v);
 
         // mix access with salt
-        MD5_Init(&context);
-        MD5_Update(&context, argv[1], strlen(argv[1]));
-        MD5_Update(&context, access, NMAP_HASH_SIZE);
-        MD5_Final(digest, &context);
-
-        // format and print the hash
-        for (i = 0; i<16; i++) {
-            sprintf(message + i*2, "%02x", digest[i]);
-        }
-        message[32] = '\0';
+        XplHashNew(&ctx, XPLHASH_MD5);
+        XplHashWrite(&ctx, argv[1], strlen(argv[1]));
+        XplHashWrite(&ctx, access, NMAP_HASH_SIZE);
+        XplHashFinal(&ctx, XPLHASH_LOWERCASE, message, XPLHASH_MD5_LENGTH);
         XplConsolePrintf("%s\n", message);
     }
     return 0;

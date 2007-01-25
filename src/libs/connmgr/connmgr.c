@@ -31,7 +31,7 @@
 
 struct {
     unsigned char access[CM_HASH_SIZE];
-    unsigned char pass[32 + 1];
+    unsigned char pass[XPLHASH_MD5_LENGTH];
     MDBHandle directoryHandle;
 
     BOOL debug;
@@ -82,21 +82,15 @@ CMSendCommand(ConnMgrCommand *command, ConnMgrResult *result)
         }
 
         if (result->result == CM_RESULT_MUST_AUTH) {
-            unsigned char digest[16];
-            MD5_CTX       context;
-            unsigned long i;
+            xpl_hash_context ctx;
 
-            /* Ensure that we don't walk off the edge of the buffer if garbage was sent */
+            // Ensure that we don't walk off the edge of the buffer if garbage was sent
             result->detail.salt[sizeof(result->detail.salt) - 1] = '\0';
 
-            MD5_Init(&context);
-            MD5_Update(&context, result->detail.salt, strlen(result->detail.salt));
-            MD5_Update(&context, CMLibrary.access, CM_HASH_SIZE);
-
-            MD5_Final(digest, &context);
-            for (i = 0; i < 16; i++) {
-                sprintf(command->pass + (i * 2), "%02x", digest[i]);
-            }
+            XplHashNew(&ctx, XPLHASH_MD5);
+            XplHashWrite(&ctx, result->detail.salt, strlen(result->detail.salt));
+            XplHashWrite(&ctx, CMLibrary.access, CM_HASH_SIZE);
+            XplHashFinal(&ctx, XPLHASH_LOWERCASE, command->pass, XPLHASH_MD5_LENGTH);
 
             /* Store the password so we don't have to generate it every time */
             XplRWWriteLockAcquire(&CMLibrary.lock);

@@ -2561,6 +2561,7 @@ XplServiceMain(int argc, char *argv[])
    XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
    return 1;
     }
+    XplInit();
 
     POP3.id.main = XplGetThreadID();
     POP3.id.group = XplGetThreadGroupID();

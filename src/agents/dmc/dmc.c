@@ -1830,10 +1830,9 @@ DMCCommandRegister(void *param)
     unsigned char *ptr;
     unsigned char *ptr2;
     unsigned char salt[(8 * sizeof(unsigned long)) + 1];
-    unsigned char digest[16];
-    unsigned char signature[(sizeof(digest) * 2) + 1];
+    unsigned char signature[XPLHASH_MD5_LENGTH];
     unsigned char identity[MDB_MAX_OBJECT_CHARS + 1];
-    MD5_CTX mdContext;
+    xpl_hash_context ctx;
     DMCClient *client = param;
 
     if (client->state == CLIENT_STATE_FRESH) {
@@ -1863,15 +1862,11 @@ DMCCommandRegister(void *param)
                             && ((ccode = ConnFlush(client->user)) != -1) 
                             && ((ccode = ConnReadAnswer(client->user, client->buffer, CONN_BUFSIZE)) != -1) 
                             && (strlen(client->buffer) == sizeof(signature) - 1)) {
-                        MD5_Init(&mdContext);
-                        MD5_Update(&mdContext, salt, strlen(salt));
-                        MD5_Update(&mdContext, DMC.credential, NMAP_HASH_SIZE);
-                        MD5_Update(&mdContext, identity, strlen(identity));
-                        MD5_Final(digest, &mdContext);
-
-                        for (i = 0; i < sizeof(digest); i++) {
-                            sprintf(signature + (i * 2),"%02x", digest[i]);
-                        }
+                        XplHashNew(&ctx, XPLHASH_MD5);
+                        XplHashWrite(&ctx, salt, strlen(salt));
+                        XplHashWrite(&ctx, DMC.credential, NMAP_HASH_SIZE);
+                        XplHashWrite(&ctx, identity, strlen(identity));
+                        XplHashFinal(&ctx, XPLHASH_LOWERCASE, signature, XPLHASH_MD5_LENGTH);
 
                         if ((strcmp(signature, client->buffer) == 0) 
                                 && (AddManagedAgent(client, identity, (short) port, (short) sslPort, signature) != -1)) {
@@ -3582,6 +3577,7 @@ int XplServiceMain(int argc, char *argv[])
     int ccode;
     XplThreadID id;
 
+    XplInit();
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
 	XplConsolePrintf("bongodmc: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
 	return 1;
@@ -3758,9 +3754,8 @@ DMCCommandAuth(void *param)
 {
     int i;
     unsigned char *ptr;
-    unsigned char digest[16];
-    unsigned char credential[33];
-    MD5_CTX mdContext;
+    xpl_hash_context ctx;
+    unsigned char credential[XPLHASH_MD5_LENGTH];
     DMCClient *client = param;
     int ccode = -1;
 
@@ -3769,13 +3764,10 @@ DMCCommandAuth(void *param)
             ptr = strchr(client->buffer + 5, ' ');
             if (!ptr) {
                 ptr = &client->buffer[5];
-                MD5_Init(&mdContext);
-                MD5_Update(&mdContext, DMC.rdn, strlen(DMC.rdn));
-                MD5_Update(&mdContext, DMC.credential, DMC_HASH_SIZE);
-                MD5_Final(digest, &mdContext);
-                for (i = 0; i < 16; i++) {
-                    sprintf(credential + (i * 2), "%02x", digest[i]);
-                }
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, DMC.rdn, strlen(DMC.rdn));
+                XplHashWrite(&ctx, DMC.credential, DMC_HASH_SIZE);
+                XplHashFinal(&ctx, XPLHASH_LOWERCASE, credential, XPLHASH_MD5_LENGTH);
                 if (QuickCmp(credential, ptr)) {
                     for (i = 0; i < (int) DMC.server.managed.count; i++) {
                         if (XplStrCaseCmp(

@@ -392,6 +392,7 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n" AGENT_NAME ": exiting.\n", MsgGetUnprivilegedUser());
         return -1;
     }
+    XplInit();
 
     /* Initialize the Bongo libraries */
     ccode = BongoAgentInit(&Alarm.agent, AGENT_NAME, AGENT_DN, DEFAULT_CONNECTION_TIMEOUT);

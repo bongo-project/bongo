@@ -11,10 +11,19 @@
 #include <gcrypt.h>
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
+/** 
+ * Initialise the XPL library. Should be called once in each program that
+ * uses XPL.
+ */
+void
+XplInit(void)
+{
+	XplHashInit();
+}
+
 /**
- * Initialise the hashing subsystem for a program. Call this once at the
- * start of the program before using hash functions - this is  needed to 
- * ensure thread safety.
+ * Initialise the hashing subsystem for a program. This is usually part of
+ * the XplInit() process - this is sort-of private. 
  */
 void 
 XplHashInit(void) 

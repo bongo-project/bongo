@@ -2826,10 +2826,8 @@ HandleConnection (void *param)
 
     case 4242:{
             unsigned char *ptr, *salt;
-            MD5_CTX mdContext;
-            unsigned char digest[16];
-            unsigned char HexDigest[33];
-            int i;
+            xpl_hash_context ctx;
+            unsigned char digest[XPLHASH_MD5_LENGTH];
 
             ptr = strchr (Answer, '<');
             if (ptr) {
@@ -2839,14 +2837,12 @@ HandleConnection (void *param)
                     *ptr = '\0';
                 }
 
-                MD5_Init(&mdContext);
-                MD5_Update(&mdContext, salt, strlen(salt));
-                MD5_Update(&mdContext, NMAPHash, NMAP_HASH_SIZE);
-                MD5_Final(digest, &mdContext);
-                for (i=0; i<16; i++) {
-                    sprintf(HexDigest+(i*2),"%02x",digest[i]);
-                }
-                ReplyInt = sprintf(Answer, "AUTH SYSTEM %s\r\n", HexDigest);
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, salt, strlen(salt));
+                XplHashWrite(&ctx, NMAPHash, NMAP_HASH_SIZE);
+                XplHashFinal(&ctx, XPLHASH_LOWERCASE, digest, XPLHASH_MD5_LENGTH);
+
+                ReplyInt = sprintf(Answer, "AUTH SYSTEM %s\r\n", digest);
 
                 SendNMAPServer (Client, Answer, ReplyInt);
                 if (GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE) ==
@@ -6994,10 +6990,8 @@ RegisterNMAPServer (void *QSIn)
 
     case 4242:{
             unsigned char *ptr, *salt;
-            MD5_CTX mdContext;
-            unsigned char digest[16];
-            unsigned char HexDigest[33];
-            int i;
+            xpl_hash_context ctx;
+            unsigned char digest[XPLHASH_MD5_LENGTH];
 
             ptr = strchr (Answer, '<');
             if (ptr) {
@@ -7007,14 +7001,12 @@ RegisterNMAPServer (void *QSIn)
                     *ptr = '\0';
                 }
 
-                MD5_Init(&mdContext);
-                MD5_Update(&mdContext, salt, strlen(salt));
-                MD5_Update(&mdContext, NMAPHash, NMAP_HASH_SIZE);
-                MD5_Final(digest, &mdContext);
-                for (i = 0; i < 16; i++) {
-                    sprintf(HexDigest+(i*2),"%02x",digest[i]);
-                }
-                ReplyInt = sprintf(Answer, "AUTH SYSTEM %s\r\n", HexDigest);
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, salt, strlen(salt));
+                XplHashWrite(&ctx, NMAPHash, NMAP_HASH_SIZE);
+                XplHashFinal(&ctx, XPLHASH_LOWERCASE, digest, XPLHASH_MD5_LENGTH);
+
+                ReplyInt = sprintf(Answer, "AUTH SYSTEM %s\r\n", digest);
 
                 SendNMAPServer (Client, Answer, ReplyInt);
                 if (GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE) ==
@@ -8750,6 +8742,7 @@ XplServiceCode (SMTPShutdownSigHandler)
              MsgGetUnprivilegedUser ());
         return 1;
     }
+    XplInit();
 
     XplSignalHandler (SMTPShutdownSigHandler);
 

@@ -4319,6 +4319,7 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf("bongoimap: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
         return 1;
     }
+    XplInit();
 
     XplSignalHandler(IMAPShutdownSigHandler);
 

@@ -22,7 +22,6 @@
 #if 0
 #include <config.h>
 #include <xpl.h>
-#include <gnutls/openssl.h>
 #include <msgapi.h>
 #include <gatekeeper.h>
 #include <gklib.h>

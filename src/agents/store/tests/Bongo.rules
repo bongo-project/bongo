@@ -16,7 +16,6 @@ checktest_store_LDADD := $(CHECK_LIBS)			   \
 	libbongoutil.la					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
-	$(GNUTLS_OPENSSL_LIBS)				   \
 	$(LIBSQLITE_LIBS)				   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)
@@ -42,7 +41,6 @@ mkauthhash_LDADD =					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
 	$(LIBSQLITE_LIBS)				   \
-	$(GNUTLS_OPENSSL_LIBS)				   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)
 

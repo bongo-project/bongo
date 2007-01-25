@@ -878,7 +878,7 @@ ManagementDMCRegister(void)
 {
     int err;
     unsigned long used;
-    MD5_CTX mdContext;
+    xpl_hash_context ctx;
     unsigned char buffer[CONN_BUFSIZE + 1];
 
     if (Management.dmc.pConn == NULL) {
@@ -948,26 +948,14 @@ ManagementDMCRegister(void)
                     }
                 }
                 if (err != -1) {
-                    int i;
-
                     /* Generate and send our signature */
-                    MD5_Init(&mdContext);
-                    MD5_Update(&mdContext, buffer, strlen(buffer));
-                    MD5_Update(
-                            &mdContext,
-                            Management.dmc.credential,
-                            NMAP_HASH_SIZE);
-                    MD5_Update(
-                            &mdContext,
-                            Management.server.dn,
-                            strlen(Management.server.dn));
-                    MD5_Final(buffer, &mdContext);
-                    for (i = 0; i < 16; i++) {
-                        sprintf(
-                                Management.server.signature + (i * 2),
-                                "%02x",
-                                buffer[i]);
-                    }
+                    XplHashNew(&ctx, XPLHASH_MD5);
+                    XplHashWrite(&ctx, buffer, strlen(buffer));
+                    XplHashWrite(&ctx, Management.dmc.credential, NMAP_HASH_SIZE);
+                    XplHashWrite(&ctx, Management.server.dn, strlen(Management.server.dn));
+                    XplHashFinal(&ctx, XPLHASH_LOWERCASE, 
+                          Management.server.signature, XPLHASH_MD5_LENGTH);
+
                     err = ConnWriteF(
                             Management.dmc.pConn,
                             "%s\r\n",

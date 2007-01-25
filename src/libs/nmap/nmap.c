@@ -1451,12 +1451,10 @@ NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length)
         }
 
         case 4242: {
-            int                i;
-            unsigned char    *ptr;
-            unsigned char    *salt;
-            unsigned char    digest[16];
-            unsigned char    message[33];
-            MD5_CTX        context;
+            unsigned char    	*ptr;
+            unsigned char    	*salt;
+            unsigned char    	message[XPLHASH_MD5_LENGTH];
+            xpl_hash_context	ctx;
 
             ptr = strchr(response, '<');
             if (ptr) {
@@ -1466,26 +1464,19 @@ NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length)
                     *ptr = '\0';
                 }
 
-                MD5_Init(&context);
-
-                MD5_Update(&context, salt, strlen(salt));
-                MD5_Update(&context, NMAPLibrary.access, NMAP_HASH_SIZE);
-
-                MD5_Final(digest, &context);
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, salt, strlen(salt));
+                XplHashWrite(&ctx, NMAPLibrary.access, NMAP_HASH_SIZE);
+                XplHashFinal(&ctx, XPLHASH_LOWERCASE, message, XPLHASH_MD5_LENGTH);
 
                 NMAPEncrypt(conn, response, length, FALSE);
 
                 ConnWrite(conn, "AUTH SYSTEM ", 12);
-
-                for (i = 0; i < 16; i++) {
-                    sprintf(message + (i * 2), "%02x", digest[i]);
-                }
-
                 ConnWrite(conn, message, 32);
                 ConnWrite(conn, "\r\n", 2);
 
-                if ((i = ConnFlush(conn)) == 46) {
-                    if ((i = NMAPReadAnswer(conn, response, length, TRUE)) == 1000) {
+                if ((ccode = ConnFlush(conn)) == 46) {
+                    if ((ccode = NMAPReadAnswer(conn, response, length, TRUE)) == 1000) {
                         return(TRUE);
                     }
                 }
@@ -1518,12 +1509,10 @@ NMAPAuthenticate(Connection *conn, unsigned char *response, int length)
         }
 
         case 4242: {
-            int                i;
-            unsigned char    *ptr;
-            unsigned char    *salt;
-            unsigned char    digest[16];
-            unsigned char    message[33];
-            MD5_CTX        context;
+            unsigned char    	*ptr;
+            unsigned char    	*salt;
+            unsigned char    	message[XPLHASH_MD5_LENGTH];
+            xpl_hash_context	ctx;
 
             ptr = strchr(response, '<');
             if (ptr) {
@@ -1533,26 +1522,19 @@ NMAPAuthenticate(Connection *conn, unsigned char *response, int length)
                     *ptr = '\0';
                 }
 
-                MD5_Init(&context);
-
-                MD5_Update(&context, salt, strlen(salt));
-                MD5_Update(&context, NMAPLibrary.access, NMAP_HASH_SIZE);
-
-                MD5_Final(digest, &context);
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, salt, strlen(salt));
+                XplHashWrite(&ctx, NMAPLibrary.access, NMAP_HASH_SIZE);
+                XplHashFinal(&ctx, XPLHASH_LOWERCASE, message, XPLHASH_MD5_LENGTH);
 
                 NMAPEncrypt(conn, response, length, FALSE);
 
                 ConnWrite(conn, "AUTH SYSTEM ", 12);
-
-                for (i = 0; i < 16; i++) {
-                    sprintf(message + (i * 2), "%02x", digest[i]);
-                }
-
                 ConnWrite(conn, message, 32);
                 ConnWrite(conn, "\r\n", 2);
 
-                if ((i = ConnFlush(conn)) == 46) {
-                    if ((i = NMAPReadAnswer(conn, response, length, TRUE)) == 1000) {
+                if ((ccode = ConnFlush(conn)) == 46) {
+                    if ((ccode = NMAPReadAnswer(conn, response, length, TRUE)) == 1000) {
                         return(TRUE);
                     }
                 }

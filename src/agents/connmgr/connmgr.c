@@ -324,23 +324,18 @@ HandleConnection(void *param)
             }
 
             if (!found) {
-                MD5_CTX md5;
-                unsigned char handle[32 + 1];
-                unsigned char digest[16];
+                xpl_hash_context ctx;
+                unsigned char handle[XPLHASH_MD5_LENGTH];
 
                 XplRWReadLockRelease(&ConnMgr.authHandles.lock);
 
                 snprintf(salt, sizeof(salt), "%x%s%x", XplGetThreadID(), ConnMgr.server.host, (unsigned int)time(NULL)); 
                 salt[sizeof(salt) - 1] = 0;
 
-                MD5_Init(&md5);
-                MD5_Update(&md5, salt, strlen(salt));
-                MD5_Update(&md5, ConnMgr.server.hash, CM_HASH_SIZE);
-                MD5_Final(digest, &md5);
-
-                for (i = 0; i < 16; i++) {
-                    sprintf(handle + (i * 2), "%02x", digest[i]);
-                }
+                XplHashNew(&ctx, XPLHASH_MD5);
+                XplHashWrite(&ctx, salt, strlen(salt));
+                XplHashWrite(&ctx, ConnMgr.server.hash, CM_HASH_SIZE);
+                XplHashFinal(&ctx, XPLHASH_LOWERCASE, handle, XPLHASH_MD5_LENGTH);
 
                 XplRWWriteLockAcquire(&ConnMgr.authHandles.lock);
                 /* Generate the salt and the pass */
@@ -1189,6 +1184,7 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf("bongoconnmgr: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
         return(-1);
     }
+    XplInit();
     ConnMgr.id.main = XplGetThreadID();
     ConnMgr.id.group = XplGetThreadGroupID();
 

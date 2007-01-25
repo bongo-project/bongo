@@ -645,13 +645,11 @@ MsgDomainExists(const unsigned char *domain, unsigned char *domainObjectDN)
 EXPORT void 
 MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t length)
 {
-    int i;
     unsigned char *ptr;
     unsigned char *salt;
-    unsigned char digest[16];
     static unsigned char access[NMAP_HASH_SIZE] = { '\0' };
-    MD5_CTX context;
     MDBValueStruct *v;
+    xpl_hash_context ctx;
 
     if (access[0] == '\0') {
 	if (MsgGlobal.directoryHandle) {
@@ -674,20 +672,10 @@ MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t len
 	    *ptr = '\0';
 	}
 
-	MD5_Init(&context);
-
-	MD5_Update(&context, salt, strlen(salt));
-	MD5_Update(&context, access, NMAP_HASH_SIZE);
-
-	MD5_Final(digest, &context);
-
-	ptr = reply;
-	for (i = 0; i < 16; i++) {
-	    sprintf(ptr, "%02x", digest[i]);
-
-	    ptr += 2;
-	}
-	*ptr = '\0';
+        XplHashNew(&ctx, XPLHASH_MD5);
+        XplHashWrite(&ctx, salt, strlen(salt));
+        XplHashWrite(&ctx, access, NMAP_HASH_SIZE);
+        XplHashFinal(&ctx, XPLHASH_LOWERCASE, reply, XPLHASH_MD5_LENGTH);
     } else if (reply) {
 	*reply = '\0';
     }

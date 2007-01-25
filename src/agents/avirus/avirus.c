@@ -1364,6 +1364,7 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf("antivirus: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
         return(1);
     }
+    XplInit();
 
     XplSignalHandler(SignalHandler);
 

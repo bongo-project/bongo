@@ -36,6 +36,7 @@ typedef struct _xpl_hash_context {
 #define	XPLHASH_MD5_LENGTH		(16*2)+1
 #define	XPLHASH_SHA1_LENGTH		(20*2)+1
 
+void XplInit(void);
 void XplHashInit(void);
 
 void XplHashNew(xpl_hash_context *ctx, xpl_hash_type type);

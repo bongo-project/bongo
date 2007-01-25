@@ -265,6 +265,7 @@ XplServiceMain(int argc, char *argv[])
                          MsgGetUnprivilegedUser());
         return -1;
     }
+    XplInit();
 
     /* Initialize the Bongo libraries */
     ccode = BongoAgentInit(&AddressbookAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60));

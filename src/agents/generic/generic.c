@@ -193,6 +193,7 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n" AGENT_NAME ": exiting.\n", MsgGetUnprivilegedUser());
         return -1;
     }
+    XplInit();
 
     strcpy(GAgent.nmapAddress, "127.0.0.1");
 

@@ -985,6 +985,7 @@ XplServiceMain(int argc, char *argv[])
     XplThreadID        id;
 
     XplSignalHandler(SignalHandler);
+    XplInit();
 
     MailProxy.force = FALSE;
     MailProxy.runInterval = 3600 * 3;
