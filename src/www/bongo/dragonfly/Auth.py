@@ -122,6 +122,10 @@ def AcceptCredentials(req):
 
     if currentUser:
         authCookieName = GetAuthCookieName(currentUser)
+        authCookie = reqCookies.get(authCookieName, None)
+
+    # different cookie libs give us different results?!
+    if not authCookie:
         authCookie = reqCookies.get(authCookieName.lower(), None)
 
     if not authCreds and not authCookie:
