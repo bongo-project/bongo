@@ -122,11 +122,17 @@ def AcceptCredentials(req):
 
     if currentUser:
         authCookieName = GetAuthCookieName(currentUser)
-        authCookie = reqCookies.get(authCookieName, None)
+        req.log.debug("currentUser is %s", currentUser)
+    else:
+        req.log.debug("Unable to figure out currentUser")
 
     # different cookie libs give us different results?!
-    if not authCookie:
-        authCookie = reqCookies.get(authCookieName.lower(), None)
+    if authCookieName:
+        authCookie = reqCookies.get(authCookieName, None)
+        if not authCookie:
+            authCookie = reqCookies.get(authCookieName.lower(), None)
+        if not authCookie:
+            req.log.debug("Unable to get cookie %s for %s", authCookieName, currentUser)
 
     if not authCreds and not authCookie:
         # no creds and no cookie -> anonymous auth, so allow the
