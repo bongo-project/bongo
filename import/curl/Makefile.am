@@ -27,7 +27,7 @@ EXTRA_DIST = CHANGES COPYING maketgz reconf curl-config.in \
  curl-style.el sample.emacs RELEASE-NOTES buildconf buildconf.bat libcurl.pc.in
 
 SUBDIRS = lib
-DIST_SUBDIRS = $(SUBDIRS) tests include packages docs
+DIST_SUBDIRS = $(SUBDIRS) tests include packages 
 
 dist-hook:
 	rm -rf $(top_builddir)/tests/log
@@ -39,10 +39,8 @@ dist-hook:
 	done)
 
 html:
-	cd docs; make html
 
 pdf:
-	cd docs; make pdf
 
 check:
 

@@ -1926,9 +1926,6 @@ fi
 AM_CONDITIONAL(CROSSCOMPILING, test x$cross_compiling = xyes)
 
 AC_CONFIG_FILES([Makefile \
-	   docs/Makefile \
-           docs/examples/Makefile \
-           docs/libcurl/Makefile \
 	   include/Makefile \
 	   include/curl/Makefile \
            lib/Makefile \
