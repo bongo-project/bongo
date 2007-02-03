@@ -2,6 +2,9 @@ import os
 import logging
 import shutil
 import socket
+import tempfile
+
+from string import Template
 
 from bongo.cmdparse import Command
 
@@ -138,10 +141,23 @@ class SetupSslCommand(Command):
 
         self.add_option("-c", "--cert")
         self.add_option("-k", "--key")
+        self.add_option("-i", "--ip")
+        self.add_option("-d", "--domain")
 
     def run(self, options, args):
+        ct = os.popen('which certtool').read().strip()
+        if ct is '':
+            self.error("Cannot find GNUTLS certtool")
+            return
+
         certpath = Xpl.DEFAULT_CERT_PATH
         keypath = Xpl.DEFAULT_KEY_PATH
+        rsapath = Xpl.DEFAULT_RSAPARAMS_PATH
+        dhpath = Xpl.DEFAULT_DHPARAMS_PATH
+        rngpath = Xpl.DEFAULT_RANDSEED_PATH
+
+        cmds = []
+        t, template = tempfile.mkstemp()
 
         if options.cert and options.key:
             self.log.info("Copying the requested certificate and key into place")
@@ -153,20 +169,30 @@ class SetupSslCommand(Command):
 
             shutil.copyfile(options.cert, certpath)
             shutil.copyfile(options.key, keypath)
+        else:
+            self.log.info("Generating a new cert/key pair")
+            cmds.append([keypath, '--generate-privkey --bits 1024'])
+            cmds.append([certpath, ' -s --load-privkey ' + keypath + ' --template ' + template])
+            format = Template("organization = \"Bongo Project\"" \
+                    "unit = \"Fake Certs Dept.\"\nstate = \"None\"\ncountry = US \n" \
+                    "cn = ${cn} \nserial = 0001 \nexpiration_days = 700 \n" \
+                    "dns_name = ${dns} \nip_address = ${ip} \nsigning_key")
+            os.write(t, format.substitute(cn = options.domain, dns = options.domain, ip = options.ip))
 
-            return
+        os.close(t)
+	cmds.append([dhpath, '--generate-dh-params --bits 1024'])
+        cmds.append([rsapath, '--generate-privkey --bits 512'])
 
-        self.log.info("Generating a new cert/key pair")
+        self.log.info("Creating encryption data. *This may take some time!*")
+        for cmdpair in cmds:
+            path, cmdopts = cmdpair
+            command = ct + ' ' + cmdopts + ' --outfile ' + path + ' > /dev/null'
+            if not os.path.exists(os.path.dirname(path)):
+                os.makedirs(path)
+            self.log.info("Creating %s...", path)
+            self.log.debug("running: %s", command)
+            ret = os.system(command) / 256
+            if ret:
+                self.error("Error!")
 
-        # ensure that the directories exist for the cert and key files
-        for p in certpath, keypath:
-            if not os.path.exists(os.path.dirname(p)):
-                os.makedirs(p)
-
-        cmd = "openssl req -x509 -nodes -subj /C=US/ST=foo/L=bar/CN=%s -newkey rsa:1024 -keyout %s -out %s" % (socket.gethostname(), keypath, certpath)
-
-        self.log.debug("running %s", cmd)
-        cmdret = os.system(cmd) / 256
-
-        if cmdret:
-            self.error("error running openssl")
+        os.remove(template)

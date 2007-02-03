@@ -162,7 +162,6 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
     print 'Imported objects from \"%s\".' % options.file
     SetupACL(mdbconf, options)
     GeneratePasswords(options)
-    SetupCerts(options)
 
     print 'Configuring final settings...'
     from bongo import MDB
@@ -196,11 +195,11 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
     except BongoError:
         if not domain in ['localhost', 'localhost.localdomain']:
             raise
-        
+    
     smtpserver = msgserver + '\\' + msgapi.AGENT_SMTP
     if(mdb.IsObject(smtpserver)):
         mdb.AddAttribute(smtpserver, msgapi.A_DOMAIN, domain)
-
+    
     try:
         default = socket.gethostbyname(domain)
     except:
@@ -209,6 +208,12 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
     ip = Input('Enter IP address on which to run Bongo',
                {}, default, options)
     mdb.SetAttribute(msgserver, msgapi.A_IP_ADDRESS, [ip])
+    
+    options.domain = domain
+    options.ip = ip
+
+    # now we have the hostname and ip, we can setup a sensible cert.
+    SetupCerts(options)
 
     # shut down the temporary slapd
     if mdbconf.has_key("slapdConfig"):
@@ -580,6 +585,8 @@ def SetupCerts(options):
 
     if not certops:
         print 'Generating certificate + key...'
+        certops.append('--ip=\"%s\"' % options.ip)
+        certops.append('--domain=\"%s\"' % options.domain)
 
     if AdminCmd(options, authops + ['setup-ssl'] + certops) != 0:
         raise BongoError('Certificate + key installation failed.')

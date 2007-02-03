@@ -26,12 +26,15 @@
 
 #include <stdarg.h>
 #include <gnutls/openssl.h>
-
-typedef SSL_CTX bongo_ssl_context;
+#include <gnutls/gnutls.h>
+#include <gcrypt.h>
 
 // from openssl
-#define SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS	0x00000800L
+#define SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS    0x00000800L
 
+typedef struct {
+    gnutls_certificate_credentials_t cert_cred;
+} bongo_ssl_context;
 
 #define CONN_BUFSIZE                    1023
 #define CONN_TCP_MTU                    (1536 * 3)
@@ -298,8 +301,8 @@ typedef unsigned int in_addr_t;
             } \
             (c)->send.read = (c)->send.write = (c)->send.buffer; \
             if ((c)->ssl.enable) { \
-                SSL_shutdown((c)->ssl.context); \
-                SSL_free((c)->ssl.context); \
+                gnutls_bye((c)->ssl.context, GNUTLS_SHUT_RDWR); \
+                gnutls_deinit((c)->ssl.context); \
                 (c)->ssl.context = NULL; \
                 (c)->ssl.enable = FALSE; \
             } \
@@ -312,15 +315,11 @@ typedef unsigned int in_addr_t;
 
 #define CONN_SSL_NEW(c, s) \
         { \
-            (c)->ssl.context = SSL_new(s); \
-            if ((c)->ssl.context \
-                    && (SSL_set_bsdfd((c)->ssl.context, (c)->socket) == 1)) \
+            (c)->ssl.context = __gnutls_new(s); \
+            if ((c)->ssl.context) \
                 (c)->ssl.enable = TRUE; \
             } else { \
-                if ((c)->ssl.context) { \
-                    SSL_free((c)->ssl.context); \
-                    (c)->ssl.context = NULL; \
-                } \
+                (c)->ssl.context = NULL; \
                 (c)->ssl.enable = FALSE; \
             } \
         }
@@ -328,7 +327,7 @@ typedef unsigned int in_addr_t;
 #define CONN_SSL_FREE(c) \
         { \
             if ((c)->ssl.enable) { \
-                SSL_free((c)->ssl.context); \
+                gnutls_deinit((c)->ssl.context); \
                 (c)->ssl.context = NULL; \
                 (c)->ssl.enable = FALSE; \
             } \
@@ -336,14 +335,13 @@ typedef unsigned int in_addr_t;
 
 #define CONN_SSL_ACCEPT(c, s) \
         { \
-            (c)->ssl.context = SSL_new(s); \
+            (c)->ssl.context = __gnutls_new(s); \
             if ((c)->ssl.context \
-                    && (SSL_set_bsdfd((c)->ssl.context, (c)->socket) == 1) \
-                    && (SSL_accept((c)->ssl.context) == 1)) { \
+                    && (gnutls_handshake((c)->ssl.context) == 0)) { \
                 (c)->ssl.enable = TRUE; \
             } else { \
                 if ((c)->ssl.context) { \
-                    SSL_free((c)->ssl.context); \
+                    gnutls_deinit((c)->ssl.context); \
                     (c)->ssl.context = NULL; \
                 } \
                 (c)->ssl.enable = FALSE; \
@@ -352,14 +350,13 @@ typedef unsigned int in_addr_t;
 
 #define CONN_SSL_CONNECT(c, s, r) \
         { \
-            (c)->ssl.context = SSL_new(s); \
+            (c)->ssl.context = __gnutls_new(s); \
             if ((c)->ssl.context \
-                    && (SSL_set_bsdfd((c)->ssl.context, (c)->socket) == 1) \
-                    && (SSL_connect((c)->ssl.context) == 1)) { \
+                    && (gnutls_handshake((c)->ssl.context) == 0)) { \
                 (c)->ssl.enable = TRUE; \
             } else { \
                 if ((c)->ssl.context) { \
-                    SSL_free((c)->ssl.context); \
+                    gnutls_deinit((c)->ssl.context); \
                     (c)->ssl.context = NULL; \
                 } \
                 (c)->ssl.enable = FALSE; \
@@ -402,10 +399,10 @@ typedef unsigned int in_addr_t;
 
 #endif
 
-#define CONN_SSL_READ(c, b, l, r)           (r) = SSL_read((c)->ssl.context, (void *)(b), (l)); \
+#define CONN_SSL_READ(c, b, l, r)           (r) = gnutls_record_recv((c)->ssl.context, (void *)(b), (l)); \
                                             CONN_TRACE_DATA_AND_ERROR((c), CONN_TRACE_EVENT_READ, (b), (r), "SSL_READ");
 
-#define CONN_SSL_WRITE(c, b, l, r)          (r) = SSL_write((c)->ssl.context, (void *)(b), (l)); \
+#define CONN_SSL_WRITE(c, b, l, r)          (r) = gnutls_record_send((c)->ssl.context, (void *)(b), (l)); \
                                             CONN_TRACE_DATA_AND_ERROR((c), CONN_TRACE_EVENT_WRITE, (b), (r), "SSL_WRITE");
 
 typedef struct _ConnectionBuffer {
@@ -419,12 +416,10 @@ typedef struct _ConnectionBuffer {
     int timeOut;
 } ConnectionBuffer;
 
-typedef SSL_METHOD *(* SSLMethod)(void);
-
 typedef struct _ConnSSLConfiguration {
     unsigned long options;
 
-    SSLMethod method;
+    void *method;
 
     long mode;
 
@@ -455,7 +450,7 @@ typedef struct _Connection {
     struct {
         BOOL enable;
 
-        SSL *context;
+        gnutls_session_t context;
     } ssl;
 
     struct sockaddr_in socketAddress;

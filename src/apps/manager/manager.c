@@ -832,6 +832,9 @@ main(int argc, char **argv)
     BOOL unlockFile = FALSE;
     BOOL startLdap = FALSE;
 
+    XplInit();
+    XplSaveRandomSeed();	/// is this appropriate?
+
     if (getuid() == 0) {
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
             fprintf(stderr, "bongomanager: could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());

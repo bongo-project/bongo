@@ -63,7 +63,7 @@ static BIO_METHOD methods_bsdsockp =
 	sock_write,
 	sock_read,
 	sock_puts,
-	NULL, /* sock_gets, 
+	NULL, // sock_gets, 
 	sock_ctrl,
 	sock_new,
 	sock_free,

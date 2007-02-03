@@ -6,6 +6,7 @@
  *  Implementation of XPL hash API: access to gcrypt's MD5 and SHA1 algorithms
  */
 
+#include <config.h>
 #include <xplhash.h>
 #include <memmgr.h>
 #include <gcrypt.h>
@@ -31,6 +32,7 @@ XplHashInit(void)
 	const char *gcry_version;
 	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
 	gcry_version = gcry_check_version(NULL);
+	gcry_control (GCRYCTL_SET_RANDOM_SEED_FILE, XPL_DEFAULT_RANDSEED_PATH);
 }
 
 /**
@@ -123,4 +125,14 @@ void
 XplRandomData(void *buffer, size_t length) 
 {
 	gcry_randomize(buffer, length, GCRY_STRONG_RANDOM);
+}
+
+/**
+ * Save the current random seed to disk. This should only be done by 'management' processes, and
+ * should not usually be called by agents.
+ */
+void
+XplSaveRandomSeed(void)
+{
+	gcry_control (GCRYCTL_UPDATE_RANDOM_SEED_FILE);
 }

@@ -39,6 +39,29 @@
 #include "conniop.h"
 
 ConnIOGlobals ConnIO;
+gnutls_dh_params_t dh_params;
+gnutls_rsa_params_t rsa_params;
+
+gnutls_session_t
+__gnutls_new(bongo_ssl_context *context) {
+    gnutls_session_t session;
+    int ccode;
+
+    ccode = gnutls_init(&session, GNUTLS_SERVER);
+    if (ccode) {
+        return(NULL);
+    }
+
+    ccode = gnutls_set_default_export_priority(session);
+
+    /* store in the credetials loaded earler */
+    ccode = gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, context->cert_cred);
+
+    /* initialize the dh bits */
+    gnutls_dh_set_prime_bits(session, 1024);
+
+    return session;
+}
 
 BOOL 
 ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
@@ -49,6 +72,56 @@ ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
     int i;
     unsigned char c;
     unsigned char seed[129];
+    FILE *genparams;
+
+    /* initialize the gnutls library */
+    gnutls_global_init();
+
+    /* try to load dh data out of a file */
+    gnutls_dh_params_init(&dh_params);
+    genparams = fopen(XPL_DEFAULT_DHPARAMS_PATH, "r");
+    if (genparams) {
+        char tmpdata[2048];
+        gnutls_datum dh_parameters;
+
+        dh_parameters.size = fread(tmpdata, 1, sizeof(tmpdata)-1, genparams);
+        /* null the last byte */
+        tmpdata[dh_parameters.size] = 0x00;
+
+        fclose(genparams);
+
+        /* store the data in the datum so that we can initialize it */
+        dh_parameters.data = tmpdata;
+
+        /* import the key */
+        i = gnutls_dh_params_import_pkcs3(dh_params, &dh_parameters, GNUTLS_X509_FMT_PEM);
+    } else {
+        /* generate dh stuff */
+        gnutls_dh_params_generate2(dh_params, 1024);
+    }
+
+    /* try to load the rsa data out of a file */
+    gnutls_rsa_params_init(&rsa_params);
+    genparams = fopen(XPL_DEFAULT_RSAPARAMS_PATH, "r");
+    if (genparams) {
+        char tmpdata[2048];
+        gnutls_datum rsa_parameters;
+
+        rsa_parameters.size = fread(tmpdata, 1, sizeof(tmpdata)-1, genparams);
+        /* null the last byte */
+        tmpdata[rsa_parameters.size] = 0x00;
+
+        fclose(genparams);
+
+        /* store the data in the datum so that we can initialize it */
+        rsa_parameters.data = tmpdata;
+
+        /* import the key */
+        i = gnutls_rsa_params_import_pkcs1(rsa_params, &rsa_parameters, GNUTLS_X509_FMT_PEM);
+    } else {
+        /* generate rsa stuff */
+        gnutls_rsa_params_generate2(rsa_params, 512);
+    }
 
     XplOpenLocalSemaphore(ConnIO.allocated.sem, 0);
 
@@ -64,9 +137,6 @@ ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
 
         srand((unsigned int)time(NULL));
 
-        SSL_load_error_strings();
-        SSL_library_init();
-
         XPLCryptoLockInit();
 
         memset(seed, 0, sizeof(seed));
@@ -76,8 +146,6 @@ ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
         }
 
         seed[sizeof(seed) - 1] = '\0';
-
-        RAND_seed(seed, sizeof(seed) - 1);
     }
 
     XplSignalLocalSemaphore(ConnIO.allocated.sem);
@@ -89,7 +157,8 @@ void
 ConnSSLContextFree(bongo_ssl_context *context)
 {
     if (context) {
-        SSL_CTX_free((SSL_CTX *)context);
+        gnutls_certificate_free_credentials(context->cert_cred);
+        MemFree(context);
     }
 
     return;
@@ -98,47 +167,26 @@ ConnSSLContextFree(bongo_ssl_context *context)
 bongo_ssl_context * 
 ConnSSLContextAlloc(ConnSSLConfiguration *ConfigSSL)
 {
+    bongo_ssl_context *result;
     int ccode;
-    SSL_CTX *context;
 
-    context = SSL_CTX_new(ConfigSSL->method());
-    if (context) {
-        SSL_CTX_set_mode(context, ConfigSSL->mode);
+    /* get me the context */
+    result = MemMalloc(sizeof(bongo_ssl_context));
 
-        if (ConfigSSL->cipherList) {
-            SSL_CTX_set_cipher_list(context, ConfigSSL->cipherList);
-        }
-
-        if (ConfigSSL->options & SSL_DONT_INSERT_EMPTY_FRAGMENTS) {
-            SSL_CTX_set_options(context, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
-        }
-
-        if (ConfigSSL->options & SSL_ALLOW_CHAIN) {
-            //FIXME: OPENSSL
-            // ccode = SSL_CTX_use_certificate_chain_file(context, ConfigSSL->certificate.file);
-            ccode = SSL_CTX_use_certificate_file(context, ConfigSSL->certificate.file, ConfigSSL->certificate.type);
-        } else {
-            ccode = SSL_CTX_use_certificate_file(context, ConfigSSL->certificate.file, ConfigSSL->certificate.type);
-        }
-
-        if (ccode == 1) {
-            ccode = SSL_CTX_use_PrivateKey_file(context, ConfigSSL->key.file, ConfigSSL->key.type);
-        }
-	
-	// FIXME: OPENSSL
-	// if (ccode == 1) {
-        //     ccode = SSL_CTX_check_private_key(context);
-        // }
-
-        if (ccode == 1) {
-            return((bongo_ssl_context *)context);
-        }
-
-        SSL_CTX_free(context);
-        context = NULL;
+    /* allocate the credential holder */
+    ccode = gnutls_certificate_allocate_credentials(&(result->cert_cred));
+    if (ccode) {
+        MemFree(result);
+        return(NULL);
     }
 
-    return(NULL);
+    ccode = gnutls_certificate_set_x509_key_file(result->cert_cred, ConfigSSL->certificate.file, ConfigSSL->key.file, ConfigSSL->key.type);
+
+    /* store both the rsa and dh data in the creds */
+    gnutls_certificate_set_dh_params(result->cert_cred, dh_params);
+    gnutls_certificate_set_rsa_export_params(result->cert_cred, rsa_params);
+
+    return result;
 }
 
 Connection *
@@ -295,12 +343,12 @@ ConnConnectInternal(Connection *conn, struct sockaddr *saddr, socklen_t slen, bo
                 conn->ssl.enable = FALSE;
 
                 return(conn->socket);
-            } else if ((conn->ssl.context = SSL_new((SSL_CTX *)context)) != NULL) {
+            } else if ((conn->ssl.context = __gnutls_new(context)) != NULL) {
                 setsockopt(conn->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
-
-                ccode = SSL_set_bsdfd(conn->ssl.context, conn->socket);
-                if ((ccode == 1) 
-                        && ((ccode = SSL_connect(conn->ssl.context)) == 1)) {
+                
+                gnutls_transport_set_ptr (conn->ssl.context, (gnutls_transport_ptr_t) conn->socket);
+                ccode = gnutls_handshake (conn->ssl.context);
+                if (!ccode) {
                     CONN_TRACE_EVENT(conn, CONN_TRACE_EVENT_SSL_CONNECT);
                     conn->ssl.enable = TRUE;
 
@@ -346,18 +394,18 @@ ConnEncrypt(Connection *conn, bongo_ssl_context *context)
     register Connection *c = conn;
 
     c->ssl.enable = FALSE;
-    if ((c->ssl.context = SSL_new((SSL_CTX *)context)) != NULL) {
+    if ((c->ssl.context = __gnutls_new(context)) != NULL) {
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
-        ccode = SSL_set_bsdfd(c->ssl.context, c->socket);
-        if ((ccode == 1) 
-                && ((ccode = SSL_connect(c->ssl.context)) == 1)) {
+        gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) c->socket);
+        ccode = gnutls_handshake (c->ssl.context);
+        if (!ccode) {
             CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
             c->ssl.enable = TRUE;
             return(0);
         }
 
-        SSL_free(c->ssl.context);
+        gnutls_deinit(c->ssl.context);
         c->ssl.context = NULL;
     }
 
@@ -377,23 +425,20 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
         return(TRUE);
     }
     
-    if ((c->ssl.context = SSL_new((SSL_CTX *)context)) != NULL) {
+    if ((c->ssl.context = __gnutls_new(context)) != NULL) {
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
-        ccode = SSL_set_bsdfd(c->ssl.context, c->socket);
-        if (ccode == 1) 
-        	ccode = SSL_accept(c->ssl.context);
-        if (ccode == 1) {
+        gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) c->socket);
+        ccode = gnutls_handshake(c->ssl.context);
+        if (!ccode) {
             CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
             return(TRUE);
-        } else {
-            const char *error = gnutls_strerror(-1 * ERR_get_error());
-            ccode = 0;
         }
-
+        printf("%s\n", gnutls_strerror(ccode));
+        gnutls_deinit(c->ssl.context);
         c->ssl.enable = FALSE;
-        SSL_free(c->ssl.context);
         c->ssl.context = NULL;
+
     }
 
     return(FALSE);
@@ -450,7 +495,7 @@ ConnFree(Connection *Conn)
     }
 
     if (c->ssl.context) {
-        SSL_free(c->ssl.context);
+        gnutls_deinit(c->ssl.context);
     }
 
     XplWaitOnLocalSemaphore(ConnIO.allocated.sem);
