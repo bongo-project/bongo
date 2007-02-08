@@ -594,7 +594,8 @@ ACX_CLUCENE()
 if test "x$CLUCENE_LIBS" = "x"; then
 	AC_MSG_RESULT(Using imported CLucene)
 	AC_CONFIG_SUBDIRS([import/clucene])
-	AC_SUBST(CLUCENE_LIBS, "\$(top_builddir)/import/clucene/src/libclucene.la")
+	AC_SUBST(CLUCENE_LIBS, "\$(top_srcdir)/import/clucene/src/libclucene.la")
+	AC_SUBST(CLUCENE_CXXFLAGS, "-I\$(top_srcdir)/import/clucene/src")
 else
 	AC_MSG_RESULT(Using system CLucene)
 fi
@@ -610,7 +611,7 @@ AC_CHECK_HEADER(curl/curl.h,
 	AC_MSG_RESULT(Using import CURL)
 	AC_CONFIG_SUBDIRS([import/curl])
 	AC_SUBST(LIBCURL_CFLAGS, "")
-	AC_SUBST(LIBCURL_LIBS, "\$(top_builddir)/import/curl/lib/libbongocurl.la")
+	AC_SUBST(LIBCURL_LIBS, "\$(top_srcdir)/import/curl/lib/libbongocurl.la")
 	]
 )
 
@@ -624,8 +625,8 @@ AC_CHECK_HEADER(sqlite3.h,
 	[
 	AC_MSG_RESULT(Using import SQLite)
 	AC_CONFIG_SUBDIRS([import/sqlite3])
-	AC_SUBST(LIBSQLITE_CFLAGS, "")
-	AC_SUBST(LIBSQLITE_LIBS, "\$(top_builddir)/import/sqlite3/libbongosqlite3.la")
+	AC_SUBST(LIBSQLITE_CFLAGS, "-I\$(top_srcdir)/import/sqlite3")
+	AC_SUBST(LIBSQLITE_LIBS, "\$(top_srcdir)/import/sqlite3/libbongosqlite3.la")
 	]
 )
 

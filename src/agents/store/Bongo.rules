@@ -3,7 +3,7 @@ sbin_PROGRAMS += bongostore
 
 bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
 	-I$(top_srcdir)/src/agents/store	\
-	-I$(top_srcdir)/import/sqlite3		\
+	$(LIBSQLITE_CFLAGS)			\
 	$(CLUCENE_CXXFLAGS)
 
 bongostore_SOURCES :=					 \
