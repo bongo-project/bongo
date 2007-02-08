@@ -590,19 +590,14 @@ AC_DEFINE_UNQUOTED(XPL_POINTER_TO_UINT_CAST, $pui_cast, [How to cast an unsigned
 
 # import libraries
 
-AC_LANG([C++])
-AC_CHECK_HEADER(CLucene.h,
-	[
-	AC_MSG_RESULT(Using system CLucene)
-	AC_SUBST(LIBCLUCENE_LIBS, " -lclucene ")
-	],
-	[
-	AC_MSG_RESULT(Using import CLucene)
+ACX_CLUCENE()
+if test "x$CLUCENE_LIBS" = "x"; then
+	AC_MSG_RESULT(Using imported CLucene)
 	AC_CONFIG_SUBDIRS([import/clucene])
-	AC_SUBST(LIBCLUCENE_LIBS, "\$(top_builddir)/import/clucene/src/libclucene.la")
-	]
-)
-AC_LANG([C])
+	AC_SUBST(CLUCENE_LIBS, "\$(top_builddir)/import/clucene/src/libclucene.la")
+else
+	AC_MSG_RESULT(Using system CLucene)
+fi
 
 AC_CHECK_HEADER(curl/curl.h,
 	[

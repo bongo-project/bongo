@@ -4,7 +4,7 @@ sbin_PROGRAMS += bongostore
 bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
 	-I$(top_srcdir)/src/agents/store	\
 	-I$(top_srcdir)/import/sqlite3		\
-	-I$(top_srcdir)/import/clucene/src
+	$(CLUCENE_CXXFLAGS)
 
 bongostore_SOURCES :=					 \
 	src/agents/store/alarmdb.c			 \
@@ -64,7 +64,7 @@ bongostore_LDADD =					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
 	$(LIBSQLITE_LIBS)				   \
-	$(LIBCLUCENE_LIBS) 				   \
+	$(CLUCENE_LIBS) 				   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)
 
