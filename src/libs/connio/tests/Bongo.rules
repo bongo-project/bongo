@@ -15,7 +15,7 @@ checktest_connio_LDADD := $(CHECK_LIBS)			 \
 	libbongomemmgr.la				 \
 	libbongoutil.la					 \
 	libbongoxpl.la					 \
-	$(LIBSQLITE_LIBS)				 \
+	$(SQLITE_LIBS)					 \
 	$(PTHREAD_LIBS)					 \
 	$(ALL_LIBS)
 

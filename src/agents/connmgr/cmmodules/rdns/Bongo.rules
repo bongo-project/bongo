@@ -14,7 +14,7 @@ libcmrdns_la_LIBADD :=					 \
 	libbongomemmgr.la				 \
 	libbongomdb.la					 \
 	libbongoxpl.la					 \
-	$(LIBSQLITE_LIBS)			      	 \
+	$(SQLITE_LIBS)				      	 \
 	$(PTHREAD_LIBS)					 \
 	$(ALL_LIBS)
 

@@ -3,7 +3,7 @@ sbin_PROGRAMS += bongostore
 
 bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
 	-I$(top_srcdir)/src/agents/store	\
-	$(LIBSQLITE_CFLAGS)			\
+	$(SQLITE_CFLAGS)			\
 	$(CLUCENE_CXXFLAGS)
 
 bongostore_SOURCES :=					 \
@@ -63,7 +63,7 @@ bongostore_LDADD =					   \
 	libbongoutil.la					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
-	$(LIBSQLITE_LIBS)				   \
+	$(SQLITE_LIBS)				   \
 	$(CLUCENE_LIBS) 				   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)

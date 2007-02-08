@@ -603,7 +603,9 @@ fi
 AC_CHECK_HEADER(curl/curl.h,
 	[
 	AC_MSG_RESULT(Using system CURL)
-	PKG_CHECK_MODULES(LIBCURL, libcurl)
+	LIBCURL_CHECK_CONFIG()
+	LIBCURL_CFLAGS=$LIBCURL_CPPFLAGS
+	LIBCURL_LIBS=$LIBCURL
 	AC_SUBST(LIBCURL_CFLAGS)
 	AC_SUBST(LIBCURL_LIBS)
 	],
@@ -618,15 +620,13 @@ AC_CHECK_HEADER(curl/curl.h,
 AC_CHECK_HEADER(sqlite3.h,
 	[
 	AC_MSG_RESULT(Using system SQLite)
-	PKG_CHECK_MODULES(LIBSQLITE, sqlite3)
-	AC_SUBST(LIBSQLITE_CFLAGS)
-	AC_SUBST(LIBSQLITE_LIBS)
+	AC_CHECK_SQLITE3()
 	],
 	[
 	AC_MSG_RESULT(Using import SQLite)
 	AC_CONFIG_SUBDIRS([import/sqlite3])
-	AC_SUBST(LIBSQLITE_CFLAGS, "-I\$(top_srcdir)/import/sqlite3")
-	AC_SUBST(LIBSQLITE_LIBS, "\$(top_srcdir)/import/sqlite3/libbongosqlite3.la")
+	AC_SUBST(SQLITE_CFLAGS, "-I\$(top_srcdir)/import/sqlite3")
+	AC_SUBST(SQLITE_LIBS, "\$(top_srcdir)/import/sqlite3/libbongosqlite3.la")
 	]
 )
 
