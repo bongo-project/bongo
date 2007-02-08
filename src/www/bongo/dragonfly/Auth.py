@@ -155,8 +155,7 @@ def AcceptCredentials(req):
         authCookieName = GetAuthCookieName(credUser)
 
         req.log.debug("adding auth cookie: %s", authCookieName)
-        Cookie.add_cookie(req, authCookieName, newCookie,
-                          path="/", expires=time.time()+604800)
+        Cookie.add_cookie(req, authCookieName, newCookie, path="/")
 
         storeCookie = newCookie
     elif authCookie:

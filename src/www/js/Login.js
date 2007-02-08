@@ -73,8 +73,14 @@ Dragonfly.logout = function ()
         return;
     }
     if (d.userName) {
-        (new d.Cookie (document, 'BongoAuthToken.' + d.userName, -1, '/')).storeSimple();
+    	var storecookie = new d.Cookie (document, 'BongoAuthToken.' + d.userName, -1, '/');
+        storecookie.storeSimple();
+        storecookie.remove();
     }
+    var cookie = Dragonfly.getDefaultUserCookie ();
+    cookie.$expires = -1;
+    cookie.storeSimple();
+    cookie.remove();
     if (Dragonfly.webkitVersion < 420) { // exercise a webkit quirk to force a reload
         location.hash = '';
         callLater (1, function () {location.hash = '';});
@@ -182,8 +188,14 @@ Dragonfly.submitLogin = function ()
 
 Dragonfly.setDefaultUser = function (user)
 {
+    var storecookie = new Dragonfly.Cookie (document, 'BongoAuthToken.' + user, null, '/');
+    var cookievalue = user;
+    if (storecookie.loadSimple()) {
+         // put store credentials in our cookie too.
+        cookievalue += ',' + storecookie.$value;
+    }
     var cookie = Dragonfly.getDefaultUserCookie ();
-    cookie.$value = user;
+    cookie.$value = cookievalue;
     cookie.storeSimple();
 };
 
@@ -194,7 +206,18 @@ Dragonfly.getDefaultUser = function ()
         return loc.user;
     }
     var cookie = Dragonfly.getDefaultUserCookie ();
-    return (cookie.loadSimple()) ? cookie.$value : undefined;
+    if (!cookie.loadSimple())
+    	return undefined;
+    
+    var cookiedata = cookie.$value.split(",");
+    if (cookiedata[1]) {
+        // there is a store cookie to restore
+        var storecookie = new Dragonfly.Cookie (document, 'BongoAuthToken.' + cookiedata[0], null, '/');
+        storecookie.$value = cookiedata[1];
+        storecookie.storeSimple();
+    }
+    
+    return cookiedata[0];
 };
 
 Dragonfly.getDefaultUserCookie = function ()
