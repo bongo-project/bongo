@@ -5,7 +5,7 @@ libcmrbl_la_SOURCES :=				 \
 	src/agents/connmgr/cmmodules/rbl/cmrbl.c \
 	src/agents/connmgr/cmmodules/rbl/cmrbl.h
 
-libcmrbl_la_CPPFLAGS := $(AM_CPPFLAGS) 
+libcmrbl_la_CPPFLAGS := $(AM_CPPFLAGS) $(SQLITE_CFLAGS)
 
 libcmrbl_la_LDFLAGS := -module -avoid-version
 libcmrbl_la_LIBADD :=					 \
