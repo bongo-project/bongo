@@ -7,7 +7,7 @@
 
 #include <gcrypt.h>
 
-/** \enum
+/** \enum xpl_hash_type
  * Which hash algorithm to use.
  */
 typedef enum {
@@ -15,7 +15,7 @@ typedef enum {
 	XPLHASH_SHA1	= GCRY_MD_SHA1, ///< Use the SHA1 algorithm
 } xpl_hash_type;
 
-/** \enum
+/** \enum xpl_hash_stringcase
  * How to encode the output hash in string form.
  */
 typedef enum {

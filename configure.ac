@@ -628,6 +628,12 @@ AC_CHECK_HEADER(sqlite3.h,
 AC_CONFIG_SUBDIRS([import/libical])
 AC_SUBST(IMPORT_SUBDIRS, $subdirs)
 
+# check for doxygen
+AC_PATH_PROG(DOXYGEN, doxygen, NO_DOXYGEN)
+if test "$DOXYGEN" = NO_DOXYGEN; then
+    AC_MSG_NOTICE([Couldn't find Doxygen - documentation cannot be built])
+fi
+
 ac_configure_args="$ac_configure_args --enable-threadsafe --enable-cross-thread-connections --disable-tcl"
 
 AC_OUTPUT([

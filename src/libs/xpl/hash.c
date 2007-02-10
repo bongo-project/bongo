@@ -91,6 +91,7 @@ XplHashFinalBytes(xpl_hash_context *context, unsigned char *buffer, size_t lengt
  * \param	context	Hash context to be used
  * \param 	strcase	Whether or not the string should use upper case
  * \param	buffer	Buffer into which the hash will be written
+ * \param	length	Amount of data from buffer to be written
  */
 void 
 XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, unsigned char *buffer, size_t length) 

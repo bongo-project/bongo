@@ -66,6 +66,18 @@ SUBDIRS =			\
 	import/log4c		\
 	po
 
+doxygen/html:
+	if test "$(DOXYGEN)" != NO_DOXYGEN; then \
+	  $(DOXYGEN) ./doxygen/doxygen.conf; \
+	else \
+	  echo "No doxygen available"; \
+	fi
+
+docs:	doxygen/html
+
+clean:	clean-recursive
+	rm -rf ./doxygen/html ./doxygen/latex
+
 include_subdirs :=				\
 	include					\
 	src/libs/xpl				\
