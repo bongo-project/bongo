@@ -198,7 +198,10 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
     
     smtpserver = msgserver + '\\' + msgapi.AGENT_SMTP
     if(mdb.IsObject(smtpserver)):
-        mdb.AddAttribute(smtpserver, msgapi.A_DOMAIN, domain)
+        try:
+            mdb.AddAttribute(smtpserver, msgapi.A_DOMAIN, domain)
+        except:
+            print "Couldn't set attribute A_DOMAIN to " + domain
     
     try:
         default = socket.gethostbyname(domain)
@@ -207,7 +210,10 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
 
     ip = Input('Enter IP address on which to run Bongo',
                {}, default, options)
-    mdb.SetAttribute(msgserver, msgapi.A_IP_ADDRESS, [ip])
+    try:
+        mdb.SetAttribute(msgserver, msgapi.A_IP_ADDRESS, [ip])
+    except:
+        print "Couldn't set attribute A_IP_ADDRESS to " + ip
     
     options.domain = domain
     options.ip = ip
