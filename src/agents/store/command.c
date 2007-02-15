@@ -840,16 +840,14 @@ static CCode
 ParseStoreName(StoreClient *client,
                char *token) /* token will be modified */
 {
-    int i = STORE_MAX_STORENAME;
-    
-    while (*token) {
-        if (!--i) {
-            return ConnWriteStr(client->conn, MSG3023USERNAMETOOLONG);
-        }
-        *token++ = tolower(*token);
+    char *i;
+
+    for (i = token; i < token + STORE_MAX_STORENAME; i++) {
+        if (0 == *i) return TOKEN_OK;
+	*i = tolower(*i);
     }
 
-    return TOKEN_OK;
+    return ConnWriteStr(client->conn, MSG3023USERNAMETOOLONG);
 }
 
 
