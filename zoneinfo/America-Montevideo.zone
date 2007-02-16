@@ -4,6 +4,64 @@
 		{
 			"dtstart":
 			{
+				"value":"20061001T020000"
+			},
+			"type":"daylight",
+			"tzoffsetto":
+			{
+				"value":"-0200"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0300"
+			},
+			"rrules":[
+				{
+					"value":
+					{
+						"interval":1,
+						"freq":"yearly",
+						"bymonth":[10],
+						"byday":["1su"]
+					}
+				}],
+			"tzname":[
+				{
+					"value":"UYST"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"20070311T020000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0300"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0200"
+			},
+			"rrules":[
+				{
+					"value":
+					{
+						"interval":1,
+						"freq":"yearly",
+						"bymonth":[3],
+						"byday":["2su"]
+					}
+				}],
+			"tzname":[
+				{
+					"value":"UYT"
+				}]
+		},
+		{
+			"dtstart":
+			{
 				"value":"18980628T000000"
 			},
 			"type":"standard",

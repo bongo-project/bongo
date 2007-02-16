@@ -75,7 +75,7 @@
 			},
 			"tzname":[
 				{
-					"value":"KUYT"
+					"value":"SAMT"
 				}],
 			"rdates":[
 				{
@@ -98,11 +98,37 @@
 			},
 			"tzname":[
 				{
-					"value":"KUYT"
+					"value":"SAMT"
 				}],
 			"rdates":[
 				{
 					"value":"19300621T000000"
+				},
+				{
+					"value":"19911020T030000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19350127T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+0400"
+			},
+			"tzname":[
+				{
+					"value":"KUYT"
+				}],
+			"rdates":[
+				{
+					"value":"19350127T000000"
 				}]
 		},
 		{
@@ -309,29 +335,6 @@
 			"rdates":[
 				{
 					"value":"19910929T030000"
-				}]
-		},
-		{
-			"dtstart":
-			{
-				"value":"19911020T030000"
-			},
-			"type":"standard",
-			"tzoffsetto":
-			{
-				"value":"+0400"
-			},
-			"tzoffsetfrom":
-			{
-				"value":"+0300"
-			},
-			"tzname":[
-				{
-					"value":"SAMT"
-				}],
-			"rdates":[
-				{
-					"value":"19911020T030000"
 				}]
 		},
 		{

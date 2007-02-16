@@ -33,7 +33,7 @@
 		{
 			"dtstart":
 			{
-				"value":"20050930T010000"
+				"value":"20061027T010000"
 			},
 			"type":"standard",
 			"tzoffsetto":
@@ -50,7 +50,7 @@
 					{
 						"interval":1,
 						"freq":"yearly",
-						"bymonth":[9],
+						"bymonth":[10],
 						"byday":["-1fr"]
 					}
 				}],
@@ -261,6 +261,9 @@
 				},
 				{
 					"value":"20041015T010000"
+				},
+				{
+					"value":"20050930T010000"
 				}]
 		}],
 	"type":"timezone",

@@ -110,7 +110,140 @@
 		{
 			"dtstart":
 			{
+				"value":"19160701T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0442"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0500"
+			},
+			"tzname":[
+				{
+					"value":"SMT"
+				}],
+			"rdates":[
+				{
+					"value":"19160701T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
 				"value":"19180901T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0442"
+			},
+			"tzname":[
+				{
+					"value":"CLT"
+				}],
+			"rdates":[
+				{
+					"value":"19180901T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19190701T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0442"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0400"
+			},
+			"tzname":[
+				{
+					"value":"SMT"
+				}],
+			"rdates":[
+				{
+					"value":"19190701T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19270901T000000"
+			},
+			"type":"daylight",
+			"tzoffsetto":
+			{
+				"value":"-0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0442"
+			},
+			"tzname":[
+				{
+					"value":"CLST"
+				}],
+			"rdates":[
+				{
+					"value":"19270901T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19280401T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0500"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0400"
+			},
+			"tzname":[
+				{
+					"value":"CLT"
+				}],
+			"rdates":[
+				{
+					"value":"19280401T000000"
+				},
+				{
+					"value":"19290401T000000"
+				},
+				{
+					"value":"19300401T000000"
+				},
+				{
+					"value":"19310401T000000"
+				},
+				{
+					"value":"19320401T000000"
+				},
+				{
+					"value":"19420601T000000"
+				},
+				{
+					"value":"19460831T230000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19280901T000000"
 			},
 			"type":"daylight",
 			"tzoffsetto":
@@ -127,12 +260,6 @@
 				}],
 			"rdates":[
 				{
-					"value":"19180901T000000"
-				},
-				{
-					"value":"19270901T000000"
-				},
-				{
 					"value":"19280901T000000"
 				},
 				{
@@ -143,73 +270,87 @@
 				},
 				{
 					"value":"19310901T000000"
-				}]
-		},
-		{
-			"dtstart":
-			{
-				"value":"19190702T000000"
-			},
-			"type":"standard",
-			"tzoffsetto":
-			{
-				"value":"-0500"
-			},
-			"tzoffsetfrom":
-			{
-				"value":"-0400"
-			},
-			"tzname":[
-				{
-					"value":"CLT"
-				}],
-			"rdates":[
-				{
-					"value":"19190702T000000"
 				},
-				{
-					"value":"19280401T000000"
-				},
-				{
-					"value":"19290401T000000"
-				},
-				{
-					"value":"19300401T000000"
-				},
-				{
-					"value":"19310401T000000"
-				},
-				{
-					"value":"19320401T000000"
-				}]
-		},
-		{
-			"dtstart":
-			{
-				"value":"19320901T000000"
-			},
-			"type":"standard",
-			"tzoffsetto":
-			{
-				"value":"-0400"
-			},
-			"tzoffsetfrom":
-			{
-				"value":"-0500"
-			},
-			"tzname":[
-				{
-					"value":"CLT"
-				}],
-			"rdates":[
 				{
 					"value":"19320901T000000"
+				},
+				{
+					"value":"19420801T000000"
 				}]
 		},
 		{
 			"dtstart":
 			{
-				"value":"19661009T000000"
+				"value":"19460715T000000"
+			},
+			"type":"daylight",
+			"tzoffsetto":
+			{
+				"value":"-0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0400"
+			},
+			"tzname":[
+				{
+					"value":"CLST"
+				}],
+			"rdates":[
+				{
+					"value":"19460715T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19470331T230000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0500"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0500"
+			},
+			"tzname":[
+				{
+					"value":"CLT"
+				}],
+			"rdates":[
+				{
+					"value":"19470331T230000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19470522T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"-0400"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0500"
+			},
+			"tzname":[
+				{
+					"value":"CLT"
+				}],
+			"rdates":[
+				{
+					"value":"19470522T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"19681103T000000"
 			},
 			"type":"daylight",
 			"tzoffsetto":
@@ -226,16 +367,10 @@
 				}],
 			"rdates":[
 				{
-					"value":"19661009T000000"
+					"value":"19681103T000000"
 				},
 				{
-					"value":"19671015T000000"
-				},
-				{
-					"value":"19681013T000000"
-				},
-				{
-					"value":"19691012T000000"
+					"value":"19691123T000000"
 				},
 				{
 					"value":"19701011T000000"
@@ -247,7 +382,7 @@
 					"value":"19721015T000000"
 				},
 				{
-					"value":"19731014T000000"
+					"value":"19730930T000000"
 				},
 				{
 					"value":"19741013T000000"
@@ -292,13 +427,13 @@
 					"value":"19871011T000000"
 				},
 				{
-					"value":"19881009T000000"
+					"value":"19881002T000000"
 				},
 				{
 					"value":"19891015T000000"
 				},
 				{
-					"value":"19901014T000000"
+					"value":"19900916T000000"
 				},
 				{
 					"value":"19911013T000000"
@@ -328,7 +463,7 @@
 		{
 			"dtstart":
 			{
-				"value":"19670312T000000"
+				"value":"19690330T000000"
 			},
 			"type":"standard",
 			"tzoffsetto":
@@ -345,16 +480,10 @@
 				}],
 			"rdates":[
 				{
-					"value":"19670312T000000"
+					"value":"19690330T000000"
 				},
 				{
-					"value":"19680310T000000"
-				},
-				{
-					"value":"19690309T000000"
-				},
-				{
-					"value":"19700315T000000"
+					"value":"19700329T000000"
 				},
 				{
 					"value":"19710314T000000"
@@ -405,7 +534,7 @@
 					"value":"19860309T000000"
 				},
 				{
-					"value":"19870315T000000"
+					"value":"19870412T000000"
 				},
 				{
 					"value":"19880313T000000"
@@ -414,7 +543,7 @@
 					"value":"19890312T000000"
 				},
 				{
-					"value":"19900311T000000"
+					"value":"19900318T000000"
 				},
 				{
 					"value":"19910310T000000"
@@ -435,7 +564,7 @@
 					"value":"19960310T000000"
 				},
 				{
-					"value":"19970309T000000"
+					"value":"19970330T000000"
 				},
 				{
 					"value":"19980315T000000"

@@ -33,7 +33,7 @@
 		{
 			"dtstart":
 			{
-				"value":"19950929T000000"
+				"value":"20070927T230000"
 			},
 			"type":"standard",
 			"tzoffsetto":
@@ -42,27 +42,16 @@
 			},
 			"tzoffsetfrom":
 			{
-				"value":"+0300"
+				"value":"+0200"
 			},
 			"rrules":[
 				{
 					"value":
 					{
-						"bymonthday":[25,26,27,28,29,30],
 						"interval":1,
 						"freq":"yearly",
 						"bymonth":[9],
-						"byday":["fr"]
-					}
-				},
-				{
-					"value":
-					{
-						"bymonthday":[1],
-						"interval":1,
-						"freq":"yearly",
-						"bymonth":[10],
-						"byday":["fr"]
+						"byday":["-1th"]
 					}
 				}],
 			"tzname":[
@@ -395,6 +384,62 @@
 				},
 				{
 					"value":"19941001T030000"
+				},
+				{
+					"value":"19950929T000000"
+				},
+				{
+					"value":"19960927T000000"
+				},
+				{
+					"value":"19970926T000000"
+				},
+				{
+					"value":"19980925T000000"
+				},
+				{
+					"value":"19991001T000000"
+				},
+				{
+					"value":"20000929T000000"
+				},
+				{
+					"value":"20010928T000000"
+				},
+				{
+					"value":"20020927T000000"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"20030925T230000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0200"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+0200"
+			},
+			"tzname":[
+				{
+					"value":"EET"
+				}],
+			"rdates":[
+				{
+					"value":"20030925T230000"
+				},
+				{
+					"value":"20040930T230000"
+				},
+				{
+					"value":"20050929T230000"
+				},
+				{
+					"value":"20060921T230000"
 				}]
 		}],
 	"type":"timezone",

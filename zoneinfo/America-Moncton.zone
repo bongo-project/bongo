@@ -4,7 +4,7 @@
 		{
 			"dtstart":
 			{
-				"value":"20070311T000100"
+				"value":"20070311T020000"
 			},
 			"type":"daylight",
 			"tzoffsetto":
@@ -33,7 +33,7 @@
 		{
 			"dtstart":
 			{
-				"value":"20071104T000100"
+				"value":"20071104T020000"
 			},
 			"type":"standard",
 			"tzoffsetto":
@@ -601,6 +601,9 @@
 				},
 				{
 					"value":"19930101T000000"
+				},
+				{
+					"value":"20070101T000000"
 				}]
 		},
 		{

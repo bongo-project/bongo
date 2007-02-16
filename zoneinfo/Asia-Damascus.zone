@@ -4,33 +4,6 @@
 		{
 			"dtstart":
 			{
-				"value":"19941001T000000"
-			},
-			"type":"standard",
-			"tzoffsetto":
-			{
-				"value":"+0200"
-			},
-			"tzoffsetfrom":
-			{
-				"value":"+0300"
-			},
-			"rrules":[
-				{
-					"value":
-					{
-						"interval":1,
-						"freq":"yearly"
-					}
-				}],
-			"tzname":[
-				{
-					"value":"EET"
-				}]
-		},
-		{
-			"dtstart":
-			{
 				"value":"19990401T000000"
 			},
 			"type":"daylight",
@@ -53,6 +26,33 @@
 			"tzname":[
 				{
 					"value":"EEST"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"20071001T000000"
+			},
+			"type":"standard",
+			"tzoffsetto":
+			{
+				"value":"+0200"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"+0300"
+			},
+			"rrules":[
+				{
+					"value":
+					{
+						"interval":1,
+						"freq":"yearly"
+					}
+				}],
+			"tzname":[
+				{
+					"value":"EET"
 				}]
 		},
 		{
@@ -317,6 +317,45 @@
 				},
 				{
 					"value":"19930925T000000"
+				},
+				{
+					"value":"19941001T000000"
+				},
+				{
+					"value":"19951001T000000"
+				},
+				{
+					"value":"19961001T000000"
+				},
+				{
+					"value":"19971001T000000"
+				},
+				{
+					"value":"19981001T000000"
+				},
+				{
+					"value":"19991001T000000"
+				},
+				{
+					"value":"20001001T000000"
+				},
+				{
+					"value":"20011001T000000"
+				},
+				{
+					"value":"20021001T000000"
+				},
+				{
+					"value":"20031001T000000"
+				},
+				{
+					"value":"20041001T000000"
+				},
+				{
+					"value":"20051001T000000"
+				},
+				{
+					"value":"20060922T000000"
 				}]
 		}],
 	"type":"timezone",

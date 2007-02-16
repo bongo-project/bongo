@@ -1,7 +1,7 @@
 #!/bin/bash
 
 VZIC=../import/vzic/vzic
-IMPORTTZ=../src/libs/cal/bongo-import-tz
+IMPORTTZ=../bongo-import-tz
 
 if test -z $1; then
     echo "usage: update-zoneinfo.sh olsonpath"
@@ -28,7 +28,7 @@ $VZIC --pure --output-dir ics-tmp --olson-dir $OLSONDIR
 
 
 rm generated.tznames
-find ics-tmp -name \*.ics -type f -print0 | xargs -0 --replace ../src/libs/cal/bongo-import-tz {} .
+find ics-tmp -name \*.ics -type f -print0 | xargs -0 --replace $IMPORTTZ {} .
 sort generated.tznames > generated.sort
 mv generated.sort generated.tznames
 

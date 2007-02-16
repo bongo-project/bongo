@@ -20,9 +20,10 @@ Aqtobe|/bongo/Asia/Aqtobe
 Araguaina|/bongo/America/Araguaina
 Aruba|/bongo/America/Aruba
 Ashgabat|/bongo/Asia/Ashgabat
-Asmera|/bongo/Africa/Asmera
+Asmara|/bongo/Africa/Asmara
 Asuncion|/bongo/America/Asuncion
 Athens|/bongo/Europe/Athens
+Atikokan|/bongo/America/Atikokan
 Auckland|/bongo/Pacific/Auckland
 Azores|/bongo/Atlantic/Azores
 Baghdad|/bongo/Asia/Baghdad
@@ -42,6 +43,7 @@ Berlin|/bongo/Europe/Berlin
 Bermuda|/bongo/Atlantic/Bermuda
 Bishkek|/bongo/Asia/Bishkek
 Bissau|/bongo/Africa/Bissau
+Blanc-Sablon|/bongo/America/Blanc-Sablon
 Blantyre|/bongo/Africa/Blantyre
 Boa Vista|/bongo/America/Boa_Vista
 Bogota|/bongo/America/Bogota
@@ -84,7 +86,6 @@ Colombo|/bongo/Asia/Colombo
 Comoro|/bongo/Indian/Comoro
 Conakry|/bongo/Africa/Conakry
 Copenhagen|/bongo/Europe/Copenhagen
-Coral Harbour|/bongo/America/Coral_Harbour
 Cordoba|/bongo/America/Argentina/Cordoba
 Costa Rica|/bongo/America/Costa_Rica
 Cuiaba|/bongo/America/Cuiaba
@@ -96,8 +97,8 @@ Danmarkshavn|/bongo/America/Danmarkshavn
 Dar es Salaam|/bongo/Africa/Dar_es_Salaam
 Darwin|/bongo/Australia/Darwin
 Davis|/bongo/Antarctica/Davis
-Dawson Creek|/bongo/America/Dawson_Creek
 Dawson|/bongo/America/Dawson
+Dawson Creek|/bongo/America/Dawson_Creek
 Denver|/bongo/America/Denver
 Detroit|/bongo/America/Detroit
 Dhaka|/bongo/Asia/Dhaka
@@ -116,8 +117,9 @@ Eirunepe|/bongo/America/Eirunepe
 El Aaiun|/bongo/Africa/El_Aaiun
 El Salvador|/bongo/America/El_Salvador
 Enderbury|/bongo/Pacific/Enderbury
-Faeroe|/bongo/Atlantic/Faeroe
+Eucla|/bongo/Australia/Eucla
 Fakaofo|/bongo/Pacific/Fakaofo
+Faroe|/bongo/Atlantic/Faroe
 Fiji|/bongo/Pacific/Fiji
 Fortaleza|/bongo/America/Fortaleza
 Freetown|/bongo/Africa/Freetown
@@ -137,6 +139,7 @@ Guadeloupe|/bongo/America/Guadeloupe
 Guam|/bongo/Pacific/Guam
 Guatemala|/bongo/America/Guatemala
 Guayaquil|/bongo/America/Guayaquil
+Guernsey|/bongo/Europe/Guernsey
 Guyana|/bongo/America/Guyana
 Halifax|/bongo/America/Halifax
 Harare|/bongo/Africa/Harare
@@ -152,12 +155,14 @@ Indianapolis|/bongo/America/Indiana/Indianapolis
 Inuvik|/bongo/America/Inuvik
 Iqaluit|/bongo/America/Iqaluit
 Irkutsk|/bongo/Asia/Irkutsk
+Isle of Man|/bongo/Europe/Isle_of_Man
 Istanbul|/bongo/Asia/Istanbul
 Istanbul|/bongo/Europe/Istanbul
 Jakarta|/bongo/Asia/Jakarta
 Jamaica|/bongo/America/Jamaica
 Jan Mayen|/bongo/Atlantic/Jan_Mayen
 Jayapura|/bongo/Asia/Jayapura
+Jersey|/bongo/Europe/Jersey
 Jerusalem|/bongo/Asia/Jerusalem
 Johannesburg|/bongo/Africa/Johannesburg
 Johnston|/bongo/Pacific/Johnston
@@ -279,6 +284,7 @@ Petersburg|/bongo/America/Indiana/Petersburg
 Phnom Penh|/bongo/Asia/Phnom_Penh
 Phoenix|/bongo/America/Phoenix
 Pitcairn|/bongo/Pacific/Pitcairn
+Podgorica|/bongo/Europe/Podgorica
 Ponape|/bongo/Pacific/Ponape
 Pontianak|/bongo/Asia/Pontianak
 Port-au-Prince|/bongo/America/Port-au-Prince
@@ -372,6 +378,7 @@ Vientiane|/bongo/Asia/Vientiane
 Vilnius|/bongo/Europe/Vilnius
 Vincennes|/bongo/America/Indiana/Vincennes
 Vladivostok|/bongo/Asia/Vladivostok
+Volgograd|/bongo/Europe/Volgograd
 Vostok|/bongo/Antarctica/Vostok
 Wake|/bongo/Pacific/Wake
 Wallis|/bongo/Pacific/Wallis

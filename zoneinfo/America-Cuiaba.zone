@@ -4,7 +4,36 @@
 		{
 			"dtstart":
 			{
-				"value":"20050220T000000"
+				"value":"20061105T000000"
+			},
+			"type":"daylight",
+			"tzoffsetto":
+			{
+				"value":"-0300"
+			},
+			"tzoffsetfrom":
+			{
+				"value":"-0400"
+			},
+			"rrules":[
+				{
+					"value":
+					{
+						"interval":1,
+						"freq":"yearly",
+						"bymonth":[11],
+						"byday":["1su"]
+					}
+				}],
+			"tzname":[
+				{
+					"value":"AMST"
+				}]
+		},
+		{
+			"dtstart":
+			{
+				"value":"20070225T000000"
 			},
 			"type":"standard",
 			"tzoffsetto":
@@ -22,41 +51,12 @@
 						"interval":1,
 						"freq":"yearly",
 						"bymonth":[2],
-						"byday":["3su"]
+						"byday":["-1su"]
 					}
 				}],
 			"tzname":[
 				{
 					"value":"AMT"
-				}]
-		},
-		{
-			"dtstart":
-			{
-				"value":"20051016T000000"
-			},
-			"type":"daylight",
-			"tzoffsetto":
-			{
-				"value":"-0300"
-			},
-			"tzoffsetfrom":
-			{
-				"value":"-0400"
-			},
-			"rrules":[
-				{
-					"value":
-					{
-						"interval":1,
-						"freq":"yearly",
-						"bymonth":[10],
-						"byday":["3su"]
-					}
-				}],
-			"tzname":[
-				{
-					"value":"AMST"
 				}]
 		},
 		{
@@ -190,6 +190,9 @@
 				},
 				{
 					"value":"20041102T000000"
+				},
+				{
+					"value":"20051016T000000"
 				}]
 		},
 		{
@@ -297,6 +300,12 @@
 				},
 				{
 					"value":"20030216T000000"
+				},
+				{
+					"value":"20050220T000000"
+				},
+				{
+					"value":"20060219T000000"
 				}]
 		},
 		{
