@@ -9,15 +9,15 @@
 			"type":"standard",
 			"tzoffsetto":
 			{
-				"value":"-0500"
+				"value":"-0400"
 			},
 			"tzoffsetfrom":
 			{
-				"value":"-0532"
+				"value":"-0348"
 			},
 			"tzname":[
 				{
-					"value":"EST"
+					"value":"AST"
 				}],
 			"rdates":[
 				{
@@ -32,48 +32,42 @@
 			"type":"daylight",
 			"tzoffsetto":
 			{
-				"value":"-0400"
+				"value":"-0300"
 			},
 			"tzoffsetfrom":
 			{
-				"value":"-0500"
+				"value":"-0400"
 			},
 			"tzname":[
 				{
-					"value":"EDT"
+					"value":"ADT"
 				}],
 			"rdates":[
 				{
 					"value":"19180414T020000"
-				},
-				{
-					"value":"19190525T020000"
 				}]
 		},
 		{
 			"dtstart":
 			{
-				"value":"19181027T020000"
+				"value":"19181031T020000"
 			},
 			"type":"standard",
 			"tzoffsetto":
 			{
-				"value":"-0500"
+				"value":"-0400"
 			},
 			"tzoffsetfrom":
 			{
-				"value":"-0400"
+				"value":"-0300"
 			},
 			"tzname":[
 				{
-					"value":"EST"
+					"value":"AST"
 				}],
 			"rdates":[
 				{
-					"value":"19181027T020000"
-				},
-				{
-					"value":"19191101T000000"
+					"value":"19181031T020000"
 				},
 				{
 					"value":"19450930T020000"
@@ -87,15 +81,15 @@
 			"type":"daylight",
 			"tzoffsetto":
 			{
-				"value":"-0400"
+				"value":"-0300"
 			},
 			"tzoffsetfrom":
 			{
-				"value":"-0500"
+				"value":"-0400"
 			},
 			"tzname":[
 				{
-					"value":"EWT"
+					"value":"AWT"
 				}],
 			"rdates":[
 				{
@@ -105,56 +99,56 @@
 		{
 			"dtstart":
 			{
-				"value":"19450814T190000"
+				"value":"19450814T200000"
 			},
 			"type":"daylight",
 			"tzoffsetto":
 			{
-				"value":"-0400"
+				"value":"-0300"
 			},
 			"tzoffsetfrom":
 			{
-				"value":"-0400"
+				"value":"-0300"
 			},
 			"tzname":[
 				{
-					"value":"EPT"
+					"value":"APT"
 				}],
 			"rdates":[
 				{
-					"value":"19450814T190000"
+					"value":"19450814T200000"
 				}]
 		},
 		{
 			"dtstart":
 			{
-				"value":"19460101T000000"
+				"value":"19700101T000000"
 			},
 			"type":"standard",
 			"tzoffsetto":
 			{
-				"value":"-0500"
+				"value":"-0400"
 			},
 			"tzoffsetfrom":
 			{
-				"value":"-0500"
+				"value":"-0400"
 			},
 			"tzname":[
 				{
-					"value":"EST"
+					"value":"AST"
 				}],
 			"rdates":[
 				{
-					"value":"19460101T000000"
+					"value":"19700101T000000"
 				}]
 		}],
 	"type":"timezone",
 	"X-LIC-LOCATION":[
 		{
-			"value":"America/Coral_Harbour"
+			"value":"America/Blanc-Sablon"
 		}],
 	"tzid":
 	{
-		"value":"/bongo/America/Coral_Harbour"
+		"value":"/bongo/America/Blanc-Sablon"
 	}
 }] }

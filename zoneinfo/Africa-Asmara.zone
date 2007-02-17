@@ -73,10 +73,10 @@
 	"type":"timezone",
 	"X-LIC-LOCATION":[
 		{
-			"value":"Africa/Asmera"
+			"value":"Africa/Asmara"
 		}],
 	"tzid":
 	{
-		"value":"/bongo/Africa/Asmera"
+		"value":"/bongo/Africa/Asmara"
 	}
 }] }

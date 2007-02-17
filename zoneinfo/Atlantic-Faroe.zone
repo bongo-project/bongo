@@ -173,10 +173,10 @@
 	"type":"timezone",
 	"X-LIC-LOCATION":[
 		{
-			"value":"Atlantic/Faeroe"
+			"value":"Atlantic/Faroe"
 		}],
 	"tzid":
 	{
-		"value":"/bongo/Atlantic/Faeroe"
+		"value":"/bongo/Atlantic/Faroe"
 	}
 }] }
