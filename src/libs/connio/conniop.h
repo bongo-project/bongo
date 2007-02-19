@@ -48,6 +48,6 @@ typedef struct _ConnIO {
 
 extern ConnIOGlobals ConnIO;
 
-gnutls_session_t __gnutls_new(bongo_ssl_context *context);
+gnutls_session_t __gnutls_new(bongo_ssl_context *context, gnutls_connection_end_t con_end);
 
 #endif
