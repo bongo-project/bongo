@@ -24,9 +24,9 @@ fi
 
 BONGO_DIR=@prefix@
 BONGO_BIN=@prefix@/sbin
-BONGO_NAME=bongomanager
-BONGO_SETUP=bongosetup
-BONGO_LIST="bongomanager bongodmc bongonmap bongosmtp bongowebadmin bongoimap bongomodweb bongopop3 bongoantispam bongoavirus bongocalagent bongogeneric bongomailprox bongorules bongoforward bongopluspack bongosendmail bongoconnmgr"
+BONGO_NAME=bongo-manager
+BONGO_SETUP=bongo-setup
+BONGO_LIST="bongomanager bongodmc bongostore bongoqueue bongosmtp bongoimap bongopop3 bongoantispam bongoavirus bongocalagent bongomailprox bongorules bongoforward bongopluspack bongoconnmgr"
 BONGO_DATA=@EXPANDED_SYSCONFDIR@/mdb.conf
 OPTIONS=
 test -x $BONGO_BIN/$BONGO_NAME || exit 5

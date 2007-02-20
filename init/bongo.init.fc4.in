@@ -11,9 +11,9 @@
 . /etc/rc.d/init.d/functions
 
 DAEMON_DIR=@prefix@/sbin
-DAEMON_NAME=bongomanager
-DAEMON_SETUP=bongosetup
-DAEMON_LIST="bongomanager bongodmc bongonmap bongosmtp bongowebadmin bongoantispam bongocalcmd bongocalagent bongoforward bongoimap bongomodweb bongopop3 bongomailprox bongorules "
+DAEMON_NAME=bongo-manager
+DAEMON_SETUP=bongo-setup
+DAEMON_LIST="bongo-manager bongodmc bongostore bongosmtp bongoantispam bongocalcmd bongocalagent bongoimap bongopop3 bongomailprox bongorules "
 DATADIR=@XPL_DEFAULT_STATE_DIR@/mdb
 OPTIONS=
 
