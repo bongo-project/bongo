@@ -1,4 +1,6 @@
-LoadModule python_module @APACHE_MOD_DIR@/mod_python@SHARED_POSTFIX@
+# Uncomment the line below if you need to enable mod_python.
+# Most distributions should do this for you automatically!
+#LoadModule python_module @APACHE_MOD_DIR@/mod_python@SHARED_POSTFIX@
 
 <IfModule mod_python.c>
 Alias / @EXPANDED_DATADIR@/@PACKAGE@/htdocs/
