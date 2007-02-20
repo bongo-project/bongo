@@ -418,14 +418,14 @@ AC_ARG_WITH([slapd],
 	AC_HELP_STRING([--with-slapd=FILE],
 		[Path to slapd binary]),
 	[DEFAULT_SLAPD_PATH="$with_slapd"],
-	[AC_PATH_PROG(DEFAULT_SLAPD_PATH,[slapd],[/usr/libexec/slapd],[$PATH:/sbin:/usr/sbin:/usr/libexec:/usr/lib/openldap])])
+	[AC_PATH_PROG(DEFAULT_SLAPD_PATH,[slapd],[/usr/libexec/slapd],[$PATH:/sbin:/usr/sbin:/usr/libexec:/usr/lib/openldap:/usr/local/libexec])])
 
 # Check for openldap's schema files
 AC_ARG_WITH([slapd-schema],
 	AC_HELP_STRING([--with-slapd-schema=DIR],
 		[Path to slapd schema directory]),
 	[DEFAULT_SLAPD_SCHEMA_DIR=$withval],
-	[AC_PATH_PROG(DEFAULT_SLAPD_SCHEMA_DIR, core.schema, [/etc/openldap/schema], [/etc/openldap/schema:/etc/ldap/schema])])
+	[AC_PATH_PROG(DEFAULT_SLAPD_SCHEMA_DIR, core.schema, [/etc/openldap/schema], [/etc/openldap/schema:/etc/ldap/schema:/usr/local/etc/openldap/schema])])
 if echo $DEFAULT_SLAPD_SCHEMA_DIR |grep "/core.schema$" >/dev/null 2>&1; then
 	DEFAULT_SLAPD_SCHEMA_DIR=`dirname $DEFAULT_SLAPD_SCHEMA_DIR`
 fi

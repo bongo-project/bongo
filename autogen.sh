@@ -294,11 +294,10 @@ ACLOCAL=`echo $AUTOMAKE | sed s/automake/aclocal/`
 if $want_libtool; then
     	version_check libtool LIBTOOLIZE 'libtoolize libtoolize15 glibtoolize' $REQUIRED_LIBTOOL_VERSION \
         "http://ftp.gnu.org/pub/gnu/libtool/libtool-$REQUIRED_LIBTOOL_VERSION.tar.gz" || DIE=1
-		if [ `uname` = "FreeBSD" ]; then
-   			require_m4macro libtool15.m4
-		else
-   			require_m4macro libtool.m4
-		fi
+#		if [ `uname` = "FreeBSD" ]; then
+#  			require_m4macro libtool15.m4
+#		fi
+		require_m4macro libtool.m4
 fi
 
 if $want_gettext; then

@@ -3,6 +3,7 @@
 #include <bongoutil.h>
 #include <msgapi.h>
 #include <sys/wait.h>
+#include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 #include <getopt.h>
