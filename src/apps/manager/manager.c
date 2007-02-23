@@ -917,7 +917,7 @@ get_lock:
             fprintf(stderr, "bongomanager: %s user does not have permission to create a lock file in %s\n",
                    MsgGetUnprivilegedUser(), XPL_DEFAULT_WORK_DIR);
         } else {
-            fprintf(stderr, "bongomanager: could not create lock file: %s\n", strerror(errno));
+            fprintf(stderr, "bongomanager: could not create lock file in %s : %s\n", XPL_DEFAULT_WORK_DIR, strerror(errno));
         }
 
         goto err_handler;
