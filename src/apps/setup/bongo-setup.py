@@ -47,6 +47,7 @@ def BongoSetupOptions():
     parser = optparse.OptionParser()
     parser.add_option("-n", "--noprompt", action="store_true", help="run non-interactively")
     parser.add_option("-H", "--hostname", type="string", help="hostname of this Bongo server")
+    parser.add_option("-M", "--maildomain", type="string", help="domain we accept mail for")
     parser.add_option("-f", "--file", type="string",
                       default=os.path.join(Xpl.DEFAULT_CONF_DIR, "bongo-setup.xml"),
                       help="import objects from XML file FILE")
@@ -184,27 +185,41 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
     msgserver = msgapi.GetConfigProperty(msgapi.MESSAGING_SERVER)
     mdb.SetAttribute(msgserver, msgapi.A_CONTEXT, [context])
 
+    #getting hostname for certificate
     if options.hostname:
-        domain = options.hostname
+        hostname = options.hostname
     else:
-        domain = Input('Enter domain name on which to run Bongo',
+        hostname = Input('Enter the hostname for the mail server hosting Bongo',
                        {}, socket.getfqdn(), options)
 
     try:
-        mdb.SetAttribute(msgserver, msgapi.A_OFFICIAL_NAME, [domain])
+        mdb.SetAttribute(msgserver, msgapi.A_OFFICIAL_NAME, [hostname])
     except BongoError:
-        if not domain in ['localhost', 'localhost.localdomain']:
+        if not hostname in ['localhost', 'localhost.localdomain']:
             raise
-    
+
+    #getting domain name bongo will accept mail for
+    if options.maildomain:
+        maildomain = options.maildomain
+    else:
+        maildomain = Input('Enter domain name that Bongo will host',
+                       {}, socket.getfqdn(), options)
+
+    try:
+        mdb.SetAttribute(msgserver, msgapi.A_OFFICIAL_NAME, [maildomain])
+    except BongoError:
+        if not maildomain in ['localhost', 'localhost.localdomain']:
+            raise
+
+    # Add hosted domain to the smtp agent
     smtpserver = msgserver + '\\' + msgapi.AGENT_SMTP
     if(mdb.IsObject(smtpserver)):
         try:
-            mdb.AddAttribute(smtpserver, msgapi.A_DOMAIN, domain)
+            mdb.AddAttribute(smtpserver, msgapi.A_DOMAIN, maildomain)
         except:
-            print "Couldn't set attribute A_DOMAIN to " + domain
-    
+            print "Couldn't set attribute A_DOMAIN to " + maildomain
     try:
-        default = socket.gethostbyname(domain)
+        default = socket.gethostbyname(maildomain)
     except:
         default = '127.0.0.1'
 
@@ -214,8 +229,9 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
         mdb.SetAttribute(msgserver, msgapi.A_IP_ADDRESS, [ip])
     except:
         print "Couldn't set attribute A_IP_ADDRESS to " + ip
-    
-    options.domain = domain
+
+
+    options.hostname = hostname
     options.ip = ip
 
     # now we have the hostname and ip, we can setup a sensible cert.
@@ -225,7 +241,7 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
     if mdbconf.has_key("slapdConfig"):
         slapdConfig = mdbconf["slapdConfig"]
         slapdConfig.killSlapd()
-    
+
     print
     print 'Bongo setup is complete!'
     return
@@ -592,7 +608,7 @@ def SetupCerts(options):
     if not certops:
         print 'Generating certificate + key...'
         certops.append('--ip=\"%s\"' % options.ip)
-        certops.append('--domain=\"%s\"' % options.domain)
+        certops.append('--domain=\"%s\"' % options.hostname)
 
     if AdminCmd(options, authops + ['setup-ssl'] + certops) != 0:
         raise BongoError('Certificate + key installation failed.')
