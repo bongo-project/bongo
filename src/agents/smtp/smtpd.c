@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #include <config.h>
@@ -35,6 +36,7 @@
 #define LOGGERNAME "smtpd"
 #include <xpl.h>
 #include <connio.h>
+#include <nmlib.h>
 
 #include <msgapi.h>
 #include <xplresolve.h>
@@ -51,36 +53,32 @@
 #include <bongoutil.h>
 #include "smtpd.h"
 
-char nwinet_scratch[18] = { 0 };
-
 /* Globals */
 BOOL Exiting = FALSE;
 XplSemaphore SMTPShutdownSemaphore;
 XplSemaphore SMTPServerSemaphore;
-unsigned long SMTPMaxThreadLoad = 100000;
+long SMTPMaxThreadLoad = 100000;
 XplAtomic SMTPServerThreads;
 XplAtomic SMTPConnThreads;
 XplAtomic SMTPIdleConnThreads;
 XplAtomic SMTPQueueThreads;
-int SMTPServerSocket = -1;
-int SMTPServerSocketSSL = -1;
+Connection *SMTPServerConnection;
+Connection *SMTPServerConnectionSSL;
+Connection *SMTPQServerConnection;
+Connection *SMTPQServerConnectionSSL;
 unsigned long SMTPServerPort = SMTP_PORT;
 unsigned long SMTPServerPortSSL = SMTP_PORT_SSL;
-int SMTPQServerSocket = -1;
-int SMTPQServerSocketPort = -1;
-int SMTPQServerSocketSSL = -1;
-int SMTPQServerSocketSSLPort = -1;
 unsigned char Hostname[MAXEMAILNAMESIZE + 128];
 unsigned char Hostaddr[MAXEMAILNAMESIZE + 1];
 int TGid;
 unsigned long MaxMXServers = 0;
 
 unsigned char **Domains = NULL;
-int DomainCount = 0;
+unsigned int DomainCount = 0;
 unsigned char **UserDomains = NULL;
-int UserDomainCount = 0;
+unsigned int UserDomainCount = 0;
 unsigned char **RelayDomains = NULL;
-int RelayDomainCount = 0;
+unsigned int RelayDomainCount = 0;
 
 /* UBE measures */
 unsigned long UBEConfig = 0;
@@ -94,7 +92,6 @@ BOOL UseRelayHost = FALSE;
 BOOL RelayLocalMail = FALSE;
 BOOL Notify = FALSE;
 BOOL AllowClientSSL = FALSE;
-BOOL UseNMAPSSL = FALSE;
 BOOL AllowEXPN = FALSE;
 BOOL AllowVRFY = FALSE;
 BOOL CheckRCPT = FALSE;
@@ -111,10 +108,8 @@ unsigned long MessageLimit = 0;
 unsigned long MaximumRecipients = 15;
 unsigned long MaxNullSenderRecips = ULONG_MAX;
 unsigned long MaxFloodCount = 1000;
-unsigned long ClientSSLOptions = 0;
 unsigned long LocalAddress = 0;
-SSL_CTX *SSLContext = NULL;
-SSL_CTX *SSLClientContext = NULL;
+bongo_ssl_context *SSLContext = NULL;
 static unsigned char NMAPHash[NMAP_HASH_SIZE];
 
 #ifdef USE_HOPCOUNT_DETECTION
@@ -144,40 +139,31 @@ unsigned long SocketTimeout = 10 * 60;
 
 #define ChopNL(String) { unsigned char *pTr; pTr=strchr((String), 0x0a); if (pTr) *pTr='\0'; pTr=strrchr((String), 0x0d); if (pTr) *pTr='\0'; }
 
+struct __InternalConnectionStruct {
+    Connection      *conn;
+    char            *buffer;
+    unsigned long   buflen;
+    BOOL            ssl;
+};
+
 typedef struct
 {
-    int s;                      /* Socket               */
-    int NMAPs;                  /* NMAP Socket          */
+    struct __InternalConnectionStruct client;
+    struct __InternalConnectionStruct nmap;
+    struct __InternalConnectionStruct remotesmtp;
+
     unsigned long State;        /* Connection state     */
     unsigned long Flags;        /* Status flags         */
     unsigned long RecipCount;   /* Number of recipients */
     NMAPMessageFlags MsgFlags;  /* current msg flags    */
-    struct sockaddr_in cs;      /* Client info          */
-    SSL *CSSL;
-    SSL *NSSL;
+
     unsigned char RemoteHost[MAXEMAILNAMESIZE + 1]; /* Name of remote host   */
-    unsigned long BufferPtr;                        /* Current input pointer */
-    unsigned char Buffer[BUFSIZE + 1];              /* Input buffer          */
-    unsigned long SBufferPtr;                       /* Current send pointer  */
-    unsigned char SBuffer[MTU + 1];                 /* Send buffer           */
-    unsigned long NBufferPtr;                       /* Current send pointer  */
-    unsigned char NBuffer[MTU + 1];                 /* Send buffer           */
-    unsigned char Command[BUFSIZE + 1];             /* Current command       */
+    unsigned char *Command;             /* Current command       */
     unsigned char *From;                            /* For Routing Disabled  */
     unsigned char *AuthFrom;                     /* Sender Authenticated As  */
     unsigned char User[64];                      /* Fixme - Make this bigger */
-    unsigned char ClientSSL;
-    unsigned char NMAPSSL;
+    BOOL IsEHLO;                                /* used for RFC 3848 */
 } ConnectionStruct;
-
-typedef struct
-{
-    unsigned char serverAddress[20];
-    unsigned short serverPort;
-    BOOL SSL;
-    int Queue;
-    int agentPort;
-} QueueStartStruct;
 
 typedef struct
 {
@@ -271,48 +257,13 @@ void *SMTPConnectionPool = NULL;
 
 MDBHandle SMTPDirectoryHandle = NULL;
 
-int ClientRead (ConnectionStruct * Client,
-                unsigned char *Buf, int Len, int Flags);
-int ClientReadSSL (ConnectionStruct * Client,
-                   unsigned char *Buf, int Len, int Flags);
-int ClientWrite (ConnectionStruct * Client,
-                 unsigned char *Buf, int Len, int Flags);
-int ClientWriteSSL (ConnectionStruct * Client,
-                    unsigned char *Buf, int Len, int Flags);
-int NMAPRead (ConnectionStruct * Client,
-              unsigned char *Buf, int Len, int Flags);
-int NMAPReadSSL (ConnectionStruct * Client,
-                 unsigned char *Buf, int Len, int Flags);
-int NMAPWrite (ConnectionStruct * Client,
-               unsigned char *Buf, int Len, int Flags);
-int NMAPWriteSSL (ConnectionStruct * Client,
-                  unsigned char *Buf, int Len, int Flags);
-
-typedef int (*IOFunc) (ConnectionStruct * Client,
-                       unsigned char *Buf, int Len, int Flags);
-IOFunc FuncTbl[8] = {
-    NMAPWrite, NMAPWriteSSL,
-    NMAPRead, NMAPReadSSL,
-    ClientWrite, ClientWriteSSL,
-    ClientRead, ClientReadSSL
-};
-
-#define DoNMAPWrite(Client, Buf, Len, Flags)   FuncTbl[0+Client->NMAPSSL](Client, Buf, Len, Flags)
-#define DoNMAPRead(Client, Buf, Len, Flags)    FuncTbl[2+Client->NMAPSSL](Client, Buf, Len, Flags)
-#define DoClientWrite(Client, Buf, Len, Flags) FuncTbl[4+Client->ClientSSL](Client, Buf, Len, Flags)
-#define DoClientRead(Client, Buf, Len, Flags)  FuncTbl[6+Client->ClientSSL](Client, Buf, Len, Flags)
-
 /* Prototypes */
+long ReadConnection(Connection *conn, char **buffer, unsigned long *buflen);
 void ProcessRemoteEntry (ConnectionStruct * Client,
                          unsigned long Size, int Lines);
 void FreeDomains (void);
-BOOL SendNMAPServer (ConnectionStruct * Client, unsigned char *Data, int Len);
-int GetNMAPAnswer (ConnectionStruct * Client, unsigned char *Reply,
-                   unsigned long ReplyLen, BOOL CheckForResult);
-int RewriteAddress (unsigned char *Source, unsigned char *Target,
-                    int TargetSize);
+int RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int TargetSize);
 BOOL FlushClient (ConnectionStruct * Client);
-void RegisterNMAPServer (void *QSIn);
 BOOL EndClientConnection (ConnectionStruct * Client);
 void FreeUserDomains (void);
 void FreeRelayDomains (void);
@@ -482,25 +433,20 @@ static BOOL
 SMTPShutdown (unsigned char *Arguments, unsigned char **Response,
               BOOL * CloseConnection)
 {
-    int s;
     XplThreadID id;
 
     if (Response) {
         if (!Arguments) {
-            if (SMTPServerSocket != -1) {
+            if (SMTPServerConnection) {
                 *Response = MemStrdup ("Shutting down.\r\n");
                 if (*Response) {
                     id = XplSetThreadGroupID (TGid);
 
                     Exiting = TRUE;
 
-                    s = SMTPServerSocket;
-                    SMTPServerSocket = -1;
-
-                    if (s != -1) {
-                        IPshutdown (s, 2);
-                        IPclose (s);
-                    }
+                    ConnClose(SMTPServerConnection, 1);
+                    ConnFree(SMTPServerConnection);
+                    SMTPServerConnection = NULL;
 
                     if (CloseConnection) {
                         *CloseConnection = TRUE;
@@ -510,11 +456,9 @@ SMTPShutdown (unsigned char *Arguments, unsigned char **Response,
 
                     XplSetThreadGroupID (id);
                 }
-            }
-            else if (Exiting) {
+            } else if (Exiting) {
                 *Response = MemStrdup ("Shutdown in progress.\r\n");
-            }
-            else {
+            } else {
                 *Response = MemStrdup ("Unknown shutdown state.\r\n");
             }
 
@@ -696,9 +640,9 @@ DumpConnectionListCB (void *Buffer, void *Data)
         ptr = (unsigned char *) Data + strlen ((unsigned char *) Data);
 
         sprintf (ptr, "%d.%d.%d.%d:%d [%lu] \"%s\"\r\n",
-                 Client->cs.sin_addr.s_net, Client->cs.sin_addr.s_host,
-                 Client->cs.sin_addr.s_lh, Client->cs.sin_addr.s_impno,
-                 Client->s, Client->State, Client->Command);
+                 Client->client.conn->socketAddress.sin_addr.s_net, Client->client.conn->socketAddress.sin_addr.s_host,
+                 Client->client.conn->socketAddress.sin_addr.s_lh, Client->client.conn->socketAddress.sin_addr.s_impno,
+                 Client->client.conn->socket, Client->State, Client->Command);
 
         return (TRUE);
     }
@@ -763,7 +707,7 @@ BOOL
 ReadSMTPVariable (unsigned int Variable, unsigned char *Data,
                   size_t * DataLength)
 {
-    int i;
+    unsigned int i;
     int count;
     unsigned char *ptr;
 
@@ -1134,9 +1078,7 @@ ReadSMTPVariable (unsigned int Variable, unsigned char *Data,
 
     case 37:{                  /*      unsigned char   **Domains                                                                       */
             if (DomainCount) {
-                if (Data
-                    && ((int) (*DataLength) >
-                        (DomainCount * MAXEMAILNAMESIZE))) {
+                if (Data && ((unsigned int) (*DataLength) > (DomainCount * MAXEMAILNAMESIZE))) {
                     ptr = Data;
                     for (i = 0; i < DomainCount; i++) {
                         ptr += sprintf (ptr, "%s\r\n", Domains[i]);
@@ -1159,9 +1101,7 @@ ReadSMTPVariable (unsigned int Variable, unsigned char *Data,
 
     case 38:{                  /*      unsigned char   **UserDomains                                                           */
             if (UserDomainCount) {
-                if (Data
-                    && ((int) (*DataLength) >
-                        (UserDomainCount * MAXEMAILNAMESIZE))) {
+                if (Data && ((unsigned int) (*DataLength) > (UserDomainCount * MAXEMAILNAMESIZE))) {
                     ptr = Data;
                     for (i = 0; i < UserDomainCount; i++) {
                         ptr += sprintf (ptr, "%s\r\n", UserDomains[i]);
@@ -1185,9 +1125,7 @@ ReadSMTPVariable (unsigned int Variable, unsigned char *Data,
 
     case 39:{                  /*      unsigned char   **RelayDomains                                                          */
             if (RelayDomainCount) {
-                if (Data
-                    && ((int) (*DataLength) >
-                        (RelayDomainCount * MAXEMAILNAMESIZE))) {
+                if (Data && ((unsigned int) (*DataLength) > (RelayDomainCount * MAXEMAILNAMESIZE))) {
                     ptr = Data;
                     for (i = 0; i < RelayDomainCount; i++) {
                         ptr += sprintf (ptr, "%s\r\n", RelayDomains[i]);
@@ -2140,8 +2078,6 @@ SMTPConnectionAllocCB (void *Buffer, void *ClientData)
     register ConnectionStruct *c = (ConnectionStruct *) Buffer;
 
     memset (c, 0, sizeof (ConnectionStruct));
-    c->s = -1;
-    c->NMAPs = -1;
     c->State = STATE_FRESH;
     c->MsgFlags = MSG_FLAG_ENCODING_NONE;
 
@@ -2154,8 +2090,6 @@ ReturnSMTPConnection (ConnectionStruct * Client)
     register ConnectionStruct *c = Client;
 
     memset (c, 0, sizeof (ConnectionStruct));
-    c->s = -1;
-    c->NMAPs = -1;
     c->State = STATE_FRESH;
     c->MsgFlags = MSG_FLAG_ENCODING_NONE;
 
@@ -2194,197 +2128,22 @@ strchrRN (unsigned char *Buffer, unsigned char SrchChar,
     return (NULL);
 }
 
-
-#define	SocketReadyTimeout(Socket, Timeout, Exiting)					\
-	{																					\
-		int                  ret;												\
-		fd_set               readfds;											\
-		struct timeval       timeout;											\
-																						\
-		FD_ZERO(&readfds);														\
-		FD_SET((Socket), &readfds);											\
-		timeout.tv_usec = 0;														\
-		timeout.tv_sec = (Timeout);											\
-		ret = select(FD_SETSIZE, &readfds, NULL, NULL, &timeout);	\
-																						\
-		if (Exiting) {																\
-			return(0);																\
-		}																				\
-																						\
-		if (ret < 1) {																\
-			return(-1);																\
-		}																				\
-	}
-
-
-int
-ClientRead (ConnectionStruct * Client, unsigned char *Buf, int Len, int Flags)
-{
-#ifndef WIN32
-    int ret;
-    struct pollfd pfd;
-
-    pfd.fd = Client->s;
-    pfd.events = POLLIN;
-    ret = poll (&pfd, 1, SocketTimeout * 1000);
-    if (ret > 0) {
-        if (!(pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
-            do {
-                ret = IPrecv (Client->s, Buf, Len, 0);
-                if (ret >= 0) {
-                    break;
-                }
-                else if (errno == EINTR) {
-                    continue;
-                }
-
-                ret = -1;
-                break;
-            } while (TRUE);
-        }
-        else {
-            ret = -1;
-        }
-    }
-    else {
-        ret = -1;
-    }
-
-    if (Exiting) {
-        return (0);
-    }
-
-    if (ret < 1) {
-        return (-1);
-    }
-
-    return (ret);
-#else
-    SocketReadyTimeout (Client->s, SocketTimeout * 1000, Exiting);
-    return (IPrecv (Client->s, (unsigned char *) Buf, Len, 0));
-#endif
-}
-
-int
-ClientWrite (ConnectionStruct * Client, unsigned char *Buf, int Len,
-             int Flags)
-{
-    return (IPsend (Client->s, Buf, Len, Flags));
-}
-
-int
-ClientReadSSL (ConnectionStruct * Client, unsigned char *Buf, int Len,
-               int Flags)
-{
-    int llen;
-
-    llen = SSL_read (Client->CSSL, (void *) Buf, Len);
-
-    if (!Exiting) {
-        return (llen);
-    }
-    else {
-        return (-1);
-    }
-}
-
-int
-ClientWriteSSL (ConnectionStruct * Client, unsigned char *Buf, int Len,
-                int Flags)
-{
-    return (SSL_write (Client->CSSL, (void *) Buf, Len));
-}
-
-int
-NMAPRead (ConnectionStruct * Client, unsigned char *Buf, int Len, int Flags)
-{
-#ifndef WIN32
-    int ret;
-    struct pollfd pfd;
-
-    pfd.fd = Client->NMAPs;
-    pfd.events = POLLIN;
-    ret = poll (&pfd, 1, SocketTimeout * 1000);
-    if (ret > 0) {
-        if (!(pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
-            do {
-                ret = recv (Client->NMAPs, Buf, Len, 0);
-                if (ret >= 0) {
-                    break;
-                }
-                else if (errno == EINTR) {
-                    continue;
-                }
-
-                ret = -1;
-                break;
-            } while (TRUE);
-        }
-        else {
-            ret = -1;
-        }
-    }
-    else {
-        ret = -1;
-    }
-
-    if (Exiting) {
-        return (0);
-    }
-
-    if (ret < 1) {
-        return (-1);
-    }
-
-    return (ret);
-#else
-
-    SocketReadyTimeout (Client->NMAPs, SocketTimeout * 1000, Exiting);
-    return (IPrecv (Client->NMAPs, (unsigned char *) Buf, Len, 0));
-#endif
-}
-
-int
-NMAPWrite (ConnectionStruct * Client, unsigned char *Buf, int Len, int Flags)
-{
-    return (IPsend (Client->NMAPs, Buf, Len, Flags));
-}
-
-int
-NMAPReadSSL (ConnectionStruct * Client, unsigned char *Buf, int Len,
-             int Flags)
-{
-    int llen;
-
-    llen = SSL_read (Client->NSSL, (void *) Buf, Len);
-
-    if (!Exiting) {
-        return (llen);
-    }
-    else {
-        return (-1);
-    }
-}
-
-int
-NMAPWriteSSL (ConnectionStruct * Client, unsigned char *Buf, int Len,
-              int Flags)
-{
-    int err;
-
-    err = SSL_write (Client->NSSL, (void *) Buf, Len);
-    if (err == -1) {
-        return (-1);
-    }
-
-    return (Len);
-}
+#define FreeInternalConnection(c)           \
+    if (c.conn) {                           \
+        ConnClose(c.conn, 1);               \
+        ConnFree(c.conn);                   \
+        c.conn = NULL;                      \
+                                            \
+        if (c.buffer) {                     \
+            MemFree(c.buffer);              \
+            c.buffer = NULL;                \
+            c.buflen = 0;                   \
+        }                                   \
+    }                                       \
 
 BOOL
 EndClientConnection (ConnectionStruct * Client)
 {
-    CMDisconnected (Client->cs.sin_addr.s_addr);
-
     if (Client) {
         if (Client->State == STATE_ENDING) {
             return (TRUE);
@@ -2394,8 +2153,7 @@ EndClientConnection (ConnectionStruct * Client)
             if (Client->State == STATE_WAITING) {
                 XplSafeDecrement (SMTPStats.IncomingQueueAgent);
             }
-        }
-        else {
+        } else {
             XplSafeIncrement (SMTPStats.Server.Serviced);
         }
 
@@ -2406,7 +2164,8 @@ EndClientConnection (ConnectionStruct * Client)
             MemFree (Client->From);
             Client->From = NULL;
         }
-        if (Client->NMAPs != -1) {
+
+        if (Client->nmap.conn) {
             if (Client->Flags != STATE_HELO) {
                 /* if smtp is in the middle of receiving a message,   */
                 /* we need to send a dot on a line by itself          */
@@ -2415,31 +2174,23 @@ EndClientConnection (ConnectionStruct * Client)
                 /* QUIT commands.  If NMAP is already in the command  */
                 /* state, the dot on a line by itself will not hurt   */
                 /* anything.  NMAP will just send 'unknown command'   */
-                SendNMAPServer (Client, "\r\n.\r\n", 5);
-                SendNMAPServer (Client, "QABRT\r\nQUIT\r\n", 13);
+                NMAPSendCommand (Client->nmap.conn, "\r\n.\r\n", 5);
+                NMAPSendCommand (Client->nmap.conn, "QABRT\r\nQUIT\r\n", 13);
+            } else {
+                NMAPSendCommand (Client->nmap.conn, "QUIT\r\n", 6);
             }
-            else {
-                SendNMAPServer (Client, "QUIT\r\n", 6);
-            }
-            IPclose (Client->NMAPs);
-            Client->NMAPs = -1;
+            FreeInternalConnection(Client->nmap);
         }
 
-        if (Client->s != -1) {
-            FlushClient (Client);
-            IPclose (Client->s);
+        if (Client->client.conn) {
+            CMDisconnected (Client->client.conn->socketAddress.sin_addr.s_addr);
+
+            FreeInternalConnection(Client->client);
         }
 
-        if (Client->CSSL) {
-            SSL_shutdown (Client->CSSL);
-            SSL_free (Client->CSSL);
-            Client->CSSL = NULL;
-        }
-
-        if (Client->NSSL) {
-            SSL_shutdown (Client->NSSL);
-            SSL_free (Client->NSSL);
-            Client->NSSL = NULL;
+        if (Client->remotesmtp.conn) {
+            ConnWrite(Client->remotesmtp.conn, "RSET\r\nQUIT\r\n", 12);
+            FreeInternalConnection(Client->remotesmtp);
         }
 
         if (Client->AuthFrom != NULL) {
@@ -2450,8 +2201,7 @@ EndClientConnection (ConnectionStruct * Client)
         /* Bump our thread count */
         if (Client->Flags < STATE_WAITING) {
             XplSafeDecrement (SMTPConnThreads);
-        }
-        else {
+        } else {
             XplSafeDecrement (SMTPQueueThreads);
         }
 
@@ -2459,229 +2209,6 @@ EndClientConnection (ConnectionStruct * Client)
     }
     XplExitThread (TSR_THREAD, 0);
     return (FALSE);
-}
-
-BOOL
-FlushClient (ConnectionStruct * Client)
-{
-    int count;
-    unsigned long sent = 0;
-
-    while ((sent < Client->SBufferPtr) && (!Exiting)) {
-        count =
-            DoClientWrite (Client, Client->SBuffer + sent,
-                           Client->SBufferPtr - sent, 0);
-        if ((count < 1) || Exiting) {
-            return (EndClientConnection (Client));
-        }
-        sent += count;
-    }
-
-    if (!Exiting) {
-        Client->SBufferPtr = 0;
-        Client->SBuffer[0] = '\0';
-        return (TRUE);
-    }
-
-    return (EndClientConnection (Client));
-}
-
-static BOOL
-SendClient (ConnectionStruct * Client, unsigned char *Data, int Len)
-{
-    int sent = 0;
-
-    if (!Len)
-        return (TRUE);
-
-    if (!Data)
-        return (FALSE);
-
-    while (sent < Len) {
-        if (Len - sent + Client->SBufferPtr >= MTU) {
-            memcpy (Client->SBuffer + Client->SBufferPtr, Data + sent,
-                    (MTU - Client->SBufferPtr));
-            sent += (MTU - Client->SBufferPtr);
-            Client->SBufferPtr += (MTU - Client->SBufferPtr);
-            if (!FlushClient (Client)) {
-                return (FALSE);
-            }
-        }
-        else {
-            memcpy (Client->SBuffer + Client->SBufferPtr, Data + sent,
-                    Len - sent);
-            Client->SBufferPtr += Len - sent;
-            sent = Len;
-        }
-    }
-    Client->SBuffer[Client->SBufferPtr] = '\0';
-    return (TRUE);
-}
-
-BOOL
-SendNMAPServer (ConnectionStruct * Client, unsigned char *Data, int Len)
-{
-    int count;
-    int sent = 0;
-
-    while (sent < Len) {
-        count = DoNMAPWrite (Client, Data + sent, Len - sent, 0);
-        if ((count < 1) || (Exiting)) {
-            if (!Exiting) {
-                IPclose (Client->NMAPs);
-                Client->NMAPs = -1;
-            }
-            if (!(Client->State == STATE_ENDING))
-                return (EndClientConnection (Client));
-            else
-                return (FALSE);
-        }
-        sent += count;
-    }
-
-    return (TRUE);
-}
-
-int
-GetNMAPAnswer (ConnectionStruct * Client, unsigned char *Reply,
-               unsigned long ReplyLen, BOOL CheckForResult)
-{
-    BOOL Ready = FALSE;
-    int count;
-    int Result;
-    unsigned char *ptr;
-
-    if (Client->NMAPs == -1)
-        return (-1);
-
-    if ((Client->NBufferPtr > 0)
-        && ((ptr = strchr (Client->NBuffer, 0x0a)) != NULL)) {
-        *ptr = '\0';
-        if (ReplyLen > strlen (Client->NBuffer)) {
-            strcpy (Reply, Client->NBuffer);
-        }
-        else {
-            strncpy (Reply, Client->NBuffer, ReplyLen - 1);
-            Reply[ReplyLen - 1] = '\0';
-        }
-        Client->NBufferPtr = strlen (ptr + 1);
-        memmove (Client->NBuffer, ptr + 1, Client->NBufferPtr + 1);
-        if ((ptr = strrchr (Reply, 0x0d)) != NULL)
-            *ptr = '\0';
-        Ready = TRUE;
-    }
-    else {
-        while (!Ready) {
-            if (Exiting) {
-                return (EndClientConnection (Client));
-            }
-            count =
-                DoNMAPRead (Client, Client->NBuffer + Client->NBufferPtr,
-                            BUFSIZE - Client->NBufferPtr, 0);
-            if ((count < 1) || (Exiting)) {
-                return (EndClientConnection (Client));
-            }
-            Client->NBufferPtr += count;
-            Client->NBuffer[Client->NBufferPtr] = '\0';
-            if ((ptr = strchr (Client->NBuffer, 0x0a)) != NULL) {
-                *ptr = '\0';
-                count =
-                    min ((unsigned long) (ptr - Client->NBuffer) + 1,
-                         ReplyLen);
-                memcpy (Reply, Client->NBuffer, count);
-
-                Client->NBufferPtr = strlen (ptr + 1);
-                memmove (Client->NBuffer, ptr + 1, Client->NBufferPtr + 1);
-                if ((ptr = strrchr (Reply, 0x0d)) != NULL)
-                    *ptr = '\0';
-                Ready = TRUE;
-            }
-        }
-    }
-    if (CheckForResult) {
-        if ((Reply[4] != ' ') && (Reply[4] != '-')) {
-            ptr = strchr (Reply, ' ');
-            if (!ptr) {
-                return (-1);
-            }
-        }
-        else {
-            ptr = Reply + 4;
-        }
-        *ptr = '\0';
-        Result = atoi (Reply);
-        if (Result == 5001) {
-            IPclose (Client->NMAPs);
-            Client->NMAPs = -1;
-        }
-        memmove (Reply, ptr + 1, strlen (ptr + 1) + 1);
-    }
-    else {
-        Result = atoi (Reply);
-    }
-    return (Result);
-}
-
-static BOOL
-GetClientAnswer (ConnectionStruct * Client)
-{
-    BOOL Ready = FALSE;
-    unsigned char *ptr;
-    unsigned char Answer[BUFSIZE + 1];
-    int count;
-    unsigned long lineLen;
-
-    if ((Client->BufferPtr > 0)
-        &&
-        ((ptr =
-          strchrRN (Client->Buffer, 0x0a,
-                    Client->Buffer + Client->BufferPtr)) != NULL)) {
-        *ptr = '\0';
-        lineLen = ptr - Client->Buffer + 1;
-        memcpy (Client->Command, Client->Buffer, lineLen);
-        Client->BufferPtr -= lineLen;
-        memmove (Client->Buffer, ptr + 1, Client->BufferPtr + 1);
-        if ((ptr = strrchr (Client->Command, 0x0d)) != NULL)
-            *ptr = '\0';
-        Ready = TRUE;
-    }
-    else {
-        while (!Ready) {
-            if (Exiting) {
-                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", Hostname,
-                          MSG421SHUTDOWN);
-                SendClient (Client, Answer, strlen (Answer));
-                return (EndClientConnection (Client));
-            }
-            count =
-                DoClientRead (Client, Client->Buffer + Client->BufferPtr,
-                              BUFSIZE - Client->BufferPtr, 0);
-            if (count < 1) {
-                if (Exiting) {
-                    snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                              Hostname, MSG421SHUTDOWN);
-                    SendClient (Client, Answer, strlen (Answer));
-                }
-                return (EndClientConnection (Client));
-            }
-            Client->BufferPtr += count;
-            Client->Buffer[Client->BufferPtr] = '\0';
-            if ((ptr =
-                 strchrRN (Client->Buffer, 0x0a,
-                           Client->Buffer + Client->BufferPtr)) != NULL) {
-                *ptr = '\0';
-                lineLen = ptr - Client->Buffer + 1;
-                memcpy (Client->Command, Client->Buffer, lineLen);
-                Client->BufferPtr -= lineLen;
-                memmove (Client->Buffer, ptr + 1, Client->BufferPtr);
-                Client->Buffer[Client->BufferPtr] = '\0';
-                if ((ptr = strrchr (Client->Command, 0x0d)) != NULL)
-                    *ptr = '\0';
-                Ready = TRUE;
-            }
-        }
-    }
-    return (TRUE);
 }
 
 static BOOL
@@ -2693,6 +2220,7 @@ HandleConnection (void *param)
     BOOL Ready;
     BOOL Working = TRUE;
     BOOL IsTrusted = TRUE;
+    BOOL IsAuthed = FALSE;
     BOOL AllowAuth = TRUE;
     BOOL NullSender = FALSE;
     BOOL TooManyNullSenderRecips = FALSE;
@@ -2703,22 +2231,20 @@ HandleConnection (void *param)
     struct sockaddr_in soc_address;
     struct sockaddr_in *sin = &soc_address;
     time_t connectionTime;
-    unsigned long lineLen;
 
     time (&connectionTime);
 
-    if (Client->ClientSSL) {
+    if (Client->client.conn->ssl.enable) {
         LogMsg (LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION,
                 LOG_INFO, "SSL connection %d",
-                XplHostToLittle (Client->cs.sin_addr.s_addr));
-        if (SSL_accept (Client->CSSL) != 1) {
+                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+        if (!ConnNegotiate(Client->client.conn, SSLContext)) {
             return (EndClientConnection (Client));
         }
-    }
-    else {
+    } else {
         LogMsg (LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_CONNECTION,
                 LOG_INFO, "Connection %d",
-                XplHostToLittle (Client->cs.sin_addr.s_addr));
+                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
     }
 
     XplRWReadLockAcquire (&ConfigLock);
@@ -2726,45 +2252,42 @@ HandleConnection (void *param)
         AllowAuth = FALSE;
     }
 
-    ReplyInt =
-        CMVerifyConnect (Client->cs.sin_addr.s_addr, Answer, &RequireAuth);
+    ReplyInt = CMVerifyConnect (Client->client.conn->socketAddress.sin_addr.s_addr, Answer, &RequireAuth);
     if (ReplyInt == CM_RESULT_DENY_PERMANENT) {
         /* We don't like the guy */
         XplRWReadLockRelease (&ConfigLock);
         LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_CONNECTION_BLOCKED,
                 LOG_INFO, "Connection blocked %d",
-                XplHostToLittle (Client->cs.sin_addr.s_addr));
+                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
         XplSafeIncrement (SMTPStats.SPAM.AddressBlocked);
 
         if (Answer[0] != '\0') {
-            SendClient (Client, MSG553COMMENT, MSG553COMMENT_LEN);
-            SendClient (Client, Answer, strlen (Answer));
-            SendClient (Client, "\r\n", 2);
+            ConnWrite (Client->client.conn, MSG553COMMENT, MSG553COMMENT_LEN);
+            ConnWrite (Client->client.conn, Answer, strlen (Answer));
+            ConnWrite (Client->client.conn, "\r\n", 2);
         }
         else {
-            SendClient (Client, MSG550SPAMBLOCK, MSG550SPAMBLOCK_LEN);
+            ConnWrite (Client->client.conn, MSG550SPAMBLOCK, MSG550SPAMBLOCK_LEN);
         }
-        FlushClient (Client);
+        ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
-    }
-    else if (ReplyInt != CM_RESULT_ALLOWED) {
+    } else if (ReplyInt != CM_RESULT_ALLOWED) {
         /* Either we don't like the guy, or there was an error */
         XplRWReadLockRelease (&ConfigLock);
         LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_CONNECTION_BLOCKED,
                 LOG_INFO, "Connection blocked %d Blocklist: %d",
-                XplHostToLittle (Client->cs.sin_addr.s_addr),
+                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr),
                 LOGGING_BLOCK_BLOCKLIST);
         XplSafeIncrement (SMTPStats.SPAM.AddressBlocked);
 
         if (Answer[0] != '\0') {
-            SendClient (Client, MSG453COMMENT, MSG453COMMENT_LEN);
-            SendClient (Client, Answer, strlen (Answer));
-            SendClient (Client, "\r\n", 2);
+            ConnWrite (Client->client.conn, MSG453COMMENT, MSG453COMMENT_LEN);
+            ConnWrite (Client->client.conn, Answer, strlen (Answer));
+            ConnWrite (Client->client.conn, "\r\n", 2);
+        } else {
+            ConnWrite (Client->client.conn, MSG453TRYLATER, MSG453TRYLATER_LEN);
         }
-        else {
-            SendClient (Client, MSG453TRYLATER, MSG453TRYLATER_LEN);
-        }
-        FlushClient (Client);
+        ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
     }
 
@@ -2772,20 +2295,18 @@ HandleConnection (void *param)
         IsTrusted = FALSE;
 
         if (UBEConfig & UBE_SMTP_AFTER_POP) {
-            ReplyInt = CMVerifyRelay (Client->cs.sin_addr.s_addr, Answer);
+            ReplyInt = CMVerifyRelay (Client->client.conn->socketAddress.sin_addr.s_addr, Answer);
             if (ReplyInt == CM_RESULT_ALLOWED) {
                 if (Answer[0] != '\0') {
                     if (Client->AuthFrom == NULL) {
                         Client->AuthFrom = MemStrdup (Answer);
                         IsTrusted = TRUE;
-                    }
-                    else {
+                    } else {
                         MemFree (Client->AuthFrom);
                         Client->AuthFrom = MemStrdup (Answer);
                         IsTrusted = TRUE;
                     }
-                }
-                else {
+                } else {
                     IsTrusted = TRUE;
                 }
             }
@@ -2798,151 +2319,58 @@ HandleConnection (void *param)
     sin->sin_addr.s_addr=inet_addr(NMAPServer);
     sin->sin_family=AF_INET;
     sin->sin_port=htons(BONGO_QUEUE_PORT);
-    Client->NMAPs=IPsocket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-    ReplyInt =
-        IPconnect (Client->NMAPs, (struct sockaddr *) &soc_address,
-                   sizeof (soc_address));
-    if (ReplyInt) {
-        IPclose (Client->NMAPs);
-        Client->NMAPs = -1;
-        count =
-            snprintf (Reply, sizeof (Reply), "421 %s %s\r\n", Hostname,
-                      MSG421SHUTDOWN);
+    if ((Client->nmap.conn = NMAPConnectEx(NULL, sin, Client->client.conn->trace.destination)) == NULL ||
+        !NMAPAuthenticateToStore(Client->nmap.conn, Answer, sizeof(Answer))) {
+        NMAPQuit(Client->nmap.conn);
+        Client->nmap.conn = NULL;
+        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", Hostname, MSG421SHUTDOWN);
         LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE,
                 LOG_ERROR, "NMAP unavailable %d Reply: %d",
                 XplHostToLittle (soc_address.sin_addr.s_addr), ReplyInt);
-        SendClient (Client, Reply, count);
-        FlushClient (Client);
+        ConnWrite (Client->client.conn, Reply, count);
+        ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
-    }
-
-    ReplyInt = GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE);
-
-    switch (ReplyInt) {
-    case NMAP_READY:{
-            break;
-        }
-
-    case 4242:{
-            unsigned char *ptr, *salt;
-            xpl_hash_context ctx;
-            unsigned char digest[XPLHASH_MD5_LENGTH];
-
-            ptr = strchr (Answer, '<');
-            if (ptr) {
-                ptr++;
-                salt = ptr;
-                if ((ptr = strchr (ptr, '>')) != NULL) {
-                    *ptr = '\0';
-                }
-
-                XplHashNew(&ctx, XPLHASH_MD5);
-                XplHashWrite(&ctx, salt, strlen(salt));
-                XplHashWrite(&ctx, NMAPHash, NMAP_HASH_SIZE);
-                XplHashFinal(&ctx, XPLHASH_LOWERCASE, digest, XPLHASH_MD5_LENGTH);
-
-                ReplyInt = sprintf(Answer, "AUTH SYSTEM %s\r\n", digest);
-
-                SendNMAPServer (Client, Answer, ReplyInt);
-                if (GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE) ==
-                    1000) {
-                    break;
-                }
-            }
-            /* Fall-through */
-        }
-
-    default:{
-            LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE,
-                    LOG_ERROR, "NMAP unavailable %d Reply: %d",
-                    XplHostToLittle (soc_address.sin_addr.s_addr), ReplyInt);
-            IPclose (Client->NMAPs);
-            Client->NMAPs = -1;
-            snprintf (Reply, sizeof (Reply), "421 %s %s (%d)\r\n", Hostname,
-                      MSG421SHUTDOWN, ReplyInt);
-            SendClient (Client, Reply, strlen (Reply));
-            FlushClient (Client);
-            return (EndClientConnection (Client));
-        }
     }
 
     snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", Hostname,
               MSG220READY, PRODUCT_VERSION);
-    SendClient (Client, Answer, strlen (Answer));
-    FlushClient (Client);
+    ConnWrite (Client->client.conn, Answer, strlen (Answer));
+    ConnFlush (Client->client.conn);
 
     while (Working) {
         Ready = FALSE;
-        if ((Client->BufferPtr > 0)
-            &&
-            ((ptr =
-              strchrRN (Client->Buffer, 0x0a,
-                        Client->Buffer + Client->BufferPtr)) != NULL)) {
-            *ptr = '\0';
-            lineLen = ptr - Client->Buffer + 1;
-            memcpy (Client->Command, Client->Buffer, lineLen);
-            Client->BufferPtr -= lineLen;
-            memmove (Client->Buffer, ptr + 1, Client->BufferPtr + 1);
-            if ((ptr = strrchr (Client->Command, 0x0d)) != NULL)
-                *ptr = '\0';
-            Ready = TRUE;
-        }
-        else {
-            while (!Ready) {
-                if (Exiting == FALSE) {
-                    count =
-                        DoClientRead (Client,
-                                      Client->Buffer + Client->BufferPtr,
-                                      BUFSIZE - Client->BufferPtr, 0);
-                }
-                else {
-                    snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                              Hostname, MSG421SHUTDOWN);
-                    SendClient (Client, Answer, strlen (Answer));
-                    return (EndClientConnection (Client));
-                }
+        while (!Ready) {
+            if (Exiting == FALSE) {
+                count = ConnReadToAllocatedBuffer(Client->client.conn, &(Client->client.buffer), &(Client->client.buflen));
+            } else {
+                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
+                          Hostname, MSG421SHUTDOWN);
+                ConnWrite (Client->client.conn, Answer, strlen (Answer));
+                ConnFlush(Client->client.conn);
+                return (EndClientConnection (Client));
+            }
 
-                if (count > 0) {
-                    Client->BufferPtr += count;
-                    Client->Buffer[Client->BufferPtr] = '\0';
-                }
-                else if (Exiting == FALSE) {
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                            LOGGER_EVENT_CONNECTION_TIMEOUT,
-                            LOG_ERROR,
-                            "Connection timeout %d Time: %d",
-                            XplHostToLittle (soc_address.sin_addr.s_addr),
-                            time (NULL) - connectionTime);
-                    return (EndClientConnection (Client));
-                }
-                else {
-                    snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                              Hostname, MSG421SHUTDOWN);
-                    SendClient (Client, Answer, strlen (Answer));
-                    return (EndClientConnection (Client));
-                }
-
-                if ((ptr =
-                     strchrRN (Client->Buffer, 0x0a,
-                               Client->Buffer + Client->BufferPtr)) != NULL) {
-                    *ptr = '\0';
-                    lineLen = ptr - Client->Buffer + 1;
-                    memcpy (Client->Command, Client->Buffer, lineLen);
-                    Client->BufferPtr -= lineLen;
-                    memmove (Client->Buffer, ptr + 1, Client->BufferPtr);
-                    Client->Buffer[Client->BufferPtr] = '\0';
-                    if ((ptr = strrchr (Client->Command, 0x0d)) != NULL)
-                        *ptr = '\0';
-                    Ready = TRUE;
-                }
+            if (count > 0) {
+            /* this simplifies the rest of the code */
+                Client->Command = Client->client.buffer;
+                Ready = TRUE;
+            } else if (Exiting == FALSE) {
+                LogMsg (LOGGER_SUBSYSTEM_GENERAL,
+                        LOGGER_EVENT_CONNECTION_TIMEOUT,
+                        LOG_ERROR,
+                        "Connection timeout %d Time: %d",
+                        XplHostToLittle (soc_address.sin_addr.s_addr),
+                        time (NULL) - connectionTime);
+                return (EndClientConnection (Client));
+            } else if (count < 1) {
+                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
+                          Hostname, MSG421SHUTDOWN);
+                ConnWrite (Client->client.conn, Answer, strlen (Answer));
+                ConnFlush(Client->client.conn);
+                return (EndClientConnection (Client));
             }
         }
 
-#if 0
-        XplConsolePrintf ("\rGot command:%s %s\n", Client->Command,
-                          Client->ClientSSL ? "(Secure)" : "");
-#endif
         switch (toupper (Client->Command[0])) {
         case 'H':
             switch (toupper (Client->Command[3])) {
@@ -2950,7 +2378,7 @@ HandleConnection (void *param)
                 if (Client->State == STATE_FRESH) {
                     snprintf (Answer, sizeof (Answer), "250 %s %s\r\n",
                               Hostname, MSG250HELLO);
-                    SendClient (Client, Answer, strlen (Answer));
+                    ConnWrite (Client->client.conn, Answer, strlen (Answer));
                     strncpy (Client->RemoteHost, Client->Command + 5,
                              sizeof (Client->RemoteHost));
                     Client->State = STATE_HELO;
@@ -2959,16 +2387,16 @@ HandleConnection (void *param)
                     TooManyNullSenderRecips = FALSE;
                 }
                 else {
-                    SendClient (Client, MSG503BADORDER, MSG503BADORDER_LEN);
+                    ConnWrite (Client->client.conn, MSG503BADORDER, MSG503BADORDER_LEN);
                 }
                 break;
 
             case 'P':          /* HELP */
-                SendClient (Client, MSG211HELP, MSG211HELP_LEN);
+                ConnWrite (Client->client.conn, MSG211HELP, MSG211HELP_LEN);
                 break;
 
             default:
-                SendClient (Client, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
+                ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                 break;
             }
             break;
@@ -2977,40 +2405,33 @@ HandleConnection (void *param)
                 switch (toupper (Client->Command[1])) {
                 case 'T':{     /* STARTTLS */
                         if (!AllowClientSSL) {
-                            SendClient (Client, MSG500UNKNOWN,
-                                        MSG500UNKNOWN_LEN);
+                            ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                             break;
                         }
 
-                        SendClient (Client, MSG220TLSREADY,
-                                    MSG220TLSREADY_LEN);
-                        FlushClient (Client);
-                        Client->ClientSSL = TRUE;
-                        Client->CSSL = SSL_new (SSLContext);
-                        if (Client->CSSL) {
-                            if ((SSL_set_bsdfd (Client->CSSL, Client->s) == 1)
-                                && (SSL_accept (Client->CSSL) == 1)) {
-                                Client->State = STATE_FRESH;
-                                break;
-                            }
-                            SSL_free (Client->CSSL);
-                            Client->CSSL = NULL;
+                        ConnWrite (Client->client.conn, MSG220TLSREADY, MSG220TLSREADY_LEN);
+                        ConnFlush (Client->client.conn);
+
+                        /* try to negotiate the connection */
+                        Client->client.conn->ssl.enable = TRUE;
+
+                        if (ConnNegotiate(Client->client.conn, SSLContext)) {
+                            /* negotiation worked */
+                            Client->State = STATE_FRESH;
                         }
-                        Client->ClientSSL = FALSE;
-                        Client->State = STATE_FRESH;
                         break;
                     }
 
                 case 'A':      /* SAML */
                 case 'O':      /* SOML */
                 case 'E':{     /* SEND */
-                        SendClient (Client, MSG502NOTIMPLEMENTED,
+                        ConnWrite (Client->client.conn, MSG502NOTIMPLEMENTED,
                                     MSG502NOTIMPLEMENTED_LEN);
                         break;
                     }
 
                 default:{
-                        SendClient (Client, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
+                        ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                         break;
                     }
                 }
@@ -3022,85 +2443,90 @@ HandleConnection (void *param)
                 MDBValueStruct *User;
 
                 if (AllowAuth == FALSE) {
-                    SendClient (Client, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
+                    ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                     break;
                 }
 
+                /* rfc 2554 */
+                if (IsAuthed) {
+                    ConnWrite (Client->client.conn, MSG503BADORDER, MSG503BADORDER_LEN);
+                    break;
+                } 
+
                 if (XplStrNCaseCmp (Client->Command + 5, "LOGIN", 5) != 0) {
-                    SendClient (Client, MSG504BADAUTH, MSG504BADAUTH_LEN);
+                    ConnWrite (Client->client.conn, MSG504BADAUTH, MSG504BADAUTH_LEN);
                     break;
                 }
                 if (!isspace (Client->Command[10])) {
-                    SendClient (Client, "334 VXNlcm5hbWU6\r\n", 18);
-                    FlushClient (Client);
-                    GetClientAnswer (Client);
-                    strcpy (Reply, Client->Command);
+                    ConnWrite (Client->client.conn, "334 VXNlcm5hbWU6\r\n", 18);
+                    ConnFlush (Client->client.conn);
+                    ConnReadToAllocatedBuffer(Client->client.conn, &(Client->client.buffer), &(Client->client.buflen));
+                    strcpy (Reply, Client->client.buffer);
                 }
                 else {
-                    strcpy (Reply, Client->Command + 11);
+                    strcpy (Reply, Client->client.buffer + 11);
                 }
 
-                SendClient (Client, "334 UGFzc3dvcmQ6\r\n", 18);
-                FlushClient (Client);
-
-                GetClientAnswer (Client);
-
-                if (Client->Command[0] == '*' && Client->Command[1] == '\0') {
-                    SendClient (Client,
-                                "501 Authentication aborted by client\r\n",
-                                38);
+                /* it might be possible to abort the auth here (rfc 2554). 
+                 * this is a code duplication from below */
+                if (Client->client.buffer[0] == '*' && Client->client.buffer[1] == '\0') {
+                    ConnWrite (Client->client.conn, "501 Authentication aborted by client\r\n", 38);
                     break;
                 }
 
-                PW = DecodeBase64 (Client->Command);
+                ConnWrite (Client->client.conn, "334 UGFzc3dvcmQ6\r\n", 18);
+                ConnFlush (Client->client.conn);
+
+                ConnReadToAllocatedBuffer(Client->client.conn, &(Client->client.buffer), &(Client->client.buflen));
+
+                if (Client->client.buffer[0] == '*' && Client->client.buffer[1] == '\0') {
+                    ConnWrite (Client->client.conn, "501 Authentication aborted by client\r\n", 38);
+                    break;
+                }
+
+                PW = DecodeBase64 (Client->client.buffer);
                 DecodeBase64 (Reply);
 
                 User = MDBCreateValueStruct (SMTPDirectoryHandle, NULL);
                 if (MsgFindObject (Reply, Answer, NULL, NULL, User)) {
                     if (!MDBVerifyPassword (Answer, PW, User)) {
-                        SendClient (Client, "501 Authentication failed!\r\n",
-                                    28);
+                        ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                         LogMsg (LOGGER_SUBSYSTEM_AUTH,
                                 LOGGER_EVENT_WRONG_PASSWORD, LOG_NOTICE,
                                 "Wrong password: %s/%s %d",
                                 User->Used ? User->Value[0] : Reply, PW,
-                                XplHostToLittle (Client->cs.sin_addr.s_addr));
+                                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
                         XplSafeIncrement (SMTPStats.WrongPassword);
-                    }
-                    else {
+                    } else {
                         LogMsg (LOGGER_SUBSYSTEM_AUTH,
                                 LOGGER_EVENT_LOGIN,
                                 LOG_INFO,
                                 "Login %s %d",
                                 User->Value[0],
-                                XplHostToLittle (Client->cs.sin_addr.s_addr));
+                                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
                         if (Client->AuthFrom == NULL) {
                             Client->AuthFrom = MemStrdup (User->Value[0]);
                             Client->State = STATE_AUTH;
-                            SendClient (Client,
-                                        "235 Authentication successful!\r\n",
-                                        32);
+                            ConnWrite (Client->client.conn, "235 Authentication successful!\r\n", 32);
+                            IsAuthed = TRUE;
                             IsTrusted = TRUE;
-                        }
-                        else {
+                        } else {
                             MemFree (Client->AuthFrom);
                             Client->AuthFrom = MemStrdup (User->Value[0]);
                             Client->State = STATE_AUTH;
-                            SendClient (Client,
-                                        "235 Authentication successful!\r\n",
-                                        32);
+                            ConnWrite (Client->client.conn, "235 Authentication successful!\r\n", 32);
+                            IsAuthed = TRUE;
                             IsTrusted = TRUE;
                         }
                     }
-                }
-                else {
+                } else {
                     LogMsg (LOGGER_SUBSYSTEM_AUTH,
                             LOGGER_EVENT_UNKNOWN_USER,
                             LOG_NOTICE,
                             "Unknown user %s %s %d",
                             Reply,
-                            PW, XplHostToLittle (Client->cs.sin_addr.s_addr));
-                    SendClient (Client, "501 Authentication failed!\r\n", 28);
+                            PW, XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                    ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                 }
                 MDBDestroyValueStruct (User);
                 break;
@@ -3110,8 +2536,8 @@ HandleConnection (void *param)
             switch (toupper (Client->Command[1])) {
             case 'S':          /* RSET */
                 if (Client->State != STATE_FRESH) {
-                    SendNMAPServer (Client, "QABRT\r\n", 7);
-                    GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);
+                    NMAPSendCommand (Client->nmap.conn, "QABRT\r\n", 7);
+                    NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE);
                 }
                 Client->State = STATE_FRESH;
                 Client->Flags = 0;
@@ -3122,7 +2548,7 @@ HandleConnection (void *param)
                     Client->From = NULL;
                 }
 
-                SendClient (Client, MSG250OK, MSG250OK_LEN);
+                ConnWrite (Client->client.conn, MSG250OK, MSG250OK_LEN);
                 break;
 
 
@@ -3133,13 +2559,13 @@ HandleConnection (void *param)
                     unsigned char *Orcpt = NULL;
 
                     if (Client->State < STATE_FROM) {
-                        SendClient (Client, MSG501NOSENDER,
+                        ConnWrite (Client->client.conn, MSG501NOSENDER,
                                     MSG501NOSENDER_LEN);
                         break;
                     }
 
                     if ((ptr = strchr (Client->Command, ':')) == NULL) {
-                        SendClient (Client, MSG501SYNTAX, MSG501SYNTAX_LEN);
+                        ConnWrite (Client->client.conn, MSG501SYNTAX, MSG501SYNTAX_LEN);
                         break;
                     }
 
@@ -3148,7 +2574,7 @@ HandleConnection (void *param)
 
                         Client->RecipCount++;
 
-                        SendClient (Client, MSG550TOOMANY, MSG550TOOMANY_LEN);
+                        ConnWrite (Client->client.conn, MSG550TOOMANY, MSG550TOOMANY_LEN);
 
                         XplSafeIncrement (SMTPStats.SPAM.DeniedRouting);
                         break;
@@ -3157,7 +2583,7 @@ HandleConnection (void *param)
                     if ((ptr2 = strchr (ptr + 1, '<')) != NULL) {
                         ptr = ptr2 + 1;
                         if (*ptr == '\0') {
-                            SendClient (Client, MSG501SYNTAX,
+                            ConnWrite (Client->client.conn, MSG501SYNTAX,
                                         MSG501SYNTAX_LEN);
                             break;
                         }
@@ -3174,7 +2600,7 @@ HandleConnection (void *param)
                         while (isspace (*ptr))
                             ptr++;
                         if (*ptr == '\0') {
-                            SendClient (Client, MSG501SYNTAX,
+                            ConnWrite (Client->client.conn, MSG501SYNTAX,
                                         MSG501SYNTAX_LEN);
                             break;
                         }
@@ -3187,10 +2613,11 @@ HandleConnection (void *param)
 
                     name = ptr;
 
-                    if (temp != '\0')
+                    if (temp != '\0') {
                         do {
                             ptr2++;
                         } while (isspace (*ptr2));
+                    }
 
                     while (ptr2 && *ptr2 != '\0') {
                         switch (toupper (*ptr2)) {
@@ -3219,7 +2646,7 @@ HandleConnection (void *param)
                                     Client->Flags |= DSN_TIMEOUT;
                                     break;
                                 default:
-                                    SendClient (Client, MSG501PARAMERROR,
+                                    ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                                 MSG501PARAMERROR_LEN);
                                     goto QuitRcpt;
                                     break;
@@ -3239,21 +2666,21 @@ HandleConnection (void *param)
                                 Orcpt = MemStrdup (ptr);
                             }
                             else {
-                                SendClient (Client, MSG501PARAMERROR,
+                                ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                             MSG501PARAMERROR_LEN);
                                 goto QuitRcpt;
                             }
 
                             *ptr2 = temp;
                             if (!Orcpt) {
-                                SendClient (Client, MSG451INTERNALERR,
+                                ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                             MSG451INTERNALERR_LEN);
                                 goto QuitRcpt;
                             }
                             break;
 
                         default:
-                            SendClient (Client, MSG501PARAMERROR,
+                            ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                         MSG501PARAMERROR_LEN);
                             goto QuitRcpt;
                             break;
@@ -3269,23 +2696,23 @@ HandleConnection (void *param)
 
                     ReplyInt = strlen (name);
                     if (ReplyInt > MAXEMAILNAMESIZE) {
-                        SendClient (Client, MSG501RECIPNO, MSG501RECIPNO_LEN);
+                        ConnWrite (Client->client.conn, MSG501RECIPNO, MSG501RECIPNO_LEN);
                         break;
                     }
                     ptr = strchr (name, '@');
                     if (!ptr && ReplyInt > MAX_USERPART_LEN) {
-                        SendClient (Client, MSG501RECIPNO, MSG501RECIPNO_LEN);
+                        ConnWrite (Client->client.conn, MSG501RECIPNO, MSG501RECIPNO_LEN);
                         break;
                     }
                     else if (ptr && ((ptr - name) > MAX_USERPART_LEN)) {
-                        SendClient (Client, MSG501RECIPNO, MSG501RECIPNO_LEN);
+                        ConnWrite (Client->client.conn, MSG501RECIPNO, MSG501RECIPNO_LEN);
                         break;
                     }
 
                     if ((ReplyInt =
                          RewriteAddress (name, To,
                                          sizeof (To))) == MAIL_BOGUS) {
-                        SendClient (Client, MSG501RECIPNO, MSG501RECIPNO_LEN);
+                        ConnWrite (Client->client.conn, MSG501RECIPNO, MSG501RECIPNO_LEN);
                     }
                     else {
                         switch (ReplyInt) {
@@ -3296,10 +2723,8 @@ HandleConnection (void *param)
                                             LOG_INFO,
                                             "Recipient blocked %s %d",
                                             name,
-                                            XplHostToLittle (Client->cs.
-                                                             sin_addr.
-                                                             s_addr));
-                                    SendClient (Client, MSG571SPAMBLOCK,
+                                            XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                                    ConnWrite (Client->client.conn, MSG571SPAMBLOCK,
                                                 MSG571SPAMBLOCK_LEN);
                                     XplSafeIncrement (SMTPStats.SPAM.
                                                       DeniedRouting);
@@ -3315,10 +2740,8 @@ HandleConnection (void *param)
                                             Client->AuthFrom ?
                                             (char *) Client->AuthFrom : "",
                                             To,
-                                            XplHostToLittle (Client->cs.
-                                                             sin_addr.
-                                                             s_addr));
-                                    SendClient (Client, MSG550TOOMANY,
+                                            XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                                    ConnWrite (Client->client.conn, MSG550TOOMANY,
                                                 MSG550TOOMANY_LEN);
                                     XplSafeIncrement (SMTPStats.SPAM.
                                                       DeniedRouting);
@@ -3338,8 +2761,7 @@ HandleConnection (void *param)
                                         Client->AuthFrom ?
                                         (char *) Client->AuthFrom : "",
                                         To,
-                                        XplHostToLittle (Client->cs.
-                                                         sin_addr.s_addr));
+                                        XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
                                 XplSafeIncrement (SMTPStats.Recipient.
                                                   Received.Remote);
                                 break;
@@ -3353,9 +2775,7 @@ HandleConnection (void *param)
                                         Client-> AuthFrom ?
                                         (char *) Client-> AuthFrom : "",
                                         To,
-                                        XplHostToLittle (Client->cs.
-                                                         sin_addr.
-                                                         s_addr));
+                                        XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
                                 snprintf (Answer, sizeof (Answer),
                                           "QSTOR TO %s %s %lu\r\n", To,
                                           Orcpt ? Orcpt : To,
@@ -3394,7 +2814,7 @@ HandleConnection (void *param)
                                                               DSN_FLAGS));
                                         }
                                         else {
-                                            SendClient (Client,
+                                            ConnWrite (Client->client.conn,
                                                         MSG550NOTFOUND,
                                                         MSG550NOTFOUND_LEN);
                                             goto QuitRcpt;
@@ -3412,7 +2832,7 @@ HandleConnection (void *param)
                                     TooManyNullSenderRecips = TRUE;
                                     XplDelay (250);
 
-                                    SendClient (Client, MSG550TOOMANY,
+                                    ConnWrite (Client->client.conn, MSG550TOOMANY,
                                                 MSG550TOOMANY_LEN);
                                     XplSafeIncrement (SMTPStats.SPAM.
                                                       DeniedRouting);
@@ -3424,10 +2844,9 @@ HandleConnection (void *param)
                                 break;
                             }
                         }
-                        SendNMAPServer (Client, Answer, strlen (Answer));
-                        if (GetNMAPAnswer
-                            (Client, Reply, sizeof (Reply), TRUE) != 1000) {
-                            SendClient (Client, MSG451INTERNALERR,
+                        NMAPSendCommand (Client->nmap.conn, Answer, strlen (Answer));
+                        if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
+                            ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                         MSG451INTERNALERR_LEN);
                             if (Orcpt)
                                 MemFree (Orcpt);
@@ -3435,7 +2854,7 @@ HandleConnection (void *param)
                         }
                         Client->State = STATE_TO;
                         Client->RecipCount++;
-                        SendClient (Client, MSG250RECIPOK, MSG250RECIPOK_LEN);
+                        ConnWrite (Client->client.conn, MSG250RECIPOK, MSG250RECIPOK_LEN);
                     }
                   QuitRcpt:
                     if (Orcpt)
@@ -3444,7 +2863,7 @@ HandleConnection (void *param)
                 break;
 
             default:
-                SendClient (Client, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
+                ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                 break;
             }
             break;
@@ -3456,17 +2875,18 @@ HandleConnection (void *param)
                 unsigned char *more;
 
                 if (RequireAuth && !IsTrusted) {
-                    SendClient (Client, MSG553SPAMBLOCK, MSG553SPAMBLOCK_LEN);
+                    ConnWrite (Client->client.conn, MSG553SPAMBLOCK, MSG553SPAMBLOCK_LEN);
                     break;
                 }
 
-                if (Client->State >= STATE_FROM) {
-                    SendClient (Client, MSG503BADORDER, MSG503BADORDER_LEN);
+                /* rfc 2821 */
+                if (!Client->State || Client->State >= STATE_FROM) {
+                    ConnWrite (Client->client.conn, MSG503BADORDER, MSG503BADORDER_LEN);
                     break;
                 }
 
                 if ((ptr = strchr (Client->Command, ':')) == NULL) {
-                    SendClient (Client, MSG501SYNTAX, MSG501SYNTAX_LEN);
+                    ConnWrite (Client->client.conn, MSG501SYNTAX, MSG501SYNTAX_LEN);
                     break;
                 }
 
@@ -3535,7 +2955,7 @@ HandleConnection (void *param)
                     ;
                 }
                 else {
-                    SendClient (Client, MSG501SYNTAX, MSG501SYNTAX_LEN);
+                    ConnWrite (Client->client.conn, MSG501SYNTAX, MSG501SYNTAX_LEN);
                     break;
                 }
 
@@ -3605,7 +3025,7 @@ HandleConnection (void *param)
                             Client->MsgFlags |= MSG_FLAG_ENCODING_BINM;
                             break;
                         default:
-                            SendClient (Client, MSG501PARAMERROR,
+                            ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                         MSG501PARAMERROR_LEN);
                             goto QuitMail;
                             break;
@@ -3621,7 +3041,7 @@ HandleConnection (void *param)
                             Client->Flags |= DSN_HEADER;
                             break;
                         default:
-                            SendClient (Client, MSG501PARAMERROR,
+                            ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                         MSG501PARAMERROR_LEN);
                             goto QuitMail;
                             break;
@@ -3631,7 +3051,7 @@ HandleConnection (void *param)
                     case 'E':  /* ENVID */
                         ptr = strchr (more, '=');
                         if (!ptr) {
-                            SendClient (Client, MSG501PARAMERROR,
+                            ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                         MSG501PARAMERROR_LEN);
                             goto QuitMail;
                             break;
@@ -3645,7 +3065,7 @@ HandleConnection (void *param)
                         Envid = MemStrdup (ptr);
                         *more = temp;
                         if (!Envid) {
-                            SendClient (Client, MSG451INTERNALERR,
+                            ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                         MSG451INTERNALERR_LEN);
                             goto QuitMail;
                         }
@@ -3654,7 +3074,7 @@ HandleConnection (void *param)
                     case 'S':  /* SIZE */
                         ptr = strchr (more, '=');
                         if (!ptr) {
-                            SendClient (Client, MSG501PARAMERROR,
+                            ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                         MSG501PARAMERROR_LEN);
                             goto QuitMail;
                             break;
@@ -3664,7 +3084,7 @@ HandleConnection (void *param)
                         XplRWReadLockAcquire (&ConfigLock);
                         if (MessageLimit > 0 && size > MessageLimit) {
                             XplRWReadLockRelease (&ConfigLock);
-                            SendClient (Client, MSG552MSGTOOBIG,
+                            ConnWrite (Client->client.conn, MSG552MSGTOOBIG,
                                         MSG552MSGTOOBIG_LEN);
                             goto QuitMail;
                         }
@@ -3672,7 +3092,7 @@ HandleConnection (void *param)
                         break;
 
                     default:
-                        SendClient (Client, MSG501PARAMERROR,
+                        ConnWrite (Client->client.conn, MSG501PARAMERROR,
                                     MSG501PARAMERROR_LEN);
                         goto QuitMail;
                         break;
@@ -3685,7 +3105,7 @@ HandleConnection (void *param)
 
                 ReplyInt = strlen (name);
                 if (ReplyInt > MAXEMAILNAMESIZE) {
-                    SendClient (Client, MSG501GOAWAY, MSG501GOAWAY_LEN);
+                    ConnWrite (Client->client.conn, MSG501GOAWAY, MSG501GOAWAY_LEN);
                     if (Envid)
                         MemFree (Envid);
                     break;
@@ -3695,42 +3115,38 @@ HandleConnection (void *param)
                 if (!ptr && ReplyInt > MAX_USERPART_LEN) {
                     if (Envid)
                         MemFree (Envid);
-                    SendClient (Client, MSG501GOAWAY, MSG501GOAWAY_LEN);
+                    ConnWrite (Client->client.conn, MSG501GOAWAY, MSG501GOAWAY_LEN);
                     break;
                 }
                 else if (ptr && ((ptr - name) > MAX_USERPART_LEN)) {
                     if (Envid)
                         MemFree (Envid);
-                    SendClient (Client, MSG501GOAWAY, MSG501GOAWAY_LEN);
+                    ConnWrite (Client->client.conn, MSG501GOAWAY, MSG501GOAWAY_LEN);
                     break;
                 }
 
 
                 if (size > 0) {
-                    SendNMAPServer (Client, "QDSPC\r\n", 7);
-                    if ((ReplyInt =
-                         GetNMAPAnswer (Client, Reply, sizeof (Reply),
-                                        TRUE)) != 1000) {
-                        SendClient (Client, MSG451INTERNALERR,
-                                    MSG451INTERNALERR_LEN);
-                        if (Envid)
+                    NMAPSendCommand (Client->nmap.conn, "QDSPC\r\n", 7);
+                    if ((ReplyInt = NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE)) != 1000) {
+                        ConnWrite (Client->client.conn, MSG451INTERNALERR, MSG451INTERNALERR_LEN);
+                        if (Envid) {
                             MemFree (Envid);
+                        }
                         return (EndClientConnection (Client));
                     }
                     if ((unsigned long) atol (Reply) < size) {
-                        SendClient (Client, MSG452NOSPACE, MSG452NOSPACE_LEN);
+                        ConnWrite (Client->client.conn, MSG452NOSPACE, MSG452NOSPACE_LEN);
                         goto QuitMail;
                     }
                 }
-                SendNMAPServer (Client, "QCREA\r\n", 7);
-                if ((ReplyInt =
-                     GetNMAPAnswer (Client, Reply, sizeof (Reply),
-                                    TRUE)) != 1000) {
+                NMAPSendCommand (Client->nmap.conn, "QCREA\r\n", 7);
+                if ((ReplyInt = NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE)) != 1000) {
                     if (ReplyInt == 5221) {
-                        SendClient (Client, MSG452NOSPACE, MSG452NOSPACE_LEN);
+                        ConnWrite (Client->client.conn, MSG452NOSPACE, MSG452NOSPACE_LEN);
                     }
                     else {
-                        SendClient (Client, MSG451INTERNALERR,
+                        ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                     MSG451INTERNALERR_LEN);
                     }
                     if (Envid)
@@ -3748,28 +3164,26 @@ HandleConnection (void *param)
                           Client->AuthFrom ? (char *) Client->
                           AuthFrom : (char *) "-",
                           Envid ? (char *) Envid : (char *) "");
-                SendNMAPServer (Client, Answer, strlen (Answer));
-                if (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE) !=
-                    1000) {
+                NMAPSendCommand (Client->nmap.conn, Answer, strlen (Answer));
+                if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
                     if (Envid) {
                         MemFree (Envid);
                     }
 
-                    SendClient (Client, MSG451INTERNALERR,
+                    ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                 MSG451INTERNALERR_LEN);
                     return (EndClientConnection (Client));
                 }
 
                 snprintf (Answer, sizeof (Answer), "QSTOR ADDRESS %u\r\n",
-                          XplHostToLittle (Client->cs.sin_addr.s_addr));
-                SendNMAPServer (Client, Answer, strlen (Answer));
-                if (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE) !=
-                    1000) {
+                          XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                NMAPSendCommand (Client->nmap.conn, Answer, strlen (Answer));
+                if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
                     if (Envid) {
                         MemFree (Envid);
                     }
 
-                    SendClient (Client, MSG451INTERNALERR,
+                    ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                 MSG451INTERNALERR_LEN);
                     return (EndClientConnection (Client));
                 }
@@ -3778,7 +3192,7 @@ HandleConnection (void *param)
                     && !(Client->Flags & DSN_BODY))
                     Client->Flags |= DSN_HEADER;
                 Client->State = STATE_FROM;
-                SendClient (Client, MSG250SENDEROK, MSG250SENDEROK_LEN);
+                ConnWrite (Client->client.conn, MSG250SENDEROK, MSG250SENDEROK_LEN);
               QuitMail:
                 if (Envid) {
                     MemFree (Envid);
@@ -3788,15 +3202,14 @@ HandleConnection (void *param)
 
         case 'D':{             /* DATA */
                 unsigned char TimeBuf[80];
-                unsigned char Line[BUFSIZE + 1];
-                long len;
                 unsigned long BReceived = 0;
+                unsigned char WithProtocol[8]; /* ESMTPSA */
 #ifdef USE_HOPCOUNT_DETECTION
                 long HopCount = 0;
 #endif
 
                 if (Client->State < STATE_TO && Client->State != STATE_BDAT) {
-                    SendClient (Client, MSG503BADORDER, MSG503BADORDER_LEN);
+                    ConnWrite (Client->client.conn, MSG503BADORDER, MSG503BADORDER_LEN);
                     break;
                 }
 
@@ -3808,243 +3221,76 @@ HandleConnection (void *param)
                 Client->MsgFlags |= MSG_FLAG_SOURCE_EXTERNAL;
                 snprintf (Answer, sizeof (Answer), "QSTOR FLAGS %d\r\n",
                           Client->MsgFlags);
-                SendNMAPServer (Client, Answer, strlen (Answer));
-                if (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE) !=
-                    1000) {
-                    SendClient (Client, MSG451INTERNALERR,
-                                MSG451INTERNALERR_LEN);
+                NMAPSendCommand (Client->nmap.conn, Answer, strlen (Answer));
+                if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
+                    ConnWrite (Client->client.conn, MSG451INTERNALERR, MSG451INTERNALERR_LEN);
                     return (EndClientConnection (Client));
                 }
 
-                SendNMAPServer (Client, "QSTOR MESSAGE\r\n", 15);
+                NMAPSendCommand (Client->nmap.conn, "QSTOR MESSAGE\r\n", 15);
 
-                SendClient (Client, MSG354DATA, MSG354DATA_LEN);
-                FlushClient (Client);
+                ConnWrite (Client->client.conn, MSG354DATA, MSG354DATA_LEN);
+                ConnFlush (Client->client.conn);
 
                 MsgGetRFC822Date(-1, 0, TimeBuf);
+                /* rfc 3848 */
+                if (Client->IsEHLO) {
+                    snprintf(WithProtocol, 8, "ESMTP%s%s",
+                    Client->client.conn->ssl.enable ? "S" : "",
+                    Client->AuthFrom ? "A" : "");
+                } else {
+                    snprintf(WithProtocol, 5, "SMTP");
+                }
+
                 snprintf(Answer, sizeof(Answer),
-                         "Received: from %d.%d.%d.%d (%s%s%s) [%d.%d.%d.%d]\r\n\tby %s with SMTP (%s %s%s);\r\n\t%s\r\n",
-                         Client->cs.sin_addr.s_net,
-                         Client->cs.sin_addr.s_host,
-                         Client->cs.sin_addr.s_lh,
-                         Client->cs.sin_addr.s_impno,
+                         "Received: from %d.%d.%d.%d (%s%s%s) [%d.%d.%d.%d]\r\n\tby %s with %s (%s %s%s);\r\n\t%s\r\n",
+                         Client->client.conn->socketAddress.sin_addr.s_net,
+                         Client->client.conn->socketAddress.sin_addr.s_host,
+                         Client->client.conn->socketAddress.sin_addr.s_lh,
+                         Client->client.conn->socketAddress.sin_addr.s_impno,
                          
                          Client->AuthFrom ? (char *)Client->AuthFrom : "not authenticated",
                          Client->RemoteHost[0] ? " HELO " : "",
                          Client->RemoteHost,
                          
-                         Client->cs.sin_addr.s_net,
-                         Client->cs.sin_addr.s_host,
-                         Client->cs.sin_addr.s_lh,
-                         Client->cs.sin_addr.s_impno,
+                         Client->client.conn->socketAddress.sin_addr.s_net,
+                         Client->client.conn->socketAddress.sin_addr.s_host,
+                         Client->client.conn->socketAddress.sin_addr.s_lh,
+                         Client->client.conn->socketAddress.sin_addr.s_impno,
                          
-                         Hostname, 
+                         Hostname,
+                         WithProtocol,
                          PRODUCT_NAME,
                          PRODUCT_VERSION,
-                         Client->ClientSSL ? "\r\n\tvia secured & encrypted transport [TLS]" : "",
+                         Client->client.conn->ssl.enable ? "\r\n\tvia secured & encrypted transport [TLS]" : "",
                          TimeBuf);
-                SendNMAPServer(Client, Answer, strlen(Answer));
+                NMAPSendCommand(Client->nmap.conn, Answer, strlen(Answer));
 
-/* 
-	This is pretty ugly (and slow) - we have to detect a dot on a single line. The dot
-	might already be in the input buffer; it might also be the only thing we get at all.
-*/
-
-                Ready = FALSE;
-                while (!Ready) {
-                    while ((Client->BufferPtr > 0)
-                           &&
-                           ((ptr =
-                             strchrRN (Client->Buffer, 0x0a,
-                                       Client->Buffer + Client->BufferPtr)) !=
-                            NULL) && !Ready) {
-                        len = ptr - Client->Buffer + 1;
-                        memcpy (Line, Client->Buffer, len);
-                        Client->BufferPtr -= len;
-                        memmove (Client->Buffer, ptr + 1,
-                                 Client->BufferPtr + 1);
-                        Line[len] = 0;
-                        if (Line[0] == '.' && Line[1] == 0x0d
-                            && Line[2] == 0x0a) {
-#if 0
-                            if (!Licensed) {
-                                SendNMAPServer (Client, "--\r\n", 4);
-                                SendNMAPServer (Client,
-                                                NMLicense.LicenseMessage,
-                                                strlen (NMLicense.
-                                                        LicenseMessage));
-                                SendNMAPServer (Client, "\r\n", 2);
-                            }
-#endif
-                            Ready = TRUE;
-                            if (!SendNMAPServer (Client, ".\r\n", 3)) {
-                                SendClient (Client, MSG451INTERNALERR,
-                                            MSG451INTERNALERR_LEN);
-                                return (EndClientConnection (Client));
-                            }
-                            if (GetNMAPAnswer
-                                (Client, Reply, sizeof (Reply),
-                                 TRUE) != 1000) {
-                                SendClient (Client, MSG451INTERNALERR,
-                                            MSG451INTERNALERR_LEN);
-                                return (EndClientConnection (Client));
-                            }
-#ifdef USE_HOPCOUNT_DETECTION
-                        }
-                        else if (Line[0] == 'R' && Line[8] == ':') {
-                            if (strncmp (Line, "Received:", 9) == 0) {
-                                HopCount++;
-                            }
-                            if (!SendNMAPServer (Client, Line, len)) {
-                                SendClient (Client, MSG451INTERNALERR,
-                                            MSG451INTERNALERR_LEN);
-                                return (EndClientConnection (Client));
-                            }
-#endif
-                        }
-                        else {
-                            BReceived += len;
-                            if (!SendNMAPServer (Client, Line, len)) {
-                                SendClient (Client, MSG451INTERNALERR,
-                                            MSG451INTERNALERR_LEN);
-                                return (EndClientConnection (Client));
-                            }
-                        }
-                    }
-                    if (!Ready) {
-                        if (Exiting) {
-                            snprintf (Answer, sizeof (Answer),
-                                      "421 %s %s\r\n", Hostname,
-                                      MSG421SHUTDOWN);
-                            SendClient (Client, Answer, strlen (Answer));
-                            return (EndClientConnection (Client));
-                        }
-                        count =
-                            DoClientRead (Client,
-                                          Client->Buffer + Client->BufferPtr,
-                                          LINESIZE - Client->BufferPtr, 0);
-                        if (count < 1) {
-                            if (Exiting) {
-                                snprintf (Answer, sizeof (Answer),
-                                          "421 %s %s\r\n", Hostname,
-                                          MSG421SHUTDOWN);
-                                SendClient (Client, Answer, strlen (Answer));
-                            }
-                            return (EndClientConnection (Client));
-                        }
-                        Client->BufferPtr += count;
-                        Client->Buffer[Client->BufferPtr] = '\0';
-                      RecheckDataLine:
-                        if ((ptr =
-                             strchrRN (Client->Buffer, 0x0a,
-                                       Client->Buffer + Client->BufferPtr)) !=
-                            NULL) {
-                            len = ptr - Client->Buffer + 1;
-                            memcpy (Line, Client->Buffer, len);
-                            Line[len] = '\0';
-                            Client->BufferPtr -= len;
-                            memmove (Client->Buffer, ptr + 1,
-                                     Client->BufferPtr);
-                            Client->Buffer[Client->BufferPtr] = '\0';
-                            if (Line[0] == '.' && Line[1] == 0x0d
-                                && Line[2] == 0x0a) {
-#if 0
-                                if (!Licensed) {
-                                    SendNMAPServer (Client, "--\r\n", 4);
-                                    SendNMAPServer (Client,
-                                                    NMLicense.LicenseMessage,
-                                                    strlen (NMLicense.
-                                                            LicenseMessage));
-                                    SendNMAPServer (Client, "\r\n", 2);
-                                }
-#endif
-                                Ready = TRUE;
-                                if (!SendNMAPServer (Client, ".\r\n", 3)) {
-                                    SendClient (Client, MSG451INTERNALERR,
-                                                MSG451INTERNALERR_LEN);
-                                    return (EndClientConnection (Client));
-                                }
-                                if (GetNMAPAnswer
-                                    (Client, Reply, sizeof (Reply),
-                                     TRUE) != 1000) {
-                                    SendClient (Client, MSG451INTERNALERR,
-                                                MSG451INTERNALERR_LEN);
-                                    return (EndClientConnection (Client));
-                                }
-#ifdef USE_HOPCOUNT_DETECTION
-                            }
-                            else if (Line[0] == 'R' && Line[8] == ':') {
-                                if (strncmp (Line, "Received:", 9) == 0) {
-                                    HopCount++;
-                                }
-                                if (!SendNMAPServer (Client, Line, len)) {
-                                    SendClient (Client, MSG451INTERNALERR,
-                                                MSG451INTERNALERR_LEN);
-                                    return (EndClientConnection (Client));
-                                }
-#endif
-                            }
-                            else {
-                                BReceived += len;
-                                if (!SendNMAPServer (Client, Line, len)) {
-                                    SendClient (Client, MSG451INTERNALERR,
-                                                MSG451INTERNALERR_LEN);
-                                    return (EndClientConnection (Client));
-                                }
-                            }
-                        }
-                        else if (Client->BufferPtr >= LINESIZE) {
-                            if (Client->BufferPtr >= BUFSIZE) {
-                                SendClient (Client, MSG500TOOLONG,
-                                            MSG500TOOLONG_LEN);
-                                return (EndClientConnection (Client));
-                            }
-                            else {
-                                Client->Buffer[Client->BufferPtr++] = 0x0d;
-                                Client->Buffer[Client->BufferPtr++] = 0x0a;
-                                Client->Buffer[Client->BufferPtr] = '\0';
-                                goto RecheckDataLine;
-                            }
-                        }
-                    }
+                /* read all the data to the nmap connection.  this function
+                 * takes into account the single . terminating the connection */
+                if (ConnReadToConnUntilEOS(Client->client.conn, Client->nmap.conn) < 0) {
+                    ConnWrite(Client->client.conn, MSG451INTERNALERR, MSG451INTERNALERR_LEN);
+                    return(EndClientConnection(Client));
                 }
 
-#ifdef USE_HOPCOUNT_DETECTION
-                /* This is the best time to return to sender, we got the info and don't have to parse it again */
-                if (HopCount > MAX_HOPS) {
-                    fpos_t Pos;
-
-                    fseek (Client->Control, 0, SEEK_SET);
-                    while (!feof (Client->Control)) {
-                        fgetpos (Client->Control, &Pos);
-                        fgets (Answer, sizeof (Answer), Client->Control);
-                        if (Answer[0] == 'F') {
-                            fsetpos (Client->Control, &Pos);
-                            fputc ('X', Client->Control);
-                            break;
-                        }
-                    }
-                }
-#endif
                 XplRWReadLockAcquire (&ConfigLock);
                 if (MessageLimit > 0 && BReceived > MessageLimit) {     /* Message over limit */
                     XplRWReadLockRelease (&ConfigLock);
-                    if (!SendNMAPServer (Client, "QABRT\r\n", 7) ||
-                        GetNMAPAnswer (Client, Reply, sizeof (Reply),
-                                       TRUE) != 1000) {
-                        SendClient (Client, MSG451INTERNALERR,
+                    if ((NMAPSendCommand (Client->nmap.conn, "QABRT\r\n", 7) < 0) ||
+                        NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
+                        ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                     MSG451INTERNALERR_LEN);
                         return (EndClientConnection (Client));
                     }
-                    SendClient (Client, MSG552MSGTOOBIG, MSG552MSGTOOBIG_LEN);
+                    ConnWrite (Client->client.conn, MSG552MSGTOOBIG, MSG552MSGTOOBIG_LEN);
                 }
                 else {
                     XplRWReadLockRelease (&ConfigLock);
 
                     if ((NullSender == FALSE)
                         || (Client->RecipCount < MaxNullSenderRecips)) {
-                        if (!SendNMAPServer (Client, "QRUN\r\n", 6)) {
-                            SendClient (Client, MSG451INTERNALERR,
+                        if (NMAPSendCommand (Client->nmap.conn, "QRUN\r\n", 6)<0) {
+                            ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                         MSG451INTERNALERR_LEN);
                             return (EndClientConnection (Client));
                         }
@@ -4054,8 +3300,7 @@ HandleConnection (void *param)
                                 LOG_INFO,
                                 "Message received %s %d %d",
                                 Client->From ? (char *) Client-> From : "",
-                                XplHostToLittle (Client->cs.sin_addr.
-                                                 s_addr),
+                                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr),
                                 BReceived);
 
                         if (Client->Flags & SENDER_LOCAL) {
@@ -4071,14 +3316,12 @@ HandleConnection (void *param)
                                         (BReceived + 1023) / 1024);
                         }
 
-                        if (GetNMAPAnswer
-                            (Client, Reply, sizeof (Reply), TRUE) != 1000) {
-                            SendClient (Client, MSG451INTERNALERR,
-                                        MSG451INTERNALERR_LEN);
+                        if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
+                            ConnWrite (Client->client.conn, MSG451INTERNALERR, MSG451INTERNALERR_LEN);
                             return (EndClientConnection (Client));
                         }
 
-                        SendClient (Client, MSG250OK, MSG250OK_LEN);
+                        ConnWrite (Client->client.conn, MSG250OK, MSG250OK_LEN);
 
                         NullSender = FALSE;
                         TooManyNullSenderRecips = FALSE;
@@ -4094,11 +3337,11 @@ HandleConnection (void *param)
                             LOG_NOTICE,
                             "Added to block list %s %d / Count %d",
                             Client->From ? (char *) Client->From : "",
-                            XplHostToLittle (Client->cs.sin_addr.s_addr),
+                            XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr),
                             Client->RecipCount);
 
                     /*      We are going to send him away!  */
-                    SendClient (Client, MSG550TOOMANY, MSG550TOOMANY_LEN);
+                    ConnWrite (Client->client.conn, MSG550TOOMANY, MSG550TOOMANY_LEN);
 
                     /*      EndClientConnection will send QABRT and QUIT to the NMAP server.        */
                     return (EndClientConnection (Client));
@@ -4106,131 +3349,24 @@ HandleConnection (void *param)
 
                 break;
             }
-#if 0
-            case 'B': {	  /* BDAT */
-                unsigned char	TimeBuf[80];
-                unsigned long	Size;
-                unsigned long	Count	= 0;
-                unsigned long	len;
-                BOOL				Last	= FALSE;
-
-                if (Client->State < STATE_TO) {
-                    SendClient (Client, MSG503BADORDER, MSG503BADORDER_LEN);
-                    break;
-                }
-                if (Client->Command[4] != ' ') {
-                    SendClient (Client, MSG501SYNTAX, MSG501SYNTAX_LEN);
-                    break;
-                }
-
-                Size = atol (Client->Command + 5);
-                if (strchr (Client->Command + 5, ' ') != NULL)
-                    Last = TRUE;
-
-
-                /* We only want to write the Received line on the first BDAT */
-                if (Client->State != STATE_BDAT) {
-                    if (Client->MsgFlags & MSG_FLAG_ENCODING_NONE) {
-                        Client->MsgFlags &= ~MSG_FLAG_ENCODING_NONE;
-                        Client->MsgFlags |= MSG_FLAG_ENCODING_8BITM;
-                        sprintf (Answer, "QSTOR FLAGS %lu\r\n",
-                                 Client->MsgFlags);
-                        SendNMAPServer (Client, Answer, strlen (Answer));
-                        if (GetNMAPAnswer
-                            (Client, Reply, sizeof (Reply), TRUE) != 1000) {
-                            SendClient (Client, MSG451INTERNALERR,
-                                        MSG451INTERNALERR_LEN);
-                            return (EndClientConnection (Client));
-                        }
-                    }
-                    SendNMAPServer (Client, "QSTOR MESSAGE\r\n", 15);
-
-                    MsgGetRFC822Date(-1, 0, TimeBuf);
-                    snprintf(Answer, sizeof(Answer),
-                             "Received: from %d.%d.%d.%d (%s%s%s) [%d.%d.%d.%d]\r\n\tby %s with SMTP (%s %s%s);\r\n\t%s\r\n",
-                             Client->cs.sin_addr.s_net,
-                             Client->cs.sin_addr.s_host,
-                             Client->cs.sin_addr.s_lh,
-                             Client->cs.sin_addr.s_impno,
-                             
-                             Client->AuthFrom ? (char *)Client->AuthFrom : "not authenticated",
-                             Client->RemoteHost[0] ? " HELO " : "",
-                             Client->RemoteHost,
-                             
-                             Client->cs.sin_addr.s_net,
-                             Client->cs.sin_addr.s_host,
-                             Client->cs.sin_addr.s_lh,
-                             Client->cs.sin_addr.s_impno,
-                             
-                             Hostname, 
-                             PRODUCT_NAME,
-                             PRODUCT_VERSION,
-                             Client->ClientSSL ? "\r\n\tvia secured & encrypted transport [TLS]" : "",
-                             TimeBuf);
-                    
-                    SendNMAPServer(Client, Answer, strlen(Answer));
-                    
-                    Client->State=STATE_BDAT;
-                }
-                
-                while (Count < Size) {
-                    len =
-                        DoClientRead (Client, Client->Buffer,
-                                      BUFSIZE <
-                                      (Size - Count) ? BUFSIZE : Size - Count,
-                                      0);
-                    if (len < 1) {
-                        if (Exiting) {
-                            snprintf (Answer, sizeof (Answer),
-                                      "421 %s %s\r\n", Hostname,
-                                      MSG421SHUTDOWN);
-                            SendClient (Client, Answer, strlen (Answer));
-                        }
-                        return (EndClientConnection (Client));
-                    }
-                    Count += len;
-                    SendNMAPServer (Client, Client->Buffer, len);
-                }
-
-                if (Last) {
-                    /* We do this because our maildrop parser relies on a blank line between messages */
-                    SendNMAPServer (Client, "\r\n\r\n.\r\n", 7);
-                    if (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE) !=
-                        1000) {
-                        SendClient (Client, MSG451INTERNALERR,
-                                    MSG451INTERNALERR_LEN);
-                        return (EndClientConnection (Client));
-                    }
-                    Client->State = STATE_HELO;
-
-                    NullSender = FALSE;
-                    TooManyNullSenderRecips = FALSE;
-                }
-
-                SendClient (Client, MSG250OK, MSG250OK_LEN);
-            }
-            break;
-#endif
         case 'Q':              /* QUIT */
             if (Client->State != STATE_DATA) {
                 if (Client->State != STATE_FRESH) {
-                    SendNMAPServer (Client, "QABRT\r\n", 7);
-                    if (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE) !=
-                        1000) {
-                        SendClient (Client, MSG451INTERNALERR,
-                                    MSG451INTERNALERR_LEN);
+                    NMAPSendCommand (Client->nmap.conn, "QABRT\r\n", 7);
+                    if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
+                        ConnWrite (Client->client.conn, MSG451INTERNALERR, MSG451INTERNALERR_LEN);
                         return (EndClientConnection (Client));
                     }
                 }
             }
             snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", Hostname,
                       MSG221QUIT);
-            SendClient (Client, Answer, strlen (Answer));
+            ConnWrite (Client->client.conn, Answer, strlen (Answer));
             return (EndClientConnection (Client));
             break;
 
         case 'N':              /* NOOP */
-            SendClient (Client, MSG250OK, MSG250OK_LEN);
+            ConnWrite (Client->client.conn, MSG250OK, MSG250OK_LEN);
             break;
 
         case 'E':{
@@ -4244,8 +3380,7 @@ HandleConnection (void *param)
                                           Hostname, MSG250HELLO,
                                           AcceptETRN ? MSG250ETRN : "",
                                           (AllowClientSSL
-                                           && !Client->
-                                           ClientSSL) ? MSG250TLS : "",
+                                           && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
                                           (AllowAuth ==
                                            TRUE) ? MSG250AUTH : "",
                                           MSG250EHLO, MessageLimit);
@@ -4256,23 +3391,23 @@ HandleConnection (void *param)
                                           Hostname, MSG250HELLO,
                                           AcceptETRN ? MSG250ETRN : "",
                                           (AllowClientSSL
-                                           && !Client->
-                                           ClientSSL) ? MSG250TLS : "",
+                                           && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
                                           (AllowAuth ==
                                            TRUE) ? MSG250AUTH : "",
                                           MSG250EHLO);
                             }
                             XplRWReadLockRelease (&ConfigLock);
-                            SendClient (Client, Answer, strlen (Answer));
+                            ConnWrite (Client->client.conn, Answer, strlen (Answer));
                             strncpy (Client->RemoteHost, Client->Command + 5,
                                      sizeof (Client->RemoteHost));
                             Client->State = STATE_HELO;
 
                             NullSender = FALSE;
                             TooManyNullSenderRecips = FALSE;
+                            Client->IsEHLO = TRUE;
                         }
                         else {
-                            SendClient (Client, MSG503BADORDER,
+                            ConnWrite (Client->client.conn, MSG503BADORDER,
                                         MSG503BADORDER_LEN);
                         }
                     }
@@ -4287,33 +3422,25 @@ HandleConnection (void *param)
                                 snprintf (Answer, sizeof (Answer),
                                           "QSRCH DOMAIN %s\r\n",
                                           Client->Command + 5);
-                            SendNMAPServer (Client, Answer, ReplyInt);
-                            while (GetNMAPAnswer
-                                   (Client, Reply, sizeof (Reply),
-                                    TRUE) == 2001) {
-                                ReplyInt =
-                                    snprintf (Answer, sizeof (Answer),
-                                              "QRUN %s\r\n", Reply);
-                                SendNMAPServer (Client, Answer, ReplyInt);
+                            NMAPSendCommand (Client->nmap.conn, Answer, ReplyInt);
+                            while (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) == 2001) {
+                                ReplyInt = snprintf (Answer, sizeof (Answer), "QRUN %s\r\n", Reply);
+                                NMAPSendCommand (Client->nmap.conn, Answer, ReplyInt);
                                 count++;
                             }
                             for (ReplyInt = 0; ReplyInt < count; ReplyInt++) {
-                                GetNMAPAnswer (Client, Reply, sizeof (Reply),
-                                               FALSE);
+                                NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE);
                             }
                             if (count > 0) {
-                                SendClient (Client, MSG252QUEUESTARTED,
-                                            MSG252QUEUESTARTED_LEN);
+                                ConnWrite (Client->client.conn, MSG252QUEUESTARTED, MSG252QUEUESTARTED_LEN);
                             }
                             else {
-                                SendClient (Client, MSG251NOMESSAGES,
-                                            MSG251NOMESSAGES_LEN);
+                                ConnWrite (Client->client.conn, MSG251NOMESSAGES, MSG251NOMESSAGES_LEN);
                             }
                         }
                         else {
                             XplRWReadLockRelease (&ConfigLock);
-                            SendClient (Client, MSG502DISABLED,
-                                        MSG502DISABLED_LEN);
+                            ConnWrite (Client->client.conn, MSG502DISABLED, MSG502DISABLED_LEN);
                         }
                         break;
                     }
@@ -4326,33 +3453,31 @@ HandleConnection (void *param)
                             XplRWReadLockRelease (&ConfigLock);
                             snprintf (Answer, sizeof (Answer), "VRFY %s\r\n",
                                       Client->Command + 5);
-                            SendNMAPServer (Client, Answer, strlen (Answer));
-                            while (GetNMAPAnswer
-                                   (Client, Reply, sizeof (Reply),
-                                    TRUE) != 1000) {
+                            NMAPSendCommand (Client->nmap.conn, Answer, strlen (Answer));
+                            while (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
                                 Found = TRUE;
-                                SendClient (Client, "250-", 4);
-                                SendClient (Client, Reply, strlen (Reply));
-                                SendClient (Client, "\r\n", 2);
+                                ConnWrite (Client->client.conn, "250-", 4);
+                                ConnWrite (Client->client.conn, Reply, strlen (Reply));
+                                ConnWrite (Client->client.conn, "\r\n", 2);
                             }
 
                             if (Found) {
-                                SendClient (Client, MSG250OK, MSG250OK_LEN);
+                                ConnWrite (Client->client.conn, MSG250OK, MSG250OK_LEN);
                             }
                             else {
-                                SendClient (Client, MSG550NOTFOUND,
+                                ConnWrite (Client->client.conn, MSG550NOTFOUND,
                                             MSG550NOTFOUND_LEN);
                             }
                         }
                         else {
                             XplRWReadLockRelease (&ConfigLock);
-                            SendClient (Client, MSG502DISABLED,
+                            ConnWrite (Client->client.conn, MSG502DISABLED,
                                         MSG502DISABLED_LEN);
                         }
                         break;
                     }
                 default:
-                    SendClient (Client, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
+                    ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                     break;
                 }
                 break;
@@ -4366,55 +3491,48 @@ HandleConnection (void *param)
                     XplRWReadLockRelease (&ConfigLock);
                     snprintf (Answer, sizeof (Answer), "VRFY %s\r\n",
                               Client->Command + 5);
-                    SendNMAPServer (Client, Answer, strlen (Answer));
-                    while (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE)
-                           != 1000) {
+                    NMAPSendCommand (Client->nmap.conn, Answer, strlen (Answer));
+                    while (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
                         Found = TRUE;
-                        SendClient (Client, "250-", 4);
-                        SendClient (Client, Reply, strlen (Reply));
-                        SendClient (Client, "\r\n", 2);
+                        ConnWrite (Client->client.conn, "250-", 4);
+                        ConnWrite (Client->client.conn, Reply, strlen (Reply));
+                        ConnWrite (Client->client.conn, "\r\n", 2);
                     }
 
                     if (Found) {
-                        SendClient (Client, MSG250OK, MSG250OK_LEN);
+                        ConnWrite (Client->client.conn, MSG250OK, MSG250OK_LEN);
                     }
                     else {
-                        SendClient (Client, MSG550NOTFOUND,
+                        ConnWrite (Client->client.conn, MSG550NOTFOUND,
                                     MSG550NOTFOUND_LEN);
                     }
                 }
                 else {
                     XplRWReadLockRelease (&ConfigLock);
-                    SendClient (Client, MSG502DISABLED, MSG502DISABLED_LEN);
+                    ConnWrite (Client->client.conn, MSG502DISABLED, MSG502DISABLED_LEN);
                 }
                 break;
             }
 
         default:
-            SendClient (Client, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
+            ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
             break;
         }
-        FlushClient (Client);
+        ConnFlush (Client->client.conn);
     }
     return (TRUE);
 }
 
 #define DELIVER_ERROR(_e)		{			\
-	int i;										\
+	unsigned int i;										\
 	for(i = 0; i < RecipCount; i++) {	\
 		Recips[i].Result = _e;				\
-	}												\
-	if (Client->CSSL) {						\
-		SSL_shutdown(Client->CSSL);		\
-		SSL_free(Client->CSSL);				\
-		Client->CSSL=NULL;					\
-		Client->ClientSSL=FALSE;			\
 	}												\
 	return(_e);									\
 }
 
 #define DELIVER_ERROR_NO_RETURN(_e)	{	\
-	int i;										\
+	unsigned int i;										\
 	for(i = 0; i < RecipCount; i++) {	\
 		Recips[i].Result = _e;				\
 	}												\
@@ -4435,148 +3553,54 @@ HandleConnection (void *param)
 												}
 
 
-static BOOL
-FlushServer (ConnectionStruct * Client)
-{
-    int count;
-    unsigned long sent = 0;
-
-    while ((sent < Client->SBufferPtr) && (!Exiting)) {
-        count =
-            DoClientWrite (Client, Client->SBuffer + sent,
-                           Client->SBufferPtr - sent, 0);
-        if ((count < 1) || Exiting) {
-            return (FALSE);
-        }
-        sent += count;
-    }
-    Client->SBufferPtr = 0;
-    Client->SBuffer[0] = '\0';
-    return (TRUE);
-}
-
-static BOOL
-SendServer (ConnectionStruct * Client, unsigned char *Data, int Len)
-{
-    int sent = 0;
-
-    if (!Len)
-        return (TRUE);
-
-    if (!Data)
-        return (FALSE);
-
-    while ((sent < Len) && !Exiting) {
-        if (Len - sent + Client->SBufferPtr >= MTU) {
-            memcpy (Client->SBuffer + Client->SBufferPtr, Data + sent,
-                    (MTU - Client->SBufferPtr));
-            sent += (MTU - Client->SBufferPtr);
-            Client->SBufferPtr += (MTU - Client->SBufferPtr);
-            if (!FlushServer (Client)) {
-                return (FALSE);
-            }
-        }
-        else {
-            memcpy (Client->SBuffer + Client->SBufferPtr, Data + sent,
-                    Len - sent);
-            Client->SBufferPtr += Len - sent;
-            sent = Len;
-        }
-    }
-    Client->SBuffer[Client->SBufferPtr] = '\0';
-    return (TRUE);
-}
-
 static int
 GetEHLO (ConnectionStruct * Client, unsigned long *Extensions, long *Size)
 {
-    BOOL Ready;
     BOOL MultiLine;
-    int count;
     int Result;
     unsigned char *ptr;
-    unsigned char Reply[BUFSIZE];
-    unsigned long lineLen;
 
-    Reply[0] = '\0';
     *Size = 0;
 
     do {
-        Ready = FALSE;
-        if ((Client->BufferPtr > 0)
-            &&
-            ((ptr =
-              strchrRN (Client->Buffer, 0x0a,
-                        Client->Buffer + Client->BufferPtr)) != NULL)) {
-            *ptr = '\0';
-            lineLen = ptr - Client->Buffer + 1;
-            memcpy (Reply, Client->Buffer, lineLen);
-            Client->BufferPtr -= lineLen;
-            memmove (Client->Buffer, ptr + 1, Client->BufferPtr + 1);
-            if ((ptr = strrchr (Reply, 0x0d)) != NULL)
-                *ptr = '\0';
-            Ready = TRUE;
-        }
-        while (!Ready) {
-            count =
-                DoClientRead (Client, Client->Buffer + Client->BufferPtr,
-                              BUFSIZE - Client->BufferPtr, 0);
-            if ((count < 1) || (Exiting)) {
-                return (-1);
-            }
-            Client->BufferPtr += count;
-            Client->Buffer[Client->BufferPtr] = '\0';
-            if ((ptr =
-                 strchrRN (Client->Buffer, 0x0a,
-                           Client->Buffer + Client->BufferPtr)) != NULL) {
-                *ptr = '\0';
-                lineLen = ptr - Client->Buffer + 1;
-                memcpy (Reply, Client->Buffer, lineLen);
-                Client->BufferPtr -= lineLen;
-                memmove (Client->Buffer, ptr + 1, Client->BufferPtr + 1);
-                if ((ptr = strrchr (Reply, 0x0d)) != NULL)
-                    *ptr = '\0';
-                Ready = TRUE;
-            }
-        }
-        if (Reply[3] == '-') {
+        ConnReadToAllocatedBuffer(Client->remotesmtp.conn, &(Client->remotesmtp.buffer), &(Client->remotesmtp.buflen));
+        if (Client->remotesmtp.buffer[3] == '-') {
             MultiLine = TRUE;
-            Reply[3] = ' ';
-        }
-        else {
+            Client->remotesmtp.buffer[3] = ' ';
+        } else {
             MultiLine = FALSE;
         }
 
-        if (QuickCmp (Reply, "250 DSN"))
+        if (QuickCmp (Client->remotesmtp.buffer, "250 DSN"))
             *Extensions |= EXT_DSN;
-        else if (QuickCmp (Reply, "250 PIPELINING"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 PIPELINING"))
             *Extensions |= EXT_PIPELINING;
-        else if (QuickCmp (Reply, "250 8BITMIME"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 8BITMIME"))
             *Extensions |= EXT_8BITMIME;
-        else if (QuickCmp (Reply, "250 AUTH=LOGIN"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 AUTH=LOGIN"))
             *Extensions |= EXT_AUTH_LOGIN;
-        else if (QuickCmp (Reply, "250 CHUNKING"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 CHUNKING"))
             *Extensions |= EXT_CHUNKING;
-        else if (QuickCmp (Reply, "250 BINARYMIME"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 BINARYMIME"))
             *Extensions |= EXT_BINARYMIME;
-        else if (QuickCmp (Reply, "250 ETRN"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 ETRN"))
             *Extensions |= EXT_ETRN;
-        else if (QuickCmp (Reply, "250 STARTTLS"))
+        else if (QuickCmp (Client->remotesmtp.buffer, "250 STARTTLS"))
             *Extensions |= EXT_TLS;
-        else if (QuickNCmp (Reply, "250 SIZE", 8)) {
+        else if (QuickNCmp (Client->remotesmtp.buffer, "250 SIZE", 8)) {
             *Extensions |= EXT_SIZE;
-            if (Reply[8] == ' ') {
-                *Size = atol (Reply + 9);
+            if (Client->remotesmtp.buffer[8] == ' ') {
+                *Size = atol (Client->remotesmtp.buffer + 9);
             }
         }
     } while (MultiLine);
 
-    ptr = strchr (Reply, ' ');
+    ptr = strchr (Client->remotesmtp.buffer, ' ');
     if (!ptr) {
         return (-1);
     }
     *ptr = '\0';
-    Result = atoi (Reply);
+    Result = atoi (Client->remotesmtp.buffer);
     return (Result);
 }
 
@@ -4584,65 +3608,26 @@ GetEHLO (ConnectionStruct * Client, unsigned long *Extensions, long *Size)
 static int
 GetAnswer (ConnectionStruct * Client, unsigned char *Reply, int ReplyLen)
 {
-    BOOL Ready;
     BOOL MultiLine;
-    int count;
     int Result;
     unsigned char *ptr;
-    unsigned long lineLen;
 
     do {
-        Ready = FALSE;
-        if ((Client->BufferPtr > 0)
-            &&
-            ((ptr =
-              strchrRN (Client->Buffer, 0x0a,
-                        Client->Buffer + Client->BufferPtr)) != NULL)) {
-            *ptr = '\0';
-            lineLen = ptr - Client->Buffer + 1;
-            memcpy (Reply, Client->Buffer, lineLen);
-            Client->BufferPtr -= lineLen;
-            memmove (Client->Buffer, ptr + 1, Client->BufferPtr + 1);
-            if ((ptr = strrchr (Reply, 0x0d)) != NULL)
-                *ptr = '\0';
-            Ready = TRUE;
-        }
-        while (!Ready) {
-            count =
-                DoClientRead (Client, Client->Buffer + Client->BufferPtr,
-                              BUFSIZE - Client->BufferPtr, 0);
-            if ((count < 1) || (Exiting)) {
-                memcpy (Reply, MSG422CONNERROR, MSG422CONNERROR_LEN + 1);
-                return (422);
-            }
-            Client->BufferPtr += count;
-            Client->Buffer[Client->BufferPtr] = '\0';
-            if ((ptr =
-                 strchrRN (Client->Buffer, 0x0a,
-                           Client->Buffer + Client->BufferPtr)) != NULL) {
-                *ptr = '\0';
-                lineLen = ptr - Client->Buffer + 1;
-                memcpy (Reply, Client->Buffer, lineLen);
-                Client->BufferPtr -= lineLen;
-                memmove (Client->Buffer, ptr + 1, Client->BufferPtr + 1);
-                if ((ptr = strrchr (Reply, 0x0d)) != NULL)
-                    *ptr = '\0';
-                Ready = TRUE;
-            }
-        }
-        if (Reply[3] == '-') {
+        ConnReadToAllocatedBuffer(Client->remotesmtp.conn, &(Client->remotesmtp.buffer), &(Client->remotesmtp.buflen));
+        if (Client->remotesmtp.buffer[3] == '-') {
             MultiLine = TRUE;
         }
         else {
             MultiLine = FALSE;
         }
     } while (MultiLine);
-    ptr = strchr (Reply, ' ');
-    if (!ptr)
+    ptr = strchr (Client->remotesmtp.buffer, ' ');
+    if (!ptr) {
         return (-1);
+    }
     *ptr = '\0';
-    Result = atoi (Reply);
-    memmove (Reply, ptr + 1, strlen (ptr + 1) + 1);
+    Result = atoi (Client->remotesmtp.buffer);
+    memmove (Reply, ptr + 1, min(strlen(ptr + 1) + 1, (unsigned int)ReplyLen-1));
     return (Result);
 }
 
@@ -4657,7 +3642,7 @@ SendServerEscaped (ConnectionStruct * Client, unsigned char *Data,
 
     if (*EscapedState) {
         if (Data[0] == '.') {
-            if (!SendServer (Client, ".", 1)) {
+            if (ConnWrite(Client->remotesmtp.conn, ".", 1) < 1) {
                 return (FALSE);
             }
         }
@@ -4671,10 +3656,10 @@ SendServerEscaped (ConnectionStruct * Client, unsigned char *Data,
         }
         else {
             if (Data[Pos + 1] == '.') {
-                if (!SendServer (Client, ptr, Pos - (ptr - Data) + 1)) {
+                if (ConnWrite(Client->remotesmtp.conn, ptr, Pos - (ptr - Data) + 1) < 1) {
                     return (FALSE);
                 }
-                if (!SendServer (Client, ".", 1)) {
+                if (ConnWrite(Client->remotesmtp.conn, ".", 1) < 1) {
                     return (FALSE);
                 }
                 ptr = Data + Pos + 1;
@@ -4682,7 +3667,7 @@ SendServerEscaped (ConnectionStruct * Client, unsigned char *Data,
             Pos++;
         }
     }
-    if (!SendServer (Client, ptr, Pos - (ptr - Data) + 1)) {
+    if (ConnWrite(Client->remotesmtp.conn, ptr, Pos - (ptr - Data) + 1) < 1) {
         return (FALSE);
     }
     if (Data[EndPos] == '\n') {
@@ -4693,7 +3678,7 @@ SendServerEscaped (ConnectionStruct * Client, unsigned char *Data,
 
 static int
 DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
-                    RecipStruct * Recips, int RecipCount,
+                    RecipStruct * Recips, unsigned int RecipCount,
                     unsigned int MsgFlags, unsigned char *Result,
                     int ResultLen)
 {
@@ -4703,7 +3688,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     unsigned char *ptr, *EnvID = NULL;
     int status;
     long Size, len, MessageSize;
-    int i;
+    unsigned int i;
     BOOL EscapedState = FALSE;
     unsigned long LastNMAPContact;
         unsigned char	TimeBuf[80];
@@ -4712,18 +3697,18 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     HandleFailure (220);
 
     snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Hostname);
-    if (!SendServer (Client, Answer, strlen (Answer))
-        || (!FlushServer (Client))) {
+    if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
+    ConnFlush(Client->remotesmtp.conn);
 
     status = GetEHLO (Client, &Extensions, &Size);
     if (status != 250) {
         snprintf (Answer, sizeof (Answer), "HELO %s\r\n", Hostname);
-        if (!SendServer (Client, Answer, strlen (Answer))
-            || (!FlushServer (Client))) {
+        if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
+        ConnFlush(Client->remotesmtp.conn);
         status = GetAnswer (Client, Reply, sizeof (Reply));
         HandleFailure (250);
     }
@@ -4733,35 +3718,20 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
         /* Should we deliver via SSL? */
         if (AllowClientSSL && (Extensions & EXT_TLS)) {
             snprintf (Answer, sizeof (Answer), "STARTTLS\r\n");
-            if (!SendServer (Client, Answer, strlen (Answer))
-                || !FlushServer (Client)) {
+            if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
             }
-            status = GetAnswer (Client, Reply, sizeof (Reply));
-            if ((status / 100) == 2) {
-                Client->ClientSSL = TRUE;
-                Client->CSSL = SSL_new (SSLClientContext);
-                if (Client->CSSL) {
-                    if ((SSL_set_bsdfd (Client->CSSL, Client->s) == 1)
-                        && (SSL_connect (Client->CSSL) == 1)) {
-                        ;
-                    }
-                    else {
-                        SSL_free (Client->CSSL);
-                        Client->CSSL = NULL;
-                        Client->ClientSSL = FALSE;
-                    }
+            ConnFlush(Client->remotesmtp.conn);
+            ConnReadAnswer(Client->remotesmtp.conn, Reply, sizeof(Reply));
+            if (Reply[0] == '2') {
+                if(ConnEncrypt(Client->remotesmtp.conn, SSLContext) < 0) {
+                    DELIVER_ERROR (DELIVER_FAILURE);
                 }
-                else {
-                    Client->ClientSSL = FALSE;
-                }
-                status =
-                    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n",
-                              Hostname);
-                if (!SendServer (Client, Answer, status)
-                    || !FlushServer (Client)) {
+                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Hostname);
+                if (ConnWrite(Client->remotesmtp.conn, Answer, status) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
+                ConnFlush(Client->remotesmtp.conn);
                 status = GetAnswer (Client, Reply, sizeof (Reply));
             }
         }
@@ -4772,8 +3742,8 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                      "The recipient's server does not accept messages larger than %ld bytes. Your message was %ld bytes.",
                      Size, Client->Flags);
             sprintf (Answer, "QUIT\r\n");
-            SendServer (Client, Answer, strlen (Answer));
-            FlushServer (Client);
+            ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer));
+            ConnFlush(Client->remotesmtp.conn);
             status = GetAnswer (Client, Reply, sizeof (Reply));
             DELIVER_ERROR (DELIVER_FAILURE);
         }
@@ -4807,31 +3777,31 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
 
     /* Keep this close to the above code; we rely on Reply not being overwritten */
     snprintf (Answer, sizeof (Answer), "MAIL FROM:<%s>", Reply);
-    if (!SendServer (Client, Answer, strlen (Answer))) {
+    if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
 
     if (Extensions & EXT_SIZE) {
         sprintf (Answer, " SIZE=%ld", Client->Flags);
-        if (!SendServer (Client, Answer, strlen (Answer))) {
+        if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
     }
 
     if (Extensions & EXT_DSN) {
         if (Recips[0].Flags & DSN_BODY) {
-            if (!SendServer (Client, " RET=FULL", 9)) {
+            if (ConnWrite(Client->remotesmtp.conn, " RET=FULL", 9) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
             }
         }
         else if (Recips[0].Flags & DSN_HEADER) {
-            if (!SendServer (Client, " RET=HDRS", 9)) {
+            if (ConnWrite(Client->remotesmtp.conn, "RET=HDRS", 9) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
             }
         }
         if (EnvID) {
             snprintf (Answer, sizeof (Answer), " ENVID=%s", EnvID);
-            if (!SendServer (Client, Answer, strlen (Answer))) {
+            if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
             }
         }
@@ -4839,17 +3809,17 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     /* End of Reply variable protection area */
 
     if ((Extensions & EXT_8BITMIME) && (MsgFlags & MSG_FLAG_ENCODING_8BITM)) {
-        if (!SendServer (Client, " BODY=8BITMIME", 14)) {
+        if (ConnWrite(Client->remotesmtp.conn, " BODY=8BITMIME", 14) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
     }
 
-    if (!SendServer (Client, "\r\n", 2)) {
+    if (ConnWrite(Client->remotesmtp.conn, "\r\n", 2) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
 
     if (!(Extensions & EXT_PIPELINING)) {
-        if (!FlushServer (Client)) {
+        if (!ConnFlush(Client->remotesmtp.conn)) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
         status = GetAnswer (Client, Reply, sizeof (Reply));
@@ -4870,18 +3840,17 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
         /* Some servers slow down responses to RCPT TO to discourage spamming           */
         /* Bad things happen if NMAP times out. Ping NMAP if 10 minutes goes by         */
         if (((i & 0xf) == 0) && ((time (NULL) - LastNMAPContact) > 300)) {
-            SendNMAPServer (Client, "NOOP\r\n", 6);
+            NMAPSendCommand (Client->client.conn, "NOOP\r\n", 6);
 
-            if (GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE) != 1000) {
+            if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
-            }
-            else {
+            } else {
                 LastNMAPContact = time (NULL);
             }
         }
 
         snprintf (Answer, sizeof (Answer), "RCPT TO:<%s>", Recips[i].To);
-        if (!SendServer (Client, Answer, strlen (Answer))) {
+        if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
 
@@ -4922,29 +3891,29 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
 
                     *dst = '\0';
                 }
-                if (!SendServer (Client, Answer, strlen (Answer))) {
+                if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
             }
             if (Recips[i].Flags & (DSN_SUCCESS | DSN_FAILURE | DSN_TIMEOUT)) {
                 BOOL Comma = FALSE;
-                if (!SendServer (Client, " NOTIFY=", 8)) {
+                if (ConnWrite(Client->remotesmtp.conn, " NOTIFY=", 8) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
                 if (Recips[i].Flags & DSN_SUCCESS) {
-                    if (!SendServer (Client, "SUCCESS", 7)) {
+                    if (ConnWrite(Client->remotesmtp.conn, "SUCCESS", 7) < 1) {
                         DELIVER_ERROR (DELIVER_TRY_LATER);
                     }
                     Comma = TRUE;
                 }
                 if (Recips[i].Flags & DSN_TIMEOUT) {
                     if (Comma) {
-                        if (!SendServer (Client, ",DELAY", 6)) {
+                        if (ConnWrite(Client->remotesmtp.conn, ",DELAY", 6) < 1) {
                             DELIVER_ERROR (DELIVER_TRY_LATER);
                         }
                     }
                     else {
-                        if (!SendServer (Client, "DELAY", 5)) {
+                        if (ConnWrite(Client->remotesmtp.conn, "DELAY", 5) < 1) {
                             DELIVER_ERROR (DELIVER_TRY_LATER);
                         }
                     }
@@ -4952,31 +3921,31 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 }
                 if (Recips[i].Flags & DSN_FAILURE) {
                     if (Comma) {
-                        if (!SendServer (Client, ",FAILURE", 8)) {
+                        if (ConnWrite(Client->remotesmtp.conn, ",FAILURE", 8) < 1) {
                             DELIVER_ERROR (DELIVER_TRY_LATER);
                         }
                     }
                     else {
-                        if (!SendServer (Client, "FAILURE", 7)) {
+                        if (ConnWrite(Client->remotesmtp.conn, "FAILURE", 7) < 1) {
                             DELIVER_ERROR (DELIVER_TRY_LATER);
                         }
                     }
                 }
             }
             else {
-                if (!SendServer (Client, " NOTIFY=NEVER", 13)) {
+                if (ConnWrite(Client->remotesmtp.conn, " NOTIFY=NEVER", 13) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
             }
         }
 
-        if (!SendServer (Client, "\r\n", 2)) {
+        if (ConnWrite(Client->remotesmtp.conn, "\r\n", 2) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
 
 
         if (!(Extensions & EXT_PIPELINING)) {
-            if (!FlushServer (Client)) {
+            if (!ConnFlush(Client->remotesmtp.conn)) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
             }
 
@@ -5038,7 +4007,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
 
     /* If Pipelining is turned on, we didn't read the responses (yet) */
     if (Extensions & EXT_PIPELINING) {
-        if (!FlushServer (Client)) {
+        if (!ConnFlush(Client->remotesmtp.conn)) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
         status = GetAnswer (Client, Reply, sizeof (Reply));     /* Pipelined answer from MAIL FROM */
@@ -5095,43 +4064,39 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
         }
     }
     if (Size == 0) {
-        if (Client->CSSL) {
-            SSL_shutdown (Client->CSSL);
-            SSL_free (Client->CSSL);
-            Client->CSSL = NULL;
-            Client->ClientSSL = FALSE;
-        }
+        FreeInternalConnection(Client->remotesmtp);
         return (DELIVER_FAILURE);
     }
 
     XplSafeAdd (SMTPStats.Recipient.Stored.Remote, i);
 
-    if (!SendServer (Client, "DATA\r\n", 6) || (!FlushServer (Client))) {
+    if (ConnWrite(Client->remotesmtp.conn, "DATA\r\n", 6) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
+    ConnFlush(Client->remotesmtp.conn);
     status = GetAnswer (Client, Reply, sizeof (Reply));
     HandleFailure (354);
 
     MsgGetRFC822Date(-1, 0, TimeBuf);
     snprintf(Answer, sizeof(Answer), "Received: from %d.%d.%d.%d [%d.%d.%d.%d] by %s\r\n\twith NMAP (%s %s); %s\r\n",
-             Client->cs.sin_addr.s_net,
-             Client->cs.sin_addr.s_host,
-             Client->cs.sin_addr.s_lh,
-             Client->cs.sin_addr.s_impno,
-             Client->cs.sin_addr.s_net,
-             Client->cs.sin_addr.s_host,
-             Client->cs.sin_addr.s_lh,
-             Client->cs.sin_addr.s_impno,
+             Client->client.conn->socketAddress.sin_addr.s_net,
+             Client->client.conn->socketAddress.sin_addr.s_host,
+             Client->client.conn->socketAddress.sin_addr.s_lh,
+             Client->client.conn->socketAddress.sin_addr.s_impno,
+             Client->client.conn->socketAddress.sin_addr.s_net,
+             Client->client.conn->socketAddress.sin_addr.s_host,
+             Client->client.conn->socketAddress.sin_addr.s_lh,
+             Client->client.conn->socketAddress.sin_addr.s_impno,
              Hostname, 
              PRODUCT_NAME,
              PRODUCT_VERSION,
              TimeBuf);
-    SendServer(Client, Answer, strlen(Answer));
+    ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer));
 
     snprintf(Answer, sizeof(Answer), "QRETR %s MESSAGE\r\n", Client->RemoteHost);
-    SendNMAPServer(Client, Answer, strlen(Answer));
+    NMAPSendCommand(Client->client.conn, Answer, strlen(Answer));
 
-    status = GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE);
+    status = NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);
 
     if (status != 2023) {
         DELIVER_ERROR (DELIVER_FAILURE);
@@ -5144,34 +4109,12 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     MessageSize = Size;
 
     /* Sending message to remote system; must escape any dots on a line */
-    if (Client->NBufferPtr > 0) {
-        if (Client->NBufferPtr > Size) {        /* Got the 1000 code in the buffer, too */
-            if (!SendServerEscaped
-                (Client, Client->NBuffer, Size, &EscapedState)) {
-                DELIVER_ERROR_NO_RETURN (DELIVER_FAILURE);
-            }
-            memmove (Client->NBuffer, Client->NBuffer + Size,
-                     Client->NBufferPtr - Size + 1);
-            Client->NBufferPtr -= Size;
-            Size = 0;
-        }
-        else {
-            if (!SendServerEscaped
-                (Client, Client->NBuffer, Client->NBufferPtr,
-                 &EscapedState)) {
-                DELIVER_ERROR_NO_RETURN (DELIVER_TRY_LATER);
-            }
-            Size -= Client->NBufferPtr;
-            Client->NBufferPtr = 0;
-            Client->NBuffer[0] = '\0';
-        }
-    }
     while (Size > 0) {
-        if (Size < sizeof (Answer)) {
-            len = DoNMAPRead (Client, Answer, Size, 0);
+        if ((unsigned int)Size < sizeof (Answer)) {
+            len = ConnRead (Client->client.conn, Answer, Size);
         }
         else {
-            len = DoNMAPRead (Client, Answer, sizeof (Answer), 0);
+            len = ConnRead (Client->client.conn, Answer, sizeof(Answer));
         }
         if (len > 0) {
             if (!SendServerEscaped (Client, Answer, len, &EscapedState)) {
@@ -5185,11 +4128,12 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     }
 
     /* FIX ME, check for 1000 */
-    GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);       /* Get the 1000 OK message for QRETR MESG */
+    NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);       /* Get the 1000 OK message for QRETR MESG */
 
-    if (!SendServer (Client, "\r\n.\r\n", 5) || (!FlushServer (Client))) {
+    if (ConnWrite(Client->remotesmtp.conn, "\r\n.\r\n", 5) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
+    ConnFlush(Client->remotesmtp.conn);
 
     status = GetAnswer (Client, Reply, sizeof (Reply));
     HandleFailure (250);
@@ -5208,14 +4152,9 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     if (SendETRN && (Extensions & EXT_ETRN)) {
         for (i = 0; i < DomainCount; i++) {
             len = snprintf (Reply, sizeof (Reply), "ETRN %s\r\n", Domains[i]);
-            if (!SendServer (Client, Reply, len)) {
+            if (ConnWrite(Client->remotesmtp.conn, Reply, len) < 1) {
                 XplRWReadLockRelease (&ConfigLock);
-                if (Client->CSSL) {
-                    SSL_shutdown (Client->CSSL);
-                    SSL_free (Client->CSSL);
-                    Client->CSSL = NULL;
-                    Client->ClientSSL = FALSE;
-                }
+                FreeInternalConnection(Client->remotesmtp);
                 return (DELIVER_SUCCESS);
             }
         }
@@ -5225,21 +4164,12 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     XplSafeAdd (SMTPStats.Byte.Stored.Remote, (MessageSize + 1023) / 1024);
     XplSafeIncrement (SMTPStats.Message.Stored.Remote);
 
-    if (SendServer (Client, "QUIT\r\n", 6) && (FlushServer (Client))) {
+    if (ConnWrite(Client->remotesmtp.conn, "QUIT\r\n", 6) < 1) {
         status = GetAnswer (Client, Reply, sizeof (Reply));
     }
+    ConnFlush(Client->remotesmtp.conn);
 
-    if (!Client->CSSL) {
-        return (DELIVER_SUCCESS);
-    }
-    else {
-        SSL_shutdown (Client->CSSL);
-        SSL_free (Client->CSSL);
-        Client->CSSL = NULL;
-        Client->ClientSSL = FALSE;
-        return (DELIVER_SUCCESS);
-    }
-
+    return (DELIVER_SUCCESS);
 }
 
 __inline static BOOL
@@ -5251,17 +4181,15 @@ IPAddressIsLocal (struct in_addr IPAddress)
 
 static int
 DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
-                      RecipStruct * Recips, int RecipCount,
+                      RecipStruct * Recips, unsigned int RecipCount,
                       unsigned long MsgFlags, unsigned char *Result,
                       int ResultLen)
 {
     unsigned char Host[MAXEMAILNAMESIZE + 1];
     unsigned char *ptr;
-    struct sockaddr_in soc_address;
-    struct sockaddr_in *sin = &soc_address;
-    int status;
+    unsigned int status;
     int RetVal;
-    int IndexCnt, MXCnt;
+    unsigned long IndexCnt, MXCnt;
 
     XplDnsRecord *DNSMXRec = NULL, *DNSARec = NULL;
     BOOL GoByAddr = FALSE, UsingMX = TRUE;
@@ -5286,14 +4214,18 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             *ptr = '\0';
         memmove (Host, Host + 1, strlen (Host + 1) + 1);
         /* Check for an IP address */
-        if ((sin->sin_addr.s_addr = inet_addr (Host)) != -1) {
+        int host;
+        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = host;
+        if ((host = inet_addr (Host)) != -1) {
             GoByAddr = TRUE;
             UsingMX = FALSE;
         }
     }
 
     if (!GoByAddr && UseRelayHost) {
-        if ((sin->sin_addr.s_addr=inet_addr(RelayHost))==-1) {
+        int relayhost;
+        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr=relayhost;
+        if (relayhost == -1) {
             status=XplDnsResolve(RelayHost, &DNSARec, XPL_RR_A);
             /*fprintf (stderr, "%s:%d Looked up relay host %s: %d\n", __FILE__, __LINE__, RelayHost, status);*/
             switch(status) {
@@ -5428,6 +4360,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
 
 
     MXCnt = 0;
+    Client->remotesmtp.conn = ConnAlloc(TRUE);
 
   LoopAgain:
 
@@ -5440,17 +4373,17 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
 
         if ((IndexCnt > 0) || (MXCnt > 0)) {
             /* Let NMAP know we're still here */
-            SendNMAPServer (Client, "NOOP\r\n", 6);
-            GetNMAPAnswer (Client, Result, ResultLen, TRUE);
+            NMAPSendCommand (Client->client.conn, "NOOP\r\n", 6);
+            NMAPReadResponse (Client->client.conn, Result, ResultLen, TRUE);
             Result[0] = '\0';
         }
 
         if (!GoByAddr)
-            memcpy (&sin->sin_addr, &DNSARec[IndexCnt].A.addr,
+            memcpy (&(Client->remotesmtp.conn->socketAddress.sin_addr), &DNSARec[IndexCnt].A.addr,
                     sizeof (struct in_addr));
         /* Create a connection */
-        sin->sin_family = AF_INET;
-        sin->sin_port = htons (25);
+        Client->remotesmtp.conn->socketAddress.sin_family = AF_INET;
+        Client->remotesmtp.conn->socketAddress.sin_port = htons (25);
         if (Exiting) {
             if (DNSARec) {
                 MemFree (DNSARec);
@@ -5462,9 +4395,9 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
-        if (IPAddressIsLocal(sin->sin_addr) && SMTPServerPort == 25) {
+        if (IPAddressIsLocal(Client->remotesmtp.conn->socketAddress.sin_addr) && SMTPServerPort == 25) {
             BOOL ETRNMessage = FALSE;
-            int i;
+            unsigned int i;
             // It's weird, but saves space...
             XplRWReadLockAcquire (&ConfigLock);
             for (i = 0; i < RelayDomainCount; i++) {
@@ -5477,13 +4410,13 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             if (!ETRNMessage) {
                 ptr = strchr (Recips[0].To, '@');
                 if (ptr) {
-                    if (sin->sin_addr.s_addr == LocalAddress) {
+                    if (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr == LocalAddress) {
                         LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
                                 LOGGER_EVENT_DNS_CONFIGURATION_ERROR,
                                 LOG_ERROR,
                                 "DNS config error %s %d",
                                 ptr + 1,
-                                XplHostToLittle (sin->sin_addr.s_addr));
+                                XplHostToLittle (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr));
                     }
                     else {
                         LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
@@ -5491,7 +4424,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
                                 LOG_WARNING,
                                 "Connection local %s %d",
                                 ptr + 1,
-                                XplHostToLittle (sin->sin_addr.s_addr));
+                                XplHostToLittle (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr));
                     }
                 }
             
@@ -5504,18 +4437,13 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
                 }
 
                 DELIVER_ERROR (DELIVER_BOGUS_NAME);
-            }
-            else {
+            } else {
                 RetVal = DELIVER_TRY_LATER;
             }
+        } else {
+            status = ConnConnect(Client->remotesmtp.conn, NULL, 0, NULL);
         }
-        else {
-            Client->s = IPsocket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-            status =
-                IPconnect (Client->s, (struct sockaddr *) &soc_address,
-                           sizeof (soc_address));
-        }
-        if (status) {
+        if (status < 0) {
             switch (errno) {
             case ETIMEDOUT:{
                     RetVal = DELIVER_TIMEOUT;
@@ -5548,27 +4476,15 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
                     break;
                 }
             }
-        }
-        else {
+        } else {
             Result[0] = '\0';
-            Client->BufferPtr = 0;
-            Client->Buffer[0] = '\0';
-            Client->SBufferPtr = 0;
-            Client->SBuffer[0] = '\0';
-            Client->NBufferPtr = 0;
-            Client->NBuffer[0] = '\0';
-            Client->ClientSSL = 0;
-            Client->NMAPSSL = 0;
 
             XplSafeIncrement (SMTPStats.Server.Outgoing);
-            RetVal =
-                DeliverSMTPMessage (Client, Sender, Recips, RecipCount,
-                                    MsgFlags, Result, ResultLen);
+            RetVal = DeliverSMTPMessage (Client, Sender, Recips, RecipCount, MsgFlags, Result, ResultLen);
             XplSafeDecrement (SMTPStats.Server.Outgoing);
             XplSafeIncrement (SMTPStats.Server.ClosedOut);
         }
-        IPclose (Client->s);
-        Client->s = -1;
+        FreeInternalConnection(Client->remotesmtp);
 
         if ((RetVal == DELIVER_SUCCESS) || GoByAddr || Exiting) {
             break;
@@ -5648,11 +4564,12 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
 }
 
 int
-RewriteAddress (unsigned char *Source, unsigned char *Target, int TargetSize)
+RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int TargetSize)
 {
     unsigned char WorkSpace[1024];
     unsigned char *Src, *Dst;
-    int i, RetVal = MAIL_BOGUS;
+    unsigned int i;
+    int RetVal = MAIL_BOGUS;
 
     /***
 	This routine is supposed to rewrite any address into proper format
@@ -5920,13 +4837,12 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
     Buffer = (unsigned char *) (Recips + Lines);        /* This adds Lines * sizeof(RecipStruct) */
     BufPtr = Buffer;
 
-    while ((rc =
-            GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE)) != 6021) {
+    while ((rc = NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), FALSE)) != 6021) {
         switch (Reply[0]) {
         case QUEUE_FROM:{
                 rc = snprintf (Result, sizeof (Result), "QMOD RAW %s\r\n",
                                Reply);
-                SendNMAPServer (Client, Result, rc);
+                NMAPSendCommand (Client->client.conn, Result, rc);
                 strcpy (From, Reply + 1);
             }
             break;
@@ -5979,9 +4895,9 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                             /* we read them after the loop */
                             if (!Local) {
                                 rc = snprintf (Reply, sizeof (Reply), "QCOPY %s\r\n", Client->RemoteHost);      /* RemoteHost abused for queue id */
-                                SendNMAPServer (Client, Reply, rc);
+                                NMAPSendCommand (Client->client.conn, Reply, rc);
 
-                                SendNMAPServer (Client, Reply,
+                                NMAPSendCommand (Client->client.conn, Reply,
                                                 snprintf (Reply,
                                                           sizeof (Reply),
                                                           "QSTOR FLAGS %ld\r\n",
@@ -5989,7 +4905,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
 
                                 rc = snprintf (Reply, sizeof (Reply),
                                                "QSTOR FROM %s\r\n", From);
-                                SendNMAPServer (Client, Reply, rc);
+                                NMAPSendCommand (Client->client.conn, Reply, rc);
                                 Local = TRUE;
                                 j = 0;
                             }
@@ -6007,7 +4923,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                                                Recips[NumRecips].To,
                                                Recips[NumRecips].Flags);
                             }
-                            SendNMAPServer (Client, Reply, rc);
+                            NMAPSendCommand (Client->client.conn, Reply, rc);
                             BufPtr = Recips[NumRecips].To;      /* Reuse space */
                             j++;
                             break;
@@ -6023,20 +4939,20 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
         default:{
                 rc = snprintf (Result, sizeof (Result), "QMOD RAW %s\r\n",
                                Reply);
-                SendNMAPServer (Client, Result, rc);
+                NMAPSendCommand (Client->client.conn, Result, rc);
             }
             break;
         }
     }
     if (Local) {
-        SendNMAPServer (Client, "QRUN\r\n", 6);
-        GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);   /* QCOPY */
-        GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);   /* QSTOR FLAGS */
-        GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);   /* QSTOR FROM */
+        NMAPSendCommand (Client->client.conn, "QRUN\r\n", 6);
+        NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);   /* QCOPY */
+        NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);   /* QSTOR FLAGS */
+        NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);   /* QSTOR FROM */
         for (i = 0; i < j; i++) {
-            GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);       /* QSTOR LOCALS */
+            NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);       /* QSTOR LOCALS */
         }
-        GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);   /* QRUN */
+        NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);   /* QRUN */
     }
 
     qsort (Recips, NumRecips, sizeof (RecipStruct), (void *) RecipCompare);
@@ -6062,7 +4978,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                                       "QRTS %s %s %lu %d\r\n", Recips[j].To,
                                       Recips[j].ORecip, Recips[j].Flags,
                                       DELIVER_SUCCESS);
-                        SendNMAPServer (Client, Reply, len);
+                        NMAPSendCommand (Client->client.conn, Reply, len);
                     }
                 }
                 break;
@@ -6076,7 +4992,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                                   "QMOD RAW R%s %s %lu\r\n", Recips[j].To,
                                   Recips[j].ORecip ? Recips[j].
                                   ORecip : Recips[j].To, Recips[j].Flags);
-                    SendNMAPServer (Client, Reply, len);
+                    NMAPSendCommand (Client->client.conn, Reply, len);
                 }
                 break;
 
@@ -6105,7 +5021,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                                           ORecip : Recips[j].To,
                                           Recips[j].Flags, Recips[j].Result);
                         }
-                        SendNMAPServer (Client, Reply, len);
+                        NMAPSendCommand (Client->client.conn, Reply, len);
                     }
                 }
                 break;
@@ -6162,42 +5078,32 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
     buffer = (unsigned char *) (recips + lines);
     bufferPtr = buffer;
 
-    while ((rc =
-            GetNMAPAnswer (client, reply, sizeof (reply), FALSE)) != 6021) {
+    while ((rc = NMAPReadResponse (client->client.conn, reply, sizeof (reply), FALSE)) != 6021) {
         switch (reply[0]) {
         case QUEUE_FROM:{
                 strcpy (from, reply + 1);
-                SendNMAPServer (client, result,
-                                snprintf (result, sizeof (result),
-                                          "QMOD RAW %s\r\n", reply));
+                NMAPSendCommand (client->client.conn, result, snprintf (result, sizeof (result), "QMOD RAW %s\r\n", reply));
                 continue;
             }
 
         case QUEUE_FLAGS:{
                 msgFlags = atoi (reply + 1);
-                SendNMAPServer (client, result,
-                                snprintf (result, sizeof (result),
-                                          "QMOD RAW %s\r\n", reply));
+                NMAPSendCommand (client->client.conn, result, snprintf (result, sizeof (result), "QMOD RAW %s\r\n", reply));
                 continue;
             }
 
         case QUEUE_CALENDAR_LOCAL:{
                 /* All calendar messages should be delivered locally. */
-                SendNMAPServer (client, reply,
-                                snprintf (reply, BUFSIZE, "QMOD RAW %s\r\n",
-                                          reply));
+                NMAPSendCommand (client->client.conn, reply, snprintf (reply, BUFSIZE, "QMOD RAW %s\r\n", reply));
                 continue;
             }
 
         case QUEUE_RECIP_LOCAL:
         case QUEUE_RECIP_MBOX_LOCAL:{
-                if (msgFlags &
-                    (MSG_FLAG_SOURCE_EXTERNAL | MSG_FLAG_CALENDAR_OBJECT)) {
+                if (msgFlags & (MSG_FLAG_SOURCE_EXTERNAL | MSG_FLAG_CALENDAR_OBJECT)) {
                     /* Calendar messages should be delivered locally.
                        Externally received messages (relayed here) should be delivered locally. */
-                    SendNMAPServer (client, reply,
-                                    snprintf (reply, BUFSIZE,
-                                              "QMOD RAW %s\r\n", reply));
+                    NMAPSendCommand (client->client.conn, reply, snprintf (reply, BUFSIZE, "QMOD RAW %s\r\n", reply));
                     continue;
                 }
 
@@ -6270,18 +5176,18 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                                 /* we read them after the loop */
                                 if (!local) {
                                     /* RemoteHost abused for queue id */
-                                    SendNMAPServer (client, reply,
+                                    NMAPSendCommand (client->client.conn, reply,
                                                     snprintf (reply,
                                                               sizeof (reply),
                                                               "QCOPY %s\r\n",
                                                               client->
                                                               RemoteHost));
-                                    SendNMAPServer (client, reply,
+                                    NMAPSendCommand (client->client.conn, reply,
                                                     snprintf (reply,
                                                               sizeof (reply),
                                                               "QSTOR FLAGS %ld\r\n",
                                                               msgFlags));
-                                    SendNMAPServer (client, reply,
+                                    NMAPSendCommand (client->client.conn, reply,
                                                     snprintf (reply,
                                                               sizeof (reply),
                                                               "QSTOR FROM %s\r\n",
@@ -6291,7 +5197,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                                 }
 
                                 if (recips[recipCount].ORecip) {
-                                    SendNMAPServer (client, reply,
+                                    NMAPSendCommand (client->client.conn, reply,
                                                     snprintf (reply,
                                                               sizeof (reply),
                                                               "QSTOR LOCAL %s %s %lu\r\n",
@@ -6305,7 +5211,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                                                               Flags));
                                 }
                                 else {
-                                    SendNMAPServer (client, reply,
+                                    NMAPSendCommand (client->client.conn, reply,
                                                     snprintf (reply,
                                                               sizeof (reply),
                                                               "QSTOR LOCAL %s %s %lu\r\n",
@@ -6341,7 +5247,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
             }
 
         default:{
-                SendNMAPServer (client, result,
+                NMAPSendCommand (client->client.conn, result,
                                 snprintf (result, sizeof (result),
                                           "QMOD RAW %s\r\n", reply));
                 break;
@@ -6350,24 +5256,24 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
     }
 
     if (local) {
-        SendNMAPServer (client, "QRUN\r\n", 6);
+        NMAPSendCommand (client->client.conn, "QRUN\r\n", 6);
 
         /* QCOPY */
-        GetNMAPAnswer (client, reply, sizeof (reply), FALSE);
+        NMAPReadResponse (client->client.conn, reply, sizeof (reply), TRUE);
 
         /* QSTOR FLAGS */
-        GetNMAPAnswer (client, reply, sizeof (reply), FALSE);
+        NMAPReadResponse (client->client.conn, reply, sizeof (reply), TRUE);
 
         /* QSTOR FROM */
-        GetNMAPAnswer (client, reply, sizeof (reply), FALSE);
+        NMAPReadResponse (client->client.conn, reply, sizeof (reply), TRUE);
 
         /* QSTOR LOCALS */
         for (i = 0; i < j; i++) {
-            GetNMAPAnswer (client, reply, sizeof (reply), FALSE);
+            NMAPReadResponse (client->client.conn, reply, sizeof (reply), TRUE);
         }
 
         /* QRUN */
-        GetNMAPAnswer (client, reply, sizeof (reply), FALSE);
+        NMAPReadResponse (client->client.conn, reply, sizeof (reply), TRUE);
     }
 
     qsort (recips, recipCount, sizeof (RecipStruct), (void *) RecipCompare);
@@ -6388,7 +5294,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
             switch (recips[j].Result) {
             case DELIVER_SUCCESS:{
                     if (recips[j].Flags & DSN_SUCCESS) {
-                        SendNMAPServer (client, reply,
+                        NMAPSendCommand (client->client.conn, reply,
                                         snprintf (reply, sizeof (reply),
                                                   "QRTS %s %s %lu %d\r\n",
                                                   recips[j].To,
@@ -6403,7 +5309,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
             case DELIVER_REFUSED:
             case DELIVER_UNREACHABLE:
             case DELIVER_TRY_LATER:{
-                    SendNMAPServer (client, reply,
+                    NMAPSendCommand (client->client.conn, reply,
                                     snprintf (reply, sizeof (reply),
                                               "QMOD RAW R%s %s %lu\r\n",
                                               recips[j].To,
@@ -6420,7 +5326,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
             case DELIVER_FAILURE:{
                     if (recips[j].Flags & DSN_FAILURE) {
                         if (result[0] != '\0') {
-                            SendNMAPServer (client, reply,
+                            NMAPSendCommand (client->client.conn, reply,
                                             snprintf (reply, sizeof (reply),
                                                       "QRTS %s %s %lu %d %s\r\n",
                                                       recips[j].To,
@@ -6432,7 +5338,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                                                       result));
                         }
                         else {
-                            SendNMAPServer (client, reply,
+                            NMAPSendCommand (client->client.conn, reply,
                                             snprintf (reply, sizeof (reply),
                                                       "QRTS %s %s %lu %d\r\n",
                                                       recips[j].To,
@@ -6506,9 +5412,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
 
     envelope = MemMalloc (size + 1);
     next = envelope;
-    while ((rc =
-            GetNMAPAnswer (client, buffer, sizeof (buffer) - 1,
-                           FALSE)) != 6021) {
+    while ((rc = NMAPReadResponse (client->client.conn, buffer, sizeof (buffer) - 1, FALSE)) != 6021) {
         rc = strlen (buffer);
         memcpy (next, buffer, rc);
         next[rc++] = '\n';
@@ -6522,7 +5426,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
         switch (buffer[0]) {
         case QUEUE_FROM:{
                 strcpy (from, buffer + 1);
-                SendNMAPServer (client, reply,
+                NMAPSendCommand (client->client.conn, reply,
                                 snprintf (reply, BUFSIZE, "QMOD RAW %s\r\n",
                                           buffer));
                 continue;
@@ -6530,7 +5434,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
 
         case QUEUE_FLAGS:{
                 msgFlags = atol (buffer + 1);
-                SendNMAPServer (client, reply,
+                NMAPSendCommand (client->client.conn, reply,
                                 snprintf (reply, BUFSIZE, "QMOD RAW %s\r\n",
                                           buffer));
                 continue;
@@ -6550,7 +5454,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
                 switch (rc) {
                 case MAIL_BOGUS:{
                         if (flags & DSN_FAILURE) {
-                            SendNMAPServer (client, reply,
+                            NMAPSendCommand (client->client.conn, reply,
                                             snprintf (reply, BUFSIZE,
                                                       "QRTS %s %s %lu %d Addressformat not valid\r\n",
                                                       to, ptr + 1,
@@ -6570,42 +5474,42 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
                                Externally received messages (relayed here) should be delivered locally. */
                             if (!Local) {
                                 /* RemoteHost abused for queue id */
-                                SendNMAPServer (client, reply,
+                                NMAPSendCommand (client->client.conn, reply,
                                                 snprintf (reply, BUFSIZE,
                                                           "QCOPY %s\r\n",
                                                           client->
                                                           RemoteHost));
-                                GetNMAPAnswer (client, reply, BUFSIZE, FALSE);  /* QCOPY */
+                                NMAPReadResponse (client->client.conn, reply, BUFSIZE, TRUE);  /* QCOPY */
 
-                                SendNMAPServer (client, reply,
+                                NMAPSendCommand (client->client.conn, reply,
                                                 snprintf (reply, BUFSIZE,
                                                           "QSTOR FLAGS %lu\r\n",
                                                           msgFlags));
-                                GetNMAPAnswer (client, reply, BUFSIZE, FALSE);  /* QSTOR FLAGS */
+                                NMAPReadResponse (client->client.conn, reply, BUFSIZE, TRUE);  /* QSTOR FLAGS */
 
-                                SendNMAPServer (client, reply,
+                                NMAPSendCommand (client->client.conn, reply,
                                                 snprintf (reply, BUFSIZE,
                                                           "QSTOR FROM %s\r\n",
                                                           from));
-                                GetNMAPAnswer (client, reply, BUFSIZE, FALSE);  /* QSTOR FROM */
+                                NMAPReadResponse (client->client.conn, reply, BUFSIZE, TRUE);  /* QSTOR FROM */
 
                                 Local = TRUE;
                             }
 
                             if (ptr) {
-                                SendNMAPServer (client, reply,
+                                NMAPSendCommand (client->client.conn, reply,
                                                 snprintf (reply, BUFSIZE,
                                                           "QSTOR LOCAL %s %s\r\n",
                                                           to, ptr + 1));
                             }
                             else {
-                                SendNMAPServer (client, reply,
+                                NMAPSendCommand (client->client.conn, reply,
                                                 snprintf (reply, BUFSIZE,
                                                           "QSTOR LOCAL %s\r\n",
                                                           to));
                             }
 
-                            GetNMAPAnswer (client, reply, BUFSIZE, FALSE);      /* QSTOR LOCALS */
+                            NMAPReadResponse (client->client.conn, reply, BUFSIZE, TRUE);      /* QSTOR LOCALS */
                         }
                         else if (!(msgFlags & MSG_FLAG_SOURCE_EXTERNAL)) {
                             if (ptr) {
@@ -6613,7 +5517,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
                             }
 
                             /* All internally generated messages should be relayed. */
-                            SendNMAPServer (client, reply,
+                            NMAPSendCommand (client->client.conn, reply,
                                             snprintf (reply, BUFSIZE,
                                                       "QMOD RAW "
                                                       QUEUES_RECIP_REMOTE
@@ -6631,7 +5535,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
                                 *ptr = ' ';
                             }
 
-                            SendNMAPServer (client, reply,
+                            NMAPSendCommand (client->client.conn, reply,
                                             snprintf (reply, BUFSIZE,
                                                       "QMOD RAW "
                                                       QUEUES_RECIP_REMOTE
@@ -6657,13 +5561,13 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
                     (MSG_FLAG_SOURCE_EXTERNAL | MSG_FLAG_CALENDAR_OBJECT)) {
                     /* Calendar messages should be delivered locally.
                        Externally received messages (relayed here) should be delivered locally. */
-                    SendNMAPServer (client, reply,
+                    NMAPSendCommand (client->client.conn, reply,
                                     snprintf (reply, BUFSIZE,
                                               "QMOD RAW %s\r\n", buffer));
                 }
                 else if (!(msgFlags & MSG_FLAG_SOURCE_EXTERNAL)) {
                     /* All internally generated messages should be relayed. */
-                    SendNMAPServer (client, reply,
+                    NMAPSendCommand (client->client.conn, reply,
                                     snprintf (reply, BUFSIZE,
                                               "QMOD RAW " QUEUES_RECIP_REMOTE
                                               "%s\r\n", buffer + 1));
@@ -6673,7 +5577,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
             }
 
         default:{
-                SendNMAPServer (client, reply,
+                NMAPSendCommand (client->client.conn, reply,
                                 snprintf (reply, BUFSIZE, "QMOD RAW %s\r\n",
                                           buffer));
                 continue;
@@ -6684,8 +5588,8 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
     MemFree (envelope);
 
     if (Local) {
-        SendNMAPServer (client, "QRUN\r\n", 6);
-        GetNMAPAnswer (client, reply, BUFSIZE, FALSE);  /* QRUN */
+        NMAPSendCommand (client->client.conn, "QRUN\r\n", 6);
+        NMAPReadResponse (client->client.conn, reply, BUFSIZE, TRUE);  /* QRUN */
     }
 }
 
@@ -6706,7 +5610,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
     unsigned char *Envelope = MemMalloc (Size + 1);
     unsigned char *NextLine = Envelope;
 
-    while ((rc = GetNMAPAnswer (Client, Line, sizeof (Line), FALSE)) != 6021) {
+    while ((rc = NMAPReadResponse (Client->client.conn, Line, sizeof (Line), FALSE)) != 6021) {
         rc = strlen (Line);
         memcpy (NextLine, Line, rc);
         NextLine[rc++] = '\n';
@@ -6721,7 +5625,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
         case QUEUE_FROM:{
                 len =
                     snprintf (Reply, sizeof (Reply), "QMOD RAW %s\r\n", Line);
-                SendNMAPServer (Client, Reply, len);
+                NMAPSendCommand (Client->client.conn, Reply, len);
                 strcpy (From, Line + 1);
             }
             break;
@@ -6729,7 +5633,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
         case QUEUE_FLAGS:{
                 msgFlags = atol (Line + 1);
 
-                SendNMAPServer (Client, Reply,
+                NMAPSendCommand (Client->client.conn, Reply,
                                 snprintf (Reply, sizeof (Reply),
                                           "QMOD RAW %s\r\n", Line));
                 break;
@@ -6755,7 +5659,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
                                           To, ptr + 1,
                                           (long unsigned int) Flags,
                                           DELIVER_BOGUS_NAME);
-                            SendNMAPServer (Client, Reply, len);
+                            NMAPSendCommand (Client->client.conn, Reply, len);
                         }
                         continue;
                         break;
@@ -6775,27 +5679,27 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
                                           "QMOD RAW " QUEUES_RECIP_REMOTE
                                           "%s\r\n", To);
                         }
-                        SendNMAPServer (Client, Reply, len);
+                        NMAPSendCommand (Client->client.conn, Reply, len);
                         break;
                     }
 
                 default:{
                         if (!Local) {
                             len = snprintf (Reply, sizeof (Reply), "QCOPY %s\r\n", Client->RemoteHost); /* RemoteHost abused for queue id */
-                            SendNMAPServer (Client, Reply, len);
-                            GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);       /* QCOPY */
+                            NMAPSendCommand (Client->client.conn, Reply, len);
+                            NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);       /* QCOPY */
 
-                            SendNMAPServer (Client, Reply,
+                            NMAPSendCommand (Client->client.conn, Reply,
                                             snprintf (Reply, sizeof (Reply),
                                                       "QSTOR FLAGS %ld\r\n",
                                                       msgFlags));
-                            GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);       /* QSTOR FLAGS */
+                            NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);       /* QSTOR FLAGS */
 
                             len =
                                 snprintf (Reply, sizeof (Reply),
                                           "QSTOR FROM %s\r\n", From);
-                            SendNMAPServer (Client, Reply, len);
-                            GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);       /* QSTOR FROM */
+                            NMAPSendCommand (Client->client.conn, Reply, len);
+                            NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);       /* QSTOR FROM */
                             Local = TRUE;
                             j = 0;
                         }
@@ -6810,8 +5714,8 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
                                 snprintf (Reply, sizeof (Reply),
                                           "QSTOR LOCAL %s\r\n", To);
                         }
-                        SendNMAPServer (Client, Reply, len);
-                        GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);   /* QSTOR LOCALS */
+                        NMAPSendCommand (Client->client.conn, Reply, len);
+                        NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);   /* QSTOR LOCALS */
                         j++;
                         break;
                     }
@@ -6822,7 +5726,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
         default:{
                 len =
                     snprintf (Reply, sizeof (Reply), "QMOD RAW %s\r\n", Line);
-                SendNMAPServer (Client, Reply, len);
+                NMAPSendCommand (Client->client.conn, Reply, len);
                 break;
             }
         }
@@ -6831,8 +5735,8 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
     MemFree (Envelope);
 
     if (Local) {
-        SendNMAPServer (Client, "QRUN\r\n", 6);
-        GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);   /* QRUN */
+        NMAPSendCommand (Client->client.conn, "QRUN\r\n", 6);
+        NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);   /* QRUN */
     }
 }
 
@@ -6850,10 +5754,10 @@ HandleQueueConnection (void *ClientIn)
 
     XplSafeIncrement (SMTPStats.IncomingQueueAgent);
 
-    ReplyInt = GetNMAPAnswer (Client, Reply, sizeof (Reply), TRUE);
+    ReplyInt = NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);
 
     if (ReplyInt != 6020) {
-        SendNMAPServer (Client, "QDONE\r\n", 7);
+        NMAPSendCommand (Client->client.conn, "QDONE\r\n", 7);
         EndClientConnection (Client);
         return;
     }
@@ -6910,362 +5814,70 @@ HandleQueueConnection (void *ClientIn)
         }
     }
 
-    SendNMAPServer (Client, "QDONE\r\n", 7);
-    GetNMAPAnswer (Client, Reply, sizeof (Reply), FALSE);
+    NMAPSendCommand (Client->client.conn, "QDONE\r\n", 7);
+    NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), TRUE);
 
     EndClientConnection (Client);
-    return;
-}
-
-void
-RegisterNMAPServer (void *QSIn)
-{
-    struct sockaddr_in soc_address;
-    struct sockaddr_in *sin = &soc_address;
-    ConnectionStruct *Client;
-    unsigned char Answer[BUFSIZE + 1];
-    unsigned char Name[MDB_MAX_OBJECT_CHARS + 1];
-    int ReplyInt;
-    QueueStartStruct *QS = (QueueStartStruct *) QSIn;
-    int Queue, QSPort, i;
-
-    Client = GetSMTPConnection ();
-    if (!Client) {
-        MemFree (QS);
-        XplSafeDecrement (SMTPConnThreads);
-        return;
-    }
-
-    Client->State = STATE_WAITING + 1;
-
-    /* Connect to NMAP server */
-    do {
-        sin->sin_addr.s_addr = inet_addr (QS->serverAddress);
-        sin->sin_family = AF_INET;
-        sin->sin_port = htons (QS->serverPort);
-        Client->NMAPs = IPsocket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (Client->NMAPs == -1) {
-            ReturnSMTPConnection (Client);
-            MemFree (QS);
-            XplSafeDecrement (SMTPConnThreads);
-            return;
-        }
-        ReplyInt =
-            IPconnect (Client->NMAPs, (struct sockaddr *) &soc_address,
-                       sizeof (soc_address));
-
-        if (ReplyInt) {
-            IPclose (Client->NMAPs);
-            Client->NMAPs = -1;
-
-            for (i = 0; (i < 15) && !Exiting; i++) {
-                XplDelay (1000);
-            }
-        }
-    } while (ReplyInt && !Exiting);
-
-    LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_REGISTER_NMAP_SERVER,
-            LOG_INFO, "Register nmap server: %s %d Queue %d",
-                 (QS->SSL == TRUE) ? "TRUE" : "FALSE",
-                 XplHostToLittle (soc_address.sin_addr.s_addr), QS->Queue);
-
-    if (Exiting) {
-        if (Client->NMAPs != -1) {
-            IPclose (Client->NMAPs);
-            Client->NMAPs = -1;
-        }
-        MemFree (QS);
-        EndClientConnection (Client);
-        return;
-    }
-    Queue = QS->Queue;
-    QSPort = QS->agentPort;
-
-    ReplyInt = GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE);
-
-    switch (ReplyInt) {
-    case NMAP_READY:{
-            break;
-        }
-
-    case 4242:{
-            unsigned char *ptr, *salt;
-            xpl_hash_context ctx;
-            unsigned char digest[XPLHASH_MD5_LENGTH];
-
-            ptr = strchr (Answer, '<');
-            if (ptr) {
-                ptr++;
-                salt = ptr;
-                if ((ptr = strchr (ptr, '>')) != NULL) {
-                    *ptr = '\0';
-                }
-
-                XplHashNew(&ctx, XPLHASH_MD5);
-                XplHashWrite(&ctx, salt, strlen(salt));
-                XplHashWrite(&ctx, NMAPHash, NMAP_HASH_SIZE);
-                XplHashFinal(&ctx, XPLHASH_LOWERCASE, digest, XPLHASH_MD5_LENGTH);
-
-                ReplyInt = sprintf(Answer, "AUTH SYSTEM %s\r\n", digest);
-
-                SendNMAPServer (Client, Answer, ReplyInt);
-                if (GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE) ==
-                    1000) {
-                    break;
-                }
-            }
-            /* Fall-through */
-        }
-
-    default:{
-            IPclose (Client->NMAPs);
-            Client->NMAPs = -1;
-            MemFree (QS);
-            EndClientConnection (Client);
-            return;
-        }
-    }
-
-    MemFree (QS);
-
-    snprintf (Name, sizeof (Name), "%s%s%d", MsgGetServerDN (NULL),
-              MSGSRV_AGENT_SMTP, Queue);
-    snprintf (Answer, sizeof (Answer), "QWAIT %d %d %s\r\n", Queue,
-              ntohs (QSPort), Name);
-    if (SendNMAPServer (Client, Answer, strlen (Answer))) {
-        ReplyInt = GetNMAPAnswer (Client, Answer, sizeof (Answer), TRUE);
-    }
-    else {
-        ReplyInt = 5000;
-    }
-    IPclose (Client->NMAPs);
-    Client->NMAPs = -1;
-
-    if (ReplyInt != 1000) {
-        EndClientConnection (Client);
-        return;
-    }
-
-    ReturnSMTPConnection (Client);
-
-    XplSafeDecrement (SMTPConnThreads);
-
-    return;
-}
-
-__inline void
-LaunchThreadToRegisterWithQueueServer(int agentPort, unsigned short serverPort, char *serverIp)
-{
-    QueueStartStruct *qs;
-    int result;
-    XplThreadID id;
-
-    qs = MemMalloc (sizeof (QueueStartStruct));
-    if (qs) {
-        qs->Queue = Q_DELIVER;
-        qs->SSL = FALSE;
-        qs->agentPort = agentPort;
-        qs->serverPort = serverPort;
-        strcpy (qs->serverAddress, serverIp);
-
-        XplBeginCountedThread (&id, RegisterNMAPServer, STACKSIZE_Q,
-                               qs, result, SMTPConnThreads);
-    }
-
-    qs = MemMalloc (sizeof (QueueStartStruct));
-    if (qs) {
-        qs->Queue = Q_OUTGOING;
-        qs->SSL = FALSE;
-        qs->agentPort = agentPort;
-        qs->serverPort = serverPort;
-        strcpy (qs->serverAddress, serverIp);
-
-        XplBeginCountedThread (&id, RegisterNMAPServer, STACKSIZE_Q,
-                               qs, result, SMTPConnThreads);
-    }
-    return;
-}
-
-static void
-RegisterNMAPQueueServers (int Port)
-{
-    unsigned short queueServerPort;
-    char *ptr;
-    char *queueServerAddress;
-    int i;
-    MDBValueStruct *queueServerDns;
-    MDBValueStruct *details;
-
-    queueServerDns = MDBCreateValueStruct (SMTPDirectoryHandle, MsgGetServerDN (NULL));
-    if (!queueServerDns) {
-        return;
-    }
-
-    MDBReadDN(MSGSRV_AGENT_SMTP, MSGSRV_A_MONITORED_QUEUE, queueServerDns);
-    if ((queueServerDns->Used == 0) || (details = MDBCreateValueStruct(SMTPDirectoryHandle, NULL)) == NULL) {
-        /* Failed to find a configuration object, use default connection information */
-        MDBDestroyValueStruct(queueServerDns);
-        LaunchThreadToRegisterWithQueueServer(Port, BONGO_QUEUE_PORT, "127.0.0.1");
-        XplConsolePrintf("Couldn't find configuration object for %s, attempting to connect to NMAP on 127.0.0.1\n", MSGSRV_AGENT_SMTP);
-        return;
-    }
-
-    for (i = 0; (i < queueServerDns->Used); i++) {
-        /* check for a non-standard port */
-        MDBRead(queueServerDns->Value[i], MSGSRV_A_PORT, details);
-        if (details->Used == 0) {
-            queueServerPort = BONGO_QUEUE_PORT;
-        } else {
-            queueServerPort = (unsigned short)atol(details->Value[0]);
-            MDBFreeValues(details);
-        }
-
-        /* find the ip address on the host server object */
-        if ((ptr = strrchr(queueServerDns->Value[i], '\\')) != NULL) {
-            *ptr = '\0';
-            MDBRead(queueServerDns->Value[i], MSGSRV_A_IP_ADDRESS, details);
-            *ptr = '\\';
-        } else {
-            MDBRead(queueServerDns->Value[i], MSGSRV_A_IP_ADDRESS, details);
-        }
-
-        if (details->Used == 0) {
-            queueServerAddress = "127.0.0.1";
-        } else {
-            queueServerAddress = details->Value[0];
-        }
-
-        LaunchThreadToRegisterWithQueueServer(Port, queueServerPort, queueServerAddress);
-    }
-
-    MDBDestroyValueStruct (details);
-    MDBDestroyValueStruct (queueServerDns);
-
     return;
 }
 
 static void
 QueueServerStartup (void *ignored)
 {
-    int ccode;
-    int arg;
-    int ds;
-    struct sockaddr_in server_sockaddr;
-    struct sockaddr_in client_sockaddr;
+    Connection *conn;
     ConnectionStruct *client;
-    XplThreadID id;
+    int ccode;
+    XplThreadID id = 0;
 
     XplRenameThread (XplGetThreadID (), "SMTP NMAP Q Monitor");
 
-    SMTPQServerSocket = IPsocket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (SMTPQServerSocket == -1) {
-        raise (SIGTERM);
+    SMTPQServerConnection = ConnAlloc(FALSE);
+    if (!SMTPQServerConnection) {
+        raise(SIGTERM);
         return;
     }
 
-    ccode = 1;
-    setsockopt (SMTPQServerSocket, SOL_SOCKET, SO_REUSEADDR,
-                (unsigned char *) &ccode, sizeof (ccode));
+    memset(&(SMTPQServerConnection->socketAddress), 0, sizeof(SMTPQServerConnection->socketAddress));
 
-    memset (&server_sockaddr, 0, sizeof (struct sockaddr));
-
-    server_sockaddr.sin_family = AF_INET;
-    server_sockaddr.sin_addr.s_addr = MsgGetAgentBindIPAddress ();
-
-    ccode =
-        IPbind (SMTPQServerSocket, (struct sockaddr *) &server_sockaddr,
-                sizeof (server_sockaddr));
-    if (ccode == -1) {
-        IPclose (SMTPQServerSocket);
-        SMTPQServerSocket = -1;
-
-        raise (SIGTERM);
+    SMTPQServerConnection->socketAddress.sin_family = AF_INET;
+    SMTPQServerConnection->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
+    SMTPQServerConnection->socket = ConnServerSocket(SMTPQServerConnection, 2048);
+    if (SMTPQServerConnection->socket == -1) {
+        ConnFree(SMTPQServerConnection);
+        raise(SIGTERM);
         return;
     }
 
-    ccode = IPlisten (SMTPQServerSocket, 2048);
-    if (ccode == -1) {
-        IPclose (SMTPQServerSocket);
-        SMTPQServerSocket = -1;
-
-        raise (SIGTERM);
+    /* register on the two queues we need to be on */
+    if (NMAPRegister(MSGSRV_AGENT_SMTP, Q_DELIVER, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED ||
+        NMAPRegister(MSGSRV_AGENT_SMTP, Q_OUTGOING, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
+        XplConsolePrintf("bongosmtp: Could not register with bongonmap\r\n");
+        ConnFree(SMTPQServerConnection);
+        raise(SIGTERM);
         return;
     }
-
-    ccode = sizeof (server_sockaddr);
-    IPgetsockname (SMTPQServerSocket, (struct sockaddr *) &server_sockaddr,
-                   &ccode);
-    SMTPQServerSocketPort = server_sockaddr.sin_port;
-
-    RegisterNMAPQueueServers (SMTPQServerSocketPort);
 
     while (!Exiting) {
-        arg = sizeof (client_sockaddr);
-        ds = IPaccept (SMTPQServerSocket,
-                       (struct sockaddr *) &client_sockaddr, &arg);
-        if (!Exiting) {
-            if (ds != -1) {
-                client = GetSMTPConnection ();
+        if (ConnAccept(SMTPQServerConnection, &conn) != -1) {
+            if (!Exiting) {
+                client = GetSMTPConnection();
                 if (client) {
-                    client->NMAPs = ds;
-                    client->cs = client_sockaddr;
-
-                    ccode = 1;
-                    setsockopt (ds, IPPROTO_TCP, 1, (unsigned char *) &ccode,
-                                sizeof (ccode));
-
-                    XplBeginCountedThread (&id, HandleQueueConnection,
-                                           STACKSIZE_Q, client, ccode,
-                                           SMTPQueueThreads);
+                    /* this may seem wrong here, but really the nmap agent is the
+                     * client here as it connected to us */
+                    client->client.conn = conn;
+                    XplBeginCountedThread (&id, HandleQueueConnection, STACKSIZE_Q, client, ccode, SMTPQueueThreads);
                     if (ccode == 0) {
                         continue;
                     }
-
-                    ReturnSMTPConnection (client);
+                    ReturnSMTPConnection(client);
                 }
-
-                IPclose (ds);
+                /* GetSMTPConnection failed */
+                ConnClose(conn, 1);
+                ConnFree(conn);
                 continue;
             }
-            else {
-                switch (errno) {
-                case ECONNABORTED:
-#ifdef EPROTO
-                case EPROTO:
-#endif
-                case EINTR:{
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ERROR,
-                                "Accept failure in %s Errno %d",
-                                "Queue Agent", errno);
-                        break;
-                    }
-
-                default:{
-                        XplConsolePrintf
-                            ("SMTPD: Queueu Agent exiting after an accept() failure with an errno: %d\n",
-                             errno);
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ALERT,
-                                "Accept failure %s Errno %d",
-                                "Queue Agent", errno);
-
-                        IPclose (SMTPQServerSocket);
-                        SMTPQServerSocket = -1;
-                        return;
-                    }
-                }
-
-                continue;
-            }
-        }
-        else {
-            /*      Exiting set!    */
-            IPclose (ds);
-
-            break;
+            ConnClose(conn, 1);
+            ConnFree(conn);
         }
     }
 
@@ -7278,50 +5890,18 @@ QueueServerStartup (void *ignored)
     return;
 }
 
-#if defined(NETWARE) || defined(LIBC) || defined(WIN32)
-static int
-_NonAppCheckUnload (void)
-{
-    int s;
-    static BOOL checked = FALSE;
-    XplThreadID id;
-
-    if (!checked) {
-        checked = Exiting = TRUE;
-
-        XplWaitOnLocalSemaphore (SMTPShutdownSemaphore);
-
-        id = XplSetThreadGroupID (TGid);
-        if (SMTPServerSocket != -1) {
-            s = SMTPServerSocket;
-            SMTPServerSocket = -1;
-
-            IPclose (s);
-        }
-        XplSetThreadGroupID (id);
-
-        XplWaitOnLocalSemaphore (SMTPServerSemaphore);
-    }
-
-    return (0);
-}
-#endif
-
 static void
 SMTPShutdownSigHandler (int sigtype)
 {
-    int s;
     static BOOL signaled = FALSE;
 
     if (!signaled && (sigtype == SIGTERM || sigtype == SIGINT)) {
         signaled = Exiting = TRUE;
 
-        if (SMTPServerSocket != -1) {
-            s = SMTPServerSocket;
-            SMTPServerSocket = -1;
-
-            IPshutdown (s, 2);
-            IPclose (s);
+        if (SMTPServerConnection) {
+            ConnClose(SMTPServerConnection, 1);
+            ConnFree(SMTPServerConnection);
+            SMTPServerConnection = NULL;
         }
 
         XplSignalLocalSemaphore (SMTPShutdownSemaphore);
@@ -7336,54 +5916,37 @@ static int
 ServerSocketInit (void)
 {
     int ccode;
-    struct sockaddr_in server_sockaddr;
 
-    SMTPServerSocket = IPsocket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (SMTPServerSocket != -1) {
-        ccode = 1;
-        setsockopt (SMTPServerSocket, SOL_SOCKET, SO_REUSEADDR,
-                    (unsigned char *) &ccode, sizeof (ccode));
-
-        memset (&server_sockaddr, 0, sizeof (struct sockaddr));
-
-        server_sockaddr.sin_family = AF_INET;
-        server_sockaddr.sin_port = htons (SMTPServerPort);
-        server_sockaddr.sin_addr.s_addr = MsgGetAgentBindIPAddress ();
-
-        /* Get root privs back for the bind.  It's ok if this fails - 
-         * the user might not need to be root to bind to the port */
-        XplSetEffectiveUserId (0);
-
-        ccode =
-            IPbind (SMTPServerSocket, (struct sockaddr *) &server_sockaddr,
-                    sizeof (server_sockaddr));
-
-        if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-            LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE,
-                    LOG_ERROR, "Priv failure User %s",
-                         MsgGetUnprivilegedUser ());
-            XplConsolePrintf
-                ("bongosmtp: Could not drop to unprivileged user '%s'\n",
-                 MsgGetUnprivilegedUser ());
-            return -1;
-        }
-
-        if (ccode < 0) {
-            LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_BIND_FAILURE,
-                    LOG_ERROR, "Bind failure %s Port %d",
-                    "SMTP ", SMTPServerPort);
-            XplConsolePrintf ("bongosmtp: Could not bind to port %lu\n",
-                              SMTPServerPort);
-            return ccode;
-        }
-    }
-    else {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED,
-                LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
-        XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
+    SMTPServerConnection = ConnAlloc(FALSE);
+    if (!SMTPServerConnection) {
+        XplConsolePrintf("bongoimap: Could not allocate the connection\n");
         return -1;
     }
 
+    SMTPServerConnection->socketAddress.sin_family = AF_INET;
+    SMTPServerConnection->socketAddress.sin_port = htons(SMTPServerPort);
+    SMTPServerConnection->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
+
+    /* Get root privs back for the bind.  It's ok if this fails - 
+    * the user might not need to be root to bind to the port */
+    XplSetEffectiveUserId (0);
+
+    SMTPServerConnection->socket = ConnServerSocket(SMTPServerConnection, 2048);
+
+    /* drop the privs back */
+    if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
+        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
+        XplConsolePrintf ("bongosmtp: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser ());
+        return -1;
+    }
+
+    if (SMTPServerConnection->socket < 0) {
+        ccode = SMTPServerConnection->socket;
+        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED, LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
+        XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
+        ConnFree(SMTPServerConnection);
+        return ccode;
+    }
     return 0;
 }
 
@@ -7391,164 +5954,124 @@ static int
 ServerSocketSSLInit (void)
 {
     int ccode;
-    struct sockaddr_in server_sockaddr;
 
-    SMTPServerSocketSSL = IPsocket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (SMTPServerSocketSSL != -1) {
-        ccode = 1;
-        setsockopt (SMTPServerSocketSSL, SOL_SOCKET, SO_REUSEADDR,
-                    (unsigned char *) &ccode, sizeof (ccode));
-
-        memset (&server_sockaddr, 0, sizeof (struct sockaddr));
-
-        server_sockaddr.sin_family = AF_INET;
-        server_sockaddr.sin_port = htons (SMTPServerPortSSL);
-        server_sockaddr.sin_addr.s_addr = MsgGetAgentBindIPAddress ();
-
-        /* Get root privs back for the bind.  It's ok if this fails - 
-         * the user might not need to be root to bind to the port */
-        XplSetEffectiveUserId (0);
-
-        ccode =
-            IPbind (SMTPServerSocketSSL, (struct sockaddr *) &server_sockaddr,
-                    sizeof (server_sockaddr));
-
-        if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-            LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE,
-                    LOG_ERROR, "Priv failure User %s",
-                    MsgGetUnprivilegedUser ());
-            XplConsolePrintf
-                ("bongosmtp: Could not drop to unprivileged user '%s'\n",
-                 MsgGetUnprivilegedUser ());
-            return -1;
-        }
-
-        if (ccode < 0) {
-            LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_BIND_FAILURE,
-                    LOG_ERROR, "Bind failure %s Port %d",
-                    "SMTP-SSL ", SMTPServerPortSSL);
-            XplConsolePrintf ("bongosmtp: Could not bind to SSL port %lu\n",
-                              SMTPServerPortSSL);
-            return ccode;
-        }
-    }
-    else {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED,
-                LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
-        XplConsolePrintf ("bongosmtp: Could not allocate SSL socket.\n");
+    SMTPServerConnectionSSL = ConnAlloc(FALSE);
+    if (SMTPServerConnectionSSL == NULL) {
+        XplConsolePrintf("bongoimap: Could not allocate the connection\n");
+        ConnFree(SMTPServerConnection);
         return -1;
     }
 
+    SMTPServerConnectionSSL->socketAddress.sin_family = AF_INET;
+    SMTPServerConnectionSSL->socketAddress.sin_port = htons (SMTPServerPortSSL);
+    SMTPServerConnectionSSL->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress ();
+
+    /* Get root privs back for the bind.  It's ok if this fails - 
+     * the user might not need to be root to bind to the port */
+    XplSetEffectiveUserId (0);
+
+    SMTPServerConnectionSSL->socket = ConnServerSocket(SMTPServerConnectionSSL, 2048);
+    /* drop the privs back */
+    if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
+        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
+        XplConsolePrintf ("bongosmtp: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser ());
+        return -1;
+    }
+
+    if (SMTPServerConnectionSSL->socket < 0) {
+        ccode = SMTPServerConnectionSSL->socket;
+        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED, LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
+        XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
+        ConnFree(SMTPServerConnection);
+        return ccode;
+    }
     return 0;
 }
 
 static void
 SMTPServer (void *ignored)
 {
+    Connection *conn;
     int ccode;
     int arg;
     int oldTGID;
-    IPSOCKET ds;
-    struct sockaddr_in client_sockaddr;
     ConnectionStruct *client;
     XplThreadID id;
 
     XplSafeIncrement (SMTPServerThreads);
+    XplRenameThread (XplGetThreadID(), "SMTP Server");
 
-    XplRenameThread (XplGetThreadID (), "SMTP Server");
-
-    ccode = IPlisten (SMTPServerSocket, 2048);
-    if (ccode != -1) {
-        while (!Exiting) {
-            arg = sizeof (client_sockaddr);
-            ds = IPaccept (SMTPServerSocket,
-                           (struct sockaddr *) &client_sockaddr, &arg);
+    while (!Exiting) {
+        if (ConnAccept(SMTPServerConnection, &conn) != -1) {
             if (!Exiting) {
-                if (ds != -1) {
-                    if (!SMTPReceiverStopped) {
-                        if (XplSafeRead (SMTPConnThreads) < SMTPMaxThreadLoad) {
-                            client = GetSMTPConnection ();
-                            if (client) {
-                                client->s = ds;
-                                client->cs = client_sockaddr;
-
-                                ccode = 1;
-                                setsockopt (ds, IPPROTO_TCP, 1,
-                                            (unsigned char *) &ccode,
-                                            sizeof (ccode));
-
-                                XplBeginCountedThread (&id, HandleConnection,
-                                                       STACKSIZE_S, client,
-                                                       ccode,
-                                                       SMTPConnThreads);
-                                if (ccode == 0) {
-                                    continue;
-                                }
-
-                                ReturnSMTPConnection (client);
+                if (!SMTPReceiverStopped) {
+                    if (XplSafeRead(SMTPConnThreads) < SMTPMaxThreadLoad) {
+                        client = GetSMTPConnection();
+                        if (client) {
+                            client->client.conn = conn;
+                            XplBeginCountedThread(&id, HandleConnection, STACKSIZE_S, client, ccode, SMTPConnThreads);
+                            if (ccode == 0) {
+                                continue;
                             }
-
-                            IPsend (ds, MSG500NOMEMORY, MSG500NOMEMORY_LEN,
-                                    0);
+                            ReturnSMTPConnection(client);
                         }
-                        else {
-                            IPsend (ds, MSG451NOCONNECTIONS,
-                                    MSG451NOCONNECTIONS_LEN, 0);
-                        }
-                    }
-                    else {
-                        IPsend (ds, MSG451RECEIVERDOWN,
-                                MSG451RECEIVERDOWN_LEN, 0);
-                    }
+                        /* GetSMTPConnection failed */
 
-                    IPclose (ds);
+                        ConnSend(conn, MSG500NOMEMORY, MSG500NOMEMORY_LEN);
+                        ConnClose(conn, 1);
+                        ConnFree(conn);
+                        continue;
+                    } else {
+                        /* No more threads available */
+                        ConnSend(conn, MSG451NOCONNECTIONS, MSG451NOCONNECTIONS_LEN);
+                        ConnClose(conn, 1);
+                        ConnFree(conn);
+                    }
+                } else {
+                    /* RecieverStopped */
+                    ConnSend(conn, MSG451RECEIVERDOWN, MSG451RECEIVERDOWN_LEN);
+                    ConnClose(conn, 1);
+                    ConnFree(conn);
+                }
+            }
+            ConnClose(conn, 1);
+            ConnFree(conn);
+            continue;
+        }
+
+        if (!Exiting) {
+            switch (errno) {
+            case ECONNABORTED:
+#ifdef EPROTO
+            case EPROTO:
+#endif
+            case EINTR:{
+                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure %s Errno %d", "Server", errno);
                     continue;
                 }
 
-                switch (errno) {
-                case ECONNABORTED:
-#ifdef EPROTO
-                case EPROTO:
-#endif
-                case EINTR:{
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ERROR, "Accept failure %s Errno %d",
-                                "Server", errno);
-                        continue;
-                    }
+            case EIO:{
+                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure Errno %d %d", errno, 2);
+                    Exiting = TRUE;
 
-                case EIO:{
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ERROR, "Accept failure Errno %d %d",
-                                errno, 2);
-                        Exiting = TRUE;
-
-                        break;
-                    }
-
-                default:{
-                        arg = errno;
-
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ALERT, "Accept failure %s Errno %d",
-                                "Server", arg);
-                        XplConsolePrintf
-                            ("SMTPD: Exiting after an accept() failure with an errno: %d\n",
-                             arg);
-
-                        break;
-                    }
+                    break;
                 }
 
-                break;
+            default:{
+                    arg = errno;
+
+                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
+                    XplConsolePrintf ("SMTPD: Exiting after an accept() failure with an errno: %d\n", arg);
+
+                    break;
+                }
             }
 
-            /*      Shutdown signaled!      */
             break;
         }
+
+        /*      Shutdown signaled!      */
+        break;
     }
 
 /*	Shutting down!	*/
@@ -7559,28 +6082,27 @@ SMTPServer (void *ignored)
 #if VERBOSE
     XplConsolePrintf ("\rSMTPD: Closing server sockets\r\n");
 #endif
-    if (SMTPServerSocket != -1) {
-        IPshutdown (SMTPServerSocket, 2);
-        IPclose (SMTPServerSocket);
-        SMTPServerSocket = -1;
+    if (SMTPServerConnection) {
+        ConnClose(SMTPServerConnection, 1);
+        ConnFree(SMTPServerConnection);
+        SMTPServerConnection = NULL;
+    }
+    if (SMTPServerConnectionSSL) {
+        ConnClose(SMTPServerConnectionSSL, 1);
+        ConnFree(SMTPServerConnectionSSL);
+        SMTPServerConnectionSSL = NULL;
     }
 
-    if (SMTPServerSocketSSL != -1) {
-        IPshutdown (SMTPServerSocketSSL, 2);
-        IPclose (SMTPServerSocketSSL);
-        SMTPServerSocketSSL = -1;
+    if (SMTPQServerConnection) {
+        ConnClose(SMTPQServerConnection, 1);
+        ConnFree(SMTPQServerConnection);
+        SMTPQServerConnection = NULL;
     }
 
-    if (SMTPQServerSocket != -1) {
-        IPshutdown (SMTPQServerSocket, 2);
-        IPclose (SMTPQServerSocket);
-        SMTPQServerSocket = -1;
-    }
-
-    if (SMTPQServerSocket != -1) {
-        IPshutdown (SMTPQServerSocketSSL, 2);
-        IPclose (SMTPQServerSocketSSL);
-        SMTPQServerSocket = -1;
+    if (SMTPQServerConnectionSSL) {
+        ConnClose(SMTPQServerConnectionSSL, 1);
+        ConnFree(SMTPQServerConnectionSSL);
+        SMTPQServerConnectionSSL = NULL;
     }
 
     /*      Management Client Shutdown      */
@@ -7588,8 +6110,7 @@ SMTPServer (void *ignored)
         ManagementShutdown ();
     }
 
-    for (arg = 0; (ManagementState () != MANAGEMENT_STOPPED) && (arg < 60);
-         arg++) {
+    for (arg = 0; (ManagementState () != MANAGEMENT_STOPPED) && (arg < 60); arg++) {
         XplDelay (1000);
     }
 
@@ -7602,28 +6123,20 @@ SMTPServer (void *ignored)
     }
 
     if (XplSafeRead (SMTPServerThreads) > 1) {
-        XplConsolePrintf
-            ("SMTPD: %d server threads outstanding; attempting forceful unload.\r\n",
-             XplSafeRead (SMTPServerThreads) - 1);
+        XplConsolePrintf ("SMTPD: %d server threads outstanding; attempting forceful unload.\r\n", XplSafeRead (SMTPServerThreads) - 1);
     }
 
 #if VERBOSE
-    XplConsolePrintf ("SMTPD: Shutting down %d conn client threads and %d queue client threads\r\n",
-                      XplSafeRead (SMTPConnThreads),
-                      XplSafeRead (SMTPQueueThreads));
+    XplConsolePrintf ("SMTPD: Shutting down %d conn client threads and %d queue client threads\r\n", XplSafeRead (SMTPConnThreads), XplSafeRead (SMTPQueueThreads));
 #endif
 
     /*      Make sure the kids have flown the coop. */
-    for (arg = 0;
-         (XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads))
-         && (arg < 3 * 60); arg++) {
+    for (arg = 0; (XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads)) && (arg < 3 * 60); arg++) {
         XplDelay (1000);
     }
 
     if (XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads)) {
-        XplConsolePrintf
-            ("SMTPD: %d threads outstanding; attempting forceful unload.\r\n",
-             XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads));
+        XplConsolePrintf ("SMTPD: %d threads outstanding; attempting forceful unload.\r\n", XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads));
     }
 
 #if VERBOSE
@@ -7640,15 +6153,9 @@ SMTPServer (void *ignored)
 
     /* Cleanup SSL */
     if (SSLContext) {
-        SSL_CTX_free (SSLContext);
+        ConnSSLContextFree(SSLContext);
         SSLContext = NULL;
     }
-
-    if (SSLClientContext) {
-        SSL_CTX_free (SSLClientContext);
-        SSLClientContext = NULL;
-    }
-
 
     LogShutdown ();
 
@@ -7679,173 +6186,88 @@ SMTPServer (void *ignored)
 static void
 SMTPSSLServer (void *ignored)
 {
+    Connection *conn;
     int ccode;
     int arg;
     unsigned char *message;
-    IPSOCKET ds;
-    struct sockaddr_in server_sockaddr;
-    struct sockaddr_in client_sockaddr;
     ConnectionStruct *client;
-    SSL *cSSL = NULL;
     XplThreadID id = 0;
 
     XplRenameThread (XplGetThreadID (), "SMTP SSL Server");
 
-    ccode = IPlisten (SMTPServerSocketSSL, 2048);
-    if (ccode != -1) {
-        while (!Exiting) {
-            arg = sizeof (client_sockaddr);
-            ds = IPaccept (SMTPServerSocketSSL,
-                           (struct sockaddr *) &client_sockaddr, &arg);
+    while(!Exiting) {
+        if (ConnAccept(SMTPServerConnectionSSL, &conn) != -1) {
+            conn->ssl.enable = TRUE;
             if (!Exiting) {
-                if (ds != -1) {
-                    if (!SMTPReceiverStopped) {
-                        if (XplSafeRead (SMTPConnThreads) < SMTPMaxThreadLoad) {
-                            client = GetSMTPConnection ();
-                            if (client) {
-                                client->s = ds;
-                                client->cs = client_sockaddr;
-                                client->ClientSSL = TRUE;
-                                client->CSSL = SSL_new (SSLContext);
-                                if (client->CSSL) {
-                                    ccode =
-                                        SSL_set_bsdfd (client->CSSL,
-                                                       client->s);
-                                    if (ccode == 1) {
-                                        /* Set TCP non blocking io */
-                                        setsockopt (ds, IPPROTO_TCP, 1,
-                                                    (unsigned char *) &ccode,
-                                                    sizeof (ccode));
-
-                                        XplBeginCountedThread (&id,
-                                                               HandleConnection,
-                                                               STACKSIZE_S,
-                                                               client, ccode,
-                                                               SMTPConnThreads);
-                                        if (ccode == 0) {
-                                            continue;
-                                        }
-                                        if (SSL_accept (client->CSSL) == 1) {
-                                            XplIPWriteSSL (client->CSSL,
-                                                           "453 server error\r\n",
-                                                           18);
-                                        }
-                                    }
-                                    SSL_free (client->CSSL);
-                                }
-
-                                /* If we get here, we have already sent an error or SSL is not functional and we won't be able to */
-                                ReturnSMTPConnection (client);
-                                IPclose (ds);
+                if (!SMTPReceiverStopped) {
+                    if (XplSafeRead(SMTPConnThreads) < SMTPMaxThreadLoad) {
+                        client = GetSMTPConnection();
+                        if (client) {
+                            client->client.conn = conn;
+                            XplBeginCountedThread (&id, HandleConnection, STACKSIZE_S, client, ccode, SMTPConnThreads);
+                            if (ccode == 0) {
                                 continue;
                             }
-                            else {
-                                message = MSG500NOMEMORY;
-                                arg = MSG500NOMEMORY_LEN;
-                            }
+                            ReturnSMTPConnection(client);
+                            ConnClose(conn, 1);
+                            ConnFree(conn);
+                            continue;
+                        } else {
+                            /* GetSMTPConnection() failed */
+                            message = MSG500NOMEMORY;
+                            arg = MSG500NOMEMORY_LEN;
                         }
-                        else {
-                            message = MSG451NOCONNECTIONS;
-                            arg = MSG451NOCONNECTIONS_LEN;
-                        }
+                    } else {
+                        /* no more threads */
+                        message = MSG451NOCONNECTIONS;
+                        arg = MSG451NOCONNECTIONS_LEN;
                     }
-                    else {
-                        message = MSG451RECEIVERDOWN;
-                        arg = MSG451RECEIVERDOWN_LEN;
-                    }
+                } else {
+                    /* receiver stopped */
+                    message = MSG451RECEIVERDOWN;
+                    arg = MSG451RECEIVERDOWN_LEN;
+                }
 
-                    cSSL = SSL_new (SSLContext);
-                    if (cSSL) {
-                        ccode = SSL_set_bsdfd (cSSL, ds);
-                        if (ccode == 1) {
-                            if (SSL_accept (cSSL) == 1) {
-                                SSL_write (cSSL, message, arg);
-                            }
-                        }
-                        SSL_free (cSSL);
-                        cSSL = NULL;
+                if (ConnNegotiate(conn, SSLContext)) {
+                    if (ConnWrite(conn, message, arg) != -1) {
+                        ConnFlush(conn);
                     }
-
-                    IPclose (ds);
+                    ConnClose(conn, 1);
+                    ConnFree(conn);
                     continue;
                 }
 
-                switch (errno) {
-                case ECONNABORTED:
-#ifdef EPROTO
-                case EPROTO:
-#endif
-                case EINTR:{
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ERROR, "Accept fialure %s Errno %d",
-                                "SSL Server", errno);
-                        continue;
-                    }
-
-                case EIO:{
-                        XplDelay (3 * 1000);
-
-                        IPclose (SMTPServerSocketSSL);
-                        SMTPServerSocketSSL =
-                            IPsocket (PF_INET, SOCK_STREAM, IPPROTO_TCP);
-                        if (SMTPServerSocketSSL != -1) {
-                            ccode = 1;
-                            setsockopt (SMTPServerSocketSSL, SOL_SOCKET,
-                                        SO_REUSEADDR,
-                                        (unsigned char *) &ccode,
-                                        sizeof (ccode));
-
-                            memset (&server_sockaddr, 0,
-                                    sizeof (struct sockaddr));
-                            server_sockaddr.sin_family = AF_INET;
-                            server_sockaddr.sin_port =
-                                htons (SMTPServerPortSSL);
-                            server_sockaddr.sin_addr.s_addr =
-                                MsgGetAgentBindIPAddress ();
-
-                            ccode =
-                                IPbind (SMTPServerSocketSSL,
-                                        (struct sockaddr *) &server_sockaddr,
-                                        sizeof (server_sockaddr));
-                            if (ccode != -1) {
-                                ccode = IPlisten (SMTPServerSocketSSL, 2048);
-                                if (ccode != -1) {
-                                    LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                            LOGGER_EVENT_ACCEPT_FAILURE,
-                                            LOG_ERROR,
-                                            "Accept failure %s Errno %d %d",
-                                            "SSL Server", errno, 2);
-                                    continue;
-                                }
-                            }
-                        }
-
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ERROR, "Accept failure %s Errno %d %d",
-                                "SSL Server", errno, 3);
-
-                        break;
-                    }
-
-                default:{
-                        XplConsolePrintf
-                            ("SMTPD: SSL Agent exiting after an accept() failure with an errno: %d\n",
-                             errno);
-                        LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                                LOGGER_EVENT_ACCEPT_FAILURE,
-                                LOG_ALERT, "Accept failure %s Errno %d",
-                                "SSL Server", errno);
-
-                        break;
-                    }
-                }
-
-                break;
+                ConnSend(conn, message, arg);
+                ConnClose(conn, 1);
+                ConnFree(conn);
+                continue;
             }
 
-            /*      Shutdown signaled!      */
+            break;
+        }
+
+        if (!Exiting) {
+            switch (errno) {
+            case ECONNABORTED:
+#ifdef EPROTO
+            case EPROTO:
+#endif
+            case EINTR:{
+                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure %s Errno %d", "SSL Server", errno);
+                    continue;
+                }
+            case EIO:{
+                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure Errno %d %d", errno, 2);
+                    Exiting = TRUE;
+                    break;
+                }
+            default:{
+                    arg = errno;
+                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
+                    XplConsolePrintf ("SMTPD: Exiting after an accept() failure with an errno: %d\n", arg);
+                    break;
+                }
+            }
             break;
         }
     }
@@ -7855,6 +6277,11 @@ SMTPSSLServer (void *ignored)
 #if VERBOSE
     XplConsolePrintf ("SMTPD: SSL listening thread done.\r\n");
 #endif
+
+    if (SMTPServerConnectionSSL) {
+        ConnFree(SMTPServerConnectionSSL);
+        SMTPServerConnectionSSL = NULL;
+    }
 
     if (!Exiting) {
         raise (SIGTERM);
@@ -7888,7 +6315,7 @@ AddDomain (unsigned char *DomainValue)
 void
 FreeDomains (void)
 {
-    int i;
+    unsigned int i;
 
     for (i = 0; i < DomainCount; i++)
         MemFree (Domains[i]);
@@ -7927,7 +6354,7 @@ AddUserDomain (unsigned char *UserDomainValue)
 void
 FreeUserDomains (void)
 {
-    int i;
+    unsigned int i;
 
     for (i = 0; i < UserDomainCount; i++)
         MemFree (UserDomains[i]);
@@ -7966,7 +6393,7 @@ AddRelayDomain (unsigned char *RelayDomainValue)
 void
 FreeRelayDomains (void)
 {
-    int i;
+    unsigned int i;
 
     for (i = 0; i < RelayDomainCount; i++)
         MemFree (RelayDomains[i]);
@@ -7986,14 +6413,14 @@ SmtpdConfigMonitor (void)
 {
     MDBValueStruct *Config;
     MDBValueStruct *Parents;
-    int i, j;
+    unsigned int i, j;
     struct sockaddr_in soc_address;
     struct hostent *he;
     struct sockaddr_in *sin = &soc_address;
     BOOL Added, Exists;
     char *ptr;
     MDBEnumStruct *ES;
-    unsigned long PrevConfigNumber;
+    long PrevConfigNumber;
 
     XplRenameThread (XplGetThreadID (), "SMTP Config Monitor");
 
@@ -8352,7 +6779,7 @@ ReadConfiguration (void)
     MDBValueStruct *Config;
     MDBValueStruct *Parents;
     MDBEnumStruct *ES;
-    int i = 0, j;
+    unsigned int i = 0, j;
     BOOL Exists, Added;
 
 
@@ -8510,7 +6937,6 @@ ReadConfiguration (void)
     if (MDBRead (".", MSGSRV_A_SSL_TLS, Config)) {
 	if (atol(Config->Value[0])) {
 	    AllowClientSSL = TRUE;
-	    UseNMAPSSL = FALSE;
 	}
     }
     MDBFreeValues (Config);
@@ -8730,7 +7156,7 @@ ReadConfiguration (void)
 
 XplServiceCode (SMTPShutdownSigHandler)
 
-     int XplServiceMain (int argc, char *argv[])
+int XplServiceMain (int argc, char *argv[])
 {
     int ccode;
     XplThreadID ID;
@@ -8790,7 +7216,8 @@ XplServiceCode (SMTPShutdownSigHandler)
         exit (-1);
     }
 
-    CMInitialize (SMTPDirectoryHandle, "SMTP");
+    CMInitialize(SMTPDirectoryHandle, "SMTP");
+    NMAPInitialize(SMTPDirectoryHandle);
 
     XplRWLockInit (&ConfigLock);
 
@@ -8810,105 +7237,23 @@ XplServiceCode (SMTPShutdownSigHandler)
         return 1;
     }
 
-    XplBeginCountedThread (&ID, QueueServerStartup, STACKSIZE_Q, NULL, ccode,
-                           SMTPServerThreads);
-    XplBeginCountedThread (&ID, SmtpdConfigMonitor, STACKSIZE_Q, NULL, ccode,
-                           SMTPServerThreads);
+    XplBeginCountedThread (&ID, QueueServerStartup, STACKSIZE_Q, NULL, ccode, SMTPServerThreads);
+    XplBeginCountedThread (&ID, SmtpdConfigMonitor, STACKSIZE_Q, NULL, ccode, SMTPServerThreads);
 
     if (AllowClientSSL) {
-        SSL_load_error_strings ();
-        SSL_library_init ();
-        XPLCryptoLockInit ();
-        SSLContext = SSL_CTX_new (SSLv23_server_method ());
-        SSL_CTX_set_mode (SSLContext, SSL_MODE_AUTO_RETRY);
-        SSLClientContext = SSL_CTX_new (SSLv23_client_method ());
-        SSL_CTX_set_mode (SSLClientContext, SSL_MODE_AUTO_RETRY);
+        if (!ServerSocketSSLInit()) {
+            ConnSSLConfiguration sslconfig;
+            sslconfig.certificate.file = MsgGetTLSCertPath(NULL);
+            sslconfig.key.file = MsgGetTLSKeyPath(NULL);
+            sslconfig.key.type = SSL_FILETYPE_PEM;
 
-        if (SSLContext && SSLClientContext) {
-            int result;
-
-            if (ClientSSLOptions & SSL_DONT_INSERT_EMPTY_FRAGMENTS) {
-                SSL_CTX_set_options (SSLContext,
-                                     SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
-                SSL_CTX_set_options (SSLClientContext,
-                                     SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
-            }
-            if (ClientSSLOptions & SSL_ALLOW_CHAIN) {
-/* FIXME: OPENSSL
-                if ((result =
-                     SSL_CTX_use_certificate_chain_file (SSLContext,
-                                                         MsgGetTLSCertPath
-                                                         (NULL))) > 0) {
-                    result =
-                        SSL_CTX_use_certificate_chain_file (SSLClientContext,
-                                                            MsgGetTLSCertPath
-                                                            (NULL));
-                }
-*/
-            }
-            else {
-                if ((result =
-                     SSL_CTX_use_certificate_file (SSLContext,
-                                                   MsgGetTLSCertPath (NULL),
-                                                   SSL_FILETYPE_PEM)) > 0) {
-                    result =
-                        SSL_CTX_use_certificate_file (SSLClientContext,
-                                                      MsgGetTLSCertPath
-                                                      (NULL),
-                                                      SSL_FILETYPE_PEM);
-                }
-            }
-
-            if (result > 0) {
-                if ((SSL_CTX_use_PrivateKey_file
-                     (SSLContext, MsgGetTLSKeyPath (NULL),
-                      SSL_FILETYPE_PEM) > 0)
-                    &&
-                    (SSL_CTX_use_PrivateKey_file
-                     (SSLClientContext, MsgGetTLSKeyPath (NULL),
-                      SSL_FILETYPE_PEM) > 0)) {
-/* FIXME: OPENSSL
-                    if ((SSL_CTX_check_private_key (SSLContext))
-                        && (SSL_CTX_check_private_key (SSLClientContext))) {
-*/
-                        if (ServerSocketSSLInit () >= 0) {
-                            /* Done binding to ports, drop privs permanently */
-                            if (XplSetRealUser (MsgGetUnprivilegedUser ()) <
-                                0) {
-                                XplConsolePrintf
-                                    ("bongosmtp: Could not drop to unprivileged user '%s', exiting.\n",
-                                     MsgGetUnprivilegedUser ());
-                                return 1;
-                            }
-                            XplBeginCountedThread (&ID, SMTPSSLServer,
-                                                   STACKSIZE_S, NULL, ccode,
-                                                   SMTPServerThreads);
-                        }
-                        else {
-                            AllowClientSSL = FALSE;
-                        }
-/* FIXME: OPENSSL 
-                   }
-                    else {
-                        XplConsolePrintf
-                            ("\rSMTPD: PrivateKey check failed\n");
-                        AllowClientSSL = FALSE;
-                    }
-*/
-                }
-                else {
-                    XplConsolePrintf
-                        ("\rSMTPD: Could not load private key\n");
-                    AllowClientSSL = FALSE;
-                }
-            }
-            else {
-                XplConsolePrintf ("\rSMTPD: Could not load public key\n");
+            SSLContext = ConnSSLContextAlloc(&sslconfig);
+            if (SSLContext) {
+                XplBeginCountedThread (&ID, SMTPSSLServer, STACKSIZE_S, NULL, ccode, SMTPServerThreads);
+            } else {
                 AllowClientSSL = FALSE;
             }
-        }
-        else {
-            XplConsolePrintf ("\rSMTPD: Could not generate SSL context\n");
+        } else {
             AllowClientSSL = FALSE;
         }
     }
@@ -8923,21 +7268,12 @@ XplServiceCode (SMTPShutdownSigHandler)
 
     /* Management Client Startup */
     if ((ManagementInit (MSGSRV_AGENT_SMTP, SMTPDirectoryHandle))
-        &&
-        (ManagementSetVariables
-         (SMTPManagementVariables,
-          sizeof (SMTPManagementVariables) / sizeof (ManagementVariables)))
-        &&
-        (ManagementSetCommands
-         (SMTPManagementCommands,
-          sizeof (SMTPManagementCommands) / sizeof (ManagementCommands)))) {
-        XplBeginThread (&ID, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL,
-                        ccode);
+        && (ManagementSetVariables(SMTPManagementVariables, sizeof (SMTPManagementVariables) / sizeof (ManagementVariables)))
+        && (ManagementSetCommands(SMTPManagementCommands, sizeof (SMTPManagementCommands) / sizeof (ManagementCommands)))) {
+        XplBeginThread (&ID, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL, ccode);
     }
 
-
-    XplStartMainThread (PRODUCT_SHORT_NAME, &ID, SMTPServer, 8192, NULL,
-                        ccode);
+    XplStartMainThread (PRODUCT_SHORT_NAME, &ID, SMTPServer, 8192, NULL, ccode);
 
     XplUnloadApp (XplGetThreadID ());
     return (0);
