@@ -10,5 +10,7 @@ libbongoconnio_la_SOURCES :=			\
 
 libbongoconnio_la_LIBADD := $(GNUTLS_LIBS)
 
+libbongoconnio_la_LDFLAGS := -lgnutls-openssl 
+
 src/libs/connio/all: libbongoconnio.la
 src/libs/connio/clean: clean
