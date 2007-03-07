@@ -32,6 +32,16 @@
 // from openssl
 #define SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS    0x00000800L
 
+#if LIBGNUTLS_VERSION_NUMBER < 0x010200
+// limited shim for GNUTLS 1.0 compatibility
+typedef gnutls_transport_ptr 		gnutls_transport_ptr_t;
+typedef gnutls_dh_params 		gnutls_dh_params_t;
+typedef gnutls_rsa_params 		gnutls_rsa_params_t;
+typedef gnutls_session 			gnutls_session_t;
+typedef gnutls_connection_end 		gnutls_connection_end_t;
+typedef gnutls_certificate_credentials 	gnutls_certificate_credentials_t;
+#endif
+
 typedef struct {
     gnutls_certificate_credentials_t cert_cred;
 } bongo_ssl_context;

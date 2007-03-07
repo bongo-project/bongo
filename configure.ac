@@ -359,7 +359,14 @@ AM_PATH_CHECK(0.9.0,
 )
 AM_CONDITIONAL(HAVE_CHECK, test x$have_check = xyes)
 
-PKG_CHECK_MODULES(GNUTLS, gnutls)
+dnl The "manual" configuration is because a couple of old distros don't have
+dnl the GNUTLS m4 thing. Centos 4, RHEL 4, Mandriva 2006(?)
+PKG_CHECK_MODULES(GNUTLS, gnutls,
+	echo Using pkg-config GNUTLS configuration,
+	echo Trying to configure GNUTLS manually
+	GNUTLS_LIBS="-lgnutls"
+	GNUTLS_CFLAGS=""
+)
 
 AM_PATH_LIBGCRYPT()
 

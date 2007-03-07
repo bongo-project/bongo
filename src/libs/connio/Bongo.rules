@@ -8,7 +8,7 @@ libbongoconnio_la_SOURCES :=			\
 	src/libs/connio/addrpool.c		\
 	src/libs/connio/unix-ip.c		
 
-libbongoconnio_la_LDFLAGS := $(GNUTLS_LIBS) $(GNUTLS_OPENSSL_LIBS) -lgnutls-openssl
+libbongoconnio_la_LIBADD := $(GNUTLS_LIBS)
 
 src/libs/connio/all: libbongoconnio.la
 src/libs/connio/clean: clean
