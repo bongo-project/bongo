@@ -7245,7 +7245,7 @@ int XplServiceMain (int argc, char *argv[])
             ConnSSLConfiguration sslconfig;
             sslconfig.certificate.file = MsgGetTLSCertPath(NULL);
             sslconfig.key.file = MsgGetTLSKeyPath(NULL);
-            sslconfig.key.type = SSL_FILETYPE_PEM;
+            sslconfig.key.type = GNUTLS_X509_FMT_PEM;
 
             SSLContext = ConnSSLContextAlloc(&sslconfig);
             if (SSLContext) {

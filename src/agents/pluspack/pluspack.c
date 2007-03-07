@@ -1733,13 +1733,8 @@ XplServiceMain(int argc, char *argv[])
         }
 
         PlusPack.nmap.ssl.enable = FALSE;
-        PlusPack.nmap.ssl.config.method = SSLv23_client_method;
-        PlusPack.nmap.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-        PlusPack.nmap.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-        PlusPack.nmap.ssl.config.cipherList = NULL;
-        PlusPack.nmap.ssl.config.certificate.type = SSL_FILETYPE_PEM;
         PlusPack.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-        PlusPack.nmap.ssl.config.key.type = SSL_FILETYPE_PEM;
+        PlusPack.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
         PlusPack.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
         PlusPack.nmap.ssl.context = ConnSSLContextAlloc(&(PlusPack.nmap.ssl.config));

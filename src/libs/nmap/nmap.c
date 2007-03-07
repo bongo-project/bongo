@@ -58,7 +58,7 @@ NMAPSendCommand(Connection *conn, const unsigned char *command, size_t length)
     int written;
 
     written = ConnWrite(conn, command, length);
-    if (written != length) {
+    if (written < 0 || (size_t)written != length) {
         return -1;
     }
 
@@ -634,7 +634,7 @@ NMAPReadCrLf(Connection *conn)
 int
 NMAPReadPropertyValueLength(Connection *conn, const char *propertyName, size_t *propertyValueLen)
 {
-    return(ReadPropertyValueLen(conn, propertyName, propertyValueLen));
+    return(ReadPropertyValueLen(conn, propertyName, (unsigned long *)propertyValueLen));
 }
 
 /** Used to read text properties responses from NMAP.
@@ -1213,7 +1213,6 @@ done :
 int 
 NMAPRunCommandF(Connection *conn, char *response, size_t length, const char *format, ...)
 {
-    int i;
     int written;
     va_list ap;
     
@@ -1399,21 +1398,21 @@ NMAPEncrypt(Connection *conn, unsigned char *response, int length, BOOL force)
             }
         }
 
-        if (result 
-                && ((c->ssl.context = SSL_new(NMAPLibrary.context)) != NULL) 
-                && ((ccode = ConnWrite(c, "TLS\r\n", 5)) != -1) 
-                && ((ccode = ConnFlush(c)) != -1) 
-                && ((ccode = NMAPReadAnswer(c, response, length, TRUE)) == 1000) 
-                && ((ccode = SSL_set_bsdfd(c->ssl.context, c->socket)) == 1) 
-                && ((ccode = SSL_connect(c->ssl.context)) == 1)) {
-            CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
-            c->ssl.enable = TRUE;
-            return(TRUE);
-        }
-
-        if (c->ssl.context) {
-            SSL_free(c->ssl.context);
-            c->ssl.context = NULL;
+        if (result) {
+                ConnWrite(c, "TLS\r\n", 5);
+                ConnFlush(c);
+                if ((NMAPReadAnswer(c, response, length, TRUE)) == 1000) {
+                    c->ssl.enable = TRUE;
+                    NMAPLibrary.context = NMAPSSLContextAlloc();
+                    if (NMAPLibrary.context) {
+                        if (ConnNegotiate(c, NMAPLibrary.context)) {
+                            CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
+                            return(TRUE);
+                        }
+                        ConnSSLContextFree(NMAPLibrary.context);
+                    }
+                    NMAPLibrary.context = NULL;
+                }
         }
     }
 
@@ -1690,13 +1689,8 @@ NMAPSSLContextAlloc(void)
 {
     ConnSSLConfiguration config;
     
-    config.method = SSLv23_client_method;
-    config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-    config.mode = SSL_MODE_AUTO_RETRY;
-    config.cipherList = NULL;
-    config.certificate.type = SSL_FILETYPE_PEM;
     config.certificate.file = MsgGetTLSCertPath(NULL);
-    config.key.type = SSL_FILETYPE_PEM;
+    config.key.type = GNUTLS_X509_FMT_PEM;
     config.key.file = MsgGetTLSKeyPath(NULL);
 
     return ConnSSLContextAlloc(&config);

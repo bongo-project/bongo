@@ -2339,13 +2339,8 @@ XplServiceMain(int argc, char *argv[])
     }
 
     Rules.nmap.ssl.enable = FALSE;
-    Rules.nmap.ssl.config.method = SSLv23_client_method;
-    Rules.nmap.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-    Rules.nmap.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-    Rules.nmap.ssl.config.cipherList = NULL;
-    Rules.nmap.ssl.config.certificate.type = SSL_FILETYPE_PEM;
     Rules.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-    Rules.nmap.ssl.config.key.type = SSL_FILETYPE_PEM;
+    Rules.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
     Rules.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
     Rules.nmap.ssl.context = ConnSSLContextAlloc(&(Rules.nmap.ssl.config));

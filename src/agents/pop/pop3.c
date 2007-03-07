@@ -2655,12 +2655,8 @@ XplServiceMain(int argc, char *argv[])
         if (!ServerSocketSSLInit()) {
              XPLCryptoLockInit();
 
-            POP3.server.ssl.config.method = SSLv23_server_method;
-            POP3.server.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-            POP3.server.ssl.config.cipherList = NULL;
-            POP3.server.ssl.config.certificate.type = SSL_FILETYPE_PEM;
             POP3.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-            POP3.server.ssl.config.key.type = SSL_FILETYPE_PEM;
+            POP3.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
             POP3.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
     
             POP3.server.ssl.context = ConnSSLContextAlloc(&(POP3.server.ssl.config));
@@ -2681,13 +2677,8 @@ XplServiceMain(int argc, char *argv[])
     }
 
     POP3.nmap.ssl.enable = FALSE;
-    POP3.nmap.ssl.config.method = SSLv23_client_method;
-    POP3.nmap.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-    POP3.nmap.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-    POP3.nmap.ssl.config.cipherList = NULL;
-    POP3.nmap.ssl.config.certificate.type = SSL_FILETYPE_PEM;
     POP3.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-    POP3.nmap.ssl.config.key.type = SSL_FILETYPE_PEM;
+    POP3.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
     POP3.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
     POP3.nmap.ssl.context = ConnSSLContextAlloc(&(POP3.nmap.ssl.config));

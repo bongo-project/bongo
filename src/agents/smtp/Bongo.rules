@@ -5,8 +5,6 @@ bongosmtp_SOURCES :=				\
 	src/agents/smtp/smtpd.c			\
 	src/agents/smtp/smtpd.h
 
-#bongosmtp_LDFLAGS := -lgnutls-openssl
-
 bongosmtp_LDADD :=					   \
 	libbongonmap.la					   \
 	libbongoconnmgr.la				   \
@@ -19,7 +17,6 @@ bongosmtp_LDADD :=					   \
 	libbongoutil.la					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
-	$(GNUTLS_OPENSSL_LIBS)				   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)
 

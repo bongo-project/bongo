@@ -45,31 +45,6 @@
 */
 extern int Exiting;
 
-// BIO_METHOD *BIO_s_bsdsocket(void);
-// BIO *BIO_new_bsdsocket(int fd, int close_flag);
-
-int sock_write(BIO *h, const char *buf, int num);
-int sock_read(BIO *h, char *buf, int size);
-int sock_puts(BIO *h, const char *str);
-long sock_ctrl(BIO *h, int cmd, long arg1, void *arg2);
-int sock_new(BIO *h);
-int sock_free(BIO *data);
-
-/*
-static BIO_METHOD methods_bsdsockp =
-{
-	(5|0x0400|0x0100), 
-	"bsdsocket",
-	sock_write,
-	sock_read,
-	sock_puts,
-	NULL, // sock_gets, 
-	sock_ctrl,
-	sock_new,
-	sock_free,
-	NULL
-};*/
-
 unsigned long
 XplGetHostIPAddress(void)
 {
@@ -322,23 +297,6 @@ XplDestroyInterfaceList(void)
   return(0);
 }
 
-int 
-SSL_set_bsdfd(SSL *s,int fd)
-{
-        BIO *bio;
-
-        bio = BIO_new_socket(s, 0);
-
-        if (bio) {
-                SSL_set_fd(bio,fd);
-                SSL_set_bio(s,bio,bio);
-                return(1);
-        }
-
-        return(0);
-}
-
-
 BOOL
 XplIsLocalIPAddress(unsigned long Address)
 {
@@ -443,20 +401,6 @@ XPLIPWrite_Again:
 
 	return(-1);
 }
-
-int 
-XplIPReadSSL(void *sslctx, unsigned char *Buf, int Len, int timeout)
-{
-	return(SSL_read((SSL*)sslctx, (void*)Buf, Len));
-}
-
-
-int
-XplIPWriteSSL(void *sslctx, unsigned char *Buf, int Len)
-{
-	return(SSL_write((SSL*)sslctx, (void*)Buf, Len));
-}
-
 
 __inline static BOOL
 MakeSocketNonBlocking(int soc)

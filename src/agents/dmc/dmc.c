@@ -3356,8 +3356,6 @@ ReadConfiguration(void)
     MDBFreeValues(configDN);
     MDBFreeValues(address);
 
-    DMC.server.ssl.options = DMC.client.ssl.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-
     if (MDBRead(MSGSRV_ROOT, MSGSRV_A_SSL_TLS, config)) {
 	if (atoi(config->Value[0])) {
 	    tempoptions |= SSL_ALLOW_SSL3;
@@ -3699,22 +3697,12 @@ int XplServiceMain(int argc, char *argv[])
                 return 1;
             }
 
-            DMC.server.ssl.config.method = SSLv23_server_method;
-            DMC.server.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-            DMC.server.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-            DMC.server.ssl.config.cipherList = NULL;
-            DMC.server.ssl.config.certificate.type = SSL_FILETYPE_PEM;
             DMC.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-            DMC.server.ssl.config.key.type = SSL_FILETYPE_PEM;
+            DMC.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
             DMC.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
-            DMC.client.ssl.config.method = SSLv23_client_method;
-            DMC.client.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-            DMC.client.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-            DMC.client.ssl.config.cipherList = NULL;
-            DMC.client.ssl.config.certificate.type = SSL_FILETYPE_PEM;
             DMC.client.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-            DMC.client.ssl.config.key.type = SSL_FILETYPE_PEM;
+            DMC.client.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
             DMC.client.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
             DMC.server.ssl.enable = FALSE;

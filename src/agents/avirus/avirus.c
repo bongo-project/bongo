@@ -1471,13 +1471,8 @@ XplServiceMain(int argc, char *argv[])
     }
 
     AVirus.nmap.ssl.enable = FALSE;
-    AVirus.nmap.ssl.config.method = SSLv23_client_method;
-    AVirus.nmap.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-    AVirus.nmap.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-    AVirus.nmap.ssl.config.cipherList = NULL;
-    AVirus.nmap.ssl.config.certificate.type = SSL_FILETYPE_PEM;
     AVirus.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-    AVirus.nmap.ssl.config.key.type = SSL_FILETYPE_PEM;
+    AVirus.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
     AVirus.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
     AVirus.nmap.ssl.context = ConnSSLContextAlloc(&(AVirus.nmap.ssl.config));

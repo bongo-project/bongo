@@ -1040,13 +1040,8 @@ XplServiceMain(int argc, char *argv[])
         }
 
         ASpam.nmap.ssl.enable = FALSE;
-        ASpam.nmap.ssl.config.method = SSLv23_client_method;
-        ASpam.nmap.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-        ASpam.nmap.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-        ASpam.nmap.ssl.config.cipherList = NULL;
-        ASpam.nmap.ssl.config.certificate.type = SSL_FILETYPE_PEM;
         ASpam.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-        ASpam.nmap.ssl.config.key.type = SSL_FILETYPE_PEM;
+        ASpam.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
         ASpam.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
         ASpam.nmap.ssl.context = ConnSSLContextAlloc(&(ASpam.nmap.ssl.config));

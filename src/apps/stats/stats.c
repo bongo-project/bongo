@@ -376,13 +376,8 @@ BongoStatsInitialize(int argc, char *argv[])
 
     if (ReadConfiguration(argc, argv)) {
         BongoStats.ssl.enable = FALSE;
-        BongoStats.ssl.config.method = SSLv23_client_method;
-        BongoStats.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-        BongoStats.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-        BongoStats.ssl.config.cipherList = NULL;
-        BongoStats.ssl.config.certificate.type = SSL_FILETYPE_PEM;
         BongoStats.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-        BongoStats.ssl.config.key.type = SSL_FILETYPE_PEM;
+        BongoStats.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
         BongoStats.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
         BongoStats.ssl.context = ConnSSLContextAlloc(&(BongoStats.ssl.config));

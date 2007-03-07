@@ -4377,12 +4377,8 @@ XplServiceMain(int argc, char *argv[])
     if (Imap.server.ssl.enable) {
         if (!ServerSocketSSLInit()) {
         
-            Imap.server.ssl.config.method = SSLv23_server_method;
-            Imap.server.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-            Imap.server.ssl.config.cipherList = NULL;
-            Imap.server.ssl.config.certificate.type = SSL_FILETYPE_PEM;
             Imap.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-            Imap.server.ssl.config.key.type = SSL_FILETYPE_PEM;
+            Imap.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
             Imap.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
         
             Imap.server.ssl.context = ConnSSLContextAlloc(&(Imap.server.ssl.config));

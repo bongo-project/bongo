@@ -1048,13 +1048,8 @@ XplServiceMain(int argc, char *argv[])
         CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "mailprox");
         // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
-        MailProxy.client.ssl.config.method = SSLv23_client_method;
-        MailProxy.client.ssl.config.options = SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS;
-        MailProxy.client.ssl.config.mode = SSL_MODE_AUTO_RETRY;
-        MailProxy.client.ssl.config.cipherList = NULL;
-        MailProxy.client.ssl.config.certificate.type = SSL_FILETYPE_PEM;
         MailProxy.client.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-        MailProxy.client.ssl.config.key.type = SSL_FILETYPE_PEM;
+        MailProxy.client.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
         MailProxy.client.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
         MailProxy.client.ssl.context = ConnSSLContextAlloc(&(MailProxy.client.ssl.config));
