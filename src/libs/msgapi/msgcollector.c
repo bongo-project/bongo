@@ -767,7 +767,11 @@ MsgImportIcsUrl(const char *user,
                 break;
             case CURLE_FTP_ACCESS_DENIED :
             case CURLE_BAD_PASSWORD_ENTERED :
+#if LIBCURL_VERSION_NUM >= 0x070f02
+// our import curl is the above version. if it's older, it might not have
+// this error defined. Needed for Centos 4.4 (curl 7.12)
             case CURLE_LOGIN_DENIED :
+#endif
                 ccode = MSG_COLLECT_ERROR_AUTH;
                 break;
             default :
