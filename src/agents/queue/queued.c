@@ -404,8 +404,6 @@ QueueServer(void *ignored)
     XplConsolePrintf(AGENT_NAME ": Shutting down.\r\n");
 #endif
 
-    QueueManagementShutdown();
-
     BongoThreadPoolShutdown(Agent.clientThreadPool);
 
     InternalSetServerState("Shutdown");
@@ -582,8 +580,6 @@ XplServiceMain(int argc, char *argv[])
     Agent.clientThreadPool = BongoThreadPoolNew("Queue Clients", STACKSPACE_Q, 2, INT_MAX, 0);
 
     XplSignalHandler(SignalHandler);
-
-    QueueManagementStart();
 
     ccode = CreateQueueThreads(recover);
 

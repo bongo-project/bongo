@@ -3,8 +3,7 @@ sbin_PROGRAMS += bongoitip
 
 bongoitip_SOURCES :=				\
 	src/agents/itip/itip.c			\
-	src/agents/itip/itip.h			\
-	src/agents/itip/management.c
+	src/agents/itip/itip.h			
 
 bongoitip_LDADD :=					   \
 	libbongonmap.la					   \

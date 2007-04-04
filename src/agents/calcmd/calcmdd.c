@@ -473,8 +473,6 @@ CalCmdAgentServer(void *ignored)
         CalCmdAgent.nmapConn = NULL;
     }
 
-    CalCmdAgentManagementShutdown();
-
     BongoThreadPoolShutdown(CalCmdAgent.threadPool);
     BongoAgentShutdown(&CalCmdAgent.agent);
 
@@ -559,8 +557,6 @@ XplServiceMain(int argc, char *argv[])
     ReadConfiguration();
 
     XplSignalHandler(SignalHandler);
-
-    CalCmdAgentManagementStart();
 
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, CalCmdAgentServer, 8192, NULL, ccode);

@@ -839,7 +839,7 @@ ProcessSignatures(PlusPackClient *client)
                 && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == NMAP_OK) 
                 && ((ccode = NMAPSendCommandF(client->conn, "QADDQ %s 0 %lu\r\n", client->entry.name, client->mime.header)) != -1) 
                 && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == NMAP_OK) 
-                && ((ccode = NMAPSendCommandF(client->conn, "QSTOR MESSAGE\r\nX-AutoSignature-Version: Bongo Signature Agent %s\r\n.\r\n", GetPlusPackVersion())) != -1) 
+                && ((ccode = NMAPSendCommandF(client->conn, "QSTOR MESSAGE\r\nX-AutoSignature-Version: Bongo Signature Agent 0.1\r\n.\r\n")) != -1) 
                 && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == NMAP_OK)) {
             if ((client->flags & PLUSPACK_CLIENT_FLAG_SIGNATURE) 
                     && (client->flags & PLUSPACK_CLIENT_FLAG_SIGNATURE_HTML)) {
@@ -1743,18 +1743,6 @@ XplServiceMain(int argc, char *argv[])
         }
 
         NMAPSetEncryption(PlusPack.nmap.ssl.context);
-
-        if ((ManagementInit(PLUSPACK_AGENT, PlusPack.handle.directory)) 
-                && (ManagementSetVariables(GetPlusPackManagementVariables(), GetPlusPackManagementVariablesCount())) 
-                && (ManagementSetCommands(GetPlusPackManagementCommands(), GetPlusPackManagementCommandsCount()))) {
-            XplBeginThread(&id, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL, ccode);
-        } else {
-            ccode = -1;
-        }
-
-        if (ccode) {
-            XplConsolePrintf("bongopluspack: Unable to startup the management interface.\r\n");
-        }
 
         PlusPack.state = PLUSPACK_STATE_RUNNING;
 

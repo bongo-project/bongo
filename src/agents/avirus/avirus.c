@@ -1482,18 +1482,6 @@ XplServiceMain(int argc, char *argv[])
 
     NMAPSetEncryption(AVirus.nmap.ssl.context);
 
-    if ((ManagementInit(MSGSRV_AGENT_ANTIVIRUS, AVirus.handle.directory)) 
-            && (ManagementSetVariables(GetAVirusManagementVariables(), GetAVirusManagementVariablesCount())) 
-            && (ManagementSetCommands(GetAVirusManagementCommands(), GetAVirusManagementCommandsCount()))) {
-        XplBeginThread(&id, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL, ccode);
-    } else {    
-        ccode = -1;
-    }
- 
-    if (ccode) {
-        XplConsolePrintf("antivirus: Unable to startup the management interface.\r\n");
-    }
-    
     XplStartMainThread(PRODUCT_SHORT_NAME, &id, AntiVirusServer, 8192, NULL, ccode);
     
     XplUnloadApp(XplGetThreadID());

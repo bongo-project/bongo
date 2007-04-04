@@ -2,7 +2,6 @@
 sbin_PROGRAMS += bongopluspack
 
 bongopluspack_SOURCES :=				\
-	src/agents/pluspack/management.c	\
 	src/agents/pluspack/pluspack.c		\
 	src/agents/pluspack/pluspack.h
 

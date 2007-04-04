@@ -113,7 +113,6 @@ include_subdirs :=				\
 	src/agents/connmgr/cmmodules/rbl	\
 	src/agents/connmgr/cmmodules/rdns	\
 	src/agents/connmgr/cmmodules/lists	\
-	src/agents/dmc				\
 	src/agents/generic			\
 	src/agents/imap				\
 	src/agents/imap/tests			\
@@ -131,7 +130,6 @@ include_subdirs :=				\
 	src/apps/manager			\
 	src/apps/sendmail			\
 	src/apps/setup				\
-	src/apps/stats				\
 	src/apps/tzcache			\
 	src/apps/mdbtool			\
 	src/apps/queuetool			\
@@ -179,7 +177,6 @@ include src/agents/connmgr/cmmodules/user/Bongo.rules
 include src/agents/connmgr/cmmodules/rbl/Bongo.rules
 include src/agents/connmgr/cmmodules/rdns/Bongo.rules
 include src/agents/connmgr/cmmodules/lists/Bongo.rules
-include src/agents/dmc/Bongo.rules
 include src/agents/generic/Bongo.rules
 include src/agents/imap/Bongo.rules
 include src/agents/imap/tests/Bongo.rules
@@ -197,7 +194,6 @@ include src/apps/backup/Bongo.rules
 include src/apps/manager/Bongo.rules
 include src/apps/sendmail/Bongo.rules
 include src/apps/setup/Bongo.rules
-include src/apps/stats/Bongo.rules
 include src/apps/tzcache/Bongo.rules
 include src/apps/mdbtool/Bongo.rules
 # include src/apps/migrate/Bongo.rules

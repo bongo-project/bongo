@@ -3,8 +3,7 @@ sbin_PROGRAMS += bongocollector
 
 bongocollector_SOURCES :=			\
 	src/agents/collector/collector.c	\
-	src/agents/collector/collector.h	\
-	src/agents/collector/management.c
+	src/agents/collector/collector.h
 
 bongocollector_CPPFLAGS := $(AM_CPPFLAGS) \
 	-I$(top_srcdir)/import/curl/include

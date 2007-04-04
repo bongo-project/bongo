@@ -4,7 +4,6 @@ sbin_PROGRAMS += bongoavirus
 bongoavirus_SOURCES :=				\
 	src/agents/avirus/avirus.c		\
 	src/agents/avirus/avirus.h		\
-	src/agents/avirus/management.c		\
 	src/agents/avirus/mime.c		\
 	src/agents/avirus/stream.c
 

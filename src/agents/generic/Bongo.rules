@@ -3,8 +3,7 @@ sbin_PROGRAMS += bongogeneric
 
 bongogeneric_SOURCES :=				\
 	src/agents/generic/generic.c		\
-	src/agents/generic/generic.h		\
-	src/agents/generic/management.c
+	src/agents/generic/generic.h		
 
 bongogeneric_LDADD :=					   \
 	libbongonmap.la					   \

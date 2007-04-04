@@ -405,8 +405,6 @@ XplServiceMain(int argc, char *argv[])
 
     XplSignalHandler(SignalHandler);
 
-    AlarmManagementStart();
-
     MsgInit();
     StreamioInit();
     ConnStartup(DEFAULT_CONNECTION_TIMEOUT, TRUE);

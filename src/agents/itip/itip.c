@@ -384,8 +384,6 @@ ItipAgentServer(void *ignored)
         ItipAgent.nmapConn = NULL;
     }
 
-    ItipAgentManagementShutdown();
-
     BongoThreadPoolShutdown(ItipAgent.threadPool);
     BongoAgentShutdown(&ItipAgent.agent);
 
@@ -470,8 +468,6 @@ XplServiceMain(int argc, char *argv[])
     ReadConfiguration();
 
     XplSignalHandler(SignalHandler);
-
-    ItipAgentManagementStart();
 
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, ItipAgentServer, 8192, NULL, ccode);

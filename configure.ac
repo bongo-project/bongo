@@ -664,7 +664,6 @@ src/agents/connmgr/cmmodules/lists/Makefile
 src/agents/connmgr/cmmodules/rbl/Makefile
 src/agents/connmgr/cmmodules/rdns/Makefile
 src/agents/connmgr/cmmodules/user/Makefile
-src/agents/dmc/Makefile
 src/agents/generic/Makefile
 src/agents/imap/Makefile
 src/agents/imap/tests/Makefile
@@ -679,7 +678,6 @@ src/agents/store/tests/Makefile
 src/agents/rules/Makefile
 src/apps/setup/Makefile
 src/apps/setup/bongo-setup.xml
-src/apps/stats/Makefile
 src/apps/manager/Makefile
 src/apps/admin/Makefile
 src/apps/sendmail/Makefile

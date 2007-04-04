@@ -1059,12 +1059,6 @@ XplServiceMain(int argc, char *argv[])
 
         NMAPSetEncryption(MailProxy.client.ssl.context);
 
-        if ((ManagementInit(MSGSRV_AGENT_PROXY, MailProxy.handle.directory)) 
-                && (ManagementSetVariables(GetMailProxyManagementVariables(), GetMailProxyManagementVariablesCount())) 
-                && (ManagementSetCommands(GetMailProxyManagementCommands(), GetMailProxyManagementCommandsCount()))) {
-            XplBeginThread(&id, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL, ccode);
-        }
-
         if (XplSetRealUser(MsgGetUnprivilegedUser()) >= 0) {
             XplBeginCountedThread(&id, ProxyConfigMonitor, 128 * 1024, NULL, ccode, MailProxy.server.active);
 

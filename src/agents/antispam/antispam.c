@@ -1051,18 +1051,6 @@ XplServiceMain(int argc, char *argv[])
 
         NMAPSetEncryption(ASpam.nmap.ssl.context);
 
-        if ((ManagementInit(MSGSRV_AGENT_ANTISPAM, ASpam.handle.directory)) 
-                && (ManagementSetVariables(GetASpamManagementVariables(), GetASpamManagementVariablesCount())) 
-                && (ManagementSetCommands(GetASpamManagementCommands(), GetASpamManagementCommandsCount()))) {
-            XplBeginThread(&id, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL, ccode);
-        } else {
-            ccode = -1;
-        }        
-
-        if (ccode) {
-            XplConsolePrintf("bongoantispam: Unable to startup the management interface.\r\n");
-        }
-
         ASpam.state = ASPAM_STATE_RUNNING;
     } else {
         XplConsolePrintf("bongoantispam: spamd integration is not enabled and no hosts allowed or disallowed; unloading\r\n");

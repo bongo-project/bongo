@@ -8,7 +8,6 @@ bongoqueue_SOURCES :=				\
 	src/agents/queue/domain.h		\
 	src/agents/queue/queued.c		\
 	src/agents/queue/queued.h		\
-	src/agents/queue/management.c		\
 	src/agents/queue/mime.c			\
 	src/agents/queue/mime.h			\
 	src/agents/queue/queue.c		\

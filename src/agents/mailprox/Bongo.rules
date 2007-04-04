@@ -5,7 +5,6 @@ bongomailprox_SOURCES :=				\
 	src/agents/mailprox/imap.c		\
 	src/agents/mailprox/mailprox.c		\
 	src/agents/mailprox/mailprox.h		\
-	src/agents/mailprox/management.c	\
 	src/agents/mailprox/pop.c
 
 bongomailprox_LDADD :=					   \

@@ -3,8 +3,7 @@ sbin_PROGRAMS += bongoalarm
 
 bongoalarm_SOURCES :=				\
 	src/agents/alarm/alarm.c		\
-	src/agents/alarm/alarm.h		\
-	src/agents/alarm/management.c
+	src/agents/alarm/alarm.h		
 
 bongoalarm_LDADD :=						   \
 	libbongonmap.la						   \

@@ -4,8 +4,7 @@ sbin_PROGRAMS += bongoantispam
 bongoantispam_SOURCES :=				\
 	src/agents/antispam/antispam.c		\
 	src/agents/antispam/antispam.h		\
-	src/agents/antispam/spamd.c		\
-	src/agents/antispam/management.c
+	src/agents/antispam/spamd.c		
 
 bongoantispam_LDADD :=					   \
 	libbongonmap.la					   \

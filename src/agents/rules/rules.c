@@ -2350,22 +2350,6 @@ XplServiceMain(int argc, char *argv[])
 
     NMAPSetEncryption(Rules.nmap.ssl.context);
 
-#if 0
-    if ((ManagementInit(MSGSRV_AGENT_ANTISPAM, Rules.handle.directory)) 
-            && (ManagementSetVariables(GetRulesManagementVariables(), GetRulesManagementVariablesCount())) 
-            && (ManagementSetCommands(GetRulesManagementCommands(), GetRulesManagementCommandsCount()))) {
-        XplBeginThread(&id, ManagementServer, DMC_MANAGEMENT_STACKSIZE, NULL, ccode);
-    } else {
-        ccode = -1;
-    }
-
-    if (ccode) {
-        XplConsolePrintf("bongorules: Unable to startup the management interface.\r\n");
-    }
-#else 
-	RulesStartManagement();
-#endif
-
     Rules.state = RULES_STATE_RUNNING;
 
     XplStartMainThread(PRODUCT_SHORT_NAME, &id, RulesServer, 8192, NULL, ccode);

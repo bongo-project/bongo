@@ -30,7 +30,6 @@ bongostore_SOURCES :=					 \
 	src/agents/store/mail-parser.c			 \
 	src/agents/store/mail-parser.h			 \
 	src/agents/store/main.cpp			 \
-	src/agents/store/management.c			 \
 	src/agents/store/messages.h			 \
 	src/agents/store/mime.c				 \
 	src/agents/store/mime.h				 \

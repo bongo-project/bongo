@@ -147,8 +147,6 @@ GenericAgentServer(void *ignored)
         GAgent.nmapConn = NULL;
     }
 
-    GenericAgentManagementShutdown();
-
     BongoThreadPoolShutdown(GAgent.threadPool);
     BongoAgentShutdown(&GAgent.agent);
 
@@ -231,8 +229,6 @@ XplServiceMain(int argc, char *argv[])
     ReadConfiguration();
 
     XplSignalHandler(SignalHandler);
-
-    GenericAgentManagementStart();
 
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, GenericAgentServer, 8192, NULL, ccode);
