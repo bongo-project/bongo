@@ -9,8 +9,8 @@
 #include <bongostore.h>
 #include <bongoagent.h>
 #include <gcrypt.h>
-
-#include "config.h"
+#include <sys/stat.h>
+#include <sys/types.h>
 
 /* cli opts */
 struct {
@@ -35,6 +35,7 @@ usage() {
 		"  -v, --verbose                   verbose output\n\n"
 		"Commands:\n"
 		"  install                         do the initial Bongo install\n"
+		"  crypto                          generate data needed for encryption\n"
 		"";
 
 	XplConsolePrintf("%s", usage);
@@ -164,8 +165,48 @@ storecleanup:
 
 BOOL
 GenerateCryptoData() {
+	gnutls_dh_params_t dh_params;
+	gnutls_rsa_params_t rsa_params;
+	unsigned char dhdata[4096], rsadata[4096];
+	size_t dsize = 4098;
+	FILE *params;
+	
+	gnutls_global_init();
+
+	// hack: we need to ensure the files below can be saved...
+	if (0 != mkdir(XPL_DEFAULT_DBF_DIR, 0644)) {
+		XplConsolePrintf("Couldn't create data directory!\n");
+	}
+
 	// save a random seed for faster Xpl startup in future.
+	XplConsolePrintf("Creating random seed...\n");
 	XplSaveRandomSeed();
+
+	// various magic params
+	XplConsolePrintf("Creating DH parameters...\n");
+	gnutls_dh_params_init(&dh_params);
+	gnutls_dh_params_generate2(dh_params, 1024);
+	gnutls_dh_params_export_pkcs3 (dh_params, GNUTLS_X509_FMT_PEM, &dhdata, &dsize);
+	params = fopen(XPL_DEFAULT_DHPARAMS_PATH, "w");
+	if (params) {
+		fprintf(params, "%s\n", dhdata);
+		fclose(params);
+	} else {
+		XplConsolePrintf("ERROR: Couldn't write DH params to %s\n", XPL_DEFAULT_DHPARAMS_PATH);
+	}
+
+	XplConsolePrintf("Creating RSA parameters...\n");	
+	gnutls_rsa_params_init(&rsa_params);
+	gnutls_rsa_params_generate2(rsa_params, 512);
+	gnutls_dh_params_export_pkcs3 (rsa_params, GNUTLS_X509_FMT_PEM, &rsadata, &dsize);
+	params = fopen(XPL_DEFAULT_RSAPARAMS_PATH, "w");
+	if (params) {
+		fprintf(params, "%s\n", dhdata);
+		fclose(params);
+	} else {
+		XplConsolePrintf("ERROR: Couldn't write RSA params to %s\n", XPL_DEFAULT_DHPARAMS_PATH);
+	}
+	return TRUE;
 }
 
 int 
@@ -183,12 +224,6 @@ main(int argc, char *argv[]) {
 
 	XplInit();
 
-	startup = BA_STARTUP_CONNIO;	
-	if (-1 == BongoAgentInit(&configtool, "bongoconfig", "", DEFAULT_CONNECTION_TIMEOUT, startup)) {
-		XplConsolePrintf("ERROR : Couldn't initialize Bongo libraries\n");
-		return 2;
-	}
-
 	/* parse options */
 	while (++next_arg < argc && argv[next_arg][0] == '-') {
 		if (!strcmp(argv[next_arg], "-v") || !strcmp(argv[next_arg], "--verbose")) {
@@ -202,6 +237,8 @@ main(int argc, char *argv[]) {
 	if (next_arg < argc) {
 		if (!strcmp(argv[next_arg], "install")) { 
 			command = 1;
+		} else if (!strcmp(argv[next_arg], "crypto")) {
+			command = 2;
 		} else {
 			printf("Unrecognized command: %s\n", argv[next_arg]);
 		}
@@ -209,13 +246,24 @@ main(int argc, char *argv[]) {
 		printf("ERROR: No command specified\n");
 		usage();
 	}
+	
+	if (command == 1) {
+		startup = BA_STARTUP_CONNIO;	
+		if (-1 == BongoAgentInit(&configtool, "bongoconfig", "", DEFAULT_CONNECTION_TIMEOUT, startup)) {
+			XplConsolePrintf("ERROR : Couldn't initialize Bongo libraries\n");
+			return 2;
+		}
+	}
 
 	switch(command) {
 		case 1:
 			InitialStoreConfiguration();
 			break;
+		case 2:
+			GenerateCryptoData();
+			break;
 		default:
-			XplConsolePrintf("ERROR: An internal error");
+			break;
 	}
 
 	MemoryManagerClose("bongo-config");
