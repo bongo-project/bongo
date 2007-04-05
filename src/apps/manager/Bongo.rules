@@ -12,6 +12,7 @@ bongo_manager_LDADD :=					   \
 	libbongomdb.la					   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \
+    libbongo-json.la                     \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
 	$(PTHREAD_LIBS)					   \
