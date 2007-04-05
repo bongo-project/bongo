@@ -533,6 +533,7 @@ XplServiceMain(int argc, char *argv[])
 {
     BOOL recover;
     int ccode;
+    int startupOpts;
 
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
         XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n" AGENT_NAME ": exiting.\n", MsgGetUnprivilegedUser());
@@ -545,7 +546,8 @@ XplServiceMain(int argc, char *argv[])
     Agent.agent.port = BONGO_QUEUE_PORT;
 
     /* Initialize the Bongo libraries */
-    ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT);
+    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;

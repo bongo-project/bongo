@@ -18,6 +18,7 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// Parts Copyright (C) 2007 Alex Hudson. See COPYING for details.
 
 #ifndef _BONGO_NMAP_LIBRARY_H
 #define _BONGO_NMAP_LIBRARY_H
@@ -139,6 +140,11 @@ int NMAPReadResponseLine(Connection *conn, unsigned char *response, size_t lengt
 int NMAPReadResponseAndCount(Connection *conn, unsigned long *count);
 
 int NMAPRunCommandF(Connection *conn, char *response, size_t length, const char *format, ...) XPL_PRINTF(4, 5);
+
+
+/* Configuration function for agents etc. */
+BOOL
+NMAPReadConfigFile(const unsigned char *file, unsigned char **output);
 
 int NMAPReadCrLf(Connection *conn);
 int NMAPReadPropertyValueLength(Connection *conn, const char *propertyName, size_t *propertyValueLen);

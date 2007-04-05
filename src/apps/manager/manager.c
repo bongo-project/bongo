@@ -1,7 +1,15 @@
+/* This program is free software, licensed under the terms of the GNU GPL.
+ * See the Bongo COPYING file for full details
+ * Copyright (c) 2001 Novell, Inc. All Rights Reserved.
+ * Copyright (c) 2007 Alex Hudson
+ */
+
 #include <config.h>
 #include <xpl.h>
+#include <nmap.h>
 #include <bongoutil.h>
 #include <msgapi.h>
+#include <nmlib.h>
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <time.h>
@@ -40,24 +48,6 @@ typedef struct {
     BOOL crashy;
 } BongoAgent;
 
-/* FIXME: these shouldn't be hard-coded */
-static const BongoAgentSpec AgentSpecs[] = {
-    { "bongodmc", MSGSRV_AGENT_DMC, 0, FALSE },
-    { "bongostore", MSGSRV_AGENT_STORE, 2, FALSE },
-    { "bongoqueue", MSGSRV_AGENT_QUEUE, 3, FALSE },
-    { "bongoantispam", MSGSRV_AGENT_ANTISPAM, 3, FALSE },
-    { "bongoavirus", MSGSRV_AGENT_ANTIVIRUS, 3, FALSE },
-    { "bongocollector", MSGSRV_AGENT_COLLECTOR, 5, FALSE },
-    { "bongomailprox", MSGSRV_AGENT_PROXY, 5, FALSE },
-    { "bongoconnmgr", MSGSRV_AGENT_CONNMGR, 2, FALSE },
-    { "bongopluspack", PLUSPACK_AGENT, 4, FALSE },
-    { "bongorules", MSGSRV_AGENT_RULESRV, 3, FALSE },
-    { "bongosmtp", MSGSRV_AGENT_SMTP, 3, FALSE },
-    { "bongoimap", MSGSRV_AGENT_IMAP, 3, FALSE },
-    { "bongopop3", MSGSRV_AGENT_POP, 3, FALSE },
-    { "bongocalcmd", MSGSRV_AGENT_CALCMD, 3, FALSE },
-};
-
 static BongoArray *AllAgents;
 static pid_t LeaderPID = 0;
 static pid_t SlapdPID = 0;
@@ -65,6 +55,7 @@ static BOOL Exiting = FALSE;
 static BOOL ChildError = FALSE;
 static BOOL ReloadNow = FALSE;
 static int HighestPriority = 0;
+
 MDBHandle DirectoryHandle = NULL;
 char ServerDN[MDB_MAX_OBJECT_CHARS + 1];
 
@@ -83,118 +74,18 @@ FindAgentByPid(pid_t pid)
     return NULL;
 }
 
-static BongoAgent *
-FindAgentByDn(const char *dn)
-{
-    unsigned int i;
-    
-    for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
-        if (!XplStrCaseCmp(agent->spec.dn, dn)) {
-            return agent;
-        }
-    }
-
-    return NULL;
-}
-
 static BOOL
-ProcessAgentList(MDBValueStruct *list,
-                 MDBValueStruct *v)
+SetupAgentList(void)
 {
-    unsigned long i;
-    BOOL result = TRUE;
-
-    for (i = 0; i < list->Used; i++) {
-        BongoAgent *agent;
-        char *p;
-
-        p = strrchr(list->Value[i], '\\');
-        if (!p) {
-            continue;
-        }
-
-        /* FIXME: should check the type of the node and see if it's a
-         * BongoAgent.  For now, special case a node we know isn't a
-         * BongoAgent */
-        if (!XplStrCaseCmp(p + 1, "User Settings")) {
-            continue;
-        }
-
-        agent = FindAgentByDn(p + 1);
-        
-        if (!agent) {
-            fprintf(stderr, "bongomanager: Unknown agent '%s'\n", p + 1);
-            continue;
-        }
-
-        if ((MDBRead(list->Value[i], MSGSRV_A_DISABLED, v) == 0) || (v->Value[0][0] != '1')) {
-            agent->enabled = TRUE;
-            MDBFreeValues(v);
-        }
-    }
-
-    return result;
-}
-
-static BOOL
-CheckAgentConfiguration(void)
-{
-    MDBValueStruct *list;
-    MDBValueStruct *config;
-    BOOL result;
+    AllAgents = BongoArrayNew(sizeof(BongoAgent), 1);
     
-    list = MDBCreateValueStruct(DirectoryHandle, NULL);
-    
-    if (!list) {
-        fprintf(stderr, "bongomanager: could not create value struct\n");
-        return FALSE;
-    }
-    
-    config = MDBCreateValueStruct(DirectoryHandle, NULL);
-    if (!config) {
-        fprintf(stderr, "bongomanager: could not create value struct\n");
-        MDBDestroyValueStruct(list);
-        return FALSE;
-    }
+    BongoAgent store = {{0,} };
+    store.spec.program = "bongostore";
+    store.spec.priority = 0;
+    store.enabled = TRUE;
+    BongoArrayAppendValue(AllAgents, store);
 
-    result = MDBEnumerateObjects(ServerDN,
-                                 NULL,
-                                 NULL,
-                                 list);
-    if (result && list->Used) {
-        result = ProcessAgentList(list, config);
-    } else {
-        result = FALSE;
-    }
-
-    MDBFreeValues(list);
-    MDBDestroyValueStruct(list);
-    MDBDestroyValueStruct(config);
-
-    return result;
-}
-
-static BOOL
-GetAgents(void)
-{
-    unsigned int i;
-    unsigned int numSpecs = sizeof(AgentSpecs) / sizeof(BongoAgentSpec);
-
-    AllAgents = BongoArrayNew(sizeof(BongoAgent), numSpecs);
-    
-    for (i = 0; i < numSpecs; i++) {
-        BongoAgent agent = {{0,} };
-        agent.spec = AgentSpecs[i];
-        agent.enabled = FALSE; /* Will be enabled by CheckAgentConfiguration */
-        if (agent.spec.priority > HighestPriority) {
-            HighestPriority = agent.spec.priority;
-        }
-        
-        BongoArrayAppendValue(AllAgents, agent);
-    }
-
-    return CheckAgentConfiguration();
+    return TRUE;
 }
 
 static int
@@ -408,12 +299,62 @@ StartAgentsWithPriority(int priority, BOOL onlyCrashed, BOOL printMessage)
     return WaitForCallbacks();
 }
 
+static BOOL
+LoadAgentConfiguration()
+{
+	unsigned char *config;
+	BOOL retcode = FALSE;
+	BongoJsonNode *node;
+	BongoJsonResult res;
+	BongoArray *agentlist;
+	unsigned int i;
+
+	if (! NMAPReadConfigFile("manager", &config)) {
+		printf("manager: couldn't read config from store\n");
+		return FALSE;
+	}
+	
+	if (BongoJsonParseString(config, &node) != BONGO_JSON_OK) {
+		printf("manager: couldn't parse JSON config\n");
+		goto finish;
+	}
+	res = BongoJsonJPathGetArray(node, "o:agents/a", &agentlist);
+	if (res != BONGO_JSON_OK) {
+		printf("manager: couldn't find agent list\n");
+		goto finish;
+	}
+
+	for (i = 0; i < agentlist->len; i++) {
+	        BongoJsonNode *anode = BongoJsonArrayGet(agentlist, i);
+		BongoAgent agent = {{0,}};
+
+		BongoJsonJPathGetBool(anode, "o:enabled/b", &agent.enabled);
+		BongoJsonJPathGetInt(anode, "o:pri/i", &agent.spec.priority);
+		BongoJsonJPathGetString(anode, "o:name/s", &agent.spec.program);
+
+		BongoArrayAppendValue(AllAgents, agent);
+		HighestPriority = max(HighestPriority, agent.spec.priority); 
+	}
+	retcode = TRUE;
+
+finish:
+	BongoJsonNodeFree(node);
+
+	return retcode;
+}
+
+static void
+StartStore()
+{
+	StartAgentsWithPriority(0, FALSE, TRUE);
+}
+
 static void
 StartAgents(BOOL onlyCrashed, BOOL printMessage)
 {
     int i;
     
-    for (i = 0; i <= HighestPriority; i++) {
+    for (i = 1; i <= HighestPriority; i++) {
         StartAgentsWithPriority(i, onlyCrashed, printMessage);
     }
 }
@@ -832,8 +773,10 @@ main(int argc, char **argv)
     BOOL droppedPrivs = FALSE;
     BOOL unlockFile = FALSE;
     BOOL startLdap = FALSE;
+    MDBHandle directory;
 
     XplInit();
+
     XplSaveRandomSeed();	/// is this appropriate?
 
     if (getuid() == 0) {
@@ -928,6 +871,7 @@ get_lock:
         fprintf(stderr, "bongomanager: failed to initialize memory manager.  Exiting\n");
         goto err_handler;
     }
+    ConnStartup(DEFAULT_CONNECTION_TIMEOUT, TRUE);
 
     if (!MsgGetConfigProperty(ServerDN, MSGSRV_CONFIG_PROP_MESSAGING_SERVER)) {
         fprintf(stderr, "bongomanager: Couldn't read the server DN from bongo.conf.\r\n");
@@ -959,14 +903,16 @@ get_lock:
             goto err_handler;
         }
 
+	directory = MsgInit();
+	if (!directory) {
+	    fprintf(stderr, "bongomanager: unable to MsgInit()\n");
+	    goto err_handler;
+	}
+	NMAPInitialize(directory);
+
         DirectoryHandle = MsgGetSystemDirectoryHandle();
         if (DirectoryHandle == NULL) {
             fprintf(stderr, "bongomanager: unable to initialize messaging library.\n");
-            goto err_handler;
-        }
-        
-        if (!GetAgents()) {
-            fprintf(stderr, "bongomanager: no configured agents.\n");
             goto err_handler;
         }
     }
@@ -975,8 +921,14 @@ get_lock:
     signal(SIGINT, SignalHandler);
     signal(SIGCHLD, SignalHandler);
     signal(SIGUSR1, SignalHandler);
-
+    
     if (!slapdOnly) {
+        SetupAgentList();
+        StartStore();
+        XplDelay(1000);	// hack: small delay to let store start up
+        if (!LoadAgentConfiguration()) {
+            printf("manager: Couldn't load configuration for agents\n");
+        }
         StartAgents(FALSE, FALSE);
     }
 
@@ -985,7 +937,7 @@ get_lock:
     }
 
     while(!Exiting) {
-        XplDelay(10000);
+        XplDelay(10000); // existing hack : startup again?
         if (!slapdOnly) {
             Reap();
             

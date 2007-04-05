@@ -244,6 +244,7 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
 
     print
     print 'Bongo setup is complete!'
+    print 'Now run "bongo-config install" to complete the installation' 
     return
 
 def ReadMdbConf(mdbfile):

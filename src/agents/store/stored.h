@@ -324,6 +324,7 @@ struct StoreGlobals {
 
 
     time_t startupTime;
+    BOOL installMode;
     XplRWLock configLock;
 
     struct {

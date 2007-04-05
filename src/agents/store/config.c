@@ -46,6 +46,38 @@ StoreAgentReadConfiguration(BOOL *recover)
     tzset();
     StoreAgent.startupTime = time(NULL);
 
+    StoreAgent.store.incomingQueueBytes = 1024 * 1024;
+    StoreAgent.store.lockTimeoutMs = 10000;
+    
+    /* FIXME: tweak this */
+    StoreAgent.dbpool.capacity = 64;
+
+    // this is apparently a hack. Perhaps this should be configurable?
+    StoreAgent.server.maxClients = 1024;
+
+    if (StoreAgent.installMode) {
+        // we want to setup a minimal config, just so the store can bootstrap
+        strcpy(StoreAgent.store.rootDir, XPL_DEFAULT_MAIL_DIR);
+        strcpy(StoreAgent.store.systemDir, XPL_DEFAULT_STORE_SYSTEM_DIR);
+        strcpy(StoreAgent.store.spoolDir, XPL_DEFAULT_SPOOL_DIR);
+        MsgMakePath(StoreAgent.store.rootDir);
+        MsgMakePath(StoreAgent.store.systemDir);
+        MsgMakePath(StoreAgent.store.spoolDir);
+
+        // which hosts do we trust?
+        StoreAgent.trustedHosts.count = 2;
+        StoreAgent.trustedHosts.hosts = MemRealloc(StoreAgent.trustedHosts.hosts, 2 + 2);
+        if (!StoreAgent.trustedHosts.hosts) {
+            StoreAgent.trustedHosts.count = 0;
+        } else {
+            StoreAgent.trustedHosts.hosts[0] = inet_addr("127.0.0.1");
+            StoreAgent.trustedHosts.hosts[1] = MsgGetHostIPAddress(); // do we need this address too?
+        }
+
+        return (TRUE);
+    }
+    // otherwise, we continue on to load the full config
+
     vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);
     if (vs && MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, vs)) {
         gethostname(StoreAgent.server.host, sizeof(StoreAgent.server.host));
@@ -92,14 +124,6 @@ StoreAgentReadConfiguration(BOOL *recover)
     MDBFreeValues(vs);
     /* end trusted hosts */
 
-
-    /** hacks **/
-    
-    StoreAgent.server.maxClients = 1024;
-
-    /** end hacks **/
-
-
     if (MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_MESSAGE_STORE, vs) > 0) {
         LoggerEvent(StoreAgent.handle.logging, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_MESSAGE_STORE", vs->Value[0], 0, 0, NULL, 0);
 
@@ -124,7 +148,6 @@ StoreAgentReadConfiguration(BOOL *recover)
                 if (MDBRead(vs->Value[used], MSGSRV_A_MESSAGE_STORE, stores) > 0) {
                     MsgCleanPath(stores->Value[0]);
                     MsgMakePath(stores->Value[0]);
-
                     MDBFreeValues(stores);            
                 }
             }
@@ -158,12 +181,6 @@ StoreAgentReadConfiguration(BOOL *recover)
 
         MDBFreeValues(vs);
     }
-
-    StoreAgent.store.incomingQueueBytes = 1024 * 1024;
-    StoreAgent.store.lockTimeoutMs = 10000;
-    
-    /* FIXME: tweak this */
-    StoreAgent.dbpool.capacity = 64;
 
     MDBDestroyValueStruct(vs);
 

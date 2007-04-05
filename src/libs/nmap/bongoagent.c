@@ -89,7 +89,8 @@ int
 BongoAgentInit(BongoAgent *agent,
               const char *agentName,
               const char *agentDn,
-              const unsigned long timeOut)
+              const unsigned long timeOut,
+              int startupResources)
 {
     agent->state = BONGO_AGENT_STATE_RUNNING;
 
@@ -98,45 +99,47 @@ BongoAgentInit(BongoAgent *agent,
         return -1;
     }
 
-    ConnStartup(timeOut, TRUE);
+    if (startupResources & BA_STARTUP_CONNIO)
+        ConnStartup(timeOut, TRUE);
 
-    MDBInit();
+    if (startupResources & BA_STARTUP_MDB) {
+        MDBInit();
 
-    agent->directoryHandle = (MDBHandle)MsgInit();
-    if (agent->directoryHandle == NULL) {
-        XplBell();
-        XplConsolePrintf("%s: Invalid directory credentials; exiting!\r\n", agentName);
-        XplBell();
-
-        MemoryManagerClose(agentDn);
-
-        return -1;
+        agent->directoryHandle = (MDBHandle)MsgInit();
+        if (agent->directoryHandle == NULL) {
+            XplConsolePrintf("%s: Invalid directory credentials; exiting!\r\n", agentName);
+            MemoryManagerClose(agentDn);
+            return -1;
+        }
     }
 
-    if (!NMAPInitialize(agent->directoryHandle)) {
+    if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize(agent->directoryHandle)) {
         XplConsolePrintf("%s: Could not initialize nmap library\r\n", agentName);
         return -1;
+    } else {
+        agent->sslContext = NMAPSSLContextAlloc();
+        NMAPSetEncryption(agent->sslContext);
     }
 
     SetCurrentNameSpace(NWOS2_NAME_SPACE);
     SetTargetNameSpace(NWOS2_NAME_SPACE);
 
-    agent->loggingHandle = LoggerOpen(agentDn);
-    if (!agent->loggingHandle) {
-        XplConsolePrintf("%s: Unable to initialize logging; disabled.\r\n", agentName);
+    if (startupResources & BA_STARTUP_LOGGER) {
+        agent->loggingHandle = LoggerOpen(agentDn);
+        if (!agent->loggingHandle) {
+            XplConsolePrintf("%s: Unable to initialize logging; disabled.\r\n", agentName);
+        }
     }
-
-    agent->sslContext = NMAPSSLContextAlloc();
-    NMAPSetEncryption(agent->sslContext);
 
     agent->name = MemStrdup(agentName);
     agent->dn = MemStrdup(agentDn);
 
-    /* Read general agent configuration */
-    ReadConfiguration(agent);
+    if (startupResources & BA_STARTUP_MDB) {
+        /* Read general agent configuration */
+        ReadConfiguration(agent);
+    }
+
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), agentName);
-    // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
-    
     return 0;
 }
 

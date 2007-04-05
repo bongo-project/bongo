@@ -257,6 +257,7 @@ XplServiceMain(int argc, char *argv[])
     int minThreads;
     int maxThreads;
     int minSleep;
+    int startupOpts = 0;
 #ifdef WIN32
     XplThreadID id;
 #endif
@@ -268,7 +269,8 @@ XplServiceMain(int argc, char *argv[])
     XplInit();
 
     /* Initialize the Bongo libraries */
-    ccode = BongoAgentInit(&AddressbookAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60));
+    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO;
+    ccode = BongoAgentInit(&AddressbookAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60), startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;
@@ -279,19 +281,8 @@ XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
-    if (!(AddressbookAgent.handle.directory = (MDBHandle)MsgInit())) {
-        XplBell();
-        XplConsolePrintf("NMAPD: Invalid directory credentials; exiting!\r\n");
-        XplBell();
-        MemoryManagerClose(AGENT_DN);
-        return -1;
-    }
-
     MsgGetServerDN(AddressbookAgent.server.dn);
     MsgGetConfigProperty(AddressbookAgent.defaultContext, MSGSRV_CONFIG_PROP_DEFAULT_CONTEXT);    
-
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "addressbook");
-    CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
     /* Create and bind the server connection */
     if (AddressbookSocketInit() < 0) {

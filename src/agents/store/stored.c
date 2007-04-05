@@ -116,13 +116,15 @@ StoreSocketInit()
     MDBValueStruct *vs;
     unsigned short port = BONGO_STORE_DEFAULT_PORT;
 
-    vs = MDBCreateValueStruct(StoreAgent.handle.directory, StoreAgent.server.dn);
-    if (vs) {
-        if (MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_PORT, vs) > 0) {
-            port = atol(vs->Value[0]);
-            MDBFreeValues(vs);
+    if (! StoreAgent.installMode) {
+        vs = MDBCreateValueStruct(StoreAgent.handle.directory, StoreAgent.server.dn);
+        if (vs) {
+            if (MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_PORT, vs) > 0) {
+                port = atol(vs->Value[0]);
+                MDBFreeValues(vs);
+            }
+            MDBDestroyValueStruct(vs);
         }
-        MDBDestroyValueStruct(vs);
     }
 
     StoreAgent.nmapConn = ConnAlloc(FALSE);
@@ -219,6 +221,8 @@ _XplServiceMain(int argc, char *argv[])
     int minThreads;
     int maxThreads;
     int minSleep;
+    int i;
+    int startupOpts;
 #ifdef WIN32
     XplThreadID id;
 #endif
@@ -231,8 +235,15 @@ _XplServiceMain(int argc, char *argv[])
     XplInit();
     strcpy(StoreAgent.nmapAddress, "127.0.0.1");
 
+    StoreAgent.installMode = FALSE;
+    for(i = 0; i < argc; i++) {
+        if (!strncmp(argv[i], "--install", 9))
+            StoreAgent.installMode = TRUE;
+    }
+
     /* Initialize the Bongo libraries */
-    ccode = BongoAgentInit(&StoreAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60));
+    startupOpts = BA_STARTUP_CONNIO;
+    ccode = BongoAgentInit(&StoreAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60), startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;
@@ -243,15 +254,17 @@ _XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
-    if (!(StoreAgent.handle.directory = (MDBHandle)MsgInit())) {
-        XplBell();
-        XplConsolePrintf("NMAPD: Invalid directory credentials; exiting!\r\n");
-        XplBell();
-        MemoryManagerClose(MSGSRV_AGENT_STORE);
-        return -1;
+    if (! StoreAgent.installMode) {
+        if (!(StoreAgent.handle.directory = (MDBHandle)MsgInit())) {
+            XplBell();
+            XplConsolePrintf("NMAPD: Invalid directory credentials; exiting!\r\n");
+            XplBell();
+            MemoryManagerClose(MSGSRV_AGENT_STORE);
+            return -1;
+        }
+    
+        MsgGetServerDN(StoreAgent.server.dn);
     }
-
-    MsgGetServerDN(StoreAgent.server.dn);
 
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "store");
     CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */

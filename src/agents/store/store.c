@@ -18,6 +18,8 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// Parts Copyright (C) 2007 Alex Hudson. See COPYING for details.
+
 #include <config.h>
 #include <xpl.h>
 #include <bongoutil.h>
@@ -270,12 +272,16 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
     int n;
     struct stat sb;
 
-    root = MsgFindUserStore(user, StoreAgent.store.rootDir);
-    
-    n = snprintf(path, len, "%s/%s/", root, user);
+    if (! StoreAgent.installMode) {
+        // MsgFindUserStore makes MDB calls and thus can't be used in installmode.
+        root = MsgFindUserStore(user, StoreAgent.store.rootDir);
+        n = snprintf(path, len, "%s/%s/", root, user);   
+    } else {
+        n = snprintf(path, len, "%s/%s/", StoreAgent.store.rootDir, user);
+    }    
     path[len] = 0;
+    path[n-1] = 0;
 
-    path[n-1] = '\0';
     if (stat(path, &sb)) {
         if (XplMakeDir(path)) {
             XplConsolePrintf("Error creating store: %s.\r\n", strerror(errno));
@@ -1180,9 +1186,6 @@ cleanup:
     return result;
 }
 
-
-
-
 /* login */
 CCode
 SelectUser(StoreClient *client, char *user, char *password, int nouser)
@@ -1192,6 +1195,13 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
     CCode ccode = -1;
     struct sockaddr_in serv;
     char buf[INET_ADDRSTRLEN+1];
+
+    if (StoreAgent.installMode) {
+        // Don't let users login in install mode.
+        // FIXME: a better error message? 
+        ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
+        goto finish;
+    }
 
     vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);
     if (!vs) {
@@ -1220,6 +1230,7 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
         goto finish;
     }
 
+success:
     ccode = ConnWriteF(client->conn, "1000 %s\r\n", buf);
 
     if (nouser) {
@@ -1234,7 +1245,7 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
     client->flags |= STORE_CLIENT_FLAG_IDENTITY;
 
 finish:
-    MDBDestroyValueStruct(vs);
+    if (! StoreAgent.installMode) MDBDestroyValueStruct(vs);
     return ccode;
 }
 

@@ -56,6 +56,12 @@ typedef enum _BongoAgentStates {
     BONGO_AGENT_STATE_MAX_STATES
 } BongoAgentState;
 
+#define BA_STARTUP_XPL     0
+#define BA_STARTUP_MDB     1
+#define BA_STARTUP_CONNIO  2
+#define BA_STARTUP_NMAP    4
+#define BA_STARTUP_LOGGER  8
+
 typedef struct {
     int interval;
     BongoAgentMonitorCallback callback;
@@ -87,7 +93,8 @@ struct _BongoAgent {
 int BongoAgentInit(BongoAgent *agent,
                   const char *agentName,
                   const char *agentDn,
-                  const unsigned long timeOut);
+                  const unsigned long timeOut,
+                  int startupResources);
 void BongoAgentHandleSignal(BongoAgent *agent,
                            int sigtype);
 void BongoAgentShutdown(BongoAgent *agent);
@@ -160,7 +167,6 @@ int BongoQueueAgentHandshake(Connection *conn,
 char *BongoQueueAgentReadEnvelope(Connection *conn,
                                  char *buffer,
                                  int envelopeLength);
-
 
 /* BongoManagee Functions */
 void BongoAgentShutdownFunc (BongoJsonRpcServer *server, 

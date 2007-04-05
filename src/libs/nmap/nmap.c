@@ -18,6 +18,7 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// Parts Copyright (C) 2007 Alex Hudson. See COPYING for details.
 
 /** \file nmap.c
  */
@@ -1264,6 +1265,56 @@ NMAPReadAnswer(Connection *conn, unsigned char *response, size_t length, BOOL ch
     }
 
     return(result);
+}
+
+BOOL
+NMAPReadConfigFile(const unsigned char *file, unsigned char **output)
+{
+    Connection *conn;
+    char buffer[CONN_BUFSIZE + 1];
+    CCode ccode;
+    BOOL retcode = FALSE;
+
+    conn = NMAPConnect("127.0.0.1", NULL);
+    if (!conn) {
+        printf("could not connect to store\n");
+        return FALSE;
+    }
+    if (!NMAPAuthenticate(conn, buffer, sizeof(buffer))) {
+        printf("could not authenticate to the store\n");
+        goto nmapfinish;
+    }
+
+    NMAPSendCommandF(conn, "STORE _system\r\n");
+    ccode = NMAPReadAnswer(conn, buffer, sizeof(buffer), TRUE);
+    if (ccode != 1000) {
+        printf("cannot access _system collection\n");
+        goto nmapfinish;
+    }
+
+    if (-1 != NMAPSendCommandF(conn, "READ /config/%s\r\n", file)) {
+        size_t count, written;
+
+        ccode = NMAPReadPropertyValueLength(conn, "nmap.document", &count);
+        if (ccode != 2001) {
+             printf("couldn't load config from store\n");
+             goto nmapfinish;
+        }
+		
+        *output = malloc(sizeof(unsigned char) * (count+1));
+        written = NMAPReadCount(conn, *output, count);
+        NMAPReadCrLf(conn);
+        if (written != count) {
+            printf("couldn't read config from store\n");
+            goto nmapfinish;
+        }
+    }
+    retcode = TRUE;
+
+nmapfinish:
+    NMAPQuit(conn);
+    ConnFree(conn);
+    return retcode;
 }
                                                                                                                                                                             
 int

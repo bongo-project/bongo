@@ -212,6 +212,16 @@ void BongoJsonParserFree(BongoJsonParser *parser);
 
 BongoJsonResult BongoJsonParserReadNode(BongoJsonParser *parser, BongoJsonNode **node);
 
+/*** JsonJPath : querying a json structure, sort of ***/
+
+BongoJsonNode *BongoJsonJPath(BongoJsonNode *root, const char *path);
+
+BongoJsonResult BongoJsonJPathGetObject(BongoJsonNode *n, const char *path, BongoJsonObject **val);
+BongoJsonResult BongoJsonJPathGetArray(BongoJsonNode *n, const char *path, BongoArray **val);
+BongoJsonResult BongoJsonJPathGetBool(BongoJsonNode *n, const char *path, BOOL *val);
+BongoJsonResult BongoJsonJPathGetInt(BongoJsonNode *n, const char *path, int *val);
+BongoJsonResult BongoJsonJPathGetString(BongoJsonNode *n, const char *path, const char **val);
+
 
 /*** path resolvers ***/
 

@@ -277,6 +277,11 @@ StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
     unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
     struct sockaddr_in serv;
 
+    if (StoreAgent.installMode) {
+        // don't allow cookie logins in installation mode. FIXME: better error message?
+        return ConnWriteStr(client->conn, MSG3242BADAUTH);
+    }
+
     vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);
     if (!vs) {
         return ConnWriteStr(client->conn, MSG5001NOMEMORY);

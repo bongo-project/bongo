@@ -278,6 +278,10 @@ StoreCheckAuthorizationQuiet(StoreClient *client, DStoreDocInfo *info,
         /* user always has full permissions to her own store. */
         return 0;
     }
+    if ((!strncmp(client->storeName, "_system", 7)) && IS_MANAGER(client)) {
+        // agents have full permissions the system store. (might want to change this in future)
+        return 0;
+    }
 
     infoptr = info;
 
@@ -423,6 +427,8 @@ StoreCommandAUTHSYSTEM(StoreClient *client, char *md5hash)
 	unsigned char credential[XPLHASH_MD5_LENGTH];
 	xpl_hash_context hash;
 
+	if (StoreAgent.installMode) goto success;
+
 	XplHashNew(&hash, XPLHASH_MD5);
 	XplHashWrite(&hash, client->authToken, strlen(client->authToken));
 	XplHashWrite(&hash, StoreAgent.server.hash, NMAP_HASH_SIZE);
@@ -435,6 +441,7 @@ StoreCommandAUTHSYSTEM(StoreClient *client, char *md5hash)
 		return -1;
 	}
 
+success:
 	client->flags |= STORE_CLIENT_FLAG_MANAGER;
 	return ConnWriteStr(client->conn, MSG1000OK);
 }

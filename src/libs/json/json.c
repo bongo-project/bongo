@@ -18,7 +18,7 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
-
+// Parts Copyright (C) 2007 Alex Hudson. See COPYING for details.
 
 #include <config.h>
 #include <bongojson.h>
@@ -28,6 +28,137 @@
 
 static void BongoJsonArrayToStringBuilderInternal(BongoArray *array, BongoStringBuilder *sb, int depth);
 static void BongoJsonObjectToStringBuilderInternal(BongoJsonObject *object, BongoStringBuilder *sb, int depth);
+
+BongoJsonNode *
+BongoJsonJPath(BongoJsonNode *root, const char *path)
+{
+    char rule[50];
+    char *select, *nextrule;
+    int rulelen;
+    BongoJsonResult result;
+
+    nextrule = strchr(path, '/');
+
+    if (! nextrule) {
+        strncpy(rule, path, 49);
+        rulelen = 50;
+    } else {
+        strncpy(rule, path, min(nextrule - path, 49));
+        rulelen = nextrule - path;
+        if (rulelen < strlen(path)) {
+            // there's another rule after this
+            nextrule++;
+        }
+    }
+    rule[rulelen] = 0;
+
+    switch(rule[0]) {
+        case 'b':
+            if (root->type == BONGO_JSON_BOOL) return root;
+            break;
+        case 'd':
+            if (root->type == BONGO_JSON_DOUBLE) return root;
+            break;
+        case 's':
+            if (root->type == BONGO_JSON_STRING) return root;
+            break;
+        case 'i':
+            if (root->type == BONGO_JSON_INT) return root;
+            break;
+        case 'o':
+            if (root->type != BONGO_JSON_OBJECT) break;
+            if (strlen(rule)>2) {
+                BongoJsonNode *node;
+                select = rule + 2;
+                result = BongoJsonObjectGet(root->value.objectVal, select, &node);
+                if (result != BONGO_JSON_OK) break;
+                if (nextrule) {
+                    return BongoJsonJPath(node, nextrule);
+                } else {
+                    return node;
+                }
+            } 
+            return root;
+            break;
+        case 'a':
+            if (root->type != BONGO_JSON_ARRAY) break;
+            if (strlen(rule)>2) {
+                BongoJsonNode *node;
+                int i;
+                select = rule + 2;
+                node = BongoJsonArrayGet(root->value.arrayVal, atoi(select));
+                if (! node) break;
+                if (nextrule) {
+                    return BongoJsonJPath(node, nextrule);
+                } else {
+                    return node;
+                }
+            }
+            return root;
+            break;
+        default:
+            // unknown rule!!
+            return NULL;
+            break;
+    }
+    return NULL;
+}
+
+BongoJsonResult 
+BongoJsonJPathGetObject(BongoJsonNode *n, const char *path, BongoJsonObject **val) {
+	BongoJsonNode *result = BongoJsonJPath(n, path);
+	if (!result) return BONGO_JSON_NOT_FOUND;
+	if (result->type == BONGO_JSON_OBJECT) {
+		*val = BongoJsonNodeAsObject(result);
+		return BONGO_JSON_OK;
+	}
+	return BONGO_JSON_BAD_TYPE;
+}
+
+BongoJsonResult 
+BongoJsonJPathGetArray(BongoJsonNode *n, const char *path, BongoArray **val) {
+	BongoJsonNode *result = BongoJsonJPath(n, path);
+	if (!result) return BONGO_JSON_NOT_FOUND;
+	if (result->type == BONGO_JSON_ARRAY) {
+		*val = BongoJsonNodeAsArray(result);
+		return BONGO_JSON_OK;
+	}
+	return BONGO_JSON_BAD_TYPE;
+}
+
+BongoJsonResult
+BongoJsonJPathGetBool(BongoJsonNode *n, const char *path, BOOL *val) {
+	BongoJsonNode *result = BongoJsonJPath(n, path);
+	if (!result) return BONGO_JSON_NOT_FOUND;
+	if (result->type == BONGO_JSON_BOOL) {
+		*val = BongoJsonNodeAsBool(result);
+		return BONGO_JSON_OK;
+	}
+	return BONGO_JSON_BAD_TYPE;
+}
+
+BongoJsonResult
+BongoJsonJPathGetInt(BongoJsonNode *n, const char *path, int *val) {
+	BongoJsonNode *result = BongoJsonJPath(n, path);
+	if (!result) return BONGO_JSON_NOT_FOUND;
+	if (result->type == BONGO_JSON_INT) {
+		*val = BongoJsonNodeAsInt(result);
+		return BONGO_JSON_OK;
+	}
+	return BONGO_JSON_BAD_TYPE;
+}
+
+BongoJsonResult 
+BongoJsonJPathGetString(BongoJsonNode *n, const char *path, const char **val) {
+	BongoJsonNode *result = BongoJsonJPath(n, path);
+	if (!result) return BONGO_JSON_NOT_FOUND;
+	if (result->type == BONGO_JSON_STRING) {
+		*val = BongoJsonNodeAsString(result);
+		return BONGO_JSON_OK;
+	}
+	return BONGO_JSON_BAD_TYPE;
+}
+
 
 BongoJsonNode *
 BongoJsonNodeNewNull(void)

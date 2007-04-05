@@ -625,7 +625,7 @@ ParseDocType(StoreClient *client, char *token, StoreDocumentType *out)
     *out = t;
 
     t &= ~(STORE_DOCTYPE_FOLDER | STORE_DOCTYPE_SHARED);
-    if (t < STORE_DOCTYPE_UNKNOWN || t > STORE_DOCTYPE_CALENDAR) {
+    if (t < STORE_DOCTYPE_UNKNOWN || t > STORE_DOCTYPE_CONFIG) {
         return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
     }
 
@@ -4760,6 +4760,15 @@ StoreCommandSTORE(StoreClient *client, char *user)
     if (!user) {
         UnselectStore(client);
         return ConnWriteStr(client->conn, MSG1000OK);
+    }
+
+    if ((StoreAgent.installMode) || 
+      (IS_MANAGER(client) && !strncmp(user, "_system", 7))) {
+        if (SelectStore(client, user)) {
+            return ConnWriteStr(client->conn, MSG4224BADSTORE);
+        } else {
+            return ConnWriteStr(client->conn, MSG1000OK);
+        }
     }
 
     vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);

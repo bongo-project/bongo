@@ -25,10 +25,11 @@ typedef enum {
 
     STORE_DOCTYPE_UNKNOWN          = 0x0001,
     STORE_DOCTYPE_MAIL             = 0x0002,
-    STORE_DOCTYPE_EVENT            = 0x0003, /* json event */
-    STORE_DOCTYPE_AB               = 0x0004,
+    STORE_DOCTYPE_EVENT            = 0x0003, /* event, jcal */
+    STORE_DOCTYPE_AB               = 0x0004, /* addressbook entry, jcard */
     STORE_DOCTYPE_CONVERSATION     = 0x0005,
     STORE_DOCTYPE_CALENDAR         = 0x0006,
+    STORE_DOCTYPE_CONFIG           = 0x0007, /* agent configuration, json */
 
     STORE_DOCTYPE_FOLDER           = 0x1000,
 
