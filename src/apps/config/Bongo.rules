@@ -1,0 +1,24 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongo-config
+
+bongo_config_SOURCES :=			\
+	src/apps/config/config.h	\
+	src/apps/config/config.c
+
+bongo_config_CPPFLAGS := $(AM_CPPFLAGS)  $(GNUTLS_CFLAGS)
+
+bongo_config_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomsgapi.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(PTHREAD_LIBS)					   \
+	$(GNUTLS_LIBS)                                     \
+	$(ALL_LIBS)
+
+src/apps/config/all: bongo-config
+src/apps/config/clean: clean
+src/apps/config/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongo-config install-sbinPROGRAMS
