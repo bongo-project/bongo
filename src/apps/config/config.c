@@ -99,7 +99,18 @@ InitialStoreConfiguration() {
 	char path[XPL_MAX_PATH];
 	int store_pid;
 	char *args[3];
+	BOOL cal_success;
 	
+	// attempt to initialise cal lib. This creates cached data, and can be time
+	// consuming: do it now, rather than in the store (for now, at least)
+	XplConsolePrintf("Initializing calendar data...\n");
+	cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);
+	if (! cal_success) {
+		XplConsolePrintf("ERROR: Couldn't initialise calendar library\n");
+		exit(1);
+	}
+	
+	XplConsolePrintf("Initializing store...\n");
 	store_pid = fork();
 	if (store_pid == 0) { 	/* child */
 		static char *install = "--install";
@@ -146,12 +157,15 @@ InitialStoreConfiguration() {
 			goto nmapcleanup;
 		}
 		
+		XplConsolePrintf("Setting default agent configuration...\n");
 		if (!PutOrReplaceConfig(client, "/config", "manager", bongo_manager_config)) {
 			XplConsolePrintf("ERROR: couldn't write /config/manager\n");
 		}
 		if (!PutOrReplaceConfig(client, "/config", "avirus", bongo_avirus_config)) {
 			XplConsolePrintf("ERROR: couldn't write /config/avirus\n");
 		}
+
+		XplConsolePrintf("Complete.\n");
 
 nmapcleanup:
 		NMAPQuit(client->conn);

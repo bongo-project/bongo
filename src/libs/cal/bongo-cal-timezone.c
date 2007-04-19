@@ -988,12 +988,10 @@ BongoCalTimezoneInit(const char *cachedir)
         return TRUE;
     }
 
-    printf("libbongocal: Generating system timezone cache\n");
     if (!CacheSystemTimezones(cachedir)) {
         printf("libbongocal: Couldn't generate system timezone cache\n");
         return FALSE;
     }
-    printf("libbongocal: Done generating system timezone cache\n");
     
     timezonesInitialized = TRUE;
 
