@@ -222,6 +222,7 @@ _XplServiceMain(int argc, char *argv[])
     int maxThreads;
     int minSleep;
     int i;
+    BOOL cal_success;
     int startupOpts;
 #ifdef WIN32
     XplThreadID id;
@@ -248,12 +249,7 @@ _XplServiceMain(int argc, char *argv[])
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;
     }
-
-    if (!BongoCalInit(MsgGetDBFDir(NULL))) {
-        XplConsolePrintf(AGENT_NAME ": Couldn't initialize calendaring library.  Exiting.\r\n");
-        return -1;
-    }
-
+ 
     if (! StoreAgent.installMode) {
         if (!(StoreAgent.handle.directory = (MDBHandle)MsgInit())) {
             XplBell();
@@ -264,6 +260,14 @@ _XplServiceMain(int argc, char *argv[])
         }
     
         MsgGetServerDN(StoreAgent.server.dn);
+        cal_success = BongoCalInit(MsgGetDBFDir(NULL));
+    } else {
+        cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);
+    }
+    
+    if (! cal_success) {
+        XplConsolePrintf(AGENT_NAME ": Couldn't initialize calendaring library.  Exiting.\r\n");
+        return -1;
     }
 
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "store");
