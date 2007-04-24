@@ -54,6 +54,23 @@ NMAPSimpleCommand(StoreClient *client, char *command) {
 }
 
 BOOL
+SetAdminRights(StoreClient *client, char *document) {
+	CCode ccode;
+	char *rights = "grant user:admin all;";
+
+	ccode = NMAPRunCommandF(client->conn, client->buffer, sizeof(client->buffer),
+		"PROPSET %s nmap.access-control %d\r\n", document, strlen(rights));
+	if (ccode == 2002) {
+		NMAPSendCommandF(client->conn, rights);
+		ccode = NMAPReadAnswer(client->conn, client->buffer, 
+			sizeof(client->buffer), TRUE);
+		if (ccode == 1000)
+			return TRUE;
+	} 
+	return FALSE;
+}
+
+BOOL
 PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content) {
 	int len;
 	CCode ccode;
@@ -156,13 +173,25 @@ InitialStoreConfiguration() {
 			XplConsolePrintf("ERROR: Couldn't create collection\n");
 			goto nmapcleanup;
 		}
+		if (! SetAdminRights(client, "/config")) {
+			XplConsolePrintf("ERROR: Couldn't set acls on /config\n");
+			goto nmapcleanup;
+		}
 		
 		XplConsolePrintf("Setting default agent configuration...\n");
 		if (!PutOrReplaceConfig(client, "/config", "manager", bongo_manager_config)) {
 			XplConsolePrintf("ERROR: couldn't write /config/manager\n");
 		}
+		if (! SetAdminRights(client, "/config/manager")) {
+			XplConsolePrintf("ERROR: Couldn't set acls on /config/manager\n");
+			goto nmapcleanup;
+		}
 		if (!PutOrReplaceConfig(client, "/config", "avirus", bongo_avirus_config)) {
 			XplConsolePrintf("ERROR: couldn't write /config/avirus\n");
+		}
+		if (! SetAdminRights(client, "/config/avirus")) {
+			XplConsolePrintf("ERROR: Couldn't set acls on /config/avirus\n");
+			goto nmapcleanup;
 		}
 
 		XplConsolePrintf("Complete.\n");

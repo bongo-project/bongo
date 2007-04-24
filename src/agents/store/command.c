@@ -4762,8 +4762,7 @@ StoreCommandSTORE(StoreClient *client, char *user)
         return ConnWriteStr(client->conn, MSG1000OK);
     }
 
-    if ((StoreAgent.installMode) || 
-      (IS_MANAGER(client) && !strncmp(user, "_system", 7))) {
+    if (StoreAgent.installMode || !strncmp(user, "_system", 7)) {
         if (SelectStore(client, user)) {
             return ConnWriteStr(client->conn, MSG4224BADSTORE);
         } else {
