@@ -367,7 +367,7 @@ def DiscoverMDBDriverCB(drivers, parent, children):
             drivers[child[6:-3]] = child.lower()
 
 def DiscoverMDBDrivers():
-    mdblibpath = "%s/bongomdb/" % Xpl.DEFAULT_LIB_PATH
+    mdblibpath = "%s/bongomdb/" % Xpl.DEFAULT_LIB_DIR
     if not os.path.exists(mdblibpath):
         raise BongoError(wrap("""MDB Driver directory can not be found!"""))
     drivers = {}
