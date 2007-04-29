@@ -21,6 +21,9 @@ class HttpServer:
 class HttpRequest:
     """Make a SimpleHTTPRequestHandler look like a mod_python request"""
     log = logging.getLogger("Dragonfly")
+    options = { "DragonflyUriRoot" : "/user",
+                "HawkeyeTmplRoot" : None,      # determine this later
+                "HawkeyeUriRoot" : "/admin"}
 
     def __init__(self, req, path, server=HttpServer()):
         self.oldreq = req
@@ -56,14 +59,12 @@ class HttpRequest:
 
         binpath = os.path.abspath(os.path.dirname(sys.argv[0]))
 
-        tmplPath = os.path.abspath(os.path.join(Xpl.DEFAULT_DATA_DIR, "hawkeye", "psp"))
+        tmplPath = os.path.abspath(os.path.join(Xpl.DEFAULT_DATA_DIR, "htdocs/hawkeye"))
+        if self.options["HawkeyeTmplRoot"] == None:
+            self.options["HawkeyeTmplRoot"] = tmplPath
 
         if not binpath.startswith(Xpl.DEFAULT_LIBEXEC_DIR):
-            tmplPath = os.path.abspath(os.path.join(os.getcwd(), "hawkeye", "psp"))
-
-        self.options = {"DragonflyUriRoot" : "/user",
-                        "HawkeyeTmplRoot" : tmplPath,
-                        "HawkeyeUriRoot" : "/admin"}
+            tmplPath = os.path.abspath(os.path.join(os.getcwd(), "hawkeye"))
 
         self.form = None
         reqtype = self.headers_in.get("Content-Type", None)

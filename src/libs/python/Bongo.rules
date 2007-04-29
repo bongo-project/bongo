@@ -11,6 +11,7 @@ pkgpythonexternalemaildir = $(pythondir)/bongo/external/email
 pkgpythonexternalemailmimedir = $(pythondir)/bongo/external/email/mime
 pkgpythonexternaldateutilzoneinfodir = $(pythondir)/bongo/external/dateutil/zoneinfo
 pkgpythonexternalsimplejsondir = $(pythondir)/bongo/external/simplejson
+pkgpythonexternalsimpletaldir = $(pythondir)/bongo/external/simpletal
 pkgpythonexternalvobjectdir = $(pythondir)/bongo/external/vobject
 pkgpythonnmapdir = $(pythondir)/bongo/nmap
 pkgpythonstoredir = $(pythondir)/bongo/store
@@ -19,10 +20,11 @@ pkgpython_PYTHON :=				\
 	src/libs/python/bongo/__init__.py	\
 	src/libs/python/bongo/CalCmd.py		\
 	src/libs/python/bongo/cmdparse.py	\
-	src/libs/python/bongo/Console.py		\
-	src/libs/python/bongo/Contact.py		\
+	src/libs/python/bongo/Console.py	\
+	src/libs/python/bongo/Contact.py	\
 	src/libs/python/bongo/BongoError.py	\
 	src/libs/python/bongo/MDB.py		\
+	src/libs/python/bongo/Template.py	\
 	src/libs/python/bongo/Privs.py		\
 	src/libs/python/bongo/StreamIO.py	\
 	src/libs/python/bongo/table.py
@@ -109,6 +111,17 @@ pkgpythonexternalsimplejson_PYTHON :=			       \
 	src/libs/python/bongo/external/simplejson/encoder.py    \
 	src/libs/python/bongo/external/simplejson/jsonfilter.py \
 	src/libs/python/bongo/external/simplejson/scanner.py
+
+pkgpythonexternalsimpletal_PYTHON :=				\
+	src/libs/python/bongo/external/simpletal/DummyLogger.py \
+	src/libs/python/bongo/external/simpletal/__init__.py	\
+	src/libs/python/bongo/external/simpletal/simpleElementTree.py \
+	src/libs/python/bongo/external/simpletal/simpleTAL.py	\
+	src/libs/python/bongo/external/simpletal/FixedHTMLParser.py \
+	src/libs/python/bongo/external/simpletal/sgmlentitynames.py \
+	src/libs/python/bongo/external/simpletal/simpleTALES.py	\
+	src/libs/python/bongo/external/simpletal/simpleTALUtils.py
+
 
 pkgpythonexternalvobject_PYTHON :=			   \
 	src/libs/python/bongo/external/vobject/__init__.py  \

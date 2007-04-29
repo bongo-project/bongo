@@ -363,17 +363,13 @@ class ThreadingSSLServer(ThreadingHTTPServer):
         self.server_bind()
         self.server_activate()
 
-# Find the htdocs dir if we're running from an svn checkout.
-# FIXME
-#binpath = os.path.abspath(os.path.dirname(sys.argv[0]))
-#
-#default_file_path = binpath
-#if binpath.startswith(Xpl.DEFAULT_LIBEXEC_DIR):
 default_file_path = os.path.abspath(Xpl.DEFAULT_DATA_DIR+"/htdocs")
 
 parser = OptionParser()
 parser.add_option("-d", "--debug", dest="debug", action="store_true",
                   help="enable debugging output")
+parser.add_option("-D", "--devel", dest="devel", action="store_true",
+                  help="development mode (implies -d)")
 parser.add_option("", "--profile", dest="profile", action="store_true",
                   help="enable profiling output")
 parser.add_option("", "--profile-memory", dest="profile_memory", action="store_true",
@@ -399,7 +395,7 @@ if __name__ == '__main__':
     console.setFormatter(formatter)
     logging.root.addHandler(console)
 
-    if options.debug:
+    if options.debug or options.devel:
         logging.root.setLevel(logging.DEBUG)
     else:
         logging.root.setLevel(logging.INFO)
@@ -414,6 +410,11 @@ if __name__ == '__main__':
             print "ERROR: %s must be run as root or your bongo user (%s)" \
                   % (os.path.basename(sys.argv[0]), Xpl.BONGO_USER)
             sys.exit(1)
+
+    if options.devel:
+        default_file_path = os.path.abspath(os.path.dirname(sys.argv[0]))
+        HttpRequest.options["HawkeyeTmplRoot"] =  "%s/%s" % (default_file_path, "hawkeye")
+        print "Devel: serving static files from %s" % default_file_path
 
     if options.file_path:
         httppath = options.file_path

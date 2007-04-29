@@ -1,3 +1,0 @@
-<%@ include file="../header.psp" %>
-<%@ include file="agents.psp" %>
-<%@ include file="../footer.psp" %>

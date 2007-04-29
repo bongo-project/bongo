@@ -16,6 +16,7 @@ class DocTypes:
     Addressbook = 0x0004
     Conversation = 0x0005
     Calendar = 0x0006
+    Config = 0x0007
 
     Folder = 0x1000
     Shared = 0x2000

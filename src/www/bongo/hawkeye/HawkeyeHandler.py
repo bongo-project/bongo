@@ -1,16 +1,10 @@
 import os
-
-from bongo.dragonfly.BongoPSP import PSP
-from bongo.MDB import MDB
+from bongo.Template import Template
 import bongo.dragonfly
 
 class HawkeyeHandler:
     def __init__(self):
-        pass
-
-    def GetMdb(self, req):
-        session = req.session
-        return MDB(session.get("credUser"), session.get("credPass"))
+        self._template = Template()
 
     def NeedsAuth(self, rp):
         return True
@@ -18,38 +12,37 @@ class HawkeyeHandler:
     def ParsePath(self, rp):
         pass
 
+    def SetVariable(self, name, value):
+        self._template.setVariable(name, value)
+
     def index(self, req, rp):
         return bongo.dragonfly.OK
 
-    def SendTemplate(self, req, rp, file, vars={}):
+    def SendTemplate(self, req, rp, file):
         path = os.path.join(rp.tmplPath, file)
-
-        if os.path.exists(path):
-            req.log.debug("sending template: %s", path)
-        else:
-            req.log.debug("template does not exist: %s", path)
-            return bongo.dragonfly.HTTP_NOT_FOUND
-
         req.content_type = "text/html"
 
-        pspvars = {"rp" : rp}
-        pspvars.update(vars)
+        if os.path.exists(path):
+            print "sending template: %s / %s" % (rp.tmplPath, file)
+            req.log.debug("sending template: %s", path)
+        else:
+            print "template does not exist: %s / %s " % (rp.tmplPath, file)
+            req.log.debug("template does not exist: %s", path)
+            req.write("<html><body><h1>Error</h1><p>Template not found.</p></body></html>")
+            return bongo.dragonfly.HTTP_NOT_FOUND
 
-        psp = None
+        self.SetVariable("message", "")
         try:
-            psp = PSP(req, path, vars=pspvars)
-            psp.run()
+            t = self._template
+            t.setTemplatePath(rp.tmplRoot)
+            t.setTemplateUriRoot(rp.tmplUriRoot)
+            t.setTemplateFile(path)
+            t.Run(req)
             return bongo.dragonfly.OK
         except ImportError, e:
-            req.log.debug("Could not import psp from mod_python", exc_info=1)
-            req.write("<html>")
-            req.write("<h1>ERROR: %s</h1>" % str(e))
-            req.write("<p>The standalone admin interface requires mod_python.  Maybe it is not installed?</p>")
-            req.write("</html>")
-            
+            req.write("<html><h1>ERROR</h1><p>%s</p></body></html>" % str(e))
             return bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR
-        except:
-            req.log.debug("Exception running psp", exc_info=1)
-            if psp:
-                psp.display_code()
-            return bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR
+        #except:
+        #    print "Error running Template"
+        #    req.write("<html><body><h1>Error</h1><p>Very bad error!</p></body></html>")
+        #    return bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR

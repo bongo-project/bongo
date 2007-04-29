@@ -5,16 +5,14 @@ import bongo.dragonfly
 from bongo.dragonfly.BongoSession import BongoSession
 from bongo.dragonfly.HttpError import HttpError
 
-import AgentsView
 import RootView
-import SummaryView
-import UsersView
+import BackupView
+import ServerView
 
 views = {
-    "agents" : AgentsView.AgentsHandler(),
     "root" : RootView.RootHandler(),
-    "summary" : SummaryView.SummaryHandler(),
-    "users" : UsersView.UsersHandler()
+    "backup" : BackupView.BackupHandler(),
+    "server" : ServerView.ServerHandler()
     }
 
 class HawkeyePath:
@@ -53,6 +51,8 @@ class HawkeyePath:
 
         self.path = "/".join(parts)
         self.tmplPath = os.path.join(hawkeye_tmpl_root, self.view)
+        self.tmplRoot = hawkeye_tmpl_root
+        self.tmplUriRoot = hawkeye_root
 
         req.session = None
 

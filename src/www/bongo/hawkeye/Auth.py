@@ -1,5 +1,7 @@
 import bongo.dragonfly.Auth
+from bongo.store.StoreClient import StoreClient
 import bongo.dragonfly.BongoSession as BongoSession
+import time
 
 def Login(req):
     if not req.form:
@@ -12,30 +14,38 @@ def Login(req):
     credUser = req.form["bongo-username"].value
     credPass = req.form["bongo-password"].value
 
-    if not bongo.dragonfly.Auth.CheckUserPass(credUser, credPass):
-        req.log.debug("invalid auth credentials")
-        if req.session:
+    store = None
+    try:
+        store = StoreClient(credUser, credUser, authPassword=credPass)
+    finally:
+        if store:
+            store.Quit()
+        else:
             req.session.invalidate()
-        return False
+            return False
 
     req.session["credUser"] = credUser
     req.session["credPass"] = credPass
-    req.log.debug("updated session: %s", str(req.session))
-
+    req.session.save()
     return True
 
 def AcceptCredentials(req):
-    req.log.debug("loaded session: %s", str(req.session))
-
     credUser = req.session.get("credUser")
     credPass = req.session.get("credPass")
-
-    if not bongo.dragonfly.Auth.CheckUserPass(credUser, credPass):
-        req.log.info("invalid auth credentials")
-        req.session.invalidate()
+    
+    if credUser==None and credPass==None:
+        # no session
         return False
 
-    return True
+    client = None
+    try:
+        client = StoreClient(credUser, credUser, authPassword=credPass)
+    finally:
+        if client:
+            client.Quit()
+            return True
+
+    return False
 
 def authenhandler(req):
     if AcceptCredentials(req):

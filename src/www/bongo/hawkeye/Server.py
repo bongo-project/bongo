@@ -1,4 +1,3 @@
-from mod_python import apache, util
 from bongo.dragonfly.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
 from HawkeyePath import HawkeyePath
 from bongo.dragonfly.HttpError import HttpError
