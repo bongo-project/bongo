@@ -455,9 +455,6 @@ typedef struct _MSGCacheInitStruct {
 typedef BOOL (*FindObjectCacheInitType)(MSGCacheInitStruct *initData, unsigned char *description);
 typedef BOOL (*FindObjectCacheShutdownType)(void);
 
-/*  fixme - this api belongs in the dmc */
-EXPORT void MsgSendTrap(int type, unsigned char *message);
-
 EXPORT MDBHandle MsgInit(void);
 EXPORT BOOL MsgShutdown(void);
 EXPORT MDBHandle MsgGetSystemDirectoryHandle(void);
@@ -480,10 +477,8 @@ EXPORT const unsigned char *MsgGetLibDir(char *directory);
 EXPORT const unsigned char *MsgGetBinDir(char *directory);
 EXPORT const unsigned char *MsgGetTLSCertPath(char *path);
 EXPORT const unsigned char *MsgGetTLSKeyPath(char *path);
-EXPORT int MsgGetParentAttribute(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *v);
 EXPORT unsigned char *MsgGetUserEmailAddress(const unsigned char *userDn, MDBValueStruct *userData, unsigned char *buffer, unsigned long bufLen);
 EXPORT unsigned char *MsgGetUserDisplayName(const unsigned char *userDn, MDBValueStruct *userData);
-EXPORT BOOL MsgGetUserSettingsContainerDN(const unsigned char *userDn, unsigned char *containerDn, MDBValueStruct *v, BOOL create);
 EXPORT BOOL MsgGetUserSettingsDN(const unsigned char *userDn, unsigned char *configDn, MDBValueStruct *v, BOOL create);
 EXPORT long MsgGetUserSetting(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *vOut);
 EXPORT BOOL MsgSetUserSetting(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *vIn);
@@ -493,26 +488,18 @@ EXPORT unsigned long MsgGetAgentBindIPAddress(void);
 
 EXPORT const char *MsgGetUnprivilegedUser(void);	
 
+// TODO: Deprecate these functions in favour of nmlib
 EXPORT void MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t length);
 EXPORT Connection *MsgNmapConnect(const char *authUser, const char *store, MDBValueStruct *optVs);
 EXPORT Connection *MsgNmapConnectEx(const char *authUser, const char *store, MDBValueStruct *optVs, TraceDestination *dest);
 
-
 EXPORT void MsgMakePath(unsigned char *path);
 EXPORT BOOL MsgCleanPath(unsigned char *path);
-
-EXPORT BOOL MsgRegisterAddress(unsigned long address, unsigned char *name);
-// EXPORT BOOL MsgIsKnownAddress(unsigned long address, unsigned char *name);
 
 EXPORT BOOL MsgResolveStart();
 EXPORT BOOL MsgResolveStop();    
 
 EXPORT void MsgGetUid(char *buffer, int buflen);
-
-/*  fixme - deprecated interfaces? */
-EXPORT BOOL MsgFindServer(const unsigned char *user, unsigned char *dn);
-
-EXPORT BOOL MsgSetServerState(const unsigned char *server, const unsigned char *setState);
 
 /* from msgcollector.c */
 
