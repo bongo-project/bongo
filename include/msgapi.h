@@ -488,11 +488,6 @@ EXPORT unsigned long MsgGetAgentBindIPAddress(void);
 
 EXPORT const char *MsgGetUnprivilegedUser(void);	
 
-// TODO: Deprecate these functions in favour of nmlib
-EXPORT void MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t length);
-EXPORT Connection *MsgNmapConnect(const char *authUser, const char *store, MDBValueStruct *optVs);
-EXPORT Connection *MsgNmapConnectEx(const char *authUser, const char *store, MDBValueStruct *optVs, TraceDestination *dest);
-
 EXPORT void MsgMakePath(unsigned char *path);
 EXPORT BOOL MsgCleanPath(unsigned char *path);
 

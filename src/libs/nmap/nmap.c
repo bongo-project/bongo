@@ -1487,64 +1487,56 @@ NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cooki
     }
 }
 
-
-BOOL 
-NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length)
+/**
+ * AUTH SYSTEM with the Store agent, but then change to a user and 
+ * go into their store.
+ * \param	conn		Connection to the Queue agent
+ * \param	response	Buffer to use talking to the agent
+ * \param	length		Size of the 'response' buffer
+ * \return			Whether or not we succeeded
+ */
+BOOL
+NMAPAuthenticateThenUserAndStore(Connection *conn, unsigned char *user)
 {
-    int ccode;
+    char buffer[CONN_BUFSIZE+1];
 
-    ccode = NMAPReadAnswer(conn, response, length, TRUE);
-    switch (ccode) {
-        case 1000: {
-            NMAPEncrypt(conn, response, length, FALSE);
-            return(TRUE);
-        }
+    if (!NMAPAuthenticateToStore(conn, buffer, CONN_BUFSIZE)) 
+        return FALSE;
 
-        case 4242: {
-            unsigned char    	*ptr;
-            unsigned char    	*salt;
-            unsigned char    	message[XPLHASH_MD5_LENGTH];
-            xpl_hash_context	ctx;
+    if (NMAPRunCommandF(conn, buffer, CONN_BUFSIZE, "USER %s\r\n", user) != 1000)
+        return FALSE;
 
-            ptr = strchr(response, '<');
-            if (ptr) {
-                salt = ++ptr;
+    if (NMAPRunCommandF(conn, buffer, CONN_BUFSIZE, "STORE %s\r\n", user) != 1000) 
+        return FALSE;
 
-                if ((ptr = strchr(ptr, '>')) != NULL) {
-                    *ptr = '\0';
-                }
-
-                XplHashNew(&ctx, XPLHASH_MD5);
-                XplHashWrite(&ctx, salt, strlen(salt));
-                XplHashWrite(&ctx, NMAPLibrary.access, NMAP_HASH_SIZE);
-                XplHashFinal(&ctx, XPLHASH_LOWERCASE, message, XPLHASH_MD5_LENGTH);
-
-                NMAPEncrypt(conn, response, length, FALSE);
-
-                ConnWrite(conn, "AUTH SYSTEM ", 12);
-                ConnWrite(conn, message, 32);
-                ConnWrite(conn, "\r\n", 2);
-
-                if ((ccode = ConnFlush(conn)) == 46) {
-                    if ((ccode = NMAPReadAnswer(conn, response, length, TRUE)) == 1000) {
-                        return(TRUE);
-                    }
-                }
-            }
-
-            /*
-                Fall through to the default case statement.
-            */
-        }
-
-        default: {
-            break;
-        }
-    }
-
-    return(FALSE);
+    return TRUE;
 }
 
+/**
+ * AUTH SYSTEM with the Store agent.
+ * \param	conn		Connection to the Queue agent
+ * \param	response	Buffer to use talking to the agent
+ * \param	length		Size of the 'response' buffer
+ * \return			Whether or not we succeeded
+ */
+BOOL
+NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length)
+{
+	return NMAPAuthenticate(conn, response, length);
+}
+
+/**
+ * AUTH SYSTEM with the Queue agent.
+ * \param	conn		Connection to the Queue agent
+ * \param	response	Buffer to use talking to the agent
+ * \param	length		Size of the 'response' buffer
+ * \return			Whether or not we succeeded
+ */
+BOOL
+NMAPAuthenticateToQueue(Connection *conn, unsigned char *response, int length)
+{
+	return NMAPAuthenticate(conn, response, length);
+}
 
 BOOL 
 NMAPAuthenticate(Connection *conn, unsigned char *response, int length)

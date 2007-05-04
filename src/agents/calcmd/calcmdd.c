@@ -328,9 +328,9 @@ RunCommand(CalCmdClient *client)
 
     BongoStringBuilderInit(&sb);
 
-    conn = MsgNmapConnectEx(client->recipient, client->recipient, 
-                            NULL, client->conn->trace.destination);
-    if (!conn) {
+    // FIXME: don't assume localhost.
+    conn = NMAPConnect("127.0.0.1", NULL);
+    if (!conn || !NMAPAuthenticateThenUserAndStore(conn, client->recipient)) {
         StartMessage(client, &sb, "cal error");
         BongoStringBuilderAppend(&sb, "Server error, unable to run command.\r\n");
         goto done;

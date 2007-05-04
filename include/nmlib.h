@@ -179,8 +179,8 @@ Connection *NMAPConnectQueue(unsigned char *address, struct sockaddr_in *addr);
 Connection *NMAPConnectQueueEx(unsigned char *address, struct sockaddr_in *addr, TraceDestination *destination);
 BOOL NMAPEncrypt(Connection *conn, unsigned char *response, int length, BOOL force);
 
-BOOL NMAPAuthenticate(Connection *conn, unsigned char *response, int length);
 BOOL NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length);
+BOOL NMAPAuthenticateToQueue(Connection *conn, unsigned char *response, int length);
 int NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cookie,
                                unsigned char *buffer, int length);
 

@@ -241,8 +241,9 @@ ApplyObjects(ItipAgentClient *client,
         const char *user = l->data;
         Connection *conn;
 
-        conn = MsgNmapConnectEx(user, user, NULL, client->conn->trace.destination);
-        if (!conn) {
+        // FIXME: don't assume localhost.
+        conn = NMAPConnect("127.0.0.1", NULL);
+        if (!conn || !NMAPAuthenticateThenUserAndStore(conn, user)) {
             continue;
         }
         
