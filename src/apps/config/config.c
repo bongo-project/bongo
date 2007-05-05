@@ -193,6 +193,13 @@ InitialStoreConfiguration() {
 			XplConsolePrintf("ERROR: Couldn't set acls on /config/avirus\n");
 			goto nmapcleanup;
 		}
+		if (!PutOrReplaceConfig(client, "/config", "antispam", bongo_aspam_config)) {
+			XplConsolePrintf("ERROR: couldn't write /config/antispam\n");
+		}
+		if (! SetAdminRights(client, "/config/antispam")) {
+			XplConsolePrintf("ERROR: Couldn't set acls on /config/antispam\n");
+			goto nmapcleanup;
+		}
 
 		XplConsolePrintf("Complete.\n");
 

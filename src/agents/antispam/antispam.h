@@ -189,6 +189,6 @@ int GetASpamManagementCommandsCount(void);
 BOOL SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName);
 void SpamdShutdown(SpamdConfig *spamd);
 void SpamdStartup(SpamdConfig *spamd);
-BOOL SpamdReadConfiguration(SpamdConfig *spamd);
+BOOL SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node);
 
 #endif /* _ANTISPAM_H */

@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 /** \file antispam.c Code for the anti-spam agent
@@ -755,19 +756,27 @@ AntiSpamServer(void *ignored)
     return;
 }
 
-/** Reads configuration details for the agent into global structs. 
- * There are two essential configuration options that need to be set in
- * the Novonyx:Configuration attribute of the Antispam Agent object.
- * 
- */
 static BOOL 
-ReadConfiguration(void)
-{
-    unsigned char *ptr;
+ReadConfiguration(void) {
+    unsigned char *pconfig;
+    BOOL retcode = FALSE;
+    BongoJsonNode *node;
+    BongoJsonResult res;
     MDBValueStruct *config; /* Temporarily holds options from the database */
-    
-    SpamdReadConfiguration(&(ASpam.spamd));
 
+    if (! NMAPReadConfigFile("antispam", &pconfig)) {
+        printf("manager: couldn't read config from store\n");
+        return FALSE;
+    }
+
+    if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
+        printf("manager: couldn't parse JSON config\n");
+        goto finish;
+    }
+
+    SpamdReadConfiguration(&ASpam.spamd, node);
+
+#if 0
     ASpam.allow.list    = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
     ASpam.disallow.list = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
     config              = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
@@ -779,8 +788,17 @@ ReadConfiguration(void)
             MDBDestroyValueStruct(config);
         }
 
-        return(FALSE);
+        retcode = FALSE;
+        goto finish;
     }
+#endif
+
+    retcode = TRUE;
+finish:
+    BongoJsonNodeFree(node);
+    return retcode;
+#if 0
+    unsigned char *ptr;
 
     if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_BOUNCE_RETURN, config) > 0) {
 	if (atoi(config->Value[0])) {
@@ -830,6 +848,7 @@ ReadConfiguration(void)
     MDBDestroyValueStruct(config);
 
     return(TRUE);
+#endif
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)

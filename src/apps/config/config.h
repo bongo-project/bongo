@@ -21,7 +21,7 @@ static char *bongo_manager_config =
 "  \"agents\": [ \n"
 "   	{ \"name\": \"bongoqueue\", \"pri\": 3, \"enabled\": true },\n"
 "	{ \"name\": \"bongosmtp\", \"pri\": 3, \"enabled\": true },\n"
-"	{ \"name\": \"bongoantispam\", \"pri\": 5, \"enabled\": false },\n"
+"	{ \"name\": \"bongoantispam\", \"pri\": 5, \"enabled\": true },\n"
 "	{ \"name\": \"bongoavirus\", \"pri\": 5, \"enabled\": true, \"config\":\"/config/avirus\"},\n"
 "	{ \"name\": \"bongocollector\", \"pri\": 7, \"enabled\": true },\n"
 "	{ \"name\": \"bongomailprox\", \"pri\": 7, \"enabled\": true },\n"
@@ -36,6 +36,11 @@ static char *bongo_manager_config =
 
 static char *bongo_avirus_config = 
 "{ version: 1, \n"
+"}\n";
+
+static char *bongo_aspam_config =
+"{ \"version\": 1, \n"
+"  \"enabled\": true\n"
 "}\n";
 
 #endif

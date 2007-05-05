@@ -148,6 +148,28 @@ BongoJsonJPathGetInt(BongoJsonNode *n, const char *path, int *val) {
 	return BONGO_JSON_BAD_TYPE;
 }
 
+BongoJsonResult
+BongoJsonJPathGetDouble(BongoJsonNode *n, const char *path, double *val) {
+    BongoJsonNode *result = BongoJsonJPath(n, path);
+    if (!result) return BONGO_JSON_NOT_FOUND;
+    if (result->type == BONGO_JSON_DOUBLE) {
+        *val = BongoJsonNodeAsDouble(result);
+        return BONGO_JSON_OK;
+    }
+    return BONGO_JSON_BAD_TYPE;
+}
+
+BongoJsonResult
+BongoJsonJPathGetFloat(BongoJsonNode *n, const char *path, float *val) {
+    BongoJsonNode *result = BongoJsonJPath(n, path);
+    if (!result) return BONGO_JSON_NOT_FOUND;
+    if (result->type == BONGO_JSON_DOUBLE) {
+        double t = BongoJsonNodeAsDouble(result);
+        *val = (float)t;
+        return BONGO_JSON_OK;
+    }
+    return BONGO_JSON_BAD_TYPE;
+}
 BongoJsonResult 
 BongoJsonJPathGetString(BongoJsonNode *n, const char *path, const char **val) {
 	BongoJsonNode *result = BongoJsonJPath(n, path);

@@ -16,6 +16,7 @@ bongoantispam_LDADD :=					   \
 	libbongomemmgr.la				   \
 	libbongoutil.la					   \
 	libbongoxpl.la					   \
+    libbongo-json.la                    \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)

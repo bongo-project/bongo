@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 /** \file spamd.c Code used by the anti-spam agent to use the spamd engine.
@@ -308,7 +309,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
 
                     if (hasFlags) {
                         ;
-                    } else if ((((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%ld\r\n", MSG_FLAG_SPAM_CHECKED)) != -1)
+                    } else if ((((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%d\r\n", MSG_FLAG_SPAM_CHECKED)) != -1)
                                 && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000))) {
                         ;
                     } else {
@@ -514,34 +515,21 @@ SpamdFeedbackInit(Feedback *feedbackHost, char *host, unsigned short port, unsig
  */
 
 BOOL
-SpamdReadConfiguration(SpamdConfig *spamd)
+SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
 {
+    BongoJsonResult res;
     char *host;
+    const char *tempHost;
     unsigned short port;
     unsigned long weight;
     unsigned long timeOut;
-    MDBValueStruct *config; /* Temporarily holds options from the directory */
 
     memset(spamd, 0, sizeof(SpamdConfig));
-    config = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
-    if (!config) {
+    res = BongoJsonJPathGetBool(node, "o:enabled/b", &ASpam.spamd.enabled);
+    if ((res != BONGO_JSON_OK) || (!ASpam.spamd.enabled)) {
+        /* nothing is configured or we are disabled */
         return(FALSE);
     }
-
-    /* has the user even added spamd configuration data? */
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_ENABLED, config) == 0) {
-        /* nothing is configured.  break out */
-        MDBDestroyValueStruct(config);
-        return(TRUE);
-    }
-    /* drop out if we are not enabled */
-    if (!atoi(config->Value[0])) {
-        spamd->enabled = FALSE;
-        MDBDestroyValueStruct(config);
-        return(TRUE);
-    }
-
-    spamd->enabled = TRUE;
 
     /* Set up default spamd options. */
     spamd->headerThreshold  = SPAMD_DEFAULT_HEADER_THRESHOLD;
@@ -551,46 +539,50 @@ SpamdReadConfiguration(SpamdConfig *spamd)
 
     ConnAddressPoolStartup(&spamd->hosts, 0, 0);
 
-    /* read out the other 7 parameters */
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_TIMEOUT, config)>0) {
-        spamd->connectionTimeout = atol(config->Value[0]);
+    if (BongoJsonJPathGetInt(node, "o:timeout/i", (int *)(&spamd->connectionTimeout)) != BONGO_JSON_OK) {
+        spamd->connectionTimeout = SPAMD_DEFAULT_CONNECTION_TIMEOUT;
     }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_THRESHOLD_HEAD, config)>0) {
-        spamd->headerThreshold = atof(config->Value[0]);
+
+    if (BongoJsonJPathGetDouble(node, "o:header_threshold/i", &spamd->headerThreshold) != BONGO_JSON_OK) {
+        spamd->headerThreshold = SPAMD_DEFAULT_HEADER_THRESHOLD;
     }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_THRESHOLD_DROP, config)>0) {
-        spamd->dropThreshold = atof(config->Value[0]);
+
+    if (BongoJsonJPathGetDouble(node, "o:drop_threshold/i", &spamd->dropThreshold) != BONGO_JSON_OK) {
+        spamd->dropThreshold = SPAMD_DEFAULT_DROP_THRESHOLD;
     }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_QUARANTINE_Q, config)>0) {
-        spamd->quarantineQueue = atol(config->Value[0]);
+
+    if (BongoJsonJPathGetInt(node, "o:quarantine_queue/i", (int *)&spamd->quarantineQueue) != BONGO_JSON_OK) {
+        spamd->quarantineQueue = 0;
     }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_HOST, config)>0) {
+
+    /* hmm, GetString needs a const char * since it is pointer to memory space that the caller should not modify,
+     *   however ParseHost is going to need a char *.  i've got to strdup it and then free it, or re-write
+     *   ParseHost to do it.  annoying!  */
+    if (BongoJsonJPathGetString(node, "o:host/s", &tempHost) == BONGO_JSON_OK) {
+        char *lHost = MemStrdup(tempHost);
         host = SPAMD_DEFAULT_ADDRESS;
         port = SPAMD_DEFAULT_PORT;
         weight = SPAMD_DEFAULT_WEIGHT;
-        ParseHost(config->Value[0], &host, &port, &weight);
-        ConnAddressPoolAddHost(&(spamd->hosts), host, port, weight);
+        ParseHost(lHost, &host, &port, &weight);
+        ConnAddressPoolAddHost(&ASpam.spamd.hosts, host, port, weight);
+        MemFree(lHost);
     }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_FEEDBACK_HOST, config)>0) {
+
+    if (BongoJsonJPathGetString(node, "o:feedback_host/s", &tempHost) == BONGO_JSON_OK) {
         if (!(spamd->feedback.server.conn)) {
+            char *lHost = MemStrdup(tempHost);
             host = SPAMD_DEFAULT_FEEDBACK_ADDRESS;
             port = SPAMD_DEFAULT_FEEDBACK_PORT;
             timeOut = SPAMD_DEFAULT_FEEDBACK_TIMEOUT;
-            ParseHost(config->Value[0], &host, &port, &timeOut);
+            ParseHost(lHost, &host, &port, &weight);
             SpamdFeedbackInit(&(spamd->feedback), host, port, timeOut);
+            MemFree(lHost);
         }
     }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_SPAMD_FEEDBACK_ENABLED, config)>0) {
-        spamd->feedback.enabled = (atoi(config->Value[0])) ? TRUE : FALSE;
+
+    if (BongoJsonJPathGetBool(node, "o:feedback_enabled/b", &spamd->feedback.enabled) != BONGO_JSON_OK) {
+        spamd->feedback.enabled = FALSE;
     }
-    MDBDestroyValueStruct(config);
     
     return(TRUE);
 }
