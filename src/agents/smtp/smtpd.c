@@ -165,8 +165,8 @@ typedef struct
 
 typedef struct
 {
-    unsigned char *To;
-    unsigned char *ORecip;
+    unsigned char To[MAXEMAILNAMESIZE+1];
+    unsigned char ORecip[MAXEMAILNAMESIZE+1];
     unsigned long Flags;
     int Result;
 } RecipStruct;
@@ -200,107 +200,11 @@ BOOL FlushClient (ConnectionStruct * Client);
 BOOL EndClientConnection (ConnectionStruct * Client);
 void FreeUserDomains (void);
 void FreeRelayDomains (void);
-
-static BOOL
-SMTPShutdown (unsigned char *Arguments, unsigned char **Response,
-              BOOL * CloseConnection)
-{
-    XplThreadID id;
-
-    if (Response) {
-        if (!Arguments) {
-            if (SMTPServerConnection) {
-                *Response = MemStrdup ("Shutting down.\r\n");
-                if (*Response) {
-                    id = XplSetThreadGroupID (TGid);
-
-                    Exiting = TRUE;
-
-                    ConnClose(SMTPServerConnection, 1);
-                    ConnFree(SMTPServerConnection);
-                    SMTPServerConnection = NULL;
-
-                    if (CloseConnection) {
-                        *CloseConnection = TRUE;
-                    }
-
-                    XplSignalLocalSemaphore (SMTPShutdownSemaphore);
-
-                    XplSetThreadGroupID (id);
-                }
-            } else if (Exiting) {
-                *Response = MemStrdup ("Shutdown in progress.\r\n");
-            } else {
-                *Response = MemStrdup ("Unknown shutdown state.\r\n");
-            }
-
-            if (*Response) {
-                return (TRUE);
-            }
-
-            return (FALSE);
-        }
-
-        *Response = MemStrdup ("Arguments not allowed.\r\n");
-        return (TRUE);
-    }
-
-    return (FALSE);
-}
-
-static BOOL
-DumpConnectionListCB (void *Buffer, void *Data)
-{
-    unsigned char *ptr;
-    ConnectionStruct *Client = (ConnectionStruct *) Buffer;
-
-    if (Client) {
-        ptr = (unsigned char *) Data + strlen ((unsigned char *) Data);
-
-        sprintf (ptr, "%d.%d.%d.%d:%d [%lu] \"%s\"\r\n",
-                 Client->client.conn->socketAddress.sin_addr.s_net, Client->client.conn->socketAddress.sin_addr.s_host,
-                 Client->client.conn->socketAddress.sin_addr.s_lh, Client->client.conn->socketAddress.sin_addr.s_impno,
-                 Client->client.conn->socket, Client->State, Client->Command);
-
-        return (TRUE);
-    }
-
-    return (FALSE);
-}
-
-static BOOL
-DumpConnectionList (unsigned char *Arguments, unsigned char **Response,
-                    BOOL * CloseConnection)
-{
-    if (Response) {
-        if (!Arguments) {
-            *Response =
-                (unsigned char *) MemMalloc (XplSafeRead (SMTPConnThreads) *
-                                             ((MAXEMAILNAMESIZE + BUFSIZE +
-                                               64) * sizeof (unsigned char)));
-
-            if (*Response) {
-                **Response = '\0';
-
-                MemPrivatePoolEnumerate (SMTPConnectionPool,
-                                         DumpConnectionListCB,
-                                         (void *) *Response);
-            }
-            else {
-                *Response = MemStrdup ("Out of memory.\r\n");
-            }
-        }
-        else {
-            *Response = MemStrdup ("Arguments not allowed.\r\n");
-        }
-
-        if (*Response) {
-            return (TRUE);
-        }
-    }
-
-    return (FALSE);
-}
+static int PullLine (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine);
+/* this PullLine will strip off the crlf where the other one only seems to strip off the lf
+ * eventually i'd like to remove the first and convert everything to using the straight connio
+ * stuff for speed and security */
+static int PullLine2 (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine);
 
 static BOOL
 SMTPConnectionAllocCB (void *Buffer, void *ClientData)
@@ -2996,35 +2900,44 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
     unsigned long MsgFlags = MSG_FLAG_ENCODING_7BIT;
     RecipStruct *Recips;
     int NumRecips = 0;
-    unsigned char *Buffer;
-    unsigned char *BufPtr;
+    unsigned char *Envelope;
+    unsigned char *EnvelopePtr;
 
     if (!Client)
         return;
 
-    Lines += 3;
-    Recips = MemMalloc (Size + (Lines * sizeof (RecipStruct)));
+    Envelope = MemMalloc(Size+1);
+    Recips = MemMalloc(Lines * sizeof(RecipStruct));
     if (!Recips) {
         LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
                 LOG_ERROR, "Out of memory File %s %d Line %d",
                 __FILE__,
-                Size + (Lines * sizeof (RecipStruct)), __LINE__);
+                (Lines * sizeof (RecipStruct)), __LINE__);
         return;
     }
 
-    if (Client->From != NULL) {
-        MemFree (Client->From);
+    if (!Envelope) {
+        MemFree(Recips);
+        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
+                LOG_ERROR, "Out of memory File %s %d Line %d",
+                __FILE__,
+                Size, __LINE__);
+        return;
     }
-    Client->From = (unsigned char *) Recips;    /* This makes sure the recip structure gets freed if we */
-    /* go into EndClientConnection for an error or shutdown */
-    Buffer = (unsigned char *) (Recips + Lines);        /* This adds Lines * sizeof(RecipStruct) */
-    BufPtr = Buffer;
 
-    while ((rc = NMAPReadResponse (Client->client.conn, Reply, sizeof (Reply), FALSE)) != 6021) {
+    /* read in the entire stream.  this uses more memory but protects a little better from overflows */
+    rc = ConnReadCount(Client->client.conn, (char *)Envelope, Size);
+    if ((rc < 0) || ((unsigned long)rc != Size) || (NMAPReadResponse(Client->client.conn, Reply, BUFSIZE, FALSE)) != 6021) {
+        MemFree(Envelope);
+        MemFree(Recips);
+        return;
+    }
+
+    EnvelopePtr = Envelope;
+    while ((rc = PullLine2(Reply, sizeof(Reply), &EnvelopePtr)) != 6021) {
         switch (Reply[0]) {
         case QUEUE_FROM:{
-                rc = snprintf (Result, sizeof (Result), "QMOD RAW %s\r\n",
-                               Reply);
+                rc = snprintf (Result, sizeof (Result), "QMOD RAW %s\r\n", Reply);
                 NMAPSendCommand (Client->client.conn, Result, rc);
                 strcpy (From, Reply + 1);
             }
@@ -3036,7 +2949,8 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
             break;
 
         case QUEUE_RECIP_REMOTE:{
-                Recips[NumRecips].ORecip = NULL;
+                /* R<recipient> <original address> <flags> */
+                memset(Recips[NumRecips].ORecip, '\0', MAXEMAILNAMESIZE+1);
                 Recips[NumRecips].Flags = DSN_FAILURE;
                 Recips[NumRecips].Result = 0;
 
@@ -3044,29 +2958,26 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                 if (ptr) {
                     *ptr = '\0';
                 }
-                *BufPtr = '\0';
 
-                rc = RewriteAddress (Reply + 1, BufPtr,
-                                     Size - (BufPtr - Buffer));
-
+                rc = RewriteAddress (Reply + 1, Recips[NumRecips].To, MAXEMAILNAMESIZE);
                 if (rc == MAIL_BOGUS) {
                     rc = DELIVER_BOGUS_NAME;
                     Recips[NumRecips].Result = rc;
                 }
-                Recips[NumRecips].To = BufPtr;
-                BufPtr += strlen (BufPtr) + 1;  /* Leave NULL terminator */
-                if (ptr) {
-                    ptr2 = strchr (ptr + 1, ' ');
-                    if (ptr2) {
-                        *ptr2 = '\0';
-                        Recips[NumRecips].Flags = atoi (ptr2 + 1);
-                    }
-                    strcpy (BufPtr, ptr + 1);
-                    Recips[NumRecips].ORecip = BufPtr;
-                    BufPtr += strlen (BufPtr) + 1;
+
+                /* now go after the original address */
+                ptr++;
+                ptr2 = strchr(ptr, ' ');
+                if (ptr2) {
+                    *ptr2 = '\0';
                 }
+
+                strncpy(Recips[NumRecips].ORecip, ptr, MAXEMAILNAMESIZE);
+
+                /* lastly go after the flags */
+                Recips[NumRecips].Flags = atoi(ptr2+1);
+
                 if (Recips[NumRecips].Result == 0) {
-                    //if(strchr(Recips[NumRecips].To, '@')) {}
                     switch (rc) {
                     case MAIL_RELAY:
                     case MAIL_REMOTE:{
@@ -3107,7 +3018,6 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                                                Recips[NumRecips].Flags);
                             }
                             NMAPSendCommand (Client->client.conn, Reply, rc);
-                            BufPtr = Recips[NumRecips].To;      /* Reuse space */
                             j++;
                             break;
                         }
@@ -3120,8 +3030,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
             break;
 
         default:{
-                rc = snprintf (Result, sizeof (Result), "QMOD RAW %s\r\n",
-                               Reply);
+                rc = snprintf (Result, sizeof (Result), "QMOD RAW %s\r\n", Reply);
                 NMAPSendCommand (Client->client.conn, Result, rc);
             }
             break;
@@ -3143,21 +3052,18 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
     i = 0;
     while (i < NumRecips) {
         rc = 1;
-        while (i + rc < NumRecips
-               && RecipCompare (&Recips[i], &Recips[i + rc]) == 0) {
+        while (i + rc < NumRecips && RecipCompare (&Recips[i], &Recips[i + rc]) == 0) {
             rc++;
         }
         Result[0] = '\0';
 
-        DeliverRemoteMessage (Client, From, &Recips[i], rc, MsgFlags, Result,
-                              BUFSIZE);
+        DeliverRemoteMessage (Client, From, &Recips[i], rc, MsgFlags, Result, BUFSIZE);
 
         for (j = i; j < (i + rc); j++) {
             switch (Recips[j].Result) {
             case DELIVER_SUCCESS:{
                     if (Recips[j].Flags & DSN_SUCCESS) {
-                        len =
-                            snprintf (Reply, sizeof (Reply),
+                        len = snprintf (Reply, sizeof (Reply),
                                       "QRTS %s %s %lu %d\r\n", Recips[j].To,
                                       Recips[j].ORecip, Recips[j].Flags,
                                       DELIVER_SUCCESS);
@@ -3170,8 +3076,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
             case DELIVER_REFUSED:
             case DELIVER_UNREACHABLE:
             case DELIVER_TRY_LATER:{
-                    len =
-                        snprintf (Reply, sizeof (Reply),
+                    len = snprintf (Reply, sizeof (Reply),
                                   "QMOD RAW R%s %s %lu\r\n", Recips[j].To,
                                   Recips[j].ORecip ? Recips[j].
                                   ORecip : Recips[j].To, Recips[j].Flags);
@@ -3186,18 +3091,15 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
             case DELIVER_FAILURE:{
                     if (Recips[j].Flags & DSN_FAILURE) {
                         if (Result[0] != '\0') {
-                            len =
-                                snprintf (Reply, sizeof (Reply),
+                            len = snprintf (Reply, sizeof (Reply),
                                           "QRTS %s %s %lu %d %s\r\n",
                                           Recips[j].To,
                                           Recips[j].ORecip ? Recips[j].
                                           ORecip : Recips[j].To,
                                           Recips[j].Flags, Recips[j].Result,
                                           Result);
-                        }
-                        else {
-                            len =
-                                snprintf (Reply, sizeof (Reply),
+                        } else {
+                            len = snprintf (Reply, sizeof (Reply),
                                           "QRTS %s %s %lu %d\r\n",
                                           Recips[j].To,
                                           Recips[j].ORecip ? Recips[j].
@@ -3213,8 +3115,8 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
         i += rc;
     }
 
-    MemFree (Recips);           /* This includes Buffer */
-    Client->From = NULL;
+    MemFree(Envelope);
+    MemFree(Recips);
 }
 
 static void
@@ -3301,7 +3203,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
             }
 
         case QUEUE_RECIP_REMOTE:{
-                recips[recipCount].ORecip = NULL;
+                memset(recips[recipCount].ORecip, '\0', MAXEMAILNAMESIZE+1);
                 recips[recipCount].Flags = DSN_FAILURE;
                 recips[recipCount].Result = 0;
 
@@ -3321,7 +3223,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                     recips[recipCount].Result = rc;
                 }
 
-                recips[recipCount].To = bufferPtr;
+                strncpy(recips[recipCount].To, bufferPtr, MAXEMAILNAMESIZE);
 
                 /* Leave NULL terminator */
                 bufferPtr += strlen (bufferPtr) + 1;
@@ -3332,8 +3234,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                         recips[recipCount].Flags = atoi (ptr2 + 1);
                     }
 
-                    strcpy (bufferPtr, ptr + 1);
-                    recips[recipCount].ORecip = bufferPtr;
+                    strncpy(recips[recipCount].ORecip, ptr+1, MAXEMAILNAMESIZE);
                     bufferPtr += strlen (bufferPtr) + 1;
                 }
 
@@ -3413,8 +3314,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
                             }
                             else if (!(msgFlags & MSG_FLAG_SOURCE_EXTERNAL)) {
                                 /* All internally generated messages should be relayed. */
-                                recips[recipCount].To =
-                                    recips[recipCount].ORecip;
+                                strncpy(recips[recipCount].To, recips[recipCount].ORecip, MAXEMAILNAMESIZE);
                                 recipCount++;
                             }
 
@@ -3547,10 +3447,31 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
     return;
 }
 
-static int
-PullLine (unsigned char *Line, unsigned long LineSize,
-          unsigned char **NextLine)
-{
+static int PullLine2 (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine) {
+    unsigned char *ptr;
+
+    ptr = *NextLine;
+    *NextLine = strchr (ptr, '\r');
+    if (*NextLine) {
+        **NextLine = '\0';
+        (*NextLine) += 2;
+    }
+
+    if (strlen (ptr) < LineSize) {
+        strcpy (Line, ptr);
+    } else {
+        strncpy (Line, ptr, LineSize - 1);
+        Line[LineSize - 1] = '\0';
+    }
+
+    if (*NextLine) {
+        return (0);
+    } else {
+        return (6021);
+    }
+}
+
+static int PullLine (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine) {
     unsigned char *ptr;
 
     ptr = *NextLine;
@@ -3562,16 +3483,14 @@ PullLine (unsigned char *Line, unsigned long LineSize,
 
     if (strlen (ptr) < LineSize) {
         strcpy (Line, ptr);
-    }
-    else {
+    } else {
         strncpy (Line, ptr, LineSize - 1);
         Line[LineSize - 1] = '\0';
     }
 
     if (*NextLine) {
         return (0);
-    }
-    else {
+    } else {
         return (6021);
     }
 }
