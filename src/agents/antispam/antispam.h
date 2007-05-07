@@ -24,7 +24,6 @@
 
 #include <connio.h>
 #include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -69,30 +68,8 @@ typedef struct {
 } ASpamClient;
 
 typedef struct {
-    Connection *conn;
-    unsigned long timeWaiting;
-    unsigned long timeOut;
-    char buffer[CONN_BUFSIZE * 10];
-    unsigned long bufferUsed;
-} FeedbackServer;
-
-typedef struct {
-    XplMutex mutex;    /* protects everything in this structure except server */
-    BOOL enabled;
-    char buffer[CONN_BUFSIZE * 10];
-    unsigned long bufferUsed;
-    BOOL serverInUse;  /* protects server; is protected by mutex */
-
-    FeedbackServer server;
-} Feedback;
-
-typedef struct {
-    Feedback feedback;
     AddressPool hosts;
-    double headerThreshold;
-    double dropThreshold;
     BOOL enabled;
-    unsigned long quarantineQueue;
     unsigned long connectionTimeout;
 } SpamdConfig;
 
@@ -102,7 +79,6 @@ typedef struct _ASpamGlobals {
     unsigned long quarantineQueue;
 
     unsigned char officialName[MAXEMAILNAMESIZE + 1];
-    unsigned char postmaster[MDB_MAX_OBJECT_CHARS + 1];
 
     struct {
         unsigned long used;
@@ -178,12 +154,6 @@ typedef struct _ASpamGlobals {
 } ASpamGlobals;
 
 extern ASpamGlobals ASpam;
-
-/* management.c */
-ManagementVariables *GetASpamManagementVariables(void);
-int GetASpamManagementVariablesCount(void);
-ManagementCommands *GetASpamManagementCommands(void);
-int GetASpamManagementCommandsCount(void);
 
 /* spamd.c */
 BOOL SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName);

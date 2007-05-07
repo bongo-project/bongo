@@ -426,27 +426,6 @@ ProcessConnection(ASpamClient *client)
                             
                             LoggerEvent(ASpam.handle.logging, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_SPAM_BLOCKED, LOG_NOTICE, 0, cur + 1, NULL, source, 0, NULL, 0);
                             
-                            if (ASpam.flags & ASPAM_FLAG_RETURN_TO_SENDER) {
-                                ccode = NMAPSendCommandF(client->conn, "QRTS %s %s %lu %d Mail from user or domain %s is blocked at this site.\r\n", 
-                                                         cur + 1, cur + 1, (long unsigned int)(DSN_HEADER|DSN_FAILURE), DELIVER_BLOCKED, blockedAddr);
-                            }
-                            
-                            if ((ccode != -1) && (ASpam.flags & ASPAM_FLAG_NOTIFY_POSTMASTER)) {
-                                if (((ccode = NMAPSendCommandF(client->conn, "QCOPY %s\r\n", qID)) != -1) 
-                                    && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE)) != -1) 
-                                    && ((ccode = NMAPSendCommand(client->conn, "QSTOR FLAGS %ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED))) != -1) 
-                                    && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE)) != -1) 
-                                    && ((ccode = NMAPSendCommand(client->conn, "QSTOR FROM - -\r\n", 16)) != -1) 
-                                    && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE)) != -1) 
-                                    && ((ccode = NMAPSendCommandF(client->conn, "QSTOR LOCAL %s %s 0\r\n", ASpam.postmaster, ASpam.postmaster)) != -1) 
-                                    && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE)) != -1) 
-                                    && ((ccode = NMAPSendCommand(client->conn, "QRUN\r\n", 6)) != -1)) {
-                                    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-                                } else {
-                                    NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                                }
-                            }
-                            
                             *ptr = ' ';
                         }
                     }
@@ -677,11 +656,6 @@ AntiSpamServer(void *ignored)
 
     ConnCloseAll(1);
 
-    ManagementShutdown();
-    for (i = 0; (ManagementState() != MANAGEMENT_STOPPED) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
     for (i = 0; (XplSafeRead(ASpam.server.active) > 1) && (i < 60); i++) {
         XplDelay(1000);
     }
@@ -761,8 +735,6 @@ ReadConfiguration(void) {
     unsigned char *pconfig;
     BOOL retcode = FALSE;
     BongoJsonNode *node;
-    BongoJsonResult res;
-    MDBValueStruct *config; /* Temporarily holds options from the database */
 
     if (! NMAPReadConfigFile("antispam", &pconfig)) {
         printf("manager: couldn't read config from store\n");
@@ -800,39 +772,11 @@ finish:
 #if 0
     unsigned char *ptr;
 
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_BOUNCE_RETURN, config) > 0) {
-	if (atoi(config->Value[0])) {
-	    ASpam.flags |= ASPAM_FLAG_RETURN_TO_SENDER;
-	}
-    }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_BOUNCE_CC_POSTMASTER, config) > 0) {
-	if (atoi(config->Value[0])) {
-	    ASpam.flags |= ASPAM_FLAG_NOTIFY_POSTMASTER;
-	}
-    }
-    MDBFreeValues(config);
-
     /* Find out which queue to register with.  Otherwise remain Q_INCOMING */
     if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_REGISTER_QUEUE, config) > 0) {
 	ASpam.nmap.queue = atol(config->Value[0]);
     }
     MDBFreeValues(config);
-
-    if (MDBRead(MSGSRV_SELECTED_CONTEXT, MSGSRV_A_POSTMASTER, config) > 0) {
-        ptr = strrchr(config->Value[0], '\\');
-        if (ptr) {
-            ptr++;
-        } else {
-            ptr = config->Value[0];
-        }
-
-        strcpy(ASpam.postmaster, ptr);
-
-        MDBFreeValues(config);
-    } else {
-        ASpam.flags &= ~ASPAM_FLAG_NOTIFY_POSTMASTER;
-    }
 
     if ((ASpam.disallow.used = MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_EMAIL_ADDRESS, ASpam.disallow.list)) > 0) {
         qsort(ASpam.disallow.list->Value, ASpam.disallow.used, sizeof(unsigned char*), CmpAddr);
@@ -955,7 +899,6 @@ int
 XplServiceMain(int argc, char *argv[])
 {
     int                ccode;
-    XplThreadID        id;
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
         XplConsolePrintf("bongoantispam: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());

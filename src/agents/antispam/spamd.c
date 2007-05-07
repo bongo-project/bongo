@@ -41,121 +41,7 @@
 #define SPAMD_DEFAULT_ADDRESS "127.0.0.1"
 #define SPAMD_DEFAULT_PORT 783
 #define SPAMD_DEFAULT_WEIGHT 1
-#define SPAMD_DEFAULT_HEADER_THRESHOLD -9999
-#define SPAMD_DEFAULT_DROP_THRESHOLD 9999
 #define SPAMD_DEFAULT_CONNECTION_TIMEOUT 20 /* milliseconds */
-
-
-#define SPAMD_DEFAULT_FEEDBACK_ADDRESS "127.0.0.1"
-#define SPAMD_DEFAULT_FEEDBACK_PORT 781
-#define SPAMD_DEFAULT_FEEDBACK_TIMEOUT (60 * 15) /* seconds */
-
-__inline static void
-SendFeedback(Feedback *feedback, const char *event, const char *queueId, unsigned long senderIp, char *senderUserName, double score)
-{
-    struct in_addr addr;
-    char *sender;
-    long len;
-    unsigned long bufferLeft;
-    time_t startConnectTime;
-    long connectTime;
-    
-    if (!feedback->enabled) {
-        return;
-    }
-
-    if (!senderUserName) {
-        sender = "-";
-    } else {
-        sender = senderUserName;
-    }
-
-    /* Bug Alert FIXME - senderIP is in non-host order in the envelope for some reason. */ 
-    addr.s_addr = senderIp;
-
-    XplMutexLock(feedback->mutex);
-
-    if (sizeof(feedback->buffer) > feedback->bufferUsed) {
-        bufferLeft = (unsigned long)(sizeof(feedback->buffer) - feedback->bufferUsed);
-    } else {
-        bufferLeft = 0;
-    }
-
-    len = snprintf(feedback->buffer + feedback->bufferUsed, bufferLeft, "%s %s %d.%d.%d.%d %s %f\r\n", 
-                   event, queueId + 4, addr.s_net, addr.s_host, addr.s_lh, addr.s_impno, sender, score);
-        
-    if ((len < 0) || ((unsigned long)len >= bufferLeft)) {
-        feedback->bufferUsed = 0;
-        XplMutexUnlock(feedback->mutex);
-        XplConsolePrintf("BongoAntispam: (%s:%d) Feedback buffer full. Discarding buffered feedback!\n", __FILE__, __LINE__);
-        return;
-    }
-
-    feedback->bufferUsed += len;
-
-    if (feedback->serverInUse) {
-        XplMutexUnlock(feedback->mutex);
-        return;
-    }
-
-    feedback->serverInUse = TRUE;
-
-    if (feedback->server.bufferUsed == 0) {
-        /* copy the stuff we have to the server buffer and let the mutex go */
-        memcpy(feedback->server.buffer, feedback->buffer, feedback->bufferUsed);
-        feedback->server.bufferUsed = feedback->bufferUsed;
-        feedback->bufferUsed = 0;
-    } else {
-        /* the server buffer already has stuff in it */
-    }
-
-    XplMutexUnlock(feedback->mutex);
-        
-    /* this might block,  but that is not a problem because the mutex has been released. */
-    if (ConnWrite(feedback->server.conn, feedback->server.buffer, feedback->server.bufferUsed) > -1) {
-        if (ConnFlush(feedback->server.conn) > -1) {
-            feedback->server.bufferUsed = 0;
-            feedback->server.timeWaiting = 0;
-            feedback->serverInUse = FALSE;
-            return;
-        }
-    }
-
-    /* try again */
-    ConnClose(feedback->server.conn, 0);
-    startConnectTime = time(NULL);
-    if (ConnConnect(feedback->server.conn, NULL, 0, NULL) != -1) {
-        if (ConnWrite(feedback->server.conn, feedback->server.buffer, feedback->server.bufferUsed) > -1) {
-            if (ConnFlush(feedback->server.conn) > -1) {
-                feedback->server.bufferUsed = 0;
-                feedback->server.timeWaiting = 0;
-                feedback->serverInUse = FALSE;
-                return;
-            }
-        }
-    }
-
-    connectTime = time(NULL) - startConnectTime;
-    if (connectTime < 2) {
-        XplDelay(1000);
-        feedback->server.timeWaiting++;
-    } else {
-        feedback->server.timeWaiting += connectTime;
-    }
-    if (feedback->server.timeWaiting < feedback->server.timeOut) {
-        /* let another thread try */
-        feedback->serverInUse = FALSE;
-        return;
-    }
-
-    /* There have been too many errors; shut down the feedback system */
-    ConnFree(feedback->server.conn);
-    feedback->server.conn = NULL;
-    feedback->enabled = FALSE;
-    /* feedback->serverInUse is intentionally left TRUE so that threads */
-    /* that have already found feedback->enabled to be true and are waiting */
-    /* on the mutex will fall out and not try to use the connection */
-}
 
 /** Connects to spamd to process the message.  Depending on your settings, analyzed
  * messages are left untouched, or requeued with additional spam information in the
@@ -172,7 +58,7 @@ SendFeedback(Feedback *feedback, const char *event, const char *queueId, unsigne
  * If you want verbose output from spamd portion of the antispam agent then 
  * #define VERBOSE_SPAMD
  */
-#define VERBOSE_SPAMD
+/* #define VERBOSE_SPAMD */
 BOOL
 SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName)
 {   
@@ -183,7 +69,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
     Connection *conn; /* Holds the current connection to spamd. */
 
 #ifdef VERBOSE_SPAMD
-    XplConsolePrintf("AntiSpam: (%s) CheckSpamd\n", queueID);
+    XplConsolePrintf("AntiSpam: (%s) Checking with SpamAssassin spamd\n", queueID);
 #endif
     
     infected = FALSE;
@@ -278,152 +164,121 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
                      */
                     ptr = strchr(client->line, ';');
                     score = atof(++ptr);
-#ifdef VERBOSE_SPAMD
                     XplConsolePrintf("AntiSpam: (%s) Current message received a spam score of %f\n", queueID, score);
-#endif
                 }
             }
-            if (score >= ASpam.spamd.headerThreshold) {
-                infected = TRUE;
-                if (score < ASpam.spamd.dropThreshold && size != 0) {
-                    /* The spam score is greater than the header threshhold,
-                     * but lower than the drop threshhold.  Create a new message
-                     * with spam headers added before deleting this one.
-                     *
-                     * We will use the envelope that we read out in the beginning
-                     * to create the new message envelope.
-                     */
-                    if (   ((ccode = NMAPSendCommandF(client->conn, "QCREA %d\r\n", Q_INCOMING)      ) != -1 )
-                           && ((ccode = NMAPReadAnswer  (client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000)
-                           /* Create the new queue entry. */
-                        ) {
-                        ;
-                    } else {
-#ifdef VERBOSE_SPAMD
-                        XplConsolePrintf("AntiSpam: (%s) error while creating new queue entry.\n", queueID);
-#endif
-                        NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-                        goto ErrConnFree;
-                    }
-
-                    if (hasFlags) {
-                        ;
-                    } else if ((((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%d\r\n", MSG_FLAG_SPAM_CHECKED)) != -1)
-                                && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000))) {
-                        ;
-                    } else {
-                        NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                        goto ErrConnFree;
-                    }
-
-
-                    ptr = client->envelope;
-                    while (*ptr) {
-                        /* Parse the old envelope and send all but the FROM line with 
-                         * RAW commands, send the from using QSTOR FROM. 
-                         */
-                        ptr2 = strchr(ptr, '\n');
-                        if (ptr2 == NULL){
-                            /* error in the envelope structure. */
-                            NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                            goto ErrConnFree;
-                        }
-                        *ptr2 = '\0';
-                        switch (*ptr) {
-                        case QUEUE_FLAGS: {
-                            /* Add our own flag to the envelope structure.
-                             */
-                            success = (((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED))) != -1)
-                                       && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000));
-                            break;
-                        }
-                        case QUEUE_DATE: {
-                            success = TRUE;
-                            break;
-                        }
-                        default: {
-                            success = (((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW %s\n", ptr)         ) != -1)
-                                       && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000));
-                        }
-                        }
-                        *ptr2++ = '\n';
-                        ptr = ptr2;
-                        if (success) {
-                            ;
-                        } else {
-                            NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                            goto ErrConnFree;
-                        }
-                    }
-                    if (  ((ccode = NMAPSendCommandF(client->conn, "QSTOR MESSAGE %ld\r\n",    size)) != -1)
-                          &&((ccode =   ConnReadToConn(conn,         client->conn,               size)) != -1)
-                          &&((ccode =   NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000)
-                          &&((ccode =  NMAPSendCommand(client->conn, "QRUN\r\n",                    6)) != -1)
-                          &&((ccode =   NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000)) {
-                        /* Copy out the message data from spamd.
-                         * Tell nmap to process the new message. 
-                         */
-#ifdef VERBOSE_SPAMD
-                        XplConsolePrintf("AntiSpam: (%s) Created new queue entry with spam headers.\n", queueID);
-#else
-                        ;
-#endif
-                    } else {
-                        NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                        goto ErrConnFree;
-                    }
-
-                    /* Drop original message. */
-                    SendFeedback(&(spamd->feedback), "TAGGED", queueID, senderIp, senderUserName, score);
-                        
-#ifdef VERBOSE_SPAMD
-                    XplConsolePrintf("AntiSpam: (%s) Dropped original spam message from the queue.\n", queueID);
-#endif
-                    ccode = NMAPSendCommandF(client->conn, "QDELE %s\r\n", queueID); /* expect ccode != -1*/
-                    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE); /* expect ccode == 1000 */
-                } else {
-                    if (!ASpam.quarantineQueue) {
-                        /* Drop message. */
-                        SendFeedback(&(spamd->feedback), "DROPPED", queueID, senderIp, senderUserName, score);
-
-#ifdef VERBOSE_SPAMD
-                        XplConsolePrintf("AntiSpam: (%s) Dropped spam message from the queue.\n", queueID);
-#endif
-                        if ((ccode = NMAPSendCommandF(client->conn, "QDELE %s\r\n", queueID)) != -1) {
-                            if ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000) {
-                                ;
-                            } else {
-                                XplConsolePrintf("AntiSpam: (QDELE %s) resulted in %s\n", queueID, client->line);
-                            }
-                        }
-                    } else {
-                        /* Quarantine message. */
-                        SendFeedback(&(spamd->feedback), "QUARANTINED", queueID, senderIp, senderUserName, score);
-                            
-#ifdef VERBOSE_SPAMD
-                        XplConsolePrintf("AntiSpam: (%s) Moved spam message to quarantine queue %lu.\n", queueID, ASpam.quarantineQueue);
-#endif
-                        if ((ccode = NMAPSendCommandF(client->conn, "QMOVE %s %03lu\r\n", queueID, ASpam.quarantineQueue)) != -1) {
-                            if ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000) {
-                                ;
-                            } else {
-                                XplConsolePrintf("AntiSpam: (QMOVE %s %03lu) resulted in %s\n", queueID, ASpam.quarantineQueue, client->line);
-                            }
-                        }
-                    }
-                }
+            infected = TRUE;
+            /* Create a new message with spam headers added before deleting this one.
+             *
+             * We will use the envelope that we read out in the beginning
+             * to create the new message envelope.
+             */
+            if (   ((ccode = NMAPSendCommandF(client->conn, "QCREA %d\r\n", Q_INCOMING)      ) != -1 )
+                   && ((ccode = NMAPReadAnswer  (client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000)
+                   /* Create the new queue entry. */
+                ) {
+                ;
             } else {
-                /* Pass message */
-                SendFeedback(&(spamd->feedback), "PASSED", queueID, senderIp, senderUserName, score);
+#ifdef VERBOSE_SPAMD
+                XplConsolePrintf("AntiSpam: (%s) error while creating new queue entry.\n", queueID);
+#endif
+                NMAPSendCommand(client->conn, "QABRT\r\n", 7);
+                NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+                goto ErrConnFree;
+            }
+
+            if (hasFlags) {
+                ;
+            } else if ((((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%d\r\n", MSG_FLAG_SPAM_CHECKED)) != -1)
+                        && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000))) {
+                ;
+            } else {
+                NMAPSendCommand(client->conn, "QABRT\r\n", 7);
+                goto ErrConnFree;
+            }
+
+            ptr = client->envelope;
+            while (*ptr) {
+                /* Parse the old envelope and send all but the FROM line with 
+                 * RAW commands, send the from using QSTOR FROM. 
+                 */
+                ptr2 = strchr(ptr, '\n');
+                if (ptr2 == NULL){
+                    /* error in the envelope structure. */
+                    NMAPSendCommand(client->conn, "QABRT\r\n", 7);
+                    goto ErrConnFree;
+                }
+                *ptr2 = '\0';
+                switch (*ptr) {
+                case QUEUE_FLAGS: {
+                    /* Add our own flag to the envelope structure.
+                     */
+                    success = (((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED))) != -1)
+                               && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000));
+                    break;
+                }
+                case QUEUE_DATE: {
+                    success = TRUE;
+                    break;
+                }
+                default: {
+                    success = (((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW %s\n", ptr)         ) != -1)
+                               && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000));
+                }
+                }
+                *ptr2++ = '\n';
+                ptr = ptr2;
+                if (success) {
+                    ;
+                } else {
+                    NMAPSendCommand(client->conn, "QABRT\r\n", 7);
+                    goto ErrConnFree;
+                }
+            }
+            if (  ((ccode = NMAPSendCommandF(client->conn, "QSTOR MESSAGE %ld\r\n",    size)) != -1)
+                  &&((ccode =   ConnReadToConn(conn,         client->conn,               size)) != -1)
+                  &&((ccode =   NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000)
+                  &&((ccode =  NMAPSendCommand(client->conn, "QRUN\r\n",                    6)) != -1)
+                  &&((ccode =   NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000)) {
+                /* Copy out the message data from spamd.
+                 * Tell nmap to process the new message. 
+                 */
+#ifdef VERBOSE_SPAMD
+                XplConsolePrintf("AntiSpam: (%s) Created new queue entry with spam headers.\n", queueID);
+#else
+                ;
+#endif
+            } else {
+                NMAPSendCommand(client->conn, "QABRT\r\n", 7);
+                goto ErrConnFree;
+            }
+
+            /* Drop original message. */
                     
 #ifdef VERBOSE_SPAMD
-                XplConsolePrintf("AntiSpam: (%s) score is less than header threshold", queueID);
+            XplConsolePrintf("AntiSpam: (%s) Dropped original spam message from the queue.\n", queueID);
 #endif
+            ccode = NMAPSendCommandF(client->conn, "QDELE %s\r\n", queueID); /* expect ccode != -1*/
+            ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE); /* expect ccode == 1000 */
+#if 0
+this is commented out until we determine how we'd want to do this sort of thing, or even if we would
+            if (ASpam.quarantineThreshold) {
+                /* Quarantine message. */
+                        
+#ifdef VERBOSE_SPAMD
+                XplConsolePrintf("AntiSpam: (%s) Moved spam message to quarantine queue %lu.\n", queueID, ASpam.quarantineQueue);
+#endif
+                if ((ccode = NMAPSendCommandF(client->conn, "QMOVE %s %03lu\r\n", queueID, ASpam.quarantineQueue)) != -1) {
+                    if ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000) {
+                        ;
+                    } else {
+                        XplConsolePrintf("AntiSpam: (QMOVE %s %03lu) resulted in %s\n", queueID, ASpam.quarantineQueue, client->line);
+                    }
+                }
             }
+#endif
         } else {
             /* Pass message */
-            SendFeedback(&(spamd->feedback), "PASSED", queueID, senderIp, senderUserName, score);
 
 #ifdef VERBOSE_SPAMD
             XplConsolePrintf("AntiSpam: (%s) Recieved a non-zero status code from spamd: %d", queueID, ccode);
@@ -479,29 +334,6 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
     }
 }
 
-static void
-SpamdFeedbackInit(Feedback *feedbackHost, char *host, unsigned short port, unsigned long timeOut)
-{
-    if (!feedbackHost->server.conn) {
-        struct hostent *hostResult;
-
-        hostResult = gethostbyname(host);
-        if (hostResult) {
-            feedbackHost->server.conn = ConnAlloc(TRUE);
-            if (feedbackHost->server.conn) {
-                feedbackHost->server.conn->socketAddress.sin_family = AF_INET;
-                feedbackHost->server.conn->socketAddress.sin_addr.s_addr = *(uint32_t *)(hostResult->h_addr_list[0]);
-                feedbackHost->server.conn->socketAddress.sin_port = htons(port);
-                feedbackHost->server.timeWaiting = 0;
-                feedbackHost->server.timeOut = timeOut;
-                XplMutexInit(feedbackHost->mutex);
-                return;
-            }
-        } 
-    }
-    feedbackHost->enabled = FALSE;
-}
-
 /*
  * \c HeaderThreshold: \c <num>  is the minimum score before adding spam
  * headers to the message. Messages with a spam score greater than or
@@ -522,7 +354,6 @@ SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
     const char *tempHost;
     unsigned short port;
     unsigned long weight;
-    unsigned long timeOut;
 
     memset(spamd, 0, sizeof(SpamdConfig));
     res = BongoJsonJPathGetBool(node, "o:enabled/b", &ASpam.spamd.enabled);
@@ -532,27 +363,12 @@ SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
     }
 
     /* Set up default spamd options. */
-    spamd->headerThreshold  = SPAMD_DEFAULT_HEADER_THRESHOLD;
-    spamd->dropThreshold    = SPAMD_DEFAULT_DROP_THRESHOLD;
-    spamd->quarantineQueue  = 0;
     spamd->connectionTimeout = SPAMD_DEFAULT_CONNECTION_TIMEOUT;
 
     ConnAddressPoolStartup(&spamd->hosts, 0, 0);
 
     if (BongoJsonJPathGetInt(node, "o:timeout/i", (int *)(&spamd->connectionTimeout)) != BONGO_JSON_OK) {
         spamd->connectionTimeout = SPAMD_DEFAULT_CONNECTION_TIMEOUT;
-    }
-
-    if (BongoJsonJPathGetDouble(node, "o:header_threshold/i", &spamd->headerThreshold) != BONGO_JSON_OK) {
-        spamd->headerThreshold = SPAMD_DEFAULT_HEADER_THRESHOLD;
-    }
-
-    if (BongoJsonJPathGetDouble(node, "o:drop_threshold/i", &spamd->dropThreshold) != BONGO_JSON_OK) {
-        spamd->dropThreshold = SPAMD_DEFAULT_DROP_THRESHOLD;
-    }
-
-    if (BongoJsonJPathGetInt(node, "o:quarantine_queue/i", (int *)&spamd->quarantineQueue) != BONGO_JSON_OK) {
-        spamd->quarantineQueue = 0;
     }
 
     /* hmm, GetString needs a const char * since it is pointer to memory space that the caller should not modify,
@@ -568,22 +384,6 @@ SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
         MemFree(lHost);
     }
 
-    if (BongoJsonJPathGetString(node, "o:feedback_host/s", &tempHost) == BONGO_JSON_OK) {
-        if (!(spamd->feedback.server.conn)) {
-            char *lHost = MemStrdup(tempHost);
-            host = SPAMD_DEFAULT_FEEDBACK_ADDRESS;
-            port = SPAMD_DEFAULT_FEEDBACK_PORT;
-            timeOut = SPAMD_DEFAULT_FEEDBACK_TIMEOUT;
-            ParseHost(lHost, &host, &port, &weight);
-            SpamdFeedbackInit(&(spamd->feedback), host, port, timeOut);
-            MemFree(lHost);
-        }
-    }
-
-    if (BongoJsonJPathGetBool(node, "o:feedback_enabled/b", &spamd->feedback.enabled) != BONGO_JSON_OK) {
-        spamd->feedback.enabled = FALSE;
-    }
-    
     return(TRUE);
 }
 
@@ -594,11 +394,6 @@ SpamdShutdown(SpamdConfig *spamd)
     spamd->enabled = FALSE;
     ConnAddressPoolShutdown(&(spamd->hosts));
 
-    spamd->feedback.enabled = FALSE;
-    if (spamd->feedback.server.conn) {
-        ConnFree(spamd->feedback.server.conn);
-        XplMutexDestroy(spamd->feedback.mutex);
-    }
     memset(spamd, 0, sizeof(SpamdConfig));
 }
 
@@ -610,11 +405,6 @@ SpamdStartup(SpamdConfig *spamd)
             ConnAddressPoolAddHost(&(spamd->hosts), SPAMD_DEFAULT_ADDRESS, SPAMD_DEFAULT_PORT, SPAMD_DEFAULT_WEIGHT);
         }
 
-        if (spamd->feedback.enabled) {
-            if (!spamd->feedback.server.conn) {
-                SpamdFeedbackInit(&(spamd->feedback), SPAMD_DEFAULT_FEEDBACK_ADDRESS, SPAMD_DEFAULT_FEEDBACK_PORT, SPAMD_DEFAULT_FEEDBACK_TIMEOUT);
-            }
-        }
         return;
     }
 
