@@ -6,6 +6,8 @@ extern "C" {
 
 #include "lucene-index.h"
 
+#if CLUCENE_BONGO_API == 1
+// pre-0.9.18 API
 
 // Keyword analyzer
 class KeywordAnalyzer : public Analyzer 
@@ -56,44 +58,27 @@ KeywordTokenizer::next(Token *token)
     }
     token->set(ioBuffer, 0, dataLen);
     return true;
-#if 0
-    while (true) {
-        TCHAR c;
-        offset++;
-        if (bufferIndex >= dataLen) {
-            dataLen = input->read(ioBuffer, LUCENE_IO_BUFFER_SIZE);
-            ioBuffer[dataLen] = 0;
-            bufferIndex = 0;
-        }
-
-        if (dataLen <= 0 ) {
-            if (length > 0) {
-                break;
-            } else {
-                return false;
-            }
-        } else {
-            c = ioBuffer[bufferIndex++];
-        }
-
-        if (length == 0) {
-            start = offset - 1;
-        }
-            
-        buffer[length++] = c;                
-        if (length == LUCENE_MAX_WORD_LEN) {
-            break;
-        };
-    }
-
-    buffer[length] = 0;
-    
-    token->set (buffer, start, start + length);
-    return true;        
-#endif
 }
 
+#endif // CLUCENE_BONGO_API == 1
 
+QueryParser *
+LuceneIndex::GetQueryParser()
+{
+
+    if (queryParser) {
+        return queryParser;
+    }
+    
+    queryParser = new QueryParser(_T("everything"), analyzer);
+#if CLUCENE_BONGO_API == 1
+    queryParser->setOperator(lucene::queryParser::QueryParserBase::AND_OPERATOR);
+#else
+    queryParser->setDefaultOperator(lucene::queryParser::QueryParserBase::AND_OPERATOR);
+#endif
+    
+    return queryParser;
+}
 
 LuceneIndex::LuceneIndex() : reader(NULL), 
                              writer(NULL), 
@@ -243,20 +228,4 @@ LuceneIndex::GetIndexSearcher()
     
     return searcher;
 }
-
-
-QueryParser *
-LuceneIndex::GetQueryParser()
-{
-
-    if (queryParser) {
-        return queryParser;
-    }
-    
-    queryParser = new QueryParser(_T("everything"), analyzer);
-    queryParser->setOperator(lucene::queryParser::QueryParserBase::AND_OPERATOR);
-    
-    return queryParser;
-}
-
 

@@ -3,6 +3,7 @@ sbin_PROGRAMS += bongostore
 
 bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
 	-I$(top_srcdir)/src/agents/store	\
+	-DCLUCENE_BONGO_API=$(CLUCENE_BONGO_API) \
 	$(SQLITE_CFLAGS)			\
 	$(CLUCENE_CXXFLAGS)
 
