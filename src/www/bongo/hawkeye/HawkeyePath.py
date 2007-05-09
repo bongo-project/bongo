@@ -6,12 +6,16 @@ from bongo.dragonfly.BongoSession import BongoSession
 from bongo.dragonfly.HttpError import HttpError
 
 import RootView
+import AgentView
 import BackupView
 import ServerView
+import SystemView
 
 views = {
     "root" : RootView.RootHandler(),
+    "agents" : AgentView.AgentHandler(),
     "backup" : BackupView.BackupHandler(),
+    "system" : SystemView.SystemHandler(),
     "server" : ServerView.ServerHandler()
     }
 

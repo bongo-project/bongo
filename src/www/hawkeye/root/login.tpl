@@ -1,28 +1,21 @@
-<html>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-	<title>Bongo Web Administration</title>
-	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Bongo Web Administration &rsaquo; Login</title>
 	<link rel="icon" href="/img/bongo-favicon.ico" type="image/ico">
 	<link rel="icon" href="/img/bongo-favicon.png" type="image/png">
-	<style type="text/css" media="screen">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <style type="text/css" media="screen">
         @import url(/css/admin.css);
-	</style>
+    </style>
 </head>
-<body>
-
-<img id="logo" src="/img/login-logo.png" alt="Bongo" />
-
+<body onload="document.forms[0].elements[0].focus();">
 <div id="login">
-
-<h1>Login Required</h1>
-
-<form method="post">
-<p>User name: <input type="text" name="bongo-username" /></p>
-<p>Password: <input type="password" name="bongo-password" /></p>
-<input type="submit" value="Login" />
-</form>
-
+    <form method="post">
+        <input type="text" name="bongo-username" class="username inputbox" />
+        <input type="password" name="bongo-password" class="password inputbox"/>
+        <div class="submit"><input type="submit" value="Log in"></div>
+    </form>
 </div>
-
 </body>
 </html>

@@ -16,6 +16,7 @@ dist_css_DATA :=				\
 	src/www/css/composer.css		\
 	src/www/css/contacts.css		\
 	src/www/css/conversation.css		\
+	src/www/css/hawkeye.css         \
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
 	src/www/css/login.css			\
@@ -180,7 +181,21 @@ dist_img_DATA :=					     \
 	src/www/img/toolbar/16/format-text-italic.png	     \
 	src/www/img/toolbar/16/format-text-strikethrough.png \
 	src/www/img/toolbar/16/format-text-underline.png     \
-	src/www/img/toolbar/16/mail-attachment.png
+	src/www/img/toolbar/16/mail-attachment.png  \
+	src/www/img/bg.png  \
+	src/www/img/Bongo-logo.png \
+	src/www/img/cbg.png \
+	src/www/img/dialog-warning.png \
+	src/www/img/help-browser.png \
+	src/www/img/locked.png \
+	src/www/img/login-pane.png \
+	src/www/img/network-server.png \
+	src/www/img/sel.png \
+	src/www/img/system-installer.png \
+	src/www/img/system-users.png \
+	src/www/img/user.png \
+	src/www/img/user-desktop.png \
+	src/www/img/welcome-box.png
 
 
 jsdir = $(htdocsdir)/js
@@ -286,11 +301,12 @@ pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
 
 pkgpythonhawkeye_PYTHON :=			\
 	src/www/bongo/hawkeye/__init__.py	\
-	src/www/bongo/hawkeye/AgentsView.py      \
+	src/www/bongo/hawkeye/AgentView.py  \
 	src/www/bongo/hawkeye/Auth.py		\
 	src/www/bongo/hawkeye/BackupView.py      \
 	src/www/bongo/hawkeye/HawkeyeHandler.py	\
 	src/www/bongo/hawkeye/HawkeyePath.py	\
+	src/www/bongo/hawkeye/SystemView.py \
 	src/www/bongo/hawkeye/RootView.py	\
 	src/www/bongo/hawkeye/Server.py		\
 	src/www/bongo/hawkeye/ServerView.py	\
@@ -311,6 +327,14 @@ dist_hawkeyetplbackup_DATA :=			\
 hawkeyetplserverdir = $(htdocsdir)/hawkeye/server
 dist_hawkeyetplserver_DATA :=			\
         src/www/hawkeye/server/index.tpl
+        
+hawkeyetplsystemdir = $(htdocsdir)/hawkeye/system
+dist_hawkeyetplsystem_DATA :=			\
+        src/www/hawkeye/system/index.tpl
+        
+hawkeyetplagentsdir = $(htdocsdir)/hawkeye/agents
+dist_hawkeyetplagents_DATA :=			\
+        src/www/hawkeye/agents/index.tpl
 
 hawkeyetpldir = $(htdocsdir)/hawkeye
 dist_hawkeyetpl_DATA :=			\

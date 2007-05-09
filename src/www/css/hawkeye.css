@@ -1,0 +1,158 @@
+   /*  body and font definitions */
+body {
+  background: url('/img/bg.png');
+  background-repeat: repeat-x;
+  background-color: #fff;
+  margin-top: 25px;
+  margin-left: 60px;
+  margin-right: 60px;
+ 
+}
+
+html>body {
+	font-family: luxi sans, trebuchet ms, bitstream vera sans, sans-serif;
+}
+
+#userinfo {
+padding-top: 20px;
+font-size: 80%;
+float: right;
+}
+#logo {
+margin-bottom: 60px;
+}
+p {
+/*padding-left: 12px;
+padding-right: 12px;*/
+font-size: 90%;
+color: #2e3436;  /* Tango DARK-GREY */
+}
+
+#page {
+    background: url('/img/cbg.png');
+    background-repeat: repeat-x;
+    background-color: #eeeeec;  /* Tango GREY */
+/*        float: left;*/
+/*            width: 100% - 175px;*/
+/*			margin: 0px;*/
+			
+			margin-left: 165px; /* Push across width of sidebar, minus 10px, for bg behind round corner */
+			padding-left: 10px; /* Prints BG for 10px, now flush with sidebar */
+			
+			padding-top: 6px;
+			
+/*			z-index: -1;*/
+			
+/*			padding-right: 8px; */
+/*			padding-left: 16px;*/
+/*        margin-left: 280px;*/
+min-height: 500px;
+}
+#content {
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+#sidebar {
+color: #eeeeec; /* Tango WHITE */
+/*    background: url('/img/sbg.png');
+    background-repeat: repeat-x;*/
+    background-color: #2e3436;  /* Tango DARK-GREY */
+float: left;
+height: 500px;
+width: 175px;
+
+text-align: right;
+margin-right: 0px;
+padding-right: 0px;
+-moz-border-radius: 15px;
+}
+.helpitem {
+/* FIXME! */
+}
+.selecteditem {
+background-image: url('/img/sel.png');
+width: 175px;
+background-repeat: repeat-none;
+color: #2e3436;
+}
+
+
+ul.nav,
+.nav ul{
+/*Remove all spacings from the list items*/
+/*float: right;*/
+/*display: block; */
+margin-right: 0px;
+padding-left: 4px;
+margin-left: 6px;
+/*padding-left: 0px; /* Use this instead of margin? */
+padding-right: 0px;
+/*	cursor: default;*/
+	list-style-type: none;
+}
+a.nav,
+.nav a{
+color: #eeeeec;
+text-decoration:none;
+}
+
+a.selecteditem,
+.selecteditem a,
+.selecteditem a:link,
+.selecteditem a:visited {
+color: #2e3436;
+text-decoration:none;
+}
+
+li.nav,
+.nav li{
+    display: block;
+	font-size: 115%; /* Bold maybe?  */
+    min-height: 35px;
+/*    color: #eeeeec;*/
+	text-align: left;
+	
+	padding-left: 15%;
+	
+    padding-right: 15px;
+    margin-bottom: 15px;
+text-decoration:none;
+    margin-top: 5px;
+	width: 95%;
+}
+
+img.icon {
+    margin-right: 6px;
+	vertical-align:middle;
+}
+
+.breadcrumb {
+    font-size: 75%;
+}
+ul.nav{
+	width: 100%;
+}
+.htable {
+border: 2px solid #2e3436;
+font-size: 110%;
+}
+
+.hrow {
+background-color: #2e3436;
+color: #eeeeec;
+padding-left: 4px;
+}
+.tlist {
+padding-bottom: 3px;
+padding-top: 3px;
+font-size: 80%;
+padding-left: 16px;
+}
+
+.floaty {
+float: right;
+padding-left: 16px;
+padding-right: 16px;
+display: block;
+}

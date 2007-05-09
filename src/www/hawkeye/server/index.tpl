@@ -1,6 +1,6 @@
 %(include|header.tpl)s
 
-<h1>Server Settings</h1>
+<h1>Enable/Disable Agents</h1>
 
 <p tal:condition="message" tal:content="message">No message.</p>
 
@@ -12,7 +12,7 @@
 <div tal:condition="success">
 <form method="post">
 	<input type="hidden" name="command" value="agentstatus" />
-	<table border="1">
+	<table class="htable">
 	<tr>
 		<th>Enabled?</th>
 		<th>Agent Name</th>

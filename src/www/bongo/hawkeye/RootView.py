@@ -1,4 +1,5 @@
 import bongo.dragonfly
+import os
 import bongo.dragonfly.BongoUtil
 from HawkeyeHandler import HawkeyeHandler
 import bongo.hawkeye.Auth as Auth
@@ -10,7 +11,34 @@ class RootHandler(HawkeyeHandler):
         else:
             return True
 
+    def memory(self, VmKey):
+        '''Return process memory usage in bytes.
+        '''
+        _scale = {'kB': 1024.0, 'mB': 1024.0*1024.0,
+       'KB': 1024.0, 'MB': 1024.0*1024.0}
+
+        try: # get the /proc/<pid>/status pseudo file
+            t = open('/proc/meminfo')
+            v = [v for v in t.readlines() if v.startswith(VmKey)]
+            t.close()
+
+             # convert Vm value to bytes
+            if len(v) == 1:
+               t = v[0].split()  # e.g. 'VmRSS:  9999  kB'
+               if len(t) == 3:  ## and t[0] == VmKey:
+                   return float(t[1]) * _scale.get(t[2], 0.0)
+        except:
+            pass
+        return 0.0
+
     def index_GET(self, req, rp):
+        cm = self.memory("MemTotal:")
+        used = cm - self.memory("MemFree:")
+	used = used / 1024 / 1024
+	cm = cm / 1024 / 1024
+        self.SetVariable("mem", str(round(used, 2)) + "MB / " + str(round(cm, 2)) + "MB")
+        self.SetVariable("breadcrumb", "Desktop")
+        self.SetVariable("dsktab", "selecteditem")
         return self.SendTemplate(req, rp, "index.tpl")
 
     def test_GET(self, req, rp):

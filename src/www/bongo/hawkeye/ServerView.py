@@ -22,6 +22,9 @@ class ServerHandler(HawkeyeHandler):
         else:
             self.SetVariable("success", 0)
 
+        self.SetVariable("breadcrumb", "Agents &#187 Enable/Disable Agents");
+        self.SetVariable("agntab", "selecteditem");
+
         return self.SendTemplate(req, rp, "index.tpl")
 
     def index_POST(self, req, rp):

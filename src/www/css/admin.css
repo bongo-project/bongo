@@ -1,74 +1,66 @@
-* {
-	font-family: sans-serif;
-}
-
-html, body { 
-	overflow: auto;
-	margin: 0;
-	padding: 0;
-	border: 0; 
-} 
+/*
+    Bongo web administration interface (aka Hawkeye) stylesheet
+    (c) 2007 Alexander Hixon <hixon.alexander@mediati.org> - see COPYING for details
+    Last modified: Sunday May 6, 2007
+*/
 
 body {
-	border-top: 2px solid #d4dceb;
-        background-color: #627aa3; /* #b4c5e1; */
+    background-color: #eeeeec;
+    font-size: 12px;
+    font-family: Verdana, Arial, Helvetica, SunSans-Regular, Sans-Serif;
+    color:#2e3436;
+    padding:0px;
+    margin:0px;
+    
+    height: 100%;   /* Blasted IE! */
 }
 
-img#logo {
-	position: absolute;
-	top: 40px;
-	left: 40px;
-	width: 339px;
-	height: 59px;
+#login { 	
+    position:absolute;
+    height:200px; 
+    width:400px;
+    margin:-100px 0px 0px -200px;
+    top: 50%; 
+    left: 50%;
+    
+    text-align: center;
+    padding: 0px;
+    background-image: url('../img/login-pane.png');
+    background-repeat: no-repeat; /* Make sure this doesn't actually happen. */
+    overflow: none;
 }
 
-ul.navigation {
-	position: absolute;
-	top: 110px;
-	left: 40px;
-	width: 150px;
-	background-color: white;
-	padding: 10px;
-	border: 1px solid #555;
-	margin: 0;
+form {
+    padding: 16px;
+    padding-top: 6.5em;
 }
 
-ul.navigation li {
-	list-style: none;
-	margin: 0;
-	text-align: left;
+.inputbox {
+    margin-bottom: 2px;
 }
 
-ul.navigation li a {
-	display: block;
-	text-decoration: none;
-	padding: .25em;
-	color: black;
-	border-bottom: 1px solid #555;
+.submit {
+    padding-top: 2em;
+    padding-bottom: 0px;
+    margin-bottom: 0px;
 }
 
-ul.navigation li a:hover {
-	background-color: #ddd;
+input {
+    color: #555753;
+    border: 1px solid #2e3436;
 }
 
-div#content {
-	position: absolute;
-	top: 110px;
-	right: 20px;
-	left: 220px;
-	border: 1px solid #555;
-	background-color: white;
-	padding: 10px;
+.username {
+    background-image: url('../img/user.png');
 }
 
-div#login {
-	position: absolute;
-	top: 200px;
-	left: 220px;
-	width: 500px;
-	height: 250px;
-	background-color: white;
-	padding: 20px;
-	text-align: right;
-	border: 1px solid #555;
+.password {
+    background-image: url('../img/locked.png');
+}
+
+.password, .username {
+    padding-left: 22px;
+    min-height: 18px;
+    background-color: #eeeeec;
+    background-repeat: no-repeat;
 }

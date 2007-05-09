@@ -13,6 +13,8 @@ class BackupHandler(HawkeyeHandler):
     def index_GET(self, req, rp):
         today = datetime.date.today()
         self.SetVariable("set", today.strftime("%y%m%d"))
+        self.SetVariable("breadcrumb", "System &#187 Backup and Restore");
+        self.SetVariable("systab", "selecteditem");
         return self.SendTemplate(req, rp, "index.tpl")
 
     def download_GET(self, req, rp):
