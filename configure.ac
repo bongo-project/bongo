@@ -596,6 +596,7 @@ ACX_CLUCENE()
 if test "x$CLUCENE_LIBS" = "x"; then
 	AC_MSG_RESULT(Using imported CLucene)
 	AC_CONFIG_SUBDIRS([import/clucene])
+	AC_SUBST(CLUCENE_BONGO_API, "1")
 	AC_SUBST(CLUCENE_LIBS, "\$(top_srcdir)/import/clucene/src/libclucene.la")
 	AC_SUBST(CLUCENE_CXXFLAGS, "-I\$(top_srcdir)/import/clucene/src")
 else
