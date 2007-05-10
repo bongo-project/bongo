@@ -26,7 +26,7 @@ libbongomsgapi_la_LIBADD :=					   \
 	$(top_builddir)/import/libical/src/libical/libical-bongo.la \
         $(DL_LIBS)						   
 
-src/libs/msgapi/all: libbongomsgapi.la
+src/libs/msgapi/all: libbongomsgapi.la 
 src/libs/msgapi/clean: clean
 src/libs/msgapi/install:
 	@cd $(top_builddir) && $(MAKE) $(MFLAGS) lib_LTLIBRARIES=libbongomsgapi.la install-libLTLIBRARIES

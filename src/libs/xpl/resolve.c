@@ -218,6 +218,7 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
     /* We loop here in case we get a CNAME in response to the query. We'll stop looping when
      * we get an MX or A record, which is what we're looking for */
     do {
+	int len = 0;
         d("Starting query loop\n");
 
         cnameLooping = FALSE;    /* Will be set to TRUE if we get a CNAME response */
@@ -307,6 +308,13 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
 		cnameLooping = TRUE;
 		++cnameLoops;
 		break;
+
+            case XPL_RR_TXT:
+		len = (int) answer[answerOff];
+                strncpy(answers[i].TXT.txt, answer + answerOff + 1, len);
+                d("TXT Record\n");
+                d("Answer   : %s\n", answers[i].TXT.txt);
+                break;
 
 	    case XPL_RR_PTR: {
 		ptrData = (struct PTRData*)(answer + answerOff);

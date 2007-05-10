@@ -3,28 +3,15 @@
  * Copyright (c) 2007 Alex Hudson
  */
 
-#include "config.h"
 #include <xpl.h>
 #include <nmlib.h>
+#include <bongo-buildinfo.h>
 #include <bongostore.h>
 #include <bongoagent.h>
 #include <gcrypt.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-/* cli opts */
-struct {
-    int verbose;
-
-} BongoConfig;
-
-typedef struct {
-    Connection *conn;
-    char buffer[CONN_BUFSIZE + 1];
-} StoreClient;
-
-#define malloc(bytes) MemMalloc(bytes)
-#define free(ptr) MemFree(ptr)
+#include "config.h"
 
 void
 usage() {
@@ -36,6 +23,7 @@ usage() {
 		"Commands:\n"
 		"  install                         do the initial Bongo install\n"
 		"  crypto                          generate data needed for encryption\n"
+                "  checkversion                    see if a newer Bongo is available\n" 
 		"";
 
 	XplConsolePrintf("%s", usage);
@@ -259,6 +247,28 @@ GenerateCryptoData() {
 	return TRUE;
 }
 
+void
+CheckVersion() {
+        int current_version, available_version;
+	BOOL custom_version;
+
+	
+	if (!MsgGetBuildVersion(&current_version, &custom_version)) {
+		printf("Can't get information on current build!\n");
+		return;
+	} else {
+		printf("Installed build: %s %s%d\n", BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
+		if (custom_version)
+			printf("This is modified software.\n");
+	}
+	printf("Version currently available: ");
+	if (!MsgGetAvailableVersion(&available_version)) {
+		printf("unable to request online information.\n");
+	} else {
+		printf("%s%d\n", BONGO_BUILD_VSTR, available_version);
+	}
+}
+
 int 
 main(int argc, char *argv[]) {
 	int next_arg = 0;
@@ -289,6 +299,8 @@ main(int argc, char *argv[]) {
 			command = 1;
 		} else if (!strcmp(argv[next_arg], "crypto")) {
 			command = 2;
+		} else if (!strcmp(argv[next_arg], "checkversion")) {
+			command = 3;
 		} else {
 			printf("Unrecognized command: %s\n", argv[next_arg]);
 		}
@@ -311,6 +323,9 @@ main(int argc, char *argv[]) {
 			break;
 		case 2:
 			GenerateCryptoData();
+			break;
+		case 3: 
+			CheckVersion();
 			break;
 		default:
 			break;

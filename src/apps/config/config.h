@@ -6,8 +6,27 @@
 #ifndef BONGOCONFIG_H
 #define BONGOCONFIG_H
 
+/* cli opts */
+struct {
+    int verbose;
+
+} BongoConfig;
+
+typedef struct {
+    Connection *conn;
+    char buffer[CONN_BUFSIZE + 1];
+} StoreClient;
+
+#define malloc(bytes) MemMalloc(bytes)
+#define free(ptr) MemFree(ptr)
+
 void	usage();
+BOOL	NMAPSimpleCommand(StoreClient *client, char *command);
+BOOL	SetAdminRights(StoreClient *client, char *document);
+BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content);
 void	InitialStoreConfiguration();
+BOOL	GenerateCryptoData();
+void	CheckVersion();
 
 /* bongo manager config is an object. One key should be 'agents', whose value
  * is an array of agent objects. Agent objects can have names, pri (priority)

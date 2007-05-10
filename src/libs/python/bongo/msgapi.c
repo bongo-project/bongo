@@ -551,6 +551,28 @@ msgapi_IcsSubscribe(PyObject *self, PyObject *args)
     return PyLong_FromUnsignedLong(guid);
 }
 
+PyDoc_STRVAR(NmapChallenge_doc,
+"NmapChallenge(s) -> string response\n\
+\n\
+Return the response string for an NMAP challenge string s.\n\
+s is of the format \"NMAP <40c0cbb0hostname441444a4>\".");
+
+static PyObject *
+msgapi_NmapChallenge(PyObject *self, PyObject *args)
+{
+    unsigned char *salt;
+    unsigned int len=33;
+    unsigned char buf[len];
+
+    if (!PyArg_ParseTuple(args, "s", &salt)) {
+        return NULL;
+    }
+
+    MsgNmapChallenge(salt, buf, len);
+
+    return Py_BuildValue("s", buf);
+}
+
 extern PyObject *msgapi_GetConfigProperty(PyObject *, PyObject *);
 
 PyMethodDef MsgApiMethods[] = {
@@ -568,6 +590,7 @@ PyMethodDef MsgApiMethods[] = {
     {"ImportIcs", msgapi_ImportIcs, METH_VARARGS | METH_STATIC, ImportIcs_doc},
     {"IcsSubscribe", msgapi_IcsSubscribe, METH_VARARGS | METH_STATIC, IcsSubscribe_doc},
     {"IcsImport", msgapi_IcsImport, METH_VARARGS | METH_STATIC, IcsImport_doc},
+    {"NmapChallenge", msgapi_NmapChallenge, METH_VARARGS | METH_STATIC, NmapChallenge_doc},
     {"GetConfigProperty", msgapi_GetConfigProperty, METH_VARARGS | METH_STATIC, GetConfigProperty_doc},
     {"GetUnprivilegedUser", msgapi_GetUnprivilegedUser, METH_VARARGS | METH_STATIC, GetUnprivilegedUser_doc},
     {NULL, NULL, 0, NULL}

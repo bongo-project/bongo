@@ -48,6 +48,7 @@ EXTRA_DIST :=					\
 	config.rpath				\
 	bongo.pc.in				\
 	HACKING					\
+	include/bongo-buildinfo.h		\
 	init/bongo.init.fc4.in			\
 	init/bongo.init.sles9.in		\
 	init/bongo.init.suse10.in		\

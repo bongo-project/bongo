@@ -58,13 +58,17 @@ typedef struct _XplSoaRecord {
     unsigned long expire;               /* max Time to keep data (sec)    */
     unsigned long minimum;              /* TTL for zone (sec)             */
 } Xpl8BitPackedStructure XplSoaRecord;
-    
+
+typedef struct _XplTxtRecord {
+    char txt[MAXEMAILNAMESIZE + 1];	/* the text record */
+} Xpl8BitPackedStructure XplTxtRecord;    
 
 typedef union _XplDnsRecord {
     XplARecord A;
     XplMxRecord MX;
     XplPtrRecord PTR;
     XplSoaRecord SOA;
+    XplTxtRecord TXT;
 } Xpl8BitPackedStructure XplDnsRecord;
 
 #if defined(WIN32) || defined(NETWARE) || defined(LIBC)
@@ -77,7 +81,7 @@ typedef union _XplDnsRecord {
 #define XPL_RR_SOA      0x0006    /* Start of Zone Authority */
 #define XPL_RR_PTR      0x000C    /* Domain Name Pointer */
 #define XPL_RR_MX       0x000F    /* Mail exchanger */
-#define XPL_RR_MX       0x000F    /* Mail exchanger */
+#define XPL_RR_TXT      0x0010    /* Text record */
 
 /* Return codes for MX */
 #define XPL_DNS_SUCCESS     0

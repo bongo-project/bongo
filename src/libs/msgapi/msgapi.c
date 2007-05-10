@@ -39,6 +39,7 @@
 #include <msgapi.h>
 #include "msgapip.h"
 
+#include <bongo-buildinfo.h>
 #include <bongoutil.h>
 #include <bongostore.h>
 #include <curl/curl.h>
@@ -165,6 +166,51 @@ typedef struct _ConnectionManagerCommand {
     unsigned long counter;
     unsigned char name[1];
 } ConnectionManagerCommand;
+
+/* I tried to remove this, but it's still needed :(
+ * Python server for Dragonfly needs a way to authenticate itself
+ * to the queue...
+ */
+void 	 
+MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t length) 	 
+{ 	 
+    unsigned char *ptr; 	 
+    unsigned char *salt; 	 
+    static unsigned char access[NMAP_HASH_SIZE] = { '\0' }; 	 
+    MDBValueStruct *v; 	 
+    xpl_hash_context ctx; 	 
+ 	 
+    if (access[0] == '\0') { 	 
+        if (MsgGlobal.directoryHandle) { 	 
+            v = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL); 	 
+            if (v) { 	 
+                MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, v); 	 
+                if (v->Used) { 	 
+                    HashCredential(MsgGlobal.server.dn, v->Value[0], access); 	 
+                } 	 
+ 	 
+                MDBDestroyValueStruct(v); 	 
+            } 	 
+        } 	 
+    } 	 
+ 	 
+    if (access[0] && reply && (length > 32) && ((ptr = strchr(response, '<')) != NULL)) { 	 
+        salt = ++ptr; 	 
+ 	 
+        if ((ptr = strchr(ptr, '>')) != NULL) { 	 
+            *ptr = '\0'; 	 
+        } 	 
+ 	 
+        XplHashNew(&ctx, XPLHASH_MD5); 	 
+        XplHashWrite(&ctx, salt, strlen(salt)); 	 
+        XplHashWrite(&ctx, access, NMAP_HASH_SIZE); 	 
+        XplHashFinal(&ctx, XPLHASH_LOWERCASE, reply, XPLHASH_MD5_LENGTH); 	 
+    } else if (reply) { 	 
+        *reply = '\0'; 	 
+    } 	 
+ 	 
+    return; 	 
+}
 
 EXPORT const unsigned char *
 MsgGetServerDN(unsigned char *buffer)
@@ -1909,6 +1955,65 @@ MsgGetSystemDirectoryHandle(void)
     return(systemHandle);
 }
 
+BOOL
+MsgGetBuildVersion(int *version, BOOL *custom)
+{
+    /* Get the version of this build of bongo.
+     * version - what SVN rev or branch minor this is
+     * custom -  whether or not this is a custom build
+     */
+    int len = 0;
+    char *ptr = BONGO_BUILD_VER;
+
+    *version = strtol(ptr, NULL, 10);
+    len = strlen(ptr);
+    
+    if (ptr[len] == 'M') *custom = TRUE;
+    return TRUE;
+}
+
+BOOL
+MsgGetAvailableVersion(int *version)
+{
+    /* Get the information about latest version of bongo available
+     * version - what SVN rev or branch minor is available
+     */
+    char record[500];
+    char *ptr;
+    int v;
+
+    if (!MsgGetUpdateStatus(record, 499))
+        return FALSE;
+
+    ptr = strchr(record, '|');
+    if (ptr == NULL) return FALSE;
+
+    *version = strtol(record, &ptr, 10);
+    return TRUE;
+}
+
+BOOL
+MsgGetUpdateStatus(char *record, int record_length)
+{
+    char *branch = BONGO_BUILD_BRANCH;
+    char *zone = "revisions.bongo-project.com";
+    char hostname[256];
+    XplDnsRecord *result = NULL;
+    int status;
+
+    snprintf(hostname, 255, "%s.%s", branch, zone);
+    
+    status = XplDnsResolve(hostname, &result, XPL_RR_TXT);
+    switch(status) {
+        case XPL_DNS_SUCCESS:
+            snprintf(record, record_length, "%s", result[0].TXT.txt);
+            MemFree(result);
+            return TRUE;
+            break;
+        default:
+            return FALSE;
+    }
+}
 
 static BOOL
 MsgReadConfiguration(void)

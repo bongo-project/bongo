@@ -496,6 +496,11 @@ EXPORT BOOL MsgResolveStop();
 
 EXPORT void MsgGetUid(char *buffer, int buflen);
 
+EXPORT BOOL MsgGetAvailableVersion(int *version);
+EXPORT BOOL MsgGetBuildVersion(int *version, BOOL *custom);
+
+EXPORT void MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t length);
+
 /* from msgcollector.c */
 
 enum {
