@@ -9,11 +9,6 @@
 
 <table class="htable" width="100%%" cellspacing="0" >
     <tr style="height: 28px;">
-        <td class="hrow">System Status</td>
-        <td style="text-align: center;">Space time continuum stable.</td>
-        <td class="hrow" width="16"></td>
-    </tr>
-    <tr style="height: 28px;">
         <td class="hrow">Agent Status</td>
         <td class="drow" style="text-align: center;">Operation normal.</td>
         <td class="hrow" width="16"></td>
@@ -28,8 +23,13 @@
         <td class="hrow" width="16"><img src="/img/dialog-warning.png" alt="Warning" tal:condition="sw_upgrade" /></td>
     </tr>
     <tr style="height: 28px;">
+        <td class="hrow">System Status</td>
+        <td style="text-align: center;">Current processing load: <span tal:content="load">unknown</span></td>
+        <td class="hrow" width="16"></td>
+    </tr>
+    <tr style="height: 28px;">
         <td class="hrow">Memory Usage</td>
-        <td style="text-align: center;">%(mem)s</td>
+        <td style="text-align: center;" tal:content="mem">RAM</td>
         <td class="hrow" width="16"></td>
     </tr>
     <tr style="height: 28px;">

@@ -33,15 +33,27 @@ class RootHandler(HawkeyeHandler):
         return 0.0
 
     def index_GET(self, req, rp):
-        cm = self.memory("MemTotal:")
-        used = cm - self.memory("MemFree:")
-	used = used / 1024 / 1024
-	cm = cm / 1024 / 1024
-        self.SetVariable("mem", str(round(used, 2)) + "MB / " + str(round(cm, 2)) + "MB")
+        # template ui
         self.SetVariable("breadcrumb", "Desktop")
         self.SetVariable("dsktab", "selecteditem")
+        # check ram free
+        cm = self.memory("MemTotal:")
+        used = cm - self.memory("MemFree:") - self.memory("Buffers:") - self.memory("Cached:")
+	used = used / (1024*1024)
+	cm = cm / (1024*1024)
+        self.SetVariable("mem", str(round(used, 2)) + "MB / " + str(round(cm, 2)) + "MB")
+        # check system load
+        (rqmin1, rqmin5, rqmin15) = os.getloadavg()
+	recent_av = (rqmin1 + rqmin5) / 2
+        recent_load = "light"
+        if recent_av > 0.7:
+            recent_load = "moderate"
+        if recent_av > 2:
+            recent_load = "heavy"
+        self.SetVariable("load", recent_load)
+        # check for software updates
         (build_ver, build_custom) = msgapi.GetBuildVersion()
-        sw_current = "Current revision: %d" % build_ver
+        sw_current = "%d" % build_ver
         if build_custom:
             sw_current += " (custom build)"
         sw_available = msgapi.GetAvailableVersion()
@@ -49,6 +61,7 @@ class RootHandler(HawkeyeHandler):
         self.SetVariable("sw_available", sw_available)
         if (sw_available - build_ver) > 9:
             self.SetVariable("sw_upgrade", 1) 
+        # send the template
         return self.SendTemplate(req, rp, "index.tpl")
 
     def test_GET(self, req, rp):
