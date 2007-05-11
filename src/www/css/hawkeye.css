@@ -143,6 +143,9 @@ background-color: #2e3436;
 color: #eeeeec;
 padding-left: 4px;
 }
+.drow {
+border-bottom: 1px dotted #2e3436;
+}
 .tlist {
 padding-bottom: 3px;
 padding-top: 3px;

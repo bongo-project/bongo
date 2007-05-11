@@ -15,13 +15,17 @@
     </tr>
     <tr style="height: 28px;">
         <td class="hrow">Agent Status</td>
-        <td style="text-align: center;">Operation normal.</td>
+        <td class="drow" style="text-align: center;">Operation normal.</td>
         <td class="hrow" width="16"></td>
     </tr>
     <tr style="height: 28px;">
         <td class="hrow">Bongo Updates</td>
-        <td style="text-align: center;">Critical security update available.</td>
-        <td class="hrow" width="16"><img src="/img/dialog-warning.png" alt="Warning" /></td>
+        <td class="drow" style="text-align: center;">
+	  <p>Running version: <span tal:content="sw_current">unknown</span> <br />
+	  Latest available: <span tal:content="sw_available">unknown</span></p>
+	  <p tal:condition="sw_upgrade">Upgrade to new version recommended.</p>
+	</td>
+        <td class="hrow" width="16"><img src="/img/dialog-warning.png" alt="Warning" tal:condition="sw_upgrade" /></td>
     </tr>
     <tr style="height: 28px;">
         <td class="hrow">Memory Usage</td>

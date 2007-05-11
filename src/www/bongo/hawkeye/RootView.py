@@ -3,6 +3,7 @@ import os
 import bongo.dragonfly.BongoUtil
 from HawkeyeHandler import HawkeyeHandler
 import bongo.hawkeye.Auth as Auth
+from bongo.libs import msgapi
 
 class RootHandler(HawkeyeHandler):
     def NeedsAuth(self, rp):
@@ -39,6 +40,15 @@ class RootHandler(HawkeyeHandler):
         self.SetVariable("mem", str(round(used, 2)) + "MB / " + str(round(cm, 2)) + "MB")
         self.SetVariable("breadcrumb", "Desktop")
         self.SetVariable("dsktab", "selecteditem")
+        (build_ver, build_custom) = msgapi.GetBuildVersion()
+        sw_current = "Current revision: %d" % build_ver
+        if build_custom:
+            sw_current += " (custom build)"
+        sw_available = msgapi.GetAvailableVersion()
+        self.SetVariable("sw_current", sw_current)
+        self.SetVariable("sw_available", sw_available)
+        if (sw_available - build_ver) > 9:
+            self.SetVariable("sw_upgrade", 1) 
         return self.SendTemplate(req, rp, "index.tpl")
 
     def test_GET(self, req, rp):

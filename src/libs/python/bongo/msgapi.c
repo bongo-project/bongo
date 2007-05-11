@@ -573,6 +573,39 @@ msgapi_NmapChallenge(PyObject *self, PyObject *args)
     return Py_BuildValue("s", buf);
 }
 
+PyDoc_STRVAR(GetBuildVersion_doc,
+"GetBuildVersion() -> (integer, boolean)\n \
+\n\
+Returns a tuple containing version number and whether the build is custom.\n\
+");
+
+static PyObject *
+msgapi_GetBuildVersion(PyObject *self, PyObject *args)
+{
+    int version;
+    BOOL custom;
+
+    MsgGetBuildVersion (&version, &custom);
+
+    return Py_BuildValue("ib", version, custom);
+}
+
+PyDoc_STRVAR(GetAvailableVersion_doc,
+"GetBuildVersion() -> integer response\n \
+\n\
+Returns the version of the latest software on this branch.\n\
+");
+
+static PyObject *
+msgapi_GetAvailableVersion(PyObject *self, PyObject *args)
+{
+    int version;
+
+    MsgGetAvailableVersion (&version);
+
+    return Py_BuildValue("i", version);
+}
+
 extern PyObject *msgapi_GetConfigProperty(PyObject *, PyObject *);
 
 PyMethodDef MsgApiMethods[] = {
@@ -593,6 +626,8 @@ PyMethodDef MsgApiMethods[] = {
     {"NmapChallenge", msgapi_NmapChallenge, METH_VARARGS | METH_STATIC, NmapChallenge_doc},
     {"GetConfigProperty", msgapi_GetConfigProperty, METH_VARARGS | METH_STATIC, GetConfigProperty_doc},
     {"GetUnprivilegedUser", msgapi_GetUnprivilegedUser, METH_VARARGS | METH_STATIC, GetUnprivilegedUser_doc},
+    {"GetBuildVersion", msgapi_GetBuildVersion, METH_VARARGS | METH_STATIC, GetBuildVersion_doc},
+    {"GetAvailableVersion", msgapi_GetAvailableVersion, METH_VARARGS | METH_STATIC, GetAvailableVersion_doc},
     {NULL, NULL, 0, NULL}
 };
 
