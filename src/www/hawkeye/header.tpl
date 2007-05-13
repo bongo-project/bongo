@@ -8,12 +8,13 @@
 	<link rel="icon" href="/img/bongo-favicon.ico" type="image/ico">
 	<link rel="icon" href="/img/bongo-favicon.png" type="image/png">
 	<style type="text/css" media="screen">
-        @import url(/css/hawkeye.css);
+        @import url(/css/admin.css);
 	</style>
 </head>
-<body>
+<body id="body-override">
 <div id="userinfo">Logged in as: <i>admin</i> [<a href="%(url|/)slogout">logout</a>]</div>
 <div id="logo"><img src="/img/Bongo-logo.png" alt="Bongo" /></div>
+
 <div id="sidebar">
 <ul class="nav">
 <li tal:attributes="class dsktab"><a href="%(url|/)s"><img src="/img/user-desktop.png" border="0" alt="" class="icon" /> Desktop</a></li>
