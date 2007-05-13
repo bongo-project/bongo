@@ -27,3 +27,10 @@
 <div id="content">
 <div class="breadcrumb"><p>%(breadcrumb)s</p></div>
 
+<h1 tal:content="title">Untitled page</h1>
+
+<div class="info" tal:condition="message" tal:content="message">Something happened, but I'm not sure.</div>
+<div class="error" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
+<div class="info" tal:condition="opsuccess">Operation completed sucessfully.</div>
+
+<!-- BEGIN HAWKYE CONTENT -->

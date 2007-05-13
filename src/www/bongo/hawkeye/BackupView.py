@@ -13,8 +13,9 @@ class BackupHandler(HawkeyeHandler):
     def index_GET(self, req, rp):
         today = datetime.date.today()
         self.SetVariable("set", today.strftime("%y%m%d"))
-        self.SetVariable("breadcrumb", "System &#187 Backup and Restore");
-        self.SetVariable("systab", "selecteditem");
+        self.SetVariable("breadcrumb", "System &#187 Backup and Restore")
+        self.SetVariable("systab", "selecteditem")
+        self.SetVariable("title", "Backup and Restore")
         return self.SendTemplate(req, rp, "index.tpl")
 
     def download_GET(self, req, rp):
@@ -46,7 +47,7 @@ class BackupHandler(HawkeyeHandler):
                 else:
                     agent["enabled"] = False
         else:
-            self.SetVariable("message", "Unable to read config")
+            self.SetVariable("error", "Unable to read config from store.")
 
         self._setManagerFile(req, config)
         return self.index_GET(req, rp)

@@ -185,6 +185,7 @@ dist_img_DATA :=					     \
 	src/www/img/bg.png  \
 	src/www/img/Bongo-logo.png \
 	src/www/img/cbg.png \
+	src/www/img/desktop-big.png \
 	src/www/img/dialog-warning.png \
 	src/www/img/help-browser.png \
 	src/www/img/locked.png \
@@ -194,8 +195,7 @@ dist_img_DATA :=					     \
 	src/www/img/system-installer.png \
 	src/www/img/system-users.png \
 	src/www/img/user.png \
-	src/www/img/user-desktop.png \
-	src/www/img/welcome-box.png
+	src/www/img/user-desktop.png
 
 
 jsdir = $(htdocsdir)/js

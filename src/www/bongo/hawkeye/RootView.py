@@ -29,12 +29,14 @@ class RootHandler(HawkeyeHandler):
                if len(t) == 3:  ## and t[0] == VmKey:
                    return float(t[1]) * _scale.get(t[2], 0.0)
         except:
+            self.SetVariable("error", "Unable to get memory statistics for your system.")
             pass
         return 0.0
 
     def index_GET(self, req, rp):
         # template ui
         self.SetVariable("breadcrumb", "Desktop")
+        self.SetVariable("title", "Welcome!")
         self.SetVariable("dsktab", "selecteditem")
         # check ram free
         cm = self.memory("MemTotal:")

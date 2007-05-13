@@ -4,13 +4,22 @@ from bongo.store.StoreClient import StoreClient, DocTypes
 import bongo.external.simplejson as simplejson
 from HawkeyeHandler import HawkeyeHandler
 
+doneop = 0
+
 class ServerHandler(HawkeyeHandler):
     def NeedsAuth(self, rp):
         return True
 
     def index_GET(self, req, rp):
+        global doneop
         agentlist = []
         config = self._getManagerFile(req)
+        
+        if doneop:
+            self.SetVariable("opsuccess", 1)
+            doneop = 0
+        else:
+            self.SetVariable("opsuccess", 0)
 
         # change things which eval. to False to empty elements
         if config != None and config.has_key("agents"):
@@ -21,13 +30,17 @@ class ServerHandler(HawkeyeHandler):
             self.SetVariable("success", 1)
         else:
             self.SetVariable("success", 0)
+            self.SetVariable("error", "Unable to read configuration information from the Bongo store. Are you logged in as a user with administrative permissions?")
 
-        self.SetVariable("breadcrumb", "Agents &#187 Enable/Disable Agents");
-        self.SetVariable("agntab", "selecteditem");
+        self.SetVariable("breadcrumb", "Agents &#187 Enable/Disable Agents")
+        self.SetVariable("title", "Enable/Disable Agents")
+        self.SetVariable("agntab", "selecteditem")
 
         return self.SendTemplate(req, rp, "index.tpl")
 
     def index_POST(self, req, rp):
+        global doneop
+        
         if not req.form:
             return bongo.dragonfly.HTTP_UNAUTHORIZED
         
@@ -42,9 +55,11 @@ class ServerHandler(HawkeyeHandler):
                 else:
                     agent["enabled"] = False
         else:
-            self.SetVariable("message", "Unable to read config")
+            self.SetVariable("error", "Unable to read config")
 
         self._setManagerFile(req, config)
+        # Operation completed OK.
+        doneop = 1
         return self.index_GET(req, rp)
 
     def login_POST(self, req, rp):
