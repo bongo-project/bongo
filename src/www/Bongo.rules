@@ -16,7 +16,6 @@ dist_css_DATA :=				\
 	src/www/css/composer.css		\
 	src/www/css/contacts.css		\
 	src/www/css/conversation.css		\
-	src/www/css/hawkeye.css         \
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
 	src/www/css/login.css			\
