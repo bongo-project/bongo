@@ -185,12 +185,15 @@ dist_img_DATA :=					     \
 	src/www/img/Bongo-logo.png \
 	src/www/img/cbg.png \
 	src/www/img/desktop-big.png \
+	src/www/img/dialog-error-32.png \
+	src/www/img/dialog-information-32.png \
 	src/www/img/dialog-warning.png \
 	src/www/img/help-browser.png \
 	src/www/img/locked.png \
 	src/www/img/login-pane.png \
 	src/www/img/network-server.png \
 	src/www/img/sel.png \
+	src/www/ing/sbg.png \
 	src/www/img/system-installer.png \
 	src/www/img/system-users.png \
 	src/www/img/user.png \
