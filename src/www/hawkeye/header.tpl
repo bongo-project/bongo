@@ -10,6 +10,8 @@
 	<style type="text/css" media="screen">
         @import url(/css/admin.css);
 	</style>
+	<script type="text/javascript" src="/js/lib/prototype/prototype.js"></script>
+	<script type="text/javascript" src="/js/lib/script.aculo.us/effects.js"></script>
 </head>
 <body id="body-override">
 <div id="userinfo">Logged in as: <i>admin</i> [<a href="%(url|/)slogout">logout</a>]</div>
@@ -30,8 +32,8 @@
 
 <h1 tal:content="title">Untitled page</h1>
 
-<div class="info" tal:condition="message" tal:content="message">Something happened, but I'm not sure.</div>
-<div class="error" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
-<div class="info" tal:condition="opsuccess">Operation completed sucessfully.</div>
+<div class="info" id="msg" tal:condition="info" tal:content="info">Something happened, but I'm not sure.</div>
+<div class="error" id="err" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
+<div class="info" id="opsuccess" tal:condition="opsuccess">Operation completed sucessfully.</div>
 
 <!-- BEGIN HAWKYE CONTENT -->

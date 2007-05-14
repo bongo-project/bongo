@@ -29,7 +29,8 @@ class RootHandler(HawkeyeHandler):
                if len(t) == 3:  ## and t[0] == VmKey:
                    return float(t[1]) * _scale.get(t[2], 0.0)
         except:
-            self.SetVariable("error", "Unable to get memory statistics for your system.")
+            # This is a non-critical error, so show to user as 'info', not 'error'
+            self.SetVariable("info", "Unable to get memory statistics for your system. Please report this as a bug.")
             pass
         return 0.0
 
