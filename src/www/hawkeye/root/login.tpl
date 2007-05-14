@@ -16,9 +16,9 @@
         <input type="password" name="bongo-password" class="password inputbox"/><br />
         <select name="lang" class="lang">
             <option value="en">English</option>
-            <option value="fr">Français</option>
+            <!-- <option value="fr">Français</option> -->
         </select>
-        <div class="submit"><input type="submit" value="Log in"></div>
+        <div class="submit"><span class="button"><button type="submit" value="Log in">Log in</button></span></div>
     </form>
 </div>
 </body>

@@ -21,10 +21,11 @@
 	</tr>
 	</table>
 	<br />
-	<input type="submit" value="Save" />
+	<span class="button"><button type="submit" value="Save">Save</button></span>
 </form>
 </div>
 
 </p>
 
+	<br />
 %(include|footer.tpl)s

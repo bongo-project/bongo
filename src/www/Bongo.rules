@@ -188,6 +188,8 @@ dist_img_DATA :=					     \
 	src/www/img/dialog-error-32.png \
 	src/www/img/dialog-information-32.png \
 	src/www/img/dialog-warning.png \
+	src/www/img/form_buttons.png    \
+	src/www/img/form_buttons.gif    \
 	src/www/img/help-browser.png \
 	src/www/img/locked.png \
 	src/www/img/locale.png  \
