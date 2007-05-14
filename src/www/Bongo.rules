@@ -190,6 +190,7 @@ dist_img_DATA :=					     \
 	src/www/img/dialog-warning.png \
 	src/www/img/help-browser.png \
 	src/www/img/locked.png \
+	src/www/img/locale.png  \
 	src/www/img/login-pane.png \
 	src/www/img/network-server.png \
 	src/www/img/sel.png \
