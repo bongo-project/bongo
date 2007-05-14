@@ -193,7 +193,7 @@ dist_img_DATA :=					     \
 	src/www/img/login-pane.png \
 	src/www/img/network-server.png \
 	src/www/img/sel.png \
-	src/www/ing/sbg.png \
+	src/www/img/sbg.png \
 	src/www/img/system-installer.png \
 	src/www/img/system-users.png \
 	src/www/img/user.png \
