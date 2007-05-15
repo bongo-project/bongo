@@ -7,6 +7,7 @@ from bongo.dragonfly.HttpError import HttpError
 
 import RootView
 import AgentView
+import AntispamView
 import BackupView
 import ServerView
 import SystemView
@@ -16,7 +17,8 @@ views = {
     "agents" : AgentView.AgentHandler(),
     "backup" : BackupView.BackupHandler(),
     "system" : SystemView.SystemHandler(),
-    "server" : ServerView.ServerHandler()
+    "server" : ServerView.ServerHandler(),
+    "antispam" : AntispamView.AntispamHandler()
     }
 
 class HawkeyePath:
