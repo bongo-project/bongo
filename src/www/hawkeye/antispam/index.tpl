@@ -1,5 +1,5 @@
 %(include|header.tpl)s
-
+<p>
 <form method="post">
 <table cellpadding="1">
 <tr><td style="padding-right: 16px;"><label for="timeout">Timeout: </label></td><td><input type="text" name="timeout" id="timeout" tal:attributes="value timeout" /> milliseconds</td></tr>
@@ -9,5 +9,5 @@
 <br />
 <span class="button"><button type="submit" value="Save">Save</button></span>
 </form>
-
+</p>
 %(include|footer.tpl)s

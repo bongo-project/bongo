@@ -25,24 +25,31 @@ class AntispamHandler(HawkeyeHandler):
         # Set values to display back
         if config != None and config.has_key("enabled"):
             self.SetVariable("success", 1)
+            if len(config) < 3:
+                nosetcheck = 1
+            else:
+                nosetcheck = 0
+            
             for key in config:
                 if key == "timeout":
-                    if config[key] > 1:
+                    if int(config[key]) > 1:
                         self.SetVariable("timeout", config[key])
-                    else:
-                        self.SetVariable("timeout", "20")
-                        nosetcheck = 1
                 elif key == "host":
                     hval = config[key].split(':', 3)
                     if len(hval) > 1:
                         self.SetVariable("host", hval[0])
                         self.SetVariable("port", hval[1])
-                    else:
-                        self.SetVariable("host", "not set")
-                        self.SetVariable("port", "783")
                         
-                        if nosetcheck:
-                            self.SetVariable("error", "Antispam is not currently set up correctly. Please enter the correct values below, and click save to rectify this.")
+            if nosetcheck == 1:
+                self.SetVariable("error", "Antispam is not currently set up. Please enter the correct values below or accept the defaults, and click 'Save'.")
+                
+                # Defaults (TODO: move back into store)
+                self.SetVariable("timeout", 20)
+                self.SetVariable("host", "127.0.0.1")
+                self.SetVariable("port", 783)
+            else:
+                self.SetVariable("error", 0)
+                self.SetVariable("success", 1)
         else:
             self.SetVariable("success", 0)
             self.SetVariable("error", "Unable to read configuration information from the Bongo store. Are you logged in as a user with administrative permissions?")
@@ -57,10 +64,8 @@ class AntispamHandler(HawkeyeHandler):
         global doneop
         
         config = self._getAntispam(req)
-        if config.has_key("enabled"):
+        if config != None:
             for key in req.form:
-                print "got key=" + str(key)
-                print "val=" + str(req.form[key].value)
                 if key == "timeout":
                     config["timeout"] = int(req.form[key].value);
                 elif key == "host":
@@ -71,7 +76,7 @@ class AntispamHandler(HawkeyeHandler):
             # Set weight (always 1 since we can only handle 1 host)
             config["host"] += ":1"
         else:
-            self.SetVariable("error", "Unable to read config")
+            config = "{ version: 1, enabled: 1, timeout: 20, host: \"127.0.0.1:783:1\" }"
 
         self._setAntispam(req, config)
         # Operation completed OK.
