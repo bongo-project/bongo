@@ -432,10 +432,20 @@ AC_ARG_WITH([slapd-schema],
 	AC_HELP_STRING([--with-slapd-schema=DIR],
 		[Path to slapd schema directory]),
 	[DEFAULT_SLAPD_SCHEMA_DIR=$withval],
-	[AC_PATH_PROG(DEFAULT_SLAPD_SCHEMA_DIR, core.schema, [/etc/openldap/schema], [/etc/openldap/schema:/etc/ldap/schema:/usr/local/etc/openldap/schema])])
+	[
+		for dir in /etc/openldap/schema /etc/ldap/schema /usr/local/etc/openldap/schema; do
+			DEFAULT_SLAPD_SCHEMA_DIR="${dir}/core.schema"
+			if test -e ${DEFAULT_SLAPD_SCHEMA_DIR}; then
+				break 2
+			fi
+		done
+	])
+
 if echo $DEFAULT_SLAPD_SCHEMA_DIR |grep "/core.schema$" >/dev/null 2>&1; then
 	DEFAULT_SLAPD_SCHEMA_DIR=`dirname $DEFAULT_SLAPD_SCHEMA_DIR`
 fi
+
+AC_SUBST(DEFAULT_SLAPD_SCHEMA_DIR)
 
 # Look for apache's module dir
 AC_ARG_WITH([apache-modules],

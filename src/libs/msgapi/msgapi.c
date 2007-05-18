@@ -1967,7 +1967,8 @@ MsgGetBuildVersion(int *version, BOOL *custom)
 
     *version = strtol(ptr, NULL, 10);
     len = strlen(ptr);
-    
+   
+    *custom = FALSE; 
     if (ptr[len] == 'M') *custom = TRUE;
     return TRUE;
 }
