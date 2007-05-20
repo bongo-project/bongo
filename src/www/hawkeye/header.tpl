@@ -20,10 +20,10 @@
 <div id="sidebar">
 <ul class="nav">
 <li tal:attributes="class dsktab"><a href="%(url|/)s"><img src="/img/user-desktop.png" border="0" alt="" class="icon" /> Desktop</a></li>
-<li tal:attributes="class usrtab"><img src="/img/system-users.png" alt="" class="icon" /> Users</li>
+<li class="disabled"><img src="/img/system-users.png" alt="" class="icon" /> Users</li>
 <li tal:attributes="class agntab"><a href="%(url|/)sagents"><img src="/img/system-installer.png" border="0" alt="" class="icon" /> Agents</a></li>
 <li tal:attributes="class systab"><a href="%(url|/)ssystem"><img src="/img/network-server.png" border="0" alt="" class="icon" /> System</a></li>
-<li tal:attributes="class hlptab"><img src="/img/help-browser.png" alt="" class="icon" /> Help</li>
+<li class="disabled"><img src="/img/help-browser.png" alt="" class="icon" /> Help</li>
 </ul>
 </div>
 <div id="page">

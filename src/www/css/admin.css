@@ -1,22 +1,22 @@
 /*
     Bongo web administration interface (aka Hawkeye) stylesheet
     (c) 2007 Alexander Hixon <hixon.alexander@mediati.org> - see COPYING for details
-    Last modified: Monday May 14, 2007
+    Last modified: Sunday May 20, 2007
 
     =======[ Global Styles ]=======
 */
 
 body {
     background-color: #eeeeec;
-    font-size: 12px;
+    font-size: 16px;
     font-family: luxi sans, trebuchet ms, bitstream vera sans, sans-serif;
-    color: #2e3436;
+    color: #eeeeec;
     padding: 0px;
     margin: 0px;
 }
 
 #body-override {
-    font-size: 16px;
+    color: #2e3436;
     background: url('/img/bg.png');
     background-repeat: repeat-x;
     background-color: #fff;
@@ -30,17 +30,18 @@ body {
 */
 
 #login { 	
+    font-size: 110%;
     position:absolute;
-    height:200px; 
+    height:300px; 
     width:400px;
-    margin:-100px 0px 0px -200px;
+    margin:-150px 0px 0px -200px;
     top: 50%; 
     left: 50%;
     
     text-align: center;
     padding: 0px;
     background-image: url('../img/login-pane.png');
-    background-repeat: no-repeat; /* Make sure this doesn't actually happen. */
+    /*background-repeat: no-repeat; /* Make sure this doesn't actually happen. */
     overflow: none;
 }
 
@@ -173,6 +174,10 @@ p {
     width: 175px;
     background-repeat: no-repeat;
     color: #2e3436;
+}
+
+.disabled {
+    color:#aaa !important;
 }
 
 ul.nav,
@@ -328,8 +333,8 @@ a.button span, span.button button, span.button input, del.button span {
 	display:inline-block;
 	line-height:1;
     /*letter-spacing:0 !important;
-    font-family:"Arial" !important;
-    font-size:12px !important;*/
+    font-family:"Arial" !important;*/
+    font-size:12px !important;
     font-style:normal;    
     background-color:transparent;
 	background-position:100% 0;
