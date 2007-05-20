@@ -232,7 +232,9 @@ dist_js_DATA :=					\
 	src/www/js/Summary.js			\
 	src/www/js/Util.js			\
 	src/www/js/ValidatingEntry.js		\
-	src/www/js/Widgets.js
+	src/www/js/Widgets.js   \
+	src/www/js/Browser.js   \
+	src/www/js/BrowserCheck.js
 
 prototypedir = $(jsdir)/lib/prototype
 
