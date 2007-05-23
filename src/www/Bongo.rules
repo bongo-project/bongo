@@ -88,7 +88,6 @@ dist_img_DATA :=					     \
 	src/www/img/bongo-favicon.gif			     \
 	src/www/img/bongo-favicon.ico			     \
 	src/www/img/bongo-favicon.png			     \
-	src/www/img/bongo-logo.png			     \
 	src/www/img/icon-simple-calendars.gif		     \
 	src/www/img/icon-simple-calendars.png		     \
 	src/www/img/icon-simple-contacts.gif		     \
