@@ -1,0 +1,41 @@
+.TH "bongo-sendmail" 1 "Bongo Project" "http://bongo-project.org/"
+.SH "NAME" 
+bongo-sendmail \(em bongo Sendmail 
+.SH "SYNOPSIS" 
+.PP 
+.B bongo-sendmail
+.RI [ options ]
+.SH "DESCRIPTION" 
+.PP 
+The
+.B bongo-sendmail
+command attempts to implement an LSB-compliant sendmail interface direct to the Bongo Queue agent. Most useful options are implemented; some are not. 
+.PP 
+.B bongo-sendmail
+will continue to read input from standard input until it sees either a dot alone on a line, or reaches the end of file. 
+.SH "OPTIONS" 
+.PP 
+A summary of options is included below. 
+.TP
+.BI \-r " mail_from"
+Set the From: header of the mail being sent.
+.TP
+.BI \-F " env_from"
+Set the sender address on the mail envelope.
+.TP
+.BR \-i
+Read the entire standard input until the end of the file.
+.TP
+.BR \-bm
+From from stndard input until a . appears alone on a line.
+.TP
+.BR \-o
+-oi is equivalent to -i; other arguments are ignored.
+.TP
+.BR \-t
+Extract recipient addresses from the mail body.
+.SH "AUTHOR" 
+.PP 
+This manual page was originally written by Alex Hudson <home@alexhudson.com> for the 
+.B Debian
+system (but may be used by others) and was updated by Jonny Lamb <jonnylamb@jonnylamb.com>.  Permission is granted to copy, distribute and/or modify this document under the terms of the GNU General Public License, Version 2, as published by the Free Software Foundation. 

@@ -1,0 +1,72 @@
+.TH "bongo-setup" 1 "Bongo Project" "http://bongo-project.org/"
+.SH NAME
+bongo-setup \- Sets up the Bongo server
+.SH SYNOPSIS
+.B bongo-setup
+.RI [ options ]
+.SH DESCRIPTION
+.B bongo-setup
+installs the initial configuration in readiness for running the Bongo server.
+.B bongo-setup
+should be run after installing, and before trying to run Bongo itself.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\^\-help
+Show help message and exit.
+.TP
+.BR \-n ", " \-\^\-noprompt
+Run non-interactively.
+.TP
+.BI \-H " HOSTNAME" "\fR,\fP \-\^\-hostname=" HOSTNAME
+Hostname of this Bongo server.
+.TP
+.BI \-M " MAILDOMAIN" "\fR,\fP \-\^\-maildomain=" MAILDOMAIN
+Domain we accept mail for.
+.TP
+.BI \-f " FILE" "\fR,\fP \-\^\-file=" FILE
+Import objects from XML file
+.I FILE
+.TP
+.BI \-S " TARGET" "\fR,\fP \-\^\-gen-schema=" TARGET
+Generate schema for
+.I TARGET
+(ad, edir, mdb, openldap).
+.TP
+.BI \-a " NOACL" "\fR,\fP \-\^\-noacl=" NOACL
+Do not set up ACLs.
+.TP
+.BI \-m " MDB_DRIVER" "\fR,\fP \-\^\-mdb-driver=" MDB_DRIVER
+Specify directory driver (file, ldap, managed-slapd); Default is managed-slapd.
+.TP
+.BI \-b " BASE" "\fR,\fP \-\^\-base=" BASE
+Base directory for Bongo.
+.TP
+.BI "\-\^\-managed-slapd-path=" PATH
+Path to your slapd bianry. Default is /usr/sbin/slapd
+.TP
+.BI "\-\^\-managed-slapd-port=" PORT
+Port for managed slapd. Default is 8983.
+.SH SSL OPTIONS
+.TP
+.BI \-r " FILE" "\fR,\fP \-\^\-cert=" FILE
+Use certificate file
+.I FILE
+.TP
+.BI \-k " FILE" "\fR,\fP \-\^\-key=" FILE
+Use private key file
+.I FILE
+.SH LDAP OPTIONS
+.TP
+.BI \-u " AUTHUSER" "\fR,\fP \-\^\-authuser=" AUTHUSER
+User for directory authentication (only available when
+.B --mdb-driver=ldap
+)
+.TP
+.BI \-p " AUTHPASS" "\fR,\fP \-\^\-authpass=" AUTHPASS
+Password for directory authentication (only available when
+.B --mdb-driver=ldap
+)
+.SH "AUTHOR"
+This man page was written by Jonny Lamb <jonnylamb@jonnylamb.com>.
+.SH "SEE ALSO"
+bongo-config(1), bongo-admin(1)

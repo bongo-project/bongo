@@ -1,0 +1,105 @@
+.TH "bongo-admin" 1 "Bongo Project" "http://bongo-project.org/"
+.SH "NAME" 
+bongo-admin \(em Bongo Administration Utility
+.SH "SYNOPSIS" 
+.PP
+.B bongo-admin
+.RI [ options ]
+.I COMMAND
+.RI [ command-options ]
+.SH "DESCRIPTION" 
+.PP 
+This manual page documents briefly the 
+.B bongo-manager
+command. 
+.PP 
+.B bongo-manager
+is a program to administrate the Bongo server. 
+.SH "OPTIONS" 
+.PP 
+A summary of options is included below. 
+.TP
+.BR \-h ", " \-\^\-help
+Help. Display available commands.
+.TP
+.BI \-U " AUTHUSER" "\fR,\fP \-\^\-authuser=" AUTHUSER
+Admin username. Defaults to admin.
+.TP
+.BI \-P " AUTHPASS" "\fR,\fP \-\^\-authpass=" AUTHPASS
+Admin password.
+.TP
+.BI \-c " CONTEXT" "\fR,\fP \-\^\-context=" CONTEXT
+MDB context.
+.TP
+.BR \-\^\-debug
+Enable debugging output.
+.SH "AGENT COMMANDS"
+.TP
+.BR agent-delete ", " ad
+Delete a Bongo agent.
+.TP
+.BR agent-info ", " ai
+List info for an agent.
+.TP
+.BR agent-list ", " al
+List configured Bongo agents.
+.TP
+.BR agent-modify ", " am
+Modify a Bongo agent.
+.SH "OTHER COMMANDS"
+.TP
+.BR demo
+Create a demo user
+.SH "SERVER COMMANDS"
+.TP
+.BR server-info ", " si
+List information about configured Bongo servers.
+.TP
+.BR server-list ", " sl
+List configured Bongo servers.
+.SH "SETUP COMMANDS"
+.TP
+.BR import
+Import a
+.B bongo-setup.xml
+tree.
+.TP
+.BR setup-genschema
+Generate directory schema.
+.TP
+.BR setup-mdb
+Configure an MDB tree.
+.TP
+.BR setup-rights
+Grant access to Bongo services on the Bongo tree.
+.TP
+.BR setup-ssl
+Generate or install an SSL key/cert pair.
+.TP
+.BR setup-system-credential
+Generate Bongo system agent credential.
+.SH "USER COMMANDS"
+.TP
+.BR user-add ", " ua
+Add a Bongo user.
+.TP
+.BR user-delete ", " ud
+Delete a Bongo user.
+.TP
+.BR user-info ", " ui
+Display information about a Bongo user.
+.TP
+.BR user-list ", " ul
+List Bongo users.
+.TP
+.BR user-modify ", " um
+Modify a Bongo user.
+.TP
+.BR user-passwd ", " up
+Change a Bongo user's password.
+.SH "SEE ALSO" 
+.PP 
+bongo-setup(1), bongo-admin(1) 
+.SH "AUTHOR" 
+.PP 
+This manual page was written by Jonny Lamb <jonnylamb@jonnylamb.com>.

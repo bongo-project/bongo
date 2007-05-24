@@ -1,0 +1,30 @@
+.TH "bongo-config" 1 "Bongo Project" "http://bongo-project.org/"
+.SH NAME
+bongo-config \- configures parts of the Bongo server
+.SH SYNOPSIS
+.B bongo-config
+.RI [ options ]
+.I COMMAND
+.SH DESCRIPTION
+.B bongo-config
+installs the necessary configuration to the Bongo Store. It takes a
+.I COMMAND
+on execution to specify its action.
+.SH OPTIONS
+.TP
+.BR \-v ", " \-\^\-verbose
+Show verbose output.
+.SH COMMANDS
+.TP
+.BR install
+Do the initial Bongo install.
+.TP
+.BR crypto
+Generate data needed for encryption.
+.TP
+.BR checkversion
+Check whether a newer Bongo is available.
+.SH "AUTHOR"
+This man page was written by Jonny Lamb <jonnylamb@jonnylamb.com>.
+.SH "SEE ALSO"
+bongo-setup(1), bongo-admin(1)

@@ -1,0 +1,74 @@
+.TH "bongoagents" "8" "Bongo Project" "http://bongo-project.org/"
+.SH "NAME" 
+bongoaddressbook, bongoalarm, bongoantispam, bongoavirus, bongocalcmd, bongocollector, bongoconnmgr, bongogeneric, bongoimap, bongoitip, bongomailprox, bongopluspack, bongopop3, bongoqueue, bongorules, bongosmtp, bongostore \(em Bongo Agents 
+.SH "SYNOPSIS" 
+.PP 
+Bongo agents that manage a certain part of the server.
+.SH "DESCRIPTION" 
+.PP 
+.TP
+.BR bongoaddressbook
+Address book agent.
+.TP
+.BR bongoalarm
+Alarm clock agent. This does e-mail notification of calendar events upcoming.
+.TP
+.BR bongoantispam
+Anti-spam agent. This currently only ties to the spamd process from SpamAssassin.
+.B bongoantispam
+will always add spam headers to mail no matter what the spam score or status of an email.
+.TP
+.BR bongoavirus
+Anti-virus agent. This agent connects to the clamd process of Clam anti-virus. It will scan all messages for viruses or phising content.
+.TP
+.BR bongocalcmd
+ical agent. This processes mail and if it appears as if it is calendar data, it will act accordingly.
+.TP
+.BR bongocollector
+Calendar collector agent. This gets calendar subscriptions for users.
+.TP
+.BR bongoconnmgr
+This agent is a common library used by all agents for network access.
+.B connmgr
+provides a coherent buffered network stack.
+.TP
+.BR bongogeneric
+An example agent.
+.TP
+.BR bongoimap
+IMAP agent, which translates the internal Bongo Store protocol to the RFC standard IMAP4 rev1 protocol (RFC-3501).
+.TP
+.BR bongoitip
+iCal Transport-Independant interoperability Protocol agent. This manages calendar invitations over e-mail (RFC-2446).
+.TP
+.BR bongomailprox
+Receives mail from a remote IMAP/POP mail server and adds it to a local mail account.
+.TP
+.BR bongopluspack
+The "plus pack" agent. This has several jobs, including keeping a copy of all mail passing throug hthe system.
+.TP
+.BR bongopop3
+POP3 agent, which translates the internal Bongo Store protocol to the RFC standard POP3 protocol (RFC-1939).
+.TP
+.BR bongoqueue
+Speaks to all other queue agents and moves mail through mail queues. Queues range from anti-spam to SMTP to IMAP.
+.TP
+.BR bongorules
+Server-side rules agent for mail. This is similar to how a mail client allows rules to be set up for handling mail, but on the server-side.
+.TP
+.BR bongosmtp
+SMTP agent, which translates the internal Bongo Queue protocol to the RFC standard SMTP protocol (RFC-2821).
+.TP
+.BR bongostore
+Bongo Store agent, which houses the mail for each user using an mbox format with custon indexing.
+.SH "OPTIONS" 
+.PP 
+These programs should never be called directly by the user, and thus have no command-line options. 
+.SH "SEE ALSO" 
+.PP 
+bongo-manager(1), bongo-setup(1), bongo-admin(1) 
+.SH "AUTHOR" 
+.PP 
+This manual page was originally written by Alex Hudson <home@alexhudson.com> for the
+.B Debian
+system (but may be used by others) and modified by Jonny Lamb <jonnylamb@jonnylamb.com>.  Permission is granted to copy, distribute and/or modify this document under the terms of the GNU General Public License, Version 2, as published by the Free Software Foundation. 

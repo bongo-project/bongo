@@ -727,4 +727,5 @@ src/libs/connmgr/Makefile
 src/www/Makefile
 src/www/bongo.conf
 zoneinfo/Makefile
+man/Makefile
 ])
