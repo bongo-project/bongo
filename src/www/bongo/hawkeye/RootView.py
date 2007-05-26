@@ -61,9 +61,11 @@ class RootHandler(HawkeyeHandler):
             sw_current += " (custom build)"
         sw_available = msgapi.GetAvailableVersion()
         self.SetVariable("sw_current", sw_current)
-        self.SetVariable("sw_available", sw_available)
         if (sw_available - build_ver) > 9:
             self.SetVariable("sw_upgrade", 1) 
+        if sw_available == 0:
+            sw_available = "Unknown (no network, or DNS failure)"
+        self.SetVariable("sw_available", sw_available)
         # send the template
         return self.SendTemplate(req, rp, "index.tpl")
 

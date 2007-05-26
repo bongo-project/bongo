@@ -601,9 +601,11 @@ msgapi_GetAvailableVersion(PyObject *self, PyObject *args)
 {
     int version;
 
-    MsgGetAvailableVersion (&version);
-
-    return Py_BuildValue("i", version);
+    if (MsgGetAvailableVersion (&version)) {
+        return Py_BuildValue("i", version);
+    } else {
+        return Py_BuildValue("i", 0);
+    }
 }
 
 extern PyObject *msgapi_GetConfigProperty(PyObject *, PyObject *);
