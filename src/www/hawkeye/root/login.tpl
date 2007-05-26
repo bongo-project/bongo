@@ -8,16 +8,21 @@
     <style type="text/css" media="screen">
         @import url(/css/admin.css);
     </style>
+    <script type="text/javascript" src="/js/Browser.js"></script>
 </head>
 <body onload="document.forms[0].elements[0].focus();">
+<!-- Since TAL really doesn't like inline <script> element data. -->
+<script type="text/javascript" src="/js/BrowserCheck.js"></script>
 <div id="login">
     <form method="post">
-        <input type="text" name="bongo-username" class="username inputbox" /><br />
-        <input type="password" name="bongo-password" class="password inputbox"/><br />
-        <select name="lang" class="lang">
+        <table style="text-align: center; width: 100%%;">
+        <tr><td><label for="uname">Username: </label></td><td><input type="text" id="uname" name="bongo-username" class="username inputbox" /></td></tr>
+        <tr><td><label for="pword">Password: </label></td><td><input type="password" id="pword" name="bongo-password" class="password inputbox"/></td></tr>
+        <tr><td><label for="lang">Language: </label></td><td><select id="lang" name="lang" class="lang">
             <option value="en">English</option>
             <!-- <option value="fr">Français</option> -->
-        </select>
+        </select></td></tr>
+        </table>
         <div class="submit"><span class="button"><button type="submit" value="Log in">Log in</button></span></div>
     </form>
 </div>
