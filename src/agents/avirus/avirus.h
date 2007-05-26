@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #ifndef _AVIRUS_H
@@ -24,7 +25,6 @@
 
 #include <connio.h>
 #include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -38,6 +38,9 @@
 #define CONNECTION_TIMEOUT (15 * 60)
 
 #define MIME_REALLOC_SIZE 20
+
+#define CLAMAV_DEFAULT_ADDRESS  "127.0.0.1"
+#define CLAMAV_DEFAULT_PORT     3310
 
 typedef enum _AVirusStates {
     AV_STATE_STARTING = 0, 
@@ -126,8 +129,6 @@ typedef struct {
 typedef struct _AVirusGlobals {
     AVirusStates state;
     AVirusFlags flags;
-
-    unsigned char officialName[MAXEMAILNAMESIZE + 1];
 
     struct {
         XplSemaphore semaphore;
@@ -218,12 +219,6 @@ typedef struct _AVirusGlobals {
 } AVirusGlobals;
 
 extern AVirusGlobals AVirus;
-
-/* management.c */
-ManagementVariables *GetAVirusManagementVariables(void);
-int GetAVirusManagementVariablesCount(void);
-ManagementCommands *GetAVirusManagementCommands(void);
-int GetAVirusManagementCommandsCount(void);
 
 /* mime.c */
 void ClearMIMECache(AVClient *client);

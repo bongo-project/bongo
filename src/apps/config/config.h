@@ -41,7 +41,7 @@ static char *bongo_manager_config =
 "   	{ \"name\": \"bongoqueue\", \"pri\": 3, \"enabled\": true },\n"
 "	{ \"name\": \"bongosmtp\", \"pri\": 3, \"enabled\": true },\n"
 "	{ \"name\": \"bongoantispam\", \"pri\": 5, \"enabled\": true },\n"
-"	{ \"name\": \"bongoavirus\", \"pri\": 5, \"enabled\": true, \"config\":\"/config/avirus\"},\n"
+"	{ \"name\": \"bongoavirus\", \"pri\": 5, \"enabled\": true },\n"
 "	{ \"name\": \"bongocollector\", \"pri\": 7, \"enabled\": true },\n"
 "	{ \"name\": \"bongomailprox\", \"pri\": 7, \"enabled\": true },\n"
 "	{ \"name\": \"bongoconnmgr\", \"pri\": 2, \"enabled\": true },\n"
@@ -53,13 +53,15 @@ static char *bongo_manager_config =
 "  ]\n"
 "}\n";
 
-static char *bongo_avirus_config = 
-"{ version: 1, \n"
-"}\n";
-
 static char *bongo_aspam_config =
 "{ \"version\": 1, \n"
 "  \"enabled\": true\n"
+"}\n";
+
+static char *bongo_avirus_config =
+"{ \"version\": 1, \n"
+"  \"enabled\": true, \n"
+"  \"flags\": 168\n"
 "}\n";
 
 #endif

@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #include <config.h>
@@ -272,45 +273,43 @@ ScanMessageClam(AVClient *client, char *queueID)
 	    ConnFlush(conn);
 	    ccode = ConnReadAnswer(conn, client->line, CONN_BUFSIZE);
 
-	    if (!ccode
-		|| strncmp(client->line, "PORT ", strlen("PORT ")) != 0
-		|| (port = atoi(client->line + strlen("PORT "))) == 0) {
-		ConnFree(conn);
-		return -1;
+	    if (!ccode || strncmp(client->line, "PORT ", strlen("PORT ")) != 0 || (port = atoi(client->line + strlen("PORT "))) == 0) {
+		    ConnFree(conn);
+		    return -1;
 	    }
 	    
 	    data = ConnAlloc(TRUE);
 	    if (!data) {
-		ConnFree(conn);
-		return -1;
+		    ConnFree(conn);
+		    return -1;
 	    }
 
 	    memcpy(&data->socketAddress, &AVirus.clam.addr, sizeof(struct sockaddr_in));
 	    data->socketAddress.sin_port = htons(port);
 	    if (ConnConnectEx(data, NULL, 0, NULL, client->conn->trace.destination) < 0) {
-		ConnFree(conn);
-		ConnFree(data);
-		return -1;
+		    ConnFree(conn);
+		    ConnFree(data);
+		    return -1;
 	    }
 
 	    size = 0;
 	    if (((ccode = NMAPSendCommandF(client->conn, "QRETR %s MESSAGE\r\n", queueID)) != -1)
 		&& ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1)
 		&& ccode == 2023) {
-		char *ptr;
+		    char *ptr;
 
-		ptr = strchr (client->line, ' ');
-		if (ptr) {
-		    *ptr = '\0';
-		}
+		    ptr = strchr (client->line, ' ');
+		    if (ptr) {
+		        *ptr = '\0';
+		    }
 		
-		size = atol(client->line);
+		    size = atol(client->line);
 	    }
 
 	    if (size == 0) {
-		ConnFree(conn);
-		ConnFree(data);
-		return -1;
+		    ConnFree(conn);
+		    ConnFree(data);
+		    return -1;
 	    }
 
 	    ccode = ConnReadToConn(client->conn, data, size);
@@ -318,9 +317,9 @@ ScanMessageClam(AVClient *client, char *queueID)
 	    ConnFree(data);
 	    
 	    if ((ccode == -1) || ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != 1000)) {
-XplConsolePrintf("DEBUG: result %d\n", ccode);
-		ConnFree(conn);
-		return -1;
+            XplConsolePrintf("DEBUG: result %d\n", ccode);
+		    ConnFree(conn);
+		    return -1;
 	    }
 
 	    while ((ccode = ConnReadAnswer(conn, client->line, CONN_BUFSIZE)) != -1) {
@@ -439,9 +438,10 @@ SendNotification(AVClient *client, unsigned char *from, unsigned char *qID, MDBV
         return(ccode);
     }
 
+/* TODO: AVirus.officialName ???? */
     if ((ccode != -1) 
             && ((ccode = NMAPSendCommand(client->conn, "QSTOR MESSAGE\r\n", 15)) != -1) 
-            && ((ccode = ConnWriteF(client->conn, "From: Virus Scanning Agent <postmaster@%s>\r\n", AVirus.officialName)) != -1) 
+            && ((ccode = ConnWriteF(client->conn, "From: Virus Scanning Agent <postmaster@mailserver>\r\n")) != -1) 
             && ((ccode = ConnWriteF(client->conn, "To: undisclosed-recipient-list\r\n")) != -1)) {
         MsgGetRFC822Date(-1, 0, client->line);
     } else {
@@ -1109,15 +1109,7 @@ AntiVirusServer(void *ignored)
 
     ConnCloseAll(1);
 
-    if (ManagementState() == MANAGEMENT_RUNNING) {
-        ManagementShutdown();
-    }
-
     for (i = 0; (XplSafeRead(AVirus.server.active) > 1) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    for (i = 0; (ManagementState() != MANAGEMENT_STOPPED) && (i < 60); i++) {
         XplDelay(1000);
     }
 
@@ -1185,39 +1177,57 @@ AntiVirusServer(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
-    unsigned long i = 0;
     unsigned char path[XPL_MAX_PATH + 1];
     XplDir *dir;
     XplDir *dirEntry;
-    MDBValueStruct *config;
+
+    unsigned char *pconfig;
+    BongoJsonNode *node;
+    BOOL retcode = TRUE;
+    BOOL enabled = FALSE;
+    const char *tmpBuffer;
+    BongoJsonResult res;
+
+    if (!NMAPReadConfigFile("antivirus", &pconfig)) {
+        printf("manager: couldn't read config from store\n");
+        return FALSE;
+    }
+
+    if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
+        printf("manager: couldn't parse JSON config\n");
+        retcode = FALSE;
+        goto finish;
+    }
 
     AVirus.clam.addr.sin_family = AF_INET;
-    
-    config = MDBCreateValueStruct(AVirus.handle.directory, MsgGetServerDN(NULL));
-    if (config) {
-        if (MDBRead(MSGSRV_AGENT_ANTIVIRUS, MSGSRV_A_CONFIGURATION, config)) {
-            for (i = 0; i < config->Used; i++) {
-                if (XplStrNCaseCmp(config->Value[i], "Settings: ", 10) == 0) {
-                    AVirus.flags = atol(config->Value[i] + 10);
-                } else if (XplStrNCaseCmp(config->Value[i], "AVirus.path.patterns: ", 13) == 0) {
-                    strcpy(AVirus.path.patterns, config->Value[i] + 13);
-                } else if (XplStrNCaseCmp(config->Value[i], "Queue: ", 7) == 0) {
-                    AVirus.nmap.queue = atol(config->Value[i] + 7);
-                } else if (XplStrNCaseCmp(config->Value[i], "ClamHost: ", 10) == 0) {
-		    struct hostent *he;
-		    he = gethostbyname(config->Value[i] + 10);
-		    if (he) {
-			memcpy(&AVirus.clam.addr.sin_addr.s_addr, he->h_addr_list[0], sizeof(AVirus.clam.addr.sin_addr.s_addr));
-		    }
-                } else if (XplStrNCaseCmp(config->Value[i], "ClamPort: ", 10) == 0) {
-		    AVirus.clam.addr.sin_port = htons((unsigned short)atoi(config->Value[i] + 10));		    
-                }
-            }
 
-            MDBFreeValues(config);
+    res = BongoJsonJPathGetBool(node, "o:enabled/b", &enabled);
+    if ((res != BONGO_JSON_OK) || (!enabled)) {
+        /* nothing configured or we are disabled */
+        return FALSE;
+    }
+
+    res = BongoJsonJPathGetInt(node, "o:flags/i", &AVirus.flags);
+    res = BongoJsonJPathGetString(node, "o:patterns/s", &tmpBuffer);
+    if (res == BONGO_JSON_OK) {
+        strncpy(AVirus.path.patterns, tmpBuffer, XPL_MAX_PATH);
+    }
+    res = BongoJsonJPathGetInt(node, "o:queue/i", (int *)&AVirus.nmap.queue);
+    res = BongoJsonJPathGetString(node, "o:host/s", &tmpBuffer);
+    if (res == BONGO_JSON_OK) {
+        struct hostent *he;
+        he = gethostbyname(tmpBuffer);
+        if (he) {
+            memcpy(&AVirus.clam.addr.sin_addr.s_addr, he->h_addr_list[0], sizeof(AVirus.clam.addr.sin_addr.s_addr));
         }
     } else {
-        return(FALSE);
+        AVirus.clam.addr.sin_addr.s_addr = inet_addr(CLAMAV_DEFAULT_ADDRESS);
+    }
+    res = BongoJsonJPathGetInt(node, "o:port/i", (int *)&AVirus.clam.addr.sin_port);
+    if (res == BONGO_JSON_OK) {
+        AVirus.clam.addr.sin_port = htons(AVirus.clam.addr.sin_port);
+    } else {
+        AVirus.clam.addr.sin_port = htons(CLAMAV_DEFAULT_PORT);
     }
 
     MsgGetWorkDir(AVirus.path.work);
@@ -1237,22 +1247,18 @@ ReadConfiguration(void)
         XplCloseDir(dirEntry);
     }
 
-    if (MDBRead(".", MSGSRV_A_OFFICIAL_NAME, config)) {
-        strcpy(AVirus.officialName, config->Value[0]);
-
-        MDBFreeValues(config);
-    } else {
-        AVirus.officialName[0] = '\0';
-    }
-
+#if 0
     MDBSetValueStructContext(NULL, config);
     if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, config) > 0) { 
         HashCredential(MsgGetServerDN(NULL), config->Value[0], AVirus.nmap.hash);
     }
 
     MDBDestroyValueStruct(config);
+#endif
 
-    return(TRUE);
+finish:
+    BongoJsonNodeFree(node);
+    return retcode;
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)
@@ -1358,7 +1364,6 @@ int
 XplServiceMain(int argc, char *argv[])
 {
     int                ccode;
-    XplThreadID        id;
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
         XplConsolePrintf("antivirus: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());

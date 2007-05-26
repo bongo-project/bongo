@@ -9,7 +9,6 @@ bongoavirus_SOURCES :=				\
 
 bongoavirus_LDADD :=					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongostreamio.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \
