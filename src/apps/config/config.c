@@ -24,9 +24,18 @@ usage() {
 		"  install                         do the initial Bongo install\n"
 		"  crypto                          generate data needed for encryption\n"
                 "  checkversion                    see if a newer Bongo is available\n" 
+		"  tzcache                         regenerate cached timezone information\n"
 		"";
 
 	XplConsolePrintf("%s", usage);
+}
+
+void
+RunAsBongoUser() {
+	if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {    
+		printf("bongotzcache: Could not drop to unpriviliged user '%s'\n", MsgGetUnprivilegedUser());
+		exit(-1);
+	}
 }
 
 BOOL
@@ -269,6 +278,19 @@ CheckVersion() {
 	}
 }
 
+void
+TzCache() {
+	char path[PATH_MAX];
+	char *dbfdir = XPL_DEFAULT_DBF_DIR;
+
+	RunAsBongoUser();
+
+	snprintf(path, PATH_MAX, "%s/%s", dbfdir, "bongo-tz.cache");
+	unlink(path);
+    
+	BongoCalInit(dbfdir);
+}
+
 int 
 main(int argc, char *argv[]) {
 	int next_arg = 0;
@@ -301,6 +323,8 @@ main(int argc, char *argv[]) {
 			command = 2;
 		} else if (!strcmp(argv[next_arg], "checkversion")) {
 			command = 3;
+		} else if (!strcmp(argv[next_arg], "tzcache")) {
+			command = 4;
 		} else {
 			printf("Unrecognized command: %s\n", argv[next_arg]);
 		}
@@ -326,6 +350,9 @@ main(int argc, char *argv[]) {
 			break;
 		case 3: 
 			CheckVersion();
+			break;
+		case 4:
+			TzCache();
 			break;
 		default:
 			break;

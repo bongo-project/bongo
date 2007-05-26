@@ -132,7 +132,6 @@ include_subdirs :=				\
 	src/apps/manager			\
 	src/apps/sendmail			\
 	src/apps/setup				\
-	src/apps/tzcache			\
 	src/apps/mdbtool			\
 	src/apps/queuetool			\
 	src/apps/storetool			\
@@ -198,7 +197,6 @@ include src/apps/config/Bongo.rules
 include src/apps/manager/Bongo.rules
 include src/apps/sendmail/Bongo.rules
 include src/apps/setup/Bongo.rules
-include src/apps/tzcache/Bongo.rules
 include src/apps/mdbtool/Bongo.rules
 # include src/apps/migrate/Bongo.rules
 include src/apps/queuetool/Bongo.rules
