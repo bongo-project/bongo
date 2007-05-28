@@ -24,10 +24,8 @@
 /* Compile-time options */
 #undef USE_HOPCOUNT_DETECTION
 
-/* Product defines */
-#define PRODUCT_SHORT_NAME "pop3d.nlm"
+#define LOGGERNAME "pop3d"
 #define PRODUCT_NAME "Bongo POP3 Agent"
-#define PRODUCT_DESCRIPTION "Enables POP3 clients to retrieve mail from this host. (POP3 = Post Office Protocol, Version 3, RFC 1939)"
 #define PRODUCT_VERSION "$Revision: 1.5 $"
 
 #include <xpl.h>
@@ -474,7 +472,7 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
     if (result) {
         result = MDBVerifyPassword(client->dn, password, user);
     } else {
-        LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_UNKNOWN_USER, LOG_NOTICE, 0, username, password, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+        Log(LOG_NOTICE, "Unknown user %s from host %s", username, LOGIP(client->conn->socketAddress));
         MDBDestroyValueStruct(user);
         return(POP3_NMAP_USER_UNKNOWN);
     }
@@ -483,8 +481,8 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
         result = MsgGetUserFeature(client->dn, FEATURE_POP, NULL, NULL);
     } else {
         XplSafeIncrement(POP3.stats.badPasswords);
-
-        LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_WRONG_PASSWORD, LOG_NOTICE, 0, username, password, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+        Log(LOG_NOTICE, "Incorrect password for user %s from host %s", username,
+            LOGIP(client->conn->socketAddress));
         MDBDestroyValueStruct(user);
         return(POP3_NMAP_PASSWORD_INVALID);
     }
@@ -492,7 +490,7 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
     if (result) {
         strcpy(client->user, user->Value[0]);
     } else {
-        LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_DISABLED_FEATURE, LOG_NOTICE, 0, username, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+        Log(LOG_NOTICE, "POP3 feature disabled on user %s account", username);
         MDBDestroyValueStruct(user);
         return(POP3_NMAP_FEATURE_DISABLED);
     }
@@ -502,7 +500,7 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
     if ((client->store = NMAPConnectEx(NULL, &nmap, client->conn->trace.destination)) != NULL) {
         result = NMAPAuthenticate(client->store, client->buffer, CONN_BUFSIZE);
     } else {
-        LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE, LOG_ERROR, 0, NULL, NULL, nmap.sin_addr.s_addr, 0, NULL, 0);
+        Log(LOG_ERROR, "Cannot connect to Store Agent on host %s", LOGIP(nmap));
         return(POP3_NMAP_SERVER_DOWN);
     }
 
@@ -940,8 +938,7 @@ POP3CommandPass(void *param)
 
     ccode = ConnectUserToNMAPServer(client, client->user, ptr);
     if (!ccode) {
-        LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_LOGIN, LOG_INFO, 0, client->user, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-
+        Log(LOG_INFO, "User %s logged in from host %s", client->user, LOGIP(client->conn->socketAddress));
         CMAuthenticated((unsigned long)client->conn->socketAddress.sin_addr.s_addr, client->user);
     } else {
         if (ccode == POP3_NMAP_SERVER_DOWN) {
@@ -1549,9 +1546,11 @@ HandleConnection(void *param)
             result = ConnNegotiate(client->conn, POP3.server.ssl.context);
             if (result) {
                 if (client->conn->ssl.enable == FALSE) {
-                    LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+                    Log(LOG_ERROR, "Couldn't negotiate SSL with host %s", 
+                        LOGIP(client->conn->socketAddress));
                 } else {
-                    LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+                    Log(LOG_INFO, "Negotiated SSL with host %s", 
+                        LOGIP(client->conn->socketAddress));
                 }
 
                 ccode = ConnWriteF(client->conn, "+OK %s %s %s\r\n", POP3.hostName, PRODUCT_NAME, PRODUCT_VERSION);
@@ -1589,8 +1588,8 @@ HandleConnection(void *param)
                         ccode = client->handler->handler(client);
                     } else {
                         ccode = ConnWrite(client->conn, MSGERRUNKNOWN, sizeof(MSGERRUNKNOWN) - 1);
-
-                        LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_UNHANDLED, LOGGER_EVENT_UNHANDLED_REQUEST, LOG_INFO, 0, client->user, client->command, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+                        Log(LOG_INFO, "Unhandled command from host %s", 
+                            LOGIP(client->conn->socketAddress));
                     }
 
                     if ((ccode != -1) && client->conn) {
@@ -1656,30 +1655,30 @@ ServerSocketInit (void)
         POP3.server.conn->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
    
 
-   /* Get root privs back for the bind.  It's ok if this fails - 
-    * the user might not need to be root to bind to the port */
-   XplSetEffectiveUserId(0);
+        /* Get root privs back for the bind.  It's ok if this fails - 
+         * the user might not need to be root to bind to the port */
+        XplSetEffectiveUserId(0);
    
         POP3.server.conn->socket = ConnServerSocket(POP3.server.conn, 2048);
 
-   if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-       LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, 0, MsgGetUnprivilegedUser(), NULL, 0, 0, NULL, 0);
-       XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
-       return -1;
-   }
+        if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
+            Log(LOG_ERROR, "Couldn't drop to unprivileged user %s", MsgGetUnprivilegedUser());
+            XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+            return -1;
+        }
 
    
-   if (POP3.server.conn->socket == -1) {
-       int ret = POP3.server.conn->socket;
-       LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_BIND_FAILURE, LOG_ERROR, 0, "POP3 ", NULL, POP3ServerPort, 0, NULL, 0);
-       XplConsolePrintf("bongopop3: Could not bind to port %ld\n", POP3ServerPort);
-       ConnFree(POP3.server.conn);
-       return ret;
-   }
+        if (POP3.server.conn->socket == -1) {
+            int ret = POP3.server.conn->socket;
+            Log(LOG_ERROR, "Unable to bind to port %ld", POP3ServerPort);
+            XplConsolePrintf("bongopop3: Could not bind to port %ld\n", POP3ServerPort);
+            ConnFree(POP3.server.conn);
+            return ret;
+        }
     } else {
-   LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED, LOG_ERROR, 0, "", NULL, __LINE__, 0, NULL, 0);
-   XplConsolePrintf("bongopop3: Could not allocate connection.\n");
-   return -1;
+        Log(LOG_ERROR, "Unable to allocate create server socket");
+        XplConsolePrintf("bongopop3: Could not allocate connection.\n");
+        return -1;
     }
 
     return 0;
@@ -1690,36 +1689,36 @@ ServerSocketSSLInit (void)
 {    
     POP3.server.ssl.conn = ConnAlloc(FALSE);
     if (POP3.server.ssl.conn) {
-   POP3.server.ssl.conn->socketAddress.sin_family = AF_INET;
-   POP3.server.ssl.conn->socketAddress.sin_port = htons(POP3ServerPortSSL);
-   POP3.server.ssl.conn->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
+        POP3.server.ssl.conn->socketAddress.sin_family = AF_INET;
+        POP3.server.ssl.conn->socketAddress.sin_port = htons(POP3ServerPortSSL);
+        POP3.server.ssl.conn->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
        
-   /* Get root privs back for the bind.  It's ok if this fails - 
-    * the user might not need to be root to bind to the port */
-   XplSetEffectiveUserId(0);
+        /* Get root privs back for the bind.  It's ok if this fails - 
+         * the user might not need to be root to bind to the port */
+        XplSetEffectiveUserId(0);
    
         POP3.server.ssl.conn->socket = ConnServerSocket(POP3.server.ssl.conn, 2048);
 
-   if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-       LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, 0, MsgGetUnprivilegedUser(), NULL, 0, 0, NULL, 0);
-       XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
-       return -1;
-   }
+        if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
+            Log(LOG_ERROR, "Could not drop to unprivileged user %s", MsgGetUnprivilegedUser());
+            XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+            return -1;
+        }
        
-   if (POP3.server.ssl.conn->socket == -1) {
-       int ret = POP3.server.ssl.conn->socket;
-       LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_BIND_FAILURE, LOG_ERROR, 0, "POP3-SSL ", NULL, POP3ServerPortSSL, 0, NULL, 0);
-       XplConsolePrintf("bongopop3: Could not bind to SSL port %ld\n", POP3ServerPortSSL);
-       ConnFree(POP3.server.conn);
-       ConnFree(POP3.server.ssl.conn);
+        if (POP3.server.ssl.conn->socket == -1) {
+            int ret = POP3.server.ssl.conn->socket;
+            Log(LOG_ERROR, "Could not bind to secure port %ld", POP3ServerPortSSL);
+            XplConsolePrintf("bongopop3: Could not bind to SSL port %ld\n", POP3ServerPortSSL);
+            ConnFree(POP3.server.conn);
+            ConnFree(POP3.server.ssl.conn);
       
-       return ret;
-   }
+            return ret;
+        }
     } else {
-   LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED, LOG_ERROR, 0, "", NULL, __LINE__, 0, NULL, 0);
-   XplConsolePrintf("bongopop3: Could not allocate connection.\n");
-   ConnFree(POP3.server.conn);
-   return -1;
+        Log(LOG_ERROR, "Could not allocate secure socket");
+        XplConsolePrintf("bongopop3: Could not allocate connection.\n");
+        ConnFree(POP3.server.conn);
+        return -1;
     }
 
     return 0;
@@ -1798,7 +1797,7 @@ POP3Server(void *ignored)
 #endif
             case EINTR: {
                 if (POP3.state < POP3_STOPPING) {
-                    LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
+                    Log(LOG_ERROR, "EINTR signal received, but we're not stopping");
                 }
 
                 continue;
@@ -1806,9 +1805,8 @@ POP3Server(void *ignored)
 
             default: {
                 if (POP3.state < POP3_STOPPING) {
+                    Log(LOG_ERROR, "Exiting after an accept() failure (%d)", errno);
                     XplConsolePrintf("POP3D: Exiting after an accept() failure; error %d\n", errno);
-
-                    LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
                 }
 
                 POP3.state = POP3_STOPPING;
@@ -2022,7 +2020,7 @@ client->CSSL = NULL;
 #endif
             case EINTR: {
                 if (POP3.state < POP3_STOPPING) {
-                    LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
+                    Log(LOG_ERROR, "EINTR signal received by secure server");
                 }
 
                 continue;
@@ -2030,9 +2028,8 @@ client->CSSL = NULL;
 
             default: {
                 if (POP3.state < POP3_STOPPING) {
+                    Log(LOG_ERROR, "Secure server exiting after an accept() failure (%d)", errno);
                     XplConsolePrintf("POP3D: Exiting after an accept() failure; error %d\n", errno);
-
-                    LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
 
                     POP3.state = POP3_STOPPING;
                 }

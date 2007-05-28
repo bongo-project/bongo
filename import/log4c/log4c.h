@@ -60,6 +60,8 @@
 #define LOG_NOTSET   LOG4C_PRIORITY_NOTSET
 #define LOG_UNKNOWN  LOG4C_PRIORITY_UNKNOWN
 
+#define LOGIP(X) inet_ntoa(X.sin_addr)
+
 #define Log(...) LogMsg(LOGGERNAME, 0, __VA_ARGS__)
 #define LogWithID(...) LogMsg(LOGGERNAME, __VA_ARGS__)
 #define LogStartup() log4c_init()

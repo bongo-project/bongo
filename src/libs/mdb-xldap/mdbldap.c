@@ -23,7 +23,7 @@
 #define PRODUCT_VERSION "$Revision: 1.1 $"
 #define LOGGER "MDB LDAP Driver"
 
-#include <log4c.h>
+#include <logger.h>
 #include "mdbldapp.h"
 #include <bongoutil.h>
 #include <memmgr.h>

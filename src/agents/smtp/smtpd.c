@@ -26,14 +26,6 @@
 #define	NETDB_USE_INTERNET	1
 #undef	USE_HOPCOUNT_DETECTION
 
-/* Product defines */
-#define	PRODUCT_SHORT_NAME	"smtpd.nlm"
-#define	PRODUCT_NAME		"Bongo SMTP Agent"
-#define	PRODUCT_DESCRIPTION	"Allows mail-clients and other mail-servers to deliver mail to this host via the SMTP protocol. (SMTP = Simple Mail Transfer Protocol, RFC 2821)"
-#define	PRODUCT_VERSION		"$Revision: 1.7 $"
-#define NMLOGID_H_NEED_LOGGING_KEY
-#define NMLOGID_H_NEED_LOGGING_CERT
-#define LOGGERNAME "smtpd"
 #include <xpl.h>
 #include <connio.h>
 #include <nmlib.h>
@@ -41,7 +33,10 @@
 #include <msgapi.h>
 #include <xplresolve.h>
 
-#include <log4c.h>
+#define LOGGERNAME "smtpd"
+#define PRODUCT_NAME            "Bongo SMTP Agent"
+#define PRODUCT_VERSION         "$Revision: 1.7 $"
+
 #include <logger.h>
 
 #include <mdb.h>
@@ -361,16 +356,12 @@ HandleConnection (void *param)
     time (&connectionTime);
 
     if (Client->client.conn->ssl.enable) {
-        LogMsg (LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION,
-                LOG_INFO, "SSL connection %d",
-                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+        Log(LOG_INFO, "SSL connection from %s", LOGIP(Client->client.conn->socketAddress));
         if (!ConnNegotiate(Client->client.conn, SSLContext)) {
             return (EndClientConnection (Client));
         }
     } else {
-        LogMsg (LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_CONNECTION,
-                LOG_INFO, "Connection %d",
-                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+        Log(LOG_INFO, "Connection from %s", LOGIP(Client->client.conn->socketAddress));
     }
 
     XplRWReadLockAcquire (&ConfigLock);
@@ -382,9 +373,7 @@ HandleConnection (void *param)
     if (ReplyInt == CM_RESULT_DENY_PERMANENT) {
         /* We don't like the guy */
         XplRWReadLockRelease (&ConfigLock);
-        LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_CONNECTION_BLOCKED,
-                LOG_INFO, "Connection blocked %d",
-                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+        Log(LOG_INFO, "Connection from %s blocked", LOGIP(Client->client.conn->socketAddress));
 
         if (Answer[0] != '\0') {
             ConnWrite (Client->client.conn, MSG553COMMENT, MSG553COMMENT_LEN);
@@ -399,10 +388,9 @@ HandleConnection (void *param)
     } else if (ReplyInt != CM_RESULT_ALLOWED) {
         /* Either we don't like the guy, or there was an error */
         XplRWReadLockRelease (&ConfigLock);
-        LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_CONNECTION_BLOCKED,
-                LOG_INFO, "Connection blocked %d Blocklist: %d",
-                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr),
-                LOGGING_BLOCK_BLOCKLIST);
+        Log(LOG_INFO, "Connection from %s blocked by blocklist %d", 
+            LOGIP(Client->client.conn->socketAddress),
+            LOGGING_BLOCK_BLOCKLIST);
 
         if (Answer[0] != '\0') {
             ConnWrite (Client->client.conn, MSG453COMMENT, MSG453COMMENT_LEN);
@@ -439,7 +427,7 @@ HandleConnection (void *param)
 
     XplRWReadLockRelease (&ConfigLock);
 
-    /* Connect to NMAP server */
+    /* Connect to Queue agent */
     sin->sin_addr.s_addr=inet_addr(NMAPServer);
     sin->sin_family=AF_INET;
     sin->sin_port=htons(BONGO_QUEUE_PORT);
@@ -448,9 +436,8 @@ HandleConnection (void *param)
         NMAPQuit(Client->nmap.conn);
         Client->nmap.conn = NULL;
         count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", Hostname, MSG421SHUTDOWN);
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE,
-                LOG_ERROR, "NMAP unavailable %d Reply: %d",
-                XplHostToLittle (soc_address.sin_addr.s_addr), ReplyInt);
+        Log(LOG_ERROR, "Unable to connect to Queue agent at %s (reply was %d)",
+            LOGIP(Client->client.conn->socketAddress), ReplyInt);
         ConnWrite (Client->client.conn, Reply, count);
         ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
@@ -479,12 +466,8 @@ HandleConnection (void *param)
                 Client->Command = Client->client.buffer;
                 Ready = TRUE;
             } else if (Exiting == FALSE) {
-                LogMsg (LOGGER_SUBSYSTEM_GENERAL,
-                        LOGGER_EVENT_CONNECTION_TIMEOUT,
-                        LOG_ERROR,
-                        "Connection timeout %d Time: %d",
-                        XplHostToLittle (soc_address.sin_addr.s_addr),
-                        time (NULL) - connectionTime);
+                Log(LOG_ERROR, "Connection to %s timed out (time: %d)",
+                    LOGIP(soc_address), time(NULL) - connectionTime);
                 return (EndClientConnection (Client));
             } else if (count < 1) {
                 snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
@@ -615,18 +598,13 @@ HandleConnection (void *param)
                 if (MsgFindObject (Reply, Answer, NULL, NULL, User)) {
                     if (!MDBVerifyPassword (Answer, PW, User)) {
                         ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
-                        LogMsg (LOGGER_SUBSYSTEM_AUTH,
-                                LOGGER_EVENT_WRONG_PASSWORD, LOG_NOTICE,
-                                "Wrong password: %s/%s %d",
-                                User->Used ? User->Value[0] : Reply, PW,
-                                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                        Log(LOG_NOTICE, "Wrong password from user %s at host %s",
+                            User->Used ? User->Value[0] : Reply,
+                            LOGIP(Client->client.conn->socketAddress));
                     } else {
-                        LogMsg (LOGGER_SUBSYSTEM_AUTH,
-                                LOGGER_EVENT_LOGIN,
-                                LOG_INFO,
-                                "Login %s %d",
-                                User->Value[0],
-                                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                        Log(LOG_NOTICE, "Successful login for user %s at host %s",
+                            User->Value[0],
+                            LOGIP(Client->client.conn->socketAddress));
                         if (Client->AuthFrom == NULL) {
                             Client->AuthFrom = MemStrdup (User->Value[0]);
                             Client->State = STATE_AUTH;
@@ -643,12 +621,8 @@ HandleConnection (void *param)
                         }
                     }
                 } else {
-                    LogMsg (LOGGER_SUBSYSTEM_AUTH,
-                            LOGGER_EVENT_UNKNOWN_USER,
-                            LOG_NOTICE,
-                            "Unknown user %s %s %d",
-                            Reply,
-                            PW, XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                    Log(LOG_NOTICE, "Unknown user %s at host %s", Reply,
+                        LOGIP(Client->client.conn->socketAddress));
                     ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                 }
                 MDBDestroyValueStruct (User);
@@ -839,27 +813,21 @@ HandleConnection (void *param)
                         switch (ReplyInt) {
                         case MAIL_REMOTE:{
                                 if (!IsTrusted) {
-                                    LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                                            LOGGER_EVENT_RECIPIENT_BLOCKED,
-                                            LOG_INFO,
-                                            "Recipient blocked %s %d",
-                                            name,
-                                            XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
-                                    ConnWrite (Client->client.conn, MSG571SPAMBLOCK,
-                                                MSG571SPAMBLOCK_LEN);
+                                    Log(LOG_INFO, "Recipient %s by host %s blocked",
+                                        name, LOGIP(Client->client.conn->socketAddress));
+                                    ConnWrite (Client->client.conn, 
+                                        MSG571SPAMBLOCK,
+                                        MSG571SPAMBLOCK_LEN);
                                     goto QuitRcpt;
                                 }
                                 XplRWReadLockAcquire (&ConfigLock);
                                 if (Client->RecipCount >= MaximumRecipients) {
                                     XplRWReadLockRelease (&ConfigLock);
-                                    LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                                            LOGGER_EVENT_RECIPIENT_LIMIT_REACHED,
-                                            LOG_INFO,
-                                            "Recipient limit reached from %s to %s %d",
-                                            Client->AuthFrom ?
+                                    Log(LOG_INFO, "Recipient limit from %s at host %s to user %s",
+                                        Client->AuthFrom? 
                                             (char *) Client->AuthFrom : "",
-                                            To,
-                                            XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                                        LOGIP(Client->client.conn->socketAddress),
+                                        To);
                                     ConnWrite (Client->client.conn, MSG550TOOMANY,
                                                 MSG550TOOMANY_LEN);
                                     goto QuitRcpt;
@@ -871,26 +839,20 @@ HandleConnection (void *param)
                                           (unsigned long) (Client->
                                                            Flags &
                                                            DSN_FLAGS));
-                                LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                                        LOGGER_EVENT_MESSAGE_RELAYED,
-                                        LOG_INFO,
-                                        "Message relayed from %s to %s %d",
-                                        Client->AuthFrom ?
-                                        (char *) Client->AuthFrom : "",
-                                        To,
-                                        XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                                Log(LOG_INFO, "Message from %s at host %s relayed to %s",
+                                    Client->AuthFrom? 
+                                        (char *)Client->AuthFrom : "",
+                                    LOGIP(Client->client.conn->socketAddress),
+                                    To);
                                 break;
                             }
 
                         case MAIL_RELAY:{
-                                LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                                        LOGGER_EVENT_MESSAGE_RELAYED,
-                                        LOG_INFO,
-                                        "Message relayed from %s to %s %d",
-                                        Client-> AuthFrom ?
-                                        (char *) Client-> AuthFrom : "",
-                                        To,
-                                        XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr));
+                                Log(LOG_INFO, "Message from %s at host %s relayed to %s",
+                                    Client->AuthFrom?
+                                        (char *)Client->AuthFrom : "",
+                                    LOGIP(Client->client.conn->socketAddress),
+                                    To);
                                 snprintf (Answer, sizeof (Answer),
                                           "QSTOR TO %s %s %lu\r\n", To,
                                           Orcpt ? Orcpt : To,
@@ -1403,13 +1365,11 @@ HandleConnection (void *param)
                             return (EndClientConnection (Client));
                         }
 
-                        LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                                LOGGER_EVENT_MESSAGE_RECEIVED,
-                                LOG_INFO,
-                                "Message received %s %d %d",
-                                Client->From ? (char *) Client-> From : "",
-                                XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr),
-                                BReceived);
+                        Log(LOG_INFO,
+                            "Message received from %s at host %s (%d)",
+                            Client->From? (char *)Client->From : "",
+                            inet_ntoa(Client->client.conn->socketAddress.sin_addr),
+                            BReceived);
 
                         if (NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
                             ConnWrite (Client->client.conn, MSG451INTERNALERR, MSG451INTERNALERR_LEN);
@@ -1427,13 +1387,10 @@ HandleConnection (void *param)
                         break;
                     }
 
-                    LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                            LOGGER_EVENT_ADD_TO_BLOCK_LIST,
-                            LOG_NOTICE,
-                            "Added to block list %s %d / Count %d",
-                            Client->From ? (char *) Client->From : "",
-                            XplHostToLittle (Client->client.conn->socketAddress.sin_addr.s_addr),
-                            Client->RecipCount);
+                    Log(LOG_NOTICE, "Added %s at host %s to block list (count: %d)",
+                        Client->From? (char *) Client->From : "",
+                        LOGIP(Client->client.conn->socketAddress), 
+                        Client->RecipCount);
 
                     /*      We are going to send him away!  */
                     ConnWrite (Client->client.conn, MSG550TOOMANY, MSG550TOOMANY_LEN);
@@ -2050,30 +2007,20 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
             }
 
             if (status == 251 || status == 250) {
-                LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_MESSAGE_SENT,
-                        LOG_INFO,
-                        "Message sent from %s to %s Flags %d Status %d",
-                        Sender, Recips[i].To,
-                        Client->Flags, status);
+                Log(LOG_INFO, "Message sent from %s to %s (flags: %d, status: %d)",
+                    Sender, Recips[i].To, Client->Flags, status);
                 Size++;
                 continue;
             }
             else if (status / 100 == 4) {
-                LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_MESSAGE_TRY_LATER,
-                        LOG_INFO,
-                        "Message try later from %s to %s Flags %d Status %d",
-                        Sender, Recips[i].To,
-                        Client->Flags, status);
+                Log(LOG_INFO, "Message try later from %s to %s Flags %d Status %d",
+                        Sender, Recips[i].To, Client->Flags, status);
                 Recips[i].Result = DELIVER_TRY_LATER;
                 continue;
             }
             else {
-                LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                        LOGGER_EVENT_MESSAGE_FAILED_DELIVERY,
-                        LOG_INFO,
-                        "Message failed delivery from %s to %s Flags %d Status %d",
-                        Sender, Recips[i].To,
-                        Client->Flags, status);
+                Log(LOG_INFO, "Message failed delivery from %s to %s Flags %d Status %d",
+                        Sender, Recips[i].To, Client->Flags, status);
                 if (status == 550) {
                     Recips[i].Result = DELIVER_USER_UNKNOWN;
                     if ((unsigned long) ResultLen > strlen (Reply)) {
@@ -2114,31 +2061,20 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
                 if (status == 251 || status == 250) {
-                    LogMsg (LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_MESSAGE_SENT,
-                            LOG_INFO,
-                            "Message sent from %s to %s Flags %d Status %d",
-                            Sender, Recips[i].To,
-                            Client->Flags, status);
+                    Log(LOG_INFO, "Message sent from %s to %s Flags %d Status %d",
+                            Sender, Recips[i].To, Client->Flags, status);
                     Size++;
                     continue;
                 }
                 else if (status / 100 == 4) {
-                    LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                            LOGGER_EVENT_MESSAGE_TRY_LATER,
-                            LOG_INFO,
-                            "Message try later from %s to %s Flags %d Status %d",
-                            Sender, Recips[i].To,
-                            Client->Flags, status);
+                    Log(LOG_INFO, "Message try later from %s to %s Flags %d Status %d",
+                            Sender, Recips[i].To, Client->Flags, status);
                     Recips[i].Result = DELIVER_TRY_LATER;
                     continue;
                 }
                 else {
-                    LogMsg (LOGGER_SUBSYSTEM_QUEUE,
-                            LOGGER_EVENT_MESSAGE_FAILED_DELIVERY,
-                            LOG_INFO,
-                            "Message failed delivery from %s to %s Flags %d Status %d",
-                            Sender, Recips[i].To,
-                            Client->Flags, status);
+                    Log(LOG_INFO, "Message failed delivery from %s to %s Flags %d Status %d",
+                            Sender, Recips[i].To, Client->Flags, status);
                     if (status == 550) {
                         Recips[i].Result = DELIVER_USER_UNKNOWN;
                         if ((unsigned long) ResultLen > strlen (Reply)) {       /* FIXME? This is not enough to prevent overwrites, but the buffer is really big... */
@@ -2501,20 +2437,12 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
                 ptr = strchr (Recips[0].To, '@');
                 if (ptr) {
                     if (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr == LocalAddress) {
-                        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                LOGGER_EVENT_DNS_CONFIGURATION_ERROR,
-                                LOG_ERROR,
-                                "DNS config error %s %d",
-                                ptr + 1,
-                                XplHostToLittle (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr));
+                        Log(LOG_ERROR, "DNS config error %s %d",
+                                ptr + 1, LOGIP(Client->remotesmtp.conn->socketAddress));
                     }
                     else {
-                        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                LOGGER_EVENT_CONNECTION_LOCAL,
-                                LOG_WARNING,
-                                "Connection local %s %d",
-                                ptr + 1,
-                                XplHostToLittle (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr));
+                        Log(LOG_WARNING, "Connection local %s %d",
+                                ptr + 1, LOGIP(Client->remotesmtp.conn->socketAddress));
                     }
                 }
             
@@ -2909,19 +2837,15 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
     Envelope = MemMalloc(Size+1);
     Recips = MemMalloc(Lines * sizeof(RecipStruct));
     if (!Recips) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__,
-                (Lines * sizeof (RecipStruct)), __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+                __FILE__, (Lines * sizeof (RecipStruct)), __LINE__);
         return;
     }
 
     if (!Envelope) {
         MemFree(Recips);
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__,
-                Size, __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+                __FILE__, Size, __LINE__);
         return;
     }
 
@@ -3144,10 +3068,8 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
     lines += 3;
     recips = MemMalloc (size + (lines * sizeof (RecipStruct)));
     if (!recips) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__,
-                size + (lines * sizeof (RecipStruct)), __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, size + (lines * sizeof (RecipStruct)), __LINE__);
         return;
     }
 
@@ -4035,14 +3957,14 @@ ServerSocketInit (void)
 
     /* drop the privs back */
     if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
+        Log(LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
         XplConsolePrintf ("bongosmtp: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser ());
         return -1;
     }
 
     if (SMTPServerConnection->socket < 0) {
         ccode = SMTPServerConnection->socket;
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED, LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
+        Log(LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
         XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
         ConnFree(SMTPServerConnection);
         return ccode;
@@ -4073,14 +3995,14 @@ ServerSocketSSLInit (void)
     SMTPServerConnectionSSL->socket = ConnServerSocket(SMTPServerConnectionSSL, 2048);
     /* drop the privs back */
     if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
+        Log(LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
         XplConsolePrintf ("bongosmtp: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser ());
         return -1;
     }
 
     if (SMTPServerConnectionSSL->socket < 0) {
         ccode = SMTPServerConnectionSSL->socket;
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CREATE_SOCKET_FAILED, LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
+        Log(LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
         XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
         ConnFree(SMTPServerConnection);
         return ccode;
@@ -4146,12 +4068,12 @@ SMTPServer (void *ignored)
             case EPROTO:
 #endif
             case EINTR:{
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure %s Errno %d", "Server", errno);
+                    Log(LOG_ERROR, "Accept failure %s Errno %d", "Server", errno);
                     continue;
                 }
 
             case EIO:{
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure Errno %d %d", errno, 2);
+                    Log(LOG_ERROR, "Accept failure Errno %d %d", errno, 2);
                     Exiting = TRUE;
 
                     break;
@@ -4160,7 +4082,7 @@ SMTPServer (void *ignored)
             default:{
                     arg = errno;
 
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
+                    Log(LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
                     XplConsolePrintf ("SMTPD: Exiting after an accept() failure with an errno: %d\n", arg);
 
                     break;
@@ -4344,17 +4266,17 @@ SMTPSSLServer (void *ignored)
             case EPROTO:
 #endif
             case EINTR:{
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure %s Errno %d", "SSL Server", errno);
+                    Log(LOG_ERROR, "Accept failure %s Errno %d", "SSL Server", errno);
                     continue;
                 }
             case EIO:{
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, "Accept failure Errno %d %d", errno, 2);
+                    Log(LOG_ERROR, "Accept failure Errno %d %d", errno, 2);
                     Exiting = TRUE;
                     break;
                 }
             default:{
                     arg = errno;
-                    LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
+                    Log(LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
                     XplConsolePrintf ("SMTPD: Exiting after an accept() failure with an errno: %d\n", arg);
                     break;
                 }
@@ -4387,17 +4309,14 @@ AddDomain (unsigned char *DomainValue)
     Domains =
         MemRealloc (Domains, (DomainCount + 1) * sizeof (unsigned char *));
     if (!Domains) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__,
-                (DomainCount + 1) * sizeof (unsigned char *), __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, (DomainCount + 1) * sizeof (unsigned char *), __LINE__);
         return;
     }
     Domains[DomainCount] = MemStrdup (DomainValue);
     if (!Domains[DomainCount]) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__, strlen (DomainValue) + 1, __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, strlen (DomainValue) + 1, __LINE__);
         return;
     }
     DomainCount++;
@@ -4426,17 +4345,14 @@ AddUserDomain (unsigned char *UserDomainValue)
         MemRealloc (UserDomains,
                     (UserDomainCount + 1) * sizeof (unsigned char *));
     if (!UserDomains) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__,
-                (UserDomainCount + 1) * sizeof (unsigned char *), __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, (UserDomainCount + 1) * sizeof (unsigned char *), __LINE__);
         return;
     }
     UserDomains[UserDomainCount] = MemStrdup (UserDomainValue);
     if (!UserDomains[UserDomainCount]) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__, strlen (UserDomainValue) + 1, __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, strlen (UserDomainValue) + 1, __LINE__);
         return;
     }
     UserDomainCount++;
@@ -4465,17 +4381,14 @@ AddRelayDomain (unsigned char *RelayDomainValue)
         MemRealloc (RelayDomains,
                     (RelayDomainCount + 1) * sizeof (unsigned char *));
     if (!RelayDomains) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__,
-                (RelayDomainCount + 1) * sizeof (unsigned char *), __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, (RelayDomainCount + 1) * sizeof (unsigned char *), __LINE__);
         return;
     }
     RelayDomains[RelayDomainCount] = MemStrdup (RelayDomainValue);
     if (!RelayDomains[RelayDomainCount]) {
-        LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY,
-                LOG_ERROR, "Out of memory File %s %d Line %d",
-                __FILE__, strlen (RelayDomainValue) + 1, __LINE__);
+        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
+            __FILE__, strlen (RelayDomainValue) + 1, __LINE__);
         return;
     }
     RelayDomainCount++;
@@ -4538,8 +4451,7 @@ SmtpdConfigMonitor (void)
         }
 
         if (!Exiting) {
-            LogMsg (LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_AGENT_HEARTBEAT,
-                    LOG_INFO, "Agent heartbeat");
+            Log(LOG_INFO, "Agent heartbeat");
 
             if ((MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_CONFIG_CHANGED, Config)
                  > 0) && (atol (Config->Value[0]) != PrevConfigNumber)) {
@@ -4619,18 +4531,13 @@ SmtpdConfigMonitor (void)
                 MDBFreeValues (Config);
 
                 for (j = 0; j < Parents->Used; j++) {
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_STRING,
-                            LOG_INFO, "Configuration string %s Value %s"
-                            "MSGSRV_A_PARENT_OBJECT", Parents->Value[j]);
+                    Log(LOG_INFO, "Configuration string %s Value %s"
+                        "MSGSRV_A_PARENT_OBJECT", Parents->Value[j]);
                     if (MDBRead (Parents->Value[j], MSGSRV_A_DOMAIN, Config)) {
                         for (i = 0; i < Config->Used; i++) {
                             AddDomain (Config->Value[i]);
-                            LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                    LOGGER_EVENT_CONFIGURATION_STRING,
-                                    LOG_INFO,
-                                    "Configuration string %s Value %s",
-                                    "MSGSRV_A_DOMAIN", Config->Value[i]);
+                            Log(LOG_INFO, "Configuration string %s Value %s",
+                                "MSGSRV_A_DOMAIN", Config->Value[i]);
                         }
                     }
                     MDBFreeValues (Config);
@@ -4640,10 +4547,8 @@ SmtpdConfigMonitor (void)
                     > 0) {
                     for (i = 0; i < Config->Used; i++) {
                         AddUserDomain (Config->Value[i]);
-                        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                LOGGER_EVENT_CONFIGURATION_STRING,
-                                LOG_INFO, "Configuration string %s Value %s",
-                                "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
+                        Log(LOG_INFO, "Configuration string %s Value %s",
+                            "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
                     }
                 }
                 MDBFreeValues (Config);
@@ -4653,10 +4558,7 @@ SmtpdConfigMonitor (void)
                         (Parents->Value[j], MSGSRV_A_USER_DOMAIN, Config)) {
                         for (i = 0; i < Config->Used; i++) {
                             AddUserDomain (Config->Value[i]);
-                            LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                    LOGGER_EVENT_CONFIGURATION_STRING,
-                                    LOG_INFO,
-                                    "Configuration string %s Value %s",
+                            Log(LOG_INFO, "Configuration string %s Value %s",
                                     "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
                         }
                     }
@@ -4667,10 +4569,8 @@ SmtpdConfigMonitor (void)
                     > 0) {
                     for (i = 0; i < Config->Used; i++) {
                         AddRelayDomain (Config->Value[i]);
-                        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                LOGGER_EVENT_CONFIGURATION_STRING,
-                                LOG_INFO, "Configuration string %s Value %s",
-                                "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
+                        Log(LOG_INFO, "Configuration string %s Value %s",
+                            "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
                     }
                 }
                 for (j = 0; j < Parents->Used; j++) {
@@ -4678,21 +4578,16 @@ SmtpdConfigMonitor (void)
                         (Parents->Value[j], MSGSRV_A_RELAY_DOMAIN, Config)) {
                         for (i = 0; i < Config->Used; i++) {
                             AddRelayDomain (Config->Value[i]);
-                            LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                                    LOGGER_EVENT_CONFIGURATION_STRING,
-                                    LOG_INFO,
-                                    "Configuration string %s Value %s",
-                                    "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
+                            Log(LOG_INFO, "Configuration string %s Value %s",
+                                "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
                         }
                     }
                     MDBFreeValues (Config);
                 }
 
                 if (MDBRead (".", MSGSRV_A_OFFICIAL_NAME, Config) > 0) {
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_STRING,
-                            LOG_INFO, "Configuration string %s Value %s",
-                            "MSGSRV_A_OFFICIAL_NAME", Config->Value[0]);
+                    Log(LOG_INFO, "Configuration string %s Value %s",
+                        "MSGSRV_A_OFFICIAL_NAME", Config->Value[0]);
                     AddDomain (Hostname);
                 }
                 MDBFreeValues (Config);
@@ -4700,20 +4595,16 @@ SmtpdConfigMonitor (void)
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_EXPN, Config)) {
                     AllowEXPN = atol (Config->Value[0]);
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric %s Value %d",
-                            "MSGSRV_A_SMTP_ALLOW_EXPN", AllowEXPN);
+                    Log(LOG_INFO, "Configuration numeric %s Value %d",
+                        "MSGSRV_A_SMTP_ALLOW_EXPN", AllowEXPN);
                 }
                 MDBFreeValues (Config);
 
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_VRFY, Config)) {
                     AllowVRFY = atol (Config->Value[0]);
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric %s Value %d",
-                            "MSGSRV_A_SMTP_ALLOW_VRFY", AllowVRFY);
+                    Log(LOG_INFO, "Configuration numeric %s Value %d",
+                        "MSGSRV_A_SMTP_ALLOW_VRFY", AllowVRFY);
                 }
                 MDBFreeValues (Config);
 
@@ -4721,40 +4612,32 @@ SmtpdConfigMonitor (void)
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_VERIFY_ADDRESS,
                      Config)) {
                     CheckRCPT = atol (Config->Value[0]);
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric %s Value %d",
-                            "MSGSRV_A_SMTP_VERIFY_ADDRESS", CheckRCPT);
+                    Log(LOG_INFO, "Configuration numeric %s Value %d",
+                        "MSGSRV_A_SMTP_VERIFY_ADDRESS", CheckRCPT);
                 }
                 MDBFreeValues (Config);
 
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ACCEPT_ETRN, Config)) {
                     AcceptETRN = atol (Config->Value[0]);
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric %s Value %d",
-                            "MSGSRV_A_SMTP_ACCEPT_ETRN",  AcceptETRN);
+                    Log(LOG_INFO, "Configuration numeric %s Value %d",
+                        "MSGSRV_A_SMTP_ACCEPT_ETRN",  AcceptETRN);
                 }
                 MDBFreeValues (Config);
 
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_SEND_ETRN, Config)) {
                     SendETRN = atol (Config->Value[0]);
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric %s Value %d",
-                            "MSGSRV_A_SMTP_SEND_ETRN", SendETRN);
+                    Log(LOG_INFO, "Configuration numeric %s Value %d",
+                        "MSGSRV_A_SMTP_SEND_ETRN", SendETRN);
                 }
                 MDBFreeValues (Config);
 
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_RECIPIENT_LIMIT, Config)) {
                     MaximumRecipients = atol (Config->Value[0]);
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric %s Value %d",
-                            "MSGSRV_A_RECIPIENT_LIMIT", MaximumRecipients);
+                    Log(LOG_INFO, "Configuration numeric %s Value %d",
+                        "MSGSRV_A_RECIPIENT_LIMIT", MaximumRecipients);
                     if (MaximumRecipients == 0) {
                         MaximumRecipients = ULONG_MAX;
                     }
@@ -4767,10 +4650,8 @@ SmtpdConfigMonitor (void)
                 MaxNullSenderRecips = ULONG_MAX;
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_CONFIGURATION, Config) > 0) {
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Config numeric %s Value %s",
-                            "MSGSRV_A_CONFIGURATION", Config->Value[i]);
+                    Log(LOG_INFO, "Config numeric %s Value %s",
+                        "MSGSRV_A_CONFIGURATION", Config->Value[i]);
 
                     for (i = 0; i < Config->Used; i++) {
                         if (XplStrNCaseCmp
@@ -4834,10 +4715,8 @@ SmtpdConfigMonitor (void)
                 if (MDBRead
                     (MSGSRV_AGENT_SMTP, MSGSRV_A_MESSAGE_LIMIT, Config)) {
                     MessageLimit = atol (Config->Value[0]) * 1024 * 1024;       /* Convert megabytes to bytes */
-                    LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                            LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                            LOG_INFO, "Configuration numeric",
-                            "MSGSRV_A_MESSAGE_LIMIT", MessageLimit);
+                    Log(LOG_INFO, "Configuration numeric",
+                        "MSGSRV_A_MESSAGE_LIMIT", MessageLimit);
                 }
                 MDBFreeValues (Config);
 
@@ -4894,10 +4773,8 @@ ReadConfiguration (void)
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_DOMAIN, Config) > 0) {
         for (i = 0; i < Config->Used; i++) {
             AddDomain (Config->Value[i]);
-            LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                    LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                    LOG_INFO, "Config numeric %s Value %s",
-                         "MSGSRV_A_DOMAIN", Config->Value[i]);
+            Log(LOG_INFO, "Config numeric %s Value %s",
+                "MSGSRV_A_DOMAIN", Config->Value[i]);
         }
     }
 
@@ -4946,17 +4823,13 @@ ReadConfiguration (void)
     MDBFreeValues (Config);
 
     for (j = 0; j < Parents->Used; j++) {
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Config numeric %s Value %s",
-                     "MSGSRV_A_PARENT_OBJECT", Parents->Value[j]);
+        Log(LOG_INFO, "Config numeric %s Value %s",
+            "MSGSRV_A_PARENT_OBJECT", Parents->Value[j]);
         if (MDBRead (Parents->Value[j], MSGSRV_A_DOMAIN, Config)) {
             for (i = 0; i < Config->Used; i++) {
                 AddDomain (Config->Value[i]);
-                LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                        LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                        LOG_INFO, "Config numeric %s Value %s",
-                        "MSGSRV_A_DOMAIN", Config->Value[i]);
+                Log(LOG_INFO, "Config numeric %s Value %s",
+                    "MSGSRV_A_DOMAIN", Config->Value[i]);
             }
         }
         MDBFreeValues (Config);
@@ -4965,10 +4838,8 @@ ReadConfiguration (void)
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_USER_DOMAIN, Config) > 0) {
         for (i = 0; i < Config->Used; i++) {
             AddUserDomain (Config->Value[i]);
-            LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                    LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                    LOG_INFO, "Config numeric %s Value %s",
-                    "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
+            Log(LOG_INFO, "Config numeric %s Value %s",
+                "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
         }
     }
     MDBFreeValues (Config);
@@ -4977,10 +4848,8 @@ ReadConfiguration (void)
         if (MDBRead (Parents->Value[j], MSGSRV_A_USER_DOMAIN, Config)) {
             for (i = 0; i < Config->Used; i++) {
                 AddUserDomain (Config->Value[i]);
-                LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                        LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                        LOG_INFO, "Config numeric %s Value %s",
-                             "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
+                Log(LOG_INFO, "Config numeric %s Value %s",
+                    "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
             }
         }
         MDBFreeValues (Config);
@@ -4989,10 +4858,8 @@ ReadConfiguration (void)
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RELAY_DOMAIN, Config) > 0) {
         for (i = 0; i < Config->Used; i++) {
             AddRelayDomain (Config->Value[i]);
-            LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                    LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                    LOG_INFO, "Config numeric %s Value %s",
-                         "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
+            Log(LOG_INFO, "Config numeric %s Value %s",
+                "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
         }
     }
     MDBFreeValues (Config);
@@ -5001,10 +4868,8 @@ ReadConfiguration (void)
         if (MDBRead (Parents->Value[j], MSGSRV_A_RELAY_DOMAIN, Config)) {
             for (i = 0; i < Config->Used; i++) {
                 AddRelayDomain (Config->Value[i]);
-                LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                        LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                        LOG_INFO, "Config numeric %s Value %s",
-                        "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
+                Log(LOG_INFO, "Config numeric %s Value %s",
+                    "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
             }
         }
         MDBFreeValues (Config);
@@ -5017,10 +4882,8 @@ ReadConfiguration (void)
         if (strlen (Config->Value[0]) < sizeof (Hostname)) {
             strcpy (Hostname, Config->Value[0]);
         }
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Config numeric %s value %s",
-                "MSGSRV_A_OFFICIAL_NAME", Config->Value[0]);
+        Log(LOG_INFO, "Config numeric %s value %s",
+            "MSGSRV_A_OFFICIAL_NAME", Config->Value[0]);
         AddDomain (Hostname);
     }
     MDBFreeValues (Config);
@@ -5034,55 +4897,43 @@ ReadConfiguration (void)
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_EXPN, Config)) {
         AllowEXPN = atol (Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                     "MSGSRV_A_SMTP_ALLOW_EXPN", AllowEXPN);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_SMTP_ALLOW_EXPN", AllowEXPN);
     }
     MDBFreeValues (Config);
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_VRFY, Config)) {
         AllowVRFY = atol (Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                "MSGSRV_A_SMTP_ALLOW_VRFY", AllowVRFY);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_SMTP_ALLOW_VRFY", AllowVRFY);
     }
     MDBFreeValues (Config);
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_VERIFY_ADDRESS, Config)) {
         CheckRCPT = atol (Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                "MSGSRV_A_SMTP_VERIFY_ADDRESS", CheckRCPT);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_SMTP_VERIFY_ADDRESS", CheckRCPT);
     }
     MDBFreeValues (Config);
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ACCEPT_ETRN, Config)) {
         AcceptETRN = atol (Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                     "MSGSRV_A_SMTP_ACCEPT_ETRN", AcceptETRN);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_SMTP_ACCEPT_ETRN", AcceptETRN);
     }
     MDBFreeValues (Config);
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_SEND_ETRN, Config)) {
         SendETRN = atol (Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                "MSGSRV_A_SMTP_SEND_ETRN", SendETRN);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_SMTP_SEND_ETRN", SendETRN);
     }
     MDBFreeValues (Config);
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RECIPIENT_LIMIT, Config)) {
         MaximumRecipients = atol (Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                "MSGSRV_A_RECIPIENT_LIMIT", MaximumRecipients);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_RECIPIENT_LIMIT", MaximumRecipients);
         if (MaximumRecipients == 0) {
             MaximumRecipients = ULONG_MAX;
         }
@@ -5122,28 +4973,22 @@ ReadConfiguration (void)
             }
 
         }
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_STRING,
-                LOG_INFO, "Configuration string %s Value %s",
-                     "MSGSRV_A_POSTMASTER", Postmaster);
+        Log(LOG_INFO, "Configuration string %s Value %s",
+            "MSGSRV_A_POSTMASTER", Postmaster);
     }
     MDBFreeValues (Config);
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_MESSAGE_LIMIT, Config)) {
         MessageLimit = atol (Config->Value[0]) * 1024 * 1024;   /* Convert megabytes to bytes */
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_NUMERIC,
-                LOG_INFO, "Configuration numeric %s Value %d",
-                     "MSGSRV_A_MESSAGE_LIMIT", MessageLimit);
+        Log(LOG_INFO, "Configuration numeric %s Value %d",
+            "MSGSRV_A_MESSAGE_LIMIT", MessageLimit);
     }
     MDBFreeValues (Config);
 
     if (MsgReadIP (MSGSRV_AGENT_SMTP, MSGSRV_A_QUEUE_SERVER, Config)) {
         strcpy (NMAPServer, Config->Value[0]);
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_STRING,
-                LOG_INFO, "Configuration string %s Value %s",
-                     "MSGSRV_A_QUEUE_SERVER", Config->Value[0]);
+        Log(LOG_INFO, "Configuration string %s Value %s",
+            "MSGSRV_A_QUEUE_SERVER", Config->Value[0]);
     }
     MDBFreeValues (Config);
 
@@ -5152,10 +4997,8 @@ ReadConfiguration (void)
             strcpy (RelayHost, Config->Value[0]);
             if ((RelayHost[0] != '\0') && (RelayHost[0] != ' ')) {
                 UseRelayHost = TRUE;
-                LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                        LOGGER_EVENT_CONFIGURATION_STRING,
-                        LOG_INFO, "Configuration string %s Value %s",
-                             "MSGSRV_A_RELAYHOST", Config->Value[0]);
+                Log(LOG_INFO, "Configuration string %s Value %s",
+                    "MSGSRV_A_RELAYHOST", Config->Value[0]);
             }
             else {
                 UseRelayHost = FALSE;
@@ -5168,10 +5011,8 @@ ReadConfiguration (void)
     }
 
     if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RTS_ANTISPAM_CONFIG, Config) > 0) {
-        LogMsg (LOGGER_SUBSYSTEM_CONFIGURATION,
-                LOGGER_EVENT_CONFIGURATION_STRING,
-                LOG_INFO, "Configuration string %s Value %s",
-                "MSGSRV_A_RTS_ANTISPAM_CONFIG", Config->Value[0]);
+        Log(LOG_INFO, "Configuration string %s Value %s",
+            "MSGSRV_A_RTS_ANTISPAM_CONFIG", Config->Value[0]);
         if (sscanf
             (Config->Value[0], "Enabled:%d Delay:%ld Threshhold:%lu",
              &BlockRTSSpam, &BounceInterval, &MaxBounceCount) != 3) {
