@@ -869,6 +869,7 @@ DStoreCancelTransactions(DStoreHandle *handle)
                      " docs.conversation, docs.listid," \
                      " docs.uid, docs.summary, docs.location, docs.stamp "
 #define CONVINFO_COLS " docs.guid, docs.info, conversations.subject "
+#define CONVINFO_COLSAS " docs.guid as guid, docs.info as info, conversations.subject as subject"
 #define EVENTINFO_COLS " events.guid, docs.info, " \
                        " 0, 0, 0, 0, 0, 0, " \
                        " docs.uid, docs.summary, docs.location, docs.stamp "
@@ -1989,7 +1990,7 @@ DStoreListConversations(DStoreHandle *handle,
            used too much... */
 
         stmt = SqlPrepare(handle,
-                          "SELECT" CONVINFO_COLS ", conversations.date " 
+                          "SELECT" CONVINFO_COLSAS ", conversations.date AS date "
                           "FROM conversations "
                           "JOIN docs " 
                           "        ON docs.guid = conversations.guid "
@@ -2029,7 +2030,7 @@ DStoreListConversations(DStoreHandle *handle,
                           "         ORDER BY conversations.date DESC, docs.guid DESC "
                           "         LIMIT ?4) "
                           
-                          "ORDER BY conversations.date DESC, docs.guid DESC;",
+                          "ORDER BY date DESC, guid DESC;",
                           &handle->stmts.listConversationsCentered);
     } else if (start != -1) {
         stmt = SqlPrepare(handle, 
