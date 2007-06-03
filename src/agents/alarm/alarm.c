@@ -26,7 +26,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -241,7 +240,7 @@ SendAlarmEmail(QueueClient *qclient, AlarmInfo *alarm)
 static void 
 AlarmLoop(void *ignored)
 {
-    MDBValueStruct *vs;
+    //MDBValueStruct *vs;
     int i;
     uint64_t start;
     uint64_t end;
@@ -357,6 +356,7 @@ AlarmLoop(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
+#if 0
     MDBValueStruct *config;
 
     config = MDBCreateValueStruct(Alarm.agent.directoryHandle, 
@@ -368,7 +368,10 @@ ReadConfiguration(void)
     }
 
     MDBDestroyValueStruct(config);
+#endif
 
+    // Since this agent doesn't read any config for the moment,
+    // just return true (we don't need/want to depend on MDB).
     return TRUE;
 }
 
