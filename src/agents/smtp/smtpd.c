@@ -636,7 +636,7 @@ HandleConnection (void *param)
                     NMAPSendCommand (Client->nmap.conn, "QABRT\r\n", 7);
                     NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE);
                 }
-                Client->State = STATE_FRESH;
+                Client->State = (Client->State) ? STATE_HELO : STATE_FRESH;
                 Client->Flags = 0;
                 Client->RecipCount = 0;
                 Client->MsgFlags = MSG_FLAG_ENCODING_NONE;
