@@ -145,19 +145,9 @@ class SetupSslCommand(Command):
         self.add_option("-d", "--domain")
 
     def run(self, options, args):
-        ct = os.popen('which certtool').read().strip()
-        if ct is '':
-            self.error("Cannot find GNUTLS certtool")
-            return
+        bc = Xpl.DEFAULT_BIN_DIR + "/bongo-config"
 
-        certpath = Xpl.DEFAULT_CERT_PATH
-        keypath = Xpl.DEFAULT_KEY_PATH
-        rsapath = Xpl.DEFAULT_RSAPARAMS_PATH
-        dhpath = Xpl.DEFAULT_DHPARAMS_PATH
-        rngpath = Xpl.DEFAULT_RANDSEED_PATH
-
-        cmds = []
-        t, template = tempfile.mkstemp()
+        ret = os.system("%s --ip %s --domain %s crypto" % (bc, options.ip, options.domain))
 
         if options.cert and options.key:
             self.log.info("Copying the requested certificate and key into place")
@@ -169,30 +159,3 @@ class SetupSslCommand(Command):
 
             shutil.copyfile(options.cert, certpath)
             shutil.copyfile(options.key, keypath)
-        else:
-            self.log.info("Generating a new cert/key pair")
-            cmds.append([keypath, '--generate-privkey --bits 1024'])
-            cmds.append([certpath, ' -s --load-privkey ' + keypath + ' --template ' + template])
-            format = Template("organization = \"Bongo Project\"" \
-                    "unit = \"Fake Certs Dept.\"\nstate = \"None\"\ncountry = US \n" \
-                    "cn = ${cn} \nserial = 0001 \nexpiration_days = 700 \n" \
-                    "dns_name = ${dns} \nip_address = ${ip} \nsigning_key")
-            os.write(t, format.substitute(cn = options.domain, dns = options.domain, ip = options.ip))
-
-        os.close(t)
-	cmds.append([dhpath, '--generate-dh-params --bits 1024'])
-        cmds.append([rsapath, '--generate-privkey --bits 512'])
-
-        self.log.info("Creating encryption data. *This may take some time!*")
-        for cmdpair in cmds:
-            path, cmdopts = cmdpair
-            command = ct + ' ' + cmdopts + ' --outfile ' + path + ' > /dev/null'
-            if not os.path.exists(os.path.dirname(path)):
-                os.makedirs(path)
-            self.log.info("Creating %s...", path)
-            self.log.debug("running: %s", command)
-            ret = os.system(command) / 256
-            if ret:
-                self.error("Error!")
-
-        os.remove(template)
