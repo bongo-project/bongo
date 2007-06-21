@@ -320,7 +320,16 @@ AM_CONDITIONAL(HAVE_LDAP,test "$have_ldap" = "yes")
 AC_SUBST(LDAP_LIBS)
 
 AM_PROG_LEX
+
+if test "$LEX" = "lex" -a -z "`which $LEX 2>/dev/null`"; then
+	AC_MSG_ERROR([Could not locate a suitable lexical generator. Install flex.])
+fi
+
 AC_PROG_YACC
+
+if test "$YACC" = "yacc" -a -z "`which $YACC 2>/dev/null`"; then
+	AC_MSG_ERROR([Could not locate a suitable parser generator. Install bison.])
+fi
 
 AC_CHECK_FUNCS(strcasecmp strncasecmp stricmp strnicmp gettimeofday vsnprintf _vsnprintf consoleprintf ungetcharacter RingTheBell dlopen dlsym _commit fsync FEFlushWrite dos2calendar _ConvertDOSTimeToCalendar delay statfs statvfs getpwnam_r snprintf _snprintf gmtime_r localtime_r usleep nanosleep)
 
