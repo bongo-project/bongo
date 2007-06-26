@@ -158,75 +158,20 @@ AC_DEFINE_UNQUOTED(LINUX, "1", [Badly named building-under-autoconf variable])
 
 #####3 Directory management - from dbus' configure.in
 
-#### Have to go $localstatedir->$prefix/var->/usr/local/var
-#### someone please fix this a better way...
-                                                                                
-#### find the actual value for $prefix that we'll end up with
-##   (I know this is broken and should be done in the Makefile, but
-##    that's a major pain and almost nobody actually seems to care)
-REAL_PREFIX=
-if test "x$prefix" = "xNONE"; then
-  REAL_PREFIX=$ac_default_prefix
-else
-  REAL_PREFIX=$prefix
-fi
-
-## temporarily change prefix and exec_prefix
-old_prefix=$prefix
-prefix=$REAL_PREFIX
-                                                                                
-if test "x$exec_prefix" = xNONE ; then
-   REAL_EXEC_PREFIX=$REAL_PREFIX
-else
-   REAL_EXEC_PREFIX=$exec_prefix
-fi
-old_exec_prefix=$exec_prefix
-exec_prefix=$REAL_EXEC_PREFIX
-
-## eval everything
-LOCALSTATEDIR_TMP="$localstatedir"
-EXPANDED_LOCALSTATEDIR=`eval echo $LOCALSTATEDIR_TMP`
-AC_SUBST(EXPANDED_LOCALSTATEDIR)
-
-PKGLIBEXECDIR_TMP="$libexecdir/$PACKAGE"
-EXPANDED_PKGLIBEXECDIR=`eval echo $PKGLIBEXECDIR_TMP`
-AC_SUBST(EXPANDED_PKGLIBEXECDIR)
-
-# hack. $datadir by default doesn't get expanded, you're supposed to 
-# fiddle with it at make time, not configure. See autoconf manual,
-# "Installation Directory Variables"
-#DATADIR_TMP="$datadir"
-DATADIR_TMP="$prefix/share"
-EXPANDED_DATADIR=`eval echo $DATADIR_TMP`
-AC_SUBST(EXPANDED_DATADIR)
-
-SYSCONFDIR_TMP="$sysconfdir"
-EXPANDED_SYSCONFDIR=`eval echo $SYSCONFDIR_TMP`
-AC_SUBST(EXPANDED_SYSCONFDIR)
-
-BINDIR_TMP="$bindir"
-EXPANDED_BINDIR=`eval echo $BINDIR_TMP`
-AC_SUBST(EXPANDED_BINDIR)
-
-SBINDIR_TMP="$sbindir"
-EXPANDED_SBINDIR=`eval echo $SBINDIR_TMP`
-AC_SUBST(EXPANDED_SBINDIR)
-
-LIBDIR_TMP="$libdir"
-EXPANDED_LIBDIR=`eval echo $LIBDIR_TMP`
-AC_SUBST(EXPANDED_LIBDIR)
-                                                                                
-## put prefix and exec_prefix back
-prefix=$old_prefix
-exec_prefix=$old_exec_prefix
+AS_AC_EXPAND(LOCALSTATEDIR, $localstatedir)
+AS_AC_EXPAND(SYSCONFDIR, $sysconfdir)
+AS_AC_EXPAND(DATADIR, $datadir)
+AS_AC_EXPAND(BINDIR, $bindir)
+AS_AC_EXPAND(SBINDIR, $sbindir)
+AS_AC_EXPAND(LIBDIR, $libdir)
 
 ### Paths
 
-XPL_DEFAULT_DATA_DIR=${EXPANDED_DATADIR}/bongo
+XPL_DEFAULT_DATA_DIR=${DATADIR}/bongo
 AC_SUBST(XPL_DEFAULT_DATA_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_DATA_DIR, "$XPL_DEFAULT_DATA_DIR", [Default data directory])
 
-XPL_DEFAULT_STATE_DIR=${EXPANDED_LOCALSTATEDIR}/bongo
+XPL_DEFAULT_STATE_DIR=${LOCALSTATEDIR}/bongo
 AC_SUBST(XPL_DEFAULT_STATE_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_STATE_DIR, "$XPL_DEFAULT_STATE_DIR", [Default state directory])
 
@@ -242,19 +187,19 @@ XPL_DEFAULT_CACHE_DIR=${XPL_DEFAULT_STATE_DIR}/cache
 AC_SUBST(XPL_DEFAULT_CACHE_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_CACHE_DIR, "$XPL_DEFAULT_CACHE_DIR", [Default cache directory])
 
-XPL_DEFAULT_BIN_DIR=${EXPANDED_SBINDIR}
+XPL_DEFAULT_BIN_DIR=${SBINDIR}
 AC_SUBST(XPL_DEFAULT_BIN_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_BIN_DIR, "$XPL_DEFAULT_BIN_DIR", [Default binary directory])
 
-XPL_DEFAULT_LIB_DIR=${EXPANDED_LIBDIR}
+XPL_DEFAULT_LIB_DIR=${LIBDIR}
 AC_SUBST(XPL_DEFAULT_LIB_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_LIB_DIR, "$XPL_DEFAULT_LIB_DIR", [Default library directory])
 
-XPL_DEFAULT_CONF_DIR=${EXPANDED_SYSCONFDIR}/bongo
+XPL_DEFAULT_CONF_DIR=${SYSCONFDIR}/bongo
 AC_SUBST(XPL_DEFAULT_CONF_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_CONF_DIR, "$XPL_DEFAULT_CONF_DIR", [Default config directory])
 
-XPL_DEFAULT_NLS_DIR=${EXPANDED_DATADIR}/bongo/nls
+XPL_DEFAULT_NLS_DIR=${DATADIR}/bongo/nls
 AC_SUBST(XPL_DEFAULT_NLS_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_NLS_DIR, "$XPL_DEFAULT_NLS_DIR", [Default nls directory])
 

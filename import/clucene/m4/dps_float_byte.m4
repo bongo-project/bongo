@@ -3,8 +3,8 @@ AC_DEFUN([dps_float_byte],
     [AC_MSG_CHECKING(whether ${CXX} supports our byte<->float conversions)
         AC_CACHE_VAL(mdl_cv_have_float_byte_support,
             [ AC_TRY_RUN(
-	changequote(<<<, >>>)dnl
-	<<<
+	changequote(<:<, >:>)dnl
+	<:<
     typedef long double float_t;
     typedef long int32_t;
     typedef char uint8_t;
@@ -80,7 +80,7 @@ AC_DEFUN([dps_float_byte],
 
         return 0;
 	}
->>>
+>:>
 	changequote([, ]), dps_float_byte_fail=0, dps_float_byte_fail=1,
 	dps_float_byte_fail=2
     )]
