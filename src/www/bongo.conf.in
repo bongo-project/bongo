@@ -3,7 +3,7 @@
 #LoadModule python_module @APACHE_MOD_DIR@/mod_python@SHARED_POSTFIX@
 
 <IfModule mod_python.c>
-Alias / @EXPANDED_DATADIR@/@PACKAGE@/htdocs/
+Alias / @DATADIR@/@PACKAGE@/htdocs/
 
 <Location />
     Order allow,deny
@@ -16,7 +16,7 @@ Alias / @EXPANDED_DATADIR@/@PACKAGE@/htdocs/
     Allow from all
 
     SetHandler python-program
-    PythonPath "['@EXPANDED_PYTHONDIR@']+sys.path"
+    PythonPath "['@PYTHONDIR@']+sys.path"
     PythonHandler bongo.dragonfly.Server
     PythonOption DragonflyUriRoot "/user"
     PythonDebug On
@@ -27,7 +27,7 @@ Alias / @EXPANDED_DATADIR@/@PACKAGE@/htdocs/
     Allow from all
 
     SetHandler python-program
-    PythonPath "['@EXPANDED_PYTHONDIR@']+sys.path"
+    PythonPath "['@PYTHONDIR@']+sys.path"
     PythonHandler bongo.dragonfly.HistoryServer
     PythonOption DragonflyUriRoot "/history"
     PythonDebug On
@@ -38,10 +38,10 @@ Alias / @EXPANDED_DATADIR@/@PACKAGE@/htdocs/
     Allow from all
 
     SetHandler python-program
-    PythonPath "['@EXPANDED_PYTHONDIR@']+sys.path"
+    PythonPath "['@PYTHONDIR@']+sys.path"
     PythonHandler bongo.hawkeye.Server
     PythonOption HawkeyeUriRoot "/admin"
-    PythonOption HawkeyeTmplRoot "@EXPANDED_DATADIR@/@PACKAGE@/hawkeye/psp"
+    PythonOption HawkeyeTmplRoot "@DATADIR@/@PACKAGE@/hawkeye/psp"
     PythonDebug On
 </Location>
 </IfModule>

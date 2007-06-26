@@ -164,6 +164,7 @@ AS_AC_EXPAND(DATADIR, $datadir)
 AS_AC_EXPAND(BINDIR, $bindir)
 AS_AC_EXPAND(SBINDIR, $sbindir)
 AS_AC_EXPAND(LIBDIR, $libdir)
+AS_AC_EXPAND(PKGLIBEXECDIR, "$libexecdir/$PACKAGE")
 
 ### Paths
 
@@ -367,12 +368,7 @@ AC_SUBST(CFLAGS_save)
 AC_SUBST(PYTHON_LIBS)
 AC_SUBST(PYTHON_CPPFLAGS)
 
-# Get a pre-expanded version of $pythondir and $top_srcdir so we can
-# substitute them into generated files
-EXPANDED_PYTHONDIR=`eval echo $pythondir`
-EXPANDED_TOP_SRCDIR=`pwd`
-AC_SUBST(EXPANDED_PYTHONDIR)
-AC_SUBST(EXPANDED_TOP_SRCDIR)
+AS_AC_EXPAND(PYTHONDIR, $pythondir)
 
 # Check for openldap's slapd
 AC_ARG_WITH([slapd],

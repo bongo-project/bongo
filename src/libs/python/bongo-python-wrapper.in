@@ -11,10 +11,10 @@ if binpath.endswith("bin"):
     newpath = []
     if envpath is not None:
         newpath = envpath.split(os.pathsep)
-    newpath.insert(0, "@EXPANDED_PYTHONDIR@")
+    newpath.insert(0, "@PYTHONDIR@")
     os.environ["PYTHONPATH"] = os.pathsep.join(newpath)
 
-    script = os.path.join("@EXPANDED_PKGLIBEXECDIR@",
+    script = os.path.join("@PKGLIBEXECDIR@",
                           os.path.basename(sys.argv[0]) + ".py")
 else:
     script = os.path.join(binpath, binname + ".py")

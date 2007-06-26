@@ -391,11 +391,11 @@ src/www/bongo/__init__.py: src/www/bongo/__init__.py.in $(top_srcdir)/src/libs/p
 	mv $@.tmp $@
 
 src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
-	sed -e "s%\@EXPANDED_DATADIR\@/\@PACKAGE\@/htdocs%${EXPANDED_TOP_SRCDIR}/src/www%" \
+	sed -e "s%\@DATADIR\@/\@PACKAGE\@/htdocs%${top_srcdir}/src/www%" \
 	-e "s%\@APACHE_MOD_DIR\@%${APACHE_MOD_DIR}%" \
-	-e "s%\@EXPANDED_PYTHONDIR\@%${EXPANDED_TOP_SRCDIR}/src/www%" \
+	-e "s%\@PYTHONDIR\@%${top_srcdir}/src/www%" \
 	-e "s%\@SHARED_POSTFIX\@%${SHARED_POSTFIX}%" \
-	-e "s%\@EXPANDED_DATADIR\@/\@PACKAGE\@/hawkeye%${EXPANDED_TOP_SRCDIR}/src/www/hawkeye%" \
+	-e "s%\@DATADIR\@/\@PACKAGE\@/hawkeye%${top_srcdir}/src/www/hawkeye%" \
 	$< > $@
 
 props2json := $(top_srcdir)/src/www/l10n/props2json

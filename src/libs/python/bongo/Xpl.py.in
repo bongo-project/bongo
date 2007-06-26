@@ -20,7 +20,7 @@ DEFAULT_RANDSEED_PATH = '@XPL_DEFAULT_RANDSEED_PATH@'
 DEFAULT_SLAPD_PATH = '@DEFAULT_SLAPD_PATH@'
 DEFAULT_SLAPD_SCHEMA_DIR = '@DEFAULT_SLAPD_SCHEMA_DIR@'
 
-DEFAULT_LIBEXEC_DIR = '@EXPANDED_PKGLIBEXECDIR@'
+DEFAULT_LIBEXEC_DIR = '@PKGLIBEXECDIR@'
 
 # Configured Bongo user.  If this looks funky, it's because we're
 # substituting in some potentially empty variables from autoconf.
