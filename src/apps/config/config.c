@@ -438,8 +438,6 @@ main(int argc, char *argv[]) {
 		return 1;
 	}
 	
-	RunAsBongoUser();
-	
 	// parse options
 	while (++next_arg < argc && argv[next_arg][0] == '-') {
 		char *arg = argv[next_arg];
@@ -476,17 +474,24 @@ main(int argc, char *argv[]) {
 		usage();
 	}
 
+	// unusual libgcrypt options must occur before XplInit()
 	if (command == 2) {
 		gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
 	}
 	XplInit();
 	
+	// we don't want to setup libraries unless we need to (e.g., to run an agent)
 	if (command == 1) {
 		startup = BA_STARTUP_CONNIO;	
 		if (-1 == BongoAgentInit(&configtool, "bongoconfig", "", DEFAULT_CONNECTION_TIMEOUT, startup)) {
 			XplConsolePrintf("ERROR : Couldn't initialize Bongo libraries\n");
 			return 2;
 		}
+	}
+
+	// don't give away privileges if we're going to need them later.
+	if (command != 1) {
+		RunAsBongoUser();
 	}
 
 	switch(command) {
