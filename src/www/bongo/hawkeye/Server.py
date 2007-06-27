@@ -6,6 +6,7 @@ import Auth
 import bongo.dragonfly
 import bongo.dragonfly.BongoFieldStorage as BongoFieldStorage
 import bongo.dragonfly.BongoUtil as BongoUtil
+import bongo.dragonfly.BongoSession as BongoSession
 
 # Add a handler so messages from python's logging module go to apache.
 # We don't use that module in the Bongo server proper, because we need
@@ -16,9 +17,11 @@ logging.root.setLevel(logging.DEBUG)
 
 def handler(req):
     req.log = RequestLogProxy(req)
+    
+    req.log.debug("Request: %s", req)
 
     # if the req is multipart/form-data, decode its contents now, so
-    # we can use the authentication field in the auth handler.
+    # we can use the authentication field in the auth handler.    
     req.form = None
     reqtype = req.headers_in.get("Content-Type", None)
     if reqtype and (reqtype.startswith("application/x-www-form-urlencoded")
@@ -28,6 +31,9 @@ def handler(req):
     try:
         rp = HawkeyePath(req)
         handler = rp.GetHandler()
+        
+        req.session = BongoSession.Session(req)
+        req.session.load()
         
         if handler.NeedsAuth(rp):
             auth = bongo.hawkeye.Auth.authenhandler(req)

@@ -5,7 +5,9 @@ from HawkeyeHandler import HawkeyeHandler
 import bongo.hawkeye.Auth as Auth
 from bongo.libs import msgapi
 
-class RootHandler(HawkeyeHandler):
+AuthMode = 0
+
+class RootHandler(HawkeyeHandler):    
     def NeedsAuth(self, rp):
         if rp.action == "login":
             return False
@@ -79,10 +81,27 @@ class RootHandler(HawkeyeHandler):
         return self.SendTemplate(req, rp, "test.tpl")
 
     def login_GET(self, req, rp):
+        global AuthMode
+        
+        if AuthMode == 1:
+            self.SetVariable("badauth", 1)
+            self.SetVariable("loggedout", 0)
+            AuthMode = 0
+        elif AuthMode == 2:
+            self.SetVariable("badauth", 0)
+            self.SetVariable("loggedout", 1)
+            AuthMode = 0
+        else:
+            self.SetVariable("badauth", 0)
+            self.SetVariable("loggedout", 0)
+        
         return self.SendTemplate(req, rp, "login.tpl")
 
     def login_POST(self, req, rp):
         if not Auth.Login(req):
+            global AuthMode
+            
+            AuthMode = 1
             return self.login_GET(req, rp)
 
         target = rp.tmplUriRoot
@@ -92,9 +111,12 @@ class RootHandler(HawkeyeHandler):
 
         return bongo.dragonfly.BongoUtil.redirect(req, target)
 
-    def logout_GET(self, req, rp):
+    def logout_GET(self, req, rp):    
         if req.session:
             req.session.invalidate()
             req.session = None
+            
+            global AuthMode
+            AuthMode = 2
 
         return bongo.dragonfly.BongoUtil.redirect(req, "login")

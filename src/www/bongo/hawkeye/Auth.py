@@ -51,5 +51,5 @@ def authenhandler(req):
     if AcceptCredentials(req):
         req.log.debug("successful auth")
         return bongo.dragonfly.HTTP_OK
-
+    
     return bongo.dragonfly.HTTP_UNAUTHORIZED

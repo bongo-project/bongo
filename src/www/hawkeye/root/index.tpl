@@ -1,6 +1,6 @@
 %(include|header.tpl)s
 
-<img src="/img/desktop-big.png" class="floaty" alt="Welcome to Bongo" />
+<img src="../img/desktop-big.png" class="floaty" alt="Welcome to Bongo" />
 
 <p>Thank you for choosing Bongo as your calendaring and mail solution.</p>
 <p>This screen enables you to briefly overview your system status, and as a starting point to the different administration tasks available.</p>
@@ -21,7 +21,7 @@
 	  Latest available: <span tal:content="sw_available">unknown</span>
 	  <div tal:condition="sw_upgrade">Upgrade to new version recommended.</div>
 	</td>
-        <td class="hrow" width="16"><img src="/img/dialog-warning.png" alt="Warning" tal:condition="sw_upgrade" /></td>
+        <td class="hrow" width="16"><img src="../img/dialog-warning.png" alt="Warning" tal:condition="sw_upgrade" /></td>
     </tr>
     <tr style="height: 28px;" class="highlight">
         <td class="hrow">System Status</td>
