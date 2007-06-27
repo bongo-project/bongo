@@ -286,8 +286,6 @@ pkgpythondragonfly_PYTHON :=			   \
 	src/www/bongo/dragonfly/Auth.py		   \
 	src/www/bongo/dragonfly/CalendarView.py	   \
 	src/www/bongo/dragonfly/Composer.py	   \
-	src/www/bongo/dragonfly/HistoryHandler.py   \
-	src/www/bongo/dragonfly/HistoryServer.py	   \
 	src/www/bongo/dragonfly/BongoCookie.py	   \
 	src/www/bongo/dragonfly/HttpError.py	   \
 	src/www/bongo/dragonfly/BongoFieldStorage.py \

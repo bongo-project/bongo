@@ -22,17 +22,6 @@ Alias / @DATADIR@/@PACKAGE@/htdocs/
     PythonDebug On
 </Location>
 
-<Location /history>
-    Order allow,deny
-    Allow from all
-
-    SetHandler python-program
-    PythonPath "['@PYTHONDIR@']+sys.path"
-    PythonHandler bongo.dragonfly.HistoryServer
-    PythonOption DragonflyUriRoot "/history"
-    PythonDebug On
-</Location>
-
 <Location /admin>
     Order allow,deny
     Allow from all

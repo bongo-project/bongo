@@ -20,7 +20,6 @@ import bongo.Xpl as Xpl
 import bongo.dragonfly
 from bongo.dragonfly.ResourcePath import ResourcePath
 from bongo.dragonfly.SmsHandler import SmsHandler
-from bongo.dragonfly.HistoryHandler import HistoryHandler
 from bongo.dragonfly.Standalone import HttpServer, HttpRequest
 from bongo.dragonfly.HttpError import HttpError
 import bongo.dragonfly.Auth
@@ -171,24 +170,6 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             else:
                 self.send_response(ret)
             return
-
-        if self.path.startswith("/history"):
-            handler = HistoryHandler()
-            mname = "do_" + self.command
-            if not hasattr(handler, mname):
-                self.send_error(501, "Unsupported method (%r)" % self.command)
-                return
-            method = getattr(handler, mname)
-            self.dragonfly_req = True
-            self.req = HttpRequest(self, "/history", self.server)
-            ret = method(self.req)
-
-            if ret is None:
-                self.send_response(bongo.dragonfly.HTTP_OK)
-            else:
-                self.send_response(ret)
-            return
-
 
         if self.path.startswith("/admin"):
             self.dragonfly_req = True
