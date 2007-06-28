@@ -160,7 +160,7 @@ AC_DEFINE_UNQUOTED(LINUX, "1", [Badly named building-under-autoconf variable])
 
 AS_AC_EXPAND(LOCALSTATEDIR, $localstatedir)
 AS_AC_EXPAND(SYSCONFDIR, $sysconfdir)
-AS_AC_EXPAND(DATADIR, $datadir)
+AS_AC_EXPAND(DATADIR, "$prefix/share")
 AS_AC_EXPAND(BINDIR, $bindir)
 AS_AC_EXPAND(SBINDIR, $sbindir)
 AS_AC_EXPAND(LIBDIR, $libdir)
