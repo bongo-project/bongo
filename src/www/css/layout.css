@@ -1203,3 +1203,8 @@ pre {
 }
 
 #tzlabel { color: #fff; }
+
+#search-no-results
+{
+  padding-top: 25%;
+}

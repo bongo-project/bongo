@@ -30,7 +30,7 @@ Alias / @DATADIR@/@PACKAGE@/htdocs/
     PythonPath "['@PYTHONDIR@']+sys.path"
     PythonHandler bongo.hawkeye.Server
     PythonOption HawkeyeUriRoot "/admin"
-    PythonOption HawkeyeTmplRoot "@DATADIR@/@PACKAGE@/hawkeye/psp"
+    PythonOption HawkeyeTmplRoot "@DATADIR@/@PACKAGE@/htdocs/hawkeye"
     PythonDebug On
 </Location>
 </IfModule>

@@ -41,11 +41,11 @@ Dragonfly.Search.Group.prototype.build = function (html)
 {
     var d = Dragonfly;
 
-    html.push ('<div id="', this.name, '-search" class="search-group" style="display: none">',
-               '<div class="group-header">', d.escapeHTML (this.label), '</div>',
+    html.push ('<table id="', this.name, '-search" class="conversation-list" cellspacing="0" cellpadding="0" style="display: none">',
+               '<tr class="group-header"><td colspan="5">', d.escapeHTML (this.label), '</td></tr>',
                '<div id="', this.name, '-search-results"></div>',
-               '<div id="', this.name, '-search-footer" class="group-footer"></div>',
-               '</div>');
+               '<tr class="group-footer"><td id="', this.name, '-search-footer"></td></tr>',
+               '</table>');
 };
 
 Dragonfly.Search.Group.prototype.getData = function (loc)
@@ -117,7 +117,7 @@ Dragonfly.Search.Contacts.connectHtml = function (elem)
     Event.observe ('contacts-search-results', 'click',
                    (function (evt) {
                        var elem = Event.element (evt);
-                       var card = d.findElement (elem, 'DIV', $('contacts-search-results'));
+                       var card = d.findElement (elem, 'DIV', $('contacts-search'));
                        var bongoId = card && card.getAttribute ('bongoid');
                        if (!bongoId) {
                            return;
@@ -138,15 +138,37 @@ Dragonfly.Search.Contacts.load = function (loc, jsob)
     var ret = false;
     if (jsob && jsob.contacts && jsob.contacts.length) {
         ret = true;
+        var rowtype = 'even';
+        
         forEach (jsob.contacts, function (card) {
-                     html.push ('<div bongoid="', card.bongoId, '" style="float: left;"><img src="img/contact-new.png"> ',
-                                d.escapeHTML (card.fn));
-
+                     html.push ('<tr bongoid="', card.bongoId, '" class="', rowtype, '">');
+                     html.push ('<td class="checkbox"><input type="checkbox"></td>');
+                     
+                     //html.push ('<td class="star"><img src="img/contact-16.png" /></td>');
+                     
+                     var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
+                                contact: card.bongoId });
+                     
+                     html.push ('<td class="from" href="#', loc.getClientUrl(), '">');
+                     html.push ('<a href="#', loc.getClientUrl(), '">', d.escapeHTML (card.fn), '</a>');
+                     html.push ('</td>');
+                     
                      if (card.email && card.email.length) {
-                         html.push (d.escapeHTML (card.email[0]));
+                        html.push ('<td class="subject" href="#', loc.getClientUrl(), '">');
+                        html.push ('<a href="#', loc.getClientUrl(), '">', d.escapeHTML (card.email[0]), '</a>');
+                        html.push ('</td>');
                      }
-
-                     html.push ('</div>');
+                     
+                     html.push ('</td></tr>');
+                     
+                     if (rowtype == 'even')
+                     {
+                        rowtype = 'odd';
+                     }
+                     else
+                     {
+                        rowtype = 'even';
+                     }
                  });
         if (jsob.total > jsob.contacts.length) {
             var page2 = this.getLoc (loc);
@@ -155,6 +177,7 @@ Dragonfly.Search.Contacts.load = function (loc, jsob)
                              [ '<a href=#"', d.escapeHTML (page2.getClientUrl ()), '">',
                                jsob.total - jsob.contacts.length, ' More...</a>' ]);
         }
+        
     }
     html.set ('contacts-search-results');
     (ret ? Element.show : Element.hide) ('contacts-search');
@@ -241,8 +264,12 @@ Dragonfly.Search.Results.build = function (loc)
             s.groups[i].build (html);
         }
 
-        html.push ('<div id="search-no-results">Your search did not match anything.</div>',
-                   '</div>');
+
+        html.push ('<div id="search-no-results"><table style="margin: auto;"><tr>',
+                   '<td><img src="img/sad.png" style="float: left;" /></td>',
+                   '<td style="vertical-align:middle;"><h3>Sorry, but your query returned no results.</h3>Here are some tips for getting better results:',
+                   '<ul style="font-size: 80%; margin-left: 3em;"><li style="list-style-type: disc;">Make sure all words are spelt correctly.</li><li style="list-style-type: disc;">Try different keywords.</li><li style="list-style-type: disc;">Be less specific in your search.</li></ul></td>',
+                   '</tr></table></div>');
 
         html.set ('content-iframe');
     }

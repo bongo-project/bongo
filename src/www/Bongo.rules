@@ -140,6 +140,7 @@ dist_img_DATA :=					     \
 	src/www/img/plus.png				     \
 	src/www/img/popup.png				     \
 	src/www/img/read-gradient.png			     \
+	src/www/img/sad.png                      \
 	src/www/img/side-bl.png				     \
 	src/www/img/side-br.png				     \
 	src/www/img/side-cl.png				     \

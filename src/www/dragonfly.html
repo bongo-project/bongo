@@ -194,24 +194,25 @@
 	      <span id="user-name"></span>
 	      <ul id="section-user">
 		<li><a href="javascript:void(Dragonfly.logout());">Log Out</a></li>
+		<li id="admin-link"><a href="admin" target="_blank">Administration</a></li>
 		<!-- 
 		Feedback disabled. Check the destination address in Dragonfly.js
 		when re-enabled.
 		<li><a href="javascript:void(Dragonfly.sendFeedback());">Send Feedback</a></li> -->
 	      </ul>
 	    </td>
-	    <td class="header-cell">
+	    <td class="header-cell" style="text-align: right; padding-right: 15px;">
 	      <div id="search">
 		<input id="search-entry" type="search" placeholder="Search Bongo" autosave="BongoSearch" results="10">
 		<input type="button" onclick="void(Dragonfly.search ($('search-entry').value))" value="Search">
-		<input type="button" onclick="void(Dragonfly.search (''))" value="Clear">
+		<!--<input type="button" onclick="void(Dragonfly.search (''))" value="Clear">-->
 	      </div>
 	    </td>
-	    <td class="header-cell" style="text-align:right; padding-right:15px;">
+	    <!--<td class="header-cell" style="text-align:right; padding-right:15px;">
 	      <form id="view-tz">
 	      <label id="tzlabel">Timezone: <span id="tzselect"></span></label>
           </form>
-	    </td>
+	    </td>-->
 	  </tr>
 	  <tr>
 	    <td id="section-sidebar">
