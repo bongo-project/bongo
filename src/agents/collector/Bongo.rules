@@ -6,7 +6,7 @@ bongocollector_SOURCES :=			\
 	src/agents/collector/collector.h
 
 bongocollector_CPPFLAGS := $(AM_CPPFLAGS) \
-	-I$(top_srcdir)/import/curl/include
+	$(LIBCURL_CPPFLAGS)
 
 bongocollector_LDADD :=						   \
 	libbongonmap.la						   \
