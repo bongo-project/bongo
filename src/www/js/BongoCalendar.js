@@ -92,6 +92,8 @@ Dragonfly.Calendar.BongoCalendar.prototype.parseJSON = function (jsob)
         this.type = 'personal';
     }
 
+	this.subscriptionUrl = "/user/ " + d.userName + "/calendar/" + d.escapeHTML(this.cal.name) + "/events";
+
     /*
     // this should probably trust the server...
     switch (this.type) {

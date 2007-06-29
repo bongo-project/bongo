@@ -772,7 +772,7 @@ Dragonfly.Calendar.CalendarSummary.prototype.buildHtml = function (html)
     var d = Dragonfly;
 
     html.push ('<h3>', d.escapeHTML (this.calendar.cal.name), '</h3>',
-               '<p>Url: ', d.escapeHTML (this.calendar.serverUrl), '.ics</p>');
+               '<p>Url: <a href="', d.escapeHTML (this.calendar.subscriptionUrl), '.ics">', d.escapeHTML(this.calendar.subscriptionUrl), '.ics</a></p>');
     html.addCallback (bind ('connectHtml', this));
     return html;
 };
