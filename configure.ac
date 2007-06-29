@@ -482,8 +482,9 @@ AC_ARG_WITH([user],
 BONGO_USER="$with_user"
 AC_DEFINE_UNQUOTED(BONGO_USER,"$BONGO_USER", [The username which bongo runs as.])
 AC_SUBST(BONGO_USER)
+info_bongo_user=$BONGO_USER
 if test "x$BONGO_USER" = "x"; then
-	BONGO_USER="(unspecified)"
+	info_bongo_user="(unspecified)"
 fi
 
 AC_ARG_WITH([audit],
@@ -527,7 +528,7 @@ AC_ARG_ENABLE([system-malloc],
 		AC_DEFINE_UNQUOTED([SYSTEM_MALLOC], [1], [do not use memmgr pools])
 	fi])
 
-debug_cflags="no"
+info_debug_cflags="no"
 AC_ARG_ENABLE([debug-cflags],
 	AC_HELP_STRING([--enable-debug-cflags],
 		[enable compile flags that make things work better in gdb]),
@@ -536,7 +537,7 @@ AC_ARG_ENABLE([debug-cflags],
 		# appropriate flags on non-Linux systems
 		CFLAGS="$CFLAGS -g -g3 -O0 -gdwarf-2" ; export CFLAGS
 		CXXFLAGS="$CXXFLAGS -g -g3 -O0 -gdwarf-2" ; export CXXFLAGS
-		debug_cflags="yes"
+		info_debug_cflags="yes"
 	fi])
 
 AC_CHECK_SIZEOF(char*)
@@ -557,7 +558,7 @@ AC_DEFINE_UNQUOTED(XPL_POINTER_TO_UINT_CAST, $pui_cast, [How to cast an unsigned
 
 AC_CHECK_HEADER(curl/curl.h,
 	[
-	use_curl="system"
+	info_curl="system"
 	LIBCURL_CHECK_CONFIG()
 	LIBCURL_CFLAGS=$LIBCURL_CPPFLAGS
 	LIBCURL_LIBS=$LIBCURL
@@ -574,32 +575,32 @@ AC_CHECK_HEADER(curl/curl.h,
 ACX_CLUCENE()
 if test "x$CLUCENE_LIBS" = "x"; then
 	AC_MSG_RESULT(Using imported CLucene)
-	use_clucene="import"
+	info_clucene="import"
 	AC_CONFIG_SUBDIRS([import/clucene])
 	AC_SUBST(CLUCENE_BONGO_API, "1")
 	AC_SUBST(CLUCENE_LIBS, "\$(top_srcdir)/import/clucene/src/libclucene.la")
 	AC_SUBST(CLUCENE_CXXFLAGS, "-I\$(top_srcdir)/import/clucene/src")
 else
 	AC_MSG_RESULT(Using system CLucene)
-	use_clucene="system"
+	info_clucene="system"
 fi
 
 AC_CHECK_HEADER(sqlite3.h,
 	[
 	AC_MSG_RESULT(Using system SQLite)
-	use_sqlite="system"
+	info_sqlite="system"
 	AC_CHECK_SQLITE3()
 	],
 	[
 	AC_MSG_RESULT(Using import SQLite)
-	use_sqlite="import"
+	info_sqlite="import"
 	AC_CONFIG_SUBDIRS([import/sqlite3])
 	AC_SUBST(SQLITE_CFLAGS, "-I\$(top_srcdir)/import/sqlite3")
 	AC_SUBST(SQLITE_LIBS, "\$(top_srcdir)/import/sqlite3/libbongosqlite3.la")
 	]
 )
 
-use_libical="import"
+info_libical="import"
 AC_CONFIG_SUBDIRS([import/libical])
 AC_SUBST(IMPORT_SUBDIRS, $subdirs)
 
@@ -688,22 +689,22 @@ man/Makefile
 
 SVNREV="`svnversion . 2>/dev/null`"
 if test x$SVNREV != x ; then
-	bongo_version="${VERSION}+svn${SVNREV}"
+	info_bongo_version="${VERSION}+svn${SVNREV}"
 else
-	bongo_version=${VERSION}
+	info_bongo_version=${VERSION}
 fi
 
 AC_MSG_NOTICE([Configured to build Bongo:
 
-  Bongo version:   ${bongo_version}
+  Bongo version:   ${info_bongo_version}
   Install prefix:  ${prefix}
   Compiler:        ${CC}
-  Bongo user:      ${BONGO_USER}
-  Debug CFLAGS:    ${debug_cflags}
+  Bongo user:      ${info_bongo_user}}
+  Debug CFLAGS:    ${info_debug_cflags}
 
 Imported libraries:
-  CLucene:         ${use_clucene}
-  CURL:            ${use_curl}
-  SQLite:          ${use_sqlite}
-  libical:         ${use_libical}
+  CLucene:         ${info_clucene}
+  CURL:            ${info_curl}
+  SQLite:          ${info_sqlite}
+  libical:         ${info_libical}
 ])
