@@ -699,7 +699,7 @@ AC_MSG_NOTICE([Configured to build Bongo:
   Bongo version:   ${info_bongo_version}
   Install prefix:  ${prefix}
   Compiler:        ${CC}
-  Bongo user:      ${info_bongo_user}}
+  Bongo user:      ${info_bongo_user}
   Debug CFLAGS:    ${info_debug_cflags}
 
 Imported libraries:
