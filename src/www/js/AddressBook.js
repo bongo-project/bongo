@@ -166,7 +166,7 @@ Dragonfly.AddressBook.ContactPicker.prototype.buildHtml = function (html)
     Dragonfly.ListSelector.prototype.buildHtml.call (this, html);
     this.newContactId = Dragonfly.nextId ('contact-new');
     html.push ('<p style="padding-top:3px; text-align:center;">');
-    html.push ('<a id="', this.newContactId, '" class="action">Add Contact</a>');
+    html.push ('<a id="', this.newContactId, '" class="action">', _('contactAddLabel'), '</a>');
     
     this.popup = new Dragonfly.AddressBook.ContactPopup();
 };
@@ -219,7 +219,7 @@ Dragonfly.AddressBook.ContactPicker.prototype.newContactHandler = function (evt)
 
 // The ContactPopup manages the interaction for creating and editing contacts
 Dragonfly.AddressBook.ContactPopup = function (elem)
-{
+{    
     Dragonfly.PopupBuble.apply (this, arguments);
 };
 
@@ -227,14 +227,14 @@ Dragonfly.AddressBook.ContactPopup.prototype = clone (Dragonfly.PopupBuble.proto
 
 Dragonfly.AddressBook.ContactPopup.prototype.FieldTypes = {
     props:   ['tel', 'im', 'email', 'url', 'org', 'adr'],
-    email:   {name:'email', label:'Email', prop: 'email', type: 'INTERNET', protocol: 'mailto:'},
-    phone:   {name:'phone', label:'Phone', prop: 'tel', protocol: 'tel:'},
-    fax:     {name:'fax', label:'Fax', prop: 'tel', type: 'FAX', protocol: 'tel:'},
-    mobile:  {name:'mobile', label:'Mobile', prop: 'tel', type: 'CELL', protocol: 'tel:'},
-    im:      {name:'im', label:'IM', prop: 'im', protocol: 'im:'},
-    website: {name:'website', label:'Website', prop: 'url', protocol: 'http:'},
-    org:     {name:'org', label:'Company', prop: 'org'},
-    address: {name:'address', label:'Address', prop: 'adr', longtext:true}
+    email:   {name:'email', label:'contactEmail', prop: 'email', type: 'INTERNET', protocol: 'mailto:'},
+    phone:   {name:'phone', label:'contactPhone', prop: 'tel', protocol: 'tel:'},
+    fax:     {name:'fax', label:'contactFax', prop: 'tel', type: 'FAX', protocol: 'tel:'},
+    mobile:  {name:'mobile', label:'contactMobile', prop: 'tel', type: 'CELL', protocol: 'tel:'},
+    im:      {name:'im', label:'contactIM', prop: 'im', protocol: 'im:'},
+    website: {name:'website', label:'contactWebsite', prop: 'url', protocol: 'http:'},
+    org:     {name:'org', label:'contactCompany', prop: 'org'},
+    address: {name:'address', label:'contactAddress', prop: 'adr', longtext:true}
 };
 
 Dragonfly.AddressBook.ContactPopup.prototype.Form = [{
@@ -302,9 +302,9 @@ Dragonfly.AddressBook.ContactPopup.prototype.summarize = function (contact, elem
     var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
                                 contact: contact.bongoId });
     html.push ('<div class="actions">',
-               '<a id="', deleteId, '" class="secondary">Delete</a>',
-               '<a href="#', loc.getClientUrl(), '">Show Conversations</a>',
-               '<a id="', editId, '">Edit</a></div>');
+               '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
+               '<a href="#', loc.getClientUrl(), '">', _('contactShowConversations'), '</a>',
+               '<a id="', editId, '">', _('contactEditLabel'), '</a></div>');
     html.set (this.contentId);
 
     Event.observe (deleteId, 'click', this.delConfirm.bindAsEventListener (this));
@@ -323,7 +323,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.buildTab = function (html, tab)
         
         var name = this.getName (field.prop, [tab.type, field.type]);
         name = this.getFreeField (name, true);
-        html.push ('<li><label>', field.label, '</label>');
+        html.push ('<li><label>', _(field.label), '</label>');
         if (field.longtext) {
             html.push ('<textarea name="', name, '"></textarea>');
         } else {
@@ -453,11 +453,11 @@ Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem
     var form = [
         '<form id="', this.formId, '"><img style="float:left; margin-right:5px;" align="middle" ',
         'src="img/contact-unknown.png"><div><p><input style="width:75%;" name="fn"><p><label>',
-        '<input type="checkbox" name="isMyContact">This is Me</label></div>', notebook, '</form>'];
+        '<input type="checkbox" name="isMyContact">', _('contactSelf'), '</label></div>', notebook, '</form>'];
 
-    var actions = [{ value: "Cancel", onclick: 'dispose'}, { value: "Save", onclick: 'save'}];
+    var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericSave'), onclick: 'save'}];
     if (this.contact.bongoId) { // only add delete for pre-existing contacts
-        actions.unshift ({ value: "Delete", onclick: 'del', secondary: true });
+        actions.unshift ({ value: _('genericDelete'), onclick: 'del', secondary: true });
     }
     this.setForm (form, actions);
     
@@ -474,7 +474,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.del = function ()
             if (elem) {
                 elem.parentNode.removeChild(elem);
             }
-            Dragonfly.notify ('DELETED!!');
+            Dragonfly.notify (_('genericChangesSaved'));
             return result;
         });
     this.dispose();
@@ -502,7 +502,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
                 $(this.elem).scrollIntoView();
             }
             
-            Dragonfly.notify ('Changes saved.');
+            Dragonfly.notify (_('genericChangesSaved'));
             this.summarize ();
 	        this.shouldAutohide = true;
 	        callLater (2, bind ('autohide', this));
@@ -515,10 +515,10 @@ Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
 {
     this.hide();
     var text = [
-        '<p>Are you sure you want to delete the contact &ldquo;',
-        Dragonfly.escapeHTML (this.contact.fn), '&rdquo;? This cannot be undone.'
+        '<p>', _('contactConfirmRemovePre'), '&ldquo;',
+        Dragonfly.escapeHTML (this.contact.fn), '&rdquo;', _('contactConfirmRemovePost'), '</p>'
     ];
-    var actions = [{ value: "Cancel", onclick: 'dispose'}, { value: "Delete", onclick: 'del'}];
+    var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericDelete'), onclick: 'del'}];
     this.setForm (text, actions);
     this.show();
 };

@@ -1208,3 +1208,9 @@ pre {
 {
   padding-top: 25%;
 }
+
+#nomail-summary
+{
+  padding-top: 50%;
+  text-align: center;
+}

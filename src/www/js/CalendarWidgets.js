@@ -155,7 +155,14 @@ Dragonfly.Calendar.MonthWidget.prototype.buildHtml = function (html)
                '<th id="kludgysidebartitle" class="header" colspan="5">', this.day.format ('y'), '</th>',
                '<td id="kludgysidebarright" class="next"><a href="#', nextUrl, '">&rarr;</a></td></tr>',
                '<tr></tr>',
-               '<tr class="daylabels"><td>S</td><td>M</td><td>T</td><td>W</td><td>T</td><td>F</td><td>S</td></tr>');
+               '<tr class="daylabels"><td>', _('sunday-s'),
+               '</td><td>', _('monday-s'),
+               '</td><td>', _('tuesday-s'),
+               '</td><td>', _('wednesday-s'),
+               '</td><td>', _('thursday-s'),
+               '</td><td>', _('friday-s'),
+               '</td><td>', _('saturday-s'),
+               '</td></tr>');
 
     this.headerRows = 3;
     var rows = 0;
@@ -192,7 +199,7 @@ Dragonfly.Calendar.MonthWidget.prototype.buildHtml = function (html)
         }
         html.push ('</tr>');
     }
-    html.push ('<tr><td id="kludgysidebartoday" colspan="7" valign="middle" class="todaylink"><p><a href="#', thisMonth, '">Show Today</a></td></tr>');
+    html.push ('<tr><td id="kludgysidebartoday" colspan="7" valign="middle" class="todaylink"><p><a href="#', thisMonth, '">', _('showToday'), '</a></td></tr>');
     html.push ('</table>');
 
     html.push ('</div>');
@@ -350,7 +357,7 @@ Dragonfly.Calendar.MonthWidget.showPopup = function (evt) {
             '<h3>', this.day.format ('dddd, MMMM d'), '</h3>',
             '<div style="width:150px;">', calwidget, '</div>',
             '<p style="text-align:center;">',
-            '<a href="#' + loc.getClientUrl() + '">view in calendar</a>'
+            '<a href="#' + loc.getClientUrl() + '">', _('viewInCal'), '</a>'
         );
         w.popup.showBelow ();        
         d.requestJSON ('GET', loc).addCallback (function (jsob) { calwidget.layout (jsob); });

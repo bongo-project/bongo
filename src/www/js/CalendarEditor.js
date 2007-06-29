@@ -11,7 +11,7 @@ Dragonfly.Calendar.PersonalProperties = function (parent, calendar, showImport)
     this.colorId = this.color.id;
 
     // sharing bits
-    this.disclosure = new d.DisclosingLink (null, 'Share this calendar');
+    this.disclosure = new d.DisclosingLink (null, _('shareCalendar'));
     this.publishId = this.disclosure.checkId;
 
     this.nb = new d.Notebook();
@@ -805,7 +805,7 @@ Dragonfly.Calendar.NewSubscriptionPopup.prototype.buildHtml = function (html)
     Dragonfly.PopupBuble.prototype.buildHtml.call (
         this, html, '<form id="', this.formId, '">Url: <textarea rows="2" id="', this.urlId, '"></textarea>',
         '<div class="actions">',
-        '<input id="', this.cancelId, '" type="button" value="Cancel">',
+        '<input id="', this.cancelId, '" type="button" value="', _('genericCancel'), '">',
         '<input id="', this.subscribeId, '" type="submit" value="Subscribe"></div>',
         '</form>');
         
@@ -910,9 +910,9 @@ Dragonfly.Calendar.CalendarPropsPopup.prototype.edit = function ()
     this.saveId = d.nextId ('calendar-save');
 
     html.push ('<div class="actions">',
-               '<input id="', deleteId, '" type="button" value="Delete" class="secondary">',
-               '<input id="', cancelId, '" type="button" value="Cancel"> ',
-               '<input id="', this.saveId, '" type="button" value="Save">',
+               '<input id="', deleteId, '" type="button" value="', _('genericDelete'), '" class="secondary">',
+               '<input id="', cancelId, '" type="button" value="', _('genericCancel'), '"> ',
+               '<input id="', this.saveId, '" type="button" value="', _('genericSave'), '">',
                '</div>');
     html.set (this.contentId);
 
@@ -948,7 +948,7 @@ Dragonfly.Calendar.CalendarPropsPopup.prototype.summarize = function ()
     var editId = d.nextId ('calendar-edit');
 
     html.push ('<div class="actions">',
-               '<a id="', deleteId, '" class="secondary">Delete</a>',
+               '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
                '<a id="', inviteId, '">Send Invitation...</a>',
                '<a id="', editId, '">Edit</a>',
                '</div>');

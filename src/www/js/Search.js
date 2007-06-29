@@ -117,7 +117,7 @@ Dragonfly.Search.Contacts.connectHtml = function (elem)
     Event.observe ('contacts-search-results', 'click',
                    (function (evt) {
                        var elem = Event.element (evt);
-                       var card = d.findElement (elem, 'DIV', $('contacts-search'));
+                       var card = d.findElement (elem, 'TABLE', $('contacts-search'));
                        var bongoId = card && card.getAttribute ('bongoid');
                        if (!bongoId) {
                            return;

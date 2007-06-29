@@ -343,13 +343,13 @@ Dragonfly.Calendar.Events.build = function (loc)
         Element.setHTML (
             'toolbar', [
                 '<label>View: </label>',
-                '<a id="calendar-view-day" href="#">Day</a>',
+                '<a id="calendar-view-day" href="#">', _('day'), '</a>',
                 '<span class="bar"> | </span>',
-                '<a id="calendar-view-upcoming" href="#">Upcoming</a>',
+                '<a id="calendar-view-upcoming" href="#">', _('upcoming'), '</a>',
                 '<span class="bar"> | </span>',
-                '<a id="calendar-view-week" href="#">Week</a>',
+                '<a id="calendar-view-week" href="#">', _('week'), '</a>',
                 '<span class="bar"> | </span>',
-                '<a id="calendar-view-month" href="#">Month</a>'
+                '<a id="calendar-view-month" href="#">', _('month'), '</a>'
                 ]);        
         Element.show ('toolbar');
     } else {

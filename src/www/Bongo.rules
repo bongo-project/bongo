@@ -19,8 +19,10 @@ dist_css_DATA :=				\
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
 	src/www/css/login.css			\
+	src/www/css/modal.css			\
 	src/www/css/print.css			\
 	src/www/css/summary.css			\
+	src/www/css/tabs.css			\
 	src/www/css/widgets.css
 
 imgdir = $(htdocsdir)/img
@@ -54,6 +56,7 @@ dist_img_DATA :=					     \
 	src/www/img/cal-selected-stipple.png		     \
 	src/www/img/cal-today.png			     \
 	src/www/img/cal-today-stipple.png		     \
+	src/www/img/close.gif			     \
 	src/www/img/closed-read.png			     \
 	src/www/img/closed-unread.png			     \
 	src/www/img/contact-16.png			     \
@@ -77,6 +80,7 @@ dist_img_DATA :=					     \
 	src/www/img/grad-tab.png			     \
 	src/www/img/grad-textarea.png			     \
 	src/www/img/grad-toolbar.png			     \
+	src/www/img/big-info.png				     \
 	src/www/img/grippy.png				     \
 	src/www/img/grippy-h.gif			     \
 	src/www/img/grippy-h.png			     \
@@ -226,6 +230,7 @@ dist_js_DATA :=					\
 	src/www/js/Mail.js			\
 	src/www/js/MailListView.js		\
 	src/www/js/MailWidgets.js		\
+	src/www/js/Modal.js 		\
 	src/www/js/OccurrenceEditor.js		\
 	src/www/js/Preferences.js		\
 	src/www/js/Search.js			\

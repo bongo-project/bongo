@@ -17,7 +17,7 @@ body {
 
 #body-override {
     color: #2e3436;
-    background: url('../img/bg.png');
+    background: url('/img/bg.png');
     background-repeat: repeat-x;
     background-color: #fff;
     margin-top: 25px;
@@ -40,7 +40,7 @@ body {
     
     text-align: center;
     padding: 0px;
-    background-image: url('../img/login-pane.png');
+    background-image: url('/img/login-pane.png');
     /*background-repeat: no-repeat; /* Make sure this doesn't actually happen. */
     overflow: none;
 }
@@ -72,15 +72,15 @@ input, select {
 }
 
 .lang {
-    background-image: url('../img/locale.png');
+    background-image: url('/img/locale.png');
 }
 
 .username {
-    background-image: url('../img/user.png');
+    background-image: url('/img/user.png');
 }
 
 .password {
-    background-image: url('../img/locked.png');
+    background-image: url('/img/locked.png');
 }
 
 .password, .username, .lang {
@@ -109,7 +109,7 @@ p {
 }
 
 #page {
-    background: url('../img/cbg.png');
+    background: url('/img/cbg.png');
     background-repeat: repeat-x;
     background-color: #eeeeec;  /* Tango GREY */			
     margin-left: 155px; /* Push across width of sidebar, minus 10px, for bg behind round corner */
@@ -144,7 +144,7 @@ p {
 
 #sidebar {
     color: #eeeeec; /* Tango WHITE */
-    background: url('../img/sbg.png');
+    background: url('/img/sbg.png');
     background-repeat: no-repeat;
     background-color: #2e3436;  /* Tango DARK-GREY */
     float: left;
@@ -170,7 +170,7 @@ p {
 }
 
 .selecteditem {
-    background-image: url('../img/sel.png');
+    background-image: url('/img/sel.png');
     width: 175px;
     background-repeat: no-repeat;
     color: #2e3436;
@@ -272,14 +272,14 @@ ul.nav{
 }
 
 .error {
-    background-image: url('../img/dialog-error-32.png');
+    background-image: url('/img/dialog-error-32.png');
     background-color: #a40000;
     color: #eeeeec;
     border: 3px solid #cc0000;
 }
 
 .info {
-    background-image: url('../img/dialog-information-32.png');
+    background-image: url('/img/dialog-information-32.png');
     background-color: #3465a4;
     color: #eeeeec;
     border: 3px solid #204a85;
@@ -320,8 +320,8 @@ a.button, span.button, del.button {
 
 a.button, span.button, del.button,
 a.button span, span.button button, span.button input, del.button span {
-    background-image:url('../img/form_buttons.png');
-    _background-image:url('../img/form_buttons.gif');
+    background-image:url('/img/form_buttons.png');
+    _background-image:url('/img/form_buttons.gif');
 }
 
 

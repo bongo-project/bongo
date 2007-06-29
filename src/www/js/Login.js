@@ -44,7 +44,7 @@ Dragonfly.login = function (user)
         d.authToken = btoa (user + ':');
     }
 
-    d.setLoginMessage ('Attempting to log in...');
+    d.setLoginMessage (_('loggingInMessage'));
     d.setLoginDisabled (true);
 
     p.load().addCallbacks (
@@ -56,9 +56,9 @@ Dragonfly.login = function (user)
                 d.setLoginMessage ('&nbsp;');
                 d.showLoginPane();
             } else if (err.req) {
-                d.setLoginMessage ('Incorrect user or password');
+                d.setLoginMessage (_('wrongCredentials'));
             } else {
-                d.setLoginMessage ('Error logging in (check Logs)');
+                d.setLoginMessage (_('genericLoginError'));
                 logError ('login error: ' + d.reprError (err));
             }
             d.setLoginDisabled (false);
@@ -90,13 +90,15 @@ Dragonfly.logout = function ()
     }
 };
 
-Dragonfly.translateLoginPage = function ()
+Dragonfly.translateLogin = function ()
 {
+    // Login screen
     Element.setHTML ('login-user-label', _('loginNameLabel'));
     Element.setHTML ('login-password-label', _('loginPasswordLabel'));
     Element.setHTML ('login-language-label', _('loginLanguageLabel'));
     Element.setHTML ('login-default-label', _('loginRememberMeLabel'));
     $('login-button').value = _('loginLoginLabel');
+    Dragonfly.logoutMessage = _('loggedOutMessage');    
 };
 
 Dragonfly.languageChanged = function (evt)
@@ -104,12 +106,12 @@ Dragonfly.languageChanged = function (evt)
     var d = Dragonfly;
     var g = d.Gettext;
 
-    d.setLoginMessage ('Loading language...');
+    //d.setLoginMessage ('Loading language...');
     d.setLoginDisabled (true);
     g.setLocale (null, $('login-language').value).addCallbacks (
         function (res) {
-            d.setLoginMessage ('&nbsp;');
-            d.translateLoginPage ();
+            //d.setLoginMessage ('&nbsp;');
+            d.translateLogin ();
             d.setLoginDisabled (false);
             return res;
         },
@@ -154,7 +156,7 @@ Dragonfly.showLoginPane = function ()
     addElementClass (document.body, 'login');
 
     if (location.hash == '#LoggedOut') {
-        Dragonfly.setLoginMessage ('You have successfully logged out');
+        Dragonfly.setLoginMessage (Dragonfly.logoutMessage);
         location.hash = (Dragonfly.isWebkit) ? '' : '#';
         $('login-user').focus();
     } else {

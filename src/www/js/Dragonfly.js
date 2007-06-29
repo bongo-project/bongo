@@ -813,7 +813,7 @@ Dragonfly.buildSidebar = function ()
     html.set (d.sideBook.appendPage (IMG({ 'class': 'icon calendars', src: '/img/blank.gif' })));
     
     //  todo tab of sidebook
-    // d.sideBook.appendPage (DIV(), IMG({ 'class': 'icon todos', src: '/img/blank.gif' }));
+    //d.sideBook.appendPage (DIV(), IMG({ 'class': 'icon todos', src: '/img/blank.gif' }));
     d.HtmlBuilder.buildChild ('sidebox-sidebook', d.sideBook);
 };
 
@@ -887,13 +887,41 @@ Dragonfly.observeEvents = function ()
                    d.sidebarSelectChanged.bindAsEventListener (null));
 };
 
+Dragonfly.translateElements = function ()
+{
+    // Top bar
+    Element.setHTML ('admin-text', _('administrationLabel'));
+    Element.setHTML ('logout-text', _('logoutLabel'));
+    Element.setHTML ('settings-text', _('preferencesLabel'));
+    $('bongosearch').value = _('searchButtonLabel');
+    Element.setHTML ('sidebar-select-search', _('searchButtonLabel'));
+    
+    // Sidebar
+    Element.setHTML ('summary-tab-label', _('summaryTabLabel'));
+    Element.setHTML ('summary-tab-label-alt', _('summaryTabLabel'));
+    document.getElementById('summary-tab-href').title = _('summaryTabHint');
+    
+    Element.setHTML ('mail-tab-label', _('mailTabLabel'));
+    Element.setHTML ('mail-tab-label-alt', _('mailTabLabel'));
+    document.getElementById('mail-tab-href').title = _('mailTabHint');
+    Element.setHTML ('compose-tab', _('composeMailLabel'));
+    
+    Element.setHTML ('calendar-tab-label', _('calendarTabLabel'));
+    Element.setHTML ('calendar-tab-label-alt', _('calendarTabLabel'));
+    document.getElementById('calendar-tab-href').title = _('calendarTabHint');
+    Element.setHTML ('new-event-href', _('composeEventLabel'));
+}
+
 Dragonfly.start = function ()
 {
     var d = Dragonfly;
     var p = d.Preferences;
     var c = d.Calendar;
+    
+    d.buildSidebar();
+    d.translateElements();
 
-    d.setLoginMessage ('Logged in: loading contacts and calendars...');
+    d.setLoginMessage (_('loadingData'));
 
     // set current timezone to default and build timezone selector
     d.curTzid = c.Preferences.getDefaultTimezone();
@@ -905,7 +933,7 @@ Dragonfly.start = function ()
     return def.addCallbacks (
         function (res) {
             var loc = new d.Location (location.hash);
-            d.setLoginMessage ('Logged in: loading ' + d.escapeHTML (loc.tab) + '...');
+            d.setLoginMessage (_('loadingItemPre') + d.escapeHTML (loc.tab) + _('loadingItemPost'));
             return d.go (loc.user == d.userName ? loc : '#').addErrback (
                 function (err) {
                     logDebug ('got error on first try:', d.reprError (err), '; trying summary...');
@@ -990,7 +1018,7 @@ Dragonfly.main = function ()
 {
     Dragonfly.browserDetect();
     Dragonfly.initHtmlZones();
-    Dragonfly.buildSidebar();
+    //Dragonfly.buildSidebar();
     Dragonfly.observeLoginEvents ();
     Dragonfly.login();
 };

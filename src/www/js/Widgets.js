@@ -693,9 +693,9 @@ Dragonfly.PopupBuble.prototype.showError = function (err)
     this.hide();
     var closeId = Dragonfly.nextId ('popup-close');
     var html = new Dragonfly.HtmlBuilder (
-        '<p><strong>An error occurred:</strong><p style="text-align:center;">', 
+        '<p><strong>', _('genericError'), '</strong><p style="text-align:center;">', 
         err.message, '<div class="actions">',
-        '<input id="', closeId, '" type="button" value="Bummer"></div>'
+        '<input id="', closeId, '" type="button" value="', _('genericErrorOK'), '"></div>'
     );
     html.set (this.contentId);
     Event.observe (closeId, 'click', this.disposeAndReload.bindAsEventListener (this));

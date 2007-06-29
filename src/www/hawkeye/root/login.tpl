@@ -2,17 +2,17 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
     <title>Bongo Web Administration » Login</title>
-	<link rel="icon" href="../img/bongo-favicon.ico" type="image/ico">
-	<link rel="icon" href="../img/bongo-favicon.png" type="image/png">
+	<link rel="icon" href="/img/bongo-favicon.ico" type="image/ico">
+	<link rel="icon" href="/img/bongo-favicon.png" type="image/png">
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <style type="text/css" media="screen">
-        @import url(../css/admin.css);
+        @import url(/css/admin.css);
     </style>
-    <script type="text/javascript" src="../js/Browser.js"></script>
+    <script type="text/javascript" src="/js/Browser.js"></script>
 </head>
 <body onload="document.forms[0].elements[0].focus();">
 <!-- Since TAL really doesn't like inline <script> element data. -->
-<script type="text/javascript" src="../js/BrowserCheck.js"></script>
+<script type="text/javascript" src="/js/BrowserCheck.js"></script>
 
 <div style="margin: 18px;" class="error" tal:condition="badauth">You have specified an invalid username or password.</div>
 <div style="margin: 18px;" class="info" tal:condition="loggedout">You have successfully logged out!</div>
