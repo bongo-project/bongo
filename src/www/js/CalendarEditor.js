@@ -70,17 +70,17 @@ Dragonfly.Calendar.PersonalProperties.prototype.buildHtml = function (html)
                '<input type="hidden" name="calendar-type" value="personal">',
                '<table cellspacing="0" cellpadding="0">',
 
-               '<tr><td><label for="', this.nameId, '">Name: </label></td>',
+               '<tr><td><label for="', this.nameId, '">', _('calendarNameLabel'), ' </label></td>',
                '<td><input id="', this.nameId, '" name="calendar-name"></td></tr>',
 
-               '<tr><td><label for="', this.colorId, '">Color: </label></td>',
+               '<tr><td><label for="', this.colorId, '">', _('calendarColorLabel'), ' </label></td>',
                '<td>');
 
     this.color.buildHtml (html);
 
     html.push ('</td></tr>');
     if (this.importDivId) {
-        html.push ('<tr><td><label for="', this.importFileId, '">Import .ics File: </label></td>',
+        html.push ('<tr><td><label for="', this.importFileId, '">', _('calendarImportICSLabel'), ' </label></td>',
                    '<td><input id="', this.importFileId, '" name="import-file" type="file"></td></tr>');
     }
 
@@ -89,15 +89,15 @@ Dragonfly.Calendar.PersonalProperties.prototype.buildHtml = function (html)
     // sharing tab
     var html2 = new d.HtmlBuilder (
         '<div><label><input id="', this.searchableId, '" name="sharing-searchable" type="checkbox"> ',
-        'Allow other users to search for this calendar</label></div>',
+        _('calendarSearchableLabel'), '</label></div>',
 
         '<div><label><input id="', this.protectId, '" name="sharing-protect" type="checkbox"> ',
-        'Password protect access:</label></div>',
+        _('calendarPasswordProtectLabel'), '</label></div>',
 
         '<div class="indented">',
         '<table cellspacing="0" cellpadding="0">',
 
-        '<tr><td><label for="', this.userId, '">Name: </label></td>',
+        '<tr><td><label for="', this.userId, '">', _('calendarNameLabel'), ' </label></td>',
         '<td><input id="', this.userId, '" name="sharing-name"></td></tr>',
 
         '<tr style="display: none"><td><label for="', this.oldPassId, '">Current password: </label></td>',
@@ -118,25 +118,25 @@ Dragonfly.Calendar.PersonalProperties.prototype.buildHtml = function (html)
 
         '</div>', // password group
 
-        '<a id="', this.basicInviteId, '">Send out invitation...</a>'
+        '<a id="', this.basicInviteId, '">', _('calendarSendInvitation'), '</a>'
         );
     html2.set (this.nb.insertPage ('Basic', 0));
 
     // specific users
     html2 = new d.HtmlBuilder (
-        '<div><label>Email: <input id="', this.addUserId, '"><input id="', this.addButtonId, '" type="button" value="Add"></label></div>',
+        '<div><label>Email: <input id="', this.addUserId, '"><input id="', this.addButtonId, '" type="button" value="', _('buttonAddLabel'), '"></label></div>',
 
         '<div class="scrollv"><ul style="height: 8em; max-width: 25em;" id="', this.userListId, '"></ul></div>',
 
         '<div class="actions"><span class="secondary">',
         //'<input type="button" value="+" id="', this.addButtonId, '">',
-        '<input type="button" value="Remove" id="', this.removeButtonId, '">',
+        '<input type="button" value="', _('buttonRemoveLabel'), '" id="', this.removeButtonId, '">',
         '</span>',
 
         '<span style="display: none">Select: <a id="', this.selectAllId, '">All</a> <a id="', this.selectNoneId, '">None</a></span>',
 
         '</div><div>',
-        '<a id="', this.detailedInviteId, '">Send out invitation...</a>',
+        '<a id="', this.detailedInviteId, '">', _('calendarSendInvitation'), '</a>',
         '</div>'
         );
     html2.set (this.nb.insertPage ('Detailed', 1));
@@ -162,7 +162,7 @@ Dragonfly.Calendar.PersonalProperties.prototype.connectHtml = function (elem)
         this._loadFrom (this._calendar);
         delete this._calendar;
     } else {
-        $(this.nameId).value = 'New Calendar';
+        $(this.nameId).value = _('defaultCalendarName');
         this.color.setColor (d.getRandomColor ());
         $(this.colorId).name = 'calendar-color';
         this.publishClicked ();
@@ -237,7 +237,7 @@ Dragonfly.Calendar.PersonalProperties.prototype._loadFrom = function (calendar)
 
     this.bongoId = calendar.bongoId;
 
-    $(this.nameId).value = cal.name || 'New Calendar';
+    $(this.nameId).value = cal.name || _('defaultCalendarName');
     $(this.colorId).value = cal.color || d.getRandomColor ();
 
     $(this.publishId).checked = !!cal.publish;
@@ -663,7 +663,7 @@ Dragonfly.Calendar.SubscribedProperties.prototype.connectHtml = function (elem)
         this._loadFrom (this._calendar);
         delete this._calendar;
     } else {
-        $(this.nameId).value = 'New Calendar';
+        $(this.nameId).value = _('defaultCalendarName');
         this.color.setColor (d.getRandomColor ());
         $(this.colorId).name = 'calendar-color';
     }
@@ -693,7 +693,7 @@ Dragonfly.Calendar.SubscribedProperties.prototype._loadFrom = function (calendar
 
     var cal = calendar.cal;
 
-    $(this.nameId).value = cal.name || 'New Calendar';
+    $(this.nameId).value = cal.name || _('defaultCalendarName');
     $(this.colorId).value = cal.color || d.getRandomColor ();
 
     $(this.urlId).value = cal.url || '';
@@ -806,7 +806,7 @@ Dragonfly.Calendar.NewSubscriptionPopup.prototype.buildHtml = function (html)
         this, html, '<form id="', this.formId, '">Url: <textarea rows="2" id="', this.urlId, '"></textarea>',
         '<div class="actions">',
         '<input id="', this.cancelId, '" type="button" value="', _('genericCancel'), '">',
-        '<input id="', this.subscribeId, '" type="submit" value="Subscribe"></div>',
+        '<input id="', this.subscribeId, '" type="submit" value="', _('eventSubscribe'), '"></div>',
         '</form>');
         
     // No need to connect html because the superclass does it for us 
@@ -950,7 +950,7 @@ Dragonfly.Calendar.CalendarPropsPopup.prototype.summarize = function ()
     html.push ('<div class="actions">',
                '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
                '<a id="', inviteId, '">Send Invitation...</a>',
-               '<a id="', editId, '">Edit</a>',
+               '<a id="', editId, '">', _('genericEdit'), '</a>',
                '</div>');
     html.set (this.contentId);
 
@@ -1016,10 +1016,10 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.connectHtml = function (ele
         'this person and the server ', d.escapeHTML (this.invite.server), '.</p>'];
 
     var actions = [
-        { value: "Delete", onclick: 'deleteClicked', secondary: true },
-        { value: "Junk", onclick: 'junkClicked', secondary: true },
-        { value: "Ignore", onclick: 'ignoreClicked'},
-        { value: "Subscribe", onclick: 'subscribedClicked'}];
+        { value: _('genericDelete'), onclick: 'deleteClicked', secondary: true },
+        { value: _('buttonJunkLabel'), onclick: 'junkClicked', secondary: true },
+        { value: _('buttonIgnoreLabel'), onclick: 'ignoreClicked'},
+        { value: _('eventSubscribe'), onclick: 'subscribedClicked'}];
 
     this.setForm (form, actions);
     this.setClosable (true);

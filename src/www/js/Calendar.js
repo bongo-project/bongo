@@ -88,11 +88,11 @@ Dragonfly.Calendar.niceDate = function (day, format)
 
     switch (today.minus (day)) {
     case 1:
-        return "Yesterday";
+        return _('calendarYesterdayLabel');
     case 0:
-        return "Today";
+        return _('calendarTodayLabel');
     case -1:
-        return "Tomorrow";
+        return _('calendarTomorrowLabel');
     }
 
     if (!format) {
@@ -342,7 +342,7 @@ Dragonfly.Calendar.Events.build = function (loc)
     if (!$('calendar-view-day')) {
         Element.setHTML (
             'toolbar', [
-                '<label>View: </label>',
+                '<label>', _('calendarView'), ' </label>',
                 '<a id="calendar-view-day" href="#">', _('day'), '</a>',
                 '<span class="bar"> | </span>',
                 '<a id="calendar-view-upcoming" href="#">', _('upcoming'), '</a>',

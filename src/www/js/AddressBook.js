@@ -516,7 +516,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
     this.hide();
     var text = [
         '<p>', _('contactConfirmRemovePre'), '&ldquo;',
-        Dragonfly.escapeHTML (this.contact.fn), '&rdquo;', _('contactConfirmRemovePost'), '</p>'
+        Dragonfly.escapeHTML (this.contact.fn), '&rdquo;', _('genericRemovePost'), '</p>'
     ];
     var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericDelete'), onclick: 'del'}];
     this.setForm (text, actions);

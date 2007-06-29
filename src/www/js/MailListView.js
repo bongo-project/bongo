@@ -98,7 +98,7 @@ Dragonfly.Mail.ListView.load = function (loc, jsob)
         list.addConversations (html, jsob.conversations);
     } else {
         list.addGroupFooter (html,
-                             '<span class="empty">No messages</span>');
+                             '<span class="empty">' + _('mailNoMessages') + '</span>');
     }
 
     list.buildEnd (html);
@@ -179,7 +179,7 @@ Dragonfly.Mail.MultiListView.load = function (loc, jsob)
 
         if (!group.total) {
             list.addGroupFooter (html,
-                                 '<span class="empty">No messages</span>');
+                                 '<span class="empty">' + _('mailNoMessages') + '</span>');
             continue;
         }
 
@@ -187,9 +187,10 @@ Dragonfly.Mail.MultiListView.load = function (loc, jsob)
         list.addConversations (html, group.conversations);
         if (group.total > group.conversations.length) {
             list.addGroupFooter (html,
-                                 d.format ('<a href="#{0}/page1/{1}">{2} more...</a>', 
+                                 d.format ('<a href="#{0}/page1/{1}">{2} {3}</a>', 
                                            urlBase, encodeURIComponent (group[subgroup]),
-                                           group.total - group.conversations.length));
+                                           group.total - group.conversations.length),
+                                           _('mailMoreSuffix'));
         }
 
     }

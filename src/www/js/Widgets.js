@@ -645,7 +645,7 @@ Dragonfly.PopupBuble.prototype.canDisposeZone = Dragonfly.PopupBuble.prototype.c
     var canHide = !this.isVisible() || hasElementClass (this.frameId, 'closable');
     canHide = canHide && this.htmlZone.canHideZone();
     if (!canHide) {
-        Dragonfly.notify ('you have unsaved changes');
+        Dragonfly.notify (_('unsavedChanges'));
     }
     return canHide;
 }

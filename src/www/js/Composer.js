@@ -107,21 +107,21 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
     html.push (
         '<table id="', this.id, '" class="msg-compose">',
 
-        '<tr><th>To:</th><td>',
+        '<tr><th>', _('mailTo'), '</th><td>',
         '<input id="', this.to, '" class="to" type="text" value="', escapeRecips(this.msg.to), '">',
         '<div id="autocomplete-', this.to, '" class="autocompletions"></div></td></tr>',
 
-        '<tr><th>Cc:</th><td>',
+        '<tr><th>', _('mailCc'), '</th><td>',
         '<input id="', this.cc, '" class="cc" type="text" value="', escapeRecips (this.msg.cc), '">',
         '<div id="autocomplete-', this.cc, '" class="autocompletions"></td></tr>',
         
-        '<tr><th>Bcc:</th><td>',
+        '<tr><th>', _('mailBcc'), '</th><td>',
         '<input id="', this.bcc, '" class="bcc" type="text" value="', escapeRecips (this.msg.bcc), '">',
         '<div id="autocomplete-', this.bcc, '" class="autocompletions"></td></tr>',
         
-        '<tr><th>Subject:</th><td><input id="', this.subject, '" class="subject" value="', d.escapeHTML (this.msg.subject || ''), '"></td></tr>',
-        '<tr><th>From:</th><td id="', this.from, '" class="from">', d.escapeHTML (this.msg.from), '</td></tr>',
-        '<tr><th>Attachments:</th><td class="attachments"><ul>');
+        '<tr><th>', _('mailSubject'), '</th><td><input id="', this.subject, '" class="subject" value="', d.escapeHTML (this.msg.subject || ''), '"></td></tr>',
+        '<tr><th>', _('mailFrom'), '</th><td id="', this.from, '" class="from">', d.escapeHTML (this.msg.from), '</td></tr>',
+        '<tr><th>', _('mailAttachments'), '</th><td class="attachments"><ul>');
 
     if (this.msg.contents) {
         switch (this.msg.contents.contenttype) {
@@ -143,13 +143,13 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
         }
     }
 
-    html.push ('<li><a id="', this.addAttachment, '">Attach file...</a></li></ul>',
+    html.push ('<li><a id="', this.addAttachment, '">', _('mailAttachLabel'), '</a></li></ul>',
                '<tr><td colspan="2"><textarea id="', this.body, '" class="body" cols="75" rows="15"  wrap="on">',
                d.escapeHTML (this.msg.body), '</textarea></td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',
-               '<input id="', this.discard, '" class="discard" type="button" value="Discard">',
-               '<input id="', this.save, '" class="save" type="button" value="Save Draft">',
-               '<input id="', this.send, '" class="send" type="button" value="Send"></td></tr></table>');
+               '<input id="', this.discard, '" class="discard" type="button" value="', _('mailDiscard'), '">',
+               '<input id="', this.save, '" class="save" type="button" value="', _('mailDraft'), '">',
+               '<input id="', this.send, '" class="send" type="button" value="', _('mailSend'), '"></td></tr></table>');
 
     html.addCallback (bind ('connectHtml', this));
     return html;
@@ -695,7 +695,7 @@ Dragonfly.Mail.AttachmentForm.prototype.buildHtml = function (html)
     }
 
     html.push ('<span id="', this.labelId, '">', d.escapeHTML (this.attachmentId), ' (', d.escapeHTML (this.mimeType), ')</span>',
-               '<a id="', this.removeId, '">Remove</a>');
+               '<a id="', this.removeId, '">', _('mailRemoveAttachment'), '</a>');
 
     if (!this.attachmentId) {
         html.push ('</form>',

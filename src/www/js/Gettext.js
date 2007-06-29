@@ -39,7 +39,7 @@ Dragonfly.Gettext.gettext = function (msgid)
     }
 
     if (!g._translations[msgid]) {
-        logWarning ('No translation found.');
+        logWarning ('No translation found for "'+msgid+'" in '+g._locale);
         return msgid;
     }
 

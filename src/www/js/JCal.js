@@ -527,7 +527,7 @@ Dragonfly.JCal.buildNewEvent = function (summary, dayOrDate, tzid)
     var d = Dragonfly;
     var c = d.Calendar;
 
-    summary = summary || 'New Event';
+    summary = summary || _('eventDefaultTitle');
     var params = { };
     
     var start, end;

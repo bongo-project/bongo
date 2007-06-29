@@ -807,8 +807,8 @@ Dragonfly.buildSidebar = function ()
     html = new d.HtmlBuilder (
         '<div class="list-selector">',
         '<ul id="calendar-list" class="unselected-items"></ul>',
-        '<div id="new-calendar" class="action"><a id="new-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar())">Create New Calendar</a></div>',
-        '<div id="sub-calendar" class="action"><a id="sub-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar(true))">Subscribe</a></div>',
+        '<div id="new-calendar" class="action"><a id="new-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar())">', _('createNewCalendarLabel'), '</a></div>',
+        '<div id="sub-calendar" class="action"><a id="sub-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar(true))">', _('subscribeCalendarLabel'), '</a></div>',
         '</div>');
     html.set (d.sideBook.appendPage (IMG({ 'class': 'icon calendars', src: '/img/blank.gif' })));
     

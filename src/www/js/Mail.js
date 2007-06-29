@@ -100,10 +100,10 @@ Dragonfly.Mail.updateToolbar = function (loc)
     var v = m.getView (loc);
 
     /* these aren't *exactly* right... */
-    $('mail-toolbar-archive').value = (loc.set == 'all')   ? 'Unarchive' : 'Archive';
-    $('mail-toolbar-delete').value  = (loc.set == 'trash') ? 'Undelete'  : 'Delete';
-    $('mail-toolbar-junk').value    = (loc.set == 'junk')  ? 'Not Junk'  : 'Junk';
-    $('mail-toolbar-star').value    = (loc.set == 'starred') ? 'Unstar'    : 'Star';
+    $('mail-toolbar-archive').value = (loc.set == 'all')     ? _('buttonUnarchiveLabel') : _('buttonArchiveLabel');
+    $('mail-toolbar-delete').value  = (loc.set == 'trash')   ? _('buttonUndeleteLabel')  : _('genericDelete');
+    $('mail-toolbar-junk').value    = (loc.set == 'junk')    ? _('buttonNotJunkLabel')   : _('buttonJunkLabel');
+    $('mail-toolbar-star').value    = (loc.set == 'starred') ? _('buttonUnstarLabel')    : _('buttonStarLabel');
 
     Element[v.selectAll   ? 'show' : 'hide' ] ('mail-toolbar-select-all');
     Element[v.deselectAll ? 'show' : 'hide' ] ('mail-toolbar-deselect-all');
@@ -186,10 +186,10 @@ Dragonfly.Mail.buildSummarySelect = function ()
     
     Element.setHTML ('mail-summary-div', [
                          '<select name="mail-summary-select" id="mail-summary-select">',
-                         '<option value="conversations">All</option>',
-                         '<option value="tome">To Me</option>',
-                         '<option value="contacts">From My Contacts</option>',
-                         '<option value="subscriptions">Mailing Lists</option>',
+                         '<option value="conversations">', _('mailAllLabel'), '</option>',
+                         '<option value="tome">', _('mailToMeLabel'), '</option>',
+                         '<option value="contacts">', _('mailFromContactsLabel'), '</option>',
+                         '<option value="subscriptions">', _('mailSubscriptionsLabel'), '</option>',
                          '</select>']);
 
     Event.observe ('mail-summary-select', 'change', 
@@ -249,13 +249,13 @@ Dragonfly.Mail.build = function (loc)
                     
                              '<span id="mail-summary-div"></span>',
                     
-                             '<input type="button" id="mail-toolbar-archive" value="Archive">',
-                             '<input type="button" id="mail-toolbar-junk" value="Junk">',
-                             '<input type="button" id="mail-toolbar-delete" value="Delete">',
-                             '<input type="button" id="mail-toolbar-star" value="Star">',
+                             '<input type="button" id="mail-toolbar-archive" value="', _('buttonArchiveLabel'), '">',
+                             '<input type="button" id="mail-toolbar-junk" value="', _('buttonJunkLabel'), '">',
+                             '<input type="button" id="mail-toolbar-delete" value="', _('genericDelete'), '">',
+                             '<input type="button" id="mail-toolbar-star" value="', _('buttonStarLabel'), '">',
 
-                             '<input type="button" id="mail-toolbar-select-all" value="Select All">',
-                             '<input type="button" id="mail-toolbar-deselect-all" value="Deselect All">',
+                             '<input type="button" id="mail-toolbar-select-all" value="', _('toolbarSelectAll'), '">',
+                             '<input type="button" id="mail-toolbar-deselect-all" value="', _('toolbarDeselectAll'), '">',
 
                              '</td>',
                              '<td class="prev"><a id="conv-prev-href" href="#"></a></td></tr>',
@@ -499,7 +499,7 @@ Dragonfly.Mail.Messages.build = function (loc)
     var d = Dragonfly;
     var m = d.Mail;
 
-    return m['build' + (loc.message ? 'Conversation' : 'List') + 'View'] (loc);
+    return m['build' + (loc.message ? _('mailConversation') : _('mailList')) + _('mailView')] (loc);
 };
 
 Dragonfly.Mail.Messages.load = function (loc, jsob)
@@ -507,7 +507,7 @@ Dragonfly.Mail.Messages.load = function (loc, jsob)
     var c = Dragonfly.Mail.Messages;
     var m = Dragonfly.Mail;
 
-    return m['load' + (loc.message ? 'Item' : 'List')] (loc, jsob);
+    return m['load' + (loc.message ? _('mailItem') : _('mailList'))] (loc, jsob);
 };
 */
 
@@ -609,7 +609,7 @@ Dragonfly.Mail.Contacts.getBreadCrumbs = function (loc)
     if (loc.contact) {
         return d.format ('<a href="#{0}">{1} <strong>{2}</strong></a>',
                          d.escapeHTML (loc.getClientUrl ('contact')),
-                         loc.set == 'sent' ? 'To ' : 'From ',
+                         loc.set == 'sent' ? _('mailTo') + " " : _('mailFrom') + " ",
                          d.escapeHTML (ab.getNameForContact (loc.contact)));
     }
 };
