@@ -9,7 +9,7 @@ AM_INIT_AUTOMAKE(bongo, 0.1.0)
  AM_GNU_GETTEXT([external])
 AM_CONDITIONAL(USE_NLS,test "$USE_NLS" = "yes")
 
-AM_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADERS(config.h)
 AX_PREFIX_CONFIG_H([include/bongo-config.h], _BONGO, [config.h])
 
 # Honor aclocal flags
@@ -375,42 +375,48 @@ AC_ARG_WITH([slapd],
 	AC_HELP_STRING([--with-slapd=FILE],
 		[Path to slapd binary]),
 	[DEFAULT_SLAPD_PATH="$with_slapd"],
-	[AC_PATH_PROG(DEFAULT_SLAPD_PATH,[slapd],[/usr/libexec/slapd],[$PATH:/sbin:/usr/sbin:/usr/libexec:/usr/lib/openldap:/usr/local/libexec])])
+	[AC_PATH_PROG(DEFAULT_SLAPD_PATH,[slapd],[/usr/libexec/slapd],[$PATH:/sbin:/usr/sbin:/usr/libexec:/usr/lib/openldap:/opt/sfw/libexec:/opt/csw/libexec:/usr/local/libexec])])
 
+DEFAULT_SLAPD_SCHEMA_DIR="/etc/openldap/schema"
 # Check for openldap's schema files
 AC_ARG_WITH([slapd-schema],
 	AC_HELP_STRING([--with-slapd-schema=DIR],
 		[Path to slapd schema directory]),
 	[DEFAULT_SLAPD_SCHEMA_DIR=$withval],
 	[
-		for dir in /etc/openldap/schema /etc/ldap/schema /usr/local/etc/openldap/schema; do
-			DEFAULT_SLAPD_SCHEMA_DIR="${dir}/core.schema"
-			if test -e ${DEFAULT_SLAPD_SCHEMA_DIR}; then
-				break 2
-			fi
+		for conf in /etc /opt/sfw/etc /opt/csw/etc /usr/local/etc; do
+			for ldap in openldap ldap; do
+				if test -e "${conf}/${ldap}/schema/core.schema"; then
+					DEFAULT_SLAPD_SCHEMA_DIR="${conf}/${ldap}/schema"
+					break 2
+				fi
+			done
 		done
 	])
-
-if echo $DEFAULT_SLAPD_SCHEMA_DIR |grep "/core.schema$" >/dev/null 2>&1; then
-	DEFAULT_SLAPD_SCHEMA_DIR=`dirname $DEFAULT_SLAPD_SCHEMA_DIR`
-fi
-
 AC_SUBST(DEFAULT_SLAPD_SCHEMA_DIR)
 
+# Check for apache's apxs
+AC_PATH_PROG(APXS,[apxs],no,[$PATH:/sbin:/usr/sbin:/usr/local/apache2/bin:/usr/apache2/bin:/usr/lib/apache2/bin:/usr/local/apache/bin:/usr/lib/apache/bin:/usr/pkg/sbin:/opt/csw/apache/bin])
+
+APACHE_MOD_DIR="/usr/local/apache2/libexec"
 # Look for apache's module dir
 AC_ARG_WITH([apache-modules],
 	AC_HELP_STRING([--with-apache-modules=DIR],
 		[Path to apache module directory]),
 	[APACHE_MOD_DIR=$withval],
 	[
-		for apache in apache2 apache; do
-			for lib in lib64 lib; do
-				APACHE_MOD_DIR="/usr/${lib}/${apache}"
-				if test -d ${APACHE_MOD_DIR}; then
-					break 2
-				fi
+		if test "x$APXS" != "xno"; then
+			APACHE_MOD_DIR="`${APXS} -q LIBEXECDIR`"
+		else
+			for apache in apache2 apache; do
+				for lib in lib64 lib; do
+					APACHE_MOD_DIR="/usr/${lib}/${apache}"
+					if test -d ${APACHE_MOD_DIR}; then
+						break 2
+					fi
+				done
 			done
-		done
+		fi
 	])
 AC_SUBST(APACHE_MOD_DIR)
 AC_MSG_CHECKING([for Apache module directory])
@@ -556,19 +562,15 @@ AC_MSG_RESULT($pi_cast $pui_cast)
 AC_DEFINE_UNQUOTED(XPL_POINTER_TO_INT_CAST, $pi_cast, [How to cast a pointer to an int])
 AC_DEFINE_UNQUOTED(XPL_POINTER_TO_UINT_CAST, $pui_cast, [How to cast an unsigned pointer to an int])
 
-AC_CHECK_HEADER(curl/curl.h,
-	[
-	info_curl="system"
-	LIBCURL_CHECK_CONFIG()
-	LIBCURL_CFLAGS=$LIBCURL_CPPFLAGS
-	LIBCURL_LIBS=$LIBCURL
-	AC_SUBST(LIBCURL_CFLAGS)
-	AC_SUBST(LIBCURL_LIBS)
-	],
-	[
+LIBCURL_CHECK_CONFIG()
+if test "x$LIBCURL" = "x"; then
 	AC_MSG_ERROR(Cannot find cURL. Please install the cURL development library.)
-	]
-)
+else
+	AC_MSG_RESULT(Using system cURL)
+	info_curl="system"
+	AC_SUBST(LIBCURL_CFLAGS, $LIBCURL_CPPFLAGS)
+	AC_SUBST(LIBCURL_LIBS, $LIBCURL)
+fi
 
 # import libraries
 
@@ -585,20 +587,17 @@ else
 	info_clucene="system"
 fi
 
-AC_CHECK_HEADER(sqlite3.h,
-	[
-	AC_MSG_RESULT(Using system SQLite)
-	info_sqlite="system"
-	AC_CHECK_SQLITE3()
-	],
-	[
-	AC_MSG_RESULT(Using import SQLite)
+AC_CHECK_SQLITE3()
+if test "x$SQLITE_LIBS" = "x"; then
+	AC_MSG_RESULT(Using imported SQLite)
 	info_sqlite="import"
 	AC_CONFIG_SUBDIRS([import/sqlite3])
 	AC_SUBST(SQLITE_CFLAGS, "-I\$(top_srcdir)/import/sqlite3")
 	AC_SUBST(SQLITE_LIBS, "\$(top_srcdir)/import/sqlite3/libbongosqlite3.la")
-	]
-)
+else
+	AC_MSG_RESULT(Using system SQLite)
+	info_sqlite="system"
+fi
 
 info_libical="import"
 AC_CONFIG_SUBDIRS([import/libical])

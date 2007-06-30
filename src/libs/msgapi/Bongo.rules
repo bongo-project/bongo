@@ -11,7 +11,7 @@ libbongomsgapi_la_SOURCES :=			\
 	src/libs/msgapi/msghttp.h
 
 libbongomsgapi_la_CPPFLAGS := $(AM_CPPFLAGS) \
-	-I$(top_srcdir)/import/curl/include
+	$(LIBCURL_CPPFLAGS)
 
 libbongomsgapi_la_LIBADD :=					   \
 	libbongocal.la						   \

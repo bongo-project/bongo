@@ -40,8 +40,8 @@ AC_DEFUN([AC_CHECK_SQLITE3], [
   if test "x$ac_sqlite3" = "xauto"; then
       if test "x$PKG_CONFIG" != "xno"; then
           AC_MSG_CHECKING([for SQLite3])
-          SQLITE_LIBS=$($PKG_CONFIG --libs sqlite3)
-          SQLITE_CFLAGS=$($PKG_CONFIG --cflags sqlite3)
+          SQLITE_LIBS=`$PKG_CONFIG --libs sqlite3`
+          SQLITE_CFLAGS=`$PKG_CONFIG --cflags sqlite3`
           if test "x$SQLITE_LIBS" = "x" -a "x$SQLITE_CFLAGS" = "x"; then
 	      AC_CHECK_LIB([sqlite3], [sqlite3_open], [ac_sqlite3="yes"], [ac_sqlite3="no"])
 	  else

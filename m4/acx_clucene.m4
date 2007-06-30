@@ -13,11 +13,11 @@ AC_ARG_WITH(clucene,
 #try some default locations
 if test -z "$with_clucene"; then
 	#use parent of this directory, and some common library paths
-	with_clucene=$(cd "../" && pwd)
-	with_clucene="$with_clucene /usr /usr/local"
+	with_clucene=`cd $top_srcdir/.. && pwd`
+	with_clucene="$with_clucene /usr /usr/local /opt/sfw /opt/csw /usr/pkg"
 else
 	#use an absolute path
-	with_clucene=$(cd "$with_clucene" && pwd)
+	with_clucene=`cd $with_lucene && pwd`
 fi
 clucene_set_failed=
 
@@ -38,7 +38,7 @@ for flag in $with_clucene; do
 				if test -e "$flag/lib/libclucene.so"; then
 					CLUCENE_LIBS="-L$flag/lib -lclucene"
 					CLUCENE_CXXFLAGS="-I$flag/include -I$config_path"
-					clucene_ver=$(grep _CL_VERSION $config_path/CLucene/clucene-config.h | grep -Eo [[01]].[[0-9]]+.[[0-9]]+)
+					clucene_ver=`$AWK '{ if ($ 1 == "#define" && $ 2 == "_CL_VERSION") print $ 3; }' < "$config_path/CLucene/clucene-config.h" | tr -d '"'`
 					
 					echo Lucene ver: $clucene_ver
 					clucene_set_failed=$flag
@@ -69,13 +69,18 @@ if test -z "$clucene_ver"; then
 	# optimistic guess :D
 	clucene_ver="1.0.0"
 fi
-clucene_apiver=$(echo -e "0.9.18\n$clucene_ver" | sort | head -n1)
+AC_MSG_RESULT("Lucene ver: $clucene_ver")
+CLUCENE_BONGO_API=`echo "$clucene_ver" | $AWK -F. '{
+	if ($ 1 > 0 || $ 2 > 9 || ($ 2 == 9 && $ 3 > 18)) {
+		print 2;
+	} else {
+		print 1;
+	}
+}'`
 
-if test "$clucene_ver" == "$clucene_apiver"; then
-	CLUCENE_BONGO_API=1
+if test $CLUCENE_BONGO_API = 1; then
 	echo Old Lucene API - Lucene Ver: $clucene_ver
 else
-	CLUCENE_BONGO_API=2
 	echo Current Lucene API - $clucene_ver
 fi
 
