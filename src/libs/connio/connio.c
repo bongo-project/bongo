@@ -28,6 +28,23 @@
 
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
+
+#ifndef AF_LOCAL
+#  ifdef AF_UNIX
+#    define AF_LOCAL AF_UNIX
+#  else
+#    error "no AF_UNIX macro for local domain sockets"
+#  endif
+#endif
+
+#ifndef PF_LOCAL
+#  ifdef PF_UNIX
+#    define PF_LOCAL PF_UNIX
+#  else
+#    error "no PF_UNIX macro for local domain sockets"
+#  endif
+#endif
+
 #endif
 
 #ifdef HAVE_NETINET_IN_H
@@ -298,7 +315,7 @@ ConnServerSocketUnix(Connection *conn, const char *path, int backlog)
 {
     int ccode;
 
-    conn->socket = IPsocket(AF_LOCAL, SOCK_STREAM, 0);
+    conn->socket = IPsocket(PF_LOCAL, SOCK_STREAM, 0);
     if (conn->socket != -1) {
         struct sockaddr_un addr;
         memset(&addr, 0, sizeof(addr));

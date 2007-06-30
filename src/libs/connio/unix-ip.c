@@ -22,6 +22,10 @@
 #include <config.h>
 
 #if defined(SOLARIS) || defined(LINUX) || defined(S390RH)
+#ifndef BSD_COMP
+/* Needed for SIOCGIF* ioctls on Solaris. */
+#define BSD_COMP 1
+#endif
 #include <errno.h>
 
 #include <xpl.h>
@@ -97,6 +101,21 @@ get_ifi_info(int family, int doaliases)
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   
   lastlen = 0;
+#ifdef SIOCGIFNUM
+#ifndef MAXIFS
+#define MAXIFS 256
+#endif
+  if (ioctl(sockfd, SIOCGIFNUM, (char *)&len) < 0) {
+    len = MAXIFS;
+  }
+  len *= sizeof(struct ifreq);
+  buf = malloc(len);
+  ifc.ifc_len = len;
+  ifc.ifc_buf = buf;
+  if (ioctl(sockfd, SIOCGIFCONF, &ifc) < 0) {
+    perror("getifi_info ioctl error");
+  }
+#else
   len = 100 * sizeof(struct ifreq); /* initial buffer size guess */
   for ( ; ; ) {
     buf = malloc(len);
@@ -113,6 +132,7 @@ get_ifi_info(int family, int doaliases)
     len += 10 * sizeof(struct ifreq); /* increment */
     free(buf);
   }
+#endif
   ifihead = NULL;
   ifipnext = &ifihead;
   lastname[0] = 0;
