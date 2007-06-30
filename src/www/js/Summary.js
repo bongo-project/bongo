@@ -44,7 +44,7 @@ Dragonfly.Summary.build = function (loc)
                           '<ul id="starred-list"></ul>',
                           '</div> ',
                           '<div id="tome-summary" class="summary-category mail-summary"> ',
-                          '<h3><a href="#', tomeUrl, '">', _('mailToMeLabel'), '</a></h3> ',
+                          '<h3><a href="#', tomeUrl, '">', _('summaryMailToMeLabel'), '</a></h3> ',
                           '<ul id="tome-list"></ul>',
                           '</div> ',
                           '<div id="frommycontacts-summary" class="summary-category mail-summary"> ',

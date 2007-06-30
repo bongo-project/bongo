@@ -8,7 +8,7 @@
 	<link rel="icon" href="/img/bongo-favicon.ico" type="image/ico">
 	<link rel="icon" href="/img/bongo-favicon.png" type="image/png">
 	<style type="text/css" media="screen">
-        @import url(../css/admin.css);
+        @import url(/css/admin.css);
 	</style>
 	<script type="text/javascript" src="/js/lib/prototype/prototype.js"></script>
 	<script type="text/javascript" src="/js/lib/script.aculo.us/effects.js"></script>
