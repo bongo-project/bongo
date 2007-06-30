@@ -187,7 +187,7 @@ Dragonfly.Mail.buildSummarySelect = function ()
     Element.setHTML ('mail-summary-div', [
                          '<select name="mail-summary-select" id="mail-summary-select">',
                          '<option value="conversations">', _('mailAllLabel'), '</option>',
-                         '<option value="tome">', _('mailToMeLabel'), '</option>',
+                         '<option value="tome">', _('mailToMeSelectionLabel'), '</option>',
                          '<option value="contacts">', _('mailFromContactsLabel'), '</option>',
                          '<option value="subscriptions">', _('mailSubscriptionsLabel'), '</option>',
                          '</select>']);
