@@ -1165,6 +1165,8 @@ ConnReadToAllocatedBuffer(Connection *c, char **buffer, unsigned long *bufferSiz
 
         CONN_TCP_RECEIVE(c, c->receive.buffer, CONN_TCP_MTU, count);
         if (count <= 0) {
+            c->send.remaining = 0;
+            c->send.read = c->send.write;
             return(CONN_ERROR_NETWORK);
         }
 
