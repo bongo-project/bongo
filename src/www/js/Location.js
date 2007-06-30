@@ -214,13 +214,13 @@ Dragonfly.Location.prototype.getBreadCrumbs = function ()
 
     var res = [ d.format ('<a href="#{0}">{1}</a>',
                           d.escapeHTML (this.getClientUrl ('set')),
-                          d.escapeHTML (tab.setLabels [this.set])) ];
+                          d.escapeHTML (_(tab.setLabels [this.set]))) ];
 
 
     if (this.handler && this.handler != tab.defaultHandler) {
         res.push (d.format (' &gt; <a href="#{0}">{1}</a>',
                             d.escapeHTML (this.getClientUrl ('handler')),
-                            d.escapeHTML (handler.label)));
+                            d.escapeHTML (_(handler.label))));
     }
 
     var crumb = handler && handler.getBreadCrumbs && handler.getBreadCrumbs (this);

@@ -435,17 +435,17 @@ Dragonfly.DateRangeEntry.prototype.buildHtml = function (html)
 {
     html.push ('<table id="', this.id, '" class="date-range-entry">');
 
-    html.push ('<tr><td class="form-label"><label>Start on</label></td><td>');
+    html.push ('<tr><td class="form-label"><label>', _('dateStartOn'), '</label></td><td>');
     this.startDayEntry.buildHtml (html);
-    html.push ('</td></tr><tr class="time-entry-fields"><td class="form-label"><label>at</label></td><td>');
+    html.push ('</td></tr><tr class="time-entry-fields"><td class="form-label"><label>', _('dateAtLabel'), '</label></td><td>');
     this.startTimeEntry.buildHtml (html);
     html.push (' ');
     this.startTzidEntry.buildHtml (html);
     html.push ('</td></tr>');
 
-    html.push ('<tr><td class="form-label"><label>End on</label></td><td>');
+    html.push ('<tr><td class="form-label"><label>', _('dateEndOn'), '</label></td><td>');
     this.endDayEntry.buildHtml (html);
-    html.push ('</td></tr><tr class="time-entry-fields"><td class="form-label"><label>at</label></td><td>');
+    html.push ('</td></tr><tr class="time-entry-fields"><td class="form-label"><label>', _('dateAtLabel'), '</label></td><td>');
     this.endTimeEntry.buildHtml (html);
     html.push (' ');
     this.endTzidEntry.buildHtml (html);

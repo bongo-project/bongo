@@ -290,12 +290,15 @@ class ConversationsHandler(ResourceHandler):
         obj["to"] = self._JoinAddresses(self._SplitAddressProp(props.get("bongo.to", "")))
         obj["cc"] = self._JoinAddresses(self._SplitAddressProp(props.get("bongo.cc", "")))
         obj["bcc"] = self._JoinAddresses(self._SplitAddressProp(props.get("bongo.bcc", "")))
+        obj["list"] = props.get("bongo.listid", "")
 
         obj["date"] = props.get("nmap.mail.sent", "")
         obj["subject"] = props.get("nmap.mail.subject", "")
 
         obj["flags"] = self.DocumentFlags(msg.flags)
         obj["attachments"] = ""
+        
+        # What is this? Do we need this?
         obj["snippet"] = "there is no snippet."
 
         obj["contents"] = self._MessageToJson(store, msg)

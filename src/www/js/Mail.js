@@ -8,13 +8,13 @@ Dragonfly.tabs['mail'] = Dragonfly.Mail;
 Dragonfly.Mail.handlers = { };
 Dragonfly.Mail.sets = [ 'all', 'inbox', 'starred', 'sent', 'drafts', 'trash', 'junk' ];
 Dragonfly.Mail.setLabels = {
-    'all':     'All',
-    'inbox':   'Inbox',
-    'starred': 'Starred',
-    'sent':    'Sent',
-    'drafts':  'Drafts',
-    'trash':   'Trash',
-    'junk':    'Junk'
+    'all':     'mailSetAllLabel',
+    'inbox':   'mailSetInboxLabel',
+    'starred': 'mailSetStarredLabel',
+    'sent':    'mailSetSentLabel',
+    'drafts':  'mailSetDraftsLabel',
+    'trash':   'mailSetTrashLabel',
+    'junk':    'mailSetJunkLabel'
 };
 
 Dragonfly.Mail.getView = function (loc)
@@ -361,7 +361,7 @@ Dragonfly.Mail.joinParticipants = function (parts)
                 }, parts).join (', ');
 };
 
-Dragonfly.Mail.Conversations = { label: 'Conversations' };
+Dragonfly.Mail.Conversations = { label: 'mailConversationsLabel' };
 Dragonfly.Mail.handlers['conversations'] = Dragonfly.Mail.Conversations;
 
 Dragonfly.Mail.Conversations.parseArgs = function (loc, args)
@@ -511,7 +511,7 @@ Dragonfly.Mail.Messages.load = function (loc, jsob)
 };
 */
 
-Dragonfly.Mail.Contacts = { label: 'Contacts' };
+Dragonfly.Mail.Contacts = { label: 'mailContactsLabel' };
 Dragonfly.Mail.handlers['contacts'] = Dragonfly.Mail.Contacts;
 
 Dragonfly.Mail.Contacts.parseArgs = function (loc, args)
@@ -614,7 +614,7 @@ Dragonfly.Mail.Contacts.getBreadCrumbs = function (loc)
     }
 };
 
-Dragonfly.Mail.Subscriptions = { label: 'Mailing Lists' };
+Dragonfly.Mail.Subscriptions = { label: 'mailMailingListsLabel' };
 Dragonfly.Mail.handlers['subscriptions'] = Dragonfly.Mail.Subscriptions;
 
 Dragonfly.Mail.Subscriptions.parseArgs = function (loc, args)
@@ -727,7 +727,7 @@ Dragonfly.Mail.Subscriptions.getBreadCrumbs = function (loc)
     }
 };
 
-Dragonfly.Mail.ToMe = { label: 'To Me' };
+Dragonfly.Mail.ToMe = { label: 'mailToMeLabel' };
 Dragonfly.Mail.handlers['tome'] = Dragonfly.Mail.ToMe;
 
 Dragonfly.Mail.ToMe.parseArgs = function (loc, args)

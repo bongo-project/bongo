@@ -100,13 +100,13 @@ Dragonfly.Calendar.PersonalProperties.prototype.buildHtml = function (html)
         '<tr><td><label for="', this.userId, '">', _('calendarNameLabel'), ' </label></td>',
         '<td><input id="', this.userId, '" name="sharing-name"></td></tr>',
 
-        '<tr style="display: none"><td><label for="', this.oldPassId, '">Current password: </label></td>',
+        '<tr style="display: none"><td><label for="', this.oldPassId, '">', _('calendarShareCurrentPasswordLabel'), ' </label></td>',
         '<td><input id="', this.oldPassId, '" type="password" name="sharing-old-password"></td></tr>',
 
-        '<tr><td><label for="', this.passId, '">Password: </label></td>',
+        '<tr><td><label for="', this.passId, '">', _('calendarShareNewPassword'), ' </label></td>',
         '<td><input id="', this.passId, '" name="sharing-password" type="password"></td></tr>',
 
-        '<tr><td><label for="', this.passId2, '">Password (again): </label></td>',
+        '<tr><td><label for="', this.passId2, '">', _('calendarShareNewPasswordConfirm'), ' </label></td>',
         '<td><input id="', this.passId2, '" name="sharing-password-validate" type="password"></td></tr>',
 
         '<tr><td></td><td><span id="', this.passLabelId, '" style="visibility: hidden">&nbsp;</span></td></tr>',
@@ -120,11 +120,11 @@ Dragonfly.Calendar.PersonalProperties.prototype.buildHtml = function (html)
 
         '<a id="', this.basicInviteId, '">', _('calendarSendInvitation'), '</a>'
         );
-    html2.set (this.nb.insertPage ('Basic', 0));
+    html2.set (this.nb.insertPage (_('calendarShareBasicTab'), 0));
 
     // specific users
     html2 = new d.HtmlBuilder (
-        '<div><label>Email: <input id="', this.addUserId, '"><input id="', this.addButtonId, '" type="button" value="', _('buttonAddLabel'), '"></label></div>',
+        '<div><label>', _('calendarShareEmailLabel'), ' <input id="', this.addUserId, '"><input id="', this.addButtonId, '" type="button" value="', _('buttonAddLabel'), '"></label></div>',
 
         '<div class="scrollv"><ul style="height: 8em; max-width: 25em;" id="', this.userListId, '"></ul></div>',
 
@@ -133,13 +133,13 @@ Dragonfly.Calendar.PersonalProperties.prototype.buildHtml = function (html)
         '<input type="button" value="', _('buttonRemoveLabel'), '" id="', this.removeButtonId, '">',
         '</span>',
 
-        '<span style="display: none">Select: <a id="', this.selectAllId, '">All</a> <a id="', this.selectNoneId, '">None</a></span>',
+        '<span style="display: none">', _('calendarShareSelect'), ' <a id="', this.selectAllId, '">', _('calendarShareSelectAll'), '</a> <a id="', this.selectNoneId, '">', _('calendarShareSelectNone'), '</a></span>',
 
         '</div><div>',
         '<a id="', this.detailedInviteId, '">', _('calendarSendInvitation'), '</a>',
         '</div>'
         );
-    html2.set (this.nb.insertPage ('Detailed', 1));
+    html2.set (this.nb.insertPage (_('calendarShareDetailedTab'), 1));
 
     this.disclosure.buildHtml (html, this.nb);
 
@@ -531,14 +531,14 @@ Dragonfly.Calendar.PersonalProperties.prototype.getInvitationMail = function ()
         to: '',
         cc: '',
         bcc: p.getAutoBcc() || '',
-        subject: 'Invitation to ' + d.userName + '\'s calendar'
+        subject: _('calendarShareSubjectPre') + ' ' + d.userName + _('calendarShareSubjectPost')
     };
-    msg.body = [ 'Someone wants to share their calendar with you.\n\n',
-                 'You can view it in a few different ways:\n\n',
-                 '        ics: [ICSURL]\n',
-                 '     caldav: [CALDAVURL]\n',
-                 'web browser: [HTMLURL]\n\n',
-                 'If a password is needed, please ask me for it.' ].join ('');
+    msg.body = [ _('calendarShareLine1'), '\n\n',
+                 _('calendarShareLine2'), '\n\n',
+                 '        ', _('ics'), ': [ICSURL]\n',
+                 '     ', _('caldav'), ': [CALDAVURL]\n',
+                 _('webBrowser'), ': [HTMLURL]\n\n',
+                 _('calendarShareLastLine') ].join ('');
     return msg;
 };
 
@@ -620,29 +620,29 @@ Dragonfly.Calendar.SubscribedProperties.prototype.buildHtml = function (html)
                '<input type="hidden" name="calendar-type" value="web">',
                '<table cellspacing="0" cellpadding="0">',
 
-               '<tr><td><label for="', this.nameId, '">Name: </label></td>',
+               '<tr><td><label for="', this.nameId, '">', _('calendarNameLabel'), ' </label></td>',
                '<td><input id="', this.nameId, '" name="calendar-name"></td></tr>',
 
-               '<tr><td><label for="', this.colorId, '">Color: </label></td>',
+               '<tr><td><label for="', this.colorId, '">', _('calendarColorLabel'), ' </label></td>',
                '<td>');
 
     this.color.buildHtml (html);
 
     html.push ('</td></tr>',
 
-               '<tr><td><label for="', this.urlId, '">Url:</label></td>',
+               '<tr><td><label for="', this.urlId, '">', _('calendarUrlLabel'), ' </label></td>',
                '<td><input id="', this.urlId, '" name="web-url"></td></tr>',
         
                '<tr><td colspan="2"><label><input id="', this.webSearchableId, '" name="web-searchable" type="checkbox"> ',
-               'Allow other users to search for this calendar</label></td></tr>',
+               _('calendarSearchableLabel'), '</label></td></tr>',
 
                '<tr><td colspan="2"><label><input id="', this.webProtectId, '" name="web-protect" type="checkbox"> ',
-               'This URL requires a password</label></td></tr>',
+               _('calendarPasswordProtectLabel'), '</label></td></tr>',
 
-               '<tr><td><label for="', this.webUserId, '">Name: </td>',
+               '<tr><td><label for="', this.webUserId, '">', _('calendarNameLabel'), ' </td>',
                '<td><input id="', this.webUserId, '" name="web-username"></label></td></tr>',
 
-               '<tr><td><label for="', this.webPassId, '">Password: </td>',
+               '<tr><td><label for="', this.webPassId, '">', _('calendarPasswordLabel'), ' </td>',
                '<td><input id="', this.webPassId, '" type="password" name="web-password"></label></td></tr>',
 
                '</table>');
@@ -772,7 +772,7 @@ Dragonfly.Calendar.CalendarSummary.prototype.buildHtml = function (html)
     var d = Dragonfly;
 
     html.push ('<h3>', d.escapeHTML (this.calendar.cal.name), '</h3>',
-               '<p>Url: <a href="', d.escapeHTML (this.calendar.subscriptionUrl), '.ics">', d.escapeHTML(this.calendar.subscriptionUrl), '.ics</a></p>');
+               '<p>', _('calendarUrlLabel'), ' <a href="', d.escapeHTML (this.calendar.subscriptionUrl), '.ics">', d.escapeHTML(this.calendar.subscriptionUrl), '.ics</a></p>');
     html.addCallback (bind ('connectHtml', this));
     return html;
 };
@@ -803,7 +803,7 @@ Dragonfly.Calendar.NewSubscriptionPopup.prototype = clone (Dragonfly.PopupBuble.
 Dragonfly.Calendar.NewSubscriptionPopup.prototype.buildHtml = function (html)
 {
     Dragonfly.PopupBuble.prototype.buildHtml.call (
-        this, html, '<form id="', this.formId, '">Url: <textarea rows="2" id="', this.urlId, '"></textarea>',
+        this, html, '<form id="', this.formId, '">', _('calendarUrlLabel'), ' <textarea rows="2" id="', this.urlId, '"></textarea>',
         '<div class="actions">',
         '<input id="', this.cancelId, '" type="button" value="', _('genericCancel'), '">',
         '<input id="', this.subscribeId, '" type="submit" value="', _('eventSubscribe'), '"></div>',
@@ -836,7 +836,7 @@ Dragonfly.Calendar.NewSubscriptionPopup.prototype.submitClicked = function (evt)
     var c = d.Calendar;
 
     var calendar = new c.BongoCalendar (null, { name: this.calName, url: $(this.urlId).value, color: d.getRandomColor() });
-    d.notify ('Subscribing to "' + d.escapeHTML (calendar.cal.name) + '"...', true);
+    d.notify (_('calendarSubscribing') + ' "' + d.escapeHTML (calendar.cal.name) + '"...', true);
     calendar.create().addCallbacks (
         bind (function (res) {
                   d.clearNotify();
@@ -845,7 +845,7 @@ Dragonfly.Calendar.NewSubscriptionPopup.prototype.submitClicked = function (evt)
               }, this),
         bind (function (err) {
                   if (!(err instanceof CancelledError)) {
-                      d.notifyError ('Could not subscribe to "' + d.escapeHTML (calendar.cal.name) + '"', err);
+                      d.notifyError (_('calendarErrorSubscribing') + ' "' + d.escapeHTML (calendar.cal.name) + '"', err);
                       logError ('error was:', d.reprError (err));
                   }
                   return err;
@@ -949,7 +949,7 @@ Dragonfly.Calendar.CalendarPropsPopup.prototype.summarize = function ()
 
     html.push ('<div class="actions">',
                '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
-               '<a id="', inviteId, '">Send Invitation...</a>',
+               '<a id="', inviteId, '">', _('calendarSendInvitation'), '</a>',
                '<a id="', editId, '">', _('genericEdit'), '</a>',
                '</div>');
     html.set (this.contentId);
@@ -966,13 +966,13 @@ Dragonfly.Calendar.CalendarPropsPopup.prototype.deleteClicked = function (evt)
 {
     var d = Dragonfly;
 
-    d.notify ('Deleting "' + this.calendar.cal.name + '"...', true);
+    d.notify (_('genericSavingChanges'), true);
 
     this.calendar.del().addCallbacks (
         bind (function (res) {
                   this.dispose();
                   d.Calendar.calendarRemoved (this.calendar);
-                  d.notify ('DELETED!!');
+                  d.notify (_('genericChangesSaved'));
                   return res;
               }, this),
         bind ('showError', this));
@@ -1011,9 +1011,9 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.connectHtml = function (ele
  
     d.PopupBuble.prototype.connectHtml.call (this, elem);
     var form = [
-        '<p>', d.escapeHTML (this.invite.from[0][0]), ' has invited you to a calendar called ',
-        d.escapeHTML (this.invite.calendarName), '.</p><p>You should only subscribe if you trust ',
-        'this person and the server ', d.escapeHTML (this.invite.server), '.</p>'];
+        '<p>', d.escapeHTML (this.invite.from[0][0]), ' ', _('inviteTrustTextPre'), ' ',
+        d.escapeHTML (this.invite.calendarName), '.</p><p>', _('inviteTrustTextPost'), ' ',
+        d.escapeHTML (this.invite.server), '.</p>'];
 
     var actions = [
         { value: _('genericDelete'), onclick: 'deleteClicked', secondary: true },
@@ -1031,7 +1031,7 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.deleteClicked = function (e
     var d = Dragonfly;
 
     var loc = new d.Location ({ tab: 'mail', conversation: this.invite.convId, message: this.invite.bongoId });
-    d.notify ('Deleting invitation...', true);
+    d.notify (_('genericSavingChanges'), true);
     d.request ('POST', loc, { method: 'delete' }).addCallbacks (
         bind ('disposeAndReload', this),
         bind ('showError', this));
@@ -1042,7 +1042,7 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.junkClicked = function (evt
     var d = Dragonfly;
 
     var loc = new d.Location ({ tab: 'mail', conversation: this.invite.convId, message: this.invite.bongoId });
-    d.notify ('Junking invitation...', true);
+    d.notify (_('genericSavingChanges'), true);
     d.request ('POST', loc, { method: 'junk' }).addCallbacks (
         bind ('disposeAndReload', this),
         bind ('showError', this));
@@ -1052,7 +1052,7 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.ignoreClicked = function (e
 {
     var d = Dragonfly;
     var loc = new d.Location ({ tab: 'mail', conversation: this.invite.convId, message: this.invite.bongoId });
-    d.notify ('Archiving invitation...', true);
+    d.notify (_('genericSavingChanges'), true);
     var req = d.request ('POST', loc, { method: 'archive' }).addCallbacks (
         bind ('disposeAndReload', this),
         bind ('showError', this));
@@ -1071,6 +1071,6 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.subscribeClicked = function
 
     var name = this.invite.calendarName;
     this.subCal = new c.BongoCalendar (null, { name: name, url: this.invite.ics });
-    d.notify ('Subscribing to "' + d.escapeHTML (name) + '"...', true);
+    d.notify (_('calendarSubscribing') + ' "' + d.escapeHTML (name) + '"...', true);
     this.subCal.create().addCallbacks ( bind ('ignoreClicked', this), bind ('showError', this));
 };

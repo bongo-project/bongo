@@ -283,7 +283,7 @@ Dragonfly.buildSourcebar = function (loc)
             var col = v.sets[i];
             var id = loc.tab + '-source-' + col;
             html.push ('<li id="', id, '"><a id="', id, '-href" href="#', loc.getClientUrl(), '">');
-            html.push (v.setLabels[col], '</a></li>');
+            html.push (_(v.setLabels[col]), '</a></li>');
         }
         html.push ('</ul>');
         html.set ('sourcebar');
@@ -933,7 +933,7 @@ Dragonfly.start = function ()
     return def.addCallbacks (
         function (res) {
             var loc = new d.Location (location.hash);
-            d.setLoginMessage (_('loadingItemPre') + d.escapeHTML (loc.tab) + _('loadingItemPost'));
+            d.setLoginMessage (_('loadingItemPre') + " " + d.escapeHTML (_(loc.tab)) + _('loadingItemPost'));
             return d.go (loc.user == d.userName ? loc : '#').addErrback (
                 function (err) {
                     logDebug ('got error on first try:', d.reprError (err), '; trying summary...');

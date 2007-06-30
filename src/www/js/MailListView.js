@@ -74,7 +74,7 @@ Dragonfly.Mail.ListView.load = function (loc, jsob)
 
     var html = new d.HtmlBuilder ('<div class="scrollv" id="mail-list-wrapper">');
             
-    document.title = loc.set + ' - ' + loc.tab + ': ' + Dragonfly.title;
+    document.title = _(loc.set) + ' - ' + _(loc.tab) + ': ' + Dragonfly.title;
 
     var list = new m.ConversationList;
     list.buildStart (html);
@@ -161,7 +161,7 @@ Dragonfly.Mail.MultiListView.load = function (loc, jsob)
 
     var html = new d.HtmlBuilder ('<div class="scrollv" id="mail-list-wrapper">');
     
-    document.title = loc.set + ' - ' + loc.tab + ': ' + Dragonfly.title;
+    document.title = _(loc.set) + ' - ' + _(loc.tab) + ': ' + Dragonfly.title;
 
     var list = new m.ConversationList;
     list.buildStart (html);

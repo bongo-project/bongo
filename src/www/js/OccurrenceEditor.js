@@ -44,7 +44,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.quickEventEdit = function (elem)
         '<p><input autocomplete="off" size="30" class="occurrence-entry" id="', qeventEntryId, '">',
         '<p>', _('freeFormInstructions'), '<br>',
         '<i>', _('freeFormExample'), '</i><div class="actions">',
-        '<span class="secondary">', _('freeFormOption'), '<a id="', editId, '" >', _('freeFormOptionBody'), '</a></span>',
+        '<span class="secondary">', _('freeFormOption'), ' <a id="', editId, '" >', _('freeFormOptionBody'), '</a></span>',
         '<input type="button" value="', _('freeFormAddLabel'), '" id="', qeventPostId, '" disabled></div>'
     ).set (this.contentId);
 

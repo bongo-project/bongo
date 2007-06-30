@@ -168,17 +168,17 @@
 		<select id="login-language" style="width: 100%;">
 		  <option value="en">English</option>
 		  <option value="fr">Fran&ccedil;ais</option>
-		  <option value="igpay">Igpay Atinlay</option>
 		</select>
 	      </td>
 	    </tr>
 	    <tr>
-	      <td></td>
-	      <td class="default">
+	      <td class="default" colspan="3" style="text-align: right;">
 		<input id="login-default" type="checkbox">
 		<label for="login-default" id="login-default-label"></label>
-	      </td>
-	      <td><input type="button" value="Log In" id="login-button"></td>
+	      </td></tr>
+	      
+	      <tr><td colspan="3"><input type="button" value="Log In" id="login-button">
+	      <img src="img/ajax-loader.gif" style="float: right; display: none;" id="status-indicator"></td>
             </tr>
             <tr>
 	      <td colspan="3">

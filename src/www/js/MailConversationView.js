@@ -187,7 +187,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
     
     conv = jsob.conversations[jsob.convIdx];
     document.title = conv.props.subject + ': ' + Dragonfly.title;
-
+    
     Element.setHTML ('conv-breadcrumbs', loc.getBreadCrumbs());
     Element.setText ('conv-subject', conv.props.subject);
     
@@ -201,6 +201,8 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
         if (!showMessage(msg)) {
             continue;
         }
+        
+        logDebug("List: " + msg.list);
 
         if (msg.flags.draft) {
             new m.Composer (html, msg);
@@ -220,7 +222,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '?subject=', encodeURIComponent ('Re: ' + msg.subject), 
             '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
-            '" class="reply">Reply to Sender</a>' ].join ('');
+            '" class="reply">', _('mailReplyToSender'), '</a>' ].join ('');
 
         var to = msg.to.map(encodeURIComponent).join(',');
         var cc = msg.cc.map(encodeURIComponent).join(',');
@@ -231,14 +233,26 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
             '&amp;cc=', cc,
-            '" class="replyall">Reply to All</a>' ].join ('');
+            '" class="replyall">', _('mailReplyToAll'), '</a>' ].join ('');
+            
+        var replyToList = '';
+        
+        if (msg.list)
+        {
+            replyToList = [
+            '<a href="mailto:', encodeURIComponent (msg.list),
+            '?subject=', encodeURIComponent ('Re: ' + msg.subject), 
+            '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
+            '&amp;conversation=', encodeURIComponent (loc.conversation),
+            '" class="reply">', _('mailReplyToList'), '</a>' ].join ('');
+        }
         
         var forward = [
             '<a href="mailto:',
             '?subject=', encodeURIComponent ('Fwd: ' + msg.subject),
             '&amp;forward=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
-            '" class="forward">Forward</a>' ].join ('');
+            '" class="forward">', _('mailForward'), '</a>' ].join ('');
 
         html.push ('">',
                    '<span class="pointer-border">', 
@@ -247,7 +261,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
                    '<span class="face"></span>', 
                    '<div class="msg-content">', 
                    '<div class="msg-header">',
-                   '<div class="msg-actions top">', forward, replyToAll, replyToSender, '</div>',
+                   '<div class="msg-actions top">', forward, replyToAll, replyToList, replyToSender, '</div>',
                    '<div class="people-group">',
                    '<img class="disclosure" src="img/blank.gif" />',
                    '<span class="sender" title="', msg.from, '">', 

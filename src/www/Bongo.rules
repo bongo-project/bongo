@@ -35,6 +35,7 @@ dist_img_DATA :=					     \
 	src/www/img/applications-internet.gif		     \
 	src/www/img/applications-internet.png		     \
 	src/www/img/arrow.png				     \
+	src/www/img/ajax-loader.gif              \
 	src/www/img/bg-button.png			     \
 	src/www/img/bg-button-pressed.png		     \
 	src/www/img/bg-button-selected.png		     \

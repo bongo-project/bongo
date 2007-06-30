@@ -34,11 +34,14 @@ Dragonfly.login = function (user)
         }
         
         d.authToken = btoa (user + ':');
+        
         return d.start();
     }
 
     logDebug ('trying to log in as ' + user);
 
+    hideElement('login-button');
+    showElement('status-indicator');
     d.userName = user;
     if (!d.authToken) {
         d.authToken = btoa (user + ':');
@@ -61,6 +64,8 @@ Dragonfly.login = function (user)
                 d.setLoginMessage (_('genericLoginError'));
                 logError ('login error: ' + d.reprError (err));
             }
+            showElement('login-button');
+            hideElement('status-indicator');
             d.setLoginDisabled (false);
             return err;
         });
@@ -152,6 +157,7 @@ Dragonfly.showLoginPane = function ()
     hideElement ('loading');
     hideElement ('content');
     showElement ('login-pane');
+    hideElement('status-indicator');
     Dragonfly.setLoginDisabled (false);
     addElementClass (document.body, 'login');
 
