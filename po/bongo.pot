@@ -380,8 +380,6 @@ msgid "mailConversationsLabel"
 msgstr "Conversations"
 msgid "mailContactsLabel"
 msgstr "Contacts"
-msgid "mailToMeLabel"
-msgstr "To Me"
 msgid "mailMailingListsLabel"
 msgstr "Mailing Lists"
 
@@ -403,4 +401,5 @@ msgstr "Sent"
 msgid "trash"
 msgstr "Trash"
 msgid "junk"
-msgstr "Junk
+msgstr "Junk"
+

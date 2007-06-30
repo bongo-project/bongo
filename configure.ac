@@ -686,12 +686,7 @@ zoneinfo/Makefile
 man/Makefile
 ])
 
-SVNREV="`svnversion . 2>/dev/null`"
-if test x$SVNREV != x ; then
-	info_bongo_version="${VERSION}+svn${SVNREV}"
-else
-	info_bongo_version=${VERSION}
-fi
+info_bongo_version=`$AWK '{ if ($ 1 == "#define" && $ 2 == "BONGO_BUILD_VER") print $ 3; }' < "./include/bongo-buildinfo.h" | tr -d '"'`
 
 AC_MSG_NOTICE([Configured to build Bongo:
 
