@@ -436,7 +436,7 @@ for configure_ac in $configure_files; do
     fi
 done
 
-SVNREV=$(svnversion .)
+SVNREV="`svnversion . 2>/dev/null`"
 if test x$SVNREV = x; then
     echo Unable to discern build version
     echo \#define  BONGO_BUILD_BRANCH	\"unknown\" >  ./include/bongo-buildinfo.h

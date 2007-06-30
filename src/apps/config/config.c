@@ -219,20 +219,18 @@ storecleanup:
 
 void
 GetInteractiveData(char *description, char **data, char *def) {
-	int bytes;
-	int size;
+	int size = 128;
+	char *line;
 
 	if (*data != NULL)
 		// don't ask for information we already have
 		return;
 
-	size = 100;
-	XplConsolePrintf("%s [%s]: ",
-		description, def);
-	*data = (char *)MemMalloc(sizeof(char)*(size+1));
-	bytes = getline (&*data, &size, stdin);
-	if (bytes <= 1) {
-		MemFree(data);
+	XplConsolePrintf("%s [%s]: ", description, def);
+	*data = (char *)MemMalloc(sizeof(char)*size);
+	line = fgets(*data, size, stdin);
+	if (!line || *line == '\0') {
+		MemFree(*data);
 		*data = def;
 	}
 }
@@ -388,6 +386,9 @@ GenerateCryptoData() {
 	
 	gnutls_x509_crt_deinit(certificate);	
 	gnutls_x509_privkey_deinit(key);
+	
+	MemFree(config.ip);
+	MemFree(config.dns);
 
 	return TRUE;
 }
