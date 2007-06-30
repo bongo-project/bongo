@@ -421,6 +421,7 @@ BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
 #define s_addr_3	s_addr>>8  & 0xff
 #define s_addr_4        s_addr     & 0xff
 
+#ifndef s_net
 #if _BONGO_XPL_LITTLE_ENDIAN
 
 #define s_net	s_addr_4
@@ -437,6 +438,7 @@ BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
 
 #endif
 
+#endif
 #endif
 
 /* Windows specifics */
