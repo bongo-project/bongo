@@ -5,6 +5,11 @@ Dragonfly.setLoginDisabled = function (disabled)
     for (var i = inputs.length - 1; i >= 0; i--) {
         inputs[i].disabled = disabled;
     }
+    
+    var inputs = $('login-pane').getElementsByTagName('select');
+    for (var i = inputs.length - 1; i >= 0; i--) {
+        inputs[i].disabled = disabled;
+    }
 };
 
 Dragonfly.setLoginMessage = function (msg)
