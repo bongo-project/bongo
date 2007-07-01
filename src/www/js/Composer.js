@@ -199,7 +199,8 @@ Dragonfly.Mail.Composer.prototype.connectHtml = function (elem)
         this.lastSavedMsg = this.getCurrentMessage();
         this.scheduleSave();
     } else {
-        this.saveDraft ();
+        // Save draft in 60 seconds
+        this.scheduleSave ();
     }   
     
     delete this.msg;

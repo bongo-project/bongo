@@ -349,6 +349,13 @@ msgstr "Item"
 msgid "mailView"
 msgstr "View"
 
+msgid "mailDiscard"
+msgstr "Discard"
+msgid "mailDraft"
+msgstr "Save draft"
+msgid "mailSend"
+msgstr "Send"
+
 msgid "toolbarSelectAll"
 msgstr "Select All"
 msgid "toolbarDeselectAll"
