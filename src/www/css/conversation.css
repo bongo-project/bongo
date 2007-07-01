@@ -98,7 +98,7 @@
 
         /* People 'bubles' in the message header */
         .msg .people {
-            padding: 0px 10px 0px 2px;
+            padding: 0px 2px 0px 2px;
             white-space: nowrap;
             text-decoration: none;
         }
@@ -106,9 +106,9 @@
         .msg .msg-subject { overflow: hidden; }
 
         .msg .people:hover {
-            background: transparent url(../img/arrow.png) right no-repeat;
+            /*background: transparent url(../img/arrow.png) right no-repeat;*/
             background-color: #e4ebf3;
-            padding: 0 9px 0 1px;
+            padding: 0 1px 0 1px;
             -moz-border-radius: 25%;
             border: 1px solid #d8e1ed;
             text-decoration: none;

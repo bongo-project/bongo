@@ -240,11 +240,11 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
         if (msg.list)
         {
             replyToList = [
-            '<a href="mailto:', encodeURIComponent (msg.list),
+            '<a href="mailto:', encodeURIComponent ((msg.list).slice(1, -1)),
             '?subject=', encodeURIComponent ('Re: ' + msg.subject), 
             '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
-            '" class="reply">', _('mailReplyToList'), '</a>' ].join ('');
+            '" class="replyall">', _('mailReplyToList'), '</a>' ].join ('');
         }
         
         var forward = [
@@ -264,9 +264,9 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
                    '<div class="msg-actions top">', forward, replyToAll, replyToList, replyToSender, '</div>',
                    '<div class="people-group">',
                    '<img class="disclosure" src="img/blank.gif" />',
-                   '<span class="sender" title="', msg.from, '">', 
+                   '<span id="contact-clicker" class="sender" title="', msg.from, '">', 
                    m.markupParticipants (msg.from), '</span>',
-                   'to <span class="recipients">', m.markupParticipants (concat (msg.to, msg.cc)), '</span>',
+                   ' to <span class="recipients">', m.markupParticipants (concat (msg.to, msg.cc)), '</span>',
                    '</div>',
                    '<span class="date">',
                    d.escapeHTML (msg.date),
@@ -276,21 +276,70 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
                    v.formatPart(loc, msg, msg.contents), '</div>',
                    //'<div class="msg-actions bottom">', /* forward, */ replyToAll, replyToSender, '</div>',
                    '</div>');
-        /*
-        Event.observe (div, 'click',
-                       (function (evt) {
-                           if (hasElementClass (div, 'closed')) {
-                               removeElementClass (div, 'closed');
-                           } else if (hasElementClass (Event.element (evt), 'msg-header') ||
-                                      hasElementClass (Event.element (evt), 'disclosure')) {
-                               addElementClass (div, 'closed');
-                           } else {
-                               return;
-                           }
-                           Event.stop (evt);
-                       }).bindAsEventListener (null));
-        */
     }
 
     html.set ('conv-msg-list');
+    
+    logDebug('Getting "from"...');
+    this.sender = $('contact-clicker');
+    logDebug('Binding event.');
+    Event.observe (this.sender, 'click', this.handleClick.bindAsEventListener(this));
+    logDebug('All OK');
+};
+
+Dragonfly.Mail.ConversationView.handleClick = function (evt)
+{
+    var d = Dragonfly;
+    var element = d.findElement (Event.element (evt), 'SPAN', 'title');
+    if (!element) {
+        return;
+    }
+    
+    var contactname = element.innerHTML;
+    var t = this.sender.title;
+    var email = t.substring(t.indexOf('<') + 1, t.length-1);
+    logDebug('Contact is ' + contactname + ' with email ' + email);
+    
+    var picker = d.AddressBook.sideboxPicker.unselectedId;
+    var children = $(picker).childNodes;
+    var contact;
+    
+    // Loop through and filter contacts *with this email address only*.
+    for (var i = 0; i < children.length; i++) {
+        // Find out our bongoId
+        var tempelement = children[i];
+        var bId = tempelement.id;
+        logDebug('Element ID: ' + bId);
+        logDebug('Picker ID: ' + picker);
+        bId = bId.substring(14);
+        logDebug('Our (hopefully) correct bongoId: ' + bId);
+        
+        var tempcontact = d.AddressBook.contactMap[bId];
+        if (tempcontact)
+        {
+            for (var x = 0; x < tempcontact.email.length; x++) {
+                if (tempcontact.email[x] == email)
+                {
+                    contact = tempcontact;
+                }
+            }
+        }
+    }
+    
+    if (!contact)
+    {
+        logDebug('Failed to find contact in contactMap.');
+        return; 
+    }
+    
+    // Create a new contact popup.
+    var bongoId = contact.bongoId;
+    logDebug('Awesome! We found our contact! ' + contact.fn);
+    logDebug('Contact ID: ' + bongoId);
+    
+    if (!this.popup.canHideZone()) {
+        return;
+    }
+    this.popup.setElem (element);
+    d.AddressBook.loadContact(bongoId).addCallback(bind ('summarize', this.popup));
 };

@@ -920,7 +920,7 @@ Dragonfly.start = function ()
     
     d.buildSidebar();
     d.translateElements();
-
+    
     d.setLoginMessage (_('loadingData'));
 
     // set current timezone to default and build timezone selector
@@ -1021,4 +1021,17 @@ Dragonfly.main = function ()
     //Dragonfly.buildSidebar();
     Dragonfly.observeLoginEvents ();
     Dragonfly.login();
+    
+    logDebug('Login pane visiblity: ' + $('login-pane').style.display);
+    logDebug('Main UI visiblity: ' + $('content').style.display);
+    
+    if ($('login-pane').style.display == "none")
+    {
+        // Only build and translate if we're already logged in.
+        // Otherwise, only build and translate on login.
+        
+        logDebug('Logged in already. Building and translating...');
+        Dragonfly.buildSidebar();
+        Dragonfly.translateElements();
+    }
 };

@@ -162,7 +162,8 @@ Dragonfly.showLoginPane = function ()
     hideElement ('loading');
     hideElement ('content');
     showElement ('login-pane');
-    hideElement('status-indicator');
+    showElement ('login-button');
+    hideElement ('status-indicator');
     Dragonfly.setLoginDisabled (false);
     addElementClass (document.body, 'login');
 
