@@ -83,7 +83,7 @@ XplHashWrite(xpl_hash_context *context, const void *buffer, size_t length)
 void 
 XplHashFinalBytes(xpl_hash_context *context, unsigned char *buffer, size_t length) 
 {
-	memcpy(buffer, gcry_md_read(context->gcrypt_context, 0), length);
+	memcpy(buffer, gcry_md_read(context->gcrypt_context, 0), min(context->buffer_size, length));
 	gcry_md_close(context->gcrypt_context);
 }
 
@@ -101,17 +101,17 @@ XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, unsigned ch
 	char format[5];
 	unsigned char *digest;
 	unsigned char *p;
-	int i;
+	unsigned int i;
 	
 	memcpy(format, "%02X\0", 5);
 	if (strcase == XPLHASH_LOWERCASE) 
 		format[3] = 'x';
 	
 	digest = MemMalloc(context->buffer_size);
-	memcpy(digest, gcry_md_read(context->gcrypt_context, 0), length);
+	memcpy(digest, gcry_md_read(context->gcrypt_context, 0), context->buffer_size);
 	gcry_md_close(context->gcrypt_context);
 	
-	for (i = 0, p = buffer; i < min(context->buffer_size, length); i++, p += 2) {
+	for (i = 0, p = buffer; i < context->buffer_size && p < buffer+length-1; i++, p += 2) {
 		sprintf(p, format, digest[i]);
    	}
    	buffer[length-1] = 0;
