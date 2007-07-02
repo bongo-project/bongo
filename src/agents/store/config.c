@@ -66,7 +66,7 @@ StoreAgentReadConfiguration(BOOL *recover)
 
         // which hosts do we trust?
         StoreAgent.trustedHosts.count = 2;
-        StoreAgent.trustedHosts.hosts = MemRealloc(StoreAgent.trustedHosts.hosts, 2 + 2);
+        StoreAgent.trustedHosts.hosts = MemRealloc(StoreAgent.trustedHosts.hosts, sizeof(unsigned long) * 2);
         if (!StoreAgent.trustedHosts.hosts) {
             StoreAgent.trustedHosts.count = 0;
         } else {
@@ -106,7 +106,7 @@ StoreAgentReadConfiguration(BOOL *recover)
         MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_STORE_TRUSTED_HOSTS, vs);
 
     StoreAgent.trustedHosts.hosts = MemRealloc(StoreAgent.trustedHosts.hosts, 
-                                               StoreAgent.trustedHosts.count + 2);
+                                               StoreAgent.trustedHosts.count * sizeof(unsigned long));
     if (!StoreAgent.trustedHosts.hosts) {
         StoreAgent.trustedHosts.count = 0;
     } 
