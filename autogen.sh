@@ -280,12 +280,9 @@ version_check autoconf AUTOCONF 'autoconf2.50 autoconf autoconf-2.59 autoconf259
 AUTOHEADER=`echo $AUTOCONF | sed s/autoconf/autoheader/`
 
 case $REQUIRED_AUTOMAKE_VERSION in
-    1.4*) automake_progs="automake-1.4" ;;
-    1.5*) automake_progs="automake-1.5 automake-1.6 automake-1.7 automake-1.8 automake-1.9 automake19" ;;
-    1.6*) automake_progs="automake-1.6 automake-1.7 automake-1.8 automake-1.9 automake19" ;;
-    1.7*) automake_progs="automake-1.7 automake-1.8 automake-1.9 automake19" ;;
-    1.8*) automake_progs="automake-1.8 automake-1.9 automake19" ;;
-    1.9*) automake_progs="automake-1.9 automake19" ;;
+    1.7*) automake_progs="automake-1.7 automake-1.8 automake-1.9 automake19 automake-1.10" ;;
+    1.8*) automake_progs="automake-1.8 automake-1.9 automake19 automake-1.10" ;;
+    1.9*) automake_progs="automake-1.9 automake19 automake-1.10" ;;
 esac
 version_check automake AUTOMAKE "$automake_progs" $REQUIRED_AUTOMAKE_VERSION \
     "http://ftp.gnu.org/pub/gnu/automake/automake-$REQUIRED_AUTOMAKE_VERSION.tar.gz" || DIE=1
