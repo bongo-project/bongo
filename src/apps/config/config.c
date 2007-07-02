@@ -448,10 +448,10 @@ main(int argc, char *argv[]) {
 			config.interactive = FALSE;
 		} else if (!strcmp(arg, "--ip")) {
 			next_arg++;
-			config.ip = argv[next_arg];
+			config.ip = MemStrdup(argv[next_arg]);
 		} else if (!strcmp(arg, "--domain")) {
 			next_arg++;
-			config.dns = argv[next_arg];
+			config.dns = MemStrdup(argv[next_arg]);
 		} else {
 			printf("Unrecognized option: %s\n", argv[next_arg]);
 		}
