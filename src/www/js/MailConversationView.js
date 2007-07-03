@@ -290,13 +290,19 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
 Dragonfly.Mail.ConversationView.handleClick = function (evt)
 {
     var d = Dragonfly;
-    var element = d.findElement (Event.element (evt), 'SPAN', 'title');
+    var element = d.findElement (Event.element (evt), 'SPAN');
     if (!element) {
         return;
     }
     
+    
+    if (this.popup)
+    {
+        this.popup.hide();
+    }
+    
     var contactname = element.innerHTML;
-    var t = this.sender.title;
+    var t = element.parentNode.title;
     var email = t.substring(t.indexOf('<') + 1, t.length-1);
     logDebug('Contact is ' + contactname + ' with email ' + email);
     
@@ -309,10 +315,8 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
         // Find out our bongoId
         var tempelement = children[i];
         var bId = tempelement.id;
-        logDebug('Element ID: ' + bId);
-        logDebug('Picker ID: ' + picker);
-        bId = bId.substring(14);
-        logDebug('Our (hopefully) correct bongoId: ' + bId);
+        logDebug('Length of picker: ' + picker.length);
+        bId = bId.substring(14);    // FIXME! Make this dependent on picker.length, or something
         
         var tempcontact = d.AddressBook.contactMap[bId];
         if (tempcontact)
@@ -328,18 +332,34 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     
     if (!contact)
     {
-        logDebug('Failed to find contact in contactMap.');
-        return; 
+        // Create a new contact.
+        contact = Dragonfly.AddressBook.buildNewContact();
+        contact.fn = contactname;
+        contact[email] = new Array();
+        contact[email][0] = email;
+        
+        this.popup = new d.AddressBook.ContactPopup();
+        
+        if (!this.popup.canHideZone()) {
+            return;
+        }
+        this.popup.setElem (element);
+        
+        this.popup.edit (contact, $('contact-new'));
     }
-    
-    // Create a new contact popup.
-    var bongoId = contact.bongoId;
-    logDebug('Awesome! We found our contact! ' + contact.fn);
-    logDebug('Contact ID: ' + bongoId);
-    
-    if (!this.popup.canHideZone()) {
-        return;
+    else
+    {
+        // Load the contact
+        var bongoId = contact.bongoId;
+        logDebug('Contact ID: ' + bongoId);
+        this.popup = new d.AddressBook.ContactPopup();
+        
+        if (!this.popup.canHideZone()) {
+            return;
+        }
+        this.popup.setElem (element);
+        this.popup.contact = contact;
+        
+        d.AddressBook.loadContact(bongoId).addCallback(bind ('summarize', this.popup));
     }
-    this.popup.setElem (element);
-    d.AddressBook.loadContact(bongoId).addCallback(bind ('summarize', this.popup));
 };

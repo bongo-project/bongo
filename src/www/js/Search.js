@@ -183,7 +183,7 @@ Dragonfly.Search.Contacts.load = function (loc, jsob)
     (ret ? Element.show : Element.hide) ('contacts-search');
     return ret;
 };
-/*
+
 Dragonfly.Search.Events = new Dragonfly.Search.Group (
     'Events', 'events', 
     { tab: 'calendar', set: 'all', handler: 'events' });
@@ -193,11 +193,39 @@ Dragonfly.Search.Events.load = function (loc, jsob)
     var d = Dragonfly;
     var html = new d.HtmlBuilder;
     var ret = false;
+    
+    if (jsob && jsob.length)
+    {
+        ret = true;
+        var rowtype = 'even';
+        
+        forEach (jsob, function (res) {
+            html.push('<tr bongoId="', res.bongoId, '" class="', rowtype, '">');
+            
+            html.push ('<td class="from">Event: </td>');
+            
+            html.push ('<td class="subject">',
+                d.escapeHTML (res.occurrences[0].summary.value),
+                '</td>');
+            
+            html.push('</tr>');
+            
+            if (rowtype == 'even')
+            {
+                rowtype = 'odd';
+            }
+            else
+            {
+                rowtype = 'even';
+            }
+        });
+    }
+    
     html.set ('events-search-results');
     (ret ? Element.show : Element.hide) ('events-search');
     return ret;
 };
-*/
+
 /*
 Dragonfly.Search.Calendars = new Dragonfly.Search.Group (
     'Calendars', 'calendars',
