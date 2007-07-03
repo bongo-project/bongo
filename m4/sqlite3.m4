@@ -36,10 +36,11 @@ AC_DEFUN([AC_CHECK_SQLITE3], [
   AC_ARG_WITH(sqlite3-libdir,	AC_HELP_STRING([--with-sqlite3-libdir],	[Specifies where the SQLite3 libraries are.]),
       [  ac_sqlite3_libdir="$withval" ] )
 
+  AC_MSG_CHECKING([for SQLite3])
+  
   # Try to automagically find SQLite, either with pkg-config, or without.
   if test "x$ac_sqlite3" = "xauto"; then
       if test "x$PKG_CONFIG" != "xno"; then
-          AC_MSG_CHECKING([for SQLite3])
           SQLITE_LIBS=`$PKG_CONFIG --libs sqlite3`
           SQLITE_CFLAGS=`$PKG_CONFIG --cflags sqlite3`
           if test "x$SQLITE_LIBS" = "x" -a "x$SQLITE_CFLAGS" = "x"; then
@@ -47,22 +48,23 @@ AC_DEFUN([AC_CHECK_SQLITE3], [
 	  else
               ac_sqlite3="yes"
           fi
-          AC_MSG_RESULT([$ac_sqlite3])
       else
           AC_CHECK_LIB([sqlite3], [sqlite3_open], [ac_sqlite3="yes"], [ac_sqlite3="no"])
       fi
   fi
 
   if test "x$ac_sqlite3" = "xyes"; then
-      if test "$ac_sqlite3$_incdir" = "no" || test "$ac_sqlite333_libs" = "no"; then
-          sqlite3$_incdirs="/usr/include /usr/local/include /usr/include/sqlite /usr/local/include/sqlite /usr/local/sqlite/include /opt/sqlite/include"
-          AC_FIND_FILE(sqlite3.h, $sqlite3$_incdirs, ac_sqlite3_incdir)
-          sqlite3_libdirs="/usr/lib /usr/local/lib /usr/lib/sqlite /usr/local/lib/sqlite /usr/local/sqlite/lib /opt/sqlite/lib"
-          sqlite3_libs="libsqlite3.so libsqlite3.a"
-          AC_FIND_FILE($sqlite3_libs, $sqlite3_libdirs, ac_sqlite3_libdir)
+      if test "$ac_sqlite3_incdir" = "no"; then
+          sqlite3_incdirs="/usr/include /usr/local/include /usr/include/sqlite /usr/local/include/sqlite /usr/local/sqlite/include /opt/sqlite/include"
+          AC_FIND_FILE(sqlite3.h, $sqlite3_incdirs, ac_sqlite3_incdir)
           if test "$ac_sqlite3_incdir" = "no"; then
               AC_MSG_ERROR([Invalid SQLite directory - include files not found.])
           fi
+      fi
+      if test "$ac_sqlite3_libdir" = "no"; then
+          sqlite3_libdirs="/usr/lib /usr/local/lib /usr/lib/sqlite /usr/local/lib/sqlite /usr/local/sqlite/lib /opt/sqlite/lib"
+          sqlite3_libs="libsqlite3.so libsqlite3.a"
+          AC_FIND_FILE($sqlite3_libs, $sqlite3_libdirs, ac_sqlite3_libdir)
           if test "$ac_sqlite3_libdir" = "no"; then
               AC_MSG_ERROR([Invalid SQLite directory - libraries not found.])
           fi
@@ -79,4 +81,6 @@ AC_DEFUN([AC_CHECK_SQLITE3], [
       AC_SUBST(SQLITE_LIBS)
       AC_SUBST(SQLITE_CFLAGS)
   fi
+
+  AC_MSG_RESULT([$ac_sqlite3])
 ])

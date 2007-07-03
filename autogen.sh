@@ -7,7 +7,7 @@ srcdir=${srcdir:-.}
 
 # default version requirements ...
 REQUIRED_AUTOCONF_VERSION=${REQUIRED_AUTOCONF_VERSION:-2.53}
-REQUIRED_AUTOMAKE_VERSION=${REQUIRED_AUTOMAKE_VERSION:-1.8}
+REQUIRED_AUTOMAKE_VERSION=${REQUIRED_AUTOMAKE_VERSION:-1.9}
 REQUIRED_LIBTOOL_VERSION=${REQUIRED_LIBTOOL_VERSION:-1.4.3}
 REQUIRED_GETTEXT_VERSION=${REQUIRED_GETTEXT_VERSION:-0.10.40}
 REQUIRED_GLIB_GETTEXT_VERSION=${REQUIRED_GLIB_GETTEXT_VERSION:-2.2.0}
@@ -344,6 +344,19 @@ if test -z "$*"; then
   printerr \`$0\'" command line."
   printerr
 fi
+
+for arg in $@; do
+    case $arg in
+            --with-clucene=*)
+                    touch import/clucene/NO-AUTO-GEN
+                    echo "Flagging import/clucene as no auto-gen as source is external"
+                    ;;
+            --with-sqlite3=*)
+                    touch import/sqlite3/NO-AUTO-GEN
+                    echo "Flagging import/sqlite3 as no auto-gen as source is external"
+                    ;;
+    esac
+done
 
 topdir=`pwd`
 for configure_ac in $configure_files; do 
