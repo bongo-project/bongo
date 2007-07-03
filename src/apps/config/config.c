@@ -363,7 +363,7 @@ GenerateCryptoData() {
 	gnutls_x509_crt_set_key_usage(certificate, GNUTLS_KEY_DIGITAL_SIGNATURE |
 		GNUTLS_KEY_DATA_ENCIPHERMENT);
 
-	ret = gnutls_x509_crt_sign2(certificate, certificate, key, GNUTLS_DIG_SHA1, 0);
+	ret = GNUTLS_SELF_SIGN(certificate, key);
 	if (ret < 0) {
 		XplConsolePrintf("ERROR: Couldn't self-sign certificate. %s\n", gnutls_strerror(ret));
 		return FALSE;

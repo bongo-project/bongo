@@ -70,4 +70,13 @@ static char *bongo_avirus_config =
 "  \"flags\": 168\n"
 "}\n";
 
+/* compat with older gnutls */
+#ifndef GNUTLS_DIG_SHA1
+	// older GNUTLS
+#	define GNUTLS_SELF_SIGN(c, k) 	gnutls_x509_crt_sign((c), (c), (k))
+#elif
+	// new GNUTLS
+#	define GNUTLS_SELF_SIGN(c, k)	gnutls_x509_crt_sign2((c), (c), (k), GNUTLS_DIG_SHA1, 0)
+#endif
+
 #endif
