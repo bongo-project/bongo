@@ -43,22 +43,26 @@ AC_LANG(C++)
 
   AC_MSG_CHECKING([for CLucene])
 
+  clucene_incdirs="/usr/include /usr/local/include /opt/sfw/include /opt/csw/include /usr/pkg/include"
+  clucene_libdirs="/usr/lib /usr/local/lib /opt/sfw/lib /opt/csw/lib /usr/pkg/lib"
+  clucene_alldirs="$clucene_libdirs $clucene_incdirs"
+
   if test "$ac_clucene_incdir" = "no"; then
-      clucene_incdirs="/usr/include /usr/local/include /opt/sfw/include /opt/csw/include /usr/pkg/include"
       AC_FIND_FILE(CLucene/StdHeader.h, $clucene_incdirs, ac_clucene_incdir)
   fi
   
   if test "$ac_clucene_libdir" = "no"; then
-      clucene_libdirs="/usr/lib /usr/local/lib /opt/sfw/lib /opt/csw/lib /usr/pkg/lib"
       AC_FIND_FILE(libclucene.so, $clucene_libdirs, ac_clucene_libdir)
   fi
+
+  AC_FIND_FILE(CLucene/clucene-config.h, $clucene_alldirs, ac_clucene_confdir)
   
-  if test "x$ac_clucene_incdir" != "xno" -a "x$ac_clucene_libdir" != "xno"; then
+  if test "x$ac_clucene_incdir" != "xno" -a "x$ac_clucene_libdir" != "xno" -a "x$ac_clucene_confdir" != "xno"; then
       have_clucene="yes"
   fi
 
   if test "x$have_clucene" = "xyes"; then
-      clucene_ver=`$AWK '{ if ($ 1 == "#define" && $ 2 == "_CL_VERSION") print $ 3; }' < "$ac_clucene_libdir/CLucene/clucene-config.h" | tr -d '"'`
+      clucene_ver=`$AWK '{ if ($ 1 == "#define" && $ 2 == "_CL_VERSION") print $ 3; }' < "$ac_clucene_confdir/CLucene/clucene-config.h" | tr -d '"'`
 
       if test -z "$clucene_ver"; then
         # optimistic guess :D
