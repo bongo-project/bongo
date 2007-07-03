@@ -446,6 +446,10 @@ for configure_ac in $configure_files; do
     fi
 done
 
+# remove any flags which tell us not to autogen things
+rm -f import/clucene/NO-AUTO-GEN
+rm -f import/sqlite3/NO-AUTO-GEN
+
 SVNREV="`svnversion . 2>/dev/null`"
 if test x$SVNREV = x; then
     echo Unable to discern build version

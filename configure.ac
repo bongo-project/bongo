@@ -493,19 +493,6 @@ if test "x$BONGO_USER" = "x"; then
 	info_bongo_user="(unspecified)"
 fi
 
-AC_ARG_WITH([audit],
-	AC_HELP_STRING([--with-audit],
-		[enable logging to Novell Audit @<:@default=disabled@:>@])],
-	[],[with_audit=no])
-LIBLOGEVENT=
-AS_IF([test "x$with_audit" != xno],
-    [AC_CHECK_LIB(logevent, LogEvent,
-        [AC_SUBST(LIBLOGEVENT, "-llogevent")
-            AC_DEFINE_UNQUOTED(HAVE_LIBLOGEVENT, 1, [Define if you have liblogevent])
-        ],
-        [AC_MSG_FAILURE([--with-audit was given, but test for Audit failed])]
-    )])
-
 AC_ARG_ENABLE([conntrace],
 	AC_HELP_STRING([--enable-conntrace],
 		[enable verbose connection tracing]),
