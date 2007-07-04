@@ -338,9 +338,9 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
             {
                 // We have an email from the page - use it!
                 for (var x = 0; x < tempcontact.email.length; x++) {
-                    if (tempcontact.email[x].toLowerCase() == email)
+                    if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == email)
                     {
-                        //logDebug('YES!');
+                        logDebug('Result found by checking contact email against mail.');
                         contact = tempcontact;
                         continue;
                     }
@@ -348,12 +348,12 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
             }
             else
             {
-                // First, check if the name == our email.
+                // First, check if it's just sent to us (which means display our own card)
                 if (tempcontact.email)
                 {
                     for (var x = 0; x < tempcontact.email.length; x++) {
-                        if (tempcontact.email[x].toLowerCase() == myemail) {
-                            //logDebug('YES!');
+                        if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == myemail && contactname == myemail) {
+                            logDebug('Result found via checking if contact was us.');
                             contact = tempcontact;
                             continue;
                         }
@@ -362,8 +362,9 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
                 
             
                 // Search based on name, not email.
-                if (tempcontact.fn == contactname)
+                if (tempcontact.fn.toLowerCase() == contactname.toLowerCase())
                 {
+                    logDebug('Result found via name search.');
                     contact = tempcontact;
                     continue;
                 }
