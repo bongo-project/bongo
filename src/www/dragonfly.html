@@ -45,7 +45,7 @@
 
     <script type="text/javascript" src="js/lib/MochiKit/MochiKit.js"></script>
     <script type="text/javascript" src="js/lib/MochiKit/interpreter.js"></script>
-
+    
     <script type="text/javascript" src="js/Dragonfly.js"></script>
 
     <script type="text/javascript" src="js/Format.js"></script>
@@ -271,12 +271,20 @@
 	</div>
 	<div id="main">
 		<div id="contents">
-			<h3>About Me</h3>			
-			<p>Curabitur vel urna vitae nunc bibendum porttitor. Nam tortor quam, luctus id, convallis sed, rutrum ac, ante. Proin euismod lacus vitae elit. Nullam vel diam in metus consectetuer facilisis.</p>
-			<label for="fname">Full Name: </label><input type="text" id="fname" name="fname" />
-			<br />
-			<div id="buttons" style="text-align: right;"><input type="button" value="Cancel" onclick="hideBox()">&nbsp;<input type="submit" value="OK"></div>
+		    <div id="aboutme">
+			    <h3>About Me</h3>			
+			    <p>Curabitur vel urna vitae nunc bibendum porttitor. Nam tortor quam, luctus id, convallis sed, rutrum ac, ante. Proin euismod lacus vitae elit. Nullam vel diam in metus consectetuer facilisis.</p>
+			    <label for="fname">Full Name: </label><input type="text" id="fname" name="fname" />
+			    <br />
+			</div>
+			<div id="display">
+			</div>
+			<div id="timezone">
+			    <span id="tzselect"></span>
+			</div>
 		</div>
+		
+		<div id="buttons" style="text-align: right;"><input type="button" value="Cancel" onclick="hideBox()">&nbsp;<input type="submit" value="OK"></div>
 	</div>
 	</div>
     <div id="extra" style="display: none">

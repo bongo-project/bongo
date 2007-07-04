@@ -199,7 +199,7 @@ Dragonfly.Calendar.MonthWidget.prototype.buildHtml = function (html)
         }
         html.push ('</tr>');
     }
-    html.push ('<tr><td id="kludgysidebartoday" colspan="7" valign="middle" class="todaylink"><p><a href="#', thisMonth, '">', _('showToday'), '</a></td></tr>');
+    html.push ('<tr><td id="kludgysidebartoday" colspan="7" valign="middle" class="todaylink"><p><a href="#', d.escapeHTML (tmpLoc.getClientUrl ()), '">', _('showToday'), '</a></td></tr>');
     html.push ('</table>');
 
     html.push ('</div>');
@@ -222,7 +222,7 @@ Dragonfly.Calendar.MonthWidget.prototype.connectHtml = function (elem) {
     this.today = $('kludgysidebartoday').getElementsByTagName ('A')[0];
     this.next = $('kludgysidebarright').getElementsByTagName ('A')[0];
     
-    this.today.ignoreClick = true;
+    /*this.today.ignoreClick = true;
     Event.observe (this.today, 'click',
                  (function (evt) {
                      if (d.curLoc && d.curLoc.tab == 'calendar') {
@@ -238,7 +238,7 @@ Dragonfly.Calendar.MonthWidget.prototype.connectHtml = function (elem) {
                          this.showMonth (Day.getUTCToday ());
                      }
                      Event.stop (evt);
-                 }).bindAsEventListener (this));
+                 }).bindAsEventListener (this));*/
     
     this.prev.ignoreClick = true;
     Event.observe (this.prev, 'click',

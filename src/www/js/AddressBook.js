@@ -152,6 +152,68 @@ Dragonfly.AddressBook.Contacts.getServerUrl = function (loc, path)
     return false;
 };
 
+Dragonfly.AddressBook.Contacts.convert = function (contactname, email)
+{
+    var d = Dragonfly;
+    
+    var picker = d.AddressBook.sideboxPicker.unselectedId;
+    var children = $(picker).childNodes;
+    var contact;
+    var myemail = d.Preferences.prefs.mail.from;
+    
+    // Loop through and filter contacts that match.
+    for (var i = 0; i < children.length; i++) {
+        // Find out our bongoId
+        var tempelement = children[i];
+        var bId = tempelement.id;
+        bId = bId.substring($(picker).parentNode.id.length);
+        
+        var tempcontact = d.AddressBook.contactMap[bId];
+        if (tempcontact)
+        {        
+            logDebug('Checking contact ' + bId);
+        
+            if (email && tempcontact.email)
+            {
+                // We have an email from the page - use it!
+                for (var x = 0; x < tempcontact.email.length; x++) {
+                    if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == email)
+                    {
+                        logDebug('Result found by checking contact email against mail.');
+                        contact = tempcontact;
+                        continue;
+                    }
+                }
+            }
+            else
+            {
+                // First, check if it's just sent to us (which means display our own card)
+                if (tempcontact.email)
+                {
+                    for (var x = 0; x < tempcontact.email.length; x++) {
+                        if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == myemail && contactname == myemail) {
+                            logDebug('Result found via checking if contact was us.');
+                            contact = tempcontact;
+                            continue;
+                        }
+                    }
+                }
+                
+            
+                // Search based on name, not email.
+                if (tempcontact.fn.toLowerCase() == contactname.toLowerCase())
+                {
+                    logDebug('Result found via name search.');
+                    contact = tempcontact;
+                    continue;
+                }
+            }
+        }
+    }
+    
+    return contact;
+}
+
 // Sidebar Contact Picker
 Dragonfly.AddressBook.ContactPicker = function (parent)
 {
@@ -439,13 +501,6 @@ Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem
     var d = Dragonfly;
 
     this.hide ();
-    // Don't uncomment the following, unless you know what you're doing;
-    // contact passed as an arg for some reason is now a mouseEvent after
-    // the Javascript library upgrade, instead of a Dragonfly.Contact or whatever.
-    //
-    // YOU MUST SET this.contact TO THE CONTACT NECESSARY BEFORE CALLING THIS FUNCTION!
-    //
-    //this.contact = (contact) ? contact : this.contact;
     
     if (!this.contact)
     {
@@ -513,10 +568,6 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
             if (result.bongoId) {
                 this.contact.bongoId = result.bongoId;
                 this.setElem (AB.sideboxPicker.addItem (this.contact.fn, result.bongoId));
-                
-                // Add ourselves to the contactMap, for other lookups
-                //AB.contactMap[this.contact.bongoId] = this.contact;
-                
                 $(this.elem).scrollIntoView();
             }
             

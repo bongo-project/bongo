@@ -255,6 +255,16 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '&amp;conversation=', encodeURIComponent (loc.conversation),
             '" class="forward">', _('mailForward'), '</a>' ].join ('');
 
+        var email = '';
+        
+        forEach (msg.from, function (part) {
+            var contact = m.parseParticipant(part);
+            email = contact.mail;
+        });
+        
+        // TODO: Provide contact look up here (possibly for avatar),
+        // and then cache BongoID for later.
+                        
         html.push ('">',
                    '<span class="pointer-border">', 
                    '<span class="pointer">', 
@@ -315,62 +325,7 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     var email = t.substring(t.indexOf('<') + 1, t.length-1).toLowerCase();
     logDebug('Contact is ' + contactname + ' with email ' + email);
     
-    var picker = d.AddressBook.sideboxPicker.unselectedId;
-    var children = $(picker).childNodes;
-    var contact;
-    
-    var myemail = d.Preferences.prefs.mail.from;
-    logDebug('My email is: ' + myemail);
-    
-    // Loop through and filter contacts that match.
-    for (var i = 0; i < children.length; i++) {
-        // Find out our bongoId
-        var tempelement = children[i];
-        var bId = tempelement.id;
-        bId = bId.substring($(picker).parentNode.id.length);
-        
-        var tempcontact = d.AddressBook.contactMap[bId];
-        if (tempcontact)
-        {        
-            logDebug('Checking contact ' + bId);
-        
-            if (email && tempcontact.email)
-            {
-                // We have an email from the page - use it!
-                for (var x = 0; x < tempcontact.email.length; x++) {
-                    if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == email)
-                    {
-                        logDebug('Result found by checking contact email against mail.');
-                        contact = tempcontact;
-                        continue;
-                    }
-                }
-            }
-            else
-            {
-                // First, check if it's just sent to us (which means display our own card)
-                if (tempcontact.email)
-                {
-                    for (var x = 0; x < tempcontact.email.length; x++) {
-                        if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == myemail && contactname == myemail) {
-                            logDebug('Result found via checking if contact was us.');
-                            contact = tempcontact;
-                            continue;
-                        }
-                    }
-                }
-                
-            
-                // Search based on name, not email.
-                if (tempcontact.fn.toLowerCase() == contactname.toLowerCase())
-                {
-                    logDebug('Result found via name search.');
-                    contact = tempcontact;
-                    continue;
-                }
-            }
-        }
-    }
+    var contact = d.AddressBook.Contacts.convert(contactname, email);
     
     if (!contact)
     {
