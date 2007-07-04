@@ -912,6 +912,7 @@ Dragonfly.translateElements = function ()
     Element.setHTML ('new-event-href', _('composeEventLabel'));
 }
 
+
 Dragonfly.start = function ()
 {
     var d = Dragonfly;
@@ -922,7 +923,10 @@ Dragonfly.start = function ()
     d.translateElements();
     
     d.setLoginMessage (_('loadingData'));
-
+    
+    // setup the preferences dialog tabs
+    //d.setupPrefs();
+    
     // set current timezone to default and build timezone selector
     d.curTzid = c.Preferences.getDefaultTimezone();
     d.tzselector = new d.TzSelector (d.curTzid, 'tzselect', true);

@@ -199,7 +199,7 @@
 	    <tr><td width="100%">
 	      <span id="user-name"></span>
 	      <ul id="section-user">
-	    <li><a href="javascript:void(showBox());" id="settings-text">Settings</a></li>
+	    <li><a href="#preferences" id="settings-text">Settings</a></li>
 		<li id="admin-link"><a href="admin" target="_blank" id="admin-text">Administration</a></li>
 		<li><a href="javascript:void(Dragonfly.logout());" id="logout-text">Log Out</a></li>
 		<!-- 
@@ -273,13 +273,12 @@
 		<div id="contents">
 		    <div id="aboutme">
 			    <h3>About Me</h3>			
-			    <p>Curabitur vel urna vitae nunc bibendum porttitor. Nam tortor quam, luctus id, convallis sed, rutrum ac, ante. Proin euismod lacus vitae elit. Nullam vel diam in metus consectetuer facilisis.</p>
 			    <label for="fname">Full Name: </label><input type="text" id="fname" name="fname" />
 			    <br />
 			</div>
-			<div id="display">
+			<div id="display" style="display:none;">
 			</div>
-			<div id="timezone">
+			<div id="timezone" style="display:none;">
 			    <span id="tzselect"></span>
 			</div>
 		</div>

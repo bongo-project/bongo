@@ -19,10 +19,8 @@ dist_css_DATA :=				\
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
 	src/www/css/login.css			\
-	src/www/css/modal.css			\
 	src/www/css/print.css			\
 	src/www/css/summary.css			\
-	src/www/css/tabs.css			\
 	src/www/css/widgets.css
 
 imgdir = $(htdocsdir)/img
@@ -231,7 +229,6 @@ dist_js_DATA :=					\
 	src/www/js/Mail.js			\
 	src/www/js/MailListView.js		\
 	src/www/js/MailWidgets.js		\
-	src/www/js/Modal.js 		\
 	src/www/js/OccurrenceEditor.js		\
 	src/www/js/Preferences.js		\
 	src/www/js/Search.js			\

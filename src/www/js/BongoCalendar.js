@@ -64,7 +64,8 @@ Dragonfly.Calendar.BongoCalendar.prototype.setShared = function (isPublic)
 Dragonfly.Calendar.BongoCalendar.prototype.parseJSON = function (jsob)
 {
     var d = Dragonfly;
-
+    
+    // TODO: This is really nasty.
     function calColor (calname)
     {
         return { 

@@ -1,4 +1,14 @@
-Dragonfly.Preferences = { };
+Dragonfly.Preferences = {
+    defaultSet: 'all',
+    defaultHandler: 'dragonfly'
+};
+
+Dragonfly.tabs['preferences'] = Dragonfly.Preferences;
+
+Dragonfly.Preferences.handlers = { };
+Dragonfly.Preferences.sets = [ 'all' ];
+Dragonfly.Preferences.setLabels = { all: 'All' };
+
 Dragonfly.Preferences.prefs = { };
 
 Dragonfly.Preferences.defaultPrefs = {
@@ -45,7 +55,7 @@ Dragonfly.Preferences.load = function ()
         }
     }
 
-    return d.requestJSON ('GET', '/user/' + d.userName + '/preferences/dragonfly.json').addCallbacks (
+    return d.requestJSON ('GET', '/user/' + d.userName + '/preferences/all/dragonfly.json').addCallbacks (
         function (jsob) {
             if (!jsob.addressbook) {
                 logDebug ('Empty preferences, loading defaults.');
@@ -70,7 +80,7 @@ Dragonfly.Preferences.save = function ()
         if (!d.Preferences.prefs) {
             throw new Error ('preferences object is invalid');
         }
-        return d.request ('PUT', '/user/' + d.userName + '/preferences/dragonfly.json',
+        return d.request ('PUT', '/user/' + d.userName + '/preferences/all/dragonfly.json',
                           d.Preferences.prefs);
     } catch (e) {
         logError ('Error serializing preferences: ' + d.reprError (e));
@@ -130,3 +140,27 @@ Dragonfly.Preferences.set = function (key, value)
     throw new Error ('Invalid Preference Key ' + key);
 }
 
+Dragonfly.Preferences.Editor = { };
+Dragonfly.Preferences.handlers['dragonfly'] = Dragonfly.Preferences.Editor;
+
+Dragonfly.Preferences.Editor.parsePath = function (loc, path)
+{
+    loc.valid = true;
+    return loc;
+};
+
+Dragonfly.Preferences.Editor.build = function (loc)
+{
+    var d = Dragonfly;
+    
+    Element.setHTML ('toolbar', '');
+    Element.hide ('toolbar');
+    var html = new d.HtmlBuilder ('<div id="search-no-results" class="scrollv">');
+
+    html.push ('<table style="margin: auto;"><tr>',
+               '<td><img src="img/big-info.png" style="float: left;" /></td>',
+               '<td style="vertical-align:middle;"><h3>The Preferences editor goes here! <code>:)</code></h3></td>',
+               '</tr></table></div>');
+               
+    html.set ('content-iframe');
+}

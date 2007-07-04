@@ -12,7 +12,7 @@ class ResourcePath:
     _views = {"addressbook" : 1,
               "calendar" : 1, 
               "mail" : 1,
-              "preferences" : 0,
+              "preferences" : 1,
               "search" : 1,
               "summary" : 1}
 
