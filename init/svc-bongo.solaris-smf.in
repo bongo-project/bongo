@@ -1,0 +1,81 @@
+#!/sbin/sh
+# SMF methods to start and stop an instance of the
+# Bongo project's bongo-manager daemon. 
+
+# Source key SMF constants and variables
+. /lib/svc/share/smf_include.sh
+
+DAEMON_DIR=@XPL_DEFAULT_BIN_DIR@
+DAEMON_NAME=bongo-manager
+DAEMON_SETUP=bongo-setup
+DAEMON_LIST="bongo-manager bongodmc bongostore bongosmtp bongoantispam bongocalcmd bongocalagent bongoimap bongopop3 bongomailprox bongorules "
+DATADIR=@XPL_DEFAULT_STATE_DIR@/dbf
+#DATADIR=@XPL_DEFAULT_STATE_DIR@/mdb
+#MAILDIR=@XPL_DEFAULT_STATE_DIR@/netmail
+#MONODATADIR=@prefix@/.wapi
+#MONO_SETUP=/opt/mono/setup.sh
+OPTIONS=-d
+
+start() {
+        if [ ! -d $DATADIR ] ; then
+		DOMAINNAME=`/usr/bin/domainname`
+		if [ -z "$DOMAINNAME" ] ; then
+			DOMAINNAME=`/usr/bin/hostname`
+		fi
+		#DNS_SERVER=`grep '^nameserver[ \t]*' /etc/resolv.conf | head -1 | sed -e 's/^nameserver[ \t]*//g'`
+		$DAEMON_DIR/$DAEMON_SETUP -n --maildomain=$DOMAINNAME
+		RETVAL=$?
+                if [ $RETVAL -ne 0 ] ; then
+	                return $RETVAL
+	        fi
+	fi
+	# if [ -f $MONO_SETUP ] ; then
+	# 	. $MONO_SETUP
+	# fi
+	$DAEMON_DIR/$DAEMON_NAME $OPTIONS >/dev/null 2>&1
+        RETVAL=$?
+	return $RETVAL
+}
+
+stop() {
+	# Try to play nice first
+	$DAEMON_DIR/$DAEMON_NAME -s >/dev/null 2>&1
+	RETVAL=$?
+
+	if [ $RETVAL -ne 0 ]; then
+		sleep 15
+                # Check if there's anything left to kill
+		if [ -n "@BONGO_USER@" ]; then
+			pgrep -U @BONGO_USER@ >/dev/null 2>&1 || return 0
+		fi
+		# Now force all procs down
+		for foo in $DAEMON_LIST;
+		do
+			if [ -n "@BONGO_USER@" ]; then
+				pkill -U @BONGO_USER@ $foo >/dev/null 2>&1
+			else 
+				pkill $foo >/dev/null 2>&1
+			fi
+		done
+		RETVAL=$?
+	fi
+	return $RETVAL
+}
+
+case "$1" in
+  start)
+  	start
+	;;
+  stop)
+	stop
+	;;
+  refresh|restart)
+        $0 stop
+        $0 start
+        ;;
+  *)
+	echo "Usage: $0 { start | stop | refresh }"
+        exit 1
+esac
+
+exit 0

@@ -1,0 +1,118 @@
+<?xml version="1.0"?>
+<!DOCTYPE service_bundle SYSTEM "/usr/share/lib/xml/dtd/service_bundle.dtd.1">
+
+<!--
+
+Copyright (c) 2007, Albert Lee
+Copyright (c) 2007, Matthew Flanagan
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright notice,
+       this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+       notice, this list of conditions and the following disclaimer in the
+       documentation and/or other materials provided with the distribution.
+
+    3. Neither the name of the project nor the names of its contributors may
+       be used to endorse or promote products derived from this software
+       without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-->
+
+<service_bundle type='manifest' name='bongo'>
+
+<service
+	name='network/bongo'
+	type='service'
+	version='1'>
+
+	<create_default_instance enabled='true' />
+
+	<single_instance />
+
+	<dependency
+		name='fs-local'
+		grouping='require_all'
+		restart_on='none'
+		type='service'>
+			<service_fmri value='svc:/system/filesystem/local' />
+	</dependency>
+
+	<dependency
+		name='network-service'
+		grouping='require_all'
+		restart_on='none'
+		type='service'>
+			<service_fmri value='svc:/network/service' />
+	</dependency>
+
+	<dependency
+		name='name-services'
+		grouping='require_all'
+		restart_on='refresh'
+		type='service'>
+			<service_fmri value='svc:/milestone/name-services' />
+	</dependency>
+
+	<dependency name='bongo_multi-user'
+		grouping='require_all'
+		restart_on='none'
+		type='service'>
+		<service_fmri value='svc:/milestone/multi-user' />
+	</dependency>
+
+	<dependent name='bongo_multi-user-server' 
+		grouping='optional_all'  
+		restart_on='none'>
+		<service_fmri value='svc:/milestone/multi-user-server' />
+	</dependent>
+
+	<exec_method
+		type='method'
+		name='start'
+		exec='/lib/svc/method/svc-bongo %m'
+		timeout_seconds='60'>
+	</exec_method>
+
+	<exec_method
+		type='method'
+		name='stop'
+		exec='/lib/svc/method/svc-bongo %m'
+		timeout_seconds='60'>
+	</exec_method>
+
+	<exec_method
+		type='method'
+		name='refresh'
+		exec='/lib/svc/method/svc-bongo %m'
+		timeout_seconds='60'>
+	</exec_method>
+
+	<stability value='Unstable' />
+
+	<template>
+		<common_name>
+			<loctext xml:lang='C'>
+			Bongo mail and calendar server
+			</loctext>
+		</common_name>
+	</template>
+
+</service>
+
+</service_bundle>
