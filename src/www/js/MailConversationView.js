@@ -319,18 +319,20 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     var children = $(picker).childNodes;
     var contact;
     
+    var myemail = d.Preferences.prefs.mail.from;
+    logDebug('My email is: ' + myemail);
+    
     // Loop through and filter contacts that match.
     for (var i = 0; i < children.length; i++) {
         // Find out our bongoId
         var tempelement = children[i];
         var bId = tempelement.id;
         bId = bId.substring($(picker).parentNode.id.length);
-        logDebug('Contact ID to check: ' + bId);
         
         var tempcontact = d.AddressBook.contactMap[bId];
         if (tempcontact)
-        {
-            logDebug('Yes, the contactMap has that ID. Check it..');
+        {        
+            logDebug('Checking contact ' + bId);
         
             if (email && tempcontact.email)
             {
@@ -338,7 +340,7 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
                 for (var x = 0; x < tempcontact.email.length; x++) {
                     if (tempcontact.email[x].toLowerCase() == email)
                     {
-                        logDebug('YES!');
+                        //logDebug('YES!');
                         contact = tempcontact;
                         continue;
                     }
@@ -346,6 +348,19 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
             }
             else
             {
+                // First, check if the name == our email.
+                if (tempcontact.email)
+                {
+                    for (var x = 0; x < tempcontact.email.length; x++) {
+                        if (tempcontact.email[x].toLowerCase() == myemail) {
+                            //logDebug('YES!');
+                            contact = tempcontact;
+                            continue;
+                        }
+                    }
+                }
+                
+            
                 // Search based on name, not email.
                 if (tempcontact.fn == contactname)
                 {
@@ -358,11 +373,16 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     
     if (!contact)
     {
+        logDebug('No contacts were found. Building a new one...');
+        
         // Create a new contact.
         contact = Dragonfly.AddressBook.buildNewContact();
         contact.fn = contactname;
         contact['email'] = new Array();
-        contact['email']['value'] = email;
+        contact['email'][0] = new Array();
+        contact['email'][0]['type'] = new Array();
+        contact['email'][0]['type'][0] = "INTERNET";
+        contact['email'][0]['value'] = email;
         
         this.popup = new d.AddressBook.ContactPopup();
         
@@ -376,6 +396,8 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     }
     else
     {
+        logDebug('Using contact: ' + contact.bongoId);
+    
         // Load the contact
         var bongoId = contact.bongoId;
         logDebug('Contact ID: ' + bongoId);
