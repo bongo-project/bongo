@@ -30,6 +30,7 @@ BOOL	NMAPSimpleCommand(StoreClient *client, char *command);
 BOOL	SetAdminRights(StoreClient *client, char *document);
 BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content);
 void	InitialStoreConfiguration(void);
+void    GetInteractiveData(char *description, char **data, char *def);
 BOOL	GenerateCryptoData(void);
 void	CheckVersion(void);
 void	TzCache(void);

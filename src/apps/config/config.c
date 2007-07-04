@@ -18,6 +18,9 @@
 #include <sys/types.h>
 #include "config.h"
 
+#include <libintl.h>
+#define _(x) gettext(x)
+
 BongoConfig config;
 
 void
@@ -41,7 +44,7 @@ usage(void) {
 void
 RunAsBongoUser() {
 	if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {    
-		printf("bongo-config: Could not drop to unpriviliged user '%s'\n", MsgGetUnprivilegedUser());
+		printf(_("bongo-config: Could not drop to unpriviliged user '%s'\n"), MsgGetUnprivilegedUser());
 		exit(-1);
 	}
 }
@@ -109,9 +112,9 @@ PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *
 		  sizeof(client->buffer), TRUE) == 1000) {
 			return TRUE;
 		}
-		XplConsolePrintf("ERROR: Couldn't write data\n");
+		XplConsolePrintf(_("ERROR: Couldn't write data\n"));
 	} else {
-		XplConsolePrintf("ERROR: Wouldn't accept data\n");
+		XplConsolePrintf(_("ERROR: Wouldn't accept data\n"));
 	}
 	return FALSE;
 }
@@ -125,14 +128,14 @@ InitialStoreConfiguration() {
 	
 	// attempt to initialise cal lib. This creates cached data, and can be time
 	// consuming: do it now, rather than in the store (for now, at least)
-	XplConsolePrintf("Initializing calendar data...\n");
+	XplConsolePrintf(_("Initializing calendar data...\n"));
 	cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);
 	if (! cal_success) {
-		XplConsolePrintf("ERROR: Couldn't initialise calendar library\n");
+		XplConsolePrintf(_("ERROR: Couldn't initialise calendar library\n"));
 		exit(1);
 	}
 	
-	XplConsolePrintf("Initializing store...\n");
+	XplConsolePrintf(_("Initializing store...\n"));
 	store_pid = fork();
 	if (store_pid == 0) { 	// child 
 		static char *install = "--install";
@@ -144,7 +147,7 @@ InitialStoreConfiguration() {
 		args[2] = NULL;
 		
 		execv(path, args);
-		XplConsolePrintf("ERROR: Couldn't start the store!\n");
+		XplConsolePrintf(_("ERROR: Couldn't start the store!\n"));
 		exit(1);
 	} else {		// parent 
 		StoreClient *client;
@@ -154,65 +157,65 @@ InitialStoreConfiguration() {
 		
 		client = malloc(sizeof(StoreClient));
 		if (!client) {
-			XplConsolePrintf("ERROR: Out of memory\n");
+			XplConsolePrintf(_("ERROR: Out of memory\n"));
 			goto storecleanup;
 		}
 		client->conn = NMAPConnect("127.0.0.1", NULL);
 		if (!client->conn) {
-			XplConsolePrintf("ERROR: Could not connect to store\n");
+			XplConsolePrintf(_("ERROR: Could not connect to store\n"));
 			goto storecleanup;
 		}
 		if (!NMAPAuthenticateToStore(client->conn, client->buffer, sizeof(client->buffer))) {
-			XplConsolePrintf("ERROR: Could not authenticate to store\n");
+			XplConsolePrintf(_("ERROR: Could not authenticate to store\n"));
 			goto nmapcleanup;
 		}
 		
 		if (!NMAPSimpleCommand(client, "STORE _system\r\n")) {
-			XplConsolePrintf("ERROR: Couldn't access store\n");
+			XplConsolePrintf(_("ERROR: Couldn't access store\n"));
 			goto nmapcleanup;
 		}
 		result = NMAPSimpleCommand(client, "CREATE /config\r\n");
 		if ((result==1000) || (result==4226)) {
 			// collection can't be created and doesn't exist
-			XplConsolePrintf("ERROR: Couldn't create collection\n");
+			XplConsolePrintf(_("ERROR: Couldn't create collection\n"));
 			goto nmapcleanup;
 		}
 		if (! SetAdminRights(client, "/config")) {
-			XplConsolePrintf("ERROR: Couldn't set acls on /config\n");
+			XplConsolePrintf(_("ERROR: Couldn't set acls on /config\n"));
 			goto nmapcleanup;
 		}
 		
-		XplConsolePrintf("Setting default agent configuration...\n");
+		XplConsolePrintf(_("Setting default agent configuration...\n"));
 		if (!PutOrReplaceConfig(client, "/config", "manager", bongo_manager_config)) {
-			XplConsolePrintf("ERROR: couldn't write /config/manager\n");
+			XplConsolePrintf(_("ERROR: couldn't write /config/manager\n"));
 		}
 		if (! SetAdminRights(client, "/config/manager")) {
-			XplConsolePrintf("ERROR: Couldn't set acls on /config/manager\n");
+			XplConsolePrintf(_("ERROR: Couldn't set acls on /config/manager\n"));
 			goto nmapcleanup;
 		}
 		if (!PutOrReplaceConfig(client, "/config", "antivirus", bongo_avirus_config)) {
-			XplConsolePrintf("ERROR: couldn't write /config/antivirus\n");
+			XplConsolePrintf(_("ERROR: couldn't write /config/antivirus\n"));
 		}
 		if (! SetAdminRights(client, "/config/antivirus")) {
-			XplConsolePrintf("ERROR: Couldn't set acls on /config/antivirus\n");
+			XplConsolePrintf(_("ERROR: Couldn't set acls on /config/antivirus\n"));
 			goto nmapcleanup;
 		}
 		if (!PutOrReplaceConfig(client, "/config", "antispam", bongo_aspam_config)) {
-			XplConsolePrintf("ERROR: couldn't write /config/antispam\n");
+			XplConsolePrintf(_("ERROR: couldn't write /config/antispam\n"));
 		}
 		if (! SetAdminRights(client, "/config/antispam")) {
-			XplConsolePrintf("ERROR: Couldn't set acls on /config/antispam\n");
+			XplConsolePrintf(_("ERROR: Couldn't set acls on /config/antispam\n"));
 			goto nmapcleanup;
 		}
 
-		XplConsolePrintf("Complete.\n");
+		XplConsolePrintf(_("Complete.\n"));
 
 nmapcleanup:
 		NMAPQuit(client->conn);
 		ConnFree(client->conn);
 storecleanup:		
 		if (kill(store_pid, SIGTERM) != 0) {
-			XplConsolePrintf("ERROR: Couldn't shut down store\n");
+			XplConsolePrintf(_("ERROR: Couldn't shut down store\n"));
 		}
 	}
 }
@@ -259,18 +262,18 @@ GenerateCryptoData() {
 
 	// hack: we need to ensure the files below can be saved...
 	if (0 != mkdir(XPL_DEFAULT_DBF_DIR, 0755)) {
-		XplConsolePrintf("Couldn't create data directory!\n");
+		XplConsolePrintf(_("Couldn't create data directory!\n"));
 	}
 	
-	GetInteractiveData("IP address to run on", &config.ip, "127.0.0.1");
-	GetInteractiveData("DNS name to use:", &config.dns, "localhost");
+	GetInteractiveData(_("IP address to run on"), &config.ip, "127.0.0.1");
+	GetInteractiveData(_("DNS name to use:"), &config.dns, "localhost");
 	
 	// save a random seed for faster Xpl startup in future.
-	XplConsolePrintf("Creating random seed...\n");
+	XplConsolePrintf(_("Creating random seed...\n"));
 	XplSaveRandomSeed();
 
 	// various magic params
-	XplConsolePrintf("Creating DH parameters...\n");
+	XplConsolePrintf(_("Creating DH parameters...\n"));
 	gnutls_dh_params_init(&dh_params);
 	gnutls_dh_params_generate2(dh_params, 1024);
 	dsize = CERTSIZE;
@@ -281,11 +284,11 @@ GenerateCryptoData() {
 		fprintf(params, "%s\n", dhdata);
 		fclose(params);
 	} else {
-		XplConsolePrintf("ERROR: Couldn't write DH params to %s\n", XPL_DEFAULT_DHPARAMS_PATH);
+		XplConsolePrintf(_("ERROR: Couldn't write DH params to %s\n"), XPL_DEFAULT_DHPARAMS_PATH);
 		return FALSE;
 	}
 
-	XplConsolePrintf("Creating RSA parameters...\n");	
+	XplConsolePrintf(_("Creating RSA parameters...\n"));	
 	gnutls_rsa_params_init(&rsa_params);
 	gnutls_rsa_params_generate2(rsa_params, 512);
 	dsize = CERTSIZE;
@@ -296,27 +299,27 @@ GenerateCryptoData() {
 		fprintf(params, "%s\n", dhdata);
 		fclose(params);
 	} else {
-		XplConsolePrintf("ERROR: Couldn't write RSA params to %s\n", XPL_DEFAULT_DHPARAMS_PATH);
+		XplConsolePrintf(_("ERROR: Couldn't write RSA params to %s\n"), XPL_DEFAULT_DHPARAMS_PATH);
 		return FALSE;
 	}
 
 	// create private key
-	XplConsolePrintf("Creating private key...\n");
+	XplConsolePrintf(_("Creating private key...\n"));
 	ret = gnutls_x509_privkey_init(&key);
 	if (ret < 0) {
-		XplConsolePrintf("ERROR: %s\n", gnutls_strerror (ret));
+		XplConsolePrintf(_("ERROR: %s\n"), gnutls_strerror (ret));
 		return FALSE;
 	}
 	ret = gnutls_x509_privkey_generate(key, GNUTLS_PK_RSA, 1024, 0);
 	if (ret < 0) {
-		XplConsolePrintf("ERROR: Couldn't create private key. %s\n", gnutls_strerror(ret));
+		XplConsolePrintf(_("ERROR: Couldn't create private key. %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
 	dsize = CERTSIZE;
 	ret = gnutls_x509_privkey_export(key, GNUTLS_X509_FMT_PEM, &private_key, &dsize);
 	if (ret < 0) {
-		XplConsolePrintf("ERROR: Couldn't export private key. %s\n", gnutls_strerror(ret));
-		XplConsolePrintf("       Size: %d, Ret: %d\n", dsize, ret);
+		XplConsolePrintf(_("ERROR: Couldn't export private key. %s\n"), gnutls_strerror(ret));
+		XplConsolePrintf(_("       Size: %d, Ret: %d\n"), dsize, ret);
 		return FALSE;
 	} else {
 		params = fopen(XPL_DEFAULT_KEY_PATH, "w");
@@ -325,16 +328,16 @@ GenerateCryptoData() {
 			fprintf(params, "%s\n", private_key);
 			fclose(params);
 		} else {
-			XplConsolePrintf("ERROR: Couldn't write private key to %s\n", XPL_DEFAULT_KEY_PATH);
+			XplConsolePrintf(_("ERROR: Couldn't write private key to %s\n"), XPL_DEFAULT_KEY_PATH);
 			return FALSE;
 		}
 	}
 
 	// create certificate
-	XplConsolePrintf("Creating SSL/TLS certificate...\n");
+	XplConsolePrintf(_("Creating SSL/TLS certificate...\n"));
 	ret = gnutls_x509_crt_init(&certificate);
 	if (ret < 0) {
-		XplConsolePrintf("ERROR: %s\n", gnutls_strerror(ret));
+		XplConsolePrintf(_("ERROR: %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
 	gnutls_x509_crt_set_activation_time(certificate, time(NULL));
@@ -365,14 +368,14 @@ GenerateCryptoData() {
 
 	ret = GNUTLS_SELF_SIGN(certificate, key);
 	if (ret < 0) {
-		XplConsolePrintf("ERROR: Couldn't self-sign certificate. %s\n", gnutls_strerror(ret));
+		XplConsolePrintf(_("ERROR: Couldn't self-sign certificate. %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
 
 	dsize = CERTSIZE;
 	ret = gnutls_x509_crt_export(certificate, GNUTLS_X509_FMT_PEM, &public_cert, &dsize);
 	if (ret < 0) { 
-		XplConsolePrintf("ERROR: Couldn't create certificate. %s\n", gnutls_strerror(ret));
+		XplConsolePrintf(_("ERROR: Couldn't create certificate. %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
 	params = fopen(XPL_DEFAULT_CERT_PATH, "w");
@@ -380,7 +383,7 @@ GenerateCryptoData() {
 		fprintf(params, "%s\n", public_cert);
 		fclose(params);
 	} else {
-		XplConsolePrintf("ERROR: Couldn't write certificate to %s\n", XPL_DEFAULT_CERT_PATH);
+		XplConsolePrintf(_("ERROR: Couldn't write certificate to %s\n"), XPL_DEFAULT_CERT_PATH);
 		return FALSE;
 	}
 	
@@ -400,18 +403,17 @@ CheckVersion() {
 
 	
 	if (!MsgGetBuildVersion(&current_version, &custom_version)) {
-		printf("Can't get information on current build!\n");
+		printf(_("Can't get information on current build!\n"));
 		return;
 	} else {
-		printf("Installed build: %s %s%d\n", BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
+		printf(_("Installed build: %s %s%d\n"), BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
 		if (custom_version)
-			printf("This is modified software.\n");
+			printf(_("This is modified software.\n"));
 	}
-	printf("Version currently available: ");
 	if (!MsgGetAvailableVersion(&available_version)) {
-		printf("unable to request online information.\n");
+		printf(_("Version currently available: unable to request online information.\n"));
 	} else {
-		printf("%s%d\n", BONGO_BUILD_VSTR, available_version);
+		printf(_("Version currently available: %s%d\n"), BONGO_BUILD_VSTR, available_version);
 	}
 }
 
@@ -473,6 +475,7 @@ main(int argc, char *argv[]) {
 	} else {
 		printf("ERROR: No command specified\n");
 		usage();
+		return 1;
 	}
 
 	// unusual libgcrypt options must occur before XplInit()
@@ -480,12 +483,12 @@ main(int argc, char *argv[]) {
 		gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
 	}
 	XplInit();
-	
+
 	// we don't want to setup libraries unless we need to (e.g., to run an agent)
 	if (command == 1) {
 		startup = BA_STARTUP_CONNIO;	
 		if (-1 == BongoAgentInit(&configtool, "bongoconfig", "", DEFAULT_CONNECTION_TIMEOUT, startup)) {
-			XplConsolePrintf("ERROR : Couldn't initialize Bongo libraries\n");
+			XplConsolePrintf(_("ERROR : Couldn't initialize Bongo libraries\n"));
 			return 2;
 		}
 	}

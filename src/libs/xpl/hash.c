@@ -10,6 +10,7 @@
 #include <xplhash.h>
 #include <memmgr.h>
 #include <gcrypt.h>
+#include <locale.h>
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 /** 
@@ -20,6 +21,11 @@ void
 XplInit(void)
 {
 	XplHashInit();
+
+	// initialize gettext
+	setlocale (LC_ALL, "");
+	bindtextdomain (PACKAGE, LOCALEDIR);
+	textdomain (PACKAGE);
 }
 
 /**

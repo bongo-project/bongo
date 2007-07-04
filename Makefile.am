@@ -56,6 +56,9 @@ EXTRA_DIST :=					\
 	init/network-bongo.xml.solaris-smf	\
 	mkinstalldirs
 
+localedir = $(datadir)/locale
+DEFS = -DLOCALEDIR=\"$(localedir)\" @DEFS@
+
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA := bongo.pc
 
