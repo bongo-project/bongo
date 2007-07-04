@@ -50,7 +50,11 @@ LookupUser(uid_t uid)
 
     buflen = sysconf(_SC_GETPW_R_SIZE_MAX);
     buf = MemMalloc(buflen + 1);
+#if defined(__SVR4) && defined(__sun) && !defined(_POSIX_PTHREAD_SEMANTICS)
+    pw = getpwuid_r(uid, &pwbuf, buf, buflen);
+#else
     getpwuid_r(uid, &pwbuf, buf, buflen, &pw);
+#endif
     
     if (!pw) {
         MemFree(buf);

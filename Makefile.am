@@ -52,6 +52,8 @@ EXTRA_DIST :=					\
 	init/bongo.init.fc4.in			\
 	init/bongo.init.sles9.in		\
 	init/bongo.init.suse10.in		\
+	init/svc-bongo.solaris-smf.in		\
+	init/network-bongo.xml.solaris-smf	\
 	mkinstalldirs
 
 pkgconfigdir = $(libdir)/pkgconfig

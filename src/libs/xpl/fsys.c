@@ -59,9 +59,16 @@ XplLookupUser(const char *username, uid_t *uid, gid_t *gid)
     
     char buffer[2048];
     
+#if defined(__SVR4) && defined(__sun) && !defined(_POSIX_PTHREAD_SEMANTICS)
+    errno = 0;
+    pw = getpwnam_r(username, &pwBuf, buffer, sizeof(buffer));
+    if (errno != 0 || pw == NULL) {
+        printf ("errno: %d, pw: %p\n", errno, pw);
+#else
     ret = getpwnam_r(username, &pwBuf, buffer, sizeof(buffer), &pw);
     if (ret != 0 || pw == NULL) {
 	printf ("ret: %d, pw: %p\n", ret, pw);
+#endif
 	return -1;
     }
 #else

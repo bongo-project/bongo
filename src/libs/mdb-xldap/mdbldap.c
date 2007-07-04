@@ -1015,39 +1015,57 @@ static BOOL
 LdapVerify(const char *Base, const char *Password)
 {
     LDAP *ldap;
-    int err;
+    int err, tries;
     BOOL result = FALSE;
-    char *url;
 
+#ifdef _SOLARIS_SDK
     if (MdbLdap.LdapTls) {
-        url = malloc(32 + strlen(MdbLdap.LdapHostAddress));
-
-        if (url) {
-            sprintf(url, "ldap://%s:%d", MdbLdap.LdapHostAddress, 
-                    MdbLdap.LdapHostPort);
-            ldap_initialize(&ldap, url);
-
-            if (ldap) {
-                err = ldap_start_tls_s(ldap, NULL, NULL);
-                if (err != LDAP_SUCCESS) {
-                    Log(LOG_ERROR, "ldap_start_tls_s() failed: %s",
-                        ldap_err2string(err));
-                    ldap_unbind_s(ldap);
-                    ldap = NULL;
-                }
-            }
-
-            free(url);
-        }
-    } else {
+        err = ldapssl_client_init(NULL, NULL);
         ldap = ldap_init(MdbLdap.LdapHostAddress, MdbLdap.LdapHostPort);
-    }
-
+        if (ldap) {
+            if (err == LDAP_SUCCESS) {
+                err = ldapssl_install_routines(ldap);
+            }
+            if (err == LDAP_SUCCESS) {
+#ifdef LDAP_OPT_SSL
+                err = ldap_set_option(ldap, LDAP_OPT_SSL, LDAP_OPT_ON);
+#endif
+                ldap_set_option(ldap, LDAP_OPT_RECONNECT, LDAP_OPT_ON);
+            }
+            if (err != LDAP_SUCCESS) {
+               Log(LOG_ERROR, "Enabling TLS failed: %s",
+                   ldap_err2string(err));
+               ldap_unbind_ext(ldap, NULL, NULL);
+               ldap = NULL;
+           }
+        }
+     } else {
+          ldap = ldap_init(MdbLdap.LdapHostAddress, MdbLdap.LdapHostPort);
+     }
+#else
+    ldap = ldap_init(MdbLdap.LdapHostAddress, MdbLdap.LdapHostPort);
     if (ldap) {
-        err = ldap_simple_bind_s(ldap, Base, Password);
+        if (MdbLdap.LdapTls) {
+            err = ldap_start_tls_s(ldap, NULL, NULL);
+            if (err != LDAP_SUCCESS) {
+                Log(LOG_ERROR, "ldap_start_tls_s() failed: %s",
+                    ldap_err2string(err));
+                ldap_unbind_ext(ldap, NULL, NULL);
+                ldap = NULL;
+            }
+        }
+     }
+#endif
 
-        if (err == LDAP_SUCCESS) {
-            result = TRUE;
+   if (ldap) {
+
+	for (tries = 0; tries < 3; tries++) {
+            err = ldap_simple_bind_s(ldap, Base, Password);
+
+            if (err == LDAP_SUCCESS) {
+                result = TRUE;
+                break;
+            }
         }
 
         ldap_unbind_s(ldap);
@@ -1203,39 +1221,55 @@ static LDAP *
 InitLdapConnection(char *BindDn, char *Passwd, void *rebind_proc, 
                    MDBLDAPContextStruct *Context)
 {
-    char *url;
     LDAP *ldap = NULL;
-    int err;
+    int err, tries;
 
+#ifdef _SOLARIS_SDK
     if (MdbLdap.LdapTls) {
-        url = malloc(32 + strlen(MdbLdap.LdapHostAddress));
-
-        if (url) {
-            sprintf(url, "ldap://%s:%d", MdbLdap.LdapHostAddress, 
-                    MdbLdap.LdapHostPort);
-            ldap_initialize(&ldap, url);
-
-            if (ldap) {
-                err = ldap_start_tls_s(ldap, NULL, NULL);
-                /* does ldap_start_tls_s() not return 
-                   LDAP_SUCCESS on success?
-                */
-                if (err != LDAP_SUCCESS) {
-                    Log(LOG_ERROR, "ldap_start_tls_s() failed: %s",
-                        ldap_err2string(err));
-                    ldap_unbind_s(ldap);
-                    ldap = NULL;
-                }
-            }
-
-            free(url);
-        }
-    } else {
+        err = ldapssl_client_init(NULL, NULL);
         ldap = ldap_init(MdbLdap.LdapHostAddress, MdbLdap.LdapHostPort);
-    }
-
+        if (ldap) {
+            if (err == LDAP_SUCCESS) {
+                err = ldapssl_install_routines(ldap);
+            }
+            if (err == LDAP_SUCCESS) {
+#ifdef LDAP_OPT_SSL
+                err = ldap_set_option(ldap, LDAP_OPT_SSL, LDAP_OPT_ON);
+#endif
+                ldap_set_option(ldap, LDAP_OPT_RECONNECT, LDAP_OPT_ON);
+            }
+            if (err != LDAP_SUCCESS) {
+               Log(LOG_ERROR, "Enabling TLS failed: %s",
+                   ldap_err2string(err));
+               ldap_unbind_ext(ldap, NULL, NULL);
+               ldap = NULL;
+           }
+        }
+     } else {
+          ldap = ldap_init(MdbLdap.LdapHostAddress, MdbLdap.LdapHostPort);
+     }
+#else
+    ldap = ldap_init(MdbLdap.LdapHostAddress, MdbLdap.LdapHostPort);
     if (ldap) {
-        err = ldap_simple_bind_s(ldap, BindDn, Passwd);
+        if (MdbLdap.LdapTls) {
+            err = ldap_start_tls_s(ldap, NULL, NULL);
+            if (err != LDAP_SUCCESS) {
+                Log(LOG_ERROR, "ldap_start_tls_s() failed: %s",
+                    ldap_err2string(err));
+                ldap_unbind_ext(ldap, NULL, NULL);
+                ldap = NULL;
+            }
+        }
+     }
+#endif
+    if (ldap) {
+	for (tries = 0; tries < 3; tries++) {
+            err = ldap_simple_bind_s(ldap, BindDn, Passwd);
+
+            if (err == LDAP_SUCCESS) {
+                break;
+            }
+        }
 
         if (err == LDAP_SUCCESS) {
             ldap_set_rebind_proc(ldap, rebind_proc, Context);
@@ -1250,7 +1284,6 @@ InitLdapConnection(char *BindDn, char *Passwd, void *rebind_proc,
         Log(LOG_ERROR, "ldap_init() failed: %s", ldap_err2string(errno));
         Log(LOG_ERROR, "host: %s:%d", MdbLdap.LdapHostAddress, 
             MdbLdap.LdapHostPort);
-        ldap = NULL;
     }
 
     return ldap;

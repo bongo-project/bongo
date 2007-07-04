@@ -608,6 +608,7 @@ include/Makefile
 init/bongo.init.fc4
 init/bongo.init.sles9
 init/bongo.init.suse10
+init/svc-bongo.solaris-smf
 po/Makefile.in
 src/agents/alarm/Makefile
 src/agents/antispam/Makefile

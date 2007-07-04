@@ -3,6 +3,29 @@
 #include <config.h>
 #include <xpl.h>
 
+/* compatibility with different client libraries */
+#ifndef LDAP_CONST
+#define LDAP_CONST const
+#endif
+#ifndef LDAP_OPT_SUCCESS
+#define LDAP_OPT_SUCCESS 0
+#endif
+#ifndef LDAP_EXOP_MODIFY_PASSWD
+#define LDAP_EXOP_MODIFY_PASSWD "1.3.6.1.4.1.4203.1.11.1"
+#endif
+#ifndef LDAP_TAG_EXOP_MODIFY_PASSWD_ID
+#define LDAP_TAG_EXOP_MODIFY_PASSWD_ID ((ber_tag_t) 0x80U)
+#endif
+#ifndef LDAP_TAG_EXOP_MODIFY_PASSWD_OLD
+#define LDAP_TAG_EXOP_MODIFY_PASSWD_OLD ((ber_tag_t) 0x81U)
+#endif
+#ifndef LDAP_TAG_EXOP_MODIFY_PASSWD_NEW
+#define LDAP_TAG_EXOP_MODIFY_PASSWD_NEW ((ber_tag_t) 0x82U)
+#endif
+#ifndef LBER_USE_DER
+#define LBER_USE_DER 0x01
+#endif
+
 #define MDBLDAP_FLAGS_ALLOCATED_HANDLE (unsigned long)(1 << 0)
 #define MDBLDAP_FLAGS_CONTEXT_VALID (unsigned long)(1 << 1)
 #define MDBLDAP_FLAGS_CONTEXT_DUPLICATE (unsigned long)(1 << 2)
