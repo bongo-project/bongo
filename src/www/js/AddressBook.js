@@ -75,7 +75,8 @@ Dragonfly.AddressBook.saveContact = function (contact)
         request = d.requestJSONRPC ('createContact', loc, contact);
     }
     return request.addCallback (function (result) {
-        d.AddressBook.contactMap[contact.bongoId] = contact;
+        contact.bongoId = result.bongoId;
+        Dragonfly.AddressBook.contactMap[result.bongoId] = contact;
         return result;
     });
 };
@@ -285,22 +286,22 @@ Dragonfly.AddressBook.ContactPopup.prototype.summarize = function (contact, elem
     html.push ('<table><tr>');
     html.push ('<td><ul>');
     var i;
-    if (contact.email) {
+    if (this.contact.email) {
         for (i = 0; i < contact.email.length; i++) {
-            html.push ('<li><a href="mailto:', contact.email[i].value, '">');
+            html.push ('<li><a href="mailto:', this.contact.email[i].value, '">');
             html.push (contact.email[i].value, '</a>');
         }
     }
     html.push ('</ul></td><td><ul>');
-    if (contact.tel) {
-        for (i = 0; i < contact.tel.length; i++) {
+    if (this.contact.tel) {
+        for (i = 0; i < this.contact.tel.length; i++) {
             html.push ('<li>', contact.tel[i].value);
         }
     }
     html.push ('</ul></td></tr></table>');
     
     var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
-                                contact: contact.bongoId });
+                                contact: this.contact.bongoId });
     html.push ('<div class="actions">',
                '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
                '<a href="#', loc.getClientUrl(), '">', _('contactShowConversations'), '</a>',
@@ -438,7 +439,18 @@ Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem
     var d = Dragonfly;
 
     this.hide ();
-    this.contact = (contact) ? contact : this.contact;
+    // Don't uncomment the following, unless you know what you're doing;
+    // contact passed as an arg for some reason is now a mouseEvent after
+    // the Javascript library upgrade, instead of a Dragonfly.Contact or whatever.
+    //
+    // YOU MUST SET this.contact TO THE CONTACT NECESSARY BEFORE CALLING THIS FUNCTION!
+    //
+    //this.contact = (contact) ? contact : this.contact;
+    
+    if (!this.contact)
+    {
+        this.contact = contact;
+    }
 
     this.formId = d.nextId ('contact-form');
     this.formNames = { };
@@ -469,9 +481,11 @@ Dragonfly.AddressBook.ContactPopup.prototype.del = function ()
 {
     Dragonfly.notify ('Deleting contact...', true);
     var elem = this.elem;
+    var noremove = this.skipremovechild;
     Dragonfly.AddressBook.delContact(this.contact.bongoId).addCallback (
         function (result) {
-            if (elem) {
+            logDebug('Remove child? ' + this.skipremovechild);
+            if (elem && !noremove) {
                 elem.parentNode.removeChild(elem);
             }
             Dragonfly.notify (_('genericChangesSaved'));
@@ -499,6 +513,10 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
             if (result.bongoId) {
                 this.contact.bongoId = result.bongoId;
                 this.setElem (AB.sideboxPicker.addItem (this.contact.fn, result.bongoId));
+                
+                // Add ourselves to the contactMap, for other lookups
+                //AB.contactMap[this.contact.bongoId] = this.contact;
+                
                 $(this.elem).scrollIntoView();
             }
             
@@ -515,7 +533,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
 {
     this.hide();
     var text = [
-        '<p>', _('contactConfirmRemovePre'), '&ldquo;',
+        '<p>', _('contactConfirmRemovePre'), ' &ldquo;',
         Dragonfly.escapeHTML (this.contact.fn), '&rdquo;', _('genericRemovePost'), '</p>'
     ];
     var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericDelete'), onclick: 'del'}];

@@ -190,8 +190,9 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
     
     Element.setHTML ('conv-breadcrumbs', loc.getBreadCrumbs());
     Element.setText ('conv-subject', conv.props.subject);
-    
+        
     nmessages = conv.messages.length;
+    var c = 0;
 
     var html = new d.HtmlBuilder ();
     for (var i = 0; i < nmessages; i++) {
@@ -264,9 +265,9 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
                    '<div class="msg-actions top">', forward, replyToAll, replyToList, replyToSender, '</div>',
                    '<div class="people-group">',
                    '<img class="disclosure" src="img/blank.gif" />',
-                   '<span id="contact-clicker" class="sender" title="', msg.from, '">', 
+                   '<span id="contact-clicker-', c, '" class="sender" title="', msg.from, '">', 
                    m.markupParticipants (msg.from), '</span>',
-                   ' to <span class="recipients">', m.markupParticipants (concat (msg.to, msg.cc)), '</span>',
+                   ' to <span class="recipients" id="contact-clicker-', c + 1, '">', m.markupParticipants (concat (msg.to, msg.cc)), '</span>',
                    '</div>',
                    '<span class="date">',
                    d.escapeHTML (msg.date),
@@ -276,15 +277,16 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
                    v.formatPart(loc, msg, msg.contents), '</div>',
                    //'<div class="msg-actions bottom">', /* forward, */ replyToAll, replyToSender, '</div>',
                    '</div>');
+                   
+        c += 2;
     }
 
     html.set ('conv-msg-list');
     
-    logDebug('Getting "from"...');
-    this.sender = $('contact-clicker');
-    logDebug('Binding event.');
-    Event.observe (this.sender, 'click', this.handleClick.bindAsEventListener(this));
-    logDebug('All OK');
+    for (var i = 0; i < c; i++) {
+        var sender = $('contact-clicker-' + i);
+        Event.observe (sender, 'click', this.handleClick.bindAsEventListener(this));
+    }
 };
 
 Dragonfly.Mail.ConversationView.handleClick = function (evt)
@@ -302,29 +304,53 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     }
     
     var contactname = element.innerHTML;
+    
+    if (contactname.indexOf('<span') > 0)
+    {
+        // Gets rid of the trailing 'comma' if there's multiple contacts.
+        contactname = contactname.substring(0, contactname.indexOf('<span'));
+    }
+    
     var t = element.parentNode.title;
-    var email = t.substring(t.indexOf('<') + 1, t.length-1);
+    var email = t.substring(t.indexOf('<') + 1, t.length-1).toLowerCase();
     logDebug('Contact is ' + contactname + ' with email ' + email);
     
     var picker = d.AddressBook.sideboxPicker.unselectedId;
     var children = $(picker).childNodes;
     var contact;
     
-    // Loop through and filter contacts *with this email address only*.
+    // Loop through and filter contacts that match.
     for (var i = 0; i < children.length; i++) {
         // Find out our bongoId
         var tempelement = children[i];
         var bId = tempelement.id;
-        logDebug('Length of picker: ' + picker.length);
-        bId = bId.substring(14);    // FIXME! Make this dependent on picker.length, or something
+        bId = bId.substring($(picker).parentNode.id.length);
+        logDebug('Contact ID to check: ' + bId);
         
         var tempcontact = d.AddressBook.contactMap[bId];
         if (tempcontact)
         {
-            for (var x = 0; x < tempcontact.email.length; x++) {
-                if (tempcontact.email[x] == email)
+            logDebug('Yes, the contactMap has that ID. Check it..');
+        
+            if (email && tempcontact.email)
+            {
+                // We have an email from the page - use it!
+                for (var x = 0; x < tempcontact.email.length; x++) {
+                    if (tempcontact.email[x].toLowerCase() == email)
+                    {
+                        logDebug('YES!');
+                        contact = tempcontact;
+                        continue;
+                    }
+                }
+            }
+            else
+            {
+                // Search based on name, not email.
+                if (tempcontact.fn == contactname)
                 {
                     contact = tempcontact;
+                    continue;
                 }
             }
         }
@@ -335,8 +361,8 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
         // Create a new contact.
         contact = Dragonfly.AddressBook.buildNewContact();
         contact.fn = contactname;
-        contact[email] = new Array();
-        contact[email][0] = email;
+        contact['email'] = new Array();
+        contact['email']['value'] = email;
         
         this.popup = new d.AddressBook.ContactPopup();
         
@@ -344,6 +370,7 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
             return;
         }
         this.popup.setElem (element);
+        this.popup.contact = contact;
         
         this.popup.edit (contact, $('contact-new'));
     }
@@ -359,6 +386,7 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
         }
         this.popup.setElem (element);
         this.popup.contact = contact;
+        this.popup.skipremovechild = true;  // Don't remove the element if we hit delete.
         
         d.AddressBook.loadContact(bongoId).addCallback(bind ('summarize', this.popup));
     }
