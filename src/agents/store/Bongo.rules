@@ -66,6 +66,7 @@ bongostore_LDADD =					   \
 	$(SQLITE_LIBS)				   \
 	$(CLUCENE_LIBS) 				   \
 	$(PTHREAD_LIBS)					   \
+	$(KSTAT_LIBS)					   \
 	$(ALL_LIBS)
 
 src/agents/store/all: bongostore

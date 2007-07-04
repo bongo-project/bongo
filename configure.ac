@@ -265,6 +265,16 @@ AC_CHECK_HEADER(ldap.h,[
 AM_CONDITIONAL(HAVE_LDAP,test "$have_ldap" = "yes")
 AC_SUBST(LDAP_LIBS)
 
+have_kstat="no"
+AC_CHECK_LIB(kstat, kstat_open,[
+	AC_CHECK_HEADERS(kstat.h, [have_kstat="yes"])
+])
+
+if test "$have_kstat" = "yes"; then
+	KSTAT_LIBS="-lkstat"
+fi
+AC_SUBST(KSTAT_LIBS)
+
 AM_PROG_LEX
 
 if test "$LEX" = "lex" -a -z "`which $LEX 2>/dev/null`"; then

@@ -79,14 +79,19 @@ GuidReset(void)
 }
 #elif defined(LINUX)
 
-#if HAVE_SYS_SYSINFO_H
+#if HAVE_KSTAT_H
+#include <kstat.h>
+#elif HAVE_SYS_SYSINFO_H
 #include <sys/sysinfo.h>
 #endif
 
 void GuidReset(void) {
 	char name[256 + 1];
 	unsigned char salt[32];
-#if HAVE_SYS_SYSINFO_H
+#if HAVE_KSTAT_H
+	kstat_t *ksp;
+	kstat_ctl_t *kc;
+#elif HAVE_SYS_SYSINFO_H
 	struct sysinfo si;
 #endif
 	struct timeval tv;
@@ -105,7 +110,19 @@ void GuidReset(void) {
 		XplHashWrite(&context, name, sizeof(name) - 1);
 	}
 
-#if HAVE_SYS_SYSINFO_H
+#if HAVE_KSTAT_H
+	if ((kc = kstat_open()) &&
+		(ksp = kstat_lookup(kc, "unix", 0, "system_misc")) &&
+		(kstat_read(kc, ksp, NULL) != -1)) {
+		XplHashWrite(&context, ksp, sizeof(kstat_t));
+	} else {
+		XplRandomData(name, sizeof(name) - 1);
+		XplHashWrite(&context, name, sizeof(name) - 1);
+	}
+	if (kc != NULL) {
+		kstat_close(kc);
+	}
+#elif HAVE_SYS_SYSINFO_H
 	if (!sysinfo(&si)) {
 		XplHashWrite(&context, &si, sizeof(si));
 	} else {
