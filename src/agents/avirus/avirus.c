@@ -1208,10 +1208,7 @@ ReadConfiguration(void)
     }
 
     res = BongoJsonJPathGetInt(node, "o:flags/i", &AVirus.flags);
-    res = BongoJsonJPathGetString(node, "o:patterns/s", &tmpBuffer);
-    if (res == BONGO_JSON_OK) {
-        strncpy(AVirus.path.patterns, tmpBuffer, XPL_MAX_PATH);
-    }
+    res = BongoJsonJPathGetString(node, "o:patterns/s", &AVirus.path.patterns);
     res = BongoJsonJPathGetInt(node, "o:queue/i", (int *)&AVirus.nmap.queue);
     res = BongoJsonJPathGetString(node, "o:host/s", &tmpBuffer);
     if (res == BONGO_JSON_OK) {
@@ -1220,6 +1217,7 @@ ReadConfiguration(void)
         if (he) {
             memcpy(&AVirus.clam.addr.sin_addr.s_addr, he->h_addr_list[0], sizeof(AVirus.clam.addr.sin_addr.s_addr));
         }
+        MemFree(tmpBuffer);
     } else {
         AVirus.clam.addr.sin_addr.s_addr = inet_addr(CLAMAV_DEFAULT_ADDRESS);
     }
