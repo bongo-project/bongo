@@ -2,3 +2,4 @@
 src/www/l10n/dragonfly.properties
 src/apps/config/config.c
 src/apps/backup/backup.c
+src/apps/manager/manager.c

@@ -16,6 +16,9 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include <libintl.h>
+#define _(x) gettext(x)
+
 #define LOCKFILE            XPL_DEFAULT_WORK_DIR "/bongomanager.pid"
 #define SLAPD_LOCKFILE      XPL_DEFAULT_WORK_DIR "/bongo-slapd.pid"
 
@@ -130,13 +133,13 @@ Reap(void)
             agent->exitStatus = status;
             agent->waitingForCallback = FALSE;
             if (!Exiting && WIFSIGNALED(status)) {
-                fprintf(stderr, "bongomanager: %s terminated with signal %d.\n", 
+                fprintf(stderr, _("bongomanager: %s terminated with signal %d.\n"), 
                        agent->spec.program, WTERMSIG(status));
                 if (WTERMSIG(status) != SIGTERM) {
                     agent->crashed = TRUE;
                 }
             } else if (!Exiting) {
-                fprintf(stderr, "bongomanager: %s exited\n", agent->spec.program);
+                fprintf(stderr, _("bongo-manager: %s exited\n"), agent->spec.program);
             }
         }
 
@@ -197,7 +200,7 @@ StartAgent(BongoAgent *agent)
         err = setrlimit(RLIMIT_NOFILE, &rlim);
         
         if (err != 0) {
-            fprintf(stderr, "couldn't set rlimit: %s\n", strerror(errno));
+            fprintf(stderr, _("couldn't set rlimit: %s\n"), strerror(errno));
         }
 
         if (LeaderPID == 0) {
@@ -216,11 +219,11 @@ StartAgent(BongoAgent *agent)
         args[1] = NULL;
         
         execv(path, args);
-        fprintf(stderr, "failed to exec %s (%s)\n", args[0], strerror(errno));
+        fprintf(stderr, _("failed to exec %s (%s)\n"), args[0], strerror(errno));
         exit(1);
     } else { /* parent */
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            fprintf(stderr, "bongomanager: Could not drop to unprivileged user '%s', Exiting.\n",
+            fprintf(stderr, _("bongo-manager: Could not drop to unprivileged user '%s', Exiting.\n"),
                    MsgGetUnprivilegedUser());
             exit(1);
         }
@@ -268,7 +271,7 @@ CheckCrashyAgent(BongoAgent *agent)
     agent->lastCrash = crashTime;
 
     if (agent->numCrashes == MAX_CRASHES) {
-        fprintf(stderr, "bongomanager: %s has crashed %d times within %d seconds of each other, not restarting.\n", 
+        fprintf(stderr, _("bongo-manager: %s has crashed %d times within %d seconds of each other, not restarting.\n"), 
                agent->spec.program, MAX_CRASHES, CRASH_WINDOW);
         agent->crashy = TRUE;
         return TRUE;
@@ -290,7 +293,7 @@ StartAgentsWithPriority(int priority, BOOL onlyCrashed, BOOL printMessage)
             && (!onlyCrashed || agent->crashed)
             && !CheckCrashyAgent(agent)) {
             if (printMessage) {
-                printf("bongomanager: starting %s\n", agent->spec.program);
+                printf(_("bongo-manager: starting %s\n"), agent->spec.program);
             }
             StartAgent(agent);
         }
@@ -310,17 +313,17 @@ LoadAgentConfiguration()
 	unsigned int i;
 
 	if (! NMAPReadConfigFile("manager", &config)) {
-		printf("manager: couldn't read config from store\n");
+		printf(_("bongo-manager: couldn't read config from store\n"));
 		return FALSE;
 	}
 	
 	if (BongoJsonParseString(config, &node) != BONGO_JSON_OK) {
-		printf("manager: couldn't parse JSON config\n");
+		printf(_("bongo-manager: couldn't parse JSON config\n"));
 		goto finish;
 	}
 	res = BongoJsonJPathGetArray(node, "o:agents/a", &agentlist);
 	if (res != BONGO_JSON_OK) {
-		printf("manager: couldn't find agent list\n");
+		printf(_("manager: couldn't find agent list\n"));
 		goto finish;
 	}
 
@@ -413,7 +416,7 @@ Lock(BOOL force)
 
     remaining = snprintf(pid, sizeof(pid), "%d\n", getpid());
     if (remaining > (int)sizeof(pid)) {
-        fprintf(stderr, "bongomanager: unlikely pid, Exiting\n");
+        fprintf(stderr, _("bongo-manager: unlikely pid, Exiting\n"));
         exit(1);
     }
 
@@ -444,7 +447,7 @@ static BOOL
 Unlock(const char *lockfile)
 {
     if (unlink(lockfile) == -1) {
-        fprintf(stderr, "bongomanager: couldn't unlink %s\n", LOCKFILE);
+        fprintf(stderr, _("bongo-manager: couldn't unlink %s\n"), LOCKFILE);
         return FALSE;
     }
     
@@ -485,17 +488,17 @@ WaitOnPidFile(void)
 static void
 ShowHelp(void) 
 {
-    printf("Usage: bongomanager [OPTIONS]\n"
+    printf(_("Usage: bongo-manager [OPTIONS]\n"
            "Starts and manages Bongo processes.\n\n"
            "Normal options:\n"
            "\t-d: Run in background after starting agents.\n"
            "\t-k: Keep agents alive, restarting them after crashes.\n"
            "\t-f: Force start, replacing " LOCKFILE ".\n"
-           "\t-s: Shut down an already-running bongomanager.\n"
-           "\t-r: Ask a running bongomanager to restart stopped agents.\n"
+           "\t-s: Shut down an already-running bongo-manager.\n"
+           "\t-r: Ask a running bongo-manager to restart stopped agents.\n"
            "Managed-slapd options:\n"
            "\t-l: Only start the slapd server.\n"
-           "\t-e: Kill existing slapd server.\n"
+           "\t-e: Kill existing slapd server.\n")
         );
     
 }
@@ -544,17 +547,17 @@ ParseArgs(int argc, char **argv,
     }
 
     if (*shutdown && (*daemonize || *force || *reload || *keepAlive || *slapdOnly || *killExistingSlapd)) {
-        fprintf(stderr, "%s: -s cannot be supplied with other options.\n", argv[0]);
+        fprintf(stderr, _("%s: -s cannot be supplied with other options.\n"), argv[0]);
         return FALSE;
     }
 
     if (*reload && (*daemonize || *force || *keepAlive || *slapdOnly || *killExistingSlapd)) {
-        fprintf(stderr, "%s: -r cannot be supplied with other options.\n", argv[0]);
+        fprintf(stderr, _("%s: -r cannot be supplied with other options.\n"), argv[0]);
         return FALSE;
     }   
 
     if (*slapdOnly && (*keepAlive)) {
-        fprintf(stderr, "%s: -l cannot be supplied with other options.\n", argv[0]);
+        fprintf(stderr, _("%s: -l cannot be supplied with other options.\n"), argv[0]);
         return FALSE;
     }
 
@@ -587,15 +590,14 @@ StartSlapd(BOOL killExisting)
             if (killExisting) {
                 if (kill(pid, SIGKILL) == 0) {
                     XplDelay(1000);
-                    fprintf(stderr, "bongomanager: killed existing managed-slapd process.\n");
+                    fprintf(stderr, _("bongo-manager: killed existing managed-slapd process.\n"));
                 } else if (errno != ESRCH) {
-                    fprintf(stderr, "bongomanager: could not kill existing managed-slapd process.\n");
+                    fprintf(stderr, _("bongo-manager: could not kill existing managed-slapd process.\n"));
                     return 1;
                 }
             } else {
-                fprintf(stderr, "bongomanager: managed-slapd appears to be running as pid %d\n"
-                       "bongomanager: if this is definitely the bongo slapd, you can run with -e to kill it\n",
-                       pid);
+                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %d\n"), pid);
+                fprintf(stderr, _("bongo-manager: if this is definitely the bongo slapd, you can run with -e to kill it\n"));
                 return 1;
             }
         }
@@ -605,7 +607,7 @@ StartSlapd(BOOL killExisting)
 
     if (!MsgGetConfigProperty((unsigned char *) buf,
 	   (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD_PORT)) {
-        fprintf(stderr, "bongomanager: error reading managed slapd port from config file.\n\r");
+        fprintf(stderr, _("bongo-manager: error reading managed slapd port from config file.\n"));
 	return 1;
     }
 
@@ -613,19 +615,19 @@ StartSlapd(BOOL killExisting)
 
     if (!MsgGetConfigProperty((unsigned char *) buf,
 	   (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD_PATH)) {
-	fprintf(stderr, "Error reading managed slapd path from config file.\n\r");
+	fprintf(stderr, _("Error reading managed slapd path from config file.\n"));
 	return 1;
     }
 
     snprintf(url, MDB_MAX_OBJECT_CHARS, "ldap://%s:%d", host, port);
 
-    printf("bongomanager: starting managed slapd...\n");
+    printf(_("bongo-manager: starting managed slapd...\n"));
 
     pid = fork();
 
     if (!pid) {
         /* We would pass the -u argument to slapd to set its uid here,
-           but at this point in bongomanager we've already dropped
+           but at this point in bongo-manager we've already dropped
            privs to BONGO_USER. */
         execl(buf, buf,
               "-f", XPL_DEFAULT_CONF_DIR "/bongo-slapd.conf",
@@ -650,7 +652,7 @@ StartSlapd(BOOL killExisting)
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sockfd == -1) {
-        fprintf(stderr, "Error creating socket: %s\n", strerror(errno));
+        fprintf(stderr, _("Error creating socket: %s\n"), strerror(errno));
         return 1;
     }
 
@@ -670,13 +672,13 @@ StartSlapd(BOOL killExisting)
                 sleep(1);
                 continue;
             } else {
-                fprintf(stderr, "bongomanager: error connecting to slapd: %s\n", strerror(error));
+                fprintf(stderr, _("bongo-manager: error connecting to slapd: %s\n"), strerror(error));
                 return 1;
             }
         }
 
         SlapdPID = ReadPid(SLAPD_LOCKFILE);
-        printf("bongomanager: slapd started\n");
+        printf(_("bongo-manager: slapd started\n"));
         break;
     }
     close(sockfd);
@@ -723,7 +725,7 @@ Daemonize(void)
     pid = fork();
 
     if (pid < 0) {
-        fprintf(stderr, "bongomanager: could not fork into background (%d): %s\n",
+        fprintf(stderr, _("bongo-manager: could not fork into background (%d): %s\n"),
                errno, strerror(errno));
         return 1;
     } else if (pid != 0) {
@@ -736,7 +738,7 @@ Daemonize(void)
             waitpid(pid, &status, 0);
             exit(WEXITSTATUS(status));
         }
-        printf("bongomanager: running in background\n");
+        printf(_("bongo-manager: running in background\n"));
         _exit(0);
     }
 
@@ -781,7 +783,7 @@ main(int argc, char **argv)
 
     if (getuid() == 0) {
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            fprintf(stderr, "bongomanager: could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+            fprintf(stderr, _("bongo-manager: could not drop to unprivileged user '%s'\n"), MsgGetUnprivilegedUser());
             exit(1);
         }
         droppedPrivs = TRUE;
@@ -793,7 +795,7 @@ main(int argc, char **argv)
     }
 
     if (!droppedPrivs) {
-        fprintf(stderr, "bongomanager: must be run by root\n");
+        fprintf(stderr, _("bongo-manager: must be run by root\n"));
         exit(1);
     }
 
@@ -801,15 +803,15 @@ main(int argc, char **argv)
         pid_t pid = ReadPid(LOCKFILE);
 
         if (pid <= 0) {
-            fprintf(stderr, "bongomanager: could not open pid file '%s'\n", LOCKFILE);
+            fprintf(stderr, _("bongo-manager: could not open pid file '%s'\n"), LOCKFILE);
             exit(1);
         }
 
         if (kill(pid, SIGUSR1) == -1) {
             if (errno == ESRCH) {
-                fprintf (stderr, "bongomanager: bongomanager does not appear to be running.\n");
+                fprintf (stderr, _("bongo-manager: bongo-manager does not appear to be running.\n"));
             } else {
-                fprintf (stderr, "bongomanager: unable to reload services: %s\n", strerror(errno));
+                fprintf (stderr, _("bongo-manager: unable to reload services: %s\n"), strerror(errno));
             }
             exit(1);
         }
@@ -819,15 +821,15 @@ main(int argc, char **argv)
     if (shutdown) {
         pid_t pid = ReadPid(LOCKFILE);
         if (pid <= 0) {
-            fprintf(stderr, "bongomanager: could not open pid file '%s'\n", LOCKFILE);
+            fprintf(stderr, _("bongo-manager: could not open pid file '%s'\n"), LOCKFILE);
             exit(1);
         }
 
         if (kill(pid, SIGTERM) == -1) {
             if (errno == ESRCH) {
-                fprintf (stderr, "bongomanager: bongomanager does not appear to be running.\n");
+                fprintf (stderr, _("bongo-manager: bongo-manager does not appear to be running.\n"));
             } else {
-                fprintf (stderr, "bongomanager: unable to shut down services: %s\n", strerror(errno));
+                fprintf (stderr, _("bongo-manager: unable to shut down services: %s\n"), strerror(errno));
             }
             exit(1);
         }
@@ -847,20 +849,20 @@ get_lock:
         if (errno == EEXIST) {
             pid_t pid = ReadPid(LOCKFILE);
             if (kill(pid, 0) != -1 || errno != ESRCH) {
-                fprintf(stderr, "bongomanager: another bongomanager process appears to be running.\n");
-                fprintf(stderr, "bongomanager: run with -s to stop an existing process, or -f to ignore the existing pidfile.\n");
+                fprintf(stderr, _("bongo-manager: another bongo-manager process appears to be running.\n"));
+                fprintf(stderr, _("bongo-manager: run with -s to stop an existing process, or -f to ignore the existing pidfile.\n"));
             } else if (!force) {
-                fprintf(stderr, "bongomanager: removing stale lock file in %s.\n", LOCKFILE);
+                fprintf(stderr, _("bongo-manager: removing stale lock file in %s.\n"), LOCKFILE);
                 force = TRUE;
                 goto get_lock;
             } else {
-                fprintf (stderr, "bongomanager: could not remove stale lock file in %s.\n", LOCKFILE);
+                fprintf (stderr, _("bongo-manager: could not remove stale lock file in %s.\n"), LOCKFILE);
             }
         } else if (errno == EPERM) {
-            fprintf(stderr, "bongomanager: %s user does not have permission to create a lock file in %s\n",
+            fprintf(stderr, _("bongo-manager: %s user does not have permission to create a lock file in %s\n"),
                    MsgGetUnprivilegedUser(), XPL_DEFAULT_WORK_DIR);
         } else {
-            fprintf(stderr, "bongomanager: could not create lock file in %s : %s\n", XPL_DEFAULT_WORK_DIR, strerror(errno));
+            fprintf(stderr, _("bongo-manager: could not create lock file in %s : %s\n"), XPL_DEFAULT_WORK_DIR, strerror(errno));
         }
 
         goto err_handler;
@@ -868,13 +870,13 @@ get_lock:
     unlockFile = TRUE;
 
     if (!MemoryManagerOpen("bongomanager")) {
-        fprintf(stderr, "bongomanager: failed to initialize memory manager.  Exiting\n");
+        fprintf(stderr, _("bongo-manager: failed to initialize memory manager.  Exiting\n"));
         goto err_handler;
     }
     ConnStartup(DEFAULT_CONNECTION_TIMEOUT, TRUE);
 
     if (!MsgGetConfigProperty(ServerDN, MSGSRV_CONFIG_PROP_MESSAGING_SERVER)) {
-        fprintf(stderr, "bongomanager: Couldn't read the server DN from bongo.conf.\r\n");
+        fprintf(stderr, _("bongo-manager: Couldn't read the server DN from bongo.conf.\n"));
         goto err_handler;
     }
 
@@ -889,30 +891,30 @@ get_lock:
         err = StartSlapd(killExistingSlapd);
 
         if (err != 0) {
-            fprintf(stderr, "bongomanager: managed slapd process failed to start.\n");
+            fprintf(stderr, _("bongo-manager: managed slapd process failed to start.\n"));
             goto err_handler;
         }
     } else if (slapdOnly) {
-        fprintf(stderr, "bongomanager: -l only works with a managed-slapd database.\n");
+        fprintf(stderr, _("bongo-manager: -l only works with a managed-slapd database.\n"));
         goto err_handler;
     }
 
     if (!slapdOnly) {
         if (!MDBInit()) {
-            fprintf(stderr, "bongomanager: unable to intialize directory access.\n");
+            fprintf(stderr, _("bongo-manager: unable to intialize directory access.\n"));
             goto err_handler;
         }
 
 	directory = MsgInit();
 	if (!directory) {
-	    fprintf(stderr, "bongomanager: unable to MsgInit()\n");
+	    fprintf(stderr, _("bongo-manager: unable to MsgInit()\n"));
 	    goto err_handler;
 	}
 	NMAPInitialize(directory);
 
         DirectoryHandle = MsgGetSystemDirectoryHandle();
         if (DirectoryHandle == NULL) {
-            fprintf(stderr, "bongomanager: unable to initialize messaging library.\n");
+            fprintf(stderr, _("bongo-manager: unable to initialize messaging library.\n"));
             goto err_handler;
         }
     }
@@ -927,7 +929,7 @@ get_lock:
         StartStore();
         XplDelay(1000);	// hack: small delay to let store start up
         if (!LoadAgentConfiguration()) {
-            printf("manager: Couldn't load configuration for agents\n");
+            printf(_("bongo-manager: Couldn't load configuration for agents\n"));
         }
         StartAgents(FALSE, FALSE);
     }
@@ -952,7 +954,7 @@ get_lock:
         }
     }
 
-    printf("bongomanager: shutting down...\n");    
+    printf(_("bongo-manager: Shutting down...\n"));
 
     if (!slapdOnly) {
         numWaiting = lastNumWaiting = 0;
@@ -963,9 +965,9 @@ get_lock:
             lastNumWaiting = numWaiting;
             
             if (forceShutdownTime < time(NULL)) {
-                fprintf(stderr, "bongomanager: '");
+                fprintf(stderr, "bongo-manager: '");
                 BlameAgents();
-                fprintf(stderr, "' stubbornly refusing to die, insisting.\n");
+                fprintf(stderr, _("' stubbornly refusing to die, insisting.\n"));
                 killpg(LeaderPID, SIGKILL);
                 forceShutdownTime = time(NULL) + 5;
             }
@@ -982,7 +984,7 @@ get_lock:
         StopSlapd();
     }    
 
-    printf("bongomanager: shutdown complete.\n");
+    printf(_("bongo-manager: shutdown complete.\n"));
 
     return 0;
 

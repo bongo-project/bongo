@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Bongo 0.1\n"
 "Report-Msgid-Bugs-To: bongo-devel@gna.org\n"
-"POT-Creation-Date: 2007-07-06 00:22+0100\n"
+"POT-Creation-Date: 2007-07-06 00:44+0100\n"
 "PO-Revision-Date: 2007-06-30 17:48+1000\n"
 "Last-Translator: Alexander Hixon <hixon.alexander@mediati.org>\n"
 "Language-Team: fr\n"
@@ -1219,4 +1219,273 @@ msgstr ""
 
 #: src/apps/backup/backup.c:1655
 msgid "Search command not implemented\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:136
+#, c-format
+msgid "bongomanager: %s terminated with signal %d.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:142
+#, c-format
+msgid "bongo-manager: %s exited\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:203
+#, c-format
+msgid "couldn't set rlimit: %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:222
+#, c-format
+msgid "failed to exec %s (%s)\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:226
+#, c-format
+msgid "bongo-manager: Could not drop to unprivileged user '%s', Exiting.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:274
+#, c-format
+msgid ""
+"bongo-manager: %s has crashed %d times within %d seconds of each other, not "
+"restarting.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:296
+#, c-format
+msgid "bongo-manager: starting %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:316
+#, c-format
+msgid "bongo-manager: couldn't read config from store\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:321
+#, c-format
+msgid "bongo-manager: couldn't parse JSON config\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:326
+#, c-format
+msgid "manager: couldn't find agent list\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:419
+#, c-format
+msgid "bongo-manager: unlikely pid, Exiting\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:450
+#, c-format
+msgid "bongo-manager: couldn't unlink %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:491
+#, c-format
+msgid ""
+"Usage: bongo-manager [OPTIONS]\n"
+"Starts and manages Bongo processes.\n"
+"\n"
+"Normal options:\n"
+"\t-d: Run in background after starting agents.\n"
+"\t-k: Keep agents alive, restarting them after crashes.\n"
+"\t-f: Force start, replacing "
+msgstr ""
+
+#: src/apps/manager/manager.c:550
+#, c-format
+msgid "%s: -s cannot be supplied with other options.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:555
+#, c-format
+msgid "%s: -r cannot be supplied with other options.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:560
+#, c-format
+msgid "%s: -l cannot be supplied with other options.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:593
+#, c-format
+msgid "bongo-manager: killed existing managed-slapd process.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:595
+#, c-format
+msgid "bongo-manager: could not kill existing managed-slapd process.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:599
+#, c-format
+msgid "bongo-manager: managed-slapd appears to be running as pid %d\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:600
+#, c-format
+msgid ""
+"bongo-manager: if this is definitely the bongo slapd, you can run with -e to "
+"kill it\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:610
+#, c-format
+msgid "bongo-manager: error reading managed slapd port from config file.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:618
+#, c-format
+msgid "Error reading managed slapd path from config file.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:624
+#, c-format
+msgid "bongo-manager: starting managed slapd...\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:655
+#, c-format
+msgid "Error creating socket: %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:675
+#, c-format
+msgid "bongo-manager: error connecting to slapd: %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:681
+#, c-format
+msgid "bongo-manager: slapd started\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:728
+#, c-format
+msgid "bongo-manager: could not fork into background (%d): %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:741
+#, c-format
+msgid "bongo-manager: running in background\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:786
+#, c-format
+msgid "bongo-manager: could not drop to unprivileged user '%s'\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:798
+#, c-format
+msgid "bongo-manager: must be run by root\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:806 src/apps/manager/manager.c:824
+#, c-format
+msgid "bongo-manager: could not open pid file '%s'\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:812 src/apps/manager/manager.c:830
+#, c-format
+msgid "bongo-manager: bongo-manager does not appear to be running.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:814
+#, c-format
+msgid "bongo-manager: unable to reload services: %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:832
+#, c-format
+msgid "bongo-manager: unable to shut down services: %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:852
+#, c-format
+msgid "bongo-manager: another bongo-manager process appears to be running.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:853
+#, c-format
+msgid ""
+"bongo-manager: run with -s to stop an existing process, or -f to ignore the "
+"existing pidfile.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:855
+#, c-format
+msgid "bongo-manager: removing stale lock file in %s.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:859
+#, c-format
+msgid "bongo-manager: could not remove stale lock file in %s.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:862
+#, c-format
+msgid ""
+"bongo-manager: %s user does not have permission to create a lock file in %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:865
+#, c-format
+msgid "bongo-manager: could not create lock file in %s : %s\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:873
+#, c-format
+msgid "bongo-manager: failed to initialize memory manager.  Exiting\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:879
+#, c-format
+msgid "bongo-manager: Couldn't read the server DN from bongo.conf.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:894
+#, c-format
+msgid "bongo-manager: managed slapd process failed to start.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:898
+#, c-format
+msgid "bongo-manager: -l only works with a managed-slapd database.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:904
+#, c-format
+msgid "bongo-manager: unable to intialize directory access.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:910
+#, c-format
+msgid "bongo-manager: unable to MsgInit()\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:917
+#, c-format
+msgid "bongo-manager: unable to initialize messaging library.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:932
+#, c-format
+msgid "bongo-manager: Couldn't load configuration for agents\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:957
+#, c-format
+msgid "bongo-manager: Shutting down...\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:970
+#, c-format
+msgid "' stubbornly refusing to die, insisting.\n"
+msgstr ""
+
+#: src/apps/manager/manager.c:987
+#, c-format
+msgid "bongo-manager: shutdown complete.\n"
 msgstr ""
