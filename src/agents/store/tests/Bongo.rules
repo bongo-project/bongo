@@ -4,6 +4,9 @@ check_PROGRAMS += checktest-store
 checktest_store_SOURCES := \
 	src/agents/store/tests/checktest.c
 
+checktest_store_CPPFLAGS := $(AM_CPPFLAGS)	\
+	$(CHECK_CFLAGS)
+
 checktest_store_LDADD := $(CHECK_LIBS)			   \
 	libbongostore.la				   \
 	libbongonmap.la					   \
@@ -20,14 +23,13 @@ checktest_store_LDADD := $(CHECK_LIBS)			   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)
 
-checktest_store_CPPFLAGS := $(AM_CPPFLAGS) $(CHECK_CFLAGS) 
-
 noinst_PROGRAMS += mkauthhash
-
-mkauthhash_CFLAGS := $(AM_CPPFLAGS) 
 
 mkauthhash_SOURCES :=  \
 	src/agents/store/tests/mkauthhash.c
+
+mkauthhash_store_CPPFLAGS := $(AM_CPPFLAGS)	\
+	$(SQLITE_CFLAGS)
 
 mkauthhash_LDADD =					   \
 	libbongonmap.la					   \

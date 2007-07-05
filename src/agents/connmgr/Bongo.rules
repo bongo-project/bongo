@@ -19,7 +19,7 @@ bongoconnmgr_LDADD :=					   \
 	libbongoutil.la					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
-	$(LIBSQLITE_LIBS)				   \
+	$(SQLITE_LIBS)				   \
 	$(PTHREAD_LIBS)					   \
 	$(ALL_LIBS)
 

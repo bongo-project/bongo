@@ -4,8 +4,6 @@ sbin_PROGRAMS += bongo-manager
 bongo_manager_SOURCES := \
 	src/apps/manager/manager.c
 
-bongo_manager_CPPFLAGS := $(AM_CPPFLAGS) 
-
 bongo_manager_LDADD :=					   \
         libbongonmap.la                                    \
 	libbongomsgapi.la				   \

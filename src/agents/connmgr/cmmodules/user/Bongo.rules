@@ -5,9 +5,6 @@ libcmuser_la_SOURCES :=				   \
 	src/agents/connmgr/cmmodules/user/cmuser.c \
 	src/agents/connmgr/cmmodules/user/cmuser.h
 
-#libcmuser_la_CPPFLAGS := $(AM_CPPFLAGS) \
-#	$(top_srcdir)/import/sqlite3
-
 libcmuser_la_LDFLAGS := -module -avoid-version
 libcmuser_la_LIBADD :=				\
 	libbongomsgapi.la			\
