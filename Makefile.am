@@ -52,8 +52,10 @@ EXTRA_DIST :=					\
 	init/bongo.init.fc4.in			\
 	init/bongo.init.sles9.in		\
 	init/bongo.init.suse10.in		\
+	init/bongo.xml.solaris-smf		\
+	init/http-bongo.xml.solaris-smf		\
+	init/http-bongo.solaris-smf.in		\
 	init/svc-bongo.solaris-smf.in		\
-	init/network-bongo.xml.solaris-smf	\
 	mkinstalldirs
 
 localedir = $(datadir)/locale

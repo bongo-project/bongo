@@ -1,0 +1,17 @@
+#!/sbin/sh
+# Simple script to start the Bongo project's
+# standalone HTTP server. 
+
+# Source key SMF constants and variables
+. /lib/svc/share/smf_include.sh
+
+DAEMON_DIR=@XPL_DEFAULT_BIN_DIR@
+DAEMON_NAME=bongo-standalone
+OPTIONS=
+
+ssl=`svcprop -p httpd/ssl svc:/network/http:bongo`
+if [ "$ssl" = true ]; then
+	OPTIONS="$OPTIONS --ssl"
+fi
+${DAEMON_DIR}/${DAEMON_NAME} $OPTIONS < /dev/null > /dev/msglog 2>&1 &
+
