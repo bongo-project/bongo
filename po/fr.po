@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Bongo 0.1\n"
 "Report-Msgid-Bugs-To: bongo-devel@gna.org\n"
-"POT-Creation-Date: 2007-07-04 14:21+0100\n"
+"POT-Creation-Date: 2007-07-06 00:22+0100\n"
 "PO-Revision-Date: 2007-06-30 17:48+1000\n"
 "Last-Translator: Alexander Hixon <hixon.alexander@mediati.org>\n"
 "Language-Team: fr\n"
@@ -855,4 +855,368 @@ msgstr ""
 
 #: src/apps/config/config.c:491
 msgid "ERROR : Couldn't initialize Bongo libraries\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:63 src/apps/backup/backup.c:918
+#: src/apps/backup/backup.c:971
+#, c-format
+msgid "Couldn't close file (%s)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:70 src/apps/backup/backup.c:86
+msgid "Couldn't open user database\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:79
+msgid "Failed to initialize database file\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:93
+msgid "User database does not exist\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:113
+msgid "Couldn't delete prepared statement (QUERY_PROP_VAL)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:125
+msgid "Couldn't delete prepared statement (QUERY_HIST_EVENT)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:137
+msgid "Couldn't delete prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:149
+msgid "Couldn't delete prepared statement (QUERY_DOC_INFO)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:158
+msgid "Couldn't close database\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:177
+msgid "Couldn't create prepared statement (QUERY_PROP_VAL)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:190
+msgid "Couldn't bind to prepared statement (QUERY_PROP_VAL)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:201 src/apps/backup/backup.c:647
+msgid "Insufficient memory available\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:212
+msgid "Query failed to execute (QUERY_PROP_VAL)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:219
+msgid "Couldn't reset prepared statement (QUERY_PROP_VAL)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:236
+msgid "Couldn't create prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:247
+msgid "Couldn't bind to prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:264
+msgid "Query failed to execute (QUERY_DOC_ATTRS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:271
+msgid "Couldn't reset prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:291
+msgid "Couldn't create prepared statement (QUERY_ALL_PROPS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:302
+msgid "Couldn't bind to prepared statement (QUERY_ALL_PROPS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:331 src/apps/backup/backup.c:1128
+msgid "Query failed to execute (QUERY_ALL_PROPS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:342
+msgid "Couldn't reset prepared statement (QUERY_ALL_PROPS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:359
+msgid "Couldn't create prepared statement (QUERY_HIST_EVENT)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:370
+msgid "Couldn't bind to prepared statement (QUERY_HIST_EVENT)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:383
+msgid "Query failed to execute (QUERY_HIST_EVENT)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:390
+msgid "Couldn't reset prepared statement (QUERY_HIST_EVENT)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:460
+#, c-format
+msgid "Connection to host %s failed\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:468
+#, c-format
+msgid "Connection to host %s failed"
+msgstr ""
+
+#: src/apps/backup/backup.c:479
+#, c-format
+msgid "NMAP command failed (PASS): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:489
+#, c-format
+msgid "NMAP command failed (MANAGE): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:513 src/apps/backup/backup.c:568
+#, c-format
+msgid "No such user on this host (%s)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:521
+msgid "Couldn't parse NMAP response (VRFY)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:529
+#, c-format
+msgid "Unrecognized NMAP response (VRFY): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:538
+msgid "NMAP connection error (VRFY)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:549
+#, c-format
+msgid "NMAP command failed (RSET): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:560
+#, c-format
+msgid "NMAP command failed (USER): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:618 src/apps/backup/backup.c:655
+#: src/apps/backup/backup.c:1229
+msgid "NMAP connection error (DPGET)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:633
+msgid "Could not parse NMAP response (DPGET)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:681
+msgid "Database query failure (QUERY_INS_HIST)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:695
+msgid "Database query failure (QUERY_INS_PROP)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:719
+#, c-format
+msgid "Unrecognized NMAP response (DPGET): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:732 src/apps/backup/backup.c:750
+msgid "NMAP connection error (DREAD)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:758
+msgid "Database query failure (QUERY_INS_DOC)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:773
+#, c-format
+msgid "Unrecognized NMAP response (DREAD): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:810
+msgid "NMAP connection error (DINFO)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:835
+msgid "Could not parse NMAP response (DINFO)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:854
+#, c-format
+msgid "Unrecognized NMAP response (DINFO): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:925 src/apps/backup/backup.c:978
+#: src/apps/backup/backup.c:1302 src/apps/backup/backup.c:1345
+#, c-format
+msgid "Couldn't open file (%s)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1030 src/apps/backup/backup.c:1052
+msgid "NMAP connection error (DSTOR)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1037
+msgid "Couldn't set file position\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1044
+#, c-format
+msgid "Unrecognized NMAP response (DSTOR): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1064
+#, c-format
+msgid "Unrecognized NMAP response (DCREA): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1071
+msgid "NMAP connection error (DCREA)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1100 src/apps/backup/backup.c:1117
+msgid "NMAP connection error (DPSET)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1108
+#, c-format
+msgid "Unrecognized NMAP response (DPSET): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1136
+msgid "Couldn't delete prepared statement (QUERY_ALL_PROPS)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1143 src/apps/backup/backup.c:1152
+msgid "Document not found in store\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1190
+msgid "Couldn't create prepared statement (QUERY_DOCS_MOD)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1198
+msgid "Couldn't bind to prepared statement (QUERY_DOCS_MOD)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1217
+msgid "Couldn't parse NMAP response (DPGET)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1254
+msgid "Database query failure (QUERY_DOCS_MOD)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1263
+msgid "Couldn't delete prepared statement (QUERY_DOCS_MOD)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1441
+msgid ""
+"bongobackup - Backup & restore a Bongo NMAP document store.\n"
+"\n"
+"Usage: bongobackup [options] [command]\n"
+"\n"
+"Options:\n"
+"  -h, --host=[ip address]         defaults to '127.0.0.1'\n"
+"  -p, --passwd=[password]         password used to authenticate\n"
+"  -s, --store=[path]              path to local backup store\n"
+"  -u, --user=[user]               username used to authenticate\n"
+"  -v, --verbose                   verbose output\n"
+"\n"
+"Commands:\n"
+"  backup [user[:guid[,..]][ ..]]  appends incremental backup to the store\n"
+"  restore [user[:guid[,..]][ ..]] restores documents from store to server\n"
+"  search [filter[,..]]            searches the store for documents\n"
+"  rollback [MM/DD/YYYY]           permanently deletes data store after date\n"
+"\n"
+"Search Filters:\n"
+"  after=[MM/DD/YYYY]              only search documents after this date\n"
+"  before=[MM/DD/YYYY]             only search documents before this date\n"
+"  string=[string[:..]]            strings may be enclosed in single quotes "
+"('')\n"
+"  type=[type[:..]]                only search type(s) (mail, cal, ab)\n"
+"  user=[user[:..]]                only search documents owned by user(s)\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1461
+msgid "Bongo Backup: "
+msgstr ""
+
+#: src/apps/backup/backup.c:1472
+msgid "Failed to initialize memory manager\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1490
+#, c-format
+msgid "Invalid store path: %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1496 src/apps/backup/backup.c:1501
+#, c-format
+msgid "Unrecognized option: %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1515
+#, c-format
+msgid "Unrecognized command: %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1518
+msgid "No command specified\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1553
+msgid "Backing up data\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1570
+#, c-format
+msgid "Unrecognized NMAP response (ULIST): %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1597
+msgid "Backup complete\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1599
+msgid "Backup failed\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1604 src/apps/backup/backup.c:1651
+msgid "Failed to initialize connection manager\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1608
+msgid "Restoring data\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1624
+#, c-format
+msgid "Couldn't open store directory %s\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1644
+msgid "Restore complete\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1646
+msgid "Restore failed\n"
+msgstr ""
+
+#: src/apps/backup/backup.c:1655
+msgid "Search command not implemented\n"
 msgstr ""

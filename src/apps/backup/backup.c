@@ -30,6 +30,9 @@
 #define malloc(bytes) MemMalloc(bytes)
 #define free(ptr) MemFree(ptr)
 
+#include <libintl.h>
+#define _(x) gettext(x)
+
 /* Globals */
 struct {
     char *host_addr;
@@ -57,14 +60,14 @@ OpenDatabase(char *db_filename, sqlite3 **db, int create_if_absent)
     if (db_file = fopen(db_filename, "r")) {
         if (fclose(db_file)) {
             if (BongoBackup.verbose) {
-                printf("Couldn't close file (%s)\n", db_filename);
+                XplConsolePrintf(_("Couldn't close file (%s)\n"), db_filename);
             }
             result = 0;
         }
 
         if (sqlite3_open(db_filename, db)) {
             if (BongoBackup.verbose) {
-                printf("Couldn't open user database\n");
+                XplConsolePrintf(_("Couldn't open user database\n"));
             }
             result = 0;
         }
@@ -73,21 +76,21 @@ OpenDatabase(char *db_filename, sqlite3 **db, int create_if_absent)
             if (!sqlite3_open(db_filename, db)) {
                 if (sqlite3_exec(*db, QUERY_INIT_DB, NULL, NULL, NULL) != SQLITE_OK) {
                     if (BongoBackup.verbose) {
-                        printf("Failed to initialize database file\n");
+                        XplConsolePrintf(_("Failed to initialize database file\n"));
                     }
 
                     result = 0;
                 }
             } else {
                 if (BongoBackup.verbose) {
-                    printf("Couldn't open user database\n");
+                    XplConsolePrintf(_("Couldn't open user database\n"));
                 }
 
                 result = 0;
             }
         } else {
             if (BongoBackup.verbose) {
-                printf("User database does not exist\n");
+                XplConsolePrintf(_("User database does not exist\n"));
             }
 
             result = 0;
@@ -107,7 +110,7 @@ CloseDatabase(sqlite3 *db)
             BongoBackup.sql.stmt_prop_val = NULL;
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't delete prepared statement (QUERY_PROP_VAL)\n");
+                XplConsolePrintf(_("Couldn't delete prepared statement (QUERY_PROP_VAL)\n"));
             }
 
             result = 0;
@@ -119,7 +122,7 @@ CloseDatabase(sqlite3 *db)
             BongoBackup.sql.stmt_hist_event = NULL;
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't delete prepared statement (QUERY_HIST_EVENT)\n");
+                XplConsolePrintf(_("Couldn't delete prepared statement (QUERY_HIST_EVENT)\n"));
             }
 
             result = 0;
@@ -131,7 +134,7 @@ CloseDatabase(sqlite3 *db)
             BongoBackup.sql.stmt_doc_attrs = NULL;
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't delete prepared statement (QUERY_DOC_ATTRS)\n");
+                XplConsolePrintf(_("Couldn't delete prepared statement (QUERY_DOC_ATTRS)\n"));
             }
 
             result = 0;
@@ -143,7 +146,7 @@ CloseDatabase(sqlite3 *db)
             BongoBackup.sql.stmt_doc_info = NULL;
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't delete prepared statement (QUERY_DOC_INFO)\n");
+                XplConsolePrintf(_("Couldn't delete prepared statement (QUERY_DOC_INFO)\n"));
             }
 
             result = 0;
@@ -152,7 +155,7 @@ CloseDatabase(sqlite3 *db)
 
     if (sqlite3_close(db) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't close database\n");
+            XplConsolePrintf(_("Couldn't close database\n"));
         }
 
         result = 0;
@@ -171,7 +174,7 @@ SelectPropertyValue(sqlite3 *db, char *guid, char *property, unsigned long date,
     if (!BongoBackup.sql.stmt_prop_val) {
         if (sqlite3_prepare(db, QUERY_PROP_VAL, -1, &BongoBackup.sql.stmt_prop_val, 0) != SQLITE_OK) {
             if (BongoBackup.verbose) {
-                printf("Couldn't create prepared statement (QUERY_PROP_VAL)\n");
+                XplConsolePrintf(_("Couldn't create prepared statement (QUERY_PROP_VAL)\n"));
             }
             return -1;
         }
@@ -184,7 +187,7 @@ SelectPropertyValue(sqlite3 *db, char *guid, char *property, unsigned long date,
         sqlite3_bind_text(BongoBackup.sql.stmt_prop_val, 5, property, -1, SQLITE_STATIC) != SQLITE_OK) {
 
         if (BongoBackup.verbose) {
-            printf("Couldn't bind to prepared statement (QUERY_PROP_VAL)\n");
+            XplConsolePrintf(_("Couldn't bind to prepared statement (QUERY_PROP_VAL)\n"));
         }
         return -1;
     }
@@ -195,7 +198,7 @@ SelectPropertyValue(sqlite3 *db, char *guid, char *property, unsigned long date,
 
             if (!*value) {
                 if (BongoBackup.verbose) {
-                    printf("Insufficient memory available\n");
+                    XplConsolePrintf(_("Insufficient memory available\n"));
                 }
                 return -1;
             }
@@ -206,14 +209,14 @@ SelectPropertyValue(sqlite3 *db, char *guid, char *property, unsigned long date,
         result = 1;
     } else if (rc != SQLITE_DONE) {
         if (BongoBackup.verbose) {
-            printf("Query failed to execute (QUERY_PROP_VAL)\n");
+            XplConsolePrintf(_("Query failed to execute (QUERY_PROP_VAL)\n"));
         }
         return -1;
     }
 
     if (sqlite3_reset(BongoBackup.sql.stmt_prop_val) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't reset prepared statement (QUERY_PROP_VAL)\n");
+            XplConsolePrintf(_("Couldn't reset prepared statement (QUERY_PROP_VAL)\n"));
         }
         return -1;
     }
@@ -230,7 +233,7 @@ SelectDocumentAttributes(sqlite3 *db, char *guid, unsigned long date, int *len, 
     if (!BongoBackup.sql.stmt_doc_attrs) {
         if (sqlite3_prepare(db, QUERY_DOC_ATTRS, -1, &BongoBackup.sql.stmt_doc_attrs, 0) != SQLITE_OK) {
             if (BongoBackup.verbose) {
-                printf("Couldn't create prepared statement (QUERY_DOC_ATTRS)\n");
+                XplConsolePrintf(_("Couldn't create prepared statement (QUERY_DOC_ATTRS)\n"));
             }
             return -1;
         }
@@ -241,7 +244,7 @@ SelectDocumentAttributes(sqlite3 *db, char *guid, unsigned long date, int *len, 
         sqlite3_bind_text(BongoBackup.sql.stmt_doc_attrs, 3, guid, -1, SQLITE_STATIC) != SQLITE_OK) {
 
         if (BongoBackup.verbose) {
-            printf("Couldn't bind to prepared statement (QUERY_DOC_ATTRS)\n");
+            XplConsolePrintf(_("Couldn't bind to prepared statement (QUERY_DOC_ATTRS)\n"));
         }
         return -1;
     }
@@ -258,14 +261,14 @@ SelectDocumentAttributes(sqlite3 *db, char *guid, unsigned long date, int *len, 
         result = 1;
     } else if (rc != SQLITE_DONE) {
         if (BongoBackup.verbose) {
-            printf("Query failed to execute (QUERY_DOC_ATTRS)\n");
+            XplConsolePrintf(_("Query failed to execute (QUERY_DOC_ATTRS)\n"));
         }
         return -1;
     }
 
     if (sqlite3_reset(BongoBackup.sql.stmt_doc_attrs) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't reset prepared statement (QUERY_DOC_ATTRS)\n");
+            XplConsolePrintf(_("Couldn't reset prepared statement (QUERY_DOC_ATTRS)\n"));
         }
         return -1;
     }
@@ -285,7 +288,7 @@ SelectDocumentInfo(sqlite3 *db, char *guid, unsigned long date, char *resource, 
     if (!BongoBackup.sql.stmt_doc_info) {
         if (sqlite3_prepare(db, QUERY_ALL_PROPS, -1, &BongoBackup.sql.stmt_doc_info, 0) != SQLITE_OK) {
             if (BongoBackup.verbose) {
-                printf("Couldn't create prepared statement (QUERY_ALL_PROPS)\n");
+                XplConsolePrintf(_("Couldn't create prepared statement (QUERY_ALL_PROPS)\n"));
             }
             return -1;
         }
@@ -296,7 +299,7 @@ SelectDocumentInfo(sqlite3 *db, char *guid, unsigned long date, char *resource, 
         sqlite3_bind_text(BongoBackup.sql.stmt_doc_info, 3, guid, -1, SQLITE_STATIC) != SQLITE_OK) {
 
         if (BongoBackup.verbose) {
-            printf("Couldn't bind to prepared statement (QUERY_ALL_PROPS)\n");
+            XplConsolePrintf(_("Couldn't bind to prepared statement (QUERY_ALL_PROPS)\n"));
         }
         return -1;
     }
@@ -325,7 +328,7 @@ SelectDocumentInfo(sqlite3 *db, char *guid, unsigned long date, char *resource, 
 
     if (rc != SQLITE_DONE) {
         if (BongoBackup.verbose) {
-            printf("Query failed to execute (QUERY_ALL_PROPS)\n");
+            XplConsolePrintf(_("Query failed to execute (QUERY_ALL_PROPS)\n"));
         }
         return -1;
     }
@@ -336,7 +339,7 @@ SelectDocumentInfo(sqlite3 *db, char *guid, unsigned long date, char *resource, 
 
     if (sqlite3_reset(BongoBackup.sql.stmt_doc_attrs) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't reset prepared statement (QUERY_ALL_PROPS)\n");
+            XplConsolePrintf(_("Couldn't reset prepared statement (QUERY_ALL_PROPS)\n"));
         }
         return -1;
     }
@@ -353,7 +356,7 @@ SelectHistoricEvent(sqlite3 *db, char *guid, unsigned long date, int *event)
     if (!BongoBackup.sql.stmt_hist_event) {
         if (sqlite3_prepare(db, QUERY_HIST_EVENT, -1, &BongoBackup.sql.stmt_hist_event, 0) != SQLITE_OK) {
             if (BongoBackup.verbose) {
-                printf("Couldn't create prepared statement (QUERY_HIST_EVENT)\n");
+                XplConsolePrintf(_("Couldn't create prepared statement (QUERY_HIST_EVENT)\n"));
             }
             return -1;
         }
@@ -364,7 +367,7 @@ SelectHistoricEvent(sqlite3 *db, char *guid, unsigned long date, int *event)
         sqlite3_bind_text(BongoBackup.sql.stmt_hist_event, 3, guid, -1, SQLITE_STATIC) != SQLITE_OK) {
 
         if (BongoBackup.verbose) {
-            printf("Couldn't bind to prepared statement (QUERY_HIST_EVENT)\n");
+            XplConsolePrintf(_("Couldn't bind to prepared statement (QUERY_HIST_EVENT)\n"));
         }
         return -1;
     }
@@ -377,14 +380,14 @@ SelectHistoricEvent(sqlite3 *db, char *guid, unsigned long date, int *event)
         result = 1;
     } else if (rc != SQLITE_DONE) {
         if (BongoBackup.verbose) {
-            printf("Query failed to execute (QUERY_HIST_EVENT)\n");
+            XplConsolePrintf(_("Query failed to execute (QUERY_HIST_EVENT)\n"));
         }
         return -1;
     }
 
     if (sqlite3_reset(BongoBackup.sql.stmt_hist_event) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't reset prepared statement (QUERY_HIST_EVENT)\n");
+            XplConsolePrintf(_("Couldn't reset prepared statement (QUERY_HIST_EVENT)\n"));
         }
         return -1;
     }
@@ -454,7 +457,7 @@ GetConnection(char *user)
 
     if (!(nmap = NMAPConnect(BongoBackup.host_addr, NULL))) {
         if (BongoBackup.verbose) {
-            printf("Connection to host %s failed\n", BongoBackup.host_addr);
+            XplConsolePrintf(_("Connection to host %s failed\n"), BongoBackup.host_addr);
         }
 
         return NULL;
@@ -462,7 +465,7 @@ GetConnection(char *user)
 
     if (!ConnReadLine(nmap, buf, sizeof(buf))) {
         if (BongoBackup.verbose) {
-            printf("Connection to host %s failed", BongoBackup.host_addr);
+            XplConsolePrintf(_("Connection to host %s failed"), BongoBackup.host_addr);
         }
 
         NMAPQuit(nmap);
@@ -473,7 +476,7 @@ GetConnection(char *user)
     NMAPSendCommand(nmap, cmd, strlen(cmd));
     if (NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE) != 1000) {
         if (BongoBackup.verbose) {
-            printf("NMAP command failed (PASS): %s\n", buf);
+            XplConsolePrintf(_("NMAP command failed (PASS): %s\n"), buf);
         }
 
         NMAPQuit(nmap);
@@ -483,7 +486,7 @@ GetConnection(char *user)
     NMAPSendCommand(nmap, "MANAGE\r\n", 8);
     if (NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE) != 1000) {
         if (BongoBackup.verbose) {
-            printf("NMAP command failed (MANAGE): %s\n", buf);
+            XplConsolePrintf(_("NMAP command failed (MANAGE): %s\n"), buf);
         }
 
         NMAPQuit(nmap);
@@ -507,7 +510,7 @@ GetConnection(char *user)
                             user_exists = TRUE;
                         } else {
                             if (BongoBackup.verbose) {
-                                printf("No such user on this host (%s)\n", user);
+                                XplConsolePrintf(_("No such user on this host (%s)\n"), user);
                             }
 
                             NMAPQuit(nmap);
@@ -515,7 +518,7 @@ GetConnection(char *user)
                         }
                     } else {
                         if (BongoBackup.verbose) {
-                            printf("Couldn't parse NMAP response (VRFY)\n");
+                            XplConsolePrintf(_("Couldn't parse NMAP response (VRFY)\n"));
                         }
 
                         NMAPQuit(nmap);
@@ -523,7 +526,7 @@ GetConnection(char *user)
                     }
                 } else {
                     if (BongoBackup.verbose) {
-                        printf("Unrecognized NMAP response (VRFY): %s\n", buf);
+                        XplConsolePrintf(_("Unrecognized NMAP response (VRFY): %s\n"), buf);
                     }
 
                     NMAPQuit(nmap);
@@ -532,7 +535,7 @@ GetConnection(char *user)
             }
         } else {
             if (BongoBackup.verbose) {
-                printf("NMAP connection error (VRFY)\n");
+                XplConsolePrintf(_("NMAP connection error (VRFY)\n"));
             }
 
             NMAPQuit(nmap);
@@ -543,7 +546,7 @@ GetConnection(char *user)
             NMAPSendCommand(nmap, "RSET\r\n", 6);
             if (NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE) != 1000) {
                 if (BongoBackup.verbose) {
-                    printf("NMAP command failed (RSET): %s\n", buf);
+                    XplConsolePrintf(_("NMAP command failed (RSET): %s\n"), buf);
                 }
     
                 NMAPQuit(nmap);
@@ -554,7 +557,7 @@ GetConnection(char *user)
             NMAPSendCommand(nmap, cmd, strlen(cmd));
             if (NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE) != 1000) {
                 if (BongoBackup.verbose) {
-                    printf("NMAP command failed (USER): %s\n", buf);
+                    XplConsolePrintf(_("NMAP command failed (USER): %s\n"), buf);
                 }
     
                 NMAPQuit(nmap);
@@ -562,7 +565,7 @@ GetConnection(char *user)
             }
         } else {
             if (BongoBackup.verbose) {
-                printf("No such user on this host (%s)\n", user);
+                XplConsolePrintf(_("No such user on this host (%s)\n"), user);
             }
 
             NMAPQuit(nmap);
@@ -612,7 +615,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
     if (NMAPSendCommand(nmap, cmd, strlen(cmd)) != strlen(cmd)) {
         if (BongoBackup.verbose) {
-            printf("NMAP connection error (DPGET)\n");
+            XplConsolePrintf(_("NMAP connection error (DPGET)\n"));
         }
 
         return -1;
@@ -627,7 +630,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
             /* got property */
             if ((property_name = strchr(buf, ' ')) == '\0') {
                 if (BongoBackup.verbose) {
-                    printf("Could not parse NMAP response (DPGET)\n");
+                    XplConsolePrintf(_("Could not parse NMAP response (DPGET)\n"));
                 }
 
                 return -1;
@@ -641,7 +644,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
             if (!remote_value) {
                 if (BongoBackup.verbose) {
-                    printf("Insufficient memory available\n");
+                    XplConsolePrintf(_("Insufficient memory available\n"));
                 }
 
                 return -1;
@@ -649,7 +652,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
             if (NMAPReadCount(nmap, remote_value, property_length) != property_length) {
                 if (BongoBackup.verbose) {
-                    printf("NMAP connection error (DPGET)\n");
+                    XplConsolePrintf(_("NMAP connection error (DPGET)\n"));
                 }
 
                 return -1;
@@ -675,7 +678,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
                     if (!history_id) {
                         if (BongoBackup.verbose) {
-                            printf("Database query failure (QUERY_INS_HIST)\n");
+                            XplConsolePrintf(_("Database query failure (QUERY_INS_HIST)\n"));
                         }
 
                         if (local_value) {
@@ -689,7 +692,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
                 if (!InsertProperty(db, history_id, property_name, remote_value)) {
                     if (BongoBackup.verbose) {
-                        printf("Database query failure (QUERY_INS_PROP)\n");
+                        XplConsolePrintf(_("Database query failure (QUERY_INS_PROP)\n"));
                     }
 
                     if (local_value) {
@@ -713,7 +716,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
             free(remote_value);
         } else {
             if (BongoBackup.verbose) {
-                printf("Unrecognized NMAP response (DPGET): %s\n", buf);
+                XplConsolePrintf(_("Unrecognized NMAP response (DPGET): %s\n"), buf);
             }
 
             return -1;
@@ -726,7 +729,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
         if (NMAPSendCommand(nmap, cmd, strlen(cmd)) != strlen(cmd)) {
             if (BongoBackup.verbose) {
-                printf("NMAP connection error (DREAD)\n");
+                XplConsolePrintf(_("NMAP connection error (DREAD)\n"));
             }
 
             return -1;
@@ -744,7 +747,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
                 if (ConnReadToFile(nmap, data_file, document_length) != document_length) {
                     if (BongoBackup.verbose) {
-                        printf("NMAP connection error (DREAD)\n");
+                        XplConsolePrintf(_("NMAP connection error (DREAD)\n"));
                     }
 
                     return -1;
@@ -752,7 +755,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
 
                 if (!InsertDocument(db, history_id, document_length, document_position)) {
                     if (BongoBackup.verbose) {
-                        printf("Database query failure (QUERY_INS_DOC)\n");
+                        XplConsolePrintf(_("Database query failure (QUERY_INS_DOC)\n"));
                     }
 
                     return -1;
@@ -767,7 +770,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
                 }
             } else {
                 if (BongoBackup.verbose) {
-                    printf("Unrecognized NMAP response (DREAD): %s\n", buf);
+                    XplConsolePrintf(_("Unrecognized NMAP response (DREAD): %s\n"), buf);
                 }
 
                 return -1;
@@ -776,7 +779,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
     }
 
     if (BongoBackup.verbose) {
-        printf("%s (%d)\n", document_guid, new_event);
+        XplConsolePrintf("%s (%d)\n", document_guid, new_event);
     } else {
         putchar('.');
     }
@@ -804,7 +807,7 @@ UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Con
     /* get list of user's documents */
     if (NMAPSendCommand(nmap1, "DINFO\r\n", 7) != 7) {
         if (BongoBackup.verbose) {
-            printf("NMAP connection error (DINFO)\n");
+            XplConsolePrintf(_("NMAP connection error (DINFO)\n"));
         }
 
         return 0;
@@ -829,7 +832,7 @@ UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Con
             /* got document */
             if ((document_guid = strchr(buf, ' ')) == '\0') {
                 if (BongoBackup.verbose) {
-                    printf("Could not parse NMAP response (DINFO)\n");
+                    XplConsolePrintf(_("Could not parse NMAP response (DINFO)\n"));
                 }
 
                 return 0;
@@ -848,7 +851,7 @@ UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Con
             }
         } else {
             if (BongoBackup.verbose) {
-                printf("Unrecognized NMAP response (DINFO): %s\n", buf);
+                XplConsolePrintf(_("Unrecognized NMAP response (DINFO): %s\n"), buf);
             }
 
             return 0;
@@ -912,14 +915,14 @@ BackupDocument(char* user_name, char* document_guid)
 
         if (fclose(data_file)) {
             if (BongoBackup.verbose) {
-                printf("Couldn't close file (%s)\n", data_filename);
+                XplConsolePrintf(_("Couldn't close file (%s)\n"), data_filename);
             }
 
             result = 0;
         }
     } else {
         if (BongoBackup.verbose) {
-            printf("Couldn't open file (%s)\n", data_filename);
+            XplConsolePrintf(_("Couldn't open file (%s)\n"), data_filename);
         }
 
         result = 0;
@@ -965,14 +968,14 @@ BackupUser(char* user_name)
 
             if (fclose(data_file)) {
                 if (BongoBackup.verbose) {
-                    printf("Couldn't close file (%s)\n", data_filename);
+                    XplConsolePrintf(_("Couldn't close file (%s)\n"), data_filename);
                 }
 
                 result = 0;
             }
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't open file (%s)\n", data_filename);
+                XplConsolePrintf(_("Couldn't open file (%s)\n"), data_filename);
             }
 
             result = 0;
@@ -1024,21 +1027,21 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                             if (!fseek(data_file, document_position, SEEK_SET)) {
                                 if (ConnWriteFromFile(nmap, data_file, document_length) != document_length) {
                                     if (BongoBackup.verbose) {
-                                        printf("NMAP connection error (DSTOR)\n");
+                                        XplConsolePrintf(_("NMAP connection error (DSTOR)\n"));
                                     }
 
                                     return -1;
                                 }
                             } else {
                                 if (BongoBackup.verbose) {
-                                    printf("Couldn't set file position\n");
+                                    XplConsolePrintf(_("Couldn't set file position\n"));
                                 }
 
                                 return -1;
                             }
                         } else {
                             if (BongoBackup.verbose) {
-                                printf("Unrecognized NMAP response (DSTOR): %s\n", buf);
+                                XplConsolePrintf(_("Unrecognized NMAP response (DSTOR): %s\n"), buf);
                             }
 
                             return -1;
@@ -1046,7 +1049,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                     }
                 } else {
                     if (BongoBackup.verbose) {
-                        printf("NMAP connection error (DSTOR)\n");
+                        XplConsolePrintf(_("NMAP connection error (DSTOR)\n"));
                     }
 
                     return -1;
@@ -1058,14 +1061,14 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                 if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == strlen(cmd)) {
                     if ((code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE)) != 1000) {
                         if (BongoBackup.verbose) {
-                            printf("Unrecognized NMAP response (DCREA): %s\n", buf);
+                            XplConsolePrintf(_("Unrecognized NMAP response (DCREA): %s\n"), buf);
                         }
 
                         return -1;
                     }
                 } else {
                     if (BongoBackup.verbose) {
-                        printf("NMAP connection error (DCREA)\n");
+                        XplConsolePrintf(_("NMAP connection error (DCREA)\n"));
                     }
 
                     return -1;
@@ -1094,7 +1097,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                             if (code == 2002) {
                                 if (ConnWrite(nmap, prop_val, prop_length) != prop_length) {
                                     if (BongoBackup.verbose) {
-                                        printf("NMAP connection error (DPSET)\n");
+                                        XplConsolePrintf(_("NMAP connection error (DPSET)\n"));
                                     }
 
                                     sqlite3_finalize(stmt);
@@ -1102,7 +1105,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                                 }
                             } else {
                                 if (BongoBackup.verbose) {
-                                    printf("Unrecognized NMAP response (DPSET): %s\n", buf);
+                                    XplConsolePrintf(_("Unrecognized NMAP response (DPSET): %s\n"), buf);
                                 }
 
                                 sqlite3_finalize(stmt);
@@ -1111,7 +1114,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                         }
                     } else {
                         if (BongoBackup.verbose) {
-                            printf("NMAP connection error (DPSET)\n");
+                            XplConsolePrintf(_("NMAP connection error (DPSET)\n"));
                         }
 
                         sqlite3_finalize(stmt);
@@ -1122,7 +1125,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
 
             if (qc != SQLITE_DONE) {
                 if (BongoBackup.verbose) {
-                    printf("Query failed to execute (QUERY_ALL_PROPS)\n");
+                    XplConsolePrintf(_("Query failed to execute (QUERY_ALL_PROPS)\n"));
                 }
 
                 return -1;
@@ -1130,14 +1133,14 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
 
             if (sqlite3_finalize(stmt) != SQLITE_OK) {
                 if (BongoBackup.verbose) {
-                    printf("Couldn't delete prepared statement (QUERY_ALL_PROPS)\n");
+                    XplConsolePrintf(_("Couldn't delete prepared statement (QUERY_ALL_PROPS)\n"));
                 }
 
                 return -1;
             }
         } else if (qc == 0) {
             if (BongoBackup.verbose) {
-                printf("Document not found in store\n");
+                XplConsolePrintf(_("Document not found in store\n"));
             }
 
             return 0;
@@ -1146,7 +1149,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
         }
     } else if (qc == 0) {
         if (BongoBackup.verbose) {
-            printf("Document not found in store\n");
+            XplConsolePrintf(_("Document not found in store\n"));
         }
 
         return 0;
@@ -1155,7 +1158,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
     }
 
     if (BongoBackup.verbose) {
-        printf("%s\n", document_guid);
+        XplConsolePrintf("%s\n", document_guid);
     } else {
         putchar('.');
     }
@@ -1184,7 +1187,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
 
     if (sqlite3_prepare(db, QUERY_DOCS_MOD, -1, &stmt, 0) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't create prepared statement (QUERY_DOCS_MOD)\n");
+            XplConsolePrintf(_("Couldn't create prepared statement (QUERY_DOCS_MOD)\n"));
         }
 
         return 0;
@@ -1192,7 +1195,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
     
     if (sqlite3_bind_int(stmt, 1, BongoBackup.backup_date) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't bind to prepared statement (QUERY_DOCS_MOD)\n");
+            XplConsolePrintf(_("Couldn't bind to prepared statement (QUERY_DOCS_MOD)\n"));
         }
 
         sqlite3_finalize(stmt);
@@ -1211,7 +1214,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
             if ((code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE)) == 2001) {
                 if ((property_name = strchr(buf, ' ')) == '\0') {
                     if (BongoBackup.verbose) {
-                        printf("Couldn't parse NMAP response (DPGET)\n");
+                        XplConsolePrintf(_("Couldn't parse NMAP response (DPGET)\n"));
                     }
 
                     return 0;
@@ -1223,7 +1226,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
     
                 if (NMAPReadCount(nmap, property_value, property_length) != property_length) {
                     if (BongoBackup.verbose) {
-                        printf("NMAP connection error (DPGET)\n");
+                        XplConsolePrintf(_("NMAP connection error (DPGET)\n"));
                     }
 
                     return 0;
@@ -1248,7 +1251,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
     
     if (qc != SQLITE_DONE) {
         if (BongoBackup.verbose) {
-            printf("Database query failure (QUERY_DOCS_MOD)\n");
+            XplConsolePrintf(_("Database query failure (QUERY_DOCS_MOD)\n"));
         }
 
         sqlite3_finalize(stmt);
@@ -1257,7 +1260,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
 
     if (sqlite3_finalize(stmt) != SQLITE_OK) {
         if (BongoBackup.verbose) {
-            printf("Couldn't delete prepared statement (QUERY_DOCS_MOD)\n");
+            XplConsolePrintf(_("Couldn't delete prepared statement (QUERY_DOCS_MOD)\n"));
         }
 
         return 0;
@@ -1296,7 +1299,7 @@ RestoreDocument(char* user_name, char* document_guid)
             fclose(data_file);
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't open file (%s)\n", data_filename);
+                XplConsolePrintf(_("Couldn't open file (%s)\n"), data_filename);
             }
 
             result = 0;
@@ -1339,7 +1342,7 @@ RestoreUser(char* user_name)
             fclose(data_file);
         } else {
             if (BongoBackup.verbose) {
-                printf("Couldn't open file (%s)\n", data_filename);
+                XplConsolePrintf(_("Couldn't open file (%s)\n"), data_filename);
             }
 
             result = 0;
@@ -1432,8 +1435,10 @@ main(int argc, char *argv[])
     char *d_ptr;
     struct dirent *d_ent;
 
-    char *usage = 
-        "bongobackup - Backup & restore a Bongo NMAP document store.\n\n"
+    XplInit();
+	
+	char *usage = 
+        _("bongobackup - Backup & restore a Bongo NMAP document store.\n\n"
         "Usage: bongobackup [options] [command]\n\n"
         "Options:\n"
         "  -h, --host=[ip address]         defaults to '127.0.0.1'\n"
@@ -1451,9 +1456,9 @@ main(int argc, char *argv[])
         "  before=[MM/DD/YYYY]             only search documents before this date\n"
         "  string=[string[:..]]            strings may be enclosed in single quotes ('')\n"
         "  type=[type[:..]]                only search type(s) (mail, cal, ab)\n"
-        "  user=[user[:..]]                only search documents owned by user(s)\n";
+        "  user=[user[:..]]                only search documents owned by user(s)\n");
 
-    printf("Bongo Backup: ");
+    XplConsolePrintf(_("Bongo Backup: "));
 
     /* defaults */
     BongoBackup.host_addr = "127.0.0.1";
@@ -1464,7 +1469,7 @@ main(int argc, char *argv[])
     BongoBackup.verbose = 0;
 
     if (!MemoryManagerOpen("Bongo Backup")) {
-        printf("Failed to initialize memory manager\n");
+        XplConsolePrintf(_("Failed to initialize memory manager\n"));
         return 1;
     }
 
@@ -1482,18 +1487,18 @@ main(int argc, char *argv[])
     
                 /* make sure path is valid */
                 if (stat(BongoBackup.store_path, &stat_buf) == -1 || !S_ISDIR(stat_buf.st_mode)) {
-                    printf("Invalid store path: %s\n", BongoBackup.store_path);
+                    XplConsolePrintf(_("Invalid store path: %s\n"), BongoBackup.store_path);
                     next_arg = argc;
                 }
             } else if (!strcmp(argv[next_arg], "-u") || !strcmp(argv[next_arg], "--user")) {
                 BongoBackup.auth_username = arg_ptr + 1;
             } else {
-                printf("Unrecognized option: %s\n", argv[next_arg]);
+                XplConsolePrintf(_("Unrecognized option: %s\n"), argv[next_arg]);
             }
         } else if (!strcmp(argv[next_arg], "-v") || !strcmp(argv[next_arg], "--verbose")) {
             BongoBackup.verbose = 1;
         } else {
-            printf("Unrecognized option: %s\n", argv[next_arg]);
+            XplConsolePrintf(_("Unrecognized option: %s\n"), argv[next_arg]);
         }
     }
 
@@ -1507,10 +1512,10 @@ main(int argc, char *argv[])
             next_arg = argc;
             command = 3;
         } else {
-            printf("Unrecognized command: %s\n", argv[next_arg]);
+            XplConsolePrintf(_("Unrecognized command: %s\n"), argv[next_arg]);
         }
     } else {
-        printf("No command specified\n");
+        XplConsolePrintf(_("No command specified\n"));
     }
 
     /* parse additional command args */
@@ -1545,7 +1550,7 @@ main(int argc, char *argv[])
 
     if (command == 1) {
         /* backup */
-        printf("Backing up data\n");
+        XplConsolePrintf(_("Backing up data\n"));
 
         if (ConnStartup((300), FALSE)) {
             if (nmap = GetConnection(NULL)) {
@@ -1562,7 +1567,7 @@ main(int argc, char *argv[])
                             /* got username */    
                             no_err = BackupUser(buf);
                         } else {
-                            printf("Unrecognized NMAP response (ULIST): %s\n", buf);
+                            XplConsolePrintf(_("Unrecognized NMAP response (ULIST): %s\n"), buf);
                             no_err = 0;
                         }
                     }
@@ -1585,22 +1590,22 @@ main(int argc, char *argv[])
             }
 
             if (!BongoBackup.verbose) {
-                printf("\n");
+                XplConsolePrintf("\n");
             }
 
             if (no_err) {
-                printf("Backup complete\n");
+                XplConsolePrintf(_("Backup complete\n"));
             } else {
-                printf("Backup failed\n");
+                XplConsolePrintf(_("Backup failed\n"));
             }
 
             ConnShutdown();
         } else {
-            printf("Failed to initialize connection manager\n");
+            XplConsolePrintf(_("Failed to initialize connection manager\n"));
         }
     } else if (command == 2) {
         /* restore */
-        printf("Restoring data\n");
+        XplConsolePrintf(_("Restoring data\n"));
 
         if (ConnStartup((300), FALSE)) {
             if (next_backup_arg < 1) {
@@ -1616,7 +1621,7 @@ main(int argc, char *argv[])
                         }
                     }
                 } else {
-                    printf("Couldn't open store directory %s\n", BongoBackup.store_path);
+                    XplConsolePrintf(_("Couldn't open store directory %s\n"), BongoBackup.store_path);
                 }
             } else {
                 /* partial restore */
@@ -1632,25 +1637,25 @@ main(int argc, char *argv[])
             }
 
             if (!BongoBackup.verbose) {
-                printf("\n");
+                XplConsolePrintf("\n");
             }
 
             if (no_err) {
-                printf("Restore complete\n");
+                XplConsolePrintf(_("Restore complete\n"));
             } else {
-                printf("Restore failed\n");
+                XplConsolePrintf(_("Restore failed\n"));
             }
 
             ConnShutdown();
         } else {
-            printf("Failed to initialize connection manager\n");
+            XplConsolePrintf(_("Failed to initialize connection manager\n"));
         }
     } else if (command == 3) {
         /* search */
-        printf("Search command not implemented\n");
+        XplConsolePrintf(_("Search command not implemented\n"));
     } else {
         /* help */
-        printf(usage);
+        XplConsolePrintf(usage);
     }
 
     MemoryManagerClose("Bongo Backup");

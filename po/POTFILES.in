@@ -1,3 +1,4 @@
 # List of source files which contain translatable strings.
 src/www/l10n/dragonfly.properties
 src/apps/config/config.c
+src/apps/backup/backup.c
