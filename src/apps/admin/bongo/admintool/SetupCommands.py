@@ -119,7 +119,12 @@ class SetupCredentialCommand(Command):
         omask = os.umask(0077)
 
         eclients = os.path.join(Xpl.DEFAULT_DBF_DIR, "eclients.dat")
-        os.chmod(eclients, 0600)
+
+        try:
+            os.remove(eclients)
+        except os.error:
+            pass
+
         fd = open(eclients, "w")
         fd.write(passwd)
         fd.write("\0")
