@@ -929,8 +929,8 @@ Dragonfly.start = function ()
     
     // set current timezone to default and build timezone selector
     d.curTzid = c.Preferences.getDefaultTimezone();
-    d.tzselector = new d.TzSelector (d.curTzid, 'tzselect', true);
-    d.tzselector.setChangeListener (function () { d.setCurrentTzid (d.tzselector.getTzid()); });
+    //d.tzselector = new d.TzSelector (d.curTzid, 'tzselect', true);
+    //d.tzselector.setChangeListener (function () { d.setCurrentTzid (d.tzselector.getTzid()); });
 
     var def = new d.MultiDeferred ([ c.loadCalendars(), 
                                      d.AddressBook.sideboxPicker.load() ]);

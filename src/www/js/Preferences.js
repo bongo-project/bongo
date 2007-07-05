@@ -1,3 +1,6 @@
+/*
+    Setup the Preferences handler
+*/
 Dragonfly.Preferences = {
     defaultSet: 'all',
     defaultHandler: 'dragonfly'
@@ -9,8 +12,22 @@ Dragonfly.Preferences.handlers = { };
 Dragonfly.Preferences.sets = [ 'all' ];
 Dragonfly.Preferences.setLabels = { all: 'All' };
 
+/*
+    Dragonfly.Preferences.prefs
+    namespace
+    
+    Summary:    The core preferences code.
+*/
+
 Dragonfly.Preferences.prefs = { };
 
+/*
+    Dragonfly.Preferences.defaultPrefs
+    array
+    
+    Summary:    Stores the default preferences
+                that a user should have.
+*/
 Dragonfly.Preferences.defaultPrefs = {
     addressbook: {
         me: null
@@ -30,6 +47,14 @@ Dragonfly.Preferences.defaultPrefs = {
     }
 };
 
+/*
+    Dragonfly.Preferences.load ()
+    function
+    
+    Summary:    Loads the preferences from the server
+                into the preferences handler for each
+                service (ie. mail, calendar etc)
+*/
 Dragonfly.Preferences.load = function ()
 {
     var d = Dragonfly;
@@ -73,6 +98,17 @@ Dragonfly.Preferences.load = function ()
         });
 };
 
+/*
+    Dragonfly.Preferences.save ()
+    function
+    
+    Summary:    Saves the preferences from all
+                the preference handlers back onto 
+                the server, via JSON.
+             
+    Throws:     an error if the preferences object is null
+                or undefined.
+*/
 Dragonfly.Preferences.save = function ()
 {
     var d = Dragonfly;
@@ -88,6 +124,13 @@ Dragonfly.Preferences.save = function ()
     }
 };
 
+/*
+    Dragonfly.Preferences.reset ()
+    function
+    
+    Summary:    Resets the current preferences to their defaults
+                and saves the default vales back onto the server.
+*/
 Dragonfly.Preferences.reset = function()
 {
     var p = Dragonfly.Preferences;
@@ -95,6 +138,16 @@ Dragonfly.Preferences.reset = function()
     p.save();
 }
 
+/*
+    Dragonfly.Preferences._lookup (obj, path)
+    function
+    
+    Summary:    Looks up an preference value from within the
+                path.
+    
+    Argument:   obj         The object to lookup
+                path        Path to lookup from
+*/
 Dragonfly.Preferences._lookup = function (obj, path)
 {
     try {
@@ -108,6 +161,22 @@ Dragonfly.Preferences._lookup = function (obj, path)
     }
 }
 
+/*
+    Dragonfly.Preferences.get (key)
+    function
+    
+    Summary:    Gets the preference value for the specified
+                key.
+                
+    Argument:   key         The key that is associated with
+                            preference value you want to find.
+    
+    Throws:     an error if the key cannot be found in both
+                the user's current preferences and the defaults.
+                
+                a warning if the key cannot be found in the
+                user's current preferences.
+*/
 Dragonfly.Preferences.get = function (key)
 {
     var p = Dragonfly.Preferences;
@@ -140,6 +209,11 @@ Dragonfly.Preferences.set = function (key, value)
     throw new Error ('Invalid Preference Key ' + key);
 }
 
+/*
+    The Preferences editor (the UI component)
+*/
+
+// Setup the editor handler.
 Dragonfly.Preferences.Editor = { };
 Dragonfly.Preferences.handlers['dragonfly'] = Dragonfly.Preferences.Editor;
 
@@ -149,18 +223,140 @@ Dragonfly.Preferences.Editor.parsePath = function (loc, path)
     return loc;
 };
 
+/*
+    Dragonfly.Preferences.Editor.build (loc)
+    function
+    
+    Summary:    Builds the HTML elements for the preferences
+                editor.
+                
+    Notes:      This function is called automatically by the
+                location hash handler.
+    
+    Argument:   loc         The current Dragonfly location.
+*/  
 Dragonfly.Preferences.Editor.build = function (loc)
 {
     var d = Dragonfly;
+    var showmethemoney = true;
     
     Element.setHTML ('toolbar', '');
     Element.hide ('toolbar');
-    var html = new d.HtmlBuilder ('<div id="search-no-results" class="scrollv">');
+    
+    var html = new d.HtmlBuilder ();
+    
+    if (!showmethemoney)
+    {
+        // Push the following HTML if we haven't completed our handler!
+        html.push ('<div id="search-no-results" class="scrollv">', '<table style="margin: auto;"><tr>',
+                   '<td><img src="img/big-info.png" style="float: left;" /></td>',
+                   '<td style="vertical-align:middle;"><h3>The Preferences editor goes here! <code>:)</code></h3></td>',
+                   '</tr></table></div>');
+        
+        html.set ('content-iframe');
+    }
+    else
+    {
+        // First, build the container.
+        html.push ('<div id="preferences-container">', '</div>');
+        html.set ('content-iframe');
+        
+        // Come up with some magic tabs!
+        var notebook = new d.Notebook();
+        var userpage = notebook.appendPage('About Me');
+        var composerpage = notebook.appendPage('Composer');
+        var calendarpage = notebook.appendPage('Calendar');
+        
+        var userhtml = new d.HtmlBuilder ();
+        userhtml.push ('<table border="0" cellspacing="0">',
+            '<tr><td><label>Name:</label></td>',
+            '<td><input type="text"></td></tr>',
+            '<tr><td><label>Timezone:</label></td>',
+            '<td><span id="tzpicker"></span></td></tr>',
+            '</table>');
+        userhtml.set (userpage);
+        
+        var composerhtml = new d.HtmlBuilder ();
+        composerhtml.push ('<table border="0" cellspacing="0">', 
+            '<tr><td><label>Default sent address:</label></td>', 
+            '<td><input type="text" id="from"></td></tr>', 
+            '<tr><td colspan="2"><span style="font-size: 80%;">Please don\'t abuse the above feature for now.</span></td></tr>',
+            '</table>');
+        composerhtml.set (composerpage);
+        
+        var calendarhtml = new d.HtmlBuilder ();
+        calendarhtml.push ('<p>Nothing to see here, move along.</p>');
+        calendarhtml.set (calendarpage);
+        
+        var form = [
+        '<form id="someid">', notebook, '</form>'];
+        
+        var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericSave'), onclick: 'save'}];        
+        
+        // Now, fill in the content with tabs & buttons.
+        this.contentId = 'preferences-container';
+        this.buildInterface (form, actions);
+        logDebug('Created UI OK - setting up TzSelector widget...');
+        
+        // Setup timezone widget
+        d.tzselector = new d.TzSelector (d.curTzid, 'tzpicker', true);
+    }
+    
+    logDebug('We just got built.');
+}
 
-    html.push ('<table style="margin: auto;"><tr>',
-               '<td><img src="img/big-info.png" style="float: left;" /></td>',
-               '<td style="vertical-align:middle;"><h3>The Preferences editor goes here! <code>:)</code></h3></td>',
-               '</tr></table></div>');
-               
-    html.set ('content-iframe');
+
+Dragonfly.Preferences.Editor.save = function ()
+{
+    var d = Dragonfly;
+    
+    // TODO: Set values from form.
+    d.setCurrentTzid (d.tzselector.getTzid());
+    d.Preferences.prefs.mail.from = $('from').value;
+    d.Preferences.save();
+}
+
+Dragonfly.Preferences.Editor.dispose = function ()
+{
+    var d = Dragonfly;    
+    
+    // Send user back to summary.
+    var loc = new d.Location({tab: 'summary'});
+    d.go('#' + loc);
+}
+
+Dragonfly.Preferences.Editor.load = function (loc, jsob)
+{
+    var d = Dragonfly;
+
+    document.title = 'Preferences: ' + Dragonfly.title;
+
+    // Fill form with values.
+    $('from').value = jsob.mail.from;
+    
+    logDebug('We just loaded.');
+}
+
+Dragonfly.Preferences.Editor.buildInterface = function (children, actions, observer)
+{
+    var d = Dragonfly;    
+    
+    var html = new d.HtmlBuilder ();
+    d.HtmlBuilder.buildChild (html, children);
+    html.push ('<div class="actions">');
+    for (var i = 0, ids = [ ]; i < actions.length; i++){
+        var action = actions[i];
+        ids.push (d.nextId ('button'));
+        html.push (' <input id="', ids[i], '" type="button" value="', action.value, '"');
+        html.push (action.secondary ? ' class="secondary">' : '>');
+    }
+    html.push ('</div>');
+    
+    html.set (this.contentId);    
+    for (var i = 0; i < actions.length; i++){
+        logDebug('Setting up actions for ' + actions[i].value);
+        var clickHandler = actions[i].onclick;
+        Event.observe (ids[i], 'click', bind (clickHandler, observer || this));
+        logDebug('Done!');
+    }
 }
