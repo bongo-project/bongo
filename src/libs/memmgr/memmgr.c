@@ -356,6 +356,13 @@ struct {
 EXPORT void *
 MemCallocDirect(size_t Number, size_t Size)
 {
+#if _BONGO_SYSTEM_MALLOC
+    if (Size == 0) {
+        return calloc(1, 1);
+    } else {
+        return calloc(Number, Size);
+    }
+#else
     register MemPoolEntry *pEntry;
     register unsigned int size = Number * Size;
 
@@ -452,11 +459,19 @@ MemCallocDirect(size_t Number, size_t Size)
     }
 
     return(NULL);
+#endif
 }
 
 EXPORT void *
 MemCallocDebugDirect(size_t Number, size_t Size, const char *SourceFile, unsigned long SourceLine)
 {
+#if _BONGO_SYSTEM_MALLOC
+    if (Size == 0) {
+        return calloc(1, 1);
+    } else {
+        return calloc(Number, Size);
+    }
+#else
     register MemPoolEntry *pEntry;
     register unsigned int size = Number * Size;
 
@@ -510,6 +525,7 @@ MemCallocDebugDirect(size_t Number, size_t Size, const char *SourceFile, unsigne
     }
 
     return(NULL);
+#endif
 }
 
 EXPORT void *
