@@ -1091,6 +1091,9 @@ LdapPassword(const char *Base, char *OldPassword, char *NewPassword,
         return FALSE;
     }
 
+#ifdef _SOLARIS_SDK
+    {
+#else
     if (LdapExtension("1.3.6.1.4.1.4203.1.11.1")) {
         /* This method uses the modify password extended operation.
            See RFC 3062 for details. */
@@ -1205,6 +1208,7 @@ LdapPassword(const char *Base, char *OldPassword, char *NewPassword,
         return TRUE;
 #endif
     } else {
+#endif
         /* This is the old-school method.
            Hopefully the directory performs some sort of encryption for us. */
         if (OldPassword && OldPassword[0] && !LdapVerify(Base, OldPassword)) {
