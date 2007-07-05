@@ -433,7 +433,7 @@ AC_MSG_CHECKING([for Apache module directory])
 AC_MSG_RESULT([$APACHE_MOD_DIR])
 
 htl10n_jsfiles=
-for lang in en `sed -e "/^#/d" -e "s/#.*//" "$srcdir/po/LINGUAS"`; do
+for lang in en `cd po && ls *.po | sed s/.po$//`; do
 	htl10n_jsfiles="$htl10n_jsfiles src/www/l10n/$lang.js"
 done
 AC_SUBST(htl10n_jsfiles)
@@ -628,7 +628,6 @@ init/bongo.init.sles9
 init/bongo.init.suse10
 init/http-bongo.solaris-smf
 init/svc-bongo.solaris-smf
-po/Makefile.in
 src/agents/alarm/Makefile
 src/agents/antispam/Makefile
 src/agents/avirus/Makefile
@@ -691,6 +690,7 @@ src/www/Makefile
 src/www/bongo.conf
 zoneinfo/Makefile
 man/Makefile
+po/Makefile
 ])
 
 info_bongo_version=`$AWK '{ if ($ 1 == "#define" && $ 2 == "BONGO_BUILD_VER") print $ 3; }' < "./include/bongo-buildinfo.h" | tr -d '"'`

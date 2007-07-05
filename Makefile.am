@@ -145,7 +145,8 @@ include_subdirs :=				\
 	src/apps/storetool/demo			\
 	src/www					\
 	zoneinfo				\
-	man
+	man						\
+	po
 
 #	src/apps/migrate
 
@@ -212,6 +213,7 @@ include src/apps/storetool/demo/Bongo.rules
 include src/www/Bongo.rules
 include zoneinfo/Bongo.rules
 include man/Bongo.rules
+include po/Bongo.rules
 
 update-makefiles:
 	@for dir in $(include_subdirs) ; do \

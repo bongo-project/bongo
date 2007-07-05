@@ -1,0 +1,21 @@
+i18n in Bongo
+=============
+
+Small guide for i18n in Bongo:
+
+bongo.pot contains the canonical source of translatable strings.
+This can be updated with "make bongo.pot".
+
+To make a new translation, make sure bongo.pot is up-to-date, and then
+`cp bongo.pot $lang.po`, where $lang is the two-letter language code,
+Eg. fr, de, ru.. Once you've copied this, translate each string as normal.
+
+To update a .po file, simply execute "make update-po". This will update
+bongo.pot, and then merge any new changes into all the po files.
+
+To create the binary gmo files, simply call "make update-gmo". This will not
+alter any pot or po file.
+
+Note: See also http://bongo-project.org/Guides/Translating_Bongo
+
+ -- Jonny Lamb <jonnylamb@jonnylamb.com>  Thu, 05 Jul 2007 21:42:33 +0100
