@@ -469,6 +469,14 @@ case "$host" in
     PTHREAD_CFLAGS="-I/System/Library/Frameworks/CoreServices.framework/Frameworks/CarbonCore.framework/Headers"
     CFLAGS="$CFLAGS -DMACOSX -I/opt/local/include"
   ;;
+  *solaris*)
+    if test "x$GCC" = "xyes"; then
+      PTHREAD_CFLAGS="-pthreads"
+    else
+      PTHREAD_CFLAGS="-mt"
+    fi
+    PTHREAD_LIBS="-pthread -lpthread"
+  ;;
 esac
 AC_MSG_CHECKING(pthread cflags)
 AC_MSG_RESULT($PTHREAD_CFLAGS)
