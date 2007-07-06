@@ -7,8 +7,10 @@ bongo.pot contains the canonical source of translatable strings.
 This can be updated with "make bongo.pot".
 
 To make a new translation, make sure bongo.pot is up-to-date, and then
-`cp bongo.pot $lang.po`, where $lang is the two-letter language code,
-Eg. fr, de, ru.. Once you've copied this, translate each string as normal.
+`msginit -o $lang.po` when in the po/ directory, where $lang is the
+two-letter language code, Eg. fr, de, ru.. Note, that if no output
+file is given, it will create a po file based on your locale setting.
+Once you've created this file, translate each string as normal.
 
 To update a .po file, simply execute "make update-po". This will update
 bongo.pot, and then merge any new changes into all the po files.
