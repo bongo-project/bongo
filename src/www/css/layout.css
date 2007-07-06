@@ -1214,3 +1214,9 @@ pre {
   padding-top: 50%;
   text-align: center;
 }
+
+#preferences-container
+{
+    padding-right: 2em;
+    padding-left: 2em;
+}

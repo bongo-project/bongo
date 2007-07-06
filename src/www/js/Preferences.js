@@ -310,10 +310,11 @@ Dragonfly.Preferences.Editor.save = function ()
 {
     var d = Dragonfly;
     
-    // TODO: Set values from form.
     d.setCurrentTzid (d.tzselector.getTzid());
     d.Preferences.prefs.mail.from = $('from').value;
     d.Preferences.save();
+    
+    this.dispose();
 }
 
 Dragonfly.Preferences.Editor.dispose = function ()
