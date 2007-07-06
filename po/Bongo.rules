@@ -31,7 +31,7 @@ update-gmo: ${GMOFILES}
 update-po: ${POFILES}-update update-gmo
 
 %.gmo:
-	msgfmt -o $@ $<
+	msgfmt -o $@ $*.po
 
 %.po-update: bongo.pot
 	msgmerge $*.po po/bongo.pot -o $*.po;
