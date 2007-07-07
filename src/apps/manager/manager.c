@@ -14,6 +14,7 @@
 #include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <getopt.h>
 
 #include <libintl.h>
@@ -397,12 +398,13 @@ SignalHandler(int signo)
 static int
 Lock(BOOL force)
 {
-    char pid[20];
     int fd;
     int remaining;
     int written;
     int ret;
     int mode;
+    pid_t pid;
+    char pidstr[20];
     
     mode = O_CREAT | O_WRONLY;
     if (!force) {
@@ -414,17 +416,20 @@ Lock(BOOL force)
         return -1;
     }
 
-    remaining = snprintf(pid, sizeof(pid), "%d\n", getpid());
-    if (remaining > (int)sizeof(pid)) {
+    pid = getpid();
+    if ((unsigned long)pid > 999999) {
+	/* pid < 0 || pid > pidmax ceiling on Solaris */
         fprintf(stderr, _("bongo-manager: unlikely pid, Exiting\n"));
         exit(1);
     }
 
+    snprintf(pidstr, sizeof(pidstr), "%dl\n", pid);
+    remaining = sizeof(pidstr);
     ret = 0;
     written = 0;
     
     while (remaining > 0) {
-        ret = write(fd, pid + written, remaining);
+        ret = write(fd, pidstr + written, remaining);
         if (ret != -1) {
             remaining -= ret;
             written += ret;
@@ -596,7 +601,7 @@ StartSlapd(BOOL killExisting)
                     return 1;
                 }
             } else {
-                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %d\n"), pid);
+                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %dl\n"), pid);
                 fprintf(stderr, _("bongo-manager: if this is definitely the bongo slapd, you can run with -e to kill it\n"));
                 return 1;
             }
