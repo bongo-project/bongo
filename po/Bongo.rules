@@ -2,7 +2,7 @@
 POFILES = po/fr.po
 GMOFILES=$(POFILES:.po=.gmo)
 
-dist_noinst_DATA += $(POFILES) \
+dist_noinst_DATA += po/fr.po \
 	po/bongo.pot \
 	po/POTFILES.in
 
