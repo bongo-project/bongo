@@ -275,10 +275,10 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
     if (! StoreAgent.installMode) {
         // MsgFindUserStore makes MDB calls and thus can't be used in installmode.
         root = MsgFindUserStore(user, StoreAgent.store.rootDir);
-        n = snprintf(path, len, "%s/%s/", root, user);   
     } else {
-        n = snprintf(path, len, "%s/%s/", StoreAgent.store.rootDir, user);
+        root = StoreAgent.store.rootDir;
     }    
+    n = snprintf(path, len, "%s/%s/", root, user);
     path[len] = 0;
     path[n-1] = 0;
 
@@ -1190,7 +1190,7 @@ cleanup:
 CCode
 SelectUser(StoreClient *client, char *user, char *password, int nouser)
 {
-    MDBValueStruct *vs;
+    MDBValueStruct *vs = NULL;
     unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
     CCode ccode = -1;
     struct sockaddr_in serv;
@@ -1245,7 +1245,9 @@ success:
     client->flags |= STORE_CLIENT_FLAG_IDENTITY;
 
 finish:
-    if (! StoreAgent.installMode) MDBDestroyValueStruct(vs);
+    if (vs) {
+        MDBDestroyValueStruct(vs);
+    }
     return ccode;
 }
 
