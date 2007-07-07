@@ -30,6 +30,39 @@ XPL_BEGIN_C_LINKAGE
 #define MEMMGR_API_VERSION          1
 #define MEMMGR_API_COMPATIBILITY    1
 
+/* Alignment macros */
+#if defined(TARGET_CPU_68K) || defined(__CFM68K__) || defined(m68k) || defined(_M_M68K)
+#define ALIGNMENT 2
+#elif defined(__ppc__) || defined(__POWERPC__) || defined(_POWER)
+#define ALIGNMENT 2
+#elif defined(__amd64__)
+#define ALIGNMENT 4
+#elif defined(i386) || defined(__i386__)
+#define ALIGNMENT 4
+#elif defined(__alpha) || defined(__alpha__)
+#define ALIGNMENT 8
+#elif defined(__hppa__)
+#define ALIGNMENT 4
+#elif defined(sparc) || defined(__sparc)
+#define ALIGNMENT 4
+#elif defined(__s390__)
+#define ALIGNMENT 4
+#elif defined(__mips)
+#ifdef __sgi
+#include <sgidefs.h>
+#endif
+#ifdef _MIPS_SZPTR
+#define ALIGNMENT (_MIPS_SZPTR/8)
+#else
+#define ALIGNMENT 4
+#endif
+#else
+/* default */
+#define ALIGNMENT 4
+#endif
+
+#define ALIGN_SIZE(s, a) (((s) + a - 1) & ~(a - 1))
+
 typedef BOOL (*PoolEntryCB)(void *Buffer, void *ClientData);
 
 typedef struct _MemStatistics {
@@ -158,7 +191,11 @@ struct _BongoMemChunk {
 
     BongoMemChunk *next;
 
-    uint8_t data[1];
+    /* Force alignment */
+    union {
+        double dummy;
+        uint32_t data[1];
+    };
 };
 
 typedef struct _BongoMemStack {
@@ -182,10 +219,13 @@ void BongoMemStackPop(BongoMemStack *stack, void *obj);
 
 void BongoMemStackReset(BongoMemStack *stack);
 
-#define BONGO_MEMSTACK_ALLOC(stack, size)                                  \
+#define BONGO_MEMSTACK_ALLOC(stack, size)                                 \
+    BONGO_MEMSTACK_ALLOC_ALIGNED(stack, ALIGN_SIZE(size, ALIGNMENT))
+
+#define BONGO_MEMSTACK_ALLOC_ALIGNED(stack, size)                         \
 (                                                                         \
     (stack)->chunk->curptr + size > (stack)->chunk->endptr                \
-        ? BongoMemStackAlloc((stack), size)                                \
+        ? BongoMemStackAlloc((stack), size)                               \
         : ((stack)->chunk->curptr += size, (stack)->chunk->curptr - size) \
 )
 

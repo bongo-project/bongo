@@ -30,38 +30,6 @@
 
 #if !defined(LIBC)
 
-#if defined(TARGET_CPU_68K) || defined(__CFM68K__) || defined(m68k) || defined(_M_M68K)
-#define ALIGNMENT 2
-#elif defined(__ppc__) || defined(__POWERPC__) || defined(_POWER)
-#define ALIGNMENT 2
-#elif defined(__amd64__)
-#define ALIGNMENT 4
-#elif defined(i386) || defined(__i386__)
-#define ALIGNMENT 4
-#elif defined(__alpha) || defined(__alpha__)
-#define ALIGNMENT 8
-#elif defined(__hppa__)
-#define ALIGNMENT 4
-#elif defined(sparc) || defined(__sparc)
-#define ALIGNMENT 4
-#elif defined(__s390__)
-#define ALIGNMENT 4
-#elif defined(__mips)
-#ifdef __sgi
-#include <sgidefs.h>
-#endif
-#ifdef _MIPS_SZPTR
-#define ALIGNMENT (_MIPS_SZPTR/8)
-#else
-#define ALIGNMENT 4
-#endif
-#else
-/* mostly safe default */
-#define ALIGNMENT 4
-#endif
-
-#define ALIGN_SIZE(s, a) (((s) + a - 1) & ~(a - 1))
-
 #define PLATFORM_ALLOC_POOL(pool, s) malloc((s))
 #define PLATFORM_ALLOC_PRIVATE(pool, s) malloc((s))
 #define PLATFORM_ALLOC_EXTREME(s) malloc((s))
@@ -71,8 +39,6 @@
 #else
 
 #include <library.h>
-
-#define ALIGN_SIZE(s, a) (s)
 
 #define PLATFORM_ALLOC_POOL(pool, s) AllocSleepOK((s), (pool).resourceTag, NULL)
 #define PLATFORM_ALLOC_PRIVATE(pool, s) AllocSleepOK((s), (pool)->resourceTag, NULL)
