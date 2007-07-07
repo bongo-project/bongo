@@ -66,12 +66,6 @@
 #define CONNMGR_REQ_STORE_NAME              2
 #define CONNMGR_REQ_CHECK_NAME              3
 
-/* I made sure this is defined in xplschema.h --Ryan 
-   We should remove it from here at some point. */
-#if !defined(A_INTERNET_EMAIL_ADDRESS)
-#define A_INTERNET_EMAIL_ADDRESS            "Internet EMail Address"
-#endif
-
 enum LibraryStates {
     LIBRARY_LOADED = 0, 
     LIBRARY_INITIALIZING, 
@@ -166,6 +160,10 @@ typedef struct _ConnectionManagerCommand {
     unsigned long counter;
     unsigned char name[1];
 } ConnectionManagerCommand;
+
+/* private */
+BOOL
+MsgGetUpdateStatus(char *record, int record_length);
 
 /* I tried to remove this, but it's still needed :(
  * Python server for Dragonfly needs a way to authenticate itself
@@ -638,7 +636,6 @@ MsgGetParentAttribute(const unsigned char *userDN, unsigned char *attribute, MDB
 {
     char configDn[MDB_MAX_OBJECT_CHARS + 1];
     unsigned long index;
-    MDBValueStruct *v;
     int result = 0;
 
     configDn[0] = '\0';
@@ -646,7 +643,7 @@ MsgGetParentAttribute(const unsigned char *userDN, unsigned char *attribute, MDB
     if (MsgGetUserSettingsDN(userDN, configDn, vOut, FALSE)) {
         if (MDBRead(configDn, MSGSRV_A_PARENT_OBJECT, vOut) > 0) {
             index = vOut->Used - 1;
-            if (MDBRead(v->Value[index], attribute, vOut)>0) {
+            if (MDBRead(vOut->Value[index], attribute, vOut)>0) {
                 MDBFreeValue(index, vOut);
                 result = vOut->Used;
             } else {

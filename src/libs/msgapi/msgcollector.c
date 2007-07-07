@@ -355,7 +355,7 @@ ImportJson(BongoArray *objects,
         if (BongoJsonArrayGetObject(objects, i, &event) == BONGO_JSON_OK) {
             BongoCalObject *cal;
             EventData *evtData = NULL;
-            int res;
+            int res = MSG_COLLECT_OK;
             char *guid = NULL;
             BOOL import = TRUE;
 
