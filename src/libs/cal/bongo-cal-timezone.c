@@ -929,7 +929,7 @@ CacheSystemTimezones(const char *cachedir)
     if (!f) {
         closedir(dir);
         printf("libbongocal: Couldn't open temporary file %s\n", filename);
-        return;
+        return FALSE;
     }
 
     from = BongoCalTimeNewFromUint64(0, FALSE, NULL);
