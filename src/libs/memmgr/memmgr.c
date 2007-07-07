@@ -30,6 +30,38 @@
 
 #if !defined(LIBC)
 
+#if defined(TARGET_CPU_68K) || defined(__CFM68K__) || defined(m68k) || defined(_M_M68K)
+#define ALIGNMENT 2
+#elif defined(__ppc__) || defined(__POWERPC__) || defined(_POWER)
+#define ALIGNMENT 2
+#elif defined(__amd64__)
+#define ALIGNMENT 4
+#elif defined(i386) || defined(__i386__)
+#define ALIGNMENT 4
+#elif defined(__alpha) || defined(__alpha__)
+#define ALIGNMENT 8
+#elif defined(__hppa__)
+#define ALIGNMENT 4
+#elif defined(sparc) || defined(__sparc)
+#define ALIGNMENT 4
+#elif defined(__s390__)
+#define ALIGNMENT 4
+#elif defined(__mips)
+#ifdef __sgi
+#include <sgidefs.h>
+#endif
+#ifdef _MIPS_SZPTR
+#define ALIGNMENT (_MIPS_SZPTR/8)
+#else
+#define ALIGNMENT 4
+#endif
+#else
+/* mostly safe default */
+#define ALIGNMENT 4
+#endif
+
+#define ALIGN_SIZE(s, a) (((s) + a - 1) & ~(a - 1))
+
 #define PLATFORM_ALLOC_POOL(pool, s) malloc((s))
 #define PLATFORM_ALLOC_PRIVATE(pool, s) malloc((s))
 #define PLATFORM_ALLOC_EXTREME(s) malloc((s))
@@ -39,6 +71,8 @@
 #else
 
 #include <library.h>
+
+#define ALIGN_SIZE(s, a) (s)
 
 #define PLATFORM_ALLOC_POOL(pool, s) AllocSleepOK((s), (pool).resourceTag, NULL)
 #define PLATFORM_ALLOC_PRIVATE(pool, s) AllocSleepOK((s), (pool)->resourceTag, NULL)
@@ -194,7 +228,7 @@ struct {
                 {   register XplThreadID threadID;                            \
                     threadID = XplSetThreadGroupID(MemManager.id.group);      \
                     (entry) = (MemPoolEntry *)PLATFORM_ALLOC_POOL((pool),     \
-                                    (pool).allocSize + sizeof(MemPoolEntry)); \
+                                    (pool).allocSize + ALIGN_SIZE(sizeof(MemPoolEntry), ALIGNMENT)); \
                     XplSetThreadGroupID(threadID);                            \
                 }                                                             \
                 if ((entry) != NULL) {                                        \
@@ -247,7 +281,7 @@ struct {
                 {   register XplThreadID threadID;                            \
                     threadID = XplSetThreadGroupID(MemManager.id.group);      \
                     (entry) = (MemPoolEntry *)PLATFORM_ALLOC_PRIVATE((pool),  \
-                                    (pool)->allocSize + sizeof(MemPoolEntry));\
+                                    (pool)->allocSize + ALIGN_SIZE(sizeof(MemPoolEntry), ALIGNMENT));\
                     XplSetThreadGroupID(threadID);                            \
                 }                                                             \
                 if ((entry) != NULL) {                                        \
@@ -322,13 +356,13 @@ struct {
                 XplSignalLocalSemaphore(MemManager.control.poolExtreme.sem);  \
                 {   register XplThreadID threadID;                            \
                     threadID = XplSetThreadGroupID(MemManager.id.group);      \
-                    (entry) = (MemPoolEntry *)PLATFORM_ALLOC_EXTREME((count) + sizeof(MemPoolEntry));   \
+                    (entry) = (MemPoolEntry *)PLATFORM_ALLOC_EXTREME((count) + ALIGN_SIZE(sizeof(MemPoolEntry), ALIGNMENT));   \
                     XplSetThreadGroupID(threadID);                            \
                 }                                                             \
                 if ((entry) != NULL) {                                        \
                     (entry)->control = &MemManager.control.poolExtreme;       \
                     (entry)->flags = MemManager.control.poolExtreme.defaultFlags;   \
-                    (entry)->allocSize = (count);                             \
+                    (entry)->allocSize = ALIGN_SIZE(count, ALIGNMENT);                             \
                     (entry)->suffix[0] = 0;                                   \
                     (entry)->suffix[1] = 0;                                   \
                     (entry)->suffix[2] = 0;                                   \
@@ -389,7 +423,7 @@ MemCallocDirect(size_t Number, size_t Size)
                 {   register XplThreadID threadID;
                     threadID = XplSetThreadGroupID(MemManager.id.group);
                     (pEntry) = (MemPoolEntry *)PLATFORM_ALLOC_POOL((MemManager.control.pool128),
-                                    (MemManager.control.pool128).allocSize + sizeof(MemPoolEntry));
+                                    (MemManager.control.pool128).allocSize + ALIGN_SIZE(sizeof(MemPoolEntry), ALIGNMENT));
                     XplSetThreadGroupID(threadID);
                 }
                 if ((pEntry) != NULL) {
@@ -1479,12 +1513,14 @@ FillMemoryPool(MemPoolControl *PControl)
 #endif
 
         if (pool->eCount.minimum && !(pool->defaultFlags & PENTRY_FLAG_EXTREME_ENTRY)) {
-            count = pool->allocSize + sizeof(MemPoolEntry);
+            count = pool->allocSize + ALIGN_SIZE(sizeof(MemPoolEntry), ALIGNMENT);
 
+#if 0
             /*    Align the base for each pool entry on a 32-bit boundary.    */
             if (count % sizeof(unsigned long)) {
                 count += sizeof(unsigned long) - (count % sizeof(unsigned long));
             }
+#endif
 
             pool->base.start = (MemPoolEntry *)PLATFORM_ALLOC_PRIVATE(pool, pool->eCount.minimum * count);
             if (pool->base.start != NULL) {
@@ -1692,8 +1728,11 @@ EXPORT void *
 MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int MinAllocCount, unsigned int MaxAllocCount, BOOL Dynamic, BOOL Temporary, PoolEntryCB allocCB, PoolEntryCB freeCB, void *clientData)
 {
     unsigned char *identity;
+    size_t allocSize;
     XplThreadID threadID;
     MemPoolControl *pool;
+
+    allocSize = ALIGN_SIZE(AllocationSize, ALIGNMENT);
 
     if (name) {
         identity = (unsigned char *)PLATFORM_ALLOC(strlen(MemManager.agentName) + strlen(name) + 2);
@@ -1703,7 +1742,7 @@ MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int Min
         identity = NULL;
     }
 
-    if ((identity != NULL) && (AllocationSize > 0) && (MaxAllocCount > 0)) {
+    if ((identity != NULL) && (allocSize > 0) && (MaxAllocCount > 0)) {
         XplWaitOnLocalSemaphore(MemManager.sem.pools);
         pool = MemManager.control.poolPrivate;
         while (pool != NULL) {
@@ -1713,9 +1752,9 @@ MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int Min
 
             pool = pool->next;
         }
-        XplSignalLocalSemaphore(MemManager.sem.pools);
 
         if (pool != NULL) {
+            XplSignalLocalSemaphore(MemManager.sem.pools);
             if (!(pool->flags & PCONTROL_FLAG_INITIALIZED)) {
                 if (Dynamic) {
                     pool->flags = PCONTROL_FLAG_DYNAMIC;
@@ -1729,9 +1768,9 @@ MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int Min
                     pool->flags |= PCONTROL_FLAG_DO_NOT_SAVE;
                 }
 
-                if (pool->allocSize != AllocationSize) {
+                if (pool->allocSize != allocSize) {
                     XplConsolePrintf("MemMGR: Resetting allocation size for \"%s\".\r\n", pool->name);
-                    pool->allocSize = AllocationSize;
+                    pool->allocSize = allocSize;
                     pool->flags |= PCONTROL_FLAG_CONFIG_CHANGED;
                 }
 
@@ -1740,7 +1779,6 @@ MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int Min
                 pool->allocCB = allocCB;
                 pool->freeCB = freeCB;
                 pool->clientData = clientData;
-
                 FillMemoryPool(pool);
             } else {
                 return(NULL);
@@ -1765,7 +1803,7 @@ MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int Min
 
                 pool->name = strdup(identity);
 
-                pool->allocSize = AllocationSize;
+                pool->allocSize = allocSize;
                 pool->defaultFlags = PENTRY_FLAG_PRIVATE_ENTRY;
 
                 pool->eCount.minimum = MinAllocCount;
@@ -1775,21 +1813,19 @@ MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int Min
                 pool->freeCB = freeCB;
                 pool->clientData = clientData;
 
-                XplWaitOnLocalSemaphore(MemManager.sem.pools);
-
                 FillMemoryPool(pool);
 
                 pool->previous = NULL;
                 pool->next = MemManager.control.poolPrivate;
                 if (MemManager.control.poolPrivate != NULL) {
-                    MemManager.control.poolPrivate = pool;
+                    MemManager.control.poolPrivate->previous = pool;
                 }
                 MemManager.control.poolPrivate = pool;
 
-                XplSignalLocalSemaphore(MemManager.sem.pools);
             } else {
                 XplConsolePrintf("MemMGR: Unable to allocate %d bytes for private pool \"%s\".\r\n", sizeof(MemPoolControl), identity);
             }
+            XplSignalLocalSemaphore(MemManager.sem.pools);
         }
 
         PLATFORM_ALLOC_FREE(identity);
@@ -2095,7 +2131,7 @@ LoadManagerConfiguration(const unsigned char *AgentName)
                     ptr = strchr(cur, ' ');
                     if (ptr != NULL) {
                         *ptr = '\0';
-                        pControl.allocSize = atol(cur);
+                        pControl.allocSize = ALIGN_SIZE(atol(cur), ALIGNMENT);
                         *ptr = ' ';
 
                         cur = ptr + 1;
@@ -2492,7 +2528,7 @@ InternalPoolInit(MemPoolControl *PControl, const unsigned char *Name, unsigned l
     }
 
     PControl->name = strdup(Name);
-    PControl->allocSize = AllocSize;
+    PControl->allocSize = ALIGN_SIZE(AllocSize, ALIGNMENT);
     PControl->eCount.maximum = MaximumEntries;
 
     return;

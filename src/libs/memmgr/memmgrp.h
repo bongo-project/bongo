@@ -152,7 +152,10 @@ typedef struct _MemPoolEntry {
         unsigned long line;             /* Source code line */
     } source;
 
-    unsigned char suffix[4];            /* Base pointer for allocations */
+    union {
+        double dummy;                       /* Force appropriate alignment */
+        unsigned char suffix[4];            /* Base pointer for allocations */
+    }
 } MemPoolEntry;
 
 typedef struct _MemPoolControl {
