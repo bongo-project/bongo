@@ -1274,8 +1274,16 @@ NMAPReadConfigFile(const unsigned char *file, unsigned char **output)
     char buffer[CONN_BUFSIZE + 1];
     CCode ccode;
     BOOL retcode = FALSE;
+    int tries;
 
-    conn = NMAPConnect("127.0.0.1", NULL);
+    /* FIXME: caller should be notified when store is ready */
+    for (tries = 0; tries < 5; tries++) {
+        conn = NMAPConnect("127.0.0.1", NULL);
+        if (conn) {
+            break;
+        }
+        XplDelay(1000);
+    }
     if (!conn) {
         printf("could not connect to store\n");
         return FALSE;
