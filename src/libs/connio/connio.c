@@ -78,7 +78,7 @@ __gnutls_new(bongo_ssl_context *context, gnutls_connection_end_t con_end) {
         /* initialize the dh bits */
         gnutls_dh_set_prime_bits(session, 1024);
     } else {
-        gnutls_certificate_credentials_t xcred;
+        gnutls_certificate_credentials_t xcred = NULL;
         const int cert_type_priority[3] = { GNUTLS_CRT_X509, GNUTLS_CRT_OPENPGP, 0 };
 
         /* defaults are ok here */
@@ -425,7 +425,6 @@ ConnEncrypt(Connection *conn, bongo_ssl_context *context)
     int ccode;
     register Connection *c = conn;
 
-    c->ssl.enable = FALSE;
     if ((c->ssl.context = __gnutls_new(context, GNUTLS_CLIENT)) != NULL) {
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
@@ -440,6 +439,7 @@ ConnEncrypt(Connection *conn, bongo_ssl_context *context)
         gnutls_deinit(c->ssl.context);
         c->ssl.context = NULL;
     }
+    c->ssl.enable = FALSE;
 
     return(-1);
 }
@@ -466,7 +466,6 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
             CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
             return(TRUE);
         }
-        printf("%s\n", gnutls_strerror(ccode));
         gnutls_deinit(c->ssl.context);
         c->ssl.enable = FALSE;
         c->ssl.context = NULL;
@@ -513,6 +512,10 @@ void
 ConnFree(Connection *Conn)
 {
     register Connection *c = Conn;
+
+    if (!c) {
+        return;
+    }
 
     if (c->socket != -1) {
         CONN_TCP_CLOSE(c);
