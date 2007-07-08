@@ -13,9 +13,9 @@ po/clean: clean
 
 po/install: po/all
 	for file in $(GMOFILES); do \
-		lang=`echo $$file | sed -e 's,.*/,,'`; \
-		$(MKINSTALLDIRS) $(localedir)/$$lang/LC_MESSAGES/; \
-		$(INSTALL) -m 0644 $$file $(localedir)/$$lang/LC_MESSAGES/bongo.gmo; \
+		lang=`echo $$file | sed -e 's,.*/,,' | sed -e 's/.gmo//'`; \
+		$(MKINSTALLDIRS) $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/; \
+		$(INSTALL) -m 0644 $$file $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/bongo.gmo; \
 	done
 
 bongo.pot:
