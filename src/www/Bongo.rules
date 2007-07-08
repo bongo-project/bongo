@@ -319,7 +319,6 @@ pkgpythonhawkeye_PYTHON :=			\
 	src/www/bongo/hawkeye/RootView.py	\
 	src/www/bongo/hawkeye/Server.py		\
 	src/www/bongo/hawkeye/ServerView.py	\
-	src/www/bongo/hawkeye/SummaryView.py    \
 	src/www/bongo/hawkeye/UsersView.py
 
 hawkeyetplrootdir = $(htdocsdir)/hawkeye/root

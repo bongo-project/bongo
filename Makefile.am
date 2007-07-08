@@ -71,8 +71,7 @@ install-data-hook::
 
 SUBDIRS =			\
 	$(IMPORT_SUBDIRS)	\
-	import/log4c		\
-	po
+	import/log4c		
 
 doxygen/html:
 	if test "$(DOXYGEN)" != NO_DOXYGEN; then \
@@ -139,7 +138,6 @@ include_subdirs :=				\
 	src/apps/manager			\
 	src/apps/sendmail			\
 	src/apps/setup				\
-	src/apps/mdbtool			\
 	src/apps/queuetool			\
 	src/apps/storetool			\
 	src/apps/storetool/demo			\
@@ -205,7 +203,6 @@ include src/apps/config/Bongo.rules
 include src/apps/manager/Bongo.rules
 include src/apps/sendmail/Bongo.rules
 include src/apps/setup/Bongo.rules
-include src/apps/mdbtool/Bongo.rules
 # include src/apps/migrate/Bongo.rules
 include src/apps/queuetool/Bongo.rules
 include src/apps/storetool/Bongo.rules

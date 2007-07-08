@@ -14,7 +14,7 @@ my $search = sub {
 	$current = `grep -r "MDB" src/$dir/* | grep -v \.svn | wc -l`;
 	chomp $current;
 	my $percent = (100.0 / $original) * ($original - $current);
-	return sprintf("%12s %3d%%", $thing, $percent);
+	return sprintf("%12s %3d%% (%3d/%3d)", $thing, $percent, $current, $original);
 };
 
 my @agents_done = map { $search->("agents/$_", $_, $agents{$_}); } sort keys %agents;

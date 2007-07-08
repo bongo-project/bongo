@@ -38,8 +38,6 @@ class RootHandler(HawkeyeHandler):
 
     def index_GET(self, req, rp):
         # template ui
-        self.SetVariable("breadcrumb", "Desktop")
-        self.SetVariable("title", "Welcome!")
         self.SetVariable("dsktab", "selecteditem")
         # check ram free
         cm = self.memory("MemTotal:")
@@ -70,15 +68,6 @@ class RootHandler(HawkeyeHandler):
         self.SetVariable("sw_available", sw_available)
         # send the template
         return self.SendTemplate(req, rp, "index.tpl")
-
-    def test_GET(self, req, rp):
-        self.SetVariable("helloworld", "Hello World!")
-        self.SetVariable("escapeme", "If anything appears after this, I've been escaped. &nbsp;")
-        self.SetVariable("greenstyle", "color: green")
-        self.SetVariable("somethingtrue", 1)
-        self.SetVariable("somethinguntrue", 0)
-        self.SetVariable("testlist", [{ "say": "Hello!" }, { "say": "Bonjour!"}])
-        return self.SendTemplate(req, rp, "test.tpl")
 
     def login_GET(self, req, rp):
         global AuthMode

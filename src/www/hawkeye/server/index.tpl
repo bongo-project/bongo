@@ -1,5 +1,13 @@
 %(include|header.tpl)s
 
+<div class="breadcrumb"><p><a href="%(url|/)sagents">Agents</a> &#187 <a href="%(url|/)sserver/">Enable/Disable Agents</a></p></div>
+
+<h1>Enable/Disable Agents</h1>
+
+<div class="info" id="msg" tal:condition="info" tal:content="info">Something happened, but I'm not sure.</div>
+<div class="error" id="err" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
+<div class="info" id="opsuccess" tal:condition="opsuccess">Operation completed sucessfully.</div>
+
 <p>This page enables you to enable and disable specific agents during runtime for change at next restart.</p>
 <p>Please note that you <strong>must restart <c>bongo-manager</c></strong> for these changes to take effect, since they're only to do with the agent list at startup, not dynamic starting and stopping.</p>
 

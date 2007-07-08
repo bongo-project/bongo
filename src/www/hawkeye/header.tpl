@@ -3,7 +3,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
     <meta http-equiv="content-type" content="text/html; charset=iso-8859-1" />
-    <title>Bongo Web Administration - %(breadcrumb)s</title>
+    <title>Bongo Web Administration</title>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 	<link rel="icon" href="/img/bongo-favicon.ico" type="image/ico">
 	<link rel="icon" href="/img/bongo-favicon.png" type="image/png">
@@ -28,12 +28,5 @@
 </div>
 <div id="page">
 <div id="content">
-<div class="breadcrumb"><p>%(breadcrumb)s</p></div>
-
-<h1 tal:content="title">Untitled page</h1>
-
-<div class="info" id="msg" tal:condition="info" tal:content="info">Something happened, but I'm not sure.</div>
-<div class="error" id="err" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
-<div class="info" id="opsuccess" tal:condition="opsuccess">Operation completed sucessfully.</div>
 
 <!-- BEGIN HAWKYE CONTENT -->

@@ -300,6 +300,11 @@ StoreProcessIncomingMail(StoreClient *client,
     if (data.messageId) {
         info->data.mail.messageId = 
             BongoMemStackPushStr(&client->memstack, data.messageId);
+    } else {
+        info->data.mail.messageId =
+            BONGO_MEMSTACK_ALLOC(&client->memstack, MAXEMAILNAMESIZE + 1);
+        snprintf(info->data.mail.messageId, MAXEMAILNAMESIZE + 1, "%u.%llu@%s",
+            info->timeCreatedUTC, info->guid, StoreAgent.agent.officialName);
     }
     if (data.parentMessageId) {
         info->data.mail.parentMessageId = 

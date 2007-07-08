@@ -54,8 +54,6 @@ class AntispamHandler(HawkeyeHandler):
             self.SetVariable("success", 0)
             self.SetVariable("error", "Unable to read configuration information from the Bongo store. Are you logged in as a user with administrative permissions?")
 
-        self.SetVariable("breadcrumb", "Agents &#187 Antispam")
-        self.SetVariable("title", "Antispam")
         self.SetVariable("agntab", "selecteditem")
 
         return self.SendTemplate(req, rp, "index.tpl")

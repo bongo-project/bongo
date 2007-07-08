@@ -657,7 +657,6 @@ src/apps/admin/Makefile
 src/apps/config/Makefile
 src/apps/sendmail/Makefile
 src/apps/backup/Makefile
-src/apps/mdbtool/Makefile
 src/apps/queuetool/Makefile
 src/apps/storetool/Makefile
 src/apps/storetool/demo/Makefile
