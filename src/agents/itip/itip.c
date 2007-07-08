@@ -26,7 +26,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -394,18 +393,6 @@ ItipAgentServer(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
-    MDBValueStruct *config;
-
-    config = MDBCreateValueStruct(ItipAgent.agent.directoryHandle, 
-                                  MsgGetServerDN(NULL));
-    if (config) {
-        /* Read your agent's configuration here */
-    } else {
-        return FALSE;
-    }
-
-    MDBDestroyValueStruct(config);
-
     return TRUE;
 }
 

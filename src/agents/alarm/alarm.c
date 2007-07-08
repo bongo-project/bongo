@@ -240,7 +240,6 @@ SendAlarmEmail(QueueClient *qclient, AlarmInfo *alarm)
 static void 
 AlarmLoop(void *ignored)
 {
-    //MDBValueStruct *vs;
     int i;
     uint64_t start;
     uint64_t end;
@@ -356,20 +355,6 @@ AlarmLoop(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
-#if 0
-    MDBValueStruct *config;
-
-    config = MDBCreateValueStruct(Alarm.agent.directoryHandle, 
-                                  MsgGetServerDN(NULL));
-    if (config) {
-        /* Read your agent's configuration here */
-    } else {
-        return FALSE;
-    }
-
-    MDBDestroyValueStruct(config);
-#endif
-
     // Since this agent doesn't read any config for the moment,
     // just return true (we don't need/want to depend on MDB).
     return TRUE;
