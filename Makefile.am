@@ -71,8 +71,7 @@ install-data-hook::
 
 SUBDIRS =			\
 	$(IMPORT_SUBDIRS)	\
-	import/log4c		\
-	po
+	import/log4c		
 
 doxygen/html:
 	if test "$(DOXYGEN)" != NO_DOXYGEN; then \
