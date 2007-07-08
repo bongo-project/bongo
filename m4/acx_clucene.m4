@@ -45,7 +45,6 @@ AC_LANG(C++)
 
   clucene_incdirs="/usr/include /usr/local/include /opt/sfw/include /opt/csw/include /usr/pkg/include"
   clucene_libdirs="/usr/lib /usr/local/lib /opt/sfw/lib /opt/csw/lib /usr/pkg/lib"
-  clucene_alldirs="$clucene_libdirs $clucene_incdirs"
 
   if test "$ac_clucene_incdir" = "no"; then
       AC_FIND_FILE(CLucene/StdHeader.h, $clucene_incdirs, ac_clucene_incdir)
@@ -55,6 +54,7 @@ AC_LANG(C++)
       AC_FIND_FILE(libclucene.so, $clucene_libdirs, ac_clucene_libdir)
   fi
 
+  clucene_alldirs="$ac_clucene_libdir $ac_clucene_incdir"
   AC_FIND_FILE(CLucene/clucene-config.h, $clucene_alldirs, ac_clucene_confdir)
   
   if test "x$ac_clucene_incdir" != "xno" -a "x$ac_clucene_libdir" != "xno" -a "x$ac_clucene_confdir" != "xno"; then
