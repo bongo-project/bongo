@@ -17,9 +17,7 @@ class AgentHandler(HawkeyeHandler):
         else:
             self.SetVariable("opsuccess", 0)
         
-        self.SetVariable("breadcrumb", "Agents")
         self.SetVariable("agntab", "selecteditem")
-        self.SetVariable("title", "Agents")
         return self.SendTemplate(req, rp, "index.tpl")
         
     def index_POST(self, req, rp):    

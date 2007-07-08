@@ -1,4 +1,13 @@
 %(include|header.tpl)s
+
+<div class="breadcrumb"><p><a href="%(url|/)sagents">Agents</a> &#187 <a href="%(url|/)santispam/">Antispam</a></p></div>
+
+<h1>Antispam</h1>
+
+<div class="info" id="msg" tal:condition="info" tal:content="info">Something happened, but I'm not sure.</div>
+<div class="error" id="err" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
+<div class="info" id="opsuccess" tal:condition="opsuccess">Operation completed sucessfully.</div>
+
 <p>
 <form method="post">
 <table cellpadding="1">
