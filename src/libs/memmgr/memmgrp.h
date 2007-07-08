@@ -155,7 +155,7 @@ typedef struct _MemPoolEntry {
     union {
         double dummy;                       /* Force appropriate alignment */
         unsigned char suffix[4];            /* Base pointer for allocations */
-    }
+    };
 } MemPoolEntry;
 
 typedef struct _MemPoolControl {
