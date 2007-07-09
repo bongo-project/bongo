@@ -138,7 +138,6 @@ CommandPass(void *param)
     unsigned char *pass;
     BOOL result;
     struct sockaddr_in nmap;
-    MDBValueStruct *vs;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 4;
@@ -155,18 +154,7 @@ CommandPass(void *param)
             ptr += 5;
             *pass++ = '\0';
 
-            vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-            if (vs) {
-                result = MsgFindObject(ptr, client->line, NULL, &nmap, vs);
-            } else {
-                return(ConnWrite(client->conn, MSG5001NOMEMORY, sizeof(MSG5001NOMEMORY) - 1));
-            }
-
-            if (result) {
-                result = MDBVerifyPassword(client->line, pass, vs);
-            }
-
-            MDBDestroyValueStruct(vs);
+            result = MsgAuthVerifyPassword(ptr, pass);
 
             if (result && (nmap.sin_addr.s_addr == MsgGetHostIPAddress())) {
                 return(ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1));

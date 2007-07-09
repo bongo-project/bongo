@@ -194,42 +194,28 @@ UnselectUser(AddressbookClient *client)
 static CCode
 SelectUser(AddressbookClient *client, char *user, char *password)
 {
-    MDBValueStruct *vs;
     int ret = -1;
-    
-    vs = MDBCreateValueStruct(AddressbookAgent.handle.directory, NULL);
-    if (!vs) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    
-    if (!MsgFindObject(user, client->dn, NULL, NULL, vs)) {
-        XplConsolePrintf("Couldn't find user object for %s\r\n", user);
+
+    if (MsgAuthFindUser(user) == FALSE) {
         if (IS_MANAGER(client)) {
             ret = ConnWriteStr(client->conn, MSG4224NOUSER);
         } else {
             ret = ConnWriteStr(client->conn, MSG3242BADAUTH);
             XplDelay(2000);
         }
-        goto finish;
+        return (ret);
     }
-    
-    ReadParentObject(client->dn, client->parentObject, vs);
-    
-    if (password && !MDBVerifyPassword(client->dn, password, vs)) {
+
+    if (password && !MsgAuthVerifyPassword(user, password)) {
         ret = ConnWriteStr(client->conn, MSG3242BADAUTH);
         XplDelay(2000);
-        goto finish;
+        return (ret);
     }
-    
     UnselectUser(client);
     
     BongoStrNCpy(client->user, user, sizeof(client->user));
     
-    ret = ConnWriteStr(client->conn, MSG1000OK);
-    
-finish:
-    MDBDestroyValueStruct(vs);
-    return ret;
+    return (ConnWriteStr(client->conn, MSG1000OK));
 }
 
 static CCode

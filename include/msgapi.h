@@ -28,6 +28,13 @@
 #include <msgftrs.h>
 #include <msgdate.h>
 
+// Auth functions
+
+EXPORT BOOL MsgAuthFindUser(const char *user);
+EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
+EXPORT BOOL MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword);
+EXPORT BOOL MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
+
 #define MSGSRV_LOCAL_SERVER                 NULL
 #define MSGSRV_SELECTED_CONTEXT             "."
 

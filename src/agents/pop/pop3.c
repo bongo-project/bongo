@@ -460,44 +460,20 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
 {
     BOOL result;
     struct sockaddr_in nmap;
-    MDBValueStruct *user;
 
-    user = MDBCreateValueStruct(POP3.directoryHandle, NULL);
-    if (user) {
-        result = MsgFindObject(username, client->dn, NULL, &nmap, user);
-    } else {
-        return(-1);
-    }
-
-    if (result) {
-        result = MDBVerifyPassword(client->dn, password, user);
-    } else {
+    if (MsgAuthFindUser(username) == FALSE) {
         Log(LOG_NOTICE, "Unknown user %s from host %s", username, LOGIP(client->conn->socketAddress));
-        MDBDestroyValueStruct(user);
         return(POP3_NMAP_USER_UNKNOWN);
     }
 
-    if (result) {
-        result = MsgGetUserFeature(client->dn, FEATURE_POP, NULL, NULL);
-    } else {
+    if (MsgAuthVerifyPassword(username, password) == FALSE) {
         XplSafeIncrement(POP3.stats.badPasswords);
         Log(LOG_NOTICE, "Incorrect password for user %s from host %s", username,
             LOGIP(client->conn->socketAddress));
-        MDBDestroyValueStruct(user);
-        return(POP3_NMAP_PASSWORD_INVALID);
     }
 
-    if (result) {
-        strcpy(client->user, user->Value[0]);
-    } else {
-        Log(LOG_NOTICE, "POP3 feature disabled on user %s account", username);
-        MDBDestroyValueStruct(user);
-        return(POP3_NMAP_FEATURE_DISABLED);
-    }
-
-    MDBDestroyValueStruct(user);
-
-    if ((client->store = NMAPConnectEx(NULL, &nmap, client->conn->trace.destination)) != NULL) {
+    MsgAuthGetUserStore(username, &nmap);
+    if ((client->store = NMAPConnectEx("127.0.0.1", NULL, client->conn->trace.destination)) != NULL) {
         result = NMAPAuthenticate(client->store, client->buffer, CONN_BUFSIZE);
     } else {
         Log(LOG_ERROR, "Cannot connect to Store Agent on host %s", LOGIP(nmap));

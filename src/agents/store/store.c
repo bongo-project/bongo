@@ -1190,10 +1190,7 @@ cleanup:
 CCode
 SelectUser(StoreClient *client, char *user, char *password, int nouser)
 {
-    MDBValueStruct *vs = NULL;
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
     CCode ccode = -1;
-    struct sockaddr_in serv;
     char buf[INET_ADDRSTRLEN+1];
 
     if (StoreAgent.installMode) {
@@ -1203,13 +1200,7 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
         goto finish;
     }
 
-    vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);
-    if (!vs) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-
-    if (!MsgFindObject(user, dn, NULL, &serv, vs)) {
-        XplConsolePrintf("Couldn't find user object for %s\r\n", user);
+    if (FALSE == MsgAuthFindUser(user)) {
         if (IS_MANAGER(client)) {
             ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
         } else {
@@ -1219,16 +1210,16 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
         goto finish;
     }
 
-    if (password && !MDBVerifyPassword(dn, password, vs)) {
+    if (password && !MsgAuthVerifyPassword(user, password)) {
         ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
         XplDelay(2000);
         goto finish;
     }
 
-    if (NULL == inet_ntop(serv.sin_family, &serv.sin_addr, buf, sizeof(buf))) {
-        ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-        goto finish;
-    }
+    // FIXME: I think we're supposed to refer to the correct store IP?
+    strncpy(buf, "127.0.0.1", INET_ADDRSTRLEN);
+    //ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
+    //goto finish;
 
 success:
     ccode = ConnWriteF(client->conn, "1000 %s\r\n", buf);
@@ -1245,9 +1236,6 @@ success:
     client->flags |= STORE_CLIENT_FLAG_IDENTITY;
 
 finish:
-    if (vs) {
-        MDBDestroyValueStruct(vs);
-    }
     return ccode;
 }
 

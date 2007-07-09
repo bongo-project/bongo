@@ -38,48 +38,13 @@
 static long
 UserAuthenticate(ImapSession *session, unsigned char **userName, unsigned char *password, struct sockaddr_in *storeAddress)
 {
-    MDBValueStruct *user;
-    char *tmpName;
-
-    user = MDBCreateValueStruct(Imap.directory.handle, NULL);
-    if (user) {
-        if (MsgFindObject(*userName, session->user.dn, NULL, storeAddress, user)) {
-            if (MsgGetUserFeature(session->user.dn, FEATURE_IMAP, NULL, NULL)) {
-                if (!password || MDBVerifyPassword(session->user.dn, password, user)) {
-                    
-                    if (strcmp(*userName, user->Value[0]) == 0) {
-                        MDBDestroyValueStruct(user);
-                        return(STATUS_CONTINUE);
-                    }
-
-                    tmpName = MemStrdup(user->Value[0]);
-                    MDBDestroyValueStruct(user);
-                    if (tmpName) {
-                        MemFree(*userName);
-                        *userName = tmpName;
-                        return(STATUS_CONTINUE);
-                    }
-                    return(STATUS_MEMORY_ERROR);
-                }
-
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_WRONG_PASSWORD, LOG_NOTICE, 
-                            0, *userName, password, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-                MDBDestroyValueStruct(user);
-                return(STATUS_WRONG_PASSWORD);
-            }
-                
-            LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_DISABLED_FEATURE, LOG_NOTICE, 
-                        0, *userName, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-            MDBDestroyValueStruct(user);
-            return(STATUS_FEATURE_DISABLED);
-        }
-
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_UNKNOWN_USER, LOG_NOTICE, 
-                    0, *userName, password, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-        MDBDestroyValueStruct(user);
+    if (MsgAuthFindUser(*userName) == FALSE)
         return(STATUS_USERNAME_NOT_FOUND);
-    }
-    return(STATUS_IDENTITY_STORE_FAILURE);
+
+    if (MsgAuthVerifyPassword(*userName, password) == FALSE)
+        return(STATUS_WRONG_PASSWORD);
+
+    return(STATUS_CONTINUE);
 }
 
 __inline static long
@@ -373,30 +338,21 @@ ImapCommandUserLookup(void *param)
 int
 ImapCommandUserVerify(void *param)
 {
-    MDBValueStruct *user;
     ImapSession *session = (ImapSession *)param;
-    unsigned char *userDn;
+    unsigned char *user;
     unsigned char *password;
     char *spacePtr;
 
-    userDn = session->command.buffer + strlen("USER VERIFY");
-    if (*userDn == ' ') {
-        userDn++;
-        spacePtr = strchr(userDn, ' ');
+    user = session->command.buffer + strlen("USER VERIFY");
+    if (*user == ' ') {
+        user++;
+        spacePtr = strchr(user, ' ');
         if (spacePtr) {
             password = spacePtr + 1;
-            if ((user = MDBCreateValueStruct(Imap.directory.handle, NULL)) != NULL) {
-                *spacePtr = '\0';
-                if (MDBVerifyPassword(userDn, password, user)) {
-                    *spacePtr = ' ';
-                    MDBDestroyValueStruct(user);
-                    return(SendOk(session, "USER VERIFY"));
-                }
-                *spacePtr = ' ';
-                MDBDestroyValueStruct(user);
-                return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_USERNAME_NOT_FOUND));
+            if (MsgAuthVerifyPassword(user, password)) {
+                return(SendOk(session, "USER VERIFY"));
             }
-            return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_IDENTITY_STORE_FAILURE));
+            return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_USERNAME_NOT_FOUND));
         }
     }
     return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_INVALID_ARGUMENT));

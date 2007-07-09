@@ -547,7 +547,6 @@ HandleConnection (void *param)
 
         case 'A':{             /* AUTH */
                 unsigned char *PW;
-                MDBValueStruct *User;
 
                 if (AllowAuth == FALSE) {
                     ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
@@ -594,38 +593,28 @@ HandleConnection (void *param)
                 PW = DecodeBase64 (Client->client.buffer);
                 DecodeBase64 (Reply);
 
-                User = MDBCreateValueStruct (SMTPDirectoryHandle, NULL);
-                if (MsgFindObject (Reply, Answer, NULL, NULL, User)) {
-                    if (!MDBVerifyPassword (Answer, PW, User)) {
+                if (MsgAuthFindUser(Reply)) {
+                    if (! MsgAuthVerifyPassword(Reply, PW)) {
                         ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                         Log(LOG_NOTICE, "Wrong password from user %s at host %s",
-                            User->Used ? User->Value[0] : Reply,
+                            Reply,
                             LOGIP(Client->client.conn->socketAddress));
                     } else {
                         Log(LOG_NOTICE, "Successful login for user %s at host %s",
-                            User->Value[0],
+                            Reply,
                             LOGIP(Client->client.conn->socketAddress));
-                        if (Client->AuthFrom == NULL) {
-                            Client->AuthFrom = MemStrdup (User->Value[0]);
-                            Client->State = STATE_AUTH;
-                            ConnWrite (Client->client.conn, "235 Authentication successful!\r\n", 32);
-                            IsAuthed = TRUE;
-                            IsTrusted = TRUE;
-                        } else {
-                            MemFree (Client->AuthFrom);
-                            Client->AuthFrom = MemStrdup (User->Value[0]);
-                            Client->State = STATE_AUTH;
-                            ConnWrite (Client->client.conn, "235 Authentication successful!\r\n", 32);
-                            IsAuthed = TRUE;
-                            IsTrusted = TRUE;
-                        }
+                        if (Client->AuthFrom != NULL) MemFree (Client->AuthFrom);
+                        Client->AuthFrom = MemStrdup (Reply);
+                        Client->State = STATE_AUTH;
+                        ConnWrite (Client->client.conn, "235 Authentication successful!\r\n", 32);
+                        IsAuthed = TRUE;
+                        IsTrusted = TRUE;
                     }
                 } else {
                     Log(LOG_NOTICE, "Unknown user %s at host %s", Reply,
                         LOGIP(Client->client.conn->socketAddress));
                     ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                 }
-                MDBDestroyValueStruct (User);
                 break;
             }
 
