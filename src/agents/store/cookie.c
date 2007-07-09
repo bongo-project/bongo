@@ -273,33 +273,29 @@ StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
 {
     CCode ccode;
     NLockStruct *lock = NULL;
-    MDBValueStruct *vs;
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
-    struct sockaddr_in serv;
+//    struct sockaddr_in serv;
 
     if (StoreAgent.installMode) {
         // don't allow cookie logins in installation mode. FIXME: better error message?
         return ConnWriteStr(client->conn, MSG3242BADAUTH);
     }
 
-    vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);
-    if (!vs) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-
-    if (!MsgFindObject(user, dn, NULL, &serv, vs)) {
+    if (! MsgAuthFindUser(user)) {
         XplConsolePrintf("Couldn't find user object for %s\r\n", user);
         ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
         XplDelay(2000);
         goto finish;
     }
 
+    // FIXME: This checks for a non-local store. For Bongo 1.0, we assume a single store.
+#if 0
     if (serv.sin_addr.s_addr != MsgGetHostIPAddress()) {
         /* non-local store, need to verify against user's server */
         
         ccode = TunnelAuthCookie(client, &serv, user, token, nouser);
         goto finish;
     }
+#endif
     
     if (NLOCK_ACQUIRED != ReadNLockAcquire(&lock, NULL, user, STORE_ROOT_GUID, 2000))
     {
@@ -328,7 +324,6 @@ finish:
         PurgeNLockRelease(lock);
         ReadNLockRelease(lock);
     }
-    MDBDestroyValueStruct(vs);
 
     return ccode;
 }

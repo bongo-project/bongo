@@ -113,19 +113,10 @@ ProcessEntry(void *clientp,
 static int
 StoreSocketInit()
 {
-    MDBValueStruct *vs;
     unsigned short port = BONGO_STORE_DEFAULT_PORT;
 
-    if (! StoreAgent.installMode) {
-        vs = MDBCreateValueStruct(StoreAgent.handle.directory, StoreAgent.server.dn);
-        if (vs) {
-            if (MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_PORT, vs) > 0) {
-                port = atol(vs->Value[0]);
-                MDBFreeValues(vs);
-            }
-            MDBDestroyValueStruct(vs);
-        }
-    }
+    // FIXME: previously, the port was configurable. However - we don't currently
+    // have a way of communicating that to Store Agents
 
     StoreAgent.nmapConn = ConnAlloc(FALSE);
     if (!StoreAgent.nmapConn) {

@@ -4753,9 +4753,7 @@ StoreCommandRESET(StoreClient *client)
 CCode
 StoreCommandSTORE(StoreClient *client, char *user)
 {
-    MDBValueStruct *vs;
     struct sockaddr_in serv;
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
 
     if (!user) {
         UnselectStore(client);
@@ -4770,23 +4768,20 @@ StoreCommandSTORE(StoreClient *client, char *user)
         }
     }
 
-    vs = MDBCreateValueStruct(StoreAgent.handle.directory, NULL);
-    if (!vs) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    
-    if (!MsgFindObject(user, dn, NULL, &serv, vs)) {
+    if (! MsgAuthFindUser(user)) {
         XplConsolePrintf("Couldn't find user object for %s\r\n", user);
-        MDBDestroyValueStruct(vs);
         /* the previous nmap returned some sort of user locked message? */
         return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
     }
 
-    MDBDestroyValueStruct(vs);   
-    if (serv.sin_addr.s_addr != MsgGetHostIPAddress()) {
-        /* non-local store */
+    // FIXME: Below is a check that the user resides in this store.
+    // For Bongo 1.0, we're assuming a single store?
+#if 0
+	if (serv.sin_addr.s_addr != MsgGetHostIPAddress()) {
+        // non-local store
         return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
     }
+#endif
     
     if (SelectStore(client, user)) {
         return ConnWriteStr(client->conn, MSG4224BADSTORE);
