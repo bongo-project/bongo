@@ -485,13 +485,13 @@ def ImportObjects(mdbconf, options):
     if mdbconf.has_key("slapdConfig"):
         slapdConfig = mdbconf["slapdConfig"]
 
+        log.debug("initializing slapd with the base Bongo container")
+        pid = slapdConfig.initSlapd(mdbconf["slapdConfigFile"])
+
         log.debug("starting temporary managed slapd process")
         pid = slapdConfig.startSlapd(mdbconf["slapdConfigFile"])
         if pid is None:
             raise BongoError('Error starting temporary slapd process. Check syslog for information about the failure.')
-
-        log.debug("initializing slapd with the base Bongo container")
-        slapdConfig.initSlapd()
 
     options.file = Input('Enter file for importing objects',
                  default=options.file, options=options)

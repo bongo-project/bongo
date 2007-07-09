@@ -12,7 +12,6 @@ import signal
 import socket
 import string
 import sys
-import tempfile
 import time
 
 from bongo import Xpl, Privs
@@ -111,7 +110,7 @@ class ConfigSlapd:
                     "-f", confFile,
                     "-h", "ldap://127.0.0.1:%d" % self.port,
                     "-n", "bongo-slapd"]
-            if Xpl.BONGO_USER is not None:
+            if Privs.HaveBongoUser():
                 args.extend(("-u", Xpl.BONGO_USER))
 
             self.preDaemonize()
@@ -153,28 +152,52 @@ class ConfigSlapd:
 
             self.slapdPid = None
 
-    def initSlapd(self):
-        fd, tmpname = tempfile.mkstemp(".ldif")
-        os.write(fd, """\
+    def initSlapd(self, confFile):
+        if not os.path.exists(self.binary):
+            print "Slapd path doesn't exist: %s" % self.binary
+            return None
+
+        readfd, writefd = os.pipe()
+
+        pid = os.fork()
+
+        if not pid:
+            Privs.DropPrivs()
+            os.close(writefd)
+            os.dup2(readfd, sys.stdin.fileno())
+            sys.stdin.close()
+
+            args = ["slapadd",
+                    "-f", confFile]
+
+            os.execv(self.binary, args)
+            sys.exit(1)
+
+        os.close(readfd)
+
+        os.write(writefd, """\
 dn: %(suffix)s
-objectclass: dcObject
-objectclass: organization
+objectClass: dcObject
+objectClass: organization
 o: Example, Inc.
 dc: example
 
 dn: %(rootdn)s
-objectclass: inetOrgPerson
-surname: Admin
 cn: admin
-userpassword: %(userpw)s
+objectClass: inetOrgPerson
+sn: Admin
+userPassword: %(userpw)s
 """ % {"suffix" : self.suffix, "rootdn" : self.rootdn,
        "userpw" : self.encodePassword("bongo")})
 
-        os.close(fd)
+        os.close(writefd)
 
-        os.system("ldapadd -h 127.0.0.1 -p %d -x -D %s -w %s -f %s" %
-                  (self.port, self.rootdn, self.password, tmpname))
-        os.unlink(tmpname)
+        pid, status = os.waitpid(pid, 0)
+
+        if (status >> 8) != 0:
+            return None
+
+        return pid
 
     def writeSlapdConf(self, file, writeRootpw=True):
         ldapdir = "%s/ldap" % Xpl.DEFAULT_STATE_DIR
@@ -182,9 +205,10 @@ userpassword: %(userpw)s
         if not os.path.exists(ldapdir):
             os.makedirs(ldapdir)
 
-        if Xpl.BONGO_USER is not None:
-            pw = pwd.getpwnam(Xpl.BONGO_USER)
-            os.chown(ldapdir, pw[2], pw[3])
+        Privs.Chown(ldapdir)
+
+        for file in os.listdir(ldapdir):
+            Privs.Chown(os.path.join(ldapdir, file))
 
         config = """\
 include %(sysschemadir)s/core.schema
