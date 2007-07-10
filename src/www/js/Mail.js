@@ -23,11 +23,46 @@ Dragonfly.Mail.getView = function (loc)
     var m = d.Mail;
 
     loc = loc || d.curLoc;
-
-    return loc.conversation ? m.ConversationView : 
-    loc.handler == 'contacts' ? loc.contact ? m.ListView : m.MultiListView :
-    loc.handler == 'subscriptions' ? loc.listId ? m.ListView : m.MultiListView :
-    m.ListView;
+    
+    var ret;
+    if (loc.conversation)
+    {
+        ret = m.ConversationView;
+    }
+    else if (loc.handler == 'contacts')
+    {
+        if (loc.contact)
+        {
+            ret = m.ListView;
+        }
+        else
+        {
+            ret = m.MultiListView;
+        }
+    }
+    else if (loc.handler == 'subscriptions')
+    {
+        if (loc.listId)
+        {
+            ret = m.ListView;
+        }
+        else
+        {
+            ret = m.MultiListView;
+        }
+    }
+    else if (loc.handler == 'conversations')
+    {
+        // Fake ConversationView for Composer.
+        // (so we can get Dragonfly.Mail.ConversationView.getScrolledElement called)
+        ret = m.ConversationView;
+    }
+    else 
+    {
+        ret = m.ListView;
+    }
+    
+    return ret;
 };
 
 Dragonfly.Mail.Preferences = { };
