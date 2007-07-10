@@ -266,8 +266,8 @@ dist_mochi_DATA :=				   \
 scriptaculousdir = $(jsdir)/lib/script.aculo.us
 
 dist_scriptaculous_DATA :=				\
-	src/www/js/lib/script.aculo.us/controls.js	\
-	src/www/js/lib/script.aculo.us/effects.js
+	src/www/js/lib/script.aculo.us/effects.js   \
+	src/www/js/lib/script.aculo.us/controls.js
 
 finaljsdir = $(jsdir)
 
