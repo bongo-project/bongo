@@ -3,6 +3,7 @@ htdocsdir = $(pkgdatadir)/htdocs
 
 dist_htdocs_DATA :=				\
 	src/www/dragonfly.html			\
+	src/www/dragonfly-debug.html    \
 	src/www/favicon.ico
 
 htl10ndir = $(htdocsdir)/l10n
@@ -265,6 +266,7 @@ dist_mochi_DATA :=				   \
 
 scriptaculousdir = $(jsdir)/lib/script.aculo.us
 
+# Same as with above JS.
 dist_scriptaculous_DATA :=				\
 	src/www/js/lib/script.aculo.us/effects.js   \
 	src/www/js/lib/script.aculo.us/controls.js
