@@ -637,6 +637,7 @@ StartSlapd(BOOL killExisting)
               "-f", XPL_DEFAULT_CONF_DIR "/bongo-slapd.conf",
               "-h", url,
               "-n", "bongo-slapd",
+              "-s", "0",
               NULL);
 
         exit(1);
