@@ -49,7 +49,7 @@ LoggerOpen(const char *name)
 
     if (log4c_init() == -1) {
         // log4c couldn't find a file itself, let's default to etc/bongo/logs.conf
-        snprintf(&bongo_log_file, XPL_MAX_PATH, "%s/logs.conf", XPL_DEFAULT_CONF_DIR);
+        snprintf(bongo_log_file, XPL_MAX_PATH, "%s/logs.conf", XPL_DEFAULT_CONF_DIR);
         if (log4c_load(bongo_log_file) == -1) {
             XplConsolePrintf("ERROR: Unable to find log config %s\n", bongo_log_file);
         }
