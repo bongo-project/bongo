@@ -208,34 +208,35 @@ dist_img_DATA :=					     \
 
 jsdir = $(htdocsdir)/js
 
+# These *must* be in the order in which they get loaded in the browser
 dist_js_DATA :=					\
+    src/www/js/Dragonfly.js			\
+    src/www/js/Format.js			\
+    src/www/js/Gettext.js			\
+    src/www/js/Cookie.js			\
+    src/www/js/Location.js			\
+    src/www/js/Login.js			\
+    src/www/js/Util.js			\
+    src/www/js/Widgets.js   \
+    src/www/js/ValidatingEntry.js		\
+    src/www/js/Preferences.js		\
 	src/www/js/AddressBook.js		\
-	src/www/js/CalendarDrag.js		\
-	src/www/js/CalendarEditor.js		\
-	src/www/js/Calendar.js			\
-	src/www/js/CalendarLayout.js		\
-	src/www/js/CalendarView.js		\
-	src/www/js/CalendarWidgets.js		\
-	src/www/js/Composer.js			\
-	src/www/js/Cookie.js			\
-	src/www/js/Dragonfly.js			\
-	src/www/js/Format.js			\
-	src/www/js/Gettext.js			\
-	src/www/js/BongoCalendar.js		\
 	src/www/js/JCal.js			\
-	src/www/js/Location.js			\
-	src/www/js/Login.js			\
-	src/www/js/MailConversationView.js	\
-	src/www/js/Mail.js			\
-	src/www/js/MailListView.js		\
-	src/www/js/MailWidgets.js		\
+	src/www/js/Calendar.js			\
+	src/www/js/BongoCalendar.js		\
+	src/www/js/CalendarEditor.js		\
 	src/www/js/OccurrenceEditor.js		\
-	src/www/js/Preferences.js		\
-	src/www/js/Search.js			\
+	src/www/js/CalendarView.js		\
+	src/www/js/CalendarLayout.js		\
+	src/www/js/CalendarDrag.js		\
+	src/www/js/CalendarWidgets.js		\
 	src/www/js/Summary.js			\
-	src/www/js/Util.js			\
-	src/www/js/ValidatingEntry.js		\
-	src/www/js/Widgets.js   \
+	src/www/js/Search.js			\
+	src/www/js/Mail.js			\
+	src/www/js/MailWidgets.js		\
+	src/www/js/Composer.js			\
+	src/www/js/MailConversationView.js	\
+	src/www/js/MailListView.js		\
 	src/www/js/Browser.js   \
 	src/www/js/BrowserCheck.js
 
@@ -246,37 +247,38 @@ dist_prototype_DATA := \
 
 mochidir = $(jsdir)/lib/MochiKit
 
+# These *must* be in the order in which they get loaded in the browser/MochiKit
 dist_mochi_DATA :=				   \
+    src/www/js/lib/MochiKit/Base.js		   \
+    src/www/js/lib/MochiKit/Iter.js		   \
+    src/www/js/lib/MochiKit/Logging.js	   \
+    src/www/js/lib/MochiKit/DateTime.js	   \
+    src/www/js/lib/MochiKit/Format.js	   \
 	src/www/js/lib/MochiKit/Async.js	   \
-	src/www/js/lib/MochiKit/Base.js		   \
-	src/www/js/lib/MochiKit/Color.js	   \
-	src/www/js/lib/MochiKit/DateTime.js	   \
 	src/www/js/lib/MochiKit/DOM.js		   \
-	src/www/js/lib/MochiKit/Format.js	   \
-	src/www/js/lib/MochiKit/Iter.js		   \
-	src/www/js/lib/MochiKit/interpreter.js	   \
-	src/www/js/lib/MochiKit/Logging.js	   \
 	src/www/js/lib/MochiKit/LoggingPane.js	   \
-	src/www/js/lib/MochiKit/MochiKit.js	   \
-	src/www/js/lib/MochiKit/MochiKit-packed.js \
-	src/www/js/lib/MochiKit/MockDOM.js	   \
-	src/www/js/lib/MochiKit/__package__.js	   \
+	src/www/js/lib/MochiKit/Color.js	   \
 	src/www/js/lib/MochiKit/Signal.js	   \
-	src/www/js/lib/MochiKit/SimpleTest.js	   \
-	src/www/js/lib/MochiKit/Test.js		   \
-	src/www/js/lib/MochiKit/TestRunner.js	   \
-	src/www/js/lib/MochiKit/Visual.js
+	src/www/js/lib/MochiKit/Visual.js      \
+	src/www/js/lib/MochiKit/MochiKit.js	   \
+	src/www/js/lib/MochiKit/interpreter.js
 
 scriptaculousdir = $(jsdir)/lib/script.aculo.us
 
 dist_scriptaculous_DATA :=				\
-	src/www/js/lib/script.aculo.us/builder.js	\
 	src/www/js/lib/script.aculo.us/controls.js	\
-	src/www/js/lib/script.aculo.us/dragdrop.js	\
-	src/www/js/lib/script.aculo.us/effects.js	\
-	src/www/js/lib/script.aculo.us/scriptaculous.js	\
-	src/www/js/lib/script.aculo.us/slider.js	\
-	src/www/js/lib/script.aculo.us/unittest.js
+	src/www/js/lib/script.aculo.us/effects.js
+
+finaljsdir = $(jsdir)
+
+dist_finaljs_DATA =						\
+	src/www/js/final.js
+
+compress_script := $(top_srcdir)/src/www/compress.py
+
+src/www/js/final.js:
+	$(compress_script) $(dist_js_DATA) -o src/www/js/compiled.js -m -l 1 && \
+	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) src/www/js/compiled.js -o src/www/js/final.js -q -l 0
 
 install-data-local:: install-dist_htdocsDATA
 	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"
@@ -362,7 +364,8 @@ sbin_SCRIPTS += \
 	src/www/bongo-standalone
 
 dist_noinst_SCRIPTS += \
-	src/www/l10n/props2json
+	src/www/l10n/props2json \
+	src/www/compress.py
 
 templatesdir = $(pkgdatadir)/templates
 

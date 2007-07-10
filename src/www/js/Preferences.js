@@ -136,7 +136,7 @@ Dragonfly.Preferences.reset = function()
     var p = Dragonfly.Preferences;
     p.prefs = deepclone (p.defaultPrefs);
     p.save();
-}
+};
 
 /*
     Dragonfly.Preferences._lookup (obj, path)
@@ -159,7 +159,7 @@ Dragonfly.Preferences._lookup = function (obj, path)
     } catch (e) {
         return undefined;
     }
-}
+};
 
 /*
     Dragonfly.Preferences.get (key)
@@ -194,7 +194,7 @@ Dragonfly.Preferences.get = function (key)
     }
     
     throw new Error ('Invalid Preference Key ' + key);
-}
+};
 
 Dragonfly.Preferences.set = function (key, value)
 {
@@ -207,7 +207,7 @@ Dragonfly.Preferences.set = function (key, value)
         return p.save();
     }
     throw new Error ('Invalid Preference Key ' + key);
-}
+};
 
 /*
     The Preferences editor (the UI component)
@@ -303,7 +303,7 @@ Dragonfly.Preferences.Editor.build = function (loc)
     }
     
     logDebug('We just got built.');
-}
+};
 
 
 Dragonfly.Preferences.Editor.save = function ()
@@ -315,7 +315,7 @@ Dragonfly.Preferences.Editor.save = function ()
     d.Preferences.save();
     
     this.dispose();
-}
+};
 
 Dragonfly.Preferences.Editor.dispose = function ()
 {
@@ -324,7 +324,7 @@ Dragonfly.Preferences.Editor.dispose = function ()
     // Send user back to summary.
     var loc = new d.Location({tab: 'summary'});
     d.go('#' + loc);
-}
+};
 
 Dragonfly.Preferences.Editor.load = function (loc, jsob)
 {
@@ -336,7 +336,7 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
     $('from').value = jsob.mail.from;
     
     logDebug('We just loaded.');
-}
+};
 
 Dragonfly.Preferences.Editor.buildInterface = function (children, actions, observer)
 {
@@ -360,4 +360,4 @@ Dragonfly.Preferences.Editor.buildInterface = function (children, actions, obser
         Event.observe (ids[i], 'click', bind (clickHandler, observer || this));
         logDebug('Done!');
     }
-}
+};

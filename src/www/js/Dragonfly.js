@@ -916,6 +916,7 @@ Dragonfly.translateElements = function ()
 Dragonfly.start = function ()
 {
     var d = Dragonfly;
+    
     var p = d.Preferences;
     var c = d.Calendar;
     
