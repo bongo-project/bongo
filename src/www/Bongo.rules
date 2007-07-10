@@ -278,7 +278,7 @@ dist_finaljs_DATA =						\
 
 compress_script := $(top_srcdir)/src/www/compress.py
 
-src/www/js/final.js:
+src/www/js/final.js: $(dist_js_DATA) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA)
 	$(compress_script) $(dist_js_DATA) -o src/www/js/compiled.js -m -l 0 && \
 	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) src/www/js/compiled.js -o src/www/js/final.js -q -l 0
 
