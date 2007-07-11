@@ -1179,7 +1179,7 @@ AntiVirusServer(void *ignored)
 static BongoConfigItem AVirusConfig[] = {
 	{ BONGO_JSON_INT, "o:flags/i", &AVirus.flags },
 	{ BONGO_JSON_STRING, "o:patterns/s", &AVirus.path.patterns },
-	{ BONGO_JSON_INT, "o:queue/s", &AVirus.nmap.queue },
+	{ BONGO_JSON_INT, "o:queue/i", &AVirus.nmap.queue },
 	{ BONGO_JSON_STRING, "o:host/s", &AVirus.clam.host },
 	{ BONGO_JSON_INT, "o:port/i", &AVirus.clam.addr.sin_port },
 	{ BONGO_JSON_NULL, NULL, NULL }
@@ -1193,7 +1193,7 @@ ReadConfiguration(void)
     XplDir *dirEntry;
     struct hostent *he;
 
-    if (! ReadBongoConfiguration(AVirusConfig, "avirus"))
+    if (! ReadBongoConfiguration(AVirusConfig, "antivirus"))
 	return FALSE;
 
     AVirus.clam.addr.sin_family = AF_INET;

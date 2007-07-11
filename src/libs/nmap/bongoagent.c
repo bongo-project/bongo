@@ -215,7 +215,7 @@ BOOL
 ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	unsigned char *pconfig;
 	BOOL retcode = FALSE;
-	BongoJsonNode *node;
+	BongoJsonNode *node = NULL;
 	
 	if (! NMAPReadConfigFile(filename, &pconfig)) {
 		XplConsolePrintf("config: couldn't read config '%s' from store\r\n", filename);
@@ -245,7 +245,7 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	retcode = TRUE;
 
 finish:
-	BongoJsonNodeFree(node);
+	if (node) BongoJsonNodeFree(node);
 	return retcode;
 }
 

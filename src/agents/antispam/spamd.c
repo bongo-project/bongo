@@ -350,7 +350,6 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
 static BongoConfigItem SpamdHostList = { BONGO_JSON_STRING, NULL, &ASpam.spamd.hostlist };
 
 static BongoConfigItem SpamdConfigSchema[] = {
-	{ BONGO_JSON_BOOL, "o:enabled/b", &ASpam.spamd.enabled },
 	{ BONGO_JSON_INT, "o:timeout/i", &ASpam.spamd.connectionTimeout },
 	{ BONGO_JSON_ARRAY, "o:hosts/a", &SpamdHostList},
 	{ BONGO_JSON_NULL, NULL, NULL },
@@ -388,7 +387,6 @@ SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
 void
 SpamdShutdown(SpamdConfig *spamd)
 {
-    spamd->enabled = FALSE;
     ConnAddressPoolShutdown(&(spamd->hosts));
 
     memset(spamd, 0, sizeof(SpamdConfig));
@@ -397,14 +395,7 @@ SpamdShutdown(SpamdConfig *spamd)
 void
 SpamdStartup(SpamdConfig *spamd)
 {
-    if (spamd->enabled) {
-        if (spamd->hosts.addressCount == 0) {
-            ConnAddressPoolAddHost(&(spamd->hosts), SPAMD_DEFAULT_ADDRESS, SPAMD_DEFAULT_PORT, SPAMD_DEFAULT_WEIGHT);
-        }
-
-        return;
+    if (spamd->hosts.addressCount == 0) {
+        ConnAddressPoolAddHost(&(spamd->hosts), SPAMD_DEFAULT_ADDRESS, SPAMD_DEFAULT_PORT, SPAMD_DEFAULT_WEIGHT);
     }
-
-    SpamdShutdown(spamd);
-    return;
 }
