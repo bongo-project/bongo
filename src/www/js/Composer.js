@@ -204,6 +204,9 @@ Dragonfly.Mail.Composer.prototype.connectHtml = function (elem)
     
     Event.observe (this.addAttachment, 'click',
                    this.addNewAttachment.bindAsEventListener (this));
+                   
+    Event.observe (this.subject, 'keyup',
+                   this.updateTitle.bindAsEventListener (this));
 
     if (this.msg.bongoId) {
         this.bongoId = this.msg.bongoId;
@@ -257,6 +260,18 @@ Dragonfly.Mail.Composer.prototype.hasChanges = function (msg)
     }
     return !this.lastSavedMsg || messagesDiffer (this.lastSavedMsg, msg || this.getCurrentMessage());
 };
+
+Dragonfly.Mail.Composer.prototype.updateTitle = function (evt)
+{
+    if (this.subject.value == "")
+    {
+        document.title = '(untitled) - Composing: ' + Dragonfly.title;
+    }
+    else
+    {
+        document.title = this.subject.value + ' - Composing: ' + Dragonfly.title;
+    }
+}
 
 Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
 {
@@ -528,11 +543,6 @@ Dragonfly.Mail.Composer.prototype.disposeZone = function ()
     if (this.def) {
         this.def.cancel();
     }
-};
-
-Dragonfly.Mail.Composer.getScrolledElement = function (loc)
-{
-    return 'conv-msg-list';
 };
 
 Dragonfly.Mail.Composer.composeNew = function (msg)

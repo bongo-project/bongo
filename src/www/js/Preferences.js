@@ -339,9 +339,8 @@ Dragonfly.Preferences.Editor.dispose = function ()
 {
     var d = Dragonfly;    
     
-    // Send user back to summary.
-    var loc = new d.Location({tab: 'summary'});
-    d.go('#' + loc);
+    // Send user back to previous location.
+    d.go('#' + d.prevLoc);
 };
 
 Dragonfly.Preferences.Editor.load = function (loc, jsob)
