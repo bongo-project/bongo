@@ -53,6 +53,11 @@ Dragonfly.Mail.getView = function (loc)
             ret = m.MultiListView;
         }
     }
+    else if (loc.composing == true)
+    {
+        // We're faked into a conversation view if we're composing!
+        ret = m.ConversationView;
+    }
     else 
     {
         ret = m.ListView;

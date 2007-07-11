@@ -525,6 +525,11 @@ Dragonfly.Mail.Composer.prototype.disposeZone = function ()
     }
 };
 
+Dragonfly.Mail.Composer.getScrolledElement = function (loc)
+{
+    return 'conv-msg-list';
+};
+
 Dragonfly.Mail.Composer.composeNew = function (msg)
 {
     var d = Dragonfly;
@@ -540,18 +545,24 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     }
     d.contentIFrameZone.disposeZone();
 
-    var fakeLoc = new d.Location ({ tab: 'mail', set: 'drafts' });
+    var fakeLoc = new d.Location ({ tab: 'mail', set: 'drafts', composing: true });
     d.buildSourcebar (fakeLoc);
     m.build (fakeLoc);
+    
+    d.setLoc (fakeLoc);
+    d.updateLocation ();
+    
+    // Update title
+    document.title = 'Composing - \'Untitled\' : ' + Dragonfly.title;
 
     var html = new d.HtmlBuilder ('<table class="conversation-list" cellpadding="0" cellspacing="0"><tr class="group-header"><td>',
                                   fakeLoc.getBreadCrumbs(),
                                   '</td></tr></table>',
-                                  '<div id="conv-msg-list" class="scrollv"><div id="mail-list-wrapper" class="scrollv">');
+                                  '<div id="conv-msg-list" class="scrollv">');
 
     var composer = new m.Composer (html, msg);
 
-    html.push ('</div></div>');
+    html.push ('</div>');
     html.set ('content-iframe');
     
     d.resizeScrolledView();
