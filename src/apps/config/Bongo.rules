@@ -25,7 +25,7 @@ dist_noinst_DATA +=				\
 	src/apps/config/config/antispam
 
 src/apps/config/default.set:
-	@cd src/apps/config && tar cf default.set config/
+	@cd src/apps/config && tardir=config/ && $(am__tar) > default.set
 
 confdir = $(pkgdatadir)/conf
 
