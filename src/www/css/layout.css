@@ -12,7 +12,7 @@ form
 p { 
   margin: 0.5em 0;
 }
-input, textarea, select, option, table {
+input, select, option, table {
     font-family: inherit;
     font-size: inherit;
     /* we probably shouldn't inherit the color without inheriting
@@ -887,13 +887,16 @@ body.eng-msie #page-frame {
 .right { float: right; }
 
 /*** Forms style ***/
-input,
-textarea {
+input {
   font-family: inherit;
   font-size: inherit;
   /* we probably shouldn't inherit the color without inheriting
      background? */
   /* color: inherit; */
+}
+
+input,
+textarea {
   padding: 1px;
 }
 input[type="text"],

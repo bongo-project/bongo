@@ -39,12 +39,21 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     var d = Dragonfly;
     var m = d.Mail;
     var p = m.Preferences;
-
+    
+    var defaultbody = '';
+    
+    if (p.getSignatureAvailable())
+    {
+        // Append signature to end of message.
+        defaultbody = '\n\n_______________________________________________\n' + p.getSignature();
+    }
+    
     var msg = { 
         from: m.getFromAddress(),
         to: '',
         cc: '',
-        bcc: p.getAutoBcc() || ''
+        bcc: p.getAutoBcc() || '',
+        body: defaultbody
     };
     if (mailto.substr (0, 7) != 'mailto:') {
         return null;

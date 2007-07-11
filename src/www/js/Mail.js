@@ -115,6 +115,20 @@ Dragonfly.Mail.Preferences.getPageSize = function ()
     return p.prefs.mail.pageSize || 30;
 };
 
+Dragonfly.Mail.Preferences.getSignatureAvailable = function ()
+{
+    var p = Dragonfly.Preferences;
+    
+    return p.prefs.mail.usesig || false;
+}
+
+Dragonfly.Mail.Preferences.getSignature = function ()
+{
+    var p = Dragonfly.Preferences;
+    
+    return p.prefs.mail.signature || '';
+}
+
 Dragonfly.Mail.getFromAddress = function ()
 {
     var d = Dragonfly;

@@ -289,6 +289,8 @@ Dragonfly.Preferences.Editor.build = function (loc)
             '</td></tr>',
             '<tr><td><label>Show HTML messages:</label></td>',
             '<td><select id="htmlmsg"><option value="show">Yes</option><option value="ptext">Prefer plain-text</option><option value="hide">No</option></select></td></tr>',
+            '<tr><td><label>Page size:</label></td>',
+            '<td><input type="text" style="width: 20px;" id="mailpagesize"> items</td></tr>',
             '</table>');
         composerhtml.set (composerpage);
         
@@ -317,11 +319,19 @@ Dragonfly.Preferences.Editor.build = function (loc)
 Dragonfly.Preferences.Editor.save = function ()
 {
     var d = Dragonfly;
+    var p = d.Preferences;
     
+    // Timezone
     d.setCurrentTzid (d.tzselector.getTzid());
-    d.Preferences.prefs.mail.from = $('from').value;
-    d.Preferences.save();
     
+    // Mail prefs
+    p.prefs.mail.from = $('from').value;
+    p.prefs.mail.autoBcc = $('autobcc').value;
+    p.prefs.mail.signature = $('signature').value;
+    p.prefs.mail.usesig = $('usesig').checked;
+    
+    // Finish up
+    p.save();
     this.dispose();
 };
 
@@ -340,9 +350,14 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
 
     document.title = 'Preferences: ' + Dragonfly.title;
 
-    // Fill form with values.
+    // Mail prefs
     $('from').value = jsob.mail.from;
     
+    if (jsob.mail.autoBcc)   { $('autobcc').value       = jsob.mail.autoBcc;   }
+    if (jsob.mail.pageSize)  { $('mailpagesize').value  = jsob.mail.pageSize;  }
+    if (jsob.mail.signature) { $('signature').value     = jsob.mail.signature; }
+    if (jsob.mail.usesig)    { $('usesig').checked      = jsob.mail.usesig;    }
+       
     logDebug('We just loaded.');
 };
 
