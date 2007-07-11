@@ -26,6 +26,7 @@
 #include <time.h>
 
 #include "stored.h"
+#include "calendar.h"
 
 #include "mail.h"
 #include "conversations.h"
@@ -2147,7 +2148,7 @@ ShowInternalProperty(StoreClient *client,
     {
         CCode ccode;
         BongoArray guidlist;
-        unsigned i;
+        unsigned int i;
 
         BongoArrayInit(&guidlist, sizeof(uint64_t), 64);
         
@@ -3384,7 +3385,7 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
         if (ccode) {
             return ccode;
         }
-        return ConnWriteF(client->conn, "1000 %lu %lu\r\n", info.flags, info.flags);
+        return ConnWriteF(client->conn, "1000 %u %u\r\n", info.flags, info.flags);
     case STORE_FLAG_ADD:
         oldFlags = info.flags;
         info.flags |= change;
@@ -3458,7 +3459,7 @@ finish:
         IndexClose(index);
     }
 
-    return ConnWriteF(client->conn, "1000 %lu %lu\r\n", oldFlags, info.flags);
+    return ConnWriteF(client->conn, "1000 %u %u\r\n", oldFlags, info.flags);
 }
 
 
@@ -3587,7 +3588,7 @@ StoreCommandMAILINGLISTS(StoreClient *client, char *source)
 {
     DStoreStmt *stmt;
     uint32_t required;
-    CCode ccode;
+    CCode ccode = 0;
     int dcode;
 
     GetConversationSourceMask(source, &required);
@@ -3631,7 +3632,6 @@ StoreCommandMESSAGES(StoreClient *client, const char *source, const char *query,
     uint64_t *guids = NULL;
     char buf[200];
     int total;
-    MaskAndFlagStruct mf = { flagsmask, flags };
     uint32_t required;
 
     ccode = StoreCheckAuthorizationGuid(client, 
@@ -3700,7 +3700,7 @@ finish:
 CCode
 StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode)
 {
-    CCode ccode;
+    CCode ccode = 0;
     CollectionLockPool collLocks;
     WatchEventList events;
     IndexHandle *index;
@@ -3832,7 +3832,7 @@ StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode)
             goto finish;
         }
 
-        ccode = ConnWriteF(client->conn, "2001 %lu %lu\r\n", oldFlags, info.flags);
+        ccode = ConnWriteF(client->conn, "2001 %u %u\r\n", oldFlags, info.flags);
     }
     
     if (0 != DStoreCommitTransaction(client->handle)) {
@@ -3864,12 +3864,9 @@ CCode
 StoreCommandMIME(StoreClient *client, 
                  uint64_t guid)
 {
-#define XPL_MAX_RFC822_LINE 1000
 
     int ccode = 0;
     DStoreDocInfo info;
-    char path[XPL_MAX_PATH + 1];
-    char buffer[XPL_MAX_RFC822_LINE];
     MimeReport *report = NULL;
     NLockStruct *lock = NULL;
 
@@ -4372,8 +4369,8 @@ CCode
 StoreCommandREINDEX(StoreClient *client, uint64_t guid)
 {
     IndexHandle *index;
-    CCode ccode;
-    int dcode;
+    CCode ccode = 0;
+    int dcode = 1;
     DStoreStmt *stmt = NULL;
     DStoreDocInfo info;
 
@@ -4387,9 +4384,13 @@ StoreCommandREINDEX(StoreClient *client, uint64_t guid)
         ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
         goto finish;
     }
-    while (stmt && 
-           1 == (dcode = DStoreInfoStmtStep(client->handle, stmt, &info)))
+    while (stmt && 1 == dcode)
     {
+        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
+        if (-1 == dcode) {
+            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+            goto finish;
+        }
         if (guid) { /* kludgey */
             DStoreStmtEnd(client->handle, stmt);
             stmt = NULL;
@@ -4401,10 +4402,6 @@ StoreCommandREINDEX(StoreClient *client, uint64_t guid)
         IndexDocument(index, client, &info);
     }
     
-    if (-1 == dcode) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
     ccode = ConnWriteStr(client->conn, MSG1000OK);
 finish:
     if (index) {
@@ -4426,12 +4423,12 @@ StoreCommandRENAME(StoreClient *client, DStoreDocInfo *collection,
     CCode ccode = 0;
     int dcode;
     char oldfilename[STORE_MAX_PATH+1];
+    DStoreStmt *stmt = NULL;
     DStoreDocInfo newcollection;
     BongoArray subcolls;
     BongoArray locks;
     unsigned int i;
     int success = 0;
-    DStoreStmt *stmt;
 
     ccode = StoreCheckAuthorizationGuid(client, collection->collection, 
                                         STORE_PRIV_UNBIND);
@@ -5197,7 +5194,7 @@ WriteHelper(StoreClient *client,
             int propcount)
 {
     CCode ccode;
-    size_t written = 0;
+    int written = 0;
     const char *errmsg;
     int i;
 
@@ -5306,7 +5303,7 @@ StoreCommandMWRITE(StoreClient *client,
     DStoreDocInfo info;
     IndexHandle *index = NULL;
     BongoArray guidlist;
-    int i;
+    unsigned int i;
 
     BongoArrayInit(&guidlist, sizeof(uint64_t), 64);
 
@@ -5354,8 +5351,7 @@ StoreCommandMWRITE(StoreClient *client,
         unsigned long flags = 0;
         int propcount = 0;
         StorePropInfo props[PROP_ARR_SZ];
-        int n;
-        int status;
+        unsigned int n;
         char buffer[CONN_BUFSIZE];
 
         if (-1 == (ccode = ConnWriteStr(client->conn, MSG2054SENDDOCS)) ||

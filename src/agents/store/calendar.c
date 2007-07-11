@@ -146,7 +146,7 @@ static int
 ParseAlarmJson(BongoJsonObject *json, BongoArray *result, BongoMemStack *memstack)
 {
     BongoArray *alarms;
-    int i;
+    unsigned int i;
     AlarmInfo *alarm = NULL;
 
     if (BongoJsonObjectGetArray(json, "alarms", &alarms)) {
@@ -216,8 +216,8 @@ StoreSetAlarm(StoreClient *client,
     BongoCalTime end;
     BongoArray alarms;
     BongoArray *occurrences = NULL;
-    int i;
-    int j;
+    unsigned int i;
+    unsigned int j;
 
     /* parse the alarm info */
 

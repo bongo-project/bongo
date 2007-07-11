@@ -28,6 +28,8 @@ XPL_BEGIN_C_LINKAGE
 
 const char * StoreProcessIncomingEvent(StoreClient *client, DStoreDocInfo *info, uint64_t linkGuid);
 
+CCode StoreSetAlarm(StoreClient *client, DStoreDocInfo *docinfo, const char *alarmtext);
+
 XPL_END_C_LINKAGE
 
 #endif
