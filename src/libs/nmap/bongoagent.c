@@ -105,7 +105,7 @@ FreeBongoConfiguration(BongoConfigItem *config) {
 
 BOOL
 SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
-	if (node->type != schema->type) {
+	if (!node || node->type != schema->type) {
 		printf("config: didn't find data at %s (type: %d, want: %d) \n", schema->source, node->type, schema->type);
 		return FALSE;
 	}
@@ -228,7 +228,7 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	while (config->type != BONGO_JSON_NULL) {
 		BongoJsonNode *result;
 		result = BongoJsonJPath(node, config->source);
-		if (! SetBongoConfigItem(config, result)) {
+		if (!result || !SetBongoConfigItem(config, result)) {
 			// can't set item
 			printf("config: schema source %s not found", config->source);
 		}
