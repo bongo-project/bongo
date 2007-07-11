@@ -216,10 +216,9 @@ Element.setHTML = function (elem, html)
     if (!elem) {
         logError ('Could not find element ' + Element.repr(elem, origElem));
     }
-
-    html = html.join ? html.join ('') : html;
-
+    
     try {
+        html = html.join ? html.join ('') : html;
         elem.innerHTML = html;
     } catch (e) {
         logError ('could not set html on ' + Element.repr(elem, origElem) + ': ' + repr (e) + ': |' + html + '|');

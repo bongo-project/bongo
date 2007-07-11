@@ -112,12 +112,15 @@ Dragonfly.Search.Contacts.connectHtml = function (elem)
 {
     var d = Dragonfly;
 
-    s.Group.prototype.connectHtml.apply (this, arguments);
-    $('contacts-search-results').style.overflow = 'auto';
+    //d.Search.Contacts.prototype.connectHtml.apply (this, arguments);
+    //$('contacts-search-results').style.overflow = 'auto';
+    logDebug('Observing contacts-search-results.');
     Event.observe ('contacts-search-results', 'click',
                    (function (evt) {
                        var elem = Event.element (evt);
-                       var card = d.findElement (elem, 'TABLE', $('contacts-search'));
+                       logDebug('Element: ' + elem);
+                       var card = d.findElement (elem, 'TR', $('contacts-search'));
+                       logDebug('Card (element): ' + card);
                        var bongoId = card && card.getAttribute ('bongoid');
                        if (!bongoId) {
                            return;
@@ -141,21 +144,18 @@ Dragonfly.Search.Contacts.load = function (loc, jsob)
         var rowtype = 'even';
         
         forEach (jsob.contacts, function (card) {
-                     html.push ('<tr bongoid="', card.bongoId, '" class="', rowtype, '">');
+                     html.push ('<tr id bongoid="', card.bongoId, '" class="', rowtype, '">');
                      html.push ('<td class="checkbox"><input type="checkbox"></td>');
                      
-                     //html.push ('<td class="star"><img src="img/contact-16.png" /></td>');
+                     html.push ('<td class="star"><img src="img/contact-16.png" /></td>');
                      
-                     var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
-                                contact: card.bongoId });
-                     
-                     html.push ('<td class="from" href="#', loc.getClientUrl(), '">');
-                     html.push ('<a href="#', loc.getClientUrl(), '">', d.escapeHTML (card.fn), '</a>');
+                     html.push ('<td class="from">');
+                     html.push ('<a>', d.escapeHTML (card.fn), '</a>');
                      html.push ('</td>');
                      
                      if (card.email && card.email.length) {
-                        html.push ('<td class="subject" href="#', loc.getClientUrl(), '">');
-                        html.push ('<a href="#', loc.getClientUrl(), '">', d.escapeHTML (card.email[0]), '</a>');
+                        html.push ('<td class="subject" >');
+                        html.push ('<a>', d.escapeHTML (card.email[0]), '</a>');
                         html.push ('</td>');
                      }
                      
@@ -178,8 +178,9 @@ Dragonfly.Search.Contacts.load = function (loc, jsob)
                                jsob.total - jsob.contacts.length, ' More...</a>' ]);
         }
         
-    }
+    }    
     html.set ('contacts-search-results');
+    d.Search.Contacts.connectHtml();    
     (ret ? Element.show : Element.hide) ('contacts-search');
     return ret;
 };
@@ -202,7 +203,11 @@ Dragonfly.Search.Events.load = function (loc, jsob)
         forEach (jsob, function (res) {
             html.push('<tr bongoId="', res.bongoId, '" class="', rowtype, '">');
             
-            html.push ('<td class="from">Event: </td>');
+            html.push ('<td class="checkbox"><input type="checkbox"></td>');
+                     
+            html.push ('<td class="star"><img src="img/calendar-16.png" /></td>');
+            
+            html.push ('<td class="from"></td>');
             
             html.push ('<td class="subject">',
                 d.escapeHTML (res.occurrences[0].summary.value),
