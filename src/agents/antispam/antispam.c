@@ -28,6 +28,7 @@
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
+#include <bongoagent.h>
 #include <bongoutil.h>
 #include <mdb.h>
 #include <nmap.h>

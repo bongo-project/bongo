@@ -18,6 +18,7 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  * (C) 2007 Patrick Felt
+ * (C) 2007 Alex Hudson
  ****************************************************************************/
 
 #include <config.h>
@@ -25,6 +26,7 @@
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
+#include <bongoagent.h>
 #include <bongoutil.h>
 #include <mdb.h>
 #include <nmap.h>
@@ -1174,58 +1176,32 @@ AntiVirusServer(void *ignored)
     return;
 }
 
+static BongoConfigItem AVirusConfig[] = {
+	{ BONGO_JSON_INT, "o:flags/i", &AVirus.flags },
+	{ BONGO_JSON_STRING, "o:patterns/s", &AVirus.path.patterns },
+	{ BONGO_JSON_INT, "o:queue/s", &AVirus.nmap.queue },
+	{ BONGO_JSON_STRING, "o:host/s", &AVirus.clam.host },
+	{ BONGO_JSON_INT, "o:port/i", &AVirus.clam.addr.sin_port },
+	{ BONGO_JSON_NULL, NULL, NULL }
+};
+
 static BOOL 
 ReadConfiguration(void)
 {
     unsigned char path[XPL_MAX_PATH + 1];
     XplDir *dir;
     XplDir *dirEntry;
+    struct hostent *he;
 
-    unsigned char *pconfig;
-    BongoJsonNode *node;
-    BOOL retcode = TRUE;
-    BOOL enabled = FALSE;
-    const char *tmpBuffer;
-    BongoJsonResult res;
-
-    if (!NMAPReadConfigFile("antivirus", &pconfig)) {
-        printf("manager: couldn't read config from store\n");
-        return FALSE;
-    }
-
-    if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
-        printf("manager: couldn't parse JSON config\n");
-        retcode = FALSE;
-        goto finish;
-    }
+    if (! ReadBongoConfiguration(AVirusConfig, "avirus"))
+	return FALSE;
 
     AVirus.clam.addr.sin_family = AF_INET;
 
-    res = BongoJsonJPathGetBool(node, "o:enabled/b", &enabled);
-    if ((res != BONGO_JSON_OK) || (!enabled)) {
-        /* nothing configured or we are disabled */
-        return FALSE;
-    }
-
-    res = BongoJsonJPathGetInt(node, "o:flags/i", &AVirus.flags);
-    res = BongoJsonJPathGetString(node, "o:patterns/s", &AVirus.path.patterns);
-    res = BongoJsonJPathGetInt(node, "o:queue/i", (int *)&AVirus.nmap.queue);
-    res = BongoJsonJPathGetString(node, "o:host/s", &tmpBuffer);
-    if (res == BONGO_JSON_OK) {
-        struct hostent *he;
-        he = gethostbyname(tmpBuffer);
-        if (he) {
-            memcpy(&AVirus.clam.addr.sin_addr.s_addr, he->h_addr_list[0], sizeof(AVirus.clam.addr.sin_addr.s_addr));
-        }
-        MemFree(tmpBuffer);
-    } else {
-        AVirus.clam.addr.sin_addr.s_addr = inet_addr(CLAMAV_DEFAULT_ADDRESS);
-    }
-    res = BongoJsonJPathGetInt(node, "o:port/i", (int *)&AVirus.clam.addr.sin_port);
-    if (res == BONGO_JSON_OK) {
-        AVirus.clam.addr.sin_port = htons(AVirus.clam.addr.sin_port);
-    } else {
-        AVirus.clam.addr.sin_port = htons(CLAMAV_DEFAULT_PORT);
+    he = gethostbyname(AVirus.clam.host);
+    if (he) {
+        memcpy(&AVirus.clam.addr.sin_addr.s_addr, he->h_addr_list[0], 
+            sizeof(AVirus.clam.addr.sin_addr.s_addr));
     }
 
     MsgGetWorkDir(AVirus.path.work);
@@ -1244,19 +1220,7 @@ ReadConfiguration(void)
 
         XplCloseDir(dirEntry);
     }
-
-#if 0
-    MDBSetValueStructContext(NULL, config);
-    if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, config) > 0) { 
-        HashCredential(MsgGetServerDN(NULL), config->Value[0], AVirus.nmap.hash);
-    }
-
-    MDBDestroyValueStruct(config);
-#endif
-
-finish:
-    BongoJsonNodeFree(node);
-    return retcode;
+    return TRUE;
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)

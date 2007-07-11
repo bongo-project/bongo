@@ -188,7 +188,7 @@ typedef struct _AVirusGlobals {
 
     struct {
         unsigned char work[XPL_MAX_PATH + 1];
-        unsigned char patterns[XPL_MAX_PATH + 1];
+        unsigned char *patterns;
     } path;
 
     struct {
@@ -214,6 +214,7 @@ typedef struct _AVirusGlobals {
     } stats;
 
     struct {
+        char *host;
 	struct sockaddr_in addr;
     } clam;
 } AVirusGlobals;

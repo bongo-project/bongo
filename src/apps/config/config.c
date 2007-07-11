@@ -14,6 +14,7 @@
 #include <gnutls/x509.h>
 #include <gcrypt.h>
 #include <time.h>
+#include <tar.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "config.h"
@@ -79,12 +80,9 @@ SetAdminRights(StoreClient *client, char *document) {
 }
 
 BOOL
-PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content) {
-	int len;
+PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len) {
 	CCode ccode;
 	char command[1024];
-
-	len = strlen(content);
 
 	snprintf(command, 1000, "INFO %s/%s\r\n", collection, filename);
 	ccode = NMAPSendCommandF(client->conn, command);
@@ -94,11 +92,11 @@ PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *
 
 	if (ccode == 1000) {
 		// INFO returned OK, document already exists
-		snprintf(command, 1000, "REPLACE %s/%s %d\r\n", 
+		snprintf(command, 1000, "REPLACE %s/%s %ld\r\n", 
 			collection, filename, len);
 	} else {
 		// INFO errored, so document doesn't exist
-		snprintf(command, 1000, "WRITE %s %d %d \"F%s\"\r\n", 
+		snprintf(command, 1000, "WRITE %s %d %ld \"F%s\"\r\n", 
 			collection, STORE_DOCTYPE_CONFIG, len, filename);
 	}
 
@@ -117,6 +115,75 @@ PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *
 		XplConsolePrintf(_("ERROR: Wouldn't accept data\n"));
 	}
 	return FALSE;
+}
+
+BOOL
+ImportSystemBackupFile(const StoreClient *client, const char *path)
+{
+	FILE *config;
+	char header[513];
+	CCode result;
+	
+	result = NMAPSimpleCommand(client, "CREATE /config\r\n");
+	if ((result==1000) || (result==4226)) {
+		// collection can't be created and doesn't exist
+		XplConsolePrintf(_("ERROR: Couldn't create collection\n"));
+		return FALSE;
+	}
+	if (! SetAdminRights(client, "/config")) {
+		XplConsolePrintf(_("ERROR: Couldn't set acls on /config\n"));
+		return FALSE;
+	}
+
+	config = fopen(path, "r");
+	if (config == NULL) {
+		XplConsolePrintf(_("ERROR: Couldn't load default config set\n"));
+		return FALSE;
+	}
+	while(512 == fread(&header, sizeof(char), 512, config)) {
+		long filesize, blocksize, read;
+		char str_filesize[13], filename[101];
+		char *file;
+		header[512] = 0;
+		
+		memcpy(&filename, &header, 100);
+		filename[100] = 0;
+		memcpy(&str_filesize, &header[124], 12);
+		str_filesize[12] = 0;
+		filesize = strtol(str_filesize, NULL, 8);
+		
+		if (! strncmp(filename, "", 100)) {
+			// end of tar is _two_ empty blocks... ah well :o>
+			break;
+		}
+		
+		blocksize = filesize / 512;
+		if (filesize % 512) blocksize++;
+		blocksize *= 512;
+
+		if (blocksize > 0 && !strncmp(filename, "config/", 7)) {
+			char fullpath[110];
+			file = MemMalloc((size_t) blocksize);
+			read = fread(file, sizeof(char), blocksize, config);
+			if (read != blocksize) {
+				XplConsolePrintf("  Read error!");
+			}
+			
+			snprintf(fullpath, 108, "/%s", filename);
+			if (!PutOrReplaceConfig(client, "/config", 
+				&filename[7], file, filesize)) {
+				XplConsolePrintf(_("ERROR: Couldn't write\n"));
+			} else {
+				if (! SetAdminRights(client, fullpath)) {
+					XplConsolePrintf(_("ERROR: rigts\n"));
+				}
+			}
+			MemFree(file);
+		}
+	}
+	
+	fclose(config);
+	return TRUE;
 }
 
 void
@@ -151,7 +218,6 @@ InitialStoreConfiguration() {
 		exit(1);
 	} else {		// parent 
 		StoreClient *client;
-		int result = 0;
 
 		XplDelay(1000); // FIXME: small hack, wait for store to start.
 		
@@ -174,41 +240,15 @@ InitialStoreConfiguration() {
 			XplConsolePrintf(_("ERROR: Couldn't access store\n"));
 			goto nmapcleanup;
 		}
-		result = NMAPSimpleCommand(client, "CREATE /config\r\n");
-		if ((result==1000) || (result==4226)) {
-			// collection can't be created and doesn't exist
-			XplConsolePrintf(_("ERROR: Couldn't create collection\n"));
-			goto nmapcleanup;
-		}
-		if (! SetAdminRights(client, "/config")) {
-			XplConsolePrintf(_("ERROR: Couldn't set acls on /config\n"));
-			goto nmapcleanup;
-		}
-		
-		XplConsolePrintf(_("Setting default agent configuration...\n"));
-		if (!PutOrReplaceConfig(client, "/config", "manager", bongo_manager_config)) {
-			XplConsolePrintf(_("ERROR: couldn't write /config/manager\n"));
-		}
-		if (! SetAdminRights(client, "/config/manager")) {
-			XplConsolePrintf(_("ERROR: Couldn't set acls on /config/manager\n"));
-			goto nmapcleanup;
-		}
-		if (!PutOrReplaceConfig(client, "/config", "antivirus", bongo_avirus_config)) {
-			XplConsolePrintf(_("ERROR: couldn't write /config/antivirus\n"));
-		}
-		if (! SetAdminRights(client, "/config/antivirus")) {
-			XplConsolePrintf(_("ERROR: Couldn't set acls on /config/antivirus\n"));
-			goto nmapcleanup;
-		}
-		if (!PutOrReplaceConfig(client, "/config", "antispam", bongo_aspam_config)) {
-			XplConsolePrintf(_("ERROR: couldn't write /config/antispam\n"));
-		}
-		if (! SetAdminRights(client, "/config/antispam")) {
-			XplConsolePrintf(_("ERROR: Couldn't set acls on /config/antispam\n"));
-			goto nmapcleanup;
-		}
 
-		XplConsolePrintf(_("Complete.\n"));
+		XplConsolePrintf(_("Setting default agent configuration...\n"));
+
+		snprintf(path, XPL_MAX_PATH, "%s/conf/default.set", XPL_DEFAULT_DATA_DIR);
+		if (! ImportSystemBackupFile(client, path)) {
+			XplConsolePrintf(_("ERROR: Couldn't setup default configuration\n"));
+		} else {
+			XplConsolePrintf(_("Complete.\n"));
+		}
 
 nmapcleanup:
 		NMAPQuit(client->conn);

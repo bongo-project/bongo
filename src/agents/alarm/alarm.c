@@ -352,30 +352,6 @@ AlarmLoop(void *ignored)
     XplConsolePrintf(AGENT_NAME ": Shutting down.\r\n");
 }
 
-
-static BOOL 
-ReadConfiguration(void)
-{
-#if 0
-    MDBValueStruct *config;
-
-    config = MDBCreateValueStruct(Alarm.agent.directoryHandle, 
-                                  MsgGetServerDN(NULL));
-    if (config) {
-        /* Read your agent's configuration here */
-    } else {
-        return FALSE;
-    }
-
-    MDBDestroyValueStruct(config);
-#endif
-
-    // Since this agent doesn't read any config for the moment,
-    // just return true (we don't need/want to depend on MDB).
-    return TRUE;
-}
-
-
 static void 
 SignalHandler(int sigtype) 
 {
@@ -405,8 +381,6 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;
     }
-
-    ReadConfiguration();
 
     XplSignalHandler(SignalHandler);
 
