@@ -264,7 +264,7 @@ Dragonfly.Preferences.Editor.build = function (loc)
         // Come up with some magic tabs!
         var notebook = new d.Notebook();
         var userpage = notebook.appendPage('About Me');
-        var composerpage = notebook.appendPage('Composer');
+        var composerpage = notebook.appendPage('Mail');
         var calendarpage = notebook.appendPage('Calendar');
         
         var userhtml = new d.HtmlBuilder ();
@@ -278,9 +278,17 @@ Dragonfly.Preferences.Editor.build = function (loc)
         
         var composerhtml = new d.HtmlBuilder ();
         composerhtml.push ('<table border="0" cellspacing="0">', 
-            '<tr><td><label>Default sent address:</label></td>', 
-            '<td><input type="text" id="from"></td></tr>', 
+            '<tr><td><label>From address:</label></td>', 
+            '<td><input type="text" id="from" /></td></tr>', 
             '<tr><td colspan="2"><span style="font-size: 80%;">Please don\'t abuse the above feature for now.</span></td></tr>',
+            '<tr><td><label>Auto BCC:</label></td>',
+            '<td><input type="text" id="autobcc" /></td></tr>',
+            '<tr><td><label>Signature:</label></td>',
+            '<td><textarea rows="3" cols="30" id="signature"></textarea><br />',
+            '<input type="checkbox" id="usesig" name="usesig" /><label for="usesig">Apply signature to outgoing mail</label>',
+            '</td></tr>',
+            '<tr><td><label>Show HTML messages:</label></td>',
+            '<td><select id="htmlmsg"><option value="show">Yes</option><option value="ptext">Prefer plain-text</option><option value="hide">No</option></select></td></tr>',
             '</table>');
         composerhtml.set (composerpage);
         

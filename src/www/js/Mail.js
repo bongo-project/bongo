@@ -19,6 +19,8 @@ Dragonfly.Mail.setLabels = {
 
 Dragonfly.Mail.getView = function (loc)
 {
+    logDebug('Dragonfly.Mail.getView(loc) called.');
+    
     var d = Dragonfly;
     var m = d.Mail;
 
@@ -50,12 +52,6 @@ Dragonfly.Mail.getView = function (loc)
         {
             ret = m.MultiListView;
         }
-    }
-    else if (loc.handler == 'conversations')
-    {
-        // Fake ConversationView for Composer.
-        // (so we can get Dragonfly.Mail.ConversationView.getScrolledElement called)
-        ret = m.ConversationView;
     }
     else 
     {

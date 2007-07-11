@@ -15,6 +15,8 @@ Dragonfly.Mail.Composer = function (parent, msg)
     this.isReply = this.msg.isReply;
 
     this.pendingAttachments = [ ];
+    
+    logDebug('Composer instantiated.');
 
     if (parent) {
         d.HtmlBuilder.buildChild (parent, this);
@@ -352,13 +354,19 @@ Dragonfly.Mail.Composer.prototype.discardDraft = function (evt)
                   return jsob;
               }, this),
         bind (function (err) {
-                  if (!(err instanceof CancelledError)) {
+                  // Ignore the fact we errored - probably because we NEVER SAVED ANYTHING.
+                  /*if (!(err instanceof CancelledError)) {
                       d.notifyError ('Could not discard draft');
                       logDebug ('error deleting draft:', d.reprError (err));
                   }
                   this.state = c.MaybeDirty;
                   this.scheduleSave();
-                  return err;
+                  return err;*/
+                  
+                  // Now, go do what success normally does.
+                  this.state = c.Discarded;
+                  d.go (discardLoc);
+                  return jsob;
               }, this));
 };
 
@@ -530,13 +538,15 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     var html = new d.HtmlBuilder ('<table class="conversation-list" cellpadding="0" cellspacing="0"><tr class="group-header"><td>',
                                   fakeLoc.getBreadCrumbs(),
                                   '</td></tr></table>',
-                                  '<div id="conv-msg-list" class="scrollv">');
+                                  '<div id="conv-msg-list" class="scrollv"><div id="mail-list-wrapper" class="scrollv">');
 
     var composer = new m.Composer (html, msg);
 
-    html.push ('</div>');
+    html.push ('</div></div>');
     html.set ('content-iframe');
-
+    
+    d.resizeScrolledView();
+    
     return composer;
 };
 
