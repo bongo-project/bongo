@@ -345,10 +345,15 @@ Dragonfly.Mail.Composer.prototype.discardDraft = function (evt)
     var loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 0,
                                       conversation: this.conversation, message: this.bongoId, valid: true });
 
-    var discardLoc = new d.Location (loc);
-    discardLoc.set = 'inbox';
-    delete discardLoc.conversation;
-    delete discardLoc.message;
+    var discardLoc = d.prevLoc;
+    // don't try to go back to the discarded message
+    if (!discardLoc || (this.bongoId && discardLoc.message == this.bongoId))
+    {
+        discardLoc = new d.Location (loc);
+        discardLoc.set = d.curLoc.set;
+        delete discardLoc.conversation;
+        delete discardLoc.message;
+    }
 
     if (this.def) {
         this.def.cancel();
@@ -548,22 +553,21 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     var fakeLoc = new d.Location ({ tab: 'mail', set: 'drafts', composing: true });
     d.buildSourcebar (fakeLoc);
     m.build (fakeLoc);
+    m.ConversationView.build (fakeLoc);
     
     d.setLoc (fakeLoc);
     d.updateLocation ();
+
+    Element.setHTML ('conv-breadcrumbs', fakeLoc.getBreadCrumbs());
     
     // Update title
-    document.title = 'Composing - \'Untitled\' : ' + Dragonfly.title;
+    document.title = '(untitled) - Composing: ' + Dragonfly.title;
 
-    var html = new d.HtmlBuilder ('<table class="conversation-list" cellpadding="0" cellspacing="0"><tr class="group-header"><td>',
-                                  fakeLoc.getBreadCrumbs(),
-                                  '</td></tr></table>',
-                                  '<div id="conv-msg-list" class="scrollv">');
+    var html = new d.HtmlBuilder ();
 
     var composer = new m.Composer (html, msg);
 
-    html.push ('</div>');
-    html.set ('content-iframe');
+    html.set ('conv-msg-list');
     
     d.resizeScrolledView();
     

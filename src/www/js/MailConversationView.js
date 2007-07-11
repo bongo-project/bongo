@@ -168,7 +168,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
 
     var conv;
     if (jsob.convIdx > 0) {
-        conv = jsob.conversations[0];
+        conv = jsob.conversations[jsob.convIdx - 1];
         itemLoc.conversation = conv.bongoId;
         $('conv-prev-href').href = '#' + itemLoc.getClientUrl ();
         Element.setText ('conv-prev-href', '< ' + m.joinParticipants (conv.props.from) + ': ' + conv.props.subject);
