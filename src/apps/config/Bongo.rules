@@ -19,13 +19,15 @@ bongo_config_LDADD :=					   \
 	$(GNUTLS_LIBS)                                     \
 	$(ALL_LIBS)
 
-dist_noinst_DATA +=				\
+conf_defaults =					\
 	src/apps/config/config/manager		\
 	src/apps/config/config/antivirus	\
 	src/apps/config/config/antispam
 
-src/apps/config/default.set:
-	@cd src/apps/config && tardir=config/ && $(am__tar) > default.set
+dist_noinst_DATA += $(conf_defaults)
+
+src/apps/config/default.set: $(conf_defaults)
+	@(cd $(top_srcdir)/src/apps/config && tardir=config && $(am__tar)) > $@
 
 confdir = $(pkgdatadir)/conf
 
