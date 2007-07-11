@@ -118,7 +118,8 @@ Dragonfly.Calendar.postQuickEvent = function (text)
 
 Dragonfly.Calendar.newEvent = function (evt)
 {
-    Dragonfly.Calendar.popup.quickEventEdit ('new-event-href');
+    var smallMode = document.body.className.indexOf ('low-res') != -1;
+    Dragonfly.Calendar.popup.quickEventEdit (smallMode ? 'new-event-href-alt' : 'new-event-href');
 };
 
 Dragonfly.Calendar.newCalendar = function (subscription)
