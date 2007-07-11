@@ -1354,7 +1354,6 @@ XplServiceMain(int argc, char *argv[])
     AVirus.handle.directory = NULL;
     AVirus.handle.logging = NULL;
 
-    strcpy(AVirus.path.patterns, "sys:/");
     strcpy(AVirus.nmap.address, "127.0.0.1");
 
     XplSafeWrite(AVirus.server.active, 0);
