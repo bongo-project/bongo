@@ -284,7 +284,9 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         return false;
     }
 
-    msg = msg || this.getCurrentMessage ();
+    //msg = msg || this.getCurrentMessage ();
+    msg = this.getCurrentMessage();
+
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
         return true;
@@ -302,7 +304,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     };
 
     loc = new d.Location (loc);
-    this.def = d.requestJSONRPC ((this.bongoId ? 'update' : 'create') + 'Draft', loc,
+    this.def = d.requestJSONRPC ((this.draftSavedAlready ? 'update' : 'create') + 'Draft', loc,
                                  msg,
                                  this.inReplyTo || null,
                                  this.forward || null,
@@ -314,6 +316,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     return this.def.addCallbacks (
         bind (function (jsob) {
                   d.notify ('Saved draft "' + d.escapeHTML (msg.subject) + '".');
+                  this.draftSavedAlready = true;
                   this.lastSavedMsg = msg;
                   
                   if (!this.bongoId && jsob.bongoId) {
@@ -404,17 +407,35 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
     var d = Dragonfly;
     var m = d.Mail;
     var c = m.Composer;
-
+    
+    if (!this.draftSavedAlready)
+    {
+        if (!this.draftSaveCalled)
+        {
+            this.saveDraft(this);
+            this.draftSaveCalled = true;
+            callLater(1, bind('sendMessage', this));
+        }
+        else
+        {
+            // Still waiting for draft to save...
+            logDebug('Save not finished yet - checking again in 1sec.');
+            callLater(1, bind('sendMessage', this));
+        }
+        
+        return;
+    }
+    
     var msg = this.getCurrentMessage ();
     if (!this.hasChanges (msg)) {
         msg = null;
     }
-
+        
     var loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 1, 
                                       conversation: this.conversation, message: this.bongoId, valid: true });
 
     this.setToolbarDisabled (true);
-
+    
     this.cancelScheduledSave();
     this.state = c.Sending;
     
