@@ -61,6 +61,8 @@ BongoAgentHandleSignal(BongoAgent *agent,
     return;
 }
 
+BOOL ReadConfiguration(BongoAgent *agent);
+
 BOOL ReadConfiguration(BongoAgent *agent) {
 	return TRUE;
 }
@@ -106,7 +108,7 @@ FreeBongoConfiguration(BongoConfigItem *config) {
 BOOL
 SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 	if (!node || node->type != schema->type) {
-		printf("config: didn't find data at %s (type: %d, want: %d) \n", schema->source, node->type, schema->type);
+		XplConsolePrintf("config: didn't find data at %s (type: %d, want: %d) \r\n", schema->source, node->type, schema->type);
 		return FALSE;
 	}
 
@@ -127,14 +129,14 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 			}
 			break;
 		case BONGO_JSON_STRING: {
-			char **dest = (char *)schema->destination;
+			char **dest = (char **)schema->destination;
 			*dest = BongoJsonNodeAsString(node);
 			}
 			break;
 		case BONGO_JSON_ARRAY: {
 			BongoConfigItem *subschema = (BongoConfigItem *)schema->destination;
-			BongoArray **output = (BongoArray *)subschema->destination;
-			BongoArray *data, *result;
+			BongoArray **output = (BongoArray **)subschema->destination;
+			BongoArray *data, *result = NULL;
 			int size;
 
 			data = BongoJsonNodeAsArray(node);
@@ -167,7 +169,7 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 					}
 					break;
 				case BONGO_JSON_STRING: {
-					char *dest;
+					const char *dest;
 					int i;
 					result = BongoArrayNew(sizeof(char *), size);
 					for (i=0; i<size; i++) {
@@ -180,7 +182,7 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 					}
 					break;
 				default:
-					XplConsolePrintf("config: type not yet implemented\n");
+					XplConsolePrintf("config: type not yet implemented\r\n");
 					break;
 			}
 			*output = result;
@@ -190,10 +192,10 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 			/* What to do here? We could take ->destination as a pointer
 			   to a BongoConfigItem[], and recurse. Makes less sense for
 			   objects, though */
-			XplConsolePrintf("config: object type not implemented\n");
+			XplConsolePrintf("config: object type not implemented\r\n");
 			break;
 		default:
-			printf("config: unknown type!\n");
+			XplConsolePrintf("config: unknown type %d!\r\n", node->type);
 			return FALSE;
 			break;
 	}
@@ -216,21 +218,25 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	BongoJsonNode *node;
 	
 	if (! NMAPReadConfigFile(filename, &pconfig)) {
-		printf("config: couldn't read config '%s' from store\n", filename);
+		XplConsolePrintf("config: couldn't read config '%s' from store\r\n", filename);
 		return FALSE;
 	}
 	
 	if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
-		printf("config: couldn't parse JSON content in '%s'\n", filename);
+		XplConsolePrintf("config: couldn't parse JSON content in '%s'\r\n", filename);
 		goto finish;
 	}
 	
 	while (config->type != BONGO_JSON_NULL) {
 		BongoJsonNode *result;
 		result = BongoJsonJPath(node, config->source);
-		if (!result || !SetBongoConfigItem(config, result)) {
+		if (!result) {
+			XplConsolePrintf("config: JSON tree for schema source %s not found\r\n", config->source);
+			goto finish;
+		}
+		if (!SetBongoConfigItem(config, result)) {
 			// can't set item
-			printf("config: schema source %s not found", config->source);
+			XplConsolePrintf("config: schema source %s not found\r\n", config->source);
 		}
 		BongoJsonNodeFree(result);
 		config++;
