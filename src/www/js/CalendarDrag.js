@@ -444,4 +444,4 @@ Dragonfly.Calendar.monthDragMove = function (occurrence, pos, origin)
     var state = Dragonfly.Calendar.dragstate;
     state.buble.style.left = (pos.x - origin.x) + 'px';
     state.buble.style.top = (pos.y - origin.y) + 'px';
-}
+};

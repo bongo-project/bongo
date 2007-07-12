@@ -71,7 +71,8 @@ install-data-hook::
 
 SUBDIRS =			\
 	$(IMPORT_SUBDIRS)	\
-	import/log4c		
+	import/log4c		\
+	po
 
 doxygen/html:
 	if test "$(DOXYGEN)" != NO_DOXYGEN; then \
@@ -216,4 +217,8 @@ update-makefiles:
 	@for dir in $(include_subdirs) ; do \
 		echo " cp $(top_srcdir)/Makefile.am.subdir $(top_srcdir)/$$dir/Makefile.am" ; \
 		cp "$(top_srcdir)/Makefile.am.subdir" "$(top_srcdir)/$$dir/Makefile.am" || exit 1 ; \
+		if test "$$dir" == "po" ; then \
+			echo "" >> "$(top_srcdir)/$$dir/Makefile.am" || exit 1 ; \
+			echo "distclean:" >> "$(top_srcdir)/$$dir/Makefile.am" || exit 1 ; \
+		fi ; \
 	done

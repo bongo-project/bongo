@@ -902,7 +902,6 @@ ImportIncomingMail(StoreClient *client)
     struct stat sb;
     IndexHandle *index = NULL;
     long offset = 0;
-    int i;
     CollectionLockPool collLocks;
     WatchEventList events;
     
@@ -1688,7 +1687,7 @@ CollectionLockPoolInit(StoreClient *client, CollectionLockPool *pool)
 void
 CollectionLockPoolDestroy(CollectionLockPool *pool)
 {
-    int i;
+    unsigned int i;
 
     for (i = 0; i < pool->colls.len; i++) {
         colldatum coll = BongoArrayIndex(&pool->colls, colldatum, i);
@@ -1705,7 +1704,7 @@ NLockStruct *
 CollectionLockPoolGet(CollectionLockPool *pool, uint64_t guid)
 {
     colldatum coll;
-    int i;
+    unsigned int i;
     
     for (i = 0; i < pool->colls.len; i++) {
         colldatum coll = BongoArrayIndex(&pool->colls, colldatum, i);
@@ -1901,7 +1900,7 @@ WatchEventListAdd(WatchEventList *events,
 void
 WatchEventListFire(WatchEventList *events, StoreClient *client)
 {
-    int i;
+    unsigned int i;
 
     for (i = 0; i < events->len; i++) {
         eventdatum evt = BongoArrayIndex(events, eventdatum, i);

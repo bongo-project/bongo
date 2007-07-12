@@ -121,7 +121,7 @@ static int appender_load(log4c_rc_t* this, sd_domnode_t* anode)
     
     if (type) {
 	log4c_appender_set_type(app, log4c_appender_type_get(type->value));
-        printf("set to type %s\n", type->value);
+        // printf("set to type %s\n", type->value);
     }
 
     if (layout)

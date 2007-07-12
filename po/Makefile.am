@@ -15,3 +15,5 @@
 
 all clean install:
 	@cd $(top_builddir) && $(MAKE) $(MFLAGS) $(subdir)/$@
+
+distclean:

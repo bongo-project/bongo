@@ -11,7 +11,7 @@ my %libraries = ('connmgr' => 7, 'management' => 14, 'mdb' => 212, 'mdb-file' =>
 
 my $search = sub {
 	my ($dir, $thing, $original) = @_;
-	$current = `grep -r "MDB" src/$dir/* | grep -v \.svn | grep -v matches | wc -l`;
+	$current = `grep -r "MDB" src/$dir/* | grep -v .svn | grep -v matches | wc -l`;
 	chomp $current;
 	my $percent = (100.0 / $original) * ($original - $current);
 	return sprintf("%12s %3d%% (%3d/%3d)", $thing, $percent, $current, $original);

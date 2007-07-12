@@ -141,7 +141,7 @@ See \"%(bongo_setup)s --help\" for command-line options to further automate the 
 
         # see if the bongomanager pid is still running
         try:
-            pid = int(pid)
+            pid = long(pid)
             r = os.kill(pid, 0)
             raise BongoError("""A possibly stale bongomanager pid file has been found.  Either kill process %d (if it is bongomanager) or remove %s""" % (pid, pidfile))
         except OSError, e:

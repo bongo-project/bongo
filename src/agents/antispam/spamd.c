@@ -28,6 +28,7 @@
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
+#include <bongoagent.h>
 #include <bongoutil.h>
 #include <mdb.h>
 #include <nmap.h>
@@ -346,39 +347,34 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
  *
  */
 
+static BongoConfigItem SpamdHostList = { BONGO_JSON_STRING, NULL, &ASpam.spamd.hostlist };
+
+static BongoConfigItem SpamdConfigSchema[] = {
+	{ BONGO_JSON_INT, "o:timeout/i", &ASpam.spamd.connectionTimeout },
+	{ BONGO_JSON_ARRAY, "o:hosts/a", &SpamdHostList},
+	{ BONGO_JSON_NULL, NULL, NULL },
+};
+
 BOOL
 SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
 {
-    BongoJsonResult res;
-    char *host;
     const char *tempHost;
-    unsigned short port;
-    unsigned long weight;
+    unsigned int i;
 
     memset(spamd, 0, sizeof(SpamdConfig));
-    res = BongoJsonJPathGetBool(node, "o:enabled/b", &ASpam.spamd.enabled);
-    if ((res != BONGO_JSON_OK) || (!ASpam.spamd.enabled)) {
-        /* nothing is configured or we are disabled */
-        return(FALSE);
-    }
 
     /* Set up default spamd options. */
     spamd->connectionTimeout = SPAMD_DEFAULT_CONNECTION_TIMEOUT;
-
     ConnAddressPoolStartup(&spamd->hosts, 0, 0);
 
-    if (BongoJsonJPathGetInt(node, "o:timeout/i", (int *)(&spamd->connectionTimeout)) != BONGO_JSON_OK) {
-        spamd->connectionTimeout = SPAMD_DEFAULT_CONNECTION_TIMEOUT;
-    }
+    if (!ReadBongoConfiguration(SpamdConfigSchema, "antispam"))
+	return FALSE;
 
-    /* hmm, GetString needs a const char * since it is pointer to memory space that the caller should not modify,
-     *   however ParseHost is going to need a char *.  i've got to strdup it and then free it, or re-write
-     *   ParseHost to do it.  annoying!  */
-    if (BongoJsonJPathGetString(node, "o:host/s", &tempHost) == BONGO_JSON_OK) {
-        char *lHost = MemStrdup(tempHost);
-        host = SPAMD_DEFAULT_ADDRESS;
-        port = SPAMD_DEFAULT_PORT;
-        weight = SPAMD_DEFAULT_WEIGHT;
+    for (i=0; i < BongoArrayCount(ASpam.spamd.hostlist); i++) {
+	char *hostitem = &BongoArrayIndex(ASpam.spamd.hostlist, char*, i);
+        char *lHost = MemStrdup(hostitem);
+        char *host;
+        int port, weight;
         ParseHost(lHost, &host, &port, &weight);
         ConnAddressPoolAddHost(&ASpam.spamd.hosts, host, port, weight);
         MemFree(lHost);
@@ -391,7 +387,6 @@ SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
 void
 SpamdShutdown(SpamdConfig *spamd)
 {
-    spamd->enabled = FALSE;
     ConnAddressPoolShutdown(&(spamd->hosts));
 
     memset(spamd, 0, sizeof(SpamdConfig));
@@ -400,14 +395,7 @@ SpamdShutdown(SpamdConfig *spamd)
 void
 SpamdStartup(SpamdConfig *spamd)
 {
-    if (spamd->enabled) {
-        if (spamd->hosts.addressCount == 0) {
-            ConnAddressPoolAddHost(&(spamd->hosts), SPAMD_DEFAULT_ADDRESS, SPAMD_DEFAULT_PORT, SPAMD_DEFAULT_WEIGHT);
-        }
-
-        return;
+    if (spamd->hosts.addressCount == 0) {
+        ConnAddressPoolAddHost(&(spamd->hosts), SPAMD_DEFAULT_ADDRESS, SPAMD_DEFAULT_PORT, SPAMD_DEFAULT_WEIGHT);
     }
-
-    SpamdShutdown(spamd);
-    return;
 }

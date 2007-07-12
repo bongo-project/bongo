@@ -212,6 +212,7 @@ Cleanup(void *param)
                     unlink(buffer);
                 }
             }
+            XplCloseDir(dir);
         }
 
         for (i = 0; i < (User.config.timeout * 60) && !UserUnloadOk; i++) {

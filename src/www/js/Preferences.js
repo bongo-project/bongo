@@ -136,7 +136,7 @@ Dragonfly.Preferences.reset = function()
     var p = Dragonfly.Preferences;
     p.prefs = deepclone (p.defaultPrefs);
     p.save();
-}
+};
 
 /*
     Dragonfly.Preferences._lookup (obj, path)
@@ -159,7 +159,7 @@ Dragonfly.Preferences._lookup = function (obj, path)
     } catch (e) {
         return undefined;
     }
-}
+};
 
 /*
     Dragonfly.Preferences.get (key)
@@ -194,7 +194,7 @@ Dragonfly.Preferences.get = function (key)
     }
     
     throw new Error ('Invalid Preference Key ' + key);
-}
+};
 
 Dragonfly.Preferences.set = function (key, value)
 {
@@ -207,7 +207,7 @@ Dragonfly.Preferences.set = function (key, value)
         return p.save();
     }
     throw new Error ('Invalid Preference Key ' + key);
-}
+};
 
 /*
     The Preferences editor (the UI component)
@@ -264,7 +264,7 @@ Dragonfly.Preferences.Editor.build = function (loc)
         // Come up with some magic tabs!
         var notebook = new d.Notebook();
         var userpage = notebook.appendPage('About Me');
-        var composerpage = notebook.appendPage('Composer');
+        var composerpage = notebook.appendPage('Mail');
         var calendarpage = notebook.appendPage('Calendar');
         
         var userhtml = new d.HtmlBuilder ();
@@ -278,9 +278,19 @@ Dragonfly.Preferences.Editor.build = function (loc)
         
         var composerhtml = new d.HtmlBuilder ();
         composerhtml.push ('<table border="0" cellspacing="0">', 
-            '<tr><td><label>Default sent address:</label></td>', 
-            '<td><input type="text" id="from"></td></tr>', 
+            '<tr><td><label>From address:</label></td>', 
+            '<td><input type="text" id="from" /></td></tr>', 
             '<tr><td colspan="2"><span style="font-size: 80%;">Please don\'t abuse the above feature for now.</span></td></tr>',
+            '<tr><td><label>Auto BCC:</label></td>',
+            '<td><input type="text" id="autobcc" /></td></tr>',
+            '<tr><td><label>Signature:</label></td>',
+            '<td><textarea rows="3" cols="30" id="signature"></textarea><br />',
+            '<input type="checkbox" id="usesig" name="usesig" /><label for="usesig">Apply signature to outgoing mail</label>',
+            '</td></tr>',
+            '<tr><td><label>Show HTML messages:</label></td>',
+            '<td><select id="htmlmsg"><option value="show">Yes</option><option value="ptext">Prefer plain-text</option><option value="hide">No</option></select></td></tr>',
+            '<tr><td><label>Page size:</label></td>',
+            '<td><input type="text" style="width: 20px;" id="mailpagesize"> items</td></tr>',
             '</table>');
         composerhtml.set (composerpage);
         
@@ -303,28 +313,35 @@ Dragonfly.Preferences.Editor.build = function (loc)
     }
     
     logDebug('We just got built.');
-}
+};
 
 
 Dragonfly.Preferences.Editor.save = function ()
 {
     var d = Dragonfly;
+    var p = d.Preferences;
     
+    // Timezone
     d.setCurrentTzid (d.tzselector.getTzid());
-    d.Preferences.prefs.mail.from = $('from').value;
-    d.Preferences.save();
     
+    // Mail prefs
+    p.prefs.mail.from = $('from').value;
+    p.prefs.mail.autoBcc = $('autobcc').value;
+    p.prefs.mail.signature = $('signature').value;
+    p.prefs.mail.usesig = $('usesig').checked;
+    
+    // Finish up
+    p.save();
     this.dispose();
-}
+};
 
 Dragonfly.Preferences.Editor.dispose = function ()
 {
     var d = Dragonfly;    
     
-    // Send user back to summary.
-    var loc = new d.Location({tab: 'summary'});
-    d.go('#' + loc);
-}
+    // Send user back to previous location.
+    d.go('#' + d.prevLoc);
+};
 
 Dragonfly.Preferences.Editor.load = function (loc, jsob)
 {
@@ -332,11 +349,16 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
 
     document.title = 'Preferences: ' + Dragonfly.title;
 
-    // Fill form with values.
+    // Mail prefs
     $('from').value = jsob.mail.from;
     
+    if (jsob.mail.autoBcc)   { $('autobcc').value       = jsob.mail.autoBcc;   }
+    if (jsob.mail.pageSize)  { $('mailpagesize').value  = jsob.mail.pageSize;  }
+    if (jsob.mail.signature) { $('signature').value     = jsob.mail.signature; }
+    if (jsob.mail.usesig)    { $('usesig').checked      = jsob.mail.usesig;    }
+       
     logDebug('We just loaded.');
-}
+};
 
 Dragonfly.Preferences.Editor.buildInterface = function (children, actions, observer)
 {
@@ -360,4 +382,4 @@ Dragonfly.Preferences.Editor.buildInterface = function (children, actions, obser
         Event.observe (ids[i], 'click', bind (clickHandler, observer || this));
         logDebug('Done!');
     }
-}
+};

@@ -1,6 +1,11 @@
 # -*- Makefile -*-
 lib_LTLIBRARIES += libbongologger.la
 
+logconfdir := $(XPL_DEFAULT_CONF_DIR)
+
+dist_logconf_DATA := 				\
+	src/libs/logger/logs.conf
+
 libbongologger_la_SOURCES :=			\
 	src/libs/logger/bongo.lsc		\
 	src/libs/logger/logger-format.pl	\

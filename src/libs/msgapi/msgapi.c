@@ -2336,3 +2336,36 @@ MsgInit(void)
 
     return((MSGAPIState == LIBRARY_RUNNING) ? MsgGlobal.directoryHandle : NULL);
 }
+
+EXPORT BOOL
+MsgSetRecoveryFlag(void)
+{
+	// FIXME: TODO :)
+	return FALSE;
+}
+
+EXPORT BOOL
+MsgGetRecoveryFlag(void)
+{
+	// FIXME: TODO :)
+	return FALSE;
+}
+
+EXPORT BOOL
+MsgGetServerCredential(char *buffer)
+{
+	MDBValueStruct *v;
+
+	if (MsgGlobal.directoryHandle) { 	 
+		v = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL); 	 
+		if (v) { 	 
+			MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, v); 	 
+			if (v->Used) { 	 
+				HashCredential(MsgGlobal.server.dn, v->Value[0], buffer); 	 
+			} 	 
+			MDBDestroyValueStruct(v);
+			return TRUE;
+		} 
+	}
+	return FALSE;
+}

@@ -51,10 +51,10 @@ Dragonfly.login = function (user)
     if (!d.authToken) {
         d.authToken = btoa (user + ':');
     }
-
+    
     d.setLoginMessage (_('loggingInMessage'));
     d.setLoginDisabled (true);
-
+    
     p.load().addCallbacks (
         function (prefs) {
             return loginSucceeded ();

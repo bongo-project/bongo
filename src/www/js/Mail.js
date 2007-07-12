@@ -19,15 +19,51 @@ Dragonfly.Mail.setLabels = {
 
 Dragonfly.Mail.getView = function (loc)
 {
+    logDebug('Dragonfly.Mail.getView(loc) called.');
+    
     var d = Dragonfly;
     var m = d.Mail;
 
     loc = loc || d.curLoc;
-
-    return loc.conversation ? m.ConversationView : 
-    loc.handler == 'contacts' ? loc.contact ? m.ListView : m.MultiListView :
-    loc.handler == 'subscriptions' ? loc.listId ? m.ListView : m.MultiListView :
-    m.ListView;
+    
+    var ret;
+    if (loc.conversation)
+    {
+        ret = m.ConversationView;
+    }
+    else if (loc.handler == 'contacts')
+    {
+        if (loc.contact)
+        {
+            ret = m.ListView;
+        }
+        else
+        {
+            ret = m.MultiListView;
+        }
+    }
+    else if (loc.handler == 'subscriptions')
+    {
+        if (loc.listId)
+        {
+            ret = m.ListView;
+        }
+        else
+        {
+            ret = m.MultiListView;
+        }
+    }
+    else if (loc.composing == true)
+    {
+        // We're faked into a conversation view if we're composing!
+        ret = m.ConversationView;
+    }
+    else 
+    {
+        ret = m.ListView;
+    }
+    
+    return ret;
 };
 
 Dragonfly.Mail.Preferences = { };
@@ -83,6 +119,20 @@ Dragonfly.Mail.Preferences.getPageSize = function ()
 
     return p.prefs.mail.pageSize || 30;
 };
+
+Dragonfly.Mail.Preferences.getSignatureAvailable = function ()
+{
+    var p = Dragonfly.Preferences;
+    
+    return p.prefs.mail.usesig || false;
+}
+
+Dragonfly.Mail.Preferences.getSignature = function ()
+{
+    var p = Dragonfly.Preferences;
+    
+    return p.prefs.mail.signature || '';
+}
 
 Dragonfly.Mail.getFromAddress = function ()
 {

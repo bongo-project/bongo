@@ -3,6 +3,7 @@ htdocsdir = $(pkgdatadir)/htdocs
 
 dist_htdocs_DATA :=				\
 	src/www/dragonfly.html			\
+	src/www/dragonfly-debug.html    \
 	src/www/favicon.ico
 
 htl10ndir = $(htdocsdir)/l10n
@@ -11,17 +12,27 @@ htl10n_DATA := $(htl10n_jsfiles)
 cssdir = $(htdocsdir)/css
 
 dist_css_DATA :=				\
-	src/www/css/admin.css			\
-	src/www/css/calendar.css		\
-	src/www/css/composer.css		\
-	src/www/css/contacts.css		\
-	src/www/css/conversation.css		\
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
+	src/www/css/widgets.css         \
 	src/www/css/login.css			\
-	src/www/css/print.css			\
+	src/www/css/composer.css		\
+	src/www/css/conversation.css		\
+	src/www/css/contacts.css		\
+	src/www/css/calendar.css		\
 	src/www/css/summary.css			\
-	src/www/css/widgets.css
+	src/www/css/print.css			\
+	src/www/css/admin.css
+	
+screencssdir = $(cssdir)
+
+compress_script := $(top_srcdir)/src/www/compress.py
+
+dist_screencss_DATA =                  \
+	src/www/css/screen.css
+
+src/www/css/screen.css: $(dist_css_DATA)
+	$(compress_script) $(dist_css_DATA) --measure -o src/www/css/screen.css -i src/www/css/print.css -i src/www/css/admin.css --no-linebreaks
 
 imgdir = $(htdocsdir)/img
 
@@ -208,34 +219,35 @@ dist_img_DATA :=					     \
 
 jsdir = $(htdocsdir)/js
 
+# These *must* be in the order in which they get loaded in the browser
 dist_js_DATA :=					\
+    src/www/js/Dragonfly.js			\
+    src/www/js/Format.js			\
+    src/www/js/Gettext.js			\
+    src/www/js/Cookie.js			\
+    src/www/js/Location.js			\
+    src/www/js/Login.js			\
+    src/www/js/Util.js			\
+    src/www/js/Widgets.js   \
+    src/www/js/ValidatingEntry.js		\
+    src/www/js/Preferences.js		\
 	src/www/js/AddressBook.js		\
-	src/www/js/CalendarDrag.js		\
-	src/www/js/CalendarEditor.js		\
-	src/www/js/Calendar.js			\
-	src/www/js/CalendarLayout.js		\
-	src/www/js/CalendarView.js		\
-	src/www/js/CalendarWidgets.js		\
-	src/www/js/Composer.js			\
-	src/www/js/Cookie.js			\
-	src/www/js/Dragonfly.js			\
-	src/www/js/Format.js			\
-	src/www/js/Gettext.js			\
-	src/www/js/BongoCalendar.js		\
 	src/www/js/JCal.js			\
-	src/www/js/Location.js			\
-	src/www/js/Login.js			\
-	src/www/js/MailConversationView.js	\
-	src/www/js/Mail.js			\
-	src/www/js/MailListView.js		\
-	src/www/js/MailWidgets.js		\
+	src/www/js/Calendar.js			\
+	src/www/js/BongoCalendar.js		\
+	src/www/js/CalendarEditor.js		\
 	src/www/js/OccurrenceEditor.js		\
-	src/www/js/Preferences.js		\
-	src/www/js/Search.js			\
+	src/www/js/CalendarView.js		\
+	src/www/js/CalendarLayout.js		\
+	src/www/js/CalendarDrag.js		\
+	src/www/js/CalendarWidgets.js		\
 	src/www/js/Summary.js			\
-	src/www/js/Util.js			\
-	src/www/js/ValidatingEntry.js		\
-	src/www/js/Widgets.js   \
+	src/www/js/Search.js			\
+	src/www/js/Mail.js			\
+	src/www/js/MailWidgets.js		\
+	src/www/js/Composer.js			\
+	src/www/js/MailConversationView.js	\
+	src/www/js/MailListView.js		\
 	src/www/js/Browser.js   \
 	src/www/js/BrowserCheck.js
 
@@ -246,37 +258,36 @@ dist_prototype_DATA := \
 
 mochidir = $(jsdir)/lib/MochiKit
 
+# These *must* be in the order in which they get loaded in the browser/MochiKit
 dist_mochi_DATA :=				   \
+    src/www/js/lib/MochiKit/Base.js		   \
+    src/www/js/lib/MochiKit/Iter.js		   \
+    src/www/js/lib/MochiKit/Logging.js	   \
+    src/www/js/lib/MochiKit/DateTime.js	   \
+    src/www/js/lib/MochiKit/Format.js	   \
 	src/www/js/lib/MochiKit/Async.js	   \
-	src/www/js/lib/MochiKit/Base.js		   \
-	src/www/js/lib/MochiKit/Color.js	   \
-	src/www/js/lib/MochiKit/DateTime.js	   \
 	src/www/js/lib/MochiKit/DOM.js		   \
-	src/www/js/lib/MochiKit/Format.js	   \
-	src/www/js/lib/MochiKit/Iter.js		   \
-	src/www/js/lib/MochiKit/interpreter.js	   \
-	src/www/js/lib/MochiKit/Logging.js	   \
 	src/www/js/lib/MochiKit/LoggingPane.js	   \
-	src/www/js/lib/MochiKit/MochiKit.js	   \
-	src/www/js/lib/MochiKit/MochiKit-packed.js \
-	src/www/js/lib/MochiKit/MockDOM.js	   \
-	src/www/js/lib/MochiKit/__package__.js	   \
+	src/www/js/lib/MochiKit/Color.js	   \
 	src/www/js/lib/MochiKit/Signal.js	   \
-	src/www/js/lib/MochiKit/SimpleTest.js	   \
-	src/www/js/lib/MochiKit/Test.js		   \
-	src/www/js/lib/MochiKit/TestRunner.js	   \
-	src/www/js/lib/MochiKit/Visual.js
+	src/www/js/lib/MochiKit/Visual.js      \
+	src/www/js/lib/MochiKit/MochiKit.js	   \
+	src/www/js/lib/MochiKit/interpreter.js
 
 scriptaculousdir = $(jsdir)/lib/script.aculo.us
 
+# Same as with above JS.
 dist_scriptaculous_DATA :=				\
-	src/www/js/lib/script.aculo.us/builder.js	\
-	src/www/js/lib/script.aculo.us/controls.js	\
-	src/www/js/lib/script.aculo.us/dragdrop.js	\
-	src/www/js/lib/script.aculo.us/effects.js	\
-	src/www/js/lib/script.aculo.us/scriptaculous.js	\
-	src/www/js/lib/script.aculo.us/slider.js	\
-	src/www/js/lib/script.aculo.us/unittest.js
+	src/www/js/lib/script.aculo.us/effects.js   \
+	src/www/js/lib/script.aculo.us/controls.js
+
+finaljsdir = $(jsdir)
+
+dist_finaljs_DATA =						\
+	src/www/js/final.js
+
+src/www/js/final.js: $(dist_js_DATA) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA)
+	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) -o src/www/js/final.js --measure --type js
 
 install-data-local:: install-dist_htdocsDATA
 	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"
@@ -362,7 +373,8 @@ sbin_SCRIPTS += \
 	src/www/bongo-standalone
 
 dist_noinst_SCRIPTS += \
-	src/www/l10n/props2json
+	src/www/l10n/props2json \
+	src/www/compress.py
 
 templatesdir = $(pkgdatadir)/templates
 

@@ -69,6 +69,7 @@ typedef struct {
 
 typedef struct {
     AddressPool hosts;
+    BongoArray *hostlist;
     BOOL enabled;
     unsigned long connectionTimeout;
 } SpamdConfig;

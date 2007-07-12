@@ -90,6 +90,18 @@ struct _BongoAgent {
     BongoManagee *managee;
 };
 
+/* Configuration file reading stuff */
+
+typedef struct _BongoConfigItem {
+	BongoJsonType type;
+	char *source;
+	void *destination;
+} BongoConfigItem;
+
+BOOL ReadBongoConfiguration(BongoConfigItem *config, char *filename);
+BOOL SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node);
+void FreeBongoConfiguration(BongoConfigItem *config);
+
 int BongoAgentInit(BongoAgent *agent,
                   const char *agentName,
                   const char *agentDn,

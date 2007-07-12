@@ -116,7 +116,7 @@ UserLogin(ImapSession *session, unsigned char **username, unsigned char *passwor
             ccode = UserStoreInitialize(session, *username);
             if (ccode == STATUS_CONTINUE) {
                 LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_LOGIN, LOG_INFO, 
-                            0, session->user.name, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+                            0, *username, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
                 return(STATUS_CONTINUE);
             }
         }

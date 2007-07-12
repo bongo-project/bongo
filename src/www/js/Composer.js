@@ -15,6 +15,8 @@ Dragonfly.Mail.Composer = function (parent, msg)
     this.isReply = this.msg.isReply;
 
     this.pendingAttachments = [ ];
+    
+    logDebug('Composer instantiated.');
 
     if (parent) {
         d.HtmlBuilder.buildChild (parent, this);
@@ -37,12 +39,21 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     var d = Dragonfly;
     var m = d.Mail;
     var p = m.Preferences;
-
+    
+    var defaultbody = '';
+    
+    if (p.getSignatureAvailable())
+    {
+        // Append signature to end of message.
+        defaultbody = '\n\n_______________________________________________\n' + p.getSignature();
+    }
+    
     var msg = { 
         from: m.getFromAddress(),
         to: '',
         cc: '',
-        bcc: p.getAutoBcc() || ''
+        bcc: p.getAutoBcc() || '',
+        body: defaultbody
     };
     if (mailto.substr (0, 7) != 'mailto:') {
         return null;
@@ -193,6 +204,9 @@ Dragonfly.Mail.Composer.prototype.connectHtml = function (elem)
     
     Event.observe (this.addAttachment, 'click',
                    this.addNewAttachment.bindAsEventListener (this));
+                   
+    Event.observe (this.subject, 'keyup',
+                   this.updateTitle.bindAsEventListener (this));
 
     if (this.msg.bongoId) {
         this.bongoId = this.msg.bongoId;
@@ -247,6 +261,18 @@ Dragonfly.Mail.Composer.prototype.hasChanges = function (msg)
     return !this.lastSavedMsg || messagesDiffer (this.lastSavedMsg, msg || this.getCurrentMessage());
 };
 
+Dragonfly.Mail.Composer.prototype.updateTitle = function (evt)
+{
+    if (this.subject.value == "")
+    {
+        document.title = '(untitled) - Composing: ' + Dragonfly.title;
+    }
+    else
+    {
+        document.title = this.subject.value + ' - Composing: ' + Dragonfly.title;
+    }
+}
+
 Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
 {
     var d = Dragonfly;
@@ -258,7 +284,9 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         return false;
     }
 
-    msg = msg || this.getCurrentMessage ();
+    //msg = msg || this.getCurrentMessage ();
+    msg = this.getCurrentMessage();
+
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
         return true;
@@ -276,7 +304,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     };
 
     loc = new d.Location (loc);
-    this.def = d.requestJSONRPC ((this.bongoId ? 'update' : 'create') + 'Draft', loc,
+    this.def = d.requestJSONRPC ((this.draftSavedAlready ? 'update' : 'create') + 'Draft', loc,
                                  msg,
                                  this.inReplyTo || null,
                                  this.forward || null,
@@ -288,6 +316,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     return this.def.addCallbacks (
         bind (function (jsob) {
                   d.notify ('Saved draft "' + d.escapeHTML (msg.subject) + '".');
+                  this.draftSavedAlready = true;
                   this.lastSavedMsg = msg;
                   
                   if (!this.bongoId && jsob.bongoId) {
@@ -334,10 +363,15 @@ Dragonfly.Mail.Composer.prototype.discardDraft = function (evt)
     var loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 0,
                                       conversation: this.conversation, message: this.bongoId, valid: true });
 
-    var discardLoc = new d.Location (loc);
-    discardLoc.set = 'inbox';
-    delete discardLoc.conversation;
-    delete discardLoc.message;
+    var discardLoc = d.prevLoc;
+    // don't try to go back to the discarded message
+    if (!discardLoc || (this.bongoId && discardLoc.message == this.bongoId))
+    {
+        discardLoc = new d.Location (loc);
+        discardLoc.set = d.curLoc.set;
+        delete discardLoc.conversation;
+        delete discardLoc.message;
+    }
 
     if (this.def) {
         this.def.cancel();
@@ -352,13 +386,19 @@ Dragonfly.Mail.Composer.prototype.discardDraft = function (evt)
                   return jsob;
               }, this),
         bind (function (err) {
-                  if (!(err instanceof CancelledError)) {
+                  // Ignore the fact we errored - probably because we NEVER SAVED ANYTHING.
+                  /*if (!(err instanceof CancelledError)) {
                       d.notifyError ('Could not discard draft');
                       logDebug ('error deleting draft:', d.reprError (err));
                   }
                   this.state = c.MaybeDirty;
                   this.scheduleSave();
-                  return err;
+                  return err;*/
+                  
+                  // Now, go do what success normally does.
+                  this.state = c.Discarded;
+                  d.go (discardLoc);
+                  return jsob;
               }, this));
 };
 
@@ -367,17 +407,35 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
     var d = Dragonfly;
     var m = d.Mail;
     var c = m.Composer;
-
+    
+    if (!this.draftSavedAlready)
+    {
+        if (!this.draftSaveCalled)
+        {
+            this.saveDraft(this);
+            this.draftSaveCalled = true;
+            callLater(1, bind('sendMessage', this));
+        }
+        else
+        {
+            // Still waiting for draft to save...
+            logDebug('Save not finished yet - checking again in 1sec.');
+            callLater(1, bind('sendMessage', this));
+        }
+        
+        return;
+    }
+    
     var msg = this.getCurrentMessage ();
     if (!this.hasChanges (msg)) {
         msg = null;
     }
-
+        
     var loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 1, 
                                       conversation: this.conversation, message: this.bongoId, valid: true });
 
     this.setToolbarDisabled (true);
-
+    
     this.cancelScheduledSave();
     this.state = c.Sending;
     
@@ -523,20 +581,27 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     }
     d.contentIFrameZone.disposeZone();
 
-    var fakeLoc = new d.Location ({ tab: 'mail', set: 'drafts' });
+    var fakeLoc = new d.Location ({ tab: 'mail', set: 'drafts', composing: true });
     d.buildSourcebar (fakeLoc);
     m.build (fakeLoc);
+    m.ConversationView.build (fakeLoc);
+    
+    d.setLoc (fakeLoc);
+    d.updateLocation ();
 
-    var html = new d.HtmlBuilder ('<table class="conversation-list" cellpadding="0" cellspacing="0"><tr class="group-header"><td>',
-                                  fakeLoc.getBreadCrumbs(),
-                                  '</td></tr></table>',
-                                  '<div id="conv-msg-list" class="scrollv">');
+    Element.setHTML ('conv-breadcrumbs', fakeLoc.getBreadCrumbs());
+    
+    // Update title
+    document.title = '(untitled) - Composing: ' + Dragonfly.title;
+
+    var html = new d.HtmlBuilder ();
 
     var composer = new m.Composer (html, msg);
 
-    html.push ('</div>');
-    html.set ('content-iframe');
-
+    html.set ('conv-msg-list');
+    
+    d.resizeScrolledView();
+    
     return composer;
 };
 

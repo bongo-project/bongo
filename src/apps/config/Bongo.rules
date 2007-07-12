@@ -19,6 +19,21 @@ bongo_config_LDADD :=					   \
 	$(GNUTLS_LIBS)                                     \
 	$(ALL_LIBS)
 
+conf_defaults =					\
+	src/apps/config/config/manager		\
+	src/apps/config/config/antivirus	\
+	src/apps/config/config/antispam
+
+dist_noinst_DATA += $(conf_defaults)
+
+src/apps/config/default.set: $(conf_defaults)
+	@(cd $(top_srcdir)/src/apps/config && tardir=config && $(am__tar)) > $@
+
+confdir = $(pkgdatadir)/conf
+
+conf_DATA := \
+        src/apps/config/default.set
+
 src/apps/config/all: bongo-config
 src/apps/config/clean: clean
 src/apps/config/install:

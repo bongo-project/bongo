@@ -35,6 +35,12 @@ EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
 EXPORT BOOL MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword);
 EXPORT BOOL MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
 
+// Misc. util functions
+
+EXPORT BOOL MsgSetRecoveryFlag(void);
+EXPORT BOOL MsgGetRecoveryFlag(void);
+EXPORT BOOL MsgGetServerCredential(char *buffer);
+
 #define MSGSRV_LOCAL_SERVER                 NULL
 #define MSGSRV_SELECTED_CONTEXT             "."
 

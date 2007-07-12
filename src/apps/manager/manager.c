@@ -423,8 +423,7 @@ Lock(BOOL force)
         exit(1);
     }
 
-    snprintf(pidstr, sizeof(pidstr), "%dl\n", pid);
-    remaining = sizeof(pidstr);
+    remaining = snprintf(pidstr, sizeof(pidstr), "%ld\n", pid);
     ret = 0;
     written = 0;
     
@@ -601,7 +600,7 @@ StartSlapd(BOOL killExisting)
                     return 1;
                 }
             } else {
-                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %dl\n"), pid);
+                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %ld\n"), pid);
                 fprintf(stderr, _("bongo-manager: if this is definitely the bongo slapd, you can run with -e to kill it\n"));
                 return 1;
             }
@@ -638,6 +637,7 @@ StartSlapd(BOOL killExisting)
               "-f", XPL_DEFAULT_CONF_DIR "/bongo-slapd.conf",
               "-h", url,
               "-n", "bongo-slapd",
+              "-s", "0",
               NULL);
 
         exit(1);

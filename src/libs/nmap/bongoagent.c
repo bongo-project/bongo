@@ -18,8 +18,11 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// Parts (C) 2007 Alex Hudson. See Bongo Project Licensing.
 
-/* Helpers for queue agent implementation */
+/** \file
+ *  Helpers for Bongo agents. Mainly for queue agents, also contains configuration reading helpers
+ */
 
 #include <config.h>
 
@@ -58,31 +61,192 @@ BongoAgentHandleSignal(BongoAgent *agent,
     return;
 }
 
-static BOOL 
-ReadConfiguration(BongoAgent *agent)
-{
-    MDBValueStruct *config;
+BOOL ReadConfiguration(BongoAgent *agent);
 
-    config = MDBCreateValueStruct(agent->directoryHandle, 
-                                  MsgGetServerDN(NULL));
-    if (config) {
-        if (MDBRead(".", MSGSRV_A_OFFICIAL_NAME, config)) {
-            strcpy(agent->officialName, config->Value[0]);
-            MDBFreeValues(config);
-        } else {
-            agent->officialName[0] = '\0';
-        }
+BOOL ReadConfiguration(BongoAgent *agent) {
+	return TRUE;
+}
 
-        if (MDBRead(agent->name, MSGSRV_A_PORT, config)) {
-            agent->port = (unsigned short)atol(config->Value[0]);
-            MDBFreeValues(config);
-        }
+/** 
+ * Free any memory allocated as part of reading the agent's configuration. 
+ * \param 	config	BongoConfigItem array which defines configuration variables
+ */
+void
+FreeBongoConfiguration(BongoConfigItem *config) {
+	while (config->type != BONGO_JSON_NULL) {
+		switch (config->type) {
+			case BONGO_JSON_STRING:
+				if (config->destination) MemFree(config->destination);
+				break;
+			case BONGO_JSON_ARRAY: {
+				BongoConfigItem *sub = config->destination;
+				/* if (sub->type == BONGO_JSON_STRING) {
+					int i;
+					for (i=0; i<BongoArrayCount(sub->destination); i++) {
+						char *s = &BongoArrayIndex(sub->destination, char*, i);
+						MemFree(s);
+					}
+				}*/
+				BongoArrayFree(sub->destination, TRUE);
+				}
+				break;
+			default:
+				// nothing to do?
+				break;
+		}
+	}
+}
 
-        MDBDestroyValueStruct(config);
-        return TRUE;
-    }
+/**
+ * \internal
+ * Take an individual BongoConfigItem, and a JSON tree, and try to find the config item
+ * \param	schema	pointer to a single BongoConfigItem
+ * \param	node	JSON tree we want to look in
+ * \return		Whether or not it was successful
+ */
 
-    return FALSE;
+BOOL
+SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
+	if (!node || node->type != schema->type) {
+		XplConsolePrintf("config: didn't find data at %s (type: %d, want: %d) \r\n", schema->source, node->type, schema->type);
+		return FALSE;
+	}
+
+	switch (node->type) {
+		case BONGO_JSON_BOOL: {
+			BOOL *dest = (BOOL *)schema->destination;
+			*dest = BongoJsonNodeAsBool(node);
+			}
+			break;
+		case BONGO_JSON_DOUBLE: {
+			double *dest = (double *)schema->destination;
+			*dest = BongoJsonNodeAsDouble(node);
+			}
+			break;
+		case BONGO_JSON_INT: {
+			int *dest = (int *)schema->destination;
+			*dest = BongoJsonNodeAsInt(node);
+			}
+			break;
+		case BONGO_JSON_STRING: {
+			char **dest = (char **)schema->destination;
+			*dest = BongoJsonNodeAsString(node);
+			}
+			break;
+		case BONGO_JSON_ARRAY: {
+			BongoConfigItem *subschema = (BongoConfigItem *)schema->destination;
+			BongoArray **output = (BongoArray **)subschema->destination;
+			BongoArray *data, *result = NULL;
+			int size;
+
+			data = BongoJsonNodeAsArray(node);
+			size = BongoArrayCount(data);
+			
+			switch (subschema->type) {
+				case BONGO_JSON_BOOL: { 
+					BOOL dest;
+					int i;
+					result = BongoArrayNew(sizeof(BOOL), size);
+					for(i = 0; i < size; i++) {
+						if (BongoJsonArrayGetBool(data, i, &dest) == BONGO_JSON_OK) {
+							BongoArrayAppendValue(result, dest);
+						} else {
+							return FALSE;
+						}
+					}
+					}
+					break;
+				case BONGO_JSON_INT: {
+					int dest, i;
+					result = BongoArrayNew(sizeof(int), size);
+					for(i = 0; i < size; i++) {
+						if (BongoJsonArrayGetInt(data, i, &dest) == BONGO_JSON_OK) {
+							BongoArrayAppendValue(result, dest);
+						} else {
+							return FALSE;
+						}
+					}
+					}
+					break;
+				case BONGO_JSON_STRING: {
+					const char *dest;
+					int i;
+					result = BongoArrayNew(sizeof(char *), size);
+					for (i=0; i<size; i++) {
+						if (BongoJsonArrayGetString(data, i, &dest) == BONGO_JSON_OK) {
+							BongoArrayAppendValue(result, dest);
+						} else {
+							return FALSE;
+						}
+					}
+					}
+					break;
+				default:
+					XplConsolePrintf("config: type not yet implemented\r\n");
+					break;
+			}
+			*output = result;
+			}
+			break;
+		case BONGO_JSON_OBJECT:
+			/* What to do here? We could take ->destination as a pointer
+			   to a BongoConfigItem[], and recurse. Makes less sense for
+			   objects, though */
+			XplConsolePrintf("config: object type not implemented\r\n");
+			break;
+		default:
+			XplConsolePrintf("config: unknown type %d!\r\n", node->type);
+			return FALSE;
+			break;
+	}
+
+	return TRUE;
+}
+
+/**
+ * Read a configuration document from the Bongo Store, and bring information 
+ * from that document into the agent
+ * \param	config	BongoConfigItem array which defines configuration variables
+ * \param	filename	Filename we wish to read from the store
+ * \return	 		Whether or not we were successful
+ */
+
+BOOL 
+ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
+	unsigned char *pconfig;
+	BOOL retcode = FALSE;
+	BongoJsonNode *node = NULL;
+	
+	if (! NMAPReadConfigFile(filename, &pconfig)) {
+		XplConsolePrintf("config: couldn't read config '%s' from store\r\n", filename);
+		return FALSE;
+	}
+	
+	if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
+		XplConsolePrintf("config: couldn't parse JSON content in '%s'\r\n", filename);
+		goto finish;
+	}
+	
+	while (config->type != BONGO_JSON_NULL) {
+		BongoJsonNode *result;
+		result = BongoJsonJPath(node, config->source);
+		if (!result) {
+			XplConsolePrintf("config: JSON tree for schema source %s not found\r\n", config->source);
+			goto finish;
+		}
+		if (!SetBongoConfigItem(config, result)) {
+			// can't set item
+			XplConsolePrintf("config: schema source %s not found\r\n", config->source);
+		}
+		BongoJsonNodeFree(result);
+		config++;
+	}
+	
+	retcode = TRUE;
+
+finish:
+	if (node) BongoJsonNodeFree(node);
+	return retcode;
 }
 
 int

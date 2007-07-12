@@ -28,6 +28,7 @@
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
+#include <bongoagent.h>
 #include <bongoutil.h>
 #include <mdb.h>
 #include <nmap.h>
@@ -460,7 +461,7 @@ ProcessConnection(ASpamClient *client)
         }
     }
 
-    if (!blocked && ASpam.spamd.enabled) { 
+    if (!blocked) { 
         blocked = SpamdCheck(&ASpam.spamd, client, qID, hasFlags, msgFlags, source, senderUserName);
     }
 
@@ -982,7 +983,9 @@ XplServiceMain(int argc, char *argv[])
 
     SpamdStartup(&(ASpam.spamd));
 
-    if (ASpam.spamd.enabled || ASpam.allow.used || ASpam.disallow.used) {
+    // TODO: *.used variables seem to be about spam IP sources. This doesn't seem to be
+    // the right place, really...
+    // if (ASpam.allow.used || ASpam.disallow.used) {
         if (QueueSocketInit() < 0) {
             XplConsolePrintf("bongoantispam: Exiting.\r\n");
 
@@ -1014,11 +1017,13 @@ XplServiceMain(int argc, char *argv[])
         NMAPSetEncryption(ASpam.nmap.ssl.context);
 
         ASpam.state = ASPAM_STATE_RUNNING;
+#if 0
     } else {
-        XplConsolePrintf("bongoantispam: spamd integration is not enabled and no hosts allowed or disallowed; unloading\r\n");
+        XplConsolePrintf("bongoantispam: no hosts allowed or disallowed; unloading\r\n");
         
         ASpam.state = ASPAM_STATE_STOPPING;        
     }
+#endif
 
     XplStartMainThread(PRODUCT_SHORT_NAME, &id, AntiSpamServer, 8192, NULL, ccode);
     
