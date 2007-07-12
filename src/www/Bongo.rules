@@ -12,17 +12,27 @@ htl10n_DATA := $(htl10n_jsfiles)
 cssdir = $(htdocsdir)/css
 
 dist_css_DATA :=				\
-	src/www/css/admin.css			\
-	src/www/css/calendar.css		\
-	src/www/css/composer.css		\
-	src/www/css/contacts.css		\
-	src/www/css/conversation.css		\
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
+	src/www/css/widgets.css         \
 	src/www/css/login.css			\
-	src/www/css/print.css			\
+	src/www/css/composer.css		\
+	src/www/css/conversation.css		\
+	src/www/css/contacts.css		\
+	src/www/css/calendar.css		\
 	src/www/css/summary.css			\
-	src/www/css/widgets.css
+	src/www/css/print.css			\
+	src/www/css/admin.css
+	
+screencssdir = $(cssdir)
+
+compress_script := $(top_srcdir)/src/www/compress.py
+
+dist_screencss_DATA =                  \
+	src/www/css/screen.css
+
+src/www/css/screen.css: $(dist_css_DATA)
+	$(compress_script) $(dist_css_DATA) --measure -o src/www/css/screen.css -i src/www/css/print.css -i src/www/css/admin.css --no-linebreaks
 
 imgdir = $(htdocsdir)/img
 
@@ -276,11 +286,8 @@ finaljsdir = $(jsdir)
 dist_finaljs_DATA =						\
 	src/www/js/final.js
 
-compress_script := $(top_srcdir)/src/www/compress.py
-
 src/www/js/final.js: $(dist_js_DATA) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA)
-	$(compress_script) $(dist_js_DATA) -o src/www/js/compiled.js -m -l 0 && \
-	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) src/www/js/compiled.js -o src/www/js/final.js -q -l 0
+	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) -o src/www/js/final.js --measure --type js
 
 install-data-local:: install-dist_htdocsDATA
 	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"
