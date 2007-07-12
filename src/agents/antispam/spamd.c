@@ -349,6 +349,9 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
 
 static BongoConfigItem SpamdHostList = { BONGO_JSON_STRING, NULL, &ASpam.spamd.hostlist };
 
+// TODO: other items we might want to configure.
+// ASpam.nmap.queue - defaults to Q_INCOMING
+
 static BongoConfigItem SpamdConfigSchema[] = {
 	{ BONGO_JSON_INT, "o:timeout/i", &ASpam.spamd.connectionTimeout },
 	{ BONGO_JSON_ARRAY, "o:hosts/a", &SpamdHostList},

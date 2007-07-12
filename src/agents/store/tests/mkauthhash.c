@@ -29,6 +29,8 @@ main (int argc, char** argv) {
         XplConsolePrintf("Good job, you passed the salt %s\n", argv[1]);
     }
     {
+	xpl_hash_context ctx;
+	unsigned char message[XPLHASH_MD5_LENGTH];
         unsigned char access[NMAP_HASH_SIZE]; // from libs/nmap/nmap.c
 
 	if (!MsgGetServerCredential(access)) {

@@ -23,7 +23,6 @@
 #define _ANTISPAM_H
 
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -82,16 +81,6 @@ typedef struct _ASpamGlobals {
     unsigned char officialName[MAXEMAILNAMESIZE + 1];
 
     struct {
-        unsigned long used;
-        MDBValueStruct *list;
-    } allow;
-
-    struct {
-        unsigned long used;
-        MDBValueStruct *list;
-    } disallow;
-
-    struct {
         XplSemaphore semaphore;
 
         struct {
@@ -124,7 +113,6 @@ typedef struct _ASpamGlobals {
         unsigned long queue;
 
         unsigned char address[80];
-        unsigned char hash[NMAP_HASH_SIZE];
     } nmap;
 
     struct {

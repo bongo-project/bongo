@@ -216,40 +216,6 @@ MatchAddr(unsigned char *candidate, unsigned char *domain)
     return(0);
 }
 
-/** Searches for the passed ip address in the disallowed list.
- */
-static unsigned char 
-*IsSpammer(unsigned char *from)
-{
-    int cmp;
-    int start;
-    int end;
-    int middle = 0;
-    BOOL matched = FALSE;
-
-    start = 0;
-    end = ASpam.disallow.used - 1;
-
-    while ((end >= start) && !matched) {
-        middle = (end - start) / 2 + start;
-        cmp = MatchAddr(from, ASpam.disallow.list->Value[middle]);
-        if (cmp == 0) {
-            matched = TRUE;
-        } else if (cmp < 0) {
-            end = middle - 1;
-        } else {
-            start = middle + 1;
-        }
-    }
-
-    if(matched) {
-        return(ASpam.disallow.list->Value[middle]);
-    }
-
-    return(NULL);
-}
-
-
 /** Callback function.  Whenever a new message arrives in the queue that
  * this agent has registered itself on, NMAP calls back to this function
  * and provides the agent with the unique hash of the new message.  The 
@@ -384,7 +350,8 @@ ProcessConnection(ASpamClient *client)
         }
     }
 
-    if (ASpam.allow.used || ASpam.disallow.used) {
+    //if (ASpam.allow.used || ASpam.disallow.used) 
+    {
         unsigned char *tmpNull = NULL;
         unsigned char tmpChar;
         while (*cur) { 
@@ -415,6 +382,9 @@ ProcessConnection(ASpamClient *client)
                     break;
                 }
                 case QUEUE_FROM: {
+                    // code below used to check IPs for being spammy. Shouldn't
+                    // be doing this in here IMHO - alex.
+#if 0
                     ptr = strchr(cur + 1, ' ');
                     if (ptr) {
                         *ptr = '\0';
@@ -430,7 +400,7 @@ ProcessConnection(ASpamClient *client)
                             *ptr = ' ';
                         }
                     }
-                    
+#endif
                     break;
                 }
                     
@@ -695,18 +665,6 @@ AntiSpamServer(void *ignored)
     XplCloseLocalSemaphore(ASpam.nmap.worker.todo);
     XplCloseLocalSemaphore(ASpam.nmap.semaphore);
 
-    if (ASpam.allow.list) {
-        MDBDestroyValueStruct(ASpam.allow.list);
-        ASpam.allow.list = NULL;
-        ASpam.allow.used = 0;
-    }
-
-    if (ASpam.disallow.list) {
-        MDBDestroyValueStruct(ASpam.disallow.list);
-        ASpam.disallow.list = NULL;
-        ASpam.disallow.used = 0;
-    }
-
     MsgShutdown();
 
     CONN_TRACE_SHUTDOWN();
@@ -749,51 +707,10 @@ ReadConfiguration(void) {
 
     SpamdReadConfiguration(&ASpam.spamd, node);
 
-#if 0
-    ASpam.allow.list    = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
-    ASpam.disallow.list = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
-    config              = MDBCreateValueStruct(ASpam.handle.directory, MsgGetServerDN(NULL));
-    if (ASpam.allow.list && ASpam.disallow.list && config) {
-        ASpam.allow.used = 0;
-        ASpam.disallow.used = 0;
-    } else {
-        if (config) {
-            MDBDestroyValueStruct(config);
-        }
-
-        retcode = FALSE;
-        goto finish;
-    }
-#endif
-
     retcode = TRUE;
 finish:
     BongoJsonNodeFree(node);
     return retcode;
-#if 0
-    unsigned char *ptr;
-
-    /* Find out which queue to register with.  Otherwise remain Q_INCOMING */
-    if (MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_REGISTER_QUEUE, config) > 0) {
-	ASpam.nmap.queue = atol(config->Value[0]);
-    }
-    MDBFreeValues(config);
-
-    if ((ASpam.disallow.used = MDBRead(MSGSRV_AGENT_ANTISPAM, MSGSRV_A_EMAIL_ADDRESS, ASpam.disallow.list)) > 0) {
-        qsort(ASpam.disallow.list->Value, ASpam.disallow.used, sizeof(unsigned char*), CmpAddr);
-
-        MDBFreeValues(config);
-    }
-
-    MDBSetValueStructContext(NULL, config);
-    if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, config)>0) { 
-        HashCredential(MsgGetServerDN(NULL), config->Value[0], ASpam.nmap.hash);
-    }
-
-    MDBDestroyValueStruct(config);
-
-    return(TRUE);
-#endif
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)
