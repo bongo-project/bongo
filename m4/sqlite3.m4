@@ -62,7 +62,7 @@ AC_DEFUN([AC_CHECK_SQLITE3], [
           fi
       fi
       if test "$ac_sqlite3_libdir" = "no"; then
-          sqlite3_libdirs="/usr/lib /usr/local/lib /usr/lib/sqlite /usr/local/lib/sqlite /usr/local/sqlite/lib /opt/sqlite/lib"
+          sqlite3_libdirs="/usr/lib64 /usr/lib /usr/local/lib64 /usr/local/lib /usr/lib/sqlite usr/lib64/sqlite /usr/local/lib/sqlite /usr/local/sqlite/lib /opt/sqlite/lib"
           sqlite3_libs="libsqlite3.so libsqlite3.a"
           AC_FIND_FILE($sqlite3_libs, $sqlite3_libdirs, ac_sqlite3_libdir)
           if test "$ac_sqlite3_libdir" = "no"; then
