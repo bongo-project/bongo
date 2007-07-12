@@ -557,6 +557,7 @@ LdapToRelativeMdb(const char *LdapDn, const char *Base)
 
     if (mdbDn) {
         relDn = GetRelativeDn(mdbDn, Base);
+        free(mdbDn);
     }
 
     return relDn;

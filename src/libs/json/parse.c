@@ -510,7 +510,7 @@ BongoJsonParserNextNode(BongoJsonParser *t)
         return NULL;
     }
 
-    return BongoJsonNodeNewStringGive(s);
+    return s;
 }
 
 BongoJsonResult 
