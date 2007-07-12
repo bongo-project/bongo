@@ -44,7 +44,7 @@ AC_LANG(C++)
   AC_MSG_CHECKING([for CLucene])
 
   clucene_incdirs="/usr/include /usr/local/include /opt/sfw/include /opt/csw/include /usr/pkg/include"
-  clucene_libdirs="/usr/lib /usr/local/lib /opt/sfw/lib /opt/csw/lib /usr/pkg/lib"
+  clucene_libdirs="/usr/lib64 /usr/lib /usr/local/lib64 /usr/local/lib /opt/sfw/lib /opt/csw/lib /usr/pkg/lib"
 
   if test "$ac_clucene_incdir" = "no"; then
       AC_FIND_FILE(CLucene/StdHeader.h, $clucene_incdirs, ac_clucene_incdir)
