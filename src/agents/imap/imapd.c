@@ -46,6 +46,8 @@
 /* Management Client Header Include */
 #include <management.h>
 
+#include <bongoagent.h>
+
 #include <cmlib.h>
 #include "imapd.h"
 
@@ -90,14 +92,6 @@ static ProtocolCommand ImapProtocolCommands[] = {
     { IMAP_COMMAND_GETQUOTAROOT, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_GETQUOTAROOT) - 1, ImapCommandGetQuotaRoot, NULL, NULL },
     { IMAP_COMMAND_NAMESPACE, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_NAMESPACE) - 1, ImapCommandNameSpace, NULL, NULL },
     { IMAP_COMMAND_PROXYAUTH, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_PROXYAUTH) - 1, ImapCommandProxyAuth, NULL, NULL },
-#if MDB_DEBUG
-    { IMAP_COMMAND_USER_LOOKUP, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_LOOKUP) - 1, ImapCommandUserLookup, NULL, NULL },
-    { IMAP_COMMAND_USER_VERIFY, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_VERIFY) - 1, ImapCommandUserVerify, NULL, NULL },
-    { IMAP_COMMAND_USER_READ, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserRead, NULL, NULL },
-    { IMAP_COMMAND_USER_WRITE_LOCAL, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserWriteLocal, NULL, NULL },
-    { IMAP_COMMAND_USER_WRITE_SUPER, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserWriteSuper, NULL, NULL },
-    { IMAP_COMMAND_USER_ENUM, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserEnum, NULL, NULL },
-#endif    
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
@@ -4214,6 +4208,12 @@ IMAPSSLServer(void *unused)
     return;
 }
 
+static BongoConfigItem IMAPConfig[] = {
+        { BONGO_JSON_INT, "o:port/i", &Imap.server.port },
+        { BONGO_JSON_INT, "o:port_ssl/i", &Imap.server.ssl.port },
+        { BONGO_JSON_INT, "o:threads_max/i", &Imap.session.threads.max },
+        { BONGO_JSON_NULL, NULL, NULL }
+};
 
 static BOOL
 ReadConfiguration(void)
@@ -4230,78 +4230,23 @@ ReadConfiguration(void)
     localtime_r(&time_of_day, &ltm);
     gm_time_of_day=mktime(&gm);
 
-    Config = MDBCreateValueStruct(Imap.directory.handle, MsgGetServerDN(NULL));
-
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_PORT, Config)>0) {
-        Imap.server.port = (unsigned short)atol(Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_SSL_PORT, Config)>0) {
-        Imap.server.ssl.port = (unsigned short)atol(Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_MAX_LOAD, Config)>0) {
-        Imap.session.threads.max=atol(Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_ACL_ENABLED, Config)>0) {
-        if (atol(Config->Value[0])) {
-            Imap.command.capability.acl.enabled = TRUE;
-        } else {
-            Imap.command.capability.acl.enabled = FALSE;
-            Imap.command.capability.len =
-                sprintf(Imap.command.capability.message,
-                        "%s\r\n",
-                        "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE XSENDER");
-            Imap.command.capability.ssl.len =
-                sprintf(Imap.command.capability.ssl.message,
-                        "%s\r\n",
-                        "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");
-        }
-    }
-    MDBFreeValues(Config);
-    
+    // not totally sure what acl.enabled == TRUE does?
+    Imap.command.capability.acl.enabled = FALSE;
+    Imap.command.capability.len = sprintf(Imap.command.capability.message,
+        "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE XSENDER");
+    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message,
+        "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");
     Imap.server.ssl.config.options = 0;
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_ALLOW_CHAINED, Config)) {
-	if (atol(Config->Value[0])) {
-	    Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
-	}
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_TLS, Config)) {
-	if (atol(Config->Value[0])) {
-	    Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
-	    Imap.server.ssl.enable = TRUE;
-	}
-    }
-    MDBFreeValues(Config);
+    Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
+    Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
+    Imap.server.ssl.enable = TRUE;
 
-    if (MDBRead(MSGSRV_SELECTED_CONTEXT, MSGSRV_A_OFFICIAL_NAME, Config)) {
-        if ((Config->Value[0]) && (strlen(Config->Value[0]) < sizeof(Imap.server.hostname))) {
-      
-            strcpy(Imap.server.hostname, Config->Value[0]);
-        } else {
-            gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
-        }
-  
-    } else {
-        gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
-    }
+    gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
     Imap.server.hostnameLen = strlen(Imap.server.hostname);
-    MDBFreeValues(Config);
 
-    if (MDBRead(MSGSRV_SELECTED_CONTEXT, MSGSRV_A_POSTMASTER, Config)) {
-        ptr=strchr(Config->Value[0], '.');
-        if (ptr) {
-            *ptr='\0';
-        }
-        if (strlen(Config->Value[0]) < sizeof(Imap.server.postmaster)) {
-            strcpy(Imap.server.postmaster, Config->Value[0]);
-        }
-    }
-    MDBFreeValues(Config);
-
-    MDBDestroyValueStruct(Config);
+    // Imap.server.postmaster needs to be set to something?
+    if (! ReadBongoConfiguration(IMAPConfig, "imap"))
+        return FALSE;
 
     return(TRUE);
 }

@@ -22,6 +22,8 @@ bongo_config_LDADD :=					   \
 conf_defaults =					\
 	src/apps/config/config/manager		\
 	src/apps/config/config/antivirus	\
+	src/apps/config/config/imap		\
+	src/apps/config/config/pop3		\
 	src/apps/config/config/antispam
 
 dist_noinst_DATA += $(conf_defaults)
