@@ -1,30 +1,42 @@
 # -*- Makefile -*-
-POFILES = po/fr.po
 GMOFILES=$(POFILES:.po=.gmo)
 
-dist_noinst_DATA += po/fr.po \
-	po/bongo.pot \
-	po/POTFILES.in
+dist_noinst_DATA += $(POFILES) 	\
+	po/bongo.pot 				\
+	po/bongo-web.pot 			\
+	po/POTFILES.bongo 			\
+	po/POTFILES.bongo-web
 
 po/all: update-gmo
 
 po/clean: clean
-	rm -f po/*.gmo
+	for file in ${GMOFILES}; do \
+		rm -f $$file; \
+	done
 
 po/install: po/all
 	for file in $(GMOFILES); do \
 		lang=`echo $$file | sed -e 's,.*/,,' | sed -e 's/.gmo//'`; \
 		$(MKINSTALLDIRS) $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/; \
-		$(INSTALL) -m 0644 $$file $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/bongo.gmo; \
+		installfilename=`echo $$file | sed -e 's,po/\([^/]*\)/.*,\1,'`; \
+		$(INSTALL) -m 0644 $$file $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/$$installfilename.gmo; \
 	done
 
-bongo.pot:
+update-pot:
 	$(XGETTEXT) --directory=$(srcdir) \
 	--add-comments=translators \
 	--keyword=_ --keyword=N_ --keyword=M_ \
-	--files-from=$(srcdir)/po/POTFILES.in \
+	--files-from=$(srcdir)/po/POTFILES.bongo \
 	--msgid-bugs-address="bongo-devel@gna.org" \
 	-o po/bongo.pot
+# This is a bit of a hack. Nevertheless, it works, I hope.
+# NOTE: add "-L python" when the props stuff is gone
+	$(XGETTEXT) --directory=$(srcdir) \
+	--add-comments=translators \
+	--keyword=_ --keyword=N_ --keyword=M_ \
+	--files-from=$(srcdir)/po/POTFILES.bongo-web \
+	--msgid-bugs-address="bongo-devel@gna.org" \
+	-o po/bongo-web.pot
 
 update-gmo: ${GMOFILES}
 
@@ -33,5 +45,6 @@ update-po: ${POFILES}-update update-gmo
 %.gmo:
 	rm -f $@ && $(GMSGFMT) -o $@ $*.po
 
-%.po-update: bongo.pot
-	$(MSGMERGE) $*.po po/bongo.pot -o $*.po
+%.po-update: update-pot
+	whichpotfile=`echo $*.po | sed -e 's,po/\([^/]*\)/.*,\1,'`; \
+	$(MSGMERGE) $*.po po/$$whichpotfile.pot -o $*.po;

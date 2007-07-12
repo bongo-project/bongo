@@ -415,8 +415,8 @@ props2json := $(top_srcdir)/src/www/l10n/props2json
 dfly_props := $(top_srcdir)/src/www/l10n/dragonfly.properties
 
 if USE_NLS
-src/www/l10n/%.js: po/%.gmo $(dfly_props) config.status
-	$(props2json) -i $(dfly_props) -p $(dir $<) -o $@ -l $(patsubst po/%.gmo,%,$<)
+src/www/l10n/%.js: po/bongo-web/%.gmo $(dfly_props) config.status
+	$(props2json) -i $(dfly_props) -p $(dir $<) -o $@ -l $(patsubst po/bongo-web/%.gmo,%,$<)
 
 src/www/l10n/en.js: $(dfly_props) config.status
 	$(props2json) -i $(dfly_props) -o $@ -l en
