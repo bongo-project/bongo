@@ -39,6 +39,7 @@
 #include <nmap.h>
 #include <management.h>
 #include <bongostore.h>
+#include <bongoagent.h>
 
 #include "pop3.h"
 
@@ -1891,8 +1892,6 @@ POP3Server(void *ignored)
 
     MsgShutdown();
 
-/*  MDBShutdown(); */
-
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
 
@@ -2048,61 +2047,29 @@ client->CSSL = NULL;
     return;
 }
 
+static BongoConfigItem POP3Config[] = {
+        { BONGO_JSON_STRING, "o:hostname/s", &POP3.hostName },
+        { BONGO_JSON_INT, "o:port/i", &POP3ServerPort },
+        { BONGO_JSON_INT, "o:port_ssl/i", &POP3ServerPortSSL },
+        { BONGO_JSON_NULL, NULL, NULL }
+};
+
 static BOOL
 ReadConfiguration(void)
 {
-    MDBValueStruct *config;
-    
-    config = MDBCreateValueStruct(POP3.directoryHandle, MsgGetServerDN(NULL));
+    POP3.server.ssl.config.options |= SSL_ALLOW_CHAIN;
+    POP3.server.ssl.config.options |= SSL_ALLOW_SSL3;
+    POP3.server.ssl.enable = TRUE;
+    POP3.nmap.ssl.enable = FALSE; // FIXME: why?
 
-    if (MDBRead(MSGSRV_AGENT_POP, MSGSRV_A_PORT, config)>0) {
-        POP3ServerPort = atol (config->Value[0]);
-    }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_POP, MSGSRV_A_SSL_PORT, config)>0) {
-        POP3ServerPortSSL = atol (config->Value[0]);
-    }
-    MDBFreeValues(config);
+    if (! MsgGetServerCredential(POP3.nmap.hash))
+        return FALSE;
 
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_ALLOW_CHAINED, config)) {
-	if (atol(config->Value[0])) {
-	    POP3.server.ssl.config.options |= SSL_ALLOW_CHAIN;
-	}
-    }
-    MDBFreeValues(config);
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_TLS, config)) {
-	if (atol(config->Value[0])) {
-	    POP3.server.ssl.config.options |= SSL_ALLOW_SSL3;
-	    POP3.server.ssl.enable = TRUE;
-	    POP3.nmap.ssl.enable = FALSE;
-	}
-    }
-    MDBFreeValues(config);
+    if (! ReadBongoConfiguration(POP3Config, "pop3"))
+        return FALSE;
 
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_URL, config)) {
-        strcpy(POP3.managementURL, config->Value[0]);
-
-        MDBFreeValues(config);
-    }
-
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_OFFICIAL_NAME, config)) {
-        if (config->Value[0]) {
-            strcpy(POP3.hostName, config->Value[0]);
-        } else {
-            gethostname(POP3.hostName, sizeof(POP3.hostName));
-        }
-        
-        MDBFreeValues(config);
-    } else {
-        gethostname(POP3.hostName, sizeof(POP3.hostName));
-    }
-
-    MDBSetValueStructContext(NULL, config);
-    if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, config)) { 
-        HashCredential(MsgGetServerDN(NULL), config->Value[0], POP3.nmap.hash);
-    }
-
-    MDBDestroyValueStruct(config);
+    // FIXME: override the hostname for now, until we store this somewhere sane
+    gethostname(POP3.hostName, sizeof(POP3.hostName));
 
     return(TRUE);
 }
