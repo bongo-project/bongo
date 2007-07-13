@@ -434,7 +434,7 @@ AC_MSG_RESULT([$APACHE_MOD_DIR])
 
 htl10n_jsfiles=
 for lang in en `cd po && cd bongo-web && ls *.po | sed s/.po$//`; do
-	htl10n_jsfiles="$htl10n_jsfiles src/www/l10n/$lang.json"
+	htl10n_jsfiles="$htl10n_jsfiles src/www/l10n/$lang.js"
 done
 AC_SUBST(htl10n_jsfiles)
 
