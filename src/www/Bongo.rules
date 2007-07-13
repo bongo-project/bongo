@@ -392,8 +392,7 @@ dist_noinst_DATA +=				   \
 	src/www/js/lib/MochiKit/LICENSE.txt	   \
 	src/www/js/lib/script.aculo.us/MIT-LICENSE \
 	src/www/bongo/__init__.py.in		   \
-	src/www/bongo-devel.conf			   \
-	src/www/l10n/dragonfly.properties
+	src/www/bongo-devel.conf
 
 noinst_DATA += \
 	src/www/bongo/__init__.py
