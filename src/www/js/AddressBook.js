@@ -229,7 +229,7 @@ Dragonfly.AddressBook.ContactPicker.prototype.buildHtml = function (html)
     Dragonfly.ListSelector.prototype.buildHtml.call (this, html);
     this.newContactId = Dragonfly.nextId ('contact-new');
     html.push ('<p style="padding-top:3px; text-align:center;">');
-    html.push ('<a id="', this.newContactId, '" class="action">', _('contactAddLabel'), '</a>');
+    html.push ('<a id="', this.newContactId, '" class="action">', _('Add Contact'), '</a>');
     
     this.popup = new Dragonfly.AddressBook.ContactPopup();
 };
@@ -280,6 +280,83 @@ Dragonfly.AddressBook.ContactPicker.prototype.newContactHandler = function (evt)
     this.popup.edit (evt, contact, this.newContactId);
 };
 
+// The FakeFriendPopup manages the interaction for unknown contacts.
+Dragonfly.AddressBook.FakeFriendPopup = function (elem)
+{    
+    Dragonfly.PopupBuble.apply (this, arguments);
+};
+
+Dragonfly.AddressBook.FakeFriendPopup.prototype = clone (Dragonfly.PopupBuble.prototype)
+Dragonfly.AddressBook.FakeFriendPopup.prototype.dispose =
+Dragonfly.AddressBook.FakeFriendPopup.prototype.disposeZone = function ()
+{
+    this.hide();
+    delete this.contact;
+    delete this.formNames;
+};
+
+Dragonfly.AddressBook.FakeFriendPopup.prototype.summarize = function (contact, elem)
+{
+    var d = Dragonfly;
+
+    this.hide ();
+    this.setClosable (true);
+    this.contact = contact = (contact) ? contact : this.contact;
+
+    var editId = d.nextId ('person-add');
+
+    var html = new d.HtmlBuilder();
+    html.push ('<p><b>' + contact.fn + '</b>');
+    html.push ('<table><tr>');
+    html.push ('<td><ul>');
+    var i;
+    if (contact.email) {
+            html.push ('<li><a href="mailto:', contact.email, '">');
+            html.push (contact.email.value, '</a>');
+    }
+    html.push ('</ul></td></tr></table>');
+    
+    var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
+                                contact: contact.bongoId });
+    html.push ('<div class="actions">',
+               '<a href="#', loc.getClientUrl(), '">', _('Show Conversations'), '</a>',
+               '<a id="', editId, '">', _('Add'), '</a></div>');
+    html.set (this.contentId);
+
+    Event.observe (editId, 'click', this.add.bindAsEventListener (this));
+    this.showVertical (elem);
+}
+
+Dragonfly.AddressBook.FakeFriendPopup.prototype.add = function ()
+{
+    var AB = Dragonfly.AddressBook;
+    this.serializeContact();
+    this.elem.innerHTML = this.contact.fn;
+
+    Dragonfly.notify (_('Saving changes...'), true);
+    AB.saveContact (this.contact).addCallbacks (bind (
+        function (result) {
+            // update preferences with contact ID
+            if (this.setMyContact) {
+                var id = (this.myId == '') ? result.bongoId : this.myId;
+                AB.Preferences.setMyContactId (id);
+            }
+            
+            // Create sidebox element if this is a new contact
+            if (result.bongoId) {
+                this.contact.bongoId = result.bongoId;
+                this.setElem (AB.sideboxPicker.addItem (this.contact.fn, result.bongoId));
+                $(this.elem).scrollIntoView();
+            }
+            
+            Dragonfly.notify (_('Changes saved.'));
+            this.summarize ();
+	        this.shouldAutohide = true;
+	        callLater (2, bind ('autohide', this));
+            return result;
+        }, this), bind ('showError', this));
+};
+
 // The ContactPopup manages the interaction for creating and editing contacts
 Dragonfly.AddressBook.ContactPopup = function (elem)
 {    
@@ -290,14 +367,14 @@ Dragonfly.AddressBook.ContactPopup.prototype = clone (Dragonfly.PopupBuble.proto
 
 Dragonfly.AddressBook.ContactPopup.prototype.FieldTypes = {
     props:   ['tel', 'im', 'email', 'url', 'org', 'adr'],
-    email:   {name:'email', label:'contactEmail', prop: 'email', type: 'INTERNET', protocol: 'mailto:'},
-    phone:   {name:'phone', label:'contactPhone', prop: 'tel', protocol: 'tel:'},
-    fax:     {name:'fax', label:'contactFax', prop: 'tel', type: 'FAX', protocol: 'tel:'},
-    mobile:  {name:'mobile', label:'contactMobile', prop: 'tel', type: 'CELL', protocol: 'tel:'},
-    im:      {name:'im', label:'contactIM', prop: 'im', protocol: 'im:'},
-    website: {name:'website', label:'contactWebsite', prop: 'url', protocol: 'http:'},
-    org:     {name:'org', label:'contactCompany', prop: 'org'},
-    address: {name:'address', label:'contactAddress', prop: 'adr', longtext:true}
+    email:   {name:'email', label:'Email', prop: 'email', type: 'INTERNET', protocol: 'mailto:'},
+    phone:   {name:'phone', label:'Phone', prop: 'tel', protocol: 'tel:'},
+    fax:     {name:'fax', label:'Fax', prop: 'tel', type: 'FAX', protocol: 'tel:'},
+    mobile:  {name:'mobile', label:'Mobile', prop: 'tel', type: 'CELL', protocol: 'tel:'},
+    im:      {name:'im', label:'IM', prop: 'im', protocol: 'im:'},
+    website: {name:'website', label:'Website', prop: 'url', protocol: 'http:'},
+    org:     {name:'org', label:'Company', prop: 'org'},
+    address: {name:'address', label:'Address', prop: 'adr', longtext:true}
 };
 
 Dragonfly.AddressBook.ContactPopup.prototype.Form = [{
@@ -365,9 +442,9 @@ Dragonfly.AddressBook.ContactPopup.prototype.summarize = function (contact, elem
     var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
                                 contact: this.contact.bongoId });
     html.push ('<div class="actions">',
-               '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
-               '<a href="#', loc.getClientUrl(), '">', _('contactShowConversations'), '</a>',
-               '<a id="', editId, '">', _('contactEditLabel'), '</a></div>');
+               '<a id="', deleteId, '" class="secondary">', _('Delete'), '</a>',
+               '<a href="#', loc.getClientUrl(), '">', _('Show Conversations'), '</a>',
+               '<a id="', editId, '">', _('Edit'), '</a></div>');
     html.set (this.contentId);
 
     Event.observe (deleteId, 'click', this.delConfirm.bindAsEventListener (this));
@@ -406,6 +483,12 @@ Dragonfly.AddressBook.ContactPopup.prototype.loadContact = function ()
     var form = $(this.formId);
     form.fn.value = this.contact.fn;
     var myId = AB.Preferences.getMyContactId();
+    
+    logDebug('myID: ' + myId);
+    logDebug('form id: ' + form);
+    logDebug('this.contact: ' + this.contact);
+    logDebug('this.contact.fn: ' + this.contact.fn);
+    
     form.isMyContact.checked = myId && (myId == this.contact.bongoId);
     
     for (var i = 0; i < Fields.props.length; i++) {
@@ -520,11 +603,11 @@ Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem
     var form = [
         '<form id="', this.formId, '"><img style="float:left; margin-right:5px;" align="middle" ',
         'src="img/contact-unknown.png"><div><p><input style="width:75%;" name="fn"><p><label>',
-        '<input type="checkbox" name="isMyContact">', _('contactSelf'), '</label></div>', notebook, '</form>'];
+        '<input type="checkbox" name="isMyContact">', _('This is Me'), '</label></div>', notebook, '</form>'];
 
-    var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericSave'), onclick: 'save'}];
+    var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Save'), onclick: 'save'}];
     if (this.contact.bongoId) { // only add delete for pre-existing contacts
-        actions.unshift ({ value: _('genericDelete'), onclick: 'del', secondary: true });
+        actions.unshift ({ value: _('Delete'), onclick: 'del', secondary: true });
     }
     this.setForm (form, actions);
     
@@ -543,7 +626,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.del = function ()
             if (elem && !noremove) {
                 elem.parentNode.removeChild(elem);
             }
-            Dragonfly.notify (_('genericChangesSaved'));
+            Dragonfly.notify (_('Changes saved.'));
             return result;
         });
     this.dispose();
@@ -555,7 +638,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
     this.serializeContact();
     this.elem.innerHTML = this.contact.fn;
 
-    Dragonfly.notify ('Saving contact...', true);
+    Dragonfly.notify (_('Saving changes...'), true);
     AB.saveContact (this.contact).addCallbacks (bind (
         function (result) {
             // update preferences with contact ID
@@ -571,7 +654,8 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
                 $(this.elem).scrollIntoView();
             }
             
-            Dragonfly.notify (_('genericChangesSaved'));
+            Dragonfly.notify (_('Changes saved.'));
+            
             this.summarize ();
 	        this.shouldAutohide = true;
 	        callLater (2, bind ('autohide', this));
@@ -584,10 +668,11 @@ Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
 {
     this.hide();
     var text = [
-        '<p>', _('contactConfirmRemovePre'), ' &ldquo;',
-        Dragonfly.escapeHTML (this.contact.fn), '&rdquo;', _('genericRemovePost'), '</p>'
+        '<p>', d.format(_('Are you sure you want to delete the contact "{0}"? This cannot be undone.'),
+        Dragonfly.escapeHTML (this.contact.fn)), '</p>'
     ];
-    var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericDelete'), onclick: 'del'}];
+
+    var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Delete'), onclick: 'del'}];
     this.setForm (text, actions);
     this.show();
 };

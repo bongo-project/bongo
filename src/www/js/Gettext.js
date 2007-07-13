@@ -1,55 +1,77 @@
-Dragonfly.Gettext = { };
+var Locale = Locale || {};
+Object.extend(Locale, {
+  LC_COLLATE:  'C',
+  LC_CTYPE:    'C',
+  LC_MESSAGES: 'C',
+  LC_MONETARY: 'C',
+  LC_NUMERIC:  'C',
+  LC_TIME:     'C',
 
-Dragonfly.Gettext.setLocale = function (category, locale)
-{
-    var d = Dragonfly;
-    var g = d.Gettext;
+  suffix: 'js',
+  _messages: {},
+  _locale: '',
 
-    if (g._def) {
-        g._def.cancel();
+  setLocale: function(category, locale) {
+    switch (category) {
+    case 'LC_ALL':
+      this['LC_COLLATE']  = locale;
+      this['LC_CTYPE']    = locale;
+      this['LC_MESSAGES'] = locale;
+      this['LC_MONETARY'] = locale;
+      this['LC_NUMERIC']  = locale;
+      this['LC_TIME']     = locale;
+      break;
+    case 'LC_COLLATE':
+    case 'LC_CTYPE':
+    case 'LC_MESSAGES':
+    case 'LC_MONETARY':
+    case 'LC_NUMERIC':
+    case 'LC_TIME':
+      this[category] = locale;
+      break;
+    default:
+      return false;
     }
+    
+    _locale = locale;
+  },
 
-    if (g._locale == locale) {
-        return succeed();
-    }
+  setSuffix: function(suffix) {
+    this.suffix = suffix;
+  },
 
-    g._def = d.requestJSON ('GET', 'l10n/' + encodeURIComponent (locale) + '.js');
-    return g._def.addCallbacks (
-        function (jsob) {
-            g._locale = locale;
-            g._translations = jsob;
-            return locale;
-        },
-        function (jsob) {
-            delete g._def;
-            /* leave old translations in place */
-        });
-};
+  bindTextDomain: function(domain, directory, func, efunc) {
+    this._messages = {};
 
-Dragonfly.Gettext.gettext = function (msgid)
-{
-    var d = Dragonfly;
-    var g = d.Gettext;
+    var uri = '';
+    /*if (directory.charAt(0) == '/') {
+      uri = location.protocal+'//'+location.host;
+    } else if (!directory.match(/^[A-z]:/)) {
+      uri = location.href+'/';
+    }*/
+    /*uri = directory+'/'+this.LC_MESSAGES+'/LC_MESSAGES/'+domain+'.'+this.suffix;*/
+	uri = directory+'/'+this.LC_MESSAGES+'.'+this.suffix;
+    var options = {
+      method: 'get', onSuccess: this._parseJSON.bind(this),
+      onComplete: func || function(){},
+      onFailure: efunc.bind(this) || function(){},
+      onException: efunc.bind(this) || function(){}
+    };
+    new Ajax.Request(uri, options);
+  },
 
-    // return (g._translations && g._translations[msgid]) || msgid;
+  _parseJSON: function(request) {
+    this._messages = eval('('+request.responseText+')');
+  },
 
-    if (!g._translations) {
-        logWarning ('No translations loaded.');
-        return msgid;
-    }
+  getText: function(str) {
+    return this._messages[str] || str;
+  },
 
-    if (!g._translations[msgid]) {
-        logWarning ('No translation found for "'+msgid+'" in '+g._locale);
-        return msgid;
-    }
+  getTextNoop: function(str) {
+    return str;
+  }
+});
 
-    return g._translations[msgid];
-};
-
-_ = Dragonfly.Gettext.gettext;
-
-f_ = function (s)
-{
-    s = _(s);
-    return Dragonfly.format.apply (this, arguments);
-};
+_ = Locale.getText.bind(Locale);
+N_ = Locale.getTextNoop;

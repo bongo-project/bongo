@@ -1,1 +1,21 @@
-src/www/l10n/dragonfly.properties
+src/www/js/AddressBook.js
+src/www/js/CalendarEditor.js
+src/www/js/Calendar.js
+src/www/js/CalendarView.js
+src/www/js/CalendarWidgets.js
+src/www/js/Composer.js
+src/www/js/Dragonfly.js
+src/www/js/Format.js
+# This isn't quite playing ball atm.
+#src/www/js/JCal.js
+src/www/js/Location.js
+src/www/js/Login.js
+src/www/js/MailConversationView.js
+src/www/js/Mail.js
+src/www/js/MailListView.js
+src/www/js/OccurrenceEditor.js
+src/www/js/Preferences.js
+src/www/js/Search.js
+src/www/js/Summary.js
+src/www/js/ValidatingEntry.js
+src/www/js/Widgets.js

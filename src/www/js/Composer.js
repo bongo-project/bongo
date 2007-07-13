@@ -118,21 +118,21 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
     html.push (
         '<table id="', this.id, '" class="msg-compose">',
 
-        '<tr><th>', _('mailTo'), '</th><td>',
+        '<tr><th>', _('To:'), '</th><td>',
         '<input id="', this.to, '" class="to" type="text" value="', escapeRecips(this.msg.to), '">',
         '<div id="autocomplete-', this.to, '" class="autocompletions"></div></td></tr>',
 
-        '<tr><th>', _('mailCc'), '</th><td>',
+        '<tr><th>', _('CC:'), '</th><td>',
         '<input id="', this.cc, '" class="cc" type="text" value="', escapeRecips (this.msg.cc), '">',
         '<div id="autocomplete-', this.cc, '" class="autocompletions"></td></tr>',
         
-        '<tr><th>', _('mailBcc'), '</th><td>',
+        '<tr><th>', _('BCC:'), '</th><td>',
         '<input id="', this.bcc, '" class="bcc" type="text" value="', escapeRecips (this.msg.bcc), '">',
         '<div id="autocomplete-', this.bcc, '" class="autocompletions"></td></tr>',
         
-        '<tr><th>', _('mailSubject'), '</th><td><input id="', this.subject, '" class="subject" value="', d.escapeHTML (this.msg.subject || ''), '"></td></tr>',
-        '<tr><th>', _('mailFrom'), '</th><td id="', this.from, '" class="from">', d.escapeHTML (this.msg.from), '</td></tr>',
-        '<tr><th>', _('mailAttachments'), '</th><td class="attachments"><ul>');
+        '<tr><th>', _('Subject:'), '</th><td><input id="', this.subject, '" class="subject" value="', d.escapeHTML (this.msg.subject || ''), '"></td></tr>',
+        '<tr><th>', _('From:'), '</th><td id="', this.from, '" class="from">', d.escapeHTML (this.msg.from), '</td></tr>',
+        '<tr><th>', _('Attachments:'), '</th><td class="attachments"><ul>');
 
     if (this.msg.contents) {
         switch (this.msg.contents.contenttype) {
@@ -158,9 +158,9 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
                '<tr><td colspan="2"><textarea id="', this.body, '" class="body" cols="75" rows="15"  wrap="on">',
                d.escapeHTML (this.msg.body), '</textarea></td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',
-               '<input id="', this.discard, '" class="discard" type="button" value="', _('mailDiscard'), '">',
-               '<input id="', this.save, '" class="save" type="button" value="', _('mailDraft'), '">',
-               '<input id="', this.send, '" class="send" type="button" value="', _('mailSend'), '"></td></tr></table>');
+               '<input id="', this.discard, '" class="discard" type="button" value="', _('Discard'), '">',
+               '<input id="', this.save, '" class="save" type="button" value="', _('Save Draft'), '">',
+               '<input id="', this.send, '" class="send" type="button" value="', _('Send'), '"></td></tr></table>');
 
     html.addCallback (bind ('connectHtml', this));
     return html;
@@ -311,11 +311,21 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
                                  this.calendarInvitationFor || null,
                                  this.useAuthUrls || false);
 
-    d.notify ('Saving draft "' + d.escapeHTML (msg.subject) + '"...', true);
+    var displaysubject = '';
+    if (msg.subject)
+    {
+        displaysubject = d.escapeHTML (msg.subject);
+    }
+    else
+    {
+        displaysubject = _('Untitled');
+    }
+    
+    d.notify (d.format (_('Saving draft "{0}"...'), displaysubject), true);
 
     return this.def.addCallbacks (
         bind (function (jsob) {
-                  d.notify ('Saved draft "' + d.escapeHTML (msg.subject) + '".');
+                  d.notify (_('Saved draft') + ' "' + displaysubject + '".');
                   this.draftSavedAlready = true;
                   this.lastSavedMsg = msg;
                   
@@ -346,7 +356,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
               }, this),
         bind (function (err) {
                   if (!(err instanceof CancelledError)) {
-                      logError ('Error saving draft:', d.reprError (err));
+                      logError (_('Error saving draft:'), d.reprError (err));
                   }
                   this.state = c.MaybeDirty;
                   this.scheduleSave();
@@ -446,7 +456,7 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
                   
                   this.setToolbarDisabled (false);
                   
-                  d.notify ('Message sent.');
+                  d.notify (_('Message sent.'));
                   
                   var sentLoc = new d.Location (loc);
                   sentLoc.set = 'sent';
@@ -458,7 +468,7 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
               }, this),
         bind (function (err) {
                   if (!(err instanceof CancelledError)) {
-                      d.notifyError ('Error sending message:', d.reprError (err));
+                      d.notifyError (_('Error sending message: '), d.reprError (err));
                   }
                   this.state = c.MaybeDirty;
                   this.scheduleSave();
@@ -761,7 +771,7 @@ Dragonfly.Mail.AttachmentForm.prototype.buildHtml = function (html)
     }
 
     html.push ('<span id="', this.labelId, '">', d.escapeHTML (this.attachmentId), ' (', d.escapeHTML (this.mimeType), ')</span>',
-               '<a id="', this.removeId, '">', _('mailRemoveAttachment'), '</a>');
+               '<a id="', this.removeId, '">', _('Remove attachment'), '</a>');
 
     if (!this.attachmentId) {
         html.push ('</form>',
@@ -826,7 +836,7 @@ Dragonfly.Mail.AttachmentForm.prototype.startUpload = function (res)
     var d = Dragonfly;
     $(this.formId).submit();
     Element.hide (this.fileId);
-    Element.setHTML (this.labelId, [ 'Uploading ', d.escapeHTML ($(this.fileId).value), '...' ]);
+    Element.setHTML (this.labelId, d.format (_('Uploading {0}...'), d.escapeHTML ($(this.fileId).value)));
     return res;
 };
 
@@ -859,7 +869,7 @@ Dragonfly.Mail.AttachmentForm.prototype.frameLoad = function (evt)
     }
 
     function showError (errStr) {
-        d.notifyError ('Error saving attachment ' + d.escapeHTML ($(this.fileId).value) + ': ' + d.escapeHTML (errStr));
+        d.notifyError (_('Error saving attachment') + ' ' + d.escapeHTML ($(this.fileId).value) + ': ' + d.escapeHTML (errStr));
         Element.setHTML (this.labelId, '');
         Element.show (this.fileId);
     }

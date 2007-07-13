@@ -8,13 +8,13 @@ Dragonfly.tabs['mail'] = Dragonfly.Mail;
 Dragonfly.Mail.handlers = { };
 Dragonfly.Mail.sets = [ 'all', 'inbox', 'starred', 'sent', 'drafts', 'trash', 'junk' ];
 Dragonfly.Mail.setLabels = {
-    'all':     'mailSetAllLabel',
-    'inbox':   'mailSetInboxLabel',
-    'starred': 'mailSetStarredLabel',
-    'sent':    'mailSetSentLabel',
-    'drafts':  'mailSetDraftsLabel',
-    'trash':   'mailSetTrashLabel',
-    'junk':    'mailSetJunkLabel'
+    'all':     'All',
+    'inbox':   'Inbox',
+    'starred': 'Starred',
+    'sent':    'Sent',
+    'drafts':  'Drafts',
+    'trash':   'Trash',
+    'junk':    'Junk'
 };
 
 Dragonfly.Mail.getView = function (loc)
@@ -150,10 +150,10 @@ Dragonfly.Mail.updateToolbar = function (loc)
     var v = m.getView (loc);
 
     /* these aren't *exactly* right... */
-    $('mail-toolbar-archive').value = (loc.set == 'all')     ? _('buttonUnarchiveLabel') : _('buttonArchiveLabel');
-    $('mail-toolbar-delete').value  = (loc.set == 'trash')   ? _('buttonUndeleteLabel')  : _('genericDelete');
-    $('mail-toolbar-junk').value    = (loc.set == 'junk')    ? _('buttonNotJunkLabel')   : _('buttonJunkLabel');
-    $('mail-toolbar-star').value    = (loc.set == 'starred') ? _('buttonUnstarLabel')    : _('buttonStarLabel');
+    $('mail-toolbar-archive').value = (loc.set == 'all')     ? _('Unarchive') : _('Archive');
+    $('mail-toolbar-delete').value  = (loc.set == 'trash')   ? _('Undelete')  : _('Delete');
+    $('mail-toolbar-junk').value    = (loc.set == 'junk')    ? _('Not Junk')   : _('Junk');
+    $('mail-toolbar-star').value    = (loc.set == 'starred') ? _('Unstar')    : _('Star');
 
     Element[v.selectAll   ? 'show' : 'hide' ] ('mail-toolbar-select-all');
     Element[v.deselectAll ? 'show' : 'hide' ] ('mail-toolbar-deselect-all');
@@ -236,10 +236,10 @@ Dragonfly.Mail.buildSummarySelect = function ()
     
     Element.setHTML ('mail-summary-div', [
                          '<select name="mail-summary-select" id="mail-summary-select">',
-                         '<option value="conversations">', _('mailAllLabel'), '</option>',
-                         '<option value="tome">', _('mailToMeSelectionLabel'), '</option>',
-                         '<option value="contacts">', _('mailFromContactsLabel'), '</option>',
-                         '<option value="subscriptions">', _('mailSubscriptionsLabel'), '</option>',
+                         '<option value="conversations">', _('All'), '</option>',
+                         '<option value="tome">', _('To Me'), '</option>',
+                         '<option value="contacts">', _('From My Contacts'), '</option>',
+                         '<option value="subscriptions">', _('Mailing Lists'), '</option>',
                          '</select>']);
 
     Event.observe ('mail-summary-select', 'change', 
@@ -299,13 +299,13 @@ Dragonfly.Mail.build = function (loc)
                     
                              '<span id="mail-summary-div"></span>',
                     
-                             '<input type="button" id="mail-toolbar-archive" value="', _('buttonArchiveLabel'), '">',
-                             '<input type="button" id="mail-toolbar-junk" value="', _('buttonJunkLabel'), '">',
-                             '<input type="button" id="mail-toolbar-delete" value="', _('genericDelete'), '">',
-                             '<input type="button" id="mail-toolbar-star" value="', _('buttonStarLabel'), '">',
+                             '<input type="button" id="mail-toolbar-archive" value="', _('Archive'), '">',
+                             '<input type="button" id="mail-toolbar-junk" value="', _('Junk'), '">',
+                             '<input type="button" id="mail-toolbar-delete" value="', _('Delete'), '">',
+                             '<input type="button" id="mail-toolbar-star" value="', _('Star'), '">',
 
-                             '<input type="button" id="mail-toolbar-select-all" value="', _('toolbarSelectAll'), '">',
-                             '<input type="button" id="mail-toolbar-deselect-all" value="', _('toolbarDeselectAll'), '">',
+                             '<input type="button" id="mail-toolbar-select-all" value="', _('Select All'), '">',
+                             '<input type="button" id="mail-toolbar-deselect-all" value="', _('Deselect All'), '">',
 
                              '</td>',
                              '<td class="prev"><a id="conv-prev-href" href="#"></a></td></tr>',
@@ -411,7 +411,7 @@ Dragonfly.Mail.joinParticipants = function (parts)
                 }, parts).join (', ');
 };
 
-Dragonfly.Mail.Conversations = { label: 'mailConversationsLabel' };
+Dragonfly.Mail.Conversations = { label: 'Conversations' };
 Dragonfly.Mail.handlers['conversations'] = Dragonfly.Mail.Conversations;
 
 Dragonfly.Mail.Conversations.parseArgs = function (loc, args)
@@ -549,7 +549,7 @@ Dragonfly.Mail.Messages.build = function (loc)
     var d = Dragonfly;
     var m = d.Mail;
 
-    return m['build' + (loc.message ? _('mailConversation') : _('mailList')) + _('mailView')] (loc);
+    return m['build' + (loc.message ? _('Conversation') : _('List')) + _('View')] (loc);
 };
 
 Dragonfly.Mail.Messages.load = function (loc, jsob)
@@ -557,11 +557,11 @@ Dragonfly.Mail.Messages.load = function (loc, jsob)
     var c = Dragonfly.Mail.Messages;
     var m = Dragonfly.Mail;
 
-    return m['load' + (loc.message ? _('mailItem') : _('mailList'))] (loc, jsob);
+    return m['load' + (loc.message ? _('Item') : _('List'))] (loc, jsob);
 };
 */
 
-Dragonfly.Mail.Contacts = { label: 'mailContactsLabel' };
+Dragonfly.Mail.Contacts = { label: 'Contacts' };
 Dragonfly.Mail.handlers['contacts'] = Dragonfly.Mail.Contacts;
 
 Dragonfly.Mail.Contacts.parseArgs = function (loc, args)
@@ -659,12 +659,12 @@ Dragonfly.Mail.Contacts.getBreadCrumbs = function (loc)
     if (loc.contact) {
         return d.format ('<a href="#{0}">{1} <strong>{2}</strong></a>',
                          d.escapeHTML (loc.getClientUrl ('contact')),
-                         loc.set == 'sent' ? _('mailTo') + " " : _('mailFrom') + " ",
+                         loc.set == 'sent' ? _('To') + " " : _('From') + " ",
                          d.escapeHTML (ab.getNameForContact (loc.contact)));
     }
 };
 
-Dragonfly.Mail.Subscriptions = { label: 'mailMailingListsLabel' };
+Dragonfly.Mail.Subscriptions = { label: 'Mailing Lists' };
 Dragonfly.Mail.handlers['subscriptions'] = Dragonfly.Mail.Subscriptions;
 
 Dragonfly.Mail.Subscriptions.parseArgs = function (loc, args)
@@ -777,7 +777,7 @@ Dragonfly.Mail.Subscriptions.getBreadCrumbs = function (loc)
     }
 };
 
-Dragonfly.Mail.ToMe = { label: 'mailToMeLabel' };
+Dragonfly.Mail.ToMe = { label: 'To Me' };
 Dragonfly.Mail.handlers['tome'] = Dragonfly.Mail.ToMe;
 
 Dragonfly.Mail.ToMe.parseArgs = function (loc, args)

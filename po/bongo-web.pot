@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: bongo-devel@gna.org\n"
-"POT-Creation-Date: 2007-07-12 13:17+0100\n"
+"POT-Creation-Date: 2007-07-13 11:46+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,625 +16,838 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "genericError"
-msgstr "An error has occured:"
-
-msgid "genericErrorOK"
-msgstr "Bummer"
-
-msgid "loginNameLabel"
-msgstr "Name:"
-
-msgid "loginPasswordLabel"
-msgstr "Password:"
-
-msgid "loginLanguageLabel"
-msgstr "Language:"
-
-msgid "loginRememberMeLabel"
-msgstr "Remember Me"
-
-msgid "loginLoginLabel"
-msgstr "Log In"
-
-msgid "loggedOutMessage"
-msgstr "You have successfully logged out."
-
-msgid "loggingInMessage"
-msgstr "Logging you in..."
-
-msgid "wrongCredentials"
-msgstr "Bad username or password."
-
-msgid "genericLoginError"
-msgstr "Error logging in (check Logs)."
-
-msgid "loadingData"
-msgstr "Logged in: loading contacts and calendars..."
-
-msgid "loadingItemPre"
-msgstr "Logged in: loading"
-
-msgid "loadingItemPost"
-msgstr "..."
-
-msgid "administrationLabel"
-msgstr "Administration"
-
-msgid "logoutLabel"
-msgstr "Log out"
-
-msgid "preferencesLabel"
-msgstr "Preferences"
-
-msgid "searchButtonLabel"
-msgstr "Search"
-
-msgid "summaryTabLabel"
-msgstr "Summary"
-
-msgid "summaryTabHint"
-msgstr "Look at an overview of your mail and events."
-
-msgid "mailTabLabel"
-msgstr "Mail"
-
-msgid "mailTabHint"
-msgstr "Read your mail."
-
-msgid "calendarTabLabel"
-msgstr "Calendar"
-
-msgid "calendarTabHint"
-msgstr "View your calendar."
-
-msgid "composeMailLabel"
-msgstr "Compose New Mail"
-
-msgid "composeEventLabel"
-msgstr "Create New Event"
-
-msgid "summaryNoMail"
-msgstr "You have no new mail."
-
-msgid "upcomingEvents"
-msgstr "Upcoming events"
-
-msgid "showToday"
-msgstr "Show Today"
-
-msgid "viewInCal"
-msgstr "View in calendar"
-
-msgid "starredMailLabel"
-msgstr "Starred Mail"
-
-msgid "summaryMailToMeLabel"
-msgstr "Mail to Me"
-
-msgid "contactMailLabel"
-msgstr "Mail from My Contacts"
-
-msgid "listMailLabel"
-msgstr "Mail from Mailing Lists"
-
-msgid "invitationsLabel"
-msgstr "Invitations"
-
-msgid "summaryInviteFrom"
-msgstr "from"
-
-msgid "shareCalendar"
-msgstr "Share this calendar"
-
-msgid "contactAddLabel"
-msgstr "Add Contact"
-
-msgid "contactShowConversations"
-msgstr "Show Conversations"
-
-msgid "contactEditLabel"
-msgstr "Edit"
-
-msgid "contactSelf"
-msgstr "This is Me"
-
-msgid "contactConfirmRemovePre"
-msgstr "Are you sure you want to delete the contact"
-
-msgid "contactEmail"
-msgstr "Email"
-
-msgid "contactPhone"
-msgstr "Phone"
-
-msgid "contactFax"
-msgstr "Fax"
-
-msgid "contactMobile"
-msgstr "Cell"
-
-msgid "contactIM"
-msgstr "IM"
-
-msgid "contactWebsite"
-msgstr "Website"
-
-msgid "contactCompany"
-msgstr "Company"
-
-msgid "contactAddress"
-msgstr "Address"
-
-msgid "genericCancel"
-msgstr "Cancel"
-
-msgid "genericSave"
-msgstr "Save"
-
-msgid "genericDelete"
-msgstr "Delete"
-
-msgid "genericEdit"
-msgstr "Edit"
-
-msgid "genericAdd"
-msgstr "Add"
-
-msgid "genericSavingChanges"
-msgstr "Saving changes..."
-
-msgid "genericChangesSaved"
-msgstr "Changes saved."
-
-msgid "genericPrevious"
-msgstr "Previous"
-
-msgid "genericPreviousShort"
-msgstr "Prev"
-
-msgid "genericNext"
-msgstr "Next"
-
-msgid "genericRemovePost"
-msgstr "? This cannot be undone."
-
-msgid "unsavedChanges"
-msgstr "You have unsaved changes."
-
-msgid "monday"
-msgstr "Monday"
-
-msgid "monday-s"
-msgstr "M"
-
-msgid "tuesday"
-msgstr "Tuesday"
-
-msgid "tuesday-s"
-msgstr "T"
-
-msgid "wednesday"
-msgstr "Wednesday"
-
-msgid "wednesday-s"
-msgstr "W"
-
-msgid "thursday"
-msgstr "Thursday"
-
-msgid "thursday-s"
-msgstr "T"
-
-msgid "friday"
-msgstr "Friday"
-
-msgid "friday-s"
-msgstr "F"
-
-msgid "saturday"
-msgstr "Saturday"
-
-msgid "saturday-s"
-msgstr "S"
-
-msgid "sunday"
-msgstr "Sunday"
-
-msgid "sunday-s"
-msgstr "S"
-
-msgid "day"
-msgstr "Day "
-
-msgid "upcoming"
-msgstr "Upcoming"
-
-msgid "week"
-msgstr "Week"
-
-msgid "month"
-msgstr "Month"
-
-msgid "calendarView"
-msgstr "View:"
-
-msgid "freeFormInstructions"
-msgstr "Enter free-form text for example:"
-
-msgid "freeFormExample"
-msgstr "lunch with Joe tomorrow at noon"
-
-msgid "freeFormOption"
-msgstr "or,"
-
-msgid "freeFormOptionBody"
-msgstr "enter details instead"
-
-msgid "freeFormAddLabel"
-msgstr "Add Event"
-
-msgid "deleteEventConfirm"
-msgstr "Are you sure you want to delete the event"
-
-msgid "eventSeriesIntro"
-msgstr "This event is part of a series. Would you like"
-
-msgid "eventSeriesChanges"
-msgstr "changes to apply to"
-
-msgid "eventSeriesDelete"
-msgstr "to delete"
-
-msgid "eventScopeSingle"
-msgstr "only this event"
-
-msgid "eventScopeFollowing"
-msgstr "this and following events"
-
-msgid "eventScopeAll"
-msgstr "all events in series"
-
-msgid "includeEventLabel"
-msgstr "Include this event in:"
-
-msgid "publishEventSelf"
-msgstr "Publish this event on its own"
-
-msgid "allDayLabel"
-msgstr "all day"
-
-msgid "eventInfoTabLabel"
-msgstr "Event"
-
-msgid "eventSharingTabLabel"
-msgstr "Sharing"
-
-msgid "eventRepeatTabLabel"
-msgstr "Repeat"
-
-msgid "eventSummaryHint"
-msgstr "Summary"
-
-msgid "eventLocationHint"
-msgstr "Location"
-
-msgid "eventNoteHint"
-msgstr "Notes"
-
-msgid "eventDefaultTitle"
-msgstr "New event"
-
-msgid "eventSubscribe"
-msgstr "Subscribe"
-
-msgid "defaultCalendarName"
-msgstr "New calendar"
-
-msgid "calendarNameLabel"
-msgstr "Name:"
-
-msgid "calendarUrlLabel"
-msgstr "URL:"
-
-msgid "calendarPasswordLabel"
-msgstr "Password:"
-
-msgid "calendarColorLabel"
-msgstr "Color:"
-
-msgid "calendarImportICSLabel"
-msgstr "Import ICS file:"
-
-msgid "calendarSearchableLabel"
-msgstr "Allow other users to search for this calendar"
-
-msgid "calendarPasswordProtectLabel"
-msgstr "Password protect this calendar"
-
-msgid "calendarSendInvitation"
-msgstr "Send invitation..."
-
-msgid "createNewCalendarLabel"
-msgstr "Create calendar"
-
-msgid "subscribeCalendarLabel"
-msgstr "Unsubscribe"
-
-msgid "calendarSubscribing"
-msgstr "Subscribing to"
-
-msgid "calendarErrorSubscribing"
-msgstr "Could not subscribe to"
-
-msgid "inviteDefaultText"
-msgstr "has invited you to:"
-
-msgid "inviteCalendarPre"
-msgstr "Calendar:"
-
-msgid "inviteTrustTextPre"
-msgstr "has invited you to a calendar called"
-
-msgid "inviteTrustTextPost"
-msgstr "You should only subscribe if you trust this person and the server"
-
-msgid "calendarShareLine1"
-msgstr "Someone wants to share their calendar with you."
-
-msgid "calendarShareLine2"
-msgstr "You can view it in a few different ways:"
-
-msgid "caldav"
-msgstr "CalDAV"
-
-msgid "ics"
-msgstr "ICS"
-
-msgid "webBrowser"
-msgstr "Web Browser"
-
-msgid "calendarShareFinalLine"
-msgstr "If a password is needed, please ask me for it."
-
-msgid "calendarShareSubjectPre"
-msgstr "Invitation to"
-
-msgid "calendarShareSubjectPost"
-msgstr "'s calendar"
-
-msgid "calendarShareBasicTab"
-msgstr "Basic"
-
-msgid "calendarShareDetailedTab"
-msgstr "Detailed"
-
-msgid "calendarShareEmailLabel"
-msgstr "Email:"
-
-msgid "calendarShareSelect"
-msgstr "Select:"
-
-msgid "calendarShareSelectAll"
-msgstr "All"
-
-msgid "calendarShareSelectNone"
-msgstr "None"
-
-msgid "calendarShareCurrentPasswordLabel"
-msgstr "Current password:"
-
-msgid "calendarShareNewPassword"
-msgstr "Password:"
-
-msgid "calendarShareNewPasswordConfirm"
-msgstr "Password (confirm):"
-
-msgid "buttonArchiveLabel"
-msgstr "Archive"
-
-msgid "buttonJunkLabel"
-msgstr "Junk"
-
-msgid "buttonIgnoreLabel"
-msgstr "Ignore"
-
-msgid "buttonStarLabel"
-msgstr "Star"
-
-msgid "buttonUnarchiveLabel"
-msgstr "Unarchive"
-
-msgid "buttonNotJunkLabel"
-msgstr "Not Junk"
-
-msgid "buttonUndeleteLabel"
-msgstr "Undelete"
-
-msgid "buttonUnstarLabel"
-msgstr "Unstar"
-
-msgid "buttonAddLabel"
-msgstr "Add"
-
-msgid "buttonRemoveLabel"
-msgstr "Remove"
-
-msgid "repeatLabel"
-msgstr "Repeat:"
-
-msgid "repeatEveryLabel"
-msgstr "Every:"
-
-msgid "repeatOnLabel"
-msgstr "On:"
-
-msgid "repeatEndingLabel"
-msgstr "Ending:"
-
-msgid "repeatEndNeverLabel"
-msgstr "Never"
-
-msgid "repeatEndOnDateLabel"
-msgstr "On date "
-
-msgid "repeatEndAfterRepeatLabel"
-msgstr "After repeating"
-
-msgid "repeatCautionHeadingLabel"
-msgstr "Caution"
-
-msgid "repeatCautionBodyText"
+#: src/www/js/AddressBook.js:232
+msgid "Add Contact"
 msgstr ""
+
+#: src/www/js/AddressBook.js:322 src/www/js/AddressBook.js:446
+msgid "Show Conversations"
+msgstr ""
+
+#: src/www/js/AddressBook.js:323 src/www/js/CalendarEditor.js:127
+#: src/www/js/OccurrenceEditor.js:826 src/www/js/Widgets.js:1128
+msgid "Add"
+msgstr ""
+
+#: src/www/js/AddressBook.js:336 src/www/js/AddressBook.js:641
+#: src/www/js/CalendarEditor.js:969 src/www/js/OccurrenceEditor.js:176
+#: src/www/js/OccurrenceEditor.js:218
+msgid "Saving changes..."
+msgstr ""
+
+#: src/www/js/AddressBook.js:352 src/www/js/AddressBook.js:629
+#: src/www/js/AddressBook.js:657 src/www/js/CalendarEditor.js:975
+#: src/www/js/OccurrenceEditor.js:187 src/www/js/OccurrenceEditor.js:228
+msgid "Changes saved."
+msgstr ""
+
+#: src/www/js/AddressBook.js:445 src/www/js/AddressBook.js:610
+#: src/www/js/AddressBook.js:675 src/www/js/CalendarEditor.js:913
+#: src/www/js/CalendarEditor.js:951 src/www/js/CalendarEditor.js:1026
+#: src/www/js/Mail.js:154 src/www/js/Mail.js:304
+#: src/www/js/OccurrenceEditor.js:109 src/www/js/OccurrenceEditor.js:142
+#: src/www/js/OccurrenceEditor.js:262 src/www/js/OccurrenceEditor.js:281
+#: src/www/js/OccurrenceEditor.js:823 src/www/js/Widgets.js:1080
+msgid "Delete"
+msgstr ""
+
+#: src/www/js/AddressBook.js:447 src/www/js/CalendarEditor.js:953
+#: src/www/js/OccurrenceEditor.js:110
+msgid "Edit"
+msgstr ""
+
+#: src/www/js/AddressBook.js:606
+msgid "This is Me"
+msgstr ""
+
+#: src/www/js/AddressBook.js:608 src/www/js/AddressBook.js:675
+#: src/www/js/CalendarEditor.js:808 src/www/js/CalendarEditor.js:914
+#: src/www/js/OccurrenceEditor.js:137 src/www/js/OccurrenceEditor.js:143
+#: src/www/js/OccurrenceEditor.js:262 src/www/js/Widgets.js:1079
+#: src/www/js/Widgets.js:1126
+msgid "Cancel"
+msgstr ""
+
+#: src/www/js/AddressBook.js:608 src/www/js/CalendarEditor.js:915
+#: src/www/js/OccurrenceEditor.js:138 src/www/js/OccurrenceEditor.js:144
+#: src/www/js/OccurrenceEditor.js:281
+msgid "Save"
+msgstr ""
+
+#: src/www/js/AddressBook.js:671
+msgid ""
+"Are you sure you want to delete the contact \"{0}\"? This cannot be undone."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:14
+msgid "Share this calendar"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:73 src/www/js/CalendarEditor.js:100
+#: src/www/js/CalendarEditor.js:623 src/www/js/CalendarEditor.js:642
+#: src/www/js/Login.js:108
+msgid "Name:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:76 src/www/js/CalendarEditor.js:626
+msgid "Color:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:83
+msgid "Import ICS:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:92 src/www/js/CalendarEditor.js:637
+msgid "Allow other users to search for this calendar"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:95 src/www/js/CalendarEditor.js:640
+msgid "Password protect this calendar"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:103
+msgid "Current password:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:106 src/www/js/CalendarEditor.js:645
+#: src/www/js/Login.js:109
+msgid "Password:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:109
+msgid "Password (again):"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:121 src/www/js/CalendarEditor.js:139
+#: src/www/js/CalendarEditor.js:952
+msgid "Send invitation..."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:123
+msgid "Basic"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:127
+msgid "Email:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:133
+msgid "Remove"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:136
+msgid "Select:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:136 src/www/js/Mail.js:239
+msgid "All"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:136
+msgid "None"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:142
+msgid "Detailed"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:160 src/www/js/CalendarEditor.js:661
+msgid "Loading calendar data..."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:165 src/www/js/CalendarEditor.js:240
+#: src/www/js/CalendarEditor.js:666 src/www/js/CalendarEditor.js:696
+#: src/www/js/Dragonfly.js:810
+msgid "New Calendar"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:340
+msgid "a username is required"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:343
+msgid "the passwords do not match"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:346
+msgid "a password is required"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:536
+msgid "Someone wants to share their calendar with you."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:537
+msgid "You can view it in a few different ways:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:538
+msgid "ICS"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:539
+msgid "CalDAV"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:540
+msgid "Web Browser"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:541
+msgid "If a password is needed, please ask me for it."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:633 src/www/js/CalendarEditor.js:775
+#: src/www/js/CalendarEditor.js:806
+msgid "URL:"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:809 src/www/js/CalendarEditor.js:1029
+#: src/www/js/Dragonfly.js:811
+msgid "Subscribe"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:839 src/www/js/CalendarEditor.js:1081
+msgid "Subscribing to {0}..."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:848
+msgid "Error subscribing to calendar {0}: {1}"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:993
+msgid "Saving calendar"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:1014
+msgid "{0} has invited you to a calendar called {1}."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:1020
+msgid ""
+"You should only subscribe to this calendar if you trust this person and the "
+"server {0}."
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:1027 src/www/js/Mail.js:155
+#: src/www/js/Mail.js:303 src/www/js/OccurrenceEditor.js:824
+msgid "Junk"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:1028 src/www/js/OccurrenceEditor.js:825
+msgid "Ignore"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:1041 src/www/js/CalendarEditor.js:1052
+#: src/www/js/CalendarEditor.js:1062
+msgid "genericSavingChanges"
+msgstr ""
+
+#: src/www/js/CalendarEditor.js:534
+msgid "Invitation to {0}"
+msgstr ""
+
+#: src/www/js/Calendar.js:91
+msgid "Yesterday"
+msgstr ""
+
+#: src/www/js/Calendar.js:93
+msgid "Today"
+msgstr ""
+
+#: src/www/js/Calendar.js:95
+msgid "Tomorrow"
+msgstr ""
+
+#: src/www/js/Calendar.js:346
+msgid "View:"
+msgstr ""
+
+#: src/www/js/Calendar.js:347
+msgid "Day"
+msgstr ""
+
+#: src/www/js/Calendar.js:349
+msgid "Upcoming"
+msgstr ""
+
+#: src/www/js/Calendar.js:351
+msgid "Week"
+msgstr ""
+
+#: src/www/js/Calendar.js:353
+msgid "Month"
+msgstr ""
+
+#: src/www/js/CalendarView.js:79 src/www/js/CalendarView.js:252
+msgid "Prev"
+msgstr ""
+
+#: src/www/js/CalendarView.js:81 src/www/js/CalendarView.js:255
+msgid "Next"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:161 src/www/js/CalendarWidgets.js:167
+msgid "S"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:162
+msgid "M"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:163 src/www/js/CalendarWidgets.js:165
+msgid "T"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:164
+msgid "W"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:166
+msgid "F"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:205
+msgid "Show Today"
+msgstr ""
+
+#: src/www/js/CalendarWidgets.js:363
+msgid "View in Calendar"
+msgstr ""
+
+#: src/www/js/Composer.js:121
+msgid "To:"
+msgstr ""
+
+#: src/www/js/Composer.js:125
+msgid "CC:"
+msgstr ""
+
+#: src/www/js/Composer.js:129
+msgid "BCC:"
+msgstr ""
+
+#: src/www/js/Composer.js:133
+msgid "Subject:"
+msgstr ""
+
+#: src/www/js/Composer.js:134
+msgid "From:"
+msgstr ""
+
+#: src/www/js/Composer.js:135
+msgid "Attachments:"
+msgstr ""
+
+#: src/www/js/Composer.js:157
+msgid "mailAttachLabel"
+msgstr ""
+
+#: src/www/js/Composer.js:161
+msgid "Discard"
+msgstr ""
+
+#: src/www/js/Composer.js:162
+msgid "Save Draft"
+msgstr ""
+
+#: src/www/js/Composer.js:163
+msgid "Send"
+msgstr ""
+
+#: src/www/js/Composer.js:321
+msgid "Untitled"
+msgstr ""
+
+#: src/www/js/Composer.js:324
+msgid "Saving draft \"{0}\"..."
+msgstr ""
+
+#: src/www/js/Composer.js:328
+msgid "Saved draft"
+msgstr ""
+
+#: src/www/js/Composer.js:359
+msgid "Error saving draft:"
+msgstr ""
+
+#: src/www/js/Composer.js:459
+msgid "Message sent."
+msgstr ""
+
+#: src/www/js/Composer.js:471
+msgid "Error sending message: "
+msgstr ""
+
+#: src/www/js/Composer.js:774
+msgid "Remove attachment"
+msgstr ""
+
+#: src/www/js/Composer.js:839
+msgid "Uploading {0}..."
+msgstr ""
+
+#: src/www/js/Composer.js:872
+msgid "Error saving attachment"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:893
+msgid "Administration"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:894
+msgid "Preferences"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:895 src/www/js/Dragonfly.js:896
+msgid "Search"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:899 src/www/js/Dragonfly.js:900
+#: src/www/js/OccurrenceEditor.js:449
+msgid "Summary"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:901
+msgid "Look at an overview of your mail and events."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:903 src/www/js/Dragonfly.js:904
+msgid "Mail"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:905
+msgid "Read your mail."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:906
+msgid "Compose new mail"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:908 src/www/js/Dragonfly.js:909
+msgid "Calendar"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:910
+msgid "View your calendar."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:911
+msgid "Create new event"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:925
+msgid "Logged in: loading contacts and calendars..."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:940
+msgid "Logged in: loading"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:953
+msgid "Log out"
+msgstr ""
+
+#: src/www/js/Dragonfly.js:998
+msgid ""
+"Bongo has finished saving changes.  It is OK to browse to another location."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:1001
+msgid "Bongo is still busy with a few things, but we should be done shortly."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:1002
+msgid ""
+"Please click Cancel and wait until we are finished, otherwise your changes "
+"may be lost."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:1004
+msgid "Bongo needs some help from you before it's safe to leave."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:1005
+msgid ""
+"Please click Cancel and tie up any loose ends otherwise your changes may be "
+"lost."
+msgstr ""
+
+#: src/www/js/Dragonfly.js:1036 src/www/js/Login.js:113
+msgid "You have logged out successfully."
+msgstr ""
+
+#: src/www/js/Login.js:69
+msgid "Incorrect username or password."
+msgstr ""
+
+#: src/www/js/Login.js:71
+msgid "Some error occured while logging in - check the logs."
+msgstr ""
+
+#: src/www/js/Login.js:110
+msgid "Language"
+msgstr ""
+
+#: src/www/js/Login.js:111
+msgid "Remember me"
+msgstr ""
+
+#: src/www/js/Login.js:112
+msgid "Login"
+msgstr ""
+
+#: src/www/js/MailConversationView.js:226
+msgid "Reply"
+msgstr ""
+
+#: src/www/js/MailConversationView.js:237
+msgid "Reply to All"
+msgstr ""
+
+#: src/www/js/MailConversationView.js:248
+msgid "Reply to List"
+msgstr ""
+
+#: src/www/js/MailConversationView.js:256
+msgid "Forward"
+msgstr ""
+
+#: src/www/js/MailConversationView.js:280
+msgid "to"
+msgstr ""
+
+#: src/www/js/Mail.js:153
+msgid "Unarchive"
+msgstr ""
+
+#: src/www/js/Mail.js:153 src/www/js/Mail.js:302
+msgid "Archive"
+msgstr ""
+
+#: src/www/js/Mail.js:154
+msgid "Undelete"
+msgstr ""
+
+#: src/www/js/Mail.js:155
+msgid "Not Junk"
+msgstr ""
+
+#: src/www/js/Mail.js:156
+msgid "Unstar"
+msgstr ""
+
+#: src/www/js/Mail.js:156 src/www/js/Mail.js:305
+msgid "Star"
+msgstr ""
+
+#: src/www/js/Mail.js:240
+msgid "To Me"
+msgstr ""
+
+#: src/www/js/Mail.js:241
+msgid "From My Contacts"
+msgstr ""
+
+#: src/www/js/Mail.js:242
+msgid "Mailing Lists"
+msgstr ""
+
+#: src/www/js/Mail.js:307
+msgid "Select All"
+msgstr ""
+
+#: src/www/js/Mail.js:308
+msgid "Deselect All"
+msgstr ""
+
+#: src/www/js/Mail.js:552
+msgid "Conversation"
+msgstr ""
+
+#: src/www/js/Mail.js:552 src/www/js/Mail.js:560
+msgid "List"
+msgstr ""
+
+#: src/www/js/Mail.js:552
+msgid "View"
+msgstr ""
+
+#: src/www/js/Mail.js:560
+msgid "Item"
+msgstr ""
+
+#: src/www/js/Mail.js:662
+msgid "To"
+msgstr ""
+
+#: src/www/js/Mail.js:662
+msgid "From"
+msgstr ""
+
+#: src/www/js/MailListView.js:101 src/www/js/MailListView.js:182
+msgid "No messages here."
+msgstr ""
+
+#: src/www/js/MailListView.js:193
+msgid "more..."
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:45
+msgid "Enter free-form text for example:"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:46
+msgid "lunch with Joe tomorrow at noon"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:47
+msgid "or,"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:47
+msgid "enter details instead"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:48
+msgid "Add Event"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:259
+msgid "Are you sure you want to delete the event"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:261
+msgid "? This cannot be undone."
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:272
+msgid "This event is part of a series. Would you like"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:273
+msgid "changes to apply to"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:273
+msgid "to delete"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:275
+msgid "only this event"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:276
+msgid "this and following events"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:277
+msgid "all events in series"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:280 src/www/js/Preferences.js:304
+msgid "genericCancel"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:366
+msgid "all day"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:380
+msgid "includeEventLabel"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:407
+msgid "Publish this event on its own"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:432
+msgid "Event"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:433
+msgid "Sharomg"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:434
+msgid "Repeat"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:450
+msgid "Location"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:451
+msgid "Notes"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:584
+msgid "Repeat:"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:594
+msgid "Every:"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:600 src/www/js/OccurrenceEditor.js:606
+#: src/www/js/OccurrenceEditor.js:612
+msgid "On:"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:627
+msgid "Ending:"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:628
+msgid "Never"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:628
+msgid "On date"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:629
+msgid "After repeating"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:644
+msgid "Caution"
+msgstr ""
+
+#: src/www/js/OccurrenceEditor.js:645
+msgid ""
 "This event has a schedule that cannot be edited with Bongo; choosing to edit "
 "will replace the existing schedule."
+msgstr ""
 
-msgid "repeatEditAnywayLabel"
-msgstr "Edit Anyway"
+#: src/www/js/OccurrenceEditor.js:646
+msgid "Edit Anyway"
+msgstr ""
 
-msgid "calendarYesterdayLabel"
-msgstr "Yesterday"
+#: src/www/js/OccurrenceEditor.js:810
+msgid "{0} has invited you to:"
+msgstr ""
 
-msgid "calendarTodayLabel"
-msgstr "Today"
+#: src/www/js/OccurrenceEditor.js:812
+msgid "Calendar:"
+msgstr ""
 
-msgid "calendarTomorrowLabel"
-msgstr "Tomorrow"
+#: src/www/js/Preferences.js:304
+msgid "genericSave"
+msgstr ""
 
-msgid "mailAllLabel"
-msgstr "All"
+#: src/www/js/Search.js:303
+msgid "Sorry, but your query returned no results."
+msgstr ""
 
-msgid "mailToMeSelectionLabel"
-msgstr "To Me"
+#: src/www/js/Search.js:304
+msgid "Here are some tips for getting better results:"
+msgstr ""
 
-msgid "mailFromContactsLabel"
-msgstr "From My Contacts"
+#: src/www/js/Search.js:306
+msgid "Make sure all words are spelt correctly."
+msgstr ""
 
-msgid "mailSubscriptionsLabel"
-msgstr "Mailing Lists"
+#: src/www/js/Search.js:307
+msgid "Try different keywords."
+msgstr ""
 
-msgid "mailNoMessages"
-msgstr "No messages found."
+#: src/www/js/Search.js:308
+msgid "Be less specific in your search."
+msgstr ""
 
-msgid "mailMoreSuffix"
-msgstr "more..."
+#: src/www/js/Search.js:338
+msgid "Search results for {0}"
+msgstr ""
 
-msgid "mailTo"
-msgstr "To:"
+#: src/www/js/Summary.js:43
+msgid "Starred Mail"
+msgstr ""
 
-msgid "mailFrom"
-msgstr "From:"
+#: src/www/js/Summary.js:47
+msgid "Mail to Me"
+msgstr ""
 
-msgid "mailCc"
-msgstr "CC:"
+#: src/www/js/Summary.js:51
+msgid "Mail from my contacts"
+msgstr ""
 
-msgid "mailBcc"
-msgstr "BCC:"
+#: src/www/js/Summary.js:55
+msgid "Mail from mailing lists"
+msgstr ""
 
-msgid "mailSubject"
-msgstr "Subject:"
+#: src/www/js/Summary.js:60
+msgid "You do not seem to have any new or unread emails."
+msgstr ""
 
-msgid "mailAttachments"
-msgstr "Attachments:"
+#: src/www/js/Summary.js:65
+msgid "Invitations"
+msgstr ""
 
-msgid "mailAttachLabel"
-msgstr "Attach file..."
+#: src/www/js/Summary.js:70
+msgid "Upcoming events"
+msgstr ""
 
-msgid "mailRemoveAttachment"
-msgstr "Remove"
+#: src/www/js/Summary.js:328
+msgid "summaryInviteFrom"
+msgstr ""
 
-msgid "mailConversation"
-msgstr "Conversation"
+#: src/www/js/ValidatingEntry.js:438
+msgid "Start on:"
+msgstr ""
 
-msgid "mailList"
-msgstr "List"
+#: src/www/js/ValidatingEntry.js:440 src/www/js/ValidatingEntry.js:448
+msgid "at:"
+msgstr ""
 
-msgid "mailItem"
-msgstr "Item"
-
-msgid "mailView"
-msgstr "View"
-
-msgid "mailDiscard"
-msgstr "Discard"
-
-msgid "mailDraft"
-msgstr "Save draft"
-
-msgid "mailSend"
-msgstr "Send"
-
-msgid "toolbarSelectAll"
-msgstr "Select All"
-
-msgid "toolbarDeselectAll"
-msgstr "Deselect All"
-
-msgid "dateStartOn"
-msgstr "Start on:"
-
+#: src/www/js/ValidatingEntry.js:446
 msgid "dateEndOn"
-msgstr "End on:"
+msgstr ""
 
-msgid "dateAtLabel"
-msgstr "at"
+#: src/www/js/Widgets.js:648
+msgid "You have unsaved changes."
+msgstr ""
 
-msgid "mailSetAllLabel"
-msgstr "All"
+#: src/www/js/Widgets.js:696
+msgid "An error has occured:"
+msgstr ""
 
-msgid "mailSetInboxLabel"
-msgstr "Inbox"
+#: src/www/js/Widgets.js:698
+msgid "Great."
+msgstr ""
 
-msgid "mailSetStarredLabel"
-msgstr "Starred"
+#: src/www/js/Widgets.js:950
+msgid "Add timezone..."
+msgstr ""
 
-msgid "mailSetSentLabel"
-msgstr "Sent"
+#: src/www/js/Widgets.js:952
+msgid "Edit list..."
+msgstr ""
 
-msgid "mailSetJunkLabel"
-msgstr "Junk"
+#: src/www/js/Widgets.js:955
+msgid "Other..."
+msgstr ""
 
-msgid "mailSetDraftsLabel"
-msgstr "Drafts"
+#: src/www/js/Widgets.js:1081
+msgid "Set as Default"
+msgstr ""
 
-msgid "mailSetTrashLabel"
-msgstr "Trash"
+#: src/www/js/Widgets.js:1082
+msgid "Add..."
+msgstr ""
 
-msgid "mailConversationsLabel"
-msgstr "Conversations"
+#: src/www/js/Widgets.js:1118
+msgid "Region"
+msgstr ""
 
-msgid "mailContactsLabel"
-msgstr "Contacts"
+#: src/www/js/Widgets.js:1118
+msgid "Timezone"
+msgstr ""
 
-msgid "mailToMeLabel"
-msgstr "To Me"
+#: src/www/js/Widgets.js:1129
+msgid "Add as Default"
+msgstr ""
 
-msgid "mailMailingListsLabel"
-msgstr "Mailing Lists"
-
-msgid "mailForward"
-msgstr "Forward"
-
-msgid "mailReplyToAll"
-msgstr "Reply to All"
-
-msgid "mailReplyToSender"
-msgstr "Reply to Sender"
-
-msgid "mailReplyToList"
-msgstr "Reply to List"
-
-msgid "mail"
-msgstr "Mail"
-
-msgid "inbox"
-msgstr "Inbox"
-
-msgid "sent"
-msgstr "Sent"
-
-msgid "trash"
-msgstr "Trash"
-
-msgid "junk"
-msgstr "Junk"
+#: src/www/js/Widgets.js:1131
+msgid "Set"
+msgstr ""

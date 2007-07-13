@@ -223,7 +223,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '?subject=', encodeURIComponent ('Re: ' + msg.subject), 
             '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
-            '" class="reply">', _('mailReplyToSender'), '</a>' ].join ('');
+            '" class="reply">', _('Reply'), '</a>' ].join ('');
 
         var to = msg.to.map(encodeURIComponent).join(',');
         var cc = msg.cc.map(encodeURIComponent).join(',');
@@ -234,7 +234,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
             '&amp;cc=', cc,
-            '" class="replyall">', _('mailReplyToAll'), '</a>' ].join ('');
+            '" class="replyall">', _('Reply to All'), '</a>' ].join ('');
             
         var replyToList = '';
         
@@ -245,7 +245,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '?subject=', encodeURIComponent ('Re: ' + msg.subject), 
             '&amp;inreplyto=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
-            '" class="replyall">', _('mailReplyToList'), '</a>' ].join ('');
+            '" class="replyall">', _('Reply to List'), '</a>' ].join ('');
         }
         
         var forward = [
@@ -253,7 +253,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             '?subject=', encodeURIComponent ('Fwd: ' + msg.subject),
             '&amp;forward=', encodeURIComponent (msg.bongoId),
             '&amp;conversation=', encodeURIComponent (loc.conversation),
-            '" class="forward">', _('mailForward'), '</a>' ].join ('');
+            '" class="forward">', _('Forward'), '</a>' ].join ('');
 
         var email = '';
         
@@ -277,7 +277,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
                    '<img class="disclosure" src="img/blank.gif" />',
                    '<span id="contact-clicker-', c, '" class="sender" title="', msg.from, '">', 
                    m.markupParticipants (msg.from), '</span>',
-                   ' to <span class="recipients" id="contact-clicker-', c + 1, '">', m.markupParticipants (concat (msg.to, msg.cc)), '</span>',
+                   ' ', _('to'), ' <span class="recipients" id="contact-clicker-', c + 1, '">', m.markupParticipants (concat (msg.to, msg.cc)), '</span>',
                    '</div>',
                    '<span class="date">',
                    d.escapeHTML (msg.date),

@@ -14,6 +14,7 @@ Dragonfly.setLoginDisabled = function (disabled)
 
 Dragonfly.setLoginMessage = function (msg)
 {
+    logDebug("Set from '" + $('login-message').innerHTML + "' to '" + msg + "'.");
     Element.setHTML ('login-message', msg);
 };
 
@@ -52,7 +53,7 @@ Dragonfly.login = function (user)
         d.authToken = btoa (user + ':');
     }
     
-    d.setLoginMessage (_('loggingInMessage'));
+    d.setLoginMessage ('Logging you in...');
     d.setLoginDisabled (true);
     
     p.load().addCallbacks (
@@ -63,10 +64,11 @@ Dragonfly.login = function (user)
             if (!Element.visible ('login-pane')) {
                 d.setLoginMessage ('&nbsp;');
                 d.showLoginPane();
-            } else if (err.req) {
-                d.setLoginMessage (_('wrongCredentials'));
+            } else if (err.req && (err.req.status == 401 || err.req.status == 403)) {
+                // Only tell the user its their fault if we get a permission denied HTTP response.
+                d.setLoginMessage (_('Incorrect username or password.'));
             } else {
-                d.setLoginMessage (_('genericLoginError'));
+                d.setLoginMessage (_('Some error occured while logging in - check the logs.'));
                 logError ('login error: ' + d.reprError (err));
             }
             showElement('login-button');
@@ -103,36 +105,48 @@ Dragonfly.logout = function ()
 Dragonfly.translateLogin = function ()
 {
     // Login screen
-    Element.setHTML ('login-user-label', _('loginNameLabel'));
-    Element.setHTML ('login-password-label', _('loginPasswordLabel'));
-    Element.setHTML ('login-language-label', _('loginLanguageLabel'));
-    Element.setHTML ('login-default-label', _('loginRememberMeLabel'));
-    $('login-button').value = _('loginLoginLabel');
-    Dragonfly.logoutMessage = _('loggedOutMessage');    
+    Element.setHTML ('login-user-label', _('Name:'));
+    Element.setHTML ('login-password-label', _('Password:'));
+    Element.setHTML ('login-language-label', _('Language'));
+    Element.setHTML ('login-default-label', _('Remember me'));
+    $('login-button').value = _('Login');
+    Dragonfly.logoutMessage = _('You have logged out successfully.');    
 };
+
+Dragonfly.languageSuccess = function ()
+{
+    var d = Dragonfly;
+    
+    d.translateLogin ();
+    d.setLoginDisabled (false);
+    //d.setLoginMessage ('&nbsp;');
+}
+
+Dragonfly.languageError = function (json)
+{
+    var d = Dragonfly;
+    
+    if (json)
+    {
+        d.setLoginMessage ('Could not load translations. Check logs.<br />Using default language (English).');
+        logError ('error loading translations for "' + $('login-language').value + '": server returned status ' + json.status);
+        logError ('request content: ' + json.responseText);
+        
+        // Setup default form labels anyhoo.
+        d.translateLogin();
+    }
+}
 
 Dragonfly.languageChanged = function (evt)
 {
     var d = Dragonfly;
-    var g = d.Gettext;
+    var g = Locale;
 
-    //d.setLoginMessage ('Loading language...');
+    d.setLoginMessage ('Loading language...');
     d.setLoginDisabled (true);
-    g.setLocale (null, $('login-language').value).addCallbacks (
-        function (res) {
-            //d.setLoginMessage ('&nbsp;');
-            d.translateLogin ();
-            d.setLoginDisabled (false);
-            return res;
-        },
-        function (err) {
-            d.setLoginMessage ('Could not load translations.');
-            logError ('error loading translations for' + $('login-language').value + ':', 
-                      reprError (err));
-            $('login-langage').value = g._locale || 'en';
-            return err;
-        });
-        
+    g.setLocale('LC_MESSAGES', $('login-language').value);
+    g.setSuffix('js');
+    g.bindTextDomain('dragonfly', 'l10n', d.languageSuccess, d.languageError);
 };
 
 Dragonfly.observeLoginEvents = function ()

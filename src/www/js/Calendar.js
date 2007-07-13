@@ -88,11 +88,11 @@ Dragonfly.Calendar.niceDate = function (day, format)
 
     switch (today.minus (day)) {
     case 1:
-        return _('calendarYesterdayLabel');
+        return _('Yesterday');
     case 0:
-        return _('calendarTodayLabel');
+        return _('Today');
     case -1:
-        return _('calendarTomorrowLabel');
+        return _('Tomorrow');
     }
 
     if (!format) {
@@ -343,14 +343,14 @@ Dragonfly.Calendar.Events.build = function (loc)
     if (!$('calendar-view-day')) {
         Element.setHTML (
             'toolbar', [
-                '<label>', _('calendarView'), ' </label>',
-                '<a id="calendar-view-day" href="#">', _('day'), '</a>',
+                '<label>', _('View:'), ' </label>',
+                '<a id="calendar-view-day" href="#">', _('Day'), '</a>',
                 '<span class="bar"> | </span>',
-                '<a id="calendar-view-upcoming" href="#">', _('upcoming'), '</a>',
+                '<a id="calendar-view-upcoming" href="#">', _('Upcoming'), '</a>',
                 '<span class="bar"> | </span>',
-                '<a id="calendar-view-week" href="#">', _('week'), '</a>',
+                '<a id="calendar-view-week" href="#">', _('Week'), '</a>',
                 '<span class="bar"> | </span>',
-                '<a id="calendar-view-month" href="#">', _('month'), '</a>'
+                '<a id="calendar-view-month" href="#">', _('Month'), '</a>'
                 ]);        
         Element.show ('toolbar');
     } else {

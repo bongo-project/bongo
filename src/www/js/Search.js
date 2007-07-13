@@ -300,8 +300,12 @@ Dragonfly.Search.Results.build = function (loc)
 
         html.push ('<div id="search-no-results"><table style="margin: auto;"><tr>',
                    '<td><img src="img/sad.png" style="float: left;" /></td>',
-                   '<td style="vertical-align:middle;"><h3>Sorry, but your query returned no results.</h3>Here are some tips for getting better results:',
-                   '<ul style="font-size: 80%; margin-left: 3em;"><li style="list-style-type: disc;">Make sure all words are spelt correctly.</li><li style="list-style-type: disc;">Try different keywords.</li><li style="list-style-type: disc;">Be less specific in your search.</li></ul></td>',
+                   '<td style="vertical-align:middle;"><h3>', _('Sorry, but your query returned no results.'), '</h3>',
+                   _('Here are some tips for getting better results:'),
+                   '<ul style="font-size: 80%; margin-left: 3em;"><li style="list-style-type: disc;">',
+                   _('Make sure all words are spelt correctly.'), '</li><li style="list-style-type: disc;">',
+                   _('Try different keywords.'), '</li><li style="list-style-type: disc;">',
+                   _('Be less specific in your search.'), '</li></ul></td>',
                    '</tr></table></div>');
 
         html.set ('content-iframe');
@@ -331,7 +335,7 @@ Dragonfly.Search.Results.load = function (loc, jsob)
     var d = Dragonfly;
     var s = d.Search;
 
-    document.title = 'Search results for "' + d.escapeHTML (loc.query) + '": ' + Dragonfly.title;
+    document.title = d.format(_('Search results for {0}'), d.escapeHTML (loc.query)) + ': ' + Dragonfly.title;
     var results = false;
 
     var html = new d.HtmlBuilder;

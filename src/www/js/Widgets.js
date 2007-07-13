@@ -645,7 +645,7 @@ Dragonfly.PopupBuble.prototype.canDisposeZone = Dragonfly.PopupBuble.prototype.c
     var canHide = !this.isVisible() || hasElementClass (this.frameId, 'closable');
     canHide = canHide && this.htmlZone.canHideZone();
     if (!canHide) {
-        Dragonfly.notify (_('unsavedChanges'));
+        Dragonfly.notify (_('You have unsaved changes.'));
     }
     return canHide;
 }
@@ -693,9 +693,9 @@ Dragonfly.PopupBuble.prototype.showError = function (err)
     this.hide();
     var closeId = Dragonfly.nextId ('popup-close');
     var html = new Dragonfly.HtmlBuilder (
-        '<p><strong>', _('genericError'), '</strong><p style="text-align:center;">', 
+        '<p><strong>', _('An error has occured:'), '</strong><p style="text-align:center;">', 
         err.message, '<div class="actions">',
-        '<input id="', closeId, '" type="button" value="', _('genericErrorOK'), '"></div>'
+        '<input id="', closeId, '" type="button" value="', _('Great.'), '"></div>'
     );
     html.set (this.contentId);
     Event.observe (closeId, 'click', this.disposeAndReload.bindAsEventListener (this));
@@ -947,12 +947,12 @@ Dragonfly.TzSelector.prototype.buildTimezoneOptions = function (htmlbuilder, tim
     }
     if (timezones === this.timezones) {
         if (this.isGlobal) {
-            html.push ('<option value="add">Add Timezone...');
+            html.push ('<option value="add">', _('Add timezone...'));
             if (this.timezones.length > 1) {
-                html.push ('<option value="edit">Edit List...');
+                html.push ('<option value="edit">', _('Edit list...'));
             }
         } else {
-            html.push ('<option value="add">Other...');
+            html.push ('<option value="add">', _('Other...'));
         }
     }
     
@@ -1076,10 +1076,10 @@ Dragonfly.TzSelector.prototype.showEditor = function ()
         }
     }
     html.push ('</select><div class="actions">',
-               '<input id="', cancel, '" type="button" value="Cancel"> ',
-               '<input id="', this.delId, '" type="button" value="Delete"> ',
-               '<input id="', this.setDefaultId, '" type="button" value="Set As Default"> ',
-               '<input id="', add, '" type="button" value="Add..."></div>');
+               '<input id="', cancel, '" type="button" value="', _('Cancel'), '"> ',
+               '<input id="', this.delId, '" type="button" value="', _('Delete'), '"> ',
+               '<input id="', this.setDefaultId, '" type="button" value="', _('Set as Default'), '"> ',
+               '<input id="', add, '" type="button" value="', _('Add...'), '"></div>');
     html.set (this.editorId);
     
     Event.observe (cancel, 'click', this.cancel.bindAsEventListener (this));
@@ -1115,7 +1115,7 @@ Dragonfly.TzSelector.prototype.showBrowser = function ()
     var add = d.nextId ('tz-add');
     var addDefault = d.nextId ('tz-add-default');
     
-    var html = new d.HtmlBuilder ('<table><tr><th>Region</th><th>Timezone</th></tr>');
+    var html = new d.HtmlBuilder ('<table><tr><th>', _('Region'), '</th><th>', _('Timezone'), '</th></tr>');
     html.push('<tr><td><select id="', this.regionSelectId, '" size="5">');
     for (var i = 0; i < zonemap.length; i++) {
         html.push ('<option>', zonemap[i].name);
@@ -1123,12 +1123,12 @@ Dragonfly.TzSelector.prototype.showBrowser = function ()
     html.push ('</select></td>');
     html.push ('<td><select id="', this.zoneSelectId, '" size="5"></select></td>');
     html.push ('</tr></table>');
-    html.push ('<div class="actions"><input id="', cancel, '" type="button" value="Cancel"> ');
+    html.push ('<div class="actions"><input id="', cancel, '" type="button" value="', _('Cancel'), '"> ');
     if (this.isGlobal) {
-        html.push ('<input id="', add, '" type="button" value="Add"> ',
-                   '<input id="', addDefault, '" type="button" value="Add As Default"></div>');
+        html.push ('<input id="', add, '" type="button" value="', _('Add'), '"> ',
+                   '<input id="', addDefault, '" type="button" value="', _('Add as Default'), '"></div>');
     } else {
-        html.push ('<input id="', add, '" type="button" value="Set">');
+        html.push ('<input id="', add, '" type="button" value="', _('Set'), '">');
     }   
     html.set (this.editorId);
     

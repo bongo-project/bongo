@@ -30,12 +30,12 @@ update-pot:
 	--msgid-bugs-address="bongo-devel@gna.org" \
 	-o po/bongo.pot
 # This is a bit of a hack. Nevertheless, it works, I hope.
-# NOTE: add "-L python" when the props stuff is gone
 	$(XGETTEXT) --directory=$(srcdir) \
 	--add-comments=translators \
 	--keyword=_ --keyword=N_ --keyword=M_ \
 	--files-from=$(srcdir)/po/POTFILES.bongo-web \
 	--msgid-bugs-address="bongo-devel@gna.org" \
+	-L python \
 	-o po/bongo-web.pot
 
 update-gmo: ${GMOFILES}

@@ -373,7 +373,7 @@ sbin_SCRIPTS += \
 	src/www/bongo-standalone
 
 dist_noinst_SCRIPTS += \
-	src/www/l10n/props2json \
+	src/www/l10n/po2json \
 	src/www/compress.py
 
 templatesdir = $(pkgdatadir)/templates
@@ -411,20 +411,14 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 	-e "s%\@DATADIR\@/\@PACKAGE\@/hawkeye%${top_srcdir}/src/www/hawkeye%" \
 	$< > $@
 
-props2json := $(top_srcdir)/src/www/l10n/props2json
-dfly_props := $(top_srcdir)/src/www/l10n/dragonfly.properties
+po2json := $(top_srcdir)/src/www/l10n/po2json
 
-if USE_NLS
-src/www/l10n/%.js: po/bongo-web/%.gmo $(dfly_props) config.status
-	$(props2json) -i $(dfly_props) -p $(dir $<) -o $@ -l $(patsubst po/bongo-web/%.gmo,%,$<)
+src/www/l10n/%.json: po/bongo-web/%.gmo config.status
+	$(po2json) -p po/bongo-web/$*.po -o $@
 
-src/www/l10n/en.js: $(dfly_props) config.status
-	$(props2json) -i $(dfly_props) -o $@ -l en
-else
-src/www/l10n/%js: $(dfly_props) config.status
-	@echo "Warning: generating fake translations because NLS support was not enabled"
-	$(props2json) -i $(dfly_props) -o $@ -l en
-endif
+# This generates no translation. It simply does msgid:msgid on the potfile.
+src/www/l10n/en.json: config.status
+	$(po2json) -p po/bongo-web.pot -o $@ --en
 
 CLEANFILES +=					\
 	src/www/bongo-standalone			\
@@ -433,8 +427,7 @@ CLEANFILES +=					\
 	src/www/bongo-devel.conf			\
 	src/www/bongo/*.pyc			\
 	src/www/bongo/__init__.py		\
-	src/www/bongo/dragonfly/*.pyc		\
-	src/www/l10n/*.js
+	src/www/bongo/dragonfly/*.pyc
 
 src/www/all: src/www/bongo/__init__.py src/www/bongo-devel.conf src/www/bongo.conf
 src/www/clean: clean
