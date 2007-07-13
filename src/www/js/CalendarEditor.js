@@ -531,7 +531,7 @@ Dragonfly.Calendar.PersonalProperties.prototype.getInvitationMail = function ()
         to: '',
         cc: '',
         bcc: p.getAutoBcc() || '',
-        subject: d.format (_('Invitation to {0}'s calendar'), d.userName)
+        subject: d.format(_('Invitation to {0}\'s calendar'), d.userName)
     };
     msg.body = [ _('Someone wants to share their calendar with you.'), '\n\n',
                  _('You can view it in a few different ways:'), '\n\n',
