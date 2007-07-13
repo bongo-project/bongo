@@ -1,6 +1,6 @@
 import socket
 import CommandStream
-import bongo, bongo.libs
+import bongo, libbongo.libs
 
 import logging
 
@@ -14,7 +14,7 @@ def Auth(stream):
     elif r.code == 4242:
         greeting_salt = r.message
 
-        hash = bongo.libs.msgapi.NmapChallenge(greeting_salt)
+        hash = libbongo.libs.msgapi.NmapChallenge(greeting_salt)
         stream.Write("AUTH %s", hash)
 
         r = stream.GetResponse()

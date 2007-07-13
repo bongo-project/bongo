@@ -5,8 +5,8 @@ import logging
 import pprint
 import time
 
-from bongo.libs import mdb
-from bongo.libs import msgapi
+from libbongo.libs import mdb
+from libbongo.libs import msgapi
 from bongo.store.StoreClient import StoreClient
 from bongo.store.StoreConnection import StoreConnection
 import bongo

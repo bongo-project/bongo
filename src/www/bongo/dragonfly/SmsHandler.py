@@ -2,7 +2,7 @@ from ResourceHandler import HttpHandler
 from CalendarView import EventsHandler
 from bongo.store.StoreClient import StoreClient, DocTypes
 from bongo.CalCmd import Command
-from bongo.libs import cal, calcmd
+from libbongo.libs import cal, calcmd
 import bongo.dragonfly
 import urllib
 

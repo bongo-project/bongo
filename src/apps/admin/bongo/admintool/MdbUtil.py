@@ -20,7 +20,7 @@ def GetMdb(options, inSetup=False):
     return MDB(user, options.authpass)
 
 def GetContext(mdbDn, defContext=None):
-    from bongo.libs import msgapi
+    from libbongo.libs import msgapi
 
     if '\\' in mdbDn:
         return mdbDn.rsplit('\\', 1)

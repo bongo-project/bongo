@@ -7,7 +7,7 @@ from bongo.store.CommandStream import CommandError
 
 import bongo
 import bongo.dragonfly
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 
 from Composer import StoreComposer, ExistingFilePayload
 

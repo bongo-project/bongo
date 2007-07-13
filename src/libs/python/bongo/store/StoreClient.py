@@ -359,7 +359,7 @@ class CalendarACL :
 class StoreClient:
     def __init__(self, user, owner, authToken=None, authCookie=None,
                  authPassword=None):
-        from bongo.libs import msgapi
+        from libbongo.libs import msgapi
         self.owner = self.user = None
         
         addr = msgapi.FindUserNmap(owner)

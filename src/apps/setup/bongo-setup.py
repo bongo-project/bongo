@@ -25,7 +25,7 @@ import os, random, signal, socket, string, sys
 
 from bongo import Xpl, BongoError, Privs
 from bongo.admin import ManagedSlapd, Util
-from bongo.bootstrap import msgapi
+from libbongo.bootstrap import msgapi
 
 from bongo.Console import wrap
 

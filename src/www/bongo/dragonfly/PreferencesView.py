@@ -3,7 +3,7 @@ from bongo.store.StoreClient import StoreClient, DocTypes
 from bongo.dragonfly.ResourceHandler import ResourceHandler
 from bongo import BongoError
 from bongo.dragonfly.HttpError import HttpError
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 import bongo.dragonfly
 
 class DragonflyHandler(ResourceHandler):

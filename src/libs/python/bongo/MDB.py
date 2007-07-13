@@ -20,7 +20,7 @@
 #
 #############################################################################
 
-from bongo.bootstrap import mdb
+from libbongo.bootstrap import mdb
 from bongo.BongoError import BongoError
 
 

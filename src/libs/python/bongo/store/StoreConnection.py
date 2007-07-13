@@ -6,7 +6,7 @@ import logging
 
 def Auth(stream):
     """Authenticate against a Store connection on socket s"""
-    from bongo.libs import msgapi
+    from libbongo.libs import msgapi
 
     r = stream.GetResponse()
 

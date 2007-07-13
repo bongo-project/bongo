@@ -3,7 +3,7 @@ import os
 import bongo.dragonfly.BongoUtil
 from HawkeyeHandler import HawkeyeHandler
 import bongo.hawkeye.Auth as Auth
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 
 AuthMode = 0
 

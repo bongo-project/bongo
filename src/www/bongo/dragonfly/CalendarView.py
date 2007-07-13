@@ -1,7 +1,7 @@
 from bongo.dragonfly.ResourceHandler import ResourceHandler, JSONWrapper, Template
 from bongo.store.StoreClient import StoreClient, DocTypes, ACL, CalendarACL, CommandError
 from bongo.CalCmd import Command
-from bongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
+from libbongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
 from bongo.dragonfly.HttpError import HttpError
 
 import datetime

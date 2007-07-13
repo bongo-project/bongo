@@ -18,7 +18,7 @@ import bongo.table as table
 from bongo.cmdparse import Command
 from bongo.Contact import Contact
 from bongo.BongoError import BongoError
-from bongo.libs import bongojson, msgapi
+from libbongo.libs import bongojson, msgapi
 from bongo.store.StoreClient import DocTypes, StoreClient, CalendarACL
 from bongo.store.QueueClient import QueueClient
 

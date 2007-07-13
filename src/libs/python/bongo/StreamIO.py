@@ -1,4 +1,4 @@
-from bongo.libs import streamio
+from libbongo.libs import streamio
 import cStringIO as StringIO
 
 class Stream:

@@ -1,5 +1,5 @@
 import inspect
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 from bongo import MDB
 import BongoSession as Session
 import bongoutil as util

@@ -10,7 +10,7 @@ import bongo.dragonfly
 from email.Utils import parseaddr
 #from datetime import datetime, timedelta, time
 import datetime
-from bongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
+from libbongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
 
 import sys
 
