@@ -412,11 +412,11 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 
 po2json := $(top_srcdir)/src/www/l10n/po2json
 
-src/www/l10n/%.json: po/bongo-web/%.gmo config.status
+src/www/l10n/%.js: po/bongo-web/%.gmo config.status
 	$(po2json) -p po/bongo-web/$*.po -o $@
 
 # This generates no translation. It simply does msgid:msgid on the potfile.
-src/www/l10n/en.json: config.status
+src/www/l10n/en.js: config.status
 	$(po2json) -p po/bongo-web.pot -o $@ --en
 
 CLEANFILES +=					\
