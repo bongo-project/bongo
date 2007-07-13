@@ -379,6 +379,7 @@ AC_SUBST(PYTHON_LIBS)
 AC_SUBST(PYTHON_CPPFLAGS)
 
 AS_AC_EXPAND(PYTHONDIR, $pythondir)
+AS_AC_EXPAND(PYEXECDIR, $pyexecdir)
 
 # Check for openldap's slapd
 AC_ARG_WITH([slapd],

@@ -12,6 +12,7 @@ if binpath.endswith("bin"):
     if envpath is not None:
         newpath = envpath.split(os.pathsep)
     newpath.insert(0, "@PYTHONDIR@")
+    newpath.insert(0, "@PYEXECDIR@")
     os.environ["PYTHONPATH"] = os.pathsep.join(newpath)
 
     script = os.path.join("@PKGLIBEXECDIR@",
