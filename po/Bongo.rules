@@ -9,7 +9,7 @@ dist_noinst_DATA += $(POFILES) 	\
 
 po/all: update-gmo
 
-po/clean: clean
+po/clean: 
 	for file in ${GMOFILES}; do \
 		rm -f $$file; \
 	done
