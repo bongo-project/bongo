@@ -556,8 +556,8 @@ class _POFileParser:
         return 0
     # }}}
 
-import sys
-sys.path.append('/tmp/bongo-trunk/build/lib/python2.4/site-packages/')
+import os, sys
+temp = sys.path.append(os.path.abspath(os.path.dirname(sys.argv[0])) + '/../../libs/python/')
 from bongo.external import simplejson
 from optparse import OptionParser
 
