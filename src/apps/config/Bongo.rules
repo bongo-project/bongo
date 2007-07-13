@@ -26,9 +26,9 @@ conf_defaults =					\
 
 confdir = $(pkgdatadir)/conf
 
-dist_conf_DATA = $(conf_defaults)
+conf_SOURCES = $(conf_defaults)
 
-nodist_conf_DATA := \
+conf_DATA := \
         src/apps/config/default.set
 
 src/apps/config/default.set: $(conf_defaults)
