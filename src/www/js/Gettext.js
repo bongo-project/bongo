@@ -50,13 +50,14 @@ Object.extend(Locale, {
       uri = location.href+'/';
     }*/
     /*uri = directory+'/'+this.LC_MESSAGES+'/LC_MESSAGES/'+domain+'.'+this.suffix;*/
-	uri = directory+'/'+this.LC_MESSAGES+'.'+this.suffix;
+	uri = directory + '/'+this.LC_MESSAGES+'.'+this.suffix;
     var options = {
       method: 'get', onSuccess: this._parseJSON.bind(this),
-      onComplete: func || function(){},
-      onFailure: efunc.bind(this) || function(){},
-      onException: efunc.bind(this) || function(){}
+      onComplete: func.bind(this) || function(){},
+      onFailure: efunc.bind(this) || function(){}
     };
+    
+    logDebug('Making request for ' + uri);
     new Ajax.Request(uri, options);
   },
 

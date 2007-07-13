@@ -119,12 +119,17 @@ Dragonfly.languageSuccess = function ()
     
     d.translateLogin ();
     d.setLoginDisabled (false);
-    //d.setLoginMessage ('&nbsp;');
+    if (!d.langFailure)
+    {
+        d.setLoginMessage ('&nbsp;');
+    }
 }
 
 Dragonfly.languageError = function (json)
 {
     var d = Dragonfly;
+    
+    d.langFailure = true;
     
     if (json)
     {
@@ -134,6 +139,11 @@ Dragonfly.languageError = function (json)
         
         // Setup default form labels anyhoo.
         d.translateLogin();
+    }
+    else
+    {
+        d.setLoginMessage ('Could not load translations. Check logs.<br />Using default language (English).');
+        logError ('Hmm, JSON was undefined. :s');
     }
 }
 
