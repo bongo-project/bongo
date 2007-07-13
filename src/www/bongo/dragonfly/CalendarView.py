@@ -2,7 +2,7 @@ from bongo.dragonfly.ResourceHandler import ResourceHandler, JSONWrapper, Templa
 from bongo.store.StoreClient import StoreClient, DocTypes, ACL, CalendarACL, CommandError
 from bongo.CalCmd import Command
 from libbongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
-from bongo.dragonfly.HttpError import HttpError
+from bongo.commonweb.HttpError import HttpError
 
 import datetime
 import bongo.BongoError
@@ -208,7 +208,7 @@ class EventsHandler(ResourceHandler):
                 req.log.debug("Replacing doc %s", rp.resource)
                 store.Replace(rp.resource, doc)
             else:
-                return bongo.dragonfly.HTTP_NOT_FOUND
+                return bongo.commonweb.HTTP_NOT_FOUND
         finally:
             store.Quit()
 
@@ -221,7 +221,7 @@ class EventsHandler(ResourceHandler):
                 req.log.debug("Deleting doc %s", rp.resource)
                 store.Delete(rp.resource)
             else:
-                return bongo.dragonfly.HTTP_NOT_FOUND
+                return bongo.commonweb.HTTP_NOT_FOUND
         finally:
             store.Quit()
 
@@ -283,7 +283,7 @@ class EventsHandler(ResourceHandler):
                 req.log.debug("Replacing doc %s", rp.resource)
                 store.Replace(rp.resource, rp.resource)
             else:
-                return bongo.dragonfly.HTTP_NOT_FOUND
+                return bongo.commonweb.HTTP_NOT_FOUND
         finally:
             store.Quit()
 
@@ -339,10 +339,10 @@ class EventsHandler(ResourceHandler):
         try:
             command = Command(cmdstr, timezone)
         except ValueError:
-            return bongo.dragonfly.HTTP_BAD_REQUEST
+            return bongo.commonweb.HTTP_BAD_REQUEST
         
         if command.GetType() != calcmd.NEW_APPT:
-            return bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR
+            return bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR
 
         jcal = command.GetJson()
 
@@ -357,7 +357,7 @@ class EventsHandler(ResourceHandler):
         req.headers_out["Content-Length"] = str(len(data))
         req.content_type = "text/javascript"
         req.write(data)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def GetEventsJson (self, store, timezone, start, end) :
         events = store.Events(None, ["nmap.document", "nmap.event.calendars"],
@@ -398,7 +398,7 @@ class EventsHandler(ResourceHandler):
         req.headers_out["Content-Length"] = str(len(data))
         req.content_type = "text/javascript"
         req.write(data)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _SendEventsIcs(self, req, events):
         wholeJsob = None;
@@ -420,7 +420,7 @@ class EventsHandler(ResourceHandler):
 
         req.write(data)
 
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _ParseIcalTime(self, timestr) :
         year = int(timestr[0:4])
@@ -634,7 +634,7 @@ class EventsHandler(ResourceHandler):
         req.content_type = "text/html"
         tmpl.send(req, self._GetCalendarTemplateValue, tmplData)
         
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _SendEventHtml(self, store, req, rp, bongoid, recurid, timezone):
         eventProps = ["nmap.document", "nmap.event.calendars"]
@@ -717,7 +717,7 @@ class EventsHandler(ResourceHandler):
         req.content_type="text/html"
         tmpl.send(req, self._GetTemplateValue, values)
 
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
         
                 
 class CalendarsHandler(ResourceHandler):
@@ -813,9 +813,9 @@ class CalendarsHandler(ResourceHandler):
             if rp.resource is not None:
                 req.log.debug("Deleting doc %s", rp.resource)
                 store.Delete(rp.resource)
-                return bongo.dragonfly.OK
+                return bongo.commonweb.OK
             else:
-                return bongo.dragonfly.HTTP_NOT_FOUND
+                return bongo.commonweb.HTTP_NOT_FOUND
         finally:
             store.Quit()
 

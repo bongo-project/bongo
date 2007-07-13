@@ -1,7 +1,7 @@
 from bongo.dragonfly.ResourceHandler import ResourceHandler
 from bongo.store.StoreClient import StoreClient, DocTypes, DocFlags, FlagMode
 from email.Utils import parseaddr
-import bongo.dragonfly
+import bongo.commonweb
 
 import math
 
@@ -154,7 +154,7 @@ class ContactsHandler(ResourceHandler):
 
             self._Sendline(req, "END:VCARD")
         
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _Sendline(self, req, line):
         req.write(line)
@@ -175,17 +175,17 @@ class ContactsHandler(ResourceHandler):
     def _StarContacts(self, store, uids):
         for uid in uids:
             store.Flag(uid, DocFlags.Starred, FlagMode.Add)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _UnstarContacts(self, store, uids):
         for uid in uids:
             store.Flag(uid, DocFlags.Starred, FlagMode.Remove)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _DeleteContacts(self, store, uids):
         for uid in uids:
             store.Delete(uid)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def do_POST(self, req, rp):
         length = int(req.headers_in["Content-Length"])
@@ -205,7 +205,7 @@ class ContactsHandler(ResourceHandler):
                 return self._UnstarContacts(store, json.get("bongoIds"))
             elif method == "delete":
                 return self._DeleteContacts(store, json.get("bongoIds"))
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
         finally:
             store.Quit()
 
@@ -219,22 +219,22 @@ class ContactsHandler(ResourceHandler):
             try:
                 req.log.debug("Replacing doc %s", rp.resource)
                 store.Replace(rp.resource, doc)
-                return bongo.dragonfly.OK
+                return bongo.commonweb.OK
             finally:
                 store.Quit()
         else:
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
     def do_DELETE(self, req, rp):
         req.log.debug("AddressbookView.do_DELETE")
         if rp.resource is None :
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         store = self.GetStoreClient(req, rp)
 
         try :
             store.Delete(rp.resource)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         finally :
             store.Quit()
         

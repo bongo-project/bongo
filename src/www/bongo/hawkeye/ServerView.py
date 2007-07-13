@@ -1,5 +1,5 @@
-import bongo.dragonfly
-import bongo.dragonfly.BongoUtil
+import bongo.commonweb
+import bongo.commonweb.BongoUtil
 from bongo.store.StoreClient import StoreClient, DocTypes
 import bongo.external.simplejson as simplejson
 from HawkeyeHandler import HawkeyeHandler
@@ -42,10 +42,10 @@ class ServerHandler(HawkeyeHandler):
         global doneop
         
         if not req.form:
-            return bongo.dragonfly.HTTP_UNAUTHORIZED
+            return bongo.commonweb.HTTP_UNAUTHORIZED
         
         if not req.form.has_key("command"):
-            return bongo.dragonfly.HTTP_UNAUTHORIZED
+            return bongo.commonweb.HTTP_UNAUTHORIZED
 
         config = self._getManagerFile(req)
         if config.has_key("agents"):
@@ -71,7 +71,7 @@ class ServerHandler(HawkeyeHandler):
         if req.args and len(req.args) > 0:
             target = req.args
 
-        return bongo.dragonfly.BongoUtil.redirect(req, target)
+        return bongo.commonweb.BongoUtil.redirect(req, target)
 
     def _getManagerFile(self, req):
         config = {}

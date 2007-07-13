@@ -40,7 +40,6 @@ pkgpythonadmin_PYTHON :=			   \
 	src/libs/python/bongo/admin/Calcmd.py	   \
 	src/libs/python/bongo/admin/Collector.py	   \
 	src/libs/python/bongo/admin/Handler.py	   \
-	src/libs/python/bongo/admin/BongoSession.py  \
 	src/libs/python/bongo/admin/Imap.py	   \
 	src/libs/python/bongo/admin/Itip.py	   \
 	src/libs/python/bongo/admin/JsonUtil.py	   \

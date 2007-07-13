@@ -297,23 +297,15 @@ pkgpythondragonflydir = $(pkgpythondir)/dragonfly
 pkgpythondragonfly_PYTHON :=			   \
 	src/www/bongo/dragonfly/__init__.py	   \
 	src/www/bongo/dragonfly/AddressbookView.py  \
-	src/www/bongo/dragonfly/ApacheLogHandler.py \
 	src/www/bongo/dragonfly/Auth.py		   \
 	src/www/bongo/dragonfly/CalendarView.py	   \
 	src/www/bongo/dragonfly/Composer.py	   \
-	src/www/bongo/dragonfly/BongoCookie.py	   \
-	src/www/bongo/dragonfly/HttpError.py	   \
-	src/www/bongo/dragonfly/BongoFieldStorage.py \
-	src/www/bongo/dragonfly/BongoPSP.py	   \
-	src/www/bongo/dragonfly/BongoSession.py      \
-	src/www/bongo/dragonfly/BongoUtil.py         \
 	src/www/bongo/dragonfly/MailView.py	   \
 	src/www/bongo/dragonfly/PreferencesView.py  \
 	src/www/bongo/dragonfly/ResourceHandler.py  \
 	src/www/bongo/dragonfly/ResourcePath.py	   \
 	src/www/bongo/dragonfly/Server.py	   \
 	src/www/bongo/dragonfly/SmsHandler.py	   \
-	src/www/bongo/dragonfly/Standalone.py	   \
 	src/www/bongo/dragonfly/SummaryView.py
 
 pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
@@ -331,6 +323,18 @@ pkgpythonhawkeye_PYTHON :=			\
 	src/www/bongo/hawkeye/Server.py		\
 	src/www/bongo/hawkeye/ServerView.py	\
 	src/www/bongo/hawkeye/UsersView.py
+
+pkgpythoncommonwebdir = $(pkgpythondir)/commonweb
+
+pkgpythoncommonweb_PYTHON :=		\
+	src/www/bongo/commonweb/__init__.py	\
+	src/www/bongo/commonweb/HttpError.py	\
+	src/www/bongo/commonweb/ApacheLogHandler.py \
+	src/www/bongo/commonweb/BongoCookie.py	   \
+	src/www/bongo/commonweb/BongoFieldStorage.py \
+	src/www/bongo/commonweb/BongoUtil.py         \
+	src/www/bongo/commonweb/Standalone.py	   \
+	src/www/bongo/commonweb/BongoSession.py
 
 hawkeyetplrootdir = $(htdocsdir)/hawkeye/root
 dist_hawkeyetplroot_DATA :=			\

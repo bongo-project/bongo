@@ -1,5 +1,5 @@
-import bongo.dragonfly
-import bongo.dragonfly.BongoUtil
+import bongo.commonweb
+import bongo.commonweb.BongoUtil
 from bongo.store.StoreClient import StoreClient, DocTypes
 import bongo.external.simplejson as simplejson
 from HawkeyeHandler import HawkeyeHandler
@@ -24,10 +24,10 @@ class AgentHandler(HawkeyeHandler):
         global doneop
         
         if not req.form:
-            return bongo.dragonfly.HTTP_UNAUTHORIZED
+            return bongo.commonweb.HTTP_UNAUTHORIZED
         
         if not req.form.has_key("command"):
-            return bongo.dragonfly.HTTP_UNAUTHORIZED
+            return bongo.commonweb.HTTP_UNAUTHORIZED
         
         # Operation completed OK.
         doneop = 1

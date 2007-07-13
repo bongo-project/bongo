@@ -1,6 +1,6 @@
 import os
 from bongo.Template import Template
-import bongo.dragonfly
+import bongo.commonweb
 
 class HawkeyeHandler:
     def __init__(self):
@@ -16,7 +16,7 @@ class HawkeyeHandler:
         self._template.setVariable(name, value)
 
     def index(self, req, rp):
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def SendTemplate(self, req, rp, file):
         path = os.path.join(rp.tmplPath, file)
@@ -29,7 +29,7 @@ class HawkeyeHandler:
             print "template does not exist: %s / %s " % (rp.tmplPath, file)
             req.log.debug("template does not exist: %s", path)
             req.write("<html><body><h1>Error</h1><p>Template not found.</p></body></html>")
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         self.SetVariable("message", "")
         try:
@@ -38,11 +38,11 @@ class HawkeyeHandler:
             t.setTemplateUriRoot(rp.tmplUriRoot)
             t.setTemplateFile(path)
             t.Run(req)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         except ImportError, e:
             req.write("<html><h1>ERROR</h1><p>%s</p></body></html>" % str(e))
-            return bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR
+            return bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR
         #except:
         #    print "Error running Template"
         #    req.write("<html><body><h1>Error</h1><p>Very bad error!</p></body></html>")
-        #    return bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR
+        #    return bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR

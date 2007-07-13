@@ -2,11 +2,11 @@ from bongo.store.QueueClient import QueueClient
 from bongo.store.StoreClient import StoreClient, DocFlags, DocTypes, FlagMode, CalendarACL, ACL
 from bongo.StreamIO import Stream
 from bongo.dragonfly.ResourceHandler import ResourceHandler
-from bongo.dragonfly.HttpError import HttpError
+from bongo.commonweb.HttpError import HttpError
 from bongo.store.CommandStream import CommandError
 
 import bongo
-import bongo.dragonfly
+import bongo.commonweb
 from libbongo.libs import msgapi
 
 from Composer import StoreComposer, ExistingFilePayload
@@ -90,7 +90,7 @@ class ConversationsHandler(ResourceHandler):
                     "result": { "bongoId" : uid, "conversation" :  doc.props["nmap.mail.conversation"]} }
             return self._SendJson(req, ret)
 
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
 
     def _SplitRecipients(self, composer) :
@@ -429,7 +429,7 @@ class ConversationsHandler(ResourceHandler):
                 msgs.append(info)
         self._CreateArchiveDirs(store, msgs)
         self._MoveToArchiveDirs(store, msgs)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _UnarchiveConversations(self, store, guids):
         msgs = []
@@ -438,27 +438,27 @@ class ConversationsHandler(ResourceHandler):
                 msgs.append(info)
         for msg in msgs:
             store.Move(msg.uid, "/mail/INBOX")
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _ArchiveMessage(self, store, bongoId):
         msgs = [store.Info(bongoId, ["nmap.mail.sent"])]
         self._CreateArchiveDirs(store, msgs)
         self._MoveToArchiveDirs(store, msgs)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _UnarchiveMessage(self, store, bongoId):
         store.Move(bongoId, "/mail/INBOX")
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _StarConversations(self, store, uids):
         for uid in uids:
             store.Flag(uid, DocFlags.Starred, FlagMode.Add)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _UnstarConversations(self, store, uids):
         for uid in uids:
             store.Flag(uid, DocFlags.Starred, FlagMode.Remove)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _SendPart(self, store, req, uid, part):
         stream = store.ReadMimePart(uid, part)
@@ -470,7 +470,7 @@ class ConversationsHandler(ResourceHandler):
 
         req.content_type = ct
         req.write(decoder.read())
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _FindPart(self, part, name):
         print `part`
@@ -496,9 +496,9 @@ class ConversationsHandler(ResourceHandler):
 
             req.write(msg)
 
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
-        return bongo.dragonfly.HTTP_NOT_FOUND
+        return bongo.commonweb.HTTP_NOT_FOUND
 
     def _SendAttachment(self, store, req, rp):
         name = rp.handlerData["attachment"]
@@ -510,25 +510,25 @@ class ConversationsHandler(ResourceHandler):
         parts = store.Mime(msg)
 
         if parts is None :
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         part = self._FindPart(parts, name)
 
         if part is None:
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         return self._SendPart(store, req, msg, part)
 
     def _DiscardDraft(self, store, convid, msgid):
         store.Delete(msgid)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _RemoveAttachment(self, store, msgid, attachment) :
         composer = StoreComposer()
         composer.ReadFromStore(store, msgid)
         composer.RemoveAttachment(attachment)
         composer.WriteToStore(store, msgid)
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _ParseResource(self, rp, resource) :
         if resource is not None :
@@ -606,7 +606,7 @@ class ConversationsHandler(ResourceHandler):
 
         if method == "createAttachment" :
             self._CreateAttachment(req, rp, store, fields)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         
     def _PostJsonToMessage(self, req, rp, store, jsob) :
         msgid = rp.handlerData["message"]
@@ -614,31 +614,31 @@ class ConversationsHandler(ResourceHandler):
         
         if method == "delete":
             store.Flag(msgid, DocFlags.Deleted, FlagMode.Add)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         elif method == "undelete":
             store.Flag(msgid, DocFlags.Deleted, FlagMode.Remove)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         elif method == "junk":
             store.Flag(msgid, DocFlags.Junk, FlagMode.Add)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         elif method == "unjunk":
             store.Flag(msgid, DocFlags.Junk, FlagMode.Remove)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         elif method == "archive":
             self._ArchiveMessage(store, msgid)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         elif method == "unarchive":
             self._UnarchiveMessage(store, msgid)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         elif method == "star":
             store.Flag(msgid, DocFlags.Starred, FlagMode.Add)
-            return bongo.dragonfly.OK                
+            return bongo.commonweb.OK
         elif method == "unstar":
             store.Flag(msgid, DocFlags.Starred, FlagMode.Remove)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         elif method == "updateDraft":
             return self._UpdateDraft(store, req, jsob, msgid)
@@ -647,7 +647,7 @@ class ConversationsHandler(ResourceHandler):
                 self._UpdateDraft(store, req, jsob, msgid, True)
             return self._DeliverMessage(store, req, jsob, rp)            
 
-        return bongo.dragonfly.HTTP_NOT_FOUND
+        return bongo.commonweb.HTTP_NOT_FOUND
 
     def _PostToMessage(self, req, rp) :
         contentType = req.headers_in["Content-Type"]
@@ -708,7 +708,7 @@ class ConversationsHandler(ResourceHandler):
             elif method == "getConversation":
                 return self._SendConversation(store, req, jsob, rp)
 
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
         finally:
             store.Quit()
 
@@ -723,13 +723,13 @@ class ConversationsHandler(ResourceHandler):
 
     def do_DELETE(self, req, rp):
         if rp.resource is None:
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         try :
             convid = rp.handlerData["conversation"]
             msgid = rp.handlerData["message"]
         except KeyError:
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         store = self.GetStoreClient(req, rp)
 
@@ -1058,7 +1058,7 @@ class SubscriptionsHandler(ConversationsHandler):
         if len(resource) > 0:
             rp.handlerData["listid"] = resource.pop(0)
         else :
-            raise HttpError(bongo.dragonfly.HTTP_NOT_FOUND) 
+            raise HttpError(bongo.commonweb.HTTP_NOT_FOUND) 
         
         self._ParseResource(rp, resource)
 
@@ -1102,7 +1102,7 @@ class SubscriptionsHandler(ConversationsHandler):
             return self._SendJson(req, ret)
         except CommandError, e:
             if e.code == 4240:
-                return bongo.dragonfly.Auth.DenyAccess(req)
+                return bongo.commonweb.Auth.DenyAccess(req)
             else:
                 raise
 

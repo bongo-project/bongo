@@ -1,6 +1,6 @@
-import bongo.dragonfly
+import bongo.commonweb
 import os
-import bongo.dragonfly.BongoUtil
+import bongo.commonweb.BongoUtil
 from HawkeyeHandler import HawkeyeHandler
 import bongo.hawkeye.Auth as Auth
 from libbongo.libs import msgapi
@@ -98,7 +98,7 @@ class RootHandler(HawkeyeHandler):
         if req.args and len(req.args) > 0:
             target = req.args
 
-        return bongo.dragonfly.BongoUtil.redirect(req, target)
+        return bongo.commonweb.BongoUtil.redirect(req, target)
 
     def logout_GET(self, req, rp):    
         if req.session:
@@ -108,4 +108,4 @@ class RootHandler(HawkeyeHandler):
             global AuthMode
             AuthMode = 2
 
-        return bongo.dragonfly.BongoUtil.redirect(req, "login")
+        return bongo.commonweb.BongoUtil.redirect(req, "login")

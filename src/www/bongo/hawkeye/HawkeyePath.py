@@ -1,9 +1,9 @@
 import os
 
 import urllib
-import bongo.dragonfly
-from bongo.dragonfly.BongoSession import BongoSession
-from bongo.dragonfly.HttpError import HttpError
+import bongo.commonweb
+from bongo.commonweb.BongoSession import BongoSession
+from bongo.commonweb.HttpError import HttpError
 
 import RootView
 import AgentView
@@ -30,12 +30,12 @@ class HawkeyePath:
         opts = req.get_options()
         hawkeye_root = opts.get("HawkeyeUriRoot")
         if hawkeye_root is None:
-            raise HttpError(bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR,
+            raise HttpError(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR,
                             "HawkeyeUriRoot not specified")
 
         hawkeye_tmpl_root = opts.get("HawkeyeTmplRoot")
         if hawkeye_tmpl_root is None:
-            raise HttpError(bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR,
+            raise HttpError(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR,
                             "HawkeyeTmplRoot not specified")
 
         path = self.orig = req.uri[len(hawkeye_root):]
@@ -77,7 +77,7 @@ class HawkeyePath:
         if views.has_key(self.view):
             handler = views[self.view]
         else:
-            raise HttpError(bongo.dragonfly.HTTP_NOT_FOUND)
+            raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
 
         handler.ParsePath(self)
 

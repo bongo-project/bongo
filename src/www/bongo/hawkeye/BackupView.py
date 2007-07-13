@@ -1,5 +1,5 @@
-import bongo.dragonfly
-import bongo.dragonfly.BongoUtil
+import bongo.commonweb
+import bongo.commonweb.BongoUtil
 from bongo.store.StoreClient import StoreClient, DocTypes
 import bongo.external.simplejson as simplejson
 from HawkeyeHandler import HawkeyeHandler
@@ -32,10 +32,10 @@ class BackupHandler(HawkeyeHandler):
 
     def index_POST(self, req, rp):
         if not req.form:
-            return bongo.dragonfly.HTTP_UNAUTHORIZED
+            return bongo.commonweb.HTTP_UNAUTHORIZED
         
         if not req.form.has_key("command"):
-            return bongo.dragonfly.HTTP_UNAUTHORIZED
+            return bongo.commonweb.HTTP_UNAUTHORIZED
 
         config = self._getManagerFile(req)
         if config.has_key("agents"):

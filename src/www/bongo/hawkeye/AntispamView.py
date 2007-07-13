@@ -1,5 +1,5 @@
-import bongo.dragonfly
-import bongo.dragonfly.BongoUtil
+import bongo.commonweb
+import bongo.commonweb.BongoUtil
 from bongo.store.StoreClient import StoreClient, DocTypes
 import bongo.external.simplejson as simplejson
 from HawkeyeHandler import HawkeyeHandler

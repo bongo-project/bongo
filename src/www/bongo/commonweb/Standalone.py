@@ -6,7 +6,7 @@ import StringIO
 import logging
 import socket
 
-import BongoFieldStorage
+import bongo.commonweb.BongoFieldStorage as BongoFieldStorage
 
 import bongo.Xpl as Xpl
 

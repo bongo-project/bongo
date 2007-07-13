@@ -1,12 +1,12 @@
-from bongo.dragonfly.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
+from bongo.commonweb.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
 from HawkeyePath import HawkeyePath
-from bongo.dragonfly.HttpError import HttpError
+from bongo.commonweb.HttpError import HttpError
 
 import Auth
-import bongo.dragonfly
-import bongo.dragonfly.BongoFieldStorage as BongoFieldStorage
-import bongo.dragonfly.BongoUtil as BongoUtil
-import bongo.dragonfly.BongoSession as BongoSession
+import bongo.commonweb
+import bongo.commonweb.BongoFieldStorage as BongoFieldStorage
+import bongo.commonweb.BongoUtil as BongoUtil
+import bongo.commonweb.BongoSession as BongoSession
 
 # Add a handler so messages from python's logging module go to apache.
 # We don't use that module in the Bongo server proper, because we need
@@ -37,10 +37,10 @@ def handler(req):
         
         if handler.NeedsAuth(rp):
             auth = bongo.hawkeye.Auth.authenhandler(req)
-            if auth != bongo.dragonfly.HTTP_OK:
+            if auth != bongo.commonweb.HTTP_OK:
                 target = "/admin/login"
                 BongoUtil.redirect(req, target)
-                return bongo.dragonfly.OK
+                return bongo.commonweb.OK
 
         req.log.debug("request for %s (handled by %s)", req.path_info, handler)
 
@@ -48,14 +48,14 @@ def handler(req):
 
         if not hasattr(handler, mname):
             req.log.debug("%s has no %s", handler, mname)
-            return bongo.dragonfly.HTTP_NOT_FOUND
+            return bongo.commonweb.HTTP_NOT_FOUND
 
         method = getattr(handler, mname)
         ret = method(req, rp)
 
         if ret is None:
             req.log.error("Handler %s returned invalid value: None" % handler)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         return ret
     except HttpError, e:
