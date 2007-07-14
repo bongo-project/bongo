@@ -43,6 +43,7 @@ UserAuthenticate(ImapSession *session, unsigned char **userName, unsigned char *
     if (MsgAuthVerifyPassword(*userName, password) == FALSE)
         return(STATUS_WRONG_PASSWORD);
 
+    MsgAuthGetUserStore(*userName, storeAddress);
     return(STATUS_CONTINUE);
 }
 

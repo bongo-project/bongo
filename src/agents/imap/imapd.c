@@ -4074,7 +4074,6 @@ IMAPServer(void *unused)
     Imap.logHandle = NULL;
 
     MsgShutdown();
-//    MDBShutdown();
 
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
@@ -4218,7 +4217,6 @@ static BongoConfigItem IMAPConfig[] = {
 static BOOL
 ReadConfiguration(void)
 {
-    MDBValueStruct *Config;
     unsigned char *ptr;
     time_t   gm_time_of_day, time_of_day;
     struct tm  gm, ltm;

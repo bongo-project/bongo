@@ -56,7 +56,9 @@ StoreAgentReadConfiguration(BOOL *recover)
     MsgMakePath(StoreAgent.store.systemDir);
     MsgMakePath(StoreAgent.store.spoolDir);
 
-    // which hosts do we trust?
+    // which hosts do we trust? SECURITY: This bypasses auth!
+    StoreAgent.trustedHosts.count = 0;
+#if 0
     StoreAgent.trustedHosts.count = 2;
     StoreAgent.trustedHosts.hosts = 
         MemRealloc(StoreAgent.trustedHosts.hosts, sizeof(unsigned long) * 2);
@@ -66,6 +68,7 @@ StoreAgentReadConfiguration(BOOL *recover)
         StoreAgent.trustedHosts.hosts[0] = inet_addr("127.0.0.1");
         StoreAgent.trustedHosts.hosts[1] = MsgGetHostIPAddress(); // do we need this address too?
     }
+#endif
     
     gethostname(StoreAgent.server.host, sizeof(StoreAgent.server.host));
     if (!MsgGetServerCredential(StoreAgent.server.hash))

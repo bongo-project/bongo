@@ -434,7 +434,7 @@ MessageDetailsFree(MessageDetail *messageDetail)
     }
 
     if (messageDetail->mimeInfo) {
-        MDBDestroyValueStruct(messageDetail->mimeInfo);
+        BongoArrayFree(messageDetail->mimeInfo, TRUE);
         messageDetail->mimeInfo = NULL;
     }
 }
@@ -948,9 +948,11 @@ FetchFlagResponderBodyStructure(void *param1, void *param2, void *param3)
 
             if (ccode != -1) {
                 do {
-                    switch(atol(FetchRequest->messageDetail.mimeInfo->Value[mimeResponseLine])) {
+                    char *mime_string = BongoArrayIndex(FetchRequest->messageDetail.mimeInfo,
+			char *, mimeResponseLine);
+                    switch(atol(mime_string)) {
                         case 2002: {
-                            ParseMIMEDLine(FetchRequest->messageDetail.mimeInfo->Value[mimeResponseLine] + 5, 
+                            ParseMIMEDLine(mime_string + 5, 
                                           Type, MIME_TYPE_LEN, 
                                           Subtype, MIME_SUBTYPE_LEN, 
                                           Charset, MIME_CHARSET_LEN, 
@@ -1280,7 +1282,7 @@ FetchFlagResponderBodyStructure(void *param1, void *param2, void *param3)
                     }
 
                     mimeResponseLine++;
-                    if (mimeResponseLine < FetchRequest->messageDetail.mimeInfo->Used) {
+                    if (mimeResponseLine < BongoArrayCount(FetchRequest->messageDetail.mimeInfo)) {
                         continue;
                     }
 
@@ -1705,7 +1707,7 @@ FetchFlagResponderBodyHeaderFields(void *param1, void *param2, void *param3)
 }
 
 __inline static BOOL
-HasPart(MDBValueStruct *mimeInfo, BodyPartRequestStruct *request)
+HasPart(BongoArray *mimeInfo, BodyPartRequestStruct *request)
 {
     unsigned char type[MIME_TYPE_LEN+1];
     unsigned char dummy[MIME_NAME_LEN+1];
@@ -1721,9 +1723,10 @@ HasPart(MDBValueStruct *mimeInfo, BodyPartRequestStruct *request)
     unsigned long matchDepthPart = 0;
 
     do {
-        switch (atol(mimeInfo->Value[mimeResponseLine])) {
+        char *mime_string = BongoArrayIndex(mimeInfo, char *, mimeResponseLine);
+        switch (atol(mime_string)) {
             case 2002: {
-                ParseMIMEDLine(mimeInfo->Value[mimeResponseLine] + 5, 
+                ParseMIMEDLine(mime_string + 5, 
                                type, MIME_TYPE_LEN, 
                                dummy, MIME_NAME_LEN, 
                                dummy, MIME_NAME_LEN, 
@@ -1808,7 +1811,7 @@ HasPart(MDBValueStruct *mimeInfo, BodyPartRequestStruct *request)
         }
 
         mimeResponseLine++;
-        if (mimeResponseLine < mimeInfo->Used) {
+        if (mimeResponseLine < BongoArrayCount(mimeInfo)) {
             if (depthChange == 0) {
                 continue;
             }
@@ -3015,21 +3018,22 @@ GetMimeInfo(ImapSession *session, FetchStruct *FetchRequest)
     long ccode;
 
     if (FetchRequest->messageDetail.mimeInfo == NULL) {
-        FetchRequest->messageDetail.mimeInfo = MDBCreateValueStruct(Imap.directory.handle, NULL);
-        if (FetchRequest->messageDetail.mimeInfo) {
-            ;
-        } else {
+        FetchRequest->messageDetail.mimeInfo = BongoArrayNew(sizeof(char *), 0);
+        if (! FetchRequest->messageDetail.mimeInfo) {
             return(STATUS_MEMORY_ERROR);
         }
     } else {
-        MDBFreeValues(FetchRequest->messageDetail.mimeInfo);
+        BongoArrayFree(FetchRequest->messageDetail.mimeInfo, TRUE);
     }
 
     if (NMAPSendCommandF(session->store.conn, "MIME %llx\r\n", FetchRequest->message->guid) != -1) {
         ccode = NMAPReadResponse(session->store.conn, session->store.response, sizeof(session->store.response), FALSE);
         while(ccode != 1000) {
             if ((ccode > 2001) && (ccode < 2005)) {
-                MDBAddValue(session->store.response, FetchRequest->messageDetail.mimeInfo);
+                char *entry;
+                entry = MemMalloc(sizeof(char) * (strlen(session->store.response) + 1));
+                memcpy(entry, session->store.response, sizeof(entry));
+                BongoArrayAppendValue(FetchRequest->messageDetail.mimeInfo, entry);
                 ccode = NMAPReadResponse(session->store.conn, session->store.response, sizeof(session->store.response), FALSE);
                 continue;
             }
