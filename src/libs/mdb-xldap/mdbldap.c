@@ -383,7 +383,7 @@ MdbToLdap(char *MdbDn)
         if (obj) {
             if (obj == MdbDn) {
                 *obj++ = '\0';
-                base = malloc(MDB_MAX_OBJECT_CHARS + 1, sizeof(char));
+                base = malloc(MDB_MAX_OBJECT_CHARS + 1);
                 base[0] = '\0';
                 scope = LDAP_SCOPE_BASE;
             } else {
