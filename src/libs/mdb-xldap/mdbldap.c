@@ -465,34 +465,15 @@ MdbToLdap(char *MdbDn)
         }
 
         if (path) {
-            char *mdbDn;
-            char *ldapDn;
-
-            XplRWReadLockAcquire(&(MdbLdap.PathLock));
-            
-            if (!(ldapDn = BongoHashtableGet(MdbLdap.PathTable, MdbDn))) {
-                XplRWReadLockRelease(&(MdbLdap.PathLock));
-                mdbDn = strdup(MdbDn);
-
-                if (mdbDn) {
-                    XplRWWriteLockAcquire(&(MdbLdap.PathLock));
-
-                    if (BongoHashtablePut(MdbLdap.PathTable, mdbDn, path)) {
-                        free(mdbDn);
-                        free(path);
-                        path = NULL;
-                    }
-
-                    XplRWWriteLockRelease(&(MdbLdap.PathLock));
-                } else {
-                    free(path);
-                    path = NULL;
-                }
-            } else {
-                XplRWReadLockRelease(&(MdbLdap.PathLock));
-                free(path);
-                path = strdup(ldapDn);
+            char *mdbDn, *ldapDn;
+            mdbDn = strdup(MdbDn);
+            ldapDn = strdup(path);
+            XplRWWriteLockAcquire(&(MdbLdap.PathLock));
+            if (BongoHashtablePut(MdbLdap.PathTable, mdbDn, ldapDn)) {
+                free(mdbDn);
+                free(ldapDn);
             }
+            XplRWWriteLockRelease(&(MdbLdap.PathLock));
         }
     }
 
