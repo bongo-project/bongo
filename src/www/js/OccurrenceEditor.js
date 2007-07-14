@@ -430,7 +430,7 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildHtml = function (html)
     html.push ('<div><input id="', this.summaryId, '" size="40"></div>');
 
     this.buildEventTab(this.notebook.insertPage (_('Event'), c.OccurrenceEditor.EventTab - 1));
-    this.buildSharingTab(this.notebook.insertPage (_('Sharomg'), c.OccurrenceEditor.SharingTab - 1));
+    this.buildSharingTab(this.notebook.insertPage (_('Sharing'), c.OccurrenceEditor.SharingTab - 1));
     this.buildRepeatTab(this.notebook.insertPage (_('Repeat'), c.OccurrenceEditor.RepeatTab - 1));
 
     this.notebook.buildHtml (html);

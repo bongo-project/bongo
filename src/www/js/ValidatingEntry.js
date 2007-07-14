@@ -443,7 +443,7 @@ Dragonfly.DateRangeEntry.prototype.buildHtml = function (html)
     this.startTzidEntry.buildHtml (html);
     html.push ('</td></tr>');
 
-    html.push ('<tr><td class="form-label"><label>', _('dateEndOn'), '</label></td><td>');
+    html.push ('<tr><td class="form-label"><label>', _('End on:'), '</label></td><td>');
     this.endDayEntry.buildHtml (html);
     html.push ('</td></tr><tr class="time-entry-fields"><td class="form-label"><label>', _('at:'), '</label></td><td>');
     this.endTimeEntry.buildHtml (html);

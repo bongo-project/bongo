@@ -45,7 +45,7 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     if (p.getSignatureAvailable())
     {
         // Append signature to end of message.
-        defaultbody = '\n\n_______________________________________________\n' + p.getSignature();
+        defaultbody = '\n\n-- \n' + p.getSignature();
     }
     
     var msg = { 
@@ -265,11 +265,11 @@ Dragonfly.Mail.Composer.prototype.updateTitle = function (evt)
 {
     if (this.subject.value == "")
     {
-        document.title = '(untitled) - Composing: ' + Dragonfly.title;
+        document.title = _('(untitled)') + ' - ' + _('Composing:') + ' ' + Dragonfly.title;
     }
     else
     {
-        document.title = this.subject.value + ' - Composing: ' + Dragonfly.title;
+        document.title = this.subject.value + ' - ' + _('Composing:') + ' ' + Dragonfly.title;
     }
 }
 
@@ -318,7 +318,8 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     }
     else
     {
-        displaysubject = _('Untitled');
+        msg.subject = _('Untitled');
+        displaysubject = d.escapeHTML (msg.subject);
     }
     
     d.notify (d.format (_('Saving draft "{0}"...'), displaysubject), true);
