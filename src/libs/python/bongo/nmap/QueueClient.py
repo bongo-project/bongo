@@ -1,5 +1,5 @@
 import logging
-import bongo, bongo.libs
+import bongo, libbongo.libs
 from CommandStream import *
 from StoreConnection import StoreConnection
 

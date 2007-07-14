@@ -1,6 +1,6 @@
 import urllib
-import bongo.dragonfly
-from HttpError import HttpError
+import bongo.commonweb
+from bongo.commonweb.HttpError import HttpError
 
 import AddressbookView
 import CalendarView
@@ -28,7 +28,7 @@ class ResourcePath:
         opts = req.get_options()
         dragonfly_root = opts.get("DragonflyUriRoot")
         if dragonfly_root is None:
-            raise HttpError(bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR,
+            raise HttpError(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR,
                             "DragonflyUriRoot not specified")
 
         path = self.orig = req.uri[len(dragonfly_root):]
@@ -139,7 +139,7 @@ class ResourcePath:
             handler = SummaryView.SummaryHandler()
 
         if handler is None:
-            raise HttpError(bongo.dragonfly.HTTP_NOT_FOUND)
+            raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
 
         handler.ParsePath(self)
 

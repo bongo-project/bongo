@@ -371,7 +371,10 @@ MdbToLdap(char *MdbDn)
     LDAPMessage *entry = NULL;
 
     XplRWReadLockAcquire(&(MdbLdap.PathLock));
-    path = (char *) BongoHashtableGet(MdbLdap.PathTable, MdbDn);
+    path = BongoHashtableGet(MdbLdap.PathTable, MdbDn);
+    if (path) {
+        path = strdup(path);
+    }
     XplRWReadLockRelease(&(MdbLdap.PathLock));
 
     if (!path) {
@@ -402,7 +405,7 @@ MdbToLdap(char *MdbDn)
                         if (dn) {
                             expdn = ldap_explode_dn(dn, 1);
 
-                            if (expdn && expdn[0]) {
+                            if (expdn) {
                                 /* Some directories allow multiple entries at 
                                    the same level that have the same name but 
                                    different naming types.  This comparison 
@@ -412,7 +415,7 @@ MdbToLdap(char *MdbDn)
                                    MDB API and can only be fixed by 
                                    introducing naming types into MDB or by 
                                    restricting use of the directory. */
-                                if (!strcasecmp(expdn[0], obj)) {
+                                if (expdn[0] && !strcasecmp(expdn[0], obj)) {
                                     path = strdup(dn);
                                 }
 
@@ -451,7 +454,7 @@ MdbToLdap(char *MdbDn)
 
                 XplMutexUnlock(MdbLdap.LdapMutex);
 
-                if (*base != '\0') {
+                if (base) {
                    free(base);
                 }
             }
@@ -462,42 +465,19 @@ MdbToLdap(char *MdbDn)
         }
 
         if (path) {
-            char *mdbDn;
-            char *ldapDn;
-
-            XplRWReadLockAcquire(&(MdbLdap.PathLock));
-            
-            if (!(ldapDn = BongoHashtableGet(MdbLdap.PathTable, MdbDn))) {
-                XplRWReadLockRelease(&(MdbLdap.PathLock));
-                mdbDn = strdup(MdbDn);
-
-                if (mdbDn) {
-                    XplRWWriteLockAcquire(&(MdbLdap.PathLock));
-
-                    if (BongoHashtablePut(MdbLdap.PathTable, mdbDn, path)) {
-                        free(mdbDn);
-                        free(path);
-                        path = NULL;
-                    }
-
-                    XplRWWriteLockRelease(&(MdbLdap.PathLock));
-                } else {
-                    free(path);
-                    path = NULL;
-                }
-            } else {
-                XplRWReadLockRelease(&(MdbLdap.PathLock));
-                free(path);
-                path = ldapDn;
+            char *mdbDn, *ldapDn;
+            mdbDn = strdup(MdbDn);
+            ldapDn = strdup(path);
+            XplRWWriteLockAcquire(&(MdbLdap.PathLock));
+            if (BongoHashtablePut(MdbLdap.PathTable, mdbDn, ldapDn)) {
+                free(mdbDn);
+                free(ldapDn);
             }
+            XplRWWriteLockRelease(&(MdbLdap.PathLock));
         }
     }
 
-    if (path) {
-        return strdup(path);
-    }
-
-    return NULL;
+    return path;
 }
 
 static char *
@@ -542,6 +522,7 @@ LdapToAbsoluteMdb(const char *LdapDn, const char *Base)
 
     if (mdbDn) {
         absDn = GetAbsoluteDn(mdbDn, Base);
+        free(mdbDn);
     }
 
     return absDn;
@@ -557,6 +538,7 @@ LdapToRelativeMdb(const char *LdapDn, const char *Base)
 
     if (mdbDn) {
         relDn = GetRelativeDn(mdbDn, Base);
+        free(mdbDn);
     }
 
     return relDn;
@@ -1514,11 +1496,15 @@ AttrUpdate(char *key, MDBLDAPSchemaAttr *attr, void *data)
             attr->singleval = ptr->singleval;
         }
 
+        /* FIXME: this function already recurses.
+           figure out what this is supposed to do. */
+#if 0
         if (ptr->sup) {
             ptr = BongoHashtableGet(MdbLdap.AttrTable, ptr->sup);
         } else {
             ptr = NULL;
         }
+#endif
     }
 
     attr->visited = TRUE;
@@ -1594,8 +1580,8 @@ LoadSchemaAttrs(void)
 
             if (attr) {
                 memset(attr, 0, sizeof(MDBLDAPSchemaAttr));
-                attr->val = vals[i];
-                result = ParseAttributeTypeDescription(vals[i], attr);
+                attr->val = strdup(vals[i]);
+                result = ParseAttributeTypeDescription(attr->val, attr);
 
                 if (result && attr->names && attr->names[0]) {
                     for (j = 0; attr->names[j]; j++) {
@@ -1606,10 +1592,13 @@ LoadSchemaAttrs(void)
                     }
                 } else {
                     result = FALSE;
+                    free(attr->val);
+                    free(attr);
                     break;
                 }
             } else {
                 result = FALSE;
+                break;
             }
         }
 
@@ -1617,6 +1606,7 @@ LoadSchemaAttrs(void)
             BongoHashtableForeach(MdbLdap.AttrTable, (HashtableForeachFunc)AttrUpdate, NULL);
         }
 
+        FreeValArray(vals);
         free(vals);
     } else {
         result = FALSE;
@@ -1817,8 +1807,8 @@ LoadSchemaClasses(void)
 
             if (class) {
                 memset(class, 0, sizeof(MDBLDAPSchemaClass));
-                class->val = vals[i];
-                result = ParseObjectClassDescription(vals[i], class);
+                class->val = strdup(vals[i]);
+                result = ParseObjectClassDescription(class->val, class);
 
                 if (result && class->names && class->names[0]) {
                     for (j = 0; class->names[j]; j++) {
@@ -1862,10 +1852,13 @@ LoadSchemaClasses(void)
                     }
                 } else {
                     result = FALSE;
+                    free(class->val);
+                    free(class);
                     break;
                 }
             } else {
                 result = FALSE;
+                break;
             }
         }
 
@@ -1873,6 +1866,7 @@ LoadSchemaClasses(void)
             BongoHashtableForeach(MdbLdap.ClassTable, (HashtableForeachFunc)ClassUpdate, NULL);
         }
 
+        FreeValArray(vals);
         free(vals);
     } else {
         result = FALSE;
@@ -1946,7 +1940,7 @@ InitTranslations(void)
        translations.  If translation is NULL, no specific translation is known.
        If the name contains illegal LDAP characters, a translation will be 
        generated and registered for the name. */
-    char *trans_table[][2] = {
+    static char *trans_table[][2] = {
         {C_AFP_SERVER, NULL},
         {C_ALIAS, "alias"}, /* RFC2256 */
         {C_BINDERY_OBJECT, NULL},
@@ -2200,7 +2194,7 @@ static BongoHashtable *
 MdbAttrsToLdapAttrs(MDBValueStruct *Attribute, MDBValueStruct *Data)
 {
     char *type, *value, **values;
-    MDBLDAPSchemaAttr *attr;
+    MDBLDAPSchemaAttr *attr = NULL;
     int inc = 12, last;
     unsigned int i;
     BongoHashtable *attrs;
@@ -2236,6 +2230,7 @@ MdbAttrsToLdapAttrs(MDBValueStruct *Attribute, MDBValueStruct *Data)
                 }
 
                 if (BongoHashtablePut(attrs, type, values)) {
+                    FreeValArray(values);
                     break;
                 }
             }
@@ -2499,27 +2494,19 @@ MDBLDAPFreeValues(MDBValueStruct * V)
 BOOL
 MDBLDAPAddValue(const unsigned char *Value, MDBValueStruct *V)
 {
-    char *ptr;
+    unsigned char **ptr;
 
     if (V->Used + 1 > V->allocated) {
-        ptr = realloc(V->Value, (V->allocated + VALUE_ALLOC_SIZE) *
+        ptr = (unsigned char **)realloc(V->Value, (V->allocated + VALUE_ALLOC_SIZE) *
                       sizeof(unsigned char *));
 
         if (ptr) {
-            V->Value = (unsigned char **) ptr;
+            V->Value = ptr;
             V->allocated += VALUE_ALLOC_SIZE;
         } else {
             if (V->allocated) {
                 MDBLDAPFreeValues(V);
-
-                if (V->Value) {
-                    free(V->Value);
-                }
             }
-
-            V->Value = NULL;
-            V->Used = 0;
-            V->allocated = 0;
             return FALSE;
         }
     }
@@ -3181,6 +3168,7 @@ MDBLDAPEnumerateObjectsEx(const unsigned char *Container,
                         E->next = 0;
                     }
 
+                    FreeValArray(vals);
                     free(vals);
                 }
 
@@ -3228,6 +3216,7 @@ MDBLDAPEnumerateAttributesEx(const unsigned char *Object, MDBEnumStruct *E,
                     E->next = 0;
                 }
 
+                FreeValArray(vals);
                 free(vals);
             }
 
@@ -3362,6 +3351,7 @@ MDBLDAPDeleteObject(const unsigned char *Object, BOOL Recursive,
                         }
                     }
 
+                    FreeValArray(vals);
                     free(vals);
                 }
 
@@ -3474,6 +3464,10 @@ MDBLDAPRenameObject(const unsigned char *ObjectOld,
 
                     free(ldapDn);
                 }
+            }
+
+            if (newSuperior) {
+                free(newSuperior);
             }
 
             free(baseNew);
@@ -3794,11 +3788,14 @@ MDBLDAPInit(MDBDriverInitStruct *Init)
                     XplRWWriteLockAcquire(&(MdbLdap.PathLock));
 
                     if (BongoHashtablePut(MdbLdap.PathTable, mdbDn, ldapDn)) {
+                        free(mdbDn);
+                        free(ldapDn);
                         result = FALSE;
                     }
 
                     XplRWWriteLockRelease(&(MdbLdap.PathLock));
                 } else {
+                    free(mdbDn);
                     result = FALSE;
                 }
             } else {
@@ -3829,8 +3826,10 @@ MDBLDAPInit(MDBDriverInitStruct *Init)
         vals = LdapRead("", "subschemaSubentry", MdbLdap.Ldap);
         XplMutexUnlock(MdbLdap.LdapMutex);
 
-        if (vals && vals[0]) {
-            MdbLdap.LdapSchemaDn = strdup(vals[0]);
+        if (vals) {
+            if (vals[0]) {
+                MdbLdap.LdapSchemaDn = strdup(vals[0]);
+            }
 
             if (!MdbLdap.LdapSchemaDn) {
                 result = FALSE;

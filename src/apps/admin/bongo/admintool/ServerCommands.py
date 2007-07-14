@@ -11,7 +11,7 @@ from bongo.cmdparse import Command
 
 from bongo import Privs, Xpl
 from bongo.admin import Schema, Util
-from bongo.bootstrap import msgapi
+from libbongo.bootstrap import msgapi
 from bongo.Console import wrap
 
 import MdbUtil

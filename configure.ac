@@ -379,6 +379,7 @@ AC_SUBST(PYTHON_LIBS)
 AC_SUBST(PYTHON_CPPFLAGS)
 
 AS_AC_EXPAND(PYTHONDIR, $pythondir)
+AS_AC_EXPAND(PYEXECDIR, $pyexecdir)
 
 # Check for openldap's slapd
 AC_ARG_WITH([slapd],
@@ -433,10 +434,16 @@ AC_MSG_CHECKING([for Apache module directory])
 AC_MSG_RESULT([$APACHE_MOD_DIR])
 
 htl10n_jsfiles=
-for lang in en `cd po && ls *.po | sed s/.po$//`; do
+for lang in en `cd po && cd bongo-web && ls *.po | sed s/.po$//`; do
 	htl10n_jsfiles="$htl10n_jsfiles src/www/l10n/$lang.js"
 done
 AC_SUBST(htl10n_jsfiles)
+
+POFILES=
+for file in `find po -name *.po`; do
+	POFILES="$POFILES $file"
+done
+AC_SUBST(POFILES)
 
 PTHREAD_CFLAGS=
 PTHREAD_LIBS=
@@ -679,7 +686,7 @@ src/libs/msgapi/Makefile
 src/libs/nmap/Makefile
 src/libs/python/Makefile
 src/libs/python/bongo-python-wrapper
-src/libs/python/bongo/Makefile
+src/libs/python/libbongo/Makefile
 src/libs/python/bongo/Xpl.py
 src/libs/bongoutil/Makefile
 src/libs/bongoutil/tests/Makefile

@@ -26,7 +26,7 @@ from bongo.nmap.NmapClient import DocFlags as NmapDocFlags
 
 from bongo.store.StoreClient import *
 
-from bongo.libs import bongojson, JsonArray, JsonObject, msgapi, cal, bongoutil
+from libbongo.libs import bongojson, JsonArray, JsonObject, msgapi, cal, bongoutil
 
 
 class EventHolder:

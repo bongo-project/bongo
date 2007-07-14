@@ -1,4 +1,4 @@
-from bongo.libs import calcmd
+from libbongo.libs import calcmd
 from datetime import datetime
 
 class Command:

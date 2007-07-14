@@ -6,11 +6,11 @@ from AddressbookView import ContactsHandler
 from CalendarView import EventsHandler
 from MailView import ConversationsHandler, ToMeHandler
 from MailView import ContactsHandler as MailContactsHandler
-import bongo.dragonfly
+import bongo.commonweb
 from email.Utils import parseaddr
 #from datetime import datetime, timedelta, time
 import datetime
-from bongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
+from libbongo.libs import cal, calcmd, bongojson, JsonArray, JsonObject, msgapi
 
 import sys
 

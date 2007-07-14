@@ -1,6 +1,6 @@
 import cgi
 from bongo.external import simplejson
-import bongo.dragonfly
+import bongo.commonweb
 from StringIO import StringIO
 from bongo.store.StoreClient import StoreClient, DocFlags, DocTypes, FlagMode
 from bongo import Xpl
@@ -99,7 +99,7 @@ class HttpHandler:
 
         req.write(data)
 
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
 class ResourceHandler(HttpHandler):
     def _SystemTimezone(self):

@@ -6,7 +6,7 @@ import md5
 
 import bongo.Xpl as Xpl
 
-import BongoCookie
+import bongo.commonweb.BongoCookie as BongoCookie
 
 class BongoSession(dict):
     def __init__(self, req, lock=1):

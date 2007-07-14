@@ -17,14 +17,14 @@ from SimpleHTTPServer import SimpleHTTPRequestHandler
 import bongo.Privs as Privs
 import bongo.Xpl as Xpl
 
-import bongo.dragonfly
+import bongo.commonweb
 from bongo.dragonfly.ResourcePath import ResourcePath
 from bongo.dragonfly.SmsHandler import SmsHandler
-from bongo.dragonfly.Standalone import HttpServer, HttpRequest
-from bongo.dragonfly.HttpError import HttpError
+from bongo.commonweb.Standalone import HttpServer, HttpRequest
+from bongo.commonweb.HttpError import HttpError
 import bongo.dragonfly.Auth
-import bongo.dragonfly.BongoUtil
-import bongo.dragonfly.BongoSession as BongoSession
+import bongo.commonweb.BongoUtil
+import bongo.commonweb.BongoSession as BongoSession
 import bongo.hawkeye.Auth
 from bongo.hawkeye.HawkeyePath import HawkeyePath
 from bongo.external.simplejson import loads, dumps
@@ -166,7 +166,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             ret = method(self.req)
 
             if ret is None:
-                self.send_response(bongo.dragonfly.HTTP_OK)
+                self.send_response(bongo.commonweb.HTTP_OK)
             else:
                 self.send_response(ret)
             return
@@ -184,10 +184,10 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
 
             if handler.NeedsAuth(rp):
                 auth = bongo.hawkeye.Auth.authenhandler(req)
-                if auth != bongo.dragonfly.HTTP_OK:
+                if auth != bongo.commonweb.HTTP_OK:
                     target = "/admin/login?%s" % req.uri
                     self.send_response(
-                        bongo.dragonfly.BongoUtil.redirect(req, target))
+                        bongo.commonweb.BongoUtil.redirect(req, target))
                     return
 
             req.log.debug("request for %s (handled by %s)", req.uri, handler)
@@ -196,14 +196,14 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
 
             if not hasattr(handler, mname):
                 req.log.debug("%s has no %s", handler, mname)
-                self.send_response(bongo.dragonfly.HTTP_NOT_FOUND)
+                self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
                 return
 
             method = getattr(handler, mname)
             ret = method(req, rp)
 
             if ret is None:
-                self.send_response(bongo.dragonfly.HTTP_OK)
+                self.send_response(bongo.commonweb.HTTP_OK)
             else:
                 self.send_response(ret)
             return
@@ -220,15 +220,15 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             req = HttpRequest(self, "/dav", self.server)
             self.req = req
             auth = bongo.dragonfly.Auth.authenhandler(self.req)
-            if auth != bongo.dragonfly.HTTP_OK:
+            if auth != bongo.commonweb.HTTP_OK:
                 print "no auth"
                 self.send_error(auth)
                 return auth
 
             if req.user == None :
                 req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""
-                self.send_error(bongo.dragonfly.HTTP_UNAUTHORIZED)
-                return bongo.dragonfly.HTTP_UNAUTHORIZED
+                self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
+                return bongo.commonweb.HTTP_UNAUTHORIZED
                 
             print "user: %s" % (req.user)
 
@@ -242,12 +242,12 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             except Exception, e:
                 req.log.exception("Unexpected error")
                 print "error"
-                self.send_error(bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR)
+                self.send_error(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR)
                 return
             
             if ret is None:
                 print "valid response!"
-                self.send_response(bongo.dragonfly.HTTP_OK)
+                self.send_response(bongo.commonweb.HTTP_OK)
             else:
                 self.send_response(ret)
             return
@@ -256,7 +256,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             if options.auth_always:
                 auth = bongo.dragonfly.Auth.authenhandler(
                     HttpRequest(self, "/", self.server))
-                if auth != bongo.dragonfly.HTTP_OK:
+                if auth != bongo.commonweb.HTTP_OK:
                     self.send_error(auth)
                     return auth
 
@@ -277,7 +277,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
         self.req = req
 
         auth = bongo.dragonfly.Auth.authenhandler(req)
-        if auth != bongo.dragonfly.HTTP_OK:
+        if auth != bongo.commonweb.HTTP_OK:
             self.send_error(auth)
             return auth
 
@@ -294,7 +294,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
         mname = "do_" + command
         if not hasattr(handler, mname):
             req.log.debug("%s has no %s", handler, mname)
-            self.send_error(bongo.dragonfly.HTTP_NOT_IMPLEMENTED)
+            self.send_error(bongo.commonweb.HTTP_NOT_IMPLEMENTED)
             return
 
         method = getattr(handler, mname)
@@ -306,12 +306,12 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             return
         except Exception, e:
             req.log.exception("Unexpected error")
-            self.send_error(bongo.dragonfly.HTTP_INTERNAL_SERVER_ERROR)
+            self.send_error(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR)
             return
 
         if ret is None:
             req.log.error("Handler %s returned invalid value: None" % handler)
-            self.send_response(bongo.dragonfly.OK)
+            self.send_response(bongo.commonweb.OK)
         else:
             self.send_response(ret)
 

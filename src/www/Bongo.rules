@@ -297,23 +297,15 @@ pkgpythondragonflydir = $(pkgpythondir)/dragonfly
 pkgpythondragonfly_PYTHON :=			   \
 	src/www/bongo/dragonfly/__init__.py	   \
 	src/www/bongo/dragonfly/AddressbookView.py  \
-	src/www/bongo/dragonfly/ApacheLogHandler.py \
 	src/www/bongo/dragonfly/Auth.py		   \
 	src/www/bongo/dragonfly/CalendarView.py	   \
 	src/www/bongo/dragonfly/Composer.py	   \
-	src/www/bongo/dragonfly/BongoCookie.py	   \
-	src/www/bongo/dragonfly/HttpError.py	   \
-	src/www/bongo/dragonfly/BongoFieldStorage.py \
-	src/www/bongo/dragonfly/BongoPSP.py	   \
-	src/www/bongo/dragonfly/BongoSession.py      \
-	src/www/bongo/dragonfly/BongoUtil.py         \
 	src/www/bongo/dragonfly/MailView.py	   \
 	src/www/bongo/dragonfly/PreferencesView.py  \
 	src/www/bongo/dragonfly/ResourceHandler.py  \
 	src/www/bongo/dragonfly/ResourcePath.py	   \
 	src/www/bongo/dragonfly/Server.py	   \
 	src/www/bongo/dragonfly/SmsHandler.py	   \
-	src/www/bongo/dragonfly/Standalone.py	   \
 	src/www/bongo/dragonfly/SummaryView.py
 
 pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
@@ -331,6 +323,18 @@ pkgpythonhawkeye_PYTHON :=			\
 	src/www/bongo/hawkeye/Server.py		\
 	src/www/bongo/hawkeye/ServerView.py	\
 	src/www/bongo/hawkeye/UsersView.py
+
+pkgpythoncommonwebdir = $(pkgpythondir)/commonweb
+
+pkgpythoncommonweb_PYTHON :=		\
+	src/www/bongo/commonweb/__init__.py	\
+	src/www/bongo/commonweb/HttpError.py	\
+	src/www/bongo/commonweb/ApacheLogHandler.py \
+	src/www/bongo/commonweb/BongoCookie.py	   \
+	src/www/bongo/commonweb/BongoFieldStorage.py \
+	src/www/bongo/commonweb/BongoUtil.py         \
+	src/www/bongo/commonweb/Standalone.py	   \
+	src/www/bongo/commonweb/BongoSession.py
 
 hawkeyetplrootdir = $(htdocsdir)/hawkeye/root
 dist_hawkeyetplroot_DATA :=			\
@@ -373,7 +377,7 @@ sbin_SCRIPTS += \
 	src/www/bongo-standalone
 
 dist_noinst_SCRIPTS += \
-	src/www/l10n/props2json \
+	src/www/l10n/po2json \
 	src/www/compress.py
 
 templatesdir = $(pkgdatadir)/templates
@@ -392,8 +396,7 @@ dist_noinst_DATA +=				   \
 	src/www/js/lib/MochiKit/LICENSE.txt	   \
 	src/www/js/lib/script.aculo.us/MIT-LICENSE \
 	src/www/bongo/__init__.py.in		   \
-	src/www/bongo-devel.conf			   \
-	src/www/l10n/dragonfly.properties
+	src/www/bongo-devel.conf
 
 noinst_DATA += \
 	src/www/bongo/__init__.py
@@ -411,20 +414,14 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 	-e "s%\@DATADIR\@/\@PACKAGE\@/hawkeye%${top_srcdir}/src/www/hawkeye%" \
 	$< > $@
 
-props2json := $(top_srcdir)/src/www/l10n/props2json
-dfly_props := $(top_srcdir)/src/www/l10n/dragonfly.properties
+po2json := $(top_srcdir)/src/www/l10n/po2json
 
-if USE_NLS
-src/www/l10n/%.js: po/%.gmo $(dfly_props) config.status
-	$(props2json) -i $(dfly_props) -p $(dir $<) -o $@ -l $(patsubst po/%.gmo,%,$<)
+src/www/l10n/%.js: po/bongo-web/%.gmo config.status
+	$(po2json) -p po/bongo-web/$*.po -o $@
 
-src/www/l10n/en.js: $(dfly_props) config.status
-	$(props2json) -i $(dfly_props) -o $@ -l en
-else
-src/www/l10n/%js: $(dfly_props) config.status
-	@echo "Warning: generating fake translations because NLS support was not enabled"
-	$(props2json) -i $(dfly_props) -o $@ -l en
-endif
+# This generates no translation. It simply does msgid:msgid on the potfile.
+src/www/l10n/en.js: config.status
+	$(po2json) -p po/bongo-web.pot -o $@ --en
 
 CLEANFILES +=					\
 	src/www/bongo-standalone			\
@@ -433,8 +430,7 @@ CLEANFILES +=					\
 	src/www/bongo-devel.conf			\
 	src/www/bongo/*.pyc			\
 	src/www/bongo/__init__.py		\
-	src/www/bongo/dragonfly/*.pyc		\
-	src/www/l10n/*.js
+	src/www/bongo/dragonfly/*.pyc
 
 src/www/all: src/www/bongo/__init__.py src/www/bongo-devel.conf src/www/bongo.conf
 src/www/clean: clean

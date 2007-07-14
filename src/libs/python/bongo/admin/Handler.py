@@ -1,7 +1,7 @@
 import inspect
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 from bongo import MDB
-import BongoSession as Session
+import bongo.commonweb.BongoSession as Session
 import bongoutil as util
 import Alias, Mdb, Security, Template, User, JsonUtil
 import Imap, Pop3, Calcmd, Webservices, Itip, Webadmin, Proxy, Store, Smtp, Queue, Addressbook, Collector, Antispam, Msgserver

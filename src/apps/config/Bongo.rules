@@ -26,15 +26,15 @@ conf_defaults =					\
 	src/apps/config/config/pop3		\
 	src/apps/config/config/antispam
 
-dist_noinst_DATA += $(conf_defaults)
-
-src/apps/config/default.set: $(conf_defaults)
-	@(cd $(top_srcdir)/src/apps/config && tardir=config && $(am__tar)) > $@
-
 confdir = $(pkgdatadir)/conf
+
+conf_SOURCES = $(conf_defaults)
 
 conf_DATA := \
         src/apps/config/default.set
+
+src/apps/config/default.set: $(conf_defaults)
+	@(cd $(top_srcdir)/src/apps/config && tardir=config && $(am__tar)) > $@
 
 src/apps/config/all: bongo-config
 src/apps/config/clean: clean

@@ -21,7 +21,7 @@
 #############################################################################
 
 import os, random, socket
-from bongo.bootstrap import msgapi, mdb
+from libbongo.bootstrap import msgapi, mdb
 from bongo import MDB, Xpl, Privs
 from bongo.admin import Schema
 from xml.dom import minidom, Node
@@ -32,7 +32,7 @@ log = logging.getLogger("bongo.admin.Util")
 
 def AddBongoUser(mdb, context, username, attributes, password = None):
     """Add a User object in the directory."""
-    from bongo.libs import msgapi as MsgApi
+    from libbongo.libs import msgapi as MsgApi
     userobject = username
     required = {}
     if context:
@@ -54,7 +54,7 @@ def AddBongoUser(mdb, context, username, attributes, password = None):
 
 def ModifyBongoUser(mdb, context, username, attributes, password = None):
     """Modify a User object in the directory."""
-    from bongo.libs import msgapi as MsgApi
+    from libbongo.libs import msgapi as MsgApi
     userobject = username
     if context:
         userobject = context + '\\' + username
@@ -70,7 +70,7 @@ def ModifyBongoUser(mdb, context, username, attributes, password = None):
 
 def RemoveBongoUser(mdb, context, username):
     """Remove a User object from the directory."""
-    from bongo.libs import msgapi as MsgApi
+    from libbongo.libs import msgapi as MsgApi
     userobject = username
     if context:
         userobject = context + '\\' + username
@@ -91,7 +91,7 @@ def RemoveBongoUser(mdb, context, username):
 
 def DelegateBongoUser(mdb, context, username, community):
     """Delegate a User object as a community manager."""
-    from bongo.libs import msgapi as MsgApi
+    from libbongo.libs import msgapi as MsgApi
     userobject = username
     if context:
         userobject = context + '\\' + username
@@ -326,7 +326,7 @@ def FindInheritedAttrs(classname, schema, attrs):
 
 def GetUserAttributes(mdb, context, username):
     """Return a dict of (set and unset) attributes on a User."""
-    from bongo.libs import msgapi as MsgApi
+    from libbongo.libs import msgapi as MsgApi
     fields = {}
     userobject = username
     if context:
@@ -448,7 +448,7 @@ def SetupFromXML(mdb, base, xmlfile):
     for obj, attrib in allowedattrs.iteritems():
         if objs[obj] == mdb.C_USER:
             try:
-                from bongo.libs import msgapi as MsgApi
+                from libbongo.libs import msgapi as MsgApi
             except:
                 #TODO: for setup, chop users out of the xml file,
                 #      save it in /tmp somewhere, do the rest of the

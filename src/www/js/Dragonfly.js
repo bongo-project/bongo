@@ -807,8 +807,8 @@ Dragonfly.buildSidebar = function ()
     html = new d.HtmlBuilder (
         '<div class="list-selector">',
         '<ul id="calendar-list" class="unselected-items"></ul>',
-        '<div id="new-calendar" class="action"><a id="new-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar())">', _('createNewCalendarLabel'), '</a></div>',
-        '<div id="sub-calendar" class="action"><a id="sub-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar(true))">', _('subscribeCalendarLabel'), '</a></div>',
+        '<div id="new-calendar" class="action"><a id="new-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar())">', _('New Calendar'), '</a></div>',
+        '<div id="sub-calendar" class="action"><a id="sub-calendar-href" href="javascript:void(Dragonfly.Calendar.newCalendar(true))">', _('Subscribe'), '</a></div>',
         '</div>');
     html.set (d.sideBook.appendPage (IMG({ 'class': 'icon calendars', src: '/img/blank.gif' })));
     
@@ -890,26 +890,25 @@ Dragonfly.observeEvents = function ()
 Dragonfly.translateElements = function ()
 {
     // Top bar
-    Element.setHTML ('admin-text', _('administrationLabel'));
-    Element.setHTML ('logout-text', _('logoutLabel'));
-    Element.setHTML ('settings-text', _('preferencesLabel'));
-    $('bongosearch').value = _('searchButtonLabel');
-    Element.setHTML ('sidebar-select-search', _('searchButtonLabel'));
+    Element.setHTML ('admin-text', _('Administration'));
+    Element.setHTML ('settings-text', _('Preferences'));
+    $('bongosearch').value = _('Search');
+    Element.setHTML ('sidebar-select-search', _('Search'));
     
     // Sidebar
-    Element.setHTML ('summary-tab-label', _('summaryTabLabel'));
-    Element.setHTML ('summary-tab-label-alt', _('summaryTabLabel'));
-    document.getElementById('summary-tab-href').title = _('summaryTabHint');
+    Element.setHTML ('summary-tab-label', _('Summary'));
+    Element.setHTML ('summary-tab-label-alt', _('Summary'));
+    document.getElementById('summary-tab-href').title = _('Look at an overview of your mail and events.');
     
-    Element.setHTML ('mail-tab-label', _('mailTabLabel'));
-    Element.setHTML ('mail-tab-label-alt', _('mailTabLabel'));
-    document.getElementById('mail-tab-href').title = _('mailTabHint');
-    Element.setHTML ('compose-tab', _('composeMailLabel'));
+    Element.setHTML ('mail-tab-label', _('Mail'));
+    Element.setHTML ('mail-tab-label-alt', _('Mail'));
+    document.getElementById('mail-tab-href').title = _('Read your mail.');
+    Element.setHTML ('compose-tab', _('Compose new mail'));
     
-    Element.setHTML ('calendar-tab-label', _('calendarTabLabel'));
-    Element.setHTML ('calendar-tab-label-alt', _('calendarTabLabel'));
-    document.getElementById('calendar-tab-href').title = _('calendarTabHint');
-    Element.setHTML ('new-event-href', _('composeEventLabel'));
+    Element.setHTML ('calendar-tab-label', _('Calendar'));
+    Element.setHTML ('calendar-tab-label-alt', _('Calendar'));
+    document.getElementById('calendar-tab-href').title = _('View your calendar.');
+    Element.setHTML ('new-event-href', _('Create new event'));
 }
 
 
@@ -923,7 +922,7 @@ Dragonfly.start = function ()
     d.buildSidebar();
     d.translateElements();
     
-    d.setLoginMessage (_('loadingData'));
+    d.setLoginMessage (_('Logged in: loading contacts and calendars...'));
     
     // setup the preferences dialog tabs
     //d.setupPrefs();
@@ -938,7 +937,7 @@ Dragonfly.start = function ()
     return def.addCallbacks (
         function (res) {
             var loc = new d.Location (location.hash);
-            d.setLoginMessage (_('loadingItemPre') + " " + d.escapeHTML (_(loc.tab)) + _('loadingItemPost'));
+            d.setLoginMessage (_('Logged in: loading') + " " + d.escapeHTML (_(loc.tab)) + '...');
             return d.go (loc.user == d.userName ? loc : '#').addErrback (
                 function (err) {
                     logDebug ('got error on first try:', d.reprError (err), '; trying summary...');
@@ -951,6 +950,7 @@ Dragonfly.start = function ()
                         $('login-user').value = ''; 
                         $('login-password').value = '';
                         Element.setText ('user-name', d.userName);
+                        Element.setHTML ('logout-text', _('Log out') + ' ' + d.userName);
                         showElement ('content');
                         
                         // Add administration link if we're admin
@@ -995,17 +995,14 @@ Dragonfly.beforeUnload = function ()
     if (def instanceof Deferred) {
         def.addCallback (
             function (res) {
-                alert ('Bongo has finished saving changes.  It is OK to browse to another location.');
+                alert (_('Bongo has finished saving changes.  It is OK to browse to another location.'));
                 return res;
             });
-        return 'Bongo is still busy with a few things, but we ' +
-               'should be done shortly.\n\n' +
-               'Please click Cancel and wait until we are finished, ' +
-               'otherwise your changes may be lost.';
+        return _('Bongo is still busy with a few things, but we should be done shortly.') + '\n\n' +
+               _('Please click Cancel and wait until we are finished, otherwise your changes may be lost.');
     } else if (!def) {
-        return 'Bongo needs some help from you before it\'s safe to leave.\n\n' +
-               'Please click Cancel and tie up any loose ends ' +
-               'otherwise your changes may be lost.';
+        return _('Bongo needs some help from you before it\'s safe to leave.') + '\n\n' +
+               _('Please click Cancel and tie up any loose ends otherwise your changes may be lost.');
     }
 };
 
@@ -1036,6 +1033,7 @@ Dragonfly.main = function ()
         // Otherwise, only build and translate on login.
         
         logDebug('Logged in already. Building and translating...');
+        Dragonfly.logoutMessage = _('You have logged out successfully.');    
         Dragonfly.buildSidebar();
         Dragonfly.translateElements();
     }

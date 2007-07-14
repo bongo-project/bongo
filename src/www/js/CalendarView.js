@@ -76,9 +76,9 @@ Dragonfly.Calendar.setToMonthView = function (loc, dateBaseUrl)
 
     var html = [
         '<table cellspacing="0" cellpadding="0" class="month-header"><tr>',
-        '<td class="month-prev"><a href="', d.escapeHTML (reldays.prev), '"><img src="img/blank.gif" alt="">', _('genericPreviousShort'), '</a></td>',
+        '<td class="month-prev"><a href="', d.escapeHTML (reldays.prev), '"><img src="img/blank.gif" alt="">', _('Prev'), '</a></td>',
         '<td class="month-header-title"><h2 class="month-header">', d.escapeHTML (title), '</h2></td>',
-        '<td class="month-next"><a href="', d.escapeHTML (reldays.next), '">', _('genericNext'), '<img src="img/blank.gif" alt=""></a></td>',
+        '<td class="month-next"><a href="', d.escapeHTML (reldays.next), '">', _('Next'), '<img src="img/blank.gif" alt=""></a></td>',
         '</tr></table>'
         ];
     html.push ('<div id="calendar-wrapper" class="scroll">',
@@ -249,10 +249,10 @@ Dragonfly.Calendar.setToColumnView = function (loc, numDays, isupcoming, dateBas
     var reldays = c.getRelativeDays (loc);
 
     tmpLoc.day = reldays.prev;
-    var prev = '<a href="#' + tmpLoc.getClientUrl() + '" class="month-prev"><img src="img/blank.gif" alt="">' + _('genericPreviousShort') + '</a>';
+    var prev = '<a href="#' + tmpLoc.getClientUrl() + '" class="month-prev"><img src="img/blank.gif" alt="">' + _('Prev') + '</a>';
 
     tmpLoc.day = reldays.next;
-    var next = '<a href="#' + tmpLoc.getClientUrl() + '" class="month-next">' + _('genericNext') + '<img src="img/blank.gif" alt=""></a>';
+    var next = '<a href="#' + tmpLoc.getClientUrl() + '" class="month-next">' + _('Next') + '<img src="img/blank.gif" alt=""></a>';
 
     var html = new d.HtmlBuilder ('<h2 id="calendar-header">', escapeHTML (title), '</h2>',
                                   '<table class="calendarwrapper" cellpadding="0" cellspacing="0">',

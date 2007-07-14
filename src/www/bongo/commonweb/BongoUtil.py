@@ -1,4 +1,4 @@
-import bongo.dragonfly
+import bongo.commonweb
 
 def redirect(req, location, permanent=0, text=None):
     """
@@ -10,9 +10,9 @@ def redirect(req, location, permanent=0, text=None):
 
     req.headers_out["Location"] = location
     if permanent:
-        req.status = bongo.dragonfly.HTTP_MOVED_PERMANENTLY
+        req.status = bongo.commonweb.HTTP_MOVED_PERMANENTLY
     else:
-        req.status = bongo.dragonfly.HTTP_MOVED_TEMPORARILY
+        req.status = bongo.commonweb.HTTP_MOVED_TEMPORARILY
 
     if text is None:
         req.write('<p>The document has moved'

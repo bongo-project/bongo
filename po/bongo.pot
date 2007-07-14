@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: bongo-devel@gna.org\n"
-"POT-Creation-Date: 2007-07-06 00:44+0100\n"
+"POT-Creation-Date: 2007-07-13 11:46+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,826 +16,195 @@ msgstr ""
 "Content-Type: text/plain; charset=CHARSET\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-msgid "genericError"
-msgstr "An error has occured:"
-
-msgid "genericErrorOK"
-msgstr "Bummer"
-
-msgid "loginNameLabel"
-msgstr "Name:"
-
-msgid "loginPasswordLabel"
-msgstr "Password:"
-
-msgid "loginLanguageLabel"
-msgstr "Language:"
-
-msgid "loginRememberMeLabel"
-msgstr "Remember Me"
-
-msgid "loginLoginLabel"
-msgstr "Log In"
-
-msgid "loggedOutMessage"
-msgstr "You have successfully logged out."
-
-msgid "loggingInMessage"
-msgstr "Logging you in..."
-
-msgid "wrongCredentials"
-msgstr "Bad username or password."
-
-msgid "genericLoginError"
-msgstr "Error logging in (check Logs)."
-
-msgid "loadingData"
-msgstr "Logged in: loading contacts and calendars..."
-
-msgid "loadingItemPre"
-msgstr "Logged in: loading"
-
-msgid "loadingItemPost"
-msgstr "..."
-
-msgid "administrationLabel"
-msgstr "Administration"
-
-msgid "logoutLabel"
-msgstr "Log out"
-
-msgid "preferencesLabel"
-msgstr "Preferences"
-
-msgid "searchButtonLabel"
-msgstr "Search"
-
-msgid "summaryTabLabel"
-msgstr "Summary"
-
-msgid "summaryTabHint"
-msgstr "Look at an overview of your mail and events."
-
-msgid "mailTabLabel"
-msgstr "Mail"
-
-msgid "mailTabHint"
-msgstr "Read your mail."
-
-msgid "calendarTabLabel"
-msgstr "Calendar"
-
-msgid "calendarTabHint"
-msgstr "View your calendar."
-
-msgid "composeMailLabel"
-msgstr "Compose New Mail"
-
-msgid "composeEventLabel"
-msgstr "Create New Event"
-
-msgid "summaryNoMail"
-msgstr "You have no new mail."
-
-msgid "upcomingEvents"
-msgstr "Upcoming events"
-
-msgid "showToday"
-msgstr "Show Today"
-
-msgid "viewInCal"
-msgstr "View in calendar"
-
-msgid "starredMailLabel"
-msgstr "Starred Mail"
-
-msgid "summaryMailToMeLabel"
-msgstr "Mail to Me"
-
-msgid "contactMailLabel"
-msgstr "Mail from My Contacts"
-
-msgid "listMailLabel"
-msgstr "Mail from Mailing Lists"
-
-msgid "invitationsLabel"
-msgstr "Invitations"
-
-msgid "summaryInviteFrom"
-msgstr "from"
-
-msgid "shareCalendar"
-msgstr "Share this calendar"
-
-msgid "contactAddLabel"
-msgstr "Add Contact"
-
-msgid "contactShowConversations"
-msgstr "Show Conversations"
-
-msgid "contactEditLabel"
-msgstr "Edit"
-
-msgid "contactSelf"
-msgstr "This is Me"
-
-msgid "contactConfirmRemovePre"
-msgstr "Are you sure you want to delete the contact"
-
-msgid "contactEmail"
-msgstr "Email"
-
-msgid "contactPhone"
-msgstr "Phone"
-
-msgid "contactFax"
-msgstr "Fax"
-
-msgid "contactMobile"
-msgstr "Cell"
-
-msgid "contactIM"
-msgstr "IM"
-
-msgid "contactWebsite"
-msgstr "Website"
-
-msgid "contactCompany"
-msgstr "Company"
-
-msgid "contactAddress"
-msgstr "Address"
-
-msgid "genericCancel"
-msgstr "Cancel"
-
-msgid "genericSave"
-msgstr "Save"
-
-msgid "genericDelete"
-msgstr "Delete"
-
-msgid "genericEdit"
-msgstr "Edit"
-
-msgid "genericAdd"
-msgstr "Add"
-
-msgid "genericSavingChanges"
-msgstr "Saving changes..."
-
-msgid "genericChangesSaved"
-msgstr "Changes saved."
-
-msgid "genericPrevious"
-msgstr "Previous"
-
-msgid "genericPreviousShort"
-msgstr "Prev"
-
-msgid "genericNext"
-msgstr "Next"
-
-msgid "genericRemovePost"
-msgstr "? This cannot be undone."
-
-msgid "unsavedChanges"
-msgstr "You have unsaved changes."
-
-msgid "monday"
-msgstr "Monday"
-
-msgid "monday-s"
-msgstr "M"
-
-msgid "tuesday"
-msgstr "Tuesday"
-
-msgid "tuesday-s"
-msgstr "T"
-
-msgid "wednesday"
-msgstr "Wednesday"
-
-msgid "wednesday-s"
-msgstr "W"
-
-msgid "thursday"
-msgstr "Thursday"
-
-msgid "thursday-s"
-msgstr "T"
-
-msgid "friday"
-msgstr "Friday"
-
-msgid "friday-s"
-msgstr "F"
-
-msgid "saturday"
-msgstr "Saturday"
-
-msgid "saturday-s"
-msgstr "S"
-
-msgid "sunday"
-msgstr "Sunday"
-
-msgid "sunday-s"
-msgstr "S"
-
-msgid "day"
-msgstr "Day "
-
-msgid "upcoming"
-msgstr "Upcoming"
-
-msgid "week"
-msgstr "Week"
-
-msgid "month"
-msgstr "Month"
-
-msgid "calendarView"
-msgstr "View:"
-
-msgid "freeFormInstructions"
-msgstr "Enter free-form text for example:"
-
-msgid "freeFormExample"
-msgstr "lunch with Joe tomorrow at noon"
-
-msgid "freeFormOption"
-msgstr "or,"
-
-msgid "freeFormOptionBody"
-msgstr "enter details instead"
-
-msgid "freeFormAddLabel"
-msgstr "Add Event"
-
-msgid "deleteEventConfirm"
-msgstr "Are you sure you want to delete the event"
-
-msgid "eventSeriesIntro"
-msgstr "This event is part of a series. Would you like"
-
-msgid "eventSeriesChanges"
-msgstr "changes to apply to"
-
-msgid "eventSeriesDelete"
-msgstr "to delete"
-
-msgid "eventScopeSingle"
-msgstr "only this event"
-
-msgid "eventScopeFollowing"
-msgstr "this and following events"
-
-msgid "eventScopeAll"
-msgstr "all events in series"
-
-msgid "includeEventLabel"
-msgstr "Include this event in:"
-
-msgid "publishEventSelf"
-msgstr "Publish this event on its own"
-
-msgid "allDayLabel"
-msgstr "all day"
-
-msgid "eventInfoTabLabel"
-msgstr "Event"
-
-msgid "eventSharingTabLabel"
-msgstr "Sharing"
-
-msgid "eventRepeatTabLabel"
-msgstr "Repeat"
-
-msgid "eventSummaryHint"
-msgstr "Summary"
-
-msgid "eventLocationHint"
-msgstr "Location"
-
-msgid "eventNoteHint"
-msgstr "Notes"
-
-msgid "eventDefaultTitle"
-msgstr "New event"
-
-msgid "eventSubscribe"
-msgstr "Subscribe"
-
-msgid "defaultCalendarName"
-msgstr "New calendar"
-
-msgid "calendarNameLabel"
-msgstr "Name:"
-
-msgid "calendarUrlLabel"
-msgstr "URL:"
-
-msgid "calendarPasswordLabel"
-msgstr "Password:"
-
-msgid "calendarColorLabel"
-msgstr "Color:"
-
-msgid "calendarImportICSLabel"
-msgstr "Import ICS file:"
-
-msgid "calendarSearchableLabel"
-msgstr "Allow other users to search for this calendar"
-
-msgid "calendarPasswordProtectLabel"
-msgstr "Password protect this calendar"
-
-msgid "calendarSendInvitation"
-msgstr "Send invitation..."
-
-msgid "createNewCalendarLabel"
-msgstr "Create calendar"
-
-msgid "subscribeCalendarLabel"
-msgstr "Unsubscribe"
-
-msgid "calendarSubscribing"
-msgstr "Subscribing to"
-
-msgid "calendarErrorSubscribing"
-msgstr "Could not subscribe to"
-
-msgid "inviteDefaultText"
-msgstr "has invited you to:"
-
-msgid "inviteCalendarPre"
-msgstr "Calendar:"
-
-msgid "inviteTrustTextPre"
-msgstr "has invited you to a calendar called"
-
-msgid "inviteTrustTextPost"
-msgstr "You should only subscribe if you trust this person and the server"
-
-msgid "calendarShareLine1"
-msgstr "Someone wants to share their calendar with you."
-
-msgid "calendarShareLine2"
-msgstr "You can view it in a few different ways:"
-
-msgid "caldav"
-msgstr "CalDAV"
-
-msgid "ics"
-msgstr "ICS"
-
-msgid "webBrowser"
-msgstr "Web Browser"
-
-msgid "calendarShareFinalLine"
-msgstr "If a password is needed, please ask me for it."
-
-msgid "calendarShareSubjectPre"
-msgstr "Invitation to"
-
-msgid "calendarShareSubjectPost"
-msgstr "'s calendar"
-
-msgid "calendarShareBasicTab"
-msgstr "Basic"
-
-msgid "calendarShareDetailedTab"
-msgstr "Detailed"
-
-msgid "calendarShareEmailLabel"
-msgstr "Email:"
-
-msgid "calendarShareSelect"
-msgstr "Select:"
-
-msgid "calendarShareSelectAll"
-msgstr "All"
-
-msgid "calendarShareSelectNone"
-msgstr "None"
-
-msgid "calendarShareCurrentPasswordLabel"
-msgstr "Current password:"
-
-msgid "calendarShareNewPassword"
-msgstr "Password:"
-
-msgid "calendarShareNewPasswordConfirm"
-msgstr "Password (confirm):"
-
-msgid "buttonArchiveLabel"
-msgstr "Archive"
-
-msgid "buttonJunkLabel"
-msgstr "Junk"
-
-msgid "buttonIgnoreLabel"
-msgstr "Ignore"
-
-msgid "buttonStarLabel"
-msgstr "Star"
-
-msgid "buttonUnarchiveLabel"
-msgstr "Unarchive"
-
-msgid "buttonNotJunkLabel"
-msgstr "Not Junk"
-
-msgid "buttonUndeleteLabel"
-msgstr "Undelete"
-
-msgid "buttonUnstarLabel"
-msgstr "Unstar"
-
-msgid "buttonAddLabel"
-msgstr "Add"
-
-msgid "buttonRemoveLabel"
-msgstr "Remove"
-
-msgid "repeatLabel"
-msgstr "Repeat:"
-
-msgid "repeatEveryLabel"
-msgstr "Every:"
-
-msgid "repeatOnLabel"
-msgstr "On:"
-
-msgid "repeatEndingLabel"
-msgstr "Ending:"
-
-msgid "repeatEndNeverLabel"
-msgstr "Never"
-
-msgid "repeatEndOnDateLabel"
-msgstr "On date "
-
-msgid "repeatEndAfterRepeatLabel"
-msgstr "After repeating"
-
-msgid "repeatCautionHeadingLabel"
-msgstr "Caution"
-
-msgid "repeatCautionBodyText"
-msgstr ""
-"This event has a schedule that cannot be edited with Bongo; choosing to edit "
-"will replace the existing schedule."
-
-msgid "repeatEditAnywayLabel"
-msgstr "Edit Anyway"
-
-msgid "calendarYesterdayLabel"
-msgstr "Yesterday"
-
-msgid "calendarTodayLabel"
-msgstr "Today"
-
-msgid "calendarTomorrowLabel"
-msgstr "Tomorrow"
-
-msgid "mailAllLabel"
-msgstr "All"
-
-msgid "mailToMeSelectionLabel"
-msgstr "To Me"
-
-msgid "mailFromContactsLabel"
-msgstr "From My Contacts"
-
-msgid "mailSubscriptionsLabel"
-msgstr "Mailing Lists"
-
-msgid "mailNoMessages"
-msgstr "No messages found."
-
-msgid "mailMoreSuffix"
-msgstr "more..."
-
-msgid "mailTo"
-msgstr "To:"
-
-msgid "mailFrom"
-msgstr "From:"
-
-msgid "mailCc"
-msgstr "CC:"
-
-msgid "mailBcc"
-msgstr "BCC:"
-
-msgid "mailSubject"
-msgstr "Subject:"
-
-msgid "mailAttachments"
-msgstr "Attachments:"
-
-msgid "mailAttachLabel"
-msgstr "Attach file..."
-
-msgid "mailRemoveAttachment"
-msgstr "Remove"
-
-msgid "mailConversation"
-msgstr "Conversation"
-
-msgid "mailList"
-msgstr "List"
-
-msgid "mailItem"
-msgstr "Item"
-
-msgid "mailView"
-msgstr "View"
-
-msgid "mailDiscard"
-msgstr "Discard"
-
-msgid "mailDraft"
-msgstr "Save draft"
-
-msgid "mailSend"
-msgstr "Send"
-
-msgid "toolbarSelectAll"
-msgstr "Select All"
-
-msgid "toolbarDeselectAll"
-msgstr "Deselect All"
-
-msgid "dateStartOn"
-msgstr "Start on:"
-
-msgid "dateEndOn"
-msgstr "End on:"
-
-msgid "dateAtLabel"
-msgstr "at"
-
-msgid "mailSetAllLabel"
-msgstr "All"
-
-msgid "mailSetInboxLabel"
-msgstr "Inbox"
-
-msgid "mailSetStarredLabel"
-msgstr "Starred"
-
-msgid "mailSetSentLabel"
-msgstr "Sent"
-
-msgid "mailSetJunkLabel"
-msgstr "Junk"
-
-msgid "mailSetDraftsLabel"
-msgstr "Drafts"
-
-msgid "mailSetTrashLabel"
-msgstr "Trash"
-
-msgid "mailConversationsLabel"
-msgstr "Conversations"
-
-msgid "mailContactsLabel"
-msgstr "Contacts"
-
-msgid "mailToMeLabel"
-msgstr "To Me"
-
-msgid "mailMailingListsLabel"
-msgstr "Mailing Lists"
-
-msgid "mailForward"
-msgstr "Forward"
-
-msgid "mailReplyToAll"
-msgstr "Reply to All"
-
-msgid "mailReplyToSender"
-msgstr "Reply to Sender"
-
-msgid "mailReplyToList"
-msgstr "Reply to List"
-
-msgid "mail"
-msgstr "Mail"
-
-msgid "inbox"
-msgstr "Inbox"
-
-msgid "sent"
-msgstr "Sent"
-
-msgid "trash"
-msgstr "Trash"
-
-msgid "junk"
-msgstr "Junk"
-
-#: src/apps/config/config.c:47
+#: src/apps/config/config.c:48
 #, c-format
 msgid "bongo-config: Could not drop to unpriviliged user '%s'\n"
 msgstr ""
 
-#: src/apps/config/config.c:115
+#: src/apps/config/config.c:113
 msgid "ERROR: Couldn't write data\n"
 msgstr ""
 
-#: src/apps/config/config.c:117
+#: src/apps/config/config.c:115
 msgid "ERROR: Wouldn't accept data\n"
 msgstr ""
 
-#: src/apps/config/config.c:131
-msgid "Initializing calendar data...\n"
-msgstr ""
-
-#: src/apps/config/config.c:134
-msgid "ERROR: Couldn't initialise calendar library\n"
-msgstr ""
-
-#: src/apps/config/config.c:138
-msgid "Initializing store...\n"
-msgstr ""
-
-#: src/apps/config/config.c:150
-msgid "ERROR: Couldn't start the store!\n"
-msgstr ""
-
-#: src/apps/config/config.c:160
-msgid "ERROR: Out of memory\n"
-msgstr ""
-
-#: src/apps/config/config.c:165
-msgid "ERROR: Could not connect to store\n"
-msgstr ""
-
-#: src/apps/config/config.c:169
-msgid "ERROR: Could not authenticate to store\n"
-msgstr ""
-
-#: src/apps/config/config.c:174
-msgid "ERROR: Couldn't access store\n"
-msgstr ""
-
-#: src/apps/config/config.c:180
+#: src/apps/config/config.c:130
 msgid "ERROR: Couldn't create collection\n"
 msgstr ""
 
-#: src/apps/config/config.c:184
+#: src/apps/config/config.c:134
 msgid "ERROR: Couldn't set acls on /config\n"
 msgstr ""
 
-#: src/apps/config/config.c:188
+#: src/apps/config/config.c:140
+msgid "ERROR: Couldn't load default config set\n"
+msgstr ""
+
+#: src/apps/config/config.c:175
+msgid "ERROR: Couldn't write\n"
+msgstr ""
+
+#: src/apps/config/config.c:178
+msgid "ERROR: rigts\n"
+msgstr ""
+
+#: src/apps/config/config.c:198
+msgid "Initializing calendar data...\n"
+msgstr ""
+
+#: src/apps/config/config.c:201
+msgid "ERROR: Couldn't initialise calendar library\n"
+msgstr ""
+
+#: src/apps/config/config.c:205
+msgid "Initializing store...\n"
+msgstr ""
+
+#: src/apps/config/config.c:217
+msgid "ERROR: Couldn't start the store!\n"
+msgstr ""
+
+#: src/apps/config/config.c:226
+msgid "ERROR: Out of memory\n"
+msgstr ""
+
+#: src/apps/config/config.c:231
+msgid "ERROR: Could not connect to store\n"
+msgstr ""
+
+#: src/apps/config/config.c:235
+msgid "ERROR: Could not authenticate to store\n"
+msgstr ""
+
+#: src/apps/config/config.c:240
+msgid "ERROR: Couldn't access store\n"
+msgstr ""
+
+#: src/apps/config/config.c:244
 msgid "Setting default agent configuration...\n"
 msgstr ""
 
-#: src/apps/config/config.c:190
-msgid "ERROR: couldn't write /config/manager\n"
+#: src/apps/config/config.c:248
+msgid "ERROR: Couldn't setup default configuration\n"
 msgstr ""
 
-#: src/apps/config/config.c:193
-msgid "ERROR: Couldn't set acls on /config/manager\n"
-msgstr ""
-
-#: src/apps/config/config.c:197
-msgid "ERROR: couldn't write /config/antivirus\n"
-msgstr ""
-
-#: src/apps/config/config.c:200
-msgid "ERROR: Couldn't set acls on /config/antivirus\n"
-msgstr ""
-
-#: src/apps/config/config.c:204
-msgid "ERROR: couldn't write /config/antispam\n"
-msgstr ""
-
-#: src/apps/config/config.c:207
-msgid "ERROR: Couldn't set acls on /config/antispam\n"
-msgstr ""
-
-#: src/apps/config/config.c:211
+#: src/apps/config/config.c:250
 msgid "Complete.\n"
 msgstr ""
 
-#: src/apps/config/config.c:218
+#: src/apps/config/config.c:258
 msgid "ERROR: Couldn't shut down store\n"
 msgstr ""
 
-#: src/apps/config/config.c:265
+#: src/apps/config/config.c:305
 msgid "Couldn't create data directory!\n"
 msgstr ""
 
-#: src/apps/config/config.c:268
+#: src/apps/config/config.c:308
 msgid "IP address to run on"
 msgstr ""
 
-#: src/apps/config/config.c:269
+#: src/apps/config/config.c:309
 msgid "DNS name to use:"
 msgstr ""
 
-#: src/apps/config/config.c:272
+#: src/apps/config/config.c:312
 msgid "Creating random seed...\n"
 msgstr ""
 
-#: src/apps/config/config.c:276
+#: src/apps/config/config.c:316
 msgid "Creating DH parameters...\n"
 msgstr ""
 
-#: src/apps/config/config.c:287
+#: src/apps/config/config.c:327
 #, c-format
 msgid "ERROR: Couldn't write DH params to %s\n"
 msgstr ""
 
-#: src/apps/config/config.c:291
+#: src/apps/config/config.c:331
 msgid "Creating RSA parameters...\n"
 msgstr ""
 
-#: src/apps/config/config.c:302
+#: src/apps/config/config.c:342
 #, c-format
 msgid "ERROR: Couldn't write RSA params to %s\n"
 msgstr ""
 
-#: src/apps/config/config.c:307
+#: src/apps/config/config.c:347
 msgid "Creating private key...\n"
 msgstr ""
 
-#: src/apps/config/config.c:310 src/apps/config/config.c:340
+#: src/apps/config/config.c:350 src/apps/config/config.c:380
 #, c-format
 msgid "ERROR: %s\n"
 msgstr ""
 
-#: src/apps/config/config.c:315
+#: src/apps/config/config.c:355
 #, c-format
 msgid "ERROR: Couldn't create private key. %s\n"
 msgstr ""
 
-#: src/apps/config/config.c:321
+#: src/apps/config/config.c:361
 #, c-format
 msgid "ERROR: Couldn't export private key. %s\n"
 msgstr ""
 
-#: src/apps/config/config.c:322
+#: src/apps/config/config.c:362
 #, c-format
 msgid "       Size: %d, Ret: %d\n"
 msgstr ""
 
-#: src/apps/config/config.c:331
+#: src/apps/config/config.c:371
 #, c-format
 msgid "ERROR: Couldn't write private key to %s\n"
 msgstr ""
 
-#: src/apps/config/config.c:337
+#: src/apps/config/config.c:377
 msgid "Creating SSL/TLS certificate...\n"
-msgstr ""
-
-#: src/apps/config/config.c:371
-#, c-format
-msgid "ERROR: Couldn't self-sign certificate. %s\n"
-msgstr ""
-
-#: src/apps/config/config.c:378
-#, c-format
-msgid "ERROR: Couldn't create certificate. %s\n"
-msgstr ""
-
-#: src/apps/config/config.c:386
-#, c-format
-msgid "ERROR: Couldn't write certificate to %s\n"
-msgstr ""
-
-#: src/apps/config/config.c:406
-#, c-format
-msgid "Can't get information on current build!\n"
-msgstr ""
-
-#: src/apps/config/config.c:409
-#, c-format
-msgid "Installed build: %s %s%d\n"
 msgstr ""
 
 #: src/apps/config/config.c:411
 #, c-format
+msgid "ERROR: Couldn't self-sign certificate. %s\n"
+msgstr ""
+
+#: src/apps/config/config.c:418
+#, c-format
+msgid "ERROR: Couldn't create certificate. %s\n"
+msgstr ""
+
+#: src/apps/config/config.c:426
+#, c-format
+msgid "ERROR: Couldn't write certificate to %s\n"
+msgstr ""
+
+#: src/apps/config/config.c:446
+#, c-format
+msgid "Can't get information on current build!\n"
+msgstr ""
+
+#: src/apps/config/config.c:449
+#, c-format
+msgid "Installed build: %s %s%d\n"
+msgstr ""
+
+#: src/apps/config/config.c:451
+#, c-format
 msgid "This is modified software.\n"
 msgstr ""
 
-#: src/apps/config/config.c:414
+#: src/apps/config/config.c:454
 #, c-format
 msgid "Version currently available: unable to request online information.\n"
 msgstr ""
 
-#: src/apps/config/config.c:416
+#: src/apps/config/config.c:456
 #, c-format
 msgid "Version currently available: %s%d\n"
 msgstr ""
 
-#: src/apps/config/config.c:491
+#: src/apps/config/config.c:531
 msgid "ERROR : Couldn't initialize Bongo libraries\n"
 msgstr ""
 
@@ -1203,69 +572,69 @@ msgstr ""
 msgid "Search command not implemented\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:136
+#: src/apps/manager/manager.c:137
 #, c-format
 msgid "bongomanager: %s terminated with signal %d.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:142
+#: src/apps/manager/manager.c:143
 #, c-format
 msgid "bongo-manager: %s exited\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:203
+#: src/apps/manager/manager.c:204
 #, c-format
 msgid "couldn't set rlimit: %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:222
+#: src/apps/manager/manager.c:223
 #, c-format
 msgid "failed to exec %s (%s)\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:226
+#: src/apps/manager/manager.c:227
 #, c-format
 msgid "bongo-manager: Could not drop to unprivileged user '%s', Exiting.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:274
+#: src/apps/manager/manager.c:275
 #, c-format
 msgid ""
 "bongo-manager: %s has crashed %d times within %d seconds of each other, not "
 "restarting.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:296
+#: src/apps/manager/manager.c:297
 #, c-format
 msgid "bongo-manager: starting %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:316
+#: src/apps/manager/manager.c:317
 #, c-format
 msgid "bongo-manager: couldn't read config from store\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:321
+#: src/apps/manager/manager.c:322
 #, c-format
 msgid "bongo-manager: couldn't parse JSON config\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:326
+#: src/apps/manager/manager.c:327
 #, c-format
 msgid "manager: couldn't find agent list\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:419
+#: src/apps/manager/manager.c:422
 #, c-format
 msgid "bongo-manager: unlikely pid, Exiting\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:450
+#: src/apps/manager/manager.c:454
 #, c-format
 msgid "bongo-manager: couldn't unlink %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:491
+#: src/apps/manager/manager.c:495
 #, c-format
 msgid ""
 "Usage: bongo-manager [OPTIONS]\n"
@@ -1277,197 +646,197 @@ msgid ""
 "\t-f: Force start, replacing "
 msgstr ""
 
-#: src/apps/manager/manager.c:550
+#: src/apps/manager/manager.c:554
 #, c-format
 msgid "%s: -s cannot be supplied with other options.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:555
+#: src/apps/manager/manager.c:559
 #, c-format
 msgid "%s: -r cannot be supplied with other options.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:560
+#: src/apps/manager/manager.c:564
 #, c-format
 msgid "%s: -l cannot be supplied with other options.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:593
+#: src/apps/manager/manager.c:597
 #, c-format
 msgid "bongo-manager: killed existing managed-slapd process.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:595
+#: src/apps/manager/manager.c:599
 #, c-format
 msgid "bongo-manager: could not kill existing managed-slapd process.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:599
+#: src/apps/manager/manager.c:603
 #, c-format
-msgid "bongo-manager: managed-slapd appears to be running as pid %d\n"
+msgid "bongo-manager: managed-slapd appears to be running as pid %ld\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:600
+#: src/apps/manager/manager.c:604
 #, c-format
 msgid ""
 "bongo-manager: if this is definitely the bongo slapd, you can run with -e to "
 "kill it\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:610
+#: src/apps/manager/manager.c:614
 #, c-format
 msgid "bongo-manager: error reading managed slapd port from config file.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:618
+#: src/apps/manager/manager.c:622
 #, c-format
 msgid "Error reading managed slapd path from config file.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:624
+#: src/apps/manager/manager.c:628
 #, c-format
 msgid "bongo-manager: starting managed slapd...\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:655
+#: src/apps/manager/manager.c:660
 #, c-format
 msgid "Error creating socket: %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:675
+#: src/apps/manager/manager.c:680
 #, c-format
 msgid "bongo-manager: error connecting to slapd: %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:681
+#: src/apps/manager/manager.c:686
 #, c-format
 msgid "bongo-manager: slapd started\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:728
+#: src/apps/manager/manager.c:733
 #, c-format
 msgid "bongo-manager: could not fork into background (%d): %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:741
+#: src/apps/manager/manager.c:746
 #, c-format
 msgid "bongo-manager: running in background\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:786
+#: src/apps/manager/manager.c:791
 #, c-format
 msgid "bongo-manager: could not drop to unprivileged user '%s'\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:798
+#: src/apps/manager/manager.c:803
 #, c-format
 msgid "bongo-manager: must be run by root\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:806 src/apps/manager/manager.c:824
+#: src/apps/manager/manager.c:811 src/apps/manager/manager.c:829
 #, c-format
 msgid "bongo-manager: could not open pid file '%s'\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:812 src/apps/manager/manager.c:830
+#: src/apps/manager/manager.c:817 src/apps/manager/manager.c:835
 #, c-format
 msgid "bongo-manager: bongo-manager does not appear to be running.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:814
+#: src/apps/manager/manager.c:819
 #, c-format
 msgid "bongo-manager: unable to reload services: %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:832
+#: src/apps/manager/manager.c:837
 #, c-format
 msgid "bongo-manager: unable to shut down services: %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:852
+#: src/apps/manager/manager.c:857
 #, c-format
 msgid "bongo-manager: another bongo-manager process appears to be running.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:853
+#: src/apps/manager/manager.c:858
 #, c-format
 msgid ""
 "bongo-manager: run with -s to stop an existing process, or -f to ignore the "
 "existing pidfile.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:855
+#: src/apps/manager/manager.c:860
 #, c-format
 msgid "bongo-manager: removing stale lock file in %s.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:859
+#: src/apps/manager/manager.c:864
 #, c-format
 msgid "bongo-manager: could not remove stale lock file in %s.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:862
+#: src/apps/manager/manager.c:867
 #, c-format
 msgid ""
 "bongo-manager: %s user does not have permission to create a lock file in %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:865
+#: src/apps/manager/manager.c:870
 #, c-format
 msgid "bongo-manager: could not create lock file in %s : %s\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:873
+#: src/apps/manager/manager.c:878
 #, c-format
 msgid "bongo-manager: failed to initialize memory manager.  Exiting\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:879
+#: src/apps/manager/manager.c:884
 #, c-format
 msgid "bongo-manager: Couldn't read the server DN from bongo.conf.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:894
+#: src/apps/manager/manager.c:899
 #, c-format
 msgid "bongo-manager: managed slapd process failed to start.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:898
+#: src/apps/manager/manager.c:903
 #, c-format
 msgid "bongo-manager: -l only works with a managed-slapd database.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:904
+#: src/apps/manager/manager.c:909
 #, c-format
 msgid "bongo-manager: unable to intialize directory access.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:910
+#: src/apps/manager/manager.c:915
 #, c-format
 msgid "bongo-manager: unable to MsgInit()\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:917
+#: src/apps/manager/manager.c:922
 #, c-format
 msgid "bongo-manager: unable to initialize messaging library.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:932
+#: src/apps/manager/manager.c:937
 #, c-format
 msgid "bongo-manager: Couldn't load configuration for agents\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:957
+#: src/apps/manager/manager.c:962
 #, c-format
 msgid "bongo-manager: Shutting down...\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:970
+#: src/apps/manager/manager.c:975
 #, c-format
 msgid "' stubbornly refusing to die, insisting.\n"
 msgstr ""
 
-#: src/apps/manager/manager.c:987
+#: src/apps/manager/manager.c:992
 #, c-format
 msgid "bongo-manager: shutdown complete.\n"
 msgstr ""

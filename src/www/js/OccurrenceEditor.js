@@ -42,10 +42,10 @@ Dragonfly.Calendar.OccurrencePopup.prototype.quickEventEdit = function (elem)
 
     new d.HtmlBuilder (
         '<p><input autocomplete="off" size="30" class="occurrence-entry" id="', qeventEntryId, '">',
-        '<p>', _('freeFormInstructions'), '<br>',
-        '<i>', _('freeFormExample'), '</i><div class="actions">',
-        '<span class="secondary">', _('freeFormOption'), ' <a id="', editId, '" >', _('freeFormOptionBody'), '</a></span>',
-        '<input type="button" value="', _('freeFormAddLabel'), '" id="', qeventPostId, '" disabled></div>'
+        '<p>', _('Enter free-form text for example:'), '<br>',
+        '<i>', _('lunch with Joe tomorrow at noon'), '</i><div class="actions">',
+        '<span class="secondary">', _('or,'), ' <a id="', editId, '" >', _('enter details instead'), '</a></span>',
+        '<input type="button" value="', _('Add Event'), '" id="', qeventPostId, '" disabled></div>'
     ).set (this.contentId);
 
     var editDetails = function (evt) {
@@ -106,8 +106,8 @@ Dragonfly.Calendar.OccurrencePopup.prototype.summarize = function (occurrence, e
     var html = new d.HtmlBuilder();
     this.summary = new c.OccurrenceSummary (this.occurrence, html);
     html.push ('<div class="actions">',
-               '<a id="', deleteId, '" class="secondary">', _('genericDelete'), '</a>',
-               '<a id="', editId, '">', _('genericEdit'), '</a></div>');
+               '<a id="', deleteId, '" class="secondary">', _('Delete'), '</a>',
+               '<a id="', editId, '">', _('Edit'), '</a></div>');
     html.set (this.contentId);
 
     Event.observe (deleteId, 'click', this.delConfirm.bindAsEventListener (this));
@@ -134,14 +134,14 @@ Dragonfly.Calendar.OccurrencePopup.prototype.edit = function (evt, occurrence, e
     this.editor = new c.OccurrenceEditor (this.occurrence);
     if (!this.occurrence.vcalendar.bongoId) { // use new event actions
         this.setForm (this.editor, [    
-            { value: _('genericCancel'), onclick: 'cancel' },
-            { value: _('genericSave'), onclick: 'save' }
+            { value: _('Cancel'), onclick: 'cancel' },
+            { value: _('Save'), onclick: 'save' }
         ]);
     } else { // use existing event actions
         this.setForm (this.editor, [
-            { value: _('genericDelete'), onclick: 'del', secondary: true },       
-            { value: _('genericCancel'), onclick: 'dispose' },
-            { value: _('genericSave'), onclick: 'save' }
+            { value: _('Delete'), onclick: 'del', secondary: true },       
+            { value: _('Cancel'), onclick: 'dispose' },
+            { value: _('Save'), onclick: 'save' }
         ]);
     }
 
@@ -173,7 +173,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.del = function ()
         return;
     }
 
-    d.notify (_('genericSavingChanges'), true);
+    d.notify (_('Saving changes...'), true);
     forEach (occurrence.bubles, function (b) { addElementClass (b, 'deleting') });
 
     JCal.delOccurrence (occurrence, changeScope).addCallbacks (
@@ -184,7 +184,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.del = function ()
             } else {
                 d.Calendar.remove (occurrence.event);
             }
-            d.notify (_('genericChangesSaved'));
+            d.notify (_('Changes saved.'));
             return result;
         }, this), bind ('showError', this));
 };
@@ -215,7 +215,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.save = function ()
         return;
     }
 
-    d.notify (_('genericSavingChanges'), true);
+    d.notify (_('Saving changes...'), true);
     if (occurrence.bubles) {
         forEach (occurrence.bubles, function (b) { 
             addElementClass (b, 'saving') 
@@ -225,7 +225,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.save = function ()
     JCal.saveOccurrence (occurrence, this.changes, this.changeScope).addCallbacks (
         bind (function (result) {
             this.hide ();
-            d.notify (_('genericChangesSaved'));
+            d.notify (_('Changes saved.'));
             var tab = condGetProp (d.curLoc, 'tab');
             if (tab && (tab == 'calendar' || tab == 'summary')) {
                 if (occurrence.vcalendar.isRecurring) {
@@ -236,6 +236,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.save = function ()
                 }
             } else {
                 // show in sidecal!
+                logDebug('Show in sidecal!');
             }
             return result;
         }, this), bind ('showError', this));
@@ -255,10 +256,10 @@ Dragonfly.Calendar.OccurrencePopup.prototype.delConfirm = function ()
     }
 
     this.hide ();
-    var text = ['<p>', _('deleteEventConfirm'),
+    var text = ['<p>', _('Are you sure you want to delete the event'),
                 '&ldquo;', Dragonfly.escapeHTML (this.occurrence.summary), '&rdquo;',
-                _('genericRemovePost'), '</p>'];
-    var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericDelete'), onclick: 'del'}];
+                _('? This cannot be undone.'), '</p>'];
+    var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Delete'), onclick: 'del'}];
     this.setForm (text, actions);
     this.show();
 };
@@ -268,16 +269,16 @@ Dragonfly.Calendar.OccurrencePopup.prototype.getScope = function (forSave)
     this.hide ();
     this.scopeForm = Dragonfly.nextId ('occurrence-scope');
     var form = [
-        '<p>', _('eventSeriesIntro'),  
-        (forSave) ? _('eventSeriesChanges') : _('eventSeriesDelete'), ':</p>',
+        '<p>', _('This event is part of a series. Would you like'), ' ',  
+        (forSave) ? _('changes to apply to') : _('to delete'), ':</p>',
         '<form id="', this.scopeForm, '">',
-        '<label><input type="radio" name="scope" checked>', _('eventScopeSingle'), '</label><br>',
-        '<label><input type="radio" name="scope" ', (forSave) ? 'disabled' : '', '>', _('eventScopeFollowing'), '</label><br>',
-        '<label><input type="radio" name="scope">', _('eventScopeAll'), '</label>',
+        '<label><input type="radio" name="scope" checked>', _('only this event'), '</label><br>',
+        '<label><input type="radio" name="scope" ', (forSave) ? 'disabled' : '', '>', _('this and following events'), '</label><br>',
+        '<label><input type="radio" name="scope">', _('all events in series'), '</label>',
         '</form>'];
     var actions = [
         { value: _('genericCancel'), onclick: 'dispose'},
-        { value: forSave ? _('genericSave') : _('genericDelete'), onclick: partial (this.dispatchWithScope, forSave) }];
+        { value: forSave ? _('Save') : _('Delete'), onclick: partial (this.dispatchWithScope, forSave) }];
     this.setForm (form, actions);
     this.show();
 };
@@ -362,7 +363,7 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildEventTab = function (page)
 
     var html = new d.HtmlBuilder (
         '<div><input id="', this.locationId, '" size="40"></div>',
-        '<div><label><input id="', this.alldayId, '" type="checkbox"> ', _('allDayLabel'), '</label></div>');
+        '<div><label><input id="', this.alldayId, '" type="checkbox"> ', _('all day'), '</label></div>');
     this.dateEntry = new d.DateRangeEntry (o, html);
     html.push ('<textarea id="', this.noteId, '"></textarea>');
 
@@ -403,7 +404,7 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildSharingTab = function (page)
              });
 
     html.push ('</ul>',
-               '<div><label><input type="checkbox"> ', _('publishEventSelf'), '</label></div>',
+               '<div><label><input type="checkbox"> ', _('Publish this event on its own'), '</label></div>',
                '<table cellspacing="0" cellpadding="0">',
                '<tr><td><input type="checkbox"></td><td><input></td></tr>',
                '<tr><td></td><td><input></td></tr>',
@@ -428,9 +429,9 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildHtml = function (html)
 
     html.push ('<div><input id="', this.summaryId, '" size="40"></div>');
 
-    this.buildEventTab(this.notebook.insertPage (_('eventInfoTabLabel'), c.OccurrenceEditor.EventTab - 1));
-    this.buildSharingTab(this.notebook.insertPage (_('eventSharingTabLabel'), c.OccurrenceEditor.SharingTab - 1));
-    this.buildRepeatTab(this.notebook.insertPage (_('eventRepeatTabLabel'), c.OccurrenceEditor.RepeatTab - 1));
+    this.buildEventTab(this.notebook.insertPage (_('Event'), c.OccurrenceEditor.EventTab - 1));
+    this.buildSharingTab(this.notebook.insertPage (_('Sharing'), c.OccurrenceEditor.SharingTab - 1));
+    this.buildRepeatTab(this.notebook.insertPage (_('Repeat'), c.OccurrenceEditor.RepeatTab - 1));
 
     this.notebook.buildHtml (html);
 
@@ -445,9 +446,9 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.connectHtml = function (elem)
     Event.observe (this.alldayId, 'click', function (evt) {
         this.dateEntry.setUntimed ($(this.alldayId).checked);
     }.bindAsEventListener (this));
-    d.LabeledEntry (this.summaryId, _('eventSummaryHint'), this.occurrence.summary);
-    d.LabeledEntry (this.locationId, _('eventLocationHint'), this.occurrence.location);
-    d.LabeledEntry (this.noteId, _('eventNoteHint'), this.occurrence.note);
+    d.LabeledEntry (this.summaryId, _('Summary'), this.occurrence.summary);
+    d.LabeledEntry (this.locationId, _('Location'), this.occurrence.location);
+    d.LabeledEntry (this.noteId, _('Notes'), this.occurrence.note);
 
     return elem;
 };
@@ -580,7 +581,7 @@ Dragonfly.Calendar.RRuleEditor.prototype.buildHtml = function (html)
     // Overall layout is a ordered list of controls
     this.id = Dragonfly.nextId ('rrule');    
     this.freqSelectId = Dragonfly.nextId ('rrule-freq');
-    html.push ('<ol id="', this.id, '" class="rrule-editor"><li><label>', _('repeatLabel'), '</label>');
+    html.push ('<ol id="', this.id, '" class="rrule-editor"><li><label>', _('Repeat:'), '</label>');
     html.push ('<select id="', this.freqSelectId, '">');
     Dragonfly.Widgets.addOptions (html, this.constants.freqLabels);
     html.push ('</select></li>');
@@ -590,25 +591,25 @@ Dragonfly.Calendar.RRuleEditor.prototype.buildHtml = function (html)
     this.intervalLabelId = Dragonfly.nextId ('rrule-interval-label');
     html.push (
         '<li class="controls day week month-by-day month-by-date year">',
-        '<label>', _('repeatEveryLabel'), '</label>',
+        '<label>', _('Every:'), '</label>',
         '<input size="2" autocomplete="off" id="', this.intervalCountId, '">',
         '<span id="', this.intervalLabelId, '"></span></li>'
     );
     
     // repeat weekly
-    html.push ('<li class="controls week"><label>', _('repeatOnLabel'), '</label>');
+    html.push ('<li class="controls week"><label>', _('On:'), '</label>');
     html.push ('<div style="display:inline-block; display:-moz-inline-box;">');
     this.wkdyButtons = new Dragonfly.ToggleButtons (html, this.constants.wkdyLabelsS);
     html.push ('</div>');
     
     // repeat monthly by date
-    html.push ('</li><li class="controls month-by-date"><label>', _('repeatOnLabel'), '</label>');
+    html.push ('</li><li class="controls month-by-date"><label>', _('On:'), '</label>');
     html.push ('<div style="display:inline-block; display:-moz-inline-box;">');
     this.modyButtons = new Dragonfly.ToggleButtons (html, this.constants.modyLabels, 5);
     html.push ('</div>');
     
     // repeat monthly by day
-    html.push ('</li><li class="controls month-by-day"><label>', _('repeatOnLabel'), '</label>');
+    html.push ('</li><li class="controls month-by-day"><label>', _('On:'), '</label>');
     this.wkSelectId = Dragonfly.nextId ('rrule-week-select');
     this.wkdySelectId = Dragonfly.nextId ('rrule-weekday-select');
     html.push ('<select id="', this.wkSelectId, '">');
@@ -623,9 +624,9 @@ Dragonfly.Calendar.RRuleEditor.prototype.buildHtml = function (html)
     this.endLabelId = Dragonfly.nextId ('rrule-end-label');
     html.push (
         '<li class="controls day week month-by-day month-by-date year">',
-        '<label>', _('repeatEndingLabel'), '</label><select id="', this.endSelectId,'">',
-        '<option>', _('repeatEndNeverLabel'), '</option><option>', _('repeatEndOnDateLabel'), '</option>',
-        '<option>', _('repeatEndAfterRepeatLabel'), '</option></select></li>',
+        '<label>', _('Ending:'), '</label><select id="', this.endSelectId,'">',
+        '<option>', _('Never'), '</option><option>', _('On date'), '</option>',
+        '<option>', _('After repeating'), '</option></select></li>',
 
         '<li class="controls end-by-count"><label></label>',
         '<input size="2" autocomplete="off" id="', this.endCountId,'">',
@@ -640,9 +641,9 @@ Dragonfly.Calendar.RRuleEditor.prototype.buildHtml = function (html)
     this.warnId = Dragonfly.nextId ('rrule-warn');
     this.editAnywayId = Dragonfly.nextId ('rrule-edit-anyway');
     html.push (
-        '<div  id="', this.warnId, '" style="display:none;"><p><strong>', _('repeatCautionHeadingLabel'), '</strong>',
-        '<br>', _('repeatCautionBodyText'), '<div class="actions">',
-        '<input type="button" id="', this.editAnywayId, '" value="', _('repeatEditAnywayLabel'), '" disabled></div></div>'
+        '<div  id="', this.warnId, '" style="display:none;"><p><strong>', _('Caution'), '</strong>',
+        '<br>', _('This event has a schedule that cannot be edited with Bongo; choosing to edit will replace the existing schedule.'), '<div class="actions">',
+        '<input type="button" id="', this.editAnywayId, '" value="', _('Edit Anyway'), '" disabled></div></div>'
      );
     html.addCallback (bind ('connectHtml', this));
 };
@@ -806,9 +807,9 @@ Dragonfly.Calendar.EventInvitationPopup.prototype.connectHtml = function (elem)
     d.PopupBuble.prototype.connectHtml.call (this, elem);
     this.calendarId = d.nextId ('invite-calendar');
     var form = [
-        '<div id="from">', d.escapeHTML (this.invite.from), ' ', _('inviteDefaultText'), '</div><hr>',
+        '<div id="from">', d.format(_('{0} has invited you to:'), d.escapeHTML (this.invite.from)), '</div><hr>',
         new c.OccurrenceSummary (this.invite.occurrences[0]), '<hr><div>', 
-        _('inviteCalendarPre'), ' <select id="', this.calendarId, '">'];
+        _('Calendar:'), ' <select id="', this.calendarId, '">'];
 
     forEach (c.calendars, function (hcal) {
         if (hcal.type == 'personal') {
@@ -819,10 +820,10 @@ Dragonfly.Calendar.EventInvitationPopup.prototype.connectHtml = function (elem)
     form.push ('</select></div>');
     
     var actions = [
-        { value: _('genericDelete'), onclick: 'deleteClicked', secondary: true },
-        { value: _('buttonJunkLabel'), onclick: 'junkClicked', secondary: true },
-        { value: _('buttonIgnoreLabel'), onclick: 'ignoreClicked'},
-        { value: _('genericAdd'), onclick: 'addClicked'}];
+        { value: _('Delete'), onclick: 'deleteClicked', secondary: true },
+        { value: _('Junk'), onclick: 'junkClicked', secondary: true },
+        { value: _('Ignore'), onclick: 'ignoreClicked'},
+        { value: _('Add'), onclick: 'addClicked'}];
         
     this.setForm (form, actions);
     this.setClosable (true);

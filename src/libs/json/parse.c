@@ -479,10 +479,13 @@ BongoJsonParserNextNode(BongoJsonParser *t)
     BongoStrTrim(s);
     
     if (!strcmp(s, "true")) {
+        MemFree(s);
         return BongoJsonNodeNewBool(TRUE);
     } else if (!strcmp(s, "false")) {
+        MemFree(s);
         return BongoJsonNodeNewBool(FALSE);
     } else if (!strcmp(s, "null")) {
+        MemFree(s);
         return BongoJsonNodeNewNull();
     }
     

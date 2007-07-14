@@ -1,11 +1,11 @@
 from mod_python import apache, util
-from ApacheLogHandler import ApacheLogHandler, RequestLogProxy
+from bongo.commonweb.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
 from ResourcePath import ResourcePath
 from HttpError import HttpError
 
 import Auth
-import BongoFieldStorage
-import bongo.dragonfly
+import bongo.commonweb.BongoFieldStorage
+import bongo.commonweb
 
 # Add a handler so messages from python's logging module go to apache.
 # We don't use that module in the Bongo server proper, because we need
@@ -26,7 +26,7 @@ def handler(req):
         req.form = BongoFieldStorage.get_fieldstorage(req)
 
     auth = Auth.authenhandler(req)
-    if auth != bongo.dragonfly.HTTP_OK:
+    if auth != bongo.commonweb.HTTP_OK:
         return auth
 
     try:
@@ -39,14 +39,14 @@ def handler(req):
         mname = "do_" + command
         if not hasattr(handler, mname):
             req.log.debug("%s has no %s", handler, mname)
-            return bongo.dragonfly.HTTP_NOT_IMPLEMENTED
+            return bongo.commonweb.HTTP_NOT_IMPLEMENTED
 
         method = getattr(handler, mname)
         ret = method(req, rp)
 
         if ret is None:
             req.log.error("Handler %s returned invalid value: None" % handler)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         return ret
     except HttpError, e:
         return e.code

@@ -22,7 +22,7 @@ def GetAttributeArgs(*objClasses):
     return args
 
 def GetAgentArgs():
-    from bongo.bootstrap import msgapi
+    from libbongo.bootstrap import msgapi
 
     attrs = {}
 

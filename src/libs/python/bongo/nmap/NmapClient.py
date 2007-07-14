@@ -1,5 +1,5 @@
 import logging
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 from CommandStream import *
 from NmapConnection import NmapConnection
 from cStringIO import StringIO

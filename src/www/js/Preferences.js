@@ -278,19 +278,19 @@ Dragonfly.Preferences.Editor.build = function (loc)
         
         var composerhtml = new d.HtmlBuilder ();
         composerhtml.push ('<table border="0" cellspacing="0">', 
-            '<tr><td><label>From address:</label></td>', 
+            '<tr><td><label>', _('From address:'), '</label></td>', 
             '<td><input type="text" id="from" /></td></tr>', 
             '<tr><td colspan="2"><span style="font-size: 80%;">Please don\'t abuse the above feature for now.</span></td></tr>',
-            '<tr><td><label>Auto BCC:</label></td>',
+            '<tr><td><label>', _('Auto BCC:'), '</label></td>',
             '<td><input type="text" id="autobcc" /></td></tr>',
-            '<tr><td><label>Signature:</label></td>',
+            '<tr><td><label>', _('Signature:'), '</label></td>',
             '<td><textarea rows="3" cols="30" id="signature"></textarea><br />',
-            '<input type="checkbox" id="usesig" name="usesig" /><label for="usesig">Apply signature to outgoing mail</label>',
+            '<input type="checkbox" id="usesig" name="usesig" /><label for="usesig">', _('Apply signature to outgoing mail'), '</label>',
             '</td></tr>',
-            '<tr><td><label>Show HTML messages:</label></td>',
-            '<td><select id="htmlmsg"><option value="show">Yes</option><option value="ptext">Prefer plain-text</option><option value="hide">No</option></select></td></tr>',
-            '<tr><td><label>Page size:</label></td>',
-            '<td><input type="text" style="width: 20px;" id="mailpagesize"> items</td></tr>',
+            '<tr><td><label>', _('Show HTML messages:'), '</label></td>',
+            '<td><select id="htmlmsg"><option value="show">', _('Yes'), '</option><option value="ptext">', _('Prefer plain-text'), '</option><option value="hide">', _('No'), '</option></select></td></tr>',
+            '<tr><td><label>', _('Page size:'), '</label></td>',
+            '<td><input type="text" style="width: 20px;" id="mailpagesize"> ', _('items'), '</td></tr>',
             '</table>');
         composerhtml.set (composerpage);
         
@@ -301,7 +301,7 @@ Dragonfly.Preferences.Editor.build = function (loc)
         var form = [
         '<form id="someid">', notebook, '</form>'];
         
-        var actions = [{ value: _('genericCancel'), onclick: 'dispose'}, { value: _('genericSave'), onclick: 'save'}];        
+        var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Save'), onclick: 'save'}];        
         
         // Now, fill in the content with tabs & buttons.
         this.contentId = 'preferences-container';

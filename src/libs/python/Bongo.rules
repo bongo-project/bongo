@@ -40,7 +40,6 @@ pkgpythonadmin_PYTHON :=			   \
 	src/libs/python/bongo/admin/Calcmd.py	   \
 	src/libs/python/bongo/admin/Collector.py	   \
 	src/libs/python/bongo/admin/Handler.py	   \
-	src/libs/python/bongo/admin/BongoSession.py  \
 	src/libs/python/bongo/admin/Imap.py	   \
 	src/libs/python/bongo/admin/Itip.py	   \
 	src/libs/python/bongo/admin/JsonUtil.py	   \
@@ -152,6 +151,9 @@ CLEANFILES +=						\
 	src/libs/python/bongo/external/simplejson/*.pyc	\
 	src/libs/python/bongo/nmap/*.pyc			\
 	src/libs/python/bongoy/store/*.pyc
+
+src/libs/python/bongo/Xpl.py: $(top_builddir)/config.status src/libs/python/bongo/Xpl.py.in
+	cd $(top_builddir) && $(SHELL) ./config.status $@
 
 src/libs/python/bongo-python-wrapper: $(top_builddir)/config.status $(srcdir)/src/libs/python/bongo-python-wrapper.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@

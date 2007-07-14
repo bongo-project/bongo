@@ -1,6 +1,6 @@
 import Handler, Mdb, Security, Template, Util
 from bongo import MDB
-from bongo.libs import msgapi
+from libbongo.libs import msgapi
 
 def CreateUser(req):
     if not req.fields.has_key('newusername'):

@@ -146,7 +146,7 @@
 #define CL_MAX_NAME CL_MAX_PATH
 //todo: this is a temporary fix for a potential buffer overflow...
 //should never use this
-#define CL_MAX_DIR CL_MAX_PATH*32
+#define CL_MAX_DIR CL_MAX_PATH*2
 
 #ifdef _LARGE_FILES
     #define LUCENE_MAX_FILELENGTH LUCENE_INT64_MAX_SHOULDBE

@@ -110,7 +110,7 @@ include_subdirs :=				\
 	src/libs/calcmd				\
 	src/libs/calcmd/tests			\
 	src/libs/python				\
-	src/libs/python/bongo			\
+	src/libs/python/libbongo		\
 	src/agents/alarm			\
 	src/agents/antispam			\
 	src/agents/avirus			\
@@ -174,7 +174,7 @@ include src/libs/connmgr/Bongo.rules
 include src/libs/calcmd/Bongo.rules
 include src/libs/calcmd/tests/Bongo.rules
 include src/libs/python/Bongo.rules
-include src/libs/python/bongo/Bongo.rules
+include src/libs/python/libbongo/Bongo.rules
 include src/agents/addressbook/Bongo.rules
 include src/agents/alarm/Bongo.rules
 include src/agents/antispam/Bongo.rules

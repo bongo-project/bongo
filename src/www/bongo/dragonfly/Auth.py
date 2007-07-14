@@ -1,16 +1,16 @@
-import BongoCookie as Cookie
-from bongo.admin.BongoSession import BongoSession as Session
+import bongo.commonweb.BongoCookie as Cookie
+from bongo.commonweb.BongoSession import BongoSession as Session
 import base64
 import logging
 import pprint
 import time
 
-from bongo.libs import mdb
-from bongo.libs import msgapi
+from libbongo.libs import mdb
+from libbongo.libs import msgapi
 from bongo.store.StoreClient import StoreClient
 from bongo.store.StoreConnection import StoreConnection
 import bongo
-import bongo.dragonfly
+import bongo.commonweb
 
 AUTH_TOKEN_NAME = "BongoAuthToken"
 
@@ -191,10 +191,10 @@ def DenyAccess(req):
     if not req.headers_in.has_key("X-Bongo-Agent"):
         req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""
 
-    return bongo.dragonfly.HTTP_UNAUTHORIZED
+    return bongo.commonweb.HTTP_UNAUTHORIZED
 
 def authenhandler(req):
     if AcceptCredentials(req):
-        return bongo.dragonfly.HTTP_OK
+        return bongo.commonweb.HTTP_OK
 
     return DenyAccess(req)

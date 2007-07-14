@@ -228,8 +228,7 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	}
 	
 	while (config->type != BONGO_JSON_NULL) {
-		BongoJsonNode *result;
-		result = BongoJsonJPath(node, config->source);
+		BongoJsonNode *result = BongoJsonJPath(node, config->source);
 		if (!result) {
 			XplConsolePrintf("config: JSON tree for schema source %s not found\r\n", config->source);
 			goto finish;
@@ -238,7 +237,6 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 			// can't set item
 			XplConsolePrintf("config: schema source %s not found\r\n", config->source);
 		}
-		BongoJsonNodeFree(result);
 		config++;
 	}
 	

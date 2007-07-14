@@ -1,15 +1,15 @@
 import bongo.dragonfly.Auth
 from bongo.store.StoreClient import StoreClient
-import bongo.dragonfly.BongoSession as BongoSession
+import bongo.commonweb.BongoSession as BongoSession
 import time
 
 def Login(req):
     if not req.form:
-        return bongo.dragonfly.HTTP_UNAUTHORIZED
+        return bongo.commonweb.HTTP_UNAUTHORIZED
 
     if not req.form.has_key("bongo-username") \
        or not req.form.has_key("bongo-password"):
-        return bongo.dragonfly.HTTP_UNAUTHORIZED
+        return bongo.commonweb.HTTP_UNAUTHORIZED
 
     credUser = req.form["bongo-username"].value
     credPass = req.form["bongo-password"].value
@@ -50,6 +50,6 @@ def AcceptCredentials(req):
 def authenhandler(req):
     if AcceptCredentials(req):
         req.log.debug("successful auth")
-        return bongo.dragonfly.HTTP_OK
+        return bongo.commonweb.HTTP_OK
     
-    return bongo.dragonfly.HTTP_UNAUTHORIZED
+    return bongo.commonweb.HTTP_UNAUTHORIZED

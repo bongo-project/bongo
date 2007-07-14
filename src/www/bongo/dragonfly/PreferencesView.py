@@ -2,9 +2,9 @@ from bongo.store.CommandStream import CommandError
 from bongo.store.StoreClient import StoreClient, DocTypes
 from bongo.dragonfly.ResourceHandler import ResourceHandler
 from bongo import BongoError
-from bongo.dragonfly.HttpError import HttpError
-from bongo.libs import msgapi
-import bongo.dragonfly
+from bongo.commonweb.HttpError import HttpError
+from libbongo.libs import msgapi
+import bongo.commonweb
 
 class DragonflyHandler(ResourceHandler):
     defaultPrefs = "{}"
@@ -14,11 +14,11 @@ class DragonflyHandler(ResourceHandler):
         # for preferences, require user == owner
         if req.user != rp.user:
             req.log.debug("Denying access to preferences of %s by %s" % (rp.user, req.user))
-            raise HttpError (bongo.dragonfly.HTTP_FORBIDDEN)
+            raise HttpError (bongo.commonweb.HTTP_FORBIDDEN)
 
         if rp.extension != 'json':
             req.log.debug("Invalid preferences extension: %s" % rp.extension)
-            raise HttpError (bongo.dragonfly.HTTP_FORBIDDEN)
+            raise HttpError (bongo.commonweb.HTTP_FORBIDDEN)
 
         store = self.GetStoreClient(req, rp)
 
@@ -45,7 +45,7 @@ class DragonflyHandler(ResourceHandler):
                 return self._SendJsonText(req, stream)
 
             req.write(stream)
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         finally:
             store.Quit()
 
@@ -53,11 +53,11 @@ class DragonflyHandler(ResourceHandler):
         # for preferences, require user == owner
         if req.user != rp.user:
             req.log.debug("Denying access to preferences of %s by %s" % (rp.user, req.user))
-            raise HttpError (bongo.dragonfly.HTTP_FORBIDDEN)
+            raise HttpError (bongo.commonweb.HTTP_FORBIDDEN)
 
         if rp.extension != 'json':
             req.log.debug("Invalid preferences extension: %s" % rp.extension)
-            raise HttpError (bongo.dragonfly.HTTP_FORBIDDEN)
+            raise HttpError (bongo.commonweb.HTTP_FORBIDDEN)
         
         length = int(req.headers_in["Content-Length"])
         req.log.debug("PreferencesView.do_PUT (%d bytes)", length)
@@ -67,7 +67,7 @@ class DragonflyHandler(ResourceHandler):
             jsob = self._JsonToObj(doc)
         except Exception, e:
             req.log.debug("Invalid JSON: %s: %s" % (e, doc))
-            raise HttpError (bongo.dragonfly.HTTP_BAD_REQUEST)
+            raise HttpError (bongo.commonweb.HTTP_BAD_REQUEST)
 
         doc = self._ObjToJson(jsob)
         store = self.GetStoreClient(req, rp)
@@ -83,7 +83,7 @@ class DragonflyHandler(ResourceHandler):
                 req.log.debug("Writing new doc %s", self.filename)
                 store.Write("/preferences", DocTypes.Unknown, doc, self.filename)
                 store.Quit()
-                return bongo.dragonfly.OK
+                return bongo.commonweb.OK
             else:
                 store.Quit()
                 raise
@@ -166,7 +166,7 @@ class RulesHandler(ResourceHandler):
         if not mdbrules :
             mdbrules = []
         
-        return bongo.dragonfly.OK
+        return bongo.commonweb.OK
 
     def _StringToRule(self, string) :
         if string is None :

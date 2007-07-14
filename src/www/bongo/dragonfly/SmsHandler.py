@@ -2,8 +2,8 @@ from ResourceHandler import HttpHandler
 from CalendarView import EventsHandler
 from bongo.store.StoreClient import StoreClient, DocTypes
 from bongo.CalCmd import Command
-from bongo.libs import cal, calcmd
-import bongo.dragonfly
+from libbongo.libs import cal, calcmd
+import bongo.commonweb
 import urllib
 
 class SmsHandler(HttpHandler):
@@ -23,22 +23,22 @@ class SmsHandler(HttpHandler):
 
         if (None == user):
             req.write("Couldn't find your calendar!")
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         
         store = StoreClient(user, user)
         if (None == store):
             req.write("Sorry, couldn't open your calendar.")
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         if (None == cmdstr):
             req.write("Please send a command.")
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
         
         print "command string %s" % (cmdstr)
         try:
             command = Command(cmdstr, '/bongo/America/New_York')
         except ValueError:
-            return bongo.dragonfly.HTTP_BAD_REQUEST
+            return bongo.commonweb.HTTP_BAD_REQUEST
 
         if command.GetType() == calcmd.NEW_APPT:
             
@@ -51,7 +51,7 @@ class SmsHandler(HttpHandler):
             req.write(command.GetData());
             req.write(" ");
             req.write(command.GetConciseDateTimeRange());
-            return bongo.dragonfly.OK
+            return bongo.commonweb.OK
 
         elif command.GetType() == calcmd.QUERY:
             timezone = '/bongo/America/New_York'

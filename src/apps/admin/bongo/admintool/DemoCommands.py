@@ -118,7 +118,7 @@ class DemoCommand(Command):
                     store.Flag(uid, DocFlags.Starred, FlagMode.Add)
 
     def ImportCalendars(self, storename, demo) :
-        from bongo.libs import msgapi
+        from libbongo.libs import msgapi
 
         dirname = demopath + "/calendars"
 
@@ -140,7 +140,7 @@ class DemoCommand(Command):
             msgapi.IcsImport(storename, calname, None, "file://" + path, None, None)
 
     def run(self, options, args):
-        from bongo.libs import msgapi
+        from libbongo.libs import msgapi
 
         if len(args) > 0:
             self.print_usage()
