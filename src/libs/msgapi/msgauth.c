@@ -8,6 +8,7 @@
 
 #include <config.h>
 #include <xpl.h>
+#include <bongoutil.h>
 #include <msgapi.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -65,5 +66,23 @@ MsgAuthGetUserStore(const char *user, struct sockaddr_in *store) {
 	store->sin_addr.s_addr = inet_addr("127.0.0.1");
 	store->sin_family = AF_INET;
 	store->sin_port = htons(689);
+	return TRUE;
+}
+
+/**
+ * Get a complete list of usernames on the system
+ * \param	list	A pointer we will set to the BongoArray of users
+ * \return		Whether this was successful
+ */
+BOOL
+MsgAuthUserList(BongoArray **list) {
+	BongoArray *userlist;
+
+	userlist = BongoArrayNew(sizeof (char *), 0);
+
+	char *admin = strdup("admin");
+	BongoArrayAppendValue(userlist, admin);
+
+	*list = userlist;
 	return TRUE;
 }
