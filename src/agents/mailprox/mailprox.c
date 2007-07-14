@@ -26,6 +26,7 @@
 #include <logger.h>
 #include <nmlib.h>
 #include <xplresolve.h>
+#include <bongoagent.h>
 
 #include "mailprox.h"
 
@@ -827,14 +828,6 @@ ProxyConfigMonitor(void)
 
     XplRenameThread(XplGetThreadID(), "Proxy Config Monitor");
 
-    Config = MDBCreateValueStruct(MailProxy.handle.directory, MsgGetServerDN(NULL));
-    if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_CONFIG_CHANGED, Config)>0) {
-        PrevConfigNumber = atol(Config->Value[0]);
-    } else {
-        PrevConfigNumber = 0;
-    }
-    MDBDestroyValueStruct(Config);
-
     while (MailProxy.state == MAILPROXY_STATE_RUNNING) {
         LoggerEvent(MailProxy.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PROXY_HEARTBEAT, LOG_INFO, 0, NULL, NULL, 0, 0, NULL, 0);
 
@@ -890,90 +883,26 @@ ProxyConfigMonitor(void)
     XplExitThread(TSR_THREAD, 0);
 }
 
+// MailProxy.contexts
+static BongoConfigItem ProxyConfig[] = {
+	{ BONGO_JSON_STRING, "o:postmaster/s", &MailProxy.postmaster },
+	{ BONGO_JSON_INT, "o:interval/i", &MailProxy.runInterval }, // in seconds
+	{ BONGO_JSON_INT, "o:max_threads/i", &MailProxy.max.threadsParallel },
+	{ BONGO_JSON_INT, "o:max_accounts/i", &MailProxy.max.accounts },
+	{ BONGO_JSON_STRING, "o:queue/s", &MailProxy.nmap.address },
+	{ BONGO_JSON_NULL, NULL, NULL }
+};
+
 static BOOL
 ReadConfiguration(void)
 {
-    unsigned long used;
-    unsigned char *ptr;
-    MDBValueStruct *vs;
+    if (! MsgGetServerCredential(MailProxy.nmap.hash))
+        return FALSE;
 
-    vs = MDBCreateValueStruct(MailProxy.handle.directory, MsgGetServerDN(NULL));
-    if (vs) {
-        if (MDBRead(MSGSRV_SELECTED_CONTEXT, MSGSRV_A_POSTMASTER, vs) > 0) {
-            ptr = strrchr(vs->Value[0], '\\');
-            if (ptr) {
-                strcpy(MailProxy.postmaster, ptr + 1);
-            } else {
-                strcpy(MailProxy.postmaster, vs->Value[0]);
-            }
+    if (! ReadBongoConfiguration(ProxyConfig, "mailproxy"))
+        return FALSE;
 
-            MDBFreeValues(vs);
-        } else {
-            strcpy(MailProxy.postmaster, "admin");
-        }
-
-        if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_TIME_INTERVAL, vs) > 0) {
-            /* Convert hours to seconds */
-            MailProxy.runInterval = atol(vs->Value[0]) * 3600;
-            if (!MailProxy.runInterval && (toupper(vs->Value[0][0]) == 'S')) {
-                MailProxy.runInterval = atol(vs->Value[0] + 1);
-            }
-
-            MDBFreeValues(vs);
-        }
-
-        if (!MailProxy.runInterval) {
-            MailProxy.runInterval = 3600 * 3;
-        }
-
-        if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_THREAD_LIMIT, vs) > 0) {
-            MailProxy.max.threadsParallel = atol(vs->Value[0]);
-
-            MDBFreeValues(vs);
-        }
-
-        if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_MAXIMUM_ITEMS, vs) > 0) {
-            MailProxy.max.accounts = atol(vs->Value[0]);
-
-            MDBFreeValues(vs);
-        }
-
-        if (MDBReadDN(MSGSRV_AGENT_PROXY, MSGSRV_A_STORE_SERVER, vs) > 0) {
-            MailProxy.contexts = MDBCreateValueStruct(MailProxy.handle.directory, NULL);
-            for (used = 0; used < vs->Used; used++) {
-                ptr = strrchr(vs->Value[used], '\\');
-                if (ptr) {
-                    *ptr = '\0';
-                }
-
-                MDBReadDN(vs->Value[used], MSGSRV_A_CONTEXT, MailProxy.contexts);
-            }
-
-            MDBFreeValues(vs);
-        } else {
-            MDBDestroyValueStruct(vs);
-            return(FALSE);
-        }
-
-        if (MsgReadIP(MSGSRV_AGENT_PROXY, MSGSRV_A_QUEUE_SERVER, vs)) {
-            strcpy(MailProxy.nmap.address, vs->Value[0]);
-
-            LoggerEvent(MailProxy.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_QUEUE_SERVER", vs->Value[0], 0, 0, NULL, 0);
-        }
-
-        MDBFreeValues(vs);
-
-        MDBSetValueStructContext(NULL, vs);
-        if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, vs)>0) { 
-            HashCredential(MsgGetServerDN(NULL), vs->Value[0], MailProxy.nmap.hash);
-        }
-
-        MDBDestroyValueStruct(vs);
-
-        return(TRUE);
-    }
-
-    return(FALSE);
+    return(TRUE);
 }
 
 XplServiceCode(SignalHandler)

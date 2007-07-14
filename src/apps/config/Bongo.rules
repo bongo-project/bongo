@@ -24,6 +24,7 @@ conf_defaults =					\
 	src/apps/config/config/antivirus	\
 	src/apps/config/config/imap		\
 	src/apps/config/config/pop3		\
+	src/apps/config/config/mailproxy	\
 	src/apps/config/config/antispam
 
 confdir = $(pkgdatadir)/conf
