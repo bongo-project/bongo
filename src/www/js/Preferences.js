@@ -295,7 +295,17 @@ Dragonfly.Preferences.Editor.build = function (loc)
         composerhtml.set (composerpage);
         
         var calendarhtml = new d.HtmlBuilder ();
-        calendarhtml.push ('<p>Nothing to see here, move along.</p>');
+        calendarhtml.push ('<table border="0" cellspacing="0">',
+            '<tr><td><label>', _('Default view:'), '</label></td>',
+            '<td><select id="defaultcalview">',
+            '<option value="month">', _('Month'), '</option>',
+            '<option value="week">', _('Week'), '</option>',
+            '<option value="upcoming">', _('Upcoming'), '</option>',
+            '<option value="day">', _('Day'), '</option>',
+            '</select></td></tr>',
+            '<tr><td><label>', _('Day start:'), '</label></td>',
+            '<td><input type="text" style="width: 20px;" id="daystart"></td></tr>',
+            '</table>');
         calendarhtml.set (calendarpage);
         
         var form = [
@@ -329,6 +339,8 @@ Dragonfly.Preferences.Editor.save = function ()
     p.prefs.mail.autoBcc = $('autobcc').value;
     p.prefs.mail.signature = $('signature').value;
     p.prefs.mail.usesig = $('usesig').checked;
+    p.prefs.calendar.defaultView = $('defaultcalview').value;
+    p.prefs.calendar.dayStart = $('daystart').value;
     
     // Finish up
     p.save();
@@ -350,12 +362,23 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
     document.title = 'Preferences: ' + Dragonfly.title;
 
     // Mail prefs
-    $('from').value = jsob.mail.from;
+    if (jsob.mail && jsob.mail.from)
+    {
+        $('from').value = jsob.mail.from;
+    }
+    else
+    {
+        logWarning('You have no prefs. I should probably warn you, or.. something.');
+    }
     
-    if (jsob.mail.autoBcc)   { $('autobcc').value       = jsob.mail.autoBcc;   }
-    if (jsob.mail.pageSize)  { $('mailpagesize').value  = jsob.mail.pageSize;  }
-    if (jsob.mail.signature) { $('signature').value     = jsob.mail.signature; }
-    if (jsob.mail.usesig)    { $('usesig').checked      = jsob.mail.usesig;    }
+    if (jsob.mail.autoBcc)         { $('autobcc').value        = jsob.mail.autoBcc;         }
+    if (jsob.mail.pageSize)        { $('mailpagesize').value   = jsob.mail.pageSize;        }
+    if (jsob.mail.signature)       { $('signature').value      = jsob.mail.signature;       }
+    if (jsob.mail.usesig)          { $('usesig').checked       = jsob.mail.usesig;          }
+    
+    // Calendar prefs
+    if (jsob.calendar.defaultView) { $('defaultcalview').value = jsob.calendar.defaultView; }
+    if (jsob.calendar.dayStart)    { $('daystart').value       = jsob.calendar.dayStart;    }
        
     logDebug('We just loaded.');
 };

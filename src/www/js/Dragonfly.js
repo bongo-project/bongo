@@ -950,7 +950,7 @@ Dragonfly.start = function ()
                         $('login-user').value = ''; 
                         $('login-password').value = '';
                         Element.setText ('user-name', d.userName);
-                        Element.setHTML ('logout-text', _('Log out') + ' ' + d.userName);
+                        Element.setHTML ('logout-text', d.format(_('Log out {0}...'), d.userName));
                         showElement ('content');
                         
                         // Add administration link if we're admin

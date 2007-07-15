@@ -124,9 +124,16 @@ Dragonfly.Calendar.OccurrencePopup.prototype.edit = function (evt, occurrence, e
     this.setClosable (false);
     delete this.changes; // may be set if we're editing after a save but before dispose
     if (occurrence) {
-        this.occurrence = (typeof occurrence == 'string')
-            ? d.JCal.buildNewEvent (occurrence).occurrences[0]
-            : occurrence;
+        if (!occurrence.pageX)
+        {
+            this.occurrence = (typeof occurrence == 'string')
+                ? d.JCal.buildNewEvent (occurrence).occurrences[0]
+                : occurrence;
+        }
+        else
+        {
+            // Rebuild the event?
+        }
     } else if (!this.occurrence) {
         this.occurrence = d.JCal.buildNewEvent ().occurrences[0];
     }

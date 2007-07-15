@@ -91,7 +91,7 @@ Dragonfly.Mail.ConversationView.formatPart = function (loc, msg, part)
                     html.push (v.formatPart(loc, msg, child));
                 } else {
                     if (!inAttachments) {
-                        html.push ('<div class="msg-attachments"><b>Attachments:</b><ul>');
+                        html.push ('<div class="msg-attachments"><b>', _('Attachments:'), '</b><ul>');
                         inAttachments = 1;
                     }
                     var partLoc = new d.Location (loc);
