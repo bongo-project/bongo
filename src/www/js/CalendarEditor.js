@@ -1038,7 +1038,7 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.deleteClicked = function (e
     var d = Dragonfly;
 
     var loc = new d.Location ({ tab: 'mail', conversation: this.invite.convId, message: this.invite.bongoId });
-    d.notify (_('genericSavingChanges'), true);
+    d.notify (_('Saving changes...'), true);
     d.request ('POST', loc, { method: 'delete' }).addCallbacks (
         bind ('disposeAndReload', this),
         bind ('showError', this));
@@ -1049,7 +1049,7 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.junkClicked = function (evt
     var d = Dragonfly;
 
     var loc = new d.Location ({ tab: 'mail', conversation: this.invite.convId, message: this.invite.bongoId });
-    d.notify (_('genericSavingChanges'), true);
+    d.notify (_('Saving changes...'), true);
     d.request ('POST', loc, { method: 'junk' }).addCallbacks (
         bind ('disposeAndReload', this),
         bind ('showError', this));
@@ -1059,7 +1059,7 @@ Dragonfly.Calendar.CalendarInvitationPopup.prototype.ignoreClicked = function (e
 {
     var d = Dragonfly;
     var loc = new d.Location ({ tab: 'mail', conversation: this.invite.convId, message: this.invite.bongoId });
-    d.notify (_('genericSavingChanges'), true);
+    d.notify (_('Saving changes...'), true);
     var req = d.request ('POST', loc, { method: 'archive' }).addCallbacks (
         bind ('disposeAndReload', this),
         bind ('showError', this));

@@ -325,7 +325,7 @@ Dragonfly.Summary.addCalInvites = function (loc, jsob)
         var cal = s.calInvites[bongoId];
         html.push ('<li><a bongoid="', bongoId, '">',
                    d.escapeHTML (cal.calendarName),
-                   ' ', _('summaryInviteFrom'), ' ',
+                   ' ', _('from'), ' ',
                    d.escapeHTML (cal.from[0][0]),
                    '</a></li>');
     }

@@ -154,7 +154,7 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
         }
     }
 
-    html.push ('<li><a id="', this.addAttachment, '">', _('mailAttachLabel'), '</a></li></ul>',
+    html.push ('<li><a id="', this.addAttachment, '">', _('Attach file...'), '</a></li></ul>',
                '<tr><td colspan="2"><textarea id="', this.body, '" class="body" cols="75" rows="15"  wrap="on">',
                d.escapeHTML (this.msg.body), '</textarea></td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',

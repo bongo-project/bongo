@@ -277,7 +277,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.getScope = function (forSave)
         '<label><input type="radio" name="scope">', _('all events in series'), '</label>',
         '</form>'];
     var actions = [
-        { value: _('genericCancel'), onclick: 'dispose'},
+        { value: _('Cancel'), onclick: 'dispose'},
         { value: forSave ? _('Save') : _('Delete'), onclick: partial (this.dispatchWithScope, forSave) }];
     this.setForm (form, actions);
     this.show();
@@ -377,7 +377,7 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildSharingTab = function (page)
     var c = d.Calendar;
 
     var html = new d.HtmlBuilder (
-        _('includeEventLabel'),
+        _('Include this event in:'),
         '<ul id="', this.calendarsId, '" class="scrollv" style="max-height: 8em">');
 
     var calIds = this.occurrence.vcalendar.calendarIds;
