@@ -284,8 +284,12 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         return false;
     }
 
-    //msg = msg || this.getCurrentMessage ();
-    msg = this.getCurrentMessage();
+    msg = msg;
+    if (!msg || !msg.from)
+    {
+        logDebug('Arg passed was an event, not a real message.');
+        msg = this.getCurrentMessage();
+    }
 
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
