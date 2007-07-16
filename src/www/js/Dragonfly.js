@@ -342,11 +342,13 @@ Dragonfly.go = function (path)
     }
     d.contentIFrameZone.disposeZone();
 
-    //logDebug (startDate + ': Loading ', path, ':', serializeJSON (loc));
-    //logDebug ('    from: ', d.currentView);
-    //logDebug ('    location: ', window.location);
-    //logDebug ('    hash: ', window.location.hash);
-    //logDebug ('    loc: ', serializeJSON(loc));
+    /*logDebug (startDate + ': Loading ', path, ':', serializeJSON (loc));
+    logDebug ('    from: ', d.currentView);
+    logDebug ('    location: ', window.location);
+    logDebug ('    hash: ', window.location.hash);
+    logDebug ('    loc: ', serializeJSON(loc));*/
+    
+    logDebug('curLoc: ', loc);
 
     if (!loc || !loc.valid) {
         logError ('invalid path: ' + path);
@@ -368,10 +370,22 @@ Dragonfly.go = function (path)
     }
 
     prof.toggle ('request');
+    logDebug('checking if ' + loc.handler + ' contains function getData(loc)...');
     if (h.getData) {
+        logDebug('Yup!');
         self.def = h.getData (loc);
     } else {
-        self.def = d.requestJSON ('GET', loc);
+        logDebug('Nope! Checking if ' + loc.tab + ' contains function getData(loc)...');
+        if (v.getData)
+        {
+            logDebug('Yup!');
+            self.def = v.getData(loc);
+        }
+        else
+        {
+            logDebug('Nope!');
+            self.def = d.requestJSON ('GET', loc);
+        }
     }
     
     self.def.loc = loc;

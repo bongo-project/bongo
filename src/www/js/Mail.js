@@ -8,14 +8,33 @@ Dragonfly.tabs['mail'] = Dragonfly.Mail;
 Dragonfly.Mail.handlers = { };
 Dragonfly.Mail.sets = [ 'all', 'inbox', 'starred', 'sent', 'drafts', 'trash', 'junk' ];
 Dragonfly.Mail.setLabels = {
-    'all':     'All',
-    'inbox':   'Inbox',
-    'starred': 'Starred',
-    'sent':    'Sent',
-    'drafts':  'Drafts',
-    'trash':   'Trash',
-    'junk':    'Junk'
+    'all':     N_('All'),
+    'inbox':   N_('Inbox'),
+    'starred': N_('Starred'),
+    'sent':    N_('Sent'),
+    'drafts':  N_('Drafts'),
+    'trash':   N_('Trash'),
+    'junk':    N_('Junk')
 };
+
+Dragonfly.Mail.getData = function (loc)
+{
+    logDebug('Dragonfly.Mail.getData(loc) called.');
+    var d = Dragonfly;
+    var m = d.Mail;
+    
+    var view = m.getView(loc);
+    if (view.getData)
+    {
+        logDebug('loc ', loc, ' has a getView function.');
+        return view.getData(loc);
+    }
+    else
+    {
+        logDebug('No getView function - falling back to requestJSON.');
+        return d.requestJSON ('GET', loc);
+    }
+}
 
 Dragonfly.Mail.getView = function (loc)
 {

@@ -337,8 +337,11 @@ Dragonfly.Preferences.Editor.save = function ()
     // Mail prefs
     p.prefs.mail.from = $('from').value;
     p.prefs.mail.autoBcc = $('autobcc').value;
+    p.prefs.mail.pageSize = $('mailpagesize').value;
     p.prefs.mail.signature = $('signature').value;
     p.prefs.mail.usesig = $('usesig').checked;
+    
+    // Calendar prefs
     p.prefs.calendar.defaultView = $('defaultcalview').value;
     p.prefs.calendar.dayStart = $('daystart').value;
     
