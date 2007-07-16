@@ -193,6 +193,7 @@ Dragonfly.showLoginPane = function ()
 
     if (location.hash == '#LoggedOut') {
         Dragonfly.setLoginMessage (Dragonfly.logoutMessage);
+        d.langFaliure = true;   // Stops us from removing the 'You have logged out' message when we load the lang.
         location.hash = (Dragonfly.isWebkit) ? '' : '#';
         $('login-user').focus();
     } else {

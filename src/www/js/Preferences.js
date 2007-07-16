@@ -32,6 +32,9 @@ Dragonfly.Preferences.defaultPrefs = {
     addressbook: {
         me: null
     },
+    mail: {
+        colorQuotes: true
+    },
     calendar: {
         dayStart: 7,
         defaultView: 'month',
@@ -291,6 +294,7 @@ Dragonfly.Preferences.Editor.build = function (loc)
             '<td><select id="htmlmsg"><option value="show">', _('Yes'), '</option><option value="ptext">', _('Prefer plain-text'), '</option><option value="hide">', _('No'), '</option></select></td></tr>',
             '<tr><td><label>', _('Page size:'), '</label></td>',
             '<td><input type="text" style="width: 20px;" id="mailpagesize"> ', _('items'), '</td></tr>',
+            '<tr><td colspan="2"><input type="checkbox" id="colorquotes" name="colorquotes" checked /><label for="colorquotes">', _('Colorize quotes in plaintext messages.'), '</label></td>',
             '</table>');
         composerhtml.set (composerpage);
         
@@ -303,8 +307,8 @@ Dragonfly.Preferences.Editor.build = function (loc)
             '<option value="upcoming">', _('Upcoming'), '</option>',
             '<option value="day">', _('Day'), '</option>',
             '</select></td></tr>',
-            '<tr><td><label>', _('Day start:'), '</label></td>',
-            '<td><input type="text" style="width: 20px;" id="daystart"></td></tr>',
+//            '<tr><td><label>Day start:</label></td>',
+//            '<td><input type="text" style="width: 20px;" id="daystart" value="7"></td></tr>',
             '</table>');
         calendarhtml.set (calendarpage);
         
@@ -340,10 +344,11 @@ Dragonfly.Preferences.Editor.save = function ()
     p.prefs.mail.pageSize = $('mailpagesize').value;
     p.prefs.mail.signature = $('signature').value;
     p.prefs.mail.usesig = $('usesig').checked;
+    p.prefs.mail.colorQuotes = $('colorquotes').checked;
     
     // Calendar prefs
     p.prefs.calendar.defaultView = $('defaultcalview').value;
-    p.prefs.calendar.dayStart = $('daystart').value;
+    p.prefs.calendar.dayStart = 7;  // Yes, hardwire this one (for now)!
     
     // Finish up
     p.save();
@@ -378,10 +383,11 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
     if (jsob.mail.pageSize)        { $('mailpagesize').value   = jsob.mail.pageSize;        }
     if (jsob.mail.signature)       { $('signature').value      = jsob.mail.signature;       }
     if (jsob.mail.usesig)          { $('usesig').checked       = jsob.mail.usesig;          }
+    if (jsob.mail.colorQuotes)     { $('colorquotes').checked  = jsob.mail.colorQuotes;     }
     
     // Calendar prefs
     if (jsob.calendar.defaultView) { $('defaultcalview').value = jsob.calendar.defaultView; }
-    if (jsob.calendar.dayStart)    { $('daystart').value       = jsob.calendar.dayStart;    }
+    //if (jsob.calendar.dayStart)    { $('daystart').value       = jsob.calendar.dayStart;    }
        
     logDebug('We just loaded.');
 };

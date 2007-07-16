@@ -874,3 +874,62 @@ Dragonfly.Mail.ToMe.load = function (loc, jsob)
 
     return v.load (loc, jsob);
 };
+
+Dragonfly.Mail.yeahBaby = function (msg)
+{
+    var d = Dragonfly;
+    
+    if (!d.Preferences.prefs.mail.colorQuotes)
+    {
+        return d.htmlizeText (msg);
+    }
+    
+    // Split the message up by newlines.
+    msg = msg.split("\n");
+    
+    var colors = new Array();
+    
+    // Loop through and find quotes.
+    for (i=0;i<msg.length;i++)
+    {
+        // Check if it starts with >
+        if (msg[i].substring(0, 1) == ">")
+        {
+            // Loop and find out how deep we are.
+            var depth = 0;
+            for (x=0;x<msg[i].length;x++)
+            {
+                if (msg[i][x] == '>')
+                {
+                    depth++;
+                }
+            }
+            
+            var color = '';
+            if (colors.length < depth)
+            {
+                color = d.getRandomColor();
+                
+                // Make sure the color isn't the same as parent quote.
+                if (colors.length > 0)
+                {
+                    while (color == colors[depth - 1])
+                    {
+                        color = d.getRandomColor();
+                    }
+                }
+                
+                // Push it onto the array to get later if needed.
+                colors.push(color);
+            }
+            else
+            {
+                color = colors[depth - 1];
+            }
+            
+            msg[i] = '<span style="color: ' + color + ';">' + d.htmlizeText (msg[i]) + '</span>';
+        }
+    }
+    
+    return '<div style="font-family:\'Bitstream Vera Sans Mono\', \'Monaco\', \'Courier\', monospace;">' + msg.join("<br />") + '</div>';
+}

@@ -905,7 +905,7 @@ Dragonfly.requestJSONRPC = function (rpcMethod, url  /*, ... */)
     return d.requestJSON ('POST', url, jsob).addCallback (d.getJsonRpcResult);
 };
 
-Dragonfly.Colors = [ 'yellow', 'orange', 'brown', 'red', 'gray', 'green', 'blue', 'indigo', 'violet' ];
+Dragonfly.Colors = [ 'brown', 'red', 'gray', 'green', 'blue', 'indigo', 'maroon', 'navy', 'olive', 'purple', 'MidnightBlue', 'DimGrey', 'DarkSlateGrey', 'teal', 'SlateBlue', 'SeaGreen', 'Sienna', 'DarkGoldenRod', 'BlueViolet'  ];
 Dragonfly.getRandomColor = function ()
 {
     return Dragonfly.Colors[Math.floor ((Math.random() * 100) % Dragonfly.Colors.length)];
