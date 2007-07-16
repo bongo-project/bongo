@@ -1,0 +1,31 @@
+{
+	"version": 1,
+    "postmaster" : "admin",
+    "officialname" : "admin",
+    "limitremoteprocessing" : false,
+    "limitremotebegweekday" : 0,
+    "limitremotebegweekend" : 0,
+    "limitremoteendweekday" : 0,
+    "limitremoteendweekend" : 0,
+    "queuetuning_concurrent" : 0,
+    "queuetuning_sequential" : 0,
+    "queuetuning_load_high" : 0,
+    "queuetuning_load_low" : 0,
+    "queuetuning_trigger" : 0,
+    "queuetuning_debug" : false,
+    "queuetimeout" : 0,
+    "quotamessage" : "",
+    "port" : 0,
+    "forwardundeliverable_enabled" : false,
+    "forwardundeliverable_to" : "",
+    "queueinterval" : 0,
+    "minimumfreespace" : 0,
+    "trustedhosts" : [
+        ""
+    ],
+    "rtsantispamconfig_enabled" : false,
+    "rtsantispamconfig_delay" : 0,
+    "rtsantispamconfig_threshold" : 0,
+    "bouncereturn" : false,
+    "bounceccpostmaster" : false
+}
