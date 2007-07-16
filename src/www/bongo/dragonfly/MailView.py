@@ -23,7 +23,8 @@ import urllib
 import traceback
 
 class ConversationsHandler(ResourceHandler):
-    pageSize = 30
+    ## Default number of items shown in a mail list view.
+    defaultPageSize = 30
 
     def _UpdateComposer(self, composer, jsob) :
         composer.SetAddressLine("From", jsob.get("from"))
@@ -541,16 +542,6 @@ class ConversationsHandler(ResourceHandler):
             if resourceLen > 2 :
                 rp.handlerData["attachment"] = resource.pop(0)
             
-        if not rp.handlerData.has_key("conversation") :
-            if rp.page is None:
-                start = end = -1
-            else:
-                start = self.pageSize * (rp.page - 1)
-                end = start + self.pageSize - 1
-
-            rp.handlerData["start"] = start
-            rp.handlerData["end"] = end        
-        
     def ParsePath(self, rp) :
         if (rp.resource) :        
             self._ParseResource(rp, rp.resource.split("/"))
@@ -569,9 +560,18 @@ class ConversationsHandler(ResourceHandler):
             elif rp.handlerData.has_key("conversation") :
                 return self._SendJson(req, self._GetConversation(store, rp, [ 1, 1, 1, 1 ]))
             else :
+                if not rp.handlerData.has_key("conversation") :
+                    # We have to work out what IDs to start and end on with the Mail List view.
+                    # This involves trying to get the user's preferred pageSize, set in the DF prefs.
+                    if rp.page is None:
+                        start = end = -1
+                    else:
+                        pageSize = self._GetPageSize(store)
+                        start = pageSize * (rp.page - 1)
+                        end = start + pageSize - 1
                 return self._SendJson (req, self._GetConversationList(store, rp,
-                                                                      [rp.handlerData["start"], rp.handlerData["end"],
-                                                                       rp.handlerData["start"], rp.handlerData["end"],
+                                                                      [start, end,
+                                                                       start, end,
                                                                        True]))
         finally :
             store.Quit()
@@ -790,7 +790,7 @@ class ConversationsHandler(ResourceHandler):
         ret = {}
         if showTotal:
             ret["total"] = storeConvsIter.total
-            ret["pageSize"] = self.pageSize
+            ret["pageSize"] = self._GetPageSize(store)
         ret["conversations"] = convs
 
         if propsStart == -1:
@@ -930,6 +930,21 @@ class ConversationsHandler(ResourceHandler):
         ret["result"] = result
 
         return self._SendJson(req, ret)
+
+    ## Returns the optimum number of items to show for the mail list view.
+    #  @brief Looks at the Dragonfly preferences for a user-defined pageSize. If one exists, try to use it. If not, use self.defaultPageSize. This then defines how many mail items are shown per page in the mail list view.
+    #  @param self The object pointer.
+    #  @param store The store object.
+    #  @return Number of items to show.
+    def _GetPageSize(self, store):
+        prefs = self._JsonToObj(store.Read("/preferences/dragonfly"))
+        if not prefs['mail'].has_key('pageSize'):
+            return self.defaultPageSize
+        else:
+            try:
+                return int(prefs['mail']['pageSize'])
+            except ValueError:
+                return self.defaultPageSize
 
 class ContactsHandler(ConversationsHandler):
     groupSize = 8
