@@ -1767,8 +1767,8 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     else {
         /* The other server supports ESMTP */
 
-        /* Should we deliver via SSL? */
-        if (AllowClientSSL && (Extensions & EXT_TLS)) {
+        // SSL delivery disabled per bug #9536
+        if (0 && AllowClientSSL && (Extensions & EXT_TLS)) {
             snprintf (Answer, sizeof (Answer), "STARTTLS\r\n");
             if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
