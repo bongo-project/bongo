@@ -937,14 +937,11 @@ class ConversationsHandler(ResourceHandler):
     #  @param store The store object.
     #  @return Number of items to show.
     def _GetPageSize(self, store):
-        prefs = self._JsonToObj(store.Read("/preferences/dragonfly"))
-        if not prefs['mail'].has_key('pageSize'):
+        try:
+            prefs = self._JsonToObj(store.Read("/preferences/dragonfly"))
+            return int(prefs['mail']['pageSize'])
+        except:
             return self.defaultPageSize
-        else:
-            try:
-                return int(prefs['mail']['pageSize'])
-            except ValueError:
-                return self.defaultPageSize
 
 class ContactsHandler(ConversationsHandler):
     groupSize = 8
