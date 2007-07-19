@@ -666,6 +666,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
 
 Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
 {
+    var d = Dragonfly;
     this.hide();
     var text = [
         '<p>', d.format(_('Are you sure you want to delete the contact "{0}"? This cannot be undone.'),
