@@ -126,7 +126,6 @@ include_subdirs :=				\
 	src/agents/imap/tests			\
 	src/agents/itip				\
 	src/agents/mailprox			\
-	src/agents/pluspack			\
 	src/agents/pop				\
 	src/agents/queue			\
 	src/agents/rules			\
@@ -175,7 +174,6 @@ include src/libs/calcmd/Bongo.rules
 include src/libs/calcmd/tests/Bongo.rules
 include src/libs/python/Bongo.rules
 include src/libs/python/libbongo/Bongo.rules
-include src/agents/addressbook/Bongo.rules
 include src/agents/alarm/Bongo.rules
 include src/agents/antispam/Bongo.rules
 include src/agents/avirus/Bongo.rules
@@ -191,7 +189,6 @@ include src/agents/imap/Bongo.rules
 include src/agents/imap/tests/Bongo.rules
 include src/agents/itip/Bongo.rules
 include src/agents/mailprox/Bongo.rules
-include src/agents/pluspack/Bongo.rules
 include src/agents/pop/Bongo.rules
 include src/agents/queue/Bongo.rules
 include src/agents/rules/Bongo.rules
