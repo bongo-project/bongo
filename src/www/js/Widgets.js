@@ -361,6 +361,7 @@ Dragonfly.PopupBuble.prototype.connectHtml = function (elem)
             this.dispose();
         }
     }.bindAsEventListener(this));
+        
     return elem;
 };
 
@@ -378,6 +379,7 @@ Dragonfly.PopupBuble.prototype.addPoppedOut = function ()
 {
     if (this.elem) {
         addElementClass (this.elem, 'popped-out');
+        //Dragonfly.lastPopup = this;
     }
 };
 
@@ -560,7 +562,7 @@ Dragonfly.PopupBuble.prototype.show = function (elem, position)
     }
     if (!this.elem) {
         return;
-    }
+    }   
 
     this.addPoppedOut ();
 
@@ -621,7 +623,7 @@ Dragonfly.PopupBuble.prototype.show = function (elem, position)
     }
 
     $(this.id).style.visibility = 'visible';
-
+    
     return;
     logDebug ('positioning summary:');
     logDebug ('     elemMetrics:', repr (elemMetrics));

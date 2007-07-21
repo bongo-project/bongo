@@ -65,17 +65,11 @@ Dragonfly.Calendar.BongoCalendar.prototype.parseJSON = function (jsob)
 {
     var d = Dragonfly;
     
-    // TODO: This is really nasty.
     function calColor (calname)
     {
         return { 
             'Personal': 'blue', 
-            'Red Sox': 'red',
-            'US Holidays': 'orange',
             'Holidays': 'orange',
-            'The Moon': 'gray',
-            'Novell': 'red',
-            'openSUSE': 'green',
             'Meetings': 'brown'
         }[calname] || d.getRandomColor();
     }
@@ -95,7 +89,6 @@ Dragonfly.Calendar.BongoCalendar.prototype.parseJSON = function (jsob)
 
 	this.subscriptionUrl = "/user/" + d.userName + "/calendar/" + d.escapeHTML(this.cal.name) + "/events";
 
-    /*
     // this should probably trust the server...
     switch (this.type) {
     case 'personal':
@@ -112,7 +105,6 @@ Dragonfly.Calendar.BongoCalendar.prototype.parseJSON = function (jsob)
         this.cal.username = jsob.username;
         break;
     }
-    */
 };
 
 Dragonfly.Calendar.BongoCalendar.prototype.refresh = function ()

@@ -241,90 +241,90 @@ Dragonfly.Preferences.Editor.parsePath = function (loc, path)
 Dragonfly.Preferences.Editor.build = function (loc)
 {
     var d = Dragonfly;
-    var showmethemoney = true;
     
     Element.setHTML ('toolbar', '');
     Element.hide ('toolbar');
     
     var html = new d.HtmlBuilder ();
+    // First, build the container.
+    html.push ('<div id="preferences-container">', '</div>');
+    html.set ('content-iframe');
     
-    if (!showmethemoney)
-    {
-        // Push the following HTML if we haven't completed our handler!
-        html.push ('<div id="search-no-results" class="scrollv">', '<table style="margin: auto;"><tr>',
-                   '<td><img src="img/big-info.png" style="float: left;" /></td>',
-                   '<td style="vertical-align:middle;"><h3>The Preferences editor goes here! <code>:)</code></h3></td>',
-                   '</tr></table></div>');
-        
-        html.set ('content-iframe');
-    }
-    else
-    {
-        // First, build the container.
-        html.push ('<div id="preferences-container">', '</div>');
-        html.set ('content-iframe');
-        
-        // Come up with some magic tabs!
-        var notebook = new d.Notebook();
-        var userpage = notebook.appendPage('About Me');
-        var composerpage = notebook.appendPage('Mail');
-        var calendarpage = notebook.appendPage('Calendar');
-        
-        var userhtml = new d.HtmlBuilder ();
-        userhtml.push ('<table border="0" cellspacing="0">',
-            '<tr><td><label>Name:</label></td>',
-            '<td><input type="text"></td></tr>',
-            '<tr><td><label>Timezone:</label></td>',
-            '<td><span id="tzpicker"></span></td></tr>',
-            '</table>');
-        userhtml.set (userpage);
-        
-        var composerhtml = new d.HtmlBuilder ();
-        composerhtml.push ('<table border="0" cellspacing="0">', 
-            '<tr><td><label>', _('From address:'), '</label></td>', 
-            '<td><input type="text" id="from" /></td></tr>', 
-            '<tr><td colspan="2"><span style="font-size: 80%;">Please don\'t abuse the above feature for now.</span></td></tr>',
-            '<tr><td><label>', _('Auto BCC:'), '</label></td>',
-            '<td><input type="text" id="autobcc" /></td></tr>',
-            '<tr><td><label>', _('Signature:'), '</label></td>',
-            '<td><textarea rows="3" cols="30" id="signature"></textarea><br />',
-            '<input type="checkbox" id="usesig" name="usesig" /><label for="usesig">', _('Apply signature to outgoing mail'), '</label>',
-            '</td></tr>',
-            '<tr><td><label>', _('Show HTML messages:'), '</label></td>',
-            '<td><select id="htmlmsg"><option value="show">', _('Yes'), '</option><option value="ptext">', _('Prefer plain-text'), '</option><option value="hide">', _('No'), '</option></select></td></tr>',
-            '<tr><td><label>', _('Page size:'), '</label></td>',
-            '<td><input type="text" style="width: 20px;" id="mailpagesize"> ', _('items'), '</td></tr>',
-            '<tr><td colspan="2"><input type="checkbox" id="colorquotes" name="colorquotes" checked /><label for="colorquotes">', _('Colorize quotes in plaintext messages.'), '</label></td>',
-            '</table>');
-        composerhtml.set (composerpage);
-        
-        var calendarhtml = new d.HtmlBuilder ();
-        calendarhtml.push ('<table border="0" cellspacing="0">',
-            '<tr><td><label>', _('Default view:'), '</label></td>',
-            '<td><select id="defaultcalview">',
-            '<option value="month">', _('Month'), '</option>',
-            '<option value="week">', _('Week'), '</option>',
-            '<option value="upcoming">', _('Upcoming'), '</option>',
-            '<option value="day">', _('Day'), '</option>',
-            '</select></td></tr>',
+    // Come up with some magic tabs!
+    var notebook = new d.Notebook();
+    var userpage = notebook.appendPage('General');
+    var mailpage = notebook.appendPage('Mail');
+    var calendarpage = notebook.appendPage('Calendar');
+    var composerpage = notebook.appendPage('Composer');
+    
+    var userhtml = new d.HtmlBuilder ();
+    userhtml.push ('<table border="0" cellspacing="0">',
+        '<tr><td><label>', _('Profile:'), '</td><td><form id="userprofile">', '</form></td></tr>',
+        '<tr><td><label>', _('Timezone:'), '</label></td>',
+        '<td><span id="tzpicker"></span></td></tr>',
+        '</table>');
+    userhtml.set (userpage);
+    
+    var mailhtml = new d.HtmlBuilder ();
+    mailhtml.push ('<table border="0" cellspacing="0">', 
+        '<tr><td><label for="from">', _('From address:'), '</label></td>', 
+        '<td><input type="text" id="from" name="from" /></td></tr>', 
+        '<tr><td colspan="2"><span style="font-size: 80%;">Please don\'t abuse the above feature for now.</span></td></tr>',
+        '<tr><td><label for="autobcc">', _('Auto BCC:'), '</label></td>',
+        '<td><input type="text" name="autobcc" id="autobcc" /></td></tr>',
+        '<tr><td><label for="signature">', _('Signature:'), '</label></td>',
+        '<td><textarea rows="3" cols="30" name="signature" id="signature"></textarea><br />',
+        '<input type="checkbox" id="usesig" name="usesig" /><label for="usesig">', _('Apply signature to outgoing mail'), '</label>',
+        '</td></tr>',
+        '<tr><td><label for="htmlmsg">', _('Show HTML messages:'), '</label></td>',
+        '<td><select id="htmlmsg" name="htmlmsg"><option value="show">', _('Yes'), '</option><option value="ptext">', _('Prefer plain-text'), '</option><option value="hide">', _('No'), '</option></select></td></tr>',
+        '<tr><td><label for="mailpagesize">', _('Page size:'), '</label></td>',
+        '<td><input type="text" style="width: 20px;" name="mailpagesize" id="mailpagesize"> ', _('items'), '</td></tr>',
+        '<tr><td colspan="2"><input type="checkbox" id="colorquotes" name="colorquotes" checked /><label for="colorquotes">', _('Colorize quotes in plain-text messages.'), '</label></td>',
+        '</table>');
+    mailhtml.set (mailpage);
+    
+    var calendarhtml = new d.HtmlBuilder ();
+    calendarhtml.push ('<table border="0" cellspacing="0">',
+        '<tr><td><label for="defaultcalview">', _('Default view:'), '</label></td>',
+        '<td><select name="defaultcalview" id="defaultcalview">',
+        '<option value="month">', _('Month'), '</option>',
+        '<option value="week">', _('Week'), '</option>',
+        '<option value="upcoming">', _('Upcoming'), '</option>',
+        '<option value="day">', _('Day'), '</option>',
+        '</select></td></tr>',
+        '<tr><td><label>', _('Share with others by default?'), '</label></td>',
+        '<input type="radio" name="calshare" value="public" id="calshareyes"><label for="calshareyes">Yes</label>&nbsp;',
+        '<input type="radio" name="calshare" value="private" id="calshareno"><label for="calshareno">No</label>',
+        '</td></tr>',
 //            '<tr><td><label>Day start:</label></td>',
 //            '<td><input type="text" style="width: 20px;" id="daystart" value="7"></td></tr>',
-            '</table>');
-        calendarhtml.set (calendarpage);
-        
-        var form = [
-        '<form id="someid">', notebook, '</form>'];
-        
-        var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Save'), onclick: 'save'}];        
-        
-        // Now, fill in the content with tabs & buttons.
-        this.contentId = 'preferences-container';
-        this.buildInterface (form, actions);
-        logDebug('Created UI OK - setting up TzSelector widget...');
-        
-        // Setup timezone widget
-        d.tzselector = new d.TzSelector (d.curTzid, 'tzpicker', true);
-    }
+        '</table>');
+    calendarhtml.set (calendarpage);
+    
+    var composerhtml = new d.HtmlBuilder();
+    composerhtml.push('<table border="0" cellspacing="0">',
+        '<tr><td><label for="defaultcompose">', _('Default message format:'), '</label></td>',
+        '<td><select name="defaultcompose" id="defaultcompose">',
+        '<option value="html">', _('HTML'), '</option>',
+        '<option value="text">', _('Plain-text'), '</option>',
+        '</select></td></tr>',
+        '<tr><td><label for="linewidth">', _('Line width:'), '</label></td>',
+        '<td><input type="text" id="linewidth" name="linewidth" style="width: 20px;"></td></tr>',
+        '</table>');
+    composerhtml.set(composerpage);
+    
+    var form = [
+    '<form id="someid">', notebook, '</form>'];
+    
+    var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Save'), onclick: 'save'}];        
+    
+    // Now, fill in the content with tabs & buttons.
+    this.buildInterface (form, actions, 'preferences-container');
+    logDebug('Created UI OK - setting up TzSelector widget...');
+    
+    // Setup timezone widget
+    d.tzselector = new d.TzSelector (d.curTzid, 'tzpicker', true);
     
     logDebug('We just got built.');
 };
@@ -334,6 +334,11 @@ Dragonfly.Preferences.Editor.save = function ()
 {
     var d = Dragonfly;
     var p = d.Preferences;
+    
+    // User profile
+    Dragonfly.notify (_('Saving changes...'), true);
+    var result = this.profileEditor.save();
+    p.prefs.addressbook.me = this.profileEditor.bongoId;
     
     // Timezone
     d.setCurrentTzid (d.tzselector.getTzid());
@@ -349,9 +354,16 @@ Dragonfly.Preferences.Editor.save = function ()
     // Calendar prefs
     p.prefs.calendar.defaultView = $('defaultcalview').value;
     p.prefs.calendar.dayStart = 7;  // Yes, hardwire this one (for now)!
+    p.prefs.calendar.sharePublicDefault = $('calshareyes').checked;
+    
+    // Composer prefs
+    p.prefs.composer = {};
+    p.prefs.composer.messageType = $('defaultcompose');
+    p.prefs.composer.lineWidth = $('linewidth');
     
     // Finish up
     p.save();
+    Dragonfly.notify (_('Changes saved.'));
     this.dispose();
 };
 
@@ -379,20 +391,40 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
         logWarning('You have no prefs. I should probably warn you, or.. something.');
     }
     
-    if (jsob.mail.autoBcc)         { $('autobcc').value        = jsob.mail.autoBcc;         }
-    if (jsob.mail.pageSize)        { $('mailpagesize').value   = jsob.mail.pageSize;        }
-    if (jsob.mail.signature)       { $('signature').value      = jsob.mail.signature;       }
-    if (jsob.mail.usesig)          { $('usesig').checked       = jsob.mail.usesig;          }
-    if (jsob.mail.colorQuotes)     { $('colorquotes').checked  = jsob.mail.colorQuotes;     }
+    if (jsob.mail && jsob.mail.autoBcc)         { $('autobcc').value        = jsob.mail.autoBcc;         }
+    if (jsob.mail && jsob.mail.pageSize)        { $('mailpagesize').value   = jsob.mail.pageSize;        }
+    if (jsob.mail && jsob.mail.signature)       { $('signature').value      = jsob.mail.signature;       }
+    if (jsob.mail && jsob.mail.usesig)          { $('usesig').checked       = jsob.mail.usesig;          }
+    if (jsob.mail && jsob.mail.colorQuotes)     { $('colorquotes').checked  = jsob.mail.colorQuotes;     }
     
     // Calendar prefs
-    if (jsob.calendar.defaultView) { $('defaultcalview').value = jsob.calendar.defaultView; }
+    if (jsob.calendar && jsob.calendar.defaultView)    { $('defaultcalview').value = jsob.calendar.defaultView; }
+    if (jsob.calendar && jsob.calendar.sharePublicDefault) { $('calshareyes').checked = jsob.calendar.sharePublicDefault; $('calshareno').checked = !jsob.calendar.sharePublicDefault  } else { $('calshareno').checked = true; }
     //if (jsob.calendar.dayStart)    { $('daystart').value       = jsob.calendar.dayStart;    }
+    
+    // Composer prefs
+    if (jsob.composer && jsob.composer.messageType) { $('defaultcompose').value = jsob.composer.messageType; }
+    if (jsob.composer && jsob.composer.lineWidth)   { $('linewidth').value      = jsob.composer.lineWidth  ; } else { $('linewidth').value = '80'; }
        
+    // Now, load up the profile editor!
+    var pe = new d.AddressBook.UserProfile('userprofile');
+    if (jsob.addressbook.me && jsob.addressbook.me != null)
+    {
+        // We've already setup our profile - load it!
+        d.AddressBook.loadContact(jsob.addressbook.me).addCallback(bind ('build', pe));
+    }
+    else
+    {
+        // Build empty profile editor UI.
+        pe.build(Dragonfly.AddressBook.buildNewContact());
+    }
+    
+    this.profileEditor = pe;
+    
     logDebug('We just loaded.');
 };
 
-Dragonfly.Preferences.Editor.buildInterface = function (children, actions, observer)
+Dragonfly.Preferences.Editor.buildInterface = function (children, actions, element)
 {
     var d = Dragonfly;    
     
@@ -407,11 +439,11 @@ Dragonfly.Preferences.Editor.buildInterface = function (children, actions, obser
     }
     html.push ('</div>');
     
-    html.set (this.contentId);    
+    html.set (element);    
     for (var i = 0; i < actions.length; i++){
         logDebug('Setting up actions for ' + actions[i].value);
         var clickHandler = actions[i].onclick;
-        Event.observe (ids[i], 'click', bind (clickHandler, observer || this));
+        Event.observe (ids[i], 'click', bind (clickHandler, this));
         logDebug('Done!');
     }
 };
