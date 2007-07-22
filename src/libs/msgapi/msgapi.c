@@ -133,19 +133,6 @@ struct {
     } address;
 
     struct {
-        unsigned char moduleName[XPL_MAX_PATH + 1];
-        unsigned char fileName[XPL_MAX_PATH + 1];
-
-        XplPluginHandle handle;
-
-        FindObjectCacheInitType init;
-        FindObjectCacheShutdownType shutdown;
-        FindObjectCacheType find;
-        FindObjectCacheExType findEx;
-        FindObjectStoreCacheType store;
-    } cache;
-
-    struct {
         unsigned char domain[MAXEMAILNAMESIZE + 1];
         unsigned long domainLength;
     } official;
@@ -224,7 +211,6 @@ MsgFindObject(const unsigned char *user, unsigned char *dn, unsigned char *userT
 {
     BOOL retVal = FALSE;
 
-    if (MsgGlobal.cache.find == NULL) {
         MDBValueStruct *userCtx;
         MDBValueStruct *types;
         unsigned long i, j;
@@ -343,9 +329,6 @@ MsgFindObject(const unsigned char *user, unsigned char *dn, unsigned char *userT
 
         MDBDestroyValueStruct(userCtx);
         MDBDestroyValueStruct(types);
-    } else {
-        retVal = MsgGlobal.cache.find(user, dn, userType, nmap, v);
-    }
 
     return(retVal);
 }
@@ -355,7 +338,6 @@ MsgFindObjectEx(const unsigned char *user, unsigned char *dn, unsigned char *use
 {
     BOOL retVal = FALSE;
 
-    if (MsgGlobal.cache.findEx == NULL) {
         MDBValueStruct *userCtx;
         MDBValueStruct *types;
         unsigned long i, j;
@@ -473,9 +455,6 @@ MsgFindObjectEx(const unsigned char *user, unsigned char *dn, unsigned char *use
         XplRWReadLockRelease(&MsgGlobal.configLock);
 
         MDBDestroyValueStruct(userCtx);
-    } else {
-        retVal = MsgGlobal.cache.findEx(user, dn, userType, nmap, disabled, v);
-    }
 
     return(retVal);
 }
@@ -483,7 +462,6 @@ MsgFindObjectEx(const unsigned char *user, unsigned char *dn, unsigned char *use
 EXPORT const unsigned char *
 MsgFindUserStore(const unsigned char *user, const unsigned char *defaultPath)
 {
-    if (MsgGlobal.cache.store == NULL) {
         MDBValueStruct *context;
         unsigned long i;
         
@@ -512,9 +490,6 @@ MsgFindUserStore(const unsigned char *user, const unsigned char *defaultPath)
 
         MDBDestroyValueStruct(context);
         return(defaultPath);
-    }
-
-    return MsgGlobal.cache.store(user, defaultPath);
 }
 
 EXPORT BOOL
@@ -950,17 +925,6 @@ MsgLibraryStop(void)
     MDBDestroyValueStruct(MsgGlobal.vs.parent.objects);
 #endif
 
-    if (MsgGlobal.cache.handle) {
-        MsgGlobal.cache.shutdown();
-
-        XplReleaseDLLFunction(MsgGlobal.cache.fileName, "MsgGlobal.cache.init", MsgGlobal.cache.handle);
-        XplReleaseDLLFunction(MsgGlobal.cache.fileName, "MsgGlobal.cache.shutdown", MsgGlobal.cache.handle);
-        XplReleaseDLLFunction(MsgGlobal.cache.fileName, "FindObjectCache", MsgGlobal.cache.handle);
-        XplReleaseDLLFunction(MsgGlobal.cache.fileName, "FindObjectStoreCache", MsgGlobal.cache.handle);
-
-        XplUnloadDLL(MsgGlobal.cache.fileName, MsgGlobal.cache.handle);
-    }
-
     XplRWLockDestroy(&MsgGlobal.configLock);
 
     return(TRUE);
@@ -1053,58 +1017,13 @@ MsgLibraryStart(void)
     XplRWLockInit(&MsgGlobal.configLock);
 
     /* Read generic configuration info */
-    config = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
+    MsgGlobal.flags |= MSGAPI_FLAG_SUPPORT_CONNMGR;
+    // MsgGlobal.flags |= MSGAPI_FLAG_CLUSTERED;
+    // 'BOUND' conflicts with 'CLUSTERED' ?
+    // MsgGlobal.flags |= MSGAPI_FLAG_BOUND; 
 
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_CONNMGR_CONFIG, config)) {
-        if (atoi(config->Value[0]) == 1) {
-            MsgGlobal.flags |= MSGAPI_FLAG_SUPPORT_CONNMGR;
-        }
-    }
-    MDBFreeValues(config);
-
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_CERTIFICATE_LOCATION, config)) {
-        strcpy(MsgGlobal.paths.certificate, config->Value[0]);
-        MsgCleanPath(MsgGlobal.paths.certificate);
-    } else {
-        if (MDBRead(MSGSRV_ROOT, MSGSRV_A_CERTIFICATE_LOCATION, config)) {
-            strcpy(MsgGlobal.paths.certificate, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.certificate);
-        } else {
-            strcpy(MsgGlobal.paths.certificate, XPL_DEFAULT_CERT_PATH);
-        }
-    }
-    MDBFreeValues(config);
-
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_PRIVATE_KEY_LOCATION, config)) {
-        strcpy(MsgGlobal.paths.key, config->Value[0]);
-        MsgCleanPath(MsgGlobal.paths.key);
-    } else {
-        if (MDBRead(MSGSRV_ROOT, MSGSRV_A_PRIVATE_KEY_LOCATION, config)) {
-            strcpy(MsgGlobal.paths.key, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.key);
-        } else {
-            strcpy(MsgGlobal.paths.key, XPL_DEFAULT_KEY_PATH);
-        }
-    }
-    MDBFreeValues(config);
-
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_CLUSTERED, config)>0) {
-	if (atol (config->Value[0])) {
-	    MsgGlobal.flags |= MSGAPI_FLAG_CLUSTERED;
-	}
-    }
-    MDBFreeValues(config);
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_FORCE_BIND, config)>0) {
-	if (atol (config->Value[0])) {
-	    MsgGlobal.flags |= MSGAPI_FLAG_BOUND;
-	}
-    }
-    MDBFreeValues(config);
-    if (!(MsgGlobal.flags & MSGAPI_FLAG_CLUSTERED)) {
-        MsgGlobal.flags &= ~MSGAPI_FLAG_BOUND;
-    }
-    /* Config is free'd further down */
-    MDBFreeValues(config);
+    strcpy(MsgGlobal.paths.certificate, XPL_DEFAULT_CERT_PATH);
+    strcpy(MsgGlobal.paths.key, XPL_DEFAULT_KEY_PATH);
 
     /* Read "context" related stuff */
 
@@ -1149,53 +1068,6 @@ MsgLibraryStart(void)
 
     MDBDestroyValueStruct(config);
 
-#if 0
-    XplBeginThread(&ID, MsgConfigMonitor, 32767, NULL, i);
-#endif
-
-    /*    Attempt to load the plugable cache mechanism    */
-    sprintf(MsgGlobal.cache.fileName, "%s%s", MsgGlobal.cache.moduleName, XPL_DLL_EXTENSION);
-    sprintf(path, "%s/%s", XPL_DEFAULT_BIN_DIR, MsgGlobal.cache.fileName);
-
-    MsgGlobal.cache.handle = XplLoadDLL(path);
-    if (MsgGlobal.cache.handle != NULL) {
-        MsgGlobal.cache.init = (FindObjectCacheInitType)XplGetDLLFunction(MsgGlobal.cache.fileName, "MsgGlobal.cache.init", MsgGlobal.cache.handle);
-        MsgGlobal.cache.shutdown = (FindObjectCacheShutdownType)XplGetDLLFunction(MsgGlobal.cache.fileName, "MsgGlobal.cache.shutdown", MsgGlobal.cache.handle);
-        MsgGlobal.cache.find = (FindObjectCacheType)XplGetDLLFunction(MsgGlobal.cache.fileName, "FindObjectCache", MsgGlobal.cache.handle);
-        MsgGlobal.cache.findEx = (FindObjectCacheExType)XplGetDLLFunction(MsgGlobal.cache.fileName, "FindObjectExCache", MsgGlobal.cache.handle);
-        MsgGlobal.cache.store = (FindObjectStoreCacheType)XplGetDLLFunction(MsgGlobal.cache.fileName, "FindObjectStoreCache", MsgGlobal.cache.handle);
-
-        if (!MsgGlobal.cache.init || !MsgGlobal.cache.shutdown || !MsgGlobal.cache.find || !MsgGlobal.cache.findEx || !MsgGlobal.cache.store) {
-            MsgGlobal.cache.init = NULL;
-            MsgGlobal.cache.shutdown = NULL;
-            MsgGlobal.cache.find = NULL;
-            MsgGlobal.cache.findEx = NULL;
-            MsgGlobal.cache.store = NULL;
-        }
-
-        if (MsgGlobal.cache.init) {
-            MSGCacheInitStruct initData;
-
-            initData.DirectoryHandle = MsgGlobal.directoryHandle;
-            initData.ServerContexts = MsgGlobal.vs.server.contexts;
-            initData.ServerAddr = MsgGlobal.vs.server.addr;
-            initData.StorePath = MsgGlobal.vs.storePaths;
-            initData.ConfigLock = &MsgGlobal.configLock;
-            initData.DefaultFindObject = MsgFindObject;
-            initData.DefaultFindObjectEx = MsgFindObjectEx;
-            initData.DefaultFindObjectStore = MsgFindUserStore;
-            initData.DefaultPathChar = EMPTY_CHAR;
-
-	    if (!MsgGlobal.cache.init(&initData, path)) {
-                MsgGlobal.cache.init = NULL;
-                MsgGlobal.cache.shutdown = NULL;
-                MsgGlobal.cache.find = NULL;
-                MsgGlobal.cache.findEx = NULL;
-                MsgGlobal.cache.store = NULL;
-            }
-
-        }
-    }
 
     return(TRUE);
 }
@@ -1423,17 +1295,6 @@ MsgReadConfiguration(void)
     }
     MDBFreeValues(config);
 
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_CONFIGURATION, config)) {
-        for (i = 0; i < config->Used; i++) {
-            if (XplStrNCaseCmp(config->Value[i], "FindObjectModule=", 17) == 0) {
-                strcpy(MsgGlobal.cache.moduleName, config->Value[i]+17);
-            } else if (XplStrNCaseCmp(config->Value[i], "IgnoreInternetEmailAddressAttribute", 35) == 0) {
-                MsgGlobal.flags |= MSGAPI_FLAG_INTERNET_EMAIL_ADDRESS;
-            }
-        }
-    }
-    MDBFreeValues(config);
-
     if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_SERVER_STANDALONE, config)) {
         if (config->Value[0][0]=='1') {
             MsgGlobal.flags |= MSGAPI_FLAG_STANDALONE;
@@ -1456,13 +1317,6 @@ MsgLibraryInit(void)
     MsgGlobal.directoryHandle = NULL;
 
     MsgGlobal.connManager = 0x0100007F;
-
-    strcpy(MsgGlobal.cache.moduleName, "msgcache");
-    MsgGlobal.cache.init = NULL;
-    MsgGlobal.cache.shutdown = NULL;
-    MsgGlobal.cache.find = NULL;
-    MsgGlobal.cache.findEx = NULL;
-    MsgGlobal.cache.store = NULL;
 
     MsgGlobal.official.domain[0] = '\0';
     MsgGlobal.official.domainLength = 0;
