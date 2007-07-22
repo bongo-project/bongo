@@ -1491,9 +1491,6 @@ MsgLibraryInit(void)
         return(0);
     }
 
-#if 0
-    MsgResolveStart();
-#endif
     MsgLibraryStart();
     MsgDateStart();
 
@@ -1519,9 +1516,6 @@ MsgLibraryShutdown(void)
 
         oldGid = XplSetThreadGroupID(MsgGlobal.groupID);
 
-#if 0
-        MsgResolveStop();
-#endif
         MsgLibraryStop();
 
         MemoryManagerClose(NULL);
