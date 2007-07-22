@@ -1047,87 +1047,18 @@ MsgReadConfiguration(void)
         return(FALSE);
     }
 
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_NLS_DIRECTORY, config)) {
-        strcpy(MsgGlobal.paths.nls, config->Value[0]);
-        MsgCleanPath(MsgGlobal.paths.nls);
-        MsgMakePath(MsgGlobal.paths.nls);
-        MDBFreeValues(config);
-        if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_DBF_DIRECTORY, config)) {
-            strcpy(MsgGlobal.paths.dbf, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.dbf);
-            MsgMakePath(MsgGlobal.paths.dbf);
-            MDBFreeValues(config);
-        } else {
-            strcpy(MsgGlobal.paths.dbf, XPL_DEFAULT_DBF_DIR);
-            MsgMakePath(MsgGlobal.paths.dbf);
-        }
-
-        if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_BIN_DIRECTORY, config)) {
-            strcpy(MsgGlobal.paths.bin, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.bin);
-            MsgMakePath(MsgGlobal.paths.bin);
-            MDBFreeValues(config);
-        } else {
-            strcpy(MsgGlobal.paths.bin, XPL_DEFAULT_BIN_DIR);
-            MsgMakePath(MsgGlobal.paths.bin);
-        }
-
-        if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_LIB_DIRECTORY, config)) {
-            strcpy(MsgGlobal.paths.lib, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.lib);
-            MsgMakePath(MsgGlobal.paths.lib);
-            MDBFreeValues(config);
-        } else {
-            strcpy(MsgGlobal.paths.lib, XPL_DEFAULT_LIB_DIR);
-            MsgMakePath(MsgGlobal.paths.lib);
-        }
-
-        if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_WORK_DIRECTORY, config)) {
-            strcpy(MsgGlobal.paths.work, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.work);
-            MsgMakePath(MsgGlobal.paths.work);
-            MDBFreeValues(config);
-        } else {
-            strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
-            MsgMakePath(MsgGlobal.paths.work);
-        }
-    } else {
-        strcpy(MsgGlobal.paths.dbf, XPL_DEFAULT_DBF_DIR);
-        MsgMakePath(MsgGlobal.paths.dbf);
-        MDBAddValue(MsgGlobal.paths.dbf, config);
-        MDBWrite(MsgGlobal.server.dn, MSGSRV_A_DBF_DIRECTORY, config);
-        MDBFreeValues(config);
-
-        strcpy(MsgGlobal.paths.nls, XPL_DEFAULT_NLS_DIR);
-        MsgMakePath(MsgGlobal.paths.nls);
-        MDBAddValue(MsgGlobal.paths.nls, config);
-        MDBWrite(MsgGlobal.server.dn, MSGSRV_A_NLS_DIRECTORY, config);
-        MDBFreeValues(config);
-
-        strcpy(MsgGlobal.paths.bin, XPL_DEFAULT_BIN_DIR);
-        MsgMakePath(MsgGlobal.paths.bin);
-        MDBAddValue(MsgGlobal.paths.bin, config);
-        MDBWrite(MsgGlobal.server.dn, MSGSRV_A_BIN_DIRECTORY, config);
-        MDBFreeValues(config);
-
-        if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_WORK_DIRECTORY, config)) {
-            strcpy(MsgGlobal.paths.work, config->Value[0]);
-            MsgCleanPath(MsgGlobal.paths.work);
-            strcat(MsgGlobal.paths.work, "/novonyx/mail");
-            MsgMakePath(MsgGlobal.paths.work);
-            MDBFreeValues(config);
-
-            MDBAddValue(MsgGlobal.paths.work, config);
-            MDBWrite(MsgGlobal.server.dn, MSGSRV_A_WORK_DIRECTORY, config);
-            MDBFreeValues(config);
-        } else {
-            strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
-            MsgMakePath(MsgGlobal.paths.work);
-            MDBAddValue(MsgGlobal.paths.work, config);
-            MDBWrite(MsgGlobal.server.dn, MSGSRV_A_WORK_DIRECTORY, config);
-            MDBFreeValues(config);
-        }
-    }
+    strcpy(MsgGlobal.paths.dbf, XPL_DEFAULT_DBF_DIR);
+    MsgMakePath(MsgGlobal.paths.dbf);
+    strcpy(MsgGlobal.paths.bin, XPL_DEFAULT_BIN_DIR);
+    MsgMakePath(MsgGlobal.paths.bin);
+    strcpy(MsgGlobal.paths.lib, XPL_DEFAULT_LIB_DIR);
+    MsgMakePath(MsgGlobal.paths.lib);
+    strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
+    MsgMakePath(MsgGlobal.paths.work);
+    strcpy(MsgGlobal.paths.nls, XPL_DEFAULT_NLS_DIR);
+    MsgMakePath(MsgGlobal.paths.nls);
+    strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
+    MsgMakePath(MsgGlobal.paths.work);
 
     /* Official Name */
     if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_OFFICIAL_NAME, config)) {
