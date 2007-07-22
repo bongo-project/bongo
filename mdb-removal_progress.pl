@@ -11,7 +11,7 @@ my %libraries = ('connmgr' => 7, 'management' => 14, 'mdb' => 212, 'mdb-file' =>
 
 my $search = sub {
 	my ($dir, $thing, $original) = @_;
-	$current = `grep -r "MDB" src/$dir/* | grep -v .svn | grep -v matches | wc -l`;
+	$current = `grep -r "MDB" src/$dir/* 2>/dev/null | grep -v .svn | grep -v matches | wc -l`;
 	chomp $current;
 	my $percent = (100.0 / $original) * ($original - $current);
 	return sprintf("%12s %3d%% (%3d/%3d)", $thing, $percent, $current, $original);
@@ -29,7 +29,7 @@ for(my $i = 0; $i <= $#agents_done; $i++) {
 
 my $current_lines = `grep -r "MDB" * | grep -v \.svn | grep -v matches | wc -l`;
 my $start_lines = 3728;
-my $real_start_lines = $start_lines - (212 + 713 + 620 + 279 + 239);
+my $real_start_lines = $start_lines - (212 + 713 + 620 + 279 + 329);
 
 my $completion = (100.0 / $start_lines) * ($start_lines - $current_lines);
 my $real_complete = (100.0 / $real_start_lines) * ($start_lines - $current_lines);
