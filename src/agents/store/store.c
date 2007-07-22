@@ -272,13 +272,7 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
     int n;
     struct stat sb;
 
-    if (! StoreAgent.installMode) {
-        // MsgFindUserStore makes MDB calls and thus can't be used in installmode.
-        root = MsgFindUserStore(user, StoreAgent.store.rootDir);
-    } else {
-        root = StoreAgent.store.rootDir;
-    }    
-    n = snprintf(path, len, "%s/%s/", root, user);
+    n = snprintf(path, len, "%s/%s/", StoreAgent.store.rootDir, user);
     path[len] = 0;
     path[n-1] = 0;
 

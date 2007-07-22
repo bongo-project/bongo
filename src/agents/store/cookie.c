@@ -39,8 +39,7 @@ GetCookiesPath(StoreClient *client, const char *user, char *path, size_t len)
     const char *root;
     int n;
 
-    root = MsgFindUserStore(user, StoreAgent.store.rootDir);
-    n = snprintf(path, len, "%s/%s/cookies", root, user);
+    n = snprintf(path, len, "%s/%s/cookies", StoreAgent.store.rootDir, user);
 }
 
 
