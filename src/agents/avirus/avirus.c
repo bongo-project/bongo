@@ -819,7 +819,8 @@ ProcessConnection(AVClient *client)
                         break;
                     }
 
-                    if (MsgGetUserFeature(client->dn, FEATURE_ANTIVIRUS, NULL, NULL)) {
+                    // FIXME
+                    // if (MsgGetUserFeature(client->dn, FEATURE_ANTIVIRUS, NULL, NULL)) {
 			XplSafeIncrement(AVirus.stats.messages.scanned);
 
 			ccode = ScanMessage(client, qID);
@@ -870,7 +871,7 @@ ProcessConnection(AVClient *client)
                             XplSafeIncrement(AVirus.stats.attachments.blocked);
                             copy = FALSE;
                         }
-                    }
+                    // }
 
                     if ((email - 1) > cur + 1) {
                         *(email - 1) = ' ';

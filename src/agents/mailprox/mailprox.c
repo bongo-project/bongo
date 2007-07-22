@@ -527,7 +527,8 @@ ProxyUser(MailProxyClient *client)
     }
 
     if (update) {
-        MsgSetUserSetting(client->q->user, MSGSRV_A_PROXY_LIST, accounts);
+        // FIXME
+        // MsgSetUserSetting(client->q->user, MSGSRV_A_PROXY_LIST, accounts);
     }
 
     MDBDestroyValueStruct(accounts);
@@ -664,10 +665,13 @@ ProxyServer(void *ignored)
                     accounts = MDBShareContext(MailProxy.contexts);
                 }
 
-                if ((MsgGetUserSetting(user, MSGSRV_A_MESSAGING_DISABLED, accounts) == 0) || (accounts->Value[accounts->Used - 1][0] != '1')) {
+                // FIXME
+                // if ((MsgGetUserSetting(user, MSGSRV_A_MESSAGING_DISABLED, accounts) == 0) || (accounts->Value[accounts->Used - 1][0] != '1')) {
+                if (accounts->Value[accounts->Used - 1][0] != '1') {
                     MDBFreeValues(accounts);
 
-                    if (MsgGetUserFeature(user, FEATURE_PROXY, MSGSRV_A_PROXY_LIST, accounts)) {
+                    // FIXME
+                    // if (MsgGetUserFeature(user, FEATURE_PROXY, MSGSRV_A_PROXY_LIST, accounts)) {
                         ptr = strrchr(user, '\\');
                         if (ptr) {
                             strcpy(queue->user, ptr + 1);
@@ -695,7 +699,7 @@ ProxyServer(void *ignored)
                         }
 
                         LoggerEvent(MailProxy.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY, LOG_ERROR, 0, __FILE__, queue->user, sizeof(MailProxyClient), __LINE__, NULL, 0);
-                    }
+                    // }
 
                     if (accounts) {
                         MDBFreeValues(accounts);

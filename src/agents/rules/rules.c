@@ -885,7 +885,8 @@ IsNMAPShare(RulesClient *client, unsigned char *name, unsigned char *type, unsig
 
         MDBFreeValues(vs);
 
-        MsgGetUserSetting(client->dn, MSGSRV_A_AVAILABLE_SHARES, vs);
+	// FIXME
+        // MsgGetUserSetting(client->dn, MSGSRV_A_AVAILABLE_SHARES, vs);
         /*
         if (MsgGetUserSettingsDN(client->dn, configDn, vs, FALSE)) {
             MDBRead(configDn, MSGSRV_A_AVAILABLE_SHARES, vs);
@@ -957,7 +958,8 @@ IsNMAPShare(RulesClient *client, unsigned char *name, unsigned char *type, unsig
             memcpy(pattern + length, client->user, count);
             count += length;
 
-            MsgGetUserSetting(dn, MSGSRV_A_OWNED_SHARES, vs);
+            //FIXME
+            //MsgGetUserSetting(dn, MSGSRV_A_OWNED_SHARES, vs);
             /*
             if (MsgGetUserSettingsDN(dn, configDn, vs, FALSE)) {
                 MDBRead(configDn, MSGSRV_A_OWNED_SHARES, vs);
@@ -1808,8 +1810,9 @@ ProcessConnection(RulesClient *client)
                         if (MsgFindObject(client->recipient, client->dn, NULL, &(client->nmap), vs)) {
                             strcpy(client->user, vs->Value[0]);
 
-                            if (MDBFreeValues(vs) 
-                                    && MsgGetUserFeature(client->dn, FEATURE_RULES, MSGSRV_A_RULE, vs)) {
+                            if (MDBFreeValues(vs)) {
+                                // FIXME
+                                //    && MsgGetUserFeature(client->dn, FEATURE_RULES, MSGSRV_A_RULE, vs)) {
                                 ParseRules(client, vs);
                                 if (client->rules.head) {
                                     ccode = ProcessRules(client, &copy, &flags);
