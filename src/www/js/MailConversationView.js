@@ -63,7 +63,16 @@ Dragonfly.Mail.ConversationView.formatPart = function (loc, msg, part)
     if (part.preview) {
         html.push ('<div class="msg-body">');
         if (part.previewtype == 'text/plain') {
-            html.push (m.yeahBaby (part.preview));
+            html.push ('<div style="font-family:\'DejaVu Sans Mono\', \'Bitstream Vera Sans Mono\', \'Monaco\', \'Courier\', monospace;">');
+            if (d.Preferences.prefs.mail.colorQuotes)
+            {
+                html.push (m.yeahBaby (part.preview));
+            }
+            else
+            {
+                html.push (d.htmlizeText (part.preview));
+            }
+            html.push ('</div>');
         } else if (part.previewtype == 'text/html') {
             html.push (d.linkifyHtml (part.preview));
         } else {

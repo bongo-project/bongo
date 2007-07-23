@@ -339,6 +339,7 @@ Dragonfly.Preferences.Editor.save = function ()
     Dragonfly.notify (_('Saving changes...'), true);
     var result = this.profileEditor.save();
     p.prefs.addressbook.me = this.profileEditor.bongoId;
+    p.prefs.mail.sender = this.profileEditor.name;
     
     // Timezone
     d.setCurrentTzid (d.tzselector.getTzid());

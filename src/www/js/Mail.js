@@ -101,8 +101,11 @@ Dragonfly.Mail.Preferences.getFromAddress = function ()
 {
     var d = Dragonfly;
     var p = d.Preferences;
-
-    return p.prefs.mail.from;
+    
+    var emailfrom = p.prefs.mail.from;
+    var namefrom = p.prefs.mail.sender;
+    
+    return d.format("{0} <{1}>", namefrom, emailfrom);
 };
 
 Dragonfly.Mail.Preferences.setFromAddress = function (address)
@@ -929,7 +932,11 @@ Dragonfly.Mail.yeahBaby = function (msg)
             
             msg[i] = '<span style="color: ' + color + ';">' + d.htmlizeText (msg[i]) + '</span>';
         }
+        else
+        {
+            msg[i] = d.htmlizeText (msg[i]);
+        }
     }
     
-    return '<div style="font-family:\'Bitstream Vera Sans Mono\', \'Monaco\', \'Courier\', monospace;">' + msg.join("<br />") + '</div>';
+    return msg.join("<br />");
 }

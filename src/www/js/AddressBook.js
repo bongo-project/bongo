@@ -719,6 +719,8 @@ Dragonfly.AddressBook.UserProfile.prototype.save = function ()
                 this.bongoId = AB.Preferences.getMyContactId();
             }
             
+            this.name = this.contact.fn;
+            
             return result;
         }, this));
 };
