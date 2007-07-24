@@ -48,7 +48,6 @@
 
 #include <bongoagent.h>
 
-#include <cmlib.h>
 #include "imapd.h"
 
 ImapGlobal Imap;
@@ -4299,7 +4298,6 @@ XplServiceMain(int argc, char *argv[])
     }
 
     NMAPInitialize(Imap.directory.handle);
-    CMInitialize(Imap.directory.handle, "IMAP");
 
     Imap.logHandle = LoggerOpen("bongoimap");
     if (Imap.logHandle != NULL) {

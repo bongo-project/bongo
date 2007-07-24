@@ -7,7 +7,6 @@ bongosmtp_SOURCES :=				\
 
 bongosmtp_LDADD :=					   \
 	libbongonmap.la					   \
-	libbongoconnmgr.la				   \
 	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \

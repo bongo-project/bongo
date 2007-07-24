@@ -30,7 +30,6 @@
 /* Management Client Header Include */
 #include <management.h>
 
-#include <cmlib.h>
 #include "imapd.h"
 
 
@@ -223,7 +222,6 @@ ImapCommandAuthenticate(void *param)
                         /* We are flushing here so that we can update the connection manager */
                         /* while the client is working on the response and sending the next command */
                         if (ConnFlush(session->client.conn) != -1) {
-// Reenable me              CMAuthenticated((unsigned long)session->client.conn->socketAddress.sin_addr.s_addr, session->user.name);
                             return(STATUS_CONTINUE);
                         }
                     }
@@ -261,7 +259,6 @@ ImapCommandLogin(void *param)
                     /* We are flushing here so that we can update the connection manager */
                     /* while the client is working on the response and sending the next command */
                     if (ConnFlush(session->client.conn) != -1) {
-// Reenable me                        CMAuthenticated((unsigned long)session->client.conn->socketAddress.sin_addr.s_addr, session->user.name);
                         return(STATUS_CONTINUE);
                     } else {
                         ccode = STATUS_ABORT;

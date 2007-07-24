@@ -35,7 +35,6 @@
 #include <msgapi.h>
 #include <logger.h>
 #include <nmlib.h>
-#include <cmlib.h>
 #include <nmap.h>
 #include <management.h>
 #include <bongostore.h>
@@ -657,7 +656,6 @@ POP3CommandAuth(void *param)
         if (!ccode) {
             LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_LOGIN, LOG_INFO, 0, client->user, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
     
-            CMAuthenticated((unsigned long)client->conn->socketAddress.sin_addr.s_addr, client->user);
         } else {
             if (ccode == POP3_NMAP_SERVER_DOWN) {
                 ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", POP3.hostName, MSGERRNONMAP);
@@ -916,7 +914,6 @@ POP3CommandPass(void *param)
     ccode = ConnectUserToNMAPServer(client, client->user, ptr);
     if (!ccode) {
         Log(LOG_INFO, "User %s logged in from host %s", client->user, LOGIP(client->conn->socketAddress));
-        CMAuthenticated((unsigned long)client->conn->socketAddress.sin_addr.s_addr, client->user);
     } else {
         if (ccode == POP3_NMAP_SERVER_DOWN) {
             ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", POP3.hostName, MSGERRNONMAP);
@@ -2158,7 +2155,6 @@ XplServiceMain(int argc, char *argv[])
     }
 
     NMAPInitialize(POP3.directoryHandle);
-    CMInitialize(POP3.directoryHandle, "POP3");
 
     POP3.loggingHandle = LoggerOpen("bongopop3");
     if (POP3.loggingHandle == NULL) {

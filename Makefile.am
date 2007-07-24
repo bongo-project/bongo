@@ -106,7 +106,6 @@ include_subdirs :=				\
 	src/libs/nmap				\
 	src/libs/management			\
 	src/libs/msgapi				\
-	src/libs/connmgr			\
 	src/libs/calcmd				\
 	src/libs/calcmd/tests			\
 	src/libs/python				\
@@ -116,11 +115,6 @@ include_subdirs :=				\
 	src/agents/avirus			\
 	src/agents/calcmd			\
 	src/agents/collector			\
-	src/agents/connmgr			\
-	src/agents/connmgr/cmmodules/user	\
-	src/agents/connmgr/cmmodules/rbl	\
-	src/agents/connmgr/cmmodules/rdns	\
-	src/agents/connmgr/cmmodules/lists	\
 	src/agents/generic			\
 	src/agents/imap				\
 	src/agents/imap/tests			\
@@ -169,7 +163,6 @@ include src/libs/cal/tests/Bongo.rules
 include src/libs/nmap/Bongo.rules
 include src/libs/management/Bongo.rules
 include src/libs/msgapi/Bongo.rules
-include src/libs/connmgr/Bongo.rules
 include src/libs/calcmd/Bongo.rules
 include src/libs/calcmd/tests/Bongo.rules
 include src/libs/python/Bongo.rules
@@ -179,11 +172,6 @@ include src/agents/antispam/Bongo.rules
 include src/agents/avirus/Bongo.rules
 include src/agents/calcmd/Bongo.rules
 include src/agents/collector/Bongo.rules
-include src/agents/connmgr/Bongo.rules
-include src/agents/connmgr/cmmodules/user/Bongo.rules
-include src/agents/connmgr/cmmodules/rbl/Bongo.rules
-include src/agents/connmgr/cmmodules/rdns/Bongo.rules
-include src/agents/connmgr/cmmodules/lists/Bongo.rules
 include src/agents/generic/Bongo.rules
 include src/agents/imap/Bongo.rules
 include src/agents/imap/tests/Bongo.rules

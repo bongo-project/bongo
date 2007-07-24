@@ -7,7 +7,6 @@ bongopop3_SOURCES :=				\
 
 bongopop3_LDADD :=					   \
 	libbongonmap.la					   \
-	libbongoconnmgr.la				   \
 	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \

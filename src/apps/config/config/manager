@@ -13,7 +13,6 @@
 	{ "name": "bongoavirus", "pri": 5, "enabled": true },
 	{ "name": "bongocollector", "pri": 7, "enabled": true },
 	{ "name": "bongomailprox", "pri": 7, "enabled": true },
-	{ "name": "bongoconnmgr", "pri": 2, "enabled": true },
 	{ "name": "bongopluspack", "pri": 5, "enabled": true },
 	{ "name": "bongorules", "pri": 2, "enabled": true },
 	{ "name": "bongoimap", "pri": 10, "enabled": true },

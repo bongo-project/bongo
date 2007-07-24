@@ -41,7 +41,6 @@
 
 #include <mdb.h>
 #include <nmap.h>
-#include <cmlib.h>
 
 #include <bongoutil.h>
 #include "smtpd.h"
@@ -304,8 +303,6 @@ EndClientConnection (ConnectionStruct * Client)
         }
 
         if (Client->client.conn) {
-            CMDisconnected (Client->client.conn->socketAddress.sin_addr.s_addr);
-
             FreeInternalConnection(Client->client);
         }
 
@@ -367,62 +364,6 @@ HandleConnection (void *param)
     XplRWReadLockAcquire (&ConfigLock);
     if (UBEConfig & UBE_DISABLE_AUTH) {
         AllowAuth = FALSE;
-    }
-
-    ReplyInt = CMVerifyConnect (Client->client.conn->socketAddress.sin_addr.s_addr, Answer, &RequireAuth);
-    if (ReplyInt == CM_RESULT_DENY_PERMANENT) {
-        /* We don't like the guy */
-        XplRWReadLockRelease (&ConfigLock);
-        Log(LOG_INFO, "Connection from %s blocked", LOGIP(Client->client.conn->socketAddress));
-
-        if (Answer[0] != '\0') {
-            ConnWrite (Client->client.conn, MSG553COMMENT, MSG553COMMENT_LEN);
-            ConnWrite (Client->client.conn, Answer, strlen (Answer));
-            ConnWrite (Client->client.conn, "\r\n", 2);
-        }
-        else {
-            ConnWrite (Client->client.conn, MSG550SPAMBLOCK, MSG550SPAMBLOCK_LEN);
-        }
-        ConnFlush (Client->client.conn);
-        return (EndClientConnection (Client));
-    } else if (ReplyInt != CM_RESULT_ALLOWED) {
-        /* Either we don't like the guy, or there was an error */
-        XplRWReadLockRelease (&ConfigLock);
-        Log(LOG_INFO, "Connection from %s blocked by blocklist %d", 
-            LOGIP(Client->client.conn->socketAddress),
-            LOGGING_BLOCK_BLOCKLIST);
-
-        if (Answer[0] != '\0') {
-            ConnWrite (Client->client.conn, MSG453COMMENT, MSG453COMMENT_LEN);
-            ConnWrite (Client->client.conn, Answer, strlen (Answer));
-            ConnWrite (Client->client.conn, "\r\n", 2);
-        } else {
-            ConnWrite (Client->client.conn, MSG453TRYLATER, MSG453TRYLATER_LEN);
-        }
-        ConnFlush (Client->client.conn);
-        return (EndClientConnection (Client));
-    }
-
-    if (UBEConfig & UBE_DEFAULT_NOT_TRUSTED) {
-        IsTrusted = FALSE;
-
-        if (UBEConfig & UBE_SMTP_AFTER_POP) {
-            ReplyInt = CMVerifyRelay (Client->client.conn->socketAddress.sin_addr.s_addr, Answer);
-            if (ReplyInt == CM_RESULT_ALLOWED) {
-                if (Answer[0] != '\0') {
-                    if (Client->AuthFrom == NULL) {
-                        Client->AuthFrom = MemStrdup (Answer);
-                        IsTrusted = TRUE;
-                    } else {
-                        MemFree (Client->AuthFrom);
-                        Client->AuthFrom = MemStrdup (Answer);
-                        IsTrusted = TRUE;
-                    }
-                } else {
-                    IsTrusted = TRUE;
-                }
-            }
-        }
     }
 
     XplRWReadLockRelease (&ConfigLock);
@@ -5137,7 +5078,6 @@ int XplServiceMain (int argc, char *argv[])
         exit (-1);
     }
 
-    CMInitialize(SMTPDirectoryHandle, "SMTP");
     NMAPInitialize(SMTPDirectoryHandle);
 
     XplRWLockInit (&ConfigLock);
