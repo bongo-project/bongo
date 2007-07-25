@@ -719,7 +719,7 @@ StartOver:
                     && (stat(path, &sb) == 0) 
                     && (sb.st_size > 8) 
                     && ((qEnvelope = (unsigned char *)MemMalloc(sb.st_size + 1)) != NULL) 
-                    && ((fh = fopen(temp, "rb")) != NULL) 
+                    && ((temp = fopen(path, "rb")) != NULL) 
                     && (fread(qEnvelope, sizeof(unsigned char), sb.st_size, fh) == (size_t)sb.st_size)) {
                 /* Sort the control file as follows:
                     QUEUE_DATE
