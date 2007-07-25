@@ -70,7 +70,7 @@ AC_LANG(C++)
       fi
 
       CLUCENE_BONGO_API=`echo "$clucene_ver" | $AWK -F. '{
-        if ($ 1 > 0 || $ 2 > 9 || ($ 2 == 9 && $ 3 > 16)) {
+        if ($ 1 > 0 || $ 2 > 9 || ($ 2 == 9 && $ 3 >= 17)) {
           print 2;
         } else {
           print 1;
