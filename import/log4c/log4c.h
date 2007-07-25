@@ -64,8 +64,8 @@
 
 #define LogFailure(message) Log(LOG_ERROR, "Internal Failure (%s:%d) " message, __FILE__, __LINE__)
 #define LogFailureF(message, ...) Log(LOG_ERROR, "Internal Failure (%s:%d) " message, __FILE__, __LINE__, __VA_ARGS__)
-#define LogAssert(test, message) if ((test)) { Log(LOG_ERROR, "Internal Failure (%s:%d) " message, __FILE__, __LINE__); }
-#define LogAssertF(test, message, ...) if((test)) { Log(LOG_ERROR, "Assert:%s:%d " message, __FILE__, __LINE__, __VA_ARGS__); }
+#define LogAssert(test, message) if (!(test)) { Log(LOG_ERROR, "Internal Failure (%s:%d) " message, __FILE__, __LINE__); }
+#define LogAssertF(test, message, ...) if(!(test)) { Log(LOG_ERROR, "Assert:%s:%d " message, __FILE__, __LINE__, __VA_ARGS__); }
 
 #define Log(...) LogMsg(LOGGERNAME, 0, __VA_ARGS__)
 #define LogWithID(...) LogMsg(LOGGERNAME, __VA_ARGS__)
