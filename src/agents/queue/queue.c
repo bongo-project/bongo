@@ -65,6 +65,44 @@ static int HandleDSN(FILE *data, FILE *control);
 
 #define MAX_CHARS_IN_PDBSEARCH    512
 
+#define FOPEN_CHECK(handle, path, mode) fopen_check((handle), (path), (mode), __LINE__)
+void
+fopen_check(FILE *handle, char *path, char *mode, int line)
+{
+    LogAssertF(handle == NULL, "File handle already open on line %d", line);
+    handle = fopen(path, mode);
+}
+
+#define FCLOSE_CHECK(f) fclose_check((f), __LINE__)
+int
+fclose_check(FILE *fh, int line)
+{
+    int ret;
+    ret = fclose(fh);
+    LogAssertF(ret == 0, "File close failed on line %d: %d", line, errno);
+    return ret;
+}
+
+#define UNLINK_CHECK(path) unlink_check((path), __LINE__)
+int
+unlink_check(char *path, int line)
+{
+    int ret;
+    ret = unlink(path);
+    LogAssertF(ret == 0, "Unable to delete file %s on line %d: %d", path, line, errno);
+    return ret;
+}
+
+#define RENAME_CHECK(oldpath, newpath) rename_check((oldpath), (newpath), __LINE__)
+int
+rename_check(const char *oldpath, const char *newpath, int line)
+{
+    int ret;
+    ret = rename(oldpath, newpath);
+    LogAssertF(ret == 0, "Unable to rename %s to %s on line %d: %d", oldpath, newpath, line, errno);
+    return ret;
+}
+
 static int 
 PDBSearch(char *doc, char *searchString)
 {
@@ -515,7 +553,7 @@ DeliverToStore(NMAPConnections *list,
                 (ccode = ConnFlush(nmap->conn)) == -1) {
                 nmap->error = TRUE;
 
-                fclose(fh);
+                FCLOSE_CHECK(fh);
 
                 return DELIVER_TRY_LATER;
             }
@@ -615,9 +653,9 @@ ProcessQueueEntry(unsigned char *entryIn)
     time_t date;
     struct sockaddr_in saddr;
     struct stat sb;
-    FILE *fh;
-    FILE *data;
-    FILE *newFH;
+    FILE *fh = NULL;
+    FILE *data = NULL;
+    FILE *newFH = NULL;
     MIMEReportStruct *report = NULL;
     MDBValueStruct *vs;
     QueueClient *client;
@@ -647,7 +685,7 @@ StartOver:
     idLock = SpoolEntryIDLock(entryID);
     if (idLock) {
         sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-        fh = fopen(path, "r+b");
+        FOPEN_CHECK(fh, path, "r+b");
     } else {
         ProcessQueueEntryCleanUp(NULL, report);
         return(FALSE);
@@ -656,7 +694,7 @@ StartOver:
     if (fh) {
         fgets(line, CONN_BUFSIZE, fh);
         date = atoi(line + 1);
-        fclose(fh);
+        FCLOSE_CHECK(fh);
     } else {
         ProcessQueueEntryCleanUp(idLock, report);
         return(FALSE);
@@ -665,6 +703,7 @@ StartOver:
     /* We've got pre and post processing off queue entries - this is pre */
     switch(queue) {
         case Q_INCOMING: {
+            FILE *temp = NULL;
             sb.st_size = -1;
             qDate = NULL;
             qFlags = NULL;
@@ -673,14 +712,14 @@ StartOver:
             qFrom = NULL;
 
             sprintf(path, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-            newFH = fopen(path, "wb");
+            FOPEN_CHECK(newFH, path, "wb");
 
             sprintf(path, "%s/c%s.%03d",Conf.spoolPath, entry, queue);
             if (newFH 
                     && (stat(path, &sb) == 0) 
                     && (sb.st_size > 8) 
                     && ((qEnvelope = (unsigned char *)MemMalloc(sb.st_size + 1)) != NULL) 
-                    && ((fh = fopen(path, "rb")) != NULL) 
+                    && ((fh = fopen(temp, "rb")) != NULL) 
                     && (fread(qEnvelope, sizeof(unsigned char), sb.st_size, fh) == (size_t)sb.st_size)) {
                 /* Sort the control file as follows:
                     QUEUE_DATE
@@ -697,7 +736,7 @@ StartOver:
                     QUEUE_RECIP_REMOTE
                     QUEUE_THIRD_PARTY
                 */
-                fclose(fh);
+                fclose(temp);
 
                 qEnvelope[sb.st_size] = '\0';
 
@@ -794,15 +833,15 @@ StartOver:
                     /* fixme - if a new queue entry has at least QUEUE_FROM 
                        but no recipients we should bounce the message rather
                        than consuming it! */
-                    fclose(newFH);
+                    FCLOSE_CHECK(newFH);
 
-                    unlink(path);
+                    UNLINK_CHECK(path);
 
                     sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                    unlink(path);
+                    UNLINK_CHECK(path);
 
                     sprintf(path, "%s/d%s.msg",Conf.spoolPath, entry);
-                    unlink(path);
+                    UNLINK_CHECK(path);
 
                     MemFree(qEnvelope);
 
@@ -920,12 +959,12 @@ StartOver:
 
                 MemFree(qEnvelope);
 
-                fclose(newFH);
+                FCLOSE_CHECK(newFH);
 
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 sprintf(path2, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                rename(path2, path);
+                RENAME_CHECK(path2, path);
 
                 break;
             }
@@ -946,17 +985,17 @@ StartOver:
             }
 
             if (fh) {
-                fclose(fh);
+                FCLOSE_CHECK(fh);
             }
 
             if (newFH) {
-                fclose(newFH);
+                FCLOSE_CHECK(newFH);
             }
 
             Log(LOG_WARNING, "Write error in queue");
 
             sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-            unlink(path);
+            UNLINK_CHECK(path);
 
             ProcessQueueEntryCleanUp(idLock, report);
             return(TRUE);
@@ -969,7 +1008,7 @@ StartOver:
                 /* We move it to the Q_RTS queue and the linger code there will bounce it for us */
                 sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
                 sprintf(path2, "%s/c%s.%03d", Conf.spoolPath, entry, Q_RTS);
-                rename(path, path2);
+                RENAME_CHECK(path, path2);
 
                 sprintf(path, "%03d%s", Q_RTS, entry);
                 SpoolEntryIDUnlock(idLock);
@@ -1017,21 +1056,22 @@ StartOver:
             bounce = FALSE;
 
             sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-            fh = fopen(path, "rb");
+            FOPEN_CHECK(fh, path, "rb");
 
             sprintf(path, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-            newFH = fopen(path, "wb");
+            FOPEN_CHECK(newFH, path, "wb");
+
             if (!fh || !newFH) {
                 if (fh) {
-                    fclose(fh);
+                    FCLOSE_CHECK(fh);
                 }
 
                 if (newFH) {
-                    fclose(newFH);
+                    FCLOSE_CHECK(newFH);
                 }
 
                 sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 ProcessQueueEntryCleanUp(idLock, report);
                 return(TRUE);
@@ -1078,12 +1118,12 @@ StartOver:
                             struct sockaddr_in    siaddr;
 
                             if (!data) {
-                                data = fopen(path, "rb");
+                                FOPEN_CHECK(data, path, "rb");
                                 if (!data) {
-                                    fclose(fh);
+                                    FCLOSE_CHECK(fh);
                                     sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                                    fclose(newFH);
-                                    unlink(path);
+                                    FCLOSE_CHECK(newFH);
+                                    UNLINK_CHECK(path);
                                     ProcessQueueEntryCleanUp(idLock, report);
                                     return(TRUE);
                                 }
@@ -1183,13 +1223,13 @@ StartOver:
                             struct sockaddr_in siaddr;
                             if (!data) {
                                 sprintf(path, "%s/d%s.msg", Conf.spoolPath, entry);
-                                data = fopen(path, "rb");
+                                FOPEN_CHECK(data, path, "rb");
                                 if (!data) {
-                                    fclose(fh);
-                                    fclose(newFH);
+                                    FCLOSE_CHECK(fh);
+                                    FCLOSE_CHECK(newFH);
 
                                     sprintf(path, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                                    unlink(path);
+                                    UNLINK_CHECK(path);
 
                                     ProcessQueueEntryCleanUp(idLock, report);
                                     return(TRUE);
@@ -1362,33 +1402,33 @@ StartOver:
                 EndStoreDelivery(&list);
                 memset(&list, 0, sizeof(NMAPConnections));
             }
-            fclose(newFH);
-            fclose(fh);
+            FCLOSE_CHECK(newFH);
+            FCLOSE_CHECK(fh);
             if (bounce) {
                 unsigned char    Path2[XPL_MAX_PATH+1];
 
                 /* First, rename the work file into a control file */
                 sprintf(path, "%s/c%s.%03d",Conf.spoolPath, entry, queue);
-                unlink(path);
+                UNLINK_CHECK(path);
                 sprintf(Path2, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                rename(Path2, path);
+                RENAME_CHECK(Path2, path);
 
                 if (!data) {
                     sprintf(path, "%s/d%s.msg",Conf.spoolPath, entry);
-                    data=fopen(path,"rb");
+                    FOPEN_CHECK(data, path, "rb");
                 } else {
                     fseek(data, 0, SEEK_SET);    
                 }
 
                 sprintf(path, "%s/c%s.%03d",Conf.spoolPath, entry, queue);
-                fh=fopen(path,"rb");
+                FOPEN_CHECK(fh, path, "rb");
         
                 if (fh && data && 0 == HandleDSN(data, fh)) {
                     /* Now bounce the thing */
                     fseek(fh, 0, SEEK_SET);
 
                     sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                    newFH=fopen(path, "wb");
+                    FOPEN_CHECK(newFH, path, "wb");
                     if (newFH) {
                         /* Now remove the bounced entries */
                         while (!feof(fh) && !ferror(fh)) {
@@ -1403,15 +1443,15 @@ StartOver:
                                 }
                             }
                         }
-                        fclose(newFH);
+                        FCLOSE_CHECK(newFH);
                     }
-                    fclose(fh);
+                    FCLOSE_CHECK(fh);
                 } else {
                     if (fh) {
-                        fclose(fh);
+                        FCLOSE_CHECK(fh);
                     }
                     if (data) {
-                        fclose(data);
+                        FCLOSE_CHECK(data);
                     }
 
                     Log(LOG_CRITICAL, "File open error for entry %ld, path: %s", entryID, path);
@@ -1420,25 +1460,25 @@ StartOver:
                 }                
             }
             if (data) {
-                fclose(data);
+                FCLOSE_CHECK(data);
             }
             if (keep) {
                 unsigned char    Path2[XPL_MAX_PATH+1];
 
                 sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 sprintf(Path2, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                rename(Path2, path);
+                RENAME_CHECK(Path2, path);
             } else {
                 sprintf(path, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                unlink(path);
+                UNLINK_CHECK(path);
         
                 sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 sprintf(path, "%s/d%s.msg", Conf.spoolPath, entry);
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 XplSafeDecrement(Queue.queuedLocal);
                 ProcessQueueEntryCleanUp(idLock, report);
@@ -1468,14 +1508,17 @@ StartOver:
     for (used = 0; (used < (unsigned long)Queue.pushClients.count) && (Agent.agent.state < BONGO_AGENT_STATE_STOPPING); used++) {
         if ((Queue.pushClients.array[used].queue == queue) && (Queue.pushClients.array[used].errorCount <= MAX_PUSHCLIENTS_ERRORS)) {
             sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-            if ((stat(path, &sb) == 0) && ((fh = fopen(path, "rb")) != NULL)) {
-                /* Count the number of lines */
-                do {
-                    if (fgets(line, CONN_BUFSIZE, fh) 
-                            && ((line[0] == QUEUE_RECIP_REMOTE) || (line[0] == QUEUE_RECIP_LOCAL) || (line[0] == QUEUE_RECIP_MBOX_LOCAL))) {
-                        lines++;
-                    }
-                } while (!feof(fh) && !ferror(fh));
+            if (stat(path, &sb) == 0) {
+                FOPEN_CHECK(fh, path, "rb");
+                if (fh) {
+                    /* Count the number of lines */
+                    do {
+                        if (fgets(line, CONN_BUFSIZE, fh) 
+                                && ((line[0] == QUEUE_RECIP_REMOTE) || (line[0] == QUEUE_RECIP_LOCAL) || (line[0] == QUEUE_RECIP_MBOX_LOCAL))) {
+                            lines++;
+                        }
+                    } while (!feof(fh) && !ferror(fh));
+                }
             } else {
                 ProcessQueueEntryCleanUp(idLock, report);
                 return(TRUE);
@@ -1495,7 +1538,7 @@ StartOver:
 
                 LogFailureF("Cannot allocate %d bytes memory (entry %ld)", sizeof(QueueClient), entryID);
                 if (fh) {
-                    fclose(fh);
+                    FCLOSE_CHECK(fh);
                 }
 
                 fh = NULL;
@@ -1528,7 +1571,7 @@ StartOver:
                     QueueClientFree(client);
 
                     if (fh) {
-                        fclose(fh);
+                        FCLOSE_CHECK(fh);
                     }
 
                     fh = NULL;
@@ -1565,7 +1608,7 @@ StartOver:
                 QueueClientFree(client);
 
                 if (fh) {
-                    fclose(fh);
+                    FCLOSE_CHECK(fh);
                 }
 
                 fh = NULL;
@@ -1578,7 +1621,7 @@ StartOver:
             ConnWriteF(client->conn, "6020 %03d-%s %ld %ld %ld\r\n", queue, entry, (unsigned long)sb.st_size, dSize, lines);
             ConnWriteFile(client->conn, fh);
 
-            fclose(fh);
+            FCLOSE_CHECK(fh);
             fh = NULL;
 
             sprintf(client->entry.workQueue, "%03d-%s", queue, entry);
@@ -1665,7 +1708,7 @@ StartOver:
 
             sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
             sprintf(path2, "%s/c%s.%03d", Conf.spoolPath, entry, i);
-            rename(path, path2);
+            RENAME_CHECK(path, path2);
 
             sprintf(path, "%03d%s", i, entry);
             SpoolEntryIDUnlock(idLock);
@@ -1685,7 +1728,7 @@ StartOver:
                QDBHandleRelease(handle);
             }
 
-            fh = fopen(path,"rb");
+            FOPEN_CHECK(fh, path, "rb");
             keep = FALSE;
             if (fh) {
                 do {
@@ -1731,7 +1774,7 @@ StartOver:
                         }
                     }
                 } while (!feof(fh) && !ferror(fh));
-                fclose(fh);
+                FCLOSE_CHECK(fh);
             } else {
                 keep = TRUE;
             }
@@ -1740,16 +1783,16 @@ StartOver:
             if (bounce) {
                 /* Call the bouncing code */
                 sprintf(path2, "%s/d%s.msg", Conf.spoolPath, entry);
-                data = fopen(path2, "rb");
-                fh = fopen(path, "rb");
+                FOPEN_CHECK(data, path2, "rb");
+                FOPEN_CHECK(fh, path, "rb");
 
                 if (fh && data && 0 == HandleDSN(data, fh)) {
-                    fclose(data);
+                    FCLOSE_CHECK(data);
 
                     /* If we're not keeping the file, we can ignore its contents */
                     if (keep) {
                         sprintf(path2, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                        newFH = fopen(path2, "wb");
+                        FOPEN_CHECK(newFH, path2, "wb");
                         if (newFH) {
                             /* Now remove the bounced entries */
                             while (!feof(fh) && !ferror(fh)) {
@@ -1767,24 +1810,24 @@ StartOver:
                                 }
                             }
 
-                            fclose(fh);
-                            fclose(newFH);
+                            FCLOSE_CHECK(fh);
+                            FCLOSE_CHECK(newFH);
 
-                            unlink(path);
-                            rename(path2, path);
+                            UNLINK_CHECK(path);
+                            RENAME_CHECK(path2, path);
                         } else {
-                            fclose(fh);
+                            FCLOSE_CHECK(fh);
                         }
                     } else {
-                        fclose(fh);
+                        FCLOSE_CHECK(fh);
                     }
                 } else {
                     if (fh) {
-                        fclose(fh);
+                        FCLOSE_CHECK(fh);
                     }
 
                     if (data) {
-                        fclose(data);
+                        FCLOSE_CHECK(data);
                     }
 
                     LogFailureF("File open failure: entry %ld, path %s", entryID, path);
@@ -1797,10 +1840,10 @@ StartOver:
             if (!keep) {
                 XplSafeDecrement(Queue.queuedLocal);
 
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 sprintf(path, "%s/d%s.msg",Conf.spoolPath, entry);
-                unlink(path);
+                UNLINK_CHECK(path);
 
                 break;
             }
@@ -1817,13 +1860,13 @@ StartOver:
                 }
 
                 sprintf(path, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                newFH = fopen(path, "wb");
+                FOPEN_CHECK(newFH, path, "wb");
 
                 sprintf(path, "%s/d%s.msg", Conf.spoolPath, entry);
-                data = fopen(path, "rb");
+                FOPEN_CHECK(data, path, "rb");
 
                 sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-                fh = fopen(path, "rb");
+                FOPEN_CHECK(fh, path, "rb");
 
                 if (fh && newFH && data) {
                     XplSafeIncrement(Queue.remoteDeliveryFailed);
@@ -1868,42 +1911,42 @@ StartOver:
                         }
                     }
 
-                    fclose(newFH);
-                    fclose(fh);
+                    FCLOSE_CHECK(newFH);
+                    FCLOSE_CHECK(fh);
 
                     /* Still got path from above */
-                    unlink(path);
+                    UNLINK_CHECK(path);
                     sprintf(path2, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
-                    rename(path2, path);
+                    RENAME_CHECK(path2, path);
 
-                    fh = fopen(path, "rb");
+                    FOPEN_CHECK(fh, path, "rb");
                     if (fh) {
                         HandleDSN(data, fh);
-                        fclose(fh);
+                        FCLOSE_CHECK(fh);
                     } else {
                         LogFailureF("Couldn't open path %s (%ld)", path, entryID);
                     }
 
-                    fclose(data);
+                    FCLOSE_CHECK(data);
 
                     sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-                    unlink(path);
+                    UNLINK_CHECK(path);
 
                     sprintf(path, "%s/d%s.msg", Conf.spoolPath, entry);
-                    unlink(path);
+                    UNLINK_CHECK(path);
 
                     XplSafeDecrement(Queue.queuedLocal);
                 } else {
                     if (data) {
-                        fclose(data);
+                        FCLOSE_CHECK(data);
                     }
 
                     if (fh) {
-                        fclose(fh);
+                        FCLOSE_CHECK(fh);
                     }
 
                     if (newFH) {
-                        fclose(newFH);
+                        FCLOSE_CHECK(newFH);
                     }
                 }
 
@@ -1913,7 +1956,7 @@ StartOver:
                 count = 0;
                 sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, Q_RTS);
                 sprintf(path2, "%s/c%s.%03d", Conf.spoolPath, entry, Q_INCOMING);
-                rename(path, path2);
+                RENAME_CHECK(path, path2);
 
                 sprintf(path, "%03d%s", Q_INCOMING, entry);
             }
@@ -2433,7 +2476,7 @@ HandleDSN(FILE *data, FILE *control)
         fprintf (stderr, "could not open rtsData\n");
         fclose(rtsControl);
         sprintf(path, "%s/d%07lx.msg", Conf.spoolPath, id);
-        unlink(path);
+        UNLINK_CHECK(path);
         return -1;
     }
 
@@ -2442,10 +2485,10 @@ HandleDSN(FILE *data, FILE *control)
         fclose(rtsData);
 
         sprintf(path, "%s/d%07lx.msg", Conf.spoolPath, id);
-        unlink(path);
+        UNLINK_CHECK(path);
 
         sprintf(path, "%s/c%07lx.%03d", Conf.spoolPath, id, Q_INCOMING);
-        unlink(path);
+        UNLINK_CHECK(path);
 
         SpoolEntryIDUnlock(idLock);
         return 0;
@@ -2787,7 +2830,7 @@ CreateQueueThreads(BOOL failed)
                 current++;
                 CHOP_NEWLINE(path);
 
-                unlink(path);
+                UNLINK_CHECK(path);
             }
         }
 
@@ -2795,7 +2838,7 @@ CreateQueueThreads(BOOL failed)
     }
 
     sprintf(path, "%s/killfile", MsgGetDBFDir(NULL));
-    unlink(path);
+    UNLINK_CHECK(path);
 
     XplCloseDir(dirP);
 
@@ -3022,7 +3065,7 @@ CommandQabrt(void *param)
         client->entry.control = NULL;
         
         sprintf(client->path,"%s/c%07lx.in", Conf.spoolPath, client->entry.id);
-        unlink(client->path);
+        UNLINK_CHECK(client->path);
     }
     
     if (client->entry.data) {
@@ -3030,7 +3073,7 @@ CommandQabrt(void *param)
         client->entry.data = NULL;
         
         sprintf(client->path,"%s/d%07lx.msg",Conf.spoolPath, client->entry.id);
-        unlink(client->path);
+        UNLINK_CHECK(client->path);
     }
     if (client->entry.work) {
         fclose(client->entry.work);
@@ -3038,7 +3081,7 @@ CommandQabrt(void *param)
         
         if (client->entry.workQueue[0] != '\0') {
             sprintf(client->path,"%s/w%s.%s",Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-            unlink(client->path);
+            UNLINK_CHECK(client->path);
         }
     }
     
@@ -3323,7 +3366,7 @@ CommandQcrea(void *param)
     } else {
         fclose(client->entry.control);
         sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
-        unlink(client->path);
+        UNLINK_CHECK(client->path);
 
         return(ConnWrite(client->conn, MSG5221SPACELOW, sizeof(MSG5221SPACELOW) - 1));
     }
@@ -3358,10 +3401,10 @@ CommandQdele(void *param)
     LockQueueEntry(ptr+4, atoi(ptr)); */
 
     sprintf(client->path, "%s/c%s.%s", Conf.spoolPath, ptr + 4, ptr);
-    unlink(client->path);
+    UNLINK_CHECK(client->path);
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    unlink(client->path);
+    UNLINK_CHECK(client->path);
 
     /* FIXME: close out the file handles? */
 
@@ -3390,15 +3433,15 @@ CommandQdone(void *param)
             sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
             sprintf(path, "%s/c%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
             if ((stat(client->path, &sb1) == 0) && (stat(path, &sb2) == 0)) {
-                unlink(path);
-                rename(client->path, path);
+                UNLINK_CHECK(path);
+                RENAME_CHECK(client->path, path);
             } else {
                 if (stat(client->path, &sb) == 0) {
                     /* Our new queue file exists, everything still ok */
-                    rename(client->path, path);
+                    RENAME_CHECK(client->path, path);
                 } else {
                     /* got to keep the old one */
-                    unlink(client->path);
+                    UNLINK_CHECK(client->path);
                 }
             }
             
@@ -3873,12 +3916,12 @@ CommandQmove(void *param)
     if (stat(client->path, &sb) == 0) {
         sprintf(path, "%s/c%s.%03d", Conf.spoolPath, ptr + 4, atoi(ptr));
 
-        rename(client->path, path);
+        RENAME_CHECK(client->path, path);
 
         ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
     } else {
         sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-        unlink(client->path);
+        UNLINK_CHECK(client->path);
 
         ccode = ConnWrite(client->conn, MSG4224NOENTRY, sizeof(MSG4224NOENTRY) - 1);
     }
@@ -3943,7 +3986,7 @@ CommandQrcp(void *param)
 
             sprintf(client->path,"%s/c%07lx.in",Conf.spoolPath, client->entry.id);
             sprintf(path, "%s/c%07lx.%03ld", Conf.spoolPath, client->entry.id, client->entry.target);
-            rename(client->path, path);
+            RENAME_CHECK(client->path, path);
 
             sprintf(client->path, "%03ld%lx", client->entry.target, client->entry.id);
 
@@ -3972,7 +4015,7 @@ CommandQrcp(void *param)
         client->entry.control = NULL;
 
         sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
-        unlink(client->path);
+        UNLINK_CHECK(client->path);
     }
 
     sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, client->entry.id);
@@ -4133,7 +4176,7 @@ CommandQrun(void *param)
 
         sprintf(client->path,"%s/c%07lx.in",Conf.spoolPath, client->entry.id);
         sprintf(path, "%s/c%07lx.%03ld", Conf.spoolPath, client->entry.id, client->entry.target);
-        rename(client->path, path);
+        RENAME_CHECK(client->path, path);
 
         XplSafeIncrement(Queue.queuedLocal);
 
