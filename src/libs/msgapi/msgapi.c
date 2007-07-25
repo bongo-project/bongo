@@ -334,50 +334,6 @@ MsgFindObject(const unsigned char *user, unsigned char *dn, unsigned char *userT
 }
 
 EXPORT BOOL
-MsgReadIP(const unsigned char *object, unsigned char *type, MDBValueStruct *v)
-{
-    int first,last, i;
-    unsigned char *ptr;
-
-    if (!v || !type) {
-        return(FALSE);
-    }
-
-    first=v->Used;
-
-    if (!object) {
-        if (!MDBReadDN(MsgGlobal.server.dn, type, v)) {
-            return(FALSE);
-        }
-    } else {
-        if (!MDBReadDN(object, type, v)) {
-            return(FALSE);
-        }
-    }
-
-    last = v->Used;
-
-    for (i = first; i < last; i++) {
-        if ((ptr = strrchr(v->Value[i], '\\')) != NULL) {
-            *ptr = '\0';
-        }
-        MDBRead(v->Value[i], MSGSRV_A_IP_ADDRESS, v);
-    }
-
-    /* The following loop removes the names read by the ReadDN above,
-     * but keeps the IP addresses added afterwards :-) */
-    for (i = first; i < last; i++) {
-        MDBFreeValue(0, v);
-    }
-
-    if (v->Used > 0) {
-        return(TRUE);
-    } else {
-        return(FALSE);
-    }
-}
-
-EXPORT BOOL
 MsgDomainExists(const unsigned char *domain, unsigned char *domainObjectDN)
 {
     /* FIXME later; when we handle parent objects */
@@ -899,10 +855,6 @@ MsgLibraryStart(void)
     MDBFreeValues(MsgGlobal.vs.server.names);
     MsgGlobal.address.local = inet_addr(MsgGlobal.address.string);
 
-    /* This stuff is here to prevent a catch-22 with the IP address configuration above */
-    if (MsgReadIP(MsgGlobal.server.dn, MSGSRV_A_CONNMGR, config)) {
-        MsgGlobal.connManager = inet_addr(config->Value[0]);
-    }
     MDBFreeValues(config);
 
     LoadContextList(config);

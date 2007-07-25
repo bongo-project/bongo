@@ -4915,12 +4915,15 @@ ReadConfiguration (void)
     }
     MDBFreeValues (Config);
 
+    /* FIXME. This should be replaced by pulling config from the store. */
+#if 0
     if (MsgReadIP (MSGSRV_AGENT_SMTP, MSGSRV_A_QUEUE_SERVER, Config)) {
         strcpy (NMAPServer, Config->Value[0]);
         Log(LOG_INFO, "Configuration string %s Value %s",
             "MSGSRV_A_QUEUE_SERVER", Config->Value[0]);
     }
     MDBFreeValues (Config);
+#endif
 
     if (RelayHost[0] == '\0') {
         if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RELAYHOST, Config) > 0) {

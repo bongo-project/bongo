@@ -640,11 +640,6 @@ src/agents/antispam/Makefile
 src/agents/avirus/Makefile
 src/agents/calcmd/Makefile
 src/agents/collector/Makefile
-src/agents/connmgr/Makefile
-src/agents/connmgr/cmmodules/lists/Makefile
-src/agents/connmgr/cmmodules/rbl/Makefile
-src/agents/connmgr/cmmodules/rdns/Makefile
-src/agents/connmgr/cmmodules/user/Makefile
 src/agents/generic/Makefile
 src/agents/imap/Makefile
 src/agents/imap/tests/Makefile
@@ -691,7 +686,6 @@ src/libs/python/bongo/Xpl.py
 src/libs/bongoutil/Makefile
 src/libs/bongoutil/tests/Makefile
 src/libs/xpl/Makefile
-src/libs/connmgr/Makefile
 src/www/Makefile
 src/www/bongo.conf
 zoneinfo/Makefile
