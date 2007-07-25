@@ -90,7 +90,6 @@ static ProtocolCommand ImapProtocolCommands[] = {
     { IMAP_COMMAND_GETQUOTA, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_GETQUOTA) - 1, ImapCommandGetQuota, NULL, NULL },
     { IMAP_COMMAND_GETQUOTAROOT, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_GETQUOTAROOT) - 1, ImapCommandGetQuotaRoot, NULL, NULL },
     { IMAP_COMMAND_NAMESPACE, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_NAMESPACE) - 1, ImapCommandNameSpace, NULL, NULL },
-    { IMAP_COMMAND_PROXYAUTH, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_PROXYAUTH) - 1, ImapCommandProxyAuth, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
@@ -3574,81 +3573,6 @@ ImapCommandNameSpace(void *param)
         return(SendOk(session, "NAMESPACE"));
     }
     return(STATUS_ABORT);
-#else
-    return(SendError(((ImapSession *)param)->client.conn, ((ImapSession *)param)->command.tag, "SETACL", STATUS_UNKNOWN_COMMAND));
-#endif
-}
-
-/********** non-standard commands **********/
-
-int
-ImapCommandProxyAuth(void *param)
-{
-#if defined(HAVE_SHARED_FOLDERS)
-    ImapSession *session = (ImapSession *)param;
-    long ccode;
-    unsigned char *ptr;
-    unsigned char  *user = NULL;
-    MDBValueStruct  *User;
-
-    if (session->client.state == STATE_SELECTED) {
-        if (((ccode = PurgeMessageNotify(session)) == STATUS_CONTINUE) && ((ccode = NewMessageNotify(session)) == STATUS_CONTINUE)) {
-            ;    
-        } else {
-            return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", ccode));
-        }
-    } else if (session->client.state < STATE_AUTH) {
-        return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", STATUS_INVALID_STATE));
-    }
-
-    /* One of the consequences of switching users the way we do is that proxyauth
-     * will only succeed the first time. After that, the user has changed and can
-     * no longer proxyauth. This is the way Netscape does it, so supposedly its
-     * correct, although inefficient for the session. */
-    if(session->client.state < STATE_AUTH || XplStrCaseCmp(session->user.name, Imap.server.postmaster)) {
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_UNHANDLED, LOGGER_EVENT_UNHANDLED_REQUEST, LOG_INFO, 0, session->user.name, session->command.buffer, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-        return(SendError(session->client.conn, session->command.tag, "", STATUS_UNKNOWN_COMMAND));
-    }
-    ptr = session->command.buffer + 10;
-    while(IsWhiteSpace(*ptr)) {
-        ++ptr;
-    }
-
-    if(!*ptr) {
-        return(SendError(session->client.conn, session->command.tag, "", STATUS_INVALID_ARGUMENT));
-    }
-
-    ccode = GrabArgument(session, &ptr, &user);
-    if (ccode == STATUS_CONTINUE) {
-        /* Fixme - this doesn't connect the user to *his/her* nmap server */
-
-        User = MDBCreateValueStruct(Imap.directory.handle, NULL);
-        if (MsgFindObject(user, NULL, NULL, NULL, User)) { 
-            if(XplStrCaseCmp(session->user.name, User->Value[0]) != 0) {
-                if (strlen(User->Value[0]) < sizeof(session->user.name)) {
-                    strcpy(session->user.name, User->Value[0]);
-                }
-            }
-            MemFree(user);
-            MDBDestroyValueStruct(User);
-
-            session->client.state = STATE_AUTH;
-            if (NMAPSendCommandF(session->store.conn, "USER %s\r\n", session->user.name) != -1) {
-                ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
-                if (ccode == 1000) {
-                    return(SendOk(session, "PROXYAUTH"));
-                }
-                return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", CheckForNMAPCommError(ccode)));
-            }
-            return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", STATUS_NMAP_COMM_ERROR));
-        }
-
-        MDBDestroyValueStruct(User);
-        MemFree(user);
-        return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", STATUS_USERNAME_NOT_FOUND));
-    }
-
-    return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", ccode));
 #else
     return(SendError(((ImapSession *)param)->client.conn, ((ImapSession *)param)->command.tag, "SETACL", STATUS_UNKNOWN_COMMAND));
 #endif

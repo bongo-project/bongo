@@ -303,7 +303,6 @@ typedef struct {
 
     struct {
         char                *name;                          /* login name                       */
-        char                dn[MDB_MAX_OBJECT_CHARS + 1];   /* distinguished name               */
     } user;
 
     FolderListInformation folder;
@@ -455,13 +454,5 @@ int ImapCommandSetQuota(void *param);
 int ImapCommandGetQuota(void *param);
 int ImapCommandGetQuotaRoot(void *param);
 int ImapCommandNameSpace(void *param);
-int ImapCommandProxyAuth(void *param);
-#if MDB_DEBUG
-int ImapCommandUserLookup(void *param);
-int ImapCommandUserVerify(void *param);
-int ImapCommandUserRead(void *param);
-int ImapCommandUserWriteLocal(void *param);
-int ImapCommandUserWriteSuper(void *param);
-int ImapCommandUserEnum(void *param);
-#endif
+
 #include "inline.h"
