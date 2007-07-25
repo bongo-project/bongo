@@ -5093,11 +5093,10 @@ int XplServiceMain (int argc, char *argv[])
     int ccode;
     XplThreadID ID;
 
+    LogStart();
     /* Done binding to ports, drop privs permanently */
     if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-        XplConsolePrintf
-            ("bongosmtp: Could not drop to unprivileged user '%s', exiting.\n",
-             MsgGetUnprivilegedUser ());
+        Log(LOG_ERROR, "Could not drop to unprivileged user %s", MsgGetUnprivilegedUser());
         return 1;
     }
     XplInit();
@@ -5122,15 +5121,12 @@ int XplServiceMain (int argc, char *argv[])
         }
         else {
             MemoryManagerClose (MSGSRV_AGENT_SMTP);
-
-            XplConsolePrintf
-                ("SMTPD: Unable to create connection pool; shutting down.\r\n");
+            Log(LOG_ERROR, "Unable to create connection pool, shutting down");
             return (-1);
         }
     }
     else {
-        XplConsolePrintf
-            ("SMTPD: Unable to initialize memory manager; shutting down.\r\n");
+        Log(LOG_ERROR, "Unable to initialize memory manager, shutting down");
         return (-1);
     }
 
@@ -5138,10 +5134,7 @@ int XplServiceMain (int argc, char *argv[])
 
     MDBInit ();
     if ((SMTPDirectoryHandle = (MDBHandle) MsgInit ()) == NULL) {
-        XplBell ();
-        XplConsolePrintf
-            ("\rSMTPD: Invalid directory credentials; exiting!\n");
-        XplBell ();
+       Log(LOG_ERROR, "Invalid directory credentials, shutting down");
 
         MemoryManagerClose (MSGSRV_AGENT_SMTP);
 
@@ -5153,7 +5146,6 @@ int XplServiceMain (int argc, char *argv[])
 
     XplRWLockInit (&ConfigLock);
 
-    LogStartup ();
 
     for (ccode = 1; argc && (ccode < argc); ccode++) {
         if (XplStrNCaseCmp (argv[ccode], "--forwarder=", 12) == 0) {
@@ -5165,7 +5157,7 @@ int XplServiceMain (int argc, char *argv[])
     ReadConfiguration ();
 
     if (ServerSocketInit () < 0) {
-        XplConsolePrintf ("bongosmtp: Exiting.\n");
+        Log(LOG_WARN, "Can't open ports, exiting");
         return 1;
     }
 
@@ -5192,9 +5184,7 @@ int XplServiceMain (int argc, char *argv[])
 
     /* Done binding to ports, drop privs permanently */
     if (XplSetRealUser (MsgGetUnprivilegedUser ()) < 0) {
-        XplConsolePrintf
-            ("bongosmtp: Could not drop to unprivileged user '%s', exiting.\n",
-             MsgGetUnprivilegedUser ());
+        Log(LOG_ERROR, "Could not drop to unprivileged user %s", MsgGetUnprivilegedUser());
         return 1;
     }
 

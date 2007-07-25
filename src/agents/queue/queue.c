@@ -315,7 +315,7 @@ AddPushAgent(QueueClient *client,
             Queue.pushClients.array = temp;
             Queue.pushClients.allocated += PUSHCLIENTALLOC;
         } else {
-            LogAssert(TRUE, "Out of memory processing mailbox %s", identifier);
+            LogFailureF("Out of memory processing mailbox %s", identifier);
             return(-1);
         }
     }
@@ -932,13 +932,13 @@ StartOver:
 
             if (!newFH) { 
                 sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                LogAssert(TRUE, "File open failure. Entry %ld, path %s", entryID, path);
+                LogFailureF("File open failure. Entry %ld, path %s", entryID, path);
             } else if (!qEnvelope) {
-                LogAssert(TRUE, "Out of memory. Entry %ld, size %ld", entryID, sb.st_size);
+                LogFailureF("Out of memory. Entry %ld, size %ld", entryID, sb.st_size);
             } else if (!fh) {
-                LogAssert(TRUE, "File open failure. Entry %ld, path %s", entryID, path);
+                LogFailureF("File open failure. Entry %ld, path %s", entryID, path);
             } else {
-                LogAssert(TRUE, "Event file open failure. Entry %ld, path %s", entryID, path);
+                LogFailureF("Event file open failure. Entry %ld, path %s", entryID, path);
             }
 
             if (qEnvelope) {
@@ -1493,7 +1493,7 @@ StartOver:
                     QueueClientFree(client);
                 }
 
-                LogAssert(TRUE, "Cannot allocate %d bytes memory (entry %ld)", sizeof(QueueClient), entryID);
+                LogFailureF("Cannot allocate %d bytes memory (entry %ld)", sizeof(QueueClient), entryID);
                 if (fh) {
                     fclose(fh);
                 }
@@ -1552,7 +1552,7 @@ StartOver:
 
                 Queue.pushClients.array[used].errorCount = 0;
             } else {
-                LogAssert(TRUE, "Couldn't connect client %s", LOGIP(saddr));
+                LogFailureF("Couldn't connect client %s", LOGIP(saddr));
 
                 ConnClose(client->conn, 0);
                 ConnFree(client->conn);
@@ -1590,7 +1590,7 @@ StartOver:
             client->entry.report = report;
 
             if (!HandleCommand(client)) {
-                LogAssert(TRUE, "Couldn't handle command on entry %s for host %s", entry, LOGIP(saddr));
+                LogFailureF("Couldn't handle command on entry %s for host %s", entry, LOGIP(saddr));
             }
 
             /* fixme - evaluate this section.
@@ -1715,7 +1715,7 @@ StartOver:
                                 if (ptr2) {
                                     if ((handle = QDBHandleAlloc()) != NULL) {
                                         ccode = QDBAdd(handle, ptr2 + 1, entryID, queue);
-                                        LogAssert(ccode != -1, "Database insert error: %s", ptr2 + 1);
+                                        LogAssertF(ccode != -1, "Database insert error: %s", ptr2 + 1);
 
                                         QDBHandleRelease(handle);
                                     }
@@ -1787,7 +1787,7 @@ StartOver:
                         fclose(data);
                     }
 
-                    LogAssert(TRUE, "File open failure: entry %ld, path %s", entryID, path);
+                    LogFailureF("File open failure: entry %ld, path %s", entryID, path);
 
                     ProcessQueueEntryCleanUp(idLock, report);
                     return(TRUE);
@@ -1881,7 +1881,7 @@ StartOver:
                         HandleDSN(data, fh);
                         fclose(fh);
                     } else {
-                        LogAssert(TRUE, "Couldn't open path %s (%ld)", path, entryID);
+                        LogFailureF("Couldn't open path %s (%ld)", path, entryID);
                     }
 
                     fclose(data);
@@ -4203,11 +4203,11 @@ CommandQsrchDomain(void *param)
                     ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
                 }
             } else {
-                LogAssert(TRUE, "Couldn't find %s in QDB", ptr);
+                LogFailureF("Couldn't find %s in QDB", ptr);
                 ccode = ConnWrite(client->conn, MSG4261NODOMAIN, sizeof(MSG4261NODOMAIN) - 1);
             }
         } else {
-            LogAssert(TRUE, "Out of memory", ptr);
+            LogFailure("Out of memory");
             ccode = ConnWrite(client->conn, MSG5230NOMEMORYERR, sizeof(MSG5230NOMEMORYERR) - 1);
         }
 
