@@ -22,6 +22,8 @@
 #ifndef QUEUED_H
 #define QUEUED_H
 
+#define LOGGERNAME "queue"
+
 #include <xpl.h>
 #include <connio.h>
 #include <mdb.h>

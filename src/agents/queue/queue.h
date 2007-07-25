@@ -22,8 +22,8 @@
 #ifndef QUEUE_H
 #define QUEUE_H
 
-#include "conf.h"
 #include "queued.h"
+#include "conf.h"
 
 #define SPOOL_LOCK_ARRAY_SIZE 256
 #define SPOOL_LOCK_IDARRAY_SIZE 64

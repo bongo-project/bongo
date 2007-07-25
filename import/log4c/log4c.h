@@ -62,8 +62,10 @@
 
 #define LOGIP(X) inet_ntoa(X.sin_addr)
 
+#define LogAssert(test, message, ...) if((test)) { Log(LOG_ERROR, "Assert:%s:%d " message, __FILE__, __LINE__, __VA_ARGS__); }
 #define Log(...) LogMsg(LOGGERNAME, 0, __VA_ARGS__)
 #define LogWithID(...) LogMsg(LOGGERNAME, __VA_ARGS__)
+#define LogStart() LoggerOpen(LOGGERNAME);
 #define LogStartup() log4c_init()
 #define LogShutdown() log4c_fini()
 

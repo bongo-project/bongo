@@ -236,9 +236,7 @@ SpoolEntryIDLock(unsigned long id)
 
         XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
 
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PQE_LOCK_FULL, LOG_INFO, 0, NULL, NULL, id, 0, NULL, 0);
-
-        XplConsolePrintf("bongoqueue: Unable to lock spool entry %x; table full.\r\n", (unsigned int)id);
+        Log(LOG_INFO, "Unable to lock spool entry %x, table full", (unsigned int) id);
     }
 
     return(NULL);
@@ -300,7 +298,7 @@ AddPushAgent(QueueClient *client,
     int count;
     QueuePushClient *temp;
 
-    LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ADD_QUEUE_AGENT, LOG_INFO, 0, NULL, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), queue, &port, sizeof(port));
+    Log(LOG_INFO, "Adding client on host %s:%d to queue %d", LOGIP(client->conn->socketAddress), port, queue);
 
     XplMutexLock(Queue.pushClients.lock);
 
@@ -317,10 +315,7 @@ AddPushAgent(QueueClient *client,
             Queue.pushClients.array = temp;
             Queue.pushClients.allocated += PUSHCLIENTALLOC;
         } else {
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_OUT_OF_MEMORY, LOG_CRITICAL, 0, "Queue", identifier, (Queue.pushClients.allocated + PUSHCLIENTALLOC) * sizeof(QueuePushClient), 0, NULL, 0);
-
-            XplConsolePrintf("bongoqueue: Out of memory processing user %s, mailbox %s; request size: %d bytes\r\n", "bongoqueue:AddPushAgent", 
-                      identifier, (int)((Queue.pushClients.allocated + PUSHCLIENTALLOC) * sizeof(QueuePushClient)));
+            LogAssert(TRUE, "Out of memory processing mailbox %s", identifier);
             return(-1);
         }
     }
@@ -360,9 +355,9 @@ RemovePushAgentIndex(int index, BOOL force)
 
         if ((Queue.pushClients.array[index].errorCount > MAX_PUSHCLIENTS_ERRORS) || force) {
             if (force) {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_REREGISTER_QUEUE_AGENT, LOG_INFO, 0, NULL, NULL, XplHostToLittle(Queue.pushClients.array[index].address), Queue.pushClients.array[index].queue, &(Queue.pushClients.array[index].port), sizeof(Queue.pushClients.array[index].port));
+                Log(LOG_INFO, "Reregistered queue agent");
             } else {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_REMOVED_QUEUE_AGENT, LOG_INFO, 0, NULL, NULL, XplHostToLittle(Queue.pushClients.array[index].address), Queue.pushClients.array[index].queue, &(Queue.pushClients.array[index].port),  sizeof(Queue.pushClients.array[index].port));
+                Log(LOG_INFO, "Removed queue agent");
             }
 
             if (index < (Queue.pushClients.count - 1)) {
@@ -647,7 +642,7 @@ StartOver:
 
     entryID = strtol(entry, NULL, 16);
 
-    LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_START, LOG_DEBUG, entryID, NULL, NULL, queue, entryID, NULL, 0);
+    Log(LOG_DEBUG, "Processing entry %ld on queue %d", entryID, queue);
 
     idLock = SpoolEntryIDLock(entryID);
     if (idLock) {
@@ -868,7 +863,7 @@ StartOver:
 
                                 MDBFreeValues(vs);
                             } else {
-                                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FIND_OBJECT_FAILED, LOG_INFO, entryID, cur + 1, "", queue, 0, NULL, 0);
+                                Log(LOG_INFO, "Entry %ld queue %d, can't find %s", entryID, queue, cur + 1);
 
                                 if (ptr2) {
                                     *ptr2 = ' ';
@@ -937,13 +932,13 @@ StartOver:
 
             if (!newFH) { 
                 sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_FILE_OPEN_FAILURE, LOG_CRITICAL, entryID, path, __FILE__, __LINE__, 0, NULL, 0);
+                LogAssert(TRUE, "File open failure. Entry %ld, path %s", entryID, path);
             } else if (!qEnvelope) {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_OUT_OF_MEMORY, LOG_CRITICAL, entryID, __FILE__, NULL, sb.st_size, 0, NULL, 0);
+                LogAssert(TRUE, "Out of memory. Entry %ld, size %ld", entryID, sb.st_size);
             } else if (!fh) {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_FILE_OPEN_FAILURE, LOG_CRITICAL, entryID, path, __FILE__, __LINE__, 0, NULL, 0);
+                LogAssert(TRUE, "File open failure. Entry %ld, path %s", entryID, path);
             } else {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_FILE_OPEN_FAILURE, LOG_CRITICAL, entryID, path, __FILE__, __LINE__, 0, NULL, 0);
+                LogAssert(TRUE, "Event file open failure. Entry %ld, path %s", entryID, path);
             }
 
             if (qEnvelope) {
@@ -958,7 +953,7 @@ StartOver:
                 fclose(newFH);
             }
 
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_WRITE_ERROR, LOG_WARNING, 0, "Spool", "Queue", __LINE__, 0, NULL, 0);
+            Log(LOG_WARNING, "Write error in queue");
 
             sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
             unlink(path);
@@ -1075,8 +1070,6 @@ StartOver:
                                 authenticatedSender[1]='\0';
                             }
                     
-                            /* LoggerEvent(NMAP.handle.logging, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FROM, LOG_DEBUG, entryID, entry, sender, queue, 0, MIME_TEXT_PLAIN, authenticatedSender? strlen(authenticatedSender) + 1: 1, authenticatedSender? (char *)authenticatedSender: "", NULL, 0); */
-                    
                             fprintf(newFH, "%s\r\n", line);
                             break;
                         }
@@ -1117,11 +1110,10 @@ StartOver:
 
                             vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
                             if (!MsgFindObject(recipient, NULL, NULL, &siaddr, vs)) {
-                                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FIND_OBJECT_FAILED, LOG_WARNING, entryID, recipient, "", queue, 0, NULL, 0);
-
+                                Log(LOG_WARNING, "User %s unknown, entry %ld", recipient, entryID);
                                 status = DELIVER_USER_UNKNOWN;
                             } else {
-                                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_REMOTE_NMAP, LOG_DEBUG, entryID, entry, line + 1, queue, XplHostToLittle(siaddr.sin_addr.s_addr), NULL, 0);
+                                Log(LOG_DEBUG, "Delivering %s on queue %d to %s", entry, queue, line+1);
                                 status = DeliverToStore(&list, &siaddr, NMAP_DOCTYPE_CAL, sender, authenticatedSender, dataFilename, data, dSize, recipient, mailbox, flags);
                                 if (Agent.agent.state == BONGO_AGENT_STATE_STOPPING) {
                                     status = DELIVER_TRY_LATER;
@@ -1135,7 +1127,7 @@ StartOver:
                             }
 
                             if (status<DELIVER_SUCCESS) {
-                                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_DELIVERY_FAILED, LOG_NOTICE, entryID, entry, NULL, queue, status, NULL, 0);
+                                Log(LOG_NOTICE, "Delivery failed: entry %ld, queue %d, status %d", entryID, queue, status);
                                 if (status==DELIVER_USER_UNKNOWN || status==DELIVER_INTERNAL_ERROR || status==DELIVER_QUOTA_EXCEEDED) {
                                     XplSafeIncrement(Queue.localDeliveryFailed);
                                     if (flags & DSN_FAILURE) {
@@ -1224,7 +1216,7 @@ StartOver:
                             /* Attempt delivery, check if local or remote */
                             vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
                             if (MsgFindObject(recipient, NULL, NULL, &siaddr, vs)) {
-                                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_REMOTE_NMAP, LOG_DEBUG, entryID, entry, line + 1, queue, XplHostToLittle(siaddr.sin_addr.s_addr), NULL, 0);
+                                Log(LOG_DEBUG, "Deliver to store entry %s in queue %d for host %s", entry, queue, LOGIP(siaddr));
                                 status = DeliverToStore(&list, &siaddr, NMAP_DOCTYPE_MAIL, sender, authenticatedSender, dataFilename, data, dSize, recipient, mailbox, messageFlags);
 
                                 if (Agent.agent.state == BONGO_AGENT_STATE_STOPPING) {
@@ -1256,7 +1248,7 @@ StartOver:
                                     flags = 0;
                                     keep = TRUE; /* recipient prevent it from getting removed */
                                 } else {
-                                    LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FIND_OBJECT_FAILED, LOG_INFO, entryID, recipient, (authenticatedSender && (authenticatedSender[0] != '-') && (authenticatedSender[1] != ' '))? authenticatedSender: sender, queue, saddr.sin_addr.s_addr, NULL, 0);
+                                    Log(LOG_INFO, "Can't forward undeliverable entry %ld in queue %d for user %s on host %s", entry, queue, sender, LOGIP(saddr));
 
                                     XplRWReadLockRelease(&Conf.lock);
                                 }
@@ -1265,7 +1257,7 @@ StartOver:
                             MDBDestroyValueStruct(vs);
 
                             if (status < DELIVER_SUCCESS) {
-                                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_DELIVERY_FAILED, LOG_WARNING, entryID, entry, NULL, queue, status, NULL, 0);
+                                Log(LOG_WARNING, "Couldn't deliver entry %s on queue %d, status %d", entry, queue, status);
                                 if ((status == DELIVER_USER_UNKNOWN) || (status == DELIVER_INTERNAL_ERROR) || (status == DELIVER_QUOTA_EXCEEDED)) {
                                     XplSafeIncrement(Queue.localDeliveryFailed);
                                     if (flags & DSN_FAILURE) {
@@ -1360,7 +1352,7 @@ StartOver:
                         }
 
                         default:
-                            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FIND_OBJECT_FAILED, LOG_INFO, entryID, line, entry, queue, 0, NULL, 0);
+                            Log(LOG_INFO, "Unknown command: %s (entry: %ld)", line, entryID);
                             fprintf(newFH, "%s\r\n", line);
                             break;
                     }
@@ -1422,7 +1414,7 @@ StartOver:
                         fclose(data);
                     }
 
-                    LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_FILE_OPEN_FAILURE, LOG_CRITICAL, entryID, path, __FILE__, __LINE__, 0, NULL, 0);
+                    Log(LOG_CRITICAL, "File open error for entry %ld, path: %s", entryID, path);
                     ProcessQueueEntryCleanUp(idLock, report);
                     return(FALSE);
                 }                
@@ -1501,7 +1493,7 @@ StartOver:
                     QueueClientFree(client);
                 }
 
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_OUT_OF_MEMORY, LOG_ERROR, entryID, __FILE__, NULL, sizeof(QueueClient), __LINE__, NULL, 0);
+                LogAssert(TRUE, "Cannot allocate %d bytes memory (entry %ld)", sizeof(QueueClient), entryID);
                 if (fh) {
                     fclose(fh);
                 }
@@ -1560,7 +1552,7 @@ StartOver:
 
                 Queue.pushClients.array[used].errorCount = 0;
             } else {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FAILED_CONNECT, LOG_WARNING, entryID, entry, NULL, queue, XplHostToLittle(saddr.sin_addr.s_addr), &(Queue.pushClients.array[used].port), sizeof(Queue.pushClients.array[used].port));
+                LogAssert(TRUE, "Couldn't connect client %s", LOGIP(saddr));
 
                 ConnClose(client->conn, 0);
                 ConnFree(client->conn);
@@ -1598,7 +1590,7 @@ StartOver:
             client->entry.report = report;
 
             if (!HandleCommand(client)) {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_PQE_FAILED, LOG_WARNING, entryID, entry, NULL, queue, XplHostToLittle(saddr.sin_addr.s_addr), &(Queue.pushClients.array[used].port), sizeof(Queue.pushClients.array[used].port));
+                LogAssert(TRUE, "Couldn't handle command on entry %s for host %s", entry, LOGIP(saddr));
             }
 
             /* fixme - evaluate this section.
@@ -1723,9 +1715,7 @@ StartOver:
                                 if (ptr2) {
                                     if ((handle = QDBHandleAlloc()) != NULL) {
                                         ccode = QDBAdd(handle, ptr2 + 1, entryID, queue);
-                                        if (ccode == -1) {
-                                            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_DATABASE, LOGGER_EVENT_DATABASE_INSERT_ERROR, LOG_ERROR, 0, ptr2 + 1, NULL, ccode, 0, NULL, 0);
-                                        }
+                                        LogAssert(ccode != -1, "Database insert error: %s", ptr2 + 1);
 
                                         QDBHandleRelease(handle);
                                     }
@@ -1797,7 +1787,7 @@ StartOver:
                         fclose(data);
                     }
 
-                    LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_FILE_OPEN_FAILURE, LOG_CRITICAL, entryID, path, __FILE__, __LINE__, 0, NULL, 0);
+                    LogAssert(TRUE, "File open failure: entry %ld, path %s", entryID, path);
 
                     ProcessQueueEntryCleanUp(idLock, report);
                     return(TRUE);
@@ -1891,7 +1881,7 @@ StartOver:
                         HandleDSN(data, fh);
                         fclose(fh);
                     } else {
-                        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_FILE_OPEN_FAILURE, LOG_CRITICAL, entryID, path, __FILE__, __LINE__, 0, NULL, 0);
+                        LogAssert(TRUE, "Couldn't open path %s (%ld)", path, entryID);
                     }
 
                     fclose(data);
@@ -4213,11 +4203,11 @@ CommandQsrchDomain(void *param)
                     ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
                 }
             } else {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_DATABASE, LOGGER_EVENT_DATABASE_FIND_ERROR, LOG_ERROR, 0, ptr, NULL, ccode, 0, NULL, 0);
+                LogAssert(TRUE, "Couldn't find %s in QDB", ptr);
                 ccode = ConnWrite(client->conn, MSG4261NODOMAIN, sizeof(MSG4261NODOMAIN) - 1);
             }
         } else {
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_OUT_OF_MEMORY, LOG_CRITICAL, 0, client->buffer, NULL, sizeof(MDBValueStruct), 0, NULL, 0);
+            LogAssert(TRUE, "Out of memory", ptr);
             ccode = ConnWrite(client->conn, MSG5230NOMEMORYERR, sizeof(MSG5230NOMEMORYERR) - 1);
         }
 
@@ -4776,6 +4766,6 @@ CommandQflush(void *param)
     QueueClient *client = (QueueClient *)param;
 
     Queue.flushNeeded = TRUE;
-
+ 
     return (ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1));
 }
