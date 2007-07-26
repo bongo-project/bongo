@@ -115,13 +115,16 @@ class SetupCredentialCommand(Command):
         mdb = MdbUtil.GetSetupMdb(options)
 
         passwd = Util.GeneratePassword(32)
+        credential = Util.GeneratePassword(4096)
 
         omask = os.umask(0077)
 
         eclients = os.path.join(Xpl.DEFAULT_DBF_DIR, "eclients.dat")
+        credfile = os.path.join(Xpl.DEFAULT_DBF_DIR, "credential.dat")
 
         try:
             os.remove(eclients)
+            os.remove(credfile)
         except os.error:
             pass
 
@@ -129,14 +132,18 @@ class SetupCredentialCommand(Command):
         fd.write(passwd)
         fd.write("\0")
         fd.close()
+        
+        fd = open(credfile, "w")
+        fd.write(credential)
+        fd.write("\0")
+        fd.close()
 
         os.umask(omask)
 
         mdb.SetPassword(msgapi.GetConfigProperty(msgapi.MESSAGING_SERVER),
                         passwd)
-        passwd = Util.GeneratePassword(4096)
         mdb.SetAttribute(msgapi.GetConfigProperty(msgapi.BONGO_SERVICES),
-                         msgapi.A_ACL, [passwd])
+                         msgapi.A_ACL, [credential])
 
 class SetupSslCommand(Command):
     log = logging.getLogger("bongo.admintool")

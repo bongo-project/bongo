@@ -40,6 +40,26 @@ usage(void) {
 		"";
 
 	XplConsolePrintf("%s", text);
+
+{
+	char buffer[10000];
+	int i;
+	MsgInit();
+	memset(&buffer, 0, 100);
+	MsgAlex(&buffer);
+	XplConsolePrintf("Mine: ", buffer);
+        for(i = 0; i < 20; i++) {
+		XplConsolePrintf("%x", buffer[i]);
+	}
+	XplConsolePrintf("\n");
+	memset(&buffer, 0, 100);
+	MsgGetServerCredential(&buffer);
+	XplConsolePrintf("Orig: ", buffer);
+        for(i = 0; i < 20; i++) {
+		XplConsolePrintf("%x", buffer[i]);
+	}
+	XplConsolePrintf("\n");
+}
 }
 
 void

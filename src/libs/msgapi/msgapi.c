@@ -165,19 +165,7 @@ MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t len
     MDBValueStruct *v; 	 
     xpl_hash_context ctx; 	 
  	 
-    if (access[0] == '\0') { 	 
-        if (MsgGlobal.directoryHandle) { 	 
-            v = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL); 	 
-            if (v) { 	 
-                MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, v); 	 
-                if (v->Used) { 	 
-                    HashCredential(MsgGlobal.server.dn, v->Value[0], access); 	 
-                } 	 
- 	 
-                MDBDestroyValueStruct(v); 	 
-            } 	 
-        } 	 
-    } 	 
+    MsgGetServerCredential(&access);
  	 
     if (access[0] && reply && (length > 32) && ((ptr = strchr(response, '<')) != NULL)) { 	 
         salt = ++ptr; 	 
@@ -855,12 +843,11 @@ MsgLibraryStart(void)
     MDBFreeValues(MsgGlobal.vs.server.names);
     MsgGlobal.address.local = inet_addr(MsgGlobal.address.string);
 
-    MDBFreeValues(config);
+    // MDBFreeValues(config);
 
-    LoadContextList(config);
+    //LoadContextList(config);
 
-    MDBDestroyValueStruct(config);
-
+    // MDBDestroyValueStruct(config);
 
     return(TRUE);
 }
@@ -1175,18 +1162,18 @@ MsgGetRecoveryFlag(void)
 EXPORT BOOL
 MsgGetServerCredential(char *buffer)
 {
-	MDBValueStruct *v;
+	unsigned char credential[4097];
+	unsigned char file[120];
+	FILE *credfile;
 
-	if (MsgGlobal.directoryHandle) { 	 
-		v = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL); 	 
-		if (v) { 	 
-			MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, v); 	 
-			if (v->Used) { 	 
-				HashCredential(MsgGlobal.server.dn, v->Value[0], buffer); 	 
-			} 	 
-			MDBDestroyValueStruct(v);
-			return TRUE;
-		} 
+	memset(credential, 0, sizeof(credential));
+
+	sprintf(file, "%s/credential.dat", XPL_DEFAULT_DBF_DIR);
+	credfile = fopen(file, "rb");
+	if (credfile) {
+		fread(credential, sizeof(unsigned char), sizeof(credential), credfile);
+		fclose(credfile);
+		credfile = NULL;
+		HashCredential(MsgGlobal.server.dn, credential, buffer);
 	}
-	return FALSE;
 }

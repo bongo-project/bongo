@@ -74,6 +74,24 @@ StoreAgentReadConfiguration(BOOL *recover)
     if (!MsgGetServerCredential(StoreAgent.server.hash))
         // can't proceed without the server hash..
         return(FALSE);
+{
+        char buffer[10000];
+        int i;
+        memset(&buffer, 0, 100);
+        MsgAlex(&buffer);
+        XplConsolePrintf("Mine: ", buffer);
+        for(i = 0; i < 20; i++) {
+                XplConsolePrintf("%x", buffer[i]);
+        }
+        XplConsolePrintf("\n");
+        memset(&buffer, 0, 100);
+        MsgGetServerCredential(&buffer);
+        XplConsolePrintf("Orig: ", buffer);
+        for(i = 0; i < 20; i++) {
+                XplConsolePrintf("%x", buffer[i]);
+        }
+        XplConsolePrintf("\n");
+}
 
     if (recover && MsgGetRecoveryFlag()) {
         *recover = TRUE;
