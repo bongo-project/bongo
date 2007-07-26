@@ -92,8 +92,8 @@ typedef struct _Queue {
 
 extern MessageQueue Queue;
 
-void	fopen_check(FILE *handle, char *path, char *mode, int line);
-int	fclose_check(FILE *fh, int line);
+FILE * 	fopen_check(FILE **handle, char *path, char *mode, int line);
+int	fclose_check(FILE **handle, int line);
 int	unlink_check(char *path, int line);
 int	rename_check(const char *oldpath, const char *newpath, int line);
 

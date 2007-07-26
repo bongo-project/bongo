@@ -65,21 +65,26 @@ static int HandleDSN(FILE *data, FILE *control);
 
 #define MAX_CHARS_IN_PDBSEARCH    512
 
-#define FOPEN_CHECK(handle, path, mode) fopen_check((handle), (path), (mode), __LINE__)
-void
-fopen_check(FILE *handle, char *path, char *mode, int line)
+#define FOPEN_CHECK(handle, path, mode) fopen_check(&(handle), (path), (mode), __LINE__)
+FILE *
+fopen_check(FILE **handle, char *path, char *mode, int line)
 {
-    LogAssertF(handle == NULL, "File handle already open on line %d", line);
-    handle = fopen(path, mode);
+    LogAssertF(*handle == NULL, "File handle already open on line %d", line);
+    *handle = fopen(path, mode);
+    return *handle;
 }
 
-#define FCLOSE_CHECK(f) fclose_check((f), __LINE__)
+#define FCLOSE_CHECK(f) fclose_check(&(f), __LINE__)
 int
-fclose_check(FILE *fh, int line)
+fclose_check(FILE **fh, int line)
 {
     int ret;
-    ret = fclose(fh);
-    LogAssertF(ret == 0, "File close failed on line %d: %d", line, errno);
+    ret = fclose(*fh);
+    if (ret == 0) {
+        *fh = NULL;
+    } else {
+        LogFailureF("File close failed on line %d: %d", line, errno);
+    }
     return ret;
 }
 
@@ -720,7 +725,7 @@ StartOver:
                     && (sb.st_size > 8) 
                     && ((qEnvelope = (unsigned char *)MemMalloc(sb.st_size + 1)) != NULL) 
                     && ((temp = fopen(path, "rb")) != NULL) 
-                    && (fread(qEnvelope, sizeof(unsigned char), sb.st_size, fh) == (size_t)sb.st_size)) {
+                    && (fread(qEnvelope, sizeof(unsigned char), sb.st_size, temp) == (size_t)sb.st_size)) {
                 /* Sort the control file as follows:
                     QUEUE_DATE
                     QUEUE_FLAGS
