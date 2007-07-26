@@ -73,6 +73,7 @@ Dragonfly.Mail.ListView.load = function (loc, jsob)
     var force = false;
 
     var html = new d.HtmlBuilder ('<div class="scrollv" id="mail-list-wrapper">');
+    var pageSize = m.Preferences.getPageSize ();
             
     document.title = _(loc.set) + ' - ' + _(loc.tab) + ': ' + Dragonfly.title;
 
@@ -104,7 +105,7 @@ Dragonfly.Mail.ListView.load = function (loc, jsob)
     list.buildEnd (html);
 
     new d.Pager (html, pageFmt,
-                 loc.page, Math.ceil (jsob.total / jsob.pageSize));
+                 loc.page, Math.ceil (jsob.total / pageSize));
 
     html.push ('</div>');
     html.set ('content-iframe');
@@ -137,7 +138,7 @@ Dragonfly.Mail.MultiListView.getData = function (loc)
     var m = d.Mail;
 
     var pageSize = m.Preferences.getPageSize ();
-
+    
     var propsStart = ((loc.page || 1) - 1) * pageSize;
 
     return d.requestJSONRPC ('getConversationList', loc,
@@ -160,6 +161,7 @@ Dragonfly.Mail.MultiListView.load = function (loc, jsob)
     loc = new d.Location (loc);
 
     var html = new d.HtmlBuilder ('<div class="scrollv" id="mail-list-wrapper">');
+    var pageSize = m.Preferences.getPageSize ();
     
     document.title = _(loc.set) + ' - ' + _(loc.tab) + ': ' + Dragonfly.title;
 
@@ -199,7 +201,7 @@ Dragonfly.Mail.MultiListView.load = function (loc, jsob)
 
     pageFmt = loc.getClientUrl ('handler') + '/page{0}';
 
-    new d.Pager (html, pageFmt, loc.page, Math.ceil (jsob.total / jsob.pageSize));
+    new d.Pager (html, pageFmt, loc.page, Math.ceil (jsob.total / pageSize));
 
     html.push ('</div>');
     html.set ('content-iframe');

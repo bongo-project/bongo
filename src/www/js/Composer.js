@@ -130,7 +130,7 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
         '<input id="', this.bcc, '" class="bcc" type="text" value="', escapeRecips (this.msg.bcc), '">',
         '<div id="autocomplete-', this.bcc, '" class="autocompletions"></td></tr>',
         
-        '<tr><th>', _('Subject:'), '</th><td><input id="', this.subject, '" class="subject" value="', d.escapeHTML (this.msg.subject || ''), '"></td></tr>',
+        '<tr><th>', _('Subject:'), '</th><td><input id="', this.subject, '" class="subject" value="', d.escapeHTML (this.msg.subject || _('Untitled')), '"></td></tr>',
         '<tr><th>', _('From:'), '</th><td id="', this.from, '" class="from">', d.escapeHTML (this.msg.from), '</td></tr>',
         '<tr><th>', _('Attachments:'), '</th><td class="attachments"><ul>');
 
@@ -154,7 +154,7 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
         }
     }
 
-    html.push ('<li><a id="', this.addAttachment, '">', _('mailAttachLabel'), '</a></li></ul>',
+    html.push ('<li><a id="', this.addAttachment, '">', _('Attach file...'), '</a></li></ul>',
                '<tr><td colspan="2"><textarea id="', this.body, '" class="body" cols="75" rows="15"  wrap="on">',
                d.escapeHTML (this.msg.body), '</textarea></td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',
@@ -284,9 +284,13 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         return false;
     }
 
-    //msg = msg || this.getCurrentMessage ();
-    msg = this.getCurrentMessage();
-
+    msg = msg;
+    if (!msg || !msg.from)
+    {
+        logDebug('Arg passed was an event, not a real message.');
+        msg = this.getCurrentMessage();
+    }
+    
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
         return true;
@@ -302,6 +306,13 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         conversation: this.conversation,
         message: this.bongoId
     };
+    
+    /*if (!msg.subject)
+    {
+        var untitled = _('Untitled');
+        this.subject = untitled;
+        msg.subject = untitled
+    }*/
 
     loc = new d.Location (loc);
     this.def = d.requestJSONRPC ((this.draftSavedAlready ? 'update' : 'create') + 'Draft', loc,
@@ -310,23 +321,12 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
                                  this.forward || null,
                                  this.calendarInvitationFor || null,
                                  this.useAuthUrls || false);
-
-    var displaysubject = '';
-    if (msg.subject)
-    {
-        displaysubject = d.escapeHTML (msg.subject);
-    }
-    else
-    {
-        msg.subject = _('Untitled');
-        displaysubject = d.escapeHTML (msg.subject);
-    }
     
-    d.notify (d.format (_('Saving draft "{0}"...'), displaysubject), true);
+    d.notify (d.format (_('Saving draft "{0}"...'), d.escapeHTML (msg.subject)), true);
 
     return this.def.addCallbacks (
         bind (function (jsob) {
-                  d.notify (_('Saved draft') + ' "' + displaysubject + '".');
+                  d.notify (_('Saved draft') + ' "' + d.escapeHTML (msg.subject) + '".');
                   this.draftSavedAlready = true;
                   this.lastSavedMsg = msg;
                   

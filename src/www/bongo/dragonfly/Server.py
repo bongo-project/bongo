@@ -1,7 +1,7 @@
 from mod_python import apache, util
 from bongo.commonweb.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
 from ResourcePath import ResourcePath
-from HttpError import HttpError
+from bongo.commonweb.HttpError import HttpError
 
 import Auth
 import bongo.commonweb.BongoFieldStorage

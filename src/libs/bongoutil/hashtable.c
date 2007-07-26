@@ -223,7 +223,7 @@ BongoHashtableCreateFull(int buckets,
                         DeleteFunction keydeletefunc, DeleteFunction valuedeletefunc)
 {
     BongoHashtable *table;
-    const int size = sizeof(BongoHashtable) + buckets * sizeof(struct BongoHashtableEntry *);
+    const int size = ALIGN_SIZE(sizeof(BongoHashtable), ALIGNMENT) + buckets * ALIGN_SIZE(sizeof(struct BongoHashtableEntry *), ALIGNMENT);
     
     table = MemMalloc(size);
     if (!table) { 
@@ -237,7 +237,7 @@ BongoHashtableCreateFull(int buckets,
     table->keydeletefunc = keydeletefunc;
     table->valuedeletefunc = valuedeletefunc;
 
-    memset(&(table->buckets[0]), 0, buckets * sizeof(struct BongoHashtableEntry *));
+    //memset(&(table->buckets[0]), 0, buckets * ALIGN_SIZE(sizeof(struct BongoHashtableEntry *), ALIGNMENT));
 
     return table;
 }

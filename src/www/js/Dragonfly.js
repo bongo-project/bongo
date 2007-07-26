@@ -1,6 +1,6 @@
 Dragonfly = { 
     title: 'Bongo', 
-    version: 'SVN r2483+', 
+    version: 'M3', 
     userName: '', 
     tabs: { }, 
     NAME: 'Dragonfly'
@@ -342,11 +342,13 @@ Dragonfly.go = function (path)
     }
     d.contentIFrameZone.disposeZone();
 
-    //logDebug (startDate + ': Loading ', path, ':', serializeJSON (loc));
-    //logDebug ('    from: ', d.currentView);
-    //logDebug ('    location: ', window.location);
-    //logDebug ('    hash: ', window.location.hash);
-    //logDebug ('    loc: ', serializeJSON(loc));
+    /*logDebug (startDate + ': Loading ', path, ':', serializeJSON (loc));
+    logDebug ('    from: ', d.currentView);
+    logDebug ('    location: ', window.location);
+    logDebug ('    hash: ', window.location.hash);
+    logDebug ('    loc: ', serializeJSON(loc));*/
+    
+    logDebug('curLoc: ', loc);
 
     if (!loc || !loc.valid) {
         logError ('invalid path: ' + path);
@@ -368,10 +370,22 @@ Dragonfly.go = function (path)
     }
 
     prof.toggle ('request');
+    logDebug('checking if ' + loc.handler + ' contains function getData(loc)...');
     if (h.getData) {
+        logDebug('Yup!');
         self.def = h.getData (loc);
     } else {
-        self.def = d.requestJSON ('GET', loc);
+        logDebug('Nope! Checking if ' + loc.tab + ' contains function getData(loc)...');
+        if (v.getData)
+        {
+            logDebug('Yup!');
+            self.def = v.getData(loc);
+        }
+        else
+        {
+            logDebug('Nope!');
+            self.def = d.requestJSON ('GET', loc);
+        }
     }
     
     self.def.loc = loc;
@@ -923,16 +937,13 @@ Dragonfly.start = function ()
     d.translateElements();
     
     d.setLoginMessage (_('Logged in: loading contacts and calendars...'));
-    
-    // setup the preferences dialog tabs
-    //d.setupPrefs();
-    
+
     // set current timezone to default and build timezone selector
     d.curTzid = c.Preferences.getDefaultTimezone();
-    //d.tzselector = new d.TzSelector (d.curTzid, 'tzselect', true);
-    //d.tzselector.setChangeListener (function () { d.setCurrentTzid (d.tzselector.getTzid()); });
 
-    var def = new d.MultiDeferred ([ c.loadCalendars(), 
+    /*var def = new d.MultiDeferred ([ c.loadCalendars(), 
+                                     d.AddressBook.sideboxPicker.load() ]);*/
+    var def = new DeferredList ([ c.loadCalendars(), 
                                      d.AddressBook.sideboxPicker.load() ]);
     return def.addCallbacks (
         function (res) {
@@ -950,8 +961,12 @@ Dragonfly.start = function ()
                         $('login-user').value = ''; 
                         $('login-password').value = '';
                         Element.setText ('user-name', d.userName);
-                        Element.setHTML ('logout-text', _('Log out') + ' ' + d.userName);
+                        Element.setHTML ('logout-text', d.format(_('Log out {0}...'), d.userName));
+                        Dragonfly.logoutMessage = _('You have logged out successfully.');    
                         showElement ('content');
+                        
+                        // Listen for clicks to main content thing, so we can hide popups.
+                        Event.observe ('content', 'click', Dragonfly.hidePopups.bindAsEventListener(this));
                         
                         // Add administration link if we're admin
                         if (d.userName == 'admin')
@@ -1015,6 +1030,20 @@ Dragonfly.initHtmlZones = function ()
     // disposeZone is not an event handler
     Event.observe (window, 'unload', bind ('disposeZone', d.contentZone));
 };
+
+Dragonfly.hidePopups = function ()
+{
+    if (Dragonfly.lastPopup)
+    {
+        Dragonfly.lastPopup.dispose();
+        logDebug('Attempted popup dispose complete.');
+        Dragonfly.lastPopup = null;
+    }
+    else
+    {
+        logDebug('Nothing to dispose');
+    }
+}
 
 Dragonfly.main = function ()
 {

@@ -124,9 +124,16 @@ Dragonfly.Calendar.OccurrencePopup.prototype.edit = function (evt, occurrence, e
     this.setClosable (false);
     delete this.changes; // may be set if we're editing after a save but before dispose
     if (occurrence) {
-        this.occurrence = (typeof occurrence == 'string')
-            ? d.JCal.buildNewEvent (occurrence).occurrences[0]
-            : occurrence;
+        if (!occurrence.pageX)
+        {
+            this.occurrence = (typeof occurrence == 'string')
+                ? d.JCal.buildNewEvent (occurrence).occurrences[0]
+                : occurrence;
+        }
+        else
+        {
+            // Rebuild the event?
+        }
     } else if (!this.occurrence) {
         this.occurrence = d.JCal.buildNewEvent ().occurrences[0];
     }
@@ -277,7 +284,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.getScope = function (forSave)
         '<label><input type="radio" name="scope">', _('all events in series'), '</label>',
         '</form>'];
     var actions = [
-        { value: _('genericCancel'), onclick: 'dispose'},
+        { value: _('Cancel'), onclick: 'dispose'},
         { value: forSave ? _('Save') : _('Delete'), onclick: partial (this.dispatchWithScope, forSave) }];
     this.setForm (form, actions);
     this.show();
@@ -377,7 +384,7 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildSharingTab = function (page)
     var c = d.Calendar;
 
     var html = new d.HtmlBuilder (
-        _('includeEventLabel'),
+        _('Include this event in:'),
         '<ul id="', this.calendarsId, '" class="scrollv" style="max-height: 8em">');
 
     var calIds = this.occurrence.vcalendar.calendarIds;

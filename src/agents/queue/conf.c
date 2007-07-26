@@ -21,6 +21,8 @@
 
 #include <config.h>
 
+#include "queue.h"
+
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
@@ -33,7 +35,6 @@
 #include <connio.h>
 
 #include "conf.h"
-#include "queue.h"
 #include "domain.h"
 #include "messages.h"
 

@@ -21,9 +21,11 @@
 
 #include <config.h>
 
+#include "queue.h"
+#include "queued.h"
+
 #include <xpl.h>
 #include <memmgr.h>
-#include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
 #include <mdb.h>
@@ -32,9 +34,7 @@
 #include <msgapi.h>
 #include <connio.h>
 
-#include "queued.h"
 #include "conf.h"
-#include "queue.h"
 #include "domain.h"
 #include "messages.h"
 
@@ -122,7 +122,7 @@ CommandAuth(void *param)
         return(ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1));
     }
 
-    LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_WRONG_SYSTEM_AUTH, LOG_NOTICE, 0, NULL, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+    Log(LOG_NOTICE, "SYSTEM AUTH failed from host %s", LOGIP(client->conn->socketAddress));
 
     ConnWrite(client->conn, MSG3242BADAUTH, sizeof(MSG3242BADAUTH) - 1);
 
@@ -162,7 +162,7 @@ CommandPass(void *param)
                 return(ConnWrite(client->conn, MSG4120USERLOCKED, sizeof(MSG4120USERLOCKED) - 1));
             }
 
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_WRONG_USER_AUTH, LOG_NOTICE, 0, ptr, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+            Log(LOG_NOTICE, "PASS USER failed for user from host %s", LOGIP(client->conn->socketAddress));
         } else if (    (toupper(ptr[0]) == 'S') 
                     && (toupper(ptr[1]) == 'Y') 
                     && (toupper(ptr[2]) == 'S') 
@@ -180,7 +180,7 @@ CommandPass(void *param)
             }
 #endif
 
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_WRONG_SYSTEM_AUTH, LOG_NOTICE, 0, NULL, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+            Log(LOG_NOTICE, "PASS SYSTEM failed from host %s", LOGIP(client->conn->socketAddress));
         }
     }
 
@@ -296,8 +296,7 @@ HandleCommand(QueueClient *client)
                     ccode = ConnWrite(client->conn, MSG3240NOAUTH, sizeof(MSG3240NOAUTH) - 1);
                 }
                 
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_UNHANDLED, LOGGER_EVENT_UNHANDLED_REQUEST, LOG_INFO, 0, "Queue", 
-                            client->buffer, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+                Log(LOG_INFO, "Handled command from %s", LOGIP(client->conn->socketAddress));
             }
         } else if (ccode == -1) {
             break;
@@ -444,24 +443,26 @@ CheckDiskspace(BongoAgent *agent)
 {
     unsigned long freeBlocks;
     unsigned long bytesPerBlock;
+    unsigned long wantFree;
 
     bytesPerBlock = XplGetDiskBlocksize(Conf.spoolPath);
     freeBlocks = XplGetDiskspaceFree(Conf.spoolPath);        
 
+    wantFree = (Conf.minimumFree / bytesPerBlock) + 1;
     if (freeBlocks != 0x7f000000) {
-        if (freeBlocks < ((Conf.minimumFree / bytesPerBlock) + 1)) {
+        if (freeBlocks < wantFree) {
             /* BUG ALERT: */
             /* With a block size of 4KB, freeBlocks could */
             /* overflow if a volume had more than 16 TB. */
 
             Agent.flags |= QUEUE_AGENT_DISK_SPACE_LOW;
             
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_DISKSPACE_LOW, LOG_ERROR, 0, Conf.spoolPath, NULL, freeBlocks, (Conf.minimumFree/bytesPerBlock)+1, NULL, 0);
+            Log(LOG_ERROR, "Disk space for %s low: have %ld free, want %ld.", Conf.spoolPath, freeBlocks, wantFree);
         } else {
             Agent.flags &= ~QUEUE_AGENT_DISK_SPACE_LOW;
         }
     } else {
-        XplConsolePrintf("bongoqueue: The OS failed to respond to a disk space query\r\n");
+        Log(LOG_NOTICE, "Couldn't work out disk space free for %s", Conf.spoolPath);
     }
 }
 
@@ -523,6 +524,8 @@ XplServiceMain(int argc, char *argv[])
     int ccode;
     int startupOpts;
 
+    LogStart();
+
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
         XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n" AGENT_NAME ": exiting.\n", MsgGetUnprivilegedUser());
         return -1;
@@ -579,6 +582,8 @@ XplServiceMain(int argc, char *argv[])
 
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, QueueServer, 8192, NULL, ccode);
+
+    LogShutdown();
     
     XplUnloadApp(XplGetThreadID());
     

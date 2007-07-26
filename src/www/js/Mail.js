@@ -8,14 +8,33 @@ Dragonfly.tabs['mail'] = Dragonfly.Mail;
 Dragonfly.Mail.handlers = { };
 Dragonfly.Mail.sets = [ 'all', 'inbox', 'starred', 'sent', 'drafts', 'trash', 'junk' ];
 Dragonfly.Mail.setLabels = {
-    'all':     'All',
-    'inbox':   'Inbox',
-    'starred': 'Starred',
-    'sent':    'Sent',
-    'drafts':  'Drafts',
-    'trash':   'Trash',
-    'junk':    'Junk'
+    'all':     N_('All'),
+    'inbox':   N_('Inbox'),
+    'starred': N_('Starred'),
+    'sent':    N_('Sent'),
+    'drafts':  N_('Drafts'),
+    'trash':   N_('Trash'),
+    'junk':    N_('Junk')
 };
+
+Dragonfly.Mail.getData = function (loc)
+{
+    logDebug('Dragonfly.Mail.getData(loc) called.');
+    var d = Dragonfly;
+    var m = d.Mail;
+    
+    var view = m.getView(loc);
+    if (view.getData)
+    {
+        logDebug('loc ', loc, ' has a getView function.');
+        return view.getData(loc);
+    }
+    else
+    {
+        logDebug('No getView function - falling back to requestJSON.');
+        return d.requestJSON ('GET', loc);
+    }
+}
 
 Dragonfly.Mail.getView = function (loc)
 {
@@ -82,8 +101,11 @@ Dragonfly.Mail.Preferences.getFromAddress = function ()
 {
     var d = Dragonfly;
     var p = d.Preferences;
-
-    return p.prefs.mail.from;
+    
+    var emailfrom = p.prefs.mail.from;
+    var namefrom = p.prefs.mail.sender;
+    
+    return d.format("{0} <{1}>", namefrom, emailfrom);
 };
 
 Dragonfly.Mail.Preferences.setFromAddress = function (address)
@@ -411,7 +433,7 @@ Dragonfly.Mail.joinParticipants = function (parts)
                 }, parts).join (', ');
 };
 
-Dragonfly.Mail.Conversations = { label: 'Conversations' };
+Dragonfly.Mail.Conversations = { label: N_('Conversations') };
 Dragonfly.Mail.handlers['conversations'] = Dragonfly.Mail.Conversations;
 
 Dragonfly.Mail.Conversations.parseArgs = function (loc, args)
@@ -561,7 +583,7 @@ Dragonfly.Mail.Messages.load = function (loc, jsob)
 };
 */
 
-Dragonfly.Mail.Contacts = { label: 'Contacts' };
+Dragonfly.Mail.Contacts = { label: N_('Contacts') };
 Dragonfly.Mail.handlers['contacts'] = Dragonfly.Mail.Contacts;
 
 Dragonfly.Mail.Contacts.parseArgs = function (loc, args)
@@ -664,7 +686,7 @@ Dragonfly.Mail.Contacts.getBreadCrumbs = function (loc)
     }
 };
 
-Dragonfly.Mail.Subscriptions = { label: 'Mailing Lists' };
+Dragonfly.Mail.Subscriptions = { label: N_('Mailing Lists') };
 Dragonfly.Mail.handlers['subscriptions'] = Dragonfly.Mail.Subscriptions;
 
 Dragonfly.Mail.Subscriptions.parseArgs = function (loc, args)
@@ -777,7 +799,7 @@ Dragonfly.Mail.Subscriptions.getBreadCrumbs = function (loc)
     }
 };
 
-Dragonfly.Mail.ToMe = { label: 'To Me' };
+Dragonfly.Mail.ToMe = { label: N_('To Me') };
 Dragonfly.Mail.handlers['tome'] = Dragonfly.Mail.ToMe;
 
 Dragonfly.Mail.ToMe.parseArgs = function (loc, args)
@@ -855,3 +877,66 @@ Dragonfly.Mail.ToMe.load = function (loc, jsob)
 
     return v.load (loc, jsob);
 };
+
+Dragonfly.Mail.yeahBaby = function (msg)
+{
+    var d = Dragonfly;
+    
+    if (!d.Preferences.prefs.mail.colorQuotes)
+    {
+        return d.htmlizeText (msg);
+    }
+    
+    // Split the message up by newlines.
+    msg = msg.split("\n");
+    
+    var colors = new Array();
+    
+    // Loop through and find quotes.
+    for (i=0;i<msg.length;i++)
+    {
+        // Check if it starts with >
+        if (msg[i].substring(0, 1) == ">")
+        {
+            // Loop and find out how deep we are.
+            var depth = 0;
+            for (x=0;x<msg[i].length;x++)
+            {
+                if (msg[i][x] == '>')
+                {
+                    depth++;
+                }
+            }
+            
+            var color = '';
+            if (colors.length < depth)
+            {
+                color = d.getRandomColor();
+                
+                // Make sure the color isn't the same as parent quote.
+                if (colors.length > 0)
+                {
+                    while (color == colors[depth - 1])
+                    {
+                        color = d.getRandomColor();
+                    }
+                }
+                
+                // Push it onto the array to get later if needed.
+                colors.push(color);
+            }
+            else
+            {
+                color = colors[depth - 1];
+            }
+            
+            msg[i] = '<span style="color: ' + color + ';">' + d.htmlizeText (msg[i]) + '</span>';
+        }
+        else
+        {
+            msg[i] = d.htmlizeText (msg[i]);
+        }
+    }
+    
+    return msg.join("<br />");
+}

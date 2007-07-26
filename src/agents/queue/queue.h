@@ -22,8 +22,8 @@
 #ifndef QUEUE_H
 #define QUEUE_H
 
-#include "conf.h"
 #include "queued.h"
+#include "conf.h"
 
 #define SPOOL_LOCK_ARRAY_SIZE 256
 #define SPOOL_LOCK_IDARRAY_SIZE 64
@@ -91,6 +91,11 @@ typedef struct _Queue {
 } MessageQueue;
 
 extern MessageQueue Queue;
+
+FILE * 	fopen_check(FILE **handle, char *path, char *mode, int line);
+int	fclose_check(FILE **handle, int line);
+int	unlink_check(char *path, int line);
+int	rename_check(const char *oldpath, const char *newpath, int line);
 
 BOOL QueueInit(void);
 void QueueShutdown(void);

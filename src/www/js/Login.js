@@ -110,7 +110,6 @@ Dragonfly.translateLogin = function ()
     Element.setHTML ('login-language-label', _('Language'));
     Element.setHTML ('login-default-label', _('Remember me'));
     $('login-button').value = _('Login');
-    Dragonfly.logoutMessage = _('You have logged out successfully.');    
 };
 
 Dragonfly.languageSuccess = function ()
@@ -193,6 +192,7 @@ Dragonfly.showLoginPane = function ()
 
     if (location.hash == '#LoggedOut') {
         Dragonfly.setLoginMessage (Dragonfly.logoutMessage);
+        Dragonfly.langFaliure = true;   // Stops us from removing the 'You have logged out' message when we load the lang.
         location.hash = (Dragonfly.isWebkit) ? '' : '#';
         $('login-user').focus();
     } else {

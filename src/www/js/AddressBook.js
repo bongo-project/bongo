@@ -280,83 +280,6 @@ Dragonfly.AddressBook.ContactPicker.prototype.newContactHandler = function (evt)
     this.popup.edit (evt, contact, this.newContactId);
 };
 
-// The FakeFriendPopup manages the interaction for unknown contacts.
-Dragonfly.AddressBook.FakeFriendPopup = function (elem)
-{    
-    Dragonfly.PopupBuble.apply (this, arguments);
-};
-
-Dragonfly.AddressBook.FakeFriendPopup.prototype = clone (Dragonfly.PopupBuble.prototype)
-Dragonfly.AddressBook.FakeFriendPopup.prototype.dispose =
-Dragonfly.AddressBook.FakeFriendPopup.prototype.disposeZone = function ()
-{
-    this.hide();
-    delete this.contact;
-    delete this.formNames;
-};
-
-Dragonfly.AddressBook.FakeFriendPopup.prototype.summarize = function (contact, elem)
-{
-    var d = Dragonfly;
-
-    this.hide ();
-    this.setClosable (true);
-    this.contact = contact = (contact) ? contact : this.contact;
-
-    var editId = d.nextId ('person-add');
-
-    var html = new d.HtmlBuilder();
-    html.push ('<p><b>' + contact.fn + '</b>');
-    html.push ('<table><tr>');
-    html.push ('<td><ul>');
-    var i;
-    if (contact.email) {
-            html.push ('<li><a href="mailto:', contact.email, '">');
-            html.push (contact.email.value, '</a>');
-    }
-    html.push ('</ul></td></tr></table>');
-    
-    var loc = new d.Location ({ tab: 'mail', set:'all', handler:'contacts', 
-                                contact: contact.bongoId });
-    html.push ('<div class="actions">',
-               '<a href="#', loc.getClientUrl(), '">', _('Show Conversations'), '</a>',
-               '<a id="', editId, '">', _('Add'), '</a></div>');
-    html.set (this.contentId);
-
-    Event.observe (editId, 'click', this.add.bindAsEventListener (this));
-    this.showVertical (elem);
-}
-
-Dragonfly.AddressBook.FakeFriendPopup.prototype.add = function ()
-{
-    var AB = Dragonfly.AddressBook;
-    this.serializeContact();
-    this.elem.innerHTML = this.contact.fn;
-
-    Dragonfly.notify (_('Saving changes...'), true);
-    AB.saveContact (this.contact).addCallbacks (bind (
-        function (result) {
-            // update preferences with contact ID
-            if (this.setMyContact) {
-                var id = (this.myId == '') ? result.bongoId : this.myId;
-                AB.Preferences.setMyContactId (id);
-            }
-            
-            // Create sidebox element if this is a new contact
-            if (result.bongoId) {
-                this.contact.bongoId = result.bongoId;
-                this.setElem (AB.sideboxPicker.addItem (this.contact.fn, result.bongoId));
-                $(this.elem).scrollIntoView();
-            }
-            
-            Dragonfly.notify (_('Changes saved.'));
-            this.summarize ();
-	        this.shouldAutohide = true;
-	        callLater (2, bind ('autohide', this));
-            return result;
-        }, this), bind ('showError', this));
-};
-
 // The ContactPopup manages the interaction for creating and editing contacts
 Dragonfly.AddressBook.ContactPopup = function (elem)
 {    
@@ -482,14 +405,14 @@ Dragonfly.AddressBook.ContactPopup.prototype.loadContact = function ()
     
     var form = $(this.formId);
     form.fn.value = this.contact.fn;
-    var myId = AB.Preferences.getMyContactId();
+    //var myId = AB.Preferences.getMyContactId();
     
-    logDebug('myID: ' + myId);
+    //logDebug('myID: ' + myId);
     logDebug('form id: ' + form);
     logDebug('this.contact: ' + this.contact);
     logDebug('this.contact.fn: ' + this.contact.fn);
     
-    form.isMyContact.checked = myId && (myId == this.contact.bongoId);
+    //form.isMyContact.checked = myId && (myId == this.contact.bongoId);
     
     for (var i = 0; i < Fields.props.length; i++) {
         var prop = Fields.props[i];
@@ -515,13 +438,13 @@ Dragonfly.AddressBook.ContactPopup.prototype.serializeContact = function ()
     var form = $(this.formId);
     contact.fn = form.fn.value;
 
-    if (form.isMyContact.checked) {
+    /*if (form.isMyContact.checked) {
         this.setMyContact = true;
         this.myId = this.contact.bongoId || '';
     } else if (this.contact.bongoId == AB.Preferences.getMyContactId()) {
         this.setMyContact = true;
         this.myId = null;
-    }
+    }*/
     
     // clear out existing properties
     forEach (props, function (prop) { delete contact[prop]; });
@@ -602,8 +525,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem
 
     var form = [
         '<form id="', this.formId, '"><img style="float:left; margin-right:5px;" align="middle" ',
-        'src="img/contact-unknown.png"><div><p><input style="width:75%;" name="fn"><p><label>',
-        '<input type="checkbox" name="isMyContact">', _('This is Me'), '</label></div>', notebook, '</form>'];
+        'src="img/contact-unknown.png"><div><p><input style="width:75%;" name="fn"></div>', notebook, '</form>'];
 
     var actions = [{ value: _('Cancel'), onclick: 'dispose'}, { value: _('Save'), onclick: 'save'}];
     if (this.contact.bongoId) { // only add delete for pre-existing contacts
@@ -642,10 +564,10 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
     AB.saveContact (this.contact).addCallbacks (bind (
         function (result) {
             // update preferences with contact ID
-            if (this.setMyContact) {
+            /*if (this.setMyContact) {
                 var id = (this.myId == '') ? result.bongoId : this.myId;
                 AB.Preferences.setMyContactId (id);
-            }
+            }*/
             
             // Create sidebox element if this is a new contact
             if (result.bongoId) {
@@ -666,6 +588,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
 
 Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
 {
+    var d = Dragonfly;
     this.hide();
     var text = [
         '<p>', d.format(_('Are you sure you want to delete the contact "{0}"? This cannot be undone.'),
@@ -677,3 +600,154 @@ Dragonfly.AddressBook.ContactPopup.prototype.delConfirm = function ()
     this.show();
 };
 
+Dragonfly.AddressBook.UserProfile = function (elem)
+{
+    this.formId = elem;
+    this.bongoId = null;
+};
+
+Dragonfly.AddressBook.UserProfile.prototype = {};
+
+Dragonfly.AddressBook.UserProfile.prototype.build = function (contact)
+{
+    var d = Dragonfly;
+    
+    this.contact = contact;
+    
+    this.formNames = { };
+
+    var notebook = new d.Notebook();
+    for (var i = 0; i < Dragonfly.AddressBook.ContactPopup.prototype.Form.length; i++) {
+        var tab = d.AddressBook.ContactPopup.prototype.Form[i];
+        var page = notebook.appendPage (tab.category);
+        this.buildTab (new d.HtmlBuilder(), tab).set(page);
+    }
+        
+    var html = new d.HtmlBuilder ();
+    html.push ('<img style="float:left; margin-right:5px;" align="middle" ',
+        'src="img/contact-unknown.png"><div><p><input style="width:75%;" name="fn"></div>');
+    d.HtmlBuilder.buildChild(html, notebook);
+    
+    html.set(this.formId);
+    
+    //var actions = [{ value: _('Save'), onclick: 'save'}];
+    //Dragonfly.Preferences.Editor.buildInterface (form, actions, this.belement);
+    
+    if (this.contact != null)
+    {
+        this.loadContact();
+    }
+};
+
+Dragonfly.AddressBook.UserProfile.prototype.loadContact = function ()
+{
+    var AB = Dragonfly.AddressBook;
+    var Fields = AB.ContactPopup.prototype.FieldTypes;
+    
+    var form = $(this.formId);
+    form.fn.value = this.contact.fn;
+    
+    //logDebug('myID: ' + myId);
+    
+    //form.isMyContact.checked = myId && (myId == this.contact.bongoId);
+    
+    for (var i = 0; i < Fields.props.length; i++) {
+        var prop = Fields.props[i];
+        var values = this.contact[prop];
+        if (!values) {
+            continue;
+        }
+        for (var j = 0; j < values.length; j++) {
+            var value = values[j];
+            var input = this.getFreeField (AB.ContactPopup.prototype.getName (prop, value.type), false);
+            if (input) {
+                input.value = $V(value);
+            }
+        }
+    }
+};
+
+Dragonfly.AddressBook.UserProfile.prototype.getFreeField = function (name, asString)
+{
+    if (asString) {
+        var n = this.formNames[name];
+        n = (n == undefined) ? 0 : n + 1;
+        this.formNames[name] = n;
+        return name + String (n);
+    }
+    return $(this.formId)[name+'0'];
+};
+
+Dragonfly.AddressBook.UserProfile.prototype.buildTab = function (html, tab)
+{
+    var fields = tab.fields;
+    var formFields = this.formFields;
+
+    html.push ('<ul class="form-list">');    
+    for (var i = 0; i < fields.length; i++) {
+        var field = fields[i];
+        
+        var name = Dragonfly.AddressBook.ContactPopup.prototype.getName (field.prop, [tab.type, field.type]);
+        name = this.getFreeField (name, true);
+        html.push ('<li><label>', _(field.label), '</label>');
+        if (field.longtext) {
+            html.push ('<textarea name="', name, '"></textarea>');
+        } else {
+            html.push ('<input name="', name, '">');
+        }
+        html.push ('</li>');
+    }
+    html.push ('</ul>');
+    return html;
+};
+
+Dragonfly.AddressBook.UserProfile.prototype.save = function ()
+{
+    var AB = Dragonfly.AddressBook;
+    this.name = this.contact.fn;
+    this.serializeContact();
+    //this.elem.innerHTML = this.contact.fn;
+
+    AB.saveContact (this.contact).addCallbacks (bind (
+        function (result) {
+            // update preferences with contact ID
+            if (result.bongoId)
+            {
+                this.bongoId = result.bongoId;
+            }
+            else
+            {
+                this.bongoId = AB.Preferences.getMyContactId();
+            }
+            
+            return result;
+        }, this));
+};
+
+Dragonfly.AddressBook.UserProfile.prototype.serializeContact = function ()
+{
+    var AB = Dragonfly.AddressBook;
+    var props = AB.ContactPopup.prototype.FieldTypes.props;
+    var contact = this.contact;
+    var form = $(this.formId);
+    contact.fn = form.fn.value;
+    
+    // clear out existing properties
+    forEach (props, function (prop) { delete contact[prop]; });
+    
+    for (var name in this.formNames) { // for each type of field
+        var count = this.formNames[name];
+        var components = name.split ('-');
+        var prop = components[0];
+        var types = components.slice(1);
+        
+        for (var i = 0; i <= count; i++) { // for each field
+            var value = form[name+String(i)].value;
+            if (value && value != '') {
+                var proparray = contact[prop] || [ ];
+                proparray.push ({value:value, type:types});
+                contact[prop] = proparray;
+            }
+        }
+    }
+};

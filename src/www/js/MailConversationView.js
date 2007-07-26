@@ -40,7 +40,7 @@ Dragonfly.Mail.ConversationView.selectAlternative = function (part)
 {
     var favorite = null;
 
-    //logDebug('checking alternatives');
+    logDebug('checking alternatives');
     for (var i = 0; i < part.children.length; i++) {
         var child = part.children[i];
         if (child.preview && (child.previewtype == 'text/plain' 
@@ -63,7 +63,16 @@ Dragonfly.Mail.ConversationView.formatPart = function (loc, msg, part)
     if (part.preview) {
         html.push ('<div class="msg-body">');
         if (part.previewtype == 'text/plain') {
-            html.push (d.htmlizeText (part.preview));
+            html.push ('<div style="font-family:\'DejaVu Sans Mono\', \'Bitstream Vera Sans Mono\', \'Monaco\', \'Courier\', monospace;">');
+            if (d.Preferences.prefs.mail.colorQuotes)
+            {
+                html.push (m.yeahBaby (part.preview));
+            }
+            else
+            {
+                html.push (d.htmlizeText (part.preview));
+            }
+            html.push ('</div>');
         } else if (part.previewtype == 'text/html') {
             html.push (d.linkifyHtml (part.preview));
         } else {
@@ -91,7 +100,7 @@ Dragonfly.Mail.ConversationView.formatPart = function (loc, msg, part)
                     html.push (v.formatPart(loc, msg, child));
                 } else {
                     if (!inAttachments) {
-                        html.push ('<div class="msg-attachments"><b>Attachments:</b><ul>');
+                        html.push ('<div class="msg-attachments"><b>', _('Attachments:'), '</b><ul>');
                         inAttachments = 1;
                     }
                     var partLoc = new d.Location (loc);
