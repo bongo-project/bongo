@@ -2235,22 +2235,22 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
 
     /* Clean up a potential ip address in the host name (e.g. jdoe@[1.1.1.1] ) */
     if (Host[0] == '[') {
+        int host;
         ptr = strchr (Host, ']');
         if (ptr)
             *ptr = '\0';
         memmove (Host, Host + 1, strlen (Host + 1) + 1);
         /* Check for an IP address */
-        int host;
-        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = host;
         if ((host = inet_addr (Host)) != -1) {
             GoByAddr = TRUE;
             UsingMX = FALSE;
         }
+        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = host;
     }
 
     if (!GoByAddr && UseRelayHost) {
-        int relayhost;
-        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr=relayhost;
+        int relayhost = inet_addr(RelayHost);
+        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = relayhost;
         if (relayhost == -1) {
             status=XplDnsResolve(RelayHost, &DNSARec, XPL_RR_A);
             /*fprintf (stderr, "%s:%d Looked up relay host %s: %d\n", __FILE__, __LINE__, RelayHost, status);*/
@@ -3767,7 +3767,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
 static void
 HandleQueueConnection (void *ClientIn)
 {
-    int ReplyInt, Queue;
+    int ReplyInt, Queue = Q_INCOMING;
     unsigned char Reply[1024];
     ConnectionStruct *Client = (ConnectionStruct *) ClientIn;
     unsigned char *ptr;
