@@ -145,7 +145,6 @@ pkgpythonstore_PYTHON :=			      \
 	src/libs/python/bongo/store/StoreConnection.py
 
 CLEANFILES +=						\
-	src/libs/python/bongo-python-wrapper		\
 	src/libs/python/bongo/*.pyc			\
 	src/libs/python/bongo/external/*.pyc		\
 	src/libs/python/bongo/external/simplejson/*.pyc	\
