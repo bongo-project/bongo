@@ -242,15 +242,12 @@ _XplServiceMain(int argc, char *argv[])
     }
  
     if (! StoreAgent.installMode) {
-        if (!(StoreAgent.handle.directory = (MDBHandle)MsgInit())) {
-            XplBell();
+        if (MsgInit() == NULL) {
             XplConsolePrintf("NMAPD: Invalid directory credentials; exiting!\r\n");
-            XplBell();
             MemoryManagerClose(MSGSRV_AGENT_STORE);
             return -1;
         }
     
-        MsgGetServerDN(StoreAgent.server.dn);
         cal_success = BongoCalInit(MsgGetDBFDir(NULL));
     } else {
         cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);

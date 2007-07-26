@@ -172,7 +172,6 @@ typedef struct _POP3Client {
     ProtocolCommand *handler;
 
     unsigned char user[MAXEMAILNAMESIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
 
     unsigned char command[CONN_BUFSIZE + 1];
     unsigned char buffer[CONN_BUFSIZE + 1];
@@ -265,8 +264,6 @@ struct {
 
     unsigned char hostName[MAXEMAILNAMESIZE];
     unsigned char managementURL[256];
-
-    MDBHandle directoryHandle;
 
     void *loggingHandle;
 
@@ -2104,8 +2101,6 @@ XplServiceMain(int argc, char *argv[])
     POP3.server.ssl.context = NULL;
     POP3.server.ssl.config.options = 0;
 
-    POP3.directoryHandle = NULL;
-
     POP3.loggingHandle = NULL;
 
     POP3.managementURL[0] = '\0';
@@ -2142,19 +2137,14 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    MDBInit();
-    POP3.directoryHandle = (MDBHandle)MsgInit();
-    if (POP3.directoryHandle == NULL) {
-        XplBell();
+    if (MsgInit() == NULL) {
         XplConsolePrintf("\rPOP3D: Invalid directory credentials; exiting!\n");
-        XplBell();
 
         MemoryManagerClose(MSGSRV_AGENT_POP);
-
         return(-1);
     }
 
-    NMAPInitialize(POP3.directoryHandle);
+    NMAPInitialize();
 
     POP3.loggingHandle = LoggerOpen("bongopop3");
     if (POP3.loggingHandle == NULL) {

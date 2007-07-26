@@ -22,7 +22,7 @@ my $search = sub {
 	my $filter = ' grep -v .svn | grep -v matches | wc -l';
 	$current = `grep -r "MDB" src/$dir/* 2>/dev/null | $filter`;
 	chomp $current;
-	$current -= 3 if ($thing eq 'store'); # ALARMDB false positives
+	$current -= 4 if ($thing eq 'store'); # ALARMDB false positives
 	my $percent = (100.0 / $original) * ($original - $current);
 	if ($print_addicts && $thing !~ /mdb|msgapi|python/) {
 		foreach my $func (@msgapi) {

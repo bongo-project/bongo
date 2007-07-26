@@ -63,7 +63,6 @@ typedef struct {
     unsigned char *envelope;
     unsigned char line[CONN_BUFSIZE + 1];
     unsigned char command[CONN_BUFSIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
 } ASpamClient;
 
 typedef struct {
@@ -116,8 +115,6 @@ typedef struct _ASpamGlobals {
     } nmap;
 
     struct {
-        MDBHandle directory;
-
         void *logging;
     } handle;
 

@@ -89,7 +89,7 @@ XplServiceMain(int argc, char *argv[])
     XplInit();
 
     /* Initialize the Bongo libraries */
-    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
     ccode = BongoAgentInit(&Collector.agent, AGENT_NAME, AGENT_DN, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");

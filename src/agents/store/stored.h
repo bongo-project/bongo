@@ -328,8 +328,6 @@ struct StoreGlobals {
     XplRWLock configLock;
 
     struct {
-        MDBHandle directory;
-
         void *logging;
     } handle;
 
@@ -351,7 +349,6 @@ struct StoreGlobals {
         unsigned long ipAddress;
         unsigned long bytesPerBlock;
 
-        unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
         unsigned char host[MAXEMAILNAMESIZE + 1];
         unsigned char hash[NMAP_HASH_SIZE];
     } server;

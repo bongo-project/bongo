@@ -841,7 +841,6 @@ XplServiceMain(int argc, char *argv[])
     ASpam.nmap.ssl.context = NULL;
     ASpam.nmap.ssl.config.options = 0;
  
-    ASpam.handle.directory = NULL;
     ASpam.handle.logging = NULL;
 
     strcpy(ASpam.nmap.address, "127.0.0.1");
@@ -872,15 +871,10 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    MDBInit();
-    ASpam.handle.directory = (MDBHandle)MsgInit();
-    if (ASpam.handle.directory == NULL) {
-        XplBell();
+    if (MsgInit() == NULL) {
         XplConsolePrintf("bongoantispam: Invalid directory credentials; exiting!\r\n");
-        XplBell();
 
         MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
-
         return(-1);
     }
 
