@@ -1694,5 +1694,6 @@ BOOL
 NMAPInitialize(void)
 {
     // single cred for both store and queue atm...
-    return MsgGetServerCredential(NMAPLibrary.access);
+    MsgGetServerCredential(NMAPLibrary.access);
+    return TRUE;
 }
