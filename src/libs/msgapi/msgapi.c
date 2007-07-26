@@ -161,8 +161,7 @@ MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t len
 { 	 
     unsigned char *ptr; 	 
     unsigned char *salt; 	 
-    static unsigned char access[NMAP_HASH_SIZE] = { '\0' }; 	 
-    MDBValueStruct *v; 	 
+    static unsigned char access[NMAP_HASH_SIZE] = { '\0' };
     xpl_hash_context ctx; 	 
  	 
     MsgGetServerCredential(&access);
