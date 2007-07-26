@@ -704,6 +704,7 @@ Dragonfly.AddressBook.UserProfile.prototype.buildTab = function (html, tab)
 Dragonfly.AddressBook.UserProfile.prototype.save = function ()
 {
     var AB = Dragonfly.AddressBook;
+    this.name = this.contact.fn;
     this.serializeContact();
     //this.elem.innerHTML = this.contact.fn;
 
@@ -718,8 +719,6 @@ Dragonfly.AddressBook.UserProfile.prototype.save = function ()
             {
                 this.bongoId = AB.Preferences.getMyContactId();
             }
-            
-            this.name = this.contact.fn;
             
             return result;
         }, this));
