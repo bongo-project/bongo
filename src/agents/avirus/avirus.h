@@ -90,11 +90,11 @@ typedef struct _AVMIME {
     unsigned char *virusName;
 } AVMIME;
 
-typedef struct _AVRecipients {
-    struct _AVRecipients *next;
-
+typedef struct _AVRecipient {
     unsigned char *name;
-} AVRecipients;
+    unsigned char *address;
+    unsigned char *next;
+} AVRecipient;
 
 typedef struct {
     AVirusClientFlags flags;

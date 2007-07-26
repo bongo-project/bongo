@@ -13,6 +13,7 @@ my $search = sub {
 	my ($dir, $thing, $original) = @_;
 	$current = `grep -r "MDB" src/$dir/* 2>/dev/null | grep -v .svn | grep -v matches | wc -l`;
 	chomp $current;
+	$current -= 3 if ($thing eq 'store'); # ALARMDB false positives
 	my $percent = (100.0 / $original) * ($original - $current);
 	return sprintf("%12s %3d%% (%3d/%3d)", $thing, $percent, $current, $original);
 };

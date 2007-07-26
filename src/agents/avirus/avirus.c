@@ -102,10 +102,6 @@ AVClientFree(AVClient *client)
         c->conn = NULL;
     }
 
-    if (c->uservs) {
-        MDBDestroyValueStruct(c->uservs);
-    }
-
     MemPrivatePoolReturnEntry(c);
 
     return;
@@ -123,12 +119,6 @@ FreeClientData(AVClient *client)
             ConnClose(client->conn, 1);
             ConnFree(client->conn);
             client->conn = NULL;
-        }
-
-        if (client->uservs) {
-            MDBFreeValues(client->uservs);
-
-            MDBSetValueStructContext(NULL, client->uservs);
         }
 
         if (client->envelope) {
@@ -364,7 +354,7 @@ ScanMessage(AVClient *client, char *qID)
 }
 
 static __inline int 
-SendNotification(AVClient *client, unsigned char *from, unsigned char *qID, MDBValueStruct *nUsers)
+SendNotification(AVClient *client, unsigned char *from, unsigned char *qID, BongoSList *users)
 {
     int ccode;
     unsigned long used;
@@ -418,11 +408,16 @@ SendNotification(AVClient *client, unsigned char *from, unsigned char *qID, MDBV
     if ((ccode != -1) 
             && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1) 
             && (ccode == 1000)) {
-        for (used = 0; (used < nUsers->Used) && (ccode != -1); used += 2) {
-            if (strchr(nUsers->Value[used], '@')) {
-                ccode = NMAPSendCommandF(client->conn, "QSTOR TO %s %s %lu\r\n", nUsers->Value[used], nUsers->Value[used + 1], (long unsigned int)0);
+        BongoSList *userlist;
+        for (userlist = users; userlist != NULL; userlist = userlist->next) {
+            AVRecipient *recip;
+            recip = (AVRecipient *)userlist->data;
+            if (strchr(recip->name, '@')) {
+                ccode = NMAPSendCommandF(client->conn, "QSTOR TO %s %s %lu\r\n", 
+                    recip->name, recip->address, (long unsigned int)0);
             } else {
-                ccode = NMAPSendCommandF(client->conn, "QSTOR LOCAL %s %s %lu\r\n", nUsers->Value[used], nUsers->Value[used+1], (long unsigned int)0);
+                ccode = NMAPSendCommandF(client->conn, "QSTOR LOCAL %s %s %lu\r\n", 
+                    recip->name, recip->address, (long unsigned int)0);
             }
 
             if (ccode != -1) {
@@ -520,7 +515,7 @@ ProcessConnection(AVClient *client)
     unsigned char qID[16];
     BOOL copy;
     BOOL infected = FALSE;
-    MDBValueStruct *nUsers;
+    BongoSList *users;
 
     if (((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1) 
             && (ccode == 6020) 
@@ -561,8 +556,8 @@ ProcessConnection(AVClient *client)
     }
 
     if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-	nUsers = MDBShareContext(client->uservs);
-	if (!nUsers) {
+	users = MemMalloc0(sizeof(BongoSList));
+	if (!users) {
 	    MemFree(client->envelope);
 	    client->envelope = NULL;
 	    
@@ -571,7 +566,7 @@ ProcessConnection(AVClient *client)
 	    return(-1);
 	}
     } else {
-	nUsers = NULL;
+	users = NULL;
     }
 
     preserve = '\0';
@@ -693,8 +688,11 @@ ProcessConnection(AVClient *client)
 
                         copy = FALSE;
                         if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-                            MDBAddValue(cur + 1, nUsers);
-                            MDBAddValue(email, nUsers);
+                            AVRecipient *recip;
+                            recip = MemMalloc0(sizeof(AVRecipient));
+                            recip->name = MemStrdup(cur + 1);
+                            recip->address = MemStrdup(email);
+                            BongoSListAppend(users, (void *)recip);
                         }
 
                         break;
@@ -718,7 +716,7 @@ ProcessConnection(AVClient *client)
             }
 
             if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-                SendNotification(client, from, qID, nUsers);
+                SendNotification(client, from, qID, users);
             }
         }
     } else {
@@ -800,6 +798,8 @@ ProcessConnection(AVClient *client)
                             ptr = NULL;
                         }
 
+#if 0
+// FIXME! What is this code actually doing?
                         if (!MsgFindObject(cur + 1, client->dn, NULL, NULL, client->uservs)) {
                             MDBFreeValues(client->uservs);
 
@@ -815,12 +815,12 @@ ProcessConnection(AVClient *client)
                         }
 
                         MDBFreeValues(client->uservs);
+#endif
                     } else {
                         break;
                     }
 
-                    // FIXME
-                    // if (MsgGetUserFeature(client->dn, FEATURE_ANTIVIRUS, NULL, NULL)) {
+                    //if (MsgGetUserFeature(client->dn, FEATURE_ANTIVIRUS, NULL, NULL)) {
 			XplSafeIncrement(AVirus.stats.messages.scanned);
 
 			ccode = ScanMessage(client, qID);
@@ -831,9 +831,14 @@ ProcessConnection(AVClient *client)
 
                             /* Message is infected, do not copy this recipient on it, since he has virus protection */
                             if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-                                MDBAddValue(cur + 1, nUsers);
-                                MDBAddValue(email, nUsers);
+                                AVRecipient *recip;
+                                recip = MemMalloc0(sizeof(AVRecipient));
+                                recip->name = MemStrdup(cur + 1);
+                                recip->address = MemStrdup(email);
+                                BongoSListAppend(users, (void *)recip);
                             }
+#if 0
+// we bounce virus messages back to the sender over my dead body
 
                             if ((AVirus.flags & AV_FLAG_NOTIFY_SENDER)
                                     && ((ccode = NMAPSendCommandF(client->conn, "QGREP %s Precedence:\r\n", qID)) != -1)
@@ -867,6 +872,7 @@ ProcessConnection(AVClient *client)
 				    break;
                                 }
                             }
+#endif
 
                             XplSafeIncrement(AVirus.stats.attachments.blocked);
                             copy = FALSE;
@@ -902,7 +908,7 @@ ProcessConnection(AVClient *client)
         }
 
         if (infected && (AVirus.flags & AV_FLAG_NOTIFY_USER)) {
-            SendNotification(client, from, qID, nUsers);
+            SendNotification(client, from, qID, users);
         }
     }
 
@@ -916,7 +922,16 @@ ProcessConnection(AVClient *client)
     }
 
     if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-        MDBDestroyValueStruct(nUsers);
+        BongoSList *userlist;
+        for (userlist = users; userlist != NULL; userlist = userlist->next) {
+            AVRecipient *recip;
+            recip = (AVRecipient *)userlist->data;
+            MemFree(recip->name);
+            MemFree(recip->address);
+            MemFree(recip);
+            userlist->data = NULL;
+        }
+        BongoSListFree(users);
     }
 
     MemFree(client->envelope);
@@ -934,8 +949,7 @@ HandleConnection(void *param)
     time_t wokeup;
     AVClient *client;
 
-    if (((client = AVClientAlloc()) == NULL) 
-            || ((client->uservs = MDBCreateValueStruct(AVirus.handle.directory, NULL)) == NULL)) {
+    if ((client = AVClientAlloc()) == NULL) {
         if (client) {
             AVClientFree(client);
         }
@@ -950,8 +964,6 @@ HandleConnection(void *param)
     }
 
     do {
-	MDBValueStruct *tempv;
-	
         XplRenameThread(XplGetThreadID(), "AVirus Worker");
 
         XplSafeIncrement(AVirus.nmap.worker.idle);
@@ -1000,10 +1012,7 @@ HandleConnection(void *param)
 
         sleep = time(NULL);
 
-        tempv = client->uservs;
 	AVClientAllocCB(client, NULL);
-	client->uservs = tempv;
-
     } while (AVirus.state == AV_STATE_RUNNING);
 
     FreeClientData(client);

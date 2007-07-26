@@ -2102,36 +2102,11 @@ static BOOL
 ReadConfiguration(void)
 {
     unsigned long used;
-    MDBValueStruct *vs;
 
-    vs = MDBCreateValueStruct(Rules.handle.directory, MsgGetServerDN(NULL));
-    if (vs) {
-        if (MDBRead(MSGSRV_AGENT_RULESRV, MSGSRV_A_CONFIGURATION, vs)) {
-            used = atol(vs->Value[0]);
-            if (used & RULESRV_USER_RULES) {
-                Rules.flags |= RULES_FLAG_USER_RULES;
-            }
+    Rules.flags = RULES_FLAG_USER_RULES | RULES_FLAG_SYSTEM_RULES;
+    Rules.officialName[0] = '\0';
 
-            if (used & RULESRV_SYSTEM_RULES) {
-                Rules.flags |= RULES_FLAG_SYSTEM_RULES;
-            }
-
-            MDBFreeValues(vs);
-        }
-
-        if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_OFFICIAL_NAME, vs)) {
-            strcpy(Rules.officialName, vs->Value[0]);
-            MDBFreeValues(vs);
-        } else {
-            Rules.officialName[0] = '\0';
-        }
-
-        MDBDestroyValueStruct(vs);
-
-        return(TRUE);
-    }
-
-    return(FALSE);
+    return(TRUE);
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)
