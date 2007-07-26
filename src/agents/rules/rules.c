@@ -2193,7 +2193,7 @@ QueueSocketInit(void)
             return(-1);
         }
 
-        if (NMAPRegister(MSGSRV_AGENT_ANTISPAM, Rules.nmap.queue, Rules.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
+        if (QueueRegister(MSGSRV_AGENT_ANTISPAM, Rules.nmap.queue, Rules.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
             XplConsolePrintf("bongorules: Could not register with bongonmap\r\n");
             ConnFree(Rules.nmap.conn);
             Rules.nmap.conn = NULL;
@@ -2285,7 +2285,7 @@ XplServiceMain(int argc, char *argv[])
     }
 
     StreamioInit();
-    NMAPInitialize(Rules.handle.directory);
+    NMAPInitialize();
 
     SetCurrentNameSpace(NWOS2_NAME_SPACE);
     SetTargetNameSpace(NWOS2_NAME_SPACE);

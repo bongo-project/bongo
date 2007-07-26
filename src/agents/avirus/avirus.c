@@ -1316,7 +1316,7 @@ QueueSocketInit(void)
             return(-1);
         }
 
-        if (NMAPRegister(MSGSRV_AGENT_ANTIVIRUS, AVirus.nmap.queue, AVirus.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
+        if (QueueRegister(MSGSRV_AGENT_ANTIVIRUS, AVirus.nmap.queue, AVirus.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
             XplConsolePrintf("antivirus: Could not register with bongonmap\r\n");
             ConnFree(AVirus.nmap.conn);
             AVirus.nmap.conn = NULL;
@@ -1411,7 +1411,7 @@ XplServiceMain(int argc, char *argv[])
     }
 
     StreamioInit();
-    NMAPInitialize(AVirus.handle.directory);
+    NMAPInitialize();
 
     XplRWLockInit(&AVirus.lock.pattern);
 

@@ -275,7 +275,7 @@ BongoAgentInit(BongoAgent *agent,
         }
     }
 
-    if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize(agent->directoryHandle)) {
+    if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize()) {
         XplConsolePrintf("%s: Could not initialize nmap library\r\n", agentName);
         return -1;
     } else {
@@ -615,7 +615,7 @@ BongoQueueConnectionInit(BongoAgent *agent,
             return NULL;
         }
         
-        reg = NMAPRegister(agent->dn, 
+        reg = QueueRegister(agent->dn, 
                            queue,
                            conn->socketAddress.sin_port);
         

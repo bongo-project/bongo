@@ -12,9 +12,8 @@ my %libraries = ('connmgr' => 7, 'management' => 14, 'mdb' => 212, 'mdb-file' =>
 	'python' => 329);
 
 my @msgapi = ('MsgGetSystemDirectoryHandle', 'MsgReadConfiguration', 'MsgLibraryInit',
-	'MsgDirectoryHandle', 'MsgInit', 'MsgGetServerCredential', 'MsgNmapChallenge',
+	'MsgDirectoryHandle', 'MsgInit', 'MsgNmapChallenge',
 	'MsgFindObject', 'MsgMdbWriteAny', 'MsgMdbAddAny', 'MsgLibraryStart');
-my @nmap = ( 'NMAPRegister', 'NMAPInitialize' );
 
 my %function_addicts;
 
@@ -26,7 +25,7 @@ my $search = sub {
 	$current -= 3 if ($thing eq 'store'); # ALARMDB false positives
 	my $percent = (100.0 / $original) * ($original - $current);
 	if ($print_addicts && $thing !~ /mdb|msgapi|python/) {
-		foreach my $func (@msgapi, @nmap) {
+		foreach my $func (@msgapi) {
 			my $count = `grep -r "$func" src/$dir/* 2>/dev/null | $filter`;
 			push (@{$function_addicts{$thing}}, $func) if ($count > 0); 
 		}

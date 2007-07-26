@@ -3801,8 +3801,8 @@ QueueServerStartup (void *ignored)
     }
 
     /* register on the two queues we need to be on */
-    if (NMAPRegister(MSGSRV_AGENT_SMTP, Q_DELIVER, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED ||
-        NMAPRegister(MSGSRV_AGENT_SMTP, Q_OUTGOING, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
+    if (QueueRegister(MSGSRV_AGENT_SMTP, Q_DELIVER, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED ||
+        QueueRegister(MSGSRV_AGENT_SMTP, Q_OUTGOING, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
         XplConsolePrintf("bongosmtp: Could not register with bongonmap\r\n");
         ConnFree(SMTPQServerConnection);
         raise(SIGTERM);
@@ -5081,7 +5081,7 @@ int XplServiceMain (int argc, char *argv[])
         exit (-1);
     }
 
-    NMAPInitialize(SMTPDirectoryHandle);
+    NMAPInitialize();
 
     XplRWLockInit (&ConfigLock);
 

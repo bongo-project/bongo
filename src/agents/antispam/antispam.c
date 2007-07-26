@@ -797,7 +797,7 @@ QueueSocketInit(void)
             return(-1);
         }
 
-        if (NMAPRegister(MSGSRV_AGENT_ANTISPAM, ASpam.nmap.queue, ASpam.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
+        if (QueueRegister(MSGSRV_AGENT_ANTISPAM, ASpam.nmap.queue, ASpam.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
             XplConsolePrintf("bongoantispam: Could not register with bongonmap\r\n");
             ConnFree(ASpam.nmap.conn);
             ASpam.nmap.conn = NULL;
@@ -884,7 +884,7 @@ XplServiceMain(int argc, char *argv[])
         return(-1);
     }
 
-    NMAPInitialize(ASpam.handle.directory);
+    NMAPInitialize();
 
     SetCurrentNameSpace(NWOS2_NAME_SPACE);
     SetTargetNameSpace(NWOS2_NAME_SPACE);

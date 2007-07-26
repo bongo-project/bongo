@@ -128,7 +128,7 @@ typedef struct {
 
 /*
 */
-BOOL NMAPInitialize(MDBHandle directoryHandle);
+BOOL NMAPInitialize();
 void NMAPSetEncryption(bongo_ssl_context *context);
 bongo_ssl_context *NMAPSSLContextAlloc(void);
 
@@ -186,6 +186,6 @@ int NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *c
 
 void NMAPQuit(Connection *conn);
 
-RegistrationStates NMAPRegister(const unsigned char *dn, unsigned long queue, unsigned short port);
+RegistrationStates QueueRegister(const unsigned char *dn, unsigned long queue, unsigned short port);
 
 #endif  /* _BONGO_NMAP_LIBRARY_H */
