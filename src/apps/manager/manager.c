@@ -780,7 +780,6 @@ main(int argc, char **argv)
     BOOL droppedPrivs = FALSE;
     BOOL unlockFile = FALSE;
     BOOL startLdap = FALSE;
-    MDBHandle directory;
 
     XplInit();
 
@@ -910,12 +909,11 @@ get_lock:
             goto err_handler;
         }
 
-	directory = MsgInit();
-	if (!directory) {
+	if (!MsgInit()) {
 	    fprintf(stderr, _("bongo-manager: unable to MsgInit()\n"));
 	    goto err_handler;
 	}
-	NMAPInitialize(directory);
+	NMAPInitialize();
 
         DirectoryHandle = MsgGetSystemDirectoryHandle();
         if (DirectoryHandle == NULL) {

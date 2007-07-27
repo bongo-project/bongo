@@ -340,10 +340,6 @@ typedef struct {
     } command;
 
     struct {
-        MDBHandle handle;
-    } directory;
-
-    struct {
         struct {
             XplAtomic inUse;
             XplAtomic idle;

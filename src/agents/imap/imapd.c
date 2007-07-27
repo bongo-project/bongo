@@ -40,7 +40,6 @@
 
 #include <logger.h>
 
-#include <mdb.h>
 #include <msgapi.h>
 
 /* Management Client Header Include */
@@ -3422,7 +3421,6 @@ InitializeImapGlobals()
     /*      Imap.(misc).        */    
     Imap.exiting = FALSE;
     Imap.logHandle = NULL;
-    Imap.directory.handle = NULL;
 
     /* Global allocations */
     BongoKeywordIndexCreateFromTable(Imap.command.index, ImapProtocolCommands, .name, TRUE);
@@ -3807,19 +3805,15 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(IMAP_CONNECTION_TIMEOUT, TRUE);
 
-    MDBInit();
-    Imap.directory.handle = (MDBHandle)MsgInit();
-    if (Imap.directory.handle == NULL) {
-        XplBell();
+    if (MsgInit() == NULL) {
         XplConsolePrintf("\rIMAPD: Invalid directory credentials; exiting!\n");
-        XplBell();
 
         MemoryManagerClose(MSGSRV_AGENT_IMAP);
 
         return(-1);
     }
 
-    NMAPInitialize(Imap.directory.handle);
+    NMAPInitialize();
 
     Imap.logHandle = LoggerOpen("bongoimap");
     if (Imap.logHandle != NULL) {

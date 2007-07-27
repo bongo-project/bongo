@@ -71,7 +71,6 @@ int
 main (int argc, char *argv[])
 {
     Connection *nmap;
-    MDBHandle directory;
     ssize_t size = 0;
     char *line = NULL;
     char *response;
@@ -87,11 +86,10 @@ main (int argc, char *argv[])
     if (! MDBInit()) {
         FatalError(1, "couldn't access MDB.");
     }
-    directory = (MDBHandle)MsgInit();
-    if (! directory) {
+    if (! MsgInit()) {
         FatalError(1, "invalid directory credentials.");
     }
-    NMAPInitialize(directory);
+    NMAPInitialize();
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "sendmail");
     // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 

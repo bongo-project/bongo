@@ -968,7 +968,7 @@ XplServiceMain(int argc, char *argv[])
         return(-1);
     }
 
-    NMAPInitialize(MailProxy.handle.directory);
+    NMAPInitialize();
 
     MailProxy.handle.logging = LoggerOpen("bongomailprox");
     if (MailProxy.handle.logging == NULL) {

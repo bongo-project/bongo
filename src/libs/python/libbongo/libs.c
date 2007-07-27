@@ -55,7 +55,6 @@ extern PyMethodDef BongoUtilMethods[];
 PyMODINIT_FUNC
 initlibs()
 {
-    MDBHandle directoryHandle=NULL;
     char dbfdir[PATH_MAX];
 
     /* Initialize the various bongo libraries */
@@ -71,8 +70,7 @@ initlibs()
         return;
     }
 
-    directoryHandle = MsgInit();
-    if (!directoryHandle) {
+    if (!MsgInit()) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: MsgInit() failed");
         return;
@@ -86,7 +84,7 @@ initlibs()
         return;
     }
 
-    if (!NMAPInitialize(directoryHandle)) {
+    if (!NMAPInitialize()) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: NMAPInitialize() failed");
         return;
