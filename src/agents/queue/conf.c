@@ -78,12 +78,7 @@ ReadStartupConfiguration(BOOL *recover)
         MDBFreeValues(vs);
     }
 
-    if (vs && MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, vs)) {
-        HashCredential(MsgGetServerDN(NULL), vs->Value[0], Conf.serverHash);
-        MDBFreeValues(vs);
-    } else {
-        return FALSE;
-    }
+    MsgGetServerCredential(&Conf.serverHash);
 
     if (MDBRead(MsgGetServerDN(NULL), MSGSRV_A_OFFICIAL_NAME, vs) > 0) {
         LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_OFFICIAL_NAME", vs->Value[0], 0, 0, NULL, 0);

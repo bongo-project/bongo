@@ -5004,17 +5004,14 @@ ReadConfiguration (void)
         }
     }
     MDBFreeValues(Config);
-    
-    MDBSetValueStructContext (NULL, Config);
-    if (MDBRead (MSGSRV_ROOT, MSGSRV_A_ACL, Config) > 0) {
-        HashCredential (Config->Value[0], NMAPHash);
-    }
 
     MDBDestroyEnumStruct (ES, Config);
     MDBDestroyValueStruct (Parents);
     MDBDestroyValueStruct (Config);
 
     LocalAddress = MsgGetHostIPAddress ();
+
+    MsgGetServerCredential(&NMAPHash);
 
     return (TRUE);
 }
