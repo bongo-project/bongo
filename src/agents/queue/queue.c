@@ -4130,7 +4130,6 @@ CommandQretr(void *param)
         }
         if (data) {
             ccode = ConnWriteF(client->conn, "2023 %lu Message follows\r\n", sb.st_size);
-            FCLOSE_CHECK(data);
         } else {
             return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
         }
