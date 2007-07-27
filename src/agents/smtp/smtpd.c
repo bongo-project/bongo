@@ -5007,7 +5007,7 @@ ReadConfiguration (void)
     
     MDBSetValueStructContext (NULL, Config);
     if (MDBRead (MSGSRV_ROOT, MSGSRV_A_ACL, Config) > 0) {
-        HashCredential (MsgGetServerDN (NULL), Config->Value[0], NMAPHash);
+        HashCredential (Config->Value[0], NMAPHash);
     }
 
     MDBDestroyEnumStruct (ES, Config);

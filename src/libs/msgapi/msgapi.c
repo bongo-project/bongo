@@ -1173,6 +1173,8 @@ MsgGetServerCredential(char *buffer)
 		fread(credential, sizeof(unsigned char), sizeof(credential), credfile);
 		fclose(credfile);
 		credfile = NULL;
-		HashCredential(MsgGlobal.server.dn, credential, buffer);
+		HashCredential(credential, buffer);
+		return TRUE;
 	}
+	return FALSE;
 }

@@ -174,7 +174,7 @@ BOOL QuickCmp(unsigned char *str1, unsigned char *str2);
 unsigned char *DecodeBase64(unsigned char *EncodedString);
 unsigned char *EncodeBase64(const unsigned char *UnencodedString);
 
-BOOL HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char *Hash);
+BOOL HashCredential(unsigned char *Credential, unsigned char *Hash);
 
 /* String functions */
 
