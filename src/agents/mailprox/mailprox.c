@@ -815,70 +815,6 @@ ProxyServer(void *ignored)
     return(0);
 }
 
-static void 
-ProxyConfigMonitor(void)
-{
-    int i;
-    MDBValueStruct *Config;
-    long PrevConfigNumber;
-
-    XplRenameThread(XplGetThreadID(), "Proxy Config Monitor");
-
-    while (MailProxy.state == MAILPROXY_STATE_RUNNING) {
-        LoggerEvent(MailProxy.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PROXY_HEARTBEAT, LOG_INFO, 0, NULL, NULL, 0, 0, NULL, 0);
-
-        for (i = 0; (i < 300) && (MailProxy.state == MAILPROXY_STATE_RUNNING); i++) {
-            XplDelay(1000);
-        }
-
-        if (MailProxy.state == MAILPROXY_STATE_RUNNING) {
-            Config = MDBCreateValueStruct(MailProxy.handle.directory, MsgGetServerDN(NULL));
-            if ((MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_CONFIG_CHANGED, Config)>0) && (atol(Config->Value[0]) != PrevConfigNumber)) {
-                /* Clear what we just read */
-                PrevConfigNumber=atol(Config->Value[0]);
-                MDBFreeValues(Config);
-            
-                /* Acquire Write Lock */            
-                XplRWWriteLockAcquire(&MailProxy.lock);
-
-                if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_TIME_INTERVAL, Config) > 0) {
-                    MailProxy.runInterval = atol(Config->Value[0]) * 3600;    /* Convert hours to seconds */
-                    if ((MailProxy.runInterval == 0) && (toupper(Config->Value[0][0])=='S')) {
-                        MailProxy.runInterval = atol(Config->Value[0]+1);
-                    }
-                }
-                if (MailProxy.runInterval == 0) {
-                    MailProxy.runInterval = 3600 * 3;
-                }
-                MDBFreeValues(Config);
-
-                if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_THREAD_LIMIT, Config) > 0) {
-                    MailProxy.max.threadsParallel = atol(Config->Value[0]);
-                }
-                MDBFreeValues(Config);
-
-                if (MDBRead(MSGSRV_AGENT_PROXY, MSGSRV_A_MAXIMUM_ITEMS, Config) > 0) {
-                    MailProxy.max.accounts = atol(Config->Value[0]);
-                }
-                MDBFreeValues(Config);
-
-                /*    Release Write Lock    */
-                XplRWWriteLockRelease(&MailProxy.lock);
-            }
-
-            MDBDestroyValueStruct(Config);
-        }
-    }
-
-#if VERBOSE
-    XplConsolePrintf("\rMAILPROX: Config monitor thread done.\r\n");
-#endif
-
-    XplSafeDecrement(MailProxy.server.active);
-
-    XplExitThread(TSR_THREAD, 0);
-}
-
 // MailProxy.contexts
 static BongoConfigItem ProxyConfig[] = {
 	{ BONGO_JSON_STRING, "o:postmaster/s", &MailProxy.postmaster },
@@ -969,6 +905,7 @@ XplServiceMain(int argc, char *argv[])
 
     XplRWLockInit(&MailProxy.lock);
 
+    MailProxy.state = MAILPROXY_STATE_STOPPING;
     if (ReadConfiguration()) {
         CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "mailprox");
         // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
@@ -984,19 +921,12 @@ XplServiceMain(int argc, char *argv[])
 
         NMAPSetEncryption(MailProxy.client.ssl.context);
 
-        if (XplSetRealUser(MsgGetUnprivilegedUser()) >= 0) {
-            XplBeginCountedThread(&id, ProxyConfigMonitor, 128 * 1024, NULL, ccode, MailProxy.server.active);
-
-            MailProxy.state = MAILPROXY_STATE_RUNNING;
-        } else {
+        if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
             XplConsolePrintf("bongocalendar: Could not drop to unprivileged user '%s', exiting.\r\n", MsgGetUnprivilegedUser());
-
-            MailProxy.state = MAILPROXY_STATE_STOPPING;
+        } else {
+            MailProxy.state = MAILPROXY_STATE_RUNNING;
         }
-
     } else {
-        MailProxy.state = MAILPROXY_STATE_STOPPING;
-
         LoggerEvent(MailProxy.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NOT_CONFIGURED, LOG_ERROR, 0, "Proxy NMAP Servers", NULL, 0, 0, NULL, 0);
     }
 
