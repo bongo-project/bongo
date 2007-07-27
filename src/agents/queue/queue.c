@@ -337,7 +337,7 @@ UpdatePushClientsRegistered(void)
 static void
 WriteQAgents(void) 
 {
-    FILE *handle;
+    FILE *handle = NULL;
 
     FOPEN_CHECK(handle, Conf.queueClientsPath, "wb");
     if (handle) {
