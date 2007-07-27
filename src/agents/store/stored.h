@@ -514,10 +514,6 @@ int MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport);
 /** config.c **/
 BOOL StoreAgentReadConfiguration(BOOL *recover);
 
-/** management.c **/
-int StoreAgentManagementStart(void);
-void StoreAgentManagementShutdown(void);
-
 /* hardcoded guids: */
 
 #define STORE_ROOT_GUID 1

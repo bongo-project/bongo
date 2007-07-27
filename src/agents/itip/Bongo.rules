@@ -7,7 +7,6 @@ bongoitip_SOURCES :=				\
 
 bongoitip_LDADD :=					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \
 	libbongologger.la				   \

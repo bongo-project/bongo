@@ -56,8 +56,4 @@ typedef struct _GAgentGlobals {
 
 extern GAgentGlobals GAgent;
 
-/* management.c */
-int GenericAgentManagementStart(void);
-void GenericAgentManagementShutdown(void);
-
 #endif /* _GENERIC_H */

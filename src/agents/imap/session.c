@@ -27,9 +27,6 @@
 
 #include <msgapi.h>
 
-/* Management Client Header Include */
-#include <management.h>
-
 #include "imapd.h"
 
 

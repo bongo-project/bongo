@@ -1,4 +1,3 @@
-
 /****************************************************************************
  * <Novell-copyright>
  * Copyright (c) 2001 Novell, Inc. All Rights Reserved.
@@ -41,9 +40,6 @@
 #include <logger.h>
 
 #include <msgapi.h>
-
-/* Management Client Header Include */
-#include <management.h>
 
 #include <bongoagent.h>
 
@@ -3550,12 +3546,6 @@ IMAPServer(void *unused)
 
     if (Imap.server.ssl.conn) {
         ConnClose(Imap.server.ssl.conn, 1);
-    }
-
-    /*    Management Client Shutdown    */
-    ManagementShutdown();
-    for (j = 0; (ManagementState() != MANAGEMENT_STOPPED) && (j < 60); j++) {
-        XplDelay(1000);
     }
 
     /*    Wake up the children and set them free!    */

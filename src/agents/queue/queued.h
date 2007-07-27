@@ -100,10 +100,6 @@ extern QueueAgent Agent;
 void QueueClientFree(void *clientp);
 int HandleCommand(QueueClient *client);
 
-/* management.c */
-int QueueManagementStart(void);
-void QueueManagementShutdown(void);
-
 #define STACKSPACE_Q (1024*80)
 
 #endif /* QUEUED_H */

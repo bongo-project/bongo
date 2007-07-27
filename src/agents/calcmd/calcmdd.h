@@ -63,8 +63,4 @@ typedef struct _CalCmdAgentGlobals {
 
 extern CalCmdAgentGlobals CalCmdAgent;
 
-/* management.c */
-int CalCmdAgentManagementStart(void);
-void CalCmdAgentManagementShutdown(void);
-
 #endif /* _GENERIC_H */

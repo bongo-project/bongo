@@ -7,7 +7,6 @@ bongocalcmd_SOURCES :=				\
 
 bongocalcmd_LDADD :=					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \
 	libbongologger.la				   \

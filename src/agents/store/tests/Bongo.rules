@@ -10,7 +10,6 @@ checktest_store_CPPFLAGS := $(AM_CPPFLAGS)	\
 checktest_store_LDADD := $(CHECK_LIBS)			   \
 	libbongostore.la				   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \
 	libbongologger.la				   \
@@ -33,7 +32,6 @@ mkauthhash_store_CPPFLAGS := $(AM_CPPFLAGS)	\
 
 mkauthhash_LDADD =					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \
 	libbongologger.la				   \

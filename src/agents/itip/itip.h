@@ -56,8 +56,4 @@ typedef struct _ItipAgentGlobals {
 
 extern ItipAgentGlobals ItipAgent;
 
-/* management.c */
-int ItipAgentManagementStart(void);
-void ItipAgentManagementShutdown(void);
-
 #endif /* _ITIP_H */

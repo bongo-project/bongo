@@ -62,10 +62,6 @@ typedef enum {
     COLLECTOR_COMMAND_NOOP,
 } CollectorCommand;
 
-/* management.c */
-int CollectorManagementStart(void);
-void CollectorManagementShutdown(void);
-
 CCode CollectorCommandPUT(CollectorClient *client, char *user, char *name, char *url);
 CCode CollectorCommandQUIT(CollectorClient *client);
 

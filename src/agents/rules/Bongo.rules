@@ -8,7 +8,6 @@ bongorules_SOURCES :=				\
 
 bongorules_LDADD :=					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongostreamio.la				   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \

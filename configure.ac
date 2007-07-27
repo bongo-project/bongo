@@ -672,7 +672,6 @@ src/libs/json/Makefile
 src/libs/streamio/Makefile
 src/libs/streamio/codec/Makefile
 src/libs/logger/Makefile
-src/libs/management/Makefile
 src/libs/mdb/Makefile
 src/libs/mdb-file/Makefile
 src/libs/mdb-xldap/Makefile

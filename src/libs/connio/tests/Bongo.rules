@@ -8,7 +8,6 @@ checktest_connio_SOURCES := \
 checktest_connio_LDADD := $(CHECK_LIBS)			 \
 	libbongoconnio.la				 \
 	libbongonmap.la					 \
-	libbongomanagement.la				 \
 	libbongomsgapi.la				 \
 	libbongomdb.la					 \
 	libbongologger.la				 \

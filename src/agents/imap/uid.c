@@ -1,4 +1,3 @@
-
 /****************************************************************************
  * <Novell-copyright>
  * Copyright (c) 2001 Novell, Inc. All Rights Reserved.
@@ -29,8 +28,6 @@
 #include <mdb.h>
 #include <msgapi.h>
 
-/* Management Client Header Include */
-#include <management.h>
 #include "imapd.h"
 
 #define GREATER_THAN_OR_EQUAL_TO 1

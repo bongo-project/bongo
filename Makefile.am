@@ -104,7 +104,6 @@ include_subdirs :=				\
 	src/libs/cal				\
 	src/libs/cal/tests			\
 	src/libs/nmap				\
-	src/libs/management			\
 	src/libs/msgapi				\
 	src/libs/calcmd				\
 	src/libs/calcmd/tests			\
@@ -161,7 +160,6 @@ include src/libs/streamio/codec/Bongo.rules
 include src/libs/cal/Bongo.rules
 include src/libs/cal/tests/Bongo.rules
 include src/libs/nmap/Bongo.rules
-include src/libs/management/Bongo.rules
 include src/libs/msgapi/Bongo.rules
 include src/libs/calcmd/Bongo.rules
 include src/libs/calcmd/tests/Bongo.rules

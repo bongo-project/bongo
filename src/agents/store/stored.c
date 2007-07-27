@@ -177,8 +177,6 @@ StoreServer(void *ignored)
         StoreAgent.nmapConn = NULL;
     }
 
-    // StoreAgentManagementShutdown();
-
     BongoThreadPoolShutdown(StoreAgent.threadPool);
     CONN_TRACE_SHUTDOWN();
     BongoAgentShutdown(&StoreAgent.agent);
@@ -311,8 +309,6 @@ _XplServiceMain(int argc, char *argv[])
 
     XplSignalHandler(SignalHandler);
 
-    // GenericAgentManagementStart();
-    
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, StoreServer, 8192, NULL, ccode);
     

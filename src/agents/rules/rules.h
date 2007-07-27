@@ -263,14 +263,6 @@ typedef struct _RulesGlobals {
 
 extern RulesGlobals Rules;
 
-/* management.c */
-ManagementVariables *GetRulesManagementVariables(void);
-int GetRulesManagementVariablesCount(void);
-ManagementCommands *GetRulesManagementCommands(void);
-int GetRulesManagementCommandsCount(void);
-
-void RulesStartManagement(void);
-
 /* stream.c */
 BOOL MWHandleNamedTemplate(void *ClientIn, unsigned char *TemplateName, void *ObjectData);
 int RulesStreamToMemory(StreamStruct *codec, StreamStruct *next);

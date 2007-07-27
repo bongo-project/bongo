@@ -8,7 +8,6 @@ bongoalarm_SOURCES :=				\
 bongoalarm_LDADD :=						   \
 	libbongonmap.la						   \
 	libbongocal.la						   \
-	libbongomanagement.la					   \
 	libbongomsgapi.la					   \
 	libbongomdb.la						   \
 	libbongologger.la					   \

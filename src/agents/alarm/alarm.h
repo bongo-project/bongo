@@ -76,8 +76,4 @@ typedef enum {
     ALARM_COMMAND_NOOP,
 } AlarmCommand;
 
-/* management.c */
-int AlarmManagementStart(void);
-void AlarmManagementShutdown(void);
-
 #endif /* _ALARM_H */

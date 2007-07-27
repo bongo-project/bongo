@@ -1810,15 +1810,6 @@ POP3Server(void *ignored)
     /* fixme - we need connection management flags for ConnClose to force the shutdown */
     ConnCloseAll(1);
 
-    /* Management Client Shutdown */
-    if (ManagementState() != MANAGEMENT_STOPPED) {
-        ManagementShutdown();
-
-       for (ccode = 0; (ManagementState() != MANAGEMENT_STOPPED) && (ccode < 60); ccode++) {
-          XplDelay(1000);
-       }
-    }
-
     XplWaitOnLocalSemaphore(POP3.client.semaphore);
 
     ccode = XplSafeRead(POP3.client.worker.idle);

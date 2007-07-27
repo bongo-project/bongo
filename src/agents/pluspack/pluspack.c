@@ -1306,15 +1306,7 @@ PlusPackQueueServer6(void *ignored)
 
     ConnCloseAll(1);
 
-    if (ManagementState() == MANAGEMENT_RUNNING) {
-        ManagementShutdown();
-    }
-
     for (i = 0; (XplSafeRead(PlusPack.server.active) > 1) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    for (i = 0; (ManagementState() != MANAGEMENT_STOPPED) && (i < 60); i++) {
         XplDelay(1000);
     }
 
