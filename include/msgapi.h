@@ -35,6 +35,19 @@ EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
 EXPORT BOOL MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword);
 EXPORT BOOL MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
 
+// Auth / cookie functions
+
+#define MSGAUTH_COOKIE_LEN	32
+
+typedef struct {
+   	char 	 token[MSGAUTH_COOKIE_LEN];
+	uint64_t expiration;
+} MsgAuthCookie;
+
+EXPORT BOOL MsgAuthCreateCookie(const char *username, MsgAuthCookie *cookie, uint64_t timeout);
+EXPORT int  MsgAuthFindCookie(const char *username, const char *token);
+EXPORT BOOL MsgAuthDeleteCookie(const char *username, const char *token);
+
 // Misc. util functions
 
 EXPORT BOOL MsgSetRecoveryFlag(void);
