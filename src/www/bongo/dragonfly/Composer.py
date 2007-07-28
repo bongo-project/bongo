@@ -9,6 +9,8 @@ from bongo.external.email.parser import Parser
 from bongo.external.email.feedparser import FeedParser
 from bongo.external.email.generator import Generator
 
+from libbongo.libs import msgapi
+
 from bongo.store.CommandStream import CommandError
 from bongo.store.StoreClient import DocTypes
 
@@ -140,7 +142,7 @@ class Composer :
         self.msg = Message()
         self.msg["Content-Type"] = "text/plain"
         self.msg["MIME-Version"] = "1.0"
-        self.msg["User-Agent"] = "Dragonfly 0.0"
+        self.msg["User-Agent"] = "Bongo r" + str(msgapi.GetBuildVersion()[0]) + " (Dragonfly)"
         
         self.msg.set_payload('')
 

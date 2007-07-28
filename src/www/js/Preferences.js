@@ -338,14 +338,18 @@ Dragonfly.Preferences.Editor.save = function ()
     // User profile
     Dragonfly.notify (_('Saving changes...'), true);
     var result = this.profileEditor.save();
-    p.prefs.addressbook.me = this.profileEditor.bongoId;
-    p.prefs.mail.sender = this.profileEditor.name;
+    //prefs.addressbook.me = this.profileEditor.bongoId;
+    //prefs.mail.sender = this.profileEditor.name;
     
     // Timezone
     d.setCurrentTzid (d.tzselector.getTzid());
     
+    // User prefs
+    p.prefs.addressbook.me = this.profileEditor.bongoId;
+
     // Mail prefs
     p.prefs.mail.from = $('from').value;
+    p.prefs.mail.sender = this.profileEditor.name;
     p.prefs.mail.autoBcc = $('autobcc').value;
     p.prefs.mail.pageSize = $('mailpagesize').value;
     p.prefs.mail.signature = $('signature').value;
@@ -409,7 +413,7 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
        
     // Now, load up the profile editor!
     var pe = new d.AddressBook.UserProfile('userprofile');
-    if (jsob.addressbook.me && jsob.addressbook.me != null)
+    if (jsob.addressbook && jsob.addressbook.me && jsob.addressbook.me != null)
     {
         // We've already setup our profile - load it!
         d.AddressBook.loadContact(jsob.addressbook.me).addCallback(bind ('build', pe));

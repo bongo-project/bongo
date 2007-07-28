@@ -40,12 +40,12 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     var m = d.Mail;
     var p = m.Preferences;
     
-    var defaultbody = '';
+    var defaultbodyHtml = '';
     
     if (p.getSignatureAvailable())
     {
         // Append signature to end of message.
-        defaultbody = '\n\n-- \n' + p.getSignature();
+        defaultbodyHtml = '\n\n-- \n' + p.getSignature();
     }
     
     var msg = { 
@@ -53,7 +53,7 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
         to: '',
         cc: '',
         bcc: p.getAutoBcc() || '',
-        body: defaultbody
+        bodyHtml: defaultbodyHtml
     };
     if (mailto.substr (0, 7) != 'mailto:') {
         return null;
@@ -75,7 +75,7 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
                 case 'subject':
                 case 'inreplyto':
                 case 'forward':
-                case 'body':
+                case 'bodyHtml':
                 case 'conversation':
                     msg[field] = decodeURIComponent (arg[1]);
                     break;
@@ -104,7 +104,7 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
     this.addAttachment = d.nextId ('add-attachment');
 
     this.subject = d.nextId ('subject');
-    this.body = d.nextId ('body');
+    this.bodyHtml = d.nextId ('bodyHtml');
 
     this.toolbar = d.nextId ('toolbar');
     this.discard = d.nextId ('discard');
@@ -137,9 +137,9 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
     if (this.msg.contents) {
         switch (this.msg.contents.contenttype) {
         case 'multipart/mixed':
-            var body = this.msg.contents.children[0];
-            if (body.contenttype == 'text/plain') {
-                this.msg.body = body.content;
+            var bodyHtml = this.msg.contents.children[0];
+            if (bodyHtml.contenttype == 'text/plain') {
+                this.msg.bodyHtml = bodyHtml.content;
             }
             for (var i = 1; i < this.msg.contents.children.length; i++) {
                 var attachment = this.msg.contents.children[i];
@@ -149,14 +149,13 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
             }
             break;
         case 'text/plain':
-            this.msg.body = this.msg.contents.content;
+            this.msg.bodyHtml = this.msg.contents.content;
             break;
         }
     }
-
+    
     html.push ('<li><a id="', this.addAttachment, '">', _('Attach file...'), '</a></li></ul>',
-               '<tr><td colspan="2"><textarea id="', this.body, '" class="body" cols="75" rows="15"  wrap="on">',
-               d.escapeHTML (this.msg.body), '</textarea></td></tr>',
+               '<tr><td colspan="2"><div class="toolbar">', insertEditableArea(this.bodyHtml, '99%', '250px', "[bold][italic][underlined] sep [align-left][justify][align-center][align-right] sep [undo][redo][select-all] sep [insert-image][insert-link]</div>[edit-area]", "font-family: lucida grande,myriad,myriad pro,verdana,luxi sans,bitstream vera sans,sans-serif;font-size:0.9em;"), '</td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',
                '<input id="', this.discard, '" class="discard" type="button" value="', _('Discard'), '">',
                '<input id="', this.save, '" class="save" type="button" value="', _('Save Draft'), '">',
@@ -185,7 +184,8 @@ Dragonfly.Mail.Composer.prototype.connectHtml = function (elem)
     this.bcc = $(this.bcc);
     this.from = $(this.from);
     this.subject = $(this.subject);
-    this.body = $(this.body);
+    //d.bodyHtmlname = this.bodyHtml;
+    //this.bodyHtml = $(this.bodyHtml);
     this.addAttachment = $(this.addAttachment);
     this.discard = $(this.discard);
     this.send = $(this.send);
@@ -244,7 +244,7 @@ Dragonfly.Mail.Composer.prototype.getCurrentMessage = function ()
         cc: this.cc.value,
         bcc: this.bcc.value,
         subject: this.subject.value,
-        body: this.body.value
+        bodyHtml: editableAreaContents(this.bodyHtml)
     };
 };
 
@@ -606,10 +606,12 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     document.title = '(untitled) - Composing: ' + Dragonfly.title;
 
     var html = new d.HtmlBuilder ();
-
     var composer = new m.Composer (html, msg);
-
+    
     html.set ('conv-msg-list');
+    
+    setEditableAreaContents(composer.bodyHtml, d.escapeHTML (msg.bodyHtml));
+    ititButtons(composer.bodyHtml);
     
     d.resizeScrolledView();
     
@@ -878,7 +880,7 @@ Dragonfly.Mail.AttachmentForm.prototype.frameLoad = function (evt)
     var doc = d.getIFrameDocument (this.iframeId);
     var jsob;
     try {
-        jsob = d.eval (Element.getText (doc.body));
+        jsob = d.eval (Element.getText (doc.bodyHtml));
     } catch (e) {
         showError.call (this, 'server response was not understood');
         return;
