@@ -42,14 +42,67 @@
 #include <mdb.h>
 #include <nmap.h>
 
+#include <bongoagent.h>
 #include <bongoutil.h>
 #include "smtpd.h"
+
+struct {
+	int port;
+	int port_ssl;
+	char *hostname;
+	char *hostaddr;
+	BOOL allow_client_ssl;
+	BOOL allow_expn;
+	BOOL allow_auth;
+	BOOL allow_vrfy;
+	BOOL verify_address;
+	BOOL accept_etrn;
+	BOOL send_etrn;
+	int max_recips;
+	char *postmaster;
+	int message_limit;
+	BOOL use_relay;
+	BOOL relay_local;
+	char *relay_host;
+	BOOL block_rts;
+	int max_thread_load;
+	int max_flood_count;
+	int max_null_sender;
+	int max_mx_servers;
+	int socket_timeout;
+} SMTP;
+
+static BongoConfigItem SMTPConfig[] = {
+	{ BONGO_JSON_INT, "o:port/i", &SMTP.port },
+	{ BONGO_JSON_INT, "o:port_ssl/i", &SMTP.port_ssl },
+	{ BONGO_JSON_STRING, "o:hostname/s", &SMTP.hostname },
+	{ BONGO_JSON_STRING, "o:hostaddr/s", &SMTP.hostaddr },
+	{ BONGO_JSON_BOOL, "o:allow_client_ssl/b", &SMTP.allow_client_ssl },
+	{ BONGO_JSON_BOOL, "o:allow_expn/b", &SMTP.allow_expn },
+	{ BONGO_JSON_BOOL, "o:allow_vrfy/b", &SMTP.allow_vrfy },
+	{ BONGO_JSON_BOOL, "o:allow_auth/b", &SMTP.allow_auth },
+	{ BONGO_JSON_BOOL, "o:verify_address/b", &SMTP.verify_address },
+	{ BONGO_JSON_BOOL, "o:accept_etrn/b", &SMTP.accept_etrn },
+	{ BONGO_JSON_BOOL, "o:send_etrn/b", &SMTP.send_etrn },
+	{ BONGO_JSON_INT, "o:maximum_recipients/i", &SMTP.max_recips },
+	{ BONGO_JSON_STRING, "o:postmaster/s", &SMTP.postmaster },
+	{ BONGO_JSON_INT, "o:message_size_limit/i", &SMTP.message_limit },
+	{ BONGO_JSON_BOOL, "o:use_relay_host/b", &SMTP.use_relay },
+	{ BONGO_JSON_STRING, "o:relay_host/s", &SMTP.relay_host },
+	{ BONGO_JSON_BOOL, "o:block_rts_spam/b", &SMTP.block_rts },
+	{ BONGO_JSON_INT, "o:max_thread_load/i", &SMTP.max_thread_load },
+	{ BONGO_JSON_INT, "o:max_flood_count/i", &SMTP.max_flood_count }, // UNUSED ?
+	{ BONGO_JSON_INT, "o:max_null_sender/i", &SMTP.max_null_sender },
+	{ BONGO_JSON_INT, "o:socket_timeout/i", &SMTP.socket_timeout },
+	{ BONGO_JSON_INT, "o:max_mx_servers/i", &SMTP.max_mx_servers },
+	{ BONGO_JSON_BOOL, "o:relay_local_mail/b", &SMTP.relay_local },
+	{ BONGO_JSON_NULL, NULL, NULL }
+};
 
 /* Globals */
 BOOL Exiting = FALSE;
 XplSemaphore SMTPShutdownSemaphore;
 XplSemaphore SMTPServerSemaphore;
-long SMTPMaxThreadLoad = 100000;
 XplAtomic SMTPServerThreads;
 XplAtomic SMTPConnThreads;
 XplAtomic SMTPIdleConnThreads;
@@ -58,12 +111,7 @@ Connection *SMTPServerConnection;
 Connection *SMTPServerConnectionSSL;
 Connection *SMTPQServerConnection;
 Connection *SMTPQServerConnectionSSL;
-unsigned long SMTPServerPort = SMTP_PORT;
-unsigned long SMTPServerPortSSL = SMTP_PORT_SSL;
-unsigned char Hostname[MAXEMAILNAMESIZE + 128];
-unsigned char Hostaddr[MAXEMAILNAMESIZE + 1];
 int TGid;
-unsigned long MaxMXServers = 0;
 
 unsigned char **Domains = NULL;
 unsigned int DomainCount = 0;
@@ -73,33 +121,18 @@ unsigned char **RelayDomains = NULL;
 unsigned int RelayDomainCount = 0;
 
 /* UBE measures */
-unsigned long UBEConfig = 0;
 XplRWLock ConfigLock;
 BOOL SMTPReceiverStopped = FALSE;
 
-unsigned char Postmaster[MAXEMAILNAMESIZE + 1] = "admin";
 unsigned char OfficialName[MAXEMAILNAMESIZE + 1] = "";
-unsigned char RelayHost[MAXEMAILNAMESIZE + 1] = "";
-BOOL UseRelayHost = FALSE;
-BOOL RelayLocalMail = FALSE;
 BOOL Notify = FALSE;
 BOOL AllowClientSSL = FALSE;
-BOOL AllowEXPN = FALSE;
-BOOL AllowVRFY = FALSE;
-BOOL CheckRCPT = FALSE;
-BOOL SendETRN = FALSE;
-BOOL AcceptETRN = FALSE;
 BOOL DomainUsernames = TRUE;
-BOOL BlockRTSSpam = FALSE;
 time_t LastBounce;
 time_t BounceInterval;
 unsigned long MaxBounceCount;
 unsigned long BounceCount;
 unsigned char NMAPServer[20] = "127.0.0.1";
-unsigned long MessageLimit = 0;
-unsigned long MaximumRecipients = 15;
-unsigned long MaxNullSenderRecips = ULONG_MAX;
-unsigned long MaxFloodCount = 1000;
 unsigned long LocalAddress = 0;
 bongo_ssl_context *SSLContext = NULL;
 static unsigned char NMAPHash[NMAP_HASH_SIZE];
@@ -125,7 +158,6 @@ int MAX_HOPS = 16;
 
 /* Minutes * 60 (1 second granularity) */
 /*#define       CONNECTION_TIMEOUT      (10*60)*/
-unsigned long SocketTimeout = 10 * 60;
 /* Seconds */
 #define	MAILBOX_TIMEOUT 15
 
@@ -362,7 +394,7 @@ HandleConnection (void *param)
     }
 
     XplRWReadLockAcquire (&ConfigLock);
-    if (UBEConfig & UBE_DISABLE_AUTH) {
+    if (! SMTP.allow_auth) {
         AllowAuth = FALSE;
     }
 
@@ -376,7 +408,7 @@ HandleConnection (void *param)
         !NMAPAuthenticateToStore(Client->nmap.conn, Answer, sizeof(Answer))) {
         NMAPQuit(Client->nmap.conn);
         Client->nmap.conn = NULL;
-        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", Hostname, MSG421SHUTDOWN);
+        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", SMTP.hostname, MSG421SHUTDOWN);
         Log(LOG_ERROR, "Unable to connect to Queue agent at %s (reply was %d)",
             LOGIP(Client->client.conn->socketAddress), ReplyInt);
         ConnWrite (Client->client.conn, Reply, count);
@@ -384,7 +416,7 @@ HandleConnection (void *param)
         return (EndClientConnection (Client));
     }
 
-    snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", Hostname,
+    snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", SMTP.hostname,
               MSG220READY, PRODUCT_VERSION);
     ConnWrite (Client->client.conn, Answer, strlen (Answer));
     ConnFlush (Client->client.conn);
@@ -396,7 +428,7 @@ HandleConnection (void *param)
                 count = ConnReadToAllocatedBuffer(Client->client.conn, &(Client->client.buffer), &(Client->client.buflen));
             } else {
                 snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                          Hostname, MSG421SHUTDOWN);
+                          SMTP.hostname, MSG421SHUTDOWN);
                 ConnWrite (Client->client.conn, Answer, strlen (Answer));
                 ConnFlush(Client->client.conn);
                 return (EndClientConnection (Client));
@@ -412,7 +444,7 @@ HandleConnection (void *param)
                 return (EndClientConnection (Client));
             } else if (count < 1) {
                 snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                          Hostname, MSG421SHUTDOWN);
+                          SMTP.hostname, MSG421SHUTDOWN);
                 ConnWrite (Client->client.conn, Answer, strlen (Answer));
                 ConnFlush(Client->client.conn);
                 return (EndClientConnection (Client));
@@ -425,7 +457,7 @@ HandleConnection (void *param)
             case 'O':          /* HELO */
                 if (Client->State == STATE_FRESH) {
                     snprintf (Answer, sizeof (Answer), "250 %s %s\r\n",
-                              Hostname, MSG250HELLO);
+                              SMTP.hostname, MSG250HELLO);
                     ConnWrite (Client->client.conn, Answer, strlen (Answer));
                     strncpy (Client->RemoteHost, Client->Command + 5,
                              sizeof (Client->RemoteHost));
@@ -452,7 +484,7 @@ HandleConnection (void *param)
         case 'S':{             /* SAML, SOML, SEND */
                 switch (toupper (Client->Command[1])) {
                 case 'T':{     /* STARTTLS */
-                        if (!AllowClientSSL) {
+                        if (!SMTP.allow_client_ssl) {
                             ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
                             break;
                         }
@@ -751,7 +783,7 @@ HandleConnection (void *param)
                                     goto QuitRcpt;
                                 }
                                 XplRWReadLockAcquire (&ConfigLock);
-                                if (Client->RecipCount >= MaximumRecipients) {
+                                if (Client->RecipCount >= SMTP.max_recips) {
                                     XplRWReadLockRelease (&ConfigLock);
                                     Log(LOG_INFO, "Recipient limit from %s at host %s to user %s",
                                         Client->AuthFrom? 
@@ -796,8 +828,8 @@ HandleConnection (void *param)
                                 XplRWReadLockAcquire (&ConfigLock);
                                 if ((NullSender == FALSE)
                                     || (Client->RecipCount <
-                                        MaxNullSenderRecips)) {
-                                    if (!CheckRCPT) {
+                                        SMTP.max_null_sender)) {
+                                    if (!SMTP.verify_address) {
                                         XplRWReadLockRelease (&ConfigLock);
                                         snprintf (Answer, sizeof (Answer),
                                                   "QSTOR LOCAL %s %s %lu\r\n",
@@ -975,7 +1007,7 @@ HandleConnection (void *param)
 #if 0
                 /* We're abusing size, so we don't need another stack variable */
                 /* Spam block */
-                if (BlockRTSSpam && (name[0] == '\0')) {
+                if (SMTP.block_rts && (name[0] == '\0')) {
                     XplRWReadLockAcquire (&ConfigLock);
                     time (&size);
 
@@ -1082,7 +1114,7 @@ HandleConnection (void *param)
                         ptr++;
                         size = atol (ptr);
                         XplRWReadLockAcquire (&ConfigLock);
-                        if (MessageLimit > 0 && size > MessageLimit) {
+                        if (SMTP.message_limit > 0 && size > SMTP.message_limit) {
                             XplRWReadLockRelease (&ConfigLock);
                             ConnWrite (Client->client.conn, MSG552MSGTOOBIG,
                                         MSG552MSGTOOBIG_LEN);
@@ -1258,7 +1290,7 @@ HandleConnection (void *param)
                          Client->client.conn->socketAddress.sin_addr.s_lh,
                          Client->client.conn->socketAddress.sin_addr.s_impno,
                          
-                         Hostname,
+                         SMTP.hostname,
                          WithProtocol,
                          PRODUCT_NAME,
                          PRODUCT_VERSION,
@@ -1274,7 +1306,7 @@ HandleConnection (void *param)
                 }
 
                 XplRWReadLockAcquire (&ConfigLock);
-                if (MessageLimit > 0 && BReceived > MessageLimit) {     /* Message over limit */
+                if (SMTP.message_limit > 0 && BReceived > SMTP.message_limit) {     /* Message over limit */
                     XplRWReadLockRelease (&ConfigLock);
                     if ((NMAPSendCommand (Client->nmap.conn, "QABRT\r\n", 7) < 0) ||
                         NMAPReadResponse (Client->nmap.conn, Reply, sizeof (Reply), TRUE) != 1000) {
@@ -1288,7 +1320,7 @@ HandleConnection (void *param)
                     XplRWReadLockRelease (&ConfigLock);
 
                     if ((NullSender == FALSE)
-                        || (Client->RecipCount < MaxNullSenderRecips)) {
+                        || (Client->RecipCount < SMTP.max_null_sender)) {
                         if (NMAPSendCommand (Client->nmap.conn, "QRUN\r\n", 6)<0) {
                             ConnWrite (Client->client.conn, MSG451INTERNALERR,
                                         MSG451INTERNALERR_LEN);
@@ -1341,7 +1373,7 @@ HandleConnection (void *param)
                     }
                 }
             }
-            snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", Hostname,
+            snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", SMTP.hostname,
                       MSG221QUIT);
             ConnWrite (Client->client.conn, Answer, strlen (Answer));
             return (EndClientConnection (Client));
@@ -1356,23 +1388,23 @@ HandleConnection (void *param)
                 case 'H':{     /* EHLO */
                         if (Client->State == STATE_FRESH) {
                             XplRWReadLockAcquire (&ConfigLock);
-                            if (MessageLimit > 0) {
+                            if (SMTP.message_limit > 0) {
                                 snprintf (Answer, sizeof (Answer),
                                           "250-%s %s\r\n%s%s%s%s %lu\r\n",
-                                          Hostname, MSG250HELLO,
-                                          AcceptETRN ? MSG250ETRN : "",
-                                          (AllowClientSSL
+                                          SMTP.hostname, MSG250HELLO,
+                                          SMTP.accept_etrn ? MSG250ETRN : "",
+                                          (SMTP.allow_client_ssl
                                            && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
                                           (AllowAuth ==
                                            TRUE) ? MSG250AUTH : "",
-                                          MSG250EHLO, MessageLimit);
+                                          MSG250EHLO, SMTP.message_limit);
                             }
                             else {
                                 snprintf (Answer, sizeof (Answer),
                                           "250-%s %s\r\n%s%s%s%s\r\n",
-                                          Hostname, MSG250HELLO,
-                                          AcceptETRN ? MSG250ETRN : "",
-                                          (AllowClientSSL
+                                          SMTP.hostname, MSG250HELLO,
+                                          SMTP.accept_etrn ? MSG250ETRN : "",
+                                          (SMTP.allow_client_ssl
                                            && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
                                           (AllowAuth ==
                                            TRUE) ? MSG250AUTH : "",
@@ -1398,7 +1430,7 @@ HandleConnection (void *param)
                 case 'T':{     /* ETRN */
                         count = 0;
                         XplRWReadLockAcquire (&ConfigLock);
-                        if (AcceptETRN) {
+                        if (SMTP.accept_etrn) {
                             XplRWReadLockRelease (&ConfigLock);
                             ReplyInt =
                                 snprintf (Answer, sizeof (Answer),
@@ -1429,7 +1461,7 @@ HandleConnection (void *param)
 
                 case 'X':{     /* EXPN */
                         XplRWReadLockAcquire (&ConfigLock);
-                        if (AllowEXPN) {
+                        if (SMTP.allow_expn) {
                             BOOL Found = FALSE;
 
                             XplRWReadLockRelease (&ConfigLock);
@@ -1467,7 +1499,7 @@ HandleConnection (void *param)
 
         case 'V':{             /* VRFY */
                 XplRWReadLockAcquire (&ConfigLock);
-                if (AllowVRFY) {
+                if (SMTP.allow_vrfy) {
                     BOOL Found = FALSE;
 
                     XplRWReadLockRelease (&ConfigLock);
@@ -1678,7 +1710,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     status = GetAnswer (Client, Reply, sizeof (Reply));
     HandleFailure (220);
 
-    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Hostname);
+    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", SMTP.hostname);
     if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
@@ -1686,7 +1718,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
 
     status = GetEHLO (Client, &Extensions, &Size);
     if (status != 250) {
-        snprintf (Answer, sizeof (Answer), "HELO %s\r\n", Hostname);
+        snprintf (Answer, sizeof (Answer), "HELO %s\r\n", SMTP.hostname);
         if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
@@ -1698,7 +1730,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
         /* The other server supports ESMTP */
 
         // SSL delivery disabled per bug #9536
-        if (0 && AllowClientSSL && (Extensions & EXT_TLS)) {
+        if (0 && SMTP.allow_client_ssl && (Extensions & EXT_TLS)) {
             snprintf (Answer, sizeof (Answer), "STARTTLS\r\n");
             if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
@@ -1709,7 +1741,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 if(ConnEncrypt(Client->remotesmtp.conn, SSLContext) < 0) {
                     DELIVER_ERROR (DELIVER_FAILURE);
                 }
-                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Hostname);
+                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", SMTP.hostname);
                 if (ConnWrite(Client->remotesmtp.conn, Answer, status) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
@@ -2046,7 +2078,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
              Client->client.conn->socketAddress.sin_addr.s_host,
              Client->client.conn->socketAddress.sin_addr.s_lh,
              Client->client.conn->socketAddress.sin_addr.s_impno,
-             Hostname, 
+             SMTP.hostname, 
              PRODUCT_NAME,
              PRODUCT_VERSION,
              TimeBuf);
@@ -2108,7 +2140,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     }
 
     XplRWReadLockAcquire (&ConfigLock);
-    if (SendETRN && (Extensions & EXT_ETRN)) {
+    if (SMTP.send_etrn && (Extensions & EXT_ETRN)) {
         for (i = 0; i < DomainCount; i++) {
             len = snprintf (Reply, sizeof (Reply), "ETRN %s\r\n", Domains[i]);
             if (ConnWrite(Client->remotesmtp.conn, Reply, len) < 1) {
@@ -2178,12 +2210,12 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
         Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = host;
     }
 
-    if (!GoByAddr && UseRelayHost) {
-        int relayhost = inet_addr(RelayHost);
+    if (!GoByAddr && SMTP.use_relay) {
+        int relayhost = inet_addr(SMTP.relay_host);
         Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = relayhost;
         if (relayhost == -1) {
-            status=XplDnsResolve(RelayHost, &DNSARec, XPL_RR_A);
-            /*fprintf (stderr, "%s:%d Looked up relay host %s: %d\n", __FILE__, __LINE__, RelayHost, status);*/
+            status=XplDnsResolve(SMTP.relay_host, &DNSARec, XPL_RR_A);
+            /*fprintf (stderr, "%s:%d Looked up relay host %s: %d\n", __FILE__, __LINE__, SMTP.relay_host, status);*/
             switch(status) {
             case XPL_DNS_SUCCESS:
                 break;
@@ -2351,7 +2383,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
-        if (IPAddressIsLocal(Client->remotesmtp.conn->socketAddress.sin_addr) && SMTPServerPort == 25) {
+        if (IPAddressIsLocal(Client->remotesmtp.conn->socketAddress.sin_addr) && SMTP.port == 25) {
             BOOL ETRNMessage = FALSE;
             unsigned int i;
             // It's weird, but saves space...
@@ -2440,10 +2472,10 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             break;
         }
         else {
-            if ((MaxMXServers != 0) && ((IndexCnt + 1) > MaxMXServers)
+            if ((SMTP.max_mx_servers != 0) && ((IndexCnt + 1) > SMTP.max_mx_servers)
                 && ((RetVal == DELIVER_FAILURE)
                     || (RetVal == DELIVER_USER_UNKNOWN))) {
-                /* The administrator has indicated that no more than MaxMXServers       should be tried when 500 level errors are returned */
+                /* The administrator has indicated that no more than SMTP.max_mx_servers       should be tried when 500 level errors are returned */
                 break;
             }
         }
@@ -3749,7 +3781,7 @@ HandleQueueConnection (void *ClientIn)
     }
     Lines = atol (ptr + 1);
 
-    if (!RelayLocalMail) {
+    if (!SMTP.relay_local) {
         if (Queue == Q_OUTGOING) {
             ProcessRemoteEntry (Client, Size, Lines);
         }
@@ -3876,7 +3908,7 @@ ServerSocketInit (void)
     }
 
     SMTPServerConnection->socketAddress.sin_family = AF_INET;
-    SMTPServerConnection->socketAddress.sin_port = htons(SMTPServerPort);
+    SMTPServerConnection->socketAddress.sin_port = htons(SMTP.port);
     SMTPServerConnection->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
 
     /* Get root privs back for the bind.  It's ok if this fails - 
@@ -3915,7 +3947,7 @@ ServerSocketSSLInit (void)
     }
 
     SMTPServerConnectionSSL->socketAddress.sin_family = AF_INET;
-    SMTPServerConnectionSSL->socketAddress.sin_port = htons (SMTPServerPortSSL);
+    SMTPServerConnectionSSL->socketAddress.sin_port = htons (SMTP.port_ssl);
     SMTPServerConnectionSSL->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress ();
 
     /* Get root privs back for the bind.  It's ok if this fails - 
@@ -3957,7 +3989,7 @@ SMTPServer (void *ignored)
         if (ConnAccept(SMTPServerConnection, &conn) != -1) {
             if (!Exiting) {
                 if (!SMTPReceiverStopped) {
-                    if (XplSafeRead(SMTPConnThreads) < SMTPMaxThreadLoad) {
+                    if (XplSafeRead(SMTPConnThreads) < SMTP.max_thread_load) {
                         client = GetSMTPConnection();
                         if (client) {
                             client->client.conn = conn;
@@ -4104,7 +4136,6 @@ SMTPServer (void *ignored)
 
     XplRWLockDestroy (&ConfigLock);
     MsgShutdown ();
-//      MDBShutdown();
 
     ConnShutdown ();
 
@@ -4143,7 +4174,7 @@ SMTPSSLServer (void *ignored)
             conn->ssl.enable = TRUE;
             if (!Exiting) {
                 if (!SMTPReceiverStopped) {
-                    if (XplSafeRead(SMTPConnThreads) < SMTPMaxThreadLoad) {
+                    if (XplSafeRead(SMTPConnThreads) < SMTP.max_thread_load) {
                         client = GetSMTPConnection();
                         if (client) {
                             client->client.conn = conn;
@@ -4342,578 +4373,21 @@ FreeRelayDomains (void)
 
 #define	SetPtrToValue(Ptr,String)	Ptr=String;while(isspace(*Ptr)) Ptr++;if ((*Ptr=='=') || (*Ptr==':')) Ptr++; while(isspace(*Ptr)) Ptr++;
 
-static void
-SmtpdConfigMonitor (void)
-{
-    MDBValueStruct *Config;
-    MDBValueStruct *Parents;
-    unsigned int i, j;
-    struct sockaddr_in soc_address;
-    struct hostent *he;
-    struct sockaddr_in *sin = &soc_address;
-    BOOL Added, Exists;
-    char *ptr;
-    MDBEnumStruct *ES;
-    long PrevConfigNumber;
-
-    XplRenameThread (XplGetThreadID (), "SMTP Config Monitor");
-
-    Config =
-        MDBCreateValueStruct (SMTPDirectoryHandle, MsgGetServerDN (NULL));
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_CONFIG_CHANGED, Config) > 0) {
-        PrevConfigNumber = atol (Config->Value[0]);
-    }
-    else {
-        PrevConfigNumber = 0;
-    }
-    MDBDestroyValueStruct (Config);
-
-    while (!Exiting) {
-        Config =
-            MDBCreateValueStruct (SMTPDirectoryHandle, MsgGetServerDN (NULL));
-        Parents =
-            MDBCreateValueStruct (SMTPDirectoryHandle, MsgGetServerDN (NULL));
-
-        ES = MDBCreateEnumStruct (Config);
-
-        for (i = 0; (i < 300) && !Exiting; i++) {
-            XplDelay (1000);
-        }
-
-        if (!Exiting) {
-            Log(LOG_INFO, "Agent heartbeat");
-
-            if ((MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_CONFIG_CHANGED, Config)
-                 > 0) && (atol (Config->Value[0]) != PrevConfigNumber)) {
-                /* Clear what we just read */
-                PrevConfigNumber = atol (Config->Value[0]);
-                MDBFreeValues (Config);
-
-                /* Acquire Write Lock */
-                XplRWWriteLockAcquire (&ConfigLock);
-
-                FreeDomains ();
-                FreeUserDomains ();
-                FreeRelayDomains ();
-
-                soc_address.sin_addr.s_addr = XplGetHostIPAddress ();
-                sprintf (Hostaddr, "[%d.%d.%d.%d]", sin->sin_addr.s_net,
-                         sin->sin_addr.s_host, sin->sin_addr.s_lh,
-                         sin->sin_addr.s_impno);
-                AddDomain (Hostaddr);
-
-                strcpy (OfficialName, Hostname);
-
-                MDBReadDN (MSGSRV_AGENT_SMTP, MSGSRV_A_PARENT_OBJECT,
-                           Parents);
-
-                if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_DOMAIN, Config) > 0) {
-                    for (i = 0; i < Config->Used; i++) {
-                        AddDomain (Config->Value[i]);
-                        /*      XplConsolePrintf("[%04d] MDB_A_DOMAIN:%s", __LINE__, Config->Value[i]); */
-                    }
-                }
-                he = gethostbyaddr ((unsigned char *)
-                                    &(soc_address.sin_addr.s_addr),
-                                    sizeof (soc_address.sin_addr.s_addr),
-                                    AF_INET);
-
-                Added = FALSE;
-                if (he) {
-                    Exists = FALSE;
-                    for (j = 0; j < DomainCount; j++) {
-                        if (XplStrCaseCmp (Domains[j], he->h_name) == 0) {
-                            Exists = TRUE;
-                            break;
-                        }
-                    }
-                    if (!Exists) {
-                        AddDomain (he->h_name);
-                        MDBAddValue (he->h_name, Config);
-                        Added = TRUE;
-                    }
-
-                    if (he->h_aliases) {
-                        i = 0;
-                        while (he->h_aliases[i]) {
-                            Exists = FALSE;
-                            for (j = 0; j < DomainCount; j++) {
-                                if (XplStrCaseCmp
-                                    (Domains[j], he->h_aliases[i]) == 0) {
-                                    Exists = TRUE;
-                                    break;
-                                }
-                            }
-                            if (!Exists) {
-                                AddDomain (he->h_aliases[i]);
-                                MDBAddValue (he->h_aliases[i], Config);
-                                Added = TRUE;
-                            }
-                            i++;
-                        }
-                    }
-                }
-
-                if (Added) {
-                    MDBWrite (MSGSRV_AGENT_SMTP, MSGSRV_A_DOMAIN, Config);
-                }
-
-                MDBFreeValues (Config);
-
-                for (j = 0; j < Parents->Used; j++) {
-                    Log(LOG_INFO, "Configuration string %s Value %s"
-                        "MSGSRV_A_PARENT_OBJECT", Parents->Value[j]);
-                    if (MDBRead (Parents->Value[j], MSGSRV_A_DOMAIN, Config)) {
-                        for (i = 0; i < Config->Used; i++) {
-                            AddDomain (Config->Value[i]);
-                            Log(LOG_INFO, "Configuration string %s Value %s",
-                                "MSGSRV_A_DOMAIN", Config->Value[i]);
-                        }
-                    }
-                    MDBFreeValues (Config);
-                }
-
-                if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_USER_DOMAIN, Config)
-                    > 0) {
-                    for (i = 0; i < Config->Used; i++) {
-                        AddUserDomain (Config->Value[i]);
-                        Log(LOG_INFO, "Configuration string %s Value %s",
-                            "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
-                    }
-                }
-                MDBFreeValues (Config);
-
-                for (j = 0; j < Parents->Used; j++) {
-                    if (MDBRead
-                        (Parents->Value[j], MSGSRV_A_USER_DOMAIN, Config)) {
-                        for (i = 0; i < Config->Used; i++) {
-                            AddUserDomain (Config->Value[i]);
-                            Log(LOG_INFO, "Configuration string %s Value %s",
-                                    "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
-                        }
-                    }
-                    MDBFreeValues (Config);
-                }
-
-                if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RELAY_DOMAIN, Config)
-                    > 0) {
-                    for (i = 0; i < Config->Used; i++) {
-                        AddRelayDomain (Config->Value[i]);
-                        Log(LOG_INFO, "Configuration string %s Value %s",
-                            "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
-                    }
-                }
-                for (j = 0; j < Parents->Used; j++) {
-                    if (MDBRead
-                        (Parents->Value[j], MSGSRV_A_RELAY_DOMAIN, Config)) {
-                        for (i = 0; i < Config->Used; i++) {
-                            AddRelayDomain (Config->Value[i]);
-                            Log(LOG_INFO, "Configuration string %s Value %s",
-                                "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
-                        }
-                    }
-                    MDBFreeValues (Config);
-                }
-
-                if (MDBRead (".", MSGSRV_A_OFFICIAL_NAME, Config) > 0) {
-                    Log(LOG_INFO, "Configuration string %s Value %s",
-                        "MSGSRV_A_OFFICIAL_NAME", Config->Value[0]);
-                    AddDomain (Hostname);
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_EXPN, Config)) {
-                    AllowEXPN = atol (Config->Value[0]);
-                    Log(LOG_INFO, "Configuration numeric %s Value %d",
-                        "MSGSRV_A_SMTP_ALLOW_EXPN", AllowEXPN);
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_VRFY, Config)) {
-                    AllowVRFY = atol (Config->Value[0]);
-                    Log(LOG_INFO, "Configuration numeric %s Value %d",
-                        "MSGSRV_A_SMTP_ALLOW_VRFY", AllowVRFY);
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_VERIFY_ADDRESS,
-                     Config)) {
-                    CheckRCPT = atol (Config->Value[0]);
-                    Log(LOG_INFO, "Configuration numeric %s Value %d",
-                        "MSGSRV_A_SMTP_VERIFY_ADDRESS", CheckRCPT);
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ACCEPT_ETRN, Config)) {
-                    AcceptETRN = atol (Config->Value[0]);
-                    Log(LOG_INFO, "Configuration numeric %s Value %d",
-                        "MSGSRV_A_SMTP_ACCEPT_ETRN",  AcceptETRN);
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_SEND_ETRN, Config)) {
-                    SendETRN = atol (Config->Value[0]);
-                    Log(LOG_INFO, "Configuration numeric %s Value %d",
-                        "MSGSRV_A_SMTP_SEND_ETRN", SendETRN);
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_RECIPIENT_LIMIT, Config)) {
-                    MaximumRecipients = atol (Config->Value[0]);
-                    Log(LOG_INFO, "Configuration numeric %s Value %d",
-                        "MSGSRV_A_RECIPIENT_LIMIT", MaximumRecipients);
-                    if (MaximumRecipients == 0) {
-                        MaximumRecipients = ULONG_MAX;
-                    }
-                }
-                else {
-                    MaximumRecipients = ULONG_MAX;
-                }
-                MDBFreeValues (Config);
-
-                MaxNullSenderRecips = ULONG_MAX;
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_CONFIGURATION, Config) > 0) {
-                    Log(LOG_INFO, "Config numeric %s Value %s",
-                        "MSGSRV_A_CONFIGURATION", Config->Value[i]);
-
-                    for (i = 0; i < Config->Used; i++) {
-                        if (XplStrNCaseCmp
-                            (Config->Value[i], "MaxFloodCount=", 14) == 0) {
-                            MaxFloodCount = atol (Config->Value[i] + 14);
-                        }
-                        else if (XplStrNCaseCmp
-                                 (Config->Value[i], "MaxNullSenderRecips=",
-                                  20) == 0) {
-                            ptr = Config->Value[i] + 20;
-                            while (isspace (*ptr)) {
-                                ptr++;
-                            }
-
-                            MaxNullSenderRecips = atol (ptr);
-                            if (MaxNullSenderRecips == 0) {
-                                MaxNullSenderRecips = ULONG_MAX;
-                            }
-                        }
-                    }
-                }
-                MDBFreeValues (Config);
-
-		if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_UBE_SMTP_AFTER_POP,
-			     Config)) {
-		    if (Config->Value[0]) {
-			UBEConfig |= UBE_SMTP_AFTER_POP;
-		    } else {
-                        UBEConfig &= ~UBE_SMTP_AFTER_POP;
-		    }
-		}
-		MDBFreeValues (Config);
-		if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_UBE_REMOTE_AUTH_ONLY,
-			     Config)) {
-		    if (Config->Value[0]) {
-			UBEConfig |= UBE_REMOTE_AUTH_ONLY;
-		    } else {
-			UBEConfig &= ~UBE_REMOTE_AUTH_ONLY;
-		    }
-		}
-		MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_RTS_ANTISPAM_CONFIG,
-                     Config) > 0) {
-                    if (sscanf
-                        (Config->Value[0],
-                         "Enabled:%d Delay:%ld Threshhold:%lu", &BlockRTSSpam,
-                         &BounceInterval, &MaxBounceCount) != 3) {
-                        BlockRTSSpam = FALSE;
-                    }
-                    if ((MaxBounceCount < 1) || (BounceInterval < 1)) {
-                        BlockRTSSpam = FALSE;
-                    }
-                }
-                else {
-                    BlockRTSSpam = FALSE;
-                }
-                MDBFreeValues (Config);
-
-                if (MDBRead
-                    (MSGSRV_AGENT_SMTP, MSGSRV_A_MESSAGE_LIMIT, Config)) {
-                    MessageLimit = atol (Config->Value[0]) * 1024 * 1024;       /* Convert megabytes to bytes */
-                    Log(LOG_INFO, "Configuration numeric",
-                        "MSGSRV_A_MESSAGE_LIMIT", MessageLimit);
-                }
-                MDBFreeValues (Config);
-
-                XplRWWriteLockRelease (&ConfigLock);
-            }
-        }
-
-        MDBDestroyEnumStruct (ES, Config);
-        MDBDestroyValueStruct (Parents);
-        MDBDestroyValueStruct (Config);
-    }
-
-#if VERBOSE
-    XplConsolePrintf ("SMTPD: Configuration monitor thread done.\r\n");
-#endif
-
-    XplSafeDecrement (SMTPServerThreads);
-
-    XplExitThread (TSR_THREAD, 0);
-}
-
-
 static BOOL
 ReadConfiguration (void)
 {
-    unsigned char *ptr;
     struct sockaddr_in soc_address;
-    struct hostent *he;
     struct sockaddr_in *sin = &soc_address;
-    MDBValueStruct *Config;
-    MDBValueStruct *Parents;
-    MDBEnumStruct *ES;
-    unsigned int i = 0, j;
-    BOOL Exists, Added;
-
-
-    Config =
-        MDBCreateValueStruct (SMTPDirectoryHandle, MsgGetServerDN (NULL));
-    Parents =
-        MDBCreateValueStruct (SMTPDirectoryHandle, MsgGetServerDN (NULL));
-
-    ES = MDBCreateEnumStruct (Config);
 
     soc_address.sin_addr.s_addr = XplGetHostIPAddress ();
-    sprintf (Hostaddr, "[%d.%d.%d.%d]", sin->sin_addr.s_net,
+    sprintf (SMTP.hostaddr, "[%d.%d.%d.%d]", sin->sin_addr.s_net,
              sin->sin_addr.s_host, sin->sin_addr.s_lh, sin->sin_addr.s_impno);
-    AddDomain (Hostaddr);
-    if (strlen (Hostname) < sizeof (OfficialName)) {
-        strcpy (OfficialName, Hostname);
+    AddDomain (SMTP.hostaddr);
+    if (strlen (SMTP.hostname) < sizeof (OfficialName)) {
+        strcpy (OfficialName, SMTP.hostname);
     }
 
-    MDBReadDN (MSGSRV_AGENT_SMTP, MSGSRV_A_PARENT_OBJECT, Parents);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_DOMAIN, Config) > 0) {
-        for (i = 0; i < Config->Used; i++) {
-            AddDomain (Config->Value[i]);
-            Log(LOG_INFO, "Config numeric %s Value %s",
-                "MSGSRV_A_DOMAIN", Config->Value[i]);
-        }
-    }
-
-    he = gethostbyaddr ((unsigned char *) &(soc_address.sin_addr.s_addr),
-                        sizeof (soc_address.sin_addr.s_addr), AF_INET);
-
-    Added = FALSE;
-    if (he) {
-        Exists = FALSE;
-        for (j = 0; j < DomainCount; j++) {
-            if (XplStrCaseCmp (Domains[j], he->h_name) == 0) {
-                Exists = TRUE;
-                break;
-            }
-        }
-        if (!Exists) {
-            AddDomain (he->h_name);
-            MDBAddValue (he->h_name, Config);
-            Added = TRUE;
-        }
-
-        if (he->h_aliases) {
-            i = 0;
-            while (he->h_aliases[i]) {
-                Exists = FALSE;
-                for (j = 0; j < DomainCount; j++) {
-                    if (XplStrCaseCmp (Domains[j], he->h_aliases[i]) == 0) {
-                        Exists = TRUE;
-                        break;
-                    }
-                }
-                if (!Exists) {
-                    AddDomain (he->h_aliases[i]);
-                    MDBAddValue (he->h_aliases[i], Config);
-                    Added = TRUE;
-                }
-                i++;
-            }
-        }
-    }
-
-    if (Added) {
-        MDBWrite (MSGSRV_AGENT_SMTP, MSGSRV_A_DOMAIN, Config);
-    }
-
-    MDBFreeValues (Config);
-
-    for (j = 0; j < Parents->Used; j++) {
-        Log(LOG_INFO, "Config numeric %s Value %s",
-            "MSGSRV_A_PARENT_OBJECT", Parents->Value[j]);
-        if (MDBRead (Parents->Value[j], MSGSRV_A_DOMAIN, Config)) {
-            for (i = 0; i < Config->Used; i++) {
-                AddDomain (Config->Value[i]);
-                Log(LOG_INFO, "Config numeric %s Value %s",
-                    "MSGSRV_A_DOMAIN", Config->Value[i]);
-            }
-        }
-        MDBFreeValues (Config);
-    }
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_USER_DOMAIN, Config) > 0) {
-        for (i = 0; i < Config->Used; i++) {
-            AddUserDomain (Config->Value[i]);
-            Log(LOG_INFO, "Config numeric %s Value %s",
-                "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
-        }
-    }
-    MDBFreeValues (Config);
-
-    for (j = 0; j < Parents->Used; j++) {
-        if (MDBRead (Parents->Value[j], MSGSRV_A_USER_DOMAIN, Config)) {
-            for (i = 0; i < Config->Used; i++) {
-                AddUserDomain (Config->Value[i]);
-                Log(LOG_INFO, "Config numeric %s Value %s",
-                    "MSGSRV_A_USER_DOMAIN", Config->Value[i]);
-            }
-        }
-        MDBFreeValues (Config);
-    }
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RELAY_DOMAIN, Config) > 0) {
-        for (i = 0; i < Config->Used; i++) {
-            AddRelayDomain (Config->Value[i]);
-            Log(LOG_INFO, "Config numeric %s Value %s",
-                "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
-        }
-    }
-    MDBFreeValues (Config);
-
-    for (j = 0; j < Parents->Used; j++) {
-        if (MDBRead (Parents->Value[j], MSGSRV_A_RELAY_DOMAIN, Config)) {
-            for (i = 0; i < Config->Used; i++) {
-                AddRelayDomain (Config->Value[i]);
-                Log(LOG_INFO, "Config numeric %s Value %s",
-                    "MSGSRV_A_RELAY_DOMAIN", Config->Value[i]);
-            }
-        }
-        MDBFreeValues (Config);
-    }
-
-    if (MDBRead (".", MSGSRV_A_OFFICIAL_NAME, Config) > 0) {
-        if (strlen (Config->Value[0]) < sizeof (OfficialName)) {
-            strcpy (OfficialName, Config->Value[0]);
-        }
-        if (strlen (Config->Value[0]) < sizeof (Hostname)) {
-            strcpy (Hostname, Config->Value[0]);
-        }
-        Log(LOG_INFO, "Config numeric %s value %s",
-            "MSGSRV_A_OFFICIAL_NAME", Config->Value[0]);
-        AddDomain (Hostname);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (".", MSGSRV_A_SSL_TLS, Config)) {
-	if (atol(Config->Value[0])) {
-	    AllowClientSSL = TRUE;
-	}
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_EXPN, Config)) {
-        AllowEXPN = atol (Config->Value[0]);
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_SMTP_ALLOW_EXPN", AllowEXPN);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ALLOW_VRFY, Config)) {
-        AllowVRFY = atol (Config->Value[0]);
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_SMTP_ALLOW_VRFY", AllowVRFY);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_VERIFY_ADDRESS, Config)) {
-        CheckRCPT = atol (Config->Value[0]);
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_SMTP_VERIFY_ADDRESS", CheckRCPT);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_ACCEPT_ETRN, Config)) {
-        AcceptETRN = atol (Config->Value[0]);
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_SMTP_ACCEPT_ETRN", AcceptETRN);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_SMTP_SEND_ETRN, Config)) {
-        SendETRN = atol (Config->Value[0]);
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_SMTP_SEND_ETRN", SendETRN);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RECIPIENT_LIMIT, Config)) {
-        MaximumRecipients = atol (Config->Value[0]);
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_RECIPIENT_LIMIT", MaximumRecipients);
-        if (MaximumRecipients == 0) {
-            MaximumRecipients = ULONG_MAX;
-        }
-    }
-    else {
-        MaximumRecipients = ULONG_MAX;
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_UBE_SMTP_AFTER_POP, Config)) {
-	if (Config->Value[0]) {
-	    UBEConfig |= UBE_SMTP_AFTER_POP;
-	} else {
-	    UBEConfig &= ~UBE_SMTP_AFTER_POP;
-	}
-    }
-    MDBFreeValues (Config);
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_UBE_REMOTE_AUTH_ONLY, Config)) {
-	if (Config->Value[0]) {
-	    UBEConfig |= UBE_REMOTE_AUTH_ONLY;
-	} else {
-	    UBEConfig &= ~UBE_REMOTE_AUTH_ONLY;
-	}
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (".", MSGSRV_A_POSTMASTER, Config)) {
-        ptr = strrchr (Config->Value[0], '\\');
-        if (ptr) {
-            if (strlen (ptr + 1) < sizeof (Postmaster)) {
-                strcpy (Postmaster, ptr + 1);
-            }
-        }
-        else {
-            if (strlen (Config->Value[0]) < sizeof (Postmaster)) {
-                strcpy (Postmaster, Config->Value[0]);
-            }
-
-        }
-        Log(LOG_INFO, "Configuration string %s Value %s",
-            "MSGSRV_A_POSTMASTER", Postmaster);
-    }
-    MDBFreeValues (Config);
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_MESSAGE_LIMIT, Config)) {
-        MessageLimit = atol (Config->Value[0]) * 1024 * 1024;   /* Convert megabytes to bytes */
-        Log(LOG_INFO, "Configuration numeric %s Value %d",
-            "MSGSRV_A_MESSAGE_LIMIT", MessageLimit);
-    }
-    MDBFreeValues (Config);
+    // FIXME: Does SMTP need to know about the various domains? Or will queue fix that?
 
     /* FIXME. This should be replaced by pulling config from the store. */
 #if 0
@@ -4924,90 +4398,6 @@ ReadConfiguration (void)
     }
     MDBFreeValues (Config);
 #endif
-
-    if (RelayHost[0] == '\0') {
-        if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RELAYHOST, Config) > 0) {
-            strcpy (RelayHost, Config->Value[0]);
-            if ((RelayHost[0] != '\0') && (RelayHost[0] != ' ')) {
-                UseRelayHost = TRUE;
-                Log(LOG_INFO, "Configuration string %s Value %s",
-                    "MSGSRV_A_RELAYHOST", Config->Value[0]);
-            }
-            else {
-                UseRelayHost = FALSE;
-            }
-        }
-        else {
-            UseRelayHost = FALSE;
-        }
-        MDBFreeValues (Config);
-    }
-
-    if (MDBRead (MSGSRV_AGENT_SMTP, MSGSRV_A_RTS_ANTISPAM_CONFIG, Config) > 0) {
-        Log(LOG_INFO, "Configuration string %s Value %s",
-            "MSGSRV_A_RTS_ANTISPAM_CONFIG", Config->Value[0]);
-        if (sscanf
-            (Config->Value[0], "Enabled:%d Delay:%ld Threshhold:%lu",
-             &BlockRTSSpam, &BounceInterval, &MaxBounceCount) != 3) {
-            BlockRTSSpam = FALSE;
-        }
-        if ((MaxBounceCount < 1) || (BounceInterval < 1)) {
-            BlockRTSSpam = FALSE;
-        }
-    }
-    else {
-        BlockRTSSpam = FALSE;
-    }
-    MDBFreeValues (Config);
-
-    MaxNullSenderRecips = ULONG_MAX;
-
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_PORT, Config)>0) {
-        SMTPServerPort = atol (Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_SSL_PORT, Config)>0) {
-        SMTPServerPortSSL = atol (Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_MAX_LOAD, Config)>0) {
-        SMTPMaxThreadLoad = atol (Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_MAX_FLOOD_COUNT, Config)>0) {
-        MaxFloodCount = atol (Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_TIMEOUT, Config)>0) {
-        SocketTimeout = atol (Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_MAX_NULL_SENDER_RECIPS, Config)>0) {
-        MaxNullSenderRecips = atol (Config->Value[0]);
-        if (MaxNullSenderRecips == 0) {
-            MaxNullSenderRecips = ULONG_MAX;
-        }
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_MAX_MX_SERVERS, Config)>0) {
-        MaxMXServers = atol (Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_SMTP, MSGSRV_A_RELAY_LOCAL_MAIL, Config)>0) {
-        if (UseRelayHost) {
-            if (atol (Config->Value[0])) {
-                RelayLocalMail = TRUE;
-            }
-        }
-        else {
-            XplConsolePrintf ("bongosmtp: relay local mail configured without a relay host; ignoring.\r\n");
-        }
-    }
-    MDBFreeValues(Config);
-
-    MDBDestroyEnumStruct (ES, Config);
-    MDBDestroyValueStruct (Parents);
-    MDBDestroyValueStruct (Config);
 
     LocalAddress = MsgGetHostIPAddress ();
 
@@ -5060,7 +4450,7 @@ int XplServiceMain (int argc, char *argv[])
         return (-1);
     }
 
-    ConnStartup (SocketTimeout, TRUE);
+    ConnStartup (SMTP.socket_timeout, TRUE);
 
     MDBInit ();
     if ((SMTPDirectoryHandle = (MDBHandle) MsgInit ()) == NULL) {
@@ -5078,11 +4468,15 @@ int XplServiceMain (int argc, char *argv[])
 
     for (ccode = 1; argc && (ccode < argc); ccode++) {
         if (XplStrNCaseCmp (argv[ccode], "--forwarder=", 12) == 0) {
-            UseRelayHost = TRUE;
-            strcpy (RelayHost, argv[ccode] + 12);
+            SMTP.use_relay = TRUE;
+            strcpy (SMTP.relay_host, argv[ccode] + 12);
         }
     }
 
+    if (! ReadBongoConfiguration(SMTPConfig, "smtp")) {
+        XplConsolePrintf("SMTPD: Unable to read configuration from the store\n");
+        exit(-1);
+    }
     ReadConfiguration ();
 
     if (ServerSocketInit () < 0) {
@@ -5091,9 +4485,8 @@ int XplServiceMain (int argc, char *argv[])
     }
 
     XplBeginCountedThread (&ID, QueueServerStartup, STACKSIZE_Q, NULL, ccode, SMTPServerThreads);
-    XplBeginCountedThread (&ID, SmtpdConfigMonitor, STACKSIZE_Q, NULL, ccode, SMTPServerThreads);
 
-    if (AllowClientSSL) {
+    if (SMTP.allow_client_ssl) {
         if (!ServerSocketSSLInit()) {
             ConnSSLConfiguration sslconfig;
             sslconfig.certificate.file = MsgGetTLSCertPath(NULL);
@@ -5104,10 +4497,10 @@ int XplServiceMain (int argc, char *argv[])
             if (SSLContext) {
                 XplBeginCountedThread (&ID, SMTPSSLServer, STACKSIZE_S, NULL, ccode, SMTPServerThreads);
             } else {
-                AllowClientSSL = FALSE;
+                SMTP.allow_client_ssl = FALSE;
             }
         } else {
-            AllowClientSSL = FALSE;
+            SMTP.allow_client_ssl = FALSE;
         }
     }
 
