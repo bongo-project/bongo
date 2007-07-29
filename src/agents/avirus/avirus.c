@@ -1398,12 +1398,8 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    MDBInit();
-    AVirus.handle.directory = (MDBHandle)MsgInit();
-    if (AVirus.handle.directory == NULL) {
-        XplBell();
+    if (MsgInit() == NULL) {
         XplConsolePrintf("antivirus: Invalid directory credentials; exiting!\r\n");
-        XplBell();
 
         MemoryManagerClose(MSGSRV_AGENT_ANTIVIRUS);
 
