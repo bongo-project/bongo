@@ -362,17 +362,17 @@ class StoreClient:
         from libbongo.libs import msgapi
         self.owner = self.user = None
         
-        addr = msgapi.FindUserNmap(owner)
-        if addr is None:
-            raise bongo.BongoError ("Could not look up nmap host for user %s" % owner)
-        (host, port) = addr
+        #addr = msgapi.FindUserNmap(owner)
+        #if addr is None:
+        #    raise bongo.BongoError ("Could not look up nmap host for user %s" % owner)
+        #(host, port) = addr
 
         if authCookie:
-            self.connection = StoreConnection(host, port, systemAuth=False)
+            self.connection = StoreConnection("localhost", 689, systemAuth=False)
             if not self.connection.CookieAuth(user, authCookie):
                 raise bongo.BongoError("Failed cookie authentication with store")
         elif authPassword:
-            self.connection = StoreConnection(host, port, systemAuth=False)
+            self.connection = StoreConnection("localhost", 689, systemAuth=False)
             if not self.connection.UserAuth(user, authPassword):
                 raise bongo.BongoError("Failed user authentication with store")
         else:
