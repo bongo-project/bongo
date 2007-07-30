@@ -363,8 +363,8 @@ Dragonfly.Preferences.Editor.save = function ()
     
     // Composer prefs
     p.prefs.composer = {};
-    p.prefs.composer.messageType = $('defaultcompose');
-    p.prefs.composer.lineWidth = $('linewidth');
+    p.prefs.composer.messageType = $('defaultcompose').value;
+    p.prefs.composer.lineWidth = $('linewidth').value;
     
     // Finish up
     p.save();
