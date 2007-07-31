@@ -102,7 +102,7 @@ Dragonfly.Mail.Preferences.getFromAddress = function ()
     var d = Dragonfly;
     var p = d.Preferences;
     
-    var emailfrom = p.prefs.mail.from;
+    var emailfrom = p.prefs.mail.from || '';
     var namefrom = p.prefs.mail.sender;
     
     return d.format("{0} <{1}>", namefrom, emailfrom);
