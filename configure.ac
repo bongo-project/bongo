@@ -688,7 +688,6 @@ src/libs/nmap/Makefile
 src/libs/python/Makefile
 src/libs/python/bongo-python-wrapper
 src/libs/python/libbongo/Makefile
-src/libs/python/bongo/Makefile
 src/libs/python/bongo/Xpl.py
 src/libs/bongoutil/Makefile
 src/libs/bongoutil/tests/Makefile
