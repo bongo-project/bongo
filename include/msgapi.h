@@ -24,6 +24,7 @@
 
 #include <mdb.h>
 #include <connio.h>
+#include <sqlite3.h>
 
 #include <msgftrs.h>
 #include <msgdate.h>
@@ -48,10 +49,42 @@ EXPORT BOOL MsgAuthCreateCookie(const char *username, MsgAuthCookie *cookie, uin
 EXPORT int  MsgAuthFindCookie(const char *username, const char *token);
 EXPORT BOOL MsgAuthDeleteCookie(const char *username, const char *token);
 
+// SQL Routines
+
+typedef struct _MsgSQLStatement {
+	sqlite3_stmt *stmt;
+	void *userdata;
+} MsgSQLStatement;
+
+typedef struct _MsgSQLHandle {
+	sqlite3 *db;
+	struct { 
+		/* NOTE: begin and end must be the first and last stmts (see DStoreClose()) */
+        	MsgSQLStatement begin;
+		MsgSQLStatement abort;
+        	MsgSQLStatement end;
+	} stmts;
+
+	BongoMemStack *memstack;
+	int transactionDepth;
+	int lockTimeoutMs;
+} MsgSQLHandle;
+
+#define MSGSQL_STMT_SLEEP_MS 250
+
+MsgSQLHandle *MsgSQLOpen(char *path, BongoMemStack *memstack, int locktimeoutms);
+void MsgSQLClose(MsgSQLHandle *handle);
+BongoMemStack *MsgSQLGetMemStack(MsgSQLHandle *handle);
+void MsgSQLSetMemStack(MsgSQLHandle *handle, BongoMemStack *memstack);
+void MsgSQLSetLockTimeout(MsgSQLHandle *handle, int timeoutms);
+MsgSQLStatement *MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt);
+
 // Misc. util functions
 
+// FIXME: This API is wrong, should include agent name
 EXPORT BOOL MsgSetRecoveryFlag(void);
 EXPORT BOOL MsgGetRecoveryFlag(void);
+
 EXPORT BOOL MsgGetServerCredential(char *buffer);
 
 #define MSGSRV_LOCAL_SERVER                 NULL

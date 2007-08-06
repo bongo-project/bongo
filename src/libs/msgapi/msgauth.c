@@ -8,6 +8,7 @@
 
 #include <config.h>
 #include <xpl.h>
+#include <sqlite3.h>
 #include <bongoutil.h>
 #include <msgapi.h>
 #include <sys/socket.h>
@@ -15,16 +16,104 @@
 #include <arpa/inet.h>
 #include <time.h>
 
+typedef struct { 
+	MsgSQLStatement find_user;
+	MsgSQLStatement auth_user;
+} MsgAuthStatements;
+
+MsgAuthStatements msgauth_stmts;
+
+int
+MsgAuthDBPath(char *path, size_t size)
+{
+	return snprintf(path, size, "%s/%s", XPL_DEFAULT_DBF_DIR, "userdb.sqlite");
+}
+
+/* returns 0 on success */
+int
+MsgAuthInitDB(void)
+{
+	int dcode;
+	char path[XPL_MAX_PATH + 1];
+	MsgSQLHandle *handle;
+	struct stat buf;
+
+	MsgAuthDBPath(&path, XPL_MAX_PATH);
+	if (stat(path, &buf) == 0) {
+		// FIXME: db already exists - for now, remove, but could/should be more gentle
+		unlink(path);
+	}
+
+	handle = MsgSQLOpen(path, NULL, 1000);
+
+	if (NULL == handle) return -2;
+
+	if (MsgSQLBeginTransaction(handle)) goto fail;
+
+	// FIXME: need to store passwords as hashes, really?
+	dcode = sqlite3_exec (handle->db, 
+			"PRAGMA user_version=0;"
+			"CREATE TABLE users (username TEXT DEFAULT NULL,"
+			"		password TEXT DEFAULT NULL,"
+			"		email TEXT DEFAULT NULL"
+			");"
+			"INSERT INTO users (username, password, email)"
+			" VALUES ('admin', 'bongo', 'admin'); ",
+			NULL, NULL, NULL);
+	if (SQLITE_OK != dcode) goto fail;
+
+
+	if (MsgSQLCommitTransaction(handle)) goto fail;
+
+	MsgSQLClose(handle);
+	return 0;
+
+fail:
+	// FIXME:  logging
+	printf("MsgAuthInitDB error: %s\n", sqlite3_errmsg(handle->db));
+
+	MsgSQLAbortTransaction(handle);
+	MsgSQLClose(handle);
+	return -1;
+}
+
 /**
  * Determine whether or not a user exists in our user database
  * SECURITY: We don't want to disclose this to unknown people
+ * Do we need this function? Often gets called before trying a
+ * password, which is unnecessary - might be this can be removed.
+ * This an MsgAuthVerifyPassword() are basically the same.
  * \param	user	The username to check
  * \return		Whether or not the user exists
  */
 BOOL
-MsgAuthFindUser(const char *user) {
-	if (!strcmp(user, "admin"))
-		return TRUE;
+MsgAuthFindUser(const char *user)
+{
+	MsgSQLStatement *stmt;
+	char path[XPL_MAX_PATH + 1];
+	MsgSQLHandle *handle;
+	int users = -1;
+
+	MsgAuthDBPath(&path, XPL_MAX_PATH);
+	handle = MsgSQLOpen(path, NULL, 1000);
+
+	// Log error?
+	if (NULL == handle) return FALSE;
+
+	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ?;",
+		&msgauth_stmts.find_user);
+	MsgSQLBindString(stmt, 1, user, TRUE);
+
+	if (MsgSQLResults(handle, stmt) >= 0) {
+		// should only have one result column
+		users = sqlite3_column_int(stmt->stmt, 0);
+	}	
+
+	MsgSQLFinalize(stmt);
+	MsgSQLClose(handle);
+
+	// one and only one user - any other condition is 'bad'...
+	if (users == 1) return TRUE;
 	
 	return FALSE;
 }
@@ -36,9 +125,34 @@ MsgAuthFindUser(const char *user) {
  * \return		  Whether or not the username matches the password
  */
 BOOL
-MsgAuthVerifyPassword(const char *user, const char *password) {
-	if ((!strcmp(user, "admin")) && (!strcmp(password, "bongo")))
-		return TRUE;
+MsgAuthVerifyPassword(const char *user, const char *password)
+{
+	MsgSQLStatement *stmt;
+	char path[XPL_MAX_PATH + 1];
+	MsgSQLHandle *handle;
+	int users = -1;
+
+	MsgAuthDBPath(&path, XPL_MAX_PATH);
+	handle = MsgSQLOpen(path, NULL, 1000);
+
+	// Log error?
+	if (NULL == handle) return FALSE;
+
+	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ? AND password = ?;",
+		&msgauth_stmts.auth_user);
+	MsgSQLBindString(stmt, 1, user, TRUE);
+	MsgSQLBindString(stmt, 2, password, TRUE);
+
+	if (MsgSQLResults(handle, stmt) >= 0) {
+		// should only have one result column
+		users = sqlite3_column_int(stmt->stmt, 0);
+	}	
+
+	MsgSQLFinalize(stmt);
+	MsgSQLClose(handle);
+
+	// one and only one user - any other condition is 'bad'...
+	if (users == 1) return TRUE;
 	
 	return FALSE;
 }
@@ -51,7 +165,8 @@ MsgAuthVerifyPassword(const char *user, const char *password) {
  * \return 			Whether or not we successfully changed the password
  */
 BOOL
-MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword) {
+MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword)
+{
 	return FALSE;
 }
 
@@ -62,7 +177,8 @@ MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpas
  * \return 			Whether this was successful
  */
 BOOL
-MsgAuthGetUserStore(const char *user, struct sockaddr_in *store) {
+MsgAuthGetUserStore(const char *user, struct sockaddr_in *store)
+{
 	memset(store, 0, sizeof(store));
 	store->sin_addr.s_addr = inet_addr("127.0.0.1");
 	store->sin_family = AF_INET;
@@ -76,7 +192,8 @@ MsgAuthGetUserStore(const char *user, struct sockaddr_in *store) {
  * \return		Whether this was successful
  */
 BOOL
-MsgAuthUserList(BongoArray **list) {
+MsgAuthUserList(BongoArray **list)
+{
 	BongoArray *userlist;
 
 	userlist = BongoArrayNew(sizeof (char *), 0);
@@ -128,7 +245,7 @@ MsgAuthCreateCookie(const char *username, MsgAuthCookie *cookie, uint64_t timeou
 	XplHashFinal(&context, XPLHASH_LOWERCASE, cookie->token, XPLHASH_MD5_LENGTH);
 
 	// save it to our cookie list
-	MsgAuthCookiePath(username, &path, XPL_MAX_PATH);
+	MsgAuthCookiePath(username, path, XPL_MAX_PATH);
 	cookiefile = fopen(path, "a");
 	if (! cookiefile)
 		return FALSE;
@@ -163,7 +280,7 @@ MsgAuthFindCookie(const char *username, const char *token)
 
 	now = time(NULL);
 
-	MsgAuthCookiePath(username, &path, XPL_MAX_PATH);
+	MsgAuthCookiePath(username, path, XPL_MAX_PATH);
 
 	cookiefile = fopen(path, "r");
 	if (! cookiefile) return 2;
@@ -207,9 +324,9 @@ MsgAuthDeleteCookie(const char *username, const char *token)
 	MsgAuthCookie **cookieset;
 	uint64_t now;
 
-	now = BongoCalTimeAsUint64(BongoCalTimeNow(NULL));
+	now = time(NULL);
 
-	MsgAuthCookiePath(username, &path, XPL_MAX_PATH);
+	MsgAuthCookiePath(username, path, XPL_MAX_PATH);
 
 	// first, read cookies into memory 
 	cookiefile = fopen(path, "w");

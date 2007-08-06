@@ -21,6 +21,8 @@
 
 #include <config.h>
 
+#define LOGGERNAME	"mailprox"
+
 #include <xpl.h>
 #include <bongoutil.h>
 #include <logger.h>

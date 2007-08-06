@@ -24,7 +24,6 @@
 #include <bongoutil.h>
 #include <logger.h>
 #include <nmlib.h>
-#include <mdb.h>
 #include <xplresolve.h>
 
 #include "mailprox.h"

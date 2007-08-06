@@ -175,7 +175,7 @@ ImportSystemBackupFile(const StoreClient *client, const char *path)
 				XplConsolePrintf(_("ERROR: Couldn't write\n"));
 			} else {
 				if (! SetAdminRights(client, fullpath)) {
-					XplConsolePrintf(_("ERROR: rigts\n"));
+					XplConsolePrintf(_("ERROR: Couldn't set rights on store file\n"));
 				}
 			}
 			MemFree(file);
@@ -187,7 +187,17 @@ ImportSystemBackupFile(const StoreClient *client, const char *path)
 }
 
 void
-InitialStoreConfiguration() {
+InitializeDataArea(void)
+{
+	XplConsolePrintf(_("Initializing user database...\n"));
+	if (MsgAuthInitDB() != 0) {
+		XplConsolePrintf(_("ERROR: Couldn't create user database\n"));
+		exit(1);
+	}
+}
+
+void
+InitialStoreConfiguration(void) {
 	char path[XPL_MAX_PATH];
 	int store_pid;
 	char *args[3];
@@ -540,6 +550,7 @@ main(int argc, char *argv[]) {
 
 	switch(command) {
 		case 1:
+			InitializeDataArea();
 			InitialStoreConfiguration();
 			break;
 		case 2:
