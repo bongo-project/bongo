@@ -89,6 +89,7 @@ clean:	clean-recursive
 include_subdirs :=				\
 	include					\
 	src/libs/xpl				\
+	src/libs/xpl/tests			\
 	src/libs/memmgr				\
 	src/libs/bongoutil			\
 	src/libs/bongoutil/tests		\
@@ -154,6 +155,7 @@ DIST_SUBDIRS := $(SUBDIRS) $(include_subdirs)
 
 include include/Bongo.rules
 include src/libs/xpl/Bongo.rules
+include src/libs/xpl/tests/Bongo.rules
 include src/libs/memmgr/Bongo.rules
 include src/libs/bongoutil/Bongo.rules
 include src/libs/bongoutil/tests/Bongo.rules

@@ -311,9 +311,11 @@ if test "x$PKG_CONFIG" = "xno"; then
 fi
 
 have_check=no
+info_check="Not installed. Unit tests will not be run."
 AM_PATH_CHECK(0.9.0,
     [
         have_check=yes
+	info_check="Installed. Unit tests may be run."
         AC_DEFINE(BONGO_HAVE_CHECK, [], [Controls how tests that depend on check compile.])
     ],
     [
@@ -692,6 +694,7 @@ src/libs/python/bongo/Xpl.py
 src/libs/bongoutil/Makefile
 src/libs/bongoutil/tests/Makefile
 src/libs/xpl/Makefile
+src/libs/xpl/tests/Makefile
 src/libs/connmgr/Makefile
 src/www/Makefile
 src/www/bongo.conf
@@ -715,4 +718,7 @@ Imported libraries:
   CURL:            ${info_curl}
   SQLite:          ${info_sqlite}
   libical:         ${info_libical}
+
+Optional libraries:
+  Check:           ${info_check}
 ])

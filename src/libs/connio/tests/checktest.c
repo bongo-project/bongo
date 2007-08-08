@@ -20,7 +20,7 @@
  ****************************************************************************/
 
 #include <include/bongocheck.h>
-#include <../connio.c>
+#include "../connio.c"
 #ifdef BONGO_HAVE_CHECK
 
 BOOL Exiting = FALSE;
