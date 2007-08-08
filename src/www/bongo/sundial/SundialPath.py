@@ -44,11 +44,11 @@ class SundialPath:
             self.xml_input = cElementTree.XML(raw_input)
 
         # For debugging, print out headers_in, and the content.
-        print req.headers_in
-        try:
-            print raw_input
-        except:
-            pass
+        #print req.headers_in
+        #try:
+        #    print raw_input
+        #except:
+        #    pass
 
     ## Returns the handler for the request method.
     #  @param self The object pointer.

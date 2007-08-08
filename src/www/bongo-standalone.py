@@ -3,8 +3,6 @@
 import os, os.path, stat, sys
 import logging
 
-sys.path.append('/home/jonny/tmp/bongo-trunk/build/lib/python2.4/site-packages/')
-
 import BaseHTTPServer
 import email.Utils
 import httplib
