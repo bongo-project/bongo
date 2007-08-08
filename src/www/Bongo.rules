@@ -353,6 +353,18 @@ pkgpythonhawkeye_PYTHON :=			\
 	src/www/bongo/hawkeye/ServerView.py	\
 	src/www/bongo/hawkeye/UsersView.py
 
+pkgpythonsundialdir = $(pkgpythondir)/sundial
+
+pkgpythonsundial_PYTHON :=			\
+	src/www/bongo/sundial/__init__.py	\
+	src/www/bongo/sundial/SundialHandler.py \
+	src/www/bongo/sundial/SundialPath.py	\
+	src/www/bongo/sundial/Auth.py			\
+	src/www/bongo/sundial/GetView.py		\
+	src/www/bongo/sundial/PropfindView.py	\
+	src/www/bongo/sundial/OptionsView.py	\
+	src/www/bongo/sundial/ReportView.py
+
 pkgpythoncommonwebdir = $(pkgpythondir)/commonweb
 
 pkgpythoncommonweb_PYTHON :=		\
@@ -363,7 +375,8 @@ pkgpythoncommonweb_PYTHON :=		\
 	src/www/bongo/commonweb/BongoFieldStorage.py \
 	src/www/bongo/commonweb/BongoUtil.py         \
 	src/www/bongo/commonweb/Standalone.py	   \
-	src/www/bongo/commonweb/BongoSession.py
+	src/www/bongo/commonweb/BongoSession.py		\
+	src/www/bongo/commonweb/ElementTree.py
 
 hawkeyetplrootdir = $(htdocsdir)/hawkeye/root
 dist_hawkeyetplroot_DATA :=			\

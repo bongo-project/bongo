@@ -3,6 +3,8 @@
 import os, os.path, stat, sys
 import logging
 
+sys.path.append('/home/jonny/tmp/bongo-trunk/build/lib/python2.4/site-packages/')
+
 import BaseHTTPServer
 import email.Utils
 import httplib
@@ -26,7 +28,9 @@ import bongo.dragonfly.Auth
 import bongo.commonweb.BongoUtil
 import bongo.commonweb.BongoSession as BongoSession
 import bongo.hawkeye.Auth
+import bongo.sundial.Auth
 from bongo.hawkeye.HawkeyePath import HawkeyePath
+from bongo.sundial.SundialPath import SundialPath
 from bongo.external.simplejson import loads, dumps
 import Cookie
 
@@ -208,33 +212,36 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                 self.send_response(ret)
             return
 
-        if self.path.startswith("/dav"):            
-            handler = DavHandler()
-            print "running %s" % (self.command)
-            mname = "do_" + self.command
-            if not hasattr(handler, mname):
-                self.send_error(501, "Unsupported method (%r)" % self.command)
-                return
-            method = getattr(handler, mname)
+        if self.path.startswith("/dav"):
             self.dragonfly_req = True
             req = HttpRequest(self, "/dav", self.server)
             self.req = req
-            auth = bongo.dragonfly.Auth.authenhandler(self.req)
-            if auth != bongo.commonweb.HTTP_OK:
-                print "no auth"
-                self.send_error(auth)
-                return auth
 
-            if req.user == None :
-                req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""
-                self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
-                return bongo.commonweb.HTTP_UNAUTHORIZED
-                
-            print "user: %s" % (req.user)
+            rp = SundialPath(req)
+            handler = rp.GetHandler(req, rp)
+
+            if handler.NeedsAuth(rp):
+                if req.user == None:
+                    self.req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""#
+                    self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
+                    return bongo.commonweb.HTTP_UNAUTHORIZED
+                else:
+                    auth = bongo.sundial.Auth.authenhandler(req)
+
+            req.log.debug("request for %s (handled by %s)", req.uri, handler)
+
+            mname = "do_" + req.method
+
+            if not hasattr(handler, mname):
+                req.log.debug("%s has no %s", handler, mname)
+                self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
+                return
+
+            method = getattr(handler, mname)
 
             try:
-                print "running method"
-                ret = method(self.req)
+                print "running"
+                ret = method(req, rp)
             except HttpError, e:
                 print "http error"
                 self.send_error(e.code)
@@ -244,11 +251,12 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                 print "error"
                 self.send_error(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR)
                 return
-            
-            if ret is None:
-                print "valid response!"
-                self.send_response(bongo.commonweb.HTTP_OK)
+
+            if str(ret).startswith('20'):
+                print "Valid response!"
+                self.send_response(ret)
             else:
+                print "Uh oh. Bad response:"
                 self.send_response(ret)
             return
 
