@@ -10,7 +10,7 @@ from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient
 import cElementTree as ET
 import md5
-from dateutil.parser import parse
+from bongo.external.dateutil.parser import parse
 from libbongo.libs import cal, bongojson
 
 ## Class to handle the PROPFIND request method.
@@ -27,6 +27,27 @@ class ReportHandler(SundialHandler):
     #  @param rp The SundialPath instance for the current request.
     def NeedsAuth(self, rp):
         return True
+
+    ## Returns hostname based on HTTP_HOST.
+    #  @param self The object pointer.
+    #
+    # Evolution does not support relative URLs in dav::href, therefore
+    # This function returns to ideal form of value prefix. Defaulting
+    # to relative, but using definite when Evolution is the User-Agent.
+    def _get_hostname(self):
+        # There's no law to say that the "dav/" directory is at /dav/.
+        # So, create the right path *without* the actual dav directory.
+        path = []
+        for i in self.req.uri.split('/'):
+            if i == 'dav':
+                break
+            path += i
+
+        if self.req.headers_in.get('User-Agent').startswith('Evolution'):
+            # TODO This doesn't support https.
+            return 'http://' + self.req.headers_in.get('Host') + '/'.join(path)
+        else:
+            return '/'.join(path)
 
     ## Creates appropriate XML tags for requested VEVENTS.
     #  @param self The object pointer.
@@ -52,10 +73,9 @@ class ReportHandler(SundialHandler):
         for response in events:
             response_tag = ET.SubElement(multistatus_tag, 'D:response') # <D:response>
             # TODO Update this URL scheme.
-            # REALLY REALLY IMPORTANT TODO: Evolution does not support relative URLs, even though
-            # they're clearly The Right Way. Therefore, a switch between relative and definite URLs
-            # depending on the client. A rather boring task, if you ask me.
-            ET.SubElement(response_tag, 'D:href').text = "/dav/%s.ics" % response.uid # <D:href>url</D:href>
+            ET.SubElement(response_tag, 'D:href').text = self._get_hostname() + "dav/%s.ics" % response.uid # <D:href>url</D:href>
+
+            print self._get_hostname()
 
             propstat_tag = ET.SubElement(response_tag, 'D:propstat') # <D:propstat>
             prop_tag = ET.SubElement(propstat_tag, 'D:prop') # <D:prop>
@@ -87,6 +107,7 @@ class ReportHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def calendar_query(self, req, rp):
+        self.req = req
         output = {}
 
         # Loop each child tag of D:calendar-query.
