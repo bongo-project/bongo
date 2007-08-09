@@ -32,112 +32,34 @@ class GetHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_GET(self, req, rp):
-        if req.uri == "/dav/abcd2.ics": 
-            data = """BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VTIMEZONE
-LAST-MODIFIED:20040110T032845Z
-TZID:US/Eastern
-BEGIN:DAYLIGHT
-DTSTART:20000404T020000
-RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=4
-TZNAME:EDT
-TZOFFSETFROM:-0500
-TZOFFSETTO:-0400
-END:DAYLIGHT
-BEGIN:STANDARD
-DTSTART:20001026T020000
-RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
-TZNAME:EST
-TZOFFSETFROM:-0400
-TZOFFSETTO:-0500
-END:STANDARD
-END:VTIMEZONE
-BEGIN:VEVENT
-DTSTART;TZID=US/Eastern:20060102T120000
-DURATION:PT1H
-RRULE:FREQ=DAILY;COUNT=5
-SUMMARY:Event #2
-UID:00959BC664CA650E933C892C@example.com
-END:VEVENT
-BEGIN:VEVENT
-DTSTART;TZID=US/Eastern:20060104T140000
-DURATION:PT1H
-RECURRENCE-ID;TZID=US/Eastern:20060104T120000
-SUMMARY:Event #2 bis
-UID:00959BC664CA650E933C892C@example.com
-END:VEVENT
-BEGIN:VEVENT
-DTSTART;TZID=US/Eastern:20060106T140000
-DURATION:PT1H
-RECURRENCE-ID;TZID=US/Eastern:20060106T120000
-SUMMARY:Event #2 bis bis
-UID:00959BC664CA650E933C892C@example.com
-END:VEVENT
-END:VCALENDAR"""
-        elif req.uri == "/dav/abcd3.ics":
-            data = """BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Example Corp.//CalDAV Client//EN
-BEGIN:VTIMEZONE
-LAST-MODIFIED:20040110T032845Z
-TZID:US/Eastern
-BEGIN:DAYLIGHT
-DTSTART:20000404T020000
-RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=4
-TZNAME:EDT
-TZOFFSETFROM:-0500
-TZOFFSETTO:-0400
-END:DAYLIGHT
-BEGIN:STANDARD
-DTSTART:20001026T020000
-RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
-TZNAME:EST
-TZOFFSETFROM:-0400
-TZOFFSETTO:-0500
-END:STANDARD
-END:VTIMEZONE
-BEGIN:VEVENT
-DTSTART;TZID=US/Eastern:20060104T100000
-DURATION:PT1H
-SUMMARY:Event #3
-UID:DC6C50A017428C5216A2F1CD@example.com
-END:VEVENT
-END:VCALENDAR"""
+        # req.uri should be something like:
+        # /dav/username/calendarname/00000000000000115.ics
+        filename = req.uri.split('/')[-1]
 
+        filename_parts = filename.split('.')
+
+        # Any filename with more than one "." can get lost, and this shop only
+        # serves up iCalendar.
+        if len(filename_parts) != 2 or filename_parts[-1] != 'ics':
+            return bongo.commonweb.HTTP_NOT_FOUND
+
+        # Get the nmap document from the store.
+        # A CommandError exception is thrown when the item does not exist.
+        try:
+            doc = self.store.Read(filename_parts[0])
+        except CommandError:
+            return bongo.commonweb.HTTP_NOT_FOUND
+
+        jsob = bongojson.ParseString(doc.strip())
+
+        if jsob:
+            data = cal.JsonToIcal(jsob)
+        else:
+            data = ""
+
+        # Get rid of the boring headers, and data.
         req.headers_out["Content-Length"] = str(len(data))
         req.content_type = "text/calendar"
 
         req.write(data)
         return bongo.commonweb.HTTP_OK
-
-
-
-
-#        start = end = None
-#        eventProps = ["nmap.document", "nmap.event.calendars"]
-#
-#        events = list(self.store.Events(None, eventProps, query=None, start=start, end=end))
-#
-#        wholeJsob = None
-#        for event in events:
-#            doc = event.props["nmap.document"].strip()
-#            jsob = bongojson.ParseString(doc)
-#            if wholeJsob:
-#                wholeJsob = cal.Merge(wholeJsob, jsob)
-#            else:
-#                wholeJsob = jsob
-#
-#        if wholeJsob:
-#            data = cal.JsonToIcal(wholeJsob)
-#        else:
-#            data = ""
-#
-#        req.headers_out["Content-Length"] = str(len(data))
-#        req.content_type = "text/calendar"
-#
-#        req.write(data)
-#        return bongo.commonweb.HTTP_OK
-
-
-

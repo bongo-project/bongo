@@ -20,7 +20,7 @@ class OptionsHandler(SundialHandler):
     #  @param self The object pointer.
     #  @param rp The SundialPath instance for the current request.
     def NeedsAuth(self, rp):
-        return False
+        return True
 
     ## The default entry point for the handler.
     #  @param self The object pointer.

@@ -52,6 +52,9 @@ class ReportHandler(SundialHandler):
         for response in events:
             response_tag = ET.SubElement(multistatus_tag, 'D:response') # <D:response>
             # TODO Update this URL scheme.
+            # REALLY REALLY IMPORTANT TODO: Evolution does not support relative URLs, even though
+            # they're clearly The Right Way. Therefore, a switch between relative and definite URLs
+            # depending on the client. A rather boring task, if you ask me.
             ET.SubElement(response_tag, 'D:href').text = "/dav/%s.ics" % response.uid # <D:href>url</D:href>
 
             propstat_tag = ET.SubElement(response_tag, 'D:propstat') # <D:propstat>
@@ -115,10 +118,14 @@ class ReportHandler(SundialHandler):
                             output['start'] = parse(f.get('start'))
                             output['end'] = parse(f.get('end'))
 
+                        elif normalize(f.tag) == 'urn:ietf:params:xml:ns:caldav:is-defined':
+                            # This means nothing as all events in the store are "defined".
+                            pass
+
                 elif filter.get('name') == 'VTODO':
                     output['type'] = 'VTODO'
-                    pass
                     # TODO Implement this, perhaps.
+                    pass
 
         # Generate <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
         multistatus_tag = ET.Element('D:multistatus') 
