@@ -19,7 +19,7 @@ class GetHandler(SundialHandler):
     #
     # Connects to the store for later.
     def __init__(self, req, rp):
-        self.store = StoreClient(req.user, req.user, authPassword=req.password)
+        self.store = StoreClient(req.user, rp.user, authPassword=req.password)
 
     ## Returns whether authentication is required for this handler.
     #  @param self The object pointer.
@@ -32,11 +32,9 @@ class GetHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_GET(self, req, rp):
-        # req.uri should be something like:
-        # /dav/username/calendarname/00000000000000115.ics
-        filename = req.uri.split('/')[-1]
-
-        filename_parts = filename.split('.')
+        # rp.filename should be something like:
+        # 00000000000000115.ics
+        filename_parts = rp.filename.split('.')
 
         # Any filename with more than one "." can get lost, and this shop only
         # serves up iCalendar.

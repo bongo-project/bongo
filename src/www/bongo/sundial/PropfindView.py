@@ -30,6 +30,8 @@ class PropfindHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_PROPFIND(self, req, rp):
+        # TODO This is rather flawed. It says everything with req.uri.startswith('/dav') is
+        # a calendar. Not true. Fix it.
         multistatus_tag = ET.Element('D:multistatus') # <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
         bongo.commonweb.ElementTree.set_prefixes(multistatus_tag, { 'D' : 'DAV:',
                                                                     'C' : 'urn:ietf:params:xml:ns:caldav'

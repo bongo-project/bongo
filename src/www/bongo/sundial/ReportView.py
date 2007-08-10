@@ -20,7 +20,7 @@ class ReportHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def __init__(self, req, rp):
-        self.store = StoreClient(req.user, req.user, authPassword=req.get_basic_auth_pw())
+        self.store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
 
     ## Returns whether authentication is required for the method.
     #  @param self The object pointer.
@@ -35,19 +35,11 @@ class ReportHandler(SundialHandler):
     # This function returns to ideal form of value prefix. Defaulting
     # to relative, but using definite when Evolution is the User-Agent.
     def _get_hostname(self):
-        # There's no law to say that the "dav/" directory is at /dav/.
-        # So, create the right path *without* the actual dav directory.
-        path = []
-        for i in self.req.uri.split('/'):
-            if i == 'dav':
-                break
-            path += i
-
         if self.req.headers_in.get('User-Agent').startswith('Evolution'):
             # TODO This doesn't support https.
-            return 'http://' + self.req.headers_in.get('Host') + '/'.join(path)
+            return 'http://' + self.req.headers_in.get('Host') + self.rp.davpath
         else:
-            return '/'.join(path)
+            return self.rp.davpath
 
     ## Creates appropriate XML tags for requested VEVENTS.
     #  @param self The object pointer.
@@ -65,17 +57,21 @@ class ReportHandler(SundialHandler):
             start = None
             end = None
 
+        # Get calender GUID from name.
+        try:
+            info = self.store.Info("/calendars/" + self.rp.calendar)
+            caluid = info.uid
+        except:
+            return bongo.commonweb.HTTP_NOT_FOUND
+
         # Grab 'dem events from the store.
-        # TODO Update this to not use "all" calendar.
-        events = list(self.store.Events(None, ["nmap.document", "nmap.event.calendars"], start=start, end=end))
+        events = list(self.store.Events(caluid, ["nmap.document", "nmap.event.calendars"], start=start, end=end))
 
         # Loop through each VEVENT that was returned.
         for response in events:
             response_tag = ET.SubElement(multistatus_tag, 'D:response') # <D:response>
             # TODO Update this URL scheme.
-            ET.SubElement(response_tag, 'D:href').text = self._get_hostname() + "dav/%s.ics" % response.uid # <D:href>url</D:href>
-
-            print self._get_hostname()
+            ET.SubElement(response_tag, 'D:href').text = self._get_hostname() + "dav/" + self.rp.user + "/" + self.rp.calendar + "/" + "%s.ics" % response.uid # <D:href>url</D:href>
 
             propstat_tag = ET.SubElement(response_tag, 'D:propstat') # <D:propstat>
             prop_tag = ET.SubElement(propstat_tag, 'D:prop') # <D:prop>
@@ -100,7 +96,8 @@ class ReportHandler(SundialHandler):
 
             ET.SubElement(propstat_tag, 'D:status').text = "HTTP/1.1 200 OK"
 
-            # Nothing to return, as the D:multistatus tag instance pointer has been messed with.
+            # D:multistatus tag instance pointer has been messed with, so just the status to return.
+            return bongo.commonweb.HTTP_OK
 
     ## Handles the D:calendar-query request.
     #  @param self The object pointer.
@@ -108,6 +105,7 @@ class ReportHandler(SundialHandler):
     #  @param rp The SundialPath instance for the current request.
     def calendar_query(self, req, rp):
         self.req = req
+        self.rp = rp
         output = {}
 
         # Loop each child tag of D:calendar-query.
@@ -129,7 +127,6 @@ class ReportHandler(SundialHandler):
                 filter = vcalendar.getchildren()[0]
 
                 if filter.get('name') == 'VEVENT':
-                    print 'OH HAI'
                     output['type'] = 'VEVENT'
 
                     # Loop through different ranges and whatnot.
@@ -155,7 +152,9 @@ class ReportHandler(SundialHandler):
                                                                 })
 
         if output['type'] == 'VEVENT':
-            self._vevent_filter(output, prop_tags, multistatus_tag)
+            ret = self._vevent_filter(output, prop_tags, multistatus_tag)
+            if ret != bongo.commonweb.HTTP_OK:
+                return ret
 
         # Throw out the output.
         req.content_type = 'text/xml; charset="utf-8"'

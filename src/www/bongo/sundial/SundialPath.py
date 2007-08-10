@@ -24,15 +24,53 @@ views = {
 
 ## Resource path class for Sundial.
 class SundialPath:
+
+    ## Takes the request URI and parses it into its separate parts.
+    #  @param self The object pointer.
+    #  @param uri The request URI, req.uri.
+    def _handle_path(self, uri):
+        # There's no law to say that the "dav/" directory is at /dav/.
+        # So, let's create the right path *not including* the actual
+        # dav directory. E.g. if the request was for /something/dav/blah,
+        # the davpath will be "/something".
+        splituri = uri.split('/')
+        davparts = []
+        davpath = splituri[:]
+        for i in davpath:
+            splituri.__delitem__(0)
+            if i == 'dav':
+                break
+            davparts.append(i)
+
+        self.davpath = '/' + '/'.join(davparts)
+
+        if len(splituri) != 3:
+            pass
+            # TODO Return a 404, or something.
+
+        # The user the calendar belongs to.
+        self.user = splituri[0]
+
+        # The calendar name.
+        self.calendar = splituri[1]
+
+        # The file name (only used in GET at the time of writing).
+        self.filename = splituri[2]
+
     ## The constructor.
     #  @param self The object pointer.
     #  @param req The HttpRequest instance for the current request.
     def __init__(self, req):
         self.req = req
 
-        self.view = self.action = self.path = None
+        self.view = self.action = self.davpath = self.user = self.calender = self.filename = None
 
         req.log.debug(str(self))
+
+        # The path should be something like one of the following:
+        # {/otherpath}/dav/user/calendar/
+        # {/dav}/user/calendar/longnumber.ics
+        self._handle_path(req.uri)
 
         if req.headers_in.get('Content-Length', None):
             raw_input = str(req.read(int(req.headers_in.get('Content-Length', None))))
