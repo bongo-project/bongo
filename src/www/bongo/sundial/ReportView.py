@@ -28,28 +28,14 @@ class ReportHandler(SundialHandler):
     def NeedsAuth(self, rp):
         return True
 
-    ## Returns hostname based on HTTP_HOST.
-    #  @param self The object pointer.
-    #
-    # Evolution does not support relative URLs in dav::href, therefore
-    # This function returns to ideal form of value prefix. Defaulting
-    # to relative, but using definite when Evolution is the User-Agent.
-    def _get_hostname(self):
-        if self.req.headers_in.get('User-Agent').startswith('Evolution'):
-            # TODO This doesn't support https.
-            return 'http://' + self.req.headers_in.get('Host') + self.rp.davpath
-        else:
-            return self.rp.davpath
-
     ## Creates appropriate XML tags for requested VEVENTS.
     #  @param self The object pointer.
     #  @param output Dictionary of some information needed for the request.
-    #  @param multistatus_tag The <D:multistatus> tag so SubElements can be created.
     #
     # First, events are pulled from the store based on the collection/calendar and also
     # the filters used. Then, <D:response> tags are created, satisfying all the <D:prop>
     # requests, one-by-one.
-    def _vevent_filter(self, output, prop_tags, multistatus_tag):
+    def _vevent_filter(self, output, prop_tags):
         try:
             start = output['start']
             end = output['end']
@@ -69,9 +55,8 @@ class ReportHandler(SundialHandler):
 
         # Loop through each VEVENT that was returned.
         for response in events:
-            response_tag = ET.SubElement(multistatus_tag, 'D:response') # <D:response>
-            # TODO Update this URL scheme.
-            ET.SubElement(response_tag, 'D:href').text = self._get_hostname() + "dav/" + self.rp.user + "/" + self.rp.calendar + "/" + "%s.ics" % response.uid # <D:href>url</D:href>
+            response_tag = ET.SubElement(self.multistatus_tag, 'D:response') # <D:response>
+            ET.SubElement(response_tag, 'D:href').text = self.rp.get_hostname() + "dav/" + self.rp.user + "/" + self.rp.calendar + "/" + "%s.ics" % response.uid # <D:href>url</D:href>
 
             propstat_tag = ET.SubElement(response_tag, 'D:propstat') # <D:propstat>
             prop_tag = ET.SubElement(propstat_tag, 'D:prop') # <D:prop>
@@ -96,15 +81,13 @@ class ReportHandler(SundialHandler):
 
             ET.SubElement(propstat_tag, 'D:status').text = "HTTP/1.1 200 OK"
 
-            # D:multistatus tag instance pointer has been messed with, so just the status to return.
-            return bongo.commonweb.HTTP_OK
+        return bongo.commonweb.HTTP_OK
 
     ## Handles the D:calendar-query request.
     #  @param self The object pointer.
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def calendar_query(self, req, rp):
-        self.req = req
         self.rp = rp
         output = {}
 
@@ -128,37 +111,37 @@ class ReportHandler(SundialHandler):
 
                 if filter.get('name') == 'VEVENT':
                     output['type'] = 'VEVENT'
-
-                    # Loop through different ranges and whatnot.
-                    for f in filter.getchildren():
-                        if normalize(f.tag) == 'urn:ietf:params:xml:ns:caldav:time-range':
-                            # C:time-range -- only events between two times.
-                            output['start'] = parse(f.get('start'))
-                            output['end'] = parse(f.get('end'))
-
-                        elif normalize(f.tag) == 'urn:ietf:params:xml:ns:caldav:is-defined':
-                            # This means nothing as all events in the store are "defined".
-                            pass
-
                 elif filter.get('name') == 'VTODO':
                     output['type'] = 'VTODO'
-                    # TODO Implement this, perhaps.
+                    # Nothing to implement for the moment. Bongo doesn't support tasks.
                     pass
 
+
+                # Loop through different ranges and whatnot.
+                for f in filter.getchildren():
+                    if normalize(f.tag) == 'urn:ietf:params:xml:ns:caldav:time-range':
+                        # C:time-range -- only events between two times.
+                        output['start'] = parse(f.get('start'))
+                        output['end'] = parse(f.get('end'))
+
+                    elif normalize(f.tag) == 'urn:ietf:params:xml:ns:caldav:is-defined':
+                        # This means nothing in Bongo as all events in the store are "defined".
+                        pass
+
         # Generate <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-        multistatus_tag = ET.Element('D:multistatus') 
-        bongo.commonweb.ElementTree.set_prefixes(multistatus_tag, {'D' : 'DAV:',
+        self.multistatus_tag = ET.Element('D:multistatus') 
+        bongo.commonweb.ElementTree.set_prefixes(self.multistatus_tag, {'D' : 'DAV:',
                                                                     'C' : 'urn:ietf:params:xml:ns:caldav'
                                                                 })
 
         if output['type'] == 'VEVENT':
-            ret = self._vevent_filter(output, prop_tags, multistatus_tag)
+            ret = self._vevent_filter(output, prop_tags)
             if ret != bongo.commonweb.HTTP_OK:
                 return ret
 
         # Throw out the output.
         req.content_type = 'text/xml; charset="utf-8"'
-        req.write(ET.tostring(multistatus_tag))
+        req.write(ET.tostring(self.multistatus_tag))
         return bongo.commonweb.HTTP_MULTI_STATUS
 
     ## The default entry point for the handler.

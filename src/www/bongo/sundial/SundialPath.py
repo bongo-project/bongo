@@ -8,6 +8,7 @@ import bongo.commonweb
 from bongo.commonweb.HttpError import HttpError
 import re
 import cElementTree
+import urllib
 
 import GetView
 import PropfindView
@@ -45,14 +46,13 @@ class SundialPath:
         self.davpath = '/' + '/'.join(davparts)
 
         if len(splituri) != 3:
-            pass
-            # TODO Return a 404, or something.
+            raise HttpError(404)
 
         # The user the calendar belongs to.
         self.user = splituri[0]
 
         # The calendar name.
-        self.calendar = splituri[1]
+        self.calendar = urllib.unquote(splituri[1])
 
         # The file name (only used in GET at the time of writing).
         self.filename = splituri[2]
@@ -95,3 +95,13 @@ class SundialPath:
     def GetHandler(self, req, rp):
         return views[req.method](req, rp)
 
+    ## Returns hostname based on HTTP_HOST.
+    #  @param self The object pointer.
+    #
+    # Evolution does not support relative URLs in dav::href, therefore
+    def get_hostname(self):
+        if self.req.headers_in.get('User-Agent').startswith('Evolution'):
+            # TODO This doesn't support https.
+            return 'http://' + self.req.headers_in.get('Host') + self.davpath
+        else:
+            return self.davpath

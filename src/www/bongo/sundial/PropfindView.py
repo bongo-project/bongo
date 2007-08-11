@@ -35,7 +35,7 @@ class PropfindHandler(SundialHandler):
 
         try:
             info = store.Info("/calendars/" + rp.calendar)
-        except CommandError:
+        except:
             return bongo.commonweb.HTTP_NOT_FOUND
 
         multistatus_tag = ET.Element('D:multistatus') # <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -43,8 +43,7 @@ class PropfindHandler(SundialHandler):
                                                                     'C' : 'urn:ietf:params:xml:ns:caldav'
                                                                 })
         response_tag = ET.SubElement(multistatus_tag, 'D:response') # <D:response>
-        # TODO Update this URL scheme.
-        ET.SubElement(response_tag, 'D:href').text = req.uri # <D:href>req.uri</D:href>
+        ET.SubElement(response_tag, 'D:href').text = rp.get_hostname() + "dav/" + rp.user + "/" + rp.calendar + "/" # <D:href>href</D:href>
         propstat_tag = ET.SubElement(response_tag, 'D:propstat') # <D:propstat>
         prop_tag = ET.SubElement(propstat_tag, 'D:prop') # <D:prop>
 
