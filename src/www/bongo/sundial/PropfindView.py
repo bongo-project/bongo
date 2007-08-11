@@ -8,6 +8,7 @@ import bongo.commonweb
 import bongo.commonweb.ElementTree
 from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient
+from bongo.store.StoreClient import DocTypes
 import cElementTree as ET
 
 ## Class to handle PROPFIND request methods.
@@ -32,11 +33,11 @@ class PropfindHandler(SundialHandler):
     def do_PROPFIND(self, req, rp):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
 
-        info = store.Info("/calendars/openSUSE")
-        print info
+        try:
+            info = store.Info("/calendars/" + rp.calendar)
+        except CommandError:
+            return bongo.commonweb.HTTP_NOT_FOUND
 
-        # TODO This is rather flawed. It says everything with req.uri.startswith('/dav') is
-        # a calendar. Not true. Fix it.
         multistatus_tag = ET.Element('D:multistatus') # <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
         bongo.commonweb.ElementTree.set_prefixes(multistatus_tag, { 'D' : 'DAV:',
                                                                     'C' : 'urn:ietf:params:xml:ns:caldav'
@@ -51,7 +52,11 @@ class PropfindHandler(SundialHandler):
         for t in rp.xml_input.getchildren()[0].getchildren():
             if bongo.commonweb.ElementTree.normalize(t.tag) == 'dav::resourcetype':
                 resourcetype_tag = ET.SubElement(prop_tag, 'D:resourcetype') # <D:resourcetype>
-                ET.SubElement(resourcetype_tag, 'C:calendar') # <C:calendar />
+                # Check to make sure it is actually a calendar we're dealing with.
+                # RFC2518 section 13.9 states the default type is empty, so only return something
+                # if it is indeed a calendar.
+                if info.type == DocTypes.Calendar:
+                    ET.SubElement(resourcetype_tag, 'C:calendar') # <C:calendar />
 
         ET.SubElement(propstat_tag, 'D:status').text = "HTTP/1.1 200 OK"
 
