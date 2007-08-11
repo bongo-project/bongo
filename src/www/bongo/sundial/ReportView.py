@@ -20,7 +20,7 @@ class ReportHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def __init__(self, req, rp):
-        self.store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
+        pass
 
     ## Returns whether authentication is required for the method.
     #  @param self The object pointer.
@@ -166,6 +166,7 @@ class ReportHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_REPORT(self, req, rp):
+        self.store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
         return {
             'urn:ietf:params:xml:ns:caldav:calendar-query' : self.calendar_query
         }[normalize(rp.xml_input.tag)](req, rp)

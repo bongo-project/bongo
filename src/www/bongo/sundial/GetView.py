@@ -16,10 +16,8 @@ class GetHandler(SundialHandler):
     #  @param self The object pointer.
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
-    #
-    # Connects to the store for later.
     def __init__(self, req, rp):
-        self.store = StoreClient(req.user, rp.user, authPassword=req.password)
+        pass
 
     ## Returns whether authentication is required for this handler.
     #  @param self The object pointer.
@@ -32,6 +30,8 @@ class GetHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_GET(self, req, rp):
+        store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
+
         # rp.filename should be something like:
         # 00000000000000115.ics
         filename_parts = rp.filename.split('.')
@@ -44,7 +44,7 @@ class GetHandler(SundialHandler):
         # Get the nmap document from the store.
         # A CommandError exception is thrown when the item does not exist.
         try:
-            doc = self.store.Read(filename_parts[0])
+            doc = store.Read(filename_parts[0])
         except CommandError:
             return bongo.commonweb.HTTP_NOT_FOUND
 

@@ -30,6 +30,11 @@ class PropfindHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_PROPFIND(self, req, rp):
+        store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
+
+        info = store.Info("/calendars/openSUSE")
+        print info
+
         # TODO This is rather flawed. It says everything with req.uri.startswith('/dav') is
         # a calendar. Not true. Fix it.
         multistatus_tag = ET.Element('D:multistatus') # <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">

@@ -46,7 +46,7 @@ class HttpRequest:
             userpassencoded = auth_header[6:]
             userpass = base64.b64decode(userpassencoded)
             self.user = userpass[:userpass.find(":")]
-            self.password = userpass[(userpass.find(":")+1):]
+            self._password = userpass[(userpass.find(":")+1):]
         else:
             self.user = None
 
@@ -97,4 +97,4 @@ class HttpRequest:
         return self.wbuf.write(str)
 
     def get_basic_auth_pw(self):
-        return self.password
+        return self._password
