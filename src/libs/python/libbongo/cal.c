@@ -180,7 +180,8 @@ cal_JsonToIcal(PyObject *self, PyObject *args)
     
     if (comp) {
         PyObject *ret;
-        ret = Py_BuildValue("s", icalcomponent_as_ical_string(comp));
+        char *data = icalcomponent_as_ical_string(comp);
+        ret = PyUnicode_Decode(data, strlen(data), "utf-8", "strict");
         icalcomponent_free(comp);
         return ret;
     } else {
