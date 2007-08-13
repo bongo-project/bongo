@@ -1,4 +1,4 @@
-## Sundial GET request method handler.
+## Sundial DELETE request method handler.
 #
 #  @author Jonny Lamb <jonnylamb@jonnylamb.com>
 #  @copyright 2007 Jonny Lamb
@@ -7,11 +7,9 @@
 import bongo.commonweb
 from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient
-from libbongo.libs import bongojson, cal
 
-
-## Class to handle the GET request method.
-class GetHandler(SundialHandler):
+## Class to handle the DELETE request method.
+class DeleteHandler(SundialHandler):
     ## The contructor.
     #  @param self The object pointer.
     #  @param req The HttpRequest instance for the current request.
@@ -29,27 +27,12 @@ class GetHandler(SundialHandler):
     #  @param self The object pointer.
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
-    def do_GET(self, req, rp):
+    def do_DELETE(self, req, rp):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
 
-        # Get the nmap document from the store.
         try:
-            doc = store.Read(rp.fileuid)
+            store.Delete(rp.fileuid)
         except:
             return bongo.commonweb.HTTP_NOT_FOUND
 
-        jsob = bongojson.ParseString(doc.strip())
-
-        if jsob:
-            # TODO TODO TODO This should not be encoded into ASCII at all.
-            # At the moment, this doesn't work without though.
-            data = cal.JsonToIcal(jsob).encode('ascii', 'replace')
-        else:
-            data = ""
-
-        # Get rid of the boring headers, and data.
-        req.headers_out["Content-Length"] = str(len(data))
-        req.content_type = 'text/calendar; charset="utf-8"'
-
-        req.write(data)
-        return bongo.commonweb.HTTP_OK
+        return bongo.commonweb.HTTP_NO_CONTENT

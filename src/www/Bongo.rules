@@ -363,7 +363,8 @@ pkgpythonsundial_PYTHON :=			\
 	src/www/bongo/sundial/GetView.py		\
 	src/www/bongo/sundial/PropfindView.py	\
 	src/www/bongo/sundial/OptionsView.py	\
-	src/www/bongo/sundial/ReportView.py
+	src/www/bongo/sundial/ReportView.py		\
+	src/www/bongo/sundial/DeleteView.py
 
 pkgpythoncommonwebdir = $(pkgpythondir)/commonweb
 

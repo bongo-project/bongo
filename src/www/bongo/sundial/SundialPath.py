@@ -14,13 +14,15 @@ import GetView
 import PropfindView
 import OptionsView
 import ReportView
+import DeleteView
 
 ## Dictionary of views available depending on type of request method.
 views = {
     'GET' : GetView.GetHandler,
     'PROPFIND' : PropfindView.PropfindHandler,
     'OPTIONS' : OptionsView.OptionsHandler,
-    'REPORT' : ReportView.ReportHandler
+    'REPORT' : ReportView.ReportHandler,
+    'DELETE' : DeleteView.DeleteHandler
 }
 
 ## Resource path class for Sundial.
