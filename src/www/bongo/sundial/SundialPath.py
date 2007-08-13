@@ -57,6 +57,20 @@ class SundialPath:
         # The file name (only used in GET at the time of writing).
         self.filename = splituri[2]
 
+        if self.filename != '':
+            # rp.filename should be something like:
+            # 00000000000000115.ics
+            filename_parts = self.filename.split('.')
+
+            # Any filename with more than one "." can get lost, and this shop only
+            # serves up iCalendar.
+            if len(filename_parts) != 2 or filename_parts[-1] != 'ics':
+                raise HttpError(404)
+
+            self.fileuid = filename_parts[0]
+        else:
+            self.filename = None
+
     ## The constructor.
     #  @param self The object pointer.
     #  @param req The HttpRequest instance for the current request.

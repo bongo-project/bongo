@@ -32,20 +32,10 @@ class GetHandler(SundialHandler):
     def do_GET(self, req, rp):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
 
-        # rp.filename should be something like:
-        # 00000000000000115.ics
-        filename_parts = rp.filename.split('.')
-
-        # Any filename with more than one "." can get lost, and this shop only
-        # serves up iCalendar.
-        if len(filename_parts) != 2 or filename_parts[-1] != 'ics':
-            return bongo.commonweb.HTTP_NOT_FOUND
-
         # Get the nmap document from the store.
-        # A CommandError exception is thrown when the item does not exist.
         try:
-            doc = store.Read(filename_parts[0])
-        except CommandError:
+            doc = store.Read(rp.fileuid)
+        except:
             return bongo.commonweb.HTTP_NOT_FOUND
 
         jsob = bongojson.ParseString(doc.strip())
