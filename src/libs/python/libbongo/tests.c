@@ -8,10 +8,10 @@
 extern "C" {
 #endif
 
-# to test this:
-# from libbongo.libs import tests
-# print tests.GetAsciiString()
-# print tests.GetUnicodeString()
+// to test this:
+// from libbongo.libs import tests
+// print tests.GetAsciiString()
+// print tests.GetUnicodeString()
 
 static PyObject *
 test_GetAsciiString(void)
