@@ -74,7 +74,7 @@ class ReportHandler(SundialHandler):
 
                 # Deal with each tag.
                 if prop == 'dav::getetag':
-                    ET.SubElement(prop_tag, 'D:getetag').text = '"%s"' % md5.new(calendardata).hexdigest() # <D:getetag>etag</D:getetag>
+                    ET.SubElement(prop_tag, 'D:getetag').text = '"%s"' % md5.new(calendardata.encode('ascii', 'replace')).hexdigest() # <D:getetag>etag</D:getetag>
                 elif prop == 'urn:ietf:params:xml:ns:caldav:calendar-data':
                     ET.SubElement(prop_tag, 'C:calendar-data').text = calendardata # <C:calendar-data>BEGIN:VCALENDAR...</C:calendar-data>
                 # TODO Implement more of these.
@@ -141,6 +141,7 @@ class ReportHandler(SundialHandler):
 
         # Throw out the output.
         req.content_type = 'text/xml; charset="utf-8"'
+        req.write("""<?xml version="1.0" encoding="utf-8" ?>""")
         req.write(ET.tostring(self.multistatus_tag))
         return bongo.commonweb.HTTP_MULTI_STATUS
 
