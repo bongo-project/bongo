@@ -56,7 +56,7 @@ class SundialPath:
         # The calendar name.
         self.calendar = urllib.unquote(splituri[1])
 
-        # The file name (only used in GET at the time of writing).
+        # The file name.
         self.filename = splituri[2]
 
         if self.filename != '':

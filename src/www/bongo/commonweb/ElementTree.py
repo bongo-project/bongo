@@ -1,18 +1,6 @@
-## Helper functions for use with (c)ElementTree.
-#
-# http://effbot.org/zone/element-namespaces.htm
+## Helper functions for use with etree.
 
-import cElementTree as ET
-
-## Explicitly sets the namespace attributes on an Element.
-#  @param elem The Element instance to set attributes on.
-#  @param prefix_map Dictionary of prefixes : namespaces to set.
-def set_prefixes(elem, prefix_map):
-    if not ET.iselement(elem):
-        elem = elem.getroot()
-
-    for prefix, uri in prefix_map.items():
-        elem.set("xmlns:" + prefix, uri)
+import lxml.etree as ET
 
 ## Returns a normalized version of the tag name.
 #  @param name Tag name.
