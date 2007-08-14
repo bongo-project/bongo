@@ -42,7 +42,7 @@ Dragonfly.format = function (s /*, args... */)
         if (fmtStr) {
             fmtStr = f.unescapeBraces (fmtStr);
         }
-        if (part.format) {
+        if (part && part.format) {
             part = part.format (fmtStr);
         } else if (part instanceof Date) {
             part = d.formatDate (part, fmtStr);
