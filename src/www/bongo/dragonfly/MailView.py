@@ -35,8 +35,8 @@ class ConversationsHandler(ResourceHandler):
 
         if jsob.has_key("body") :
             composer.SetBody(jsob.get("body"))
-        if jsob.has_key("bodyHtml") :
-            composer.SetBody(jsob.get("bodyHtml"), "text/html")
+        if jsob.has_key("isHtml") and (jsob.get("isHtml") == True or jsob.get("isHtml") == 'true') :
+            composer.SetBody(jsob.get("body"), "text/html")
 
         composer.SetDate(time.time())
 

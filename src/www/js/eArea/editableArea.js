@@ -30,6 +30,7 @@ function insertEditableArea(editableAreaName, editableAreaWidth, editableAreaHei
 	var selectAllButton = '<input type="image" src="/js/eArea/icons/edit-select-all.png" value="Select all" alt="Select all" name="' + editableAreaName + '" id="selectall" class="icon" style="width:24px;height:24px;">';
 	var insertImageButton = '<input type="image" src="/js/eArea/icons/insert-image.png" value="Insert image" alt="Insert image" name="' + editableAreaName + '" id="insertimage" class="icon" style="width:24px;height:24px;">';
 	var insertLinkButton = '<input type="image" src="/js/eArea/icons/insert-link.png" value="Insert link" alt="Insert link" name="' + editableAreaName + '" id="insertlink" class="icon" style="width:24px;height:24px;">';
+	var switchModeButton = '<input type="image" src="/js/eArea/icons/switch-mode.png" value="Switch mode" alt="Switch mode" name="' + editableAreaName + '" id="switchmode" class="icon" style="width:24px;height:24px;">';
 	var editableArea = '<iframe src="/js/eArea/blank.html?style=' + editableAreaStyle + '" id="' + editableAreaName + '" \n style="width:' + editableAreaWidth + '; min-height:' + editableAreaHeight + '; border-style:solid; border: 1px solid #DDDDDD;" frameborder="0px"></iframe>'
 
 	var editableAreaHTML = editableAreaLayout;
@@ -48,6 +49,7 @@ function insertEditableArea(editableAreaName, editableAreaWidth, editableAreaHei
     editableAreaHTML = editableAreaHTML.replace("[select-all]", selectAllButton);
     editableAreaHTML = editableAreaHTML.replace("[insert-image]", insertImageButton);
     editableAreaHTML = editableAreaHTML.replace("[insert-link]", insertLinkButton);
+    editableAreaHTML = editableAreaHTML.replace("[switch-mode]", switchModeButton);
 	
 	editableAreaHTML = editableAreaHTML.replace(/sep/g, '<span class="split"></span>');
 	editableAreaHTML = editableAreaHTML.replace("[edit-area]", editableArea);
@@ -65,9 +67,24 @@ function insertEditableArea(editableAreaName, editableAreaWidth, editableAreaHei
 	return retHTML;
 }
 
+// TODO!
 function stripHTML(d)
 {
-    d = d.replace(/(<([^>]+)>)/ig, ""); // Remove the other tags we can't handle.
+    /*
+    foreach ($tags as $tag){
+        while(preg_match('/<'.$tag.'(|\W[^>]*)>(.*)<\/'. $tag .'>/iusU', $text, $found)){
+            $text = str_replace($found[0],$found[2],$text);
+        }
+    }
+
+    return preg_replace('/(<('.join('|',$tags).')(|\W.*)\/>)/iusU', '', $text);
+    */
+    
+    d = d.replace(/<a[^href]+href=\"([^\"]*)\"[^>]*>/ig,"$1");      // Linkies
+    d = d.replace("<b>", "*");                                      // Vold (that's bold with an accent ;)
+    d = d.replace("<strong>", "*");
+    //d = d.replace("<br />"
+    //d = d.replace(/(<([^>]+)>)/ig, "");                             // Remove the other tags we can't handle.
     
     return d;
 }
@@ -82,6 +99,21 @@ function editableAreaContents(editableAreaName) {
 		// return the value from the <textarea> if document.designMode does not exist
 		return document.getElementById(editableAreaName).value;
 	}
+}
+
+// Enable/disable HTML buttons
+// TODO!!!
+function setHTMLbuttons(value)
+{
+    var obj = $('toolbar').childNodes;
+    for (var i=0; i < obj.length; i++)
+    {
+        var btn = obj[i];
+        if (btn.attributes.getNamedItem('isHtml').value == "true")
+        {
+            btn.style.class = "icon selected";
+        }
+    }
 }
 
 function setEditableAreaContents(editableAreaName, value)
@@ -258,6 +290,61 @@ function buttonOnClick() {
         {
             $(this.name).insertAdjacentHTML('beforeEnd', '<a href="' + path + '">' + text + '</a>');
             //runCmd(this.name, this.id, null, path);
+        }
+    }
+    else if (this.id == "switchmode")
+    {
+        // Dragonfly must be included here; otherwise you'll get script errors!
+        if (Dragonfly)
+        {
+            var m = Dragonfly.Mail;
+            if (m.isHtml)
+            {
+                // Grab the contents to put in the normal textarea.
+                var style = "'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Monaco', 'Courier', monospace";
+                
+                // Disable HTML-styling buttons / change onclick events.
+                
+                // Set the style for the inner iframe thing (only on browsers that support designMode, since textarea is already ok)
+                if (window[this.name])
+                {
+                    window[this.name].document.body.style.fontFamily = style;
+                    window[this.name].document.body.style.width = "47em";
+                }
+                else
+                {
+            		document.getElementById(this.name).contentWindow.document.body.style.fontFamily = style;
+            		document.getElementById(this.name).contentWindow.document.body.style.width = "47em";
+                }
+                
+                setEditableAreaContents(this.name, stripHTML(editableAreaContents(this.name)));
+                
+                m.isHtml = false;
+            }
+            else
+            {
+                var style = m.defaultComposerStyle;
+                
+                // Re-enable HTML-styling buttons / change onclick events.
+                
+                // Set the style for the inner iframe thing (only on browsers that support designMode, since textarea is already ok)
+                if (window[this.name])
+                {
+                    window[this.name].document.body.setAttribute('style', style);
+                }
+                else
+                {
+            		document.getElementById(this.name).contentWindow.document.body.setAttribute('style', style);
+                }
+                
+                m.isHtml = true;
+            }
+            
+            //alert('isHtml? ' + m.isHtml);
+        }
+        else
+        {
+            alert('Dragonfly not loaded - can\'t switch composition modes.');
         }
     }
     else
