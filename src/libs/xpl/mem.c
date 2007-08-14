@@ -89,6 +89,16 @@ void XplSignalBlock(void)
     return;
 }
 
+void XplSignalIgnorePipe(void)
+{
+    struct sigaction act;
+
+    act.sa_handler = SIG_IGN;
+    sigemptyset (&act.sa_mask);
+    act.sa_flags = 0;
+    sigaction (SIGPIPE, &act, NULL);
+}
+
 void XplSignalCatcher(XplShutdownFunc XplShutdownFunction)
 {
     sigset_t signalSet;

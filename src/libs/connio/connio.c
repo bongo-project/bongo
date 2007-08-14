@@ -180,6 +180,9 @@ ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
         seed[sizeof(seed) - 1] = '\0';
     }
 
+    // Ignore SIGPIPE for now - we don't seem to detect failed 
+    // connections correctly. See bug #9726.
+    XplSignalIgnorePipe();
     XplSignalLocalSemaphore(ConnIO.allocated.sem);
 
     return(TRUE);

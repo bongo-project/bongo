@@ -387,6 +387,7 @@ void XplDelayNanosleep(int msec);
 typedef void (*XplShutdownFunc)(int Signal);
 void XplSignalCatcher(XplShutdownFunc ShutdownFunction);
 void XplSignalBlock(void);
+void XplSignalIgnorePipe(void);
 #define XplSignalHandler(handler)								XplSignalCatcher((handler));
 
 #endif
