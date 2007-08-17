@@ -144,6 +144,7 @@ include_subdirs :=				\
 	src/apps/queuetool			\
 	src/apps/storetool			\
 	src/apps/storetool/demo			\
+	src/apps/testtool			\
 	src/www					\
 	zoneinfo				\
 	man						\
@@ -212,6 +213,7 @@ include src/apps/mdbtool/Bongo.rules
 include src/apps/queuetool/Bongo.rules
 include src/apps/storetool/Bongo.rules
 include src/apps/storetool/demo/Bongo.rules
+include src/apps/testtool/Bongo.rules
 include src/www/Bongo.rules
 include zoneinfo/Bongo.rules
 include man/Bongo.rules

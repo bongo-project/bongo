@@ -670,6 +670,7 @@ src/apps/mdbtool/Makefile
 src/apps/queuetool/Makefile
 src/apps/storetool/Makefile
 src/apps/storetool/demo/Makefile
+src/apps/testtool/Makefile
 src/libs/cal/Makefile
 src/libs/cal/tests/Makefile
 src/libs/calcmd/Makefile

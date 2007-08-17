@@ -1,0 +1,26 @@
+# -*- Makefile -*-
+sbin_PROGRAMS += bongo-testtool
+
+bongo_testtool_SOURCES :=		\
+	$(conf_defaults)		\
+	src/apps/testtool/config.h	\
+	src/apps/testtool/testtool.c
+
+bongo_testtool_CPPFLAGS := $(AM_CPPFLAGS)	\
+	$(GNUTLS_CFLAGS)
+
+bongo_testtool_LDADD :=					   \
+	libbongonmap.la					   \
+	libbongomsgapi.la				   \
+	libbongoconnio.la				   \
+	libbongomemmgr.la				   \
+	libbongoutil.la					   \
+	libbongoxpl.la					   \
+	$(PTHREAD_LIBS)					   \
+	$(GNUTLS_LIBS)                                     \
+	$(ALL_LIBS)
+
+src/apps/testtool/all: bongo-testtool
+src/apps/testtool/clean: clean
+src/apps/testtool/install:
+	@cd $(top_builddir) && $(MAKE) $(MFLAGS) sbin_PROGRAMS=bongo-testtool install-sbinPROGRAMS
