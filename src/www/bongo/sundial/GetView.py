@@ -49,7 +49,7 @@ class GetHandler(SundialHandler):
 
         # Get rid of the boring headers, and data.
         req.headers_out["Content-Length"] = str(len(data))
-        req.content_type = 'text/calendar; charset="utf-8"'
+        req.content_type = 'text/calendar'
 
         req.write(data)
         return bongo.commonweb.HTTP_OK
