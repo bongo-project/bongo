@@ -174,7 +174,7 @@ typedef struct {
 #define CONN_TCP_WRITE(c, b, l, r) \
         { \
             do { \
-                (r) = IPsend((c)->socket, b, l, 0); \
+                (r) = IPsend((c)->socket, b, l, MSG_NOSIGNAL); \
                 if ((r) >= 0) { \
                     CONN_TRACE_DATA((c), CONN_TRACE_EVENT_WRITE, (b), (r)); \
                     break; \
