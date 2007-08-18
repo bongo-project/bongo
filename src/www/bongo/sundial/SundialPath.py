@@ -7,7 +7,7 @@
 import bongo.commonweb
 from bongo.commonweb.HttpError import HttpError
 import re
-import cElementTree
+import lxml.etree as et
 import urllib
 
 import GetView
@@ -15,6 +15,7 @@ import PropfindView
 import OptionsView
 import ReportView
 import DeleteView
+import PutView
 
 ## Dictionary of views available depending on type of request method.
 views = {
@@ -22,11 +23,12 @@ views = {
     'PROPFIND' : PropfindView.PropfindHandler,
     'OPTIONS' : OptionsView.OptionsHandler,
     'REPORT' : ReportView.ReportHandler,
-    'DELETE' : DeleteView.DeleteHandler
+    'DELETE' : DeleteView.DeleteHandler,
+    'PUT' : PutView.PutHandler
 }
 
 ## Resource path class for Sundial.
-class SundialPath:
+class SundialPath(object):
 
     ## Takes the request URI and parses it into its separate parts.
     #  @param self The object pointer.
@@ -89,20 +91,20 @@ class SundialPath:
         self._handle_path(req.uri)
 
         if req.headers_in.get('Content-Length', None):
-            raw_input = str(req.read(int(req.headers_in.get('Content-Length', None))))
+            self.raw_input = str(req.read(int(req.headers_in.get('Content-Length', None))))
 
         # Look for XML content, and if it exists, parse it.
         # RFC2518 says that both text/xml and application/xml are valid.
         p = re.compile("(application|text)/xml")
         if p.match(str(req.headers_in.get('Content-Type', None))):
-            self.xml_input = cElementTree.XML(raw_input)
+            self.xml_input = et.XML(self.raw_input)
 
         # For debugging, print out headers_in, and the content.
-        #print req.headers_in
-        #try:
-        #    print raw_input
-        #except:
-        #    pass
+        print req.headers_in
+        try:
+            print self.raw_input
+        except:
+            pass
 
     ## Returns the handler for the request method.
     #  @param self The object pointer.

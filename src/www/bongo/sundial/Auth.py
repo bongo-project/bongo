@@ -13,7 +13,7 @@ def AcceptCredentials(req):
     credUser = req.user
     credPass = req.get_basic_auth_pw()
 
-    if credUser==None and credPass==None:
+    if credUser is None and credPass is None:
         # no session
         return False
 

@@ -10,7 +10,7 @@ from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient
 from bongo.store.StoreClient import DocTypes
 from libbongo.libs import cal, bongojson
-import lxml.etree as ET
+import lxml.etree as et
 import md5
 
 ## Class to handle PROPFIND request methods.
@@ -37,7 +37,7 @@ class PropfindHandler(SundialHandler):
         is_calendar = False
         icsdata = ''
 
-        if rp.filename != None:
+        if rp.filename is not None:
             # Talking about an individual event, not a calendar.
             try:
                 doc = store.Read(rp.fileuid)
@@ -71,36 +71,36 @@ class PropfindHandler(SundialHandler):
         # Get some information about what's being asked for.
         is_calendar, icsdata = self._handle_resource(req, rp, store)
 
-        multistatus_tag = ET.Element('multistatus', nsmap={None:'DAV:'}) # <multistatus xmlns="DAV:">
+        multistatus_tag = et.Element('multistatus', nsmap={None:'DAV:'}) # <multistatus xmlns="DAV:">
 
-        response_tag = ET.SubElement(multistatus_tag, 'response') # <response>
+        response_tag = et.SubElement(multistatus_tag, 'response') # <response>
 
-        href_tag = ET.SubElement(response_tag, 'href')
-        href_tag.text = rp.get_hostname() + "dav/" + rp.user + "/" + rp.calendar + "/" # <href>href</href>
+        href_tag = et.SubElement(response_tag, 'href')
+        href_tag.text = "%sdav/%s/%s/" % (rp.get_hostname(), rp.user, rp.calendar)
         if not is_calendar:
             href_tag.text += rp.filename
 
-        propstat_tag = ET.SubElement(response_tag, 'propstat') # <propstat>
-        prop_tag = ET.SubElement(propstat_tag, 'prop') # <prop>
+        propstat_tag = et.SubElement(response_tag, 'propstat') # <propstat>
+        prop_tag = et.SubElement(propstat_tag, 'prop') # <prop>
 
         for t in rp.xml_input.getchildren()[0].getchildren():
             if bongo.commonweb.ElementTree.normalize(t.tag) == 'dav::resourcetype':
-                resourcetype_tag = ET.SubElement(prop_tag, 'resourcetype') # <resourcetype>
+                resourcetype_tag = et.SubElement(prop_tag, 'resourcetype') # <resourcetype>
                 # Check to make sure it is actually a calendar we're dealing with.
                 # RFC2518 section 13.9 states the default type of D:resourcetype is empty, so only
                 # return something if it is indeed a calendar.
                 if is_calendar:
-                    ET.SubElement(resourcetype_tag, 'calendar', nsmap={None: 'urn:ietf:params:xml:ns:caldav'}) # <calendar xmlns="urn:ietf:params:xml:ns:caldav" />
+                    et.SubElement(resourcetype_tag, 'calendar', nsmap={None: 'urn:ietf:params:xml:ns:caldav'}) # <calendar xmlns="urn:ietf:params:xml:ns:caldav" />
 
             elif bongo.commonweb.ElementTree.normalize(t.tag) == 'dav::getetag' and not is_calendar:
-                ET.SubElement(prop_tag, 'getetag').text = '"%s"' % md5.new(icsdata.encode('ascii', 'replace')).hexdigest()
+                et.SubElement(prop_tag, 'getetag').text = '"%s"' % md5.new(icsdata.encode('ascii', 'replace')).hexdigest()
 
-        ET.SubElement(propstat_tag, 'status').text = "HTTP/1.1 200 OK"
+        et.SubElement(propstat_tag, 'status').text = "HTTP/1.1 200 OK"
 
         req.headers_out['Content-Type'] = 'text/xml; charset="utf-8"'
 
         req.write("""<?xml version="1.0" encoding="utf-8" ?>""")
-        req.write(ET.tostring(multistatus_tag))
+        req.write(et.tostring(multistatus_tag))
 
         return bongo.commonweb.HTTP_MULTI_STATUS
 

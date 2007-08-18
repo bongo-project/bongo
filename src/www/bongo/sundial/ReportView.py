@@ -8,7 +8,7 @@ import bongo.commonweb
 from bongo.commonweb.ElementTree import normalize
 from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient
-import lxml.etree as ET
+import lxml.etree as et
 import md5
 from bongo.external.dateutil.parser import parse
 from libbongo.libs import cal, bongojson
@@ -55,11 +55,11 @@ class ReportHandler(SundialHandler):
 
         # Loop through each VEVENT that was returned.
         for response in events:
-            response_tag = ET.SubElement(self.multistatus_tag, 'response') # <response>
-            ET.SubElement(response_tag, 'href').text = self.rp.get_hostname() + "dav/" + self.rp.user + "/" + self.rp.calendar + "/" + "%s.ics" % response.uid # <href>url</href>
+            response_tag = et.SubElement(self.multistatus_tag, 'response') # <response>
+            et.SubElement(response_tag, 'href').text = "%sdav/%s/%s/%s.ics" % (self.rp.get_hostname(), self.rp.user, self.rp.calendar, response.uid) # <href>url</href>
 
-            propstat_tag = ET.SubElement(response_tag, 'propstat') # <propstat>
-            prop_tag = ET.SubElement(propstat_tag, 'prop') # <prop>
+            propstat_tag = et.SubElement(response_tag, 'propstat') # <propstat>
+            prop_tag = et.SubElement(propstat_tag, 'prop') # <prop>
 
             # For each VEVENT, loop through each prop.
             for prop in prop_tags:
@@ -74,12 +74,12 @@ class ReportHandler(SundialHandler):
 
                 # Deal with each tag.
                 if prop == 'dav::getetag':
-                    ET.SubElement(prop_tag, 'getetag').text = '"%s"' % md5.new(calendardata.encode('ascii', 'replace')).hexdigest() # <getetag>etag</getetag>
+                    et.SubElement(prop_tag, 'getetag').text = '"%s"' % md5.new(calendardata.encode('ascii', 'replace')).hexdigest() # <getetag>etag</getetag>
                 elif prop == 'urn:ietf:params:xml:ns:caldav:calendar-data':
-                    ET.SubElement(prop_tag, 'calendar-data', nsmap={None: 'urn:ietf:params:xml:ns:caldav'}).text = calendardata # <calendar-data xmlns="urn:ietf:params:xml:ns:caldav">BEGIN:VCALENDAR...</calendar-data>
+                    et.SubElement(prop_tag, 'calendar-data', nsmap={None: 'urn:ietf:params:xml:ns:caldav'}).text = calendardata # <calendar-data xmlns="urn:ietf:params:xml:ns:caldav">BEGIN:VCALENDAR...</calendar-data>
                 # TODO Implement more of these.
 
-            ET.SubElement(propstat_tag, 'status').text = "HTTP/1.1 200 OK"
+            et.SubElement(propstat_tag, 'status').text = "HTTP/1.1 200 OK"
 
         return bongo.commonweb.HTTP_OK
 
@@ -129,7 +129,7 @@ class ReportHandler(SundialHandler):
                         pass
 
         # Generate <D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-        self.multistatus_tag = ET.Element('multistatus', nsmap={None: 'DAV:'}) 
+        self.multistatus_tag = et.Element('multistatus', nsmap={None: 'DAV:'}) 
 
         if output['type'] == 'VEVENT':
             ret = self._vevent_filter(output, prop_tags)
@@ -139,7 +139,7 @@ class ReportHandler(SundialHandler):
         # Throw out the output.
         req.content_type = 'text/xml; charset="utf-8"'
         req.write("""<?xml version="1.0" encoding="utf-8" ?>""")
-        req.write(ET.tostring(self.multistatus_tag))
+        req.write(et.tostring(self.multistatus_tag))
         return bongo.commonweb.HTTP_MULTI_STATUS
 
     ## The default entry point for the handler.

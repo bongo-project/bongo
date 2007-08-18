@@ -7,7 +7,7 @@
 import bongo.commonweb
 
 ## Default SundialHandler class.
-class SundialHandler:
+class SundialHandler(object):
     ## Returns whether the handler requires authentication.
     #  @param self The object pointer.
     #  @param rp The SundialPath instance for the current request.
