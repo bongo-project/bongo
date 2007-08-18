@@ -100,11 +100,11 @@ class SundialPath(object):
             self.xml_input = et.XML(self.raw_input)
 
         # For debugging, print out headers_in, and the content.
-        print req.headers_in
-        try:
-            print self.raw_input
-        except:
-            pass
+        #print req.headers_in
+        #try:
+        #    print self.raw_input
+        #except:
+        #    pass
 
     ## Returns the handler for the request method.
     #  @param self The object pointer.
