@@ -33,7 +33,7 @@ LookupMxRecords(const char *domain)
 
 	mx = XplDnsNewMxLookup(domain);
 	if (!mx || mx->status != XPLDNS_SUCCESS) {
-		XplConsolePrintf(_("ERROR: Unable to resolve MX records on %s"), domain);
+		XplConsolePrintf(_("ERROR: Unable to find mail exchangers for %s\n"), domain);
 		return;
 	}
 	
