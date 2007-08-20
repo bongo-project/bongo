@@ -4,6 +4,7 @@ lib_LTLIBRARIES += libbongoxpl.la
 libbongoxpl_la_SOURCES :=			\
 	src/libs/xpl/dir.c			\
 	src/libs/xpl/dns.c			\
+	src/libs/xpl/dns.h			\
 	src/libs/xpl/fsys.c			\
 	src/libs/xpl/hash.c			\
 	src/libs/xpl/ip.c			\

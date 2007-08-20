@@ -30,6 +30,7 @@ bongoinclude_HEADERS :=				\
 	include/bongothreadpool.h		\
 	include/bongoutil.h			\
 	include/xpl.h				\
+	include/xpldns.h			\
 	include/xplhash.h			\
 	include/xplold.h			\
 	include/xplresolve.h			\
