@@ -341,15 +341,13 @@ Dragonfly.Preferences.Editor.save = function ()
     //prefs.addressbook.me = this.profileEditor.bongoId;
     //prefs.mail.sender = this.profileEditor.name;
     
-    // Timezone
-    d.setCurrentTzid (d.tzselector.getTzid());
-    
     // User prefs
-    p.prefs.addressbook.me = this.profileEditor.bongoId;
+    p.prefs.addressbook.me = this.profileEditor.bongoId || this.oldId || 0;
 
     // Mail prefs
     p.prefs.mail.from = $('from').value;
-    p.prefs.mail.sender = this.profileEditor.name;
+    alert('Sender name: ' + this.profileEditor.name);
+    p.prefs.mail.sender = this.profileEditor.fname || 'BUG!';
     p.prefs.mail.autoBcc = $('autobcc').value;
     p.prefs.mail.pageSize = $('mailpagesize').value;
     p.prefs.mail.signature = $('signature').value;
@@ -368,7 +366,12 @@ Dragonfly.Preferences.Editor.save = function ()
     
     // Finish up
     p.save();
+    
+    // Timezone
+    d.setCurrentTzid (d.tzselector.getTzid());
+    
     Dragonfly.notify (_('Changes saved.'));
+    
     this.dispose();
 };
 
@@ -387,13 +390,20 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
     document.title = 'Preferences: ' + Dragonfly.title;
 
     // Mail prefs
-    if (jsob.mail && jsob.mail.from)
+    if (jsob.mail)
     {
         $('from').value = jsob.mail.from;
     }
     else
     {
-        logWarning('You have no prefs. I should probably warn you, or.. something.');
+        // I would *love* to use d.defaultMailAddress here, but we get the whole "name <address>" jazz.
+        // Maybe use/write some function in d.Mail to convert that?
+        $('from').value = (d.userName + '@' + window.location.hostname);
+        
+        if (!jsob.mail)
+        {
+            logWarning('You have no prefs. I should probably warn you, or.. something.');
+        }
     }
     
     if (jsob.mail && jsob.mail.autoBcc)         { $('autobcc').value        = jsob.mail.autoBcc;         }
@@ -413,13 +423,16 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
        
     // Now, load up the profile editor!
     var pe = new d.AddressBook.UserProfile('userprofile');
-    if (jsob.addressbook && jsob.addressbook.me && jsob.addressbook.me != null)
+    if (jsob.addressbook && jsob.addressbook.me)
     {
+        logDebug('Awesome, we have a contact ID!');
         // We've already setup our profile - load it!
+        this.oldId = jsob.addressbook.me;
         d.AddressBook.loadContact(jsob.addressbook.me).addCallback(bind ('build', pe));
     }
     else
     {
+        logDebug('me == null. Buid empty contact UI thingo.');
         // Build empty profile editor UI.
         pe.build(Dragonfly.AddressBook.buildNewContact());
     }

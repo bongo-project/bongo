@@ -704,21 +704,14 @@ Dragonfly.AddressBook.UserProfile.prototype.buildTab = function (html, tab)
 Dragonfly.AddressBook.UserProfile.prototype.save = function ()
 {
     var AB = Dragonfly.AddressBook;
-    this.name = this.contact.fn;
+    this.fname = this.contact.fn;
     this.serializeContact();
     //this.elem.innerHTML = this.contact.fn;
 
     AB.saveContact (this.contact).addCallbacks (bind (
         function (result) {
             // update preferences with contact ID
-            if (result.bongoId)
-            {
-                this.bongoId = result.bongoId;
-            }
-            else
-            {
-                this.bongoId = AB.Preferences.getMyContactId();
-            }
+            this.bongoId = result.bongoId;
             
             return result;
         }, this));

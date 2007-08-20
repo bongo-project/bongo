@@ -102,10 +102,20 @@ Dragonfly.Mail.Preferences.getFromAddress = function ()
     var d = Dragonfly;
     var p = d.Preferences;
     
-    var emailfrom = p.prefs.mail.from || '';
-    var namefrom = p.prefs.mail.sender;
+    var skippy = false;
     
-    return d.format("{0} <{1}>", namefrom, emailfrom);
+    var emailfrom = p.prefs.mail.from || '';
+    if (emailfrom == '')
+    {
+        if (d.defaultMailAddress)
+        {
+            return d.defaultMailAddress;
+        }
+    }
+    
+    var namefrom = p.prefs.mail.sender || d.userName;
+    
+    return d.format("{0} <{1}>", namefrom, emailfrom || (d.userName + '@' + window.location.hostname));
 };
 
 Dragonfly.Mail.Preferences.setFromAddress = function (address)
@@ -162,7 +172,7 @@ Dragonfly.Mail.getFromAddress = function ()
     var m = d.Mail;
     var p = m.Preferences;
 
-    return p.getFromAddress() || d.defaultMailAddress || (d.userName + '@' + window.location.hostname);
+    return p.getFromAddress();
 };
 
 Dragonfly.Mail.updateToolbar = function (loc)
