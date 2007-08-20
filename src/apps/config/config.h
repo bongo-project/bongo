@@ -24,6 +24,8 @@ typedef struct {
 
 /* function prototypes */
 
+BOOL	ImportSystemBackupFile(StoreClient *client, const char *path);
+void	InitializeDataArea(void);
 void	usage(void);
 void	RunAsBongoUser(void);
 BOOL	NMAPSimpleCommand(StoreClient *client, char *command);

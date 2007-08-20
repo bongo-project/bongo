@@ -118,23 +118,12 @@ PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *
 }
 
 BOOL
-ImportSystemBackupFile(const StoreClient *client, const char *path)
+ImportSystemBackupFile(StoreClient *client, const char *path)
 {
 	FILE *config;
 	char header[513];
 	CCode result;
 	
-	result = NMAPSimpleCommand(client, "CREATE /config\r\n");
-	if ((result==1000) || (result==4226)) {
-		// collection can't be created and doesn't exist
-		XplConsolePrintf(_("ERROR: Couldn't create collection\n"));
-		return FALSE;
-	}
-	if (! SetAdminRights(client, "/config")) {
-		XplConsolePrintf(_("ERROR: Couldn't set acls on /config\n"));
-		return FALSE;
-	}
-
 	config = fopen(path, "r");
 	if (config == NULL) {
 		XplConsolePrintf(_("ERROR: Couldn't load default config set\n"));
@@ -142,6 +131,7 @@ ImportSystemBackupFile(const StoreClient *client, const char *path)
 	}
 	while(512 == fread(&header, sizeof(char), 512, config)) {
 		long filesize, blocksize, read;
+		size_t len;
 		char str_filesize[13], filename[101];
 		char *file;
 		header[512] = 0;
@@ -151,6 +141,7 @@ ImportSystemBackupFile(const StoreClient *client, const char *path)
 		memcpy(&str_filesize, &header[124], 12);
 		str_filesize[12] = 0;
 		filesize = strtol(str_filesize, NULL, 8);
+		len = strlen(filename);
 		
 		if (! strncmp(filename, "", 100)) {
 			// end of tar is _two_ empty blocks... ah well :o>
@@ -161,17 +152,44 @@ ImportSystemBackupFile(const StoreClient *client, const char *path)
 		if (filesize % 512) blocksize++;
 		blocksize *= 512;
 
+		/* if this is a directory we need to create a new collection */
+		if (filename[len-1] == '/') {
+			char currentpath[110];
+			char fullpath[110];
+
+			filename[len-1] = 0;
+
+			snprintf(currentpath, 100, "/%s", filename);
+			snprintf(fullpath, 108, "CREATE %s\r\n", currentpath);
+			result = NMAPSimpleCommand(client, fullpath);
+
+			if ((result==1000) || (result==4226)) {
+				// collection can't be created and doesn't exist
+				XplConsolePrintf(_("ERROR: Couldn't create collection: %s\n"), currentpath);
+				return FALSE;
+			}
+			if (! SetAdminRights(client, currentpath)) {
+				XplConsolePrintf(_("ERROR: Couldn't set acls on %s\n"), currentpath);
+				return FALSE;
+			}
+			continue;
+		}
+
 		if (blocksize > 0 && !strncmp(filename, "config/", 7)) {
 			char fullpath[110];
+			char *delim;
+
 			file = MemMalloc((size_t) blocksize);
 			read = fread(file, sizeof(char), blocksize, config);
 			if (read != blocksize) {
 				XplConsolePrintf("  Read error!");
 			}
 			
+            		delim = strrchr(filename, '/');
+            		*delim = 0;
 			snprintf(fullpath, 108, "/%s", filename);
-			if (!PutOrReplaceConfig(client, "/config", 
-				&filename[7], file, filesize)) {
+			if (!PutOrReplaceConfig(client, fullpath,
+				delim+1, file, filesize)) {
 				XplConsolePrintf(_("ERROR: Couldn't write\n"));
 			} else {
 				if (! SetAdminRights(client, fullpath)) {
