@@ -1,5 +1,5 @@
 # -*- Makefile -*-
-GMOFILES=$(POFILES:.po=.mo)
+MOFILES=$(POFILES:.po=.mo)
 
 dist_noinst_DATA += $(POFILES) 	\
 	po/bongo.pot 				\
