@@ -338,15 +338,12 @@ Dragonfly.Preferences.Editor.save = function ()
     // User profile
     Dragonfly.notify (_('Saving changes...'), true);
     var result = this.profileEditor.save();
-    //prefs.addressbook.me = this.profileEditor.bongoId;
-    //prefs.mail.sender = this.profileEditor.name;
-    
+        
     // User prefs
     p.prefs.addressbook.me = this.profileEditor.bongoId || this.oldId || 0;
 
     // Mail prefs
     p.prefs.mail.from = $('from').value;
-    alert('Sender name: ' + this.profileEditor.name);
     p.prefs.mail.sender = this.profileEditor.fname || 'BUG!';
     p.prefs.mail.autoBcc = $('autobcc').value;
     p.prefs.mail.pageSize = $('mailpagesize').value;
