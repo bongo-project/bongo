@@ -1,3 +1,8 @@
+/*
+    "Fiction writing is great, you can make up almost
+    anything."                         -- Ivana Trump
+*/
+
 Dragonfly.Mail.Composer = function (parent, msg)
 {
     var d = Dragonfly;
@@ -40,12 +45,12 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     var m = d.Mail;
     var p = m.Preferences;
     
-    var defaultbody = '';
+    var defaultbodyHtml = '';
     
     if (p.getSignatureAvailable())
     {
         // Append signature to end of message.
-        defaultbody = '\n\n-- \n' + p.getSignature();
+        defaultbodyHtml = '\n\n-- \n' + p.getSignature();
     }
     
     var msg = { 
@@ -53,7 +58,7 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
         to: '',
         cc: '',
         bcc: p.getAutoBcc() || '',
-        body: defaultbody
+        body: defaultbodyHtml
     };
     if (mailto.substr (0, 7) != 'mailto:') {
         return null;
@@ -86,6 +91,8 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     return msg;
 };
 
+Dragonfly.Mail.Composer.uploads = 0;
+
 Dragonfly.Mail.Composer.prototype = { };
 
 Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
@@ -105,8 +112,8 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
 
     this.subject = d.nextId ('subject');
     this.body = d.nextId ('body');
-
-    this.toolbar = d.nextId ('toolbar');
+    
+    this.toolbar = $('toolbar');
     this.discard = d.nextId ('discard');
     this.save = d.nextId ('save');
     this.send = d.nextId ('send');
@@ -153,10 +160,37 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
             break;
         }
     }
-
+    
+    /*
+    *   This defines the approximate relationship between the width measurement of monospace characters and em.
+    *   Proof:
+    *     Since 80 chars = ~47 em
+    *     1 char = 47 / 80
+    *            = 0.5875.
+    */
+    var WidthConst = 0.5875;
+    
+    // Let's get stuck into the core global-var setups!
+    m.isHtml = m.Preferences.wantsHtmlComposer();
+    m.wrapWidth = m.Preferences.getComposerWidth() * WidthConst;
+    var style = "";
+    m.defaultComposerStyle = "font-family: lucida grande,myriad,myriad pro,verdana,luxi sans,bitstream vera sans,sans-serif;font-size:0.9em;";
+    
+    if (m.isHtml)
+    {   
+        style = m.defaultComposerStyle;
+    }
+    else
+    {
+        style = "font-family: 'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Monaco', 'Courier', monospace;font-size:0.9em;width:" + m.wrapWidth + "em";
+    }
+    
+    var composerToolbar = "[bold][italic][underlined] sep [align-left][justify][align-center][align-right] sep [undo][redo][select-all] sep [insert-image][insert-link] sep [switch-mode]</div>[edit-area]";
+    
+    // Right - now build it, Steve!
+    // Width of composer is 99% (like other elements) - height is 250px.
     html.push ('<li><a id="', this.addAttachment, '">', _('Attach file...'), '</a></li></ul>',
-               '<tr><td colspan="2"><textarea id="', this.body, '" class="body" cols="75" rows="15"  wrap="on">',
-               d.escapeHTML (this.msg.body), '</textarea></td></tr>',
+               '<tr><td colspan="2"><div class="toolbar">', insertEditableArea(this.body, '99%', '250px', composerToolbar, style), '</td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',
                '<input id="', this.discard, '" class="discard" type="button" value="', _('Discard'), '">',
                '<input id="', this.save, '" class="save" type="button" value="', _('Save Draft'), '">',
@@ -185,7 +219,8 @@ Dragonfly.Mail.Composer.prototype.connectHtml = function (elem)
     this.bcc = $(this.bcc);
     this.from = $(this.from);
     this.subject = $(this.subject);
-    this.body = $(this.body);
+    //d.bodyname = this.body;
+    //this.body = $(this.body);
     this.addAttachment = $(this.addAttachment);
     this.discard = $(this.discard);
     this.send = $(this.send);
@@ -244,7 +279,8 @@ Dragonfly.Mail.Composer.prototype.getCurrentMessage = function ()
         cc: this.cc.value,
         bcc: this.bcc.value,
         subject: this.subject.value,
-        body: this.body.value
+        body: editableAreaContents(this.body),
+        isHtml: Dragonfly.Mail.isHtml
     };
 };
 
@@ -263,7 +299,7 @@ Dragonfly.Mail.Composer.prototype.hasChanges = function (msg)
 
 Dragonfly.Mail.Composer.prototype.updateTitle = function (evt)
 {
-    if (this.subject.value == "")
+    if (this.subject.value == "" || this.subject.value == _('Untitled'))
     {
         document.title = _('(untitled)') + ' - ' + _('Composing:') + ' ' + Dragonfly.title;
     }
@@ -294,6 +330,17 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
         return true;
+    }
+    
+    if (msg.body.toLower().indexOf("attached") > -1 && c.uploads == 0 && msg.subject.toLower().indexOf("Re:") == -1)
+    {
+        // Looks like the user probably wanted to upload something, but hasn't - and it's not a reply (we can't
+        // check replies vs normal message body content properly at the moment. =/
+        
+        if (!confirm(_("You have mentioned 'attaching' something in your email, but you haven't actually gone and attached any files.") + "\n\n" + _("Press OK to send your email anyway.")))
+        {
+            return true;
+        }
     }
 
     this.state = c.Saving;
@@ -425,12 +472,22 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
         {
             this.saveDraft(this);
             this.draftSaveCalled = true;
+            this.callCount = 1;
             callLater(1, bind('sendMessage', this));
+        }
+        else if (this.callCount > 10)
+        {
+            logDebug('Save took more than 10sec, giving up.');
+            d.notifyError (_('Error sending message: Gave up while trying to send. Check logs.'));
+            this.callCount = 0;             // Reset counter.
+            this.draftSaveCalled = false;
+            return false;
         }
         else
         {
             // Still waiting for draft to save...
             logDebug('Save not finished yet - checking again in 1sec.');
+            this.callCount++;
             callLater(1, bind('sendMessage', this));
         }
         
@@ -606,10 +663,12 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     document.title = '(untitled) - Composing: ' + Dragonfly.title;
 
     var html = new d.HtmlBuilder ();
-
     var composer = new m.Composer (html, msg);
-
+    
     html.set ('conv-msg-list');
+    
+    setEditableAreaContents(composer.body, d.escapeHTML (msg.body));
+    ititButtons(composer.body);
     
     d.resizeScrolledView();
     
@@ -866,6 +925,7 @@ Dragonfly.Mail.AttachmentForm.prototype.frameLoad = function (evt)
 
     // ignore first load
     if (!$(this.fileId).value) {
+        d.Mail.Composer.uploads = 0;
         return;
     }
 
@@ -892,6 +952,7 @@ Dragonfly.Mail.AttachmentForm.prototype.frameLoad = function (evt)
     this.attachmentId = jsob.attachId;
     this.mimeType = jsob.mimeType;
     Element.setHTML (this.labelId, [ d.escapeHTML (this.attachmentId), ' (', d.escapeHTML (jsob.mimeType), ')' ]);
+    d.Mail.Composer.uploads++;
     this.uploadComplete.callback ();
 };
 
@@ -920,70 +981,4 @@ Dragonfly.Mail.AttachmentForm.prototype.remove = function (evt)
         d.HtmlZone.remove (this.id, this);
         removeElement (this.id);
     }
-};
-
-/* *** */
-Dragonfly.Mail.AttachmentTester = function ()
-{
-    var d = Dragonfly;
-
-    this.userId = d.nextId ('user');
-    this.passId = d.nextId ('pass');
-    this.convElemId = d.nextId ('convid');
-    this.msgElemId = d.nextId ('msgid');
-    this.actionId = d.nextId ('action');
-
-    d.Mail.AttachmentForm.apply (this, arguments);
-};
-
-Dragonfly.Mail.AttachmentTester.prototype = new Dragonfly.Mail.AttachmentForm;
-
-Dragonfly.Mail.AttachmentTester.prototype.buildHtml = function (html)
-{
-    var d = Dragonfly;
-    html.push ('username: <input id="', this.userId, '"> ',
-               'password: <input id="', this.passId, '" type="password"> ',
-               'conversation: <input id="', this.convElemId, '"> ',
-               'message: <input id="', this.msgElemId, '">');
-    d.Mail.AttachmentForm.prototype.buildHtml.apply (this, arguments);
-    html.push ('action: <span id="', this.actionId, '></span>');
-};
-
-Dragonfly.Mail.AttachmentTester.prototype.connectHtml = function (elem)
-{
-    var d = Dragonfly;
-
-    Event.observe (this.userId, 'change',
-                   this.updateCreds.bindAsEventListener (this));
-
-    Event.observe (this.passId, 'change',
-                   this.updateCreds.bindAsEventListener (this));
-
-    Event.observe (this.convElemId, 'change',
-                   this.updateAction.bindAsEventListener (this));
-
-    Event.observe (this.msgElemId, 'change',
-                   this.updateAction.bindAsEventListener (this));
-
-    d.Mail.AttachmentForm.prototype.connectHtml.apply (this, arguments);
-};
-
-Dragonfly.Mail.AttachmentTester.prototype.updateAction = function (evt)
-{
-    var d = Dragonfly;
-
-    this.msgId = $(this.msgElemId).value;
-    this.convId = $(this.convElemId).value;
-
-    this.updateUrl();
-    Element.setHTML (this.actionId, d.escapeHTML ($(this.formId).action));
-};
-
-Dragonfly.Mail.AttachmentTester.prototype.updateCreds = function (evt)
-{
-    var d = Dragonfly;
-
-    d.userName = $(this.userId).value;
-    d.authToken = btoa($(this.userId).value + ':' + $(this.passId).value);
-    this.updateAction();
 };

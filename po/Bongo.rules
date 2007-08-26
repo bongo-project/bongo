@@ -1,5 +1,5 @@
 # -*- Makefile -*-
-GMOFILES=$(POFILES:.po=.gmo)
+MOFILES=$(POFILES:.po=.mo)
 
 dist_noinst_DATA += $(POFILES) 	\
 	po/bongo.pot 				\
@@ -7,19 +7,19 @@ dist_noinst_DATA += $(POFILES) 	\
 	po/POTFILES.bongo 			\
 	po/POTFILES.bongo-web
 
-po/all: update-gmo
+po/all: update-mo
 
 po/clean: 
-	for file in ${GMOFILES}; do \
+	for file in ${MOFILES}; do \
 		rm -f $$file; \
 	done
 
 po/install: po/all
-	for file in $(GMOFILES); do \
-		lang=`echo $$file | sed -e 's,.*/,,' | sed -e 's/.gmo//'`; \
+	for file in $(MOFILES); do \
+		lang=`echo $$file | sed -e 's,.*/,,' | sed -e 's/.mo//'`; \
 		$(MKINSTALLDIRS) $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/; \
 		installfilename=`echo $$file | sed -e 's,po/\([^/]*\)/.*,\1,'`; \
-		$(INSTALL) -m 0644 $$file $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/$$installfilename.gmo; \
+		$(INSTALL) -m 0644 $$file $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/$$installfilename.mo; \
 	done
 
 update-pot:
@@ -38,11 +38,11 @@ update-pot:
 	-L python \
 	-o po/bongo-web.pot
 
-update-gmo: ${GMOFILES}
+update-mo: ${MOFILES}
 
-update-po: ${POFILES}-update update-gmo
+update-po: ${POFILES}-update update-mo
 
-%.gmo:
+%.mo:
 	rm -f $@ && $(GMSGFMT) -o $@ $*.po
 
 %.po-update: update-pot

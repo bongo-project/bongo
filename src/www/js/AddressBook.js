@@ -703,25 +703,11 @@ Dragonfly.AddressBook.UserProfile.prototype.buildTab = function (html, tab)
 
 Dragonfly.AddressBook.UserProfile.prototype.save = function ()
 {
-    var AB = Dragonfly.AddressBook;
-    this.name = this.contact.fn;
     this.serializeContact();
-    //this.elem.innerHTML = this.contact.fn;
-
-    AB.saveContact (this.contact).addCallbacks (bind (
-        function (result) {
-            // update preferences with contact ID
-            if (result.bongoId)
-            {
-                this.bongoId = result.bongoId;
-            }
-            else
-            {
-                this.bongoId = AB.Preferences.getMyContactId();
-            }
-            
-            return result;
-        }, this));
+    this.fname = this.contact.fn;
+    
+    var AB = Dragonfly.AddressBook;
+    return AB.saveContact (this.contact);
 };
 
 Dragonfly.AddressBook.UserProfile.prototype.serializeContact = function ()

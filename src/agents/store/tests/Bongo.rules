@@ -8,7 +8,6 @@ checktest_store_CPPFLAGS := $(AM_CPPFLAGS)	\
 	$(CHECK_CFLAGS)
 
 checktest_store_LDADD := $(CHECK_LIBS)			   \
-	libbongostore.la				   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongomdb.la					   \

@@ -1,0 +1,19 @@
+# -*- Makefile -*-
+TESTS += checktest-bongoxpl-dns
+check_PROGRAMS += checktest-bongoxpl-dns
+
+dist_noinst_DATA +=				   \
+	src/libs/xpl/tests/dns-test.c 
+
+CLEANFILES += \
+	src/libs/xpl/tests/checklog.xml
+
+checktest_bongoxpl_dns_SOURCES := \
+	src/libs/xpl/tests/dns-test.c
+
+checktest_bongoxpl_dns_LDADD = $(CHECK_LIBS)	\
+	libbongomemmgr.la			\
+	libbongoxpl.la			
+
+src/libs/xpl/tests/all:
+src/libs/xpl/tests/clean: clean

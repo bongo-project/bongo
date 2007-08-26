@@ -250,6 +250,35 @@ dist_js_DATA :=					\
 	src/www/js/MailListView.js		\
 	src/www/js/Browser.js   \
 	src/www/js/BrowserCheck.js
+	
+eAreadir = $(htdocsdir)/js/eArea
+
+dist_eArea_DATA := \
+    src/www/js/eArea/editableArea.js    \
+	src/www/js/eArea/blank.html
+	
+eAreaimagedir = $(htdocsdir)/js/eArea/icons
+
+dist_eAreaimage_DATA := \
+    src/www/js/eArea/icons/edit-select-all.png       \
+    src/www/js/eArea/icons/edit-undo.png        \
+    src/www/js/eArea/icons/edit-redo.png        \
+    src/www/js/eArea/icons/format-justify-center.png        \
+    src/www/js/eArea/icons/format-justify-left.png          \
+    src/www/js/eArea/icons/format-justify-right.png         \
+    src/www/js/eArea/icons/format-justify-fill.png          \
+    src/www/js/eArea/icons/format-text-bold.png     \
+    src/www/js/eArea/icons/format-text-italic.png       \
+    src/www/js/eArea/icons/format-indent-more.png       \
+    src/www/js/eArea/icons/format-indent-less.png       \
+    src/www/js/eArea/icons/insert-image.png         \
+    src/www/js/eArea/icons/insert-link.png          \
+    src/www/js/eArea/icons/toolbar-seperator.png
+
+plugindir = $(htdocsdir)/plugins
+
+dist_plugin_DATA := \
+    src/www/plugins/example.js
 
 prototypedir = $(jsdir)/lib/prototype
 
@@ -287,7 +316,7 @@ dist_finaljs_DATA =						\
 	src/www/js/final.js
 
 src/www/js/final.js: $(dist_js_DATA) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA)
-	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) -o src/www/js/final.js --measure --type js
+	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) src/www/js/eArea/editableArea.js -o src/www/js/final.js --measure --type js
 
 install-data-local:: install-dist_htdocsDATA
 	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"
@@ -416,7 +445,7 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 
 po2json := $(top_srcdir)/src/www/l10n/po2json
 
-src/www/l10n/%.js: po/bongo-web/%.gmo config.status
+src/www/l10n/%.js: po/bongo-web/%.mo config.status
 	$(po2json) -p po/bongo-web/$*.po -o $@
 
 # This generates no translation. It simply does msgid:msgid on the potfile.
