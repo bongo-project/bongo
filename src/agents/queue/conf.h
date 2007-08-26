@@ -24,7 +24,6 @@
 
 #include <xpl.h>
 #include <connio.h>
-#include <mdb.h>
 #include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
@@ -38,6 +37,8 @@ typedef enum {
 } BounceFlags;
 
 typedef struct _QueueConfiguration {
+    BOOL debug;
+    
     XplRWLock lock;
 
     /* Server info */
@@ -50,10 +51,7 @@ typedef struct _QueueConfiguration {
     char *quotaMessage;
 
     /* Trusted hosts */
-    struct {
-        int count;
-        unsigned long *hosts;
-    } trustedHosts;
+    BongoArray *trustedHosts;
 
     /* Paths */
     char spoolPath[XPL_MAX_PATH + 1];
@@ -61,6 +59,10 @@ typedef struct _QueueConfiguration {
 
     /* Deferral */
     BOOL deferEnabled;
+    char i_deferStartWD;
+    char i_deferStartWE;
+    char i_deferEndWD;
+    char i_deferEndWE;
     char deferStart[7];
     char deferEnd[7];
 
@@ -95,11 +97,23 @@ typedef struct _QueueConfiguration {
     unsigned long bounceMaxBodySize;
     unsigned long bounceMax;
 
+    BOOL b_bounceReturn;
+    BOOL b_bounceCCPostmaster;
     BounceFlags bounceHandling;
 
     /* Bookkeeping */
     unsigned long lastRead;
+    
+    /* aliasing system */
+    BongoArray *hostedDomains;
+    BongoArray *aliasList;
 } QueueConfiguration;
+
+typedef struct _AliasStruct{
+    unsigned char* original;
+    unsigned char* to;
+    BongoArray *aliases;
+} AliasStruct;
 
 extern QueueConfiguration Conf;
 

@@ -109,6 +109,15 @@
 #define NMAP_QFLUSH_COMMAND "QFLUSH"
 #define NMAP_QFLUSH_HELP "QFLUSH - Attempt to deliver all queued mail.\r\n"
 
+/* --------------------------------------------------- */
+#define NMAP_ADDRESS_RESOLVE_COMMAND "ADDRESS RESOLVE"
+#define NMAP_ADDRESS_RESOLVE_HELP "ADDRESS RESOLVE - Determine if an email address is local or remote and resolve any aliasing.\r\n"
+
+#define MSG1000LOCAL "1000 %s LOCAL\r\n"
+#define MSG1001RELAY "1001 %s RELAY\r\n"
+#define MSG1002REMOTE "1002 %s REMOTE\r\n"
+/* --------------------------------------------------- */
+
 #define MSG1000READY "Bongo NMAP server ready"
 #define MSG1000BYE "Bongo NMAP signing off"
 #define MSG1000LOGINOK "1000 Login ok\r\n"

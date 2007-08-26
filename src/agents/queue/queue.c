@@ -28,7 +28,6 @@
 
 #include <xpl.h>
 #include <logger.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 
@@ -892,6 +891,7 @@ StartOver:
                                 *ptr2 = '\0';
                             }
 
+                            /* this adds lines to the envelope for each user -- expanding a group if needed */
                             if (MsgFindObject(cur + 1, NULL, NULL, NULL, vs)) {
                                 if (ptr2) {
                                     for (used = 0; (used < vs->Used); used++) {
@@ -906,6 +906,7 @@ StartOver:
                                 }
 
                                 MDBFreeValues(vs);
+                            /* end of envelope rewrite section */
                             } else {
                                 Log(LOG_INFO, "Entry %ld queue %d, can't find %s", entryID, queue, cur + 1);
 
@@ -4241,7 +4242,7 @@ CommandQsrchDomain(void *param)
     if ((*ptr++ == ' ') && (!isspace(*ptr))) {
         if (((vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL)) != NULL) 
                 && ((handle = QDBHandleAlloc()) != NULL)) {
-            ccode = QDBSearchDomain(handle, ptr, vs);
+            ccode = QDBSearchDomain(handle, ptr);
             if (!ccode) {
                 for (used = 0; (ccode != -1) && (used < vs->Used); used++) {
                     ccode = ConnWriteF(client->conn, "2001-007-%s\r\n", vs->Value[used]);

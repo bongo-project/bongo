@@ -28,7 +28,6 @@
 #include <memmgr.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -44,12 +43,14 @@ static int CommandAuth(void *param);
 static int CommandPass(void *param);
 static int CommandQuit(void *param);
 static int CommandHelp(void *param);
+static int CommandAddressResolve(void *param);
 
 static ProtocolCommand authCommands[] = {
     { NMAP_AUTH_COMMAND, NMAP_AUTH_HELP, sizeof(NMAP_AUTH_COMMAND) - 1, CommandAuth, NULL, NULL },
     { NMAP_HELP_COMMAND, NMAP_HELP_HELP, sizeof(NMAP_HELP_COMMAND) - 1, CommandHelp, NULL, NULL },
     { NMAP_PASS_COMMAND, NMAP_PASS_HELP, sizeof(NMAP_PASS_COMMAND) - 1, CommandPass, NULL, NULL },
     { NMAP_QUIT_COMMAND, NMAP_QUIT_HELP, sizeof(NMAP_QUIT_COMMAND) - 1, CommandQuit, NULL, NULL },
+    { NMAP_ADDRESS_RESOLVE_COMMAND, NMAP_ADDRESS_RESOLVE_HELP, sizeof(NMAP_ADDRESS_RESOLVE_COMMAND) -1, CommandAddressResolve, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
@@ -97,6 +98,17 @@ static ProtocolCommand commands[] = {
     { NMAP_QFLUSH_COMMAND, NMAP_QFLUSH_HELP, sizeof(NMAP_QFLUSH_COMMAND) -1, CommandQflush, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
+
+int CommandAddressResolve(void *param) {
+    /* first parse out the email address.   this code will need to be fixed sometime */
+    unsigned char local_part[255];
+    unsigned char domain[1024];
+    QueueClient *client = (QueueClient *)param;
+    
+    /* strlen(ADDRESS LOCATE
+    MsgParseAddress(client->buffer + 
+    return 0; */
+}
 
 int 
 CommandAuth(void *param)
@@ -255,16 +267,11 @@ CheckTrustedHost(QueueClient *client)
 {
     int i;
     
+    /* TODO: this can be optimized a little bit */
     XplRWReadLockAcquire(&Conf.lock);
-    for (i = 0; i < Conf.trustedHosts.count; i++) {
-        if (client->conn->socketAddress.sin_addr.s_addr == Conf.trustedHosts.hosts[i]) {
-            XplRWReadLockRelease(&Conf.lock);
-            return TRUE;
-        }
-    }
+    i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)strcasecmp);
     XplRWReadLockRelease(&Conf.lock);
-
-    return FALSE;
+    return (i > 0);
 }
 
 int
@@ -340,18 +347,7 @@ ProcessClient(void *clientp, Connection *conn)
 static BOOL
 InternalSetServerState(const unsigned char *state)
 {
-    MDBValueStruct *vs;
-
-    vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-    if (vs) {
-        MDBAddValue(state, vs);
-        MDBWrite(MsgGetServerDN(NULL), MSGSRV_A_SERVER_STATUS, vs);
-        MDBDestroyValueStruct(vs);
-
-        return(TRUE);
-    }
-
-    return(FALSE);
+    return MsgGetRecoveryFlag();
 }
 
 static void 
@@ -537,7 +533,7 @@ XplServiceMain(int argc, char *argv[])
     Agent.agent.port = BONGO_QUEUE_PORT;
 
     /* Initialize the Bongo libraries */
-    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
     ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
