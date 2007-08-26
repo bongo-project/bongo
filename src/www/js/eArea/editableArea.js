@@ -310,12 +310,12 @@ function buttonOnClick() {
                 if (window[this.name])
                 {
                     window[this.name].document.body.style.fontFamily = style;
-                    window[this.name].document.body.style.width = "47em";
+                    window[this.name].document.body.style.width = m.wrapWidth + "em";
                 }
                 else
                 {
             		document.getElementById(this.name).contentWindow.document.body.style.fontFamily = style;
-            		document.getElementById(this.name).contentWindow.document.body.style.width = "47em";
+            		document.getElementById(this.name).contentWindow.document.body.style.width = m.wrapWidth + "em";
                 }
                 
                 setEditableAreaContents(this.name, stripHTML(editableAreaContents(this.name)));
@@ -345,7 +345,7 @@ function buttonOnClick() {
         }
         else
         {
-            alert('Dragonfly not loaded - can\'t switch composition modes.');
+            alert('Fatal error: Dragonfly not loaded - can\'t switch composition modes.');
         }
     }
     else

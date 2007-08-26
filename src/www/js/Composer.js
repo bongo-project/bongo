@@ -154,13 +154,36 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
         }
     }
     
-    m.defaultComposerStyle = "font-family: lucida grande,myriad,myriad pro,verdana,luxi sans,bitstream vera sans,sans-serif;font-size:0.9em;"
-    m.isHtml = true;
+    /*
+    *   This defines the approximate relationship between the width measurement of monospace characters and em.
+    *   Proof:
+    *     Since 80 chars = ~47 em
+    *     1 char = 47 / 80
+    *            = 0.5875.
+    */
+    var WidthConst = 0.5875;
+    
+    // Let's get stuck into the core global-var setups!
+    m.isHtml = m.Preferences.wantsHtmlComposer();
+    m.wrapWidth = m.Preferences.getComposerWidth() * WidthConst;
+    var style = "";
+    m.defaultComposerStyle = "font-family: lucida grande,myriad,myriad pro,verdana,luxi sans,bitstream vera sans,sans-serif;font-size:0.9em;";
+    
+    if (m.isHtml)
+    {   
+        style = m.defaultComposerStyle;
+    }
+    else
+    {
+        style = "font-family: 'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Monaco', 'Courier', monospace;font-size:0.9em;width:" + m.wrapWidth + "em";
+    }
     
     var composerToolbar = "[bold][italic][underlined] sep [align-left][justify][align-center][align-right] sep [undo][redo][select-all] sep [insert-image][insert-link] sep [switch-mode]</div>[edit-area]";
     
+    // Right - now build it, Steve!
+    // Width of composer is 99% (like other elements) - height is 250px.
     html.push ('<li><a id="', this.addAttachment, '">', _('Attach file...'), '</a></li></ul>',
-               '<tr><td colspan="2"><div class="toolbar">', insertEditableArea(this.body, '99%', '250px', composerToolbar, m.defaultComposerStyle), '</td></tr>',
+               '<tr><td colspan="2"><div class="toolbar">', insertEditableArea(this.body, '99%', '250px', composerToolbar, style), '</td></tr>',
                '<tr class="action"><td id="', this.toolbar, '" colspan="2">',
                '<input id="', this.discard, '" class="discard" type="button" value="', _('Discard'), '">',
                '<input id="', this.save, '" class="save" type="button" value="', _('Save Draft'), '">',

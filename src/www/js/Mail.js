@@ -127,6 +127,18 @@ Dragonfly.Mail.Preferences.setFromAddress = function (address)
     p.save ();
 };
 
+Dragonfly.Mail.Preferences.wantsHtmlComposer = function()
+{
+    var p = Dragonfly.Preferences;
+    return p.prefs.composer.messageType == "html";
+};
+
+Dragonfly.Mail.Preferences.getComposerWidth = function()
+{
+    var p = Dragonfly.Preferences;
+    return p.prefs.composer.lineWidth;
+};
+
 Dragonfly.Mail.Preferences.getAutoBcc = function ()
 {
     var d = Dragonfly;
