@@ -337,40 +337,48 @@ Dragonfly.Preferences.Editor.save = function ()
     
     // User profile
     Dragonfly.notify (_('Saving changes...'), true);
-    var result = this.profileEditor.save();
-        
-    // User prefs
-    p.prefs.addressbook.me = this.profileEditor.bongoId || this.oldId || 0;
+    var result = this.profileEditor.save().addCallbacks(bind(
+        function (result) {
+            // User prefs
+            p.prefs.addressbook.me = result.bongoId || this.oldId || 0;
 
-    // Mail prefs
-    p.prefs.mail.from = $('from').value;
-    p.prefs.mail.sender = this.profileEditor.fname || 'BUG!';
-    p.prefs.mail.autoBcc = $('autobcc').value;
-    p.prefs.mail.pageSize = $('mailpagesize').value;
-    p.prefs.mail.signature = $('signature').value;
-    p.prefs.mail.usesig = $('usesig').checked;
-    p.prefs.mail.colorQuotes = $('colorquotes').checked;
-    
-    // Calendar prefs
-    p.prefs.calendar.defaultView = $('defaultcalview').value;
-    p.prefs.calendar.dayStart = 7;  // Yes, hardwire this one (for now)!
-    p.prefs.calendar.sharePublicDefault = $('calshareyes').checked;
-    
-    // Composer prefs
-    p.prefs.composer = {};
-    p.prefs.composer.messageType = $('defaultcompose').value;
-    p.prefs.composer.lineWidth = $('linewidth').value;
-    
-    // Finish up
-    p.save();
-    
-    // Timezone
-    d.setCurrentTzid (d.tzselector.getTzid());
-    
-    Dragonfly.notify (_('Changes saved.'));
-    
-    this.dispose();
+            // Mail prefs
+            p.prefs.mail.from = $('from').value;
+            p.prefs.mail.sender = this.profileEditor.fname || 'BUG!';
+            p.prefs.mail.autoBcc = $('autobcc').value;
+            p.prefs.mail.pageSize = $('mailpagesize').value;
+            p.prefs.mail.signature = $('signature').value;
+            p.prefs.mail.usesig = $('usesig').checked;
+            p.prefs.mail.colorQuotes = $('colorquotes').checked;
+            
+            // Calendar prefs
+            p.prefs.calendar.defaultView = $('defaultcalview').value;
+            p.prefs.calendar.dayStart = 7;  // Yes, hardwire this one (for now)!
+            p.prefs.calendar.sharePublicDefault = $('calshareyes').checked;
+            
+            // Composer prefs
+            p.prefs.composer = {};
+            p.prefs.composer.messageType = $('defaultcompose').value;
+            p.prefs.composer.lineWidth = $('linewidth').value;
+            
+            // Finish up
+            p.save();
+            
+            // Timezone
+            d.setCurrentTzid (d.tzselector.getTzid());
+            
+            Dragonfly.notify (_('Changes saved.'));
+            
+            this.dispose();
+        }, this), bind('showError', this));
 };
+
+Dragonfly.Preferences.Editor.showError = function (req)
+{
+    var d = Dragonfly;
+    d.notifyError("We had a woopsie when we tried to save your prefs.", null, false);
+    this.dispose();
+}
 
 Dragonfly.Preferences.Editor.dispose = function ()
 {

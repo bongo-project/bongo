@@ -81,24 +81,6 @@ Dragonfly.AddressBook.saveContact = function (contact)
     });
 };
 
-Dragonfly.AddressBook.saveContactBlocking = function (contact)
-{
-    var d = Dragonfly, loc, request;
-    if (contact.bongoId) {
-        loc = new d.Location ({ tab: 'addressbook', contact: contact.bongoId });
-        request = d.request ('PUT', loc.getServerUrl(), contact);
-    } else {
-        loc = new d.Location ({ tab: 'addressbook'});   
-        request = d.requestJSONRPC ('createContact', loc, contact);
-    }
-    
-    var result = request.result;
-    
-    contact.bongoId = result.bongoId;
-    Dragonfly.AddressBook.contactMap[result.bongoId] = contact;
-    return result;
-};
-
 Dragonfly.AddressBook.delContact = function (bongoId)
 {
     var d = Dragonfly;
@@ -724,10 +706,8 @@ Dragonfly.AddressBook.UserProfile.prototype.save = function ()
     this.serializeContact();
     this.fname = this.contact.fn;
     
-    var r = Dragonfly.AddressBook.saveContactBlocking (this.contact);
-    this.bongoId = r.bongoId;
-    
-    return r;
+    var AB = Dragonfly.AddressBook;
+    return AB.saveContact (this.contact);
 };
 
 Dragonfly.AddressBook.UserProfile.prototype.serializeContact = function ()

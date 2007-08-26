@@ -1,6 +1,7 @@
 /*
     eArea - a simple web-based text editor
     Copyright (C) 2006  Oliver Moran
+    Major modifications by Alexander Hixon <hixon.alexander@mediati.org>
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
