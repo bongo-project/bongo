@@ -1,3 +1,8 @@
+/*
+    "Fiction writing is great, you can make up almost
+    anything."                         -- Ivana Trump
+*/
+
 Dragonfly.Mail.Composer = function (parent, msg)
 {
     var d = Dragonfly;
@@ -85,6 +90,8 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
 
     return msg;
 };
+
+Dragonfly.Mail.Composer.uploads = 0;
 
 Dragonfly.Mail.Composer.prototype = { };
 
@@ -292,7 +299,7 @@ Dragonfly.Mail.Composer.prototype.hasChanges = function (msg)
 
 Dragonfly.Mail.Composer.prototype.updateTitle = function (evt)
 {
-    if (this.subject.value == "")
+    if (this.subject.value == "" || this.subject.value == _('Untitled'))
     {
         document.title = _('(untitled)') + ' - ' + _('Composing:') + ' ' + Dragonfly.title;
     }
@@ -323,6 +330,17 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
         return true;
+    }
+    
+    if (msg.body.toLower().indexOf("attached") > -1 && c.uploads == 0 && msg.subject.toLower().indexOf("Re:") == -1)
+    {
+        // Looks like the user probably wanted to upload something, but hasn't - and it's not a reply (we can't
+        // check replies vs normal message body content properly at the moment. =/
+        
+        if (!confirm(_("You have mentioned 'attaching' something in your email, but you haven't actually gone and attached any files.") + "\n\n" + _("Press OK to send your email anyway.")))
+        {
+            return true;
+        }
     }
 
     this.state = c.Saving;
@@ -907,6 +925,7 @@ Dragonfly.Mail.AttachmentForm.prototype.frameLoad = function (evt)
 
     // ignore first load
     if (!$(this.fileId).value) {
+        d.Mail.Composer.uploads = 0;
         return;
     }
 
@@ -933,6 +952,7 @@ Dragonfly.Mail.AttachmentForm.prototype.frameLoad = function (evt)
     this.attachmentId = jsob.attachId;
     this.mimeType = jsob.mimeType;
     Element.setHTML (this.labelId, [ d.escapeHTML (this.attachmentId), ' (', d.escapeHTML (jsob.mimeType), ')' ]);
+    d.Mail.Composer.uploads++;
     this.uploadComplete.callback ();
 };
 
@@ -961,70 +981,4 @@ Dragonfly.Mail.AttachmentForm.prototype.remove = function (evt)
         d.HtmlZone.remove (this.id, this);
         removeElement (this.id);
     }
-};
-
-/* *** */
-Dragonfly.Mail.AttachmentTester = function ()
-{
-    var d = Dragonfly;
-
-    this.userId = d.nextId ('user');
-    this.passId = d.nextId ('pass');
-    this.convElemId = d.nextId ('convid');
-    this.msgElemId = d.nextId ('msgid');
-    this.actionId = d.nextId ('action');
-
-    d.Mail.AttachmentForm.apply (this, arguments);
-};
-
-Dragonfly.Mail.AttachmentTester.prototype = new Dragonfly.Mail.AttachmentForm;
-
-Dragonfly.Mail.AttachmentTester.prototype.buildHtml = function (html)
-{
-    var d = Dragonfly;
-    html.push ('username: <input id="', this.userId, '"> ',
-               'password: <input id="', this.passId, '" type="password"> ',
-               'conversation: <input id="', this.convElemId, '"> ',
-               'message: <input id="', this.msgElemId, '">');
-    d.Mail.AttachmentForm.prototype.buildHtml.apply (this, arguments);
-    html.push ('action: <span id="', this.actionId, '></span>');
-};
-
-Dragonfly.Mail.AttachmentTester.prototype.connectHtml = function (elem)
-{
-    var d = Dragonfly;
-
-    Event.observe (this.userId, 'change',
-                   this.updateCreds.bindAsEventListener (this));
-
-    Event.observe (this.passId, 'change',
-                   this.updateCreds.bindAsEventListener (this));
-
-    Event.observe (this.convElemId, 'change',
-                   this.updateAction.bindAsEventListener (this));
-
-    Event.observe (this.msgElemId, 'change',
-                   this.updateAction.bindAsEventListener (this));
-
-    d.Mail.AttachmentForm.prototype.connectHtml.apply (this, arguments);
-};
-
-Dragonfly.Mail.AttachmentTester.prototype.updateAction = function (evt)
-{
-    var d = Dragonfly;
-
-    this.msgId = $(this.msgElemId).value;
-    this.convId = $(this.convElemId).value;
-
-    this.updateUrl();
-    Element.setHTML (this.actionId, d.escapeHTML ($(this.formId).action));
-};
-
-Dragonfly.Mail.AttachmentTester.prototype.updateCreds = function (evt)
-{
-    var d = Dragonfly;
-
-    d.userName = $(this.userId).value;
-    d.authToken = btoa($(this.userId).value + ':' + $(this.passId).value);
-    this.updateAction();
 };

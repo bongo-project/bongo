@@ -136,7 +136,7 @@ Dragonfly.Mail.Preferences.wantsHtmlComposer = function()
 Dragonfly.Mail.Preferences.getComposerWidth = function()
 {
     var p = Dragonfly.Preferences;
-    return p.prefs.composer.lineWidth;
+    return p.prefs.composer.lineWidth || 80;
 };
 
 Dragonfly.Mail.Preferences.getAutoBcc = function ()
