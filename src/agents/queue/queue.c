@@ -65,28 +65,14 @@ static int HandleDSN(FILE *data, FILE *control);
 
 #define MAX_CHARS_IN_PDBSEARCH    512
 
-/* File open check. Warns if the handle is already in use, and tries to close that file.
- * Any FILE * pointers should therefore be NULL before use, otherwise it triggers a false
- * alarm
- */
-
 #define FOPEN_CHECK(handle, path, mode) fopen_check(&(handle), (path), (mode), __LINE__)
 FILE *
 fopen_check(FILE **handle, char *path, char *mode, int line)
 {
-    int ret;
-    if (*handle != NULL) {
-        LogFailureF("File handle already open on line %d", line);
-        ret = fclose(*handle);
-        LogAssertF(ret == 0, "Couldn't close dangling file handle from line %d", line);
-    }
+    LogAssertF(*handle == NULL, "File handle already open on line %d", line);
     *handle = fopen(path, mode);
-    // LogFailureF("File open: %s, handle %ld", path, *handle);
     return *handle;
 }
-
-/* File close check. Warns if it cannot close the file, and sets the file handle to NULL
- */
 
 #define FCLOSE_CHECK(f) fclose_check(&(f), __LINE__)
 int
@@ -95,7 +81,6 @@ fclose_check(FILE **fh, int line)
     int ret;
     ret = fclose(*fh);
     if (ret == 0) {
-        // LogFailureF("File close: handle %ld", *fh);
         *fh = NULL;
     } else {
         LogFailureF("File close failed on line %d: %d", line, errno);
@@ -337,12 +322,12 @@ UpdatePushClientsRegistered(void)
 static void
 WriteQAgents(void) 
 {
-    FILE *handle = NULL;
+    FILE *handle;
 
-    FOPEN_CHECK(handle, Conf.queueClientsPath, "wb");
+    handle = fopen(Conf.queueClientsPath, "wb");
     if (handle) {
         fwrite(Queue.pushClients.array, sizeof(QueuePushClient), Queue.pushClients.count, handle);
-        FCLOSE_CHECK(handle);
+        fclose(handle);
     }
 }
 
@@ -735,12 +720,11 @@ StartOver:
             FOPEN_CHECK(newFH, path, "wb");
 
             sprintf(path, "%s/c%s.%03d",Conf.spoolPath, entry, queue);
-            FOPEN_CHECK(temp, path, "rb");
             if (newFH 
                     && (stat(path, &sb) == 0) 
                     && (sb.st_size > 8) 
                     && ((qEnvelope = (unsigned char *)MemMalloc(sb.st_size + 1)) != NULL) 
-                    && (temp) 
+                    && ((temp = fopen(path, "rb")) != NULL) 
                     && (fread(qEnvelope, sizeof(unsigned char), sb.st_size, temp) == (size_t)sb.st_size)) {
                 /* Sort the control file as follows:
                     QUEUE_DATE
@@ -757,7 +741,8 @@ StartOver:
                     QUEUE_RECIP_REMOTE
                     QUEUE_THIRD_PARTY
                 */
-                FCLOSE_CHECK(temp);
+                fclose(temp);
+
                 qEnvelope[sb.st_size] = '\0';
 
                 count = 0;
@@ -987,10 +972,6 @@ StartOver:
                 RENAME_CHECK(path2, path);
 
                 break;
-            }
-            if (temp) { 
-                // this might be left over when the if() above fails
-                FCLOSE_CHECK(temp); 
             }
 
             if (!newFH) { 
@@ -1668,7 +1649,7 @@ StartOver:
                     XplConsolePrintf("bongoqueue: Last command:%s\r\n", client->buffer);
                 }
 
-                FCLOSE_CHECK(client->entry.work);
+                fclose(client->entry.work);
                 client->entry.work = NULL;
 
                 sprintf(client->path,"%s/w%s.%03d", Conf.spoolPath, entry, queue);
@@ -2474,8 +2455,8 @@ HandleDSN(FILE *data, FILE *control)
     unsigned long id;
     unsigned long *idLock;
     unsigned char path[XPL_MAX_PATH + 1];
-    FILE *rtsControl = NULL;
-    FILE *rtsData = NULL;
+    FILE *rtsControl;
+    FILE *rtsData;
     XplThreadID threadID;
 
     XplMutexLock(Queue.queueIDLock);
@@ -2485,7 +2466,7 @@ HandleDSN(FILE *data, FILE *control)
     sprintf(path, "%s/c%07lx.%03d", Conf.spoolPath, id, Q_INCOMING);
 
     /* Create control file */
-    FOPEN_CHECK(rtsControl, path,"wb");
+    rtsControl = fopen(path,"wb");
     if (!rtsControl) {
         fprintf (stderr, "could not open rtsControl\n");
         return -1;
@@ -2495,18 +2476,18 @@ HandleDSN(FILE *data, FILE *control)
 
     /* Create data file */
     sprintf(path, "%s/d%07lx.msg", Conf.spoolPath, id);
-    FOPEN_CHECK(rtsData, path, "wb");
+    rtsData = fopen(path, "wb");
     if (!rtsData) {
         fprintf (stderr, "could not open rtsData\n");
-        FCLOSE_CHECK(rtsControl);
+        fclose(rtsControl);
         sprintf(path, "%s/d%07lx.msg", Conf.spoolPath, id);
         UNLINK_CHECK(path);
         return -1;
     }
 
     if (!CreateDSNMessage(data, control, rtsData, rtsControl, FALSE)) {
-        FCLOSE_CHECK(rtsControl);
-        FCLOSE_CHECK(rtsData);
+        fclose(rtsControl);
+        fclose(rtsData);
 
         sprintf(path, "%s/d%07lx.msg", Conf.spoolPath, id);
         UNLINK_CHECK(path);
@@ -2520,8 +2501,8 @@ HandleDSN(FILE *data, FILE *control)
 
     XplSafeIncrement(Queue.queuedLocal);
 
-    FCLOSE_CHECK(rtsControl);
-    FCLOSE_CHECK(rtsData);
+    fclose(rtsControl);
+    fclose(rtsData);
 
     SpoolEntryIDUnlock(idLock);
     sprintf(path, "%03d%lx",Q_INCOMING, id);
@@ -2693,8 +2674,8 @@ CreateQueueThreads(BOOL failed)
     unsigned long total;
     unsigned long current;
     unsigned char path[XPL_MAX_PATH + 1];
-    FILE *control = NULL;
-    FILE *killFile = NULL;
+    FILE *control;
+    FILE *killFile;
     XplDir *dirP;
     XplDir *dirEntry;
     XplThreadID id;
@@ -2717,7 +2698,7 @@ CreateQueueThreads(BOOL failed)
     dirP = XplOpenDir(path);
 
     sprintf(path, "%s/fragfile", MsgGetDBFDir(NULL));
-    FOPEN_CHECK(killFile, path, "wb");
+    killFile = fopen(path, "wb");
     if (!killFile) {
         if (dirP) {
             XplCloseDir(dirP);
@@ -2835,7 +2816,7 @@ CreateQueueThreads(BOOL failed)
     dirP = XplOpenDir(path);
 
     if (killFile) {
-        FCLOSE_CHECK(killFile);
+        fclose(killFile);
         killFile=NULL;
     }
 
@@ -2844,7 +2825,7 @@ CreateQueueThreads(BOOL failed)
 #endif
 
     sprintf(path, "%s/fragfile", MsgGetDBFDir(NULL));
-    FOPEN_CHECK(killFile, path, "rb");
+    killFile=fopen(path, "rb");
     if (!killFile) {
         XplConsolePrintf("bongoqueue: Could not re-open killfile.\r\n");
     } else {
@@ -2858,7 +2839,7 @@ CreateQueueThreads(BOOL failed)
             }
         }
 
-        FCLOSE_CHECK(killFile);
+        fclose(killFile);
     }
 
     sprintf(path, "%s/killfile", MsgGetDBFDir(NULL));
@@ -2885,14 +2866,14 @@ CreateQueueThreads(BOOL failed)
                 current++;
                 if ((dirEntry->d_nameDOS[0] & 0xDF) == 'C' ) {
                     sprintf(path, "%s/c%s", Conf.spoolPath, dirEntry->d_nameDOS + 1);
-                    FOPEN_CHECK(control, path, "r+b");
+                    control = fopen(path, "r+b");
                     if (!control) {
                         continue;
                     }
 
                     fseek(control, dirEntry->d_size - 2, SEEK_SET);
                     fwrite("\r\n", 2, 1, control);
-                    FCLOSE_CHECK(control);
+                    fclose(control);
                 }
             }
 
@@ -2925,7 +2906,7 @@ CommandQaddm(void *param)
     unsigned char *ptr;
     unsigned char *ptr2;
     struct stat sb;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     if (Agent.flags & QUEUE_AGENT_DISK_SPACE_LOW) {
@@ -2966,10 +2947,7 @@ CommandQaddm(void *param)
     result = DELIVER_FAILURE;
     
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr);
-    if (stat(client->path, &sb) == 0) {
-        FOPEN_CHECK(data, client->path, "rb");
-    }
-    if (data) {
+    if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
         NMAPConnections list = { 0, };
         struct sockaddr_in saddr;
         MDBValueStruct *vs;
@@ -2986,7 +2964,7 @@ CommandQaddm(void *param)
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
     data = NULL;
 
     if (result==DELIVER_SUCCESS) {
@@ -3009,7 +2987,7 @@ CommandQaddq(void *param)
     unsigned char *ptr;
     unsigned char *ptr2;
     unsigned char *ptr3;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     start = 0;
@@ -3051,7 +3029,7 @@ CommandQaddq(void *param)
     LockQueueEntry(ptr+4, atoi(ptr)); */
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    FOPEN_CHECK(data, client->path, "rb");
+    data = fopen(client->path, "rb");
     if (data) {
         fseek(data, start, SEEK_SET);
     } else {
@@ -3073,7 +3051,7 @@ CommandQaddq(void *param)
         }
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
 
     /* fixme - UnlockQueueEntry
     UnlockQueueEntry(ptr+4, atoi(ptr)); */
@@ -3088,7 +3066,7 @@ CommandQabrt(void *param)
     QueueClient *client = (QueueClient *)param;
 
     if (client->entry.control) {
-        FCLOSE_CHECK(client->entry.control);
+        fclose(client->entry.control);
         client->entry.control = NULL;
         
         sprintf(client->path,"%s/c%07lx.in", Conf.spoolPath, client->entry.id);
@@ -3096,14 +3074,14 @@ CommandQabrt(void *param)
     }
     
     if (client->entry.data) {
-        FCLOSE_CHECK(client->entry.data);
+        fclose(client->entry.data);
         client->entry.data = NULL;
         
         sprintf(client->path,"%s/d%07lx.msg",Conf.spoolPath, client->entry.id);
         UNLINK_CHECK(client->path);
     }
     if (client->entry.work) {
-        FCLOSE_CHECK(client->entry.work);
+        fclose(client->entry.work);
         client->entry.work = NULL;
         
         if (client->entry.workQueue[0] != '\0') {
@@ -3125,7 +3103,7 @@ CommandQbody(void *param)
     unsigned long count = 0;
     unsigned char *ptr;
     struct stat sb;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 5;
@@ -3144,10 +3122,7 @@ CommandQbody(void *param)
     }
 
     sprintf(client->path,"%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    if (stat(client->path, &sb) == 0) {
-        FOPEN_CHECK(data, client->path, "rb");
-    }
-    if (data) {
+    if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
                 /* Note that for the QBODY command we count the blank line, unlike in QHEAD */
@@ -3165,7 +3140,7 @@ CommandQbody(void *param)
             ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
         }
 
-        FCLOSE_CHECK(data);
+        fclose(data);
     } else {
         ccode = ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1);
     }
@@ -3184,7 +3159,7 @@ CommandQbraw(void *param)
     unsigned char *ptr2;
     unsigned char *ptr3;
     struct stat sb;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 5;
@@ -3211,10 +3186,7 @@ CommandQbraw(void *param)
     }
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    if (stat(client->path, &sb) == 0) {
-        FOPEN_CHECK(data, client->path, "rb");
-    }
-    if (data) {
+    if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
                 count += strlen(client->line);
@@ -3242,7 +3214,7 @@ CommandQbraw(void *param)
         ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
 
     return(ccode);
 }
@@ -3255,7 +3227,7 @@ CommandQcopy(void *param)
     unsigned long target;
     unsigned char *ptr;
     unsigned char *ptr2;
-    FILE *source = NULL;
+    FILE *source;
     QueueClient *client = (QueueClient *)param;
 
     if (client->entry.data || client->entry.control) {
@@ -3305,7 +3277,7 @@ CommandQcopy(void *param)
     /* fixme - LockQueueEntry?
     LockQueueEntry(ptr+4, atoi(ptr)); */
     sprintf(client->path, "%s/d%s.msg",Conf.spoolPath, ptr + 4);
-    FOPEN_CHECK(source, client->path, "rb");
+    source = fopen(client->path, "rb");
     if (source) {
         XplMutexLock(Queue.queueIDLock);
         id = Queue.queueID++ & ((1 << 28) - 1);
@@ -3320,17 +3292,17 @@ CommandQcopy(void *param)
     client->entry.id = id;
 
     sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
-    FOPEN_CHECK(client->entry.control, client->path, "wb");
+    client->entry.control = fopen(client->path, "wb");
     if (client->entry.control) {
         fprintf(client->entry.control, QUEUES_DATE"%lu\r\n", time(NULL));
     } else {
-        FCLOSE_CHECK(source);
+        fclose(source);
 
         return(ConnWrite(client->conn, MSG5221SPACELOW, sizeof(MSG5221SPACELOW) - 1));
     }
 
     sprintf(client->path, "%s/d%07lx.msg", Conf.spoolPath, id);
-    FOPEN_CHECK(client->entry.data, client->path, "wb");
+    client->entry.data = fopen(client->path, "wb");
 
     while (!feof(source) && !ferror(source)) {
         len = fread(client->line, sizeof(unsigned char), CONN_BUFSIZE, source);
@@ -3339,7 +3311,7 @@ CommandQcopy(void *param)
         }
     }
 
-    FCLOSE_CHECK(source);
+    fclose(source);
 
     /* fixme - UnlockQueueEntry?
     UnlockQueueEntry(ptr+4, atoi(ptr)); */
@@ -3385,7 +3357,7 @@ CommandQcrea(void *param)
     XplMutexUnlock(Queue.queueIDLock);
 
     sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
-    FOPEN_CHECK(client->entry.control, client->path, "wb");
+    client->entry.control = fopen(client->path, "wb");
     if (client->entry.control) {
         fprintf(client->entry.control, QUEUES_DATE"%lu\r\n", time(NULL));
     } else {
@@ -3393,11 +3365,11 @@ CommandQcrea(void *param)
     }
 
     sprintf(client->path, "%s/d%07lx.msg", Conf.spoolPath, id);
-    FOPEN_CHECK(client->entry.data, client->path, "wb");
+    client->entry.data = fopen(client->path, "wb");
     if (client->entry.data) {
         client->entry.id = id;
     } else {
-        FCLOSE_CHECK(client->entry.control);
+        fclose(client->entry.control);
         sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
         UNLINK_CHECK(client->path);
 
@@ -3460,7 +3432,7 @@ CommandQdone(void *param)
     /* QDONE */
     
     if (client->entry.work) {
-        FCLOSE_CHECK(client->entry.work);
+        fclose(client->entry.work);
         client->entry.work = NULL;
         if (client->entry.workQueue[0] != '\0') {
             sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
@@ -3521,7 +3493,7 @@ CommandQgrep(void *param)
     char *field;
     unsigned char *ptr;
     BOOL found = FALSE;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 5;
@@ -3543,7 +3515,7 @@ CommandQgrep(void *param)
     }
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    FOPEN_CHECK(data, client->path, "rb");
+    data = fopen(client->path, "rb");
     if (data) {
         length = strlen(field);
     } else {
@@ -3576,7 +3548,7 @@ CommandQgrep(void *param)
         }
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
 
     if (ccode != -1) {
         ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
@@ -3591,7 +3563,7 @@ CommandQhead(void *param)
     int ccode;
     unsigned long count = 0;
     unsigned char *ptr;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 5;
@@ -3611,7 +3583,7 @@ CommandQhead(void *param)
     }
 
     sprintf(client->path,"%s/d%s.msg", Conf.spoolPath, ptr+4);
-    FOPEN_CHECK(data, client->path, "rb");
+    data = fopen(client->path, "rb");
     if (data) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
@@ -3634,7 +3606,7 @@ CommandQhead(void *param)
         ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
 
     return(ccode);
 }
@@ -3645,7 +3617,7 @@ CommandQinfo(void *param)
     unsigned long count = 0;
     unsigned char *ptr;
     struct stat sb;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 5;
@@ -3665,10 +3637,7 @@ CommandQinfo(void *param)
     }
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    if (stat(client->path, &sb) == 0) {
-        FOPEN_CHECK(data, client->path, "rb");
-    }
-    if (data) {
+    if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
                 if ((client->line[0] != '\r') || (client->line[1] != '\n')) {
@@ -3683,7 +3652,7 @@ CommandQinfo(void *param)
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
 
     return(ConnWriteF(client->conn, "2001 %s-%s %lu %lu %lu 0 0 0 0\r\n",
         ptr, ptr + 4, /* ID */
@@ -3702,7 +3671,7 @@ CommandQmodFrom(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -3727,7 +3696,7 @@ CommandQmodFlags(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -3752,7 +3721,7 @@ CommandQmodLocal(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -3777,7 +3746,7 @@ CommandQmodMailbox(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -3802,7 +3771,7 @@ CommandQmodRaw(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -3827,7 +3796,7 @@ CommandQmodTo(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -3850,7 +3819,7 @@ CommandQmime(void *param)
     unsigned long i;
     unsigned char *ptr;
     struct stat sb;
-    FILE *data = NULL;
+    FILE *data;
     MIMEReportStruct *report;
     QueueClient *client = (QueueClient *)param;
 
@@ -3873,10 +3842,7 @@ CommandQmime(void *param)
     if (!client->entry.report) {
         /* Find the message size */
         sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-        if (stat(client->path, &sb) == 0) {
-            FOPEN_CHECK(data, client->path, "rb");
-        }
-        if (data) {
+        if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
             /* Find the start of the body */
             while (!feof(data) && !ferror(data)) {
                 if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
@@ -3912,7 +3878,7 @@ CommandQmime(void *param)
                 ccode = ConnWrite(client->conn, MSG5230NOMEMORYERR, sizeof(MSG5230NOMEMORYERR) - 1);
             }
 
-            FCLOSE_CHECK(data);
+            fclose(data);
         } else {
             ccode = ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1);
         }
@@ -3975,16 +3941,16 @@ CommandQrcp(void *param)
     unsigned long id;
     unsigned char *ptr;
     unsigned char path[XPL_MAX_PATH + 1];
-    FILE *source = NULL;
+    FILE *source;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 4;
 
     if (client->entry.control && client->entry.data && client->entry.id) {
-        FCLOSE_CHECK(client->entry.data);
+        fclose(client->entry.data);
         client->entry.data = NULL;
 
-        FCLOSE_CHECK(client->entry.control);
+        fclose(client->entry.control);
         client->entry.control = NULL;
     } else {
         return(ConnWrite(client->conn, MSG4000CANTUNLOCKENTRY, sizeof(MSG4000CANTUNLOCKENTRY) - 1));
@@ -4004,15 +3970,15 @@ CommandQrcp(void *param)
     }
 
     sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
-    FOPEN_CHECK(client->entry.control, client->path,"wb");
+    client->entry.control = fopen(client->path,"wb");
     if (client->entry.control) {
         fprintf(client->entry.control, QUEUES_DATE"%lu\r\n", time(NULL));
 
         sprintf(client->path, "%s/d%07lx.msg", Conf.spoolPath, id);
-        FOPEN_CHECK(client->entry.data, client->path, "wb");
+        client->entry.data = fopen(client->path, "wb");
         if (client->entry.data) {
             sprintf(client->path, "%s/d%07lx.msg", Conf.spoolPath, client->entry.id);
-            FOPEN_CHECK(source, client->path, "rb");
+            source = fopen(client->path, "rb");
 
             while (!feof(source) && !ferror(source)) {
                 ccode = fread(client->line, sizeof(unsigned char), CONN_BUFSIZE, source);
@@ -4021,7 +3987,7 @@ CommandQrcp(void *param)
                 }
             }
 
-            FCLOSE_CHECK(source);
+            fclose(source);
 
             sprintf(client->path,"%s/c%07lx.in",Conf.spoolPath, client->entry.id);
             sprintf(path, "%s/c%07lx.%03ld", Conf.spoolPath, client->entry.id, client->entry.target);
@@ -4050,7 +4016,7 @@ CommandQrcp(void *param)
             return(ccode);
         }
 
-        FCLOSE_CHECK(client->entry.control);
+        fclose(client->entry.control);
         client->entry.control = NULL;
 
         sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, id);
@@ -4058,21 +4024,21 @@ CommandQrcp(void *param)
     }
 
     sprintf(client->path, "%s/c%07lx.in", Conf.spoolPath, client->entry.id);
-    FOPEN_CHECK(client->entry.control, path, "a+b");
+    client->entry.control = fopen(path, "a+b");
 
     sprintf(client->path,"%s/d%07lx.msg", Conf.spoolPath, client->entry.id);
-    FOPEN_CHECK(client->entry.data, path, "a+b");
+    client->entry.data = fopen(path, "a+b");
 
     if (client->entry.data && client->entry.control) {
         ccode = ConnWrite(client->conn, "1000 Didn't copy; keeping the old entry\r\n", 41);
     } else {
         if (client->entry.data) {
-            FCLOSE_CHECK(client->entry.data);
+            fclose(client->entry.data);
             client->entry.data = NULL;
         }
 
         if (client->entry.control) {
-            FCLOSE_CHECK(client->entry.control);
+            fclose(client->entry.control);
             client->entry.data = NULL;
         }
 
@@ -4114,23 +4080,26 @@ CommandQretr(void *param)
 
     if (XplStrCaseCmp(ptr2, "INFO") == 0) {
         sprintf(client->path, "%s/c07%s.%s", Conf.spoolPath, ptr + 4, ptr);
-        if ((stat(client->path, &sb) == 0) && sb.st_size) {
-            FOPEN_CHECK(data, client->path, "rb");
-        }
-        if (data) {
+        if ((stat(client->path, &sb) == 0) 
+                && ((data = fopen(client->path, "rb")) != NULL) 
+                && sb.st_size) {
             ccode = ConnWriteF(client->conn, "2022 %lu Info follows\r\n", sb.st_size);
-            FCLOSE_CHECK(data);
         } else {
+            if (data) {
+                fclose(data);
+            }
+
             return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
         }
     } else if (XplStrCaseCmp(ptr2, "MESSAGE") == 0) {
         sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-        if (stat(client->path, &sb) == 0) {
-            FOPEN_CHECK(data, client->path, "rb");
-        }
-        if (data) {
+        if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
             ccode = ConnWriteF(client->conn, "2023 %lu Message follows\r\n", sb.st_size);
         } else {
+            if (data) {
+                fclose(data);
+            }
+
             return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
         }
     } else {
@@ -4142,7 +4111,7 @@ CommandQretr(void *param)
         ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
     }
 
-    FCLOSE_CHECK(data);
+    fclose(data);
 
     return(ccode);
 }
@@ -4165,7 +4134,7 @@ CommandQrts(void *param)
 
     if (!client->entry.work) {
         sprintf(client->path, "%s/w%s.%s", Conf.spoolPath, client->entry.workQueue + 4, client->entry.workQueue);
-        FOPEN_CHECK(client->entry.work, client->path, "wb");
+        client->entry.work = fopen(client->path, "wb");
         if (!client->entry.work) {
             return(0);
         }
@@ -4201,10 +4170,10 @@ CommandQrun(void *param)
     /* QRUN[ <queue>-<id>] */
     if (*ptr == '\0') {
         if (client->entry.control && client->entry.data && client->entry.id) {
-            FCLOSE_CHECK(client->entry.data);
+            fclose(client->entry.data);
             client->entry.data = NULL;
 
-            FCLOSE_CHECK(client->entry.control);
+            fclose(client->entry.control);
             client->entry.control = NULL;
         } else {
             return(ConnWrite(client->conn, MSG4000CANTUNLOCKENTRY, sizeof(MSG4000CANTUNLOCKENTRY) - 1));
@@ -4314,7 +4283,7 @@ CommandQsrchHeader(void *param)
     unsigned char *ptr;
     BOOL fieldFound=FALSE;
     BOOL contentFound=FALSE;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 12;
@@ -4346,7 +4315,7 @@ CommandQsrchHeader(void *param)
 
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    FOPEN_CHECK(data, client->path, "rb");
+    data = fopen(client->path, "rb");
     if (data) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
@@ -4382,7 +4351,7 @@ CommandQsrchHeader(void *param)
             }
         }
 
-        FCLOSE_CHECK(data);
+        fclose(data);
     } else {
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
@@ -4404,7 +4373,7 @@ CommandQsrchBody(void *param)
     char *content;
     unsigned char *ptr;
     BOOL found = FALSE;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 10;
@@ -4429,7 +4398,7 @@ CommandQsrchBody(void *param)
     }
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    FOPEN_CHECK(data, client->path, "rb");
+    data = fopen(client->path, "rb");
     if (data) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
@@ -4452,7 +4421,7 @@ CommandQsrchBody(void *param)
             }
         }
 
-        FCLOSE_CHECK(data);
+        fclose(data);
     } else {
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
@@ -4480,7 +4449,7 @@ CommandQsrchBraw(void *param)
     unsigned char *endPtr;
     unsigned char *content;
     BOOL found = FALSE;
-    FILE *data = NULL;
+    FILE *data;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 10;
@@ -4515,7 +4484,7 @@ CommandQsrchBraw(void *param)
     }
 
     sprintf(client->path, "%s/d%s.msg", Conf.spoolPath, ptr + 4);
-    FOPEN_CHECK(data, client->path, "rb");
+    data = fopen(client->path, "rb");
     if (data) {
         while (!feof(data) && !ferror(data)) {
             if (fgets(client->line, CONN_BUFSIZE, data) != NULL) {
@@ -4551,7 +4520,7 @@ CommandQsrchBraw(void *param)
 
         }
 
-        FCLOSE_CHECK(data);
+        fclose(data);
     } else {
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
