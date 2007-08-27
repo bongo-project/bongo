@@ -222,7 +222,7 @@ MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt
 	}
 
 	while (count--) {
-		switch (sqlite3_prepare(handle->db, statement, -1, &stmt->stmt, NULL)) {
+		switch (sqlite3_prepare_v2(handle->db, statement, -1, &stmt->stmt, NULL)) {
 			case SQLITE_OK:
 				return stmt;
 			case SQLITE_BUSY:

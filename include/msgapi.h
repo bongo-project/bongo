@@ -36,6 +36,7 @@ EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
 EXPORT BOOL MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword);
 EXPORT BOOL MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
 EXPORT int  MsgAuthInitDB(void);
+EXPORT BOOL MsgAuthAddUser(const char *user);
 
 // Auth / cookie functions
 
@@ -61,9 +62,9 @@ typedef struct _MsgSQLHandle {
 	sqlite3 *db;
 	struct { 
 		/* NOTE: begin and end must be the first and last stmts (see DStoreClose()) */
-        	MsgSQLStatement begin;
+		MsgSQLStatement begin;
 		MsgSQLStatement abort;
-        	MsgSQLStatement end;
+		MsgSQLStatement end;
 	} stmts;
 
 	BongoMemStack *memstack;

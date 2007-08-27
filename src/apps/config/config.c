@@ -33,9 +33,10 @@ usage(void) {
 		"  -v, --verbose                   verbose output\n"
 		"  -s, --silent                    non-interactive mode\n\n"
 		"Commands:\n"
+		"  add-user <user>                 add a user to the systen\n"
 		"  install                         do the initial Bongo install\n"
 		"  crypto                          regenerate data needed for encryption\n"
-                "  checkversion                    see if a newer Bongo is available\n" 
+		"  checkversion                    see if a newer Bongo is available\n" 
 		"  tzcache                         regenerate cached timezone information\n"
 		"";
 
@@ -466,24 +467,33 @@ GenerateCryptoData() {
 
 void
 CheckVersion() {
-        int current_version, available_version;
+	int current_version, available_version;
 	BOOL custom_version;
 
-	
 	if (!MsgGetBuildVersion(&current_version, &custom_version)) {
-		printf(_("Can't get information on current build!\n"));
+		XplConsolePrintf(_("Can't get information on current build!\n"));
 		return;
 	} else {
-		printf(_("Installed build: %s %s%d\n"), BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
+		XplConsolePrintf(_("Installed build: %s %s%d\n"), BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
 		if (custom_version)
-			printf(_("This is modified software.\n"));
+			XplConsolePrintf(_("This is modified software.\n"));
 	}
 	if (!MsgGetAvailableVersion(&available_version)) {
-		printf(_("Version currently available: unable to request online information.\n"));
+		XplConsolePrintf(_("Version currently available: unable to request online information.\n"));
 	} else {
-		printf(_("Version currently available: %s%d\n"), BONGO_BUILD_VSTR, available_version);
+		XplConsolePrintf(_("Version currently available: %s%d\n"), BONGO_BUILD_VSTR, available_version);
 	}
 }
+
+void
+AddUser(const char *username) {
+	if (MsgAuthAddUser(username)) {
+		XplConsolePrintf(_("Added user %s\n"), username);
+	} else {
+		XplConsolePrintf(_("Couldn't add user %s\n"), username);
+	}	
+}
+
 
 void
 TzCache() {
@@ -537,6 +547,8 @@ main(int argc, char *argv[]) {
 			command = 3;
 		} else if (!strcmp(argv[next_arg], "tzcache")) {
 			command = 4;
+		} else if (!strcmp(argv[next_arg], "add-user")) {
+			command = 5;
 		} else {
 			printf("Unrecognized command: %s\n", argv[next_arg]);
 		}
@@ -566,6 +578,7 @@ main(int argc, char *argv[]) {
 		RunAsBongoUser();
 	}
 
+	next_arg++;
 	switch(command) {
 		case 1:
 			InitializeDataArea();
@@ -579,6 +592,14 @@ main(int argc, char *argv[]) {
 			break;
 		case 4:
 			TzCache();
+			break;
+		case 5:
+			if (next_arg >= argc) {
+				XplConsolePrintf(_("USAGE : add-user <username>\n"));
+			} else {
+				char *username = argv[next_arg];
+				AddUser(username);
+			}
 			break;
 		default:
 			break;

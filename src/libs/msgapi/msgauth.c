@@ -19,6 +19,7 @@
 typedef struct { 
 	MsgSQLStatement find_user;
 	MsgSQLStatement auth_user;
+	MsgSQLStatement add_user;
 } MsgAuthStatements;
 
 MsgAuthStatements msgauth_stmts;
@@ -155,6 +156,36 @@ MsgAuthVerifyPassword(const char *user, const char *password)
 	if (users == 1) return TRUE;
 	
 	return FALSE;
+}
+
+/* "Write" functions below */
+
+/**
+ * Add a user to the database. 
+ * \param	user	Username to add
+ * \return		True if the addition was successful
+ */
+BOOL
+MsgAuthAddUser(const char *user)
+{
+	MsgSQLStatement *stmt;
+	char path[XPL_MAX_PATH + 1];
+	MsgSQLHandle *handle;
+	
+	MsgAuthDBPath(&path, XPL_MAX_PATH);
+	handle = MsgSQLOpen(path, NULL, 1000);
+	if (NULL == handle) return FALSE;
+	
+	stmt = MsgSQLPrepare (handle, "INSERT INTO users (username) VALUES (?);",
+		&msgauth_stmts.add_user);
+		
+	if (MsgSQLBindString(stmt, 1, user, TRUE)) return 0;
+	if (MsgSQLExecute(handle, stmt)) return 0;
+	
+	MsgSQLFinalize(stmt);
+	MsgSQLClose(handle);
+	
+	return TRUE;
 }
 
 /**

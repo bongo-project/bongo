@@ -35,6 +35,7 @@ void	InitialStoreConfiguration(void);
 void    GetInteractiveData(char *description, char **data, char *def);
 BOOL	GenerateCryptoData(void);
 void	CheckVersion(void);
+void	AddUser(const char *username);
 void	TzCache(void);
 
 /* compat with older gnutls */
