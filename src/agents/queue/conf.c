@@ -196,7 +196,7 @@ ReadConfiguration (BOOL *recover)
 		BongoJsonNode *node;
 		struct _AliasStruct *a = MemMalloc(sizeof(AliasStruct));
 
-		a->original = BongoArrayIndex(Conf.hostedDomains, unsigned char *, x);
+		a->original = MemStrdup(BongoArrayIndex(Conf.hostedDomains, unsigned char *, x));
 		a->to = NULL;
 		a->aliases = NULL;
 
@@ -205,7 +205,7 @@ ReadConfiguration (BOOL *recover)
 			if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
 				BongoJsonObject *obj;
 
-				BongoJsonJPathGetString(node, "o:domainalias/s", &(char *)(a->to));
+				BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a->to));
 
 				/* now get any specific aliases */
 				if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
@@ -220,7 +220,7 @@ ReadConfiguration (BOOL *recover)
 						 * 	I'd need to parse the to and append the domain if none exists
 						 */
 						struct _AliasStruct *b = MemMalloc(sizeof(AliasStruct));
-						b->original = strdup(iter.key);
+						b->original = MemStrdup(iter.key);
 						b->to = MemStrdup(BongoJsonNodeAsString(iter.value));
 						b->aliases = NULL;
 
