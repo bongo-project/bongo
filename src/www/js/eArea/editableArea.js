@@ -68,24 +68,15 @@ function insertEditableArea(editableAreaName, editableAreaWidth, editableAreaHei
 	return retHTML;
 }
 
-// TODO!
 function stripHTML(d)
 {
-    /*
-    foreach ($tags as $tag){
-        while(preg_match('/<'.$tag.'(|\W[^>]*)>(.*)<\/'. $tag .'>/iusU', $text, $found)){
-            $text = str_replace($found[0],$found[2],$text);
-        }
-    }
-
-    return preg_replace('/(<('.join('|',$tags).')(|\W.*)\/>)/iusU', '', $text);
-    */
-    
-    d = d.replace(/<a[^href]+href=\"([^\"]*)\"[^>]*>/ig,"$1");      // Linkies
-    d = d.replace("<b>", "*");                                      // Vold (that's bold with an accent ;)
-    d = d.replace("<strong>", "*");
-    //d = d.replace("<br />"
-    //d = d.replace(/(<([^>]+)>)/ig, "");                             // Remove the other tags we can't handle.
+    //d = d.replace(/<a[^href]+href=\"([^\"]*)\"[^>]*>/ig,"$1");    // Linkies
+    d = d.replace(/(<b>)/ig, "*");                                  // Vold (that's bold with an accent ;)
+    d = d.replace(/(<strong>)/ig, "*");                             // ^^ - yeah, OK, not funny.
+    d = d.replace(/(\r)/g, "").replace(/(\n)/g, "");                // Clear out old \r and \n
+    d = d.replace(/(<br>)/ig, "\n");                                // Make <br> s placeholders with \n
+    d = d.replace(/(<([^>]+)>)/ig, "");                             // Remove the other tags we can't handle.
+    d = d.replace(/(\n)/g, "<br>");                                 // Convert back <br />
     
     return d;
 }
@@ -148,90 +139,6 @@ function ititButtons(editableAreaName) {
 			kids[i].onclick = buttonOnClick;
 		}
 	}
-}
-
-function makeWrappedTextarea(editableAreaName)
-{
-    // Grab the contents to put in the normal textarea.
-    var contents = editableAreaContents(editableAreaName);
-    var style = "'DejaVu Sans Mono', 'Bitstream Vera Sans Mono', 'Monaco', 'Courier', monospace";
-    
-    // Hide the HTML buttons.
-    // TODO!
-    
-    // Set the style for the inner iframe thing (only on browsers that support designMode, since textarea is already ok)
-    if (window[editableAreaName])
-    {
-        window[editableAreaName].document.body.style.fontFamily = style;
-    }
-    else
-    {
-		document.getElementById(editableAreaName).contentWindow.document.body.style.fontFamily = style;
-    }
-    
-    // Now, loop and fix up wrapping.
-    setEditableAreaContents(editableAreaName, fixWrap(contents, 75));
-    
-    // Setup events to keep wrapping in order.
-    
-}
-
-function fixWrap(msg, lineLength)
-{
-    // Split it into words!
-    msg = msg.split(' ');
-    var currentLine = 0;
-    
-    var rmsg = new Array();
-    
-    for (i=0;i<msg.length;i++)
-    {
-        if (msg[i].length >= lineLength)
-        {
-            // We've got a B-I-G word; split it at lineLength.
-            var offset = 0;
-            var startLine = 0;
-            var extra = 0;
-            for (x=0;x<msg[i].length;x++)
-            {
-                if (offset == lineLength)
-                {
-                    // Split it here!
-                    rmsg.push('<br>' + msg[i].substring(startLine, startLine + offset));
-                    startLine += offset;
-                    offset = 0;
-                    extra += 2;
-                }
-                else
-                {
-                    offset++;
-                }
-            }
-            
-            currentLine = msg[i].length + extra;
-        }
-        else
-        {
-            // Check if adding the new word makes us go over the limit.
-            if ((currentLine + msg[i].length) >= lineLength)
-            {
-                // Uh oh, bad.
-                // Split time!
-                
-                currentLine = msg[i].length + 1;
-                //currentLine = 0;
-                rmsg.push("<br>" + msg[i]);
-            }
-            else
-            {
-                // Word is less than lineLength, handle it normally.
-                rmsg.push(msg[i]);
-                currentLine += msg[i].length + 1;
-            }
-        }
-    }
-    
-    return rmsg.join(' ');
 }
 
 function buttonMouseOver() {

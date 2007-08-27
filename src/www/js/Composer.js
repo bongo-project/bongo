@@ -50,7 +50,7 @@ Dragonfly.Mail.Composer.parseMailto = function (mailto)
     if (p.getSignatureAvailable())
     {
         // Append signature to end of message.
-        defaultbodyHtml = '\n\n-- \n' + p.getSignature();
+        defaultbodyHtml = '<br><br>-- <br>' + p.getSignature();
     }
     
     var msg = { 
@@ -197,6 +197,7 @@ Dragonfly.Mail.Composer.prototype.buildHtml = function (html)
                '<input id="', this.send, '" class="send" type="button" value="', _('Send'), '"></td></tr></table>');
 
     html.addCallback (bind ('connectHtml', this));
+    
     return html;
 };
 
@@ -330,17 +331,6 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     if (!this.hasChanges (msg)) {
         logDebug ('No changes to save');
         return true;
-    }
-    
-    if (msg.body.toLower().indexOf("attached") > -1 && c.uploads == 0 && msg.subject.toLower().indexOf("Re:") == -1)
-    {
-        // Looks like the user probably wanted to upload something, but hasn't - and it's not a reply (we can't
-        // check replies vs normal message body content properly at the moment. =/
-        
-        if (!confirm(_("You have mentioned 'attaching' something in your email, but you haven't actually gone and attached any files.") + "\n\n" + _("Press OK to send your email anyway.")))
-        {
-            return true;
-        }
     }
 
     this.state = c.Saving;
@@ -495,8 +485,26 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
     }
     
     var msg = this.getCurrentMessage ();
+    
+    // Too much programming in other languages is bad for you! :)
+    if (msg.body.toLowerCase().indexOf("attached") > -1 && c.uploads == 0 && msg.subject.toLowerCase().indexOf("Re:") == -1)
+    {
+        // Looks like the user probably wanted to upload something, but hasn't - and it's not a reply (we can't
+        // check replies vs normal message body content properly at the moment. =/)
+        
+        if (!confirm(_("You have mentioned 'attaching' something in your email, but you haven't actually gone and attached any files.") + "\n\n" + _("Press OK to send your email anyway, or click Cancel to continue editing.")))
+        {
+            return true;
+        }
+    }
+    
     if (!this.hasChanges (msg)) {
         msg = null;
+    }
+    
+    if (msg != null && !msg.isHtml)
+    {
+        msg.body = stripHTML(msg.body).replace("<br />", "\n");
     }
         
     var loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 1, 
@@ -667,10 +675,14 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     
     html.set ('conv-msg-list');
     
-    setEditableAreaContents(composer.body, d.escapeHTML (msg.body));
     ititButtons(composer.body);
-    
     d.resizeScrolledView();
+    
+    // TODO!
+    // At the moment, we call this too early, so the editor doesn't fill with the content
+    // we want/need. Therefore, we need call the function later (maybe via callback?), so
+    // we can get the stuff we need.
+    setEditableAreaContents(composer.body, msg.body);
     
     return composer;
 };

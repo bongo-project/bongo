@@ -130,7 +130,7 @@ Dragonfly.Mail.Preferences.setFromAddress = function (address)
 Dragonfly.Mail.Preferences.wantsHtmlComposer = function()
 {
     var p = Dragonfly.Preferences;
-    return p.prefs.composer.messageType == "html";
+    return (p.prefs.composer.messageType || "html") == "html";
 };
 
 Dragonfly.Mail.Preferences.getComposerWidth = function()
