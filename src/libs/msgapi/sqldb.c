@@ -229,9 +229,9 @@ MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt
 				XplDelay(MSGSQL_STMT_SLEEP_MS);
 				continue;
 			default:
-				// FIXME
-				//XplConsolePrintf("SQL Prepare statement \"%s\" failed; %s\r\n", 
-				// statement, sqlite3_errmsg(handle->db));
+				// FIXME: should be logging here.
+				XplConsolePrintf("SQL Prepare statement \"%s\" failed; %s\r\n", 
+					statement, sqlite3_errmsg(handle->db));
 				return NULL;
 		}
 	}
@@ -264,7 +264,7 @@ MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 	if (SQLITE_DONE == result) {
 		return 0;
 	} else {
-		XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+		XplConsolePrintf("Sql (%d): %s\r\n", result, sqlite3_errmsg(handle->db));
 		return -1;
 	}
 }

@@ -33,7 +33,8 @@ usage(void) {
 		"  -v, --verbose                   verbose output\n"
 		"  -s, --silent                    non-interactive mode\n\n"
 		"Commands:\n"
-		"  add-user <user>                 add a user to the systen\n"
+		"  user add <user>                 add a user to the systen\n"
+		"  user password <user>            set the password of a user\n"
 		"  install                         do the initial Bongo install\n"
 		"  crypto                          regenerate data needed for encryption\n"
 		"  checkversion                    see if a newer Bongo is available\n" 
@@ -186,8 +187,8 @@ ImportSystemBackupFile(StoreClient *client, const char *path)
 				XplConsolePrintf("  Read error!");
 			}
 			
-            		delim = strrchr(filename, '/');
-            		*delim = 0;
+			delim = strrchr(filename, '/');
+			*delim = 0;
 			snprintf(fullpath, 108, "/%s", filename);
 			if (!PutOrReplaceConfig(client, fullpath,
 				delim+1, file, filesize)) {
@@ -305,6 +306,9 @@ GetInteractiveData(char *description, char **data, char *def) {
 		MemFree(*data);
 		*data = def;
 	}
+	
+	size = strlen(line);
+	if (line[size-1] == '\n') line[size-1] = 0;
 }
 
 #define CERTSIZE	10240
@@ -486,7 +490,7 @@ CheckVersion() {
 }
 
 void
-AddUser(const char *username) {
+UserAdd(const char *username) {
 	if (MsgAuthAddUser(username)) {
 		XplConsolePrintf(_("Added user %s\n"), username);
 	} else {
@@ -494,6 +498,27 @@ AddUser(const char *username) {
 	}	
 }
 
+void
+UserPassword(const char *username) {
+	char *password = NULL;
+	char *password2 = NULL;
+	
+	GetInteractiveData(_("New password for the user"), &password, "");
+	GetInteractiveData(_("Confirm the password"), &password2, "");
+	
+	if (strlen(password) == 0) {
+		XplConsolePrintf(_("ERROR: Can't set password to empty string.\n"));
+		return;
+	}
+	if (strncmp(password, password2, strlen(password))) {
+		XplConsolePrintf(_("ERROR: The passwords provided don't match.\n"));
+		return;
+	}
+	
+	if (MsgAuthSetPassword(username, password) == FALSE) {
+		XplConsolePrintf(_("ERROR: Couldn't set the password for the user.\n"));
+	}
+}
 
 void
 TzCache() {
@@ -547,7 +572,7 @@ main(int argc, char *argv[]) {
 			command = 3;
 		} else if (!strcmp(argv[next_arg], "tzcache")) {
 			command = 4;
-		} else if (!strcmp(argv[next_arg], "add-user")) {
+		} else if (!strcmp(argv[next_arg], "user")) {
 			command = 5;
 		} else {
 			printf("Unrecognized command: %s\n", argv[next_arg]);
@@ -566,16 +591,11 @@ main(int argc, char *argv[]) {
 
 	// we don't want to setup libraries unless we need to (e.g., to run an agent)
 	if (command == 1) {
-		startup = BA_STARTUP_CONNIO;	
+		startup = BA_STARTUP_CONNIO;
 		if (-1 == BongoAgentInit(&configtool, "bongoconfig", "", DEFAULT_CONNECTION_TIMEOUT, startup)) {
 			XplConsolePrintf(_("ERROR : Couldn't initialize Bongo libraries\n"));
 			return 2;
 		}
-	}
-
-	// don't give away privileges if we're going to need them later.
-	if (command != 1) {
-		RunAsBongoUser();
 	}
 
 	next_arg++;
@@ -585,20 +605,31 @@ main(int argc, char *argv[]) {
 			InitialStoreConfiguration();
 			break;
 		case 2:
+			RunAsBongoUser();
 			GenerateCryptoData();
 			break;
-		case 3: 
+		case 3:
+			RunAsBongoUser();
 			CheckVersion();
 			break;
 		case 4:
+			RunAsBongoUser();
 			TzCache();
 			break;
 		case 5:
-			if (next_arg >= argc) {
-				XplConsolePrintf(_("USAGE : add-user <username>\n"));
+			if ((next_arg + 1) >= argc) {
+				XplConsolePrintf(_("USAGE : user [add|password] <username>\n"));
 			} else {
+				char *command = argv[next_arg++];
 				char *username = argv[next_arg];
-				AddUser(username);
+				
+				if (! strncmp(command, "add", 3)) {
+					UserAdd(username);
+				} else if (!strncmp(command, "password", 8)) {
+					UserPassword(username);
+				} else {
+					XplConsolePrintf(_("ERROR: Unknown command '%s' on user\n"), command);
+				}
 			}
 			break;
 		default:

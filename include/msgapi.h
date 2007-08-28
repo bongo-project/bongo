@@ -33,7 +33,8 @@
 
 EXPORT BOOL MsgAuthFindUser(const char *user);
 EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
-EXPORT BOOL MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword);
+EXPORT BOOL MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword);
+EXPORT BOOL MsgAuthSetPassword(const char *user, const char *password);
 EXPORT BOOL MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
 EXPORT int  MsgAuthInitDB(void);
 EXPORT BOOL MsgAuthAddUser(const char *user);

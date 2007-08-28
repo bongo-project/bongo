@@ -20,6 +20,7 @@ typedef struct {
 	MsgSQLStatement find_user;
 	MsgSQLStatement auth_user;
 	MsgSQLStatement add_user;
+	MsgSQLStatement set_password;
 } MsgAuthStatements;
 
 MsgAuthStatements msgauth_stmts;
@@ -176,11 +177,12 @@ MsgAuthAddUser(const char *user)
 	handle = MsgSQLOpen(path, NULL, 1000);
 	if (NULL == handle) return FALSE;
 	
-	stmt = MsgSQLPrepare (handle, "INSERT INTO users (username) VALUES (?);",
+	stmt = MsgSQLPrepare (handle,
+		"INSERT INTO users (username) VALUES (?);",
 		&msgauth_stmts.add_user);
-		
-	if (MsgSQLBindString(stmt, 1, user, TRUE)) return 0;
-	if (MsgSQLExecute(handle, stmt)) return 0;
+	
+	if (MsgSQLBindString(stmt, 1, user, TRUE)) return FALSE;
+	if (MsgSQLExecute(handle, stmt)) return FALSE;
 	
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
@@ -189,16 +191,50 @@ MsgAuthAddUser(const char *user)
 }
 
 /**
- * Reset the user's password
+ * Change the user's password from an old one to a new one
  * \param	user	  	User whose password we're resetting
  * \param	oldpassword	Their old password
  * \param	newpassword	The new password we want to have
  * \return 			Whether or not we successfully changed the password
  */
 BOOL
-MsgAuthSetPassword(const char *user, const char *oldpassword, const char *newpassword)
+MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword)
 {
-	return FALSE;
+	if (! MsgAuthVerifyPassword(user, oldpassword)) return FALSE;
+	
+	return MsgAuthSetPassword(user, newpassword);
+}
+
+/**
+ * Set the user's password. SECURITY: We should make sure we're 
+ * authorised to do this.
+ * \param	user	User whose password we're setting.
+ * \param	password	New password we want to set
+ * \return Whether or not the password got changed
+ */
+BOOL
+MsgAuthSetPassword(const char *user, const char *password)
+{
+	MsgSQLStatement *stmt;
+	char path[XPL_MAX_PATH + 1];
+	MsgSQLHandle *handle;
+	
+	MsgAuthDBPath(&path, XPL_MAX_PATH);
+	handle = MsgSQLOpen(path, NULL, 1000);
+	if (NULL == handle) return FALSE;
+	
+	stmt = MsgSQLPrepare (handle,
+		"UPDATE users SET password = ? WHERE username= ?;",
+		&msgauth_stmts.set_password);
+	
+	if (MsgSQLBindString(stmt, 1, password, TRUE)) return FALSE;
+	if (MsgSQLBindString(stmt, 2, user, TRUE)) return FALSE;
+	if (MsgSQLExecute(handle, stmt)) return FALSE;
+	
+	MsgSQLFinalize(stmt);
+	MsgSQLClose(handle);
+	
+	return TRUE;
 }
 
 /**
