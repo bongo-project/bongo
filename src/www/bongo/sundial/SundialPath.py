@@ -62,16 +62,11 @@ class SundialPath(object):
         self.filename = splituri[2]
 
         if self.filename != '':
-            # rp.filename should be something like:
-            # 00000000000000115.ics
-            filename_parts = self.filename.split('.')
-
-            # Any filename with more than one "." can get lost, and this shop only
-            # serves up iCalendar.
-            if len(filename_parts) != 2 or filename_parts[-1] != 'ics':
+            # This shop only serves up iCalendar.
+            if self.filename[-4:] != '.ics':
                 raise HttpError(404)
 
-            self.fileuid = filename_parts[0]
+            self.filename = self.filename[:-4]
         else:
             self.filename = None
 
@@ -87,7 +82,7 @@ class SundialPath(object):
 
         # The path should be something like one of the following:
         # {/otherpath}/dav/user/calendar/
-        # {/dav}/user/calendar/longnumber.ics
+        # {/dav}/user/calendar/filename.ics
         self._handle_path(req.uri)
 
         if req.headers_in.get('Content-Length', None):

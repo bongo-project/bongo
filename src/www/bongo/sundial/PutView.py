@@ -31,14 +31,8 @@ class PutHandler(SundialHandler):
     def do_PUT(self, req, rp):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
 
-        if rp.filename:
-            # Modifying an event, as opposed to adding a new one.
-            json = cal.IcalToJson(rp.raw_input)
+        json = cal.IcalToJson(rp.raw_input)
 
-            store.Write("/events", DocTypes.Event, str(json), filename=rp.filename, link="/calendars/" + rp.calendar)
-
-        else:
-            # Adding a new event.
-            pass
+        store.Write("/events", DocTypes.Event, str(json), filename=rp.filename, link="/calendars/" + rp.calendar)
 
         return bongo.commonweb.HTTP_CREATED

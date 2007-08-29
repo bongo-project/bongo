@@ -31,7 +31,7 @@ class DeleteHandler(SundialHandler):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
 
         try:
-            store.Delete(rp.fileuid)
+            store.Delete('/events/%s' % rp.filename)
         except:
             return bongo.commonweb.HTTP_NOT_FOUND
 

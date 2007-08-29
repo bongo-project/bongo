@@ -40,7 +40,7 @@ class PropfindHandler(SundialHandler):
         if rp.filename is not None:
             # Talking about an individual event, not a calendar.
             try:
-                doc = store.Read(rp.fileuid)
+                doc = store.Read('/events/%s' % rp.filename)
                 jsob = bongojson.ParseString(doc.strip())
 
                 # Get the iCal data as that's what Sundial's etags are made from.
@@ -78,7 +78,7 @@ class PropfindHandler(SundialHandler):
         href_tag = et.SubElement(response_tag, 'href')
         href_tag.text = "%sdav/%s/%s/" % (rp.get_hostname(), rp.user, rp.calendar)
         if not is_calendar:
-            href_tag.text += rp.filename
+            href_tag.text += "%s.ics" % rp.filename
 
         propstat_tag = et.SubElement(response_tag, 'propstat') # <propstat>
         prop_tag = et.SubElement(propstat_tag, 'prop') # <prop>

@@ -34,7 +34,7 @@ class GetHandler(SundialHandler):
 
         # Get the nmap document from the store.
         try:
-            doc = store.Read(rp.fileuid)
+            doc = store.Read('/events/%s' % rp.filename)
         except:
             return bongo.commonweb.HTTP_NOT_FOUND
 

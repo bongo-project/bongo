@@ -27,7 +27,7 @@ class OptionsHandler(SundialHandler):
     #  @param req The HttpRequest instance for the current request.
     #  @param rp The SundialPath instance for the current request.
     def do_OPTIONS(self, req, rp):
-        # Total lies. At the time of writing, Allow should be more like "OPTIONS, PROPFIND (barely), REPORT (barely)".
+        # Total lies. At the time of writing, Allow should be more like "OPTIONS, GET, PUT, PROPFIND, REPORT".
         # It's getting there though!
         req.headers_out['Allow'] = "OPTIONS, GET, HEAD, POST, PUT, DELETE, TRACE, COPY, MOVE, PROPFIND, PROPPATCH, LOCK, UNLCOK, REPORT, ACL"
         req.headers_out['DAV'] = "1, 2, access-control, calendar-access"

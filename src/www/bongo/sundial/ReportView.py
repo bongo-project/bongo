@@ -56,7 +56,7 @@ class ReportHandler(SundialHandler):
         # Loop through each VEVENT that was returned.
         for response in events:
             response_tag = et.SubElement(self.multistatus_tag, 'response') # <response>
-            et.SubElement(response_tag, 'href').text = "%sdav/%s/%s/%s.ics" % (self.rp.get_hostname(), self.rp.user, self.rp.calendar, response.uid) # <href>url</href>
+            et.SubElement(response_tag, 'href').text = "%sdav/%s/%s/%s.ics" % (self.rp.get_hostname(), self.rp.user, self.rp.calendar, response.filename) # <href>url</href>
 
             propstat_tag = et.SubElement(response_tag, 'propstat') # <propstat>
             prop_tag = et.SubElement(propstat_tag, 'prop') # <prop>
