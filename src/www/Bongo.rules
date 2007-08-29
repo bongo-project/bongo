@@ -170,31 +170,6 @@ dist_img_DATA :=					     \
 	src/www/img/top-gradient.png			     \
 	src/www/img/unread-gradient.png			     \
 	src/www/img/x.png				     \
-	src/www/img/toolbar/edit-redo.png		     \
-	src/www/img/toolbar/edit-undo.png		     \
-	src/www/img/toolbar/format-indent-less.png	     \
-	src/www/img/toolbar/format-indent-more.png	     \
-	src/www/img/toolbar/format-justify-center.png	     \
-	src/www/img/toolbar/format-justify-fill.png	     \
-	src/www/img/toolbar/format-justify-left.png	     \
-	src/www/img/toolbar/format-justify-right.png	     \
-	src/www/img/toolbar/format-text-bold.png	     \
-	src/www/img/toolbar/format-text-italic.png	     \
-	src/www/img/toolbar/format-text-strikethrough.png    \
-	src/www/img/toolbar/format-text-underline.png	     \
-	src/www/img/toolbar/16/edit-redo.png		     \
-	src/www/img/toolbar/16/edit-undo.png		     \
-	src/www/img/toolbar/16/format-indent-less.png	     \
-	src/www/img/toolbar/16/format-indent-more.png	     \
-	src/www/img/toolbar/16/format-justify-center.png     \
-	src/www/img/toolbar/16/format-justify-fill.png	     \
-	src/www/img/toolbar/16/format-justify-left.png	     \
-	src/www/img/toolbar/16/format-justify-right.png	     \
-	src/www/img/toolbar/16/format-text-bold.png	     \
-	src/www/img/toolbar/16/format-text-italic.png	     \
-	src/www/img/toolbar/16/format-text-strikethrough.png \
-	src/www/img/toolbar/16/format-text-underline.png     \
-	src/www/img/toolbar/16/mail-attachment.png  \
 	src/www/img/bg.png  \
 	src/www/img/Bongo-logo.png \
 	src/www/img/cbg.png \
@@ -273,7 +248,7 @@ dist_eAreaimage_DATA := \
     src/www/js/eArea/icons/format-indent-less.png       \
     src/www/js/eArea/icons/insert-image.png         \
     src/www/js/eArea/icons/insert-link.png          \
-    src/www/js/eArea/icons/toolbar-seperator.png
+    src/www/js/eArea/icons/switch-mode.png
 
 plugindir = $(htdocsdir)/plugins
 
