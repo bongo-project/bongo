@@ -29,7 +29,7 @@ class OptionsHandler(SundialHandler):
     def do_OPTIONS(self, req, rp):
         # Total lies. At the time of writing, Allow should be more like "OPTIONS, GET, PUT, PROPFIND, REPORT".
         # It's getting there though!
-        req.headers_out['Allow'] = "OPTIONS, GET, HEAD, POST, PUT, DELETE, TRACE, COPY, MOVE, PROPFIND, PROPPATCH, LOCK, UNLCOK, REPORT, ACL"
+        req.headers_out['Allow'] = "OPTIONS, GET, HEAD, POST, PUT, DELETE, TRACE, COPY, MOVE, PROPFIND, PROPPATCH, LOCK, UNLOCK, REPORT, ACL"
         req.headers_out['DAV'] = "1, 2, access-control, calendar-access"
         req.headers_out['Content-Length'] = "0"
         return bongo.commonweb.HTTP_OK
