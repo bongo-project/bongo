@@ -8,6 +8,7 @@ import bongo.commonweb
 from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient, DocTypes
 from libbongo.libs import cal
+from bongo.store.CommandStream import CommandError
 
 ## Class to handle the PUT request method.
 class PutHandler(SundialHandler):
@@ -30,9 +31,18 @@ class PutHandler(SundialHandler):
     #  @param rp The SundialPath instance for the current request.
     def do_PUT(self, req, rp):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
-
-        json = cal.IcalToJson(rp.raw_input)
-
-        store.Write("/events", DocTypes.Event, str(json), filename=rp.filename, link="/calendars/" + rp.calendar)
+        json = str(cal.IcalToJson(rp.raw_input))
+        filename = "/events/" + rp.filename
+        
+        try: 
+            store.Info(filename)
+            # file exists, so overwrite it
+            store.Replace(filename, json)
+        except CommandError:
+            # file probably doesn't exist
+            try:
+                store.Write("/events", DocTypes.Event, json, filename=rp.filename, link="/calendars/" + rp.calendar)
+            except CommandError:
+                return bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR
 
         return bongo.commonweb.HTTP_CREATED
