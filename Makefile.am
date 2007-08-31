@@ -86,6 +86,10 @@ docs:	doxygen/html
 clean:	clean-recursive
 	rm -rf ./doxygen/html ./doxygen/latex
 
+#	disabled agents
+#	src/agents/mailprox			
+#	src/agents/rules			
+
 include_subdirs :=				\
 	include					\
 	src/libs/xpl				\
@@ -119,10 +123,8 @@ include_subdirs :=				\
 	src/agents/imap				\
 	src/agents/imap/tests			\
 	src/agents/itip				\
-	src/agents/mailprox			\
 	src/agents/pop				\
 	src/agents/queue			\
-	src/agents/rules			\
 	src/agents/smtp				\
 	src/agents/store			\
 	src/agents/store/tests			\
@@ -177,10 +179,10 @@ include src/agents/generic/Bongo.rules
 include src/agents/imap/Bongo.rules
 include src/agents/imap/tests/Bongo.rules
 include src/agents/itip/Bongo.rules
-include src/agents/mailprox/Bongo.rules
+#include src/agents/mailprox/Bongo.rules
 include src/agents/pop/Bongo.rules
 include src/agents/queue/Bongo.rules
-include src/agents/rules/Bongo.rules
+#include src/agents/rules/Bongo.rules
 include src/agents/smtp/Bongo.rules
 include src/agents/store/Bongo.rules
 include src/agents/store/tests/Bongo.rules

@@ -625,6 +625,10 @@ fi
 
 ac_configure_args="$ac_configure_args --enable-threadsafe --enable-cross-thread-connections --disable-tcl"
 
+# disabled agents
+# src/agents/mailprox/Makefile
+# src/agents/rules/Makefile
+
 AC_OUTPUT([
 Makefile
 bongo.pc
@@ -646,14 +650,12 @@ src/agents/generic/Makefile
 src/agents/imap/Makefile
 src/agents/imap/tests/Makefile
 src/agents/itip/Makefile
-src/agents/mailprox/Makefile
 src/agents/pluspack/Makefile
 src/agents/pop/Makefile
 src/agents/queue/Makefile
 src/agents/smtp/Makefile
 src/agents/store/Makefile
 src/agents/store/tests/Makefile
-src/agents/rules/Makefile
 src/apps/setup/Makefile
 src/apps/setup/bongo-setup.xml
 src/apps/manager/Makefile

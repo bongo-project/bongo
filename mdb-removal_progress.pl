@@ -7,6 +7,10 @@ my %agents = ('addressbook' => 62, 'alarm' => 6, 'antispam' => 19, 'avirus' => 2
 	'imap' => 60, 'itip' => 4, 'mailprox' => 56, 'pluspack' => 34, 
 	'pop' => 29, 'queue' => 109, 'rules' => 40, 'smtp' => 134, 'store' => 61);
 
+# some agents currently removed
+delete $agents{'mailprox'};
+delete $agents{'rules'};
+
 my %libraries = ('connmgr' => 7, 'management' => 14, 'mdb' => 212, 'mdb-file' => 713,
 	'mdb-odbc' => 620, 'mdb-xldap' => 279,  'msgapi' => 307, 'nmap' => 30, 
 	'python' => 329);
