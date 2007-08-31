@@ -2128,13 +2128,7 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    if (MsgInit() == NULL) {
-        XplConsolePrintf("\rPOP3D: Invalid directory credentials; exiting!\n");
-
-        MemoryManagerClose(MSGSRV_AGENT_POP);
-        return(-1);
-    }
-
+    MsgInit();
     NMAPInitialize();
 
     POP3.loggingHandle = LoggerOpen("bongopop3");

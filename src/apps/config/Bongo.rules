@@ -11,8 +11,9 @@ conf_defaults =					\
 
 bongo_config_SOURCES :=			\
 	$(conf_defaults)		\
+	src/apps/config/config.c	\
 	src/apps/config/config.h	\
-	src/apps/config/config.c
+	src/apps/config/store.c
 
 bongo_config_CPPFLAGS := $(AM_CPPFLAGS)	\
 	$(GNUTLS_CFLAGS)

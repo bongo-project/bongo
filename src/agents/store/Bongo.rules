@@ -54,7 +54,6 @@ bongostore_LDADD =					   \
 	libbongocal.la					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongostreamio.la				   \

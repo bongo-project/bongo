@@ -22,7 +22,6 @@ libbongomsgapi_la_LIBADD :=					   \
 	libbongoutil.la						   \
 	libbongo-json.la						   \
 	libbongomemmgr.la					   \
-	libbongomdb.la						   \
 	libbongonmap.la						   \
 	libbongoxpl.la						   \
 	$(LIBCURL_LIBS)						   \

@@ -517,7 +517,7 @@ typedef struct _MSGCacheInitStruct {
 typedef BOOL (*FindObjectCacheInitType)(MSGCacheInitStruct *initData, unsigned char *description);
 typedef BOOL (*FindObjectCacheShutdownType)(void);
 
-EXPORT MDBHandle MsgInit(void);
+EXPORT void MsgInit(void);
 EXPORT BOOL MsgShutdown(void);
 EXPORT MDBHandle MsgGetSystemDirectoryHandle(void);
 

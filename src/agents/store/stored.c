@@ -240,12 +240,7 @@ _XplServiceMain(int argc, char *argv[])
     }
  
     if (! StoreAgent.installMode) {
-        if (MsgInit() == NULL) {
-            XplConsolePrintf("NMAPD: Invalid directory credentials; exiting!\r\n");
-            MemoryManagerClose(MSGSRV_AGENT_STORE);
-            return -1;
-        }
-    
+        MsgInit();
         cal_success = BongoCalInit(MsgGetDBFDir(NULL));
     } else {
         cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);

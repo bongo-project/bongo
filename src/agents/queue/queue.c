@@ -661,7 +661,7 @@ ProcessQueueEntry(unsigned char *entryIn)
     FILE *data = NULL;
     FILE *newFH = NULL;
     MIMEReportStruct *report = NULL;
-    MDBValueStruct *vs;
+    // REMOVE-MDB MDBValueStruct *vs;
     QueueClient *client;
     void *handle;
 
@@ -860,7 +860,7 @@ StartOver:
                     return(TRUE);
                 }
 
-                vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
+                // REMOVE-MDB vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
 
                 count = 0;
                 cur = qEnvelope;
@@ -891,6 +891,8 @@ StartOver:
                                 *ptr2 = '\0';
                             }
 
+// REMOVE-MDB
+#if 0
                             /* this adds lines to the envelope for each user -- expanding a group if needed */
                             if (MsgFindObject(cur + 1, NULL, NULL, NULL, vs)) {
                                 if (ptr2) {
@@ -908,6 +910,7 @@ StartOver:
                                 MDBFreeValues(vs);
                             /* end of envelope rewrite section */
                             } else {
+#endif
                                 Log(LOG_INFO, "Entry %ld queue %d, can't find %s", entryID, queue, cur + 1);
 
                                 if (ptr2) {
@@ -919,7 +922,7 @@ StartOver:
                                 }
 
                                 fwrite(cur, sizeof(unsigned char), next - cur, newFH);
-                            }
+                            // REMOVE-MDB }
 
                             break;
                         }
@@ -961,7 +964,7 @@ StartOver:
                     cur = next;
                 }
 
-                MDBDestroyValueStruct(vs);
+                // REMOVE-MDB MDBDestroyValueStruct(vs);
 
                 MemFree(qEnvelope);
 
@@ -1154,18 +1157,21 @@ StartOver:
                                 *ptr = ' ';
                             }
 
+// REMOVE-MDB
+#if 0
                             vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
                             if (!MsgFindObject(recipient, NULL, NULL, &siaddr, vs)) {
                                 Log(LOG_WARNING, "User %s unknown, entry %ld", recipient, entryID);
                                 status = DELIVER_USER_UNKNOWN;
                             } else {
+#endif
                                 Log(LOG_DEBUG, "Delivering %s on queue %d to %s", entry, queue, line+1);
                                 status = DeliverToStore(&list, &siaddr, NMAP_DOCTYPE_CAL, sender, authenticatedSender, dataFilename, data, dSize, recipient, mailbox, flags);
                                 if (Agent.agent.state == BONGO_AGENT_STATE_STOPPING) {
                                     status = DELIVER_TRY_LATER;
                                 }
-                            }
-                            MDBDestroyValueStruct(vs);
+                            // REMOVE-MDB }
+                            // MDBDestroyValueStruct(vs);
 
                             /* Restore our buffer */
                             if (ptr2) {
@@ -1260,6 +1266,8 @@ StartOver:
                             }
 
                             /* Attempt delivery, check if local or remote */
+// REMOVE-MDB
+#if 0
                             vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
                             if (MsgFindObject(recipient, NULL, NULL, &siaddr, vs)) {
                                 Log(LOG_DEBUG, "Deliver to store entry %s in queue %d for host %s", entry, queue, LOGIP(siaddr));
@@ -1269,6 +1277,7 @@ StartOver:
                                     status = DELIVER_TRY_LATER;
                                 }
                             } else {
+#endif
                                 status = DELIVER_USER_UNKNOWN;
 
                                 /* This will forward the message to a remote domain */
@@ -1298,9 +1307,9 @@ StartOver:
 
                                     XplRWReadLockRelease(&Conf.lock);
                                 }
-                            }
+                            // REMOVE-MDB }
 
-                            MDBDestroyValueStruct(vs);
+                            // REMOVE-MDB MDBDestroyValueStruct(vs);
 
                             if (status < DELIVER_SUCCESS) {
                                 Log(LOG_WARNING, "Couldn't deliver entry %s on queue %d, status %d", entry, queue, status);
@@ -2003,7 +2012,6 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     unsigned char *transcript;
     unsigned char timeLine[80];
     unsigned char line[CONN_BUFSIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
     unsigned char postmaster[MAXEMAILNAMESIZE + 1];
     unsigned char sender[MAXEMAILNAMESIZE + 1];
     unsigned char aSender[MAXEMAILNAMESIZE + 1] = "";
@@ -2013,7 +2021,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     BOOL mBounce=FALSE;
     BOOL header;
     time_t now;
-    MDBValueStruct *vs;
+    // REMOVE-MDB MDBValueStruct *vs;
 
     /* Step 0, check if we want to bounce at all */
     now = time(NULL);
@@ -2090,6 +2098,9 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     handling = Conf.bounceHandling;
 
     /* We're guaranteed to have a recipient */
+
+// REMOVE-MDB
+#if 0
     ptr = strchr(recipient, '@');
     if (ptr) {
         if (MsgDomainExists(ptr + 1, dn)) {
@@ -2122,6 +2133,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
             MDBDestroyValueStruct(vs);
         }
     }
+#endif
 
     /* Step 2, create the bounce; we've got all information */
     MsgGetRFC822Date(-1, 0, timeLine);
@@ -2951,6 +2963,8 @@ CommandQaddm(void *param)
     if ((stat(client->path, &sb) == 0) && ((data = fopen(client->path, "rb")) != NULL)) {
         NMAPConnections list = { 0, };
         struct sockaddr_in saddr;
+// REMOVE-MDB
+#if 0
         MDBValueStruct *vs;
 
         vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
@@ -2960,7 +2974,7 @@ CommandQaddm(void *param)
             EndStoreDelivery(&list);
         }
         MDBDestroyValueStruct(vs);
-        
+#endif
     } else {
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
@@ -4233,20 +4247,18 @@ CommandQsrchDomain(void *param)
     unsigned long used;
     unsigned char *ptr;
     void *handle = NULL;
-    MDBValueStruct *vs = NULL;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 12;
 
     /* QSRCH DOMAIN <domain> */
     if ((*ptr++ == ' ') && (!isspace(*ptr))) {
-        if (((vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL)) != NULL) 
-                && ((handle = QDBHandleAlloc()) != NULL)) {
+        if ((handle = QDBHandleAlloc()) != NULL) {
             ccode = QDBSearchDomain(handle, ptr);
             if (!ccode) {
-                for (used = 0; (ccode != -1) && (used < vs->Used); used++) {
-                    ccode = ConnWriteF(client->conn, "2001-007-%s\r\n", vs->Value[used]);
-                }
+                // REMOVE-MDB for (used = 0; (ccode != -1) && (used < vs->Used); used++) {
+                //    ccode = ConnWriteF(client->conn, "2001-007-%s\r\n", vs->Value[used]);
+                //}
 
                 if (ccode != -1) {
                     ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
@@ -4258,10 +4270,6 @@ CommandQsrchDomain(void *param)
         } else {
             LogFailure("Out of memory");
             ccode = ConnWrite(client->conn, MSG5230NOMEMORYERR, sizeof(MSG5230NOMEMORYERR) - 1);
-        }
-
-        if (vs) {
-            MDBDestroyValueStruct(vs);
         }
 
         if (handle) {

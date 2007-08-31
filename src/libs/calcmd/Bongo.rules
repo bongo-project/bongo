@@ -16,7 +16,6 @@ parsecmd_SOURCES := src/libs/calcmd/test.c
 
 parsecmd_LDADD :=				\
 	libbongomsgapi.la			\
-	libbongomdb.la				\
 	libbongologger.la			\
 	libbongoconnio.la			\
 	libbongomemmgr.la			\

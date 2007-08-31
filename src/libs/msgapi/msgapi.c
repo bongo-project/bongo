@@ -79,8 +79,6 @@ enum LibraryStates {
 struct {
     unsigned long flags;
 
-    MDBHandle directoryHandle;
-
     XplThreadID groupID;
 
     struct {
@@ -88,29 +86,6 @@ struct {
         XplSemaphore shutdown;
         XplMutex uid;
     } sem;
-
-    struct {
-        unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
-    } server;
-
-    struct {
-        MDBValueStruct *storePaths;
-        MDBValueStruct *storeDNs;
-
-        struct {
-            MDBValueStruct *names;
-            MDBValueStruct *contexts;
-            struct sockaddr_in *addr;
-        } server;
-
-#ifdef PARENTOBJECT_STORE
-        struct {
-            MDBValueStruct *objects;
-            MDBValueStruct *stores;
-            MDBValueSTruct *indices;
-        } parent;
-#endif
-    } vs;
 
     unsigned long connManager;
 
@@ -187,170 +162,16 @@ MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t len
 EXPORT const unsigned char *
 MsgGetServerDN(unsigned char *buffer)
 {
-    if (buffer) {
-        return(strcpy(buffer, MsgGlobal.server.dn));
-    }
-    return(MsgGlobal.server.dn);
-}
-
-EXPORT BOOL
-MsgFindObject(const unsigned char *user, unsigned char *dn, unsigned char *userType, struct sockaddr_in *nmap, MDBValueStruct *v)
-{
-    BOOL retVal = FALSE;
-
-        MDBValueStruct *userCtx;
-        MDBValueStruct *types;
-        unsigned long i, j;
-        unsigned char rdn[MDB_MAX_OBJECT_CHARS + 1];
-
-        BOOL isUser = FALSE;
-        BOOL isGroup = FALSE;
-        BOOL isResource = FALSE;
-        BOOL isOrgRole = FALSE;
-        BOOL isDynGroup = FALSE;
-
-        /* FIXME: handle failure to create ValueStructs */
-        userCtx = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
-        types = MDBShareContext(userCtx);
-
-        XplRWReadLockAcquire(&MsgGlobal.configLock);
-        for (i = 0; i < MsgGlobal.vs.server.contexts->Used; i++) {
-            MDBSetValueStructContext(MsgGlobal.vs.server.contexts->Value[i], userCtx);
-            if (MDBGetObjectDetailsEx(user, types, rdn, dn, userCtx)) {
-
-                /* determine relevant types now so we don't have to loop
-                   throught the list everytime. */
-                for (j = 0; j < types->Used; j++) {
-                    if (strcmp(types->Value[j], C_USER) == 0) {
-                        isUser = TRUE;
-                    } else if (strcmp(types->Value[j], 
-                                      MSGSRV_C_RESOURCE) == 0) {
-                        isResource = TRUE;
-                    } else if (strcmp(types->Value[j], MSGSRV_C_GROUP) == 0 ||
-                               strcmp(types->Value[j], C_GROUP) == 0) {
-                        isGroup = TRUE;
-                    } else if (strcmp(types->Value[j], 
-                                      MSGSRV_C_ORGANIZATIONAL_ROLE) == 0 ||
-                               strcmp(types->Value[j], 
-                                      C_ORGANIZATIONAL_ROLE) == 0) {
-                        isOrgRole = TRUE;
-                    } else if (strcmp(types->Value[j], "dynamicGroup") == 0) {
-                        isDynGroup = TRUE;
-                    }
-                }
-
-                if (isUser || isResource) {
-                    if (v) {
-                        MDBAddValue(rdn, v);
-                    }
-                    if (nmap) {
-                        memcpy(nmap, &MsgGlobal.vs.server.addr[i], sizeof(struct sockaddr_in));
-                    }
-                    if (userType) {
-                        if (isUser) {
-                            strcpy(userType, C_USER);
-                        } else if (isResource) {
-                            strcpy(userType, MSGSRV_C_RESOURCE);
-                        }
-                    }
-                    retVal = TRUE;
-                } else if (isGroup) {
-                    if (v) {
-                        MDBSetValueStructContext(MsgGlobal.vs.server.contexts->Value[i], v);
-                        MDBRead(user, A_MEMBER, v);
-
-                        /* This removes any context from a group member's name */
-                        for (j = 0; j < v->Used; j++) {
-                            unsigned char *ptr;
-                            ptr = strrchr(v->Value[j], '\\');
-                            if (ptr) {
-                                memmove(v->Value[j], ptr + 1, strlen(ptr + 1) + 1);
-                            }
-                        }
-                    }
-                    if (userType) {
-                        strcpy(userType, C_GROUP);
-                    }
-                    retVal = TRUE;
-                } else if (isOrgRole) {
-                    if (v) {
-                        MDBSetValueStructContext(MsgGlobal.vs.server.contexts->Value[i], v);
-                        MDBRead(user, A_ROLE_OCCUPANT, v);
-
-                        /* This removes any context from a the roles name */
-                        for (j = 0; j < v->Used; j++) {
-                            unsigned char *ptr;
-                            ptr = strrchr(v->Value[j], '\\');
-                            if (ptr) {
-                                memmove(v->Value[j], ptr + 1, strlen(ptr + 1) + 1);
-                            }
-                        }
-                    }
-                    if (userType) {
-                        strcpy(userType, C_ORGANIZATIONAL_ROLE);
-                    }
-                    retVal = TRUE;
-                } else if (isDynGroup) {
-                    if (v) {
-                        MDBSetValueStructContext(MsgGlobal.vs.server.contexts->Value[i], v);
-                        MDBRead(user, A_MEMBER, v);
-
-                        /* This removes any context from a group member's name */
-                        for (j = 0; j < v->Used; j++) {
-                            unsigned char *ptr;
-                            ptr=strrchr(v->Value[j], '\\');
-                            if (ptr) {
-                                memmove(v->Value[j], ptr + 1, strlen(ptr + 1) + 1);
-                            }
-                        }
-                    }
-                    if (userType) {
-                        strcpy(userType, "dynamicGroup");
-                    }
-                    retVal = TRUE;
-                }
-                break;
-            }
-        }
-        XplRWReadLockRelease(&MsgGlobal.configLock);
-
-        MDBDestroyValueStruct(userCtx);
-        MDBDestroyValueStruct(types);
-
-    return(retVal);
+	// DEPRECATED
+	return(NULL);
 }
 
 EXPORT BOOL
 MsgDomainExists(const unsigned char *domain, unsigned char *domainObjectDN)
 {
+	// DEPRECATED ?
     /* FIXME later; when we handle parent objects */
     return(FALSE);
-}
-
-/*
- * Use these functions to ensure that the correct MDB function is used
- * for strings or DNs.
- */
-static BOOL
-MsgMdbWriteAny(const unsigned char *dn, const unsigned char *attribute,
-               MDBValueStruct *v)
-{
-    if (v->Used > 0 && strchr(v->Value[0], '\\')) {
-        return MDBWriteDN(dn, attribute, v);
-    }
-
-    return MDBWrite(dn, attribute, v);
-}
-
-static BOOL
-MsgMdbAddAny(const unsigned char *dn, const unsigned char *attribute,
-             const unsigned char *value, MDBValueStruct *v)
-{
-    if (v->Used > 0 && strchr(v->Value[0], '\\')) {
-        return MDBAddDN(dn, attribute, value, v);
-    }
-
-    return MDBAdd(dn, attribute, value, v);
 }
 
 EXPORT BOOL
@@ -516,198 +337,11 @@ MsgGetUnprivilegedUser(void)
 }
 
 static BOOL
-LoadContextList(MDBValueStruct *config)
-{
-   unsigned char emptyString[] = " ";
-    unsigned char storeObjectDn[MDB_MAX_OBJECT_CHARS + 1];    
-    MDBValueStruct *ports;
-    MDBValueStruct *addresses;
-    char storePortText[6];
-    unsigned long i;
-    unsigned long j;
-    unsigned long count;
-    unsigned long realUsed;
- 
-    ports = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
-    if (!ports) {
-        return(FALSE);
-    }
-
-    addresses = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
-    if (!addresses) {
-        MDBDestroyValueStruct(ports);
-        return(FALSE);
-    }
-
-    MDBFreeValues(MsgGlobal.vs.server.names);
-    MDBFreeValues(MsgGlobal.vs.server.contexts);
-    MDBFreeValues(MsgGlobal.vs.storePaths);
-    MDBFreeValues(MsgGlobal.vs.storeDNs);
-    if (MsgGlobal.vs.server.addr) {
-        MemFree(MsgGlobal.vs.server.addr);
-        MsgGlobal.vs.server.addr = NULL;
-    }
-
-    /* This puts the local context always first */
-    sprintf(storeObjectDn, "%s\\%s", MsgGlobal.server.dn, MSGSRV_AGENT_STORE);
-    if(MDBIsObject(storeObjectDn, MsgGlobal.vs.server.contexts)) {
-        MDBReadDN(MsgGlobal.server.dn, MSGSRV_A_CONTEXT, MsgGlobal.vs.server.contexts);
-        if (MDBRead(storeObjectDn, MSGSRV_A_PORT, config)) {
-            strcpy(storePortText, config->Value[0]);
-            MDBFreeValues(config);
-        } else {
-            sprintf(storePortText, "%d", (BONGO_STORE_DEFAULT_PORT));
-        }
-        for (i = 0; i < MsgGlobal.vs.server.contexts->Used; i++) {
-            MDBRead(MsgGlobal.server.dn, MSGSRV_A_IP_ADDRESS, addresses);
-            MDBAddValue(storePortText, ports);
-            MDBAddValue(MsgGlobal.server.dn, MsgGlobal.vs.storeDNs);
-        }
-    }
-
-#ifdef PARENTOBJECT_STORE
-    /* Read the parent object store configuration */
-    if (MDBEnumerateObjects(MSGSRV_ROOT"\\"MSGSRV_PARENT_ROOT, MSGSRV_C_PARENTOBJECT, &MsgGlobal.vs.parent.objects)) {
-        for (i=0; i<MsgGlobal.vs.parent.objects.Used; i++) {
-            if (MDBRead(MsgGlobal.vs.parent.objects.Value[i], MSGSRV_A_MESSAGE_STORE, &MsgGlobal.vs.parent.stores)==0) {
-                MDBAddValue(EmptyString, &MsgGlobal.vs.parent.stores);
-            }
-
-        }
-    }
-#endif
-
-    /* FIXME: This code turns off distributed automatically if the server is not in internet services */
-    /* We might not always want this? */
-#if 0
-    if (strstr(storeObjectDn, MSGSRV_ROOT)==NULL) {
-        MsgGlobal.flags |= MSGAPI_FLAG_STANDALONE;
-    }
-#endif
-
-    if (!(MsgGlobal.flags & MSGAPI_FLAG_STANDALONE)) {
-        /* First time around we check all "real" classes */
-        if (MDBEnumerateObjects(MSGSRV_ROOT, MSGSRV_C_SERVER, NULL, MsgGlobal.vs.server.names)) {
-            /* Put the local context(s) first */
-            for (i = 0; i < MsgGlobal.vs.server.names->Used; i++) {
-                /* MsgGlobal.server.dn is absolute, MsgGlobal.vs.server.names->Value isn't */
-                if (XplStrCaseCmp(MsgGlobal.server.dn + strlen(MsgGlobal.server.dn) - strlen(MsgGlobal.vs.server.names->Value[i]), MsgGlobal.vs.server.names->Value[i]) != 0) {
-                    count = MsgGlobal.vs.server.contexts->Used;
-                    if ((MDBRead(MsgGlobal.vs.server.names->Value[i], MSGSRV_A_IP_ADDRESS, addresses) > 0) &&
-                        (MDBReadDN(MsgGlobal.vs.server.names->Value[i], MSGSRV_A_CONTEXT, MsgGlobal.vs.server.contexts) > 0)) {
-                        sprintf(storeObjectDn, "%s\\%s", MsgGlobal.vs.server.names->Value[i], MSGSRV_AGENT_STORE);
-                        if (MDBRead(storeObjectDn, MSGSRV_A_PORT, config)) {
-                            strcpy(storePortText, config->Value[0]);
-                            MDBFreeValues(config);
-                        } else {
-                            sprintf(storePortText, "%d", (BONGO_STORE_DEFAULT_PORT));
-                        }
-			MDBAddValue(MsgGlobal.vs.server.names->Value[i], MsgGlobal.vs.storeDNs);
-			for (j = count + 1; j < MsgGlobal.vs.server.contexts->Used; j++) {
-			    MDBAddValue(addresses->Value[count], addresses);
-                            MDBAddValue(storePortText, ports);
-			    MDBAddValue(MsgGlobal.vs.server.names->Value[i], MsgGlobal.vs.storeDNs);
-			}
-                    }
-                }
-            }
-        }
-
-        /* Now check any aliases that might be in the Internet Services container */
-        realUsed = MsgGlobal.vs.server.names->Used;
-        if (MDBEnumerateObjects(MSGSRV_ROOT, C_ALIAS, NULL, MsgGlobal.vs.server.names)) {
-            unsigned char realDn[MDB_MAX_OBJECT_CHARS + 1];
-            unsigned char realType[MDB_MAX_ATTRIBUTE_CHARS + 1];
-
-            /* Put the local context(s) first */
-            for (i = realUsed; i < MsgGlobal.vs.server.names->Used; i++) {
-                MDBGetObjectDetails(MsgGlobal.vs.server.names->Value[i], realType, NULL, realDn, MsgGlobal.vs.server.names);
-
-                /* MsgGlobal.server.dn is absolute, MsgGlobal.vs.server.names->Value isn't */
-                if ((XplStrCaseCmp(realType, MSGSRV_C_SERVER) == 0) && (XplStrCaseCmp(MsgGlobal.server.dn + strlen(MsgGlobal.server.dn) - strlen(realDn), realDn) != 0)) {
-                    count = MsgGlobal.vs.server.contexts->Used;
-                    if ((MDBRead(MsgGlobal.vs.server.names->Value[i], MSGSRV_A_IP_ADDRESS, addresses) > 0) &&
-                        (MDBReadDN(MsgGlobal.vs.server.names->Value[i], MSGSRV_A_CONTEXT, MsgGlobal.vs.server.contexts) > 0)) {
-                        sprintf(storeObjectDn, "%s\\%s", MsgGlobal.vs.server.names->Value[i], MSGSRV_AGENT_STORE);
-                        if (MDBRead(storeObjectDn, MSGSRV_A_PORT, config)) {
-                            strcpy(storePortText, config->Value[0]);
-                            MDBFreeValues(config);
-                        } else {
-                            sprintf(storePortText, "%d", BONGO_STORE_DEFAULT_PORT);
-                        }
-			MDBAddValue(MsgGlobal.vs.server.names->Value[i], MsgGlobal.vs.storeDNs);
-			for (j = count + 1; j < MsgGlobal.vs.server.contexts->Used; j++) {
-			    MDBAddValue(addresses->Value[count], addresses);
-                            MDBAddValue(storePortText, ports);
-			    MDBAddValue(MsgGlobal.vs.server.names->Value[i], MsgGlobal.vs.storeDNs);
-			}
-                    }
-                }
-            }
-        }
-    }
-
-    /* MDBAddValue doesn't add empty values, so fake it */
-    /* with a ^A in the string */
-    emptyString[0]=EMPTY_CHAR;
-    /* Now read all the store path values */
-    
-    for (i = 0; i < MsgGlobal.vs.server.contexts->Used; i++) {
-        if (MDBRead(MsgGlobal.vs.server.contexts->Value[i], MSGSRV_A_MESSAGE_STORE, MsgGlobal.vs.storePaths) == 0) {
-            /* Add an empty string, no context store specified */
-            MDBAddValue(emptyString, MsgGlobal.vs.storePaths);
-        } else {
-            MsgCleanPath(MsgGlobal.vs.storePaths->Value[i]);
-        }
-    }
-
-    /* Initialize addr structure for each context */
-    MsgGlobal.vs.server.addr = MemMalloc0(MsgGlobal.vs.server.contexts->Used * sizeof(struct sockaddr_in));
-    if (!MsgGlobal.vs.server.addr) {
-        MDBDestroyValueStruct(ports);
-        return(FALSE);
-    }
-
-    for (i = 0; i < MsgGlobal.vs.server.contexts->Used; i++) {
-        MsgGlobal.vs.server.addr[i].sin_addr.s_addr = inet_addr(addresses->Value[i]);
-        MsgGlobal.vs.server.addr[i].sin_port = htons(atol(ports->Value[i]));
-        MsgGlobal.vs.server.addr[i].sin_family = AF_INET;
-    }
-
-
-#if 0
-    for (i = 0; i < MsgGlobal.vs.server.contexts->Used; i++) {
-        XplConsolePrintf("\rCtx:%-35s IP:%-15s Path:%s\n", MsgGlobal.vs.server.contexts->Value[i], addresses->Value[i], MsgGlobal.vs.storePaths->Value[i]);
-        XplConsolePrintf("\rDN :%-35s\n\n", MsgGlobal.vs.storeDNs->Value[i]);
-    }
-#endif
-
-    MDBDestroyValueStruct(addresses);
-    MDBDestroyValueStruct(ports);
-    return(TRUE);
- }
-
-static BOOL
 MsgLibraryStop(void)
 {
     while (MsgGlobal.flags & MSGAPI_FLAG_MONITOR_RUNNING) {
         XplDelay(1000);
     }
-
-    MDBDestroyValueStruct(MsgGlobal.vs.storeDNs);
-    MDBDestroyValueStruct(MsgGlobal.vs.storePaths);
-    MDBDestroyValueStruct(MsgGlobal.vs.server.contexts);
-    MDBDestroyValueStruct(MsgGlobal.vs.server.names);
-    if (MsgGlobal.vs.server.addr) {
-        MemFree(MsgGlobal.vs.server.addr);
-        MsgGlobal.vs.server.addr = NULL;
-    }
-
-
-#ifdef PARENTOBJECT_STORE
-    MDBDestroyValueStruct(MsgGlobal.vs.parent.stores);
-    MDBDestroyValueStruct(MsgGlobal.vs.parent.objects);
-#endif
 
     XplRWLockDestroy(&MsgGlobal.configLock);
 
@@ -794,7 +428,6 @@ MsgLibraryStart(void)
     unsigned long i;
     struct sockaddr_in server_sockaddr;
     unsigned char path[XPL_MAX_PATH + 1];
-    MDBValueStruct *config;
     XplThreadID ID;
 
     /* Prepare later config updates */
@@ -809,83 +442,7 @@ MsgLibraryStart(void)
     strcpy(MsgGlobal.paths.certificate, XPL_DEFAULT_CERT_PATH);
     strcpy(MsgGlobal.paths.key, XPL_DEFAULT_KEY_PATH);
 
-    /* Read "context" related stuff */
-
-    MsgGlobal.vs.server.names = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
-    MsgGlobal.vs.server.contexts = MDBShareContext(MsgGlobal.vs.server.names);
-    MsgGlobal.vs.storePaths = MDBShareContext(MsgGlobal.vs.server.names);
-    MsgGlobal.vs.storeDNs = MDBShareContext(MsgGlobal.vs.server.names);
-    MsgGlobal.vs.server.addr = NULL;
-
-#ifdef PARENTOBJECT_STORE
-    MsgGlobal.vs.parent.objects = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
-    MsgGlobal.vs.parent.stores = MDBShareContext(MsgGlobal.vs.parent.objects);
-#endif
-
-    server_sockaddr.sin_addr.s_addr=XplGetHostIPAddress();
-    sprintf(MsgGlobal.address.string,"%d.%d.%d.%d",
-	    server_sockaddr.sin_addr.s_net,
-	    server_sockaddr.sin_addr.s_host,
-	    server_sockaddr.sin_addr.s_lh,
-	    server_sockaddr.sin_addr.s_impno);
-
-    MDBAddValue(MsgGlobal.address.string, MsgGlobal.vs.server.names);
-    if (!(MsgGlobal.flags & MSGAPI_FLAG_CLUSTERED)) {
-        MDBWrite(MsgGlobal.server.dn, MSGSRV_A_IP_ADDRESS, MsgGlobal.vs.server.names);
-    } else {
-        MDBFreeValues(MsgGlobal.vs.server.names);
-        if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_IP_ADDRESS, MsgGlobal.vs.server.names)>0) {
-            strcpy(MsgGlobal.address.string, MsgGlobal.vs.server.names->Value[0]);
-        }
-    }
-
-    MDBFreeValues(MsgGlobal.vs.server.names);
-    MsgGlobal.address.local = inet_addr(MsgGlobal.address.string);
-
-    // MDBFreeValues(config);
-
-    //LoadContextList(config);
-
-    // MDBDestroyValueStruct(config);
-
     return(TRUE);
-}
-
-MDBHandle 
-MsgGetSystemDirectoryHandle(void)
-{
-    MDBHandle systemHandle;
-    unsigned char buffer[XPL_MAX_PATH + 1];
-    unsigned char credential[128];
-    FILE *eclients;
-
-    memset(credential, 0, sizeof(credential));
-
-    sprintf(buffer, "%s/eclients.dat", XPL_DEFAULT_DBF_DIR);
-    eclients = fopen(buffer, "rb");
-    if (eclients) {
-        fread(credential, sizeof(unsigned char), sizeof(credential), eclients);
-
-        fclose(eclients);
-        eclients = NULL;
-    } else {
-        XplConsolePrintf("Insufficient privileges; shutting down.\n");
-        return(NULL);
-    }
-
-    if (!MsgGetConfigProperty(MsgGlobal.server.dn,
-	                      MSGSRV_CONFIG_PROP_MESSAGING_SERVER)) {
-        XplConsolePrintf("Messaging server not configured. Shutdown.\n");
-        return(NULL);
-    } 
-
-    systemHandle = MDBAuthenticate("Bongo", MsgGlobal.server.dn, credential);
-    if (systemHandle == NULL) {
-        XplConsolePrintf("Messaging server credentials are invalid; shutting down.\n");
-        return(NULL);
-    }
-
-    return(systemHandle);
 }
 
 BOOL
@@ -952,7 +509,6 @@ MsgGetUpdateStatus(char *record, int record_length)
 static BOOL
 MsgReadConfiguration(void)
 {
-    MDBValueStruct *config;
     unsigned long i;
     struct tm *timeStruct;
     time_t utcTime;
@@ -976,15 +532,6 @@ MsgReadConfiguration(void)
      * automatically detect pre2.5 installs and change the DS attribute...
      */
 
-    config = MDBCreateValueStruct(MsgGlobal.directoryHandle, NULL);
-
-    if (!config) {
-        XplConsolePrintf("Messaging server out of memory; shutting down.\n");
-        MDBRelease(MsgGlobal.directoryHandle);
-        MsgGlobal.directoryHandle = NULL;
-        return(FALSE);
-    }
-
     strcpy(MsgGlobal.paths.dbf, XPL_DEFAULT_DBF_DIR);
     MsgMakePath(MsgGlobal.paths.dbf);
     strcpy(MsgGlobal.paths.bin, XPL_DEFAULT_BIN_DIR);
@@ -998,20 +545,6 @@ MsgReadConfiguration(void)
     strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
     MsgMakePath(MsgGlobal.paths.work);
 
-    /* Official Name */
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_OFFICIAL_NAME, config)) {
-        strcpy(MsgGlobal.official.domain, config->Value[0]);
-        MsgGlobal.official.domainLength = strlen(MsgGlobal.official.domain);
-    }
-    MDBFreeValues(config);
-
-    if (MDBRead(MsgGlobal.server.dn, MSGSRV_A_SERVER_STANDALONE, config)) {
-        if (config->Value[0][0]=='1') {
-            MsgGlobal.flags |= MSGAPI_FLAG_STANDALONE;
-        }
-    }
-    MDBDestroyValueStruct(config);
-
     return(TRUE);
 }
 
@@ -1024,8 +557,6 @@ MsgLibraryInit(void)
 
     MsgGlobal.groupID = XplGetThreadGroupID();
 
-    MsgGlobal.directoryHandle = NULL;
-
     MsgGlobal.connManager = 0x0100007F;
 
     MsgGlobal.official.domain[0] = '\0';
@@ -1035,17 +566,6 @@ MsgLibraryInit(void)
     XplMutexInit(MsgGlobal.sem.uid);
 
     MemoryManagerOpen(NULL);
-
-    if (!MDBInit()) {
-        MemoryManagerClose(NULL);
-        return 0;
-    }
-
-    MsgGlobal.directoryHandle = MsgGetSystemDirectoryHandle();
-    if (!(MsgGlobal.directoryHandle)) {
-        MemoryManagerClose(NULL);
-        return 0;        
-    }
 
     if (!MsgReadConfiguration()) {
         XplConsolePrintf("Cannot read configuration. Shutting down.\n");
@@ -1092,12 +612,6 @@ MsgLibraryShutdown(void)
     return;
 }
 
-MDBHandle 
-MsgDirectoryHandle(void)
-{
-    return(MsgGlobal.directoryHandle);
-}
-
 BOOL 
 MsgExiting(void)
 {
@@ -1122,15 +636,13 @@ MsgShutdown(void)
     return(TRUE);
 }
 
-EXPORT MDBHandle 
+EXPORT void
 MsgInit(void)
 {
     if (MSGAPIState == LIBRARY_LOADED) {
         MSGAPIState = LIBRARY_INITIALIZING;
 
-        if (!MsgLibraryInit()) {
-            return NULL;
-        }
+        if (!MsgLibraryInit()) return;
     }
 
     while (MSGAPIState < LIBRARY_RUNNING) {
@@ -1140,8 +652,6 @@ MsgInit(void)
     if (MSGAPIState == LIBRARY_RUNNING) {
         XplSafeIncrement(MsgGlobal.useCount);
     }
-
-    return((MSGAPIState == LIBRARY_RUNNING) ? MsgGlobal.directoryHandle : NULL);
 }
 
 EXPORT BOOL

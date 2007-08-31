@@ -3795,14 +3795,7 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(IMAP_CONNECTION_TIMEOUT, TRUE);
 
-    if (MsgInit() == NULL) {
-        XplConsolePrintf("\rIMAPD: Invalid directory credentials; exiting!\n");
-
-        MemoryManagerClose(MSGSRV_AGENT_IMAP);
-
-        return(-1);
-    }
-
+    MsgInit();
     NMAPInitialize();
 
     Imap.logHandle = LoggerOpen("bongoimap");

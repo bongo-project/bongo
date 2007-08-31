@@ -9,7 +9,6 @@ bongoantispam_SOURCES :=				\
 bongoantispam_LDADD :=					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

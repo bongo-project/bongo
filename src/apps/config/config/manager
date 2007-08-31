@@ -12,9 +12,9 @@
 	{ "name": "bongoantispam", "pri": 5, "enabled": true },
 	{ "name": "bongoavirus", "pri": 5, "enabled": true },
 	{ "name": "bongocollector", "pri": 7, "enabled": true },
-	{ "name": "bongomailprox", "pri": 7, "enabled": true },
-	{ "name": "bongopluspack", "pri": 5, "enabled": true },
-	{ "name": "bongorules", "pri": 2, "enabled": true },
+	{ "name": "bongomailprox", "pri": 7, "enabled": false },
+	{ "name": "bongopluspack", "pri": 5, "enabled": false },
+	{ "name": "bongorules", "pri": 2, "enabled": false },
 	{ "name": "bongoimap", "pri": 10, "enabled": true },
 	{ "name": "bongopop3", "pri": 10, "enabled": true },
 	{ "name": "bongocalcmd", "pri": 7, "enabled": true }

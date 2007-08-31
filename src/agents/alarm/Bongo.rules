@@ -9,7 +9,6 @@ bongoalarm_LDADD :=						   \
 	libbongonmap.la						   \
 	libbongocal.la						   \
 	libbongomsgapi.la					   \
-	libbongomdb.la						   \
 	libbongologger.la					   \
 	libbongoconnio.la					   \
 	libbongomemmgr.la					   \

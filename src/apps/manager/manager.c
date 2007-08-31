@@ -879,15 +879,8 @@ get_lock:
     }
     ConnStartup(DEFAULT_CONNECTION_TIMEOUT, TRUE);
 
-    if (!MsgGetConfigProperty(ServerDN, MSGSRV_CONFIG_PROP_MESSAGING_SERVER)) {
-        fprintf(stderr, _("bongo-manager: Couldn't read the server DN from bongo.conf.\n"));
-        goto err_handler;
-    }
-
-    if (MsgGetConfigProperty((unsigned char *) buf, 
-                             (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD)) {
-        startLdap = atoi(buf);
-    }
+    // set startLdap here if we want to start a managed slapd instance
+    // startLdap = atoi(buf);
 
     if (startLdap) {
         int err;
@@ -904,22 +897,8 @@ get_lock:
     }
 
     if (!slapdOnly) {
-        if (!MDBInit()) {
-            fprintf(stderr, _("bongo-manager: unable to intialize directory access.\n"));
-            goto err_handler;
-        }
-
-	if (!MsgInit()) {
-	    fprintf(stderr, _("bongo-manager: unable to MsgInit()\n"));
-	    goto err_handler;
-	}
+	MsgInit();
 	NMAPInitialize();
-
-        DirectoryHandle = MsgGetSystemDirectoryHandle();
-        if (DirectoryHandle == NULL) {
-            fprintf(stderr, _("bongo-manager: unable to initialize messaging library.\n"));
-            goto err_handler;
-        }
     }
 
     signal(SIGTERM, SignalHandler);

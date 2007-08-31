@@ -8,7 +8,6 @@ bongogeneric_SOURCES :=				\
 bongogeneric_LDADD :=					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

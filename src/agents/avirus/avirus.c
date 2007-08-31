@@ -28,7 +28,6 @@
 #include <logger.h>
 #include <bongoagent.h>
 #include <bongoutil.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -799,6 +798,7 @@ ProcessConnection(AVClient *client)
                         }
 
 #if 0
+// REMOVE-MDB
 // FIXME! What is this code actually doing?
                         if (!MsgFindObject(cur + 1, client->dn, NULL, NULL, client->uservs)) {
                             MDBFreeValues(client->uservs);
@@ -1398,14 +1398,7 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    if (MsgInit() == NULL) {
-        XplConsolePrintf("antivirus: Invalid directory credentials; exiting!\r\n");
-
-        MemoryManagerClose(MSGSRV_AGENT_ANTIVIRUS);
-
-        return(-1);
-    }
-
+    MsgInit();
     StreamioInit();
     NMAPInitialize();
 

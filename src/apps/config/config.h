@@ -24,19 +24,23 @@ typedef struct {
 
 /* function prototypes */
 
-BOOL	ImportSystemBackupFile(StoreClient *client, const char *path);
+// config.c
+void	LoadDefaultStoreConfiguration(void);
 void	InitializeDataArea(void);
 void	usage(void);
 void	RunAsBongoUser(void);
-BOOL	NMAPSimpleCommand(StoreClient *client, char *command);
-BOOL	SetAdminRights(StoreClient *client, char *document);
-BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len);
 void	InitialStoreConfiguration(void);
 void    GetInteractiveData(char *description, char **data, char *def);
 BOOL	GenerateCryptoData(void);
 void	CheckVersion(void);
 void	AddUser(const char *username);
 void	TzCache(void);
+
+// store.c
+BOOL	ImportSystemBackupFile(StoreClient *client, const char *path);
+BOOL	NMAPSimpleCommand(StoreClient *client, char *command);
+BOOL	SetAdminRights(StoreClient *client, char *document);
+BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len);
 
 /* compat with older gnutls */
 #ifndef GNUTLS_DIG_SHA1

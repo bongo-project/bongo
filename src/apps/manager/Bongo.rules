@@ -7,7 +7,6 @@ bongo_manager_SOURCES := \
 bongo_manager_LDADD :=					   \
         libbongonmap.la                                    \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \
     libbongo-json.la                     \

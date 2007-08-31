@@ -14,7 +14,6 @@
 #include <gnutls/x509.h>
 #include <gcrypt.h>
 #include <time.h>
-#include <tar.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "config.h"
@@ -45,165 +44,27 @@ usage(void) {
 }
 
 void
-RunAsBongoUser() {
-	if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {    
-		printf(_("bongo-config: Could not drop to unpriviliged user '%s'\n"), MsgGetUnprivilegedUser());
+RunAsBongoUser() 
+{
+	if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {    
+		printf(_("bongo-config: Could not drop to unprivileged user '%s'\n"), MsgGetUnprivilegedUser());
 		exit(-1);
 	}
 }
 
-BOOL
-NMAPSimpleCommand(StoreClient *client, char *command) {
-	CCode ccode;
-	
-	NMAPSendCommandF(client->conn, command);
-	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-	if (1000 == ccode)
-		return TRUE;
-
-	return FALSE;
-}
-
-BOOL
-SetAdminRights(StoreClient *client, char *document) {
-	CCode ccode;
-	char *rights = "grant user:admin all;";
-
-	ccode = NMAPRunCommandF(client->conn, client->buffer, sizeof(client->buffer),
-		"PROPSET %s nmap.access-control %d\r\n", document, strlen(rights));
-	if (ccode == 2002) {
-		NMAPSendCommandF(client->conn, rights);
-		ccode = NMAPReadAnswer(client->conn, client->buffer, 
-			sizeof(client->buffer), TRUE);
-		if (ccode == 1000)
-			return TRUE;
-	} 
-	return FALSE;
-}
-
-BOOL
-PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len) {
-	CCode ccode;
-	char command[1024];
-
-	snprintf(command, 1000, "INFO %s/%s\r\n", collection, filename);
-	ccode = NMAPSendCommandF(client->conn, command);
-	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-	while (ccode == 2001)
-		ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-
-	if (ccode == 1000) {
-		// INFO returned OK, document already exists
-		snprintf(command, 1000, "REPLACE %s/%s %ld\r\n", 
-			collection, filename, len);
-	} else {
-		// INFO errored, so document doesn't exist
-		snprintf(command, 1000, "WRITE %s %d %ld \"F%s\"\r\n", 
-			collection, STORE_DOCTYPE_CONFIG, len, filename);
-	}
-
-	NMAPSendCommandF(client->conn, command);
-	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-
-	if (ccode == 2002) {
-		ConnWrite(client->conn, content, len);
-		ConnFlush(client->conn);
-		if (NMAPReadAnswer(client->conn, client->buffer, 
-		  sizeof(client->buffer), TRUE) == 1000) {
-			return TRUE;
-		}
-		XplConsolePrintf(_("ERROR: Couldn't write data\n"));
-	} else {
-		XplConsolePrintf(_("ERROR: Wouldn't accept data\n"));
-	}
-	return FALSE;
-}
-
-BOOL
-ImportSystemBackupFile(StoreClient *client, const char *path)
+void
+RunAsRoot()
 {
-	FILE *config;
-	char header[513];
-	CCode result;
-	
-	config = fopen(path, "r");
-	if (config == NULL) {
-		XplConsolePrintf(_("ERROR: Couldn't load default config set\n"));
-		return FALSE;
+	if (XplSetEffectiveUserId(0) < 0) {
+		XplConsolePrintf(_("bongo-config: Couldn't get back root privs.\n"));
 	}
-	while(512 == fread(&header, sizeof(char), 512, config)) {
-		long filesize, blocksize, read;
-		size_t len;
-		char str_filesize[13], filename[101];
-		char *file;
-		header[512] = 0;
-		
-		memcpy(&filename, &header, 100);
-		filename[100] = 0;
-		memcpy(&str_filesize, &header[124], 12);
-		str_filesize[12] = 0;
-		filesize = strtol(str_filesize, NULL, 8);
-		len = strlen(filename);
-		
-		if (! strncmp(filename, "", 100)) {
-			// end of tar is _two_ empty blocks... ah well :o>
-			break;
-		}
-		
-		blocksize = filesize / 512;
-		if (filesize % 512) blocksize++;
-		blocksize *= 512;
+}
 
-		/* if this is a directory we need to create a new collection */
-		if (filename[len-1] == '/') {
-			char currentpath[110];
-			char fullpath[110];
-
-			filename[len-1] = 0;
-
-			snprintf(currentpath, 100, "/%s", filename);
-			snprintf(fullpath, 108, "CREATE %s\r\n", currentpath);
-			result = NMAPSimpleCommand(client, fullpath);
-
-			if ((result==1000) || (result==4226)) {
-				// collection can't be created and doesn't exist
-				XplConsolePrintf(_("ERROR: Couldn't create collection: %s\n"), currentpath);
-				return FALSE;
-			}
-			if (! SetAdminRights(client, currentpath)) {
-				XplConsolePrintf(_("ERROR: Couldn't set acls on %s\n"), currentpath);
-				return FALSE;
-			}
-			continue;
-		}
-
-		if (blocksize > 0 && !strncmp(filename, "config/", 7)) {
-			char fullpath[110];
-			char *delim;
-
-			file = MemMalloc((size_t) blocksize);
-			read = fread(file, sizeof(char), blocksize, config);
-			if (read != blocksize) {
-				XplConsolePrintf("  Read error!");
-			}
-			
-			delim = strrchr(filename, '/');
-			*delim = 0;
-			snprintf(fullpath, 108, "/%s", filename);
-			if (!PutOrReplaceConfig(client, fullpath,
-				delim+1, file, filesize)) {
-				XplConsolePrintf(_("ERROR: Couldn't write\n"));
-			} else {
-				if (! SetAdminRights(client, fullpath)) {
-					XplConsolePrintf(_("ERROR: Couldn't set rights on store file\n"));
-				}
-			}
-			MemFree(file);
-		}
-	}
-	
-	fclose(config);
-	return TRUE;
+void
+CreateSystemDir(const char *path)
+{
+	XplMakeDir(path);
+	// TODO: chown(path, 
 }
 
 void
@@ -214,13 +75,15 @@ InitializeDataArea(void)
 		XplConsolePrintf(_("ERROR: Couldn't create user database\n"));
 		exit(1);
 	}
+	CreateSystemDir(XPL_DEFAULT_CONF_DIR);
+	CreateSystemDir(XPL_DEFAULT_STATE_DIR);
+	CreateSystemDir(XPL_DEFAULT_CACHE_DIR);
+	CreateSystemDir(XPL_DEFAULT_DBF_DIR);
+	CreateSystemDir(XPL_DEFAULT_WORK_DIR);
 }
 
 void
 InitialStoreConfiguration(void) {
-	char path[XPL_MAX_PATH];
-	int store_pid;
-	char *args[3];
 	BOOL cal_success;
 	
 	// attempt to initialise cal lib. This creates cached data, and can be time
@@ -232,7 +95,17 @@ InitialStoreConfiguration(void) {
 		exit(1);
 	}
 	
-	XplConsolePrintf(_("Initializing store...\n"));
+	XplConsolePrintf(_("Loading initial store configuration...\n"));
+	LoadDefaultStoreConfiguration();
+}
+
+void
+LoadDefaultStoreConfiguration(void)
+{
+	char path[XPL_MAX_PATH];
+	int store_pid;
+	char *args[3];
+	
 	store_pid = fork();
 	if (store_pid == 0) { 	// child 
 		static char *install = "--install";
@@ -584,7 +457,7 @@ main(int argc, char *argv[]) {
 	}
 
 	// unusual libgcrypt options must occur before XplInit()
-	if (command == 2) {
+	if ((command == 2) || (command == 1)) {
 		gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
 	}
 	XplInit();
@@ -601,7 +474,10 @@ main(int argc, char *argv[]) {
 	next_arg++;
 	switch(command) {
 		case 1:
+			RunAsBongoUser();
+			GenerateCryptoData();
 			InitializeDataArea();
+			RunAsRoot();
 			InitialStoreConfiguration();
 			break;
 		case 2:

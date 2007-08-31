@@ -10,7 +10,6 @@ bongomailprox_SOURCES :=				\
 bongomailprox_LDADD :=					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

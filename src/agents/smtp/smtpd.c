@@ -39,7 +39,6 @@
 
 #include <logger.h>
 
-#include <mdb.h>
 #include <nmap.h>
 
 #include <bongoagent.h>
@@ -213,8 +212,6 @@ typedef struct
 #endif
 
 void *SMTPConnectionPool = NULL;
-
-MDBHandle SMTPDirectoryHandle = NULL;
 
 /* Prototypes */
 long ReadConnection(Connection *conn, char **buffer, unsigned long *buflen);
@@ -840,6 +837,8 @@ HandleConnection (void *param)
                                     }
                                     else {
                                         XplRWReadLockRelease (&ConfigLock);
+#if 0
+// REMOVE-MDB
                                         if (MsgFindObject
                                             (To, NULL, NULL, NULL, NULL)) {
                                             snprintf (Answer, sizeof (Answer),
@@ -851,11 +850,12 @@ HandleConnection (void *param)
                                                               DSN_FLAGS));
                                         }
                                         else {
+#endif
                                             ConnWrite (Client->client.conn,
                                                         MSG550NOTFOUND,
                                                         MSG550NOTFOUND_LEN);
                                             goto QuitRcpt;
-                                        }
+                                        // REMOVE-MDB }
                                     }
 
                                 }
@@ -4452,19 +4452,9 @@ int XplServiceMain (int argc, char *argv[])
 
     ConnStartup (SMTP.socket_timeout, TRUE);
 
-    MDBInit ();
-    if ((SMTPDirectoryHandle = (MDBHandle) MsgInit ()) == NULL) {
-       Log(LOG_ERROR, "Invalid directory credentials, shutting down");
-
-        MemoryManagerClose (MSGSRV_AGENT_SMTP);
-
-        exit (-1);
-    }
-
     NMAPInitialize();
 
     XplRWLockInit (&ConfigLock);
-
 
     for (ccode = 1; argc && (ccode < argc); ccode++) {
         if (XplStrNCaseCmp (argv[ccode], "--forwarder=", 12) == 0) {

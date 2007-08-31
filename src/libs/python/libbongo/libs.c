@@ -70,11 +70,7 @@ initlibs()
         return;
     }
 
-    if (!MsgInit()) {
-        PyErr_SetString(PyExc_ImportError,
-                        "bongo.libs error: MsgInit() failed");
-        return;
-    }
+    MsgInit();
 
     MsgGetDBFDir(dbfdir);
 

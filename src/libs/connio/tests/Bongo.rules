@@ -9,7 +9,6 @@ checktest_connio_LDADD := $(CHECK_LIBS)			 \
 	libbongoconnio.la				 \
 	libbongonmap.la					 \
 	libbongomsgapi.la				 \
-	libbongomdb.la					 \
 	libbongologger.la				 \
 	libbongomemmgr.la				 \
 	libbongoutil.la					 \

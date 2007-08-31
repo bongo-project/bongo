@@ -871,13 +871,7 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    if (MsgInit() == NULL) {
-        XplConsolePrintf("bongoantispam: Invalid directory credentials; exiting!\r\n");
-
-        MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
-        return(-1);
-    }
-
+    MsgInit();
     NMAPInitialize();
 
     SetCurrentNameSpace(NWOS2_NAME_SPACE);

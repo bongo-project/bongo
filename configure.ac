@@ -629,6 +629,10 @@ ac_configure_args="$ac_configure_args --enable-threadsafe --enable-cross-thread-
 # src/agents/mailprox/Makefile
 # src/agents/rules/Makefile
 
+#src/libs/mdb/Makefile
+#src/libs/mdb-file/Makefile
+#src/libs/mdb-xldap/Makefile
+
 AC_OUTPUT([
 Makefile
 bongo.pc
@@ -677,9 +681,6 @@ src/libs/json/Makefile
 src/libs/streamio/Makefile
 src/libs/streamio/codec/Makefile
 src/libs/logger/Makefile
-src/libs/mdb/Makefile
-src/libs/mdb-file/Makefile
-src/libs/mdb-xldap/Makefile
 src/libs/memmgr/Makefile
 src/libs/msgapi/Makefile
 src/libs/nmap/Makefile

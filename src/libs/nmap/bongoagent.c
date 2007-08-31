@@ -265,14 +265,7 @@ BongoAgentInit(BongoAgent *agent,
         ConnStartup(timeOut, TRUE);
 
     if (startupResources & BA_STARTUP_MDB) {
-        MDBInit();
-
-        agent->directoryHandle = (MDBHandle)MsgInit();
-        if (agent->directoryHandle == NULL) {
-            XplConsolePrintf("%s: Invalid directory credentials; exiting!\r\n", agentName);
-            MemoryManagerClose(agentDn);
-            return -1;
-        }
+	MsgInit();
     }
 
     if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize()) {

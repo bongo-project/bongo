@@ -8,12 +8,12 @@ pkgpyexec_LTLIBRARIES :=			\
 	libs.la					\
 	bootstrap.la
 
+#	src/libs/python/libbongo/mdb.c		
 libs_la_SOURCES :=				\
 	src/libs/python/libbongo/cal.c		\
 	src/libs/python/libbongo/calcmd.c	\
 	src/libs/python/libbongo/libs.c		\
 	src/libs/python/libbongo/libs.h		\
-	src/libs/python/libbongo/mdb.c		\
 	src/libs/python/libbongo/msgapi.c	\
 	src/libs/python/libbongo/msgapi-defs.c	\
 	src/libs/python/libbongo/msgapi-defs.h	\
@@ -35,14 +35,13 @@ libs_la_LIBADD :=				\
 	libbongocalcmd.la			\
 	libbongoutil.la				\
 	libbongo-json.la				\
-	libbongomdb.la				\
 	libbongomsgapi.la			\
 	libbongostreamio.la
 
+#	src/libs/python/libbongo/mdb.c		
 bootstrap_la_SOURCES :=				\
 	src/libs/python/libbongo/bootstrap.c	\
 	src/libs/python/libbongo/bootstrap.h	\
-	src/libs/python/libbongo/mdb.c		\
 	src/libs/python/libbongo/msgapi-defs.c	\
 	src/libs/python/libbongo/msgapi-defs.h	\
 	src/libs/python/libbongo/pybongo.c	\
@@ -55,7 +54,6 @@ bootstrap_la_CPPFLAGS := $(AM_CPPFLAGS)		\
 bootstrap_la_LDFLAGS := -avoid-version -module
 bootstrap_la_LIBADD :=				\
 	$(PYTHON_LIBS)				\
-	libbongomdb.la				\
 	libbongomsgapi.la
 
 src/libs/python/libbongo/libs.so: libs.la
