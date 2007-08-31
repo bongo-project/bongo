@@ -25,7 +25,6 @@
 
 #include <logger.h>
 
-#include <mdb.h>
 #include <msgapi.h>
 
 #include "imapd.h"

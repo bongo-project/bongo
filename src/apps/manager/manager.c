@@ -60,9 +60,6 @@ static BOOL ChildError = FALSE;
 static BOOL ReloadNow = FALSE;
 static int HighestPriority = 0;
 
-MDBHandle DirectoryHandle = NULL;
-char ServerDN[MDB_MAX_OBJECT_CHARS + 1];
-
 static BongoAgent *
 FindAgentByPid(pid_t pid)
 {
@@ -573,8 +570,8 @@ StartSlapd(BOOL killExisting)
 {
     int status = 0;
     int err;
-    char buf[MDB_MAX_OBJECT_CHARS + 1];
-    char url[MDB_MAX_OBJECT_CHARS + 1];
+    char buf[101]; // FIXME: REMOVE-MDB this was some maximum 
+    char url[101];
 
     char *host = "127.0.0.1";
     int port = 0;
@@ -623,7 +620,7 @@ StartSlapd(BOOL killExisting)
 	return 1;
     }
 
-    snprintf(url, MDB_MAX_OBJECT_CHARS, "ldap://%s:%d", host, port);
+    snprintf(url, 100, "ldap://%s:%d", host, port);
 
     printf(_("bongo-manager: starting managed slapd...\n"));
 

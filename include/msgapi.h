@@ -22,7 +22,6 @@
 #ifndef MSGAPI_H
 #define MSGAPI_H
 
-#include <mdb.h>
 #include <connio.h>
 #include <sqlite3.h>
 
@@ -494,43 +493,14 @@ EXPORT BOOL MsgGetServerCredential(char *buffer);
 extern "C" {
 #endif
 
-typedef BOOL (*FindObjectCacheType)(const unsigned char *, unsigned char *, unsigned char *, struct sockaddr_in *, MDBValueStruct *);
-typedef BOOL (*FindObjectCacheExType)(const unsigned char *, unsigned char *, unsigned char *, struct sockaddr_in *, BOOL *, MDBValueStruct *);
-typedef const unsigned char *(*FindObjectStoreCacheType)(const unsigned char *User, const unsigned char *DefaultPath);
-
-typedef struct _MSGCacheInitStruct {
-    MDBHandle *DirectoryHandle;
-
-    XplRWLock *ConfigLock;
-
-    struct sockaddr_in *ServerAddr;
-    MDBValueStruct *ServerContexts;
-    MDBValueStruct *StorePath;
-
-    FindObjectCacheType DefaultFindObject;
-    FindObjectCacheExType DefaultFindObjectEx;
-    FindObjectStoreCacheType DefaultFindObjectStore;
-
-    unsigned char DefaultPathChar;
-} MSGCacheInitStruct;
-
-typedef BOOL (*FindObjectCacheInitType)(MSGCacheInitStruct *initData, unsigned char *description);
-typedef BOOL (*FindObjectCacheShutdownType)(void);
-
 EXPORT void MsgInit(void);
 EXPORT BOOL MsgShutdown(void);
-EXPORT MDBHandle MsgGetSystemDirectoryHandle(void);
 
 EXPORT const unsigned char *MsgGetServerDN(unsigned char *buffer);
-EXPORT MDBHandle MsgDirectoryHandle(void);
 EXPORT BOOL MsgGetConfigProperty(unsigned char *Buffer, unsigned char *Property);
 
-EXPORT BOOL MsgFindObject(const unsigned char *name, unsigned char *dn, unsigned char *type, struct sockaddr_in *nmap, MDBValueStruct *v);
-EXPORT BOOL MsgFindObjectEx(const unsigned char *name, unsigned char *dn, unsigned char *type, struct sockaddr_in *nmap, BOOL *disabled, MDBValueStruct *v);
 EXPORT const unsigned char *MsgFindUserStore(const unsigned char *user, const unsigned char *defaultPath);
 EXPORT BOOL MsgFindUserNmap(const unsigned char *user, unsigned char *nmap, int nmap_len, unsigned short *port);
-
-EXPORT BOOL MsgReadIP(const unsigned char *object, unsigned char *type, MDBValueStruct *v);
 
 EXPORT const unsigned char *MsgGetDBFDir(char *directory);
 EXPORT const unsigned char *MsgGetWorkDir(char *directory);
@@ -539,12 +509,6 @@ EXPORT const unsigned char *MsgGetLibDir(char *directory);
 EXPORT const unsigned char *MsgGetBinDir(char *directory);
 EXPORT const unsigned char *MsgGetTLSCertPath(char *path);
 EXPORT const unsigned char *MsgGetTLSKeyPath(char *path);
-EXPORT unsigned char *MsgGetUserEmailAddress(const unsigned char *userDn, MDBValueStruct *userData, unsigned char *buffer, unsigned long bufLen);
-EXPORT unsigned char *MsgGetUserDisplayName(const unsigned char *userDn, MDBValueStruct *userData);
-EXPORT BOOL MsgGetUserSettingsDN(const unsigned char *userDn, unsigned char *configDn, MDBValueStruct *v, BOOL create);
-EXPORT long MsgGetUserSetting(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *vOut);
-EXPORT BOOL MsgSetUserSetting(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *vIn);
-EXPORT BOOL MsgAddUserSetting(const unsigned char *userDn, unsigned char *attribute, unsigned char *value, MDBValueStruct *vIn);
 EXPORT unsigned long MsgGetHostIPAddress(void);
 EXPORT unsigned long MsgGetAgentBindIPAddress(void);
 

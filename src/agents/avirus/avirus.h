@@ -24,7 +24,6 @@
 #define _AVIRUS_H
 
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -102,13 +101,11 @@ typedef struct {
     Connection *conn;
     void *handle;
 
-    MDBValueStruct *uservs;
-
     unsigned char *envelope;
     unsigned char work[XPL_MAX_PATH + 1];
     unsigned char line[CONN_BUFSIZE + 1];
     unsigned char command[CONN_BUFSIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
+    unsigned char dn[101];
 
     struct {
         unsigned long used;
@@ -167,8 +164,6 @@ typedef struct _AVirusGlobals {
     } nmap;
 
     struct {
-        MDBHandle directory;
-
         void *logging;
     } handle;
 

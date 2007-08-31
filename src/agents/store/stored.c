@@ -26,7 +26,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>

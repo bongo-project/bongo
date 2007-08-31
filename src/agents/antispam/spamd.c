@@ -30,7 +30,6 @@
 #include <logger.h>
 #include <bongoagent.h>
 #include <bongoutil.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>

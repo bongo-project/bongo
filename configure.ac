@@ -628,6 +628,7 @@ ac_configure_args="$ac_configure_args --enable-threadsafe --enable-cross-thread-
 # disabled agents
 # src/agents/mailprox/Makefile
 # src/agents/rules/Makefile
+# src/agents/pluspack/Makefile
 
 #src/libs/mdb/Makefile
 #src/libs/mdb-file/Makefile
@@ -654,7 +655,6 @@ src/agents/generic/Makefile
 src/agents/imap/Makefile
 src/agents/imap/tests/Makefile
 src/agents/itip/Makefile
-src/agents/pluspack/Makefile
 src/agents/pop/Makefile
 src/agents/queue/Makefile
 src/agents/smtp/Makefile

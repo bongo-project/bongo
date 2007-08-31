@@ -28,8 +28,6 @@ XPL_BEGIN_C_LINKAGE
 
 #include <bongoutil.h>
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <bongoagent.h>
 #include <nmap.h>

@@ -36,7 +36,7 @@ typedef struct _QueuePushClient {
     unsigned long usageCount;
     unsigned long errorCount;
 
-    unsigned char identifier[MDB_MAX_OBJECT_CHARS + 1];
+    unsigned char identifier[101];
 } QueuePushClient;
 
 typedef struct _Queue {

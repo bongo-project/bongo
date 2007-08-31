@@ -23,10 +23,8 @@
 #define _MAILPROX_H
 
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <nmap.h>
-#include <management.h>
 
 #define PRODUCT_SHORT_NAME "mailprox.nlm"
 

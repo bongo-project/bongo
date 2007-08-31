@@ -23,7 +23,6 @@
 #define _ALARM_H
 
 #include <connio.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>

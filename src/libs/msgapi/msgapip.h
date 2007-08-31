@@ -23,13 +23,10 @@
 #define MSGAPIP_H
 
 #include <xpl.h>
-#include <mdb.h>
 
 #include <msgapi.h>
 
 /*  msgapi.c */
-int MsgGetParentAttribute(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *v);
-MDBHandle MsgDirectoryHandle(void);
 BOOL MsgExiting(void);
 
 /*  msgdate.c */

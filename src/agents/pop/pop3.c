@@ -31,12 +31,10 @@
 #include <xpl.h>
 #include <bongoutil.h>
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <logger.h>
 #include <nmlib.h>
 #include <nmap.h>
-#include <management.h>
 #include <bongostore.h>
 #include <bongoagent.h>
 

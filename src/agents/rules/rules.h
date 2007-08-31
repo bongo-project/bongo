@@ -23,8 +23,6 @@
 #define _BONGORULES_H
 
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <streamio.h>
 #include <nmap.h>

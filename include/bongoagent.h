@@ -25,7 +25,6 @@
 #define BONGOAGENT_H
 
 #include <xpl.h>
-#include <mdb.h>
 #include <logger.h>
 #include <bongothreadpool.h>
 #include <connio.h>
@@ -75,7 +74,6 @@ struct _BongoAgent {
 
     BongoAgentState state;
 
-    MDBHandle directoryHandle;
     LoggingHandle *loggingHandle;
     bongo_ssl_context *sslContext;
 

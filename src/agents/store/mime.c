@@ -21,9 +21,6 @@
 
 #include <config.h>
 #include <xpl.h>
-// #include <mdb.h>
-// #include <nmap.h>
-// #include <nmlib.h>
 #include <rfc2231.h>
 
 #include "stored.h"

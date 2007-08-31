@@ -30,7 +30,6 @@
 #include <bongoutil.h>
 #include <nmap.h>
 #include <nmlib.h>
-#include <mdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>

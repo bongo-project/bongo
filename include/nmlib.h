@@ -23,7 +23,6 @@
 #ifndef _BONGO_NMAP_LIBRARY_H
 #define _BONGO_NMAP_LIBRARY_H
 
-#include <mdb.h>
 #include <connio.h>
 #include <nmap.h>
 #include <bongocal.h>

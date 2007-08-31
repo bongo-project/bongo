@@ -1361,7 +1361,6 @@ XplServiceMain(int argc, char *argv[])
     AVirus.nmap.ssl.context = NULL;
     AVirus.nmap.ssl.config.options = 0;
 
-    AVirus.handle.directory = NULL;
     AVirus.handle.logging = NULL;
 
     strcpy(AVirus.nmap.address, "127.0.0.1");

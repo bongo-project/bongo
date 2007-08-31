@@ -72,54 +72,6 @@ msgapi_CollectUser(PyObject *self, PyObject *args)
     return Py_None;
 }
 
-PyDoc_STRVAR(DirectoryHandle_doc,
-"DirectoryHandle() -> handle\n\
-\n\
-Return the directory handle used by libmsgapi.");
-
-static PyObject *
-msgapi_DirectoryHandle(PyObject *self, PyObject *args)
-{
-    MDBHandle handle;
-
-    if (!PyArg_ParseTuple(args, "")) {
-        return NULL;
-    }
-
-    handle = (MDBHandle)MsgDirectoryHandle();
-
-    if (handle == NULL) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
-
-    return PyCObject_FromVoidPtr(handle, NULL);
-}
-
-PyDoc_STRVAR(FindObject_doc,
-"FindObject(u) -> string dn\n\
-\n\
-Return a string containing the dn of user u.");
-
-static PyObject *
-msgapi_FindObject(PyObject *self, PyObject *args)
-{
-    unsigned char *user;
-    unsigned int len=MDB_MAX_OBJECT_CHARS+1;
-    unsigned char buf[len];
-
-    if (!PyArg_ParseTuple(args, "s", &user)) {
-        return NULL;
-    }
-
-    if (!MsgFindObject(user, buf, NULL, NULL, NULL)) {
-        Py_INCREF(Py_None);
-        return Py_None;
-    }
-
-    return Py_BuildValue("s", buf);
-}
-
 PyDoc_STRVAR(GetUserFeature_doc,
 "GetUserFeature(dn, featurename, ) -> array of strings\n\
 \n\
@@ -367,8 +319,6 @@ extern PyObject *msgapi_GetConfigProperty(PyObject *, PyObject *);
 PyMethodDef MsgApiMethods[] = {
     {"CollectAllUsers", msgapi_CollectAllUsers, METH_VARARGS | METH_STATIC, CollectAllUsers_doc},
     {"CollectUser", msgapi_CollectUser, METH_VARARGS | METH_STATIC, CollectUser_doc},
-    {"DirectoryHandle", msgapi_DirectoryHandle, METH_VARARGS | METH_STATIC, DirectoryHandle_doc},
-    {"FindObject", msgapi_FindObject, METH_VARARGS | METH_STATIC, FindObject_doc},
     {"ImportIcsUrl", msgapi_ImportIcsUrl, METH_VARARGS | METH_STATIC, ImportIcsUrl_doc},
     {"ImportIcs", msgapi_ImportIcs, METH_VARARGS | METH_STATIC, ImportIcs_doc},
     {"IcsSubscribe", msgapi_IcsSubscribe, METH_VARARGS | METH_STATIC, IcsSubscribe_doc},

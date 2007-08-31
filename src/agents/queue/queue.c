@@ -4778,7 +4778,7 @@ CommandQwait(void *param)
             && ((identifier = strchr(ptr + 1, ' ')) != NULL) 
             && (identifier[1]) 
             && (!isspace(identifier[1])) 
-            && (strlen(identifier + 1) < MDB_MAX_OBJECT_CHARS)) {
+            && (strlen(identifier + 1) < 100)) { // FIXME: REMOVE-MDB 100 was MDB maximum object identifier length
         *ptr++ = '\0';
         *identifier++ = '\0';
 

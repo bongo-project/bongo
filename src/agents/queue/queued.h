@@ -26,7 +26,6 @@
 
 #include <xpl.h>
 #include <connio.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>

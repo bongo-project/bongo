@@ -25,7 +25,6 @@
 #include "pybongo.h"
 #include <bongo-config.h>
 #include <xpl.h>
-#include <mdb.h>
 #include <connio.h>
 #include <memmgr.h>
 #include <msgapi.h>
@@ -104,7 +103,6 @@ initlibs()
     /* Add the Bongo libs */
     AddLibrary(module, "cal", CalMethods, NULL);
     AddLibrary(module, "calcmd", CalCmdMethods, CalCmdEnums);
-    AddLibrary(module, "mdb", MdbMethods, MdbEnums);
     AddLibrary(module, "msgapi", MsgApiMethods, MsgApiEnums);
     AddLibrary(module, "streamio", StreamIOMethods, NULL);
     AddLibrary(module, "bongojson", BongoJsonMethods, NULL);
