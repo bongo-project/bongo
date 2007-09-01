@@ -5,8 +5,6 @@ import logging
 import pprint
 import time
 
-from libbongo.libs import mdb
-from libbongo.libs import msgapi
 from bongo.store.StoreClient import StoreClient
 from bongo.store.StoreConnection import StoreConnection
 import bongo
@@ -37,12 +35,9 @@ def GetCredentials(req):
                 return autz[len(basic)+1:]
 
 def CheckAuthCookie(username, cookie):
-    addr = msgapi.FindUserNmap(username)
-    if addr is None:
-        # this is likely because the user does not exist
-        return False;
-    host, port = addr
-
+    host = "localhost"
+    port = 689
+    
     ret = False
 
     conn = None
@@ -59,9 +54,18 @@ def CheckUserPass(username, password):
     # shortcut some failure cases, so we don't have to hit MDB
     if username is None or password is None:
         return False
-    dn = msgapi.FindObject(username)
-    handle = msgapi.DirectoryHandle()
-    return mdb.mdb_VerifyPassword(handle, dn, password)
+    #dn = msgapi.FindObject(username)
+    #handle = msgapi.DirectoryHandle()
+    #return mdb.mdb_VerifyPassword(handle, dn, password)
+    
+    try:
+        store = StoreClient(username, username, authPassowrd=password)
+        store.Quit()
+        return True
+    except:
+        if store is not None:
+            store.Quit()
+        return False
 
 def GetUserPass(creds):
     return base64.decodestring(creds).split(":")

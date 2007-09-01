@@ -11,6 +11,24 @@ class AgentHandler(HawkeyeHandler):
     def index_GET(self, req, rp):
         global doneop
         
+        config = self._getAgents(req)
+        
+        # change things which eval. to False to empty elements
+        if config != None and config.has_key("agents"):
+            for agent in config["agents"]:
+               agent["url"] = "%(url|/)sagents/" + agent["name"]
+               agent["img"] = "../img/agent-" + agent["name"] + ".png"
+               if not agent["enabled"]:
+                   agent["enabled"] = None
+            self.SetVariable("agentlist", config["agents"])
+            self.SetVariable("success", 1)
+        elif config != None:
+            self.SetVariable("success", 0)
+            self.SetVariable("error", "We managed to read the configuration from store, but your 'manager' config file doesn't contain any agents list.")
+        else:
+            self.SetVariable("success", 0)
+            #self.SetVariable("error", "Unable to read agent list from store.")
+            
         if doneop:
             self.SetVariable("opsuccess", 1)
             doneop = 0
@@ -33,31 +51,25 @@ class AgentHandler(HawkeyeHandler):
         doneop = 1
         return self.index_GET(req, rp)
     
-    def _getAntispam(self, req):
+    def _getAgents(self, req):
         config = {}
         store = None
         decoder = simplejson.JSONDecoder()
         try:
             store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
             store.Store("_system")
-            configfile = store.Read("/config/antispam")
+            configfile = store.Read("/config/manager")
             config = decoder.decode(configfile)
             store.Quit()
-        except:
+        except ValueError:
+            self.SetVariable("error", "Failed to parse JSON.")
+            if store: 
+                store.Quit()
+            return None
+        except Exception, e:
+            self.SetVariable("error", "Unable to read agent list form store: %s" % e)
             if store: 
                 store.Quit()
             return None
         
         return config
-    
-    def _setAntispam(self, req, obj):
-        encoder = simplejson.JSONEncoder()
-        store = None
-        try:
-            store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
-            store.Store("_system")
-            configfile = encoder.encode(obj)
-            store.Replace("/config/antispam", configfile)
-        finally:
-            if store:
-                store.Quit()

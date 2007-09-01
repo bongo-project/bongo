@@ -1,7 +1,7 @@
 /*
     Bongo web administration interface (aka Hawkeye) stylesheet
     (c) 2007 Alexander Hixon <hixon.alexander@mediati.org> - see COPYING for details
-    Last modified: Sunday May 20, 2007
+    Last modified: Saturday Sep 1, 2007
 
     =======[ Global Styles ]=======
 */
@@ -283,6 +283,50 @@ ul.nav{
     background-color: #3465a4;
     color: #eeeeec;
     border: 3px solid #204a85;
+}
+
+/*
+    ========[ Icon View ]=======
+*/
+
+#iconview {
+text-align:center;
+vertical-align:middle;
+}
+#iconview div.icon {
+margin:3px;
+}
+#iconview div.icon a {
+border:1px solid #DDDDDD;
+display:block;
+float:left;
+height:97px !important;
+padding:2px 5px 1px;
+text-decoration:none;
+vertical-align:middle;
+width:108px !important;
+}
+#iconview div.icon a:link {
+color:#808080;
+}
+#iconview div.icon a:hover {
+background-color:#F1E8E6;
+border:1px solid #C24733;
+color:#333333;
+padding:3px 4px 0px 6px;
+}
+#iconview div.icon a:active {
+color:#808080;
+}
+#iconview div.icon a:visited {
+color:#808080;
+}
+#iconview div.icon img {
+margin-top:13px;
+}
+#iconview div.icon span {
+display:block;
+padding-top:3px;
 }
 
 /*

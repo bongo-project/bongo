@@ -359,20 +359,23 @@ class CalendarACL :
 class StoreClient:
     def __init__(self, user, owner, authToken=None, authCookie=None,
                  authPassword=None):
-        from libbongo.libs import msgapi
+        #from libbongo.libs import msgapi
         self.owner = self.user = None
         
         #addr = msgapi.FindUserNmap(owner)
         #if addr is None:
         #    raise bongo.BongoError ("Could not look up nmap host for user %s" % owner)
         #(host, port) = addr
+        
+        host = "localhost"
+        port = 689
 
         if authCookie:
-            self.connection = StoreConnection("localhost", 689, systemAuth=False)
+            self.connection = StoreConnection(host, port, systemAuth=False)
             if not self.connection.CookieAuth(user, authCookie):
                 raise bongo.BongoError("Failed cookie authentication with store")
         elif authPassword:
-            self.connection = StoreConnection("localhost", 689, systemAuth=False)
+            self.connection = StoreConnection(host, port, systemAuth=False)
             if not self.connection.UserAuth(user, authPassword):
                 raise bongo.BongoError("Failed user authentication with store")
         else:

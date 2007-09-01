@@ -214,7 +214,8 @@ dist_img_DATA :=					     \
 	src/www/img/system-installer.png \
 	src/www/img/system-users.png \
 	src/www/img/user.png \
-	src/www/img/user-desktop.png
+	src/www/img/user-desktop.png    \
+	src/www/img/agent-control.png
 
 
 jsdir = $(htdocsdir)/js
