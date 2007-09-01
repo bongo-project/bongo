@@ -1,10 +1,3 @@
-/* bongo manager config is an object. One key should be 'agents', whose value
- * is an array of agent objects. Agent objects can have names, pri (priority)
- * and be enabled. Priorities are roughly in terms of dependency and/or which
- * order we want things to start in. Low pri == important, high pri == do this
- * last.
- */
-
 { "version": 1,
   "agents": [
    	{ "name": "bongoqueue", "pri": 3, "enabled": true },
