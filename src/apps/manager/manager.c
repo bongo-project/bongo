@@ -605,7 +605,7 @@ StartSlapd(BOOL killExisting)
     }
 
     /* read config */
-
+#if 0
     if (!MsgGetConfigProperty((unsigned char *) buf,
 	   (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD_PORT)) {
         fprintf(stderr, _("bongo-manager: error reading managed slapd port from config file.\n"));
@@ -684,7 +684,7 @@ StartSlapd(BOOL killExisting)
         break;
     }
     close(sockfd);
-
+#endif
     return err;
 }
 

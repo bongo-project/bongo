@@ -358,6 +358,7 @@ MsgLibraryStop(void)
     return(TRUE);
 }
 
+#if 0
 /**
  * Get a config property from global configuration file.  Removes dependency 
  * on NCPServer object in the directory (as well as others). See msgapi.h for
@@ -373,8 +374,7 @@ MsgGetConfigProperty(unsigned char *Buffer, unsigned char *Property)
     int len;
     char conf_path[FILENAME_MAX];
 
-    snprintf(conf_path, FILENAME_MAX, "%s/%s", XPL_DEFAULT_CONF_DIR, 
-            MSGSRV_CONFIG_FILENAME);
+    snprintf(conf_path, FILENAME_MAX, "%s/bongo.conf", XPL_DEFAULT_CONF_DIR);
     
     if (!(fh = fopen(conf_path, "r"))) {
         return result;
@@ -404,6 +404,7 @@ MsgGetConfigProperty(unsigned char *Buffer, unsigned char *Property)
     fclose(fh);
     return result;
 }
+#endif 
 
 void
 MsgGetUid(char *buffer, int buflen)

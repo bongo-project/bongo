@@ -324,7 +324,6 @@ PyMethodDef MsgApiMethods[] = {
     {"IcsSubscribe", msgapi_IcsSubscribe, METH_VARARGS | METH_STATIC, IcsSubscribe_doc},
     {"IcsImport", msgapi_IcsImport, METH_VARARGS | METH_STATIC, IcsImport_doc},
     {"NmapChallenge", msgapi_NmapChallenge, METH_VARARGS | METH_STATIC, NmapChallenge_doc},
-    {"GetConfigProperty", msgapi_GetConfigProperty, METH_VARARGS | METH_STATIC, GetConfigProperty_doc},
     {"GetUnprivilegedUser", msgapi_GetUnprivilegedUser, METH_VARARGS | METH_STATIC, GetUnprivilegedUser_doc},
     {"GetBuildVersion", msgapi_GetBuildVersion, METH_VARARGS | METH_STATIC, GetBuildVersion_doc},
     {"GetAvailableVersion", msgapi_GetAvailableVersion, METH_VARARGS | METH_STATIC, GetAvailableVersion_doc},
