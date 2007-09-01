@@ -265,12 +265,14 @@ QueueClientFree(void *clientp)
 static BOOL 
 CheckTrustedHost(QueueClient *client)
 {
-    int i;
+    int i = 0;
     
-    /* TODO: this can be optimized a little bit */
-    XplRWReadLockAcquire(&Conf.lock);
-    i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)strcasecmp);
-    XplRWReadLockRelease(&Conf.lock);
+    if (Conf.trustedHosts) {
+        /* TODO: this can be optimized a little bit */
+        XplRWReadLockAcquire(&Conf.lock);
+        i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)strcasecmp);
+        XplRWReadLockRelease(&Conf.lock);
+    }
     return (i > 0);
 }
 
