@@ -15,7 +15,7 @@
     "queuetuning_debug" : false,
     "queuetimeout" : 0,
     "quotamessage" : "",
-    "port" : 0,
+    "port" : 8670,
     "forwardundeliverable_enabled" : false,
     "forwardundeliverable_to" : "",
     "queueinterval" : 0,
