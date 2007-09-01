@@ -16,7 +16,9 @@ class AgentHandler(HawkeyeHandler):
         # change things which eval. to False to empty elements
         if config != None and config.has_key("agents"):
             for agent in config["agents"]:
-               agent["url"] = "%(url|/)sagents/" + agent["name"]
+               # We can change this if needed?
+               agent["url"] = agent["name"]
+               agent["rname"] = self._humanReadableName(agent["name"])
                agent["img"] = "../img/agent-" + agent["name"] + ".png"
                if not agent["enabled"]:
                    agent["enabled"] = None
@@ -50,6 +52,33 @@ class AgentHandler(HawkeyeHandler):
         # Operation completed OK.
         doneop = 1
         return self.index_GET(req, rp)
+        
+    def _humanReadableName(self, agentname)
+        # TODO: Translation, once we have a system in place.
+        if agentname == "bongoqueue":
+            return "Queue"
+        elif agentname == "bongosmtp":
+            return "SMTP"
+        elif agentname == "bongoantispam":
+            return "Antispam"
+        elif agentname == "bongoavirus":
+            return "Antivirus"
+        elif agentname == "bongocollector":
+            return "Calendar collector"
+        elif agentname == "bongomailprox":
+            return "Mail proxy"
+        elif agentname == "bongopluspack":
+            return "Plus pack"
+        elif agentname == "bongorules":
+            return "Rules"
+        elif agentname == "bongoimap":
+            return "IMAP"
+        elif agentname == "bongopop3":
+            return "POP3"
+        elif agentname == "bongocalcmd":
+            return "iCal"
+        else:
+            return "Unknown agent"
     
     def _getAgents(self, req):
         config = {}

@@ -215,7 +215,12 @@ dist_img_DATA :=					     \
 	src/www/img/system-users.png \
 	src/www/img/user.png \
 	src/www/img/user-desktop.png    \
-	src/www/img/agent-control.png
+	src/www/img/agent-control.png   \
+	src/www/img/agent-bongoimap.png \
+	src/www/img/agent-bongomailprox.png \
+	src/www/img/agent-bongopluspack.png \
+	src/www/img/agent-bongopop3.png \
+	src/www/img/agent-bongosmtp.png
 
 
 jsdir = $(htdocsdir)/js

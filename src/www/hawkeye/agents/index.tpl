@@ -19,8 +19,8 @@
 </div>
 
 <div tal:repeat="agent agentlist" style="float: left;">
-    <div class="icon">
-        <a tal:attributes="href agent/url"><img border="0" align="middle" src="../img/agent-unknown.png" tal:attributes="alt agent/name;src agent/img" /><span tal:content="agent/name">Unknown Agent</span></a>
+    <div class="icon" tal:condition="agent/enabled">
+        <a tal:attributes="href agent/url"><img border="0" align="middle" src="../img/agent-unknown.png" tal:attributes="alt agent/name;src agent/img" /><span tal:content="agent/rname">Unknown Agent</span></a>
     </div>
 </div>
 
