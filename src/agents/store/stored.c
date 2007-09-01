@@ -238,12 +238,8 @@ _XplServiceMain(int argc, char *argv[])
         return -1;
     }
  
-    if (! StoreAgent.installMode) {
-        MsgInit();
-        cal_success = BongoCalInit(MsgGetDBFDir(NULL));
-    } else {
-        cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);
-    }
+    MsgInit();
+    cal_success = BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     
     if (! cal_success) {
         XplConsolePrintf(AGENT_NAME ": Couldn't initialize calendaring library.  Exiting.\r\n");

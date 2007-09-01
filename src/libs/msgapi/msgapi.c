@@ -90,17 +90,7 @@ struct {
     unsigned long connManager;
 
     XplRWLock configLock;
-
-    struct {
-        unsigned char work[XPL_MAX_PATH + 1];
-        unsigned char nls[XPL_MAX_PATH + 1];
-        unsigned char dbf[XPL_MAX_PATH + 1];
-        unsigned char bin[XPL_MAX_PATH + 1];
-        unsigned char lib[XPL_MAX_PATH + 1];
-        unsigned char certificate[XPL_MAX_PATH + 1];
-        unsigned char key[XPL_MAX_PATH + 1];
-    } paths;
-
+    
     struct {
         unsigned long local;
 
@@ -248,66 +238,86 @@ MsgMakePath(unsigned char *path)
 }
 
 EXPORT const unsigned char *
-MsgGetDBFDir(char *directory)
+MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size)
 {
-    if (directory) {
-        strcpy(directory, MsgGlobal.paths.dbf);
-    }
-    return(MsgGlobal.paths.dbf);
+	const unsigned char *path;
+	switch(directory) {
+		case MSGAPI_DIR_BIN:
+			path = XPL_DEFAULT_BIN_DIR;
+			break;
+		case MSGAPI_DIR_CACHE:
+			path = XPL_DEFAULT_CACHE_DIR;
+			break;
+		case MSGAPI_DIR_CERT:
+			path = XPL_DEFAULT_DBF_DIR;
+			break;
+		case MSGAPI_DIR_DATA:
+			path = XPL_DEFAULT_DATA_DIR;
+			break;
+		case MSGAPI_DIR_DBF:
+			path = XPL_DEFAULT_DBF_DIR;
+			break;
+		case MSGAPI_DIR_LIB:
+			path = XPL_DEFAULT_LIB_DIR;
+			break;
+		case MSGAPI_DIR_MAIL:
+			path = XPL_DEFAULT_MAIL_DIR;
+			break;
+		case MSGAPI_DIR_SCMS:
+			path = XPL_DEFAULT_SCMS_DIR;
+			break;
+		case MSGAPI_DIR_SPOOL:
+			path = XPL_DEFAULT_SPOOL_DIR;
+			break;
+		case MSGAPI_DIR_STATE:
+			path = XPL_DEFAULT_STATE_DIR;
+			break;
+		case MSGAPI_DIR_STORESYSTEM:
+			path = XPL_DEFAULT_STORE_SYSTEM_DIR;
+			break;
+		case MSGAPI_DIR_WORK:
+			path = XPL_DEFAULT_WORK_DIR;
+			break;
+		default:
+			if (buffer && buffer_size)
+				buffer[0] = '\0';
+			return NULL;
+	}
+	if (buffer) {
+		strncpy(buffer, path, buffer_size - 1);
+	}
+	return path;
 }
 
 EXPORT const unsigned char *
-MsgGetWorkDir(char *directory)
+MsgGetFile(MsgApiFile file, char *buffer, size_t buffer_size)
 {
-    if (directory) {
-        strcpy(directory, MsgGlobal.paths.work);
-    }
-    return(MsgGlobal.paths.work);
-}
-
-EXPORT const unsigned char *
-MsgGetNLSDir(char *directory)
-{
-    if (directory) {
-        strcpy(directory, MsgGlobal.paths.nls);
-    }
-    return(MsgGlobal.paths.nls);
-}
-
-EXPORT const unsigned char *
-MsgGetBinDir(char *directory)
-{
-    if (directory) {
-        strcpy(directory, MsgGlobal.paths.bin);
-    }
-    return(MsgGlobal.paths.bin);
-}
-
-EXPORT const unsigned char *
-MsgGetLibDir(char *directory)
-{
-    if (directory) {
-        strcpy(directory, MsgGlobal.paths.lib);
-    }
-    return(MsgGlobal.paths.bin);
-}
-
-EXPORT const unsigned char *
-MsgGetTLSCertPath(char *path)
-{
-    if (path) {
-        strcpy(path, MsgGlobal.paths.certificate);
-    }
-    return(MsgGlobal.paths.certificate);
-}
-
-EXPORT const unsigned char *
-MsgGetTLSKeyPath(char *path)
-{
-    if (path) {
-        strcpy(path, MsgGlobal.paths.key);
-    }
-    return(MsgGlobal.paths.key);
+	const unsigned char *path;
+	switch(file) {
+		case MSGAPI_FILE_PUBKEY:
+			path = XPL_DEFAULT_CERT_PATH;
+			break;
+		case MSGAPI_FILE_PRIVKEY:
+			path = XPL_DEFAULT_KEY_PATH;
+			break;
+		case MSGAPI_FILE_DHPARAMS:
+			path = XPL_DEFAULT_DHPARAMS_PATH;
+			break;
+		case MSGAPI_FILE_RSAPARAMS:
+			path = XPL_DEFAULT_RSAPARAMS_PATH;
+			break;
+		case MSGAPI_FILE_RANDSEED:
+			path = XPL_DEFAULT_RANDSEED_PATH;
+			break;
+		default:
+			if (buffer && buffer_size)
+				buffer[0] = '\0';
+			return NULL;
+	}
+	if (buffer) {
+		strncpy(buffer, path, buffer_size - 1);
+	}
+	return path;
 }
 
 EXPORT unsigned long
@@ -439,9 +449,6 @@ MsgLibraryStart(void)
     // 'BOUND' conflicts with 'CLUSTERED' ?
     // MsgGlobal.flags |= MSGAPI_FLAG_BOUND; 
 
-    strcpy(MsgGlobal.paths.certificate, XPL_DEFAULT_CERT_PATH);
-    strcpy(MsgGlobal.paths.key, XPL_DEFAULT_KEY_PATH);
-
     return(TRUE);
 }
 
@@ -525,25 +532,6 @@ MsgReadConfiguration(void)
 
         MsgDateSetUTCOffset(tmp); 
     }
-
-    /* Read operating parameters, this is so complicated because in version 2.5
-     * we changed the configuration of directories - before 2.5 we would always
-     * append novonyx/mail to any given path, now we don't. The code tries to
-     * automatically detect pre2.5 installs and change the DS attribute...
-     */
-
-    strcpy(MsgGlobal.paths.dbf, XPL_DEFAULT_DBF_DIR);
-    MsgMakePath(MsgGlobal.paths.dbf);
-    strcpy(MsgGlobal.paths.bin, XPL_DEFAULT_BIN_DIR);
-    MsgMakePath(MsgGlobal.paths.bin);
-    strcpy(MsgGlobal.paths.lib, XPL_DEFAULT_LIB_DIR);
-    MsgMakePath(MsgGlobal.paths.lib);
-    strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
-    MsgMakePath(MsgGlobal.paths.work);
-    strcpy(MsgGlobal.paths.nls, XPL_DEFAULT_NLS_DIR);
-    MsgMakePath(MsgGlobal.paths.nls);
-    strcpy(MsgGlobal.paths.work, XPL_DEFAULT_WORK_DIR);
-    MsgMakePath(MsgGlobal.paths.work);
 
     return(TRUE);
 }

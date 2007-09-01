@@ -1683,9 +1683,10 @@ NMAPSSLContextAlloc(void)
 {
     ConnSSLConfiguration config;
     
-    config.certificate.file = MsgGetTLSCertPath(NULL);
+    config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+    
     config.key.type = GNUTLS_X509_FMT_PEM;
-    config.key.file = MsgGetTLSKeyPath(NULL);
 
     return ConnSSLContextAlloc(&config);
 }

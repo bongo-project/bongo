@@ -2149,9 +2149,9 @@ XplServiceMain(int argc, char *argv[])
         if (!ServerSocketSSLInit()) {
              XPLCryptoLockInit();
 
-            POP3.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
+            POP3.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+            POP3.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
             POP3.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-            POP3.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
     
             POP3.server.ssl.context = ConnSSLContextAlloc(&(POP3.server.ssl.config));
             if (POP3.server.ssl.context) {
@@ -2164,17 +2164,17 @@ XplServiceMain(int argc, char *argv[])
         }
     }
 
-    /* Done binding, drop privs permanentely */
+    /* Done binding, drop privs permanently */
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
         XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
         return -1;
     }
 
     POP3.nmap.ssl.enable = FALSE;
-    POP3.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
+    POP3.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    POP3.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
     POP3.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-    POP3.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
-
+    
     POP3.nmap.ssl.context = ConnSSLContextAlloc(&(POP3.nmap.ssl.config));
     if (POP3.nmap.ssl.context) {
         POP3.nmap.ssl.enable = TRUE;

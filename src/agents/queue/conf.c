@@ -153,7 +153,7 @@ ReadConfiguration (BOOL *recover)
     strcpy(Conf.spoolPath, XPL_DEFAULT_SPOOL_DIR);
     MsgMakePath(Conf.spoolPath);
     
-    sprintf(Conf.queueClientsPath, "%s/qclients", MsgGetDBFDir(NULL));
+    sprintf(Conf.queueClientsPath, "%s/qclients", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     
     Conf.bounceMaxBodySize = 0;
     /* Some sanity checking on the QLimit stuff to prevent running out of memory */

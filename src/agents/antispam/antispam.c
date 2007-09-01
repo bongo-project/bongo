@@ -909,9 +909,11 @@ XplServiceMain(int argc, char *argv[])
         }
 
         ASpam.nmap.ssl.enable = FALSE;
-        ASpam.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
+
+        ASpam.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+        ASpam.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+        
         ASpam.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-        ASpam.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
 
         ASpam.nmap.ssl.context = ConnSSLContextAlloc(&(ASpam.nmap.ssl.config));
         if (ASpam.nmap.ssl.context) {

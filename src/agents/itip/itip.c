@@ -429,7 +429,7 @@ XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
-    BongoCalInit(MsgGetDBFDir(NULL));
+    BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
 
     /* Set up socket for listening on an incoming queue */ 
     ItipAgent.queueNumber = Q_FIVE;

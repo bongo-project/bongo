@@ -1214,9 +1214,9 @@ ReadConfiguration(void)
             sizeof(AVirus.clam.addr.sin_addr.s_addr));
     }
 
-    MsgGetWorkDir(AVirus.path.work);
+    snprintf(AVirus.path.work, XPL_MAX_PATH, "%s/avirus", 
+        MsgGetDir(MSGAPI_DIR_WORK, NULL, 0));
 
-    strcat(AVirus.path.work, "/avirus");
     MsgMakePath(AVirus.path.work);
 
     dirEntry = XplOpenDir(AVirus.path.work);
@@ -1435,9 +1435,9 @@ XplServiceMain(int argc, char *argv[])
     }
 
     AVirus.nmap.ssl.enable = FALSE;
-    AVirus.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
     AVirus.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-    AVirus.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
+    AVirus.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    AVirus.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
 
     AVirus.nmap.ssl.context = ConnSSLContextAlloc(&(AVirus.nmap.ssl.config));
     if (AVirus.nmap.ssl.context) {

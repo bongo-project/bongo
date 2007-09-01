@@ -61,25 +61,23 @@ RunAsRoot()
 }
 
 void
-CreateSystemDir(const char *path)
-{
-	XplMakeDir(path);
-	// TODO: chown(path, 
-}
-
-void
 InitializeDataArea(void)
 {
+	MsgApiDirectory dir;
+	
 	XplConsolePrintf(_("Initializing user database...\n"));
 	if (MsgAuthInitDB() != 0) {
 		XplConsolePrintf(_("ERROR: Couldn't create user database\n"));
 		exit(1);
 	}
-	CreateSystemDir(XPL_DEFAULT_CONF_DIR);
-	CreateSystemDir(XPL_DEFAULT_STATE_DIR);
-	CreateSystemDir(XPL_DEFAULT_CACHE_DIR);
-	CreateSystemDir(XPL_DEFAULT_DBF_DIR);
-	CreateSystemDir(XPL_DEFAULT_WORK_DIR);
+	
+	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
+		char path[XPL_MAX_PATH];
+		if (MsgGetDir(dir, path, XPL_MAX_PATH)) {
+			// TODO: chown ?
+			MsgMakePath(path);
+		}
+	}
 }
 
 void

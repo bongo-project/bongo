@@ -4479,8 +4479,8 @@ int XplServiceMain (int argc, char *argv[])
     if (SMTP.allow_client_ssl) {
         if (!ServerSocketSSLInit()) {
             ConnSSLConfiguration sslconfig;
-            sslconfig.certificate.file = MsgGetTLSCertPath(NULL);
-            sslconfig.key.file = MsgGetTLSKeyPath(NULL);
+            sslconfig.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+            sslconfig.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
             sslconfig.key.type = GNUTLS_X509_FMT_PEM;
 
             SSLContext = ConnSSLContextAlloc(&sslconfig);

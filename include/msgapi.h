@@ -72,6 +72,38 @@ typedef struct _MsgSQLHandle {
 	int lockTimeoutMs;
 } MsgSQLHandle;
 
+typedef enum {
+	MSGAPI_DIR_START,
+	MSGAPI_DIR_BIN,
+	MSGAPI_DIR_CACHE,
+	MSGAPI_DIR_CERT,
+	MSGAPI_DIR_DATA,
+	MSGAPI_DIR_DBF,
+	MSGAPI_DIR_LIB,
+	MSGAPI_DIR_MAIL,
+	MSGAPI_DIR_SCMS,
+	MSGAPI_DIR_SPOOL,
+	MSGAPI_DIR_STATE,
+	MSGAPI_DIR_STORESYSTEM,
+	MSGAPI_DIR_WORK,
+	MSGAPI_DIR_END
+} MsgApiDirectory;
+
+typedef enum {
+	MSGAPI_FILE_START,
+	MSGAPI_FILE_PUBKEY,
+	MSGAPI_FILE_PRIVKEY,
+	MSGAPI_FILE_DHPARAMS,
+	MSGAPI_FILE_RSAPARAMS,
+	MSGAPI_FILE_RANDSEED,
+	MSGAPI_FILE_END
+} MsgApiFile;
+
+EXPORT const unsigned char *
+MsgGetFile(MsgApiFile file, char *buffer, size_t buffer_size);
+EXPORT const unsigned char *
+MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size);
+
 #define MSGSQL_STMT_SLEEP_MS 250
 
 MsgSQLHandle *MsgSQLOpen(char *path, BongoMemStack *memstack, int locktimeoutms);

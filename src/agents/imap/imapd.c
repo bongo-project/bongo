@@ -3816,10 +3816,10 @@ XplServiceMain(int argc, char *argv[])
 
     if (Imap.server.ssl.enable) {
         if (!ServerSocketSSLInit()) {
-        
-            Imap.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
+            Imap.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+            Imap.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+            
             Imap.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-            Imap.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
         
             Imap.server.ssl.context = ConnSSLContextAlloc(&(Imap.server.ssl.config));
             if (Imap.server.ssl.context) {

@@ -2710,7 +2710,7 @@ CreateQueueThreads(BOOL failed)
 
     dirP = XplOpenDir(path);
 
-    sprintf(path, "%s/fragfile", MsgGetDBFDir(NULL));
+    sprintf(path, "%s/fragfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     killFile = fopen(path, "wb");
     if (!killFile) {
         if (dirP) {
@@ -2837,7 +2837,7 @@ CreateQueueThreads(BOOL failed)
     XplConsolePrintf("bongoqueue: Queue integrity check complete, now cleaning irrelevant entries.\r\n");
 #endif
 
-    sprintf(path, "%s/fragfile", MsgGetDBFDir(NULL));
+    sprintf(path, "%s/fragfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     killFile=fopen(path, "rb");
     if (!killFile) {
         XplConsolePrintf("bongoqueue: Could not re-open killfile.\r\n");
@@ -2855,7 +2855,7 @@ CreateQueueThreads(BOOL failed)
         fclose(killFile);
     }
 
-    sprintf(path, "%s/killfile", MsgGetDBFDir(NULL));
+    sprintf(path, "%s/killfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     UNLINK_CHECK(path);
 
     XplCloseDir(dirP);
