@@ -10,41 +10,41 @@
 #     http://www.pcug.org.au/~millerp/rmch/recu-make-cons-harm.html
 #
 
-AUTOMAKE_OPTIONS := subdir-objects
+AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS = -I m4 -I macros
 
-NULL :=
+NULL =
 
-bin_PROGRAMS :=
-sbin_PROGRAMS :=
-noinst_PROGRAMS :=
-check_PROGRAMS :=
+bin_PROGRAMS =
+sbin_PROGRAMS =
+noinst_PROGRAMS =
+check_PROGRAMS =
 
-sbin_SCRIPTS :=
+sbin_SCRIPTS =
 
-dist_sbin_SCRIPTS :=
-dist_noinst_SCRIPTS :=
-dist_pkglibexec_SCRIPTS :=
+dist_sbin_SCRIPTS =
+dist_noinst_SCRIPTS =
+dist_pkglibexec_SCRIPTS =
 
-lib_LTLIBRARIES :=
+lib_LTLIBRARIES =
 
-nobase_dist_pkgdata_DATA :=
-dist_noinst_DATA := 
-noinst_DATA :=
+nobase_dist_pkgdata_DATA =
+dist_noinst_DATA = 
+noinst_DATA =
 
-noinst_HEADERS :=
+noinst_HEADERS =
 
-BUILT_SOURCES :=
-CLEANFILES :=
+BUILT_SOURCES =
+CLEANFILES =
 
-TESTS :=
+TESTS =
 
-AM_CPPFLAGS := $(ALL_CFLAGS)			  \
+AM_CPPFLAGS = $(ALL_CFLAGS)			  \
 	$(NO_POINTER_SIGN_WARNINGS)		  \
         $(PTHREAD_CFLAGS)			  \
 	-I$(top_srcdir)/include $(GNUTLS_CFLAGS)
 
-EXTRA_DIST :=					\
+EXTRA_DIST =					\
 	config.rpath				\
 	bongo.pc.in				\
 	HACKING					\
@@ -62,7 +62,7 @@ localedir = $(datadir)/locale
 DEFS = -DLOCALEDIR=\"$(localedir)\" @DEFS@
 
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA := bongo.pc
+pkgconfig_DATA = bongo.pc
 
 pkglibexecdir = $(libexecdir)/$(PACKAGE)
 
@@ -94,7 +94,7 @@ clean:	clean-recursive
 #	src/libs/mdb-file			
 #	src/libs/mdb-xldap			
 
-include_subdirs :=				\
+include_subdirs =				\
 	include					\
 	src/libs/xpl				\
 	src/libs/xpl/tests			\
@@ -146,7 +146,7 @@ include_subdirs :=				\
 
 #	src/apps/migrate
 
-DIST_SUBDIRS := $(SUBDIRS) $(include_subdirs)
+DIST_SUBDIRS = $(SUBDIRS) $(include_subdirs)
 
 include include/Bongo.rules
 include src/libs/xpl/Bongo.rules

@@ -9,16 +9,16 @@ conf_defaults =					\
 	src/apps/config/config/mailproxy	\
 	src/apps/config/config/antispam
 
-bongo_config_SOURCES :=			\
+bongo_config_SOURCES =			\
 	$(conf_defaults)		\
 	src/apps/config/config.c	\
 	src/apps/config/config.h	\
 	src/apps/config/store.c
 
-bongo_config_CPPFLAGS := $(AM_CPPFLAGS)	\
+bongo_config_CPPFLAGS = $(AM_CPPFLAGS)	\
 	$(GNUTLS_CFLAGS)
 
-bongo_config_LDADD :=					   \
+bongo_config_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongoconnio.la				   \
@@ -31,7 +31,7 @@ bongo_config_LDADD :=					   \
 
 confdir = $(pkgdatadir)/conf
 
-conf_DATA := \
+conf_DATA = \
         src/apps/config/default.set
 
 src/apps/config/default.set: $(conf_defaults)

@@ -1,7 +1,7 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongoqueue
 
-bongoqueue_SOURCES :=				\
+bongoqueue_SOURCES =				\
 	src/agents/queue/conf.c			\
 	src/agents/queue/conf.h			\
 	src/agents/queue/domain.c		\
@@ -14,7 +14,7 @@ bongoqueue_SOURCES :=				\
 	src/agents/queue/queue.h		\
 	src/agents/queue/messages.h
 
-bongoqueue_LDADD :=					   \
+bongoqueue_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

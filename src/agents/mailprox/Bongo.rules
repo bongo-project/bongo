@@ -1,13 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongomailprox
 
-bongomailprox_SOURCES :=				\
+bongomailprox_SOURCES =				\
 	src/agents/mailprox/imap.c		\
 	src/agents/mailprox/mailprox.c		\
 	src/agents/mailprox/mailprox.h		\
 	src/agents/mailprox/pop.c
 
-bongomailprox_LDADD :=					   \
+bongomailprox_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

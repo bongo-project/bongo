@@ -1,16 +1,16 @@
 # -*- Makefile -*-
 mdb_LTLIBRARIES += libmdbfile.la
 
-libmdbfile_la_SOURCES :=			\
+libmdbfile_la_SOURCES =			\
 	src/libs/mdb-file/mdbfile.c		\
 	src/libs/mdb-file/mdbfilep.h
 
-libmdbfile_la_CPPFLAGS := $(AM_CPPFLAGS)	\
+libmdbfile_la_CPPFLAGS = $(AM_CPPFLAGS)	\
 	-DLOCALSTATEDIR=\""$(localstatedir)"\"	\
 	-DMDB_INTERNAL
 
-libmdbfile_la_LDFLAGS := -module -avoid-version
-libmdbfile_la_LIBADD :=				\
+libmdbfile_la_LDFLAGS = -module -avoid-version
+libmdbfile_la_LIBADD =				\
 	libbongoutil.la				\
 	libbongomemmgr.la			\
 	libbongoxpl.la

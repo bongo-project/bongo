@@ -2,10 +2,10 @@
 TESTS += checktest-connio
 check_PROGRAMS += checktest-connio
 
-checktest_connio_SOURCES := \
+checktest_connio_SOURCES = \
 	src/libs/connio/tests/checktest.c
 
-checktest_connio_LDADD := $(CHECK_LIBS)			 \
+checktest_connio_LDADD = $(CHECK_LIBS)			 \
 	libbongoconnio.la				 \
 	libbongonmap.la					 \
 	libbongomsgapi.la				 \

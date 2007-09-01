@@ -1,7 +1,7 @@
 # -*- Makefile -*-
 bongoincludedir=$(includedir)/bongo
 
-bongoinclude_HEADERS :=				\
+bongoinclude_HEADERS =				\
 	include/bongo-config.h			\
 	include/calcmd.h			\
 	include/connio.h			\

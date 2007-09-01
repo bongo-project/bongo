@@ -1,12 +1,12 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongorules
 
-bongorules_SOURCES :=				\
+bongorules_SOURCES =				\
 	src/agents/rules/rules.c		\
 	src/agents/rules/rules.h		\
 	src/agents/rules/stream.c
 
-bongorules_LDADD :=					   \
+bongorules_LDADD =					   \
 	libbongonmap.la					   \
 	libbongostreamio.la				   \
 	libbongomsgapi.la				   \

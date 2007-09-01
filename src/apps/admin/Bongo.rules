@@ -1,6 +1,6 @@
 # -*- Makefile -*-
-pkgpythonadmintooldir := $(pkgpythondir)/admintool
-pkgpythonadmintool_PYTHON :=					\
+pkgpythonadmintooldir = $(pkgpythondir)/admintool
+pkgpythonadmintool_PYTHON =					\
 	src/apps/admin/bongo/admintool/__init__.py		\
 	src/apps/admin/bongo/admintool/AgentCommands.py		\
 	src/apps/admin/bongo/admintool/DemoCommands.py		\

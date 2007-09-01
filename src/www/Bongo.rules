@@ -1,17 +1,17 @@
 # -*- Makefile -*-
 htdocsdir = $(pkgdatadir)/htdocs
 
-dist_htdocs_DATA :=				\
+dist_htdocs_DATA =				\
 	src/www/dragonfly.html			\
 	src/www/dragonfly-debug.html    \
 	src/www/favicon.ico
 
 htl10ndir = $(htdocsdir)/l10n
-htl10n_DATA := $(htl10n_jsfiles)
+htl10n_DATA = $(htl10n_jsfiles)
 
 cssdir = $(htdocsdir)/css
 
-dist_css_DATA :=				\
+dist_css_DATA =				\
 	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
 	src/www/css/widgets.css         \
@@ -26,7 +26,7 @@ dist_css_DATA :=				\
 	
 screencssdir = $(cssdir)
 
-compress_script := $(top_srcdir)/src/www/compress.py
+compress_script = $(top_srcdir)/src/www/compress.py
 
 dist_screencss_DATA =                  \
 	src/www/css/screen.css
@@ -36,7 +36,7 @@ src/www/css/screen.css: $(dist_css_DATA)
 
 imgdir = $(htdocsdir)/img
 
-dist_img_DATA :=					     \
+dist_img_DATA =					     \
 	src/www/img/accessories-text-editor.gif		     \
 	src/www/img/accessories-text-editor.png		     \
 	src/www/img/addressbook-16.png			     \
@@ -226,7 +226,7 @@ dist_img_DATA :=					     \
 jsdir = $(htdocsdir)/js
 
 # These *must* be in the order in which they get loaded in the browser
-dist_js_DATA :=					\
+dist_js_DATA =					\
     src/www/js/Dragonfly.js			\
     src/www/js/Format.js			\
     src/www/js/Gettext.js			\
@@ -259,13 +259,13 @@ dist_js_DATA :=					\
 	
 eAreadir = $(htdocsdir)/js/eArea
 
-dist_eArea_DATA := \
+dist_eArea_DATA = \
     src/www/js/eArea/editableArea.js    \
 	src/www/js/eArea/blank.html
 	
 eAreaimagedir = $(htdocsdir)/js/eArea/icons
 
-dist_eAreaimage_DATA := \
+dist_eAreaimage_DATA = \
     src/www/js/eArea/icons/edit-select-all.png       \
     src/www/js/eArea/icons/edit-undo.png        \
     src/www/js/eArea/icons/edit-redo.png        \
@@ -283,18 +283,18 @@ dist_eAreaimage_DATA := \
 
 plugindir = $(htdocsdir)/plugins
 
-dist_plugin_DATA := \
+dist_plugin_DATA = \
     src/www/plugins/example.js
 
 prototypedir = $(jsdir)/lib/prototype
 
-dist_prototype_DATA := \
+dist_prototype_DATA = \
 	src/www/js/lib/prototype/prototype.js
 
 mochidir = $(jsdir)/lib/MochiKit
 
 # These *must* be in the order in which they get loaded in the browser/MochiKit
-dist_mochi_DATA :=				   \
+dist_mochi_DATA =				   \
     src/www/js/lib/MochiKit/Base.js		   \
     src/www/js/lib/MochiKit/Iter.js		   \
     src/www/js/lib/MochiKit/Logging.js	   \
@@ -312,7 +312,7 @@ dist_mochi_DATA :=				   \
 scriptaculousdir = $(jsdir)/lib/script.aculo.us
 
 # Same as with above JS.
-dist_scriptaculous_DATA :=				\
+dist_scriptaculous_DATA =				\
 	src/www/js/lib/script.aculo.us/effects.js   \
 	src/www/js/lib/script.aculo.us/controls.js
 
@@ -329,7 +329,7 @@ install-data-local:: install-dist_htdocsDATA
 
 pkgpythondragonflydir = $(pkgpythondir)/dragonfly
 
-pkgpythondragonfly_PYTHON :=			   \
+pkgpythondragonfly_PYTHON =			   \
 	src/www/bongo/dragonfly/__init__.py	   \
 	src/www/bongo/dragonfly/AddressbookView.py  \
 	src/www/bongo/dragonfly/Auth.py		   \
@@ -345,7 +345,7 @@ pkgpythondragonfly_PYTHON :=			   \
 
 pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
 
-pkgpythonhawkeye_PYTHON :=			\
+pkgpythonhawkeye_PYTHON =			\
 	src/www/bongo/hawkeye/__init__.py	\
 	src/www/bongo/hawkeye/AntispamView.py   \
 	src/www/bongo/hawkeye/AgentView.py  \
@@ -361,7 +361,7 @@ pkgpythonhawkeye_PYTHON :=			\
 
 pkgpythoncommonwebdir = $(pkgpythondir)/commonweb
 
-pkgpythoncommonweb_PYTHON :=		\
+pkgpythoncommonweb_PYTHON =		\
 	src/www/bongo/commonweb/__init__.py	\
 	src/www/bongo/commonweb/HttpError.py	\
 	src/www/bongo/commonweb/ApacheLogHandler.py \
@@ -372,34 +372,34 @@ pkgpythoncommonweb_PYTHON :=		\
 	src/www/bongo/commonweb/BongoSession.py
 
 hawkeyetplrootdir = $(htdocsdir)/hawkeye/root
-dist_hawkeyetplroot_DATA :=			\
+dist_hawkeyetplroot_DATA =			\
 	src/www/hawkeye/root/login.tpl		\
 	src/www/hawkeye/root/test.tpl		\
 	src/www/hawkeye/root/test-hello.tpl	\
 	src/www/hawkeye/root/index.tpl
 
 hawkeyetplbackupdir = $(htdocsdir)/hawkeye/backup
-dist_hawkeyetplbackup_DATA :=			\
+dist_hawkeyetplbackup_DATA =			\
         src/www/hawkeye/backup/index.tpl
 
 hawkeyetplserverdir = $(htdocsdir)/hawkeye/server
-dist_hawkeyetplserver_DATA :=			\
+dist_hawkeyetplserver_DATA =			\
         src/www/hawkeye/server/index.tpl
         
 hawkeyetplsystemdir = $(htdocsdir)/hawkeye/system
-dist_hawkeyetplsystem_DATA :=			\
+dist_hawkeyetplsystem_DATA =			\
         src/www/hawkeye/system/index.tpl
         
 hawkeyetplagentsdir = $(htdocsdir)/hawkeye/agents
-dist_hawkeyetplagents_DATA :=			\
+dist_hawkeyetplagents_DATA =			\
         src/www/hawkeye/agents/index.tpl
         
 hawkeyetplantispamdir = $(htdocsdir)/hawkeye/antispam
-dist_hawkeyetplantispam_DATA :=			\
+dist_hawkeyetplantispam_DATA =			\
         src/www/hawkeye/antispam/index.tpl
 
 hawkeyetpldir = $(htdocsdir)/hawkeye
-dist_hawkeyetpl_DATA :=			\
+dist_hawkeyetpl_DATA =			\
 	src/www/hawkeye/footer.tpl	\
 	src/www/hawkeye/header.tpl
 
@@ -417,13 +417,13 @@ dist_noinst_SCRIPTS += \
 
 templatesdir = $(pkgdatadir)/templates
 
-dist_templates_DATA :=				\
+dist_templates_DATA =				\
 	src/www/templates/month-view.html	\
 	src/www/templates/event.html
 
 exampledir = $(pkgdatadir)/examples
 
-example_DATA := \
+example_DATA = \
 	src/www/bongo.conf
 
 dist_noinst_DATA +=				   \
@@ -449,7 +449,7 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 	-e "s%\@DATADIR\@/\@PACKAGE\@/hawkeye%${top_srcdir}/src/www/hawkeye%" \
 	$< > $@
 
-po2json := $(top_srcdir)/src/www/l10n/po2json
+po2json = $(top_srcdir)/src/www/l10n/po2json
 
 src/www/l10n/%.js: po/bongo-web/%.mo config.status
 	$(po2json) -p po/bongo-web/$*.po -o $@

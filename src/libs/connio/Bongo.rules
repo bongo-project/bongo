@@ -1,14 +1,14 @@
 # -*- Makefile -*-
 lib_LTLIBRARIES += libbongoconnio.la
 
-libbongoconnio_la_SOURCES :=			\
+libbongoconnio_la_SOURCES =			\
 	src/libs/connio/connio.c		\
 	src/libs/connio/trace.c			\
 	src/libs/connio/conniop.h		\
 	src/libs/connio/addrpool.c		\
 	src/libs/connio/unix-ip.c		
 
-libbongoconnio_la_LIBADD := $(GNUTLS_LIBS)
+libbongoconnio_la_LIBADD = $(GNUTLS_LIBS)
 
 src/libs/connio/all: libbongoconnio.la
 src/libs/connio/clean: clean

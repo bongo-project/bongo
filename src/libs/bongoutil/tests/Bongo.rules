@@ -10,7 +10,7 @@ dist_noinst_DATA +=				   \
 CLEANFILES += \
 	src/libs/bongoutil/tests/checklog.xml
 
-checktest_bongoutil_SOURCES := \
+checktest_bongoutil_SOURCES = \
 	src/libs/bongoutil/tests/checktest.c
 
 checktest_bongoutil_LDADD = $(CHECK_LIBS)	\

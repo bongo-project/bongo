@@ -1,11 +1,11 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongoitip
 
-bongoitip_SOURCES :=				\
+bongoitip_SOURCES =				\
 	src/agents/itip/itip.c			\
 	src/agents/itip/itip.h			
 
-bongoitip_LDADD :=					   \
+bongoitip_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

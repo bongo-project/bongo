@@ -1,15 +1,15 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongo-testtool
 
-bongo_testtool_SOURCES :=		\
+bongo_testtool_SOURCES =		\
 	$(conf_defaults)		\
 	src/apps/testtool/config.h	\
 	src/apps/testtool/testtool.c
 
-bongo_testtool_CPPFLAGS := $(AM_CPPFLAGS)	\
+bongo_testtool_CPPFLAGS = $(AM_CPPFLAGS)	\
 	$(GNUTLS_CFLAGS)
 
-bongo_testtool_LDADD :=					   \
+bongo_testtool_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongoconnio.la				   \

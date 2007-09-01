@@ -16,7 +16,7 @@ pkgpythonexternalvobjectdir = $(pythondir)/bongo/external/vobject
 pkgpythonnmapdir = $(pythondir)/bongo/nmap
 pkgpythonstoredir = $(pythondir)/bongo/store
 
-pkgpython_PYTHON :=				\
+pkgpython_PYTHON =				\
 	src/libs/python/bongo/__init__.py	\
 	src/libs/python/bongo/CalCmd.py		\
 	src/libs/python/bongo/cmdparse.py	\
@@ -29,10 +29,10 @@ pkgpython_PYTHON :=				\
 	src/libs/python/bongo/StreamIO.py	\
 	src/libs/python/bongo/table.py
 
-nodist_pkgpython_PYTHON := \
+nodist_pkgpython_PYTHON = \
 	src/libs/python/bongo/Xpl.py
 
-pkgpythonadmin_PYTHON :=			   \
+pkgpythonadmin_PYTHON =			   \
 	src/libs/python/bongo/admin/__init__.py	   \
 	src/libs/python/bongo/admin/Addressbook.py  \
 	src/libs/python/bongo/admin/Alias.py	   \
@@ -60,10 +60,10 @@ pkgpythonadmin_PYTHON :=			   \
 	src/libs/python/bongo/admin/Webservices.py  \
 	src/libs/python/bongo/admin/bongoutil.py
 
-pkgpythonexternal_PYTHON := \
+pkgpythonexternal_PYTHON = \
 	src/libs/python/bongo/external/__init__.py
 
-pkgpythonexternaldateutil_PYTHON :=				\
+pkgpythonexternaldateutil_PYTHON =				\
 	src/libs/python/bongo/external/dateutil/__init__.py	\
 	src/libs/python/bongo/external/dateutil/easter.py	\
 	src/libs/python/bongo/external/dateutil/parser.py	\
@@ -72,10 +72,10 @@ pkgpythonexternaldateutil_PYTHON :=				\
 	src/libs/python/bongo/external/dateutil/tz.py		\
 	src/libs/python/bongo/external/dateutil/tzwin.py
 
-pkgpythonexternaldateutilzoneinfo_PYTHON := \
+pkgpythonexternaldateutilzoneinfo_PYTHON = \
 	src/libs/python/bongo/external/dateutil/zoneinfo/__init__.py
 
-pkgpythonexternalemail_PYTHON :=			     \
+pkgpythonexternalemail_PYTHON =			     \
 	src/libs/python/bongo/external/email/feedparser.py    \
 	src/libs/python/bongo/external/email/_parseaddr.py    \
 	src/libs/python/bongo/external/email/parser.py	     \
@@ -93,7 +93,7 @@ pkgpythonexternalemail_PYTHON :=			     \
 	src/libs/python/bongo/external/email/errors.py	     \
 	src/libs/python/bongo/external/email/utils.py
 
-pkgpythonexternalemailmime_PYTHON :=				 \
+pkgpythonexternalemailmime_PYTHON =				 \
 	src/libs/python/bongo/external/email/mime/audio.py	 \
 	src/libs/python/bongo/external/email/mime/message.py	 \
 	src/libs/python/bongo/external/email/mime/nonmultipart.py \
@@ -104,14 +104,14 @@ pkgpythonexternalemailmime_PYTHON :=				 \
 	src/libs/python/bongo/external/email/mime/__init__.py	 \
 	src/libs/python/bongo/external/email/mime/application.py
 
-pkgpythonexternalsimplejson_PYTHON :=			       \
+pkgpythonexternalsimplejson_PYTHON =			       \
 	src/libs/python/bongo/external/simplejson/__init__.py   \
 	src/libs/python/bongo/external/simplejson/decoder.py    \
 	src/libs/python/bongo/external/simplejson/encoder.py    \
 	src/libs/python/bongo/external/simplejson/jsonfilter.py \
 	src/libs/python/bongo/external/simplejson/scanner.py
 
-pkgpythonexternalsimpletal_PYTHON :=				\
+pkgpythonexternalsimpletal_PYTHON =				\
 	src/libs/python/bongo/external/simpletal/DummyLogger.py \
 	src/libs/python/bongo/external/simpletal/__init__.py	\
 	src/libs/python/bongo/external/simpletal/simpleElementTree.py \
@@ -122,7 +122,7 @@ pkgpythonexternalsimpletal_PYTHON :=				\
 	src/libs/python/bongo/external/simpletal/simpleTALUtils.py
 
 
-pkgpythonexternalvobject_PYTHON :=			   \
+pkgpythonexternalvobject_PYTHON =			   \
 	src/libs/python/bongo/external/vobject/__init__.py  \
 	src/libs/python/bongo/external/vobject/base.py	   \
 	src/libs/python/bongo/external/vobject/behavior.py  \
@@ -130,14 +130,14 @@ pkgpythonexternalvobject_PYTHON :=			   \
 	src/libs/python/bongo/external/vobject/vcard.py	   \
 	src/libs/python/bongo/external/vobject/win32tz.py
 
-pkgpythonnmap_PYTHON :=				    \
+pkgpythonnmap_PYTHON =				    \
 	src/libs/python/bongo/nmap/__init__.py	    \
 	src/libs/python/bongo/nmap/CommandStream.py  \
 	src/libs/python/bongo/nmap/NmapClient.py	    \
 	src/libs/python/bongo/nmap/NmapConnection.py \
 	src/libs/python/bongo/nmap/QueueClient.py
 
-pkgpythonstore_PYTHON :=			      \
+pkgpythonstore_PYTHON =			      \
 	src/libs/python/bongo/store/__init__.py	      \
 	src/libs/python/bongo/store/CommandStream.py   \
 	src/libs/python/bongo/store/QueueClient.py     \

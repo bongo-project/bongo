@@ -1,7 +1,7 @@
 # -*- Makefile -*-
-pkgpythonstoretooldir := $(pkgpythondir)/storetool
+pkgpythonstoretooldir = $(pkgpythondir)/storetool
 
-pkgpythonstoretool_PYTHON := \
+pkgpythonstoretool_PYTHON = \
 	src/apps/storetool/bongo/storetool/__init__.py \
 	src/apps/storetool/bongo/storetool/CalendarCommands.py \
 	src/apps/storetool/bongo/storetool/ContactCommands.py \

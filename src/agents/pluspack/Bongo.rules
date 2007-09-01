@@ -1,11 +1,11 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongopluspack
 
-bongopluspack_SOURCES :=				\
+bongopluspack_SOURCES =				\
 	src/agents/pluspack/pluspack.c		\
 	src/agents/pluspack/pluspack.h
 
-bongopluspack_LDADD :=					   \
+bongopluspack_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

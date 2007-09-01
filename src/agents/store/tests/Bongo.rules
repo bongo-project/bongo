@@ -1,13 +1,13 @@
 # -*- Makefile -*-
 TESTS += checktest-store
 check_PROGRAMS += checktest-store
-checktest_store_SOURCES := \
+checktest_store_SOURCES = \
 	src/agents/store/tests/checktest.c
 
-checktest_store_CPPFLAGS := $(AM_CPPFLAGS)	\
+checktest_store_CPPFLAGS = $(AM_CPPFLAGS)	\
 	$(CHECK_CFLAGS)
 
-checktest_store_LDADD := $(CHECK_LIBS)			   \
+checktest_store_LDADD = $(CHECK_LIBS)			   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \
@@ -22,10 +22,10 @@ checktest_store_LDADD := $(CHECK_LIBS)			   \
 
 noinst_PROGRAMS += mkauthhash
 
-mkauthhash_SOURCES :=  \
+mkauthhash_SOURCES =  \
 	src/agents/store/tests/mkauthhash.c
 
-mkauthhash_store_CPPFLAGS := $(AM_CPPFLAGS)	\
+mkauthhash_store_CPPFLAGS = $(AM_CPPFLAGS)	\
 	$(SQLITE_CFLAGS)
 
 mkauthhash_LDADD =					   \

@@ -1,13 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongoavirus
 
-bongoavirus_SOURCES :=				\
+bongoavirus_SOURCES =				\
 	src/agents/avirus/avirus.c		\
 	src/agents/avirus/avirus.h		\
 	src/agents/avirus/mime.c		\
 	src/agents/avirus/stream.c
 
-bongoavirus_LDADD :=					   \
+bongoavirus_LDADD =					   \
 	libbongonmap.la					   \
 	libbongostreamio.la				   \
 	libbongomsgapi.la				   \

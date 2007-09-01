@@ -3,18 +3,18 @@ if HAVE_LDAP
 mdb_LTLIBRARIES += libmdbldap.la
 endif
 
-libmdbldap_la_SOURCES :=			\
+libmdbldap_la_SOURCES =			\
 	src/libs/mdb-xldap/valarray.c		\
 	src/libs/mdb-xldap/schema.c		\
 	src/libs/mdb-xldap/mdbldap.c		\
 	src/libs/mdb-xldap/mdbldapp.h
 
-libmdbldap_la_CPPFLAGS := $(AM_CPPFLAGS)	\
+libmdbldap_la_CPPFLAGS = $(AM_CPPFLAGS)	\
 	-DLOCALSTATEDIR=\""$(localstatedir)"\"	\
 	-DMDB_INTERNAL
 
 libmdbldap_la_LDFLAGS = -module -avoid-version
-libmdbldap_la_LIBADD :=					   \
+libmdbldap_la_LIBADD =					   \
 	$(LDAP_LIBS)					   \
 	libbongoutil.la					   \
 	libbongoxpl.la					   \

@@ -1,11 +1,11 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongopop3
 
-bongopop3_SOURCES :=				\
+bongopop3_SOURCES =				\
 	src/agents/pop/pop3.c			\
 	src/agents/pop/pop3.h
 
-bongopop3_LDADD :=					   \
+bongopop3_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

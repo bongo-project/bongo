@@ -1,13 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongostore
 
-bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
+bongostore_CPPFLAGS = $(AM_CPPFLAGS)		\
 	-I$(top_srcdir)/src/agents/store	\
 	-DCLUCENE_BONGO_API=$(CLUCENE_BONGO_API) \
 	$(SQLITE_CFLAGS)			\
 	$(CLUCENE_CXXFLAGS)
 
-bongostore_SOURCES :=					 \
+bongostore_SOURCES =					 \
 	src/agents/store/alarmdb.c			 \
 	src/agents/store/alarmdb.h			 \
 	src/agents/store/auth.c				 \

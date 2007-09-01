@@ -1,20 +1,20 @@
 # -*- Makefile -*-
 lib_LTLIBRARIES += libbongocalcmd.la
 
-libbongocalcmd_la_SOURCES :=			\
+libbongocalcmd_la_SOURCES =			\
 	src/libs/calcmd/parsecmd.y		\
 	src/libs/calcmd/calcmd.c
 
-libbongocalcmd_la_LIBADD :=			\
+libbongocalcmd_la_LIBADD =			\
 	libbongocal.la				\
 	libbongomemmgr.la			\
 	libbongoxpl.la
 
 check_PROGRAMS += parsecmd
 
-parsecmd_SOURCES := src/libs/calcmd/test.c
+parsecmd_SOURCES = src/libs/calcmd/test.c
 
-parsecmd_LDADD :=				\
+parsecmd_LDADD =				\
 	libbongomsgapi.la			\
 	libbongologger.la			\
 	libbongoconnio.la			\

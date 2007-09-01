@@ -1,12 +1,12 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongoantispam
 
-bongoantispam_SOURCES :=				\
+bongoantispam_SOURCES =				\
 	src/agents/antispam/antispam.c		\
 	src/agents/antispam/antispam.h		\
 	src/agents/antispam/spamd.c		
 
-bongoantispam_LDADD :=					   \
+bongoantispam_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

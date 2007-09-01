@@ -1,11 +1,11 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongosmtp
 
-bongosmtp_SOURCES :=				\
+bongosmtp_SOURCES =				\
 	src/agents/smtp/smtpd.c			\
 	src/agents/smtp/smtpd.h
 
-bongosmtp_LDADD :=					   \
+bongosmtp_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
 	libbongologger.la				   \

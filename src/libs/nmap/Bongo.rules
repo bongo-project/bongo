@@ -1,14 +1,14 @@
 # -*- Makefile -*-
 lib_LTLIBRARIES += libbongonmap.la
 
-#libbongonmap_la_LDFLAGS := -static
-libbongonmap_la_SOURCES :=			\
+#libbongonmap_la_LDFLAGS = -static
+libbongonmap_la_SOURCES =			\
 	src/libs/nmap/bongoagent.c		\
 	src/libs/nmap/nmap.c			\
 	src/libs/nmap/hashcred.c		\
 	src/libs/nmap/mime.c
 
-libbongonmap_la_LIBADD :=				   \
+libbongonmap_la_LIBADD =				   \
 	libbongologger.la				   \
 	libbongocal.la					   \
 	libbongostreamio.la				   \

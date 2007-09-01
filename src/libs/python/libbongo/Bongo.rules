@@ -1,15 +1,15 @@
 # -*- Makefile -*-
 pkgpyexecdir = $(pyexecdir)/libbongo
 
-pkgpyexec_PYTHON :=				\
+pkgpyexec_PYTHON =				\
 	src/libs/python/libbongo/__init__.py
 
-pkgpyexec_LTLIBRARIES :=			\
+pkgpyexec_LTLIBRARIES =			\
 	libs.la					\
 	bootstrap.la
 
 #	src/libs/python/libbongo/mdb.c		
-libs_la_SOURCES :=				\
+libs_la_SOURCES =				\
 	src/libs/python/libbongo/cal.c		\
 	src/libs/python/libbongo/calcmd.c	\
 	src/libs/python/libbongo/libs.c		\
@@ -24,12 +24,12 @@ libs_la_SOURCES :=				\
 	src/libs/python/libbongo/json.h		\
 	src/libs/python/libbongo/bongoutil.c
 
-libs_la_CPPFLAGS := $(AM_CPPFLAGS)		\
+libs_la_CPPFLAGS = $(AM_CPPFLAGS)		\
 	$(PYTHON_CPPFLAGS)			\
 	$(bongo_CFLAGS)
 
-libs_la_LDFLAGS := -avoid-version -module
-libs_la_LIBADD :=				\
+libs_la_LDFLAGS = -avoid-version -module
+libs_la_LIBADD =				\
 	$(PYTHON_LIBS)				\
 	libbongocal.la				\
 	libbongocalcmd.la			\
@@ -39,7 +39,7 @@ libs_la_LIBADD :=				\
 	libbongostreamio.la
 
 #	src/libs/python/libbongo/mdb.c		
-bootstrap_la_SOURCES :=				\
+bootstrap_la_SOURCES =				\
 	src/libs/python/libbongo/bootstrap.c	\
 	src/libs/python/libbongo/bootstrap.h	\
 	src/libs/python/libbongo/msgapi-defs.c	\
@@ -47,12 +47,12 @@ bootstrap_la_SOURCES :=				\
 	src/libs/python/libbongo/pybongo.c	\
 	src/libs/python/libbongo/pybongo.h
 
-bootstrap_la_CPPFLAGS := $(AM_CPPFLAGS)		\
+bootstrap_la_CPPFLAGS = $(AM_CPPFLAGS)		\
 	$(PYTHON_CPPFLAGS)			\
 	$(bongo_CFLAGS)
 
-bootstrap_la_LDFLAGS := -avoid-version -module
-bootstrap_la_LIBADD :=				\
+bootstrap_la_LDFLAGS = -avoid-version -module
+bootstrap_la_LIBADD =				\
 	$(PYTHON_LIBS)				\
 	libbongomsgapi.la
 

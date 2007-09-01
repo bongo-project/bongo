@@ -1,7 +1,7 @@
 # -*- Makefile -*-
 lib_LTLIBRARIES += libbongocal.la
 
-libbongocal_la_SOURCES :=			    \
+libbongocal_la_SOURCES =			    \
 	src/libs/cal/bongo-cal-object.c		\
 	src/libs/cal/bongo-cal-instance.c	\
 	src/libs/cal/bongo-cal-private.h		\
@@ -10,11 +10,11 @@ libbongocal_la_SOURCES :=			    \
 	src/libs/cal/bongo-cal-timezone.c	\
 	src/libs/cal/cal-convert.c
 
-libbongocal_la_CPPFLAGS := $(AM_CPPFLAGS)	\
+libbongocal_la_CPPFLAGS = $(AM_CPPFLAGS)	\
 	-DZONEINFODIR=\""$(datadir)/bongo/zoneinfo"\" \
 	-I$(top_srcdir)/import/libical/src
 
-libbongocal_la_LIBADD :=						   \
+libbongocal_la_LIBADD =						   \
         libbongomemmgr.la					   \
         libbongoutil.la						   \
         libbongoxpl.la						   \
@@ -26,9 +26,9 @@ libbongocal_la_LIBADD :=						   \
 
 noinst_PROGRAMS += bongo-import-tz
 
-bongo_import_tz_SOURCES := src/libs/cal/bongo-import-tz.c
-bongo_import_tz_LDADD := libbongocal.la
-bongo_import_tz_CPPFLAGS := $(AM_CPPFLAGS) \
+bongo_import_tz_SOURCES = src/libs/cal/bongo-import-tz.c
+bongo_import_tz_LDADD = libbongocal.la
+bongo_import_tz_CPPFLAGS = $(AM_CPPFLAGS) \
 	-I$(top_srcdir)/src/libs/cal
 
 src/libs/cal/all: libbongocal.la bongo-import-tz
