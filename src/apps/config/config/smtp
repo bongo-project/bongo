@@ -6,6 +6,7 @@
 	"hostaddr": "127.0.0.1",
 	"allow_client_ssl": false,
 	"allow_expn": false,
+	"allow_auth": true,
 	"allow_vrfy": true,
 	"verify_address" : true,
 	"accept_etrn": false,

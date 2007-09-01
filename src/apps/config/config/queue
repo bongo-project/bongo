@@ -20,9 +20,8 @@
     "forwardundeliverable_to" : "",
     "queueinterval" : 0,
     "minimumfreespace" : 0,
-    "trustedhosts" : [
-        ""
-    ],
+    "trustedhosts" : [],
+    "hosteddomains" : [],
     "rtsantispamconfig_enabled" : false,
     "rtsantispamconfig_delay" : 0,
     "rtsantispamconfig_threshold" : 0,
