@@ -120,6 +120,7 @@ EXPORT BOOL MsgSetRecoveryFlag(void);
 EXPORT BOOL MsgGetRecoveryFlag(void);
 
 EXPORT BOOL MsgGetServerCredential(char *buffer);
+EXPORT BOOL MsgSetServerCredential(void);
 
 #define MSGSRV_AGENT_ADDRESSBOOK            "Address Book Agent"
 #define MSGSRV_AGENT_ALIAS                  "Alias Agent"
@@ -173,13 +174,6 @@ EXPORT BOOL MsgGetConfigProperty(unsigned char *Buffer, unsigned char *Property)
 EXPORT const unsigned char *MsgFindUserStore(const unsigned char *user, const unsigned char *defaultPath);
 EXPORT BOOL MsgFindUserNmap(const unsigned char *user, unsigned char *nmap, int nmap_len, unsigned short *port);
 
-EXPORT const unsigned char *MsgGetDBFDir(char *directory);
-EXPORT const unsigned char *MsgGetWorkDir(char *directory);
-EXPORT const unsigned char *MsgGetNLSDir(char *directory);
-EXPORT const unsigned char *MsgGetLibDir(char *directory);
-EXPORT const unsigned char *MsgGetBinDir(char *directory);
-EXPORT const unsigned char *MsgGetTLSCertPath(char *path);
-EXPORT const unsigned char *MsgGetTLSKeyPath(char *path);
 EXPORT unsigned long MsgGetHostIPAddress(void);
 EXPORT unsigned long MsgGetAgentBindIPAddress(void);
 

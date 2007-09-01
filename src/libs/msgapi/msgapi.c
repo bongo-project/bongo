@@ -677,3 +677,32 @@ MsgGetServerCredential(char *buffer)
 	}
 	return FALSE;
 }
+
+EXPORT BOOL
+MsgSetServerCredential()
+{
+	unsigned char credential[4097];
+	unsigned char path[XPL_MAX_PATH];
+	FILE *credfile;
+	const char *posschars = 
+		"abcdefghijlkmnopqrstuvwxyz"
+		"ABCDEFGHIJKLMNOPQRSTUVWYXZ"
+		"0123456890";
+	int i, range;
+	
+	range = strlen(posschars);
+	for (i=0; i<4097; i++) {
+		int ran = rand() % range;
+		credential[i] = posschars[ran];
+	}
+	credential[4096] = '\0';
+	
+	snprintf(path, XPL_MAX_PATH, "%s/credential.dat", XPL_DEFAULT_DBF_DIR);
+	credfile = fopen(path, "wb");
+	if (credfile) {
+		fwrite(credential, sizeof(char), sizeof(credential), credfile);
+		fclose(credfile);
+		return TRUE;
+	}
+	return FALSE;
+}

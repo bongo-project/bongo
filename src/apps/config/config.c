@@ -78,6 +78,11 @@ InitializeDataArea(void)
 			MsgMakePath(path);
 		}
 	}
+	
+	if (!MsgSetServerCredential()) {
+		XplConsolePrintf(_("ERROR: Cannot create server credential\n"));
+		exit(2);
+	}
 }
 
 void
