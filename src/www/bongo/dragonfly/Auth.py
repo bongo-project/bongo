@@ -59,7 +59,7 @@ def CheckUserPass(username, password):
     #return mdb.mdb_VerifyPassword(handle, dn, password)
     
     try:
-        store = StoreClient(username, username, authPassowrd=password)
+        store = StoreClient(username, username, authPassword=password)
         store.Quit()
         return True
     except:
