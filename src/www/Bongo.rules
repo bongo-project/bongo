@@ -397,7 +397,9 @@ dist_hawkeyetplsystem_DATA =			\
         
 hawkeyetplagentsdir = $(htdocsdir)/hawkeye/agents
 dist_hawkeyetplagents_DATA =			\
-        src/www/hawkeye/agents/index.tpl
+        src/www/hawkeye/agents/index.tpl	\
+	src/www/hawkeye/agents/agentview.tpl
+
         
 hawkeyetplantispamdir = $(htdocsdir)/hawkeye/antispam
 dist_hawkeyetplantispam_DATA =			\
