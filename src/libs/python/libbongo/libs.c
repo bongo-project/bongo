@@ -71,9 +71,7 @@ initlibs()
 
     MsgInit();
 
-    MsgGetDBFDir(dbfdir);
-
-    if (!BongoCalInit(dbfdir)) {
+    if (!BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0))) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: BongoCalInit() failed");
         return;
@@ -103,7 +101,7 @@ initlibs()
     /* Add the Bongo libs */
     AddLibrary(module, "cal", CalMethods, NULL);
     AddLibrary(module, "calcmd", CalCmdMethods, CalCmdEnums);
-    AddLibrary(module, "msgapi", MsgApiMethods, MsgApiEnums);
+    AddLibrary(module, "msgapi", MsgApiMethods, NULL);
     AddLibrary(module, "streamio", StreamIOMethods, NULL);
     AddLibrary(module, "bongojson", BongoJsonMethods, NULL);
     AddLibrary(module, "bongoutil", BongoUtilMethods, NULL);
