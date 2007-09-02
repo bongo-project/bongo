@@ -18,7 +18,7 @@
     "port" : 8670,
     "forwardundeliverable_enabled" : false,
     "forwardundeliverable_to" : "",
-    "queueinterval" : 0,
+    "queueinterval" : 10,
     "minimumfreespace" : 0,
     "trustedhosts" : [],
     "hosteddomains" : [],

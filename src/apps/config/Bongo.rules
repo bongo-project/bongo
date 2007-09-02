@@ -1,13 +1,15 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongo-config
 
-conf_defaults =					\
-	src/apps/config/config/manager		\
-	src/apps/config/config/antivirus	\
-	src/apps/config/config/imap		\
-	src/apps/config/config/pop3		\
-	src/apps/config/config/mailproxy	\
-	src/apps/config/config/antispam
+conf_defaults =                            \
+	src/apps/config/config/antispam    \
+	src/apps/config/config/antivirus   \
+	src/apps/config/config/imap        \
+	src/apps/config/config/mailproxy   \
+	src/apps/config/config/manager     \
+	src/apps/config/config/pop3        \
+	src/apps/config/config/queue       \
+	src/apps/config/config/smtp
 
 bongo_config_SOURCES =			\
 	$(conf_defaults)		\
