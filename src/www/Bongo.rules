@@ -220,9 +220,14 @@ dist_img_DATA =					     \
 	src/www/img/agent-bongomailprox.png \
 	src/www/img/agent-bongopluspack.png \
 	src/www/img/agent-bongopop3.png \
-	src/www/img/agent-bongosmtp.png
-
-
+	src/www/img/agent-bongosmtp.png \
+	src/www/img/agent-bongoantispam.png \
+	src/www/img/agent-bongoavirus.png   \
+	src/www/img/agent-bongocalcmd.png   \
+	src/www/img/agent-bongocollector.png    \
+	src/www/img/agent-bongoqueue.png    \
+	src/www/img/agent-unknown.png
+	
 jsdir = $(htdocsdir)/js
 
 # These *must* be in the order in which they get loaded in the browser

@@ -1,11 +1,36 @@
 import os
 from bongo.Template import Template
+import bongo.external.simplejson as simplejson
+from bongo.store.StoreClient import StoreClient, DocTypes
 import bongo.commonweb
 
 class HawkeyeHandler:
     def __init__(self):
         self._template = Template()
-
+        
+    def GetStoreData(self, req, filename, storeName="_system"):
+        config = {}
+        store = None
+        decoder = simplejson.JSONDecoder()
+        try:
+            store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
+            store.Store(storeName)
+            configfile = store.Read(filename)
+            config = decoder.decode(configfile)
+            store.Quit()
+        except ValueError:
+            self.SetVariable("error", "Failed to parse JSON.")
+            if store: 
+                store.Quit()
+            return None
+        except Exception, e:
+            self.SetVariable("error", "Unable to read data from store: %s" % str(e))
+            if store: 
+                store.Quit()
+            return None
+        
+        return config
+    
     def NeedsAuth(self, rp):
         return True
 

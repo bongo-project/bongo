@@ -16,7 +16,7 @@
 <div tal:condition="success" style="text-align: center;">
 <form method="post">
 	<input type="hidden" name="command" value="agentstatus" />
-	<table class="htable" cellspacing="0">
+	<table class="htable" cellspacing="0" style="margin-left: auto; margin-right: auto;">
 	<tr class="highlight hrow">
 		<th style="padding: 10px;">Enabled</th>
 		<th style="padding: 10px;">Agent Name</th>
@@ -29,7 +29,7 @@
 	</tr>
 	</table>
 	<br />
-	<span class="button"><button type="submit" value="Save">Save</button></span>
+	<span class="button"><button type="reset" value="Reset">Reset</button></span> <span class="button"><button type="submit" value="Save">Save</button></span>
 </form>
 </div>
 
