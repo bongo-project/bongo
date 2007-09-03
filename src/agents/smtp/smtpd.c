@@ -232,7 +232,7 @@ static int PullLine2 (unsigned char *Line, unsigned long LineSize, unsigned char
 static BOOL
 SMTPConnectionAllocCB (void *Buffer, void *ClientData)
 {
-    register ConnectionStruct *c = (ConnectionStruct *) Buffer;
+    ConnectionStruct *c = (ConnectionStruct *) Buffer;
 
     memset (c, 0, sizeof (ConnectionStruct));
     c->State = STATE_FRESH;
@@ -244,7 +244,7 @@ SMTPConnectionAllocCB (void *Buffer, void *ClientData)
 static void
 ReturnSMTPConnection (ConnectionStruct * Client)
 {
-    register ConnectionStruct *c = Client;
+    ConnectionStruct *c = Client;
 
     memset (c, 0, sizeof (ConnectionStruct));
     c->State = STATE_FRESH;
@@ -260,8 +260,8 @@ __inline static unsigned char *
 strchrRN (unsigned char *Buffer, unsigned char SrchChar,
           unsigned char *EndPtr)
 {
-    register unsigned char *ptr = Buffer;
-    register unsigned char srchChar = SrchChar;
+    unsigned char *ptr = Buffer;
+    unsigned char srchChar = SrchChar;
 
     do {
         while (*ptr != '\0') {

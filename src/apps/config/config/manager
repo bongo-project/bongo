@@ -10,6 +10,7 @@
 	{ "name": "bongorules", "pri": 5, "enabled": false },
 	{ "name": "bongoimap", "pri": 10, "enabled": true },
 	{ "name": "bongopop3", "pri": 10, "enabled": true },
-	{ "name": "bongocalcmd", "pri": 7, "enabled": true }
+	{ "name": "bongocalcmd", "pri": 7, "enabled": true },
+	{ "name": "bongo-standalone", "pri": 10, "enabled": true }
   ]
 }
