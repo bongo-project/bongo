@@ -228,9 +228,9 @@ typedef struct {
 
 #include <connio-trace.h>
 
-void ConnTcpWrite(Connection *c, char *b, unsigned int l, unsigned int *r);
-void ConnTcpRead(Connection *c, char *b, unsigned int l, unsigned int *r);
-void ConnTcpFlush(Connection *c, char *b, char *e, unsigned int *r);
+void ConnTcpWrite(Connection *c, char *b, size_t l, int *r);
+void ConnTcpRead(Connection *c, char *b, size_t l, int *r);
+void ConnTcpFlush(Connection *c, char *b, char *e, int *r);
 void ConnTcpClose(Connection *c);
 
 void ConnAddressPoolStartup(AddressPool *pool, unsigned long errorThreshold, unsigned long errorTimeThreshold);

@@ -37,7 +37,7 @@ SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s)
 }
 
 void
-ConnTcpFlush(Connection *c, char *b, char *e, unsigned int *r)
+ConnTcpFlush(Connection *c, char *b, char *e, int *r)
 {
 	if (b < e) {
 		char *curPTR = (char *)b;
@@ -88,10 +88,12 @@ ConnTcpClose(Connection *c)
 	}
 }
 
-#if defined(LINUX) || defined(S390RH) || defined(SOLARIS)
+#if defined(S390RH) || defined(SOLARIS)
+
+// TODO: is this correct for Solaris?
 
 void
-ConnTcpRead(Connection *c, char *b, unsigned int l, unsigned int *r) 
+ConnTcpRead(Connection *c, char *b, size_t l, int *r) 
 {
 	struct pollfd pfd;
 	do {
@@ -132,7 +134,7 @@ ConnTcpRead(Connection *c, char *b, unsigned int l, unsigned int *r)
 }
 
 void
-ConnTcpWrite(Connection *c, char *b, unsigned int l, unsigned int *r)
+ConnTcpWrite(Connection *c, char *b, size_t l, int *r)
 {
 	do {
 		if (!c->ssl.enable) {
@@ -151,5 +153,34 @@ ConnTcpWrite(Connection *c, char *b, unsigned int l, unsigned int *r)
 		break;
 	} while (TRUE);
 }
+
+#else
+
+void
+ConnTcpRead(Connection *c, char *b, size_t l, int *r)
+{
+	fd_set rfds;
+	struct timeval timeout;
+	FD_ZERO(&rfds);
+	FD_SET(c->socket, &rfds);
+	timeout.tv_usec = 0;
+	timeout.tv_sec = c->receive.timeOut;
+	*r = select(FD_SETSIZE, &rfds, NULL, NULL, &timeout);
+	if (*r > 0) {
+		*r = recv(c->socket, b, l, 0);
+		CONN_TRACE_DATA_AND_ERROR(c, CONN_TRACE_EVENT_READ, b, *r, "RECV");
+	} else {
+		CONN_TRACE_ERROR(c, "SELECT", *r);
+		*r = -1;
+	}
+}
+
+void
+ConnTcpWrite(Connection *c, char *b, size_t l, int *r)
+{
+	*r = IPsend(c->socket, b, l, 0);
+	CONN_TRACE_DATA_AND_ERROR(c, CONN_TRACE_EVENT_WRITE, b, *r, "SEND");
+}
+
 
 #endif
