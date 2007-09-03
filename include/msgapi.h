@@ -115,9 +115,9 @@ MsgSQLStatement *MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgS
 
 // Misc. util functions
 
-// FIXME: This API is wrong, should include agent name
-EXPORT BOOL MsgSetRecoveryFlag(void);
-EXPORT BOOL MsgGetRecoveryFlag(void);
+EXPORT BOOL MsgSetRecoveryFlag(unsigned char *agent_name);
+EXPORT BOOL MsgGetRecoveryFlag(unsigned char *agent_name);
+EXPORT BOOL MsgClearRecoveryFlag(unsigned char *agent_name);
 
 EXPORT BOOL MsgGetServerCredential(char *buffer);
 EXPORT BOOL MsgSetServerCredential(void);

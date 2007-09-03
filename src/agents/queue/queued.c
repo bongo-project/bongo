@@ -346,12 +346,6 @@ ProcessClient(void *clientp, Connection *conn)
     return HandleCommand(client);
 }
 
-static BOOL
-InternalSetServerState(const unsigned char *state)
-{
-    return MsgGetRecoveryFlag();
-}
-
 static void 
 QueueServer(void *ignored)
 {
@@ -367,8 +361,6 @@ QueueServer(void *ignored)
                                   QueueClientFree,
                                   ProcessClient,
                                   &Agent.clientMemPool);
-
-    InternalSetServerState("Shutting down");
 
     /* Shutting down */
     if (Agent.clientListener) {
@@ -391,7 +383,7 @@ QueueServer(void *ignored)
 
     BongoThreadPoolShutdown(Agent.clientThreadPool);
 
-    InternalSetServerState("Shutdown");
+    MsgClearRecoveryFlag("queue");
 
     BongoAgentShutdown(&Agent.agent);
 
@@ -576,7 +568,7 @@ XplServiceMain(int argc, char *argv[])
 
     BongoAgentStartMonitor(&Agent.agent);
 
-    InternalSetServerState("Running");
+    MsgSetRecoveryFlag("queue");
 
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, QueueServer, 8192, NULL, ccode);

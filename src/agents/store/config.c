@@ -75,7 +75,7 @@ StoreAgentReadConfiguration(BOOL *recover)
         // can't proceed without the server hash..
         return(FALSE);
 
-    if (recover && MsgGetRecoveryFlag()) {
+    if (recover && MsgGetRecoveryFlag("store")) {
         *recover = TRUE;
     }
 

@@ -117,7 +117,7 @@ ReadConfiguration (BOOL *recover)
         return FALSE;
     }
     
-    *recover = MsgGetRecoveryFlag();
+    *recover = MsgGetRecoveryFlag("queue");
     
     /* set some arrays up */
     if (Conf.deferEnabled) {

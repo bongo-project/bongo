@@ -300,9 +300,11 @@ _XplServiceMain(int argc, char *argv[])
     XplSignalHandler(SignalHandler);
 
     /* Start the server thread */
+    MsgSetRecoveryFlag("store");
     XplStartMainThread(AGENT_NAME, &id, StoreServer, 8192, NULL, ccode);
     
     XplUnloadApp(XplGetThreadID());
+    MsgClearRecoveryFlag("store");
     
     return 0;
 }

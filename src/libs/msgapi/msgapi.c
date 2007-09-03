@@ -643,18 +643,56 @@ MsgInit(void)
     }
 }
 
-EXPORT BOOL
-MsgSetRecoveryFlag(void)
+void
+MsgRecoveryFlagFile(char *agent, char *buffer, size_t buffer_len)
 {
-	// FIXME: TODO :)
-	return FALSE;
+	snprintf(buffer, buffer_len - 1, "%s/%s.pid", XPL_DEFAULT_WORK_DIR, agent);
 }
 
 EXPORT BOOL
-MsgGetRecoveryFlag(void)
+MsgSetRecoveryFlag(unsigned char *agent_name)
 {
-	// FIXME: TODO :)
-	return FALSE;
+	FILE *flag;
+	unsigned char flagfile[XPL_MAX_PATH];
+	unsigned char pidstr[20];
+	pid_t pid;
+	
+	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
+	
+	flag = fopen(flagfile, "w");
+	if (flag == -1) {
+		return FALSE;
+	}
+	
+	snprintf(pidstr, 18, "%lu\n", getpid());
+	fwrite(pidstr, strlen(pidstr), sizeof(unsigned char), flag);
+	
+	fclose(flag);
+	
+	return TRUE;
+}
+
+EXPORT BOOL
+MsgGetRecoveryFlag(unsigned char *agent_name)
+{
+	unsigned char flagfile[XPL_MAX_PATH];
+	struct stat filestat;
+	
+	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
+	if (stat(flagfile, &filestat) == 0) {
+		return TRUE;
+	} else {
+		return FALSE;
+	}
+}
+
+EXPORT BOOL
+MsgClearRecoveryFlag(unsigned char *agent_name)
+{
+	unsigned char flagfile[XPL_MAX_PATH];
+	
+	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
+	unlink(flagfile);
 }
 
 EXPORT BOOL
