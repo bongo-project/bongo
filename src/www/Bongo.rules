@@ -260,7 +260,8 @@ dist_js_DATA =					\
 	src/www/js/MailConversationView.js	\
 	src/www/js/MailListView.js		\
 	src/www/js/Browser.js   \
-	src/www/js/BrowserCheck.js
+	src/www/js/BrowserCheck.js  \
+	src/www/js/Admin.js
 	
 eAreadir = $(htdocsdir)/js/eArea
 

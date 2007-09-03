@@ -43,7 +43,13 @@ class HawkeyeHandler:
     def index(self, req, rp):
         return bongo.commonweb.OK
 
-    def SendTemplate(self, req, rp, file):
+    def SendTemplate(self, req, rp, file, title=None):
+        if title != None:
+            self.SetVariable("doctitle", "%s - Bongo Web Administration" % title)
+        else:
+            self.SetVariable("doctitle", "Bongo Web Administration")
+            
+        self.SetVariable("release", "M3")   # TODO: Set this from Makefile.
         path = os.path.join(rp.tmplPath, file)
         req.content_type = "text/html"
 

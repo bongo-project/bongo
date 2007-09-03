@@ -37,7 +37,7 @@ class AgentHandler(HawkeyeHandler):
             self.SetVariable("opsuccess", 0)
         
         self.SetVariable("agntab", "selecteditem")
-        return self.SendTemplate(req, rp, "index.tpl")
+        return self.SendTemplate(req, rp, "index.tpl", title="Agents")
     
     def bongoantispam_GET(self, req, rp):
         # Antispam
@@ -114,8 +114,9 @@ class AgentHandler(HawkeyeHandler):
         
         self.SetVariable("agntab", "selecteditem")
         self.SetVariable("name", agentname)
-        self.SetVariable("hname", self._humanReadableName(agentname))
-        return self.SendTemplate(req, rp, "agentview.tpl")
+        hname = self._humanReadableName(agentname)
+        self.SetVariable("hname", hname)
+        return self.SendTemplate(req, rp, "agentview.tpl", title=hname)
     
     def index_POST(self, req, rp):    
         global doneop
@@ -193,6 +194,6 @@ class AgentHandler(HawkeyeHandler):
         elif agentname == "bongopop3":
             return "POP3"
         elif agentname == "bongocalcmd":
-            return "iCal"
+            return "Calendar CMD"
         else:
             return "Unknown agent"

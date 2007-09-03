@@ -5,5 +5,11 @@
 <script tal:condition="error">window.setTimeout("Effect.Pulsate('err');", 1000);</script>
 </div>
 </div>
+</div>
+<div id="footer">Bongo <i>Hawkeye</i> Web Administration Tool - version <span tal:content="release">M3</span>.<br />Released under the GPL; see COPYING for details.</div>
+
+<!-- Perform sidebar stuff. -->
+<script type="text/javascript" src="/js/Admin.js"></script>
+
 </body>
 </html>

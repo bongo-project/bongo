@@ -67,7 +67,7 @@ class RootHandler(HawkeyeHandler):
             sw_available = "Unknown (no network, or DNS failure)"
         self.SetVariable("sw_available", sw_available)
         # send the template
-        return self.SendTemplate(req, rp, "index.tpl")
+        return self.SendTemplate(req, rp, "index.tpl", title="Desktop")
 
     def login_GET(self, req, rp):
         global AuthMode
