@@ -555,17 +555,17 @@ ProcessConnection(AVClient *client)
     }
 
     if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-	users = MemMalloc0(sizeof(BongoSList));
-	if (!users) {
-	    MemFree(client->envelope);
-	    client->envelope = NULL;
-	    
-	    NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-	    NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-	    return(-1);
-	}
+        users = MemMalloc0(sizeof(BongoSList));
+        if (!users) {
+            MemFree(client->envelope);
+            client->envelope = NULL;
+            
+            NMAPSendCommand(client->conn, "QDONE\r\n", 7);
+            NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+            return(-1);
+        }
     } else {
-	users = NULL;
+        users = NULL;
     }
 
     preserve = '\0';
@@ -573,16 +573,16 @@ ProcessConnection(AVClient *client)
     if (AVirus.flags & AV_FLAG_SCAN_INCOMING) {
         XplSafeIncrement(AVirus.stats.messages.scanned);
 
-	ccode = ScanMessage(client, qID);
-	
-	if (ccode == -1) {
-	    MemFree(client->envelope);
-	    client->envelope = NULL;
-	    
-	    NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-	    NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-	    return(-1);
-	}
+        ccode = ScanMessage(client, qID);
+        
+        if (ccode == -1) {
+            MemFree(client->envelope);
+            client->envelope = NULL;
+            
+            NMAPSendCommand(client->conn, "QDONE\r\n", 7);
+            NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+            return(-1);
+        }
 
         infected = (ccode > 0);
 
@@ -921,14 +921,16 @@ ProcessConnection(AVClient *client)
         ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     }
 
-    if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
+    if ((AVirus.flags & AV_FLAG_NOTIFY_USER) && users) {
         BongoSList *userlist;
         for (userlist = users; userlist != NULL; userlist = userlist->next) {
             AVRecipient *recip;
             recip = (AVRecipient *)userlist->data;
-            MemFree(recip->name);
-            MemFree(recip->address);
-            MemFree(recip);
+            if (recip){
+                MemFree(recip->name);
+                MemFree(recip->address);
+                MemFree(recip);
+            }
             userlist->data = NULL;
         }
         BongoSListFree(users);
