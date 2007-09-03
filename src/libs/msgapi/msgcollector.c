@@ -132,7 +132,7 @@ ConnectToStore(const char *user)
     Connection *conn;
     int ret;
 
-    if ((conn = NMAPConnect(NULL, &addr)) == NULL) {
+    if ((conn = NMAPConnect("127.0.0.1", NULL)) == NULL) {
         printf("bongocollector: couldn't connect to nmap\n");
         return NULL;
     }
@@ -661,7 +661,7 @@ MsgCollectAllUsers(void)
         return;
 
     for(i = 0; i < BongoArrayCount(users); i++) {
-        char *user = BongoArrayIndex(users, char, i);
+        char *user = BongoArrayIndex(users, char *, i);
         MsgCollectUser(user);
     }
 
