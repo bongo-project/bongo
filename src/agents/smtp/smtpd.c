@@ -4450,7 +4450,9 @@ int XplServiceMain (int argc, char *argv[])
         return (-1);
     }
 
-    ConnStartup (SMTP.socket_timeout, TRUE);
+    // FIXME: Connio socket timeout needs to be a run-time tunable. bug #9924
+    // ConnStartup (SMTP.socket_timeout, TRUE);
+    ConnStartup(600, TRUE);
 
     NMAPInitialize();
 
