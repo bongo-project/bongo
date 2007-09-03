@@ -82,30 +82,8 @@ typedef struct {
 #define SSL_DISABLE_EMPTY_FRAGMENTS     (1 << 4)
 #define SSL_DONT_INSERT_EMPTY_FRAGMENTS (1 << 5)
 
-#define CHOP_NEWLINE(s) \
-        {   unsigned char *p; p = strchr((s), 0x0A); \
-            if (p) { \
-                *p = '\0'; \
-            } \
-            p = strrchr((s), 0x0D); \
-            if (p) { \
-                *p = '\0'; \
-            } \
-        }
-
-#define SET_POINTER_TO_VALUE(p,s) \
-        {   (p) = (s); \
-            while(isspace(*(p))) { \
-                (p)++; \
-            } \
-            if ((*(p) == '=') || (*(p) == ':')) { \
-                (p)++; \
-            } \
-            while(isspace(*(p))) { \
-                (p)++; \
-            } \
-        }
-
+void CHOP_NEWLINE(unsigned char *s);
+void SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s); // FIXME: Unused?
 
 #if defined(_BONGO_LINUX) || defined(S390RH) || defined(SOLARIS)
 
@@ -134,286 +112,11 @@ typedef struct {
 #define IPgetsockname(s, a, l) getsockname((s), (a), (l))
 #define IPgetpeername(s, a, l) getpeername((s), (a), (l))
 
-#define CONN_TCP_READ(c, b, l, r) \
-        { \
-            struct pollfd pfd; \
-            do { \
-                pfd.fd = (int)(c)->socket; \
-                pfd.events = POLLIN; \
-                (r) = poll(&pfd, 1, (c)->receive.timeOut * 1000); \
-                if ((r) > 0) { \
-                    if ((pfd.revents & (POLLIN | POLLPRI))) { \
-                        do { \
-                            (r) = IPrecv((c)->socket, b, l, 0);         \
-                            if ((r) >= 0) {                             \
-                                CONN_TRACE_DATA((c), CONN_TRACE_EVENT_READ, (b), (r)); \
-                                break;                                  \
-                            } else if (errno == EINTR) {                \
-                                continue;                               \
-                            }            \
-                            CONN_TRACE_ERROR((c), "RECV", (r));         \
-                            (r) = -1;                                   \
-                            break;                                      \
-                        } while (TRUE);                                 \
-                        break; \
-                    } else if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) { \
-                        CONN_TRACE_ERROR((c), "POLL EVENT", (r));       \
-                        (r) = -1;                                       \
-                        break; \
-                    } \
-                } \
-                if (errno == EINTR) { \
-                    continue; \
-                } \
-                CONN_TRACE_ERROR((c), "POLL", (r)); \
-               (r) = -1; \
-                break; \
-            } while (TRUE); \
-        }
-
-#define CONN_TCP_WRITE(c, b, l, r) \
-        { \
-            do { \
-                (r) = IPsend((c)->socket, b, l, MSG_NOSIGNAL); \
-                if ((r) >= 0) { \
-                    CONN_TRACE_DATA((c), CONN_TRACE_EVENT_WRITE, (b), (r)); \
-                    break; \
-                } else if (errno == EINTR) { \
-                    continue; \
-                } \
-                CONN_TRACE_ERROR((c), "POLL", (r)); \
-                (r) = -1; \
-                break; \
-            } while (TRUE); \
-        }
-
-#elif defined(LIBC) || defined(NETWARE) || defined(WIN32)
-
-#ifdef WIN32
-typedef int socklen_t;
-typedef unsigned int in_addr_t;
-#define	ETIMEDOUT			WSAETIMEDOUT
-#define	ECONNREFUSED			WSAECONNREFUSED
-#define	ENETUNREACH			WSAENETUNREACH
-#endif
-
-#define ConnSockOpt(c, o, v, p, l) setsockopt((c)->socket, (o), (v), (p), (l))
-
-#define	IPSOCKET		SOCKET
-#define	IPInit()		{WSADATA data; WSAStartup(MAKEWORD(1,1), &data);}
-												
-#define	IPCleanup()				WSACleanup();
-#define	IPsocket(domain, type, protocol)	socket(domain, type, protocol)
-#define	IPaccept(s, addr, addrlen)		accept(s, addr, addrlen)
-#define	IPlisten(sock, backlog)			listen(sock, backlog)
-#define	IPbind(sock, addr, addrlen)		bind(sock, addr, addrlen)
-#define	IPconnect(sock, addr, addrlen)		connect(sock, addr, addrlen)
-#define	IPrecv(sock, buf, len, flags)		recv(sock, buf, len, flags)
-#define	IPsend(sock, buf, len, flags)		send(sock, buf, len, flags)
-#define	IPclose(sock)				closesocket(sock)
-#define	IPshutdown(s, how)			shutdown(s, how)
-#define	IPgetsockname(s, addr, addrlen)		getsockname(s, addr, addrlen)
-#define	IPgetpeername(s, addr, addrlen)		getpeername(s, addr, addrlen)
-#define	IPselect(nfds, rfds, wfds, efds, t)	select(nfds, rfds, wfds, efds, t)
-
-#define CONN_TCP_READ(c, b, l, r) \
-       { \
-            fd_set rfds; \
-            struct timeval timeout; \
-            FD_ZERO(&rfds); \
-            FD_SET((c)->socket, &rfds); \
-            timeout.tv_usec = 0; \
-            timeout.tv_sec = (c)->receive.timeOut; \
-            (r) = select(FD_SETSIZE, &rfds, NULL, NULL, &timeout); \
-            if ((r) > 0) { \
-                (r) = IPrecv((c)->socket, (b), (l), 0); \
-                CONN_TRACE_DATA_AND_ERROR((c), CONN_TRACE_EVENT_READ, (b), (r), "RECV"); \
-            } else { \
-                CONN_TRACE_ERROR((c), "SELECT", (r)); \
-                (r) = -1; \
-            } \
-        }
-
-#define CONN_TCP_WRITE(c, b, l, r) \
-        (r) = IPsend((c)->socket, (b), (l), 0); \
-        CONN_TRACE_DATA_AND_ERROR((c), CONN_TRACE_EVENT_WRITE, (b), (r), "SEND");
-
 #else
 
 #error Connection management library not implemented on this platform.
 
 #endif
-
-#define CONN_TCP_SEND(c, b, l, r) \
-        { \
-            if (!(c)->ssl.enable) { \
-                CONN_TCP_WRITE((c), (b), (l), (r)); \
-            } else { \
-                CONN_SSL_WRITE((c), (b), (l), (r)); \
-            } \
-        }
-
-#define CONN_TCP_RECEIVE(c, b, l, r) \
-        { \
-            if (!(c)->ssl.enable) { \
-                CONN_TCP_READ((c), (b), (l), (r)); \
-            } else { \
-                CONN_SSL_READ((c), (b), (l), (r)); \
-            } \
-        }
-
-#define CONN_TCP_FLUSH(c, b, e, r) \
-        { \
-            if ((b) < (e)) { \
-                register char *curPTR = (char *)(b); \
-                if (!(c)->ssl.enable) { \
-                    while (curPTR < (e)) { \
-                        CONN_TCP_WRITE((c), curPTR, (e) - curPTR, (r)); \
-                        if ((r) > 0) { \
-                            curPTR += (r); \
-                            continue; \
-                        } \
-                        break; \
-                    } \
-                } else { \
-                    while (curPTR < (e)) { \
-                        CONN_SSL_WRITE((c), curPTR, (e) - curPTR, (r)); \
-                        if ((r) > 0) { \
-                            curPTR += (r); \
-                            continue; \
-                        } \
-                        break; \
-                    } \
-                } \
-                if (curPTR == (e)) { \
-                    (r) = (e) - (b); \
-                } else { \
-                    (r) = -1; \
-                } \
-            } else { \
-                (r) = 0; \
-            } \
-        }
-
-#define CONN_TCP_CLOSE(c) \
-        { \
-            if ((c)->receive.buffer) { \
-                (c)->receive.remaining = CONN_TCP_MTU; \
-            } else { \
-                (c)->receive.remaining = 0; \
-            } \
-            (c)->receive.read = (c)->receive.write = (c)->receive.buffer; \
-            if ((c)->send.buffer) { \
-                ConnFlush(c); \
-                (c)->send.remaining = CONN_TCP_MTU; \
-            } else { \
-                (c)->send.remaining = 0; \
-            } \
-            (c)->send.read = (c)->send.write = (c)->send.buffer; \
-            if ((c)->ssl.enable) { \
-                gnutls_bye((c)->ssl.context, GNUTLS_SHUT_RDWR); \
-                gnutls_deinit((c)->ssl.context); \
-                (c)->ssl.context = NULL; \
-                (c)->ssl.enable = FALSE; \
-            } \
-            if ((c)->socket != -1) { \
-                IPshutdown((c)->socket, 2); \
-                IPclose((c)->socket); \
-                (c)->socket = -1; \
-            } \
-        }
-
-#define CONN_SSL_NEW(c, s) \
-        { \
-            (c)->ssl.context = __gnutls_new(s); \
-            if ((c)->ssl.context) \
-                (c)->ssl.enable = TRUE; \
-            } else { \
-                (c)->ssl.context = NULL; \
-                (c)->ssl.enable = FALSE; \
-            } \
-        }
-
-#define CONN_SSL_FREE(c) \
-        { \
-            if ((c)->ssl.enable) { \
-                gnutls_deinit((c)->ssl.context); \
-                (c)->ssl.context = NULL; \
-                (c)->ssl.enable = FALSE; \
-            } \
-        }
-
-#define CONN_SSL_ACCEPT(c, s) \
-        { \
-            (c)->ssl.context = __gnutls_new(s); \
-            if ((c)->ssl.context \
-                    && (gnutls_handshake((c)->ssl.context) == 0)) { \
-                (c)->ssl.enable = TRUE; \
-            } else { \
-                if ((c)->ssl.context) { \
-                    gnutls_deinit((c)->ssl.context); \
-                    (c)->ssl.context = NULL; \
-                } \
-                (c)->ssl.enable = FALSE; \
-            } \
-        }
-
-#define CONN_SSL_CONNECT(c, s, r) \
-        { \
-            (c)->ssl.context = __gnutls_new(s); \
-            if ((c)->ssl.context \
-                    && (gnutls_handshake((c)->ssl.context) == 0)) { \
-                (c)->ssl.enable = TRUE; \
-            } else { \
-                if ((c)->ssl.context) { \
-                    gnutls_deinit((c)->ssl.context); \
-                    (c)->ssl.context = NULL; \
-                } \
-                (c)->ssl.enable = FALSE; \
-            } \
-        }
-
-#if !defined(_BONGO_CONN_TRACE)
-
-#define CONN_TRACE_GET_FLAGS()                      0
-#define CONN_TRACE_SET_FLAGS(f) 
-#define CONN_TRACE_INIT(p, n) 
-#define CONN_TRACE_SHUTDOWN() 
-#define CONN_TRACE_CREATE_DESTINATION(t)            NULL
-#define CONN_TRACE_FREE_DESTINATION(d)
-#define CONN_TRACE_BEGIN(c, t, d) 
-#define CONN_TRACE_END(c) 
-#define CONN_TRACE_EVENT(c, t) 
-#define CONN_TRACE_ERROR(c, e, l) 
-#define CONN_TRACE_DATA(c, t, b, l) 
-#define CONN_TRACE_DATA_AND_ERROR(c, t, b, l, e) 
-
-#else
-
-#define CONN_TRACE_GET_FLAGS()                      ConnTraceGetFlags()
-#define CONN_TRACE_SET_FLAGS(f)                     ConnTraceSetFlags(f)
-#define CONN_TRACE_INIT(p, n)                       ConnTraceInit(p, n)
-#define CONN_TRACE_SHUTDOWN()                       ConnTraceShutdown()
-#define CONN_TRACE_CREATE_DESTINATION(t)            ConnTraceCreatePersistentDestination(t)
-#define CONN_TRACE_FREE_DESTINATION(d)              ConnTraceFreeDestination(d) 
-#define CONN_TRACE_BEGIN(c, t, d)                   ConnTraceBegin((c), (t), (d))
-#define CONN_TRACE_END(c)                           ConnTraceEnd((c))
-#define CONN_TRACE_EVENT(c, t)                      ConnTraceEvent((c), (t), NULL, 0)
-#define CONN_TRACE_ERROR(c, e, l)                   ConnTraceEvent((c), CONN_TRACE_EVENT_ERROR, (e), (l))
-#define CONN_TRACE_DATA(c, t, b, l)                 ConnTraceEvent((c), (t), (b), (l))
-#define CONN_TRACE_DATA_AND_ERROR(c, t, b, l, e)    if ((l) > 0) { \
-                                                        ConnTraceEvent((c), (t), (b), (l)); \
-                                                    } else { \
-                                                        ConnTraceEvent((c), CONN_TRACE_EVENT_ERROR, (e), (l)); \
-                                                    }
-
-#endif
-
-#define CONN_SSL_READ(c, b, l, r)           (r) = gnutls_record_recv((c)->ssl.context, (void *)(b), (l)); \
-                                            CONN_TRACE_DATA_AND_ERROR((c), CONN_TRACE_EVENT_READ, (b), (r), "SSL_READ");
-
-#define CONN_SSL_WRITE(c, b, l, r)          (r) = gnutls_record_send((c)->ssl.context, (void *)(b), (l)); \
-                                            CONN_TRACE_DATA_AND_ERROR((c), CONN_TRACE_EVENT_WRITE, (b), (r), "SSL_WRITE");
 
 typedef struct _ConnectionBuffer {
     char *read;
@@ -523,6 +226,13 @@ typedef struct {
     unsigned long initialized;
 } AddressPool;
 
+#include <connio-trace.h>
+
+void ConnTcpWrite(Connection *c, char *b, unsigned int l, unsigned int *r);
+void ConnTcpRead(Connection *c, char *b, unsigned int l, unsigned int *r);
+void ConnTcpFlush(Connection *c, char *b, char *e, unsigned int *r);
+void ConnTcpClose(Connection *c);
+
 void ConnAddressPoolStartup(AddressPool *pool, unsigned long errorThreshold, unsigned long errorTimeThreshold);
 void ConnAddressPoolShutdown(AddressPool *pool);
 BOOL ConnAddressPoolAddHost(AddressPool *pool, char *hostName, unsigned short hostPort, unsigned long weight);
@@ -576,22 +286,9 @@ int ConnWriteFile(Connection *Conn, FILE *Source);
 int ConnWriteFromFile(Connection *Conn, FILE *Source, int Count);
 #define ConnWriteStr(conn, mesg) ConnWrite(conn, mesg, strlen(mesg))
 
-
 int ConnFlush(Connection *Conn);
 
 BOOL ConnTraceAvailable(void);
-
-#if defined(_BONGO_CONN_TRACE)
-void ConnTraceSetFlags(unsigned long flags);
-unsigned long ConnTraceGetFlags(void);
-void ConnTraceInit(char *path, char *name);
-void ConnTraceShutdown(void);
-TraceDestination *ConnTraceCreatePersistentDestination(unsigned char type);
-void ConnTraceFreeDestination(TraceDestination *destination);
-void ConnTraceBegin(Connection *c, unsigned long type, TraceDestination *destination);
-void ConnTraceEnd(Connection *c);
-void ConnTraceEvent(Connection *c, unsigned long event, char *buffer, long len);
-#endif
 
 /* fixme - to be deprecated */
 #define XPLNETDB_DEFINE_CONTEXT

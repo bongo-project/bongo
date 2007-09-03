@@ -127,7 +127,7 @@ FindEndOfLine(Connection *conn)
 
         if (count < CONN_TCP_MTU) {
             if (count == 0) {
-                CONN_TCP_RECEIVE(c, c->receive.buffer, CONN_TCP_MTU, count);
+                ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
                 if (count > 0) {
                     c->receive.read = c->receive.buffer;
                     c->receive.write = c->receive.buffer + count;
@@ -144,7 +144,7 @@ FindEndOfLine(Connection *conn)
             c->receive.read = c->receive.buffer;
             c->receive.write = c->receive.buffer + count;
             c->receive.remaining = CONN_TCP_MTU - count;
-            CONN_TCP_RECEIVE(c, c->receive.write, c->receive.remaining, count);
+            ConnTcpRead(c, c->receive.write, c->receive.remaining, &count);
             if (count > 0) {
                 c->receive.write += count;
                 c->receive.remaining -= count;
@@ -1606,7 +1606,7 @@ NMAPQuit(Connection *conn)
 {
     ConnWrite(conn, "QUIT\r\n", 6);
 
-    CONN_TCP_CLOSE(conn);
+    ConnTcpClose(conn);
 
     return;
 }
