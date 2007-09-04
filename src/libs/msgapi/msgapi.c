@@ -248,6 +248,9 @@ MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size)
 		case MSGAPI_DIR_CACHE:
 			path = XPL_DEFAULT_CACHE_DIR;
 			break;
+		case MSGAPI_DIR_COOKIE:
+			path = XPL_DEFAULT_COOKIE_DIR;
+			break;
 		case MSGAPI_DIR_CERT:
 			path = XPL_DEFAULT_DBF_DIR;
 			break;
@@ -655,16 +658,15 @@ MsgSetRecoveryFlag(unsigned char *agent_name)
 	FILE *flag;
 	unsigned char flagfile[XPL_MAX_PATH];
 	unsigned char pidstr[20];
-	pid_t pid;
 	
 	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
 	
 	flag = fopen(flagfile, "w");
-	if (flag == -1) {
+	if (flag == NULL) {
 		return FALSE;
 	}
 	
-	snprintf(pidstr, 18, "%lu\n", getpid());
+	snprintf(pidstr, 18, "%u\n", getpid());
 	fwrite(pidstr, strlen(pidstr), sizeof(unsigned char), flag);
 	
 	fclose(flag);
@@ -693,6 +695,7 @@ MsgClearRecoveryFlag(unsigned char *agent_name)
 	
 	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
 	unlink(flagfile);
+	return TRUE;
 }
 
 EXPORT BOOL
