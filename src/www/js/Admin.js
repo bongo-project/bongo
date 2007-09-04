@@ -58,3 +58,51 @@ function toggleSidebar()
         //$('sidebartoggle').style.color = "#2e3436";
     }
 }
+
+function addToList(div)
+{
+    var d = prompt("Value:", "");
+    if (d)
+    {
+        var e = document.createElement('option');
+        e.text = d;
+        try
+        {
+            // W3C
+            $(div).add(e, null);
+        }
+        catch(ex)
+        {
+            //alert(ex);
+            // IE
+            $(div).add(e);
+        }
+        
+        $(div).selectedIndex = $(div).options.length - 1;
+        
+        Effect.Appear(div + '-removebtn');
+        new Effect.Highlight(div);
+    }
+}
+
+function removeFromList(div)
+{
+    var start = $(div).selectedIndex;
+    $(div).remove(start);
+    if ($(div).selectedIndex != start)
+    {
+        //new Effect.Highlight(div);
+    }
+    
+    // Check if there's anymore items left.
+    if ($(div).options.length == 0)
+    {
+        // Hide the remove button for zaaroo ooptoons.
+        Effect.SwitchOff(div + '-removebtn');
+    }
+    else
+    {
+        // Update newly selected.
+        $(div).selectedIndex = start - 1;
+    }
+}

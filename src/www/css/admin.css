@@ -66,9 +66,9 @@ body {
 }
 
 input, select {
-    color: #555753;
-    background-color: #eeeeec;
-    border: 1px solid #2e3436;
+    color: #2e3436;
+    background-color: #fff;
+    border: 1px solid #888a85;
 }
 
 .lang {

@@ -93,13 +93,15 @@ class AgentHandler(HawkeyeHandler):
                         if not nkey["numericentry"]:
                             nkey["boolentry"] = self.isBoolEntry(key)
                             if not nkey["boolentry"]:
-                                # Has to be text entry if it ain't numeric or boolean.
-                                nkey["textentry"] = True
-                            else:
-                                if config[key] == False:
-                                    nkey["checked"] = None
+                                nkey["selectentry"] = self.isSelectEntry(key)
+                                if not nkey["selectentry"]:
+                                    # Has to be text entry if it ain't numeric or boolean.
+                                    nkey["textentry"] = True
                                 else:
-                                    nkey["checked"] = True
+                                    # Setup per-list settings.
+                                    nkey["jsadd"] = "javascript:addToList('" + key + "');"
+                                    nkey["jsrm"] = "javascript:removeFromList('" + key + "');"
+                                    nkey["jsid"] = key + "-removebtn"
                     else:
                         nkey["hidden"] = True
                 
@@ -131,8 +133,15 @@ class AgentHandler(HawkeyeHandler):
         doneop = 1
         return self.index_GET(req, rp)
     
+    def isSelectEntry(self, k):
+        keys = [ 'hosts', 'hosteddomains', 'trustedhosts' ]
+        if keys.count(k) > 0:
+            return True
+        else:
+            return None
+    
     def isBoolEntry(self, k):
-        keys = [ 'use_relay_host', 'allow_expn', 'block_rts_spam', 'allow_vrfy', 'allow_client_ssl', 'verify_address', 'relay_local_mail', 'send_etrn', 'accept_etrn' ]
+        keys = [ 'use_relay_host', 'allow_expn', 'block_rts_spam', 'allow_vrfy', 'allow_client_ssl', 'verify_address', 'relay_local_mail', 'send_etrn', 'accept_etrn', 'forwardundeliverable_enabled', 'allow_auth', 'bounce_return', 'bounceccpostmaster', 'queuetuning_debug', 'limitremoteprocessing', 'bouncereturn', 'rtsantispamconfig_enabled' ]
         if keys.count(k) > 0:
             return True
         else:
@@ -150,7 +159,7 @@ class AgentHandler(HawkeyeHandler):
             return None
     
     def getParamSuffix(self, k):
-        keys = { 'interval': 'seconds', 'socket_timeout':'seconds', 'message_size_limit': 'bytes (set to 0 for none)' }
+        keys = { 'interval': 'seconds', 'socket_timeout':'seconds', 'message_size_limit': 'bytes (set to 0 for none)', 'timeout':'milliseconds' }
         
         if keys.has_key(k):
             return keys[k]
@@ -162,7 +171,7 @@ class AgentHandler(HawkeyeHandler):
         Converts a setting key name into a human-readable keyname.
         """
         
-        keys = { 'port': 'Port', 'port_ssl': 'SSL Port', 'hostname': 'Hostname', 'hostaddr': 'Host address', 'allow_client_ssl': 'Allow client SSL', 'allow_vrfy': 'Allow verification', 'relay_host': 'Relay to host', 'max_mx_servers': 'Maximum MX servers', 'socket_timeout': 'Socket timeout', 'block_rts_spam': 'Block RTS spam', 'verify_address': 'Verify address before accepting mail', 'relay_local_mail': 'Relay local mail', 'max_flood_count': 'Maximum flood count', 'message_size_limit': 'Maximum message size', 'maximum_recipients': 'Maximum recipients', 'use_relay_host': 'Use relay host', 'threads_max': 'Maximum threads', 'postmaster': 'Postmaster', 'max_threads': 'Maximum threads', 'interval': 'Interval', 'queue':'Queue host', 'max_accounts':'Maximum accounts', 'host':'Host', 'flags':'Operation mode(s) - see avirus.h', 'minimumfreespace':'Minimum free quota space', 'send_etrn':'Send ETRN', 'allow_expn':'Allow group expansion', 'accept_etrn':'Accept ETRN', 'max_thread_load':'Maximum thread load', 'max_null_sender':'Maximum recipients for null sender' }
+        keys = { 'port': 'Port', 'port_ssl': 'SSL Port', 'hostname': 'Hostname', 'hostaddr': 'Host address', 'allow_client_ssl': 'Allow client SSL', 'allow_vrfy': 'Allow verification', 'relay_host': 'Relay to host', 'max_mx_servers': 'Maximum MX servers', 'socket_timeout': 'Socket timeout', 'block_rts_spam': 'Block RTS spam', 'verify_address': 'Verify address before accepting mail', 'relay_local_mail': 'Relay local mail', 'max_flood_count': 'Maximum flood count', 'message_size_limit': 'Maximum message size', 'maximum_recipients': 'Maximum recipients', 'use_relay_host': 'Use relay host', 'threads_max': 'Maximum threads', 'postmaster': 'Postmaster', 'max_threads': 'Maximum threads', 'interval': 'Interval', 'queue':'Queue host', 'max_accounts':'Maximum accounts', 'host':'Host', 'flags':'Operation mode(s) - see avirus.h', 'minimumfreespace':'Minimum free quota space', 'send_etrn':'Send ETRN', 'allow_expn':'Allow group expansion', 'accept_etrn':'Accept ETRN', 'max_thread_load':'Maximum thread load', 'max_null_sender':'Maximum recipients for null sender', 'hosts':'Hosts', 'timeout': 'Timeout', 'forwardundeliverable_enabled': 'Forward undeliverable mail', 'allow_auth':'Allow authentication', 'trustedhosts':'Trusted hosts', 'quotamessage':'Message if quota is reached', 'forwardundeliverable_to':'Forward undeliverable mail to', 'limitremoteprocessing': 'Limit remote processing', 'patterns':'Patterns', 'hosteddomains':'Hosted domains', 'bouncereturn':'Return bounced messages', 'bounceccpostmaster':'CC bounced messages to postmaster' }
         
         if keys.has_key(k):
             return keys[k]
