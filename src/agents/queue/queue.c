@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #include <config.h>

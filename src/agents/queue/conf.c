@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #include <config.h>
@@ -103,7 +104,7 @@ static BongoConfigItem QueueConfig[] = {
 int aliasCmpFunc (const void *lft, const void *rgt){
 	struct _AliasStruct *l = (struct _AliasStruct *)(lft);
 	struct _AliasStruct *r = (struct _AliasStruct *)(rgt);;
-	return strcmp(l->original, r->original);
+	return strcasecmp(l->original, r->original);
 }
 
 BOOL
@@ -187,31 +188,31 @@ ReadConfiguration (BOOL *recover)
     
     /* now let's iterate over the hostedDomains and read in any aliasing information for those domains */
     {
-    	Conf.aliasList = BongoArrayNew(sizeof(AliasStruct), Conf.hostedDomains->len);
+    	Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.hostedDomains->len);
 
 	unsigned int x;
 	for(x=0;x<Conf.hostedDomains->len;x++) {
 		unsigned char *aconfig;
 		unsigned char path[100];
 		BongoJsonNode *node;
-		struct _AliasStruct *a = MemMalloc(sizeof(AliasStruct));
+		struct _AliasStruct a;
 
-		a->original = MemStrdup(BongoArrayIndex(Conf.hostedDomains, unsigned char *, x));
-		a->to = NULL;
-		a->aliases = NULL;
+		a.original = MemStrdup(BongoArrayIndex(Conf.hostedDomains, unsigned char *, x));
+		a.to = NULL;
+		a.aliases = NULL;
 
-		sprintf(path, "aliases/%s", a->original);
+		sprintf(path, "aliases/%s", a.original);
 		if(NMAPReadConfigFile(path, &aconfig)) {
 			if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
 				BongoJsonObject *obj;
 
-				BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a->to));
+				BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a.to));
 
 				/* now get any specific aliases */
 				if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
 					BongoJsonObjectIter iter;
 
-					a->aliases = BongoArrayNew(sizeof(AliasStruct), 1);
+					a.aliases = BongoArrayNew(sizeof(struct _AliasStruct), 1);
 
 					BongoJsonObjectIterFirst(obj, &iter);
 					while (iter.key) {
@@ -219,22 +220,22 @@ ReadConfiguration (BOOL *recover)
 						 * 	I'd need to parse original and only use the user portion
 						 * 	I'd need to parse the to and append the domain if none exists
 						 */
-						struct _AliasStruct *b = MemMalloc(sizeof(AliasStruct));
-						b->original = MemStrdup(iter.key);
-						b->to = MemStrdup(BongoJsonNodeAsString(iter.value));
-						b->aliases = NULL;
+						struct _AliasStruct b;
+						b.original = MemStrdup(iter.key);
+						b.to = MemStrdup(BongoJsonNodeAsString(iter.value));
+						b.aliases = NULL;
 
-						BongoArrayAppendValue(a->aliases, *b);
+						BongoArrayAppendValue(a.aliases, b);
 
 						BongoJsonObjectIterNext(obj, &iter);
 					}
-					BongoArraySort(a->aliases, (ArrayCompareFunc)aliasCmpFunc);
+					BongoArraySort(a.aliases, (ArrayCompareFunc)aliasCmpFunc);
 				}
 				BongoJsonNodeFree(node);
 			}
 		}
 
-		BongoArrayAppendValue(Conf.aliasList, *a);
+		BongoArrayAppendValue(Conf.aliasList, a);
 	}
 
 	/* sort the list for speed later */

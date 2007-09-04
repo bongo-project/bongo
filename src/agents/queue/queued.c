@@ -44,6 +44,7 @@ static int CommandPass(void *param);
 static int CommandQuit(void *param);
 static int CommandHelp(void *param);
 static int CommandAddressResolve(void *param);
+int aliasFindFunc(const void *str, const void *node);
 
 static ProtocolCommand authCommands[] = {
     { NMAP_AUTH_COMMAND, NMAP_AUTH_HELP, sizeof(NMAP_AUTH_COMMAND) - 1, CommandAuth, NULL, NULL },
@@ -99,15 +100,80 @@ static ProtocolCommand commands[] = {
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
+int aliasFindFunc(const void *str, const void *node) {
+    struct _AliasStruct *n = (struct _AliasStruct *)(node);
+    return strcasecmp((char *)str, n->original);
+}
+
+/* TODO: error handling on MsgParseAddress() */
+BOOL aliasing(Connection *conn, char *addr, int *cnt) {
+    unsigned char *local = NULL;
+    unsigned char *domain = NULL;
+    struct _AliasStruct a;
+    int i=-1;
+    BOOL result=FALSE;
+
+    /* very rudimentary way to prevent loops */
+    if (*cnt > 5) {
+        ConnWriteStr(conn, "4000 Aliasing loop\r\n");
+        return TRUE;
+    }
+
+    (*cnt)++;
+
+    /* first parse out the domain do that i can run over the hosted_domains array */
+    MsgParseAddress(addr, strlen(addr), &local, &domain);
+
+    i = BongoArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
+    if (i > -1) {
+        a = BongoArrayIndex(Conf.aliasList, struct _AliasStruct, i);
+        /* if there is a to domain use that instead */
+        if (a.to) {
+            MemFree(domain);
+            domain = MemStrdup(a.to);
+        }
+
+        /* now i need to see if there is an alias for local within this domain */
+        if (a.aliases) {
+            i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc);
+            if (i > -1) {
+                /* there is an alias for this local.  recurse, as the destination might not be local */
+                struct _AliasStruct b;
+                b = BongoArrayIndex(a.aliases, struct _AliasStruct, i);
+                result = aliasing(conn, b.to, cnt);
+            }
+        }
+
+        /* we haven't already handled this address during the recursion.  it must be local */
+        if (!result) {
+            ConnWriteF(conn, "1000 LOCAL %s@%s\r\n", local, domain);
+            result = TRUE;
+        }
+    } else {
+        /* we don't host this domain in any way, it is a remote domain.  just echo it back */
+        ConnWriteF(conn, "1000 REMOTE %s\r\n", addr);
+        result = TRUE;
+    }
+
+    if (local) {
+        MemFree(local);
+    }
+    if (domain) {
+        MemFree(domain);
+    }
+    return result;
+}
+
 int CommandAddressResolve(void *param) {
-    /* first parse out the email address.   this code will need to be fixed sometime */
-    unsigned char local_part[255];
-    unsigned char domain[1024];
+    BOOL handled=FALSE;
+    int cnt=0;
     QueueClient *client = (QueueClient *)param;
-    
-    /* strlen(ADDRESS LOCATE
-    MsgParseAddress(client->buffer + 
-    return 0; */
+
+    handled = aliasing(client->conn, client->buffer + 16, &cnt);
+    if (!handled) {
+        ConnWriteF(client->conn, "4000 UNKNOWN %s\r\n", client->buffer + 16);
+    }
+    return 0;
 }
 
 int 
