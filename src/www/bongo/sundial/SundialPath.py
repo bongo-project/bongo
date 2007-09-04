@@ -113,8 +113,10 @@ class SundialPath(object):
     #
     # Evolution does not support relative URLs in dav::href, therefore
     def get_hostname(self):
-        if self.req.headers_in.get('User-Agent').startswith('Evolution'):
+        user_agent = self.req.headers_in.get('User-Agent')
+
+        if user_agent is not None and user_agent.startswith('Evolution'):
             # TODO This doesn't support https.
             return 'http://' + self.req.headers_in.get('Host') + self.davpath
-        else:
-            return self.davpath
+
+        return self.davpath

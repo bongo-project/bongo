@@ -33,13 +33,13 @@ class PutHandler(SundialHandler):
         store = StoreClient(req.user, rp.user, authPassword=req.get_basic_auth_pw())
         json = str(cal.IcalToJson(rp.raw_input))
         filename = "/events/" + rp.filename
-        
+
         try: 
             store.Info(filename)
-            # file exists, so overwrite it
+            # File exists, so overwrite it.
             store.Replace(filename, json)
         except CommandError:
-            # file probably doesn't exist
+            # File probably doesn't exist.
             try:
                 store.Write("/events", DocTypes.Event, json, filename=rp.filename, link="/calendars/" + rp.calendar)
             except CommandError:
