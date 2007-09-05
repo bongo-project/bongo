@@ -104,7 +104,12 @@ Dragonfly.Mail.Preferences.getFromAddress = function ()
     
     var skippy = false;
     
-    var emailfrom = p.prefs.mail.from || '';
+    var emailfrom = '';
+    if (p.prefs.mail && p.prefs.mail.from)
+    {
+        emailfrom = p.prefs.mail.from;
+    }
+
     if (emailfrom == '')
     {
         if (d.defaultMailAddress)
@@ -113,7 +118,11 @@ Dragonfly.Mail.Preferences.getFromAddress = function ()
         }
     }
     
-    var namefrom = p.prefs.mail.sender || d.userName;
+    var namefrom = d.userName;
+    if (p.prefs.mail && p.prefs.mail.sender)
+    {
+        namefrom = p.prefs.mail.sender;
+    }
     
     return d.format("{0} <{1}>", namefrom, emailfrom || (d.userName + '@' + window.location.hostname));
 };
@@ -130,13 +139,31 @@ Dragonfly.Mail.Preferences.setFromAddress = function (address)
 Dragonfly.Mail.Preferences.wantsHtmlComposer = function()
 {
     var p = Dragonfly.Preferences;
-    return p.prefs.composer.messageType == "html";
+
+    // Make sure the user has some sort of composer prefs setup.
+    if (p.prefs.composer)
+    {
+        return (p.prefs.composer.messageType || "html") == "html";
+    }
+    else
+    {
+        return true;
+    }
 };
 
 Dragonfly.Mail.Preferences.getComposerWidth = function()
 {
     var p = Dragonfly.Preferences;
-    return p.prefs.composer.lineWidth || 80;
+
+    // Same as above :)
+    if (p.prefs.composer)
+    {
+    	return p.prefs.composer.lineWidth || 80;
+    }
+    else
+    {
+        return 80;
+    }
 };
 
 Dragonfly.Mail.Preferences.getAutoBcc = function ()
@@ -144,7 +171,14 @@ Dragonfly.Mail.Preferences.getAutoBcc = function ()
     var d = Dragonfly;
     var p = d.Preferences;
 
-    return p.prefs.mail.autoBcc;
+    if (p.prefs.mail)
+    {
+        return p.prefs.mail.autoBcc || '';
+    }
+    else
+    {
+        return '';
+    }
 };
 
 Dragonfly.Mail.Preferences.setAutoBcc = function (bcc)
@@ -161,21 +195,42 @@ Dragonfly.Mail.Preferences.getPageSize = function ()
     var d = Dragonfly;
     var p = d.Preferences;
 
-    return p.prefs.mail.pageSize || 30;
+    if (p.prefs.mail)
+    {
+        return p.prefs.mail.pageSize || 30;
+    }
+    else
+    {
+        return 30;
+    }
 };
 
 Dragonfly.Mail.Preferences.getSignatureAvailable = function ()
 {
     var p = Dragonfly.Preferences;
     
-    return p.prefs.mail.usesig || false;
+    if (p.prefs.mail)
+    {
+        return p.prefs.mail.usesig || false;
+    }
+    else
+    {
+        return false;
+    }
 }
 
 Dragonfly.Mail.Preferences.getSignature = function ()
 {
     var p = Dragonfly.Preferences;
     
-    return p.prefs.mail.signature || '';
+    if (p.prefs.mail)
+    {
+        return p.prefs.mail.signature || '';
+    }
+    else
+    {
+        return '';
+    }
 }
 
 Dragonfly.Mail.getFromAddress = function ()

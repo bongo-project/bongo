@@ -27,11 +27,11 @@
 #undef	USE_HOPCOUNT_DETECTION
 
 #include <xpl.h>
+#include <xpldns.h>
 #include <connio.h>
 #include <nmlib.h>
 
 #include <msgapi.h>
-#include <xplresolve.h>
 
 #define LOGGERNAME "smtpd"
 #define PRODUCT_NAME            "Bongo SMTP Agent"
@@ -215,8 +215,7 @@ void *SMTPConnectionPool = NULL;
 
 /* Prototypes */
 long ReadConnection(Connection *conn, char **buffer, unsigned long *buflen);
-void ProcessRemoteEntry (ConnectionStruct * Client,
-                         unsigned long Size, int Lines);
+void ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines);
 void FreeDomains (void);
 int RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int TargetSize);
 BOOL FlushClient (ConnectionStruct * Client);
@@ -2177,366 +2176,132 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
     unsigned char *ptr;
     unsigned int status;
     int RetVal;
-    unsigned long IndexCnt, MXCnt;
+    XplDns_MxLookup *mx = NULL;
+    XplDns_IpList *list = NULL;
 
-    XplDnsRecord *DNSMXRec = NULL, *DNSARec = NULL;
-    BOOL GoByAddr = FALSE, UsingMX = TRUE;
+    // If we have a relay configured, use that. 
+    // Any type of failure is treated as temporary.
+    if (SMTP.use_relay) {
+        Connection *conn = ConnAlloc(TRUE);
+        
+        conn->socketAddress.sin_addr.s_addr = inet_addr(SMTP.relay_host);
+        conn->socketAddress.sin_family = AF_INET;
+        conn->socketAddress.sin_port = htons (25); // TODO: configurable?
+        if (conn->socketAddress.sin_addr.s_addr == -1) {
+            // TODO: Resolve host? Implies a resolve loop for A recs. tho.
+            DELIVER_ERROR_NO_RETURN(DELIVER_TRY_LATER);
+        } else {
+            Client->remotesmtp.conn = conn;
+            RetVal = DeliverSMTPMessage(Client, Sender, Recips, RecipCount,
+                                        MsgFlags, Result, ResultLen);
+        }
+        ConnClose(conn, 1);
+        ConnFree(conn);
+        if (RetVal != DELIVER_SUCCESS) {
+            DELIVER_ERROR(DELIVER_TRY_LATER);
+        }
+        return DELIVER_SUCCESS;
+    }
 
+    // no relay, therefore we want to look for mail exchangers
     ptr = strchr (Recips[0].To, '@');
-    if (!ptr) {
-        DELIVER_ERROR (DELIVER_BOGUS_NAME);
-    }
+    if (!ptr) DELIVER_ERROR (DELIVER_BOGUS_NAME);
 
-    if (strlen (ptr + 1) < MAXEMAILNAMESIZE) {
-        strcpy (Host, ptr + 1);
-    }
-    else {
-        strncpy (Host, ptr + 1, MAXEMAILNAMESIZE);
-        Host[MAXEMAILNAMESIZE] = '\0';
-    }
-
-    /* Clean up a potential ip address in the host name (e.g. jdoe@[1.1.1.1] ) */
-    if (Host[0] == '[') {
-        int host;
-        ptr = strchr (Host, ']');
-        if (ptr)
-            *ptr = '\0';
-        memmove (Host, Host + 1, strlen (Host + 1) + 1);
-        /* Check for an IP address */
-        if ((host = inet_addr (Host)) != -1) {
-            GoByAddr = TRUE;
-            UsingMX = FALSE;
+    ptr++;
+    if (ptr[0] == '[') {
+        // potential ip address in the host name (e.g. jdoe@[1.1.1.1])
+        unsigned char *end;
+        end = strchr(ptr, ']');
+        if (end) { 
+            *end = '\0';
+        } else {
+            DELIVER_ERROR (DELIVER_BOGUS_NAME);
         }
-        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = host;
+        // FIXME: assumes our DNS routines will accept IP address.
     }
+    strncpy(Host, ptr, MAXEMAILNAMESIZE - 1);
 
-    if (!GoByAddr && SMTP.use_relay) {
-        int relayhost = inet_addr(SMTP.relay_host);
-        Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = relayhost;
-        if (relayhost == -1) {
-            status=XplDnsResolve(SMTP.relay_host, &DNSARec, XPL_RR_A);
-            /*fprintf (stderr, "%s:%d Looked up relay host %s: %d\n", __FILE__, __LINE__, SMTP.relay_host, status);*/
-            switch(status) {
-            case XPL_DNS_SUCCESS:
+    // Resolve Host using MX routines.
+    mx = XplDnsNewMxLookup(Host);
+    if (mx->status != XPLDNS_SUCCESS) {
+        switch(mx->status) {
+            case XPLDNS_SUCCESS:
                 break;
-            case XPL_DNS_FAIL:
-                strcpy (Result,
-                        ">>> RelayHost Address Lookup\\r\\n<<< DNS Failure");
-                DELIVER_ERROR (DELIVER_TRY_LATER);
+            case XPLDNS_TRY_AGAIN:
+                RetVal = DELIVER_TIMEOUT;
                 break;
-            case XPL_DNS_TIMEOUT:
-                strcpy (Result,
-                        ">>> RelayHost Address Lookup\\r\\n<<< DNS Timeout");
-                DELIVER_ERROR (DELIVER_TIMEOUT);
+            case XPLDNS_NOT_FOUND:
+            case XPLDNS_NO_DATA:
+                RetVal = DELIVER_HOST_UNKNOWN;
                 break;
-
-            case XPL_DNS_NORECORDS:
-            case XPL_DNS_BADHOSTNAME:{
-                    strcpy (Result,
-                            ">>> RelayHost Address Lookup\\r\\n<<< DNS Host unknown");
-                    DELIVER_ERROR (DELIVER_HOST_UNKNOWN);
-                    break;
-                }
-            }
-        }
-        else {
-            GoByAddr = TRUE;
-        }
-        UsingMX = FALSE;
-    }
-    
-    if (!GoByAddr && UsingMX) {
-        /*fprintf (stderr, "%s:%d using MX for %s\n", __FILE__, __LINE__, Host);*/
-        MXCnt = 0;
-
-        /* Get the MX for this host */
-        status = XplDnsResolve (Host, &DNSMXRec, XPL_RR_MX);
-        switch (status) {
-        case XPL_DNS_SUCCESS:
-            do {
-                status =
-                    XplDnsResolve (DNSMXRec[MXCnt].MX.name, &DNSARec,
-                                   XPL_RR_A);
-                MXCnt++;
-            } while ((DNSMXRec[MXCnt].MX.name[0] != '\0')
-                     && (status != XPL_DNS_SUCCESS));
-            switch (status) {
-            case XPL_DNS_SUCCESS:
-                break;
-
-            case XPL_DNS_FAIL:
-                strcpy (Result, ">>> MX Address Lookup\\r\\n<<< DNS Failure");
-                if (DNSMXRec) {
-                    MemFree (DNSMXRec);
-                }
-                DELIVER_ERROR (DELIVER_TRY_LATER);
-                break;
-
-            case XPL_DNS_TIMEOUT:
-                strcpy (Result, ">>> MX Address Lookup\\r\\n<<< DNS Timeout");
-                if (DNSMXRec) {
-                    MemFree (DNSMXRec);
-                }
-                DELIVER_ERROR (DELIVER_TIMEOUT);
-                break;
-
-            case XPL_DNS_NORECORDS:
-            case XPL_DNS_BADHOSTNAME:
             default:
-                strcpy (Result,
-                        ">>> MX Address Lookup\\r\\n<<< DNS Host unknown");
-                if (DNSMXRec) {
-                    MemFree (DNSMXRec);
-                }
-                DELIVER_ERROR (DELIVER_HOST_UNKNOWN);
-            }
-            break;
-
-        case XPL_DNS_FAIL:
-            strcpy (Result, ">>> MX Lookup\\r\\n<<< DNS Failure");
-            DELIVER_ERROR (DELIVER_TRY_LATER);
-            break;
-
-        case XPL_DNS_TIMEOUT:
-            strcpy (Result, ">>> MX Lookup\\r\\n<<< DNS Timeout");
-            DELIVER_ERROR (DELIVER_TIMEOUT);
-            break;
-
-        case XPL_DNS_NORECORDS:
-            UsingMX = FALSE;
-            status = XplDnsResolve (Host, &DNSARec, XPL_RR_A);
-            switch (status) {
-            case XPL_DNS_SUCCESS:
+            case XPLDNS_DNS_ERROR:
+                RetVal = DELIVER_TRY_LATER;
                 break;
-
-            case XPL_DNS_FAIL:{
-                    strcpy (Result, ">>> MX Lookup\\r\\n<<< DNS Failure");
-                    DELIVER_ERROR (DELIVER_TRY_LATER);
-                    break;
-                }
-
-            case XPL_DNS_TIMEOUT:{
-                    strcpy (Result, ">>> MX Lookup\\r\\n<<< DNS Timeout");
-                    DELIVER_ERROR (DELIVER_TIMEOUT);
-                    break;
-                }
-
-            case XPL_DNS_BADHOSTNAME:
-            case XPL_DNS_NORECORDS:{
-                    strcpy (Result,
-                            ">>> MX Lookup\\r\\n<<< DNS Host unknown");
-                    DELIVER_ERROR (DELIVER_HOST_UNKNOWN);
-                    break;
-                }
-
-            default:{
-                    strcpy (Result,
-                            ">>> MX Lookup\\r\\n<<< DNS Host unknown");
-                    DELIVER_ERROR (DELIVER_HOST_UNKNOWN);
-                    break;
-                }
-            }
-            break;
-
-        case XPL_DNS_BADHOSTNAME:
-        default:{
-                strcpy (Result, ">>> MX Lookup\\r\\n<<< DNS Host unknown");
-                DELIVER_ERROR (DELIVER_HOST_UNKNOWN);
-            }
         }
+        DELIVER_ERROR(RetVal);
+        goto finish;
     }
 
-
-    MXCnt = 0;
-    Client->remotesmtp.conn = ConnAlloc(TRUE);
-
-  LoopAgain:
-
-    IndexCnt = 0;
-    do {
-        /* Need to reset Results in case we're on the second or whatever MX loop */
-        for (status = 0; status < RecipCount; status++) {
-            Recips[status].Result = 0;
-        }
-
-        if ((IndexCnt > 0) || (MXCnt > 0)) {
-            /* Let NMAP know we're still here */
+    // TODO: honour max MX server setting
+    while ((list = XplDnsNextMxLookupIpList(mx)) != NULL) {
+        int x;
+        
+        for (x = 0; x < list->number; x++) {
+            // clear return status; not an error
+            DELIVER_ERROR_NO_RETURN(0);
+            
+            if (Exiting) {
+                DELIVER_ERROR(DELIVER_TRY_LATER);
+                goto finish;
+            }
+            // FIXME: check for ETRN, or mail being relayed.
+            Client->remotesmtp.conn = ConnAlloc(TRUE);
+            Client->remotesmtp.conn->socketAddress.sin_addr.s_addr = list->ip_list[x];
+            Client->remotesmtp.conn->socketAddress.sin_family = AF_INET;
+            Client->remotesmtp.conn->socketAddress.sin_port = htons (25);
+            status = ConnConnect(Client->remotesmtp.conn, NULL, 0, NULL);
+            if (status < 0) {
+                switch (errno) {
+                    case ETIMEDOUT:
+                        RetVal = DELIVER_TIMEOUT;
+                        break;
+                    case ECONNREFUSED:
+                        RetVal = DELIVER_REFUSED;
+                        break;
+                    case ENETUNREACH:
+                        RetVal = DELIVER_UNREACHABLE;
+                        break;
+                    default:
+                        RetVal = DELIVER_TRY_LATER;
+                        break;
+                }
+                DELIVER_ERROR_NO_RETURN(RetVal);
+            } else {
+                Result[0] = '\0';
+                RetVal = DeliverSMTPMessage(Client, Sender, Recips, RecipCount,
+                                            MsgFlags, Result, ResultLen);
+            }
+            FreeInternalConnection(Client->remotesmtp);
+            
+            if (RetVal == DELIVER_SUCCESS) {
+                goto finish;
+            }
+            if (RetVal == DELIVER_FAILURE) {
+                goto finish;
+            }
+            if (Exiting) goto finish;
+            
+            // ping the Queue agent to ensure we don't time out
             NMAPSendCommand (Client->client.conn, "NOOP\r\n", 6);
             NMAPReadResponse (Client->client.conn, Result, ResultLen, TRUE);
             Result[0] = '\0';
         }
-
-        if (!GoByAddr)
-            memcpy (&(Client->remotesmtp.conn->socketAddress.sin_addr), &DNSARec[IndexCnt].A.addr,
-                    sizeof (struct in_addr));
-        /* Create a connection */
-        Client->remotesmtp.conn->socketAddress.sin_family = AF_INET;
-        Client->remotesmtp.conn->socketAddress.sin_port = htons (25);
-        if (Exiting) {
-            if (DNSARec) {
-                MemFree (DNSARec);
-            }
-
-            if (DNSMXRec) {
-                MemFree (DNSMXRec);
-            }
-            
-            DELIVER_ERROR (DELIVER_TRY_LATER);
-        }
-        if (IPAddressIsLocal(Client->remotesmtp.conn->socketAddress.sin_addr) && SMTP.port == 25) {
-            BOOL ETRNMessage = FALSE;
-            unsigned int i;
-            // It's weird, but saves space...
-            XplRWReadLockAcquire (&ConfigLock);
-            for (i = 0; i < RelayDomainCount; i++) {
-                if (QuickCmp ((Host), RelayDomains[i]) == TRUE) {
-                    ETRNMessage = TRUE;
-                    break;
-                }
-            }
-            XplRWReadLockRelease (&ConfigLock);
-            if (!ETRNMessage) {
-                ptr = strchr (Recips[0].To, '@');
-                if (ptr) {
-                    if (Client->remotesmtp.conn->socketAddress.sin_addr.s_addr == LocalAddress) {
-                        Log(LOG_ERROR, "DNS config error %s %d",
-                                ptr + 1, LOGIP(Client->remotesmtp.conn->socketAddress));
-                    }
-                    else {
-                        Log(LOG_WARNING, "Connection local %s %d",
-                                ptr + 1, LOGIP(Client->remotesmtp.conn->socketAddress));
-                    }
-                }
-            
-                if (DNSARec) {
-                    MemFree (DNSARec);
-                }
-
-                if (DNSMXRec) {
-                    MemFree (DNSMXRec);
-                }
-
-                DELIVER_ERROR (DELIVER_BOGUS_NAME);
-            } else {
-                RetVal = DELIVER_TRY_LATER;
-            }
-        } else {
-            status = ConnConnect(Client->remotesmtp.conn, NULL, 0, NULL);
-        }
-        if (status < 0) {
-            switch (errno) {
-            case ETIMEDOUT:{
-                    RetVal = DELIVER_TIMEOUT;
-                    DELIVER_ERROR_NO_RETURN (RetVal);
-                    strcpy (Result,
-                            ">>> Connection attempt\\r\\n<<< Connection timeout");
-                    break;
-                }
-
-            case ECONNREFUSED:{
-                    RetVal = DELIVER_REFUSED;
-                    strcpy (Result,
-                            ">>> Connection attempt\\r\\n<<< Connection refused");
-                    DELIVER_ERROR_NO_RETURN (RetVal);
-                    break;
-                }
-
-            case ENETUNREACH:{
-                    RetVal = DELIVER_UNREACHABLE;
-                    strcpy (Result,
-                            ">>> Connection attempt\\r\\n<<< Network unreachable");
-                    DELIVER_ERROR_NO_RETURN (RetVal);
-                    break;
-                }
-
-            default:{
-                    RetVal = DELIVER_TRY_LATER;
-                    strcpy (Result, "Could not connect to mail exchanger");
-                    DELIVER_ERROR_NO_RETURN (RetVal);
-                    break;
-                }
-            }
-        } else {
-            Result[0] = '\0';
-
-            RetVal = DeliverSMTPMessage (Client, Sender, Recips, RecipCount, MsgFlags, Result, ResultLen);
-        }
-        FreeInternalConnection(Client->remotesmtp);
-
-        if ((RetVal == DELIVER_SUCCESS) || GoByAddr || Exiting) {
-            break;
-        }
-
-        IndexCnt++;
-        if (DNSARec[IndexCnt].A.name[0] == '\0') {
-            break;
-        }
-        else {
-            if ((SMTP.max_mx_servers != 0) && ((IndexCnt + 1) > SMTP.max_mx_servers)
-                && ((RetVal == DELIVER_FAILURE)
-                    || (RetVal == DELIVER_USER_UNKNOWN))) {
-                /* The administrator has indicated that no more than SMTP.max_mx_servers       should be tried when 500 level errors are returned */
-                break;
-            }
-        }
-    } while (TRUE);
-
-    /* This is the only decent way to avoid duplicating code for A & MX lookups */
-    if (UsingMX && RetVal < DELIVER_SUCCESS && !Exiting) {
-        MXCnt++;
-        if (DNSARec) {
-            MemFree (DNSARec);
-            DNSARec = NULL;
-        }
-
-        if (DNSMXRec[MXCnt].MX.name[0] != '\0') {
-            status =
-                XplDnsResolve (DNSMXRec[MXCnt].MX.name, &DNSARec, XPL_RR_A);
-            switch (status) {
-            case XPL_DNS_SUCCESS:{
-                    break;
-                }
-
-            case XPL_DNS_FAIL:{
-                    if (DNSMXRec) {
-                        MemFree (DNSMXRec);
-                    }
-                    strcpy (Result,
-                            ">>> MX Address Lookup\\r\\n<<< DNS Failure");
-                    DELIVER_ERROR (DELIVER_TRY_LATER);
-                }
-
-            case XPL_DNS_TIMEOUT:{
-                    if (DNSMXRec) {
-                        MemFree (DNSMXRec);
-                    }
-                    strcpy (Result,
-                            ">>> MX Address Lookup\\r\\n<<< DNS Timeout");
-                    DELIVER_ERROR (DELIVER_TIMEOUT);
-                }
-
-            case XPL_DNS_NORECORDS:
-            case XPL_DNS_BADHOSTNAME:
-            default:{
-                    if (DNSMXRec) {
-                        MemFree (DNSMXRec);
-                    }
-                    strcpy (Result,
-                            ">>> MX Address Lookup\\r\\n<<< DNS Bad Hostname");
-                    DELIVER_ERROR (DELIVER_HOST_UNKNOWN);
-                }
-            }
-            goto LoopAgain;
-        }
     }
+    
+finish:
+    XplDnsFreeMxLookup(mx);
 
-    if (DNSARec)
-        MemFree (DNSARec);
-
-    if (DNSMXRec) {
-        MemFree (DNSMXRec);
-    }
-//XplConsolePrintf("Returning %d for Recips[0]:%s, RecipCount:%d\n", RetVal, Recips[0].To, RecipCount);
     return (RetVal);
 }
 
