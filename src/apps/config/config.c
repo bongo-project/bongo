@@ -65,18 +65,19 @@ InitializeDataArea(void)
 {
 	MsgApiDirectory dir;
 	
-	XplConsolePrintf(_("Initializing user database...\n"));
-	if (MsgAuthInitDB() != 0) {
-		XplConsolePrintf(_("ERROR: Couldn't create user database\n"));
-		exit(1);
-	}
-	
+	XplConsolePrintf(_("Creating directory structure...\n"));
 	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
 		char path[XPL_MAX_PATH];
 		if (MsgGetDir(dir, path, XPL_MAX_PATH)) {
 			// TODO: chown ?
 			MsgMakePath(path);
 		}
+	}
+	
+	XplConsolePrintf(_("Initializing user database...\n"));
+	if (MsgAuthInitDB() != 0) {
+		XplConsolePrintf(_("ERROR: Couldn't create user database\n"));
+		exit(1);
 	}
 	
 	if (!MsgSetServerCredential()) {
@@ -478,8 +479,8 @@ main(int argc, char *argv[]) {
 	switch(command) {
 		case 1:
 			RunAsBongoUser();
-			GenerateCryptoData();
 			InitializeDataArea();
+			GenerateCryptoData();
 			RunAsRoot();
 			InitialStoreConfiguration();
 			break;
