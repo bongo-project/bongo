@@ -32,7 +32,6 @@
 #include <nmlib.h>
 
 #include <msgapi.h>
-#include <xplresolve.h>
 
 #define LOGGERNAME "smtpd"
 #define PRODUCT_NAME            "Bongo SMTP Agent"
@@ -2323,9 +2322,13 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             }
             FreeInternalConnection(Client->remotesmtp);
             
-            if ((RetVal==DELIVER_SUCCESS) || (RetVal==DELIVER_FAILURE) || Exiting) {
+            if (RetVal == DELIVER_SUCCESS) {
                 goto finish;
             }
+            if (RetVal == DELIVER_FAILURE) {
+                goto finish;
+            }
+            if (Exiting) goto finish;
             
             // ping the Queue agent to ensure we don't time out
             NMAPSendCommand (Client->client.conn, "NOOP\r\n", 6);
