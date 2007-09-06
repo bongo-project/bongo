@@ -33,14 +33,6 @@ class DragonflyHandler(ResourceHandler):
                 else:
                     raise
 
-            email = msgapi.GetUserEmailAddress(req.user)
-            if email:
-                name = msgapi.GetUserDisplayName(req.user)
-                if name:
-                    email = '%s <%s>' % (name, email)
-
-                req.headers_out["X-Bongo-Address"] = email
-
             if rp.extension == "json":
                 return self._SendJsonText(req, stream)
 
@@ -161,8 +153,9 @@ class RulesHandler(ResourceHandler):
         }
         
     def do_GET(self, req, rp):
-        dn = msgapi.FindObject(req.user)
-        mdbrules = msgapi.GetUserFeature(dn, "rules", "BongoRule")
+        # FIXME: FindObject is deprecated
+        # dn = msgapi.FindObject(req.user)
+        # mdbrules = msgapi.GetUserFeature(dn, "rules", "BongoRule")
         if not mdbrules :
             mdbrules = []
         
