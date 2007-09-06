@@ -665,7 +665,6 @@ src/agents/smtp/Makefile
 src/agents/store/Makefile
 src/agents/store/tests/Makefile
 src/apps/manager/Makefile
-src/apps/admin/Makefile
 src/apps/config/Makefile
 src/apps/sendmail/Makefile
 src/apps/backup/Makefile

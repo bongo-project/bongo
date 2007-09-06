@@ -129,7 +129,6 @@ include_subdirs =				\
 	src/agents/smtp				\
 	src/agents/store			\
 	src/agents/store/tests			\
-	src/apps/admin				\
 	src/apps/backup				\
 	src/apps/config				\
 	src/apps/manager			\
@@ -186,7 +185,6 @@ include src/agents/queue/Bongo.rules
 include src/agents/smtp/Bongo.rules
 include src/agents/store/Bongo.rules
 include src/agents/store/tests/Bongo.rules
-include src/apps/admin/Bongo.rules
 include src/apps/backup/Bongo.rules
 include src/apps/config/Bongo.rules
 include src/apps/manager/Bongo.rules
