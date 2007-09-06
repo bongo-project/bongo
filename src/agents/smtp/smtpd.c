@@ -2018,8 +2018,8 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 continue;
             }
             else {
-                Log(LOG_INFO, "Message failed delivery from %s to %s Flags %d Status %d",
-                        Sender, Recips[i].To, Client->Flags, status);
+                Log(LOG_INFO, "Message failed delivery from %s to %s Flags %d Status %d: %s",
+                        Sender, Recips[i].To, Client->Flags, status, Reply);
                 if (status == 550) {
                     Recips[i].Result = DELIVER_USER_UNKNOWN;
                     if ((unsigned long) ResultLen > strlen (Reply)) {
@@ -2281,7 +2281,6 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
         goto finish;
     }
 
-    // TODO: honour max MX server setting
     while ((list = XplDnsNextMxLookupIpList(mx)) != NULL) {
         int x;
         
@@ -2325,6 +2324,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             if (RetVal == DELIVER_SUCCESS) {
                 goto finish;
             }
+            // TODO: Should take into account max MX setting here
             if (RetVal == DELIVER_FAILURE) {
                 goto finish;
             }

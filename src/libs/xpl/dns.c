@@ -394,7 +394,7 @@ _XplDns_ParseQuery(const char *answer_buffer, int answer_len, XplDns_Result *res
 		XplDns_RecordList *item;
 		char answer_domain[XPLDNS_NAMELEN + 1];
 
-		item = MemMalloc(sizeof(XplDns_RecordList));		
+		item = MemMalloc(sizeof(XplDns_RecordList));
 
 		answer_domain[0] = '\0';
 		res = _XplDns_ParseName(answer_buffer, answer_len, 
@@ -461,7 +461,7 @@ _XplDns_ParseQuery(const char *answer_buffer, int answer_len, XplDns_Result *res
 		}
 
 		response += ntohs(dns_answer->size);
-		if (response >= response_end) return;
+		if (response > response_end) return;
 	}
 
 	// don't make the result 'success' until we've really done everything
