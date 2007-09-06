@@ -664,8 +664,6 @@ src/agents/queue/Makefile
 src/agents/smtp/Makefile
 src/agents/store/Makefile
 src/agents/store/tests/Makefile
-src/apps/setup/Makefile
-src/apps/setup/bongo-setup.xml
 src/apps/manager/Makefile
 src/apps/admin/Makefile
 src/apps/config/Makefile
