@@ -9,6 +9,7 @@ from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient, DocTypes
 from libbongo.libs import cal
 from bongo.store.CommandStream import CommandError
+from bongo.external import vobject
 
 ## Class to handle the PUT request method.
 class PutHandler(SundialHandler):
@@ -34,15 +35,22 @@ class PutHandler(SundialHandler):
         json = str(cal.IcalToJson(rp.raw_input))
         filename = "/events/" + rp.filename
 
-        try: 
-            store.Info(filename)
-            # File exists, so overwrite it.
-            store.Replace(filename, json)
-        except CommandError:
-            # File probably doesn't exist.
-            try:
-                store.Write("/events", DocTypes.Event, json, filename=rp.filename, link="/calendars/" + rp.calendar)
+        parsed_ical = vobject.readOne(rp.raw_input)
+        if 'vevent' in parsed_ical.sortChildKeys():
+            try: 
+                store.Info(filename)
+                # File exists, so overwrite it.
+                store.Replace(filename, json)
             except CommandError:
-                return bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR
+                # File probably doesn't exist.
+                try:
+                    store.Write("/events", DocTypes.Event, json, filename=rp.filename, link="/calendars/" + rp.calendar)
+                except CommandError:
+                    return bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR
 
-        return bongo.commonweb.HTTP_CREATED
+            return bongo.commonweb.HTTP_CREATED
+
+        elif 'vtodo' in parsed_ical.sortChildKeys():
+            # Do nothing. Todo lists are not implemented.
+            # Perhaps a 404 isn't the best thing to return in this case.
+            return bongo.commonweb.HTTP_NOT_FOUND
