@@ -56,7 +56,12 @@ class ReportHandler(SundialHandler):
         # Loop through each VEVENT that was returned.
         for response in events:
             response_tag = et.SubElement(self.multistatus_tag, 'response') # <response>
-            et.SubElement(response_tag, 'href').text = "%sdav/%s/%s/%s.ics" % (self.rp.get_hostname(), self.rp.user, self.rp.calendar, response.filename) # <href>url</href>
+
+            # The reason this looks a little funny is because SundialUriRoot will
+            # look like "/calendars" -- note the slash at the beginning. However,
+            # rp.get_hostname() returns a path with slash at the end, so the [:-1]
+            # is simply removing the slash.
+            et.SubElement(response_tag, 'href').text = "%s%s/%s/%s/%s.ics" % (self.rp.get_hostname()[:-1], self.req.get_options()['SundialUriRoot'], self.rp.user, self.rp.calendar, response.filename) # <href>url</href>
 
             propstat_tag = et.SubElement(response_tag, 'propstat') # <propstat>
             prop_tag = et.SubElement(propstat_tag, 'prop') # <prop>
@@ -89,6 +94,7 @@ class ReportHandler(SundialHandler):
     #  @param rp The SundialPath instance for the current request.
     def calendar_query(self, req, rp):
         self.rp = rp
+        self.req = req
         output = {}
 
         # Loop each child tag of D:calendar-query.
@@ -135,6 +141,8 @@ class ReportHandler(SundialHandler):
             ret = self._vevent_filter(output, prop_tags)
             if ret != bongo.commonweb.HTTP_OK:
                 return ret
+
+        print et.tostring(self.multistatus_tag, pretty_print=True)
 
         # Throw out the output.
         req.content_type = 'text/xml; charset="utf-8"'

@@ -76,7 +76,12 @@ class PropfindHandler(SundialHandler):
         response_tag = et.SubElement(multistatus_tag, 'response') # <response>
 
         href_tag = et.SubElement(response_tag, 'href')
-        href_tag.text = "%sdav/%s/%s/" % (rp.get_hostname(), rp.user, rp.calendar)
+
+        # The reason this looks a little funny is because SundialUriRoot will
+        # look like "/calendars" -- note the slash at the beginning. However,
+        # rp.get_hostname() returns a path with slash at the end, so the [:-1]
+        # is simply removing the slash.
+        href_tag.text = "%s%s/%s/%s/" % (rp.get_hostname()[:-1], req.get_options()['SundialUriRoot'], rp.user, rp.calendar)
         if not is_calendar:
             href_tag.text += "%s.ics" % rp.filename
 

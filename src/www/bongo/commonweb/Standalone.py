@@ -25,7 +25,8 @@ class HttpRequest:
     log = logging.getLogger("Dragonfly")
     options = { "DragonflyUriRoot" : "/user",
                 "HawkeyeTmplRoot" : None,      # determine this later
-                "HawkeyeUriRoot" : "/admin"}
+                "HawkeyeUriRoot" : "/admin",
+                "SundialUriRoot" : "/calendars"}
 
     def __init__(self, req, path, server=HttpServer()):
         self.oldreq = req

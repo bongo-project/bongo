@@ -210,9 +210,9 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                 self.send_response(ret)
             return
 
-        if self.path.startswith("/dav"):
+        if self.path.startswith("/calendars"):
             self.dragonfly_req = True
-            req = HttpRequest(self, "/dav", self.server)
+            req = HttpRequest(self, "/calendars", self.server)
             self.req = req
 
             rp = SundialPath(req)

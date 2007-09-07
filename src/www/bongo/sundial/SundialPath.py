@@ -32,22 +32,25 @@ class SundialPath(object):
 
     ## Takes the request URI and parses it into its separate parts.
     #  @param self The object pointer.
-    #  @param uri The request URI, req.uri.
-    def _handle_path(self, uri):
-        # There's no law to say that the "dav/" directory is at /dav/.
+    #  @param req The HttpRequest instance for the current request.
+    def _handle_path(self, req):
+        # There's no law to say that the "calendars/" directory is at /calendars/.
         # So, let's create the right path *not including* the actual
-        # dav directory. E.g. if the request was for /something/dav/blah,
-        # the davpath will be "/something".
-        splituri = uri.split('/')
-        davparts = []
-        davpath = splituri[:]
-        for i in davpath:
+        # calendars directory. E.g. if the request was for /something/calendars/blah,
+        # the sundialpath will be "/something".
+        splituri = req.uri.split('/')
+        pathparts = []
+        path = splituri[:]
+        for i in path:
             splituri.__delitem__(0)
-            if i == 'dav':
+            # SundialUriRoot comes in as "/calendars" but i
+            # will not have the following slash, so the [1:]
+            # is just to remove that.
+            if i == req.get_options()['SundialUriRoot'][1:]:
                 break
-            davparts.append(i)
+            pathparts.append(i)
 
-        self.davpath = '/' + '/'.join(davparts)
+        self.sundialpath = '/'.join(pathparts)
 
         if len(splituri) != 3:
             raise HttpError(404)
@@ -76,14 +79,14 @@ class SundialPath(object):
     def __init__(self, req):
         self.req = req
 
-        self.view = self.action = self.davpath = self.user = self.calender = self.filename = None
+        self.view = self.action = self.sundialpath = self.user = self.calender = self.filename = None
 
         req.log.debug(str(self))
 
         # The path should be something like one of the following:
-        # {/otherpath}/dav/user/calendar/
-        # {/dav}/user/calendar/filename.ics
-        self._handle_path(req.uri)
+        # {/otherpath}/calendars/user/calendar/
+        # {/calendars}/user/calendar/filename.ics
+        self._handle_path(req)
 
         if req.headers_in.get('Content-Length', None):
             self.raw_input = str(req.read(int(req.headers_in.get('Content-Length', None))))
@@ -96,10 +99,10 @@ class SundialPath(object):
 
         # For debugging, print out headers_in, and the content.
         #print req.headers_in
-        #try:
-        #    print self.raw_input
-        #except:
-        #    pass
+        try:
+            print self.raw_input
+        except:
+            pass
 
     ## Returns the handler for the request method.
     #  @param self The object pointer.
@@ -117,6 +120,6 @@ class SundialPath(object):
 
         if user_agent is not None and user_agent.startswith('Evolution'):
             # TODO This doesn't support https.
-            return 'http://' + self.req.headers_in.get('Host') + self.davpath
+            return 'http://' + self.req.headers_in.get('Host') + self.sundialpath
 
-        return self.davpath
+        return self.sundialpath
