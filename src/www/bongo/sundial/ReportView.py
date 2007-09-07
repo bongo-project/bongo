@@ -142,8 +142,6 @@ class ReportHandler(SundialHandler):
             if ret != bongo.commonweb.HTTP_OK:
                 return ret
 
-        print et.tostring(self.multistatus_tag, pretty_print=True)
-
         # Throw out the output.
         req.content_type = 'text/xml; charset="utf-8"'
         req.write("""<?xml version="1.0" encoding="utf-8" ?>""")
