@@ -278,8 +278,10 @@ MsgAuthUserList(BongoArray **list)
 
 void
 MsgAuthCookiePath(const char *username, char *path, size_t length)
-{
-	snprintf(path, length, "%s/cookies/%s", XPL_DEFAULT_DBF_DIR, username);
+{	
+	snprintf(path, length, "%s/%s", 
+		MsgGetDir(MSGAPI_DIR_COOKIE, path, XPL_MAX_PATH), 
+		username);
 }
 
 /**
