@@ -987,7 +987,7 @@ Dragonfly.Mail.yeahBaby = function (msg)
             var cdepth = depth;
             
             // Shrink the index if depth is larger than colour list.
-            if (depth > d.Colors.length))
+            if (depth > d.Colors.length)
             {
                 // Calculate the index to subsitute in for the same depth listing using the mod of the
                 // depth index (not zero-based) and the length of colours array (number of colors, also
