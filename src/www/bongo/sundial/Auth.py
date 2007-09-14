@@ -35,7 +35,7 @@ def AcceptCredentials(req):
 # Upon a success or failure, return the appropriate HTTP error code.
 def authenhandler(req):
     if AcceptCredentials(req):
-        req.log.debug("successful auth")
+#        req.log.debug("successful auth")
         return bongo.commonweb.HTTP_OK
 
     return bongo.commonweb.HTTP_UNAUTHORIZED

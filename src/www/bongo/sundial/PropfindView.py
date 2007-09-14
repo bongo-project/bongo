@@ -6,6 +6,7 @@
 
 import bongo.commonweb
 import bongo.commonweb.ElementTree
+from bongo.commonweb.HttpError import HttpError
 from SundialHandler import SundialHandler
 from bongo.store.StoreClient import StoreClient
 from bongo.store.StoreClient import DocTypes

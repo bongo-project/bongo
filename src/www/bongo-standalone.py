@@ -219,7 +219,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             handler = rp.GetHandler(req, rp)
 
             if handler.NeedsAuth(rp):
-                if req.user == None:
+                if req.user is None:
                     self.req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""
                     self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
                     return bongo.commonweb.HTTP_UNAUTHORIZED
