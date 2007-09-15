@@ -25,6 +25,22 @@ AuthSqlite_GetDbPath(char *path, size_t size)
 	return snprintf(path, size, "%s/%s", XPL_DEFAULT_DBF_DIR, "userdb.sqlite");
 }
 
+int
+AuthSqlite_GenerateHash(const char *username, const char *password, char *result, size_t result_len)
+{
+	xpl_hash_context ctx;
+	
+	if (result_len <= XPLHASH_SHA1_LENGTH) return -1;
+	
+	XplHashNew(&ctx, XPLHASH_SHA1);
+	XplHashWrite(&ctx, username, strlen(username));
+	XplHashWrite(&ctx, password, strlen(password));
+	XplHashFinal(&ctx, XPLHASH_UPPERCASE, result, XPLHASH_SHA1_LENGTH);
+	
+	result[XPLHASH_SHA1_LENGTH] = '\0';
+	return 0;
+}
+
 /* returns 0 on success */
 int
 AuthSqlite_Install(void)
@@ -46,15 +62,13 @@ AuthSqlite_Install(void)
 
 	if (MsgSQLBeginTransaction(handle)) goto fail;
 
-	// FIXME: need to store passwords as salted hashes, really
 	dcode = sqlite3_exec (handle->db, 
 			"PRAGMA user_version=0;"
 			"CREATE TABLE users (username TEXT DEFAULT NULL,"
-			"		password TEXT DEFAULT NULL,"
-			"		email TEXT DEFAULT NULL"
+			"		password TEXT DEFAULT NULL"
 			");"
-			"INSERT INTO users (username, password, email)"
-			" VALUES ('admin', 'bongo', 'admin'); ",
+			"INSERT INTO users (username, password)"
+			" VALUES ('admin', 'E03B869D14018868764F6024673D2C8E3DDAFEDA'); ",
 			NULL, NULL, NULL);
 	if (SQLITE_OK != dcode) goto fail;
 
@@ -109,8 +123,12 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 {
 	MsgSQLStatement *stmt;
 	char path[XPL_MAX_PATH + 1];
+	char hash[XPLHASH_SHA1_LENGTH + 1];
 	MsgSQLHandle *handle;
 	int users = -1;
+
+	if (AuthSqlite_GenerateHash(user, password, hash, XPLHASH_SHA1_LENGTH + 1) != 0) 
+		return 1;
 
 	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
@@ -121,7 +139,7 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ? AND password = ?;",
 		&msgauth_stmts.auth_user);
 	MsgSQLBindString(stmt, 1, user, TRUE);
-	MsgSQLBindString(stmt, 2, password, TRUE);
+	MsgSQLBindString(stmt, 2, hash, TRUE);
 
 	if (MsgSQLResults(handle, stmt) >= 0) {
 		// should only have one result column
@@ -132,9 +150,9 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 	MsgSQLClose(handle);
 
 	// one and only one user - any other condition is 'bad'...
-	if (users == 1) return 0;
+	if (users == 1) return 3;
 	
-	return 1;
+	return 0;
 }
 
 /* "Write" functions below */
@@ -148,19 +166,19 @@ AuthSqlite_AddUser(const char *user)
 	
 	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
-	if (NULL == handle) return FALSE;
+	if (NULL == handle) return -1;
 	
 	stmt = MsgSQLPrepare (handle,
 		"INSERT INTO users (username) VALUES (?);",
 		&msgauth_stmts.add_user);
 	
-	if (MsgSQLBindString(stmt, 1, user, TRUE)) return FALSE;
-	if (MsgSQLExecute(handle, stmt)) return FALSE;
+	if (MsgSQLBindString(stmt, 1, user, TRUE)) return -2;
+	if (MsgSQLExecute(handle, stmt)) return -3;
 	
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
 	
-	return TRUE;
+	return 0;
 }
 
 int
@@ -168,24 +186,27 @@ AuthSqlite_SetPassword(const char *user, const char *password)
 {
 	MsgSQLStatement *stmt;
 	char path[XPL_MAX_PATH + 1];
+	char hash[XPLHASH_SHA1_LENGTH + 1];
 	MsgSQLHandle *handle;
 	
+	if (AuthSqlite_GenerateHash(user, password, hash, XPLHASH_SHA1_LENGTH + 1) != 0)
+		return -1;
 	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
-	if (NULL == handle) return FALSE;
+	if (NULL == handle) return -2;
 	
 	stmt = MsgSQLPrepare (handle,
 		"UPDATE users SET password = ? WHERE username= ?;",
 		&msgauth_stmts.set_password);
 	
-	if (MsgSQLBindString(stmt, 1, password, TRUE)) return FALSE;
-	if (MsgSQLBindString(stmt, 2, user, TRUE)) return FALSE;
-	if (MsgSQLExecute(handle, stmt)) return FALSE;
+	if (MsgSQLBindString(stmt, 1, hash, TRUE)) return -3;
+	if (MsgSQLBindString(stmt, 2, user, TRUE)) return -3;
+	if (MsgSQLExecute(handle, stmt)) return -3;
 	
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
 	
-	return TRUE;
+	return 0;
 }
 
 int

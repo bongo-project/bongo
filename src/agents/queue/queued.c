@@ -214,7 +214,7 @@ CommandPass(void *param)
 {
     unsigned char *ptr;
     unsigned char *pass;
-    BOOL result;
+    int result;
     struct sockaddr_in nmap;
     QueueClient *client = (QueueClient *)param;
 
@@ -234,7 +234,7 @@ CommandPass(void *param)
 
             result = MsgAuthVerifyPassword(ptr, pass);
 
-            if (result && (nmap.sin_addr.s_addr == MsgGetHostIPAddress())) {
+            if ((result==0) && (nmap.sin_addr.s_addr == MsgGetHostIPAddress())) {
                 return(ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1));
             } else {
                 return(ConnWrite(client->conn, MSG4120USERLOCKED, sizeof(MSG4120USERLOCKED) - 1));

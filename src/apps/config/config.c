@@ -379,7 +379,7 @@ CheckVersion() {
 void
 UserAdd(const char *username) 
 {
-	if (MsgAuthAddUser(username)) {
+	if (MsgAuthAddUser(username) == 0) {
 		XplConsolePrintf(_("Added user %s\n"), username);
 	} else {
 		XplConsolePrintf(_("Couldn't add user %s\n"), username);
@@ -410,7 +410,7 @@ UserPassword(const char *username)
 		return;
 	}
 	
-	if (MsgAuthSetPassword(username, password) == FALSE) {
+	if (MsgAuthSetPassword(username, password) != 0) {
 		XplConsolePrintf(_("ERROR: Couldn't set the password for the user.\n"));
 	}
 }

@@ -461,7 +461,7 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
         return(POP3_NMAP_USER_UNKNOWN);
     }
 
-    if (MsgAuthVerifyPassword(username, password) == FALSE) {
+    if (MsgAuthVerifyPassword(username, password) != 0) {
         XplSafeIncrement(POP3.stats.badPasswords);
         Log(LOG_NOTICE, "Incorrect password for user %s from host %s", username,
             LOGIP(client->conn->socketAddress));

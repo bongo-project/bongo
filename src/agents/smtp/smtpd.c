@@ -563,7 +563,7 @@ HandleConnection (void *param)
                 DecodeBase64 (Reply);
 
                 if (MsgAuthFindUser(Reply)) {
-                    if (! MsgAuthVerifyPassword(Reply, PW)) {
+                    if (MsgAuthVerifyPassword(Reply, PW) != 0) {
                         ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                         Log(LOG_NOTICE, "Wrong password from user %s at host %s",
                             Reply,
