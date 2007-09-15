@@ -65,15 +65,21 @@ void
 InitializeDataArea(void)
 {
 	MsgApiDirectory dir;
+	uid_t uid;
+	gid_t gid;
+	
+	XplLookupUser(MsgGetUnprivilegedUser(), &uid, &gid);
 	
 	XplConsolePrintf(_("Creating directory structure...\n"));
 	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
 		char path[XPL_MAX_PATH];
 		if (MsgGetDir(dir, path, XPL_MAX_PATH)) {
-			// TODO: chown ?
 			MsgMakePath(path);
+			chown(path, uid, gid);
 		}
 	}
+	
+	RunAsBongoUser();
 	
 	XplConsolePrintf(_("Initializing user database...\n"));
 	if (MsgAuthInit() != 0) {
@@ -490,8 +496,7 @@ main(int argc, char *argv[]) {
 	next_arg++;
 	switch(command) {
 		case 1:
-			RunAsBongoUser();
-			InitializeDataArea();
+			InitializeDataArea(); // changes our user to unprivileged
 			GenerateCryptoData();
 			RunAsRoot();
 			InitialStoreConfiguration();
