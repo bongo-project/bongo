@@ -4214,6 +4214,9 @@ int XplServiceMain (int argc, char *argv[])
         Log(LOG_ERROR, "Unable to initialize memory manager, shutting down");
         return (-1);
     }
+    
+    MsgInit();
+    MsgAuthInit();
 
     // FIXME: Connio socket timeout needs to be a run-time tunable. bug #9924
     // ConnStartup (SMTP.socket_timeout, TRUE);

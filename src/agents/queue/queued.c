@@ -593,7 +593,7 @@ XplServiceMain(int argc, char *argv[])
     Agent.agent.port = BONGO_QUEUE_PORT;
 
     /* Initialize the Bongo libraries */
-    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP | BA_STARTUP_MSGLIB | BA_STARTUP_MSGAUTH;
     ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");

@@ -56,10 +56,11 @@ typedef enum _BongoAgentStates {
 } BongoAgentState;
 
 #define BA_STARTUP_XPL     0
-#define BA_STARTUP_MDB     1
+#define BA_STARTUP_MSGLIB  1
 #define BA_STARTUP_CONNIO  2
 #define BA_STARTUP_NMAP    4
 #define BA_STARTUP_LOGGER  8
+#define BA_STARTUP_MSGAUTH 16
 
 typedef struct {
     int interval;

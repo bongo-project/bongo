@@ -2127,6 +2127,7 @@ XplServiceMain(int argc, char *argv[])
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
     MsgInit();
+    MsgAuthInit();
     NMAPInitialize();
 
     POP3.loggingHandle = LoggerOpen("bongopop3");

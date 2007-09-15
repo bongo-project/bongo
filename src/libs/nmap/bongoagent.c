@@ -264,8 +264,14 @@ BongoAgentInit(BongoAgent *agent,
     if (startupResources & BA_STARTUP_CONNIO)
         ConnStartup(timeOut, TRUE);
 
-    if (startupResources & BA_STARTUP_MDB) {
-	MsgInit();
+    if (startupResources & BA_STARTUP_MSGLIB) {
+        MsgInit();
+        if (startupResources & BA_STARTUP_MSGAUTH) {
+            if (MsgAuthInit()) {
+                XplConsolePrintf("%s: Could not initialize auth subsystem\r\n", agentName);
+                return -1;
+            }
+        }
     }
 
     if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize()) {
@@ -276,9 +282,6 @@ BongoAgentInit(BongoAgent *agent,
         NMAPSetEncryption(agent->sslContext);
     }
 
-    SetCurrentNameSpace(NWOS2_NAME_SPACE);
-    SetTargetNameSpace(NWOS2_NAME_SPACE);
-
     if (startupResources & BA_STARTUP_LOGGER) {
         agent->loggingHandle = LoggerOpen(agentDn);
         if (!agent->loggingHandle) {
@@ -287,12 +290,7 @@ BongoAgentInit(BongoAgent *agent,
     }
 
     agent->name = MemStrdup(agentName);
-    agent->dn = MemStrdup(agentDn);
-
-    if (startupResources & BA_STARTUP_MDB) {
-        /* Read general agent configuration */
-        ReadConfiguration(agent);
-    }
+    // agent->dn = MemStrdup(agentDn);
 
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), agentName);
     return 0;

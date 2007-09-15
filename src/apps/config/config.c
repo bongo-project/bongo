@@ -33,6 +33,7 @@ usage(void) {
 		"  -s, --silent                    non-interactive mode\n\n"
 		"Commands:\n"
 		"  user add <user>                 add a user to the systen\n"
+		"  user list                       list the users on the system\n"
 		"  user password <user>            set the password of a user\n"
 		"  install                         do the initial Bongo install\n"
 		"  crypto                          regenerate data needed for encryption\n"
@@ -75,9 +76,12 @@ InitializeDataArea(void)
 	}
 	
 	XplConsolePrintf(_("Initializing user database...\n"));
-	if (MsgAuthInitDB() != 0) {
-		XplConsolePrintf(_("ERROR: Couldn't create user database\n"));
+	if (MsgAuthInit() != 0) {
+		XplConsolePrintf(_("ERROR: Couldn't initialise auth subsystem\n"));
 		exit(1);
+	}
+	if (MsgAuthInstall() != 0) {
+		XplConsolePrintf(_("Warning: Couldn't create user database\n"));
 	}
 	
 	if (!MsgSetServerCredential()) {
@@ -367,16 +371,24 @@ CheckVersion() {
 }
 
 void
-UserAdd(const char *username) {
+UserAdd(const char *username) 
+{
 	if (MsgAuthAddUser(username)) {
 		XplConsolePrintf(_("Added user %s\n"), username);
 	} else {
 		XplConsolePrintf(_("Couldn't add user %s\n"), username);
-	}	
+	}
 }
 
 void
-UserPassword(const char *username) {
+UserList(void)
+{
+	// TODO
+}
+
+void
+UserPassword(const char *username) 
+{
 	char *password = NULL;
 	char *password2 = NULL;
 	
@@ -497,6 +509,10 @@ main(int argc, char *argv[]) {
 			TzCache();
 			break;
 		case 5:
+			if (MsgAuthInit()) {
+				XplConsolePrintf(_("Couldn't initialise auth subsystem\n"));
+				return;
+			}
 			if ((next_arg + 1) >= argc) {
 				XplConsolePrintf(_("USAGE : user [add|password] <username>\n"));
 			} else {
@@ -507,6 +523,8 @@ main(int argc, char *argv[]) {
 					UserAdd(username);
 				} else if (!strncmp(command, "password", 8)) {
 					UserPassword(username);
+				} else if (!strncmp(command, "list", 4)) {
+					UserList();
 				} else {
 					XplConsolePrintf(_("ERROR: Unknown command '%s' on user\n"), command);
 				}

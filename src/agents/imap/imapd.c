@@ -3796,6 +3796,7 @@ XplServiceMain(int argc, char *argv[])
     ConnStartup(IMAP_CONNECTION_TIMEOUT, TRUE);
 
     MsgInit();
+    MsgAuthInit();
     NMAPInitialize();
 
     Imap.logHandle = LoggerOpen("bongoimap");
