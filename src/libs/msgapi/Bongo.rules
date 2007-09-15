@@ -10,6 +10,7 @@ libbongomsgapi_la_SOURCES =			\
 	src/libs/msgapi/msgcollector.c		\
 	src/libs/msgapi/msgdate.c		\
 	src/libs/msgapi/msghttp.c		\
+	src/libs/msgapi/plugin-api.h		\
 	src/libs/msgapi/sqldb.c			\
 	src/libs/msgapi/msghttp.h
 
