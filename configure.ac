@@ -260,10 +260,12 @@ LIBS=$SAVE_LIBS
 AC_SUBST(RESOLV_LIBS)
 
 have_ldap="no"
+info_ldap="No. LDAP auth backend will be unavailable."
 AC_CHECK_HEADER(ldap.h,[
 	AC_CHECK_LIB(ldap, ldap_init,[
 		LDAP_LIBS="-lldap"
 		have_ldap="yes"
+		info_ldap="Yes. LDAP auth backend will be available."
 	])
 ])
 AM_CONDITIONAL(HAVE_LDAP,test "$have_ldap" = "yes")
@@ -717,5 +719,6 @@ Imported libraries:
   libical:         ${info_libical}
 
 Optional libraries:
+  LDAP:            ${info_ldap}
   Check:           ${info_check}
 ])
