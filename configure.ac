@@ -271,6 +271,18 @@ AC_CHECK_HEADER(ldap.h,[
 AM_CONDITIONAL(HAVE_LDAP,test "$have_ldap" = "yes")
 AC_SUBST(LDAP_LIBS)
 
+have_odbc="no"
+info_odbc="No. ODBC auth backend will be unavailable."
+AC_CHECK_HEADER(odbcinst.h,[
+	AC_CHECK_LIB(odbc, SQLConnect,[
+		ODBC_LIBS="-lodbc"
+		have_odbc="yes"
+		info_odbc="Yes. ODBC auth backend will be available."
+	])
+])
+AM_CONDITIONAL(HAVE_ODBC,test "$have_odbc" = "yes")
+AC_SUBST(ODBC_LIBS)
+
 have_kstat="no"
 AC_CHECK_LIB(kstat, kstat_open,[
 	AC_CHECK_HEADERS(kstat.h, [have_kstat="yes"])
@@ -712,7 +724,7 @@ AC_MSG_NOTICE([Configured to build Bongo:
   Bongo user:      ${info_bongo_user}
   Debug CFLAGS:    ${info_debug_cflags}
 
-Imported libraries:
+Required libraries:
   CLucene:         ${info_clucene}
   CURL:            ${info_curl}
   SQLite:          ${info_sqlite}
@@ -720,5 +732,6 @@ Imported libraries:
 
 Optional libraries:
   LDAP:            ${info_ldap}
+  ODBC:            ${info_odbc}
   Check:           ${info_check}
 ])
