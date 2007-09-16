@@ -120,13 +120,14 @@ AuthSqlite_FindUser(const char *user)
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
 
-	// one and only one user - any other condition is 'bad'...
 	if (users == 1) {
-		Log(LOG_ERROR, "User %s exists multiple times in the user db", user);
-		return 1;
+		// found the user
+		return 0;
 	}
 	
-	return 0;
+	LogAssertF(users == 0, "User %s defined more than once in the user db", user);
+	
+	return 1;
 }
 
 int
@@ -162,18 +163,20 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 	if (MsgSQLResults(handle, stmt) >= 0) {
 		// should only have one result column
 		users = sqlite3_column_int(stmt->stmt, 0);
-	}	
+	}
 
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
 
-	// one and only one user - any other condition is 'bad'...
 	if (users == 1) {
-		Log(LOG_ERROR, "User %s exists multiple times in the user db", user);
-		return 3;
+		return 0; // user exists / password verified
+	}
+	if (users == 0) {
+		return 1; // no such user or password wrong, not an error
 	}
 	
-	return 0;
+	Log(LOG_ERROR, "User %s exists multiple times in the user db", user);
+	return 3;
 }
 
 /* "Write" functions below */
