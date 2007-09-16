@@ -23,6 +23,7 @@
 
 #include <xpl.h>
 #include <memmgr.h>
+#define LOGGERNAME "store"
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
@@ -215,6 +216,8 @@ _XplServiceMain(int argc, char *argv[])
 #ifdef WIN32
     XplThreadID id;
 #endif
+    LogStart();
+
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
         XplConsolePrintf("bongostore: Could not drop to unprivileged user '%s'\n", 
                          MsgGetUnprivilegedUser());

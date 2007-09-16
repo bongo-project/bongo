@@ -11,6 +11,9 @@
 #include <bongoutil.h>
 #include <msgapi.h>
 
+#define LOGGERNAME "msgauth"
+#include <logger.h>
+
 #include "plugin-api.h"
 
 // returns 0 on success
@@ -26,6 +29,7 @@ MsgAuthLoadBackend(const char *name, const char *file)
 	snprintf(path, XPL_MAX_PATH, "%s/bongo-auth/%s", XPL_DEFAULT_LIB_DIR, file);
 	auth = XplLoadDLL(path);
 	if (! auth) {
+		Log(LOG_FATAL, "Unable to load auth backend '%s'", file);
 		return 1;
 	}
 	
@@ -39,7 +43,11 @@ MsgAuthLoadBackend(const char *name, const char *file)
 			func->available = TRUE;
 		} else {
 			func->available = FALSE;
-			if (! func->optional) goto fail;
+			if (! func->optional) {
+				Log(LOG_ERROR, "Non-optional API call %s missing in backend %s",
+					func->name, file);
+				goto fail;
+			}
 		}
 		func++;
 	}
@@ -51,6 +59,8 @@ MsgAuthLoadBackend(const char *name, const char *file)
 		ver = (*version_func)();
 		if (ver >= 2) {
 			// too new for us.
+			Log(LOG_ERROR, "Auth backend %s implements version %d, we want %d",
+				ver, 1);
 			return 2;
 		}
 	}

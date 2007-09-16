@@ -4,6 +4,8 @@
 #include <sqlite3.h>
 #include <bongoutil.h>
 #include <msgapi.h>
+#define LOGGERNAME "msgauth"
+#include <logger.h>
 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -78,8 +80,7 @@ AuthSqlite_Install(void)
 	return 0;
 
 fail:
-	// FIXME:  logging
-	printf("MsgAuthInitDB error: %s\n", sqlite3_errmsg(handle->db));
+	Log(LOG_ERROR, "Error creating database: %s", sqlite3_errmsg(handle->db));
 
 	MsgSQLAbortTransaction(handle);
 	MsgSQLClose(handle);
@@ -98,24 +99,34 @@ AuthSqlite_FindUser(const char *user)
 	handle = MsgSQLOpen(path, NULL, 1000);
 
 	// Log error?
-	if (NULL == handle) return FALSE;
+	if (NULL == handle) {
+		Log(LOG_ERROR, "Cannot open user db '%s'", path);
+		return 1;
+	}
 
 	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ?;",
 		&msgauth_stmts.find_user);
+	if (NULL == stmt) {
+		Log(LOG_ERROR, "Unable to prepare SQL statement in FindUser");
+		return 1;
+	}
 	MsgSQLBindString(stmt, 1, user, TRUE);
 
 	if (MsgSQLResults(handle, stmt) >= 0) {
 		// should only have one result column
 		users = sqlite3_column_int(stmt->stmt, 0);
-	}	
+	}
 
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
 
 	// one and only one user - any other condition is 'bad'...
-	if (users == 1) return TRUE;
+	if (users == 1) {
+		Log(LOG_ERROR, "User %s exists multiple times in the user db", user);
+		return 1;
+	}
 	
-	return FALSE;
+	return 0;
 }
 
 int
@@ -134,10 +145,17 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 	handle = MsgSQLOpen(path, NULL, 1000);
 
 	// Log error?
-	if (NULL == handle) return 2;
+	if (NULL == handle) {
+		Log(LOG_ERROR, "Cannot open user db '%s'", path);
+		return 2;
+	}
 
 	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ? AND password = ?;",
 		&msgauth_stmts.auth_user);
+	if (NULL == stmt) {
+		Log(LOG_ERROR, "Unable to prepare SQL statement in VerifyPassword");
+		return 1;
+	}
 	MsgSQLBindString(stmt, 1, user, TRUE);
 	MsgSQLBindString(stmt, 2, hash, TRUE);
 
@@ -150,7 +168,10 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 	MsgSQLClose(handle);
 
 	// one and only one user - any other condition is 'bad'...
-	if (users == 1) return 3;
+	if (users == 1) {
+		Log(LOG_ERROR, "User %s exists multiple times in the user db", user);
+		return 3;
+	}
 	
 	return 0;
 }
@@ -166,11 +187,19 @@ AuthSqlite_AddUser(const char *user)
 	
 	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
-	if (NULL == handle) return -1;
+	if (NULL == handle) {
+		Log(LOG_ERROR, "Cannot open user db '%s'", path);
+		return -1;
+	}
 	
 	stmt = MsgSQLPrepare (handle,
 		"INSERT INTO users (username) VALUES (?);",
 		&msgauth_stmts.add_user);
+	
+	if (NULL == stmt) {
+		Log(LOG_ERROR, "Unable to prepare SQL statement in AddUser");
+		return 1;
+	}
 	
 	if (MsgSQLBindString(stmt, 1, user, TRUE)) return -2;
 	if (MsgSQLExecute(handle, stmt)) return -3;
@@ -193,11 +222,18 @@ AuthSqlite_SetPassword(const char *user, const char *password)
 		return -1;
 	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
-	if (NULL == handle) return -2;
+	if (NULL == handle) {
+		Log(LOG_ERROR, "Cannot open user db '%s'", path);
+		return -2;
+	}
 	
 	stmt = MsgSQLPrepare (handle,
 		"UPDATE users SET password = ? WHERE username= ?;",
 		&msgauth_stmts.set_password);
+	if (NULL == stmt) {
+		Log(LOG_ERROR, "Unable to prepare SQL in SetPassword()");
+		return 1;
+	}
 	
 	if (MsgSQLBindString(stmt, 1, hash, TRUE)) return -3;
 	if (MsgSQLBindString(stmt, 2, user, TRUE)) return -3;

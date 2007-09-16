@@ -33,6 +33,11 @@ libbongomsgapi_la_LIBADD =					   \
 
 # auth backends
 authdir = $(libdir)/bongo-auth/
+auth_std_libadd = \
+	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
+	libbongomemmgr.la \
+	$(PTHREAD_LIBS) \
+	$(ALL_LIBS)
 
 auth_LTLIBRARIES = libauthsqlite3.la
 
@@ -42,7 +47,8 @@ libauthsqlite3_la_SOURCES =					\
 libauthsqlite3_la_CPPFLAGS = $(AM_CPPFLAGS) $(SQLITE_CFLAGS)
 
 libauthsqlite3_la_LIBADD =				\
-	$(SQLITE_LIBS)
+	$(SQLITE_LIBS) \
+	$(auth_std_libadd)
 
 if HAVE_LDAP
 auth_LTLIBRARIES += libauthldap.la
