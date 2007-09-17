@@ -432,11 +432,18 @@ HandleConnection (void *param)
     sin->sin_port=htons(BONGO_QUEUE_PORT);
     if ((Client->nmap.conn = NMAPConnectEx(NULL, sin, Client->client.conn->trace.destination)) == NULL ||
         !NMAPAuthenticateToStore(Client->nmap.conn, Answer, sizeof(Answer))) {
-        NMAPQuit(Client->nmap.conn);
-        Client->nmap.conn = NULL;
+        if (Client->nmap.conn) {
+            NMAPQuit(Client->nmap.conn);
+            Client->nmap.conn = NULL;
+            Log(LOG_ERROR, "Unable to authenticate to Queue agent at %s",
+                LOGIP(Client->client.conn->socketAddress));
+        } else {
+            Log(LOG_ERROR, "Unable to connect to Queue agent at %s (reply was %d)",
+                LOGIP(Client->client.conn->socketAddress), ReplyInt);
+        }
+        
         count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", Hostname, MSG421SHUTDOWN);
-        Log(LOG_ERROR, "Unable to connect to Queue agent at %s (reply was %d)",
-            LOGIP(Client->client.conn->socketAddress), ReplyInt);
+        
         ConnWrite (Client->client.conn, Reply, count);
         ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
