@@ -30,11 +30,12 @@
 #include <nmlib.h>
 #include <msgapi.h>
 #include <connio.h>
+#include <streamio.h>
 #include "alarm.h"
 
 #define TOK_ARR_SZ 10
 
-AlarmGlobals Alarm = {{0,}, 0, };
+AlarmGlobals Alarm;
 
 static void
 AlarmDestroy(AlarmInfo *alarm)
@@ -84,7 +85,7 @@ ConnectToQueue(QueueClient *client, char *address)
         return -1;
     }
 
-    if (!NMAPAuthenticate(client->conn, buffer, sizeof(buffer))) {
+    if (!NMAPAuthenticateToQueue(client->conn, buffer, sizeof(buffer))) {
         NMAPQuit(client->conn);
         printf(AGENT_NAME ": authentication failed when connecting to queue %s.\r\n", 
                address);
@@ -147,7 +148,8 @@ GetAlarms(StoreClient *client, uint64_t start, uint64_t end)
             alarm = MemMalloc(sizeof(AlarmInfo));
             memset(alarm, 0, sizeof(AlarmInfo));
 
-            if (1 != sscanf(client->buffer, "%*llx %lld", &alarm->when)) {
+            // FIXME: sscanf == bad
+            if (1 != sscanf(client->buffer, "%*x %lld", &alarm->when)) {
                 printf (AGENT_NAME ": couldn't parse store response '%s'.\n", 
                         client->buffer);
                 return -1;
@@ -240,7 +242,7 @@ SendAlarmEmail(QueueClient *qclient, AlarmInfo *alarm)
 static void 
 AlarmLoop(void *ignored)
 {
-    int i;
+    unsigned int i;
     uint64_t start;
     uint64_t end;
     uint64_t now;
@@ -372,6 +374,8 @@ XplServiceMain(int argc, char *argv[])
         return -1;
     }
     XplInit();
+
+    memset(&Alarm, 0, sizeof(AlarmGlobals));
 
     /* Initialize the Bongo libraries */
     startupOpts = BA_STARTUP_CONNIO;
