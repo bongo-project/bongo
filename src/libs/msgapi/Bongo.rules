@@ -41,7 +41,8 @@ auth_std_libadd = \
 
 auth_LTLIBRARIES = libauthsqlite3.la
 
-libauthsqlite3_la_SOURCES =					\
+libauthsqlite3_la_SOURCES =			\
+	src/libs/msgapi/auth-backends/sqlite.h	\
 	src/libs/msgapi/auth-backends/sqlite.c
 
 libauthsqlite3_la_CPPFLAGS = $(AM_CPPFLAGS) $(SQLITE_CFLAGS)

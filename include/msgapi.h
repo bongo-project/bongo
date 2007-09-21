@@ -109,11 +109,21 @@ MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size);
 #define MSGSQL_STMT_SLEEP_MS 250
 
 MsgSQLHandle *MsgSQLOpen(char *path, BongoMemStack *memstack, int locktimeoutms);
-void MsgSQLClose(MsgSQLHandle *handle);
 BongoMemStack *MsgSQLGetMemStack(MsgSQLHandle *handle);
-void MsgSQLSetMemStack(MsgSQLHandle *handle, BongoMemStack *memstack);
-void MsgSQLSetLockTimeout(MsgSQLHandle *handle, int timeoutms);
 MsgSQLStatement *MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt);
+void 	MsgSQLClose(MsgSQLHandle *handle);
+void 	MsgSQLSetMemStack(MsgSQLHandle *handle, BongoMemStack *memstack);
+void 	MsgSQLSetLockTimeout(MsgSQLHandle *handle, int timeoutms);
+void	MsgSQLReset(MsgSQLHandle *handle);
+int	MsgSQLBeginTransaction(MsgSQLHandle *handle);
+int	MsgSQLCommitTransaction(MsgSQLHandle *handle);
+int	MsgSQLAbortTransaction(MsgSQLHandle *handle);
+int	MsgSQLCancelTransactions(MsgSQLHandle *handle);
+int	MsgSQLBindString(MsgSQLStatement *stmt, int var, const char *str, BOOL nullify);
+int	MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
+int	MsgSQLResults(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
+void	MsgSQLFinalize(MsgSQLStatement *stmt);
+
 
 // Misc. util functions
 

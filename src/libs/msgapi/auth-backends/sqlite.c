@@ -12,6 +12,8 @@
 #include <arpa/inet.h>
 #include <time.h>
 
+#include "sqlite.h"
+
 typedef struct { 
 	MsgSQLStatement find_user;
 	MsgSQLStatement auth_user;
@@ -52,7 +54,7 @@ AuthSqlite_Install(void)
 	MsgSQLHandle *handle;
 	struct stat buf;
 
-	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
+	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
 	if (stat(path, &buf) == 0) {
 		// FIXME: db already exists - for now, remove, but could/should be more gentle
 		unlink(path);
@@ -95,7 +97,7 @@ AuthSqlite_FindUser(const char *user)
 	MsgSQLHandle *handle;
 	int users = -1;
 
-	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
+	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
 
 	// Log error?
@@ -142,7 +144,7 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 	if (AuthSqlite_GenerateHash(user, password, hash, XPLHASH_SHA1_LENGTH + 1) != 0) 
 		return 1;
 
-	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
+	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
 
 	// Log error?
@@ -188,7 +190,7 @@ AuthSqlite_AddUser(const char *user)
 	char path[XPL_MAX_PATH + 1];
 	MsgSQLHandle *handle;
 	
-	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
+	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
 	if (NULL == handle) {
 		Log(LOG_ERROR, "Cannot open user db '%s'", path);
@@ -223,7 +225,7 @@ AuthSqlite_SetPassword(const char *user, const char *password)
 	
 	if (AuthSqlite_GenerateHash(user, password, hash, XPLHASH_SHA1_LENGTH + 1) != 0)
 		return -1;
-	AuthSqlite_GetDbPath(&path, XPL_MAX_PATH);
+	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
 	if (NULL == handle) {
 		Log(LOG_ERROR, "Cannot open user db '%s'", path);
