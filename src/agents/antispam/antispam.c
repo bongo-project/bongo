@@ -127,6 +127,8 @@ FreeClientData(ASpamClient *client)
     return;
 }
 
+#if 0
+// FIXME: Deprecated? CmpAddr() and MatchAddr() are unused.
 static int 
 CmpAddr(const void *c, const void *d)
 {
@@ -214,6 +216,7 @@ MatchAddr(unsigned char *candidate, unsigned char *domain)
 
     return(0);
 }
+#endif
 
 /** Callback function.  Whenever a new message arrives in the queue that
  * this agent has registered itself on, NMAP calls back to this function
@@ -233,7 +236,6 @@ ProcessConnection(ASpamClient *client)
     char *ptr2;
     unsigned char *cur;
     unsigned char *line;
-    unsigned char *blockedAddr = NULL;
     char *senderUserName = NULL;
     unsigned char qID[16];
     BOOL copy;

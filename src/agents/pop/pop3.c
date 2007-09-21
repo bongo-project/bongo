@@ -375,6 +375,8 @@ SignalHandler(int sigtype)
     return;
 }
 
+#if 0
+// FIXME: Function deprecated, or just waiting for a new signal framework
 static BOOL 
 POP3Shutdown(unsigned char *arguments, unsigned char **response, BOOL *closeConnection)
 {
@@ -423,6 +425,7 @@ POP3Shutdown(unsigned char *arguments, unsigned char **response, BOOL *closeConn
 
     return(FALSE);
 }
+#endif
 
 static BOOL 
 POP3ClientAllocCB(void *buffer, void *clientData)
@@ -469,7 +472,7 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
 
     MsgAuthGetUserStore(username, &nmap);
     if ((client->store = NMAPConnectEx("127.0.0.1", NULL, client->conn->trace.destination)) != NULL) {
-        result = NMAPAuthenticate(client->store, client->buffer, CONN_BUFSIZE);
+        result = NMAPAuthenticateToStore(client->store, client->buffer, CONN_BUFSIZE);
     } else {
         Log(LOG_ERROR, "Cannot connect to Store Agent on host %s", LOGIP(nmap));
         return(POP3_NMAP_SERVER_DOWN);
@@ -1015,7 +1018,7 @@ static int
 POP3CommandQuit(void *param)
 {
     unsigned long id;
-    int ccode;
+    int ccode = 0;
     int lastccode = 0;
     POP3Client *client = (POP3Client *)param;
 

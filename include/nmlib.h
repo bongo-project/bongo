@@ -180,8 +180,9 @@ BOOL NMAPEncrypt(Connection *conn, unsigned char *response, int length, BOOL for
 
 BOOL NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length);
 BOOL NMAPAuthenticateToQueue(Connection *conn, unsigned char *response, int length);
-int NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cookie,
-                               unsigned char *buffer, int length);
+int NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cookie, unsigned char *buffer, int length);
+BOOL NMAPAuthenticateThenUserAndStore(Connection *conn, unsigned char *user);
+
 
 void NMAPQuit(Connection *conn);
 

@@ -827,8 +827,6 @@ ProcessConnection(AVClient *client)
 			infected = (ccode == 1);
 
                         if (infected) {
-                            BOOL bounce = TRUE;
-
                             /* Message is infected, do not copy this recipient on it, since he has virus protection */
                             if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
                                 AVRecipient *recip;
