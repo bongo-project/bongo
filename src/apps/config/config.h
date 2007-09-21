@@ -29,12 +29,17 @@ void	LoadDefaultStoreConfiguration(void);
 void	InitializeDataArea(void);
 void	usage(void);
 void	RunAsBongoUser(void);
+void	RunAsRoot(void);
 void	InitialStoreConfiguration(void);
 void    GetInteractiveData(char *description, char **data, char *def);
 BOOL	GenerateCryptoData(void);
 void	CheckVersion(void);
 void	AddUser(const char *username);
 void	TzCache(void);
+
+void	UserAdd(const char *username);
+void	UserList(void);
+void	UserPassword(const char *username);
 
 // store.c
 BOOL	ImportSystemBackupFile(StoreClient *client, const char *path);

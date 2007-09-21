@@ -516,7 +516,7 @@ main(int argc, char *argv[]) {
 		case 5:
 			if (MsgAuthInit()) {
 				XplConsolePrintf(_("Couldn't initialise auth subsystem\n"));
-				return;
+				return 3;
 			}
 			if ((next_arg + 1) >= argc) {
 				XplConsolePrintf(_("USAGE : user [add|password] <username>\n"));

@@ -29,7 +29,8 @@
 #include <msgdate.h>
 
 // Auth functions
-
+EXPORT int MsgAuthInit(void);
+EXPORT int MsgAuthInstall(void);
 EXPORT BOOL MsgAuthFindUser(const char *user);
 EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
 EXPORT BOOL MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword);
