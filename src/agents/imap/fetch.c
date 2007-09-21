@@ -108,7 +108,7 @@ FindRFC822Header(unsigned char *Header, unsigned char *SearchFor, unsigned char 
 static long
 SendRFC822Address(ImapSession *session, unsigned char *Address, unsigned char *Answer)
 {
-    long ccode;
+    long ccode = 0;
     RFC822AddressStruct *Current;
     RFC822AddressStruct *Rfc822AddressList = NULL;
     unsigned long   Len;
@@ -499,7 +499,7 @@ FreeFetchResourcesFailure(FetchStruct *FetchRequest)
 __inline static long
 ReadBodyPart(ImapSession *session, unsigned char **Part, unsigned long ID, unsigned long Start, unsigned long Size)
 {
-    long count;
+    size_t count;
     long ccode;
 
     *Part = MemMalloc(Size + 1);
@@ -508,7 +508,7 @@ ReadBodyPart(ImapSession *session, unsigned char **Part, unsigned long ID, unsig
             /* Request the body part*/
             if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", session->folder.selected.message[ID].guid, Start, Size) != -1) {
                 if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                    if (NMAPReadCount(session->store.conn, *Part, count) == count) {
+                    if (NMAPReadCount(session->store.conn, *Part, count) == (int)count) {
                         if (NMAPReadCrLf(session->store.conn) == 2) {
                             return(STATUS_CONTINUE);
                         }
@@ -785,7 +785,7 @@ FetchFlagResponderUid(void *param1, void *param2, void *param3)
     ImapSession *session = (ImapSession *)param1;
     FetchStruct *FetchRequest = (FetchStruct *)param2;
 
-    if (ConnWriteF(session->client.conn, "UID %lu", FetchRequest->message->uid) != -1) {
+    if (ConnWriteF(session->client.conn, "UID %lu", (long)FetchRequest->message->uid) != -1) {
         return(STATUS_CONTINUE);
     }
     return(STATUS_ABORT);
@@ -1306,12 +1306,12 @@ FetchFlagResponderRfc822Text(void *param1, void *param2, void *param3)
     ImapSession *session = (ImapSession *)param1;
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     long ccode;
-    long count;
+    size_t count;
 
     if (NMAPSendCommandF(session->store.conn, "READ %llx %lu\r\n", FetchRequest->message->guid, FetchRequest->message->headerSize) != -1) {
         if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-            if (ConnWriteF(session->client.conn, "RFC822.TEXT {%lu}\r\n", count) != -1) {
-                if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+            if (ConnWriteF(session->client.conn, "RFC822.TEXT {%lu}\r\n", (long)count) != -1) {
+                if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                     if (NMAPReadCrLf(session->store.conn) == 2) {
                         return(STATUS_CONTINUE);
                     }
@@ -1358,13 +1358,13 @@ FetchFlagResponderRfc822(void *param1, void *param2, void *param3)
     ImapSession *session = (ImapSession *)param1;
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     long ccode;
-    long count;
+    size_t count;
 
     if (NMAPSendCommandF(session->store.conn, "READ %llx %lu\r\n", FetchRequest->message->guid, FetchRequest->message->headerSize) != -1) {
         if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
             if (ConnWriteF(session->client.conn, "RFC822 {%lu}\r\n", count + FetchRequest->message->headerSize) != -1) {
                 if (ConnWrite(session->client.conn, FetchRequest->messageDetail.header, FetchRequest->message->headerSize) != -1) {
-                    if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                    if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                         if (NMAPReadCrLf(session->store.conn) == 2) {
                             return(STATUS_CONTINUE);
                         }
@@ -1438,13 +1438,12 @@ FetchFlagResponderBodyText(void *param1, void *param2, void *param3)
     ImapSession *session = (ImapSession *)param1;
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     long ccode;
-
-    long count;
+    size_t count;
 
     if (NMAPSendCommandF(session->store.conn, "READ %llx %lu\r\n", FetchRequest->message->guid, FetchRequest->message->headerSize) != -1) {
         if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-            if (ConnWriteF(session->client.conn, "BODY[TEXT] {%lu}\r\n", count) != -1) {
-                if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+            if (ConnWriteF(session->client.conn, "BODY[TEXT] {%lu}\r\n", (long)count) != -1) {
+                if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                     if (NMAPReadCrLf(session->store.conn) == 2) {
                         return(STATUS_CONTINUE);
                     }
@@ -1466,7 +1465,7 @@ FetchFlagResponderBodyTextPartial(void *param1, void *param2, void *param3)
     ImapSession *session = (ImapSession *)param1;
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
-    long count;
+    size_t count;
     long ccode;
 
     if (flag->partial.start < FetchRequest->message->bodySize) {
@@ -1478,8 +1477,8 @@ FetchFlagResponderBodyTextPartial(void *param1, void *param2, void *param3)
 
         if (ccode != -1) {
             if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                if (ConnWriteF(session->client.conn, "BODY[TEXT]<%lu> {%lu}\r\n", flag->partial.start, count) != -1) {
-                    if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                if (ConnWriteF(session->client.conn, "BODY[TEXT]<%lu> {%lu}\r\n", flag->partial.start, (long)count) != -1) {
+                    if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                         if (NMAPReadCrLf(session->store.conn) == 2) {
                             return(STATUS_CONTINUE);
                         }
@@ -1507,12 +1506,12 @@ FetchFlagResponderBodyBoth(void *param1, void *param2, void *param3)
     ImapSession *session = (ImapSession *)param1;
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     long ccode;
-    long count;
+    size_t count;
 
     if (NMAPSendCommandF(session->store.conn, "READ %llx\r\n", FetchRequest->message->guid) != -1) {
         if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-            if (ConnWriteF(session->client.conn, "BODY[] {%lu}\r\n", count) != -1) {
-                if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+            if (ConnWriteF(session->client.conn, "BODY[] {%lu}\r\n", (long)count) != -1) {
+                if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                     if (NMAPReadCrLf(session->store.conn) == 2) {
                         return(STATUS_CONTINUE);
                     }
@@ -1535,13 +1534,13 @@ FetchFlagResponderBodyBothPartial(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
 
     if (flag->partial.start < FetchRequest->message->size) {
-        if (NMAPSendCommandF(session->store.conn, "READ %llx %d %lu\r\n", FetchRequest->message->guid, flag->partial.start, flag->partial.len) != -1) {
+        if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->partial.start, flag->partial.len) != -1) {
             if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                if (ConnWriteF(session->client.conn, "BODY[]<%lu> {%lu}\r\n", flag->partial.start, count) != -1) {
-                    if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                if (ConnWriteF(session->client.conn, "BODY[]<%lu> {%lu}\r\n", flag->partial.start, (long)count) != -1) {
+                    if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                         if (NMAPReadCrLf(session->store.conn) == 2) {
                             return(STATUS_CONTINUE);
                         }
@@ -1710,7 +1709,7 @@ HasPart(BongoArray *mimeInfo, BodyPartRequestStruct *request)
     unsigned char dummy[MIME_NAME_LEN+1];
     unsigned long dummyLong;
 
-    long depthChange;
+    long depthChange = 0;
 
     BOOL haveRfc822 = TRUE;
     unsigned long mimeResponseLine = 0;
@@ -1840,7 +1839,7 @@ FetchFlagResponderBodyPartNumber(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
 
     if (ConnWriteF(session->client.conn, "BODY[%lu", flag->bodyPart.part[0]) != -1) {
@@ -1854,8 +1853,8 @@ FetchFlagResponderBodyPartNumber(void *param1, void *param2, void *param3)
         if (HasPart(FetchRequest->messageDetail.mimeInfo, &(flag->bodyPart))) {
             if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.partOffset, flag->bodyPart.partLen) != -1) {
                 if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                    if (ConnWriteF(session->client.conn, "] {%lu}\r\n", count) != -1) {
-                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                    if (ConnWriteF(session->client.conn, "] {%lu}\r\n", (long)count) != -1) {
+                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                             if (NMAPReadCrLf(session->store.conn) == 2) {
                                 return(STATUS_CONTINUE);
                             }
@@ -1885,7 +1884,7 @@ FetchFlagResponderBodyPartNumberPartial(void *param1, void *param2, void *param3
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
     long resultLen;
 
@@ -1909,8 +1908,8 @@ FetchFlagResponderBodyPartNumberPartial(void *param1, void *param2, void *param3
 
                 if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.partOffset + flag->partial.start, resultLen) != -1) {
                     if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                        if (ConnWriteF(session->client.conn, "]<%lu> {%lu}\r\n", flag->partial.start, count) != -1) {
-                            if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                        if (ConnWriteF(session->client.conn, "]<%lu> {%lu}\r\n", flag->partial.start, (long)count) != -1) {
+                            if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                                 if (NMAPReadCrLf(session->store.conn) == 2) {
                                     return(STATUS_CONTINUE);
                                 }
@@ -1944,7 +1943,7 @@ FetchFlagResponderBodyPartText(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
 
     if (ConnWriteF(session->client.conn, "BODY[%lu", flag->bodyPart.part[0]) != -1) {
@@ -1958,8 +1957,8 @@ FetchFlagResponderBodyPartText(void *param1, void *param2, void *param3)
         if (HasPart(FetchRequest->messageDetail.mimeInfo, &(flag->bodyPart)) && flag->bodyPart.isMessage) {
             if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.partOffset + flag->bodyPart.messageHeaderLen, flag->bodyPart.partLen - flag->bodyPart.messageHeaderLen) != -1) {
                 if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                    if (ConnWriteF(session->client.conn, ".TEXT] {%lu}\r\n", count) != -1) {
-                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                    if (ConnWriteF(session->client.conn, ".TEXT] {%lu}\r\n", (long)count) != -1) {
+                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                             if (NMAPReadCrLf(session->store.conn) == 2) {
                                 return(STATUS_CONTINUE);
                             }
@@ -1989,7 +1988,7 @@ FetchFlagResponderBodyPartTextPartial(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
     long resultLen;
     unsigned long textStart;
@@ -2017,8 +2016,8 @@ FetchFlagResponderBodyPartTextPartial(void *param1, void *param2, void *param3)
                 }
                 if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, textStart + flag->partial.start, resultLen) != -1) {
                     if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                        if (ConnWriteF(session->client.conn, ".TEXT]<%lu> {%lu}\r\n", flag->partial.start, count) != -1) {
-                            if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                        if (ConnWriteF(session->client.conn, ".TEXT]<%lu> {%lu}\r\n", flag->partial.start, (long)count) != -1) {
+                            if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                                 if (NMAPReadCrLf(session->store.conn) == 2) {
                                     return(STATUS_CONTINUE);
                                 }
@@ -2051,7 +2050,7 @@ FetchFlagResponderBodyPartHeader(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
 
     if (ConnWriteF(session->client.conn, "BODY[%lu", flag->bodyPart.part[0]) != -1) {
@@ -2065,8 +2064,8 @@ FetchFlagResponderBodyPartHeader(void *param1, void *param2, void *param3)
         if (HasPart(FetchRequest->messageDetail.mimeInfo, &(flag->bodyPart)) && flag->bodyPart.isMessage ) {
             if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.partOffset, flag->bodyPart.messageHeaderLen) != -1) {
                 if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                    if (ConnWriteF(session->client.conn, ".HEADER] {%lu}\r\n", count) != -1) {
-                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                    if (ConnWriteF(session->client.conn, ".HEADER] {%lu}\r\n", (long)count) != -1) {
+                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                             if (NMAPReadCrLf(session->store.conn) == 2) {
                                 return(STATUS_CONTINUE);
                             }
@@ -2095,7 +2094,7 @@ FetchFlagResponderBodyPartHeaderPartial(void *param1, void *param2, void *param3
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
     long resultLen;
 
@@ -2117,8 +2116,8 @@ FetchFlagResponderBodyPartHeaderPartial(void *param1, void *param2, void *param3
                 }
                 if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.partOffset + flag->partial.start, resultLen) != -1) {
                     if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                        if (ConnWriteF(session->client.conn, ".HEADER]<%lu> {%lu}\r\n", flag->partial.start, count) != -1) {
-                            if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                        if (ConnWriteF(session->client.conn, ".HEADER]<%lu> {%lu}\r\n", flag->partial.start, (long)count) != -1) {
+                            if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                                 if (NMAPReadCrLf(session->store.conn) == 2) {
                                     return(STATUS_CONTINUE);
                                 }
@@ -2212,7 +2211,7 @@ FetchFlagResponderBodyPartHeaderFields(void *param1, void *param2, void *param3)
                                         return(STATUS_ABORT);
                                     }
 
-                                    if (ConnWriteF(session->client.conn, " {0}\r\n", sizeof(" {0}\r\n") - 1) != -1) {
+                                    if (ConnWrite(session->client.conn, " {0}\r\n", sizeof(" {0}\r\n") - 1) != -1) {
                                         MemFree(resultHeader);
                                         return(STATUS_CONTINUE);
                                     }
@@ -2287,7 +2286,7 @@ FetchFlagResponderBodyPartMime(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
 
     if (ConnWriteF(session->client.conn, "BODY[%lu", flag->bodyPart.part[0]) != -1) {
@@ -2300,8 +2299,8 @@ FetchFlagResponderBodyPartMime(void *param1, void *param2, void *param3)
         if (HasPart(FetchRequest->messageDetail.mimeInfo, &(flag->bodyPart))) {
             if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.mimeOffset, flag->bodyPart.mimeLen) != -1) {
                 if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                    if (ConnWriteF(session->client.conn, ".MIME] {%lu}\r\n", count) != -1) {
-                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                    if (ConnWriteF(session->client.conn, ".MIME] {%lu}\r\n", (long)count) != -1) {
+                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                             if (NMAPReadCrLf(session->store.conn) == 2) {
                                 return(STATUS_CONTINUE);
                             }
@@ -2329,7 +2328,7 @@ FetchFlagResponderBodyPartMimePartial(void *param1, void *param2, void *param3)
     FetchStruct *FetchRequest = (FetchStruct *)param2;
     FetchFlagStruct *flag = (FetchFlagStruct *)param3;
     long ccode;
-    long count;
+    size_t count;
     unsigned long i;
 
     if (ConnWriteF(session->client.conn, "BODY[%lu", flag->bodyPart.part[0]) != -1) {
@@ -2345,10 +2344,10 @@ FetchFlagResponderBodyPartMimePartial(void *param1, void *param2, void *param3)
             } else {
                 count = flag->bodyPart.mimeLen - flag->partial.start;
             }
-            if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.mimeOffset + flag->partial.start, count) != -1) {
+            if (NMAPSendCommandF(session->store.conn, "READ %llx %lu %lu\r\n", FetchRequest->message->guid, flag->bodyPart.mimeOffset + flag->partial.start, (long)count) != -1) {
                 if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-                    if (ConnWriteF(session->client.conn, ".MIME] {%lu}\r\n", count) != -1) {
-                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == count) {
+                    if (ConnWriteF(session->client.conn, ".MIME] {%lu}\r\n", (long)count) != -1) {
+                        if (ConnReadToConn(session->store.conn, session->client.conn, count) == (int)count) {
                             if (NMAPReadCrLf(session->store.conn) == 2) {
                                 return(STATUS_CONTINUE);
                             }
@@ -2850,7 +2849,7 @@ ParseFetchArguments(ImapSession *session, unsigned char *ptr, FetchStruct *Fetch
     if (ccode == STATUS_CONTINUE) {
         if (FetchRequest->messageSet) {
             if (*ptr == ' ') {
-                *ptr++;
+                ptr++;
                 if (*ptr != '\0') {
                     /* parse the fetch flags */
                     if (*ptr == '(') {
@@ -2982,12 +2981,12 @@ __inline static long
 GetMessageHeader(ImapSession *session, FetchStruct *FetchRequest)
 {
     int ccode;
-    long count;
+    size_t count;
     
     /* Request the header */
     if (NMAPSendCommandF(session->store.conn, "READ %llx 0 %lu\r\n", FetchRequest->message->guid, FetchRequest->message->headerSize) != -1) {
         if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &count)) == 2001) {
-            FetchRequest->message->headerSize = count;
+            FetchRequest->message->headerSize = (long)count;
             FetchRequest->messageDetail.header = MemMalloc(FetchRequest->message->headerSize + 1);
             if (FetchRequest->messageDetail.header) {
                 if ((ccode = NMAPReadCount(session->store.conn, FetchRequest->messageDetail.header, FetchRequest->message->headerSize)) > 0) {

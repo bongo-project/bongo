@@ -143,6 +143,8 @@ CreateReturnValueIndex()
     return(NULL);
 }
 
+#if 0
+// FIXME: Shutdown not needed atm
 static BOOL 
 IMAPShutdown(unsigned char *Arguments, unsigned char **Response, BOOL *CloseConnection)
 {
@@ -189,6 +191,7 @@ IMAPShutdown(unsigned char *Arguments, unsigned char **Response, BOOL *CloseConn
 
     return(FALSE);
 }
+#endif
 
 static BOOL 
 IMAPSessionAllocCB(void *Buffer, void *ClientData)
@@ -357,7 +360,7 @@ __inline static long
 FolderGetHighestUid(Connection *storeConn, FolderInformation *folder, uint32_t *highestUid)
 {
     long ccode;
-    size_t propertyValue;
+    unsigned long propertyValue;
 
     /* Get the highest UID for the collection */
     ccode = NMAPGetHexadecimalProperty(storeConn, folder->guid, "nmap.mail.imapuid", &propertyValue);
@@ -373,7 +376,7 @@ __inline static long
 FolderGetRecentUid(Connection *storeConn, FolderInformation *folder, uint32_t *recentUid)
 {
     long ccode;
-    size_t propertyValue;
+    unsigned long propertyValue;
 
     /* Get the recent UID for the collection */
     ccode = NMAPGetHexadecimalProperty(storeConn, folder->guid, "imap.recentuid", &propertyValue);
@@ -423,13 +426,13 @@ FolderSendStatus(Connection *conn, OpenedFolder *folder)
                            firstUnseen + 1,
                            firstUnseen + 1,
                            (unsigned long)(folder->info->guid & 0x00000000FFFFFFFF),
-                           folder->info->uidNext);
+                           (unsigned long)folder->info->uidNext);
     } else {
         ccode = ConnWriteF(conn, "* %lu EXISTS\r\n* %lu RECENT\r\n* OK [UIDVALIDITY %lu] UIDs valid\r\n* OK [UIDNEXT %lu] Predicted next UID\r\n* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n", 
                            folder->messageCount, 
                            folder->recentCount,
                            (unsigned long)(folder->info->guid & 0x00000000FFFFFFFF),
-                           folder->info->uidNext);
+                           (unsigned long)folder->info->uidNext);
     }
     if (ccode != -1) {
         return(STATUS_CONTINUE);
@@ -441,7 +444,7 @@ long
 FolderOpen(Connection *storeConn, OpenedFolder *openFolder, FolderInformation *folder, BOOL readOnly)
 {
     long ccode;
-    uint32_t highestUid;
+    uint32_t highestUid = 0;
 
     ccode = FolderGetRecentUid(storeConn, folder, &folder->uidRecent);
     if (ccode == STATUS_CONTINUE) {
@@ -604,7 +607,7 @@ long
 FolderListLoad(ImapSession *session)
 {
     char buffer[CONN_BUFSIZE];
-    uint64_t selectedGuid;
+    uint64_t selectedGuid = 0;
     FolderInformation *folderList;
     FolderInformation *newList;
     FolderInformation *currentFolder;
@@ -1041,7 +1044,7 @@ FolderHierarchyCreate(ImapSession *session, char *folderPathUtf8)
             if (NMAPSendCommandF(session->store.conn, "CREATE /mail/%s\r\n", folderPathUtf8) != -1) {
                 ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
                 if (ccode == 1000) {
-                    if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s +%lu\r\n", folderPathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) != -1) {
+                    if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s +%u\r\n", folderPathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) != -1) {
                         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
                         if (ccode == 1000) {
                             *ptr = '/';
@@ -1132,7 +1135,7 @@ ImapCommandCreate(void *param)
         }
 
         /* this folder is just hierarchy.  Make it a real folder */
-        if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s -%lu\r\n", pathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
+        if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s -%u\r\n", pathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
             MemFree(pathUtf8);
             return(STATUS_NMAP_COMM_ERROR);
         }
@@ -1267,10 +1270,10 @@ FolderConvertToHierarchyOnly(ImapSession *session, FolderInformation *folder)
 {
     long ccode;
     uint64_t *guid;
-    uint64_t *guidList;
+    uint64_t *guidList = NULL;
     long guidCount;
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%lu\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
         return(STATUS_NMAP_COMM_ERROR);
     }
 
@@ -1385,7 +1388,7 @@ __inline static long
 FolderMoveMessages(ImapSession *session, char *sourcePathUtf8, char *destinationPathUtf8)
 {
     long ccode;
-    uint64_t *guidList;
+    uint64_t *guidList = NULL;
     uint64_t *guid;
     long guidCount;
 
@@ -1607,7 +1610,7 @@ ImapCommandSubscribe(void *param)
         return(SendError(session->client.conn, session->command.tag, "SUBSCRIBE", STATUS_NO_SUCH_FOLDER));
     }
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s -%lu\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG %s -%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
         FreePathArgument(&path);
         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
         if (ccode == 1000) {
@@ -1651,7 +1654,7 @@ ImapCommandUnsubscribe(void *param)
         return(SendError(session->client.conn, session->command.tag, "UNSUBSCRIBE", STATUS_NO_SUCH_FOLDER));
     }
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%lu\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
         FreePathArgument(&path);
         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
         if (ccode == 1000) {
@@ -1834,7 +1837,7 @@ ImapCommandList(void *param)
 
     long ccode;
     char pattern[STORE_MAX_COLLECTION * 2];
-    unsigned long patternLen;
+    unsigned long patternLen = 0;
 
     if ((ccode = CheckState(session, STATE_AUTH)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -1857,7 +1860,7 @@ ImapCommandLsub(void *param)
 
     long ccode;
     char pattern[STORE_MAX_COLLECTION * 2];
-    unsigned long patternLen;
+    unsigned long patternLen = 0;
 
     if ((ccode = CheckState(session, STATE_AUTH)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -2261,7 +2264,7 @@ WriteMessageInMailbox(Connection *clientConn, Connection *storeConn, uint64_t fo
     char buffer[100];
 
     ccode = STATUS_NMAP_COMM_ERROR;
-    if (NMAPSendCommandF(storeConn, "WRITE %llx %lu %lu T%lu\r\n", folderGuid, STORE_DOCTYPE_MAIL, size, (unsigned long)creationTime) != -1) {
+    if (NMAPSendCommandF(storeConn, "WRITE %llx %u %lu T%lu\r\n", folderGuid, STORE_DOCTYPE_MAIL, size, (unsigned long)creationTime) != -1) {
         if ((ccode = CheckForNMAPCommError(NMAPReadResponse(storeConn, NULL, 0, 0))) == 2002) {
             ccode = STATUS_ABORT;
             if (ConnWrite(clientConn, "+ Ready for more data\r\n", sizeof("+ Ready for more data\r\n") - 1) != -1) {
@@ -2307,7 +2310,7 @@ ImapCommandAppend(void *param)
     unsigned long messageSize;
     unsigned long flags;
     time_t date;
-    uint64_t messageGuid;
+    uint64_t messageGuid = 0;
         
     if ((ccode = CheckState(session, STATE_AUTH)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -2357,7 +2360,7 @@ ImapCommandCheck(void *param)
 __inline static long
 PurgeDeletedMessages(Connection *storeConn, Connection *clientConn, MessageInformation *message, unsigned long messageCount)
 {
-    long ccode;
+    long ccode = 0;
     long count;
 
     count = messageCount;
@@ -3187,7 +3190,7 @@ HandleConnection(void *param)
             LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
         }
 
-        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",Imap.server.hostname, PRODUCT_NAME, XplGetThreadID(),time(NULL),Imap.server.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
+        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",Imap.server.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),Imap.server.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
             while (TRUE) {
                 ccode = ReadCommandLine(session->client.conn, &(session->command.buffer), &(session->command.bufferLen));
                 if (ccode == STATUS_CONTINUE) {
@@ -3726,7 +3729,6 @@ static BongoConfigItem IMAPConfig[] = {
 static BOOL
 ReadConfiguration(void)
 {
-    unsigned char *ptr;
     time_t   gm_time_of_day, time_of_day;
     struct tm  gm, ltm;
 
