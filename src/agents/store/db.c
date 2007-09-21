@@ -515,9 +515,9 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
 
     create = access(path, 0);
 
-    if (!(handle = MemMalloc(sizeof(struct _DStoreHandle))) ||
-        memset(handle, 0, sizeof(struct _DStoreHandle)), 0 ||
-        SQLITE_OK != sqlite3_open(path, &handle->db))
+    if (!(handle = MemMalloc(sizeof(struct _DStoreHandle)))   ||
+         (memset(handle, 0, sizeof(struct _DStoreHandle)), 0) ||
+         (SQLITE_OK != sqlite3_open(path, &handle->db)))
     {
         XplConsolePrintf("NMAP: Failed to open dstore \"%s\".\r\n",
                          path);
@@ -1600,15 +1600,15 @@ DStoreSetProperty(DStoreHandle *handle,
 int
 DStoreSetPropertySimple(DStoreHandle *handle,
                         uint64_t guid, 
-                        char *name,
-                        char *value)
+                        const char *name,
+                        const char *value)
 {
     StorePropInfo prop;
 
     prop.type = STORE_PROP_EXTERNAL;
     
-    prop.name = name;
-    prop.value = value;
+    prop.name = (char *)name;
+    prop.value = (char *)value;
     prop.valueLen = strlen(value);
     
     return DStoreSetProperty(handle, guid, &prop);

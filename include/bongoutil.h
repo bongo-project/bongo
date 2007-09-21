@@ -269,7 +269,7 @@ void BongoHashtableDelete(BongoHashtable *table);
 #define BongoHashTableCount(_tableptr) ((_tableptr)->itemcount)
 
 #define BongoCreateStringHashTable(buckets) \
-BongoHashtableCreate(buckets, BongoStringHash, strcmp)
+BongoHashtableCreate(buckets, (HashFunction)BongoStringHash, (CompareFunction)strcmp)
 
 /* handy string hasher */
 uint32_t BongoStringHash (char *s);

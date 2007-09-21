@@ -245,7 +245,6 @@ StoreProcessIncomingMail(StoreClient *client,
     IncomingParseData data = {0, };
     DStoreDocInfo oldConversation;
     BOOL haveOldConversation;
-    BOOL isNewConversation;
     
     FILE *fh;
     

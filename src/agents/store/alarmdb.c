@@ -163,9 +163,9 @@ AlarmDBOpen(BongoMemStack *memstack)
 
     create = access(path, 0);
 
-    if (!(handle = MemMalloc(sizeof(struct _AlarmDBHandle))) ||
-        memset(handle, 0, sizeof(struct _AlarmDBHandle)), 0 ||
-        SQLITE_OK != sqlite3_open(path, &handle->db))
+    if (!(handle = MemMalloc(sizeof(struct _AlarmDBHandle)))   ||
+         (memset(handle, 0, sizeof(struct _AlarmDBHandle)), 0) ||
+         (SQLITE_OK != sqlite3_open(path, &handle->db)))
     {
         printf("bongostore: Failed to open alarm store \"%s\".\r\n", path);
         goto fail;

@@ -83,7 +83,6 @@ StoreCommandCOOKIEDELETE(StoreClient *client, const char *token)
         ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
     }
 
-finish:
     PurgeNLockRelease(lock);
     ReadNLockRelease(lock);
 

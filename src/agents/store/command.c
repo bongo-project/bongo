@@ -826,7 +826,7 @@ ParseHeaderList(StoreClient *client,
     return ccode;
 }
 
-
+/* FIXME: Unused, deprecated?
 static CCode
 ParseConversationSource(StoreClient *client,
                         char *token,
@@ -835,7 +835,7 @@ ParseConversationSource(StoreClient *client,
     GetConversationSourceMask(token, outflags);
     return TOKEN_OK;
 }
-
+*/
 
 static CCode
 ParseStoreName(StoreClient *client,
@@ -4751,8 +4751,6 @@ StoreCommandRESET(StoreClient *client)
 CCode
 StoreCommandSTORE(StoreClient *client, char *user)
 {
-    struct sockaddr_in serv;
-
     if (!user) {
         UnselectStore(client);
         return ConnWriteStr(client->conn, MSG1000OK);

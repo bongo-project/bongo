@@ -268,7 +268,6 @@ CreateDatFile(char *path, int n, size_t len, char *name)
 int
 SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
 {
-    const char *root;
     int n;
     struct stat sb;
 
@@ -303,7 +302,7 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
 
     path[n] = 0;
 
-    *storeRoot = root;
+    *storeRoot = NULL;
 
     return 0;
 }
@@ -1211,10 +1210,6 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
 
     // FIXME: I think we're supposed to refer to the correct store IP?
     strncpy(buf, "127.0.0.1", INET_ADDRSTRLEN);
-    //ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-    //goto finish;
-
-success:
     ccode = ConnWriteF(client->conn, "1000 %s\r\n", buf);
 
     if (nouser) {

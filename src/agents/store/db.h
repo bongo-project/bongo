@@ -161,8 +161,8 @@ int DStoreSetProperty(DStoreHandle *handle,
 
 int DStoreSetPropertySimple(DStoreHandle *handle,
                             uint64_t guid, 
-                            char *name,
-                            char *value);
+                            const char *name,
+                            const char *value);
 
 /* Conversations table */
 DStoreStmt *DStoreListConversations(DStoreHandle *handle, 
