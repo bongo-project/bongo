@@ -296,7 +296,7 @@ MessageListAddNewMessages(Connection *storeConn, OpenedFolder *folder, NewEvent 
     do {
         result = STATUS_CONTINUE;
 
-        if (NMAPSendCommandF(storeConn, "INFO %llx Pnmap.mail.headersize\r\n", newEvent->guid) != -1) {
+        if (NMAPSendCommandF(storeConn, "INFO %lx Pnmap.mail.headersize\r\n", newEvent->guid) != -1) {
             ccode = NMAPReadResponse(storeConn, reply, sizeof(reply), TRUE);
             if (ccode == 2001) {
                 ccode = NMAPReadDecimalPropertyResponse(storeConn, "nmap.mail.headersize", &headerSize);

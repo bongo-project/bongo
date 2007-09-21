@@ -201,8 +201,8 @@ ImapCommandAuthenticate(void *param)
 {
     ImapSession *session = (ImapSession *)param;
     long ccode;
-    unsigned char *username;
-    unsigned char *password;
+    unsigned char *username = NULL;
+    unsigned char *password = NULL;
 
     if (session->client.state == STATE_FRESH) {
         if (XplStrNCaseCmp(session->command.buffer + 13, "LOGIN", 5) == 0) {
