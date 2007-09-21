@@ -28,8 +28,7 @@
 #define CRASH_WINDOW 10
 
 typedef struct {
-    const char *program;
-    const char *dn;
+    char *program;
     int priority;
     BOOL willCallback;
 } BongoAgentSpec;
@@ -420,7 +419,7 @@ Lock(BOOL force)
         exit(1);
     }
 
-    remaining = snprintf(pidstr, sizeof(pidstr), "%ld\n", pid);
+    remaining = snprintf(pidstr, sizeof(pidstr), "%ld\n", (long int)pid);
     ret = 0;
     written = 0;
     
@@ -568,19 +567,9 @@ ParseArgs(int argc, char **argv,
 static int
 StartSlapd(BOOL killExisting)
 {
-    int status = 0;
-    int err;
-    char buf[101]; // FIXME: REMOVE-MDB this was some maximum 
-    char url[101];
+    int err = 0;
 
-    char *host = "127.0.0.1";
-    int port = 0;
     pid_t pid = 0;
-
-    int sockfd = 0;
-    struct sockaddr_in serv_addr;
-    struct hostent* host_info;
-    long host_addr;
 
     /* Get rid of an existing managed-slapd processs */
     pid = ReadPid(SLAPD_LOCKFILE);
@@ -597,7 +586,7 @@ StartSlapd(BOOL killExisting)
                     return 1;
                 }
             } else {
-                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %ld\n"), pid);
+                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %ld\n"), (long int)pid);
                 fprintf(stderr, _("bongo-manager: if this is definitely the bongo slapd, you can run with -e to kill it\n"));
                 return 1;
             }
@@ -773,7 +762,6 @@ main(int argc, char **argv)
     BOOL reload;
     BOOL slapdOnly;
     BOOL killExistingSlapd;
-    char buf[CONN_BUFSIZE];
     BOOL droppedPrivs = FALSE;
     BOOL unlockFile = FALSE;
     BOOL startLdap = FALSE;

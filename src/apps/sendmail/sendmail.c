@@ -97,7 +97,7 @@ main (int argc, char *argv[])
     }
     
     response = MemMalloc(sizeof(char) * 1000);
-    if (! NMAPAuthenticate(nmap, response, 1000)) {
+    if (! NMAPAuthenticateToQueue(nmap, response, 1000)) {
         FatalError(1, "cannot authenticate with NMAP.");
     }
     MemFree(response);

@@ -151,9 +151,6 @@ CLEANFILES +=						\
 	src/libs/python/bongo/nmap/*.pyc			\
 	src/libs/python/bongoy/store/*.pyc
 
-src/libs/python/bongo/Xpl.py: $(top_builddir)/config.status $(srcdir)/src/libs/python/bongo/Xpl.py.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-
 src/libs/python/bongo-python-wrapper: $(top_builddir)/config.status $(srcdir)/src/libs/python/bongo-python-wrapper.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 

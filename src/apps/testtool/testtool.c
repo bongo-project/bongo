@@ -61,7 +61,6 @@ int
 main(int argc, char *argv[]) {
 	int next_arg = 0;
 	int command = 0;
-	int startup = 0;
 
 	if (!MemoryManagerOpen("bongo-testtool")) {
 		XplConsolePrintf(_("ERROR: Failed to initialize memory manager\n"));
@@ -70,7 +69,6 @@ main(int argc, char *argv[]) {
 	
 	// parse options
 	while (++next_arg < argc && argv[next_arg][0] == '-') {
-		char *arg = argv[next_arg];
 		printf(_("Unrecognized option: %s\n"), argv[next_arg]);
 	}
 
