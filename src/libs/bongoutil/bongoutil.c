@@ -802,7 +802,6 @@ EncodeBase64(const unsigned char *UnencodedString)
 BOOL 
 HashCredential(unsigned char *Credential, unsigned char *Hash)
 {
-    unsigned char *delim;
     unsigned char *srcPtr;
     unsigned char *dstPtr;
     unsigned char *dstEnd;

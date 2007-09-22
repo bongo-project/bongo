@@ -1052,7 +1052,7 @@ ValidateModifiedUtf7(char *utf7String)
 int
 ValidateUtf8(char *utf8String)
 {
-    int len;
+    int len = 0;
     char *resultUtf7;
 
     len = GetModifiedUtf7FromUtf8(utf8String, len, &resultUtf7);
@@ -1074,7 +1074,7 @@ ValidateUtf7Utf8Pair(char *utf7String, size_t utf7StringLen, char *utf8String, s
 
     len = GetModifiedUtf7FromUtf8(utf8String, utf8StringLen, &resultUtf7);
     if (len > 0) {
-        if (len == utf7StringLen) {
+        if (len == (int)utf7StringLen) {
             if (strcmp(utf7String, resultUtf7) == 0) {
                 MemFree(resultUtf7);
                 return(UTF7_STATUS_SUCCESS);
