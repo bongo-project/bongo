@@ -3580,7 +3580,6 @@ IMAPServer(void *unused)
     if (Imap.server.ssl.context) {
         ConnSSLContextFree(Imap.server.ssl.context);
     }
-    XPLCryptoLockDestroy();
 
     LoggerClose(Imap.logHandle);
     Imap.logHandle = NULL;

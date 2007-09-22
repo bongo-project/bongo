@@ -1871,8 +1871,6 @@ POP3Server(void *ignored)
         }
     }
 
-    XPLCryptoLockDestroy();    
-
     LoggerClose(POP3.loggingHandle);
     POP3.loggingHandle = NULL;
 
@@ -2151,8 +2149,6 @@ XplServiceMain(int argc, char *argv[])
     if (POP3.server.ssl.enable) {
 
         if (!ServerSocketSSLInit()) {
-             XPLCryptoLockInit();
-
             POP3.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
             POP3.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
             POP3.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;

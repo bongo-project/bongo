@@ -169,8 +169,6 @@ ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
 
         srand((unsigned int)time(NULL));
 
-        XPLCryptoLockInit();
-
         memset(seed, 0, sizeof(seed));
         for (i = 0; i < 64; i++) {
             c = ' ' + ((unsigned char)rand() % 0x60) ;
@@ -581,15 +579,6 @@ ConnShutdown(void)
 
     if (ConnIO.encryption.enabled) {
         ConnIO.encryption.enabled = FALSE;
-	/* FIXME: OPENSSL
-        ERR_free_strings();
-        ERR_remove_state(0);
-
-        RAND_cleanup();
-        EVP_cleanup();
-        */
-
-        XPLCryptoLockDestroy();
     }
 
     XplCloseLocalSemaphore(ConnIO.allocated.sem);
