@@ -58,6 +58,7 @@ def CheckUserPass(username, password):
     #handle = msgapi.DirectoryHandle()
     #return mdb.mdb_VerifyPassword(handle, dn, password)
     
+    store = None 
     try:
         store = StoreClient(username, username, authPassword=password)
         store.Quit()

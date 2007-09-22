@@ -141,7 +141,7 @@ StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
         return ConnWriteStr(client->conn, MSG3242BADAUTH);
     }
 
-    if (! MsgAuthFindUser(user)) {
+    if (0 != MsgAuthFindUser(user)) {
         XplConsolePrintf("Couldn't find user object for %s\r\n", user);
         ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
         XplDelay(2000);

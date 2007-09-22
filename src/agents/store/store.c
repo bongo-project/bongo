@@ -1192,7 +1192,7 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
         goto finish;
     }
 
-    if (FALSE == MsgAuthFindUser(user)) {
+    if (0 != MsgAuthFindUser(user)) {
         if (IS_MANAGER(client)) {
             ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
         } else {

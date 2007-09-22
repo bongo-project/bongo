@@ -72,7 +72,7 @@ AuthSqlite_Install(void)
 			"		password TEXT DEFAULT NULL"
 			");"
 			"INSERT INTO users (username, password)"
-			" VALUES ('admin', 'E03B869D14018868764F6024673D2C8E3DDAFEDA'); ",
+			" VALUES ('admin', '19E210D6CDA11A1CDED7D3B35E129514FB896B43'); ",
 			NULL, NULL, NULL);
 	if (SQLITE_OK != dcode) goto fail;
 

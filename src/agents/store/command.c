@@ -4764,7 +4764,7 @@ StoreCommandSTORE(StoreClient *client, char *user)
         }
     }
 
-    if (! MsgAuthFindUser(user)) {
+    if (0 != MsgAuthFindUser(user)) {
         XplConsolePrintf("Couldn't find user object for %s\r\n", user);
         /* the previous nmap returned some sort of user locked message? */
         return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
