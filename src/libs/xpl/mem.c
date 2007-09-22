@@ -92,11 +92,12 @@ void XplSignalBlock(void)
 void XplSignalCatcher(XplShutdownFunc XplShutdownFunction)
 {
     sigset_t signalSet;
-    struct sigaction	act = {0};
+    struct sigaction act;
     int i;
 
     XplSignalBlock();
 
+    memset (&act, 0, sizeof(struct sigaction));
     ApplicationXplShutdownFunction = XplShutdownFunction;
 
     sigemptyset(&act.sa_mask);

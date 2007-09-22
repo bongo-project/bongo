@@ -366,7 +366,6 @@ _XplDns_ParseQuery(const char *answer_buffer, int answer_len, XplDns_Result *res
 	const char *response, *response_end;
 	int x;
 	int res;
-	int answers;
 
 	// try to parse the answer
 	header = (XplDnsResponseHeader *)answer_buffer;
