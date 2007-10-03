@@ -67,9 +67,45 @@ class AgentHandler(HawkeyeHandler):
         # SMTP
         return self.doAgent("bongosmtp", self.GetStoreData(req, "/config/smtp"), req, rp)
         
+        
+    def bongoqueue_POST(self, req, rp):
+        # Queue POST
+        
+        config = self.GetStoreData(req, "/config/queue")
+        
+        for key in req.form:
+            value = req.form[key].value
+            
+            # Mm, formatting.
+            if value == "on":
+                value = True
+            elif value.isdigit():
+                value = int(value)
+                
+            print "Has key: %s (value: %s)" % (key, value)
+            
+            # Set new value.
+            config[key] = value
+            
+        print "Final config: %s" % config
+            
+        
     def bongosmtp_POST(self, req, rp):
         # SMTP POST
-        print str(rp)
+        
+        config = self.GetStoreData(req, "/config/smtp")
+        
+        for key in req.form:
+            value = req.form[key].value
+            print "Has key: %s (value: %s)" % (key, value)
+            if value.isdigit():
+                value = int(value)
+                
+            
+            # Set new value.
+            config[key] = req.form[key].value
+            
+            
         return bongo.commonweb.HTTP_UNAUTHORIZED
     
     def doAgent(self, agentname, config, req, rp):
