@@ -65,10 +65,13 @@ void
 InitializeDataArea(void)
 {
 	MsgApiDirectory dir;
-	uid_t uid;
-	gid_t gid;
-	
-	XplLookupUser(MsgGetUnprivilegedUser(), &uid, &gid);
+	unsigned char *unpriv_user;
+	uid_t uid = 0;
+	gid_t gid = 0;
+
+	unpriv_user = MsgGetUnprivilegedUser();
+	if (unpriv_user != NULL)
+		XplLookupUser(unpriv_user, &uid, &gid);
 	
 	XplConsolePrintf(_("Creating directory structure...\n"));
 	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
