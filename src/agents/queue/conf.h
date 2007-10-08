@@ -122,4 +122,6 @@ BOOL ReadConfiguration(BOOL *recover);
 
 long CalculateCheckQueueLimit(unsigned long concurrent, unsigned long sequential);
 
+int hostedSortFunc(const void *str1, const void *str2);
+
 #endif /* _DELIVERYQUEUE_H */

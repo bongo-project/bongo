@@ -60,6 +60,12 @@ CalculateCheckQueueLimit(unsigned long concurrent, unsigned long sequential)
     return(sequential);    
 }
 
+int hostedSortFunc(const void *str1, const void *str2) {
+	int i = strcasecmp(*(char **)str1, *(char **)str2);
+	return i;
+}
+
+
 static BongoConfigItem trustedHostsConfig[] = {
     { BONGO_JSON_STRING, NULL, &Conf.trustedHosts},
     { BONGO_JSON_NULL, NULL, NULL }
@@ -186,6 +192,9 @@ ReadConfiguration (BOOL *recover)
         Conf.bounceHandling &= ~BOUNCE_RETURN;
     }
     
+    /* sort the hostedDomains to make searching later faster. */
+    BongoArraySort(Conf.hostedDomains, (ArrayCompareFunc)hostedSortFunc);
+
     /* now let's iterate over the hostedDomains and read in any aliasing information for those domains */
     {
     	Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.hostedDomains->len);

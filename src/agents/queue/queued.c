@@ -44,6 +44,7 @@ static int CommandPass(void *param);
 static int CommandQuit(void *param);
 static int CommandHelp(void *param);
 static int CommandAddressResolve(void *param);
+static int CommandDomainLocation(void *param);
 int aliasFindFunc(const void *str, const void *node);
 
 static ProtocolCommand authCommands[] = {
@@ -52,6 +53,7 @@ static ProtocolCommand authCommands[] = {
     { NMAP_PASS_COMMAND, NMAP_PASS_HELP, sizeof(NMAP_PASS_COMMAND) - 1, CommandPass, NULL, NULL },
     { NMAP_QUIT_COMMAND, NMAP_QUIT_HELP, sizeof(NMAP_QUIT_COMMAND) - 1, CommandQuit, NULL, NULL },
     { NMAP_ADDRESS_RESOLVE_COMMAND, NMAP_ADDRESS_RESOLVE_HELP, sizeof(NMAP_ADDRESS_RESOLVE_COMMAND) -1, CommandAddressResolve, NULL, NULL },
+    { NMAP_DOMAIN_LOCATION_COMMAND, NMAP_DOMAIN_LOCATION_HELP, sizeof(NMAP_DOMAIN_LOCATION_COMMAND) -1, CommandDomainLocation, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
@@ -97,12 +99,19 @@ static ProtocolCommand commands[] = {
     { NMAP_QUIT_COMMAND, NMAP_QUIT_HELP, sizeof(NMAP_QUIT_COMMAND) - 1, CommandQuit, NULL, NULL },
     { NMAP_QWAIT_COMMAND, NMAP_QWAIT_HELP, sizeof(NMAP_QWAIT_COMMAND) - 1, CommandQwait, NULL, NULL }, 
     { NMAP_QFLUSH_COMMAND, NMAP_QFLUSH_HELP, sizeof(NMAP_QFLUSH_COMMAND) -1, CommandQflush, NULL, NULL },
+    { NMAP_ADDRESS_RESOLVE_COMMAND, NMAP_ADDRESS_RESOLVE_HELP, sizeof(NMAP_ADDRESS_RESOLVE_COMMAND) -1, CommandAddressResolve, NULL, NULL },
+    { NMAP_DOMAIN_LOCATION_COMMAND, NMAP_DOMAIN_LOCATION_HELP, sizeof(NMAP_DOMAIN_LOCATION_COMMAND) -1, CommandDomainLocation, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
 int aliasFindFunc(const void *str, const void *node) {
     struct _AliasStruct *n = (struct _AliasStruct *)(node);
     return strcasecmp((char *)str, n->original);
+}
+
+int hostedFindFunc(const void *str1, const void *str2) {
+	int i = strcasecmp((char *)str1, *(char **)str2);
+	return i;
 }
 
 /* TODO: error handling on MsgParseAddress() */
@@ -174,6 +183,23 @@ int CommandAddressResolve(void *param) {
         ConnWriteF(client->conn, "4000 UNKNOWN %s\r\n", client->buffer + 16);
     }
     return 0;
+}
+
+int CommandDomainLocation(void *param) {
+	QueueClient *client = (QueueClient *)param;
+
+	/* first find the domain in the request */
+	unsigned char *domain = client->buffer + 16;
+
+	/* now search for it */
+	int idx = BongoArrayFindSorted(Conf.hostedDomains, domain, (ArrayCompareFunc)hostedFindFunc);
+	if (idx > -1) {
+		ConnWriteF(client->conn, MSG1000LOCAL, domain);
+	} else {
+		/* TODO: add the relay domain stuff */
+		ConnWriteF(client->conn, MSG1002REMOTE, domain);
+	}
+	return 0;
 }
 
 int 

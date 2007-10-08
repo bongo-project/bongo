@@ -113,6 +113,9 @@
 #define NMAP_ADDRESS_RESOLVE_COMMAND "ADDRESS RESOLVE"
 #define NMAP_ADDRESS_RESOLVE_HELP "ADDRESS RESOLVE - Determine if an email address is local or remote and resolve any aliasing.\r\n"
 
+#define NMAP_DOMAIN_LOCATION_COMMAND "DOMAIN LOCATION"
+#define NMAP_DOMAIN_LOCATION_HELP "DOMAIN LOCATION - Determine if a domain is local or remote.\r\n"
+
 #define MSG1000LOCAL "1000 %s LOCAL\r\n"
 #define MSG1001RELAY "1001 %s RELAY\r\n"
 #define MSG1002REMOTE "1002 %s REMOTE\r\n"
