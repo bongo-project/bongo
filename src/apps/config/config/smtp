@@ -14,7 +14,7 @@
 	"maximum_recipients": 15,
 	"postmaster": "admin",
 	"message_size_limit": 0,
-	"relay_local_mail": true,
+	"relay_local_mail": false,
 	"use_relay_host": false,
 	"relay_host": "",
 	"block_rts_spam": true,
