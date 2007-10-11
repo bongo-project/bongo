@@ -5,6 +5,12 @@
 
 /* returns 0 on success */
 int
+AuthODBC_Init(void)
+{
+    return -1;
+}
+
+int
 AuthLdap_Install(void)
 {
 	// TODO

@@ -24,6 +24,12 @@ typedef struct {
 MsgAuthStatements msgauth_stmts;
 
 int
+AuthODBC_Init(void)
+{
+    return 0;
+}
+
+int
 AuthSqlite_GetDbPath(char *path, size_t size)
 {
 	return snprintf(path, size, "%s/%s", XPL_DEFAULT_DBF_DIR, "userdb.sqlite");

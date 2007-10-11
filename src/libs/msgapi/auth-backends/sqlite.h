@@ -9,3 +9,4 @@ int	AuthSqlite_SetPassword(const char *user, const char *password);
 int	AuthSqlite_GetUserStore(const char *user, struct sockaddr_in *store);
 int	AuthSqlite_UserList(BongoArray **list);
 int	AuthSqlite_InterfaceVersion(void);
+int AuthODBC_Init(void);
