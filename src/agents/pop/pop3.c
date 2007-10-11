@@ -459,7 +459,7 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
     BOOL result;
     struct sockaddr_in nmap;
 
-    if (MsgAuthFindUser(username) == FALSE) {
+    if (MsgAuthFindUser(username) != 0) {
         Log(LOG_NOTICE, "Unknown user %s from host %s", username, LOGIP(client->conn->socketAddress));
         return(POP3_NMAP_USER_UNKNOWN);
     }
