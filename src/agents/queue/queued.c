@@ -160,7 +160,7 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
         }
     } else {
         /* we don't host this domain in any way, it is a remote domain.  just echo it back */
-        ConnWriteF(conn, "1000 REMOTE %s\r\n", addr);
+        ConnWriteF(conn, "1002 REMOTE %s\r\n", addr);
         result = TRUE;
     }
 
