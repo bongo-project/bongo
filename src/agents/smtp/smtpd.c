@@ -53,6 +53,7 @@ struct {
 	BOOL allow_client_ssl;
 	BOOL allow_expn;
 	BOOL allow_auth;
+    BOOL require_auth;
 	BOOL allow_vrfy;
 	BOOL verify_address;
 	BOOL accept_etrn;
@@ -95,6 +96,7 @@ static BongoConfigItem SMTPConfig[] = {
 	{ BONGO_JSON_INT, "o:socket_timeout/i", &SMTP.socket_timeout },
 	{ BONGO_JSON_INT, "o:max_mx_servers/i", &SMTP.max_mx_servers },
 	{ BONGO_JSON_BOOL, "o:relay_local_mail/b", &SMTP.relay_local },
+    { BONGO_JSON_BOOL, "o:require_auth/b", &SMTP.require_auth },
 	{ BONGO_JSON_NULL, NULL, NULL }
 };
 
@@ -111,13 +113,6 @@ Connection *SMTPServerConnectionSSL;
 Connection *SMTPQServerConnection;
 Connection *SMTPQServerConnectionSSL;
 int TGid;
-
-unsigned char **Domains = NULL;
-unsigned int DomainCount = 0;
-unsigned char **UserDomains = NULL;
-unsigned int UserDomainCount = 0;
-unsigned char **RelayDomains = NULL;
-unsigned int RelayDomainCount = 0;
 
 /* UBE measures */
 XplRWLock ConfigLock;
@@ -216,12 +211,9 @@ void *SMTPConnectionPool = NULL;
 /* Prototypes */
 long ReadConnection(Connection *conn, char **buffer, unsigned long *buflen);
 void ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines);
-void FreeDomains (void);
-int RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int TargetSize);
+int RewriteAddress (Connection * conn, unsigned char *Source, unsigned char *Target, unsigned int TargetSize);
 BOOL FlushClient (ConnectionStruct * Client);
 BOOL EndClientConnection (ConnectionStruct * Client);
-void FreeUserDomains (void);
-void FreeRelayDomains (void);
 static int PullLine (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine);
 /* this PullLine will strip off the crlf where the other one only seems to strip off the lf
  * eventually i'd like to remove the first and convert everything to using the straight connio
@@ -365,12 +357,11 @@ HandleConnection (void *param)
     int ReplyInt;
     BOOL Ready;
     BOOL Working = TRUE;
-    BOOL IsTrusted = TRUE;
+    BOOL IsTrusted = !&SMTP.require_auth;
     BOOL IsAuthed = FALSE;
     BOOL AllowAuth = TRUE;
     BOOL NullSender = FALSE;
     BOOL TooManyNullSenderRecips = FALSE;
-    BOOL RequireAuth = FALSE;
     unsigned char *ptr, *ptr2;
     unsigned char Answer[BUFSIZE + 1];
     unsigned char Reply[BUFSIZE + 1];
@@ -562,7 +553,7 @@ HandleConnection (void *param)
                 PW = DecodeBase64 (Client->client.buffer);
                 DecodeBase64 (Reply);
 
-                if (MsgAuthFindUser(Reply)) {
+                if (MsgAuthFindUser(Reply) == 0) {
                     if (MsgAuthVerifyPassword(Reply, PW) != 0) {
                         ConnWrite (Client->client.conn, "501 Authentication failed!\r\n", 28);
                         Log(LOG_NOTICE, "Wrong password from user %s at host %s",
@@ -762,9 +753,7 @@ HandleConnection (void *param)
                         break;
                     }
 
-                    if ((ReplyInt =
-                         RewriteAddress (name, To,
-                                         sizeof (To))) == MAIL_BOGUS) {
+                    if ((ReplyInt = RewriteAddress (Client->nmap.conn, name, To, sizeof (To))) == MAIL_BOGUS) {
                         ConnWrite (Client->client.conn, MSG501RECIPNO, MSG501RECIPNO_LEN);
                     }
                     else {
@@ -822,39 +811,24 @@ HandleConnection (void *param)
 
                         case MAIL_LOCAL:{
                                 XplRWReadLockAcquire (&ConfigLock);
-                                if ((NullSender == FALSE)
-                                    || (Client->RecipCount <
-                                        SMTP.max_null_sender)) {
+                                if ((NullSender == FALSE) || (Client->RecipCount < SMTP.max_null_sender)) {
                                     if (!SMTP.verify_address) {
                                         XplRWReadLockRelease (&ConfigLock);
                                         snprintf (Answer, sizeof (Answer),
                                                   "QSTOR LOCAL %s %s %lu\r\n",
                                                   To, Orcpt ? Orcpt : To,
-                                                  (unsigned long) (Client->
-                                                                   Flags &
-                                                                   DSN_FLAGS));
-                                    }
-                                    else {
+                                                  (unsigned long) (Client->Flags & DSN_FLAGS));
+                                    } else {
                                         XplRWReadLockRelease (&ConfigLock);
-#if 0
-// REMOVE-MDB
-                                        if (MsgFindObject
-                                            (To, NULL, NULL, NULL, NULL)) {
+                                        if (MsgAuthFindUser(To) == 0) {
                                             snprintf (Answer, sizeof (Answer),
                                                       "QSTOR LOCAL %s %s %lu\r\n",
                                                       To, Orcpt ? Orcpt : To,
-                                                      (unsigned
-                                                       long) (Client->
-                                                              Flags &
-                                                              DSN_FLAGS));
-                                        }
-                                        else {
-#endif
-                                            ConnWrite (Client->client.conn,
-                                                        MSG550NOTFOUND,
-                                                        MSG550NOTFOUND_LEN);
+                                                      (unsigned long) (Client->Flags & DSN_FLAGS));
+                                        } else {
+                                            ConnWrite (Client->client.conn, MSG550NOTFOUND, MSG550NOTFOUND_LEN);
                                             goto QuitRcpt;
-                                        // REMOVE-MDB }
+                                        }
                                     }
 
                                 }
@@ -906,7 +880,7 @@ HandleConnection (void *param)
                 unsigned char *Envid = NULL;
                 unsigned char *more;
 
-                if (RequireAuth && !IsTrusted) {
+                if (SMTP.require_auth && !IsTrusted) {
                     ConnWrite (Client->client.conn, MSG553SPAMBLOCK, MSG553SPAMBLOCK_LEN);
                     break;
                 }
@@ -2138,19 +2112,6 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
         }
     }
 
-    XplRWReadLockAcquire (&ConfigLock);
-    if (SMTP.send_etrn && (Extensions & EXT_ETRN)) {
-        for (i = 0; i < DomainCount; i++) {
-            len = snprintf (Reply, sizeof (Reply), "ETRN %s\r\n", Domains[i]);
-            if (ConnWrite(Client->remotesmtp.conn, Reply, len) < 1) {
-                XplRWReadLockRelease (&ConfigLock);
-                FreeInternalConnection(Client->remotesmtp);
-                return (DELIVER_SUCCESS);
-            }
-        }
-    }
-    XplRWReadLockRelease (&ConfigLock);
-
     if (ConnWrite(Client->remotesmtp.conn, "QUIT\r\n", 6) < 1) {
         status = GetAnswer (Client, Reply, sizeof (Reply));
     }
@@ -2174,7 +2135,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
 {
     unsigned char Host[MAXEMAILNAMESIZE + 1];
     unsigned char *ptr;
-    unsigned int status;
+    int status;
     int RetVal;
     XplDns_MxLookup *mx = NULL;
     XplDns_IpList *list = NULL;
@@ -2306,7 +2267,7 @@ finish:
 }
 
 int
-RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int TargetSize)
+RewriteAddress(Connection * conn, unsigned char *Source, unsigned char *Target, unsigned int TargetSize)
 {
     unsigned char WorkSpace[1024];
     unsigned char *Src, *Dst;
@@ -2448,7 +2409,30 @@ RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int Targe
 
     /* Clean address now in WorkSpace */
     RetVal = MAIL_REMOTE;
+
+    /* TODO: i'm not sure this code is functionally equivalient with its replacement due to the address checking */
+    {
+    	unsigned char addr[1024];
+
+    	NMAPSendCommandF(conn, "ADDRESS RESOLVE %s\r\n", WorkSpace);
+    	RetVal = NMAPReadResponse(conn, addr, 1023, FALSE);
+    	switch (RetVal) {
+		case 1000:
+			RetVal = MAIL_LOCAL;
+			break;
+		case 1001:
+			RetVal = MAIL_RELAY;
+			break;
+		case 1002:
+			RetVal = MAIL_REMOTE;
+			break;
+		default:
+			RetVal = MAIL_BOGUS;
+			break;
+    	}
+    }
     /** Check if host matches local host **/
+#if 0
     Src = WorkSpace + strlen (WorkSpace) - 1;
     while (Src > WorkSpace) {
         if (*Src == '@') {
@@ -2498,7 +2482,7 @@ RewriteAddress (unsigned char *Source, unsigned char *Target, unsigned int Targe
         }
         Src--;
     }
-
+#endif
     /* Clean address now in WorkSpace */
 
     if (WorkSpace[0] == '\0')
@@ -2610,7 +2594,7 @@ ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
                     *ptr = '\0';
                 }
 
-                rc = RewriteAddress (Reply + 1, Recips[NumRecips].To, MAXEMAILNAMESIZE);
+                rc = RewriteAddress (Client->client.conn, Reply + 1, Recips[NumRecips].To, MAXEMAILNAMESIZE);
                 if (rc == MAIL_BOGUS) {
                     rc = DELIVER_BOGUS_NAME;
                     Recips[NumRecips].Result = rc;
@@ -2865,8 +2849,7 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
 
                 *bufferPtr = '\0';
 
-                rc = RewriteAddress (reply + 1, bufferPtr,
-                                     size - (bufferPtr - buffer));
+                rc = RewriteAddress (client->client.conn, reply + 1, bufferPtr, size - (bufferPtr - buffer));
                 if (rc == MAIL_BOGUS) {
                     rc = DELIVER_BOGUS_NAME;
                     recips[recipCount].Result = rc;
@@ -3201,7 +3184,7 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
                     }
                 }
 
-                rc = RewriteAddress (buffer + 1, to, sizeof (to));
+                rc = RewriteAddress (client->client.conn, buffer + 1, to, sizeof (to));
                 switch (rc) {
                 case MAIL_BOGUS:{
                         if (flags & DSN_FAILURE) {
@@ -3400,7 +3383,7 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
                     }
                 }
 
-                rc = RewriteAddress (Line + 1, To, sizeof (To));
+                rc = RewriteAddress (Client->client.conn, Line + 1, To, sizeof (To));
                 switch (rc) {
                 case MAIL_BOGUS:{
                         if (Flags & DSN_FAILURE) {
@@ -3880,14 +3863,6 @@ SMTPServer (void *ignored)
     }
 
 #if VERBOSE
-    XplConsolePrintf ("SMTPD: Freeing data structures\r\n");
-#endif
-
-    FreeDomains ();
-    FreeUserDomains ();
-    FreeRelayDomains ();
-
-#if VERBOSE
     XplConsolePrintf ("SMTPD: Removing SSL data\r\n");
 #endif
 
@@ -4029,113 +4004,6 @@ SMTPSSLServer (void *ignored)
     return;
 }
 
-static void
-AddDomain (unsigned char *DomainValue)
-{
-    Domains =
-        MemRealloc (Domains, (DomainCount + 1) * sizeof (unsigned char *));
-    if (!Domains) {
-        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
-            __FILE__, (DomainCount + 1) * sizeof (unsigned char *), __LINE__);
-        return;
-    }
-    Domains[DomainCount] = MemStrdup (DomainValue);
-    if (!Domains[DomainCount]) {
-        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
-            __FILE__, strlen (DomainValue) + 1, __LINE__);
-        return;
-    }
-    DomainCount++;
-}
-
-void
-FreeDomains (void)
-{
-    unsigned int i;
-
-    for (i = 0; i < DomainCount; i++)
-        MemFree (Domains[i]);
-
-    if (Domains) {
-        MemFree (Domains);
-    }
-
-    Domains = NULL;
-    DomainCount = 0;
-}
-
-static void
-AddUserDomain (unsigned char *UserDomainValue)
-{
-    UserDomains =
-        MemRealloc (UserDomains,
-                    (UserDomainCount + 1) * sizeof (unsigned char *));
-    if (!UserDomains) {
-        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
-            __FILE__, (UserDomainCount + 1) * sizeof (unsigned char *), __LINE__);
-        return;
-    }
-    UserDomains[UserDomainCount] = MemStrdup (UserDomainValue);
-    if (!UserDomains[UserDomainCount]) {
-        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
-            __FILE__, strlen (UserDomainValue) + 1, __LINE__);
-        return;
-    }
-    UserDomainCount++;
-}
-
-void
-FreeUserDomains (void)
-{
-    unsigned int i;
-
-    for (i = 0; i < UserDomainCount; i++)
-        MemFree (UserDomains[i]);
-
-    if (UserDomains) {
-        MemFree (UserDomains);
-    }
-
-    UserDomains = NULL;
-    UserDomainCount = 0;
-}
-
-static void
-AddRelayDomain (unsigned char *RelayDomainValue)
-{
-    RelayDomains =
-        MemRealloc (RelayDomains,
-                    (RelayDomainCount + 1) * sizeof (unsigned char *));
-    if (!RelayDomains) {
-        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
-            __FILE__, (RelayDomainCount + 1) * sizeof (unsigned char *), __LINE__);
-        return;
-    }
-    RelayDomains[RelayDomainCount] = MemStrdup (RelayDomainValue);
-    if (!RelayDomains[RelayDomainCount]) {
-        Log(LOG_ERROR, "Out of memory File %s %d Line %d",
-            __FILE__, strlen (RelayDomainValue) + 1, __LINE__);
-        return;
-    }
-    RelayDomainCount++;
-}
-
-void
-FreeRelayDomains (void)
-{
-    unsigned int i;
-
-    for (i = 0; i < RelayDomainCount; i++)
-        MemFree (RelayDomains[i]);
-
-    if (RelayDomains) {
-        MemFree (RelayDomains);
-    }
-
-    RelayDomains = NULL;
-    RelayDomainCount = 0;
-}
-
 #define	SetPtrToValue(Ptr,String)	Ptr=String;while(isspace(*Ptr)) Ptr++;if ((*Ptr=='=') || (*Ptr==':')) Ptr++; while(isspace(*Ptr)) Ptr++;
 
 static BOOL
@@ -4147,7 +4015,6 @@ ReadConfiguration (void)
     soc_address.sin_addr.s_addr = XplGetHostIPAddress ();
     sprintf (SMTP.hostaddr, "[%d.%d.%d.%d]", sin->sin_addr.s_net,
              sin->sin_addr.s_host, sin->sin_addr.s_lh, sin->sin_addr.s_impno);
-    AddDomain (SMTP.hostaddr);
     if (strlen (SMTP.hostname) < sizeof (OfficialName)) {
         strcpy (OfficialName, SMTP.hostname);
     }

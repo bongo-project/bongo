@@ -22,5 +22,6 @@
 	"max_flood_count": 1000,
 	"max_null_sender": 10,
 	"socket_timeout": 600,
-	"max_mx_servers": 20
+	"max_mx_servers": 20,
+    "require_auth": true
 }
