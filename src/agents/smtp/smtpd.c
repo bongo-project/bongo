@@ -292,6 +292,8 @@ strchrRN (unsigned char *Buffer, unsigned char SrchChar,
 BOOL
 EndClientConnection (ConnectionStruct * Client)
 {
+    unsigned char Reply[BUFSIZE + 1];
+
     if (Client) {
         if (Client->State == STATE_ENDING) {
             return (TRUE);
@@ -315,9 +317,14 @@ EndClientConnection (ConnectionStruct * Client)
                 /* state, the dot on a line by itself will not hurt   */
                 /* anything.  NMAP will just send 'unknown command'   */
                 NMAPSendCommand (Client->nmap.conn, "\r\n.\r\n", 5);
+                NMAPReadResponse(Client->nmap.conn, Reply, sizeof(Reply), TRUE); //empty line
+                NMAPReadResponse(Client->nmap.conn, Reply, sizeof(Reply), TRUE); //.
                 NMAPSendCommand (Client->nmap.conn, "QABRT\r\nQUIT\r\n", 13);
+                NMAPReadResponse(Client->nmap.conn, Reply, sizeof(Reply), TRUE); //qabrt which we've already done once....
+                NMAPReadResponse(Client->nmap.conn, Reply, sizeof(Reply), TRUE); //quit
             } else {
                 NMAPSendCommand (Client->nmap.conn, "QUIT\r\n", 6);
+                NMAPReadResponse(Client->nmap.conn, Reply, sizeof(Reply), TRUE); //quit
             }
             FreeInternalConnection(Client->nmap);
         }
