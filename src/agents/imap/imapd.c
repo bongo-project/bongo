@@ -3388,6 +3388,9 @@ InitializeImapGlobals()
     Imap.server.port = 143;
     Imap.server.ssl.port = 993;
     Imap.server.ssl.enable = FALSE;
+    Imap.server.ssl.config.options = 0;
+    Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
+    Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
     Imap.server.threadGroupId = XplGetThreadGroupID();
     Imap.server.hostname[0] = '\0';
     Imap.server.hostnameLen = 0;
@@ -3737,17 +3740,6 @@ ReadConfiguration(void)
     gmtime_r(&gm_time_of_day, &gm);
     localtime_r(&time_of_day, &ltm);
     gm_time_of_day=mktime(&gm);
-
-    // not totally sure what acl.enabled == TRUE does?
-    Imap.command.capability.acl.enabled = FALSE;
-    Imap.command.capability.len = sprintf(Imap.command.capability.message,
-        "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE XSENDER");
-    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message,
-        "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");
-    Imap.server.ssl.config.options = 0;
-    Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
-    Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
-    Imap.server.ssl.enable = TRUE;
 
     gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
     Imap.server.hostnameLen = strlen(Imap.server.hostname);
