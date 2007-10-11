@@ -31,13 +31,13 @@
 // Auth functions
 EXPORT int MsgAuthInit(void);
 EXPORT int MsgAuthInstall(void);
-EXPORT BOOL MsgAuthFindUser(const char *user);
+EXPORT int MsgAuthFindUser(const char *user);
 EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
-EXPORT BOOL MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword);
-EXPORT BOOL MsgAuthSetPassword(const char *user, const char *password);
-EXPORT BOOL MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
+EXPORT int MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword);
+EXPORT int MsgAuthSetPassword(const char *user, const char *password);
+EXPORT int MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
 EXPORT int  MsgAuthInitDB(void);
-EXPORT BOOL MsgAuthAddUser(const char *user);
+EXPORT int MsgAuthAddUser(const char *user);
 
 // Auth / cookie functions
 

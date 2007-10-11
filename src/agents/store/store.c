@@ -1202,7 +1202,7 @@ SelectUser(StoreClient *client, char *user, char *password, int nouser)
         goto finish;
     }
 
-    if (password && !MsgAuthVerifyPassword(user, password)) {
+    if (password && MsgAuthVerifyPassword(user, password) != 0) {
         ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
         XplDelay(2000);
         goto finish;

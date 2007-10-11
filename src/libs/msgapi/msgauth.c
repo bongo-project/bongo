@@ -107,7 +107,7 @@ MsgAuthInstall(void)
  * \param	user	The username to check
  * \return		Whether or not the user exists
  */
-BOOL
+int
 MsgAuthFindUser(const char *user)
 {
 	MsgAuthAPIFunction *function;
@@ -128,7 +128,7 @@ MsgAuthFindUser(const char *user)
  * \param	password  The password we're giving
  * \return		  Whether or not the username matches the password
  */
-BOOL
+int
 MsgAuthVerifyPassword(const char *user, const char *password)
 {
 	MsgAuthAPIFunction *function;
@@ -140,8 +140,7 @@ MsgAuthVerifyPassword(const char *user, const char *password)
 	
 	f = (AuthPlugin_VerifyPassword *)&function->func;
 	result = (*f)(user, password);
-	if (result == 0) return TRUE;
-	return FALSE;
+    return result;
 }
 
 /* "Write" functions below */
@@ -151,7 +150,7 @@ MsgAuthVerifyPassword(const char *user, const char *password)
  * \param	user	Username to add
  * \return		True if the addition was successful
  */
-BOOL
+int
 MsgAuthAddUser(const char *user)
 {
 	MsgAuthAPIFunction *function;
@@ -173,7 +172,7 @@ MsgAuthAddUser(const char *user)
  * \param	newpassword	The new password we want to have
  * \return 			Whether or not we successfully changed the password
  */
-BOOL
+int
 MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword)
 {
 	MsgAuthAPIFunction *function;
@@ -199,7 +198,7 @@ MsgAuthChangePassword(const char *user, const char *oldpassword, const char *new
  * \param	password	New password we want to set
  * \return Whether or not the password got changed
  */
-BOOL
+int
 MsgAuthSetPassword(const char *user, const char *password)
 {
 	MsgAuthAPIFunction *function;
@@ -220,7 +219,7 @@ MsgAuthSetPassword(const char *user, const char *password)
  * \param	store		Structure we can write the connection info to
  * \return 			Whether this was successful
  */
-BOOL
+int
 MsgAuthGetUserStore(const char *user, struct sockaddr_in *store)
 {
 	MsgAuthAPIFunction *function;
@@ -236,7 +235,7 @@ MsgAuthGetUserStore(const char *user, struct sockaddr_in *store)
 		store->sin_addr.s_addr = inet_addr("127.0.0.1");
 		store->sin_family = AF_INET;
 		store->sin_port = htons(689);
-		result = TRUE;
+		result = 0;
 	}
 	return result;
 }
@@ -246,9 +245,9 @@ MsgAuthGetUserStore(const char *user, struct sockaddr_in *store)
  * \param	list	A pointer we will set to the BongoArray of users
  * \return		Whether this was successful
  */
-BOOL
+int
 MsgAuthUserList(BongoArray **list)
 {
-	return FALSE;
+	return -1;
 }
 

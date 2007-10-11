@@ -33,7 +33,7 @@
 static long
 UserAuthenticate(ImapSession *session, unsigned char **userName, unsigned char *password, struct sockaddr_in *storeAddress)
 {
-    if (MsgAuthFindUser(*userName) == FALSE)
+    if (MsgAuthFindUser(*userName) != 0)
         return(STATUS_USERNAME_NOT_FOUND);
 
     if (MsgAuthVerifyPassword(*userName, password) != 0)
