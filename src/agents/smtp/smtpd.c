@@ -364,7 +364,7 @@ HandleConnection (void *param)
     int ReplyInt;
     BOOL Ready;
     BOOL Working = TRUE;
-    BOOL IsTrusted = !&SMTP.require_auth;
+    BOOL IsTrusted = TRUE;
     BOOL IsAuthed = FALSE;
     BOOL AllowAuth = TRUE;
     BOOL NullSender = FALSE;
@@ -766,7 +766,7 @@ HandleConnection (void *param)
                     else {
                         switch (ReplyInt) {
                         case MAIL_REMOTE:{
-                                if (!IsTrusted) {
+                                if (!IsAuthed) {
                                     Log(LOG_INFO, "Recipient %s by host %s blocked",
                                         name, LOGIP(Client->client.conn->socketAddress));
                                     ConnWrite (Client->client.conn, 
