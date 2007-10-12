@@ -17,8 +17,7 @@ views = {
     "agents" : AgentView.AgentHandler(),
     "backup" : BackupView.BackupHandler(),
     "system" : SystemView.SystemHandler(),
-    "server" : ServerView.ServerHandler(),
-    "antispam" : AntispamView.AntispamHandler()
+    "server" : ServerView.ServerHandler()
     }
 
 class HawkeyePath:
