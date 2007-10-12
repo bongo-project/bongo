@@ -905,7 +905,11 @@ Dragonfly.requestJSONRPC = function (rpcMethod, url  /*, ... */)
     return d.requestJSON ('POST', url, jsob).addCallback (d.getJsonRpcResult);
 };
 
-Dragonfly.Colors = [ 'brown', 'red', 'gray', 'green', 'blue', 'indigo', 'maroon', 'navy', 'olive', 'purple', 'MidnightBlue', 'DimGrey', 'DarkSlateGrey', 'teal', 'SlateBlue', 'SeaGreen', 'Sienna', 'DarkGoldenRod', 'BlueViolet'  ];
+/*
+   Colors used for calendars etc. Note that these get used as CLASSES as well as color: x in 'style', so if you add any to here,
+   make sure the appropriate class for your element in CSS exists.
+*/
+Dragonfly.Colors = [ 'violet', 'indigo', 'blue', 'green', 'brown', 'yellow', 'orange', 'red', 'gray'  ];
 Dragonfly.getRandomColor = function ()
 {
     return Dragonfly.Colors[Math.floor ((Math.random() * 100) % Dragonfly.Colors.length)];
@@ -1058,5 +1062,23 @@ Dragonfly.getIFrameDocument = function (iframe)
 {
     var iframe = $(iframe);
     // moz || (ie6 || ie5)
-    return iframe.contentDocument || (iframe.contentWindow || iframe).document;
+    if (!iframe.contentDocument)
+    {
+        if (!iframe.contentWindow)
+        {
+            // IE5
+            return iframe.document;
+        }
+        else
+        {
+            // IE6
+            return iframe.contentWindow.document;
+        }
+    }
+    else
+    {
+        // Mozilla
+        return iframe.contentDocument;
+    }
+    //return iframe.contentDocument || (iframe.contentWindow || iframe).document;
 };

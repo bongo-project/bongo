@@ -51,9 +51,9 @@ Dragonfly.Calendar.layoutEvents = function (events)
 	}
 
 	// 2: clear layout tables and insert bubles into tables
-    this.untimedConflictTable = [ ];
-    this.untimedLayoutTable = [ ];
-    this.timedEventTable = [ ];
+    this.untimedConflictTable = { };
+    this.untimedLayoutTable = { };
+    this.timedEventTable = { };
 	for (var i = 0; i < this.allEvents.length; i++) {
 		var jcal = this.allEvents[i];
 		if (!c.Preferences.isEventVisible (jcal)) {
