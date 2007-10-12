@@ -7,7 +7,6 @@ from bongo.commonweb.HttpError import HttpError
 
 import RootView
 import AgentView
-import AntispamView
 import BackupView
 import ServerView
 import SystemView

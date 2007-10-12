@@ -330,7 +330,6 @@ pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
 
 pkgpythonhawkeye_PYTHON =			\
 	src/www/bongo/hawkeye/__init__.py	\
-	src/www/bongo/hawkeye/AntispamView.py   \
 	src/www/bongo/hawkeye/AgentView.py  \
 	src/www/bongo/hawkeye/Auth.py		\
 	src/www/bongo/hawkeye/BackupView.py      \
