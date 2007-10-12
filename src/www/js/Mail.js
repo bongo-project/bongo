@@ -967,8 +967,6 @@ Dragonfly.Mail.yeahBaby = function (msg)
     // Split the message up by newlines.
     msg = msg.split("\n");
     
-    var colors = new Array();
-    
     // Loop through and find quotes.
     for (i=0;i<msg.length;i++)
     {
@@ -985,29 +983,26 @@ Dragonfly.Mail.yeahBaby = function (msg)
                 }
             }
             
-            var color = '';
-            if (colors.length < depth)
+            // Index of d.Colors to use.
+            var cdepth = depth;
+            
+            // Shrink the index if depth is larger than colour list.
+            if (depth > d.Colors.length)
             {
-                color = d.getRandomColor();
+                // Calculate the index to subsitute in for the same depth listing using the mod of the
+                // depth index (not zero-based) and the length of colours array (number of colors, also
+                // not zero-based).
+                //
+                // If that makes sense, you need a holiday :)
                 
-                // Make sure the color isn't the same as parent quote.
-                if (colors.length > 0)
-                {
-                    while (color == colors[depth - 1])
-                    {
-                        color = d.getRandomColor();
-                    }
-                }
-                
-                // Push it onto the array to get later if needed.
-                colors.push(color);
-            }
-            else
-            {
-                color = colors[depth - 1];
+                cdepth = depth % d.Colors.length;
             }
             
-            msg[i] = '<span style="color: ' + color + ';">' + d.htmlizeText (msg[i]) + '</span>';
+            // Convert the index to a zero-based one, and use it to find the colour we want.
+            var color = d.Colors[cdepth - 1];
+            
+            // Provide a class="" value, so that browser can override reply depth colour if they want.
+            msg[i] = '<span class="mailreply-' + cdepth + '" style="color: ' + color + ';">' + d.htmlizeText (msg[i]) + '</span>';
         }
         else
         {

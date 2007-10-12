@@ -400,11 +400,18 @@ HandleConnection (void *param)
     sin->sin_port=htons(BONGO_QUEUE_PORT);
     if ((Client->nmap.conn = NMAPConnectEx(NULL, sin, Client->client.conn->trace.destination)) == NULL ||
         !NMAPAuthenticateToStore(Client->nmap.conn, Answer, sizeof(Answer))) {
-        NMAPQuit(Client->nmap.conn);
-        Client->nmap.conn = NULL;
+        if (Client->nmap.conn) {
+            NMAPQuit(Client->nmap.conn);
+            Client->nmap.conn = NULL;
+            Log(LOG_ERROR, "Unable to authenticate to Queue agent at %s",
+                LOGIP(Client->client.conn->socketAddress));
+        } else {
+            Log(LOG_ERROR, "Unable to connect to Queue agent at %s (reply was %d)",
+                LOGIP(Client->client.conn->socketAddress), ReplyInt);
+        }
+        
         count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", SMTP.hostname, MSG421SHUTDOWN);
-        Log(LOG_ERROR, "Unable to connect to Queue agent at %s (reply was %d)",
-            LOGIP(Client->client.conn->socketAddress), ReplyInt);
+        
         ConnWrite (Client->client.conn, Reply, count);
         ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
@@ -1961,8 +1968,8 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 continue;
             }
             else {
-                Log(LOG_INFO, "Message failed delivery from %s to %s Flags %d Status %d",
-                        Sender, Recips[i].To, Client->Flags, status);
+                Log(LOG_INFO, "Message failed delivery from %s to %s Flags %d Status %d: %s",
+                        Sender, Recips[i].To, Client->Flags, status, Reply);
                 if (status == 550) {
                     Recips[i].Result = DELIVER_USER_UNKNOWN;
                     if ((unsigned long) ResultLen > strlen (Reply)) {
@@ -2211,7 +2218,6 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
         goto finish;
     }
 
-    // TODO: honour max MX server setting
     while ((list = XplDnsNextMxLookupIpList(mx)) != NULL) {
         int x;
         
@@ -2255,6 +2261,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             if (RetVal == DELIVER_SUCCESS) {
                 goto finish;
             }
+            // TODO: Should take into account max MX setting here
             if (RetVal == DELIVER_FAILURE) {
                 goto finish;
             }

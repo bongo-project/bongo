@@ -615,6 +615,9 @@ if test "x$CLUCENE_LIBS" = "x"; then
 	AC_SUBST(CLUCENE_LIBS, "\$(top_srcdir)/import/clucene/src/libclucene.la")
 	AC_SUBST(CLUCENE_CXXFLAGS, "-I\$(top_srcdir)/import/clucene/src")
 else
+	if test "x$host_cpu" = "xx86_64"; then
+		AC_MSG_ERROR([Compiling against CLucene system libraries on x86_64 is known to be buggy. Recommend you use --with-clucene=import/clucene])
+	fi
 	AC_MSG_RESULT(Using system CLucene)
 	info_clucene="system"
 fi
