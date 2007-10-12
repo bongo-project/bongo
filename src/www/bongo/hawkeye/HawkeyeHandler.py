@@ -30,6 +30,28 @@ class HawkeyeHandler:
             return None
         
         return config
+        
+    def SetStoreData(self, req, filename, data, storeName="_system"):
+        encoder = simplejson.JSONEncoder()
+        store = None
+        try:
+            store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
+            store.Store(storeName)
+            configfile = encoder.encode(data)
+            store.Replace(filename, configfile)
+            if store:
+                store.Quit()
+            return True
+        except ValueError:
+            self.SetVariable("error", "Failed to parse JSON.")
+            if store: 
+                store.Quit()
+            return False
+        except Exception, e:
+            self.SetVariable("error", "Unable to read data from store: %s" % str(e))
+            if store: 
+                store.Quit()
+            return False
     
     def NeedsAuth(self, rp):
         return True

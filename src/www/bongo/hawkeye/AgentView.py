@@ -2,11 +2,42 @@ import bongo.commonweb
 import bongo.commonweb.BongoUtil
 from HawkeyeHandler import HawkeyeHandler
 
+# Status of operation output (if any).
 doneop = 0
 
-class AgentHandler(HawkeyeHandler):
+# Agent definitions
+agentdefs = { 'bongoantispam' : {
+         'filename' : '/config/antispam',
+         'data' : {
+            'timeout' : { 'label' : 'Timeout', 'type' : 'int', 'suffix' : 'milliseconds' },
+            'hosts' : { 'label' : 'Hosts', 'type' : 'array,string' }
+        }
+    },
+    'bongoqueue' : {
+        'filename' : '/config/queue',
+        'data' : {
+            'postmaster': { 'label' : 'Postmaster', 'type' : 'string' },
+            'officialname' : { 'label' : 'Official name', 'type' : 'string' },
+            'hosteddomains' : { 'label' : 'Hosted domains', 'type' : 'array,string' },
+            'quotamessage' : { 'label' : 'Quota message', 'type' : 'string' }
+        }
+    },
+    'bongoavirus' : {
+        'filename' : '/config/antivirus',
+        'data' : {
+            'host' : { 'label':'Host', 'type' : 'string' },
+            'port' : { 'label' : 'Port', 'type' : 'int' }
+        }
+    }
+}
 
+
+class AgentHandler(HawkeyeHandler):    
+    
     def index_GET(self, req, rp):
+        '''
+        Handler for main agent list view.
+        '''
         global doneop
         
         config = self.GetStoreData(req, "/config/manager")
@@ -39,108 +70,118 @@ class AgentHandler(HawkeyeHandler):
         self.SetVariable("agntab", "selecteditem")
         return self.SendTemplate(req, rp, "index.tpl", title="Agents")
     
+    ###############        AGENTS          ###############
+    
+    # Antispam
     def bongoantispam_GET(self, req, rp):
-        # Antispam
-        return self.doAgent("bongoantispam", self.GetStoreData(req, "/config/antispam"), req, rp)
+        return self.showConfig('bongoantispam', req, rp)
         
-    def bongomailprox_GET(self, req, rp):
-        # Mail proxy
-        return self.doAgent("bongomailprox", self.GetStoreData(req, "/config/mailproxy"), req, rp)    
+    def bongoantispam_POST(self, req, rp):
+        return self.saveConfig('bongoantispam', req, rp)
     
+    # Antivirus
     def bongoavirus_GET(self, req, rp):
-        # Antivirus
-        return self.doAgent("bongoavirus", self.GetStoreData(req, "/config/antivirus"), req, rp)
+        return self.showConfig('bongoavirus', req, rp)
     
+    def bongoavirus_POST(self, req, rp):
+        return self.saveConfig('bongoavirus', req, rp)
+    
+    # Queue
     def bongoqueue_GET(self, req, rp):
-        # Queue
-        return self.doAgent("bongoqueue", self.GetStoreData(req, "/config/queue"), req, rp)
-    
-    def bongopop3_GET(self, req, rp):
-        # POP3
-        return self.doAgent("bongopop3", self.GetStoreData(req, "/config/pop3"), req, rp)
-    
-    def bongoimap_GET(self, req, rp):
-        # IMAP
-        return self.doAgent("bongoimap", self.GetStoreData(req, "/config/imap"), req, rp)
-    
-    def bongosmtp_GET(self, req, rp):
-        # SMTP
-        return self.doAgent("bongosmtp", self.GetStoreData(req, "/config/smtp"), req, rp)
-        
+        return self.showConfig('bongoqueue', req, rp)
         
     def bongoqueue_POST(self, req, rp):
-        # Queue POST
+        return self.saveConfig('bongoqueue', req, rp)
+    
+    ############### CONFIGURATION HELPERS  ################
+    
+    def saveConfig(self, agentname, req, rp):
+        global doneop, agentdefs
         
-        config = self.GetStoreData(req, "/config/queue")
+        self.SetStoreData(req, agentdefs[agentname]['filename'], self.setAgent(self.GetStoreData(req, agentdefs[agentname]['filename']), req.form, agentdefs[agentname]['data']))
         
-        for key in req.form:
-            value = req.form[key].value
-            
-            # Mm, formatting.
-            if value == "on":
-                value = True
-            elif value.isdigit():
-                value = int(value)
-                
+        doneop = 1
+        return self.showConfig(agentname, req, rp)
+    
+    def setAgent(self, config, rf, agent):        
+        for key in rf:
+            value = rf[key].value
             print "Has key: %s (value: %s)" % (key, value)
+            
+            # Mm, value-type formatting.
+            # Note: keys with type 'string' remain unchanged.
+            if agent[key]['type'] == 'int':
+                value = int(value)
+            elif agent[key]['type'] == 'bool':
+                value = bool(value)
+            elif agent[key]['type'].startswith('array,'):
+                # Split value type and determine what kind of array.
+                arraytype = agent[key]['type'].split(",")[1]
+                
+                # Now, split input data into an array, and change valuetypes as required.
+                # Input data for this key should be a comma-seperated string of values.
+                arraydata = value.split(",")
+                for dobj in arraydata:
+                    if arraytype == "int":
+                        dobj = int(dobj)
+                    elif arraytype == "bool":
+                        dobj = bool(dobj)
+                        
+                    # Otherwise, type was string (default).
+                    
+                # Set the data back.
+                value = arraydata    
             
             # Set new value.
             config[key] = value
             
-        print "Final config: %s" % config
-            
-        
-    def bongosmtp_POST(self, req, rp):
-        # SMTP POST
-        
-        config = self.GetStoreData(req, "/config/smtp")
-        
-        for key in req.form:
-            value = req.form[key].value
-            print "Has key: %s (value: %s)" % (key, value)
-            if value.isdigit():
-                value = int(value)
-                
-            
-            # Set new value.
-            config[key] = req.form[key].value
-            
-            
-        return bongo.commonweb.HTTP_UNAUTHORIZED
+        return config
+   
+    def showConfig(self, agentname, req, rp):
+        global agentdefs
+        return self.doAgent(agentname, self.GetStoreData(req, agentdefs[agentname]['filename']), agentdefs[agentname]['data'], req, rp)
     
-    def doAgent(self, agentname, config, req, rp):
+    def doAgent(self, agentname, config, d, req, rp):
+        '''
+        Displays an agent configuration page, using information
+        provided via method arguments.
+        '''
+        global doneop
         rkeys = []
         
         if config != None and config.has_key("version"):
             for key in config:
-                # Don't allow block_rts_spam - unused.
-                if key != "block_rts_spam":
+                # Disallow other keys that weren't passed along (eg version, etc)
+                if d.has_key(key):
                     nkey = {}
                     nkey["id"] = key
                     nkey["value"] = config[key]
+                    nkey["name"] = d[key]['label'] + ":"
+                    if d[key].has_key('suffix'):
+                        nkey["suffix"] = d[key]['suffix']
                     
-                    # Don't allow version as editable.
-                    if key != "version":
-                        nkey["name"] = self._humanReadableKey(key) + ":"
-                        suffix = self.getParamSuffix(key)
-                        if suffix:
-                            nkey["suffix"] = suffix
-                        nkey["numericentry"] = self.isNumericEntry(key)
-                        if not nkey["numericentry"]:
-                            nkey["boolentry"] = self.isBoolEntry(key)
-                            if not nkey["boolentry"]:
-                                nkey["selectentry"] = self.isSelectEntry(key)
-                                if not nkey["selectentry"]:
-                                    # Has to be text entry if it ain't numeric or boolean.
-                                    nkey["textentry"] = True
-                                else:
-                                    # Setup per-list settings.
-                                    nkey["jsadd"] = "javascript:addToList('" + key + "');"
-                                    nkey["jsrm"] = "javascript:removeFromList('" + key + "');"
-                                    nkey["jsid"] = key + "-removebtn"
-                    else:
-                        nkey["hidden"] = True
-                
+                    if d[key]['type'] == "int":
+                        nkey["numericentry"] = True
+                    elif d[key]['type'] == "bool":
+                        nkey["boolentry"] = True
+                    elif d[key]['type'] == "string":
+                        nkey["textentry"] = True
+                    elif d[key]['type'].startswith('array,'):
+                        nkey["selectentry"] = True
+                        # TODO: Fix this so we can have plain lists, instead of arrays
+                        nkey["jsadd"] = "javascript:addToList('" + key + "');"
+                        nkey["jsrm"] = "javascript:removeFromList('" + key + "');"
+                        nkey["jsid"] = key + "-removebtn"  
+                        nkey["selectorid"] = key + "-box"
+                        nkey["revertbox"] = key + "-normal"
+                        nkey["revertjs"] = "$('" + nkey["revertbox"] + "').hide(); $('" + nkey["selectorid"] + "').show();"
+                        
+                        strthingy = ""
+                        for value in config[key]:
+                            strthingy += value + ","
+                        
+                        nkey["strvalue"] = strthingy
+
                     rkeys.append(nkey)
                 
             self.SetVariable("settinglist", rkeys)
@@ -150,71 +191,18 @@ class AgentHandler(HawkeyeHandler):
         else:
             self.SetVariable("success", 0)
         
+        # Check if we've done stuff (ie saving config)
+        if doneop:
+            self.SetVariable("opsuccess", 1)
+            doneop = 0
+        else:
+            self.SetVariable("opsuccess", 0)
+        
         self.SetVariable("agntab", "selecteditem")
         self.SetVariable("name", agentname)
         hname = self._humanReadableName(agentname)
         self.SetVariable("hname", hname)
         return self.SendTemplate(req, rp, "agentview.tpl", title=hname)
-    
-    def index_POST(self, req, rp):    
-        global doneop
-        
-        if not req.form:
-            return bongo.commonweb.HTTP_UNAUTHORIZED
-        
-        if not req.form.has_key("command"):
-            return bongo.commonweb.HTTP_UNAUTHORIZED
-        
-        # Operation completed OK.
-        doneop = 1
-        return self.index_GET(req, rp)
-    
-    def isSelectEntry(self, k):
-        keys = [ 'hosts', 'hosteddomains', 'trustedhosts' ]
-        if keys.count(k) > 0:
-            return True
-        else:
-            return None
-    
-    def isBoolEntry(self, k):
-        keys = [ 'use_relay_host', 'allow_expn', 'block_rts_spam', 'allow_vrfy', 'allow_client_ssl', 'verify_address', 'relay_local_mail', 'send_etrn', 'accept_etrn', 'forwardundeliverable_enabled', 'allow_auth', 'bounce_return', 'bounceccpostmaster', 'queuetuning_debug', 'limitremoteprocessing', 'bouncereturn', 'rtsantispamconfig_enabled' ]
-        if keys.count(k) > 0:
-            return True
-        else:
-            # Return None, not False (for Tal)
-            return None
-    
-    def isNumericEntry(self, k):
-        keys = [ 'port', 'port_ssl', 'max_mx_servers', 'socket_timeout', 'maximum_recipients', 'max_flood_count', 'message_size_limit', 'max_thread_load', 'max_null_sender', 'threads_max' ]
-        
-        if keys.count(k) > 0:
-            # If it's in 'keys', return True.
-            return True
-        else:
-            # Return None, not False (for Tal)
-            return None
-    
-    def getParamSuffix(self, k):
-        keys = { 'interval': 'seconds', 'socket_timeout':'seconds', 'message_size_limit': 'bytes (set to 0 for none)', 'timeout':'milliseconds' }
-        
-        if keys.has_key(k):
-            return keys[k]
-        else:
-            return None
-    
-    def _humanReadableKey(self, k):
-        """
-        Converts a setting key name into a human-readable keyname.
-        """
-        
-        keys = { 'port': 'Port', 'port_ssl': 'SSL Port', 'hostname': 'Hostname', 'hostaddr': 'Host address', 'allow_client_ssl': 'Allow client SSL', 'allow_vrfy': 'Allow verification', 'relay_host': 'Relay to host', 'max_mx_servers': 'Maximum MX servers', 'socket_timeout': 'Socket timeout', 'block_rts_spam': 'Block RTS spam', 'verify_address': 'Verify address before accepting mail', 'relay_local_mail': 'Relay local mail', 'max_flood_count': 'Maximum flood count', 'message_size_limit': 'Maximum message size', 'maximum_recipients': 'Maximum recipients', 'use_relay_host': 'Use relay host', 'threads_max': 'Maximum threads', 'postmaster': 'Postmaster', 'max_threads': 'Maximum threads', 'interval': 'Interval', 'queue':'Queue host', 'max_accounts':'Maximum accounts', 'host':'Host', 'flags':'Operation mode(s) - see avirus.h', 'minimumfreespace':'Minimum free quota space', 'send_etrn':'Send ETRN', 'allow_expn':'Allow group expansion', 'accept_etrn':'Accept ETRN', 'max_thread_load':'Maximum thread load', 'max_null_sender':'Maximum recipients for null sender', 'hosts':'Hosts', 'timeout': 'Timeout', 'forwardundeliverable_enabled': 'Forward undeliverable mail', 'allow_auth':'Allow authentication', 'trustedhosts':'Trusted hosts', 'quotamessage':'Message if quota is reached', 'forwardundeliverable_to':'Forward undeliverable mail to', 'limitremoteprocessing': 'Limit remote processing', 'patterns':'Patterns', 'hosteddomains':'Hosted domains', 'bouncereturn':'Return bounced messages', 'bounceccpostmaster':'CC bounced messages to postmaster' }
-        
-        if keys.has_key(k):
-            return keys[k]
-        else:
-            # Return the unchanged key back if we dunno
-            # what to do with it.
-            return k
     
     def _humanReadableName(self, agentname):
         # TODO: Translation, once we have a system in place.

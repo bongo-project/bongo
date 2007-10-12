@@ -27,16 +27,24 @@
     </td>
  
     <td tal:condition="setting/selectentry">
-        <div style="width: 325px;">
+        <div style="width: 325px; visibility: none">
             <div style="width: 25px; float: right;">
                 <a tal:attributes="href setting/jsadd" style="float: right;"><img src="/img/list-add.png" width="16" height="16" border="0" alt="Add" /></a><br />
                 <a tal:attributes="href setting/jsrm;id setting/jsid" style="float: right;"><img src="/img/list-remove.png" width="16" height="16" border="0" alt="Remove" /></a>
             </div>
         
-            <select tal:attributes="name setting/id;id setting/id" style="width: 300px; border: 1px solid #888a85; background-color: #fff;" size="5">
+            <select tal:attributes="id setting/selectorid" style="width: 300px; border: 1px solid #888a85; background-color: #fff;" size="5">
                 <option tal:repeat="op setting/value" tal:content="op"></option>
             </select>
         </div>
+        <div tal:attributes="id setting/revertbox">
+            	<!-- For non-JS browsers -->
+            	<input type="text" tal:attributes="name setting/id;id setting/id;value setting/strvalue" />
+            	<p>Please enter values into the above textbox, seperated by a comma.</p>
+        </div>
+        
+        <script type="text/javascript" tal:content="setting/revertjs">
+        </script>
     </td>
     
     <input type="hidden" tal:condition="setting/hidden" tal:attributes="name setting/id;id setting/id;value setting/value" />

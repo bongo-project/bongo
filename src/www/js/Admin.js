@@ -69,16 +69,18 @@ function addToList(div)
         try
         {
             // W3C
-            $(div).add(e, null);
+            $(div+"-box").add(e, null);
         }
         catch(ex)
         {
             //alert(ex);
             // IE
-            $(div).add(e);
+            $(div+"-box").add(e);
         }
         
-        $(div).selectedIndex = $(div).options.length - 1;
+        $(div).value += d + ",";
+        
+        $((div+"-box")).selectedIndex = $((div+"-box")).options.length - 1;
         
         Effect.Appear(div + '-removebtn');
         new Effect.Highlight(div);
@@ -87,15 +89,15 @@ function addToList(div)
 
 function removeFromList(div)
 {
-    var start = $(div).selectedIndex;
-    $(div).remove(start);
-    if ($(div).selectedIndex != start)
+    var start = $(div+"-box").selectedIndex;
+    $(div+"-box").remove(start);
+    if ($(div+"-box").selectedIndex != start)
     {
         //new Effect.Highlight(div);
     }
     
     // Check if there's anymore items left.
-    if ($(div).options.length == 0)
+    if ($(div+"-box").options.length == 0)
     {
         // Hide the remove button for zaaroo ooptoons.
         Effect.SwitchOff(div + '-removebtn');
@@ -103,6 +105,6 @@ function removeFromList(div)
     else
     {
         // Update newly selected.
-        $(div).selectedIndex = start - 1;
+        $(div+"-box").selectedIndex = start - 1;
     }
 }

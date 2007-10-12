@@ -67,7 +67,7 @@ Dragonfly.login = function (user)
             } else if (err.req && (err.req.status == 401 || err.req.status == 403)) {
                 // Only tell the user its their fault if we get a permission denied HTTP response.
                 d.setLoginMessage (_('Incorrect username or password.'));
-            } else if (err.req && err.req.status == 200)
+            } else if (err.req && err.req.status == 200) {
                d.setLoginMessage (_('The server backend seems to be fubared. It might be useful to check your Apache logs to see what the symptom is. It is usually one of two things:<ul><li>A Python exception, which can be determined by looking for a traceback, or;</li><li>You\'re missing mod_python. If this is the case, please nag so_solid_moo in #bongo.</li></ul>'));
                //logError ('backend was fubared and returned: ' + d.responseText);
            } else {
