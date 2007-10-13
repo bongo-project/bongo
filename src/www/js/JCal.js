@@ -256,7 +256,7 @@ Day.prototype.asDateWithTime = function (hours, minutes, seconds)
 Day.fromIntform = function (i)
 {
     return Day.get ((i / 10000) | 0, ((i % 10000) / 100) | 0, i % 100);
-}
+};
 
 Day.formatRange = function (s, a, b)
 {
@@ -414,7 +414,7 @@ Dragonfly.JCal.updateDateTime = function (datetime, day, time, isUntimed, tzid)
     } else {
         datetime.params = params;
     }
-}
+};
 
 // offset is in days for date values, msecs for datetime values
 Dragonfly.JCal.offsetDateTime = function (datetime, offset)
@@ -427,7 +427,7 @@ Dragonfly.JCal.offsetDateTime = function (datetime, offset)
         var newdate = new Date (JCal.parseDateTime ($V(datetime)).valueOf() + offset);
         datetime.value = JCal.serializeDateTime (newdate);
     }
-}
+};
 
 Dragonfly.JCal.parseDuration = function (s, asUntimed)
 {
@@ -775,7 +775,7 @@ Dragonfly.JCal.VCalendar.prototype.updateTimes = function (occurrence, changes, 
             JCal.updateDateTime (jc.dtend, endDay, changes.endTime, isUntimed, changes.endTzid);
         }
     }
-}
+};
 
 Dragonfly.JCal.VCalendar.prototype.updateRrules = function (occurrence, changes)
 {
@@ -1029,7 +1029,7 @@ Dragonfly.JCal.Occurrence.prototype.update = function (changes)
     for (var key in changes) {
         this[key] = changes[key];
     }
-}
+};
 
 Dragonfly.JCal.Occurrence.prototype.getAttr = function (attr)
 {

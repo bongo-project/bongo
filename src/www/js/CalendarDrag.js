@@ -269,7 +269,7 @@ Dragonfly.Calendar.detectdragHandler = function (evt)
     Event.observe (document, 'mousemove', c.dragHandler);
     Event.observe (document, 'mouseup', c.dragendHandler);
     Event.observe (document, 'keypress', c.dragendHandler);
-}
+};
 
 Dragonfly.Calendar.dragHandler = function (evt) 
 {
@@ -288,7 +288,7 @@ Dragonfly.Calendar.dragHandler = function (evt)
         }
     }
     state.ondrag (state.occurrence, pos, state.origin);
-}
+};
 
 Dragonfly.Calendar.dragendHandler = function (evt) 
 {
@@ -338,7 +338,7 @@ Dragonfly.Calendar.dragendHandler = function (evt)
         c.updateBubles (occurrence);        
     }
     c.layoutEvents();
-}
+};
 
 Dragonfly.Calendar.columnDragMove = function (occurrence, pos, origin)
 {

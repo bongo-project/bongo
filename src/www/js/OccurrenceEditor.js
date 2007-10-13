@@ -164,7 +164,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.cancel = function ()
     var event = this.occurrence.event;
     this.dispose();
     Dragonfly.Calendar.remove (event);
-}
+};
 
 Dragonfly.Calendar.OccurrencePopup.prototype.del = function ()
 {
@@ -299,7 +299,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.dispatchWithScope = function (forSa
         }
     }
     (forSave ? this.save : this.del)();
-}    
+};
 
 Dragonfly.Calendar.OccurrencePopup.prototype.showAppropriate = function (elem)
 {

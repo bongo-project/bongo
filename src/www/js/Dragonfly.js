@@ -61,7 +61,7 @@ Dragonfly.setCurrentTzid = function (tzid)
             d.go (d.curLoc);
         }
     }
-}
+};
 
 Dragonfly.setLoc = function (loc)
 {
@@ -923,7 +923,7 @@ Dragonfly.translateElements = function ()
     Element.setHTML ('calendar-tab-label-alt', _('Calendar'));
     document.getElementById('calendar-tab-href').title = _('View your calendar.');
     Element.setHTML ('new-event-href', _('Create new event'));
-}
+};
 
 
 Dragonfly.start = function ()
@@ -1043,7 +1043,7 @@ Dragonfly.hidePopups = function ()
     {
         logDebug('Nothing to dispose');
     }
-}
+};
 
 Dragonfly.main = function ()
 {

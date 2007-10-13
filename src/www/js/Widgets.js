@@ -7,7 +7,7 @@ Dragonfly.Widgets.addOptions = function (html, labels, selected)
     for (var i = 0; i < labels.length; i++) {
         html.push ('<option', (i==s) ? ' selected' : '', '>', labels[i], '</option>');
     }
-}
+};
 
 Dragonfly.Notebook = function (parent)
 {
@@ -40,7 +40,7 @@ Dragonfly.Notebook.prototype.buildHtml = function (html)
                '<div id="', this.contentId, '" class="notebook-content"></div>',
                '</div>');
     html.addCallback (bind ('connectHtml', this));
-}
+};
 
 Dragonfly.Notebook.prototype.connectHtml = function (elem)
 {
@@ -77,7 +77,7 @@ Dragonfly.Notebook.prototype.clickHandler = function (evt) {
          return;
      }
      this._switchToPage (idx);
- }
+ };
 
 
 Dragonfly.Notebook.prototype.setShowTabs = function (showTabs)
@@ -272,14 +272,14 @@ Dragonfly.ToggleButtons.prototype.handleMousedown = function (evt)
     toggleElementClass ('selected', this.mousedButton);
     Event.observe (button, 'mouseup', this.mouseupHandler);
     Event.observe (button, 'mouseout', this.mouseoutHandler);
-}
+};
 
 Dragonfly.ToggleButtons.prototype.mouseoutHandler = function (evt)
 {
     Event.stopObserving (this.mousedButton, 'mouseup', this.mouseupHandler);
     Event.stopObserving (this.mousedButton, 'mouseout', this.mouseoutHandler);
     toggleElementClass ('selected', this.mousedButton);
-}
+};
 
 Dragonfly.ToggleButtons.prototype.mouseupHandler = function (evt)
 {
@@ -291,24 +291,24 @@ Dragonfly.ToggleButtons.prototype.mouseupHandler = function (evt)
     } else {
         this.unselect (buttonNumber);
     }
-}
+};
 
 Dragonfly.ToggleButtons.prototype.select = function (buttonNumber)
 {
     this.selected[buttonNumber] = true;
     addElementClass ($(this.buttonIdBase + buttonNumber), 'selected');
-}
+};
 
 Dragonfly.ToggleButtons.prototype.unselect = function (buttonNumber)
 {
     delete this.selected[buttonNumber];
     removeElementClass ($(this.buttonIdBase + buttonNumber), 'selected');
-}
+};
 
 Dragonfly.ToggleButtons.prototype.getSelected = function ()
 {
     return map (Number, keys (this.selected));
-}
+};
 
 Dragonfly.PopupBuble = function (elem /*, children */)
 {
@@ -404,7 +404,7 @@ Dragonfly.PopupBuble.prototype.setElem = function (elem)
         $(this.frameId).style.zIndex = zindex;
         $(this.pointerId).style.zIndex = zindex + 1;
     }
-}
+};
 
 Dragonfly.PopupBuble.prototype.setForm = function (children, actions, observer)
 {
@@ -650,7 +650,7 @@ Dragonfly.PopupBuble.prototype.canDisposeZone = Dragonfly.PopupBuble.prototype.c
         Dragonfly.notify (_('You have unsaved changes.'));
     }
     return canHide;
-}
+};
 
 Dragonfly.PopupBuble.prototype.hide = Dragonfly.PopupBuble.prototype.hideZone = function (result)
 {
@@ -961,7 +961,7 @@ Dragonfly.TzSelector.prototype.buildTimezoneOptions = function (htmlbuilder, tim
     if (html !== htmlbuilder) {
         html.set (this.selectId);
     }
-}
+};
 
 Dragonfly.TzSelector.prototype.connectHtml = function (elem)
 {
@@ -975,7 +975,7 @@ Dragonfly.TzSelector.prototype.connectHtml = function (elem)
 Dragonfly.TzSelector.prototype.setChangeListener = function (listener)
 {
     this.changeListener = listener;
-}
+};
 
 Dragonfly.TzSelector.prototype.setEnabled = function (enabled)
 {

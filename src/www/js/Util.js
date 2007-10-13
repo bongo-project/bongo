@@ -293,7 +293,7 @@ Dragonfly.HtmlBuilder.prototype.handleCallbackError = function (err)
 {
     logError ('HtmlBuilder callback error: ', Dragonfly.reprError (err));
     return err;
-}
+};
 
 Dragonfly.HtmlBuilder.prototype.set = function (elem)
 {
@@ -948,7 +948,7 @@ Dragonfly.undefer = function (deferred)
         throw new Error ('Deferred not yet fired');
     }
     return deferred.results[deferred.fired];
-}
+};
 
 /* wait for some number of deferreds to fire */
 Dragonfly.MultiDeferred = function (deferreds)

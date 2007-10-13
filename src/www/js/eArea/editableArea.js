@@ -66,7 +66,7 @@ function insertEditableArea(editableAreaName, editableAreaWidth, editableAreaHei
 	}
 	
 	return retHTML;
-}
+};
 
 function stripHTML(d)
 {
@@ -79,7 +79,7 @@ function stripHTML(d)
     d = d.replace(/(\n)/g, "<br>");                                 // Convert back <br />
     
     return d;
-}
+};
 
 function editableAreaContents(editableAreaName) {
 	if (document.designMode) {
@@ -91,22 +91,7 @@ function editableAreaContents(editableAreaName) {
 		// return the value from the <textarea> if document.designMode does not exist
 		return document.getElementById(editableAreaName).value;
 	}
-}
-
-// Enable/disable HTML buttons
-// TODO!!!
-function setHTMLbuttons(value)
-{
-    var obj = $('toolbar').childNodes;
-    for (var i=0; i < obj.length; i++)
-    {
-        var btn = obj[i];
-        if (btn.attributes.getNamedItem('isHtml').value == "true")
-        {
-            btn.style.class = "icon selected";
-        }
-    }
-}
+};
 
 function setEditableAreaContents(editableAreaName, value)
 {
@@ -125,7 +110,7 @@ function setEditableAreaContents(editableAreaName, value)
 		// return the value from the <textarea> if document.designMode does not exist
 		document.getElementById(editableAreaName).value = value;
 	}
-}
+};
 
 function ititButtons(editableAreaName) {
 	var kids = document.getElementsByTagName('input');
@@ -139,23 +124,23 @@ function ititButtons(editableAreaName) {
 			kids[i].onclick = buttonOnClick;
 		}
 	}
-}
+};
 
 function buttonMouseOver() {
 	// events for mouseOver on buttons
 	// e.g. this.style.xxx = xxx
-}
+};
 
 function buttonMouseOut() {
 	// events for mouseOut on buttons
 	// e.g. this.style.xxx = xxx
-}
+};
 
 
 function buttonMouseUp() {
 	// events for mouseUp on buttons
 	// e.g. this.style.xxx = xxx
-}
+};
 
 function buttonMouseDown(e) {
 	// events for mouseDown on buttons
@@ -171,7 +156,7 @@ function buttonMouseDown(e) {
 	} else {
 		return false;
 	}
-}
+};
 
 function runCmd(editableAreaName, id, ui, value)
 {
@@ -179,7 +164,7 @@ function runCmd(editableAreaName, id, ui, value)
 	// so we need to address Explorer elements as window[elementID]
 	if (window[editableAreaName]) { window[editableAreaName].document.execCommand(id, ui, value); }
 	else { document.getElementById(editableAreaName).contentWindow.document.execCommand(id, ui, value); }
-}
+};
 
 function buttonOnClick() {
     if (this.id == "insertimage")
@@ -259,4 +244,4 @@ function buttonOnClick() {
     {
         runCmd(this.name, this.id, false, null);
     }
-}
+};

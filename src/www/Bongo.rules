@@ -258,6 +258,7 @@ dist_eAreaimage_DATA = \
     src/www/js/eArea/icons/format-justify-fill.png          \
     src/www/js/eArea/icons/format-text-bold.png     \
     src/www/js/eArea/icons/format-text-italic.png       \
+    src/www/js/eArea/icons/format-text-underline.png    \
     src/www/js/eArea/icons/format-indent-more.png       \
     src/www/js/eArea/icons/format-indent-less.png       \
     src/www/js/eArea/icons/insert-image.png         \
@@ -305,7 +306,7 @@ dist_finaljs_DATA =						\
 	src/www/js/final.js
 
 src/www/js/final.js: $(dist_js_DATA) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA)
-	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) src/www/js/eArea/editableArea.js -o src/www/js/final.js --measure --type js
+	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) src/www/js/eArea/editableArea.js -o src/www/js/final.js --measure --type js -i src/www/js/Admin.js -i src/www/js/Browser.js -i src/www/js/BrowserCheck.js
 
 install-data-local:: install-dist_htdocsDATA
 	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"

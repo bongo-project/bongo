@@ -34,7 +34,7 @@ Dragonfly.Mail.getData = function (loc)
         logDebug('No getView function - falling back to requestJSON.');
         return d.requestJSON ('GET', loc);
     }
-}
+};
 
 Dragonfly.Mail.getView = function (loc)
 {
@@ -217,7 +217,7 @@ Dragonfly.Mail.Preferences.getSignatureAvailable = function ()
     {
         return false;
     }
-}
+};
 
 Dragonfly.Mail.Preferences.getSignature = function ()
 {
@@ -231,7 +231,7 @@ Dragonfly.Mail.Preferences.getSignature = function ()
     {
         return '';
     }
-}
+};
 
 Dragonfly.Mail.getFromAddress = function ()
 {
@@ -1011,4 +1011,4 @@ Dragonfly.Mail.yeahBaby = function (msg)
     }
     
     return msg.join("<br />");
-}
+};

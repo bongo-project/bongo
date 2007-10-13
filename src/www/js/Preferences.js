@@ -378,7 +378,7 @@ Dragonfly.Preferences.Editor.showError = function (req)
     var d = Dragonfly;
     d.notifyError("We had a woopsie when we tried to save your prefs.", null, false);
     this.dispose();
-}
+};
 
 Dragonfly.Preferences.Editor.dispose = function ()
 {

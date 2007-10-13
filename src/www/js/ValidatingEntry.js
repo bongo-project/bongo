@@ -470,7 +470,7 @@ Dragonfly.DateRangeEntry.prototype.onStartTzidChange = function ()
     var timezone = this.startTzidEntry.getTimezone();
     this.endTzidEntry.setTimezone (timezone);
     this.endTzidEntry.setEnabled (timezone.tzid != '/bongo/floating');
-}
+};
 
 Dragonfly.DateRangeEntry.prototype.onEndTzidChange = function ()
 {

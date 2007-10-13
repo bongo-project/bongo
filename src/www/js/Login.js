@@ -88,7 +88,7 @@ Dragonfly.logout = function ()
         return;
     }
     if (d.userName) {
-    	var storecookie = new d.Cookie (document, 'BongoAuthToken.' + d.userName, -1, '/');
+    	var storecookie = new d.Cookie (document, 'BongoAuthToken.' + escape(d.userName), -1, '/');
         storecookie.storeSimple();
         storecookie.remove();
     }
@@ -125,7 +125,7 @@ Dragonfly.languageSuccess = function ()
     {
         d.setLoginMessage ('&nbsp;');
     }
-}
+};
 
 Dragonfly.languageError = function (json)
 {
@@ -147,7 +147,7 @@ Dragonfly.languageError = function (json)
         d.setLoginMessage ('Could not load translations. Check logs.<br />Using default language (English).');
         logError ('Hmm, JSON was undefined. :s');
     }
-}
+};
 
 Dragonfly.languageChanged = function (evt)
 {
@@ -229,7 +229,7 @@ Dragonfly.submitLogin = function ()
 
 Dragonfly.setDefaultUser = function (user)
 {
-    var storecookie = new Dragonfly.Cookie (document, 'BongoAuthToken.' + user, null, '/');
+    var storecookie = new Dragonfly.Cookie (document, 'BongoAuthToken.' + escape(user), null, '/');
     var cookievalue = user;
     if (storecookie.loadSimple()) {
          // put store credentials in our cookie too.
@@ -293,7 +293,7 @@ Dragonfly.setCurrentUser = function ()
 Dragonfly.hasAuthCookie = function (username)
 {
     var d = Dragonfly;
-    return (new d.Cookie (document, 'BongoAuthToken.' + username)).loadSimple();
+    return (new d.Cookie (document, 'BongoAuthToken.' + escape(username))).loadSimple();
 };
 
 

@@ -114,7 +114,7 @@ Dragonfly.Calendar.postQuickEvent = function (text)
     var d = Dragonfly;
     var loc = new d.Location ({ tab: 'calendar', set: 'personal', view: 'week' });
     return d.requestJSON ('POST', loc, { method: 'parseCommand', command: text });
-}
+};
 
 Dragonfly.Calendar.newEvent = function (evt)
 {

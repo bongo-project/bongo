@@ -212,7 +212,7 @@ Dragonfly.AddressBook.Contacts.convert = function (contactname, email)
     }
     
     return contact;
-}
+};
 
 // Sidebar Contact Picker
 Dragonfly.AddressBook.ContactPicker = function (parent)
