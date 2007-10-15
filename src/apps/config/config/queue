@@ -1,5 +1,6 @@
 {
 	"version": 1,
+    "debug" : false,
     "postmaster" : "admin",
     "officialname" : "admin",
     "limitremoteprocessing" : false,
@@ -12,7 +13,6 @@
     "queuetuning_load_high" : 0,
     "queuetuning_load_low" : 0,
     "queuetuning_trigger" : 0,
-    "queuetuning_debug" : false,
     "queuetimeout" : 345600,
     "quotamessage" : "",
     "port" : 8670,
@@ -25,6 +25,6 @@
     "rtsantispamconfig_enabled" : false,
     "rtsantispamconfig_delay" : 0,
     "rtsantispamconfig_threshold" : 0,
-    "bouncereturn" : false,
+    "bouncereturn" : true,
     "bounceccpostmaster" : false
 }

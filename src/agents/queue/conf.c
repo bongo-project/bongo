@@ -77,6 +77,7 @@ static BongoConfigItem hostedDomainsConfig[] = {
 };
 
 static BongoConfigItem QueueConfig[] = {
+    { BONGO_JSON_BOOL, "o:debug/b", &Conf.debug },
     { BONGO_JSON_ARRAY, "o:hosteddomains/a", &hostedDomainsConfig },
     { BONGO_JSON_STRING, "o:postmaster/s", &Conf.postMaster },
     { BONGO_JSON_STRING, "o:officialname/s", &Conf.officialName },
@@ -90,7 +91,6 @@ static BongoConfigItem QueueConfig[] = {
     { BONGO_JSON_INT, "o:queuetuning_load_high/i", &Conf.loadMonitorHigh },
     { BONGO_JSON_INT, "o:queuetuning_load_low/i", &Conf.loadMonitorLow },
     { BONGO_JSON_INT, "o:queuetuning_trigger/i", &Conf.limitTrigger },
-    { BONGO_JSON_BOOL, "o:queuetuning_debug/b", &Conf.debug },
     { BONGO_JSON_INT, "o:queuetimeout/i", &Conf.maxLinger },
     { BONGO_JSON_STRING, "o:quotamessage/s", &Conf.quotaMessage },
     { BONGO_JSON_INT, "o:port/i", &Agent.agent.port },
@@ -189,7 +189,7 @@ ReadConfiguration (BOOL *recover)
     if (Conf.b_bounceCCPostmaster) {
         Conf.bounceHandling |= BOUNCE_CC_POSTMASTER;
     } else {
-        Conf.bounceHandling &= ~BOUNCE_RETURN;
+        Conf.bounceHandling &= ~BOUNCE_CC_POSTMASTER;
     }
     
     /* sort the hostedDomains to make searching later faster. */

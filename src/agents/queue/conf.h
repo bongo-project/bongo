@@ -41,10 +41,10 @@ typedef struct _QueueConfiguration {
     XplRWLock lock;
 
     /* Server info */
-    char hostname[MAXEMAILNAMESIZE + 1];    
+    char *hostname;
+    char *postMaster;
     char serverHash[NMAP_HASH_SIZE];
-    char postMaster[MAXEMAILNAMESIZE + 1];
-    char officialName[MAXEMAILNAMESIZE + 1];
+    char *officialName;
 
     /* Quotas */
     char *quotaMessage;
@@ -71,7 +71,7 @@ typedef struct _QueueConfiguration {
 
     /* Forward Undeliverable */
     BOOL forwardUndeliverableEnabled;
-    char forwardUndeliverableAddress[MAXEMAILNAMESIZE + 1];
+    char *forwardUndeliverableAddress;
 
     /* Queue tuning */
     long defaultConcurrentWorkers;

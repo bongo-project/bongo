@@ -2896,7 +2896,9 @@ CreateQueueThreads(BOOL failed)
 
     XplSafeWrite(Queue.activeWorkers, 0);
 
-    XplBeginCountedThread(&id, CheckQueue, STACKSPACE_Q, NULL, i, Agent.activeThreads);
+    if (!Conf.debug) {
+        XplBeginCountedThread(&id, CheckQueue, STACKSPACE_Q, NULL, i, Agent.activeThreads);
+    }
 
     return(0);
 }
