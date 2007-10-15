@@ -30,7 +30,7 @@ def CookieAuth(stream, user, cookie):
     """Authenticate against a Store connection with a user cookie on socket s"""
     r = stream.GetResponse()
 
-    stream.log.debug("SEND: AUTH COOKIE %s ****************" % user)
+    stream.log.debug("SEND: AUTH COOKIE %s %s" % (user, cookie))
     stream.Write("AUTH COOKIE %s %s" % (user, cookie), nolog=1)
 
     r = stream.GetResponse()
@@ -44,7 +44,7 @@ def UserAuth(stream, user, password):
     """Authenticate against a Store connection with a username and password"""
     r = stream.GetResponse()
 
-    stream.log.debug("SEND: AUTH USER %s ********" % user)
+    stream.log.debug("SEND: AUTH USER %s %s" % (user, password))
     stream.Write("AUTH USER %s %s" % (user, password), nolog=1)
 
     r = stream.GetResponse()

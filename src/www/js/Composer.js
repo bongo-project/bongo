@@ -351,7 +351,9 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         msg.subject = untitled
     }*/
 
-    loc = new d.Location (loc);
+    //loc = new d.Location (loc);
+    loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 1, 
+                                      conversation: this.conversation, message: this.bongoId, valid: true });
     this.def = d.requestJSONRPC ((this.draftSavedAlready ? 'update' : 'create') + 'Draft', loc,
                                  msg,
                                  this.inReplyTo || null,

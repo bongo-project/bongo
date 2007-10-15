@@ -133,9 +133,9 @@ def AcceptCredentials(req):
 
     # different cookie libs give us different results?!
     if authCookieName:
-        authCookie = reqCookies.get(authCookieName, None)
+        authCookie = reqCookies.get(authCookieName.replace("@", "%40"), None)
         if not authCookie:
-            authCookie = reqCookies.get(authCookieName.lower(), None)
+            authCookie = reqCookies.get(authCookieName.lower().replace("@", "%40"), None)
         if not authCookie:
             req.log.debug("Unable to get cookie %s for %s", authCookieName, currentUser)
 
@@ -158,6 +158,8 @@ def AcceptCredentials(req):
             return False
 
         authCookieName = GetAuthCookieName(credUser)
+	# Escape the cookie name (incase the user's name has funny chars)
+	authCookieName = authCookieName.replace("@", "%40")
 
         req.log.debug("adding auth cookie: %s", authCookieName)
         Cookie.add_cookie(req, authCookieName, newCookie, path="/")
@@ -183,7 +185,7 @@ def AcceptCredentials(req):
     if ver is None:
         req.log.debug("adding currentUser cookie")
         # expire in one hour
-        Cookie.add_cookie(req, "currentUser", currentUser,
+        Cookie.add_cookie(req, "currentUser", currentUser.replace("@", "%40"),
                           path=req.uri, expires=time.time()+3600)
 
     req.user = currentUser
