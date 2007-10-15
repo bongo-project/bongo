@@ -96,7 +96,7 @@ MsgAuthFindCookie(const char *username, const char *token)
 	cookiefile = fopen(path, "r");
 	if (! cookiefile) return 2;
 
-	while (fread(&cookie, 1, sizeof(MsgAuthCookie), cookiefile) != sizeof(MsgAuthCookie)) {
+	while (fread(&cookie, 1, sizeof(MsgAuthCookie), cookiefile) == sizeof(MsgAuthCookie)) {
 		if (cookie.expiration < now) {
 			expired_tokens = TRUE;
 			continue;
