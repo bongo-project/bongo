@@ -85,7 +85,7 @@ MsgAuthFindCookie(const char *username, const char *token)
 	char path[XPL_MAX_PATH+1];
 	FILE *cookiefile = NULL;
 	MsgAuthCookie cookie;
-	int result = 1;
+	int result = 0;
 	BOOL expired_tokens = FALSE;
 	uint64_t now;
 
