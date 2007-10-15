@@ -38,8 +38,8 @@ class MailImportCommand(Command):
                 fd = open(file)
 
             mailstore = mailbox.PortableUnixMailbox(fd, email.message_from_file)
-    elif type == "maildir":
-        mailstore = mailbox.Maildir(file, email.message_from_file)
+        elif type == "maildir":
+            mailstore = mailbox.Maildir(file, email.message_from_file)
 
         for msg in mailstore:
             data = msg.as_string(True)
