@@ -2135,7 +2135,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     MsgGetRFC822Date(-1, 0, timeLine);
 
     fprintf(rtsData, "Date: %s\r\n", timeLine);
-    fprintf(rtsData, "From: Mail Delivery System <%s>\r\n", Conf.postMaster);
+    fprintf(rtsData, "From: Mail Delivery System <%s>\r\n", postmaster);
     fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
     fprintf(rtsData, "To: <%s>\r\n", sender);
     fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
