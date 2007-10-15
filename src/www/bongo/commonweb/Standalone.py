@@ -1,6 +1,8 @@
 import os
 import sys
 
+import base64
+
 import Cookie
 import StringIO
 import logging
@@ -23,7 +25,8 @@ class HttpRequest:
     log = logging.getLogger("Dragonfly")
     options = { "DragonflyUriRoot" : "/user",
                 "HawkeyeTmplRoot" : None,      # determine this later
-                "HawkeyeUriRoot" : "/admin"}
+                "HawkeyeUriRoot" : "/admin",
+                "SundialUriRoot" : "/calendars"}
 
     def __init__(self, req, path, server=HttpServer()):
         self.oldreq = req
@@ -38,7 +41,15 @@ class HttpRequest:
         else:
             self.uri, self.args = req.path.split("?", 1)
 
-        self.user = None
+        # TODO Review this. This needs updating, but it "works for now".
+        auth_header = self.headers_in.get("Authorization", None)
+        if auth_header and auth_header[:5] == "Basic":
+            userpassencoded = auth_header[6:]
+            userpass = base64.b64decode(userpassencoded)
+            self.user = userpass[:userpass.find(":")]
+            self._password = userpass[(userpass.find(":")+1):]
+        else:
+            self.user = None
 
         self.sent_bodyct = 0
         self.wbuf = StringIO.StringIO()
@@ -85,3 +96,6 @@ class HttpRequest:
     def write(self, str, *args, **kwargs):
         self.sent_bodyct += len(str)
         return self.wbuf.write(str)
+
+    def get_basic_auth_pw(self):
+        return self._password

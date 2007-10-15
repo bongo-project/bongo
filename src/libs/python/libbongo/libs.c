@@ -49,7 +49,7 @@ extern EnumItemDef MsgApiEnums[];
 extern PyMethodDef StreamIOMethods[];
 extern PyMethodDef BongoJsonMethods[];
 extern PyMethodDef BongoUtilMethods[];
-
+extern PyMethodDef TestMethods[];
 
 PyMODINIT_FUNC
 initlibs()
@@ -105,6 +105,7 @@ initlibs()
     AddLibrary(module, "streamio", StreamIOMethods, NULL);
     AddLibrary(module, "bongojson", BongoJsonMethods, NULL);
     AddLibrary(module, "bongoutil", BongoUtilMethods, NULL);
+    AddLibrary(module, "tests", TestMethods, NULL);
 
     BongoJsonPostInit(module);
     BongoCalPostInit(module);

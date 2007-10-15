@@ -22,6 +22,7 @@ libs_la_SOURCES =				\
 	src/libs/python/libbongo/streamio.c	\
 	src/libs/python/libbongo/json.c		\
 	src/libs/python/libbongo/json.h		\
+	src/libs/python/libbongo/tests.c	\
 	src/libs/python/libbongo/bongoutil.c
 
 libs_la_CPPFLAGS = $(AM_CPPFLAGS)		\
