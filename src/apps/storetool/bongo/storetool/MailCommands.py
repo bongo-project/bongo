@@ -122,9 +122,10 @@ class MailImapCommand(Command):
 
         self.add_option("", "--imap_username", type="string", default="", help=_("IMAP server username"))
         self.add_option("", "--imap_password", type="string", default="", help=_("IMAP server password"))
-        self.add_option("", "--imap_folder", type="string", default="INBOX", help=_("IMAP server folder"))
+        self.add_option("", "--imap_folder", type="string", default="INBOX", help=_("IMAP server folder, defaults to INBOX"))
         self.add_option("", "--imap_server", type="string", default="", help=_("IMAP server hostname"))
-        self.add_option("", "--imap_port", type="int", default=143, help=_("IMAP server port"))
+        self.add_option("", "--imap_port", type="int", default=143, help=_("IMAP server port, defaults to 143"))
+        self.add_option("-f", "--folder", type="string", default="INBOX", help=_("Folder to export from, defaults to INBOX"))
 
     def Run(self, options, args):
         if (options.imap_username == "" or
@@ -134,20 +135,20 @@ class MailImapCommand(Command):
 
         store = StoreClient(options.user, options.store)
         try:
-            self.ImportMail(store, options.imap_username, options.imap_password, options.imap_folder, options.imap_server, options.imap_port)
+            self.ImportMail(store, options.folder, options.imap_username, options.imap_password, options.imap_folder, options.imap_server, options.imap_port)
         finally:
             store.Quit()
 
-    def ImportMail(self, store, username, password, folder, server, port):
+    def ImportMail(self, store, folder, imap_username, imap_password, imap_folder, imap_server, imap_port):
         import imaplib
 
         collection = "/mail/" + folder
         store.Create(collection, existingOk=True)
 
         try:
-            M=imaplib.IMAP4(server, port)
-            M.login(username, password)
-            M.select(folder)
+            M=imaplib.IMAP4(imap_server, imap_port)
+            M.login(imap_username, imap_password)
+            M.select(imap_folder)
             
             try:
                 typ, data = M.search(None, 'ALL')
