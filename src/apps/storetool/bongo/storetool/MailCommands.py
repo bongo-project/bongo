@@ -122,10 +122,10 @@ class MailImapCommand(Command):
 
         self.add_option("", "--imap_username", type="string", default="", help=_("IMAP server username"))
         self.add_option("", "--imap_password", type="string", default="", help=_("IMAP server password"))
-        self.add_option("", "--imap_folder", type="string", default="INBOX", help=_("IMAP server folder, defaults to INBOX"))
+        self.add_option("", "--imap_folder", type="string", default="INBOX", help=_("IMAP server folder to export from, defaults to INBOX"))
         self.add_option("", "--imap_server", type="string", default="", help=_("IMAP server hostname"))
         self.add_option("", "--imap_port", type="int", default=143, help=_("IMAP server port, defaults to 143"))
-        self.add_option("-f", "--folder", type="string", default="INBOX", help=_("Folder to export from, defaults to INBOX"))
+        self.add_option("-f", "--folder", type="string", default="INBOX", help=_("Folder to import into, defaults to INBOX"))
 
     def Run(self, options, args):
         if (options.imap_username == "" or
