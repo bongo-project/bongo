@@ -42,8 +42,7 @@ class MailImportCommand(Command):
             mailstore = mailbox.Maildir(file, email.message_from_file)
 
         for msg in mailstore:
-            data = msg.as_string(True)
-            store.Write(collection, DocTypes.Mail, data)
+            store.Write(collection, DocTypes.Mail, msg.as_string(True))
 
         if fd:
             fd.close()
@@ -112,3 +111,52 @@ class MailExportCommand(Command):
                     print str(e)
         finally:
             store.Quit()
+
+class MailImapCommand(Command):
+    log = logging.getLogger("Bongo.StoreTool")
+
+    def __init__(self):
+        Command.__init__(self,"mail-importimap", aliases=["mii"],
+                        summary="Imports mail from an IMAP server",
+                        usage="%prog %cmd")
+
+        self.add_option("", "--imap_username", type="string", default="", help=_("IMAP server username"))
+        self.add_option("", "--imap_password", type="string", default="", help=_("IMAP server password"))
+        self.add_option("", "--imap_folder", type="string", default="INBOX", help=_("IMAP server folder"))
+        self.add_option("", "--imap_server", type="string", default="", help=_("IMAP server hostname"))
+        self.add_option("", "--imap_port", type="int", default=143, help=_("IMAP server port"))
+
+    def Run(self, options, args):
+        if (options.imap_username == "" or
+            options.imap_server == ""):
+            self.print_help()
+            self.exit()
+
+        store = StoreClient(options.user, options.store)
+        try:
+            self.ImportMail(store, options.imap_username, options.imap_password, options.imap_folder, options.imap_server, options.imap_port)
+        finally:
+            store.Quit()
+
+    def ImportMail(self, store, username, password, folder, server, port):
+        import imaplib
+
+        collection = "/mail/" + folder
+        store.Create(collection, existingOk=True)
+
+        try:
+            M=imaplib.IMAP4(server, port)
+            M.login(username, password)
+            M.select(folder)
+            
+            try:
+                typ, data = M.search(None, 'ALL')
+                for num in data[0].split():
+                    store.WriteImap(collection, DocTypes.Mail, M, num)
+
+            finally:
+                M.close()
+                M.logout()
+        finally:
+            return
+        

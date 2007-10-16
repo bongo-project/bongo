@@ -788,6 +788,47 @@ class StoreClient:
         self.user = name
         return r
 
+    def WriteImap(self, collection, type, imap, num, filename=None, index=None, guid=None, timeCreated=None, flags=None, link=None):
+
+        typ, data = imap.fetch(num, '(RFC822.SIZE)')
+        cnt = int(re.findall(r'RFC822\.SIZE (\d+)', data[0])[0])
+
+        command = "WRITE \"%s\" %d %d" % (collection, type, cnt)
+
+        if index is not None:
+            command = command + " I%s" % index
+
+        if filename is not None:
+            command = command + " \"F%s\"" % filename
+
+        if guid is not None:
+            command = command + " G%s" % guid
+
+        if timeCreated is not None:
+            command += " T" + timeCreated
+
+        if flags is not None:
+            command = command + " Z%d" % flags
+
+        if link is not None:
+            command = command + " \"L%s\"" % link
+
+        self.stream.Write(command)
+        
+
+        r = self.stream.GetResponse()
+        if r.code != 2002:
+            raise CommandError(r)
+
+        self.stream.WriteRaw(imap.fetch(num, '(RFC822)')[1][0][1])
+
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
+
+        (guid, junk) = r.message.split(" ", 1)
+        return guid
+
     def Write(self, collection, type, data, filename=None, index=None, guid=None, timeCreated=None, flags=None, link=None):
         if data is None:
             data = ""
