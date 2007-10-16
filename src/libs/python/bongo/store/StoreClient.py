@@ -820,7 +820,7 @@ class StoreClient:
         if r.code != 2002:
             raise CommandError(r)
 
-        self.stream.WriteRaw(imap.fetch(num, '(RFC822)')[1][0][1])
+        self.stream.WriteRaw(imap.fetch(num, '(body[])')[1][0][1])
 
         r = self.stream.GetResponse()
         if r.code != 1000:
