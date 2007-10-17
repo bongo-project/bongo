@@ -1655,7 +1655,7 @@ ConnWriteFile(Connection *Conn, FILE *Source)
         ConnTcpFlush(c, c->send.read, c->send.write, &i);
         if (i > 0) {
             c->send.read = c->send.write = c->send.buffer;
-            c->send.remaining = CONN_TCP_MTU;
+            c->send.remaining = r = CONN_TCP_MTU;
 
             c->send.write[0] = '\0';
             continue;
