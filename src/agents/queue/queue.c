@@ -573,8 +573,6 @@ DeliverToStore(NMAPConnections *list,
                 (ccode = ConnFlush(nmap->conn)) == -1) {
                 nmap->error = TRUE;
 
-                FCLOSE_CHECK(fh);
-
                 return DELIVER_TRY_LATER;
             }
         }
