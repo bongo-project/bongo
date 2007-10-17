@@ -1056,6 +1056,7 @@ StartOver:
             sprintf(dataFilename, "d%s.msg", entry);
 
             if (!dSize) {
+                sprintf(path, "%s/%s", Conf.spoolPath, dataFilename);
                 if (stat(path, &sb)) {
                     ProcessQueueEntryCleanUp(idLock, report);
                     return(TRUE);
