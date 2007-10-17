@@ -3134,13 +3134,13 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
         if (bytes <= 0) {
             return ConnWriteStr(client->conn, MSG3017INTARGRANGE);
         }
-        msgfile = XplOpenTemp(MsgGetDir(MSGAPI_DIR_WORK, NULL, 0),
-            "w+b", tmpFile);
+        msgfile = XplOpenTemp(MsgGetDir(MSGAPI_DIR_WORK, NULL, 0), "w+b", tmpFile);
         if (!msgfile) {
             return ConnWriteStr(client->conn, MSG5202TMPWRITEERR);
         }
         ccode = ConnReadToFile(client->conn, msgfile, bytes);
         if (-1 == ccode) {
+            unlink(tmpFile);
             fclose (msgfile);
             return ConnWriteStr(client->conn, MSG5202TMPWRITEERR);
         }
