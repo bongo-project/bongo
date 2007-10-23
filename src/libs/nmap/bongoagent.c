@@ -130,7 +130,7 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 			break;
 		case BONGO_JSON_STRING: {
 			char **dest = (char **)schema->destination;
-			*dest = BongoJsonNodeAsString(node);
+			*dest = MemStrdup(BongoJsonNodeAsString(node));
 			}
 			break;
 		case BONGO_JSON_ARRAY: {

@@ -1853,7 +1853,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
             }
         }
         else if (Recips[0].Flags & DSN_HEADER) {
-            if (ConnWrite(Client->remotesmtp.conn, "RET=HDRS", 9) < 1) {
+            if (ConnWrite(Client->remotesmtp.conn, " RET=HDRS", 9) < 1) {
                 DELIVER_ERROR (DELIVER_TRY_LATER);
             }
         }
