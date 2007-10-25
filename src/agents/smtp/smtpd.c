@@ -48,8 +48,6 @@
 struct {
 	int port;
 	int port_ssl;
-	char *hostname;
-	char *hostaddr;
 	BOOL allow_client_ssl;
 	BOOL allow_expn;
 	BOOL allow_auth;
@@ -59,7 +57,6 @@ struct {
 	BOOL accept_etrn;
 	BOOL send_etrn;
 	int max_recips;
-	char *postmaster;
 	int message_limit;
 	BOOL use_relay;
 	BOOL relay_local;
@@ -75,8 +72,6 @@ struct {
 static BongoConfigItem SMTPConfig[] = {
 	{ BONGO_JSON_INT, "o:port/i", &SMTP.port },
 	{ BONGO_JSON_INT, "o:port_ssl/i", &SMTP.port_ssl },
-	{ BONGO_JSON_STRING, "o:hostname/s", &SMTP.hostname },
-	{ BONGO_JSON_STRING, "o:hostaddr/s", &SMTP.hostaddr },
 	{ BONGO_JSON_BOOL, "o:allow_client_ssl/b", &SMTP.allow_client_ssl },
 	{ BONGO_JSON_BOOL, "o:allow_expn/b", &SMTP.allow_expn },
 	{ BONGO_JSON_BOOL, "o:allow_vrfy/b", &SMTP.allow_vrfy },
@@ -85,7 +80,6 @@ static BongoConfigItem SMTPConfig[] = {
 	{ BONGO_JSON_BOOL, "o:accept_etrn/b", &SMTP.accept_etrn },
 	{ BONGO_JSON_BOOL, "o:send_etrn/b", &SMTP.send_etrn },
 	{ BONGO_JSON_INT, "o:maximum_recipients/i", &SMTP.max_recips },
-	{ BONGO_JSON_STRING, "o:postmaster/s", &SMTP.postmaster },
 	{ BONGO_JSON_INT, "o:message_size_limit/i", &SMTP.message_limit },
 	{ BONGO_JSON_BOOL, "o:use_relay_host/b", &SMTP.use_relay },
 	{ BONGO_JSON_STRING, "o:relay_host/s", &SMTP.relay_host },
@@ -118,7 +112,6 @@ int TGid;
 XplRWLock ConfigLock;
 BOOL SMTPReceiverStopped = FALSE;
 
-unsigned char OfficialName[MAXEMAILNAMESIZE + 1] = "";
 BOOL Notify = FALSE;
 BOOL AllowClientSSL = FALSE;
 BOOL DomainUsernames = TRUE;
@@ -410,15 +403,14 @@ HandleConnection (void *param)
                 LOGIP(Client->client.conn->socketAddress), ReplyInt);
         }
         
-        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", SMTP.hostname, MSG421SHUTDOWN);
+        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", Globals.hostname, MSG421SHUTDOWN);
         
         ConnWrite (Client->client.conn, Reply, count);
         ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
     }
 
-    snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", SMTP.hostname,
-              MSG220READY, PRODUCT_VERSION);
+    snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", Globals.hostname, MSG220READY, PRODUCT_VERSION);
     ConnWrite (Client->client.conn, Answer, strlen (Answer));
     ConnFlush (Client->client.conn);
 
@@ -428,8 +420,7 @@ HandleConnection (void *param)
             if (Exiting == FALSE) {
                 count = ConnReadToAllocatedBuffer(Client->client.conn, &(Client->client.buffer), &(Client->client.buflen));
             } else {
-                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                          SMTP.hostname, MSG421SHUTDOWN);
+                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", Globals.hostname, MSG421SHUTDOWN);
                 ConnWrite (Client->client.conn, Answer, strlen (Answer));
                 ConnFlush(Client->client.conn);
                 return (EndClientConnection (Client));
@@ -444,8 +435,7 @@ HandleConnection (void *param)
                     LOGIP(soc_address), time(NULL) - connectionTime);
                 return (EndClientConnection (Client));
             } else if (count < 1) {
-                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n",
-                          SMTP.hostname, MSG421SHUTDOWN);
+                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", Globals.hostname, MSG421SHUTDOWN);
                 ConnWrite (Client->client.conn, Answer, strlen (Answer));
                 ConnFlush(Client->client.conn);
                 return (EndClientConnection (Client));
@@ -457,8 +447,7 @@ HandleConnection (void *param)
             switch (toupper (Client->Command[3])) {
             case 'O':          /* HELO */
                 if (Client->State == STATE_FRESH) {
-                    snprintf (Answer, sizeof (Answer), "250 %s %s\r\n",
-                              SMTP.hostname, MSG250HELLO);
+                    snprintf (Answer, sizeof (Answer), "250 %s %s\r\n", Globals.hostname, MSG250HELLO);
                     ConnWrite (Client->client.conn, Answer, strlen (Answer));
                     strncpy (Client->RemoteHost, Client->Command + 5,
                              sizeof (Client->RemoteHost));
@@ -1277,7 +1266,7 @@ HandleConnection (void *param)
                          Client->client.conn->socketAddress.sin_addr.s_lh,
                          Client->client.conn->socketAddress.sin_addr.s_impno,
                          
-                         SMTP.hostname,
+                         Globals.hostname,
                          WithProtocol,
                          PRODUCT_NAME,
                          PRODUCT_VERSION,
@@ -1360,8 +1349,7 @@ HandleConnection (void *param)
                     }
                 }
             }
-            snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", SMTP.hostname,
-                      MSG221QUIT);
+            snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", Globals.hostname, MSG221QUIT);
             ConnWrite (Client->client.conn, Answer, strlen (Answer));
             return (EndClientConnection (Client));
             break;
@@ -1378,7 +1366,7 @@ HandleConnection (void *param)
                             if (SMTP.message_limit > 0) {
                                 snprintf (Answer, sizeof (Answer),
                                           "250-%s %s\r\n%s%s%s%s %lu\r\n",
-                                          SMTP.hostname, MSG250HELLO,
+                                          Globals.hostname, MSG250HELLO,
                                           SMTP.accept_etrn ? MSG250ETRN : "",
                                           (SMTP.allow_client_ssl
                                            && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
@@ -1389,7 +1377,7 @@ HandleConnection (void *param)
                             else {
                                 snprintf (Answer, sizeof (Answer),
                                           "250-%s %s\r\n%s%s%s%s\r\n",
-                                          SMTP.hostname, MSG250HELLO,
+                                          Globals.hostname, MSG250HELLO,
                                           SMTP.accept_etrn ? MSG250ETRN : "",
                                           (SMTP.allow_client_ssl
                                            && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
@@ -1697,7 +1685,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     status = GetAnswer (Client, Reply, sizeof (Reply));
     HandleFailure (220);
 
-    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", SMTP.hostname);
+    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Globals.hostname);
     if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
@@ -1705,7 +1693,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
 
     status = GetEHLO (Client, &Extensions, &Size);
     if (status != 250) {
-        snprintf (Answer, sizeof (Answer), "HELO %s\r\n", SMTP.hostname);
+        snprintf (Answer, sizeof (Answer), "HELO %s\r\n", Globals.hostname);
         if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
@@ -1728,7 +1716,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 if(ConnEncrypt(Client->remotesmtp.conn, SSLContext) < 0) {
                     DELIVER_ERROR (DELIVER_FAILURE);
                 }
-                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", SMTP.hostname);
+                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Globals.hostname);
                 if (ConnWrite(Client->remotesmtp.conn, Answer, status) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
@@ -2065,7 +2053,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
              Client->client.conn->socketAddress.sin_addr.s_host,
              Client->client.conn->socketAddress.sin_addr.s_lh,
              Client->client.conn->socketAddress.sin_addr.s_impno,
-             SMTP.hostname, 
+             Globals.hostname, 
              PRODUCT_NAME,
              PRODUCT_VERSION,
              TimeBuf);
@@ -3574,6 +3562,7 @@ QueueServerStartup (void *ignored)
     ConnectionStruct *client;
     int ccode;
     XplThreadID id = 0;
+    BOOL qd = FALSE, qo = FALSE;
 
     XplRenameThread (XplGetThreadID (), "SMTP NMAP Q Monitor");
 
@@ -3595,13 +3584,23 @@ QueueServerStartup (void *ignored)
     }
 
     /* register on the two queues we need to be on */
-    if (QueueRegister(MSGSRV_AGENT_SMTP, Q_DELIVER, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED ||
-        QueueRegister(MSGSRV_AGENT_SMTP, Q_OUTGOING, SMTPQServerConnection->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
-        XplConsolePrintf("bongosmtp: Could not register with bongonmap\r\n");
-        ConnFree(SMTPQServerConnection);
-        raise(SIGTERM);
-        return;
-    }
+    while (!qd && !qo) {
+        if (!qd) {
+            qd = (QueueRegister(MSGSRV_AGENT_SMTP, Q_DELIVER, SMTPQServerConnection->socketAddress.sin_port) == REGISTRATION_COMPLETED);
+        }
+        if (!qo) {
+            qo = (QueueRegister(MSGSRV_AGENT_SMTP, Q_OUTGOING, SMTPQServerConnection->socketAddress.sin_port) == REGISTRATION_COMPLETED);
+        }
+        if (Exiting) {
+            ConnFree(SMTPQServerConnection);
+            raise(SIGTERM);
+            return;
+        }
+        if (!qd || !qo) {
+            Log(LOG_ERROR, "Could not register with bongoqueue, sleeping for 3 seconds");
+            XplDelay(3000);
+        }
+    };
 
     while (!Exiting) {
         if (ConnAccept(SMTPQServerConnection, &conn) != -1) {
@@ -3629,9 +3628,7 @@ QueueServerStartup (void *ignored)
 
     XplSafeDecrement (SMTPServerThreads);
 
-#if VERBOSE
-    XplConsolePrintf ("SMTPD: Queue monitor thread done.\r\n");
-#endif
+    Log(LOG_DEBUG, "Queue monitor thread done.");
 
     return;
 }
@@ -3665,7 +3662,7 @@ ServerSocketInit (void)
 
     SMTPServerConnection = ConnAlloc(FALSE);
     if (!SMTPServerConnection) {
-        XplConsolePrintf("bongoimap: Could not allocate the connection\n");
+        Log(LOG_ERROR, "Could not allocate the connection.");
         return -1;
     }
 
@@ -3681,15 +3678,13 @@ ServerSocketInit (void)
 
     /* drop the privs back */
     if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-        Log(LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
-        XplConsolePrintf ("bongosmtp: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser ());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser ());
         return -1;
     }
 
     if (SMTPServerConnection->socket < 0) {
         ccode = SMTPServerConnection->socket;
-        Log(LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
-        XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
+        Log(LOG_ERROR, "Could not allocate SMTP socket");
         ConnFree(SMTPServerConnection);
         return ccode;
     }
@@ -3703,7 +3698,7 @@ ServerSocketSSLInit (void)
 
     SMTPServerConnectionSSL = ConnAlloc(FALSE);
     if (SMTPServerConnectionSSL == NULL) {
-        XplConsolePrintf("bongoimap: Could not allocate the connection\n");
+        Log(LOG_ERROR, "Could not allocate the SSL connection");
         ConnFree(SMTPServerConnection);
         return -1;
     }
@@ -3719,15 +3714,13 @@ ServerSocketSSLInit (void)
     SMTPServerConnectionSSL->socket = ConnServerSocket(SMTPServerConnectionSSL, 2048);
     /* drop the privs back */
     if (XplSetEffectiveUser (MsgGetUnprivilegedUser ()) < 0) {
-        Log(LOG_ERROR, "Priv failure User %s", MsgGetUnprivilegedUser ());
-        XplConsolePrintf ("bongosmtp: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser ());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s' for SSL", MsgGetUnprivilegedUser ());
         return -1;
     }
 
     if (SMTPServerConnectionSSL->socket < 0) {
         ccode = SMTPServerConnectionSSL->socket;
-        Log(LOG_ERROR, "Create socket failed %s Line %d", "", __LINE__);
-        XplConsolePrintf ("bongosmtp: Could not allocate socket.\n");
+        Log(LOG_ERROR, "Could not allocate SSL socket");
         ConnFree(SMTPServerConnection);
         return ccode;
     }
@@ -3804,10 +3797,7 @@ SMTPServer (void *ignored)
                 }
 
             default:{
-                    arg = errno;
-
-                    Log(LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
-                    XplConsolePrintf ("SMTPD: Exiting after an accept() failure with an errno: %d\n", arg);
+                    Log(LOG_ALERT, "Accept failure: Errno %d", errno);
 
                     break;
                 }
@@ -3825,9 +3815,8 @@ SMTPServer (void *ignored)
 
     oldTGID = XplSetThreadGroupID (TGid);
 
-#if VERBOSE
-    XplConsolePrintf ("\rSMTPD: Closing server sockets\r\n");
-#endif
+    Log(LOG_DEBUG, "Closing server socket");
+
     if (SMTPServerConnection) {
         ConnClose(SMTPServerConnection, 1);
         ConnFree(SMTPServerConnection);
@@ -3860,12 +3849,10 @@ SMTPServer (void *ignored)
     }
 
     if (XplSafeRead (SMTPServerThreads) > 1) {
-        XplConsolePrintf ("SMTPD: %d server threads outstanding; attempting forceful unload.\r\n", XplSafeRead (SMTPServerThreads) - 1);
+        Log(LOG_ERROR, "%d server threads outstanding; attempting forceful unload.", XplSafeRead(SMTPServerThreads)-1);
     }
 
-#if VERBOSE
-    XplConsolePrintf ("SMTPD: Shutting down %d conn client threads and %d queue client threads\r\n", XplSafeRead (SMTPConnThreads), XplSafeRead (SMTPQueueThreads));
-#endif
+    Log(LOG_DEBUG, "Shutting down %d conn client threads and %d queue client threads.", XplSafeRead(SMTPConnThreads), XplSafeRead(SMTPQueueThreads));
 
     /*      Make sure the kids have flown the coop. */
     for (arg = 0; (XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads)) && (arg < 3 * 60); arg++) {
@@ -3873,12 +3860,10 @@ SMTPServer (void *ignored)
     }
 
     if (XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads)) {
-        XplConsolePrintf ("SMTPD: %d threads outstanding; attempting forceful unload.\r\n", XplSafeRead (SMTPConnThreads) + XplSafeRead (SMTPQueueThreads));
+        Log(LOG_ERROR, "%d threads outstanding; attempting forceful unload.", XplSafeRead(SMTPConnThreads)+XplSafeRead(SMTPQueueThreads));
     }
 
-#if VERBOSE
-    XplConsolePrintf ("SMTPD: Removing SSL data\r\n");
-#endif
+    Log(LOG_DEBUG, "Removing SSL data");
 
     /* Cleanup SSL */
     if (SSLContext) {
@@ -3896,9 +3881,7 @@ SMTPServer (void *ignored)
     MemPrivatePoolFree (SMTPConnectionPool);
     MemoryManagerClose (MSGSRV_AGENT_SMTP);
 
-#if VERBOSE
-    XplConsolePrintf ("SMTPD: Shutdown complete.\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutdown complete.");
 
     XplSignalLocalSemaphore (SMTPServerSemaphore);
     XplWaitOnLocalSemaphore (SMTPShutdownSemaphore);
@@ -3990,9 +3973,7 @@ SMTPSSLServer (void *ignored)
                     break;
                 }
             default:{
-                    arg = errno;
-                    Log(LOG_ALERT, "Accept failure %s Errno %d", "Server", arg);
-                    XplConsolePrintf ("SMTPD: Exiting after an accept() failure with an errno: %d\n", arg);
+                    Log(LOG_ALERT, "Accept failure Errno %d", errno);
                     break;
                 }
             }
@@ -4002,9 +3983,7 @@ SMTPSSLServer (void *ignored)
 
     XplSafeDecrement (SMTPServerThreads);
 
-#if VERBOSE
-    XplConsolePrintf ("SMTPD: SSL listening thread done.\r\n");
-#endif
+    Log(LOG_DEBUG, "SSL Listening thread terminated.");
 
     if (SMTPServerConnectionSSL) {
         ConnFree(SMTPServerConnectionSSL);
@@ -4023,16 +4002,14 @@ SMTPSSLServer (void *ignored)
 static BOOL
 ReadConfiguration (void)
 {
+/*
     struct sockaddr_in soc_address;
     struct sockaddr_in *sin = &soc_address;
 
     soc_address.sin_addr.s_addr = XplGetHostIPAddress ();
     sprintf (SMTP.hostaddr, "[%d.%d.%d.%d]", sin->sin_addr.s_net,
              sin->sin_addr.s_host, sin->sin_addr.s_lh, sin->sin_addr.s_impno);
-    if (strlen (SMTP.hostname) < sizeof (OfficialName)) {
-        strcpy (OfficialName, SMTP.hostname);
-    }
-
+*/
     // FIXME: Does SMTP need to know about the various domains? Or will queue fix that?
 
     /* FIXME. This should be replaced by pulling config from the store. */
@@ -4115,7 +4092,11 @@ int XplServiceMain (int argc, char *argv[])
     }
 
     if (! ReadBongoConfiguration(SMTPConfig, "smtp")) {
-        XplConsolePrintf("SMTPD: Unable to read configuration from the store\n");
+        Log(LOG_ERROR, "Unable to read SMTP configuration from the store.");
+        exit(-1);
+    }
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        Log(LOG_ERROR, "Unable to read Global configration from the store.");
         exit(-1);
     }
     ReadConfiguration ();

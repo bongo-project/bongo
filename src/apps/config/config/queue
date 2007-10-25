@@ -1,8 +1,6 @@
 {
 	"version": 1,
     "debug" : false,
-    "postmaster" : "admin",
-    "officialname" : "admin",
     "limitremoteprocessing" : false,
     "limitremotebegweekday" : 0,
     "limitremotebegweekend" : 0,

@@ -1,6 +1,5 @@
 {
 	"version": 1,
-	"postmaster": "admin@localhost",
 	"interval": 3600,
 	"queue": "localhost",
 	"max_threads": 10,

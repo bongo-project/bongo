@@ -41,8 +41,6 @@
 
 #include <msgapi.h>
 
-#include <bongoagent.h>
-
 #include "imapd.h"
 
 ImapGlobal Imap;
@@ -3190,7 +3188,7 @@ HandleConnection(void *param)
             LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
         }
 
-        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",Imap.server.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),Imap.server.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
+        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",Globals.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),Globals.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
             while (TRUE) {
                 ccode = ReadCommandLine(session->client.conn, &(session->command.buffer), &(session->command.bufferLen));
                 if (ccode == STATUS_CONTINUE) {
@@ -3392,8 +3390,6 @@ InitializeImapGlobals()
     Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
     Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
     Imap.server.threadGroupId = XplGetThreadGroupID();
-    Imap.server.hostname[0] = '\0';
-    Imap.server.hostnameLen = 0;
     strcpy(Imap.server.postmaster, "admin");
 
     /*      Imap.command.        */    
@@ -3741,12 +3737,14 @@ ReadConfiguration(void)
     localtime_r(&time_of_day, &ltm);
     gm_time_of_day=mktime(&gm);
 
-    gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
-    Imap.server.hostnameLen = strlen(Imap.server.hostname);
-
     // Imap.server.postmaster needs to be set to something?
-    if (! ReadBongoConfiguration(IMAPConfig, "imap"))
+    if (! ReadBongoConfiguration(IMAPConfig, "imap")) {
         return FALSE;
+    }
+
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        return FALSE;
+    }
 
     return(TRUE);
 }

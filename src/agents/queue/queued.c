@@ -397,7 +397,7 @@ HandleCommand(QueueClient *client)
                     ccode = ConnWrite(client->conn, MSG3240NOAUTH, sizeof(MSG3240NOAUTH) - 1);
                 }
                 
-                Log(LOG_INFO, "Handled command from %s", LOGIP(client->conn->socketAddress));
+                Log(LOG_DEBUG, "Handled command from %s", LOGIP(client->conn->socketAddress));
             }
         } else if (ccode == -1) {
             break;
@@ -421,10 +421,10 @@ ProcessClient(void *clientp, Connection *conn)
     client->authorized = CheckTrustedHost(client);
 
     if (!client->authorized) {
-        sprintf(client->authChallenge, "%x%s%x", (unsigned int)XplGetThreadID(), Conf.hostname, (unsigned int)time(NULL));
+        sprintf(client->authChallenge, "%x%s%x", (unsigned int)XplGetThreadID(), Globals.hostname, (unsigned int)time(NULL));
         ccode = ConnWriteF(client->conn, MSG4242AUTHREQUIRED, client->authChallenge);
     } else {
-        ccode = ConnWriteF(client->conn, "1000 %s %s\r\n", Conf.hostname, MSG1000READY);
+        ccode = ConnWriteF(client->conn, "1000 %s %s\r\n", Globals.hostname, MSG1000READY);
     }
     
     if (ccode == -1) {
@@ -460,18 +460,13 @@ QueueServer(void *ignored)
         Agent.clientListener = NULL;
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Closing queue database\r\n");
-#endif
+    Log(LOG_DEBUG, "Closing queue database.");
 
     QueueShutdown();
 
     XplRWLockDestroy(&Conf.lock);
 
-#if VERBOSE
-    /* Shutting down */
-    XplConsolePrintf(AGENT_NAME ": Shutting down.\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutting down.");
 
     BongoThreadPoolShutdown(Agent.clientThreadPool);
 
@@ -479,9 +474,7 @@ QueueServer(void *ignored)
 
     BongoAgentShutdown(&Agent.agent);
 
-#if VERBOSE
-    XplConsolePrintf(AGENT_NAME ": Shutdown complete\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutdown complete");
 }
 
 
@@ -501,18 +494,18 @@ ServerSocketInit(int port)
         conn->socket = ConnServerSocket(conn, 2048);
 
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            XplConsolePrintf("bongoqueue: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
             ConnFree(conn);
             return NULL;
         }
 
         if (conn->socket == -1) {
-            XplConsolePrintf("bongoqueue: Could not bind to port %d\n", port);
+            Log(LOG_ERROR, "Could not bind to port %d.", port);
             ConnFree(conn);
             return NULL;
         }
     } else {
-        XplConsolePrintf("bongoqueue: Could not allocate connection\n");
+        Log(LOG_ERROR, "Could not allocate connection.");
         return NULL;
     }
 
@@ -609,7 +602,7 @@ XplServiceMain(int argc, char *argv[])
     LogStart();
 
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n" AGENT_NAME ": exiting.\n", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
     
@@ -622,7 +615,7 @@ XplServiceMain(int argc, char *argv[])
     startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP | BA_STARTUP_MSGLIB | BA_STARTUP_MSGAUTH;
     ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_ERROR, "Initialization failed exiting.");
         return -1;
     }
     
@@ -637,12 +630,12 @@ XplServiceMain(int argc, char *argv[])
 
     Agent.clientListener = ServerSocketInit(Agent.agent.port);
     if (Agent.clientListener == NULL) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_ERROR, "Server Initialization failed exiting.");
         return -1;
     }
 
     if (QueueInit() == FALSE) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_ERROR, "Queue Initialization failed exiting.");
         return -1;
     }
 

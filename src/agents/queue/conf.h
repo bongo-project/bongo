@@ -41,10 +41,7 @@ typedef struct _QueueConfiguration {
     XplRWLock lock;
 
     /* Server info */
-    char *hostname;
-    char *postMaster;
     char serverHash[NMAP_HASH_SIZE];
-    char *officialName;
 
     /* Quotas */
     char *quotaMessage;

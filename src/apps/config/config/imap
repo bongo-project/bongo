@@ -3,5 +3,4 @@
 	"port": 143,
 	"port_ssl": 993,
 	"threads_max": 50,
-	"hostname": "localhost"
 }

@@ -294,7 +294,7 @@ SpoolEntryIDLock(unsigned long id)
 
         XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
 
-        Log(LOG_INFO, "Unable to lock spool entry %x, table full", (unsigned int) id);
+        Log(LOG_ERROR, "Unable to lock spool entry %x, table full", (unsigned int) id);
     }
 
     return(NULL);
@@ -356,7 +356,7 @@ AddPushAgent(QueueClient *client,
     int count;
     QueuePushClient *temp;
 
-    Log(LOG_INFO, "Adding client on host %s:%d to queue %d", LOGIP(client->conn->socketAddress), port, queue);
+    Log(LOG_INFO, "Adding client (%s) on host %s:%d to queue %d", identifier, LOGIP(client->conn->socketAddress), port, queue);
 
     XplMutexLock(Queue.pushClients.lock);
 
@@ -499,7 +499,7 @@ GetNMAPConnection(NMAPConnections *list,
     
     conn = NMAPConnect(NULL, address);
     if (conn == NULL) {
-        XplConsolePrintf("bongoqueue: Couldn't connect to NMAP\r\n");
+        Log(LOG_ERROR, "Could not connect to bongoqueue.");
         return DELIVER_TRY_LATER;
     }
     
@@ -1649,10 +1649,7 @@ StartOver:
             /* fixme - evaluate this section.
                Clean up behind us ? */
             if (client->entry.work) {
-                if (Agent.flags & QUEUE_AGENT_DEBUG) {
-                    XplConsolePrintf("bongoqueue: Ran into queue resend [C%s.%03d]!\r\n", entry, queue);
-                    XplConsolePrintf("bongoqueue: Last command:%s\r\n", client->buffer);
-                }
+                Log(LOG_DEBUG, "Ran into queue resend [C%s.%03d] Last Command: %s", entry, queue, client->buffer);
 
                 FCLOSE_CHECK(client->entry.work);
                 client->entry.work = NULL;
@@ -2088,7 +2085,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
         return(FALSE);
     }
 
-    sprintf(postmaster, "%s@%s", Conf.postMaster, Conf.officialName);
+    sprintf(postmaster, "%s@%s", Globals.postmaster, Globals.hostname);
     handling = Conf.bounceHandling;
 
     /* We're guaranteed to have a recipient */
@@ -2135,9 +2132,9 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
 
     fprintf(rtsData, "Date: %s\r\n", timeLine);
     fprintf(rtsData, "From: Mail Delivery System <%s>\r\n", postmaster);
-    fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
     fprintf(rtsData, "To: <%s>\r\n", sender);
-    fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
     switch (reason) {
         case DELIVER_FAILURE:           fprintf(rtsData, "Subject: Returned mail: Delivery failure\r\n");               break;
         case DELIVER_HOST_UNKNOWN:      fprintf(rtsData, "Subject: Returned mail: Host unknown\r\n");                   break;
@@ -2162,7 +2159,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     fprintf(rtsData, "Precedence: bulk\r\n\r\nThis is a MIME-encapsulated message\r\n\r\n");
 
     /* First section, human readable */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: text/plain; charset=US-ASCII\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: text/plain; charset=US-ASCII\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
 
     MsgGetRFC822Date(-1, received, timeLine);
     fprintf(rtsData, "The original message was received %s\r\nfrom %s\r\n\r\n", timeLine, aSender[0]!='\0' ? aSender : sender);
@@ -2330,14 +2327,14 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     } while (!feof(control) && !ferror(control));
 
     /* Second section, computer readable */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/delivery-status\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/delivery-status\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
 
     /* Per message fields */
     if (envID[0]!='\0') {
         fprintf(rtsData, "Original-Envelope-Id: %s\r\n", envID);
     }
 
-    fprintf(rtsData, "Reporting-MTA: dns; %s\r\n", Conf.officialName);
+    fprintf(rtsData, "Reporting-MTA: dns; %s\r\n", Globals.hostname);
 
     MsgGetRFC822Date(-1, received, timeLine);
     fprintf(rtsData, "Arrival-Date: %s\r\n", timeLine);
@@ -2398,7 +2395,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     } while (!feof(control) && !ferror(control));
 
     /* Third section, original message */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/rfc822\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/rfc822\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
 
     header = TRUE;
     maxBodySize = -1;
@@ -2436,7 +2433,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     }
 
     /* End of message */
-    fprintf(rtsData, "\r\n--%lu-%lu-%s--\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "\r\n--%lu-%lu-%s--\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
 
     /* Now create the control file */
     fprintf(rtsControl, "D%lu\r\n", now);
@@ -2552,16 +2549,12 @@ CheckQueue(void *queueIn)
         Queue.restartNeeded = Queue.flushNeeded = FALSE;
 
         if (flushing) {
-            XplConsolePrintf ("bongoqueue: flushing the queue\n");
-        }
-
-        if (Agent.flags & QUEUE_AGENT_DEBUG) {
-            XplConsolePrintf("bongoqueue: Restarting queue:");
-        }
-
-        if (!flushing) {
+            Log(LOG_INFO, "Flushing the queue.");
+        } else {
             now = time(NULL) - Conf.queueInterval + 60;
         }
+
+        Log(LOG_DEBUG, "Restarting the queue");
 
         dirP = XplOpenDir(Conf.spoolPath);
         if (dirP == NULL) {
@@ -2606,12 +2599,10 @@ CheckQueue(void *queueIn)
         }
 
         XplCloseDir(dirP);
-        if (Agent.flags & QUEUE_AGENT_DEBUG) {
-            XplConsolePrintf(" Entries found: %4lu, handled:%4lu, %srestart\r\n", found, handled, Queue.restartNeeded ? "Have " : "No ");
-        }
+        Log(LOG_DEBUG, "Entries found: %4lu, handled: %4lu, %srestart", found, handled, Queue.restartNeeded ? "Have " : "No ");
 
         if (flushing) {
-            XplConsolePrintf ("bongoqueue: finished flushing the queue\n");
+            Log(LOG_INFO, "Finished flushing the queue.");
         }
 
     delayQueue:
@@ -2626,9 +2617,7 @@ CheckQueue(void *queueIn)
 
     XplSafeDecrement(Queue.activeWorkers);
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Message queue monitor done.\r\n");
-#endif
+    Log(LOG_DEBUG, "Message queue monitor done.");
 
     XplExitThread(EXIT_THREAD, 0);
 
@@ -2639,7 +2628,7 @@ BOOL
 QueueInit(void) 
 {
     if (!InitSpoolEntryIDLocks()) {
-        XplConsolePrintf(AGENT_NAME ": Couldn't create spool locks.\r\n");
+        Log(LOG_ERROR, "Could not create spool locks.");
         return FALSE;
     }    
 
@@ -2661,9 +2650,7 @@ QueueInit(void)
 void
 QueueShutdown(void) 
 {
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Writing queue agent list\r\n");
-#endif
+    Log(LOG_DEBUG, "Writing queue agent list.");
     RemoveAllPushAgents();
 
     QDBShutdown();
@@ -2693,13 +2680,10 @@ CreateQueueThreads(BOOL failed)
     }
 
     if (failed) {
-        XplConsolePrintf("bongoqueue: System not shut down properly, verifying queue integrity.\r\n");
+        Log(LOG_INFO, "System not shut down properly, verifying queue integrity.");
+    } else {
+        Log(LOG_DEBUG, "Verifying queue integrity, quick mode.");
     }
-#if VERBOSE
-    else {
-        XplConsolePrintf("bongoqueue: Verifying queue integrity, quick mode.\r\n");
-    }
-#endif
 
     sprintf(path, "%s", Conf.spoolPath);
 
@@ -2828,14 +2812,12 @@ CreateQueueThreads(BOOL failed)
         killFile=NULL;
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Queue integrity check complete, now cleaning irrelevant entries.\r\n");
-#endif
+    Log(LOG_DEBUG, "Queue integrity check complete, now cleaning irrelevant entries.");
 
     sprintf(path, "%s/fragfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     FOPEN_CHECK(killFile, path, "rb");
     if (!killFile) {
-        XplConsolePrintf("bongoqueue: Could not re-open killfile.\r\n");
+        Log(LOG_ERROR, "Could not re-open killfile.");
     } else {
         current = 0;
         while (!feof(killFile) && !ferror(killFile)) {
@@ -2889,9 +2871,7 @@ CreateQueueThreads(BOOL failed)
         }
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Queue integrity check complete, starting Queue Monitor [%d].\r\n", XplSafeRead(Queue.queuedLocal));
-#endif
+    Log(LOG_DEBUG, "Queue integrity check complete, starting Queue Monitor [%d].", XplSafeRead(Queue.queuedLocal));
 
     XplSafeWrite(Queue.activeWorkers, 0);
 
@@ -4693,7 +4673,7 @@ CommandQstorMessage(void *param)
             client->conn->socketAddress.sin_addr.s_lh,
             client->conn->socketAddress.sin_addr.s_impno,
 
-            Agent.agent.officialName,
+            Globals.hostname,
             AGENT_NAME,
             TimeBuf);
 

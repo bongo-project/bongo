@@ -22,6 +22,7 @@
 #include <xpl.h>
 #include <stdio.h>
 #include <bongoutil.h>
+#include <bongoagent.h>
 #include <nmlib.h>
 #include <bongostore.h>
 
@@ -369,8 +370,6 @@ typedef struct {
 
         struct sockaddr_in addr;
 
-        char hostname[256];
-        unsigned long  hostnameLen;
         unsigned short port;
         int threadGroupId;
         BOOL disabled;

@@ -46,7 +46,6 @@ struct {
     REGISTRATION_LOADING, 
     { '\0' }, 
     NULL, 
-    NULL, 
 
     FALSE
 };
@@ -1612,7 +1611,7 @@ NMAPQuit(Connection *conn)
 }
 
 __inline static RegistrationStates
-RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPort, unsigned long queueNumber, const char *queueAgentServerDn, const char *queueAgentCn, unsigned long queueAgentPort)
+RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPort, unsigned long queueNumber, const char *queueAgentCn, unsigned long queueAgentPort)
 {
     unsigned long j;
     Connection *conn = NULL;
@@ -1634,7 +1633,7 @@ RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPo
 
     if (NMAPLibrary.state == REGISTRATION_REGISTERING) {
         if (NMAPAuthenticate(conn, response, CONN_BUFSIZE)) {
-            if (ConnWriteF(conn, "QWAIT %lu %d %s%s%lu\r\n", queueNumber, ntohs(queueAgentPort), queueAgentServerDn, queueAgentCn, queueNumber) > 0) {
+            if (ConnWriteF(conn, "QWAIT %lu %d %s %lu\r\n", queueNumber, ntohs(queueAgentPort), queueAgentCn, queueNumber) > 0) {
                 if (ConnFlush(conn) > -1) {
                     if (NMAPReadAnswer(conn, response, CONN_BUFSIZE, TRUE) == 1000) {
                         NMAPLibrary.state = REGISTRATION_COMPLETED;
@@ -1663,7 +1662,7 @@ QueueRegister(const unsigned char *queueAgentCn, unsigned long queueNumber, unsi
 
     NMAPLibrary.state = REGISTRATION_ALLOCATING;
 
-    RegisterWithQueueServer("127.0.0.1", BONGO_QUEUE_PORT, queueNumber, MsgGetServerDN(NULL), queueAgentCn, queueAgentPort);
+    RegisterWithQueueServer("127.0.0.1", BONGO_QUEUE_PORT, queueNumber, queueAgentCn, queueAgentPort);
     if (NMAPLibrary.state != REGISTRATION_COMPLETED) {
         NMAPLibrary.state = REGISTRATION_FAILED;
     }

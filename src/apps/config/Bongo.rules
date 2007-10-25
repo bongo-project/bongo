@@ -2,6 +2,7 @@
 sbin_PROGRAMS += bongo-config
 
 conf_defaults =                            \
+    src/apps/config/config/global       \
 	src/apps/config/config/antispam    \
 	src/apps/config/config/antivirus   \
 	src/apps/config/config/imap        \

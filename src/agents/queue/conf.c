@@ -79,8 +79,6 @@ static BongoConfigItem hostedDomainsConfig[] = {
 static BongoConfigItem QueueConfig[] = {
     { BONGO_JSON_BOOL, "o:debug/b", &Conf.debug },
     { BONGO_JSON_ARRAY, "o:hosteddomains/a", &hostedDomainsConfig },
-    { BONGO_JSON_STRING, "o:postmaster/s", &Conf.postMaster },
-    { BONGO_JSON_STRING, "o:officialname/s", &Conf.officialName },
     { BONGO_JSON_BOOL, "o:limitremoteprocessing/b", &Conf.deferEnabled },
     { BONGO_JSON_INT, "o:limitremotebegweekday/i", &Conf.i_deferStartWD },
     { BONGO_JSON_INT, "o:limitremotebegweekend/i", &Conf.i_deferStartWE },
@@ -121,6 +119,10 @@ ReadConfiguration (BOOL *recover)
     }
     
     if (!ReadBongoConfiguration(QueueConfig, "queue")) {
+        return FALSE;
+    }
+
+    if (!ReadBongoConfiguration(GlobalConfig, "global")) {
         return FALSE;
     }
     
