@@ -3027,8 +3027,11 @@ GetMimeInfo(ImapSession *session, FetchStruct *FetchRequest)
         while(ccode != 1000) {
             if ((ccode > 2001) && (ccode < 2005)) {
                 char *entry;
-                entry = MemMalloc(sizeof(char) * (strlen(session->store.response) + 1));
-                memcpy(entry, session->store.response, sizeof(entry));
+                size_t len = sizeof(char) * (strlen(session->store.response) + 1);
+
+                entry = MemMalloc(len);
+                memcpy(entry, session->store.response, len);
+
                 BongoArrayAppendValue(FetchRequest->messageDetail.mimeInfo, entry);
                 ccode = NMAPReadResponse(session->store.conn, session->store.response, sizeof(session->store.response), FALSE);
                 continue;
