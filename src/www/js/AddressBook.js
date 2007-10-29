@@ -276,6 +276,9 @@ Dragonfly.AddressBook.ContactPicker.prototype.newContactHandler = function (evt)
     if (!this.popup.canHideZone()) {
         return;
     }
+    // New popup - we don't want to edit previous crap.
+    this.popup = new Dragonfly.AddressBook.ContactPopup();
+    
     var contact = Dragonfly.AddressBook.buildNewContact();
     this.popup.edit (evt, contact, this.newContactId);
 };
@@ -502,7 +505,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.getFreeField = function (name, asSt
     return $(this.formId)[name+'0'];
 };
 
-Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem)
+Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem, updateName)
 {
     var d = Dragonfly;
 
@@ -535,6 +538,12 @@ Dragonfly.AddressBook.ContactPopup.prototype.edit = function (evt, contact, elem
     
     this.loadContact();
     this.showVertical (elem);
+    
+    // Just hope this doesn't break nuthin.
+    if (!updateName)
+    {
+        this.elem = null;
+    }
 };
 
 Dragonfly.AddressBook.ContactPopup.prototype.del = function ()
@@ -558,7 +567,10 @@ Dragonfly.AddressBook.ContactPopup.prototype.save = function ()
 {
     var AB = Dragonfly.AddressBook;
     this.serializeContact();
-    this.elem.innerHTML = this.contact.fn;
+    if (this.elem)
+    {
+        this.elem.innerHTML = this.contact.fn;
+    }
 
     Dragonfly.notify (_('Saving changes...'), true);
     AB.saveContact (this.contact).addCallbacks (bind (
