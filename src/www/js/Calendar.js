@@ -134,7 +134,7 @@ Dragonfly.Calendar.newCalendar = function (subscription)
         pop.showVertical ('sub-calendar-href');
     } else {
         d.notify ('Creating "' + d.escapeHTML (name) + '"...', true);
-        var calendar = new c.BongoCalendar (null, { name: name, color: d.getRandomColor() });
+        var calendar = new c.BongoCalendar (null, { name: name, color: d.getRandomColor(), publish: d.Preferences.prefs.calendar.sharePublicDefault || false });
         calendar.create().addCallbacks (
             function (res) {
                 d.clearNotify ();
