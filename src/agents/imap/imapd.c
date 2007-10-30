@@ -3147,29 +3147,18 @@ ImapCommandGetQuotaRoot(void *param)
 int
 ImapCommandNameSpace(void *param)
 {
-#if defined(HAVE_SHARED_FOLDERS)
     ImapSession *session = (ImapSession *)param;
-    long ccode;
 
-    if (session->client.state == STATE_SELECTED) {
-        if (((ccode = PurgeMessageNotify(session)) == STATUS_CONTINUE) && ((ccode = NewMessageNotify(session)) == STATUS_CONTINUE)) {
-            ;    
-        } else {
-            return(SendError(session->client.conn, session->command.tag, "NAMESPACE", ccode));
-        }
-    } else if (session->client.state < STATE_AUTH) {
+    if (session->client.state < STATE_AUTH) {
         return(SendError(session->client.conn, session->command.tag, "NAMESPACE", STATUS_INVALID_STATE));
     }
 
     if (ConnWrite(session->client.conn, 
-                  "* NAMESPACE ((\"\" \"/\")) ((\"Shares/\" \"/\")) ((\"Public Shares\" \"/\"))\r\n", 
-                  strlen("* NAMESPACE ((\"\" \"/\")) ((\"Shares/\" \"/\")) ((\"Public Shares\" \"/\"))\r\n")) != -1) {
+                  "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n",
+                  strlen("* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n")) != -1) {
         return(SendOk(session, "NAMESPACE"));
     }
     return(STATUS_ABORT);
-#else
-    return(SendError(((ImapSession *)param)->client.conn, ((ImapSession *)param)->command.tag, "SETACL", STATUS_UNKNOWN_COMMAND));
-#endif
 }
 
 static BOOL
@@ -3394,14 +3383,9 @@ InitializeImapGlobals()
 
     /*      Imap.command.        */    
     Imap.command.capability.acl.enabled = TRUE;
-#if defined(HAVE_SHARED_FOLDERS)
-    Imap.command.capability.len = sprintf(Imap.command.capability.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 ACL AUTH=LOGIN NAMESPACE XSENDER");
-    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 ACL AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");`
-#else
-    Imap.command.capability.len = sprintf(Imap.command.capability.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN XSENDER");
-    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN STARTTLS XSENDER LOGINDISABLED");
-
-#endif
+    /* FIXME: ACL ?? */
+    Imap.command.capability.len = sprintf(Imap.command.capability.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE XSENDER");
+    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");
 
     Imap.command.months[0] = "Jan";
     Imap.command.months[1] = "Feb";
