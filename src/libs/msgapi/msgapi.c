@@ -452,6 +452,15 @@ MsgLibraryStart(void)
     // MsgGlobal.flags |= MSGAPI_FLAG_CLUSTERED;
     // 'BOUND' conflicts with 'CLUSTERED' ?
     // MsgGlobal.flags |= MSGAPI_FLAG_BOUND; 
+    
+    /* set the ip address up correctly */
+    server_sockaddr.sin_addr.s_addr = XplGetHostIPAddress();
+    sprintf(MsgGlobal.address.string, "%d.%d.%d.%d",
+            server_sockaddr.sin_addr.s_net,
+            server_sockaddr.sin_addr.s_host,
+            server_sockaddr.sin_addr.s_lh,
+            server_sockaddr.sin_addr.s_impno);
+    MsgGlobal.address.local = inet_addr(MsgGlobal.address.string);
 
     return(TRUE);
 }
