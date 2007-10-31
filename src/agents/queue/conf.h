@@ -103,6 +103,8 @@ typedef struct _QueueConfiguration {
     /* aliasing system */
     BongoArray *hostedDomains;
     BongoArray *aliasList;
+
+    BongoArray *domains;
 } QueueConfiguration;
 
 typedef struct _AliasStruct{

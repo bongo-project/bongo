@@ -2410,14 +2410,40 @@ RewriteAddress(Connection * conn, unsigned char *Source, unsigned char *Target, 
     }
 
     /* Clean address now in WorkSpace */
-    RetVal = MAIL_REMOTE;
+    if (WorkSpace[0] == '\0') {
+        return (MAIL_BOGUS);
+    }
 
     /* TODO: i'm not sure this code is functionally equivalient with its replacement due to the address checking */
     {
     	unsigned char addr[1024];
+        unsigned char *ptr;
 
     	NMAPSendCommandF(conn, "ADDRESS RESOLVE %s\r\n", WorkSpace);
     	RetVal = NMAPReadResponse(conn, addr, 1023, FALSE);
+
+        /* find the second space */
+        ptr = strchr(addr, ' ');
+        if (ptr) {
+            ptr++;
+            ptr = strchr(ptr, ' ');
+            if (ptr) {
+                ptr++;
+            }
+        }
+
+        if (!ptr) {
+            /* there was an error getting back the address */
+            ptr = WorkSpace;
+        }
+
+        if (strlen (ptr) < TargetSize) {
+            strcpy (Target, ptr);
+        } else {
+            strncpy (Target, ptr, TargetSize - 1);
+            Target[TargetSize - 1] = '\0';
+        }
+
     	switch (RetVal) {
 		case 1000:
 			RetVal = MAIL_LOCAL;
@@ -2432,71 +2458,6 @@ RewriteAddress(Connection * conn, unsigned char *Source, unsigned char *Target, 
 			RetVal = MAIL_BOGUS;
 			break;
     	}
-    }
-    /** Check if host matches local host **/
-#if 0
-    Src = WorkSpace + strlen (WorkSpace) - 1;
-    while (Src > WorkSpace) {
-        if (*Src == '@') {
-            XplRWReadLockAcquire (&ConfigLock);
-            for (i = 0; i < UserDomainCount; i++) {
-                if (XplStrCaseCmp ((Src + 1), UserDomains[i]) == 0) {
-                    *Src = '\0';
-                    if (strrchr (WorkSpace, '%') != NULL) {
-                        RetVal = MAIL_BOGUS;
-                    }
-                    else {
-                        RetVal = MAIL_LOCAL;
-                    }
-                    *Src = '@';
-                    break;
-                }
-            }
-            for (i = 0; i < RelayDomainCount; i++) {
-                if (XplStrCaseCmp ((Src + 1), RelayDomains[i]) == 0) {
-                    *Src = '\0';
-                    if (strrchr (WorkSpace, '%') != NULL) {
-                        RetVal = MAIL_REMOTE;
-                    }
-                    else {
-                        RetVal = MAIL_RELAY;
-                    }
-                    *Src = '@';
-                    break;
-                }
-            }
-            if (RetVal == MAIL_REMOTE) {
-                for (i = 0; i < DomainCount; i++) {
-                    if (XplStrCaseCmp ((Src + 1), Domains[i]) == 0) {
-                        *Src = '\0';
-                        if ((Dst = strrchr (WorkSpace, '%')) != NULL) {
-                            *Dst = '@';
-                            RetVal = MAIL_REMOTE;
-                        }
-                        else {
-                            RetVal = MAIL_LOCAL;
-                        }
-                        break;
-                    }
-                }
-            }
-            XplRWReadLockRelease (&ConfigLock);
-        }
-        Src--;
-    }
-#endif
-    /* Clean address now in WorkSpace */
-
-    if (WorkSpace[0] == '\0')
-        return (MAIL_BOGUS);
-
-    /** We're done **/
-    if (strlen (WorkSpace) < TargetSize) {
-        strcpy (Target, WorkSpace);
-    }
-    else {
-        strncpy (Target, WorkSpace, TargetSize - 1);
-        Target[TargetSize - 1] = '\0';
     }
 
     return (RetVal);

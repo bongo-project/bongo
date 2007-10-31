@@ -20,6 +20,7 @@
     "minimumfreespace" : 5242880,
     "trustedhosts" : [],
     "hosteddomains" : [],
+    "domains" : [],
     "rtsantispamconfig_enabled" : false,
     "rtsantispamconfig_delay" : 0,
     "rtsantispamconfig_threshold" : 0,

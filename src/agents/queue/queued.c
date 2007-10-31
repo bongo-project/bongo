@@ -122,6 +122,11 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
     int i=-1;
     BOOL result=FALSE;
 
+    if (addr[0] == '\0') {
+        ConnWriteStr(conn, "4000 Invalid address\r\n");
+        return TRUE;
+    }
+
     /* very rudimentary way to prevent loops */
     if (*cnt > 5) {
         ConnWriteStr(conn, "4000 Aliasing loop\r\n");
@@ -132,6 +137,12 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
 
     /* first parse out the domain do that i can run over the hosted_domains array */
     MsgParseAddress(addr, strlen(addr), &local, &domain);
+    
+    if (!local && !domain) {
+        /* the address didn't parse correctly, assume local */
+        ConnWriteF(conn, "1000 LOCAL %s\r\n", addr);
+        return TRUE;
+    }
 
     i = BongoArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
     if (i > -1) {
@@ -155,7 +166,11 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
 
         /* we haven't already handled this address during the recursion.  it must be local */
         if (!result) {
-            ConnWriteF(conn, "1000 LOCAL %s@%s\r\n", local, domain);
+            if (domain[0] == '\0') {
+                ConnWriteF(conn, "1000 LOCAL %s\r\n", local);
+            } else {
+                ConnWriteF(conn, "1000 LOCAL %s@%s\r\n", local, domain);
+            }
             result = TRUE;
         }
     } else {

@@ -76,9 +76,15 @@ static BongoConfigItem hostedDomainsConfig[] = {
     { BONGO_JSON_NULL, NULL, NULL }
 };
 
+static BongoConfigItem domainsConfig[] = {
+    { BONGO_JSON_STRING, NULL, &Conf.domains},
+    { BONGO_JSON_NULL, NULL, NULL }
+};
+
 static BongoConfigItem QueueConfig[] = {
     { BONGO_JSON_BOOL, "o:debug/b", &Conf.debug },
     { BONGO_JSON_ARRAY, "o:hosteddomains/a", &hostedDomainsConfig },
+    { BONGO_JSON_ARRAY, "o:domains/a", &domainsConfig },
     { BONGO_JSON_BOOL, "o:limitremoteprocessing/b", &Conf.deferEnabled },
     { BONGO_JSON_INT, "o:limitremotebegweekday/i", &Conf.i_deferStartWD },
     { BONGO_JSON_INT, "o:limitremotebegweekend/i", &Conf.i_deferStartWE },
@@ -199,58 +205,69 @@ ReadConfiguration (BOOL *recover)
 
     /* now let's iterate over the hostedDomains and read in any aliasing information for those domains */
     {
-    	Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.hostedDomains->len);
+        Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.hostedDomains->len);
 
-	unsigned int x;
-	for(x=0;x<Conf.hostedDomains->len;x++) {
-		unsigned char *aconfig;
-		unsigned char path[100];
-		BongoJsonNode *node;
-		struct _AliasStruct a;
+        unsigned int x;
+        for(x=0;x<Conf.hostedDomains->len;x++) {
+            unsigned char *aconfig;
+            unsigned char path[100];
+            BongoJsonNode *node;
+            struct _AliasStruct a;
 
-		a.original = MemStrdup(BongoArrayIndex(Conf.hostedDomains, unsigned char *, x));
-		a.to = NULL;
-		a.aliases = NULL;
+            a.original = MemStrdup(BongoArrayIndex(Conf.hostedDomains, unsigned char *, x));
+            a.to = NULL;
+            a.aliases = NULL;
 
-		sprintf(path, "aliases/%s", a.original);
-		if(NMAPReadConfigFile(path, &aconfig)) {
-			if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
-				BongoJsonObject *obj;
+            sprintf(path, "aliases/%s", a.original);
+            if(NMAPReadConfigFile(path, &aconfig)) {
+                if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
+                    BongoJsonObject *obj;
 
-				BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a.to));
+                    BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a.to));
 
-				/* now get any specific aliases */
-				if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
-					BongoJsonObjectIter iter;
+                    /* now get any specific aliases */
+                    if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
+                        BongoJsonObjectIter iter;
 
-					a.aliases = BongoArrayNew(sizeof(struct _AliasStruct), 1);
+                        a.aliases = BongoArrayNew(sizeof(struct _AliasStruct), 1);
 
-					BongoJsonObjectIterFirst(obj, &iter);
-					while (iter.key) {
-						/* TODO: do i need to parse the addresses?
-						 * 	I'd need to parse original and only use the user portion
-						 * 	I'd need to parse the to and append the domain if none exists
-						 */
-						struct _AliasStruct b;
-						b.original = MemStrdup(iter.key);
-						b.to = MemStrdup(BongoJsonNodeAsString(iter.value));
-						b.aliases = NULL;
+                        BongoJsonObjectIterFirst(obj, &iter);
+                        while (iter.key) {
+                            /* TODO: do i need to parse the addresses?
+                            * 	I'd need to parse original and only use the user portion
+                            * 	I'd need to parse the to and append the domain if none exists
+                            */
+                            struct _AliasStruct b;
+                            b.original = MemStrdup(iter.key);
+                            b.to = MemStrdup(BongoJsonNodeAsString(iter.value));
+                            b.aliases = NULL;
 
-						BongoArrayAppendValue(a.aliases, b);
+                            BongoArrayAppendValue(a.aliases, b);
 
-						BongoJsonObjectIterNext(obj, &iter);
-					}
-					BongoArraySort(a.aliases, (ArrayCompareFunc)aliasCmpFunc);
-				}
-				BongoJsonNodeFree(node);
-			}
-		}
+                            BongoJsonObjectIterNext(obj, &iter);
+                        }
+                        BongoArraySort(a.aliases, (ArrayCompareFunc)aliasCmpFunc);
+                    }
+                    BongoJsonNodeFree(node);
+                }
+            }
 
-		BongoArrayAppendValue(Conf.aliasList, a);
-	}
+            BongoArrayAppendValue(Conf.aliasList, a);
+        }
 
-	/* sort the list for speed later */
-	BongoArraySort(Conf.aliasList, (ArrayCompareFunc)aliasCmpFunc);
+        /* now loop over the domains array and add aliasing to them automagically */
+        for(x=0;x<Conf.domains->len;x++) {
+            struct _AliasStruct a;
+
+            a.original = MemStrdup(BongoArrayIndex(Conf.domains, unsigned char *, x));
+            a.to = MemStrdup("");
+            a.aliases = NULL;
+
+            BongoArrayAppendValue(Conf.aliasList, a);
+        }
+
+        /* sort the list for speed later */
+        BongoArraySort(Conf.aliasList, (ArrayCompareFunc)aliasCmpFunc);
     }
     return TRUE;
 }
