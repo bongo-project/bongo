@@ -12,6 +12,7 @@ typedef struct {
 	BOOL interactive;
 	char *ip;
 	char *dns;
+    BongoJsonNode *domains;
 } BongoConfig;
 
 typedef struct {
@@ -25,6 +26,9 @@ typedef struct {
 /* function prototypes */
 
 // config.c
+void    GetInstallParameters(void);
+void    AddDomain(const char *str);
+void    SetStoreConfigurationModifications(StoreClient *client);
 void	LoadDefaultStoreConfiguration(void);
 void	InitializeDataArea(void);
 void	usage(void);
