@@ -147,14 +147,8 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
     i = BongoArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
     if (i > -1) {
         a = BongoArrayIndex(Conf.aliasList, struct _AliasStruct, i);
-        /* if there is a to domain use that instead */
-        if (a.to) {
-            MemFree(domain);
-            domain = MemStrdup(a.to);
-        }
 
-        /* now i need to see if there is an alias for local within this domain */
-        if (a.aliases) {
+        if (a.aliases && a.aliases->len) {
             i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc);
             if (i > -1) {
                 /* there is an alias for this local.  recurse, as the destination might not be local */
@@ -162,6 +156,11 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
                 b = BongoArrayIndex(a.aliases, struct _AliasStruct, i);
                 result = aliasing(conn, b.to, cnt);
             }
+        } else if (a.to && a.to[0] != '\0') {
+            // this domain is aliased to another domain.
+            char new_addr[1000];
+            snprintf(new_addr, 999, "%s@%s", local, a.to);
+            result = aliasing(conn, new_addr, cnt);
         }
 
         /* we haven't already handled this address during the recursion.  it must be local */
