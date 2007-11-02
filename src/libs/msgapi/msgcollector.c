@@ -657,7 +657,7 @@ MsgCollectAllUsers(void)
     BongoArray *users;
     int i;
 
-    if (!MsgAuthUserList(&users))
+    if (MsgAuthUserList(&users) < 0)
         return;
 
     for(i = 0; i < BongoArrayCount(users); i++) {
