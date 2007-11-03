@@ -41,7 +41,6 @@
 
 #include <nmap.h>
 
-#define CONFIGFILE
 #include <bongoagent.h>
 #include <bongoutil.h>
 #include "smtpd.h"

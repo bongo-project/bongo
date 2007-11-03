@@ -37,7 +37,6 @@
 #include <nmap.h>
 #include <bongostore.h>
 
-#define CONFIGFILE
 #include <bongoagent.h>
 
 #include "pop3.h"

@@ -194,18 +194,13 @@ struct _BongoGlobals {
     char *postmaster;
 };
 
-#ifdef CONFIGFILE
-struct _BongoGlobals BongoGlobals;
-
+extern struct _BongoGlobals BongoGlobals;
 static BongoConfigItem GlobalConfig[] = {
     { BONGO_JSON_STRING, "o:hostname/s", &BongoGlobals.hostname },
     { BONGO_JSON_STRING, "o:hostaddr/s", &BongoGlobals.hostaddr },
     { BONGO_JSON_STRING, "o:postmaster/s", &BongoGlobals.postmaster },
     { BONGO_JSON_NULL, NULL, NULL }
 };
-#else
-extern struct _BongoGlobals BongoGlobals;
-#endif
 
 #define BONGO_ENVELOPE_NEXT(p) \
     { (p) = (p) + strlen(p) + 1;                 \

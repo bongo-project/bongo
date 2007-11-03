@@ -22,7 +22,6 @@
 
 #include <config.h>
 
-#define CONFIGFILE
 #include "conf.h"
 #include "queue.h"
 

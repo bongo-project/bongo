@@ -41,7 +41,6 @@
 
 #include <msgapi.h>
 
-#define CONFIGFILE
 #include "imapd.h"
 
 ImapGlobal Imap;

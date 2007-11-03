@@ -34,6 +34,8 @@
 
 #define MONITOR_SLEEP_INTERVAL 5000
 
+struct _BongoGlobals BongoGlobals;
+
 void 
 BongoAgentHandleSignal(BongoAgent *agent,
                       int sigtype)
