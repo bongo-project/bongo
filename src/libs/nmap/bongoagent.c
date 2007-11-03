@@ -214,49 +214,47 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 BOOL 
 ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	unsigned char *pconfig;
+	BongoJsonNode *node = NULL;
+	BOOL retcode;
 	
 	if (! NMAPReadConfigFile(filename, &pconfig)) {
 		XplConsolePrintf("config: couldn't read config '%s' from store\r\n", filename);
 		return FALSE;
 	}
-	return ParseBongoConfiguration(config, pconfig);
+	if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
+		retcode = FALSE;
+	} else {
+		retcode = ProcessBongoConfiguration(config, node);
+	}
+	
+	if (node) BongoJsonNodeFree(node);
+	return retcode;
 }
 
 /**
- * Parse a configuration document
+ * Process a configuration definition
  * \param	config	BongoConfigItem array which defines configuration variables
- * \param	content	JSON text we want parsed
+ * \param	JSON node tree we want to look in
  * \return	Whether or not we were successful
  */
 
 BOOL
-ParseBongoConfiguration(BongoConfigItem *config, const unsigned char *content)
+ProcessBongoConfiguration(BongoConfigItem *config, const BongoJsonNode *node)
 {
-	BOOL retcode = FALSE;
-	BongoJsonNode *node = NULL;
-
-	if (BongoJsonParseString(content, &node) != BONGO_JSON_OK) {
-		goto finish;
-	}
-	
 	while (config->type != BONGO_JSON_NULL) {
 		BongoJsonNode *result = BongoJsonJPath(node, config->source);
 		if (!result) {
 			XplConsolePrintf("config: JSON tree for schema source %s not found\r\n", config->source);
-			goto finish;
+			return FALSE;
 		}
 		if (!SetBongoConfigItem(config, result)) {
-			// can't set item
+			// can't set item  - should return FALSE here?
 			XplConsolePrintf("config: schema source %s not found\r\n", config->source);
 		}
 		config++;
 	}
 	
-	retcode = TRUE;
-
-finish:
-	if (node) BongoJsonNodeFree(node);
-	return retcode;
+	return TRUE;
 }
 
 int
