@@ -198,7 +198,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             else:
                 req.log.debug("Nope.")
 
-            req.log.debug("request for %s (handled by %s)" % (req.path_info, handler))
+            req.log.debug("request for %s (handled by %s)" % (req.uri, handler))
 
             mname = rp.action + "_" + req.method
             hackymethod = False
