@@ -22,19 +22,20 @@
 
 #include <config.h>
 
+#define CONFIGFILE
+#include "conf.h"
 #include "queue.h"
 
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
 #include <bongoutil.h>
-#include <bongoagent.h>
+
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
 #include <connio.h>
 
-#include "conf.h"
 #include "domain.h"
 #include "messages.h"
 
@@ -71,11 +72,6 @@ static BongoConfigItem trustedHostsConfig[] = {
     { BONGO_JSON_NULL, NULL, NULL }
 };
 
-static BongoConfigItem hostedDomainsConfig[] = {
-    { BONGO_JSON_STRING, NULL, &Conf.hostedDomains},
-    { BONGO_JSON_NULL, NULL, NULL }
-};
-
 static BongoConfigItem domainsConfig[] = {
     { BONGO_JSON_STRING, NULL, &Conf.domains},
     { BONGO_JSON_NULL, NULL, NULL }
@@ -83,7 +79,6 @@ static BongoConfigItem domainsConfig[] = {
 
 static BongoConfigItem QueueConfig[] = {
     { BONGO_JSON_BOOL, "o:debug/b", &Conf.debug },
-    { BONGO_JSON_ARRAY, "o:hosteddomains/a", &hostedDomainsConfig },
     { BONGO_JSON_ARRAY, "o:domains/a", &domainsConfig },
     { BONGO_JSON_BOOL, "o:limitremoteprocessing/b", &Conf.deferEnabled },
     { BONGO_JSON_INT, "o:limitremotebegweekday/i", &Conf.i_deferStartWD },
@@ -201,22 +196,23 @@ ReadConfiguration (BOOL *recover)
     }
     
     /* sort the hostedDomains to make searching later faster. */
-    BongoArraySort(Conf.hostedDomains, (ArrayCompareFunc)hostedSortFunc);
+    BongoArraySort(Conf.domains, (ArrayCompareFunc)hostedSortFunc);
 
-    /* now let's iterate over the hostedDomains and read in any aliasing information for those domains */
+    /* now let's iterate over the domains and read in any aliasing information for those domains */
     {
-        Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.hostedDomains->len);
+        Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.domains->len);
 
         unsigned int x;
-        for(x=0;x<Conf.hostedDomains->len;x++) {
+        for(x=0;x<Conf.domains->len;x++) {
             unsigned char *aconfig;
             unsigned char path[100];
             BongoJsonNode *node;
             struct _AliasStruct a;
 
-            a.original = MemStrdup(BongoArrayIndex(Conf.hostedDomains, unsigned char *, x));
+            a.original = MemStrdup(BongoArrayIndex(Conf.domains, unsigned char *, x));
             a.to = NULL;
             a.aliases = NULL;
+            a.mapping_type = 0;
 
             sprintf(path, "aliases/%s", a.original);
             if(NMAPReadConfigFile(path, &aconfig)) {
@@ -224,6 +220,7 @@ ReadConfiguration (BOOL *recover)
                     BongoJsonObject *obj;
 
                     BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a.to));
+                    BongoJsonJPathGetInt(node, "o:username-mapping/i", &a.mapping_type);
 
                     /* now get any specific aliases */
                     if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
@@ -241,6 +238,7 @@ ReadConfiguration (BOOL *recover)
                             b.original = MemStrdup(iter.key);
                             b.to = MemStrdup(BongoJsonNodeAsString(iter.value));
                             b.aliases = NULL;
+                            b.mapping_type = 0;
 
                             BongoArrayAppendValue(a.aliases, b);
 
@@ -251,17 +249,6 @@ ReadConfiguration (BOOL *recover)
                     BongoJsonNodeFree(node);
                 }
             }
-
-            BongoArrayAppendValue(Conf.aliasList, a);
-        }
-
-        /* now loop over the domains array and add aliasing to them automagically */
-        for(x=0;x<Conf.domains->len;x++) {
-            struct _AliasStruct a;
-
-            a.original = MemStrdup(BongoArrayIndex(Conf.domains, unsigned char *, x));
-            a.to = MemStrdup("");
-            a.aliases = NULL;
 
             BongoArrayAppendValue(Conf.aliasList, a);
         }

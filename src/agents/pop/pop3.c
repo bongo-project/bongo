@@ -36,6 +36,8 @@
 #include <nmlib.h>
 #include <nmap.h>
 #include <bongostore.h>
+
+#define CONFIGFILE
 #include <bongoagent.h>
 
 #include "pop3.h"
@@ -913,7 +915,7 @@ POP3CommandPass(void *param)
         Log(LOG_INFO, "User %s logged in from host %s", client->user, LOGIP(client->conn->socketAddress));
     } else {
         if (ccode == POP3_NMAP_SERVER_DOWN) {
-            ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", Globals.hostname, MSGERRNONMAP);
+            ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", BongoGlobals.hostname, MSGERRNONMAP);
         } else if (ccode != POP3_NMAP_FEATURE_DISABLED) {
             XplDelay(2000);
             client->loginCount++;
@@ -956,7 +958,7 @@ POP3CommandPass(void *param)
             }
     
             default: {
-                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", Globals.hostname, MSGERRNONMAP);
+                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", BongoGlobals.hostname, MSGERRNONMAP);
                 break;
             }
         }
@@ -983,7 +985,7 @@ POP3CommandPass(void *param)
             }
     
             default: {
-                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", Globals.hostname, MSGERRNONMAP);
+                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", BongoGlobals.hostname, MSGERRNONMAP);
                 break;
             }
         }
@@ -1043,7 +1045,7 @@ POP3CommandQuit(void *param)
     }
 
     if(lastccode == 0)
-        ConnWriteF(client->conn, "+OK %s %s\r\n", Globals.hostname,MSGOKBYE);
+        ConnWriteF(client->conn, "+OK %s %s\r\n", BongoGlobals.hostname,MSGOKBYE);
     else
         ConnWriteF(client->conn, "-ERR %s %d, %s\r\n", MSGERRINTERNAL, lastccode, MSGOKBYE);
 
@@ -1524,7 +1526,7 @@ HandleConnection(void *param)
                         LOGIP(client->conn->socketAddress));
                 }
 
-                ccode = ConnWriteF(client->conn, "+OK %s %s %s\r\n", Globals.hostname, PRODUCT_NAME, PRODUCT_VERSION);
+                ccode = ConnWriteF(client->conn, "+OK %s %s %s\r\n", BongoGlobals.hostname, PRODUCT_NAME, PRODUCT_VERSION);
 
                 if (ccode != -1) {
                     ccode = ConnFlush(client->conn);

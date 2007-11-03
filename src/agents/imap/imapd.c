@@ -41,6 +41,7 @@
 
 #include <msgapi.h>
 
+#define CONFIGFILE
 #include "imapd.h"
 
 ImapGlobal Imap;
@@ -3177,7 +3178,7 @@ HandleConnection(void *param)
             LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
         }
 
-        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",Globals.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),Globals.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
+        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",BongoGlobals.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),BongoGlobals.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
             while (TRUE) {
                 ccode = ReadCommandLine(session->client.conn, &(session->command.buffer), &(session->command.bufferLen));
                 if (ccode == STATUS_CONTINUE) {

@@ -41,6 +41,7 @@
 
 #include <nmap.h>
 
+#define CONFIGFILE
 #include <bongoagent.h>
 #include <bongoutil.h>
 #include "smtpd.h"
@@ -403,14 +404,14 @@ HandleConnection (void *param)
                 LOGIP(Client->client.conn->socketAddress), ReplyInt);
         }
         
-        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", Globals.hostname, MSG421SHUTDOWN);
+        count = snprintf(Reply, sizeof(Reply), "421 %s %s\r\n", BongoGlobals.hostname, MSG421SHUTDOWN);
         
         ConnWrite (Client->client.conn, Reply, count);
         ConnFlush (Client->client.conn);
         return (EndClientConnection (Client));
     }
 
-    snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", Globals.hostname, MSG220READY, PRODUCT_VERSION);
+    snprintf (Answer, sizeof (Answer), "220 %s %s %s\r\n", BongoGlobals.hostname, MSG220READY, PRODUCT_VERSION);
     ConnWrite (Client->client.conn, Answer, strlen (Answer));
     ConnFlush (Client->client.conn);
 
@@ -420,7 +421,7 @@ HandleConnection (void *param)
             if (Exiting == FALSE) {
                 count = ConnReadToAllocatedBuffer(Client->client.conn, &(Client->client.buffer), &(Client->client.buflen));
             } else {
-                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", Globals.hostname, MSG421SHUTDOWN);
+                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", BongoGlobals.hostname, MSG421SHUTDOWN);
                 ConnWrite (Client->client.conn, Answer, strlen (Answer));
                 ConnFlush(Client->client.conn);
                 return (EndClientConnection (Client));
@@ -435,7 +436,7 @@ HandleConnection (void *param)
                     LOGIP(soc_address), time(NULL) - connectionTime);
                 return (EndClientConnection (Client));
             } else if (count < 1) {
-                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", Globals.hostname, MSG421SHUTDOWN);
+                snprintf (Answer, sizeof (Answer), "421 %s %s\r\n", BongoGlobals.hostname, MSG421SHUTDOWN);
                 ConnWrite (Client->client.conn, Answer, strlen (Answer));
                 ConnFlush(Client->client.conn);
                 return (EndClientConnection (Client));
@@ -447,7 +448,7 @@ HandleConnection (void *param)
             switch (toupper (Client->Command[3])) {
             case 'O':          /* HELO */
                 if (Client->State == STATE_FRESH) {
-                    snprintf (Answer, sizeof (Answer), "250 %s %s\r\n", Globals.hostname, MSG250HELLO);
+                    snprintf (Answer, sizeof (Answer), "250 %s %s\r\n", BongoGlobals.hostname, MSG250HELLO);
                     ConnWrite (Client->client.conn, Answer, strlen (Answer));
                     strncpy (Client->RemoteHost, Client->Command + 5,
                              sizeof (Client->RemoteHost));
@@ -1266,7 +1267,7 @@ HandleConnection (void *param)
                          Client->client.conn->socketAddress.sin_addr.s_lh,
                          Client->client.conn->socketAddress.sin_addr.s_impno,
                          
-                         Globals.hostname,
+                         BongoGlobals.hostname,
                          WithProtocol,
                          PRODUCT_NAME,
                          PRODUCT_VERSION,
@@ -1349,7 +1350,7 @@ HandleConnection (void *param)
                     }
                 }
             }
-            snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", Globals.hostname, MSG221QUIT);
+            snprintf (Answer, sizeof (Answer), "221 %s %s\r\n", BongoGlobals.hostname, MSG221QUIT);
             ConnWrite (Client->client.conn, Answer, strlen (Answer));
             return (EndClientConnection (Client));
             break;
@@ -1366,7 +1367,7 @@ HandleConnection (void *param)
                             if (SMTP.message_limit > 0) {
                                 snprintf (Answer, sizeof (Answer),
                                           "250-%s %s\r\n%s%s%s%s %lu\r\n",
-                                          Globals.hostname, MSG250HELLO,
+                                          BongoGlobals.hostname, MSG250HELLO,
                                           SMTP.accept_etrn ? MSG250ETRN : "",
                                           (SMTP.allow_client_ssl
                                            && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
@@ -1377,7 +1378,7 @@ HandleConnection (void *param)
                             else {
                                 snprintf (Answer, sizeof (Answer),
                                           "250-%s %s\r\n%s%s%s%s\r\n",
-                                          Globals.hostname, MSG250HELLO,
+                                          BongoGlobals.hostname, MSG250HELLO,
                                           SMTP.accept_etrn ? MSG250ETRN : "",
                                           (SMTP.allow_client_ssl
                                            && !Client->client.conn->ssl.enable) ? MSG250TLS : "",
@@ -1685,7 +1686,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     status = GetAnswer (Client, Reply, sizeof (Reply));
     HandleFailure (220);
 
-    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Globals.hostname);
+    snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", BongoGlobals.hostname);
     if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
         DELIVER_ERROR (DELIVER_TRY_LATER);
     }
@@ -1693,7 +1694,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
 
     status = GetEHLO (Client, &Extensions, &Size);
     if (status != 250) {
-        snprintf (Answer, sizeof (Answer), "HELO %s\r\n", Globals.hostname);
+        snprintf (Answer, sizeof (Answer), "HELO %s\r\n", BongoGlobals.hostname);
         if (ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer)) < 1) {
             DELIVER_ERROR (DELIVER_TRY_LATER);
         }
@@ -1716,7 +1717,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 if(ConnEncrypt(Client->remotesmtp.conn, SSLContext) < 0) {
                     DELIVER_ERROR (DELIVER_FAILURE);
                 }
-                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", Globals.hostname);
+                status = snprintf (Answer, sizeof (Answer), "EHLO %s\r\n", BongoGlobals.hostname);
                 if (ConnWrite(Client->remotesmtp.conn, Answer, status) < 1) {
                     DELIVER_ERROR (DELIVER_TRY_LATER);
                 }
@@ -2053,7 +2054,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
              Client->client.conn->socketAddress.sin_addr.s_host,
              Client->client.conn->socketAddress.sin_addr.s_lh,
              Client->client.conn->socketAddress.sin_addr.s_impno,
-             Globals.hostname, 
+             BongoGlobals.hostname, 
              PRODUCT_NAME,
              PRODUCT_VERSION,
              TimeBuf);

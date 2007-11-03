@@ -116,9 +116,12 @@
 #define NMAP_DOMAIN_LOCATION_COMMAND "DOMAIN LOCATION"
 #define NMAP_DOMAIN_LOCATION_HELP "DOMAIN LOCATION - Determine if a domain is local or remote.\r\n"
 
-#define MSG1000LOCAL "1000 %s LOCAL\r\n"
-#define MSG1001RELAY "1001 %s RELAY\r\n"
-#define MSG1002REMOTE "1002 %s REMOTE\r\n"
+#define MSG1000LOCAL "1000 LOCAL %s\r\n"
+#define MSG1001RELAY "1001 RELAY %s\r\n"
+#define MSG1002REMOTE "1002 REMOTE %s\r\n"
+#define MSG4001NO_USER "4001 Invalid address %s\r\n"
+#define MSG4000LOOP "4000 Aliasing loop\r\n"
+#define MSG4000UNKNOWN_TYPE "4000 Unknown mapping type\r\n"
 /* --------------------------------------------------- */
 
 #define MSG1000READY "Bongo NMAP server ready"

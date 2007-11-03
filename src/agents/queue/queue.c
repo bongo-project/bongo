@@ -2085,7 +2085,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
         return(FALSE);
     }
 
-    sprintf(postmaster, "%s@%s", Globals.postmaster, Globals.hostname);
+    sprintf(postmaster, "%s@%s", BongoGlobals.postmaster, BongoGlobals.hostname);
     handling = Conf.bounceHandling;
 
     /* We're guaranteed to have a recipient */
@@ -2132,9 +2132,9 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
 
     fprintf(rtsData, "Date: %s\r\n", timeLine);
     fprintf(rtsData, "From: Mail Delivery System <%s>\r\n", postmaster);
-    fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
+    fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
     fprintf(rtsData, "To: <%s>\r\n", sender);
-    fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
+    fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
     switch (reason) {
         case DELIVER_FAILURE:           fprintf(rtsData, "Subject: Returned mail: Delivery failure\r\n");               break;
         case DELIVER_HOST_UNKNOWN:      fprintf(rtsData, "Subject: Returned mail: Host unknown\r\n");                   break;
@@ -2159,7 +2159,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     fprintf(rtsData, "Precedence: bulk\r\n\r\nThis is a MIME-encapsulated message\r\n\r\n");
 
     /* First section, human readable */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: text/plain; charset=US-ASCII\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: text/plain; charset=US-ASCII\r\n\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     MsgGetRFC822Date(-1, received, timeLine);
     fprintf(rtsData, "The original message was received %s\r\nfrom %s\r\n\r\n", timeLine, aSender[0]!='\0' ? aSender : sender);
@@ -2327,14 +2327,14 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     } while (!feof(control) && !ferror(control));
 
     /* Second section, computer readable */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/delivery-status\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/delivery-status\r\n\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     /* Per message fields */
     if (envID[0]!='\0') {
         fprintf(rtsData, "Original-Envelope-Id: %s\r\n", envID);
     }
 
-    fprintf(rtsData, "Reporting-MTA: dns; %s\r\n", Globals.hostname);
+    fprintf(rtsData, "Reporting-MTA: dns; %s\r\n", BongoGlobals.hostname);
 
     MsgGetRFC822Date(-1, received, timeLine);
     fprintf(rtsData, "Arrival-Date: %s\r\n", timeLine);
@@ -2395,7 +2395,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     } while (!feof(control) && !ferror(control));
 
     /* Third section, original message */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/rfc822\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/rfc822\r\n\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     header = TRUE;
     maxBodySize = -1;
@@ -2433,7 +2433,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     }
 
     /* End of message */
-    fprintf(rtsData, "\r\n--%lu-%lu-%s--\r\n", now, (long unsigned int)XplGetThreadID(), Globals.hostname);
+    fprintf(rtsData, "\r\n--%lu-%lu-%s--\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     /* Now create the control file */
     fprintf(rtsControl, "D%lu\r\n", now);
@@ -4673,7 +4673,7 @@ CommandQstorMessage(void *param)
             client->conn->socketAddress.sin_addr.s_lh,
             client->conn->socketAddress.sin_addr.s_impno,
 
-            Globals.hostname,
+            BongoGlobals.hostname,
             AGENT_NAME,
             TimeBuf);
 

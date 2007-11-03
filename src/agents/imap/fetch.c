@@ -870,11 +870,11 @@ FetchFlagResponderXSender(void *param1, void *param2, void *param3)
 
         authLen = strlen(session->store.response);
         if (!strchr(session->store.response, '@')) {
-            size_t hostlen = strlen(Globals.hostname);
+            size_t hostlen = strlen(BongoGlobals.hostname);
             if ((ConnWriteF(session->client.conn, "XSENDER {%lu}\r\n", authLen + 1 + hostlen) != -1) && 
                 (ConnWrite(session->client.conn, session->store.response, authLen) != -1) && 
                 (ConnWrite(session->client.conn, "@", 1) != -1) && 
-                (ConnWrite(session->client.conn, Globals.hostname, hostlen) != -1)) {
+                (ConnWrite(session->client.conn, BongoGlobals.hostname, hostlen) != -1)) {
                 return(STATUS_CONTINUE);
             } 
             return(STATUS_ABORT);

@@ -409,7 +409,9 @@ MsgParseAddress(unsigned char *addressLine, size_t addressLineLength, unsigned c
         *at = '@';
         return TRUE;
     }
-    return FALSE;
+    (*local_part) = MemStrdup(addressLine);
+    (*domain) = NULL;
+    return TRUE;
 }
 #if 0
 TODO: this is going to get replaced later with something better!!

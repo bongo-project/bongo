@@ -107,11 +107,14 @@ typedef struct _QueueConfiguration {
     BongoArray *domains;
 } QueueConfiguration;
 
-typedef struct _AliasStruct{
+struct _AliasStruct{
     unsigned char* original;
     unsigned char* to;
+    unsigned int mapping_type;
     BongoArray *aliases;
-} AliasStruct;
+};
+
+typedef struct _AliasStruct AliasStruct;
 
 extern QueueConfiguration Conf;
 

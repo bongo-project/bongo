@@ -27,7 +27,6 @@
 #include <xpl.h>
 #include <memmgr.h>
 #include <bongoutil.h>
-#include <bongoagent.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -105,7 +104,7 @@ static ProtocolCommand commands[] = {
 };
 
 int aliasFindFunc(const void *str, const void *node) {
-    struct _AliasStruct *n = (struct _AliasStruct *)(node);
+    AliasStruct *n = (AliasStruct *)(node);
     return strcasecmp((char *)str, n->original);
 }
 
@@ -115,76 +114,126 @@ int hostedFindFunc(const void *str1, const void *str2) {
 }
 
 /* TODO: error handling on MsgParseAddress() */
+/* mapping types
+ *      0: username == local
+ *      1: username == local@domain
+ *      2: username == domain
+ *      3: username == auth subsystem
+*/
 BOOL aliasing(Connection *conn, char *addr, int *cnt) {
     unsigned char *local = NULL;
     unsigned char *domain = NULL;
-    struct _AliasStruct a;
     int i=-1;
     BOOL result=FALSE;
 
     if (addr[0] == '\0') {
-        ConnWriteStr(conn, "4000 Invalid address\r\n");
+        ConnWriteF(conn, MSG4001NO_USER, "");
         return TRUE;
     }
 
     /* very rudimentary way to prevent loops */
     if (*cnt > 5) {
-        ConnWriteStr(conn, "4000 Aliasing loop\r\n");
+        ConnWriteStr(conn, MSG4000LOOP);
         return TRUE;
     }
 
     (*cnt)++;
 
-    /* first parse out the domain do that i can run over the hosted_domains array */
+    /* first parse out the address so that i can loop over the domains */
     MsgParseAddress(addr, strlen(addr), &local, &domain);
-    
-    if (!local && !domain) {
-        /* the address didn't parse correctly, assume local */
-        ConnWriteF(conn, "1000 LOCAL %s\r\n", addr);
-        return TRUE;
+
+    if (local && !domain) {
+        /* if i get here, then i don't have a domain.  assume this is the username.  the only possible
+         * choices here are type 0 and type 3 */
+        if (MsgAuthFindUser(local) == 0) {
+            ConnWriteF(conn, MSG1000LOCAL, local);
+            result = TRUE;
+            goto ExitAliasing;
+        } else {
+            /* the user was not found.  it must be an invalid user */
+            ConnWriteF(conn, MSG4001NO_USER, local);
+            result = TRUE;
+            goto ExitAliasing;
+        }
     }
 
+    /* if i get here, i've got a domain name that i can look up in the alias system */
     i = BongoArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
     if (i > -1) {
-        a = BongoArrayIndex(Conf.aliasList, struct _AliasStruct, i);
+        char new_addr[1000]; /* FIXME: seems a bit large */
+        AliasStruct a;
 
-        if (a.aliases && a.aliases->len) {
-            i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc);
-            if (i > -1) {
-                /* there is an alias for this local.  recurse, as the destination might not be local */
-                struct _AliasStruct b;
-                b = BongoArrayIndex(a.aliases, struct _AliasStruct, i);
-                result = aliasing(conn, b.to, cnt);
-            }
+        new_addr[0] = '\0';
+        a = BongoArrayIndex(Conf.aliasList, AliasStruct, i);
+
+        /* user aliases should take precedence over domain aliases.  check for one of those first */
+        if (a.aliases && a.aliases->len && ((i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc)) > -1)) {
+            AliasStruct b;
+            b = BongoArrayIndex(a.aliases, AliasStruct, i);
+            result = aliasing(conn, b.to, cnt);
         } else if (a.to && a.to[0] != '\0') {
-            // this domain is aliased to another domain.
-            char new_addr[1000];
+            /* there are no user aliasess is there a domain alias? */
             snprintf(new_addr, 999, "%s@%s", local, a.to);
             result = aliasing(conn, new_addr, cnt);
         }
 
-        /* we haven't already handled this address during the recursion.  it must be local */
-        if (!result) {
-            if (domain[0] == '\0') {
-                ConnWriteF(conn, "1000 LOCAL %s\r\n", local);
-            } else {
-                ConnWriteF(conn, "1000 LOCAL %s@%s\r\n", local, domain);
+        /* we haven't already handled the address.  it must be a local address */
+        if (result == FALSE) {
+            /* based off the mapping_type of the current domain (a), i need to resolve username now */
+            switch (a.mapping_type) {
+            case 0:
+                if (MsgAuthFindUser(local) == 0) {
+                    ConnWriteF(conn, MSG1000LOCAL, local);
+                    result = TRUE;
+                }
+                break;
+            case 1:
+                if (MsgAuthFindUser(addr) == 0) {
+                    ConnWriteF(conn, MSG1000LOCAL, addr);
+                    result = TRUE;
+                }
+                break;
+            case 2:
+                if (MsgAuthFindUser(domain) == 0) {
+                    ConnWriteF(conn, MSG1000LOCAL, domain);
+                    result = TRUE;
+                }
+                break;
+            case 3:
+                /* unhandled for now */
+                ConnWriteStr(conn, MSG4000UNKNOWN_TYPE);
+                result = TRUE;
+                break;
+            default:
+                /* unhandled forever */
+                ConnWriteStr(conn, MSG4000UNKNOWN_TYPE);
+                result = TRUE;
+                break;
             }
+        }
+
+        /* if we still haven't resolved the address, it is an unknown user */
+        if (result == FALSE) {
+            ConnWriteF(conn, MSG4001NO_USER, addr);
             result = TRUE;
         }
     } else {
-        /* we don't host this domain in any way, it is a remote domain.  just echo it back */
-        ConnWriteF(conn, "1002 REMOTE %s\r\n", addr);
+        /* the user must be remote */
+        ConnWriteF(conn, MSG1002REMOTE, addr);
         result = TRUE;
+        goto ExitAliasing;
     }
 
-    if (local) {
-        MemFree(local);
-    }
-    if (domain) {
-        MemFree(domain);
-    }
-    return result;
+    ExitAliasing:
+        if (local) {
+            MemFree(local);
+        }
+
+        if (domain) {
+            MemFree(domain);
+        }
+
+        return result;
 }
 
 int CommandAddressResolve(void *param) {
@@ -194,7 +243,7 @@ int CommandAddressResolve(void *param) {
 
     handled = aliasing(client->conn, client->buffer + 16, &cnt);
     if (!handled) {
-        ConnWriteF(client->conn, "4000 UNKNOWN %s\r\n", client->buffer + 16);
+        ConnWriteF(client->conn, MSG4001NO_USER, client->buffer + 16);
     }
     return 0;
 }
@@ -435,10 +484,10 @@ ProcessClient(void *clientp, Connection *conn)
     client->authorized = CheckTrustedHost(client);
 
     if (!client->authorized) {
-        sprintf(client->authChallenge, "%x%s%x", (unsigned int)XplGetThreadID(), Globals.hostname, (unsigned int)time(NULL));
+        sprintf(client->authChallenge, "%x%s%x", (unsigned int)XplGetThreadID(), BongoGlobals.hostname, (unsigned int)time(NULL));
         ccode = ConnWriteF(client->conn, MSG4242AUTHREQUIRED, client->authChallenge);
     } else {
-        ccode = ConnWriteF(client->conn, "1000 %s %s\r\n", Globals.hostname, MSG1000READY);
+        ccode = ConnWriteF(client->conn, "1000 %s %s\r\n", BongoGlobals.hostname, MSG1000READY);
     }
     
     if (ccode == -1) {

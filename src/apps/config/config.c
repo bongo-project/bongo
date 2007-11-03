@@ -9,7 +9,10 @@
 #include <msgapi.h>
 #include <bongo-buildinfo.h>
 #include <bongostore.h>
+
+#define CONFIGFILE
 #include <bongoagent.h>
+
 #include <gnutls/gnutls.h>
 #include <gnutls/x509.h>
 #include <gcrypt.h>
