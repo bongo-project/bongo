@@ -1,6 +1,10 @@
 /*
     "Fiction writing is great, you can make up almost
     anything."                         -- Ivana Trump
+    
+    WARNING: This is probably the crappiest JS file
+             in the entire of Dragonfly. You have
+             been warned.
 */
 
 Dragonfly.Mail.Composer = function (parent, msg)

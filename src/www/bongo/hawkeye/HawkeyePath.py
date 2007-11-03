@@ -21,6 +21,7 @@ views = {
 
 class HawkeyePath:
     def __init__(self, req):
+        print "Creating new HawkeyePath from: %s" % req
         self.req = req
 
         self.view = self.action = self.path = None
@@ -73,9 +74,15 @@ class HawkeyePath:
         global views
 
         if views.has_key(self.view):
+            print "Found handler %s, using." % self.view
             handler = views[self.view]
         else:
-            raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
+            if self.view == "agents":
+                print "Using default crap handler"
+                handler = views["agents"]
+            else:
+                print "Yay, we 404ed while getting the handler"
+                raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
 
         handler.ParsePath(self)
 

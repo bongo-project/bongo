@@ -6,14 +6,27 @@ from HawkeyeHandler import HawkeyeHandler
 doneop = 0
 
 # Agent definitions
-agentdefs = { 'bongoantispam' : {
+agentdefs = {
+    'global' : {
+        'label' : 'Global',
+        'description' : 'This page describes the global configuration options available in your Bongo installation.<br />Options here will be used in most agents where required.',
+        'filename' : '/config/global',
+        'data' : {
+            'hostname' : { 'label' : 'Hostname', 'type' : 'string' },
+            'hostaddr' : { 'label' : 'Host address', 'type' : 'string' },
+            'postmaster' : { 'label' : 'Postmaster' }
+        }
+    },
+    'bongoantispam' : {
+        'label' : 'Antispam',
          'filename' : '/config/antispam',
          'data' : {
             'timeout' : { 'label' : 'Timeout', 'type' : 'int', 'suffix' : 'milliseconds' },
-            'hosts' : { 'label' : 'Hosts', 'type' : 'array,string' }
+            'hosts' : { 'label' : 'Hosts', 'type' : 'hostlist,783' }
         }
     },
     'bongoqueue' : {
+        'label' : 'Queue',
         'filename' : '/config/queue',
         'data' : {
             'postmaster': { 'label' : 'Postmaster', 'type' : 'string' },
@@ -23,6 +36,7 @@ agentdefs = { 'bongoantispam' : {
         }
     },
     'bongoavirus' : {
+        'label' : 'Antivirus',
         'filename' : '/config/antivirus',
         'data' : {
             'host' : { 'label':'Host', 'type' : 'string' },
@@ -38,60 +52,56 @@ class AgentHandler(HawkeyeHandler):
         '''
         Handler for main agent list view.
         '''
-        global doneop
-        
-        config = self.GetStoreData(req, "/config/manager")
-        
-        # change things which eval. to False to empty elements
-        if config != None and config.has_key("agents"):
-            for agent in config["agents"]:
-               # We can change this if needed?
-               agent["url"] = "agents/" + agent["name"]
-               agent["rname"] = self._humanReadableName(agent["name"])
-               agent["img"] = "../img/agent-" + agent["name"] + ".png"
-               if not agent["enabled"]:
-                   agent["enabled"] = None
-            self.SetVariable("agentlist", config["agents"])
-            self.SetVariable("success", 1)
-            self.SetVariable("error", None)
-        elif config != None:
-            self.SetVariable("success", 0)
-            self.SetVariable("error", "We managed to read the configuration from store, but you don't seem to have any agents setup.")
-        else:
-            self.SetVariable("success", 0)
-            # Error is set for us via self.GetStoreData()
-            
+        global doneop, agentdefs
+
+        # Loop through agent defs and make a list to display
+        agentlist = [ ]
+        for agent in agentdefs:
+            pa = { }
+            pa["url"] = "agents/" + agent
+            pa["rname"] = agentdefs[agent]["label"]
+            pa["img"] = "../img/agent-" + agent + ".png"
+            agentlist.append(pa)
+        self.SetVariable("agentlist", agentlist)
+        self.SetVariable("success", 1)
+        self.SetVariable("error", None)
+
+        # Setup the all clear if we saved some stuff.
         if doneop:
             self.SetVariable("opsuccess", 1)
             doneop = 0
         else:
             self.SetVariable("opsuccess", 0)
         
+        # Usual template cruft - setup tab and spit the page out.
         self.SetVariable("agntab", "selecteditem")
         return self.SendTemplate(req, rp, "index.tpl", title="Agents")
-    
-    ###############        AGENTS          ###############
-    
-    # Antispam
-    def bongoantispam_GET(self, req, rp):
-        return self.showConfig('bongoantispam', req, rp)
         
-    def bongoantispam_POST(self, req, rp):
-        return self.saveConfig('bongoantispam', req, rp)
+    ################# Agents and junk ####################
     
-    # Antivirus
+    def bongoqueue_GET(self, req, rp):
+        return self.showConfig("bongoqueue", req, rp)
+    
+    def bongoqueue_POST(self, req, rp):
+        return self.saveConfig("bongoqueue", req, rp)
+        
+    def global_GET(self, req, rp):
+        return self.showConfig("global", req, rp)
+    
+    def global_POST(self, req, rp):
+        return self.saveConfig("global", req, rp)
+        
+    def bongoantispam_GET(self, req, rp):
+        return self.showConfig("bongoantispam", req, rp)
+    
+    def bongoantispam_POST(self, req, rp):
+        return self.saveConfig("bongoantispam", req, rp)
+        
     def bongoavirus_GET(self, req, rp):
-        return self.showConfig('bongoavirus', req, rp)
+        return self.showConfig("bongoavirus", req, rp)
     
     def bongoavirus_POST(self, req, rp):
-        return self.saveConfig('bongoavirus', req, rp)
-    
-    # Queue
-    def bongoqueue_GET(self, req, rp):
-        return self.showConfig('bongoqueue', req, rp)
-        
-    def bongoqueue_POST(self, req, rp):
-        return self.saveConfig('bongoqueue', req, rp)
+        return self.saveConfig("bongoavirus", req, rp)
     
     ############### CONFIGURATION HELPERS  ################
     
@@ -114,9 +124,9 @@ class AgentHandler(HawkeyeHandler):
                 value = int(value)
             elif agent[key]['type'] == 'bool':
                 value = bool(value)
-            elif agent[key]['type'].startswith('array,'):
-                # Split value type and determine what kind of array.
-                arraytype = agent[key]['type'].split(",")[1]
+            elif agent[key]['type'].startswith('array,') or agent[key]['type'].startswith('hostlist,'):
+                # Split value type and determine what kind of array/default port
+                arraytype = agent[key]['type'].split(',')[1]
                 
                 # Now, split input data into an array, and change valuetypes as required.
                 # Input data for this key should be a comma-seperated string of values.
@@ -126,6 +136,18 @@ class AgentHandler(HawkeyeHandler):
                         dobj = int(dobj)
                     elif arraytype == "bool":
                         dobj = bool(dobj)
+                    elif agent[key]['type'].startswith('hostlist,'):
+                        # It's a hostlist, and arraytype is the default port
+                        # Check if value has port and/or weighting
+                        defaultweight = 1
+                        defultport = arraytype
+                        
+                        if dobj.count(':') == 1:
+                            # Port and hostname
+                            dobj = dobj + ":" + defaultweight
+                        elif dobj.count(':') == 0:
+                            # Only hostname
+                            dobj = dobj + ":" + defaultport + ":" + defaultweight
                         
                     # Otherwise, type was string (default).
                     
@@ -146,7 +168,7 @@ class AgentHandler(HawkeyeHandler):
         Displays an agent configuration page, using information
         provided via method arguments.
         '''
-        global doneop
+        global doneop, agentdefs
         rkeys = []
         
         if config != None and config.has_key("version"):
@@ -166,7 +188,7 @@ class AgentHandler(HawkeyeHandler):
                         nkey["boolentry"] = True
                     elif d[key]['type'] == "string":
                         nkey["textentry"] = True
-                    elif d[key]['type'].startswith('array,'):
+                    elif d[key]['type'].startswith('array,') or d[key]['type'].startswith('hostlist,'):
                         nkey["selectentry"] = True
                         # TODO: Fix this so we can have plain lists, instead of arrays
                         nkey["jsadd"] = "javascript:addToList('" + key + "');"
@@ -185,6 +207,8 @@ class AgentHandler(HawkeyeHandler):
                     rkeys.append(nkey)
                 
             self.SetVariable("settinglist", rkeys)
+            if agentdefs[agentname].has_key('description'):
+                self.SetVariable("description", agentdefs[agentname]["description"])
         elif config != None:
             self.SetVariable("success", 0)
             self.SetVariable("error", "Agent does not have a version key.")
@@ -198,35 +222,8 @@ class AgentHandler(HawkeyeHandler):
         else:
             self.SetVariable("opsuccess", 0)
         
+        global agentdefs
         self.SetVariable("agntab", "selecteditem")
         self.SetVariable("name", agentname)
-        hname = self._humanReadableName(agentname)
-        self.SetVariable("hname", hname)
-        return self.SendTemplate(req, rp, "agentview.tpl", title=hname)
-    
-    def _humanReadableName(self, agentname):
-        # TODO: Translation, once we have a system in place.
-        if agentname == "bongoqueue":
-            return "Queue"
-        elif agentname == "bongosmtp":
-            return "SMTP"
-        elif agentname == "bongoantispam":
-            return "Antispam"
-        elif agentname == "bongoavirus":
-            return "Antivirus"
-        elif agentname == "bongocollector":
-            return "Calendar collector"
-        elif agentname == "bongomailprox":
-            return "Mail proxy"
-        elif agentname == "bongopluspack":
-            return "Plus pack"
-        elif agentname == "bongorules":
-            return "Rules"
-        elif agentname == "bongoimap":
-            return "IMAP"
-        elif agentname == "bongopop3":
-            return "POP3"
-        elif agentname == "bongocalcmd":
-            return "Calendar CMD"
-        else:
-            return "Unknown agent"
+        self.SetVariable("hname", agentdefs[agentname]["label"])
+        return self.SendTemplate(req, rp, "agentview.tpl", title=agentdefs[agentname]["label"])

@@ -9,6 +9,9 @@
 <div class="info" id="opsuccess" tal:condition="opsuccess">Operation completed sucessfully.</div>
 
 <p>
+
+<p tal:condition="description" tal:content="description"></p>
+
 <form method="post">
 <table cellpadding="1">
 
