@@ -181,28 +181,58 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             rp = HawkeyePath(req)
             handler = rp.GetHandler()
 
+            req.log.debug("Got handler and stuff. Getting session...")
+
             req.session = BongoSession.Session(req)
             req.session.load()
 
+            req.log.debug("Checking we need auth:")
+
             if handler.NeedsAuth(rp):
+                req.log.debug("Yup!")
                 auth = bongo.hawkeye.Auth.authenhandler(req)
                 if auth != bongo.commonweb.HTTP_OK:
-                    target = "/admin/login?%s" % req.uri
-                    self.send_response(
-                        bongo.commonweb.BongoUtil.redirect(req, target))
+                    target = "/admin/login"
+                    self.send_response(bongo.commonweb.BongoUtil.redirect(req, target))
                     return
+            else:
+                req.log.debug("Nope.")
 
-            req.log.debug("request for %s (handled by %s)", req.uri, handler)
+            req.log.debug("request for %s (handled by %s)" % (req.path_info, handler))
 
             mname = rp.action + "_" + req.method
+            hackymethod = False
+
+            req.log.debug("Doing attr check on %s (%s)" % (handler, mname))
 
             if not hasattr(handler, mname):
-                req.log.debug("%s has no %s", handler, mname)
-                self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
-                return
+                req.log.debug("Handler: %s", handler)
+                req.log.debug("RP: %s", rp)
+                if rp.view == "agents":
+                    # Special case for agents view
+                    hackymethod = True
+                    if req.method == "POST":
+                        mname = "saveConfig"
+                    else:
+                        mname = "showConfig"
+                else:
+                    req.log.debug("%s has no %s" % (handler, mname))
+                    self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
+                    return
+
+            req.log.debug("Getting attributes...")
 
             method = getattr(handler, mname)
-            ret = method(req, rp)
+            if hackymethod:
+                req.log.debug("Running new way.")
+                ret = method(rp.action, req, rp)
+            else:
+                req.log.debug("Running normal way.")
+                ret = method(req, rp)
+
+            if ret is None:
+                req.log.debug("Handler %s returned invalid value: None" % handler)
+                return bongo.commonweb.OK
 
             if ret is None:
                 self.send_response(bongo.commonweb.HTTP_OK)

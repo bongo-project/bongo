@@ -76,33 +76,7 @@ class AgentHandler(HawkeyeHandler):
         # Usual template cruft - setup tab and spit the page out.
         self.SetVariable("agntab", "selecteditem")
         return self.SendTemplate(req, rp, "index.tpl", title="Agents")
-        
-    ################# Agents and junk ####################
-    
-    def bongoqueue_GET(self, req, rp):
-        return self.showConfig("bongoqueue", req, rp)
-    
-    def bongoqueue_POST(self, req, rp):
-        return self.saveConfig("bongoqueue", req, rp)
-        
-    def global_GET(self, req, rp):
-        return self.showConfig("global", req, rp)
-    
-    def global_POST(self, req, rp):
-        return self.saveConfig("global", req, rp)
-        
-    def bongoantispam_GET(self, req, rp):
-        return self.showConfig("bongoantispam", req, rp)
-    
-    def bongoantispam_POST(self, req, rp):
-        return self.saveConfig("bongoantispam", req, rp)
-        
-    def bongoavirus_GET(self, req, rp):
-        return self.showConfig("bongoavirus", req, rp)
-    
-    def bongoavirus_POST(self, req, rp):
-        return self.saveConfig("bongoavirus", req, rp)
-    
+
     ############### CONFIGURATION HELPERS  ################
     
     def saveConfig(self, agentname, req, rp):
@@ -160,7 +134,7 @@ class AgentHandler(HawkeyeHandler):
         return config
    
     def showConfig(self, agentname, req, rp):
-        global agentdefs
+        global agentdefs            
         return self.doAgent(agentname, self.GetStoreData(req, agentdefs[agentname]['filename']), agentdefs[agentname]['data'], req, rp)
     
     def doAgent(self, agentname, config, d, req, rp):
@@ -207,8 +181,11 @@ class AgentHandler(HawkeyeHandler):
                     rkeys.append(nkey)
                 
             self.SetVariable("settinglist", rkeys)
+            
+            # Setup desc if agent def has one
             if agentdefs[agentname].has_key('description'):
                 self.SetVariable("description", agentdefs[agentname]["description"])
+                
         elif config != None:
             self.SetVariable("success", 0)
             self.SetVariable("error", "Agent does not have a version key.")
@@ -222,7 +199,6 @@ class AgentHandler(HawkeyeHandler):
         else:
             self.SetVariable("opsuccess", 0)
         
-        global agentdefs
         self.SetVariable("agntab", "selecteditem")
         self.SetVariable("name", agentname)
         self.SetVariable("hname", agentdefs[agentname]["label"])

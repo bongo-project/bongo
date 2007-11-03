@@ -32,29 +32,29 @@ def handler(req):
         rp = HawkeyePath(req)
         handler = rp.GetHandler()
         
-        req.log.debug( "Got handler and stuff. Getting session...")
+        req.log.debug("Got handler and stuff. Getting session...")
         
         req.session = BongoSession.Session(req)
         req.session.load()
         
-        req.log.debug( "Checking we need auth:")
+        req.log.debug("Checking we need auth:")
         
         if handler.NeedsAuth(rp):
-            req.log.debug( "Yup!")
+            req.log.debug("Yup!")
             auth = bongo.hawkeye.Auth.authenhandler(req)
             if auth != bongo.commonweb.HTTP_OK:
                 target = "/admin/login"
                 BongoUtil.redirect(req, target)
                 return bongo.commonweb.OK
         else:
-            req.log.debug( "Nope.")
+            req.log.debug("Nope.")
 
-        req.log.debug( "request for %s (handled by %s)" % (req.path_info, handler))
+        req.log.debug("request for %s (handled by %s)" % (req.path_info, handler))
 
         mname = rp.action + "_" + req.method
         hackymethod = False
 
-        req.log.debug( "Doing attr check on %s (%s)" % (handler, mname))
+        req.log.debug("Doing attr check on %s (%s)" % (handler, mname))
         
         if not hasattr(handler, mname):
             req.log.debug("Handler: %s", handler)
@@ -67,27 +67,21 @@ def handler(req):
                 else:
                     mname = "showConfig"
             else:
-                #req.log.debug( "%s has no %s" % (handler, mname))
-                req.log.debug("Don't have jack.")
-                hackymethod = True
-                if req.method == "POST":
-                    mname = "saveConfig"
-                else:
-                    mname = "showConfig"
-                #return bongo.commonweb.HTTP_NOT_FOUND
+                req.log.debug("%s has no %s" % (handler, mname))
+                return bongo.commonweb.HTTP_NOT_FOUND
 
-        req.log.debug( "Getting attributes...")
+        req.log.debug("Getting attributes...")
         
         method = getattr(handler, mname)
         if hackymethod:
-            req.log.debug( "Running new way.")
+            req.log.debug("Running new way.")
             ret = method(rp.action, req, rp)
         else:
-            req.log.debug( "Running normal way.")
+            req.log.debug("Running normal way.")
             ret = method(req, rp)
 
         if ret is None:
-            req.log.debug( "Handler %s returned invalid value: None" % handler)
+            req.log.debug("Handler %s returned invalid value: None" % handler)
             return bongo.commonweb.OK
 
         return ret
