@@ -204,8 +204,8 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 }
 
 /**
- * Read a configuration document from the Bongo Store, and bring information 
- * from that document into the agent
+ * Read a configuration document from the Bongo Store. This is a conveniance wrapper
+ * around ParseBongoConfiguration()
  * \param	config	BongoConfigItem array which defines configuration variables
  * \param	filename	Filename we wish to read from the store
  * \return	 		Whether or not we were successful
@@ -214,16 +214,28 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 BOOL 
 ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	unsigned char *pconfig;
-	BOOL retcode = FALSE;
-	BongoJsonNode *node = NULL;
 	
 	if (! NMAPReadConfigFile(filename, &pconfig)) {
 		XplConsolePrintf("config: couldn't read config '%s' from store\r\n", filename);
 		return FALSE;
 	}
-	
-	if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
-		XplConsolePrintf("config: couldn't parse JSON content in '%s'\r\n", filename);
+	return ParseBongoConfiguration(config, pconfig);
+}
+
+/**
+ * Parse a configuration document
+ * \param	config	BongoConfigItem array which defines configuration variables
+ * \param	content	JSON text we want parsed
+ * \return	Whether or not we were successful
+ */
+
+BOOL
+ParseBongoConfiguration(BongoConfigItem *config, const unsigned char *content)
+{
+	BOOL retcode = FALSE;
+	BongoJsonNode *node = NULL;
+
+	if (BongoJsonParseString(content, &node) != BONGO_JSON_OK) {
 		goto finish;
 	}
 	
