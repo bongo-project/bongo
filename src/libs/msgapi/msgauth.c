@@ -24,7 +24,7 @@ MsgAuthLoadBackend(const char *name, const char *file)
 	XplPluginHandle *auth;
 	char function[101];
 	AuthPlugin_InterfaceVersion *version_func;
-    AuthPlugin_Init *init_func;
+	AuthPlugin_Init *init_func;
 	MsgAuthAPIFunction *func;
 	
 	snprintf(path, XPL_MAX_PATH, "%s/bongo-auth/%s", XPL_DEFAULT_LIB_DIR, file);
@@ -66,16 +66,16 @@ MsgAuthLoadBackend(const char *name, const char *file)
 		}
 	}
 	
-    /* check if backend needs to be initiate */
-    func = &pluginapi[Func_Init];
-    if (func->available) {
-        Log(LOG_ERROR, "Initiate backend");
-        init_func = (AuthPlugin_Init *)&func->func;
-        if ((*init_func)()) {
-            Log(LOG_ERROR, "Backend's initiation failed");
-            goto fail;
-        }
-    }
+	/* check if backend needs to be initialized */
+	func = &pluginapi[Func_Init];
+	if (func->available) {
+		Log(LOG_INFO, "Initializing authentication backend");
+		init_func = (AuthPlugin_Init *)&func->func;
+		if ((*init_func)()) {
+			Log(LOG_FATAL, "Couldn't initialize authentication backend");
+			goto fail;
+		}
+	}
 
 	return 0;
 	
