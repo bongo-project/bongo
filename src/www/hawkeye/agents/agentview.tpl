@@ -10,7 +10,7 @@
 
 <p>
 
-<p tal:condition="description" tal:content="description"></p>
+<p tal:condition="description">%(description)</p>
 
 <form method="post">
 <table cellpadding="1">

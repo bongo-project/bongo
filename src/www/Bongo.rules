@@ -333,6 +333,7 @@ pkgpythonhawkeyedir = $(pkgpythondir)/hawkeye
 pkgpythonhawkeye_PYTHON =			\
 	src/www/bongo/hawkeye/__init__.py	\
 	src/www/bongo/hawkeye/AgentView.py  \
+	src/www/bongo/hawkeye/AliasView.py    \
 	src/www/bongo/hawkeye/Auth.py		\
 	src/www/bongo/hawkeye/BackupView.py      \
 	src/www/bongo/hawkeye/HawkeyeHandler.py	\
@@ -395,10 +396,9 @@ dist_hawkeyetplagents_DATA =			\
         src/www/hawkeye/agents/index.tpl	\
 	src/www/hawkeye/agents/agentview.tpl
 
-        
-hawkeyetplantispamdir = $(htdocsdir)/hawkeye/antispam
-dist_hawkeyetplantispam_DATA =			\
-        src/www/hawkeye/antispam/index.tpl
+hawkeyetplagentsdir = $(htdocsdir)/hawkeye/aliases
+dist_hawkeyetplagents_DATA =			\
+        src/www/hawkeye/aliases/index.tpl
 
 hawkeyetpldir = $(htdocsdir)/hawkeye
 dist_hawkeyetpl_DATA =			\

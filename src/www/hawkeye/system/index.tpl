@@ -10,6 +10,8 @@
 
 <ul>
 <li><a href="%(url|/)sbackup/">Backup and Restore</a></li>
+<li><a href="%(url|/)sagents/global">Modify global agent settings</a></li>
+<li><a href="%(url|/)saliases/">Setup aliasing</a></li>
 </ul>
 
 %(include|footer.tpl)s

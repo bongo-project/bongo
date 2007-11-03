@@ -9,12 +9,12 @@ doneop = 0
 agentdefs = {
     'global' : {
         'label' : 'Global',
-        'description' : 'This page describes the global configuration options available in your Bongo installation.<br />Options here will be used in most agents where required.',
+        'description' : 'This page describes the global configuration options available in your Bongo installation.\nOptions here will be used in most agents where required.',
         'filename' : '/config/global',
         'data' : {
             'hostname' : { 'label' : 'Hostname', 'type' : 'string' },
             'hostaddr' : { 'label' : 'Host address', 'type' : 'string' },
-            'postmaster' : { 'label' : 'Postmaster' }
+            'postmaster' : { 'label' : 'Postmaster', 'type' : 'string' }
         }
     },
     'bongoantispam' : {
@@ -145,7 +145,7 @@ class AgentHandler(HawkeyeHandler):
         global doneop, agentdefs
         rkeys = []
         
-        if config != None and config.has_key("version"):
+        if config != None:
             for key in config:
                 # Disallow other keys that weren't passed along (eg version, etc)
                 if d.has_key(key):
@@ -186,9 +186,6 @@ class AgentHandler(HawkeyeHandler):
             if agentdefs[agentname].has_key('description'):
                 self.SetVariable("description", agentdefs[agentname]["description"])
                 
-        elif config != None:
-            self.SetVariable("success", 0)
-            self.SetVariable("error", "Agent does not have a version key.")
         else:
             self.SetVariable("success", 0)
         

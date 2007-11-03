@@ -10,13 +10,15 @@ import AgentView
 import BackupView
 import ServerView
 import SystemView
+import AliasView
 
 views = {
     "root" : RootView.RootHandler(),
     "agents" : AgentView.AgentHandler(),
     "backup" : BackupView.BackupHandler(),
     "system" : SystemView.SystemHandler(),
-    "server" : ServerView.ServerHandler()
+    "server" : ServerView.ServerHandler(),
+    "aliases" : AliasView.AliasHandler()
     }
 
 class HawkeyePath:
