@@ -29,9 +29,11 @@ agentdefs = {
         'label' : 'Queue',
         'filename' : '/config/queue',
         'data' : {
-            'postmaster': { 'label' : 'Postmaster', 'type' : 'string' },
-            'officialname' : { 'label' : 'Official name', 'type' : 'string' },
-            'hosteddomains' : { 'label' : 'Hosted domains', 'type' : 'array,string' },
+            'forwardundeliverable_enabled' : { 'label' : 'Forward undeliverable mail', 'type' : 'bool' },
+            'forwardundeliverable_to' : { 'label' : 'Forward undeliverable mail to', 'type' : 'string' },
+            'bouncereturn' : { 'label' : 'Return mail on bounce', 'type' : 'bool' },
+            'bounceccpostmaster' : { 'label' : 'CC postmaster on bounce', 'type' : 'bool' },
+            'queuetimeout' : { 'label' : 'Queue timeout', 'type' : 'int', 'suffix' : 'seconds' },
             'quotamessage' : { 'label' : 'Quota message', 'type' : 'string' }
         }
     },
@@ -41,6 +43,46 @@ agentdefs = {
         'data' : {
             'host' : { 'label':'Host', 'type' : 'string' },
             'port' : { 'label' : 'Port', 'type' : 'int' }
+        }
+    },
+    'bongosmtp' : {
+        'label' : 'SMTP',
+        'filename' : '/config/smtp',
+        'data' : {
+            'port' : { 'label' : 'Port', 'type' : 'int' },
+            'port_ssl' : { 'label' : 'SSL Port', 'type' : 'int' },
+            'max_mx_servers' : { 'label' : 'Maximum MX servers', 'type' : 'int' },
+            'socket_timeout' : { 'label' : 'Socket timeout', 'type' : 'int' },
+            'maximum_recipients' : { 'label' : 'Maximum recipients', 'type' : 'int' },
+            'message_size_limit' : { 'label' : 'Message size limit', 'type' : 'int', 'suffix' : 'bytes (0 for no limit)' },
+            'allow_client_ssl' : { 'label' : 'Allow client SSL', 'type' : 'bool' },
+            'max_thread_load' : { 'label' : 'Maximum threads', 'type' : 'int' }
+        }
+    },
+    'bongopop3' : {
+        'label' : 'POP3',
+        'filename' : '/config/pop3',
+        'data' : {
+            'port' : { 'label' : 'Port', 'type' : 'int' },
+            'port_ssl' : { 'label' : 'SSL Port', 'type' : 'int' }
+        }
+    },
+    'bongoimap' : {
+        'label' : 'IMAP',
+        'filename' : '/config/imap',
+        'data' : {
+            'port' : { 'label' : 'Port', 'type' : 'int' },
+            'port_ssl' : { 'label' : 'SSL Port', 'type' : 'int' },
+            'threads_max' : { 'label' : 'Maximum threads', 'type' : 'int' }
+        }
+    },
+    'bongomailprox' : {
+        'label' : 'Mail proxy',
+        'filename' : '/config/mailproxy',
+        'data' : {
+            'max_threads' : { 'label' : 'Maximum threads', 'type' : 'int' },
+            'interval' : { 'label' : 'Fetch interval', 'type' : 'int', 'suffix' : 'minutes' },
+            'max_accounts' : { 'label' : 'Maximum accounts', 'type' : 'int' }
         }
     }
 }
@@ -185,9 +227,16 @@ class AgentHandler(HawkeyeHandler):
             # Setup desc if agent def has one
             if agentdefs[agentname].has_key('description'):
                 self.SetVariable("description", agentdefs[agentname]["description"])
-                
+            else:
+                # Set as empty (may have been set from previous agent)
+                self.SetVariable("description", None)
+            
+            # Reset variable that may have been incorrectly set earlier
+            self.SetVariable("success", 1)
+            self.SetVariable("error", None)
         else:
             self.SetVariable("success", 0)
+            self.SetVariable("settinglist", None)
         
         # Check if we've done stuff (ie saving config)
         if doneop:

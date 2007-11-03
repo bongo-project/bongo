@@ -204,6 +204,8 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             hackymethod = False
 
             req.log.debug("Doing attr check on %s (%s)" % (handler, mname))
+            req.log.debug("Action was: %s" % rp.action)
+            req.log.debug("View was: %s" % rp.view)
 
             if not hasattr(handler, mname):
                 req.log.debug("Handler: %s", handler)
@@ -215,6 +217,9 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                         mname = "saveConfig"
                     else:
                         mname = "showConfig"
+                elif rp.view == "aliases":
+                    # Special case for domains
+                    hackymethod = True
                 else:
                     req.log.debug("%s has no %s" % (handler, mname))
                     self.send_response(bongo.commonweb.HTTP_NOT_FOUND)

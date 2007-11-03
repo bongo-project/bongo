@@ -16,7 +16,7 @@
 <div tal:condition="success" style="text-align: center;">
 <form method="post">
 	<input type="hidden" name="command" value="agentstatus" />
-	<table class="htable" cellspacing="0" style="margin-left: auto; margin-right: auto;">
+	<table class="htable" cellspacing="0" style="margin-left: auto; margin-right: auto; width: 100%">
 	<tr class="highlight hrow">
 		<th style="padding: 10px;">Enabled</th>
 		<th style="padding: 10px;">Agent Name</th>

@@ -204,7 +204,10 @@ dist_img_DATA =					     \
 	src/www/img/agent-global.png    \
 	src/www/img/agent-unknown.png	\
 	src/www/img/list-add.png	\
-	src/www/img/list-remove.png
+	src/www/img/list-remove.png \
+	src/www/img/add-domain.png  \
+	src/www/img/document-properties.png \
+	src/www/img/document-delete.png
 	
 jsdir = $(htdocsdir)/js
 
@@ -398,7 +401,9 @@ dist_hawkeyetplagents_DATA =			\
 
 hawkeyetplagentsdir = $(htdocsdir)/hawkeye/aliases
 dist_hawkeyetplagents_DATA =			\
-        src/www/hawkeye/aliases/index.tpl
+        src/www/hawkeye/aliases/index.tpl   \
+        src/www/hawkeye/aliases/edit.tpl    \
+        src/www/hawkeye/aliases/confirmdelete.tpl
 
 hawkeyetpldir = $(htdocsdir)/hawkeye
 dist_hawkeyetpl_DATA =			\

@@ -18,8 +18,9 @@ class HawkeyeHandler:
             configfile = store.Read(filename)
             config = decoder.decode(configfile)
             store.Quit()
-        except ValueError:
+        except ValueError, e:
             self.SetVariable("error", "Failed to parse JSON.")
+            print "Failed to parse JSON: %s" % e
             if store: 
                 store.Quit()
             return None
