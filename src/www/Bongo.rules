@@ -201,6 +201,7 @@ dist_img_DATA =					     \
 	src/www/img/agent-bongocalcmd.png   \
 	src/www/img/agent-bongocollector.png    \
 	src/www/img/agent-bongoqueue.png    \
+	src/www/img/agent-global.png    \
 	src/www/img/agent-unknown.png	\
 	src/www/img/list-add.png	\
 	src/www/img/list-remove.png
