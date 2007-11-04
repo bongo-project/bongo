@@ -1,7 +1,7 @@
 {
-    "0" : { desc: "Installed Bongo.", url: "" },
-    "1" : { desc: "", url: "" },
-    "2" : { desc: "", url: "" },
-    "3" : { desc: "", url: "" },
-    "4" : { desc: "", url: "" }
+    "0" : { "desc": "Installed Bongo.", "url": "" },
+    "1" : { "desc": "", "url": "" },
+    "2" : { "desc": "", "url": "" },
+    "3" : { "desc": "", "url": "" },
+    "4" : { "desc": "", "url": "" }
 }
