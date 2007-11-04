@@ -10,7 +10,8 @@ conf_defaults =                            \
 	src/apps/config/config/manager     \
 	src/apps/config/config/pop3        \
 	src/apps/config/config/queue       \
-	src/apps/config/config/smtp
+	src/apps/config/config/smtp     \
+	src/apps/config/hawkeye/history
 
 bongo_config_SOURCES =			\
 	$(conf_defaults)		\
@@ -38,7 +39,7 @@ conf_DATA = \
         src/apps/config/default.set
 
 src/apps/config/default.set: $(conf_defaults)
-	@(cd $(top_srcdir)/src/apps/config && tardir=config && $(am__tar)) > $@
+	(cd $(top_srcdir)/src/apps/config && tar chof - config hawkeye) > $@
 
 src/apps/config/all: bongo-config
 src/apps/config/clean: clean

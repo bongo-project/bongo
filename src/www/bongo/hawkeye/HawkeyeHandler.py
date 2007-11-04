@@ -54,6 +54,41 @@ class HawkeyeHandler:
                 store.Quit()
             return False
     
+    def EventHistory(self, req, desc, path):
+        config = {}
+        store = None
+        decoder = simplejson.JSONDecoder()
+        try:
+            store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
+            store.Store("_system")
+            
+            # Fetch old data (if any)
+            datafile = store.Read("/hawkeye/history")
+            data = decoder.decode(datafile)
+            
+            # Now, move everything down one.
+            data["4"] = data["3"]
+            data["3"] = data["2"]
+            data["2"] = data["1"]
+            data["1"] = data["0"]
+            
+            # Put in new data in first slot
+            data["0"] = { 'desc' : desc, 'url' : path }
+            
+            # Save new data
+            datafile = encoder.encode(data)
+            store.Replace("/hawkeye/history", datafile)
+            
+            # Finish up
+            if store:
+                store.Quit()
+            return True
+        except Exception, e:
+            self.SetVariable("error", "Unable to set history: %s" % str(e))
+            if store: 
+                store.Quit()
+            return False
+    
     def NeedsAuth(self, rp):
         return True
 

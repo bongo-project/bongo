@@ -242,6 +242,10 @@ class AgentHandler(HawkeyeHandler):
         if doneop:
             self.SetVariable("opsuccess", 1)
             doneop = 0
+            
+            # Setup action history
+            store = self.EventHistory(req, "Modified agent " + agentdefs[agentname]["label"], "agents/" + agentname)
+                        
         else:
             self.SetVariable("opsuccess", 0)
         

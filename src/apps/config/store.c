@@ -68,7 +68,8 @@ ImportSystemBackupFile(StoreClient *client, const char *path)
 			continue;
 		}
 
-		if (blocksize > 0 && !strncmp(filename, "config/", 7)) {
+        /* now, do everything else that isn't a directory and contains data */
+		if (blocksize > 0 && filename[len-1] != '/') {
 			char fullpath[110];
 			char *delim;
 

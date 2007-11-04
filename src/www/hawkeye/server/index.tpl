@@ -16,16 +16,16 @@
 <div tal:condition="success" style="text-align: center;">
 <form method="post">
 	<input type="hidden" name="command" value="agentstatus" />
-	<table class="htable" cellspacing="0" style="margin-left: auto; margin-right: auto; width: 100%">
+	<table class="htable" cellspacing="0" style="margin-left: auto; margin-right: auto; width: 75%%">
 	<tr class="highlight hrow">
-		<th style="padding: 10px;">Enabled</th>
 		<th style="padding: 10px;">Agent Name</th>
+		<th style="padding: 10px;">Enabled</th>
 	</tr>
 	<tr tal:repeat="agent agentlist" tal:attributes="class string:highlight${repeat/agent/odd}">
-		<td style="height: 24px">
-		<input type="checkbox" tal:attributes="checked agent/enabled;name agent/name" />
+    	<td><label tal:attributes="for agent/name" tal:content="agent/name">unknown agent</label></td>
+		<td style="height: 24px; width: 24px">
+	    	<input type="checkbox" tal:attributes="checked agent/enabled;name agent/name;id agent/name"/>
 		</td>
-		<td tal:content="agent/name">unknown agent</td>
 	</tr>
 	</table>
 	<br />
