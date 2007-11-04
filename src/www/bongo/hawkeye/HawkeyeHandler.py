@@ -57,6 +57,7 @@ class HawkeyeHandler:
     def EventHistory(self, req, desc, path):
         config = {}
         store = None
+        encoder = simplejson.JSONEncoder()
         decoder = simplejson.JSONDecoder()
         try:
             store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])

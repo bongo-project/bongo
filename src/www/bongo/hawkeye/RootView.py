@@ -70,7 +70,26 @@ class RootHandler(HawkeyeHandler):
         sw_available = "Disabled"
         self.SetVariable("sw_available", sw_available)
         
+        # Get last few actions
+        actions = self.GetStoreData(req, "/hawkeye/history")
+        sortedacts = sorted(actions)
+        
+        print "actions: %s" % actions
+        
+        act = []
+        for actid in sortedacts:
+            obj = { }
+            action = actions[actid]
+            if action["desc"] != "" and action["desc"] != None:
+                obj["href"] = "/admin/" + action["url"]
+                obj["title"] = action["desc"]
+                obj["img"] = None
+                act.append(obj)
+            
+        #print "Act: %s" % act
+        
         # send the template
+        self.SetVariable("actionlist", act)
         return self.SendTemplate(req, rp, "index.tpl", title="Desktop")
 
     def login_GET(self, req, rp):
