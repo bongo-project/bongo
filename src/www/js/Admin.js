@@ -59,9 +59,14 @@ function toggleSidebar()
     }
 }
 
-function addToList(div)
+function addToList(div, ptxt)
 {
-    var d = prompt("Value:", "");
+    prompttxt = "Value:";
+    if (ptxt) {
+        prompttxt = ptxt;
+    }
+    
+    var d = prompt(prompttxt, "");
     if (d)
     {
         var e = document.createElement('option');
@@ -83,7 +88,7 @@ function addToList(div)
         $((div+"-box")).selectedIndex = $((div+"-box")).options.length - 1;
         
         Effect.Appear(div + '-removebtn');
-        new Effect.Highlight(div);
+        new Effect.Highlight(div + '-box');
     }
 }
 
@@ -91,6 +96,10 @@ function removeFromList(div)
 {
     var start = $(div+"-box").selectedIndex;
     $(div+"-box").remove(start);
+    // Current items in array
+    var items = $(div).value.split(',');
+    items = items.splice(items.length -1, 1);
+    $(div).value = items.join(',') + ",";
     if ($(div+"-box").selectedIndex != start)
     {
         //new Effect.Highlight(div);

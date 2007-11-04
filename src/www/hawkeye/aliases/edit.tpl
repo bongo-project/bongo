@@ -10,21 +10,18 @@
 <table cellpadding="1">
 
 <tr>
-    <td style="padding-right: 16px;">Domain name:</td><td><span tal:content="name"></span></td>
-</tr>
-<tr>
-    <td style="padding-right: 16px;" colspan="2"><input type="checkbox" id="domainwide" /><label for="domainwide">Enable domain-wide aliasing</label></td>
+    <td style="padding-right: 16px;">Domain name:</td><td><span tal:content="name"></span><br /><input type="checkbox" id="domainwide" /><label for="domainwide">Enable domain-wide aliasing</label></td>
 </tr>
 <tr> 
     <td style="padding-right: 16px;">User-based aliasing</td>
     <td>
         <div style="width: 325px; visibility: none">
             <div style="width: 25px; float: right;">
-                <a href="javascript:addToList('useralias');" style="float: right;"><img src="/img/list-add.png" width="16" height="16" border="0" alt="Add" /></a><br />
+                <a href="javascript:addToList('useralias', 'Please enter the user alias in the following format:\n\n<username>=<newdomain>');" style="float: right;"><img src="/img/list-add.png" width="16" height="16" border="0" alt="Add" /></a><br />
                 <a href="javascript:removeFromList('useralias');" id="useralias-removebtn" style="float: right;"><img src="/img/list-remove.png" width="16" height="16" border="0" alt="Remove" /></a>
             </div>
         
-            <select id="useralias-box" style="width: 300px; border: 1px solid #888a85; background-color: #fff;" size="5">
+            <select id="useralias-box" style="width: 300px; border: 1px solid #888a85; background-color: #fff; display: none" size="5">
                 
             </select>
         </div>
@@ -35,12 +32,16 @@
         </div>
         
         <script type="text/javascript">
-            $('useralias-box').hide(); $('useralias-box').show();
+            $('useralias-normal').hide(); $('useralias-box').show();
         </script>
     </td>
 </tr>
 </table>
+<br />
+<br />
+<span class="button"><button type="reset" value="Reset">Reset</button></span> <span class="button"><button type="submit" value="Save">Save</button></span>
 </form>
+
 
 </p>
 
