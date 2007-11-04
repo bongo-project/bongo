@@ -376,6 +376,18 @@ case "$host" in
 	;;
 esac
 
+dnl Check for ElementTree lxml
+prog="
+import lxml.etree as et
+"
+
+if $PYTHON -c "$prog" 1>&AC_FD_CC 2>&AC_FD_CC
+then
+	AC_MSG_RESULT([Found ElementTree lxml])
+else
+	AC_MSG_ERROR([Couldn't find ElementTree lxml module for python])
+fi
+
 LIBS_save="$LIBS"
 CPPFLAGS_save="$CPPFLAGS"
 
