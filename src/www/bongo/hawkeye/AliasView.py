@@ -127,3 +127,4 @@ class AliasHandler(HawkeyeHandler):
     def delete_POST(self, req, rp):
         # Assume on post that we accept your battle challenge!
         # TODO: Actually delete file, and return to main domains list.
+        return None
