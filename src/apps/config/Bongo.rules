@@ -40,7 +40,7 @@ conf_DATA = \
         src/apps/config/default.set
 
 src/apps/config/default.set: $(conf_defaults)
-	(cd $(top_srcdir)/src/apps/config && tar chof - config hawkeye) > $@
+	(cd $(top_srcdir)/src/apps/config && tar chof - --exclude .svn config hawkeye) > $@
 
 src/apps/config/all: bongo-config
 src/apps/config/clean: clean
