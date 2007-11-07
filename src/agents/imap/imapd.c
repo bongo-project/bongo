@@ -1155,7 +1155,7 @@ ImapCommandCreate(void *param)
         return(SendError(session->client.conn, session->command.tag, "CREATE", ccode));
     }
     
-    if (NMAPSendCommandF(session->store.conn, "CREATE /mail/%s\r\n", pathUtf8) == -1) {
+    if (NMAPSendCommandF(session->store.conn, "CREATE \"/mail/%s\"\r\n", pathUtf8) == -1) {
         MemFree(pathUtf8);
         return(SendError(session->client.conn, session->command.tag, "CREATE", STATUS_NMAP_COMM_ERROR));
     }
@@ -1370,7 +1370,7 @@ ImapCommandDelete(void *param)
         FolderDeselect(session);
     }
 
-    if (NMAPSendCommandF(session->store.conn, "REMOVE %s\r\n", folder->name.utf8) == -1) {
+    if (NMAPSendCommandF(session->store.conn, "REMOVE \"%s\"\r\n", folder->name.utf8) == -1) {
         return(SendError(session->client.conn, session->command.tag, "DELETE", STATUS_NMAP_COMM_ERROR));
     }
 
@@ -1528,7 +1528,7 @@ ImapCommandRename(void *param)
             FolderDeselect(session);
         } 
 
-        if (NMAPSendCommandF(session->store.conn, "RENAME %s /mail/%s\r\n", sourceFolder->name.utf8, destinationPathUtf8) == -1) {
+        if (NMAPSendCommandF(session->store.conn, "RENAME \"%s\" \"/mail/%s\"\r\n", sourceFolder->name.utf8, destinationPathUtf8) == -1) {
             MemFree(destinationPathUtf8);
             return(SendError(session->client.conn, session->command.tag, "RENAME", STATUS_NMAP_COMM_ERROR));
         }
@@ -1608,7 +1608,7 @@ ImapCommandSubscribe(void *param)
         return(SendError(session->client.conn, session->command.tag, "SUBSCRIBE", STATUS_NO_SUCH_FOLDER));
     }
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s -%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG \"%s\" -%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
         FreePathArgument(&path);
         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
         if (ccode == 1000) {
@@ -1652,7 +1652,7 @@ ImapCommandUnsubscribe(void *param)
         return(SendError(session->client.conn, session->command.tag, "UNSUBSCRIBE", STATUS_NO_SUCH_FOLDER));
     }
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG \"%s\" +%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
         FreePathArgument(&path);
         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
         if (ccode == 1000) {
