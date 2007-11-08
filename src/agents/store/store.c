@@ -277,7 +277,7 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
 
     if (stat(path, &sb)) {
         if (XplMakeDir(path)) {
-            XplConsolePrintf("Error creating store: %s.\r\n", strerror(errno));
+            Log(LOG_ERROR, "Error creating store directory: %s.", strerror(errno));
             return -1;
         }
     }
@@ -296,7 +296,7 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
         CreateDatFile(path, n, len, "000000000000000c.dat") ||
         CreateDatFile(path, n, len, "000000000000000d.dat"))
     {
-        XplConsolePrintf("Error creating store: %s.\r\n", strerror(errno));
+        Log(LOG_ERROR, "Error creating store: %s.", strerror(errno));
         return -1;
     }
 
@@ -340,7 +340,7 @@ StoreProcessDocument(StoreClient *client,
             result = MSG5005DBLIBERR;
             goto finish;
         }
-        printf("processed mail with message-id %s\r\n", info->data.mail.messageId);
+        Log(LOG_INFO, "Processed mail with message-id %s", info->data.mail.messageId);
         break;
     case STORE_DOCTYPE_EVENT:
         result = StoreProcessIncomingEvent(client, info, linkGuid);
@@ -543,7 +543,7 @@ CopyMessageToMailbox(StoreClient *client,
 
 StoreIOError:
 
-    XplConsolePrintf ("Couldn't deliver to incoming file: %s\r\n", strerror(errno));
+    Log (LOG_ERROR, "Couldn't deliver mail to incoming file: %s", strerror(errno));
     if (ENOSPC == errno) {
         return DELIVER_QUOTA_EXCEEDED;
     }
@@ -573,7 +573,7 @@ StoreCompactCollection(StoreClient *client, uint64_t collection)
     
     newpath[0] = 0;
 
-    printf("Compacting collection " GUID_FMT "\r\n", collection);
+    Log(LOG_INFO, "Compacting collection " GUID_FMT, collection);
 
     if (StoreGetExclusiveLockQuiet(client, &lock, collection, 2000)) {
         return -1;
@@ -742,8 +742,8 @@ finish:
                corrupted access, we are going to return without releasing our lock 
                on the collection.  FIXME - do something more graceful...
             */
-            printf("Collection " GUID_FMT " requires maintenance "
-                   "after failed compaction.\r\n", collection);
+            Log(LOG_ERROR, "Collection " GUID_FMT " requires maintenance "
+                   "after failed compaction.", collection);
             
             return -2;
         } else {
@@ -981,7 +981,7 @@ ImportIncomingMail(StoreClient *client)
                     info.collection = STORE_MAIL_INBOX_GUID;
                 } 
             } else if (-1 == dcode) {
-                printf ("couldn't write to collection %s due to db error.\n", 
+                Log (LOG_ERROR, "Couldn't write to collection %s due to db error.", 
                         info.filename);
                 goto finish;
             }
@@ -1069,7 +1069,7 @@ ImportIncomingMail(StoreClient *client)
                 goto finish;
             }
 
-            printf("Unparsable message saved in %s\n", failedPath);
+            Log(LOG_ERROR, "Unparsable message saved in %s", failedPath);
         } else {
             /* success! */
             collinfo.imapuid = info.guid;
@@ -1171,7 +1171,7 @@ cleanup:
     StoreReleaseSharedLock(client, incLock);
 
     if (result < 0) {
-        printf("Unable to import mail for store %s: result %d\r\n",
+        Log(LOG_ERROR, "Unable to import mail for store %s: result %d",
                client->store, result);
     }
 
@@ -1269,13 +1269,13 @@ CheckJournal(DStoreHandle *handle)
                 strncpy(path, filename, sizeof(path));
                 p = strrchr(path, '.');
                 if (!p || strcmp(".bak", p)) {
-                    printf ("Don't know how to restore backup file %s\n", filename);
+                    Log (LOG_ERROR, "Don't know how to restore backup file %s", filename);
                     goto finish;
                 }
                 strcpy(p, ".dat");
                 
                 if (rename(filename, path)) {
-                    printf ("Couldn't restore backup file %s to %s\n", 
+                    Log (LOG_ERROR, "Couldn't restore backup file %s to %s", 
                             filename, path);
                     goto finish;
                 }
@@ -1287,7 +1287,7 @@ CheckJournal(DStoreHandle *handle)
             stmt = NULL;
             
             if (DStoreRemoveJournalEntry(handle, collection)) {
-                printf ("Couldn't update journal after restoring file %s\n", 
+                Log (LOG_ERROR, "Couldn't update journal after restoring file %s", 
                         filename);
                 goto finish;
             }
@@ -1381,7 +1381,7 @@ UnselectStore(StoreClient *client)
 
         index = IndexOpen(client);
         if (index) {
-            printf("Optimizing index for store %s\n", client->storeName);
+            Log(LOG_DEBUG, "Optimizing index for store %s", client->storeName);
             IndexOptimize(index);
             IndexClose(index);
         }
@@ -1405,7 +1405,7 @@ UnselectStore(StoreClient *client)
         { } /* block b/c we need this lock no matter what to free the client */
         
         if (StoreWatcherRemove(client, lock)) {
-            printf("Internal error removing client watch");
+            Log(LOG_ERROR, "Internal error removing client watch");
         }
 
         StoreReleaseExclusiveLock(client, lock);
@@ -1542,11 +1542,11 @@ GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node)
 
     fh = fopen(path, "rb");
     if (!fh) {
-        printf("bongostore: Couldn't open file for doc " GUID_FMT "\n", info->guid);
+        Log(LOG_ERROR, "Couldn't open file for doc " GUID_FMT, info->guid);
         goto finish;
     }
     if (0 != XplFSeek64(fh, info->start + info->headerlen, SEEK_SET)) {
-        printf("bongostore: Couldn't seek to doc " GUID_FMT "\n", info->guid);
+        Log(LOG_ERROR, "Couldn't seek to doc " GUID_FMT, info->guid);
         goto finish;
     }
 
@@ -1558,14 +1558,14 @@ GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node)
     if (fread(buf, 1, info->bodylen, fh) == info->bodylen) {
         buf[info->bodylen] = '\0';        
     } else {
-        printf("bongostore: Couldn't read doc " GUID_FMT "\n", info->guid);
+        Log(LOG_ERROR, "Couldn't read doc " GUID_FMT, info->guid);
         goto finish;
     }
     
     ret = BongoJsonParseString(buf, node);
 
     if (ret != BONGO_JSON_OK) {
-        printf("bongostore: Couldn't parse json object %s\n", buf);
+        Log(LOG_ERROR, "Couldn't parse json object %s", buf);
     }   
     
 finish :

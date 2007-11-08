@@ -36,7 +36,8 @@ XPL_BEGIN_C_LINKAGE
 #include <bongojson.h>
 #include <bongocal.h>
 
-#define PRODUCT_SHORT_NAME "stored.nlm"
+#define LOGGERNAME "store"
+#include <logger.h>
 
 /** Store stuff: **/
 

@@ -403,7 +403,7 @@ DStoreCreateDB(DStoreHandle *handle)
     return 0;
 
 fail:
-    printf("DStoreCreateDB error: %s\n", sqlite3_errmsg(handle->db));
+    Log(LOG_ERROR, "DStoreCreateDB error: %s", sqlite3_errmsg(handle->db));
 
     DStoreAbortTransaction(handle);
     DStoreClose(handle);
@@ -426,18 +426,18 @@ UpgradeDB(DStoreHandle *handle)
 #define CURRENT_VERSION 2
 
     if (DStoreBeginTransaction(handle)) {
-        printf("UpgradeDB error: %s\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
         return -1;
     }
 
     stmt = SqlPrepare(handle, "PRAGMA user_version;", &handle->stmts.getVersion);
     if (!stmt) {
-        printf("UpgradeDB error: %s\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
         goto fail;
     }
     
     if (1 != DStoreStmtStep(handle, stmt)) {
-        printf("UpgradeDB error: %s\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
         DStoreStmtEnd(handle, stmt);
         goto fail;
     }
@@ -457,7 +457,7 @@ UpgradeDB(DStoreHandle *handle)
                              ,
                              NULL, NULL, NULL);
         if (SQLITE_OK != dcode) {
-            printf("error: %s\n", sqlite3_errmsg(handle->db));
+            Log(LOG_ERROR, "Couldn't add mime_cache table: %s\n", sqlite3_errmsg(handle->db));
             goto fail;
         }        
     case 1:
@@ -465,13 +465,13 @@ UpgradeDB(DStoreHandle *handle)
                              "ALTER TABLE docs ADD COLUMN stamp TEXT DEFAULT NULL;",
                              NULL, NULL, NULL);
         if (SQLITE_OK != dcode) {
-            printf("error: %s\n", sqlite3_errmsg(handle->db));
+            Log(LOG_ERROR, "Couldn't update docs table: %s\n", sqlite3_errmsg(handle->db));
             goto fail;
         }
     case 2:
         break;
     default:
-        printf("Illegal database version %d", CURRENT_VERSION);
+        Log(LOG_ERROR, "Illegal database version %d found", CURRENT_VERSION);
         goto fail;
     }
 
@@ -484,13 +484,13 @@ UpgradeDB(DStoreHandle *handle)
 
     DStoreReset(handle);
 
-    printf("Upgraded store to version %d.\n", CURRENT_VERSION);
+    Log(LOG_INFO, "Upgraded store to version %d", CURRENT_VERSION);
     return 0;
 
 fail:
     DStoreAbortTransaction(handle);
     if (-1 != version) {
-        printf("Unable to upgrade store from version %d to version %d.\n", 
+        Log(LOG_ERROR, "Unable to upgrade store from version %d to version %d.", 
                version, CURRENT_VERSION);
     }
     return -1;
@@ -519,8 +519,7 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
          (memset(handle, 0, sizeof(struct _DStoreHandle)), 0) ||
          (SQLITE_OK != sqlite3_open(path, &handle->db)))
     {
-        XplConsolePrintf("NMAP: Failed to open dstore \"%s\".\r\n",
-                         path);
+        Log(LOG_ERROR, "Failed to open dstore \"%s\"", path);
         goto fail;
     }
 
@@ -529,7 +528,7 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
     handle->lockTimeoutMs = locktimeoutms;
 
     if (create && DStoreCreateDB(handle)) {
-        printf("Couldn't open db");
+        Log(LOG_ERROR, "Couldn't open dstore db");
         goto fail;
     }
 
@@ -569,7 +568,7 @@ DStoreClose(DStoreHandle *handle)
 {
     DStoreReset(handle);
     if (SQLITE_BUSY == sqlite3_close(handle->db)) {
-        XplConsolePrintf ("Store: couldn't close dstore database!\r\n");
+        Log (LOG_ERROR, "Couldn't close dstore database");
     }
 
     MemFree(handle);
@@ -615,12 +614,12 @@ SqlPrepare(DStoreHandle *handle, const char *statement, DStoreStmt *stmt)
             XplDelay(STMT_SLEEP_MS);
             continue;
         default:
-            XplConsolePrintf("SQL Prepare statement \"%s\" failed; %s\r\n", 
+            Log(LOG_INFO, "SQL Prepare statement \"%s\" failed; %s", 
                              statement, sqlite3_errmsg(handle->db));
             return NULL;
         }
     }
-    XplConsolePrintf("Sql Prepare failed because db is busy.\r\n");
+    Log(LOG_ERROR, "Sql Prepare failed because db is busy.\r\n");
     return NULL;
 }
 
@@ -681,11 +680,11 @@ DStoreStmtStep(DStoreHandle *handle,
             XplDelay(STMT_SLEEP_MS);
             continue;
         default:
-            XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+            Log(LOG_INFO, "Sql: %s", sqlite3_errmsg(handle->db));
             return -1;
         }
     }
-    XplConsolePrintf("Sql Busy.\r\n");
+    Log(LOG_ERROR, "Sql Busy.");
     return -1;
 }
 
@@ -700,7 +699,7 @@ DStoreStmtExecute(DStoreHandle *handle, DStoreStmt *_stmt)
     if (SQLITE_DONE == result) {
         return 0;
     } else {
-        XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "Sql: %s", sqlite3_errmsg(handle->db));
         return -1;
     }
 }
@@ -709,7 +708,7 @@ DStoreStmtExecute(DStoreHandle *handle, DStoreStmt *_stmt)
 void
 DStoreStmtError(DStoreHandle *handle, DStoreStmt *stmt)
 {
-    XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+    Log(LOG_ERROR, "Sql: %s\r\n", sqlite3_errmsg(handle->db));
 }
 
 
@@ -894,7 +893,7 @@ retry:
         return result;
     }
     if (DOCINFO_SIZE != sqlite3_column_bytes(stmt->stmt, 1)) {
-        XplConsolePrintf("Store DB error: Incompatible docs table.\r\n");
+        Log(LOG_ERROR, "Store DB error: Incompatible docs table.");
         return -1;
     }
     data = sqlite3_column_blob(stmt->stmt, 1);
@@ -1887,7 +1886,7 @@ test_headers(sqlite3_context *ctx, int argc, sqlite3_value **argv)
             p = subject;
             break;
         default:
-            printf("test_headers(): Bad header type.\n");
+            Log(LOG_ERROR, "test_headers(): Bad header type.");
             continue;
         }
 

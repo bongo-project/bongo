@@ -123,9 +123,7 @@ IncomingParticipantCb(void *datap, MailHeaderName name, MailAddress *address)
         return;
     }
 
-#if 0
-    printf("got %s %s <%s>\n", type, address->displayName, address->address);
-#endif
+    Log(LOG_DEBUG, "IPCB got %s %s <%s>\n", type, address->displayName, address->address);
 }
 
 static void

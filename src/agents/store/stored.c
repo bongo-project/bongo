@@ -23,8 +23,6 @@
 
 #include <xpl.h>
 #include <memmgr.h>
-#define LOGGERNAME "store"
-#include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
 #include <nmap.h>
@@ -120,7 +118,7 @@ StoreSocketInit()
 
     StoreAgent.nmapConn = ConnAlloc(FALSE);
     if (!StoreAgent.nmapConn) {
-        XplConsolePrintf(AGENT_NAME ": Could not allocate connection\n");
+        Log(LOG_FATAL, "Could not allocate server socket");
         return -1;
     }
 
@@ -135,14 +133,13 @@ StoreSocketInit()
     StoreAgent.nmapConn->socket = ConnServerSocket(StoreAgent.nmapConn, 2048);
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf("bongostore: Could not drop to unprivileged user '%s'\n", 
-                         MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
 
     if (StoreAgent.nmapConn->socket == -1) {
         int ret = StoreAgent.nmapConn->socket;
-        XplConsolePrintf("bongostore: Could not bind to port %d\n", port);
+        Log(LOG_ERROR, "Could not bind to port %d", port);
         ConnFree(StoreAgent.nmapConn);
         return ret;
     }
@@ -167,10 +164,7 @@ StoreServer(void *ignored)
                                   ProcessEntry,
                                   &StoreAgent.memPool);
 
-#if VERBOSE
-    /* Shutting down */
-    XplConsolePrintf(AGENT_NAME ": Shutting down.\r\n");
-#endif
+    Log(LOG_INFO, "Shutting down.");
 
     if (StoreAgent.nmapConn) {
         ConnClose(StoreAgent.nmapConn, 1);
@@ -181,9 +175,7 @@ StoreServer(void *ignored)
     CONN_TRACE_SHUTDOWN();
     BongoAgentShutdown(&StoreAgent.agent);
     
-#if VERBOSE
-    XplConsolePrintf(AGENT_NAME ": Shutdown complete\r\n");
-#endif
+    Log(LOG_INFO, "Shutdown complete");
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)
@@ -219,8 +211,7 @@ _XplServiceMain(int argc, char *argv[])
     LogStart();
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf("bongostore: Could not drop to unprivileged user '%s'\n", 
-                         MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
 
@@ -237,7 +228,7 @@ _XplServiceMain(int argc, char *argv[])
     startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_MSGLIB | BA_STARTUP_MSGAUTH;
     ccode = BongoAgentInit(&StoreAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60), startupOpts);
     if (ccode == -1) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_FATAL, "Couldn't initialize Bongo libraries");
         return -1;
     }
  
@@ -245,7 +236,7 @@ _XplServiceMain(int argc, char *argv[])
     cal_success = BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     
     if (! cal_success) {
-        XplConsolePrintf(AGENT_NAME ": Couldn't initialize calendaring library.  Exiting.\r\n");
+        Log(LOG_FATAL, "Couldn't initialize calendaring library");
         return -1;
     }
 
@@ -254,15 +245,13 @@ _XplServiceMain(int argc, char *argv[])
 
     /* Create and bind the server connection */
     if (StoreSocketInit() < 0) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\n");
+        Log(LOG_FATAL, "Couldn't initialize server socket");
         return -1;
     }
     
     /* Drop privs */
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n"
-                         AGENT_NAME ": exiting.\n", 
-                         MsgGetUnprivilegedUser());
+        Log(LOG_FATAL, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
 
@@ -277,8 +266,7 @@ _XplServiceMain(int argc, char *argv[])
 
     if (!StoreAgent.threadPool) {
         BongoAgentShutdown(&StoreAgent.agent);
-        XplConsolePrintf(AGENT_NAME ": Unable to create thread pool.\r\n" 
-                         AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_FATAL, "Unable to create thread pool");
         return -1;
     }
 
@@ -286,12 +274,12 @@ _XplServiceMain(int argc, char *argv[])
 
     /* setup the store guts: */
     if (StoreSetupCommands()) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_FATAL, "Couldn't setup Store internals");
         return -1;
     }
     
     if (DBPoolInit()) {
-        XplConsolePrintf(AGENT_NAME ": Unable to create db pool.  Exiting.\r\n");
+        Log(LOG_FATAL, "Unable to create db pool");
         return -1;
     }
 

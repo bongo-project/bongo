@@ -355,13 +355,13 @@ ReadNMAPLockAcquire(NLockStruct **lockHandle, unsigned long *hashHandle, unsigne
         }
 
 #if defined(DEBUG)
-        XplConsolePrintf("NMAP: ReadNMAPLockAcquire() called with an existing lock from %s:%lu\r\n", file, line); 
+        Log(LOG_DEBUG, "ReadNMAPLockAcquire() called with an existing lock from %s:%lu", file, line); 
 #endif
 
         return(NLOCK_HANDLE_HAS_LOCK);
     }
 #if defined(DEBUG)
-    XplConsolePrintf("NMAP: ReadNMAPLockAcquire() called with a NULL lock handle from %s:%lu\r\n", file, line); 
+    Log(LOG_DEBUG, "ReadNMAPLockAcquire() called with a NULL lock handle from %s:%lu", file, line); 
 #endif
 
     return(NLOCK_HANDLE_NOT_PROVIDED);
@@ -390,7 +390,7 @@ ReadNMAPLockRelease(NLockStruct *lockHandle, unsigned char *file, unsigned long 
             if ((lockHandle->wLock == 0) && (lockHandle->eLock == 0)) {
                 ;
             } else {
-                XplConsolePrintf("NMAP: ReadNMAPLockRelease() called with values RLock = %lu WLock = %lu and ELock = %lu from %s:%lu\r\n", lockHandle->rLock, lockHandle->wLock, lockHandle->eLock, file, line); 
+                Log(LOG_DEBUG, "ReadNMAPLockRelease() called with values RLock = %lu WLock = %lu and ELock = %lu from %s:%lu", lockHandle->rLock, lockHandle->wLock, lockHandle->eLock, file, line); 
             }
 #endif
 
@@ -447,14 +447,14 @@ ReadNMAPLockRelease(NLockStruct *lockHandle, unsigned char *file, unsigned long 
 
         XplSignalLocalSemaphore(NLockHeadArray[lockHandle->slot].lock);
 #if defined(DEBUG)
-        XplConsolePrintf("NMAP: ReadNMAPLockRelease() called with no readers from %s:%lu\r\n", file, line); 
+        Log(LOG_DEBUG, "ReadNMAPLockRelease() called with no readers from %s:%lu", file, line); 
 #endif
 
         return(NLOCK_INVALID);
     }
 
 #if defined(DEBUG)
-    XplConsolePrintf("NMAP: ReadNMAPLockRelease() called with an NULL lock handle from %s:%lu\r\n", file, line); 
+    Log(LOG_DEBUG, "ReadNMAPLockRelease() called with an NULL lock handle from %s:%lu", file, line); 
 #endif
 
     return(NLOCK_INVALID);
@@ -513,7 +513,7 @@ WriteNMAPLockAcquire(NLockStruct *lockHandle, long timeout, unsigned char *file,
     }
 
 #if defined(DEBUG)
-    XplConsolePrintf("NMAP: WriteNMAPLockAcquire() called with an NULL lock handle from %s:%lu\r\n", file, line); 
+    Log(LOG_DEBUG, "WriteNMAPLockAcquire() called with an NULL lock handle from %s:%lu", file, line); 
 #endif
 
     return(NLOCK_INVALID);
@@ -533,7 +533,7 @@ WriteNMAPLockRelease(NLockStruct *lockHandle, unsigned char *file, unsigned long
         if ((lockHandle->rLock > 0) && (lockHandle->eLock == 0) && (lockHandle->wLock == 1)) {
             ;
         } else {
-            XplConsolePrintf("NMAP: WriteNMAPLockRelease() called with unexpected values RLock:%lu WLock: %lu ELock: %lu from %s:%lu\r\n", lockHandle->rLock, lockHandle->wLock, lockHandle->eLock, file, line); 
+            Log(LOG_DEBUG, "WriteNMAPLockRelease() called with unexpected values RLock:%lu WLock: %lu ELock: %lu from %s:%lu", lockHandle->rLock, lockHandle->wLock, lockHandle->eLock, file, line); 
         }
         #endif
 
@@ -543,7 +543,7 @@ WriteNMAPLockRelease(NLockStruct *lockHandle, unsigned char *file, unsigned long
     }
 
 #if defined(DEBUG)
-    XplConsolePrintf("NMAP: WriteNMAPLockRelease() with a NULL lock handle from %s:%lu\r\n", file, line); 
+    Log(LOG_DEBUG, "WriteNMAPLockRelease() with a NULL lock handle from %s:%lu", file, line); 
 #endif
 
     return(NLOCK_INVALID);
@@ -604,7 +604,7 @@ PurgeNMAPLockAcquire(NLockStruct *lockHandle, long timeout, unsigned char *file,
     }
 
 #if defined(DEBUG)
-    XplConsolePrintf("NMAP: PurgeNMAPLockAcquire() called with an NULL lock handle from %s:%lu\r\n", file, line); 
+    Log(LOG_DEBUG, "PurgeNMAPLockAcquire() called with an NULL lock handle from %s:%lu", file, line); 
 #endif
 
     return(NLOCK_INVALID);
@@ -625,7 +625,7 @@ PurgeNMAPLockRelease(NLockStruct *lockHandle, unsigned char *file, unsigned long
         if ((lockHandle->eLock == 1) && (lockHandle->wLock == 0) && (lockHandle->rLock == 1)) {
             ;
         } else {
-            XplConsolePrintf("NMAP: PurgeNMAPLockAcquire() called with unexpected values RLock:%lu WLock: %lu ELock: %lu from %s:%lu\r\n", lockHandle->rLock, lockHandle->wLock, lockHandle->eLock, file, line); 
+            Log(LOG_DEBUG, "PurgeNMAPLockAcquire() called with unexpected values RLock:%lu WLock: %lu ELock: %lu from %s:%lu", lockHandle->rLock, lockHandle->wLock, lockHandle->eLock, file, line); 
         }
 #endif
 
@@ -635,7 +635,7 @@ PurgeNMAPLockRelease(NLockStruct *lockHandle, unsigned char *file, unsigned long
     }
 
 #if defined(DEBUG)
-    XplConsolePrintf("NMAP: PurgeNMAPLockAcquire() called with a NULL lock handle from %s:%lu\r\n", file, line); 
+    Log(LOG_DEBUG, "PurgeNMAPLockAcquire() called with a NULL lock handle from %s:%lu", file, line); 
 #endif
 
     return(NLOCK_INVALID);

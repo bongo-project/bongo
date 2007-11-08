@@ -271,17 +271,17 @@ DecodeWord(char *buf, int len, char **prevtext)
     }
 
     if (BongoStreamAddCodec(stream, encoding, FALSE)) {
-        printf ("Don't understand encoding %s\n", encoding);
+        Log(LOG_ERROR, "Mail parser doesn't understand encoding %s", encoding);
         goto done;
     }
 
     if (BongoStreamAddCodec(stream, charset, FALSE)) {
-        printf("Don't understand charset %s\n", charset);
+        Log(LOG_ERROR, "Mail parser doesn't understand charset %s", charset);
         goto done;
     }
 
     if (BongoStreamAddCodec(stream, "UTF-8", TRUE)) {
-        printf("Couldn't add UTF-8 encoder\n");
+        Log(LOG_ERROR, "Mail parser couldn't convert to UTF-8");
         goto done;
     }
 
@@ -1094,7 +1094,7 @@ MailParseHeaders(MailParser *parser)
         parser->p = q + 1;
 
         if (-1 == ParseHeader(parser, header)) {
-            printf("didn't understand header: %d: %s", header, q + 1);
+            Log(LOG_ERROR, "Parsing headers, didn't understand this: %d: %s", header, q + 1);
             if (parser->p != parser->line) {
                 /* nevertheless, we've got to soldier on */
                 NEXTLINE(0);
