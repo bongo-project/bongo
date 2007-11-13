@@ -1597,6 +1597,9 @@ StartOver:
             saddr.sin_addr.s_addr = Queue.pushClients.array[used].address;
             saddr.sin_port = Queue.pushClients.array[used].port;
 
+            /* FIXME: this is the lazy fix until we can figure this out */
+            memcpy(&(client->conn->socketAddress), &saddr, sizeof(struct sockaddr));
+
             len = connect(client->conn->socket, (struct sockaddr *)&saddr, sizeof(saddr));
             if (!len) {
                 /* Non-blocking, w/o nagele */
@@ -4662,6 +4665,16 @@ CommandQstorMessage(void *param)
 
     MsgGetRFC822Date(-1, 0, TimeBuf);
     fprintf(client->entry.data,
+            "Received: from %s (%d.%d.%d.%d) by %s\r\n\twith NMAP (bongoqueue Agent); %s\r\n",
+            BongoGlobals.hostname, /* FIXME: this should eventually be the remote hsotname of the agent */
+            client->conn->socketAddress.sin_addr.s_net,
+            client->conn->socketAddress.sin_addr.s_host,
+            client->conn->socketAddress.sin_addr.s_lh,
+            client->conn->socketAddress.sin_addr.s_impno,
+            BongoGlobals.hostname,
+            TimeBuf);
+/*
+    fprintf(client->entry.data,
             "Received: from %d.%d.%d.%d [%d.%d.%d.%d] by %s\r\n\twith NMAP (%s); %s\r\n",
             client->conn->socketAddress.sin_addr.s_net,
             client->conn->socketAddress.sin_addr.s_host,
@@ -4676,7 +4689,7 @@ CommandQstorMessage(void *param)
             BongoGlobals.hostname,
             AGENT_NAME,
             TimeBuf);
-
+*/
     if (count) {
         ccode = ConnReadToFile(client->conn, client->entry.data, count);
     } else {
