@@ -1249,29 +1249,17 @@ HandleConnection (void *param)
                 } else {
                     snprintf(WithProtocol, 5, "SMTP");
                 }
-
-                snprintf(Answer, sizeof(Answer),
-                         "Received: from %d.%d.%d.%d (%s%s%s) [%d.%d.%d.%d]\r\n\tby %s with %s (%s %s%s);\r\n\t%s\r\n",
-                         Client->client.conn->socketAddress.sin_addr.s_net,
-                         Client->client.conn->socketAddress.sin_addr.s_host,
-                         Client->client.conn->socketAddress.sin_addr.s_lh,
-                         Client->client.conn->socketAddress.sin_addr.s_impno,
-                         
-                         Client->AuthFrom ? (char *)Client->AuthFrom : "not authenticated",
-                         Client->RemoteHost[0] ? " HELO " : "",
-                         Client->RemoteHost,
-                         
-                         Client->client.conn->socketAddress.sin_addr.s_net,
-                         Client->client.conn->socketAddress.sin_addr.s_host,
-                         Client->client.conn->socketAddress.sin_addr.s_lh,
-                         Client->client.conn->socketAddress.sin_addr.s_impno,
-                         
-                         BongoGlobals.hostname,
-                         WithProtocol,
-                         PRODUCT_NAME,
-                         PRODUCT_VERSION,
-                         Client->client.conn->ssl.enable ? "\r\n\tvia secured & encrypted transport [TLS]" : "",
-                         TimeBuf);
+                snprintf(Answer, sizeof(Answer), "Received: from %s (%d.%d.%d.%d) by %s\r\n\twith %sSMTP%s%s (bongosmtp Agent); %s\r\n",
+                    Client->RemoteHost,
+                    Client->client.conn->socketAddress.sin_addr.s_net,
+                    Client->client.conn->socketAddress.sin_addr.s_host,
+                    Client->client.conn->socketAddress.sin_addr.s_lh,
+                    Client->client.conn->socketAddress.sin_addr.s_impno,
+                    BongoGlobals.hostname,
+                    (Client->IsEHLO) ? "E" : "",
+                    (Client->client.conn->ssl.enable) ? "S" : "",
+                    (Client->AuthFrom) ? "A" : "",
+                    TimeBuf);
                 NMAPSendCommand(Client->nmap.conn, Answer, strlen(Answer));
 
                 /* read all the data to the nmap connection.  this function
@@ -1680,7 +1668,9 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     unsigned int i;
     BOOL EscapedState = FALSE;
     unsigned long LastNMAPContact;
-        unsigned char	TimeBuf[80];
+    unsigned char TimeBuf[80];
+    BOOL ehlo=TRUE;
+    BOOL tls=FALSE;
 
     status = GetAnswer (Client, Reply, sizeof (Reply));
     HandleFailure (220);
@@ -1700,6 +1690,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
         ConnFlush(Client->remotesmtp.conn);
         status = GetAnswer (Client, Reply, sizeof (Reply));
         HandleFailure (250);
+        ehlo=FALSE;
     }
     else {
         /* The other server supports ESMTP */
@@ -1722,6 +1713,7 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 }
                 ConnFlush(Client->remotesmtp.conn);
                 status = GetAnswer (Client, Reply, sizeof (Reply));
+                tls=TRUE;
             }
         }
 
@@ -2044,19 +2036,14 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
     HandleFailure (354);
 
     MsgGetRFC822Date(-1, 0, TimeBuf);
-    snprintf(Answer, sizeof(Answer), "Received: from %d.%d.%d.%d [%d.%d.%d.%d] by %s\r\n\twith NMAP (%s %s); %s\r\n",
-             Client->client.conn->socketAddress.sin_addr.s_net,
-             Client->client.conn->socketAddress.sin_addr.s_host,
-             Client->client.conn->socketAddress.sin_addr.s_lh,
-             Client->client.conn->socketAddress.sin_addr.s_impno,
-             Client->client.conn->socketAddress.sin_addr.s_net,
-             Client->client.conn->socketAddress.sin_addr.s_host,
-             Client->client.conn->socketAddress.sin_addr.s_lh,
-             Client->client.conn->socketAddress.sin_addr.s_impno,
-             BongoGlobals.hostname, 
-             PRODUCT_NAME,
-             PRODUCT_VERSION,
-             TimeBuf);
+    snprintf(Answer, sizeof(Answer), "Received: from %s (%d.%d.%d.%d) by %s\r\n\twith NMAP (bongosmtp Agent); %s\r\n",
+            BongoGlobals.hostname, /* FIXME: this should eventually refelct the queue agent's ip hostname */
+            Client->client.conn->socketAddress.sin_addr.s_net,
+            Client->client.conn->socketAddress.sin_addr.s_host,
+            Client->client.conn->socketAddress.sin_addr.s_lh,
+            Client->client.conn->socketAddress.sin_addr.s_impno,
+            BongoGlobals.hostname,
+            TimeBuf);
     ConnWrite(Client->remotesmtp.conn, Answer, strlen(Answer));
 
     snprintf(Answer, sizeof(Answer), "QRETR %s MESSAGE\r\n", Client->RemoteHost);
