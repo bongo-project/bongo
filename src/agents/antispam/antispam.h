@@ -22,6 +22,9 @@
 #ifndef _ANTISPAM_H
 #define _ANTISPAM_H
 
+#define LOGGERNAME "antispam"
+#include <logger.h>
+
 #include <connio.h>
 #include <msgapi.h>
 #include <nmap.h>

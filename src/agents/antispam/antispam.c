@@ -27,7 +27,7 @@
 
 #include <xpl.h>
 #include <memmgr.h>
-#include <logger.h>
+
 #include <bongoagent.h>
 #include <bongoutil.h>
 #include <nmap.h>
@@ -46,38 +46,6 @@
 
 static void SignalHandler(int sigtype);
 
-#define QUEUE_WORK_TO_DO(c, id, r) \
-        { \
-            XplWaitOnLocalSemaphore(ASpam.nmap.semaphore); \
-            if (XplSafeRead(ASpam.nmap.worker.idle)) { \
-                (c)->queue.previous = NULL; \
-                if (((c)->queue.next = ASpam.nmap.worker.head) != NULL) { \
-                    (c)->queue.next->queue.previous = (c); \
-                } else { \
-                    ASpam.nmap.worker.tail = (c); \
-                } \
-                ASpam.nmap.worker.head = (c); \
-                (r) = 0; \
-            } else { \
-                XplSafeIncrement(ASpam.nmap.worker.active); \
-                XplSignalBlock(); \
-                XplBeginThread(&(id), HandleConnection, 24 * 1024, XPL_UINT_TO_PTR(XplSafeRead(ASpam.nmap.worker.active)), (r)); \
-                XplSignalHandler(SignalHandler); \
-                if (!(r)) { \
-                    (c)->queue.previous = NULL; \
-                    if (((c)->queue.next = ASpam.nmap.worker.head) != NULL) { \
-                        (c)->queue.next->queue.previous = (c); \
-                    } else { \
-                        ASpam.nmap.worker.tail = (c); \
-                    } \
-                    ASpam.nmap.worker.head = (c); \
-                } else { \
-                    XplSafeDecrement(ASpam.nmap.worker.active); \
-                    (r) = -1; \
-                } \
-            } \
-            XplSignalLocalSemaphore(ASpam.nmap.semaphore); \
-        }
 
 ASpamGlobals ASpam;
 
@@ -463,7 +431,7 @@ HandleConnection(void *param)
     ASpamClient *client;
 
     if ((client = ASpamClientAlloc()) == NULL) {
-        XplConsolePrintf("bongoantispam: New worker failed to startup; out of memory.\r\n");
+        Log(LOG_ERROR, "New worker failed to start up; out of memory.");
 
         NMAPSendCommand(client->conn, "QDONE\r\n", 7);
 
@@ -552,7 +520,35 @@ AntiSpamServer(void *ignored)
             if (ASpam.state < ASPAM_STATE_STOPPING) {
                 conn->ssl.enable = FALSE;
 
-                QUEUE_WORK_TO_DO(conn, id, ccode);
+                XplWaitOnLocalSemaphore(ASpam.nmap.semaphore);
+                if (XplSafeRead(ASpam.nmap.worker.idle)) {
+                    conn->queue.previous = NULL;
+                    if ((conn->queue.next = ASpam.nmap.worker.head) != NULL) {
+                        conn->queue.next->queue.previous = conn;
+                    } else {
+                        ASpam.nmap.worker.tail = conn;
+                    }
+                    ASpam.nmap.worker.head = conn;
+                    ccode = 0;
+                } else {
+                    XplSafeIncrement(ASpam.nmap.worker.active);
+                    XplSignalBlock();
+                    XplBeginThread(&id, HandleConnection, 24 * 1024, XPL_UINT_TO_PTR(XplSafeRead(ASpam.nmap.worker.active)), ccode);
+                    XplSignalHandler(SignalHandler);
+                    if (!ccode) {
+                        conn->queue.previous = NULL;
+                        if ((conn->queue.next = ASpam.nmap.worker.head) != NULL) {
+                            conn->queue.next->queue.previous = conn;
+                        } else {
+                            ASpam.nmap.worker.tail = conn;
+                        }
+                        ASpam.nmap.worker.head = conn;
+                    } else {
+                        XplSafeDecrement(ASpam.nmap.worker.active);
+                        ccode = -1;
+                    }
+                }
+                XplSignalLocalSemaphore(ASpam.nmap.semaphore);
                 if (!ccode) {
                     XplSignalLocalSemaphore(ASpam.nmap.worker.todo);
 
@@ -584,7 +580,7 @@ AntiSpamServer(void *ignored)
 
             default: {
                 if (ASpam.state < ASPAM_STATE_STOPPING) {
-                    XplConsolePrintf("bongoantispam: Exiting after an accept() failure; error %d\r\n", errno);
+                    Log(LOG_ERROR, "Exiting after an accept() failure; error %d", errno);
 
                     LoggerEvent(ASpam.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
 
@@ -601,9 +597,7 @@ AntiSpamServer(void *ignored)
     /* Shutting down */
     ASpam.state = ASPAM_STATE_UNLOADING;
 
-#if VERBOSE
-    XplConsolePrintf("bongoantispam: Shutting down.\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutting down");
 
     id = XplSetThreadGroupID(ASpam.id.group);
 
@@ -632,9 +626,7 @@ AntiSpamServer(void *ignored)
         XplDelay(1000);
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoantispam: Shutting down %d queue threads\r\n", XplSafeRead(ASpam.nmap.worker.active));
-#endif
+    Log(LOG_DEBUG, "Shutting down %d queue threads", XplSafeRead(ASpam.nmap.worker.active));
 
     XplWaitOnLocalSemaphore(ASpam.nmap.semaphore);
 
@@ -650,11 +642,11 @@ AntiSpamServer(void *ignored)
     }
 
     if (XplSafeRead(ASpam.server.active) > 1) {
-        XplConsolePrintf("bongoantispam: %d server threads outstanding; attempting forceful unload.\r\n", XplSafeRead(ASpam.server.active) - 1);
+        Log(LOG_INFO, "%d server threads outstanding; attempting forceful unload.", XplSafeRead(ASpam.server.active)-1);
     }
 
     if (XplSafeRead(ASpam.nmap.worker.active)) {
-        XplConsolePrintf("bongoantispam: %d threads outstanding; attempting forceful unload.\r\n", XplSafeRead(ASpam.nmap.worker.active));
+        Log(LOG_INFO, "%d threads outstanding; attempting forceful unload.", XplSafeRead(ASpam.nmap.worker.active));
     }
 
     SpamdShutdown(&(ASpam.spamd));
@@ -675,9 +667,7 @@ AntiSpamServer(void *ignored)
 
     MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
 
-#if VERBOSE
-    XplConsolePrintf("bongoantispam: Shutdown complete\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutdown complete.");
 
     XplSignalLocalSemaphore(ASpam.sem.main);
     XplWaitOnLocalSemaphore(ASpam.sem.shutdown);
@@ -785,27 +775,27 @@ QueueSocketInit(void)
 
         ASpam.nmap.conn->socket = ConnServerSocket(ASpam.nmap.conn, 2048);
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            XplConsolePrintf("bongoantispam: Could not drop to unprivileged user '%s'\r\n", MsgGetUnprivilegedUser());
+            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
             ConnFree(ASpam.nmap.conn);
             ASpam.nmap.conn = NULL;
             return(-1);
         }
 
         if (ASpam.nmap.conn->socket == -1) {
-            XplConsolePrintf("bongoantispam: Could not bind to dynamic port\r\n");
+            Log(LOG_ERROR, "Could not bind to dynamic port.");
             ConnFree(ASpam.nmap.conn);
             ASpam.nmap.conn = NULL;
             return(-1);
         }
 
         if (QueueRegister(MSGSRV_AGENT_ANTISPAM, ASpam.nmap.queue, ASpam.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
-            XplConsolePrintf("bongoantispam: Could not register with bongonmap\r\n");
+            Log(LOG_ERROR, "Could not register with bongoqueue");
             ConnFree(ASpam.nmap.conn);
             ASpam.nmap.conn = NULL;
             return(-1);
         }
     } else {
-        XplConsolePrintf("bongoantispam: Could not allocate connection.\r\n");
+        Log(LOG_ERROR, "Could not allocate connection.");
         return(-1);
     }
 
@@ -820,7 +810,7 @@ XplServiceMain(int argc, char *argv[])
     int                ccode;
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf("bongoantispam: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return(1);
     }
     XplInit();
@@ -862,11 +852,11 @@ XplServiceMain(int argc, char *argv[])
         } else {
             MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
 
-            XplConsolePrintf("bongoantispam: Unable to create connection pool; shutting down.\r\n");
+            Log(LOG_ERROR, "Unable to create connection pool");
             return(-1);
         }
     } else {
-        XplConsolePrintf("bongoantispam: Unable to initialize memory manager; shutting down.\r\n");
+        Log(LOG_ERROR, "Unable to initialize memory manager");
         return(-1);
     }
 
@@ -880,7 +870,7 @@ XplServiceMain(int argc, char *argv[])
 
     ASpam.handle.logging = LoggerOpen("bongoantispam");
     if (!ASpam.handle.logging) {
-            XplConsolePrintf("bongoantispam: Unable to initialize logging; disabled.\r\n");
+            Log(LOG_ERROR, "Unable to initialze logging");
     }
 
     ReadConfiguration();
@@ -893,7 +883,7 @@ XplServiceMain(int argc, char *argv[])
     // the right place, really...
     // if (ASpam.allow.used || ASpam.disallow.used) {
         if (QueueSocketInit() < 0) {
-            XplConsolePrintf("bongoantispam: Exiting.\r\n");
+            Log(LOG_ERROR, "Init failed");
 
             MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
 
@@ -903,7 +893,7 @@ XplServiceMain(int argc, char *argv[])
         /* initialize scanning engine here */
 
         if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-            XplConsolePrintf("bongoantispam: Could not drop to unprivileged user '%s', exiting.\r\n", MsgGetUnprivilegedUser());
+            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
 
             MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
 

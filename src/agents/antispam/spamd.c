@@ -68,9 +68,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
     double score = 0;
     Connection *conn; /* Holds the current connection to spamd. */
 
-#ifdef VERBOSE_SPAMD
-    XplConsolePrintf("AntiSpam: (%s) Checking with SpamAssassin spamd\n", queueID);
-#endif
+    Log(LOG_DEBUG, "(%s) Checking with spamd", queueID);
     
     infected = FALSE;
     conn = ConnAddressPoolConnect(&(spamd->hosts), spamd->connectionTimeout);
@@ -104,11 +102,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
                /* Write the message body to the connection. */
                && ((ccode = ConnReadAnswer(conn, client->line, CONN_BUFSIZE)     ) != -1)) {
             /* Read response from spamd. */
-#ifdef VERBOSE_SPAMD
-            XplConsolePrintf("AntiSpam: (%s) Answer from socket: \"%s\"\n", queueID, client->line);
-#else
-            ;
-#endif
+            Log(LOG_DEBUG, "(%s) Answer from socket: '%s'", queueID, client->line);
         } else {
             goto ErrConnFree;
         }
@@ -164,7 +158,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
                      */
                     ptr = strchr(client->line, ';');
                     score = atof(++ptr);
-                    XplConsolePrintf("AntiSpam: (%s) Current message received a spam score of %f\n", queueID, score);
+                    Log(LOG_INFO, "(%s) spam score of %f", queueID, score);
                 }
             }
             infected = TRUE;
@@ -179,9 +173,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
                 ) {
                 ;
             } else {
-#ifdef VERBOSE_SPAMD
-                XplConsolePrintf("AntiSpam: (%s) error while creating new queue entry.\n", queueID);
-#endif
+                Log(LOG_DEBUG, "(%s) Error creating new queue entry.");
                 NMAPSendCommand(client->conn, "QABRT\r\n", 7);
                 NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
                 goto ErrConnFree;
@@ -243,11 +235,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
                 /* Copy out the message data from spamd.
                  * Tell nmap to process the new message. 
                  */
-#ifdef VERBOSE_SPAMD
-                XplConsolePrintf("AntiSpam: (%s) Created new queue entry with spam headers.\n", queueID);
-#else
-                ;
-#endif
+                Log(LOG_DEBUG, "(%s) Created new queue entry with spam headers.", queueID);
             } else {
                 NMAPSendCommand(client->conn, "QABRT\r\n", 7);
                 goto ErrConnFree;
@@ -255,9 +243,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
 
             /* Drop original message. */
                     
-#ifdef VERBOSE_SPAMD
-            XplConsolePrintf("AntiSpam: (%s) Dropped original spam message from the queue.\n", queueID);
-#endif
+            Log(LOG_DEBUG, "(%s) Dropped original spam message from the queue", queueID);
             ccode = NMAPSendCommandF(client->conn, "QDELE %s\r\n", queueID); /* expect ccode != -1*/
             ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE); /* expect ccode == 1000 */
 #if 0
@@ -279,10 +265,7 @@ this is commented out until we determine how we'd want to do this sort of thing,
 #endif
         } else {
             /* Pass message */
-
-#ifdef VERBOSE_SPAMD
-            XplConsolePrintf("AntiSpam: (%s) Recieved a non-zero status code from spamd: %d", queueID, ccode);
-#endif
+            Log(LOG_DEBUG, "(%s) Received a non-zero status code from spamd: %d", queueID, ccode);
         }
 
     ErrConnFree:
@@ -290,7 +273,7 @@ this is commented out until we determine how we'd want to do this sort of thing,
         return infected;
     }
 
-    XplConsolePrintf("BONGOANTISPAM: failed to connecto to spamd server!\n");
+    Log(LOG_ERROR, "(%s) Failed to connect to the spamd server");
     return(FALSE);
 }
 
