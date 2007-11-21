@@ -3730,6 +3730,8 @@ ReadConfiguration(void)
         return FALSE;
     }
 
+    Imap.server.ssl.enable = TRUE;
+
     return(TRUE);
 }
 
