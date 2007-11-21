@@ -347,7 +347,8 @@ ProcessConnection(ASpamClient *client)
             switch (cur[0]) {
                 case QUEUE_FLAGS: {
                     copy = FALSE;
-                    ccode = NMAPSendCommandF(client->conn, "QMOD RAW "QUEUES_FLAGS"%ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED));
+                    /* this is handled by the QCREA done in spamd.c */
+                    /* ccode = NMAPSendCommandF(client->conn, "QMOD RAW "QUEUES_FLAGS"%ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED)); */
                     break;
                 }
                 case QUEUE_FROM: {
@@ -388,10 +389,12 @@ ProcessConnection(ASpamClient *client)
                     break;
                 }
             }
-        
+            /* this is handled by the QCREA in spamd.c */
+            /*
             if (copy && (ccode != -1)) {
                 ccode = NMAPSendCommandF(client->conn, "QMOD RAW %s\r\n", cur);
             }
+            */
             cur = line;
             if (tmpNull) {
                 /* Restore the local copy of the envelope. */
