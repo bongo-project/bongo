@@ -41,8 +41,8 @@ agentdefs = {
         'label' : 'Antivirus',
         'filename' : '/config/antivirus',
         'data' : {
-            'host' : { 'label':'Host', 'type' : 'string' },
-            'port' : { 'label' : 'Port', 'type' : 'int' }
+            'timeout' : { 'label' : 'Timeout', 'type' : 'int', 'suffix' : 'milliseconds' },
+            'hosts' : { 'label' : 'Hosts', 'type' : 'hostlist,783' }
         }
     },
     'bongosmtp' : {

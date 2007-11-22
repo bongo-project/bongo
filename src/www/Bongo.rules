@@ -399,8 +399,8 @@ dist_hawkeyetplagents_DATA =			\
         src/www/hawkeye/agents/index.tpl	\
 	src/www/hawkeye/agents/agentview.tpl
 
-hawkeyetplagentsdir = $(htdocsdir)/hawkeye/aliases
-dist_hawkeyetplagents_DATA =			\
+hawkeyetplaliasesdir = $(htdocsdir)/hawkeye/aliases
+dist_hawkeyetplaliases_DATA =			\
         src/www/hawkeye/aliases/index.tpl   \
         src/www/hawkeye/aliases/edit.tpl    \
         src/www/hawkeye/aliases/confirmdelete.tpl
