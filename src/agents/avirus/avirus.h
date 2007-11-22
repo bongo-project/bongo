@@ -164,10 +164,6 @@ typedef struct _AVirusGlobals {
     } nmap;
 
     struct {
-        void *logging;
-    } handle;
-
-    struct {
         XplThreadID main; /* Tid */
         XplThreadID group; /* TGid */
 
@@ -209,8 +205,9 @@ typedef struct _AVirusGlobals {
     } stats;
 
     struct {
-        char *host;
-	struct sockaddr_in addr;
+        BongoArray *hostlist;
+        AddressPool hosts;
+        int timeout;
     } clam;
 } AVirusGlobals;
 
