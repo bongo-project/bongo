@@ -893,40 +893,7 @@ StartOver:
                         }
 
                         case QUEUE_RECIP_LOCAL:
-                        case QUEUE_RECIP_MBOX_LOCAL: {
-                            if (ptr) {
-                                *ptr = '\0';
-                            }
-
-                            ptr2 = strchr(cur + 1, ' ');
-                            if (ptr2) {
-                                *ptr2 = '\0';
-                            }
-
-/* TODO: here */
-                            if (MsgAuthFindUser(cur+1) == 0) {
-                                if (ptr2) {
-                                    fprintf(newFH, "%c%s %s\r\n", *cur, cur+1, cur+1);
-                                } else {
-                                    fprintf(newFH, "%c%s %s %d\r\n", *cur, cur+1, cur+1, DSN_FAILURE);
-                                }
-                            } else {
-                                Log(LOG_INFO, "Entry %ld queue %d, can't find %s", entryID, queue, cur + 1);
-
-                                if (ptr2) {
-                                    *ptr2 = ' ';
-                                }
-
-                                if (ptr) {
-                                    *ptr = '\n';
-                                }
-
-                                fwrite(cur, sizeof(unsigned char), next - cur, newFH);
-                            }
-
-                            break;
-                        }
-
+                        case QUEUE_RECIP_MBOX_LOCAL:
                         case QUEUE_RECIP_REMOTE: {
                             if (ptr) {
                                 *ptr = '\0';
@@ -936,15 +903,35 @@ StartOver:
                             if (ptr2) {
                                 *ptr2 = '\0';
                             }
-/* TODO: here */
 
-                            if (ptr2) {
-                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s\n", cur + 1, ptr2 + 1);
-                            } else {
-                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s %d\r\n", cur + 1, cur + 1, DSN_FAILURE);
+                            /* alias this user */
+                            unsigned char buffer[1024]; /* FIXME: is this too big? */
+                            unsigned char *addrptr;
+                            int cnt;
+
+                            aliasing(cur+1, &cnt, buffer);
+
+                            /* find the address in teh result buffer so that we can rewrite it properly */
+                            addrptr = strrchr(buffer, ' ');
+                            addrptr++;
+                            switch(atoi(buffer)) {
+                            case 1000:
+                                /* this is a local user, change the envelope to reflect that */
+                                fprintf(newFH, QUEUES_RECIP_LOCAL"%s %s\r\n", addrptr, cur+1);
+                                break;
+                            case 1002:
+                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s\r\n", addrptr, cur+1);
+                                break;
+                            default:
+                                fprintf(newFH, "%c%s %s %d\r\n", *cur, addrptr, cur+1, DSN_FAILURE);
+                                break;
                             }
-
-                            break;
+                            if (ptr) {
+                                *ptr = '\n';
+                            }
+                            if (ptr2) {
+                                *ptr2 = ' ';
+                            }
                         }
 
                         case QUEUE_ADDRESS: 
@@ -1630,6 +1617,7 @@ StartOver:
                 return(TRUE);
             }
 
+            Log(LOG_DEBUG, "Handing off to agent queue %d", queue);
             /* We got a connection to the guy, tell him what to do */
             ConnWriteF(client->conn, "6020 %03d-%s %ld %ld %ld\r\n", queue, entry, (unsigned long)sb.st_size, dSize, lines);
             ConnWriteFile(client->conn, fh);

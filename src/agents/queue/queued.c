@@ -120,20 +120,20 @@ int hostedFindFunc(const void *str1, const void *str2) {
  *      2: username == domain
  *      3: username == auth subsystem
 */
-BOOL aliasing(Connection *conn, char *addr, int *cnt) {
+BOOL aliasing(char *addr, int *cnt, unsigned char *buffer) {
     unsigned char *local = NULL;
     unsigned char *domain = NULL;
     int i=-1;
     BOOL result=FALSE;
 
     if (addr[0] == '\0') {
-        ConnWriteF(conn, MSG4001NO_USER, "");
+        sprintf(buffer, MSG4001NO_USER, "");
         return TRUE;
     }
 
     /* very rudimentary way to prevent loops */
     if (*cnt > 5) {
-        ConnWriteStr(conn, MSG4000LOOP);
+        strcpy(buffer, MSG4000LOOP);
         return TRUE;
     }
 
@@ -146,12 +146,12 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
         /* if i get here, then i don't have a domain.  assume this is the username.  the only possible
          * choices here are type 0 and type 3 */
         if (MsgAuthFindUser(local) == 0) {
-            ConnWriteF(conn, MSG1000LOCAL, local);
+            sprintf(buffer, MSG1000LOCAL, local);
             result = TRUE;
             goto ExitAliasing;
         } else {
             /* the user was not found.  it must be an invalid user */
-            ConnWriteF(conn, MSG4001NO_USER, local);
+            sprintf(buffer, MSG4001NO_USER, local);
             result = TRUE;
             goto ExitAliasing;
         }
@@ -170,11 +170,11 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
         if (a.aliases && a.aliases->len && ((i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc)) > -1)) {
             AliasStruct b;
             b = BongoArrayIndex(a.aliases, AliasStruct, i);
-            result = aliasing(conn, b.to, cnt);
+            result = aliasing(b.to, cnt, buffer);
         } else if (a.to && a.to[0] != '\0') {
             /* there are no user aliasess is there a domain alias? */
             snprintf(new_addr, 999, "%s@%s", local, a.to);
-            result = aliasing(conn, new_addr, cnt);
+            result = aliasing(new_addr, cnt, buffer);
         }
 
         /* we haven't already handled the address.  it must be a local address */
@@ -183,30 +183,30 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
             switch (a.mapping_type) {
             case 0:
                 if (MsgAuthFindUser(local) == 0) {
-                    ConnWriteF(conn, MSG1000LOCAL, local);
+                    sprintf(buffer, MSG1000LOCAL, local);
                     result = TRUE;
                 }
                 break;
             case 1:
                 if (MsgAuthFindUser(addr) == 0) {
-                    ConnWriteF(conn, MSG1000LOCAL, addr);
+                    sprintf(buffer, MSG1000LOCAL, addr);
                     result = TRUE;
                 }
                 break;
             case 2:
                 if (MsgAuthFindUser(domain) == 0) {
-                    ConnWriteF(conn, MSG1000LOCAL, domain);
+                    sprintf(buffer, MSG1000LOCAL, domain);
                     result = TRUE;
                 }
                 break;
             case 3:
                 /* unhandled for now */
-                ConnWriteStr(conn, MSG4000UNKNOWN_TYPE);
+                strcpy(buffer, MSG4000UNKNOWN_TYPE);
                 result = TRUE;
                 break;
             default:
                 /* unhandled forever */
-                ConnWriteStr(conn, MSG4000UNKNOWN_TYPE);
+                strcpy(buffer, MSG4000UNKNOWN_TYPE);
                 result = TRUE;
                 break;
             }
@@ -214,12 +214,12 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
 
         /* if we still haven't resolved the address, it is an unknown user */
         if (result == FALSE) {
-            ConnWriteF(conn, MSG4001NO_USER, addr);
+            sprintf(buffer, MSG4001NO_USER, addr);
             result = TRUE;
         }
     } else {
         /* the user must be remote */
-        ConnWriteF(conn, MSG1002REMOTE, addr);
+        sprintf(buffer, MSG1002REMOTE, addr);
         result = TRUE;
         goto ExitAliasing;
     }
@@ -239,11 +239,14 @@ BOOL aliasing(Connection *conn, char *addr, int *cnt) {
 int CommandAddressResolve(void *param) {
     BOOL handled=FALSE;
     int cnt=0;
+    unsigned char buffer[1024]; /* FIXME: is this too big? */
     QueueClient *client = (QueueClient *)param;
 
-    handled = aliasing(client->conn, client->buffer + 16, &cnt);
+    handled = aliasing(client->buffer + 16, &cnt, &buffer);
     if (!handled) {
-        ConnWriteF(client->conn, MSG4001NO_USER, client->buffer + 16);
+        ConnWriteF(client->conn, MSG4001NO_USER"\r\n", client->buffer + 16);
+    } else {
+        ConnWriteF(client->conn, "%s\r\n", buffer);
     }
     return 0;
 }
@@ -257,10 +260,10 @@ int CommandDomainLocation(void *param) {
 	/* now search for it */
 	int idx = BongoArrayFindSorted(Conf.hostedDomains, domain, (ArrayCompareFunc)hostedFindFunc);
 	if (idx > -1) {
-		ConnWriteF(client->conn, MSG1000LOCAL, domain);
+		ConnWriteF(client->conn, MSG1000LOCAL"\r\n", domain);
 	} else {
 		/* TODO: add the relay domain stuff */
-		ConnWriteF(client->conn, MSG1002REMOTE, domain);
+		ConnWriteF(client->conn, MSG1002REMOTE"\r\n", domain);
 	}
 	return 0;
 }
@@ -425,10 +428,10 @@ CheckTrustedHost(QueueClient *client)
     if (Conf.trustedHosts) {
         /* TODO: this can be optimized a little bit */
         XplRWReadLockAcquire(&Conf.lock);
-        i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)strcasecmp);
+        i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)hostedFindFunc);
         XplRWReadLockRelease(&Conf.lock);
     }
-    return (i > 0);
+    return (i > -1);
 }
 
 int

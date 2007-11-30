@@ -175,7 +175,7 @@ ReadConfiguration (BOOL *recover)
         XplConsolePrintf("bongoqueue: WARNING - Tuning parameters adjusted to %ld par./%ld seq.\r\n", Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers);
         XplBell();
 
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_QLIMITS_ADJUSTED, LOG_WARNING, 0, NULL, NULL, Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers, NULL, 0);
+        Log(LOG_INFO, "Not enough memory; tuning parameters adjusted; concurrent limit: %d, sequential limit: %d", Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers);
         Conf.defaultConcurrentWorkers = Conf.maxConcurrentWorkers;
         Conf.defaultSequentialWorkers = Conf.maxSequentialWorkers;
     }

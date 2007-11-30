@@ -99,6 +99,7 @@ extern QueueAgent Agent;
 
 void QueueClientFree(void *clientp);
 int HandleCommand(QueueClient *client);
+BOOL aliasing(char *addr, int *cnt, unsigned char *buffer);
 
 #define STACKSPACE_Q (1024*80)
 
