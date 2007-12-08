@@ -79,7 +79,8 @@ __gnutls_new(bongo_ssl_context *context, gnutls_connection_end_t con_end) {
         gnutls_dh_set_prime_bits(session, 1024);
     } else {
         gnutls_certificate_credentials_t xcred = NULL;
-        const int cert_type_priority[3] = { GNUTLS_CRT_X509, GNUTLS_CRT_OPENPGP, 0 };
+
+        const int cert_type_priority[4] = { GNUTLS_CRT_X509, GNUTLS_CRT_OPENPGP, 0 };
 
         /* defaults are ok here */
         gnutls_set_default_priority (session);
@@ -87,6 +88,8 @@ __gnutls_new(bongo_ssl_context *context, gnutls_connection_end_t con_end) {
         /* store the priority for x509 or openpgp out there
          * i doubt that openpgp will be used but perhaps there is a server that supports it */
         gnutls_certificate_type_set_priority (session, cert_type_priority);
+        gnutls_certificate_allocate_credentials (&xcred);
+        gnutls_certificate_set_x509_trust_file (xcred, XPL_DEFAULT_CERT_PATH, GNUTLS_X509_FMT_PEM);
 
         /* set the empty credentials in the session */
         gnutls_credentials_set (session, GNUTLS_CRD_CERTIFICATE, xcred);

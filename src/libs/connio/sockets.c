@@ -88,7 +88,7 @@ ConnTcpClose(Connection *c)
 	}
 }
 
-#if defined(S390RH) || defined(SOLARIS)
+//#if defined(S390RH) || defined(SOLARIS)
 
 // TODO: is this correct for Solaris?
 
@@ -154,7 +154,8 @@ ConnTcpWrite(Connection *c, char *b, size_t l, int *r)
 	} while (TRUE);
 }
 
-#else
+//#else
+#if 0
 
 void
 ConnTcpRead(Connection *c, char *b, size_t l, int *r)
