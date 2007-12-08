@@ -846,13 +846,6 @@ ImapCommandCapability(void *param)
     ImapSession *session = (ImapSession *)param;
     
     if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
-        if (!Imap.server.ssl.enable || session->client.conn->ssl.enable) {
-            if (ConnWrite(session->client.conn, Imap.command.capability.message, Imap.command.capability.len) != -1) {
-                return(SendOk(session, "CAPABILITY"));
-            }
-            return(STATUS_ABORT);
-        }
-        
         if (ConnWrite(session->client.conn, Imap.command.capability.ssl.message, Imap.command.capability.ssl.len) != -1) {
             return(SendOk(session, "CAPABILITY"));
         }
@@ -3374,7 +3367,6 @@ InitializeImapGlobals()
     Imap.server.disabled = FALSE;
     Imap.server.port = 143;
     Imap.server.ssl.port = 993;
-    Imap.server.ssl.enable = FALSE;
     Imap.server.ssl.config.options = 0;
     Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
     Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
@@ -3730,8 +3722,6 @@ ReadConfiguration(void)
         return FALSE;
     }
 
-    Imap.server.ssl.enable = TRUE;
-
     return(TRUE);
 }
 
@@ -3792,21 +3782,15 @@ XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
-    if (Imap.server.ssl.enable) {
-        if (!ServerSocketSSLInit()) {
-            Imap.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
-            Imap.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+    if (!ServerSocketSSLInit()) {
+        Imap.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+        Imap.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
             
-            Imap.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
+        Imap.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
         
-            Imap.server.ssl.context = ConnSSLContextAlloc(&(Imap.server.ssl.config));
-            if (Imap.server.ssl.context) {
-                XplBeginCountedThread(&id, IMAPSSLServer, IMAP_STACK_SIZE, NULL, ccode, Imap.server.active);
-            } else {
-                Imap.server.ssl.enable = FALSE;
-            }
-        } else {
-            Imap.server.ssl.enable = FALSE;
+        Imap.server.ssl.context = ConnSSLContextAlloc(&(Imap.server.ssl.config));
+        if (Imap.server.ssl.context) {
+            XplBeginCountedThread(&id, IMAPSSLServer, IMAP_STACK_SIZE, NULL, ccode, Imap.server.active);
         }
     }
 

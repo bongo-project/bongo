@@ -353,8 +353,6 @@ typedef struct {
 
     struct {
         struct {
-            BOOL enable;
-
             ConnSSLConfiguration config;
 
             bongo_ssl_context *context;
