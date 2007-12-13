@@ -14,32 +14,53 @@ from bongo.store.StoreClient import DocTypes, StoreClient
 
 class StoreBackupCommand(Command):
     log = logging.getLogger("Bongo.StoreTool")
+    user = "admin"
+    store = "_system"
 
     def __init__(self):
         Command.__init__(self, "store-backup", aliases=["sb"],
-                         summary="Create a backup of a user store",
-                         usage="%prog %cmd <store> [<output>]")
+                         summary="Create a backup of a store",
+                         usage="%prog %cmd [<output>]")
 
-    def BackupStore(self, store, backup_file):
+    def GetStoreConnection(self):
+        return StoreClient(self.user, self.store)
+
+    def BackupStore(self):
         # create a backup file which contains all the contents of the given store
-        collections = [collection.name for collection in store.Collections()]
-        for collection in collections:
-            contents = [document for document in store.List(collection)]
-            # write out an entry for the collection (it might be empty)
-            tar_dir = tarfile.TarInfo(collection)
+        store = self.GetStoreConnection()
+
+        try:
+            backup_file = open("%s.backup" % self.store, "wb")
+            meta_file = open("%s.meta" % self.store, "wb")
+        except IOError, e:
+            print str(e)
+            return
+
+        collection_list = []
+        for collection in store.Collections():
+            # write out entries for collections
+            tar_dir = tarfile.TarInfo(collection.name)
             tar_dir.size = 0
             tar_dir.type = tarfile.DIRTYPE
             backup_file.write(tar_dir.tobuf())
+            collection_list.append(collection.name)
+            meta_file.write("%s\n" % collection.name)
+            meta_file.write(" uid:%s\n" % collection.uid)
+            meta_file.write(" type:%d\n" % collection.type)
+            meta_file.write(" flags:%d\n\n" % collection.flags)
 
-            for document in contents:
+        for collection in collection_list:
+            # contents = [document for document in store.List(collection)]
+            docstore = self.GetStoreConnection()
+
+            for document in store.List(collection):
                 # write out the documents in the collection
                 if document.filename[0] == '/':
                     # this is a collection
                     continue
                 filename = "%s/%s" % (collection, document.filename)
                 try:
-                    print "Reading %s" % filename
-                    content = store.Read(filename)
+                    content = docstore.Read(filename)
                 except IOError, e:
                     print str(e)
                     continue
@@ -48,34 +69,39 @@ class StoreBackupCommand(Command):
                 # content is padded to a multiple of 512 bytes
                 tar_info = tarfile.TarInfo(filename)
                 tar_info.size = len(content)
+                tar_info.mtime = int(document.created)
                 backup_file.write(tar_info.tobuf())
                 backup_file.write(content)
                 space = len(content) % 512
                 if space != 0:
                     backup_file.write("\0" * (512 - space))
 
+                # write out meta data associated with document
+                meta_file.write("%s\n" % filename)
+                meta_file.write(" uid:%s\n" % document.uid)
+                meta_file.write(" imapuid:%s\n" % document.imapuid)
+                meta_file.write(" type:%d\n" % document.type)
+                meta_file.write(" flags:%d\n" % document.flags)
+                meta_file.write(" created:%s\n" % document.created)
+                props = docstore.PropGet(document.uid)
+                for key in props.keys():
+                    meta_file.write(" prop:%s:%s\n" % (key, props[key]))
+                meta_file.write("\n")
+
+            docstore.Quit()
+
+        store.Quit()
+        backup_file.close()
+        meta_file.close()
+
     def Run(self, options, args):
-        if len(args) == 0:
+        if len(args) == 1 and args[0] == "help":
             self.print_help()
             self.exit()
 
-        store = StoreClient(options.user, options.store)
-
-        try:
-            for storename in args:
-                backup_file = "%s.backup" % storename
-                try:
-                    f = open(backup_file, "wb")
-                    store.Store(storename)
-                    self.BackupStore(store, f)
-                except IOError, e:
-                    print str(e)
-                finally:
-                    if f:
-                        f.close()
-        finally:
-            store.Quit()
-
+        self.user = options.user
+        self.store = options.store
+        self.BackupStore()
 
 class StoreRestoreCommand(Command):
     log = logging.getLogger("Bongo.StoreTool")
