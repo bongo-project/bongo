@@ -3,6 +3,7 @@ pkgpythonstoretooldir = $(pkgpythondir)/storetool
 
 pkgpythonstoretool_PYTHON = \
 	src/apps/storetool/bongo/storetool/__init__.py \
+	src/apps/storetool/bongo/storetool/BackupCommands.py \
 	src/apps/storetool/bongo/storetool/CalendarCommands.py \
 	src/apps/storetool/bongo/storetool/ContactCommands.py \
 	src/apps/storetool/bongo/storetool/InteractiveCommands.py \

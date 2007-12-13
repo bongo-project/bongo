@@ -6,6 +6,8 @@ __all__ = ["CommandError",
            "CommandStream",
            "Item",
            "ItemIterator",
+           "Collection",
+           "CollectionIterator",
            "MimeItem",
            "Response",
            "ResponseIterator"]
@@ -35,6 +37,17 @@ class Item:
         self.type = int(self.type)
 
         self.props = {}
+
+class Collection:
+    def __init__(self, response):
+        ret = re.split(r"(?<!\\) ", response.message)
+        ret = [re.sub(r"\\ ", " ", x) for x in ret]
+
+        self.uid, self.type, self.flags, self.name = ret
+
+        self.flags = int(self.flags)
+        self.type = int(self.type)
+
 
 class MimeItem:
     def __init__(self, response):
@@ -161,3 +174,12 @@ class ItemIterator(ResponseIterator):
                 self.stream.Read(2)
 
         return item
+
+class CollectionIterator(ResponseIterator):
+    def __init__(self, stream):
+        ResponseIterator.__init__(self, stream)
+
+    def next(self):
+        collection = Collection(ResponseIterator.next(self))
+        return collection
+

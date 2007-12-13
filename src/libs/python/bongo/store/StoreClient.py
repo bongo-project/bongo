@@ -400,6 +400,11 @@ class StoreClient:
     def _escape_query(self, s):
         return self._escape_quotes(s)
 
+    def Collections(self, path=""):
+        command = "COLLECTIONS %s" % path
+        self.stream.Write(command)
+        return CollectionIterator(self.stream)
+
     def CookieDelete(self, token):
         command = "COOKIE DELETE %s" % token
 
