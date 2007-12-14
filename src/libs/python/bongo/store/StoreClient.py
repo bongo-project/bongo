@@ -429,8 +429,8 @@ class StoreClient:
         self.stream.log.debug("READ: 1000 ****************")
         return r.message
 
-    def Create(self, path, existingOk=False):
-        command = "CREATE %s" % path
+    def Create(self, path, guid="", existingOk=False):
+        command = "CREATE %s %s" % (path, guid)
         self.stream.Write(command)
 
         r = self.stream.GetResponse()

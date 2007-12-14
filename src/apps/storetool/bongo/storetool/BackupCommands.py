@@ -1,4 +1,5 @@
 import logging
+import string
 import sys
 
 from gettext import gettext as _
@@ -11,6 +12,42 @@ from bongo.store.StoreClient import DocTypes, StoreClient
 # import/export store contents as tar files
 # ideally we want to farm the tar format stuff itself out into a separate lib.
 # Sadly, the TarFile implementation that comes with Python is mostly useless 
+
+class PAXHeader():
+    def __init__(self, filename):
+        self.keywords = {}
+        self.filename = filename
+
+    def SetKey(self, key, value):
+        self.keywords[key] = value
+
+    def Keys(self):
+        return self.keywords
+
+    def ToString(self):
+        header = tarfile.TarInfo(self.filename + ".metadata")
+        header.type = "x"
+
+        content = ""
+        for key in self.keywords.keys():
+            content += "%d %s=%s\n" % (len(key) + len(self.keywords[key]) + 5, key, self.keywords[key])
+        header.size = len(content)
+
+        result = header.tobuf()
+        result += content
+        remainder = len(content) % 512
+        if remainder != 0:
+            result += "\0" * (512 - remainder)
+
+        return result
+
+    def FromString(self, content):
+        for line in string.split(content, "\n"):
+            space = string.find(line, " ")
+            equals = string.find(line, "=")
+            key = line[space+1:equals]
+            value = line[equals+1:]
+            self.keywords[key] = value
 
 class StoreBackupCommand(Command):
     log = logging.getLogger("Bongo.StoreTool")
@@ -31,7 +68,6 @@ class StoreBackupCommand(Command):
 
         try:
             backup_file = open("%s.backup" % self.store, "wb")
-            meta_file = open("%s.meta" % self.store, "wb")
         except IOError, e:
             print str(e)
             return
@@ -39,15 +75,18 @@ class StoreBackupCommand(Command):
         collection_list = []
         for collection in store.Collections():
             # write out entries for collections
+            tar_head = PAXHeader(collection.name)
+            tar_head.SetKey("BONGO.uid", collection.uid)
+            tar_head.SetKey("BONGO.type", "%d" % collection.type)
+            tar_head.SetKey("BONGO.flags", "%d" % collection.flags)
+            backup_file.write(tar_head.ToString())
+
             tar_dir = tarfile.TarInfo(collection.name)
             tar_dir.size = 0
             tar_dir.type = tarfile.DIRTYPE
+            tar_dir.mode = 0755
             backup_file.write(tar_dir.tobuf())
             collection_list.append(collection.name)
-            meta_file.write("%s\n" % collection.name)
-            meta_file.write(" uid:%s\n" % collection.uid)
-            meta_file.write(" type:%d\n" % collection.type)
-            meta_file.write(" flags:%d\n\n" % collection.flags)
 
         for collection in collection_list:
             # contents = [document for document in store.List(collection)]
@@ -64,11 +103,23 @@ class StoreBackupCommand(Command):
                 except IOError, e:
                     print str(e)
                     continue
+               
+                # write out meta data associated with document in a PAX extended header
+                headerx = PAXHeader(filename)
+                headerx.SetKey("BONGO.uid", document.uid)
+                headerx.SetKey("BONGO.imapuid", document.imapuid)
+                headerx.SetKey("BONGO.type", "%d" % document.type)
+                headerx.SetKey("BONGO.flags", "%d" % document.flags)
+                props = docstore.PropGet(document.uid)
+                for key in props.keys():
+                    headerx.SetKey("BONGO.%s" % key, props[key])
+                backup_file.write(headerx.ToString())
 
                 # tar files have a 512 byte header (tar_info.tobuf()), and then the content
                 # content is padded to a multiple of 512 bytes
                 tar_info = tarfile.TarInfo(filename)
                 tar_info.size = len(content)
+                tar_info.mode = 0644
                 tar_info.mtime = int(document.created)
                 backup_file.write(tar_info.tobuf())
                 backup_file.write(content)
@@ -76,23 +127,12 @@ class StoreBackupCommand(Command):
                 if space != 0:
                     backup_file.write("\0" * (512 - space))
 
-                # write out meta data associated with document
-                meta_file.write("%s\n" % filename)
-                meta_file.write(" uid:%s\n" % document.uid)
-                meta_file.write(" imapuid:%s\n" % document.imapuid)
-                meta_file.write(" type:%d\n" % document.type)
-                meta_file.write(" flags:%d\n" % document.flags)
-                meta_file.write(" created:%s\n" % document.created)
-                props = docstore.PropGet(document.uid)
-                for key in props.keys():
-                    meta_file.write(" prop:%s:%s\n" % (key, props[key]))
-                meta_file.write("\n")
-
             docstore.Quit()
 
         store.Quit()
+
+        backup_file.write("\0" * 1024) # end of archive marker
         backup_file.close()
-        meta_file.close()
 
     def Run(self, options, args):
         if len(args) == 1 and args[0] == "help":
@@ -120,6 +160,26 @@ class StoreRestoreCommand(Command):
                 return
 
             # look at the file metadata, check it's sane
+            try:
+                extheader = tarfile.TarInfo.frombuf(header)
+            except:
+                # probably the end of the file
+                return
+
+            if extheader.type != "x": 
+                print "No metadata header found (%s)" % extheader.name
+                continue
+
+            metadata = PAXHeader(None)
+            metadata.FromString(backupfile.read(extheader.size))
+            remainder = extheader.size % 512
+            if remainder != 0:
+                backupfile.read(512 - remainder)
+
+            header = backupfile.read(512)
+            if len(header) != 512:
+                return
+
             document = tarfile.TarInfo.frombuf(header)
             if document.name == None:
                 return # done reading from archive?
@@ -127,7 +187,7 @@ class StoreRestoreCommand(Command):
             if document.size == 0:
                 if document.type == tarfile.DIRTYPE:
                     # this is a collection
-                    self.RestoreCollection(store, document.name)
+                    self.RestoreCollection(store, document.name, metadata.Keys())
                 continue
 
             # pull out file contents, and any padding
@@ -137,9 +197,9 @@ class StoreRestoreCommand(Command):
                 backupfile.read(512 - remainder) 
 
             # restore the file
-            self.RestoreFile(store, document.name, content)
+            self.RestoreFile(store, document.name, content, metadata.Keys())
 
-    def RestoreFile(self, store, name, content):
+    def RestoreFile(self, store, name, content, metadata):
         # TODO:
         # check to see if guid is currently in use
         # if so, remove what's using the guid
@@ -150,19 +210,34 @@ class StoreRestoreCommand(Command):
             return # invalid name
         collection = name[0:dir_sep]
         filename = name[dir_sep+1:]
-        store.Write(collection, 0, content, Filename=filename)
-        # print "Restore %s in %s" % (filename, collection)
+        file_guid = None
+        if "BONGO.uid" in metadata:
+            file_guid = metadata["BONGO.uid"]
+        file_type = 0
+        if "BONGO.type" in metadata:
+            file_type = int(metadata["BONGO.type"])
+        try:
+            store.Write(collection, file_type, content, filename=filename, guid=file_guid)
+        except: 
+            print "Failed to restore %s in %s" % (filename, collection)
 
-    def RestoreCollection(self, store, name):
+    def RestoreCollection(self, store, name, metadata):
         # TODO:
         # in pseudocode, this should be:
         # check to see if guid is currently in use
         # if so, remove what's using the guid
         # create new collection with correct guid
         # set other metadata
+        for k, v in metadata.items():
+            print "%s = %s" % (k, v)
         collection = name[0:-1]
-        store.Create(collection)
-        # print "Collection %s" % collection
+        try:
+            if "BONGO.uid" in metadata:
+                store.Create(collection, guid=metadata["BONGO.uid"])
+            else:
+                store.Create(collection)
+        except:
+            print "Failed to create collection %s" % collection
 
     def Run(self, options, args):
         if len(args) == 0:
@@ -170,12 +245,13 @@ class StoreRestoreCommand(Command):
             self.exit()
 
         backup_file = "%s.backup" % options.store
-        if len(args) == 2:
+        if len(args) == 1:
             # user specified a backup file to restore
-            backup_file = args[1]
+            backup_file = args[0]
 
         store = StoreClient(options.user, options.store)
 
+        f = None
         try:
             f = open(backup_file, "r")
             store.Store(options.store)
