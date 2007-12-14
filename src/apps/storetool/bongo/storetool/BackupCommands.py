@@ -65,6 +65,7 @@ class StoreBackupCommand(Command):
     def BackupStore(self):
         # create a backup file which contains all the contents of the given store
         store = self.GetStoreConnection()
+        docstore = self.GetStoreConnection()
 
         try:
             backup_file = open("%s.backup" % self.store, "wb")
@@ -79,6 +80,9 @@ class StoreBackupCommand(Command):
             tar_head.SetKey("BONGO.uid", collection.uid)
             tar_head.SetKey("BONGO.type", "%d" % collection.type)
             tar_head.SetKey("BONGO.flags", "%d" % collection.flags)
+            props = docstore.PropGet(collection.uid)
+            for key in props.keys():
+                tar_head.SetKey("BONGO.%s" % key, props[key])
             backup_file.write(tar_head.ToString())
 
             tar_dir = tarfile.TarInfo(collection.name)
@@ -89,8 +93,6 @@ class StoreBackupCommand(Command):
             collection_list.append(collection.name)
 
         for collection in collection_list:
-            docstore = self.GetStoreConnection()
-
             for document in store.List(collection):
                 # write out the documents in the collection
                 if document.filename[0] == '/':
@@ -125,10 +127,10 @@ class StoreBackupCommand(Command):
                 space = len(content) % 512
                 if space != 0:
                     backup_file.write("\0" * (512 - space))
-
-            docstore.Quit()
+            
 
         store.Quit()
+        docstore.Quit()
 
         backup_file.write("\0" * 1024) # end of archive marker
         backup_file.close()
@@ -198,6 +200,20 @@ class StoreRestoreCommand(Command):
             # restore the file
             self.RestoreFile(store, document.name, content, metadata.Keys())
 
+    def RestoreProps(self, store, guid, metadata):
+        del metadata["BONGO.nmap.guid"]
+        del metadata["BONGO.nmap.type"]
+        del metadata["BONGO.nmap.flags"]
+        del metadata["BONGO.nmap.collection"]
+        del metadata["BONGO.nmap.index"]
+        for key, value in metadata.items():
+            if key[0:10] == "BONGO.nmap":
+                prop = key[6:]
+                try:
+                    store.PropSet(guid, prop, value)
+                except:
+                    print "Failed to set property %s to %s on %s" % (prop, value, guid)
+
     def RestoreFile(self, store, name, content, metadata):
         dir_sep = name.rfind("/")
         if dir_sep < 3:
@@ -205,15 +221,28 @@ class StoreRestoreCommand(Command):
         collection = name[0:dir_sep]
         filename = name[dir_sep+1:]
         file_guid = None
+
         if "BONGO.uid" in metadata:
             file_guid = metadata["BONGO.uid"]
+            del metadata["BONGO.uid"]
+            
         file_type = 0
         if "BONGO.type" in metadata:
             file_type = int(metadata["BONGO.type"])
+            del metadata["BONGO.type"]
+
         try:
-            store.Write(collection, file_type, content, filename=filename, guid=file_guid)
+            new_guid = store.Write(collection, file_type, content, filename=filename, guid=file_guid)
         except: 
-            print "Failed to restore %s in %s" % (filename, collection)
+            print "Failed to restore %s/%s" % (collection, filename)
+            return
+        if "BONGO.flags" in metadata:
+            try:
+                store.Flag(new_guid, flags=int(metadata["BONGO.flags"]))
+                del metadata["BONGO.flags"]
+            except:
+                print "Couldn't restore mail flag on %s/%s" % (collection, filename)
+        self.RestoreProps(store, new_guid, metadata)
 
     def RestoreCollection(self, store, name, metadata):
         collection = name[0:-1]
@@ -224,6 +253,7 @@ class StoreRestoreCommand(Command):
                 store.Create(collection)
         except:
             print "Failed to create collection %s" % collection
+        self.RestoreProps(store, collection, metadata)
 
     def ClearStore(self, store):
         collections = [collection.name for collection in store.Collections()]
