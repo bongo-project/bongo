@@ -4975,11 +4975,10 @@ StoreCommandWRITE(StoreClient *client,
             break;
         }
         info.guid = guid;
-    } else {
-        /* Rely on the database to enforce uniqueness in the filename */
-        snprintf(info.filename, sizeof(info.filename), "%s/%s",
-                 collection->filename, filename ? filename : "");
     }
+    /* Rely on the database to enforce uniqueness in the filename */
+    snprintf(info.filename, sizeof(info.filename), "%s/%s",
+         collection->filename, filename ? filename : "");
     
     if (!collection) {
         if (1 != DStoreGetDocInfoGuid(client->handle, info.collection, &collinfo)) {
