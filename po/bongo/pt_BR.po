@@ -685,7 +685,7 @@ msgstr ""
 "Opções normais:\n"
 "\t-d: Roda em segundo plano após iniciar os agentes.\n"
 "\t-k: Mantém os agentes rodando, reiniciando-os após falhas.\n"
-"\t-f: Força início, substituindo\n"
+"\t-f: Força início, substituindo"
 
 #: src/apps/manager/manager.c:554
 #, c-format
