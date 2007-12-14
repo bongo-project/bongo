@@ -89,7 +89,6 @@ class StoreBackupCommand(Command):
             collection_list.append(collection.name)
 
         for collection in collection_list:
-            # contents = [document for document in store.List(collection)]
             docstore = self.GetStoreConnection()
 
             for document in store.List(collection):
@@ -200,11 +199,6 @@ class StoreRestoreCommand(Command):
             self.RestoreFile(store, document.name, content, metadata.Keys())
 
     def RestoreFile(self, store, name, content, metadata):
-        # TODO:
-        # check to see if guid is currently in use
-        # if so, remove what's using the guid
-        # create new document with correct guid
-        # set other metadata
         dir_sep = name.rfind("/")
         if dir_sep < 3:
             return # invalid name
@@ -222,14 +216,6 @@ class StoreRestoreCommand(Command):
             print "Failed to restore %s in %s" % (filename, collection)
 
     def RestoreCollection(self, store, name, metadata):
-        # TODO:
-        # in pseudocode, this should be:
-        # check to see if guid is currently in use
-        # if so, remove what's using the guid
-        # create new collection with correct guid
-        # set other metadata
-        for k, v in metadata.items():
-            print "%s = %s" % (k, v)
         collection = name[0:-1]
         try:
             if "BONGO.uid" in metadata:
@@ -238,6 +224,12 @@ class StoreRestoreCommand(Command):
                 store.Create(collection)
         except:
             print "Failed to create collection %s" % collection
+
+    def ClearStore(self, store):
+        collections = [collection.name for collection in store.Collections()]
+        collections.sort(lambda x, y: len(x)-len(y), reverse=True)
+        for collection in collections:
+             store.Remove(collection)
 
     def Run(self, options, args):
         if len(args) == 0:
@@ -255,6 +247,7 @@ class StoreRestoreCommand(Command):
         try:
             f = open(backup_file, "r")
             store.Store(options.store)
+            self.ClearStore(store)
             self.RestoreStore(store, f)
         except IOError, e:
             print str(e)

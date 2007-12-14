@@ -740,6 +740,13 @@ class StoreClient:
         self.stream.Read(2)
         return StringIO(s)
 
+    def Remove(self, collection):
+        self.stream.Write("REMOVE %s" % collection)
+
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
+
     def Replace(self, doc, data):
         self.stream.Write("REPLACE %s %d" % (doc, len(data)))
 
