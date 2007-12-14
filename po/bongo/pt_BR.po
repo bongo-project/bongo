@@ -1,0 +1,893 @@
+# Translation of Bongo Project
+# Copyright (C) 2007
+# This file is distributed under the same license as the Bongo package.
+# Igor Morgado <morgado.igor@gmail.com>, 2007
+#
+# Detalhes sobre a traducao (Igor Morgado)
+#  - Na palavra STORE manti a traducao como estoque, devido a descricao
+#    de um dos desenvolvedores, a saber:
+#	"<so_solid_moo> It's a data store, yeah. We refer to it as 
+#	"the store" because store can mean "place you put things" "
+#  - Respeitei todo texto contido, inclusive os erros (propositais ou nao)
+#
+
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: bongo-devel@gna.org\n"
+"POT-Creation-Date: 2007-07-13 11:46+0100\n"
+"PO-Revision-Date: 2007-11-08 15:00+BRST\n"
+"Last-Translator: Igor Morgado <morgado.igor@gmail.com>\n"
+"Language-Team: Portuguese\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=pt_BR.UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/apps/config/config.c:48
+#, c-format
+msgid "bongo-config: Could not drop to unpriviliged user '%s'\n"
+msgstr "bongo-config: Não pude me tornar o usuário desprivilegiado '%s'\n"
+
+#: src/apps/config/config.c:113
+msgid "ERROR: Couldn't write data\n"
+msgstr "ERRO: Não pude escrever os dados\n"
+
+#: src/apps/config/config.c:115
+msgid "ERROR: Wouldn't accept data\n"
+msgstr "ERRO: Não pude aceitar os dados\n"
+
+#: src/apps/config/config.c:130
+msgid "ERROR: Couldn't create collection\n"
+msgstr "ERRO: Não pude criar coleção\n"
+
+#: src/apps/config/config.c:134
+msgid "ERROR: Couldn't set acls on /config\n"
+msgstr "ERRO: Não pude configurar ACLs em /config\n"
+
+#: src/apps/config/config.c:140
+msgid "ERROR: Couldn't load default config set\n"
+msgstr "ERRO: Não pude ler o grupo de configurações default\n"
+
+#: src/apps/config/config.c:175
+msgid "ERROR: Couldn't write\n"
+msgstr "ERRO: Não pude escrever\n"
+
+#: src/apps/config/config.c:178
+msgid "ERROR: rigts\n"
+msgstr "ERRO: Direitos\n"
+
+#: src/apps/config/config.c:198
+msgid "Initializing calendar data...\n"
+msgstr "Iniciando dados de calendário...\n"
+
+#: src/apps/config/config.c:201
+msgid "ERROR: Couldn't initialise calendar library\n"
+msgstr "ERRO: Não pude iniciar a biblioteca de calendário\n"
+
+#: src/apps/config/config.c:205
+msgid "Initializing store...\n"
+msgstr "Iniciando o estoque...\n"
+
+#: src/apps/config/config.c:217
+msgid "ERROR: Couldn't start the store!\n"
+msgstr "ERRO: Não pude iniciar o estoque!\n"
+
+#: src/apps/config/config.c:226
+msgid "ERROR: Out of memory\n"
+msgstr "ERRO: Falta de memória\n"
+
+#: src/apps/config/config.c:231
+msgid "ERROR: Could not connect to store\n"
+msgstr "ERRO: Não pude me conectar ao estoque\n"
+
+#: src/apps/config/config.c:235
+msgid "ERROR: Could not authenticate to store\n"
+msgstr "ERRO: Não pude me autenticar com o estoque\n"
+
+#: src/apps/config/config.c:240
+msgid "ERROR: Couldn't access store\n"
+msgstr "ERRO: Não pude acessar o estoque\n"
+
+#: src/apps/config/config.c:244
+msgid "Setting default agent configuration...\n"
+msgstr "Configurando o agente de configuração padrão\n"
+
+#: src/apps/config/config.c:248
+msgid "ERROR: Couldn't setup default configuration\n"
+msgstr "ERRO: Não pude fazer a configuração padrão\n"
+
+#: src/apps/config/config.c:250
+msgid "Complete.\n"
+msgstr "Completo.\n"
+
+#: src/apps/config/config.c:258
+msgid "ERROR: Couldn't shut down store\n"
+msgstr "ERRO: Não pude fechar o estoque\n"
+
+#: src/apps/config/config.c:305
+msgid "Couldn't create data directory!\n"
+msgstr "Não pude criar o diretório de dados!\n"
+
+#: src/apps/config/config.c:308
+msgid "IP address to run on"
+msgstr "Endereço IP para usar"
+
+#: src/apps/config/config.c:309
+msgid "DNS name to use:"
+msgstr "Nome DNS para usar:"
+
+#: src/apps/config/config.c:312
+msgid "Creating random seed...\n"
+msgstr "Criando a fonte de aleatoriedade...\n"
+
+#: src/apps/config/config.c:316
+msgid "Creating DH parameters...\n"
+msgstr "Criando parâmetros DH...\n"
+
+#: src/apps/config/config.c:327
+#, c-format
+msgid "ERROR: Couldn't write DH params to %s\n"
+msgstr "ERRO: Não pude escrever parâmetros DH em %s\n"
+
+#: src/apps/config/config.c:331
+msgid "Creating RSA parameters...\n"
+msgstr "Criando parâmetros RSA...\n"
+
+#: src/apps/config/config.c:342
+#, c-format
+msgid "ERROR: Couldn't write RSA params to %s\n"
+msgstr "ERRO: Não pude escrever parâmetros RSA em %s\n"
+
+#: src/apps/config/config.c:347
+msgid "Creating private key...\n"
+msgstr "Criando chave privada...\n"
+
+#: src/apps/config/config.c:350 src/apps/config/config.c:380
+#, c-format
+msgid "ERROR: %s\n"
+msgstr "ERRO: %s\n"
+
+#: src/apps/config/config.c:355
+#, c-format
+msgid "ERROR: Couldn't create private key. %s\n"
+msgstr "ERRO: Não pude criar a chave privada. %s\n"
+
+#: src/apps/config/config.c:361
+#, c-format
+msgid "ERROR: Couldn't export private key. %s\n"
+msgstr "ERRO: Não pude exportar a chave privada.%s\n"
+
+#: src/apps/config/config.c:362
+#, c-format
+msgid "       Size: %d, Ret: %d\n"
+msgstr "       Tam.: %d, Ret: %d\n"
+
+#: src/apps/config/config.c:371
+#, c-format
+msgid "ERROR: Couldn't write private key to %s\n"
+msgstr "ERRO: Não pude escrever a chave privada em %s\n"
+
+#: src/apps/config/config.c:377
+msgid "Creating SSL/TLS certificate...\n"
+msgstr "Criando o certificado SSL/TLS...\n"
+
+#: src/apps/config/config.c:411
+#, c-format
+msgid "ERROR: Couldn't self-sign certificate. %s\n"
+msgstr "ERRO: Não pude auto-assinar o certificado. %s\n"
+
+#: src/apps/config/config.c:418
+#, c-format
+msgid "ERROR: Couldn't create certificate. %s\n"
+msgstr "ERRO: Não pude criar o certificado. %s\n"
+
+#: src/apps/config/config.c:426
+#, c-format
+msgid "ERROR: Couldn't write certificate to %s\n"
+msgstr "ERRO: Não pude escrever o certificado em %s\n"
+
+#: src/apps/config/config.c:446
+#, c-format
+msgid "Can't get information on current build!\n"
+msgstr "Não pude pegar a informação da versão atual!\n"
+
+#: src/apps/config/config.c:449
+#, c-format
+msgid "Installed build: %s %s%d\n"
+msgstr "Versão instalada: %s %s%d\n"
+
+#: src/apps/config/config.c:451
+#, c-format
+msgid "This is modified software.\n"
+msgstr "Este é um software modificado.\n"
+
+#: src/apps/config/config.c:454
+#, c-format
+msgid "Version currently available: unable to request online information.\n"
+msgstr "Versão disponível atualmente: incapaz de requisitar informação online.\n"
+
+#: src/apps/config/config.c:456
+#, c-format
+msgid "Version currently available: %s%d\n"
+msgstr "Verão disponível atualmente: %s%d\n"
+
+#: src/apps/config/config.c:531
+msgid "ERROR : Couldn't initialize Bongo libraries\n"
+msgstr "ERRO : Não pude iniciar bibliotecas Bongo\n"
+
+#: src/apps/backup/backup.c:63 src/apps/backup/backup.c:918
+#: src/apps/backup/backup.c:971
+#, c-format
+msgid "Couldn't close file (%s)\n"
+msgstr "Não pude fechar arquivo (%s)\n"
+
+#: src/apps/backup/backup.c:70 src/apps/backup/backup.c:86
+msgid "Couldn't open user database\n"
+msgstr "Não pude abrir base de dados do usuário\n"
+
+#: src/apps/backup/backup.c:79
+msgid "Failed to initialize database file\n"
+msgstr "Falhei ao iniciar arquivo de base de dados\n"
+
+#: src/apps/backup/backup.c:93
+msgid "User database does not exist\n"
+msgstr "Base de dados do usuário não existe\n"
+
+#: src/apps/backup/backup.c:113
+msgid "Couldn't delete prepared statement (QUERY_PROP_VAL)\n"
+msgstr "Não pude deletar declaração preparada (QUERY_PROP_VAL)\n"
+
+#: src/apps/backup/backup.c:125
+msgid "Couldn't delete prepared statement (QUERY_HIST_EVENT)\n"
+msgstr "Não pude deletar declaração preparada (QUERY_HIST_EVENT)\n"
+
+#: src/apps/backup/backup.c:137
+msgid "Couldn't delete prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr "Não pude deletar declaração preparada (QUERY_DOC_ATTRS)\n"
+
+#: src/apps/backup/backup.c:149
+msgid "Couldn't delete prepared statement (QUERY_DOC_INFO)\n"
+msgstr "Não pude deletar declaração preparada (QUERY_DOC_INFO)\n"
+
+#: src/apps/backup/backup.c:158
+msgid "Couldn't close database\n"
+msgstr "Não pude fechar banco de dados\n"
+
+#: src/apps/backup/backup.c:177
+msgid "Couldn't create prepared statement (QUERY_PROP_VAL)\n"
+msgstr "Não pude criar declaração preparada (QUERY_PROP_VAL)\n"
+
+#: src/apps/backup/backup.c:190
+msgid "Couldn't bind to prepared statement (QUERY_PROP_VAL)\n"
+msgstr "Não pude me ligar a declaração preparada (QUERY_PROP_VAL)\n"
+
+#: src/apps/backup/backup.c:201 src/apps/backup/backup.c:647
+msgid "Insufficient memory available\n"
+msgstr "Memória disponível insuficiente\n"
+
+#: src/apps/backup/backup.c:212
+msgid "Query failed to execute (QUERY_PROP_VAL)\n"
+msgstr "Pedido falhou em executar (QUERY_PROP_VAL)\n"
+
+#: src/apps/backup/backup.c:219
+msgid "Couldn't reset prepared statement (QUERY_PROP_VAL)\n"
+msgstr "Não puder resetar declaração preparada (QUERY_PROP_VAL)\n"
+
+#: src/apps/backup/backup.c:236
+msgid "Couldn't create prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr "Não pude criar declaração preparada (QUERY_DOC_ATTRS)\n"
+
+#: src/apps/backup/backup.c:247
+msgid "Couldn't bind to prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr "Não pude me ligar à declaração preparada (QUERY_DOC_ATTRS)\n"
+
+#: src/apps/backup/backup.c:264
+msgid "Query failed to execute (QUERY_DOC_ATTRS)\n"
+msgstr "Pedido falhou em executar (QUERY_DOC_ATTRS)\n"
+
+#: src/apps/backup/backup.c:271
+msgid "Couldn't reset prepared statement (QUERY_DOC_ATTRS)\n"
+msgstr "Não puder resetar declaração preparada (QUERY_DOC_ATTRS)\n"
+
+#: src/apps/backup/backup.c:291
+msgid "Couldn't create prepared statement (QUERY_ALL_PROPS)\n"
+msgstr "Não pude criar declaração preparada (QUERY_ALL_PROPS)\n"
+
+#: src/apps/backup/backup.c:302
+msgid "Couldn't bind to prepared statement (QUERY_ALL_PROPS)\n"
+msgstr "Não pude me ligar à declaração preparada (QUERY_ALL_PROPS)\n"
+
+#: src/apps/backup/backup.c:331 src/apps/backup/backup.c:1128
+msgid "Query failed to execute (QUERY_ALL_PROPS)\n"
+msgstr "Pedido falou em executar (QUERY_ALL_PROPS)\n"
+
+#: src/apps/backup/backup.c:342
+msgid "Couldn't reset prepared statement (QUERY_ALL_PROPS)\n"
+msgstr "Não pude resetar declaração preparada (QUERY_ALL_PROPS)\n"
+
+#: src/apps/backup/backup.c:359
+msgid "Couldn't create prepared statement (QUERY_HIST_EVENT)\n"
+msgstr "Não pude criar declaração preparada (QUERY_HIST_EVENT)\n"
+
+#: src/apps/backup/backup.c:370
+msgid "Couldn't bind to prepared statement (QUERY_HIST_EVENT)\n"
+msgstr "Não pude me ligar à declaração preparada (QUERY_HIST_EVENT)\n"
+
+#: src/apps/backup/backup.c:383
+msgid "Query failed to execute (QUERY_HIST_EVENT)\n"
+msgstr "Query falhou em executar (QUERY_HIST_EVENT)\n"
+
+#: src/apps/backup/backup.c:390
+msgid "Couldn't reset prepared statement (QUERY_HIST_EVENT)\n"
+msgstr "Não pude resetar declaração preparada (QUERY_HIST_EVENT)\n"
+
+#: src/apps/backup/backup.c:460
+#, c-format
+msgid "Connection to host %s failed\n"
+msgstr "Conexão ao computador %s falhou\n"
+
+#: src/apps/backup/backup.c:468
+#, c-format
+msgid "Connection to host %s failed"
+msgstr "Conexão ao computador %s falhou"
+
+#: src/apps/backup/backup.c:479
+#, c-format
+msgid "NMAP command failed (PASS): %s\n"
+msgstr "Comando NMAP falhou (PASS): %s\n"
+
+#: src/apps/backup/backup.c:489
+#, c-format
+msgid "NMAP command failed (MANAGE): %s\n"
+msgstr "Comando NMAP falhou (MANAGE): %s\n"
+
+#: src/apps/backup/backup.c:513 src/apps/backup/backup.c:568
+#, c-format
+msgid "No such user on this host (%s)\n"
+msgstr "Usuário não existe neste computador (%s)\n"
+
+#: src/apps/backup/backup.c:521
+msgid "Couldn't parse NMAP response (VRFY)\n"
+msgstr "Não pude interpretar resposta NMAP (VRFY)\n"
+
+#: src/apps/backup/backup.c:529
+#, c-format
+msgid "Unrecognized NMAP response (VRFY): %s\n"
+msgstr "Resposta NMAP desconhecida (VRFY): %s\n"
+
+#: src/apps/backup/backup.c:538
+msgid "NMAP connection error (VRFY)\n"
+msgstr "Erro de conexão NMAP (VRFY)\n"
+
+#: src/apps/backup/backup.c:549
+#, c-format
+msgid "NMAP command failed (RSET): %s\n"
+msgstr "Comando NMAP falhou (RSET): %s\n"
+
+#: src/apps/backup/backup.c:560
+#, c-format
+msgid "NMAP command failed (USER): %s\n"
+msgstr "Comando NMAP falhou (USER): %s\n"
+
+#: src/apps/backup/backup.c:618 src/apps/backup/backup.c:655
+#: src/apps/backup/backup.c:1229
+msgid "NMAP connection error (DPGET)\n"
+msgstr "Erro de conexão NMAP (DPGET)\n"
+
+#: src/apps/backup/backup.c:633
+msgid "Could not parse NMAP response (DPGET)\n"
+msgstr "Não pude interpretar resposta NMAP (DPGET)\n"
+
+#: src/apps/backup/backup.c:681
+msgid "Database query failure (QUERY_INS_HIST)\n"
+msgstr "Falha no pedido ao banco de dados (QUERY_INS_HIST)\n"
+
+#: src/apps/backup/backup.c:695
+msgid "Database query failure (QUERY_INS_PROP)\n"
+msgstr "Falha no pedido ao banco de dados (QUERY_INS_PROP)\n"
+
+#: src/apps/backup/backup.c:719
+#, c-format
+msgid "Unrecognized NMAP response (DPGET): %s\n"
+msgstr "Resposta NMAP desconhecida (DPGET): %s\n"
+
+#: src/apps/backup/backup.c:732 src/apps/backup/backup.c:750
+msgid "NMAP connection error (DREAD)\n"
+msgstr "Erro de conexão NMAP (DREAD)\n"
+
+#: src/apps/backup/backup.c:758
+msgid "Database query failure (QUERY_INS_DOC)\n"
+msgstr "Falha no pedido ao banco de dados (QUERY_INS_DOC)\n"
+
+#: src/apps/backup/backup.c:773
+#, c-format
+msgid "Unrecognized NMAP response (DREAD): %s\n"
+msgstr "Resposta NMAP desconhecida (DREAD): %s\n"
+
+#: src/apps/backup/backup.c:810
+msgid "NMAP connection error (DINFO)\n"
+msgstr "Erro de conexão NMAP: (DINFO)\n"
+
+#: src/apps/backup/backup.c:835
+msgid "Could not parse NMAP response (DINFO)\n"
+msgstr "Não pude interpretar resposta NMAP (DINFO)\n"
+
+#: src/apps/backup/backup.c:854
+#, c-format
+msgid "Unrecognized NMAP response (DINFO): %s\n"
+msgstr "Resposta NMAP desconhecida (DINGO): %s\n"
+
+#: src/apps/backup/backup.c:925 src/apps/backup/backup.c:978
+#: src/apps/backup/backup.c:1302 src/apps/backup/backup.c:1345
+#, c-format
+msgid "Couldn't open file (%s)\n"
+msgstr "Não pude abrir arquivo (%s)\n"
+
+#: src/apps/backup/backup.c:1030 src/apps/backup/backup.c:1052
+msgid "NMAP connection error (DSTOR)\n"
+msgstr "Erro de conexão NMAP (DSTOR)\n"
+
+#: src/apps/backup/backup.c:1037
+msgid "Couldn't set file position\n"
+msgstr "Não pude definir a posição do arquivo\n"
+
+#: src/apps/backup/backup.c:1044
+#, c-format
+msgid "Unrecognized NMAP response (DSTOR): %s\n"
+msgstr "Resposta NMAP desconhecida (DSTOR): %s\n"
+
+#: src/apps/backup/backup.c:1064
+#, c-format
+msgid "Unrecognized NMAP response (DCREA): %s\n"
+msgstr "Resposta NMAP desconhecida (DCREA): %s\n"
+
+#: src/apps/backup/backup.c:1071
+msgid "NMAP connection error (DCREA)\n"
+msgstr "Erro de conexão NMAP (DCREA)\n"
+
+#: src/apps/backup/backup.c:1100 src/apps/backup/backup.c:1117
+msgid "NMAP connection error (DPSET)\n"
+msgstr "Erro de conexão NMAP (DPSET)\n"
+
+#: src/apps/backup/backup.c:1108
+#, c-format
+msgid "Unrecognized NMAP response (DPSET): %s\n"
+msgstr "Resposta NMAP desconhecida (DPSET): %s\n"
+
+#: src/apps/backup/backup.c:1136
+msgid "Couldn't delete prepared statement (QUERY_ALL_PROPS)\n"
+msgstr "Nao pude deletar a declaração preparada (QUERY_ALL_PROPS)\n"
+
+#: src/apps/backup/backup.c:1143 src/apps/backup/backup.c:1152
+msgid "Document not found in store\n"
+msgstr "Documento não encontrado no estoque\n"
+
+#: src/apps/backup/backup.c:1190
+msgid "Couldn't create prepared statement (QUERY_DOCS_MOD)\n"
+msgstr "Não pude criar a declaração preparada (QUERY_DOCS_MOD)\n"
+
+#: src/apps/backup/backup.c:1198
+msgid "Couldn't bind to prepared statement (QUERY_DOCS_MOD)\n"
+msgstr "Não pude me ligar a declaração preparada (QUERY_DOCS_MOD)\n"
+
+#: src/apps/backup/backup.c:1217
+msgid "Couldn't parse NMAP response (DPGET)\n"
+msgstr "Não pude interpretar resposta NMAP (DPGET)\n"
+
+#: src/apps/backup/backup.c:1254
+msgid "Database query failure (QUERY_DOCS_MOD)\n"
+msgstr "Falha no pedido ao banco de dados (QUERY_DOCS_MOD)\n"
+
+#: src/apps/backup/backup.c:1263
+msgid "Couldn't delete prepared statement (QUERY_DOCS_MOD)\n"
+msgstr "Não pude deletar a declaração preparada (QUERY_DOCS_MOD)\n"
+
+#: src/apps/backup/backup.c:1441
+msgid ""
+"bongobackup - Backup & restore a Bongo NMAP document store.\n"
+"\n"
+"Usage: bongobackup [options] [command]\n"
+"\n"
+"Options:\n"
+"  -h, --host=[ip address]         defaults to '127.0.0.1'\n"
+"  -p, --passwd=[password]         password used to authenticate\n"
+"  -s, --store=[path]              path to local backup store\n"
+"  -u, --user=[user]               username used to authenticate\n"
+"  -v, --verbose                   verbose output\n"
+"\n"
+"Commands:\n"
+"  backup [user[:guid[,..]][ ..]]  appends incremental backup to the store\n"
+"  restore [user[:guid[,..]][ ..]] restores documents from store to server\n"
+"  search [filter[,..]]            searches the store for documents\n"
+"  rollback [MM/DD/YYYY]           permanently deletes data store after date\n"
+"\n"
+"Search Filters:\n"
+"  after=[MM/DD/YYYY]              only search documents after this date\n"
+"  before=[MM/DD/YYYY]             only search documents before this date\n"
+"  string=[string[:..]]            strings may be enclosed in single quotes "
+"('')\n"
+"  type=[type[:..]]                only search type(s) (mail, cal, ab)\n"
+"  user=[user[:..]]                only search documents owned by user(s)\n"
+msgstr ""
+"bongobackup - arquiva e recupara um estoque NMAP do Bongo.\n"
+"\n"
+"Uso: bongobackup [opções] [comando]\n"
+"\n"
+"Opções:\n"
+"  -h, --host=[endereço IP]        default é '127.0.0.1'\n"
+"  -p, --password=[senha]          senha usada para autenticar\n"
+"  -s, --store=[caminho]           caminho para o estoque de backup local\n"
+"  -u, --user=[usuário]            nome de usuário usado para autenticar\n"
+"  -v, --verbose                   saída com mais informações\n"
+"\n"
+"Comandos:\n"
+"  backup [usuário[:guid[,..]][ ..]]   anexa backup incremental ao estoque\n"
+"  restore [usuárior[:guid[,..]][ ..]] recupera documentos do estoque para o\n" 
+"                                      servidor\n"
+"  search [filtro[,..]]                busca no estoque por documentos\n"
+"  rollback [MM/DD/AAAA]               apaga permanentemente dados apos a data\n"
+"\n"
+"Filtos de busca:\n"
+"  after=[MM/DD/AAAA]              busca por documentos após esta data\n"
+"  before=[MM/DD/AAAA]             busca por documentos antes desta data\n"
+"  string=[texto[:..]]             texto pode estar entre aspas simples\n"
+"                                  ('')\n"
+"  type=[tipo[:..]]                busca por tipo(s) (mail, cal, ab)\n"
+"  user=[usuário[:..]]             busca por documentos de um usuário(s)\n"
+
+#: src/apps/backup/backup.c:1461
+msgid "Bongo Backup: "
+msgstr "Bongo Backup: "
+
+#: src/apps/backup/backup.c:1472
+msgid "Failed to initialize memory manager\n"
+msgstr "Falha em iniciar o gerenciador de memória\n"
+
+#: src/apps/backup/backup.c:1490
+#, c-format
+msgid "Invalid store path: %s\n"
+msgstr "Caminho para o estoque inválido: %s\n"
+
+#: src/apps/backup/backup.c:1496 src/apps/backup/backup.c:1501
+#, c-format
+msgid "Unrecognized option: %s\n"
+msgstr "Opção desconhecida: %s\n"
+
+#: src/apps/backup/backup.c:1515
+#, c-format
+msgid "Unrecognized command: %s\n"
+msgstr "Comando desconhecido: %s\n"
+
+#: src/apps/backup/backup.c:1518
+msgid "No command specified\n"
+msgstr "Nenhum comando espeficicado\n"
+
+#: src/apps/backup/backup.c:1553
+msgid "Backing up data\n"
+msgstr "Armazenando cópias de segurança\n"
+
+#: src/apps/backup/backup.c:1570
+#, c-format
+msgid "Unrecognized NMAP response (ULIST): %s\n"
+msgstr "Resposta NMAP desconhecida (ULIST): %s\n"
+
+#: src/apps/backup/backup.c:1597
+msgid "Backup complete\n"
+msgstr "Armazenamento de segurança completo\n"
+
+#: src/apps/backup/backup.c:1599
+msgid "Backup failed\n"
+msgstr "Armazenamento de cópias de segurança falhou\n"
+
+#: src/apps/backup/backup.c:1604 src/apps/backup/backup.c:1651
+msgid "Failed to initialize connection manager\n"
+msgstr "Falhei em iniciar o gerenciador de conexões\n"
+
+#: src/apps/backup/backup.c:1608
+msgid "Restoring data\n"
+msgstr "Recuperando dados\n"
+
+#: src/apps/backup/backup.c:1624
+#, c-format
+msgid "Couldn't open store directory %s\n"
+msgstr "Não pude abrir diretório do estoque%s\n"
+
+#: src/apps/backup/backup.c:1644
+msgid "Restore complete\n"
+msgstr "Recuperação de segurança completa\n"
+
+#: src/apps/backup/backup.c:1646
+msgid "Restore failed\n"
+msgstr "Recurepação de segurança falhou\n"
+
+#: src/apps/backup/backup.c:1655
+msgid "Search command not implemented\n"
+msgstr "Comando de busca nao implementado\n"
+
+#: src/apps/manager/manager.c:137
+#, c-format
+msgid "bongomanager: %s terminated with signal %d.\n"
+msgstr "bongomanager: %s terminou com sinal %d.\n"
+
+#: src/apps/manager/manager.c:143
+#, c-format
+msgid "bongo-manager: %s exited\n"
+msgstr "bongo-manager: %s saiu\n"
+
+#: src/apps/manager/manager.c:204
+#, c-format
+msgid "couldn't set rlimit: %s\n"
+msgstr "não pude atribuir rlimit: %s\n"
+
+#: src/apps/manager/manager.c:223
+#, c-format
+msgid "failed to exec %s (%s)\n"
+msgstr "falhei em executar %s (%s)\n"
+
+#: src/apps/manager/manager.c:227
+#, c-format
+msgid "bongo-manager: Could not drop to unprivileged user '%s', Exiting.\n"
+msgstr "bongo-manager: Não pude me tornar o usuário desprivilegiado '%s', Saindo.\n"
+
+#: src/apps/manager/manager.c:275
+#, c-format
+msgid ""
+"bongo-manager: %s has crashed %d times within %d seconds of each other, not "
+"restarting.\n"
+msgstr ""
+"bongo-manager: %s falhou %d vezes dentro de um periodo de %d segundos, não "
+"irei iniciar.\n"
+
+#: src/apps/manager/manager.c:297
+#, c-format
+msgid "bongo-manager: starting %s\n"
+msgstr "bongo-manager: iniciando %s\n"
+
+#: src/apps/manager/manager.c:317
+#, c-format
+msgid "bongo-manager: couldn't read config from store\n"
+msgstr "bongo-manager: não pude ler configuração do estoque\n"
+
+#: src/apps/manager/manager.c:322
+#, c-format
+msgid "bongo-manager: couldn't parse JSON config\n"
+msgstr "bongo-manager: não pude interpretar a configuração JSON\n"
+
+#: src/apps/manager/manager.c:327
+#, c-format
+msgid "manager: couldn't find agent list\n"
+msgstr "manager: não pude achar a lista de agentes\n"
+
+#: src/apps/manager/manager.c:422
+#, c-format
+msgid "bongo-manager: unlikely pid, Exiting\n"
+msgstr "bongo-manager: PID improvável, Saindo\n"
+
+#: src/apps/manager/manager.c:454
+#, c-format
+msgid "bongo-manager: couldn't unlink %s\n"
+msgstr "bongo-manager: não pude remover %s\n"
+
+#: src/apps/manager/manager.c:495
+#, c-format
+msgid ""
+"Uso: bongo-manager [OPTIONS]\n"
+"Starts and manages Bongo processes.\n"
+"\n"
+"Normal options:\n"
+"\t-d: Run in background after starting agents.\n"
+"\t-k: Keep agents alive, restarting them after crashes.\n"
+"\t-f: Force start, replacing "
+msgstr ""
+"Usage: bongo-manager [OPÇÕES]\n"
+"Inicia e gerencia os processos do Bongo.\n"
+"\n"
+"Opções normais:\n"
+"\t-d: Roda em segundo plano após iniciar os agentes.\n"
+"\t-k: Mantém os agentes rodando, reiniciando-os após falhas.\n"
+"\t-f: Força início, substituindo\n"
+
+#: src/apps/manager/manager.c:554
+#, c-format
+msgid "%s: -s cannot be supplied with other options.\n"
+msgstr "%s: -s não pode ser usado com outras opções.\n"
+
+#: src/apps/manager/manager.c:559
+#, c-format
+msgid "%s: -r cannot be supplied with other options.\n"
+msgstr "%s: -r não pode ser usado com outras opções.\n"
+
+#: src/apps/manager/manager.c:564
+#, c-format
+msgid "%s: -l cannot be supplied with other options.\n"
+msgstr "%s: -l não pode ser usado com outras opções.\n"
+
+#: src/apps/manager/manager.c:597
+#, c-format
+msgid "bongo-manager: killed existing managed-slapd process.\n"
+msgstr "bongo-manager: matou o processo slapd-gerenciado existente.z\n"
+
+#: src/apps/manager/manager.c:599
+#, c-format
+msgid "bongo-manager: could not kill existing managed-slapd process.\n"
+msgstr "bongo-manager: nao pode matar o processo slapd-gerenciado existente.\n"
+
+#: src/apps/manager/manager.c:603
+#, c-format
+msgid "bongo-manager: managed-slapd appears to be running as pid %ld\n"
+msgstr "bongo-manager: slapd-gerenciado parece estar rodando com PID %ld\n"
+
+#: src/apps/manager/manager.c:604
+#, c-format
+msgid ""
+"bongo-manager: if this is definitely the bongo slapd, you can run with -e to "
+"kill it\n"
+msgstr ""
+"bongo-manager: se isto é definitivamente o slapd do bongo, voce pode roda-lo "
+"com -e para mata-lo\n"
+
+#: src/apps/manager/manager.c:614
+#, c-format
+msgid "bongo-manager: error reading managed slapd port from config file.\n"
+msgstr ""
+"bongo-manager: erro lendo a porta do slapd-gerenciado do arquivo de\n"
+"configuração\n"
+
+#: src/apps/manager/manager.c:622
+#, c-format
+msgid "Error reading managed slapd path from config file.\n"
+msgstr "Erro lendo o caminho do slapd-gerenciado do arquivo de configuração\n"
+
+#: src/apps/manager/manager.c:628
+#, c-format
+msgid "bongo-manager: starting managed slapd...\n"
+msgstr "bongo-manager: iniciando o slapd gerenciado...\n"
+
+#: src/apps/manager/manager.c:660
+#, c-format
+msgid "Error creating socket: %s\n"
+msgstr "Erro criando socket: %s\n"
+
+#: src/apps/manager/manager.c:680
+#, c-format
+msgid "bongo-manager: error connecting to slapd: %s\n"
+msgstr "bongo-manager: erro conectando-se ao slapd: %s\n"
+
+#: src/apps/manager/manager.c:686
+#, c-format
+msgid "bongo-manager: slapd started\n"
+msgstr "bongo-manager: slapd iniciado\n"
+
+#: src/apps/manager/manager.c:733
+#, c-format
+msgid "bongo-manager: could not fork into background (%d): %s\n"
+msgstr "bongo-manager: não pude duplicar para segundo plano (%d): %s\n"
+
+#: src/apps/manager/manager.c:746
+#, c-format
+msgid "bongo-manager: running in background\n"
+msgstr "bongo-manager: rodando em segundo plano\n"
+
+#: src/apps/manager/manager.c:791
+#, c-format
+msgid "bongo-manager: could not drop to unprivileged user '%s'\n"
+msgstr "bongo-manager: não pude me tornar o usuário desprivilegiado '%s'\n"
+
+#: src/apps/manager/manager.c:803
+#, c-format
+msgid "bongo-manager: must be run by root\n"
+msgstr "bongo-manager: deve ser executado pelo root\n"
+
+#: src/apps/manager/manager.c:811 src/apps/manager/manager.c:829
+#, c-format
+msgid "bongo-manager: could not open pid file '%s'\n"
+msgstr "bongo-manager: não pude abrir arquivo de PID '%s'\n"
+
+#: src/apps/manager/manager.c:817 src/apps/manager/manager.c:835
+#, c-format
+msgid "bongo-manager: bongo-manager does not appear to be running.\n"
+msgstr "bongo-manager: bongo-manager parece não estar rodando.\n"
+
+#: src/apps/manager/manager.c:819
+#, c-format
+msgid "bongo-manager: unable to reload services: %s\n"
+msgstr "bongo-manager: incapaz de reiniciar serviços: %s\n"
+
+#: src/apps/manager/manager.c:837
+#, c-format
+msgid "bongo-manager: unable to shut down services: %s\n"
+msgstr "bongo-manager: incapaz de deslugar serviços: %s\n"
+
+#: src/apps/manager/manager.c:857
+#, c-format
+msgid "bongo-manager: another bongo-manager process appears to be running.\n"
+msgstr "bongo-manager: outro procesos do bongo-manager parecer estar rodando.\n"
+
+#: src/apps/manager/manager.c:858
+#, c-format
+msgid ""
+"bongo-manager: run with -s to stop an existing process, or -f to ignore the "
+"existing pidfile.\n"
+msgstr ""
+"bongo-manager: rode com -s pra parar um processo existente, ou -f para "
+" ignorar o arquivo de PID existente.\n"
+
+#: src/apps/manager/manager.c:860
+#, c-format
+msgid "bongo-manager: removing stale lock file in %s.\n"
+msgstr "bongo-manager: removendo arquivo de travamento perdido em %s.\n"
+
+#: src/apps/manager/manager.c:864
+#, c-format
+msgid "bongo-manager: could not remove stale lock file in %s.\n"
+msgstr ""
+"bongo-manager: não pude remover o arquivo de travamento perdido em %s.\n"
+
+#: src/apps/manager/manager.c:867
+#, c-format
+msgid ""
+"bongo-manager: %s user does not have permission to create a lock file in %s\n"
+msgstr ""
+"bongo-manager: usuário %s nao tem permissão para criar o arquivo de travamento "
+"em %s\n"
+
+#: src/apps/manager/manager.c:870
+#, c-format
+msgid "bongo-manager: could not create lock file in %s : %s\n"
+msgstr "bongo-manager: não pude criar o arquivo de travamento em %s: %s\n"
+
+#: src/apps/manager/manager.c:878
+#, c-format
+msgid "bongo-manager: failed to initialize memory manager.  Exiting\n"
+msgstr "bongo-manager: falhou em iniciar o gerenciador de memória. Saindo\n"
+
+#: src/apps/manager/manager.c:884
+#, c-format
+msgid "bongo-manager: Couldn't read the server DN from bongo.conf.\n"
+msgstr "bongo-manager: Não pude ler o DN do servido do bongo.conf.\n"
+
+#: src/apps/manager/manager.c:899
+#, c-format
+msgid "bongo-manager: managed slapd process failed to start.\n"
+msgstr "bongo-manager: processo do slapd gerenciado falhou em iniciar.\n"
+
+#: src/apps/manager/manager.c:903
+#, c-format
+msgid "bongo-manager: -l only works with a managed-slapd database.\n"
+msgstr "bongo-manager: -l só funciona com uma base de dados slapd-gerenciada.\n"
+
+#: src/apps/manager/manager.c:909
+#, c-format
+msgid "bongo-manager: unable to intialize directory access.\n"
+msgstr "bongo-manager: incapaz de iniciar o acesso ao diretório.\n"
+
+#: src/apps/manager/manager.c:915
+#, c-format
+msgid "bongo-manager: unable to MsgInit()\n"
+msgstr "bongo-manager: incapaz de MsgInit()\n"
+
+#: src/apps/manager/manager.c:922
+#, c-format
+msgid "bongo-manager: unable to initialize messaging library.\n"
+msgstr "bongo-manager: incapaz de iniciar a biblioteca de mensagens.\n"
+
+#: src/apps/manager/manager.c:937
+#, c-format
+msgid "bongo-manager: Couldn't load configuration for agents\n"
+msgstr "bongo-manager: Não pude ler configuração para os agentes\n"
+
+#: src/apps/manager/manager.c:962
+#, c-format
+msgid "bongo-manager: Shutting down...\n"
+msgstr "bongo-manager: Desligando...\n"
+
+#: src/apps/manager/manager.c:975
+#, c-format
+msgid "' stubbornly refusing to die, insisting.\n"
+msgstr "' teimosamente se recusa em morrer, insistindo.\n"
+
+#: src/apps/manager/manager.c:992
+#, c-format
+msgid "bongo-manager: shutdown complete.\n"
+msgstr "bongo-manager: Desligar concluído.\n"
+
