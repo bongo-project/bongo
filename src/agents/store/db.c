@@ -36,6 +36,7 @@ docs table:
    filename    - for collection: path w/o trailing slash
                  for document:   full path + '/' + document name (see stored.h)
    collection  - the guid of the containing collection
+   type        - the store type of the collection/document
 
    info        - contains DStoreDocInfo struct
 
@@ -104,6 +105,7 @@ struct _DStoreHandle {
         DStoreStmt getGuidColl;
         DStoreStmt listColl;
         DStoreStmt listCollRange;
+        DStoreStmt listCollections;
         DStoreStmt listUnindexed;
         DStoreStmt listUnindexedColl;
         DStoreStmt setIndexed;
@@ -229,7 +231,7 @@ DStoreCreateDB(DStoreHandle *handle)
                       "                   conversation INTEGER, "
                       "                   filename TEXT DEFAULT NULL, "
                       "                   collection INTEGER DEFAULT 0, "
-
+                      "                   type INTEGER DEFAULT 1, "
                       "                   info BLOB NOT NULL,"
                       "                   subject TEXT DEFAULT NULL,"
                       "                   senders TEXT DEFAULT NULL,"
@@ -243,6 +245,7 @@ DStoreCreateDB(DStoreHandle *handle)
                       ");"
                       "CREATE UNIQUE INDEX filename_idx ON docs (filename);"
                       "CREATE INDEX docs_idx ON docs (guid);"
+                      "CREATE INDEX docs_type ON docs (type);"
  
                       "CREATE TABLE props (guid INTEGER, "
                       "                    name TEXT NOT NULL, "
@@ -866,7 +869,7 @@ DStoreCancelTransactions(DStoreHandle *handle)
 #define DOCINFO_COLS " docs.guid, docs.info, " \
                      " docs.subject, docs.senders, docs.msgid, docs.parentmsgid, " \
                      " docs.conversation, docs.listid," \
-                     " docs.uid, docs.summary, docs.location, docs.stamp "
+                     " docs.uid, docs.summary, docs.location, docs.stamp, docs.type "
 #define CONVINFO_COLS " docs.guid, docs.info, conversations.subject "
 #define CONVINFO_COLSAS " docs.guid as guid, docs.info as info, conversations.subject as subject"
 #define EVENTINFO_COLS " events.guid, docs.info, " \
@@ -916,6 +919,8 @@ retry:
         }                                                                   \
     }                                                                       \
 }
+    
+    info->type = sqlite3_column_int64(stmt->stmt, 12);
     
     switch (info->type) {
     case STORE_DOCTYPE_CONVERSATION:
@@ -1104,9 +1109,9 @@ DStoreSetDocInfo(DStoreHandle *handle, DStoreDocInfo *info)
                           "(guid, filename, collection, info, "
                           " conversation, "
                           " subject, senders, msgid, parentmsgid, listid, "
-                          " uid, summary, location, stamp) "
+                          " uid, summary, location, stamp, type) "
                           "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, "
-                          "        ?11, ?12, ?13, ?14);", 
+                          "        ?11, ?12, ?13, ?14, ?15);", 
                           &handle->stmts.setInfo);
     } else {
         newDoc = TRUE;
@@ -1115,9 +1120,9 @@ DStoreSetDocInfo(DStoreHandle *handle, DStoreDocInfo *info)
                           "(filename, collection, info, "
                           " conversation, "
                           " subject, senders, msgid, parentmsgid, listid, "
-                          " uid, summary, location, stamp) "
+                          " uid, summary, location, stamp, type) "
                           "VALUES (?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, "
-                          "        ?11, ?12, ?13, ?14);", 
+                          "        ?11, ?12, ?13, ?14, ?15);", 
                           &handle->stmts.addInfo);
     }
     if (!stmt) {
@@ -1126,6 +1131,7 @@ DStoreSetDocInfo(DStoreHandle *handle, DStoreDocInfo *info)
     if ((info->guid && sqlite3_bind_int64(stmt->stmt, 1, info->guid)) ||
         DStoreBindStr(stmt->stmt, 2, filename) ||
         sqlite3_bind_int64(stmt->stmt, 3, info->collection) ||
+        sqlite3_bind_int64(stmt->stmt, 15, info->type) ||
         sqlite3_bind_blob(stmt->stmt, 4, info, DOCINFO_SIZE, SQLITE_STATIC) ||
         sqlite3_bind_int64(stmt->stmt, 5, info->conversation))
     {
@@ -1307,6 +1313,32 @@ DStoreListColl(DStoreHandle *handle, uint64_t collection, int start, int end)
         sqlite3_bind_int64(stmt->stmt, 1, collection) ||
         (start != -1 && (sqlite3_bind_int(stmt->stmt, 2, start) ||
                          sqlite3_bind_int(stmt->stmt, 3, (end - start) + 1)))) {
+        DStoreStmtError(handle, stmt);
+        return NULL;
+    }
+    return stmt;
+}
+
+DStoreStmt *
+DStoreListCollections(DStoreHandle *handle, char *root, int start, int end)
+{
+    DStoreStmt *stmt;
+    int rootlen;
+
+    if (root == NULL) root = "/";
+    rootlen = strlen(root);
+
+    if (start != -1) {
+        
+    } else {
+        stmt = SqlPrepare(handle, 
+                      "SELECT" DOCINFO_COLS "FROM docs WHERE type = 4096 AND substr(filename, 0, ?) = ?;",
+                      &handle->stmts.listCollections);
+    }
+
+    if (!stmt ||
+        sqlite3_bind_int64(stmt->stmt, 1, rootlen) ||
+        DStoreBindStr(stmt->stmt, 2, root)) {
         DStoreStmtError(handle, stmt);
         return NULL;
     }

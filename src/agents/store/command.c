@@ -2493,17 +2493,10 @@ ShowGuidsDocumentsWithMessage(StoreClient *client, uint64_t *guids,
     return ccode;    
 }
 
-
 static
 CCode
 StoreListCollections(StoreClient *client, DStoreDocInfo *coll)
 {
-    /* FIXME: instead of using the db, it might be better just to look 
-       at the dat files to get the guids? */
-
-    uint64_t *glist;
-    int glist_size = 32;
-    int n = 0;
     CCode ccode = 0;
     DStoreStmt *stmt = NULL;
 
@@ -2511,69 +2504,39 @@ StoreListCollections(StoreClient *client, DStoreDocInfo *coll)
     if (ccode) {
         return ccode;
     }
-
-    glist = MemMalloc(glist_size * sizeof(uint64_t));
-    if (!glist) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
+    stmt = DStoreListCollections(client->handle, coll->filename, 0, 0);
+    if (!stmt) {
+        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+        goto abort;
     }
-    glist[n++] = coll->guid;
-
-    while (n) {
-        uint64_t guid;
+        
+    while (-1 != ccode) {
         DStoreDocInfo info;
         int dcode;
 
-        guid = glist[--n];
-
-        stmt = DStoreListColl(client->handle, guid, -1, -1);
-        if (!stmt) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto abort;
-        }
-        
-        while (-1 != ccode) {
-            dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
-            if (1 == dcode && STORE_IS_FOLDER(info.type)) {
+        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
+        if (1 == dcode) {
+            if (coll->guid != info.guid)
                 ccode = ConnWriteF(client->conn, "2001 " GUID_FMT " %d %d %s\r\n", 
                                    info.guid, info.type, info.flags, info.filename);
-                glist[n++] = info.guid;
-                if (n >= glist_size) {
-                    /* grow glist */
-                    uint64_t *tmp;
-                    glist_size *= 2;
-                    tmp = MemRealloc(glist, glist_size * sizeof(uint64_t));
-                    if (!tmp) {
-                        ccode = ConnWriteStr(client->conn, MSG5001NOMEMORY);
-                        goto abort;
-                    }
-                    glist = tmp;
-                }
-
-            } else if (0 == dcode) {
-                break;
-            } else if (-1 == dcode) {
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            }
+        } else if (0 == dcode) {
+            break;
+        } else if (-1 == dcode) {
+            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
         }
-    
-        DStoreStmtEnd(client->handle, stmt);
     }
-
-    MemFree(glist);
-
+    
+    DStoreStmtEnd(client->handle, stmt);
+  
     return ConnWriteStr(client->conn, MSG1000OK);
 
 abort:
-    if (glist) {
-        MemFree(glist);
-    }
     if (stmt) {
         DStoreStmtEnd(client->handle, stmt);
     }
 
     return ccode;
 }
-
 
 CCode
 StoreCommandALARMS(StoreClient *client, uint64_t start, uint64_t end)
@@ -4976,9 +4939,11 @@ StoreCommandWRITE(StoreClient *client,
         }
         info.guid = guid;
     }
-    /* Rely on the database to enforce uniqueness in the filename */
-    snprintf(info.filename, sizeof(info.filename), "%s/%s",
-         collection->filename, filename ? filename : "");
+    if (collection) {
+        /* Rely on the database to enforce uniqueness in the filename */
+        snprintf(info.filename, sizeof(info.filename), "%s/%s",
+             collection->filename, filename ? filename : "");
+    }
     
     if (!collection) {
         if (1 != DStoreGetDocInfoGuid(client->handle, info.collection, &collinfo)) {

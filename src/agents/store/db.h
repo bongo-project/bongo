@@ -98,6 +98,9 @@ int DStoreDeleteCollectionContents(DStoreHandle *handle, uint64_t guid);
 
 DStoreStmt *DStoreListColl(DStoreHandle *handle, uint64_t collection, int start, int end);
 
+DStoreStmt *DStoreListCollections(DStoreHandle *handle, char *root, int start, int end);
+
+
 DStoreStmt *DStoreListUnindexed(DStoreHandle *handle, int value, uint64_t collection);
 
 DStoreStmt *DStoreGuidList(DStoreHandle *handle, uint64_t *guids, int numGuids);
