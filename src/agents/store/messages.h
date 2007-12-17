@@ -123,6 +123,7 @@
 #define MSG4224NOUSER "4224 User does not exist\r\n"
 #define MSG4224NOCOLLECTION "4224 Collection doesn't exist\r\n"
 #define MSG4224NODOCUMENT "4224 Document doesn't exist\r\n"
+#define MSG4225BADVERSION "4225 Store database version is inconsistent\r\n"
 #define MSG4226MBOXEXISTS "4226 Mailbox already exists\r\n"
 #define MSG4226CALEXISTS "4226 Calendar already exists\r\n"
 #define MSG4226BADEMAIL "4226 Unable to parse email\r\n"

@@ -417,7 +417,12 @@ fail:
 /* ensure the database schema has been updated to the proper version 
    returns: 0 on success, -1 on error
 */
-
+/* FIXME: We were doing this check every time we opened the database.
+ * That's not great, though. Admins should be able to control if/when
+ * user data is upgraded, since it's a risky operation.
+ * As a control, we check the version of the DB when we first STORE, 
+ * calling DStoreCheckDBSchema() 
+ */
 static int
 UpgradeDB(DStoreHandle *handle)
 {
@@ -499,6 +504,40 @@ fail:
     return -1;
 }
 
+int
+DStoreCheckDBSchema(DStoreHandle *handle)
+{
+    DStoreStmt *stmt;
+    int version = 0;
+    int retcode = -1;
+    
+    if (DStoreBeginTransaction(handle)) {
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
+        return -1;
+    }
+
+    stmt = SqlPrepare(handle, "PRAGMA user_version;", &handle->stmts.getVersion);
+    if (!stmt) {
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
+        goto fail;
+    }
+    
+    if (1 != DStoreStmtStep(handle, stmt)) {
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
+        DStoreStmtEnd(handle, stmt);
+        goto fail;
+    }
+    version = sqlite3_column_int(stmt->stmt, 0);
+    DStoreStmtEnd(handle, stmt);
+
+    if (CURRENT_VERSION == version) {
+        retcode = 0;
+    } 
+
+fail:
+    DStoreAbortTransaction(handle);
+    return retcode;
+}
 
 static void test_info_flags(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 
@@ -532,10 +571,6 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
 
     if (create && DStoreCreateDB(handle)) {
         Log(LOG_ERROR, "Couldn't open dstore db");
-        goto fail;
-    }
-
-    if (UpgradeDB(handle)) {
         goto fail;
     }
 

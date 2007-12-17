@@ -4720,10 +4720,18 @@ StoreCommandSTORE(StoreClient *client, char *user)
     }
 
     if (StoreAgent.installMode || !strncmp(user, "_system", 7)) {
-        if (SelectStore(client, user)) {
-            return ConnWriteStr(client->conn, MSG4224BADSTORE);
-        } else {
-            return ConnWriteStr(client->conn, MSG1000OK);
+        int ret = 0;
+        ret = SelectStore(client, user);
+        switch (ret) {
+            case 0:
+                return ConnWriteStr(client->conn, MSG1000OK);
+                break;
+            case -2:
+                return ConnWriteStr(client->conn, MSG4225BADVERSION);
+            case -1:
+            default:
+                return ConnWriteStr(client->conn, MSG4224BADSTORE);
+                break;
         }
     }
 

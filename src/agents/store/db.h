@@ -26,6 +26,8 @@ typedef int InfoStmtFilter(DStoreDocInfo *info, void *userdata);
 DStoreHandle *DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms);
 void DStoreClose(DStoreHandle *handle);
 
+int DStoreCheckDBSchema(DStoreHandle *handle);
+
 BongoMemStack *DStoreGetMemStack(DStoreHandle *handle);
 void DStoreSetMemStack(DStoreHandle *handle, BongoMemStack *memstack);
 
