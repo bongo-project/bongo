@@ -13,7 +13,7 @@ from bongo.store.StoreClient import DocTypes, StoreClient
 # ideally we want to farm the tar format stuff itself out into a separate lib.
 # Sadly, the TarFile implementation that comes with Python is mostly useless 
 
-class PAXHeader():
+class PAXHeader:
     def __init__(self, filename):
         self.keywords = {}
         self.filename = filename
@@ -281,7 +281,6 @@ class StoreRestoreCommand(Command):
             self.RestoreStore(store, f)
         except IOError, e:
             print str(e)
-        finally:
-            if f:
-                f.close()
-            store.Quit()
+        if f:
+            f.close()
+        store.Quit()
