@@ -2504,7 +2504,7 @@ StoreListCollections(StoreClient *client, DStoreDocInfo *coll)
     if (ccode) {
         return ccode;
     }
-    stmt = DStoreListCollections(client->handle, coll->filename, 0, 0);
+    stmt = DStoreListCollections(client->handle, coll->filename, -1, -1);
     if (!stmt) {
         ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
         goto abort;
