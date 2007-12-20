@@ -97,8 +97,8 @@ GetInstallParameters(void){
 void
 SetStoreConfigurationModifications(StoreClient *client) {
     BongoJsonNode *node;
-    unsigned char *aconfig;
-    unsigned char *default_config;
+    unsigned char *aconfig = NULL;
+    unsigned char *default_config = NULL;
     unsigned int default_config_len;
     /*
      * unsigned char default_config[] = "{ \"domainalias\" : \"\", \"aliases\" : { \"postmaster\" : \"admin\" }, \"username-mapping\" : 0 }";
@@ -107,10 +107,12 @@ SetStoreConfigurationModifications(StoreClient *client) {
     */
 
     NMAPReadConfigFile("aliases/default_config", &default_config);
+    if (default_config == NULL) return;
     default_config_len = strlen(default_config);
 
     /* first let's read in the queue document and store out the domains and hosted domains */
     if(NMAPReadConfigFile("queue", &aconfig)) {
+        if (aconfig == NULL) return;
         if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
             BongoJsonNode *current;
             char *content;
@@ -134,10 +136,12 @@ SetStoreConfigurationModifications(StoreClient *client) {
             BongoJsonNodeFree(node);
         }
         MemFree(aconfig);
+        aconfig = NULL;
     }
 
     /* now store out the global file changes */
     if (NMAPReadConfigFile("global", &aconfig)) {
+        if (aconfig == NULL) return;
         if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
             char *content;
             BongoJsonNode *current;
@@ -160,6 +164,7 @@ SetStoreConfigurationModifications(StoreClient *client) {
             BongoJsonNodeFree(node);
         }
         MemFree(aconfig);
+        aconfig = NULL;
     }
 }
 
