@@ -135,12 +135,6 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "CONVERSATIONS", 
                          (void *) STORE_COMMAND_CONVERSATIONS) ||
 
-        BongoHashtablePutNoReplace(CommandTable, "LISTCONVERSATION", 
-                         (void *) STORE_COMMAND_CONVERSATION) ||
-        BongoHashtablePutNoReplace(CommandTable, "LISTCONVERSATIONS", 
-                         (void *) STORE_COMMAND_CONVERSATIONS) ||
-
-
         /* index commands */
         BongoHashtablePutNoReplace(CommandTable, "ISEARCH", (void *) STORE_COMMAND_ISEARCH) ||
 
