@@ -8,6 +8,7 @@ pkgpythonstoretool_PYTHON = \
 	src/apps/storetool/bongo/storetool/ContactCommands.py \
 	src/apps/storetool/bongo/storetool/InteractiveCommands.py \
 	src/apps/storetool/bongo/storetool/MailCommands.py \
+	src/apps/storetool/bongo/storetool/TestCommands.py \
 	src/apps/storetool/bongo/storetool/ExportMailbox.py
 
 src/apps/storetool/bongo-storetool: $(top_builddir)/src/libs/python/bongo-python-wrapper

@@ -746,6 +746,13 @@ class StoreClient:
         r = self.stream.GetResponse()
         if r.code != 1000:
             raise CommandError(r)
+    
+    def Rename(self, oldname, newname):
+        self.stream.Write("RENAME %s %s" % (oldname, newname))
+        
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
 
     def Replace(self, doc, data):
         self.stream.Write("REPLACE %s %d" % (doc, len(data)))
