@@ -58,7 +58,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
     case STORE_SEARCH_TEXT: /* TEXT checks both HEADERS and BODY */
     case STORE_SEARCH_HEADERS:
     {
-        if (XplFSeek64(f, info->start + info->headerlen, SEEK_SET)) {
+        if (XplFSeek64(f, 0, SEEK_SET)) {
             ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
             break;
         }
@@ -90,7 +90,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
                     continue;
                 }
 
-                if (XplFSeek64(f, info->start + info->headerlen + line->start, SEEK_SET)) {
+                if (XplFSeek64(f, line->start, SEEK_SET)) {
                     ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
                     break;
                 }
@@ -144,7 +144,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
             break;
         }
 
-        if (XplFSeek64(f, info->start + info->headerlen, SEEK_SET)) {
+        if (XplFSeek64(f, 0, SEEK_SET)) {
             ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
             break;
         }
@@ -189,28 +189,27 @@ StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query)
         return ConnWriteStr(client->conn, MSG5005DBLIBERR);
     }
 
-    if (STORE_IS_FOLDER(info.type)) {
-        FindPathToDocFile(client, guid, path, sizeof(path));       
-    } else {
-        FindPathToDocFile(client, info.collection, path, sizeof(path));
-    }
-
-    f = fopen(path, "rb");
-    if (!f) {
-        return ConnWriteStr(client->conn, MSG4224CANTREAD);
-    }
-                      
+    // we're searching a document
     if (!STORE_IS_FOLDER(info.type)) {
+        FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
+
+        f = fopen(path, "rb");
+        if (!f) {
+            return ConnWriteStr(client->conn, MSG4224CANTREAD);
+        }
+        
         ccode = SearchDocument(client, &info, query, f);
         if (-1 != ccode) {
             ccode = ConnWriteStr(client->conn, MSG1000OK);
         }
-        goto finish;
+        fclose(f);
+        return ccode;
     }
-        
+    
+    // we're searching a collection
     stmt = DStoreListColl(client->handle, guid, -1, -1);
     if (!stmt) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
         goto finish;
     }
     
@@ -229,13 +228,9 @@ StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query)
             break;
         }
     }
-
+    
 finish:
-    (void) fclose(f);
-    if (stmt) {
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
+    if (stmt) DStoreStmtEnd(client->handle, stmt);
     return ccode;
 }
 

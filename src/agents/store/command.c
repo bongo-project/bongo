@@ -2041,7 +2041,7 @@ ShowDocumentBody(StoreClient *client, DStoreDocInfo *info,
     if (STORE_IS_FOLDER(info->type)) {
         return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
     } else {
-        FindPathToDocFile(client, info->collection, path, sizeof(path));
+        FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
         fh = fopen(path, "rb");
         if (!fh) {
             return ConnWriteStr(client->conn, MSG4224CANTREAD);
@@ -2049,16 +2049,16 @@ ShowDocumentBody(StoreClient *client, DStoreDocInfo *info,
 
         if (requestStart < 0) {
             start = 0;
-            length = info->bodylen;
+            length = info->length;
         } else {
-            if (requestStart < info->bodylen) {
+            if (requestStart < info->length) {
                 start = requestStart;
-                length = info->bodylen - start;
+                length = info->length - start;
                 if ((requestLength > -1) && ((unsigned long)requestLength < length)) {
                     length = requestLength; 
                 }
             } else {
-                start = info->bodylen;
+                start = info->length;
                 length = 0;
             }
         }
@@ -2068,7 +2068,8 @@ ShowDocumentBody(StoreClient *client, DStoreDocInfo *info,
         if (-1 == ccode) {
             goto finish;
         }
-        if (0 != XplFSeek64(fh, info->start + info->headerlen + start, SEEK_SET)) {
+        
+        if (0 != XplFSeek64(fh, start, SEEK_SET)) {
             ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
             goto finish;
         }
@@ -2119,7 +2120,7 @@ ShowInternalProperty(StoreClient *client,
         len = snprintf(buf, 64, "%lu", (unsigned long) info->flags);
         return ConnWriteF(client->conn, "2001 nmap.flags %d\r\n%s\r\n", len, buf);
     case STORE_PROP_LENGTH:
-        len = snprintf(buf, 64, "%lld", info->bodylen);
+        len = snprintf(buf, 64, "%lld", info->length);
         return ConnWriteF(client->conn, "2001 nmap.length %d\r\n%s\r\n", len, buf);
     case STORE_PROP_TYPE:
         len = snprintf(buf, 64, "%d", info->type);
@@ -2409,7 +2410,7 @@ ShowDocumentInfo(StoreClient *client, DStoreDocInfo *info,
                        "2001 " GUID_FMT " %d %d %08x %d %lld %s\r\n", 
                        info->guid, info->type, info->flags, 
                        info->imapuid ? info->imapuid : (uint32_t) info->guid, 
-                       info->timeCreatedUTC, info->bodylen,
+                       info->timeCreatedUTC, info->length,
                        buffer);
 
     for (i = 0; i < propcount && ccode >= 0; i++) {
@@ -2826,7 +2827,8 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
     NLockStruct *lock = NULL;
     FILE *src = NULL;
     FILE *dest = NULL;
-    char path[XPL_MAX_PATH + 1];
+    char srcpath[XPL_MAX_PATH + 1];
+    char dstpath[XPL_MAX_PATH + 1];
     struct stat sb;
     size_t start;
     size_t end;
@@ -2855,59 +2857,51 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
         return ccode;
     }
 
-    FindPathToDocFile(client, info.collection, path, sizeof(path));
-    src = fopen(path, "r");
+    FindPathToDocument(client, info.collection, info.guid, srcpath, sizeof(srcpath));
+    src = fopen(srcpath, "r");
     if (!src) {
         ccode = ConnWriteStr(client->conn, MSG4224CANTREADMBOX);
         goto finish;
     }
+    fclose(src);
 
-    FindPathToDocFile(client, collection->guid, path, sizeof(path));
-    if (stat(path, &sb)) {
+    MaildirTempDocument(client, collection->guid, dstpath, sizeof(dstpath));
+    
+    if (link(srcpath, dstpath) != 0) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     }
-    dest = fopen(path, "a");
-    if (!dest) {
-        ccode = ConnWriteStr(client->conn, ENOSPC == errno ? MSG5220QUOTAERR 
-                                                           : MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
+    // TODO: how to detect MSG5220QUOTAERR ?
+    
+    start = 0;
+    end = info.length;
 
-    start = info.start + info.headerlen;
-    end = info.start + info.headerlen + info.bodylen;
-
-    info.start = sb.st_size;
+    // FIXME: need to correct all this meta-data
     info.guid = 0;
     info.imapuid = 0;
     info.collection = collection->guid;
     snprintf(info.filename, sizeof(info.filename), "%s/", collection->filename);
-
-    info.headerlen = WriteDocumentHeaders(client, dest, NULL, info.timeCreatedUTC);
-    if (info.headerlen < 0) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    if (BongoFileAppendBytes(src, dest, start, end) ||
-        fflush(dest))
-    {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    /* info.timeCreatedUTC = time(NULL); */
 
     if (DStoreSetDocInfo(client->handle, &info)) {
         ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
         goto finish;
     }
 
-    errmsg = StoreProcessDocument(client, &info, collection, path, NULL, 0);
+    errmsg = StoreProcessDocument(client, &info, collection, dstpath, NULL, 0);
     if (errmsg) {
         ccode = ConnWriteStr(client->conn, errmsg);
         goto finish;
     }
+    
+    // swap dest to src, and find new dest - move temp file into correct position
+    srcpath[0] = '\0';
+    strncpy(srcpath, dstpath, sizeof(srcpath));
+    FindPathToDocument(client, collection->guid, info.guid, dstpath, sizeof(dstpath));
+    if (link(srcpath, dstpath) != 0) {
+        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+        goto finish;
+    }
+    unlink(srcpath);
 
     if (0 != DStoreCommitTransaction(client->handle)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
@@ -2922,12 +2916,6 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
                        info.guid, info.version);
     
 finish:
-    if (src) {
-        fclose(src);
-    }
-    if (dest) {
-        fclose(dest);
-    }
     if (lock) {
         StoreReleaseExclusiveLock(client, lock);
         StoreReleaseSharedLock(client, lock);
@@ -2974,6 +2962,7 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
     NLockStruct *lock = NULL;
     BOOL updateConversation;
     IndexHandle *index = NULL;
+    char path[XPL_MAX_PATH];
 
     switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
     case 1:
@@ -3041,16 +3030,17 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
         ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
         goto finish;
     }
+    
+    FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
+    if (unlink(path) != 0) {
+        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+        goto finish;
+    }
 
     if (DStoreCommitTransaction(client->handle)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     } 
-
-    if (0 == rand() % 20) {
-        /* compact collections to preserve disk space */
-        client->flags |= STORE_CLIENT_FLAG_NEEDS_COMPACTING;
-    }
 
     IndexRemoveDocument(index, guid);
 
@@ -3059,7 +3049,7 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
                       info.guid, info.imapuid, 0);
 
 
-    ccode = ConnWriteStr(client->conn, MSG1000OK);;
+    ccode = ConnWriteStr(client->conn, MSG1000OK);
 
 finish:
     if (index) {
@@ -3904,6 +3894,8 @@ StoreCommandMOVE(StoreClient *client, uint64_t guid,
     uint32_t oldimapuid;
     NLockStruct *srclock = NULL;
     NLockStruct *dstlock = NULL;
+    char src_path[XPL_MAX_PATH];
+    char dst_path[XPL_MAX_PATH];
 
     switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
     case -1:
@@ -3972,63 +3964,24 @@ StoreCommandMOVE(StoreClient *client, uint64_t guid,
     }
 
     if (newcoll->guid != info.collection) {
-        char path[XPL_MAX_PATH + 1];
         struct stat sb;
         size_t total;
         size_t count;
         char buffer[CONN_BUFSIZE];
 
-        FindPathToDocFile(client, info.collection, path, sizeof(path));
-        if (!(oldfile = fopen(path, "r")) || 
-            XplFSeek64(oldfile, info.start + info.headerlen, SEEK_SET)) 
-        {
-            ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
-            goto abort;
-        }
+        FindPathToDocument(client, info.collection, info.guid, src_path, sizeof(src_path));  
+        MaildirTempDocument(client, newcoll->guid, dst_path, sizeof(dst_path)); 
+        // FindPathToTempDocument(client, newcoll->guid, dst_path, sizeof(dst_path));
         
-        FindPathToDocFile(client, newcoll->guid, path, sizeof(path));
-        if (stat(path, &sb) ||
-            !(newfile = fopen(path, "a"))) 
-        {
-            ccode = ConnWriteStr(client->conn, MSG4224CANTWRITE);
-            goto abort;
-        }
-
-        info.start = sb.st_size;
-        info.headerlen = WriteDocumentHeaders(client, newfile, NULL, 
-                                              info.timeCreatedUTC);
-        if (info.headerlen < 0) {
+        if (link(src_path, dst_path) != 0) {
             ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
             goto abort;
         }
 
-        for (total = info.bodylen;
-             total;
-             total -= count)
-        {
-            count = sizeof(buffer) < total ? sizeof(buffer) : total;
-
-            count = fread(buffer, sizeof(char), count, oldfile);
-            if (!count ||
-                ferror(oldfile) || 
-                count != fwrite(buffer, sizeof(char), count, newfile))
-            {
-                ccode = ConnWriteStr(client->conn, MSG4224CANTWRITE);
-                goto abort;
-            }
-        }
-
-        (void) fclose(oldfile);
-        oldfile = NULL;
-        if (fclose(newfile)) {
-            ccode = ConnWriteStr(client->conn, MSG4224CANTWRITE);
+        if (unlink(src_path) != 0) {
+            // FIXME: try to remove the new link we just created?
+            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
             goto abort;
-        }
-        newfile = NULL;
-
-        if (0 == rand() % 25) {
-            /* compact collections to preserve disk space */
-            client->flags |= STORE_CLIENT_FLAG_NEEDS_COMPACTING;
         }
     }
 
@@ -4052,7 +4005,21 @@ StoreCommandMOVE(StoreClient *client, uint64_t guid,
             }
         }
     }
-
+    
+    src_path[0] = '\0';
+    strncpy(src_path, dst_path, sizeof(src_path));
+    FindPathToDocument(client, info.collection, info.guid, dst_path, sizeof(dst_path));
+    
+    if (link(src_path, dst_path) != 0) {
+        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+        goto abort;
+    }
+    if (unlink(src_path) != 0) {
+        // FIXME: try to remove the new link we just created?
+        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+        goto abort;
+    }
+    
     if (DStoreCommitTransaction(client->handle)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto abort;
@@ -4075,15 +4042,7 @@ abort:
 
     DStoreAbortTransaction(client->handle);
 
-finish:
-
-    if (oldfile) {
-        fclose(oldfile);
-    }
-    if (newfile) {
-        fclose(newfile);
-    }
-    
+finish:    
     if (srclock) {
         StoreReleaseExclusiveLock(client, srclock);
         StoreReleaseSharedLock(client, srclock);        
@@ -4468,7 +4427,7 @@ StoreCommandRENAME(StoreClient *client, DStoreDocInfo *collection,
     case -4: /* io error */
     default:
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        break;
+        goto finish;
     }
 
     /* we want to keep most of the docinfo from the old collection, but need to 
@@ -4616,17 +4575,15 @@ RemoveCollections(StoreClient *client, uint64_t guid)
     }
     trans = 0;
     
-    /* third pass: remove .dat files. - if unlink() ever fails, we waste some 
-       disk space, but the store will still be consistent.  
-    */
-
+    /* third pass: remove filesystem data */
     for (i = 0; i < subcolls.len; i++) {
         char path[XPL_MAX_PATH+1];
 
         guid = BongoArrayIndex(&subcolls, uint64_t, i);
-        
-        FindPathToDocFile(client, guid, path, sizeof(path));
-        unlink(path);
+        if (MaildirRemove(client->store, guid) != 0) {
+            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+            goto finish;
+        }
     }
 
     /* fourth pass: remove docs from the index */
@@ -4897,10 +4854,10 @@ StoreCommandWRITE(StoreClient *client,
     NLockStruct *cLock = NULL;
     int replace = 0;            /* are we in replace mode? */
     char path[XPL_MAX_PATH + 1];
+    char tmppath[XPL_MAX_PATH + 1];
     struct stat sb;
     FILE *fh = NULL;
     int commit = 0;
-    int written = 0;            /* did we write to the file? */
 
     if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
         return ConnWriteStr(client->conn, MSG5221SPACELOW);
@@ -4933,7 +4890,7 @@ StoreCommandWRITE(StoreClient *client,
             break;
         default:
             if (!collection) {
-                /* REPLACE mode requires existing document */
+                // REPLACE mode requires existing document
                 ccode = ConnWriteStr(client->conn, MSG4220NOGUID);
                 goto finish;
             }
@@ -4942,7 +4899,7 @@ StoreCommandWRITE(StoreClient *client,
         info.guid = guid;
     }
     if (collection) {
-        /* Rely on the database to enforce uniqueness in the filename */
+        // Rely on the database to enforce uniqueness in the filename
         snprintf(info.filename, sizeof(info.filename), "%s/%s",
              collection->filename, filename ? filename : "");
     }
@@ -4974,13 +4931,11 @@ StoreCommandWRITE(StoreClient *client,
         goto finish;
     }
 
-    FindPathToDocFile(client, info.collection, path, sizeof(path));
-    if (stat(path, &sb)) {
-        ccode = ConnWriteStr(client->conn, MSG4224NOMBOX);
-        goto finish;
-    }
+    // open a temporary file to write to
+    // FindPathToTempDocument(client, info.collection, tmppath, sizeof(tmppath));
+    MaildirTempDocument(client, info.collection, tmppath, sizeof(tmppath));
 
-    fh = fopen(path, "a+");
+    fh = fopen(tmppath, "w");
     if (!fh) {
         if (ENOSPC == errno) {
             ccode = ConnWriteStr(client->conn, MSG5220QUOTAERR);
@@ -4990,51 +4945,17 @@ StoreCommandWRITE(StoreClient *client,
         goto finish;
     }
 
-    info.start += info.headerlen;
-
-    info.headerlen = WriteDocumentHeaders(client, fh, NULL, 
-                                          info.timeCreatedUTC);
-
-    if (info.headerlen < 0) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    if (-1 != startoffset) {
-        if (BongoFileAppendBytes(fh, fh, info.start, info.start + startoffset)) {
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-            goto finish;
-        }
-    }
-
     if (-1 == (ccode = ConnWrite(client->conn, "2002 Send document.\r\n", 21)) || 
         -1 == (ccode = ConnFlush(client->conn))) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
     }
     
     if (length >= 0) {
-        ccode = written = ConnReadToFile(client->conn, fh, length);
+        ccode = ConnReadToFile(client->conn, fh, length);
     } else {
-        ccode = written = length = ConnReadToFileUntilEOS(client->conn, fh);
+        ccode = length = ConnReadToFileUntilEOS(client->conn, fh);
     }
     if (-1 == ccode) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    if (-1 != startoffset) {
-        if (BongoFileAppendBytes(fh, fh, 
-                                info.start + endoffset, info.start + info.bodylen)) 
-        {
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-            goto finish;
-        }
-        info.bodylen -= (endoffset - startoffset);
-    } else {
-        info.bodylen = 0;
-    }
-
-    if (4 != fwrite("\r\n\r\n", sizeof(char), 4, fh)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     }
@@ -5046,9 +4967,9 @@ StoreCommandWRITE(StoreClient *client,
         goto finish;
     }
 
-    info.bodylen += length;
+    // create new metadata and index new mail
+    info.length = length;
     info.timeCreatedUTC = timeCreatedUTC ? timeCreatedUTC : (uint64_t) time(NULL);
-    info.start = sb.st_size;
     info.version++;
     info.flags |= addflags;
 
@@ -5067,20 +4988,20 @@ StoreCommandWRITE(StoreClient *client,
         ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
         goto finish;
     }
+    
+    FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
+    if (replace && (unlink(path) != 0)) {
+        // can't get rid of existing mail file.
+        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+        goto finish;
+    }    
+    link(tmppath, path); // FIXME : error checking
+    unlink(tmppath); // and again :)
 
     errmsg = StoreProcessDocument(client, &info, collection, path, NULL, linkGuid);
     if (errmsg) {
         ccode = ConnWriteStr(client->conn, errmsg);
         goto finish;
-    }
-
-    if (replace && !collection->data.collection.needsCompaction) {
-        ++collection->data.collection.needsCompaction;
-        (void) DStoreSetDocInfo(client->handle, collection); 
-
-        if (0 == rand() % 25) {
-            client->flags |= STORE_CLIENT_FLAG_NEEDS_COMPACTING;
-        }
     }
 
     if (replace) {
@@ -5091,12 +5012,13 @@ StoreCommandWRITE(StoreClient *client,
     if (0 != DStoreCommitTransaction(client->handle)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
-    } 
+    }
 
     if (replace) {
         ++client->stats.updates;
         StoreWatcherEvent(client, cLock, STORE_WATCH_EVENT_MODIFIED,
                           info.guid, info.imapuid, 0);
+        
     } else {
         ++client->stats.insertions;
         StoreWatcherEvent(client, cLock, STORE_WATCH_EVENT_NEW,
@@ -5119,11 +5041,7 @@ finish:
 
     if (!commit) {
         DStoreAbortTransaction(client->handle);
-        if (written && 0 != XplTruncate(path, sb.st_size)) {
-            XplConsolePrintf("Couldn't truncate store file: %s.\r\n", 
-                             strerror(errno));
-        }
-
+        unlink(tmppath);
     }
 
     if (cLock) {
@@ -5158,13 +5076,6 @@ WriteHelper(StoreClient *client,
     const char *errmsg;
     int i;
 
-    info->start = ftell(fh);
-
-    info->headerlen = WriteDocumentHeaders(client, fh, NULL, info->timeCreatedUTC);
-    if (info->headerlen < 0) {
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-
     if (-1 == (ccode = ConnWrite(client->conn, "2002 Send document.\r\n", 21)) || 
         -1 == (ccode = ConnFlush(client->conn))) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
@@ -5179,7 +5090,7 @@ WriteHelper(StoreClient *client,
         return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
     }
 
-    info->bodylen = length;
+    info->length = length;
 
     if (4 != fwrite("\r\n\r\n", sizeof(char), 4, fh)) {
         return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
@@ -5258,7 +5169,8 @@ StoreCommandMWRITE(StoreClient *client,
     CCode ccode;
     NLockStruct *cLock = NULL;
     FILE *fh = NULL;
-    char path[XPL_MAX_PATH + 1];
+    char tmppath[XPL_MAX_PATH];
+    char path[XPL_MAX_PATH];
     struct stat sb;
     DStoreDocInfo info;
     IndexHandle *index = NULL;
@@ -5280,29 +5192,8 @@ StoreCommandMWRITE(StoreClient *client,
         return ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
     }
 
-    ccode = StoreGetCollectionLock(client, &cLock, collection->guid);
-    if (ccode) {
-        goto finish;
-    }
-
-    FindPathToDocFile(client, collection->guid, path, sizeof(path));
-    if (stat(path, &sb)) {
-        ccode = ConnWriteStr(client->conn, MSG4224NOMBOX);
-        goto finish;
-    }
-
-    fh = fopen(path, "a");
-    if (!fh) {
-        if (ENOSPC == errno) {
-            ccode = ConnWriteStr(client->conn, MSG5220QUOTAERR);
-        } else {
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        }
-        goto finish;
-    }
-
     while (ccode >= 0) {
-        char *tokens[8];
+        char *tokens[8]; 
         int length;
         char *filename = NULL;
         uint64_t guid = 0;
@@ -5387,6 +5278,24 @@ StoreCommandMWRITE(StoreClient *client,
 
         info.timeCreatedUTC = timeCreated ? timeCreated : (uint64_t) time(NULL);
 
+        ccode = StoreGetCollectionLock(client, &cLock, collection->guid);
+        if (ccode) {
+            goto finish;
+        }
+
+        // FindPathToTempDocument(client, collection->guid, tmppath, sizeof(tmppath));
+        MaildirTempDocument(client, collection->guid, tmppath, sizeof(tmppath));
+
+        fh = fopen(path, "w");
+        if (!fh) {
+            if (ENOSPC == errno) {
+                ccode = ConnWriteStr(client->conn, MSG5220QUOTAERR);
+            } else {
+                ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+            }
+            goto finish;
+        }
+    
         ccode = WriteHelper(client, index,
                             collection, &info,
                             fh, path,
@@ -5394,16 +5303,22 @@ StoreCommandMWRITE(StoreClient *client,
                             flags, linkguid,
                             props, propcount);
 
+        fclose(fh);
+        fh = NULL;
+               
         if (ccode) {
             goto finish;
         }
         
-        BongoArrayAppendValue(&guidlist, info.guid);
+        FindPathToDocument(client, collection->guid, info.guid, path, sizeof(path));
+        if (link(tmppath, path) != 0) {
+            goto finish;
+        }
+        unlink(tmppath); // FIXME: some sort of check?
         
+        BongoArrayAppendValue(&guidlist, info.guid);
     }
 
-    ccode = fclose(fh);
-    fh = NULL;
     if (ccode) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;

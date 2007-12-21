@@ -106,6 +106,7 @@ struct _DStoreHandle {
         DStoreStmt listColl;
         DStoreStmt listCollRange;
         DStoreStmt listCollections;
+        DStoreStmt listCollectionsRange;
         DStoreStmt listUnindexed;
         DStoreStmt listUnindexedColl;
         DStoreStmt setIndexed;
@@ -158,10 +159,6 @@ struct _DStoreHandle {
         DStoreStmt getMime;
         DStoreStmt setMime;
         DStoreStmt clearMime;
-
-        DStoreStmt listJournal;
-        DStoreStmt addJournalEntry;
-        DStoreStmt delJournalEntry;
 
         DStoreStmt getVersion;
 
@@ -909,7 +906,7 @@ DStoreCancelTransactions(DStoreHandle *handle)
 #define CONVINFO_COLSAS " docs.guid as guid, docs.info as info, conversations.subject as subject"
 #define EVENTINFO_COLS " events.guid, docs.info, " \
                        " 0, 0, 0, 0, 0, 0, " \
-                       " docs.uid, docs.summary, docs.location, docs.stamp "
+                       " docs.uid, docs.summary, docs.location, docs.stamp, docs.type "
 
 /* returns: 1 on success
             0 if no row available,
@@ -1363,11 +1360,15 @@ DStoreListCollections(DStoreHandle *handle, char *root, int start, int end)
     if (root == NULL) root = "/";
     rootlen = strlen(root);
 
+#define DS_LIST_COLL_QUERY "SELECT" DOCINFO_COLS "FROM docs WHERE type = 4096 AND substr(filename, 0, ?) = ?"
+
     if (start != -1) {
-        
+        stmt = SqlPrepare(handle,
+                      DS_LIST_COLL_QUERY " LIMIT ?, ?;",
+                      &handle->stmts.listCollectionsRange);
     } else {
         stmt = SqlPrepare(handle, 
-                      "SELECT" DOCINFO_COLS "FROM docs WHERE type = 4096 AND substr(filename, 0, ?) = ?;",
+                      DS_LIST_COLL_QUERY ";",
                       &handle->stmts.listCollections);
     }
 
@@ -1376,6 +1377,10 @@ DStoreListCollections(DStoreHandle *handle, char *root, int start, int end)
         DStoreBindStr(stmt->stmt, 2, root)) {
         DStoreStmtError(handle, stmt);
         return NULL;
+    }
+    if (start != -1) {
+        sqlite3_bind_int64(stmt->stmt, 3, start);
+        sqlite3_bind_int64(stmt->stmt, 4, end);
     }
     return stmt;
 }
@@ -2703,84 +2708,6 @@ cleanup:
 
     return dcode;
 }
-
-
-int
-DStoreAddJournalEntry(DStoreHandle *handle, uint64_t collection, char *filename)
-{
-    DStoreStmt *stmt;
-    int result;
-
-    stmt = SqlPrepare(handle, 
-                      "INSERT into journal (collection, filename) "
-                      "VALUES (?, ?);",
-                      &handle->stmts.addJournalEntry);
-    if (!stmt ||
-        sqlite3_bind_int64(stmt->stmt, 1, collection) ||
-        DStoreBindStr(stmt->stmt, 2, filename))
-    {
-        return -1;
-    }
-    result = DStoreStmtExecute(handle, stmt);
-    
-    DStoreStmtEnd(handle, stmt);
-
-    return result;
-}
-
-
-int
-DStoreRemoveJournalEntry(DStoreHandle *handle, uint64_t collection)
-{
-    DStoreStmt *stmt;
-    int result;
-
-    stmt = SqlPrepare(handle, "DELETE FROM journal WHERE collection=?;",
-                      &handle->stmts.delJournalEntry);
-    if (!stmt ||
-        sqlite3_bind_int64(stmt->stmt, 1, collection))
-    {
-        return -1;
-    }
-    result = DStoreStmtExecute(handle, stmt);
-    DStoreStmtEnd(handle, stmt);
-
-    return result;
-}
-
-
-DStoreStmt *
-DStoreListJournal(DStoreHandle *handle)
-{
-    DStoreStmt *stmt;
-
-    stmt = SqlPrepare(handle, "SELECT collection, filename FROM journal;", 
-                      &handle->stmts.listJournal);
-
-    if (!stmt) {
-        DStoreStmtError(handle, stmt);
-        return NULL;
-    }
-    return stmt;
-}
-
-
-int
-DStoreJournalStmtStep(DStoreHandle *handle, DStoreStmt *stmt, 
-                      uint64_t *outGuid, const char **outFilename)
-{
-    int result;
-
-    if (1 != (result = DStoreStmtStep(handle, stmt))) {
-        return result;
-    }
-
-    *outGuid = sqlite3_column_int64(stmt->stmt, 0);
-    *outFilename = sqlite3_column_text(stmt->stmt, 1);
-
-    return 1;
-}
-
 
 /** mime cache **/
 

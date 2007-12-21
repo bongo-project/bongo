@@ -28,6 +28,7 @@ bongostore_SOURCES =					 \
 	src/agents/store/lock.h				 \
 	src/agents/store/mail.c				 \
 	src/agents/store/mail.h				 \
+	src/agents/store/maildir.c			 \
 	src/agents/store/mail-parser.c			 \
 	src/agents/store/mail-parser.h			 \
 	src/agents/store/main.cpp			 \

@@ -249,11 +249,9 @@ StoreProcessIncomingMail(StoreClient *client,
     fh = fopen(path, "rb");
     if (!fh) {
         return MSG4224CANTREADMBOX;
-    }
-    
-    fseek(fh, info->start + info->headerlen, SEEK_SET);    
+    }  
 
-    data.headerStartOffset = info->start + info->headerlen;
+    data.headerStartOffset = 0;
     data.handle = client->handle;
     data.info = info;
 

@@ -64,9 +64,7 @@ typedef enum {
 typedef struct _DStoreDocInfo {
     uint32_t flags;
     int32_t type;
-    int64_t start;
-    int32_t headerlen;
-    int64_t bodylen;           /* doclen = headerlen + bodylen */
+    int64_t length;            // size of the document
     
     uint32_t timeCreatedUTC;   /* for imap */
     uint32_t timeModifiedUTC;  /* FIXME: remove this */
@@ -399,8 +397,11 @@ void UnselectUser(StoreClient *client);
 void UnselectStore(StoreClient *client);
 void DeleteStore(StoreClient *client);
 
-void FindPathToDocFile(StoreClient *client, uint64_t collection, 
+void FindPathToCollection(StoreClient *client, uint64_t collection, 
                        char *dest, size_t size);
+void FindPathToDocument(StoreClient *client, uint64_t collection, 
+                       uint64_t document, char *dest, size_t size);
+
 
 CCode WriteDocumentHeaders(StoreClient *client, FILE *fh, const char *folder, time_t tod);
 
@@ -422,8 +423,6 @@ const char *StoreProcessDocument(StoreClient *client,
 int SetParentCollectionIMAPUID(StoreClient *client, 
                                DStoreDocInfo *parent,
                                DStoreDocInfo *doc);
-
-int StoreCompactCollection(StoreClient *client, uint64_t collection);
 
 BongoJsonResult GetJson(StoreClient *client, DStoreDocInfo *doc, BongoJsonNode **node);
 

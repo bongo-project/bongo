@@ -44,16 +44,6 @@ IsOwnStoreSelected(StoreClient *client)
             (!strcmp(client->principal.name, client->storeName)));
 }
 
-
-void
-FindPathToDocFile(StoreClient *client, uint64_t collection,
-                  char *dest, size_t size)
-{
-    snprintf(dest, size, "%s" GUID_FMT ".dat", client->store, collection);
-    dest[size-1] = '\0';
-}
-
-
 /* Creates a new collection, including any ancestors required.  Also touches the file
    for this collection (but doesn't truncate it, since this function is also used by
    the RENAME command (which is a bit of an abstraction violation))
@@ -74,7 +64,7 @@ StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
     DStoreDocInfo info;
     char path[XPL_MAX_PATH + 1];
     char *p;
-    FILE *f;
+    int res;
     int namelen = strlen(name);
 
     /* validate collection name */
@@ -136,12 +126,8 @@ StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
         }
         info.collection = info.guid;
 
-        FindPathToDocFile(client, info.guid, path, sizeof(path));
-        f = fopen(path, "ab");
-        if (!f) {
-            return -4;
-        }
-        fclose(f);
+        res = MaildirNew(client->store, info.guid);
+        if (res != 0) return res;
     } while (p);
 
     if (outGuid) {
@@ -211,7 +197,7 @@ StoreCreateDocument(StoreClient *client,
         return -2;
     }
 
-    FindPathToDocFile(client, info.guid, path, sizeof(path));
+    FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
     f = fopen(path, "ab");
     if (!f) {
         return -4;
@@ -223,43 +209,6 @@ StoreCreateDocument(StoreClient *client,
     return 0;
 }
 
-
-int 
-WriteDocumentHeaders(StoreClient *client, 
-                     FILE *fh, 
-                     const char *folder,
-                     time_t tod)
-{
-    static char magicbuffer[18] = "0100            \r\n";
-
-    if (sizeof(magicbuffer) != 
-        fwrite(magicbuffer, sizeof(unsigned char), sizeof(magicbuffer), fh))
-    {
-        return -1;
-    }
-
-    return sizeof(magicbuffer);
-}
-
-
-static int
-CreateDatFile(char *path, int n, size_t len, char *name)
-{
-    FILE *file;
-   
-    strncpy(path + n, name, len - n);
-    path[XPL_MAX_PATH] = 0;
-    
-    file = fopen(path, "ab");
-    if (!file) {
-        return -1;
-    }
-    fclose(file);
-
-    return 0;
-}
-
-
 /* find the user's store path, creating it if necessary 
    path must be a buffer of size XPL_MAX_PATH + 1 or greater
    returns 0 on success, -1 o/w
@@ -268,43 +217,38 @@ CreateDatFile(char *path, int n, size_t len, char *name)
 int
 SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
 {
-    int n;
-    struct stat sb;
+	int n;
+	struct stat sb;
+	BOOL make_store = FALSE;
 
-    n = snprintf(path, len, "%s/%s/", StoreAgent.store.rootDir, user);
-    path[len] = 0;
-    path[n-1] = 0;
+	n = snprintf(path, len, "%s/%s/", StoreAgent.store.rootDir, user);
+	path[len] = 0;
+	path[n-1] = 0;
 
-    if (stat(path, &sb)) {
-        if (XplMakeDir(path)) {
-            Log(LOG_ERROR, "Error creating store directory: %s.", strerror(errno));
-            return -1;
-        }
-    }
-    path[n-1] = '/';
+	if (stat(path, &sb)) {
+		if (XplMakeDir(path)) {
+			Log(LOG_ERROR, "Error creating store directory: %s.", strerror(errno));
+			return -1;
+		}
+		make_store = TRUE;
+	}
+	
+	path[n-1] = '/';
 
-    if (CreateDatFile(path, n, len, "0000000000000002.dat") ||
-        CreateDatFile(path, n, len, "0000000000000003.dat") ||
-        CreateDatFile(path, n, len, "0000000000000004.dat") ||
-        CreateDatFile(path, n, len, "0000000000000005.dat") ||
-        CreateDatFile(path, n, len, "0000000000000006.dat") ||
-        CreateDatFile(path, n, len, "0000000000000007.dat") ||
-        CreateDatFile(path, n, len, "0000000000000008.dat") ||
-        CreateDatFile(path, n, len, "0000000000000009.dat") ||
-        CreateDatFile(path, n, len, "000000000000000a.dat") ||
-        CreateDatFile(path, n, len, "000000000000000b.dat") ||
-        CreateDatFile(path, n, len, "000000000000000c.dat") ||
-        CreateDatFile(path, n, len, "000000000000000d.dat"))
-    {
-        Log(LOG_ERROR, "Error creating store: %s.", strerror(errno));
-        return -1;
-    }
+	if (make_store) {
+		uint64_t i;
+		for (i = 0x2; i < 0xe; i++) {
+			if (MaildirNew(path, i)) {
+				Log(LOG_ERROR, "Error creating store: %s.", strerror(errno));
+				return -1;
+			}
+		}
+	}
+	path[n] = 0;
 
-    path[n] = 0;
+	*storeRoot = NULL;
 
-    *storeRoot = NULL;
-
-    return 0;
+	return 0;
 }
 
 
@@ -532,7 +476,7 @@ CopyMessageToMailbox(StoreClient *client,
         goto StoreIOError;
     }
 
-    info.bodylen = endoff - startoff - sizeof(info);
+    info.length = endoff - startoff - sizeof(info);
     if (sizeof(info) != fwrite(&info, sizeof(char), sizeof(info), mboxfile) ||
         fseek(mboxfile, 0, SEEK_END))
     {
@@ -550,247 +494,6 @@ StoreIOError:
     return DELIVER_TRY_LATER;
 }
 
-
-/* returns: 0  success
-            -1 failure, store is intact
-            -2 failure, and journal check is required 
-*/
-
-int
-StoreCompactCollection(StoreClient *client, uint64_t collection)
-{
-    FILE *fh = NULL;
-    FILE *newfh = NULL;
-    int newfd = -1;
-    int trans = 0;
-    char path[XPL_MAX_PATH+1];
-    char newpath[XPL_MAX_PATH+1];
-    char savepath[XPL_MAX_PATH+1];
-    char *p;
-    NLockStruct *lock;
-    DStoreStmt *stmt = NULL;
-    int result = -1;
-    
-    newpath[0] = 0;
-
-    Log(LOG_INFO, "Compacting collection " GUID_FMT, collection);
-
-    if (StoreGetExclusiveLockQuiet(client, &lock, collection, 2000)) {
-        return -1;
-    }
-
-    FindPathToDocFile(client, collection, path, sizeof(path));
-    fh = fopen(path, "rb");
-    if (!fh) {
-        goto finish;
-    }
-
-    strncpy(newpath, path, sizeof(newpath));
-    p = strrchr(newpath, '/');
-    strcpy(p + 1, "tmp.XXXXXX");
-    newfd = mkstemp(newpath);
-    if (-1 == newfd) {
-        goto finish;
-    }
-    newfh = fdopen(newfd, "wb");
-    if (!newfh) {
-        close (newfd);
-        goto finish;
-    }
-
-    /* save the current .dat file a as a backup: */
-
-    strncpy(savepath, path, sizeof(savepath));
-    p = strrchr(savepath, '.');
-    if (!p || strcmp(".dat", p)) {
-        goto finish;
-    }
-    strcpy(p, ".bak");
-    
-    if (DStoreAddJournalEntry(client->handle, collection, savepath)) {
-        goto finish;
-    }
-    
-    if (rename(path, savepath)) {
-        DStoreRemoveJournalEntry(client->handle, collection);
-        goto finish;
-    }
-
-    /* the store is in an unusable state now (temporarily, we hope) */
-    result = -2;
-
-    /* write the compacted version of the .dat file into a temp file: */
-
-    if (DStoreBeginTransaction(client->handle)) {
-        goto finish;
-    }
-    trans = 1;
-        
-    if (DStoreResetTempDocsTable(client->handle)) {
-        goto finish;
-    }
-
-    stmt = DStoreListColl(client->handle, collection, -1, -1);
-    if (!stmt) {
-        goto finish;
-    }
-
-    while (1) {
-        DStoreDocInfo info;
-        int dcode;
-        size_t total;
-        size_t count;
-        char buffer[CONN_BUFSIZE];
-
-        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
-        if (0 == dcode) {
-            break;
-        } else if (-1 == dcode) {
-            goto finish;
-        }
-        
-        if (STORE_IS_FOLDER(info.type)) {
-            continue;
-        }
-
-        if (XplFSeek64(fh, info.start + info.headerlen, SEEK_SET)) {
-            goto finish;
-        }
-        info.start = ftell(newfh);
-
-        info.headerlen = WriteDocumentHeaders(client, newfh, NULL, 
-                                              info.timeCreatedUTC);
-        if (info.headerlen < 0) {
-            goto finish;
-        }
-        
-        for (total = info.bodylen;
-             total;
-             total -= count)
-        {
-            count = sizeof(buffer) < total ? sizeof(buffer) : total;
-
-            count = fread(buffer, sizeof(char), count, fh);
-            if (!count ||
-                ferror(fh) || 
-                count != fwrite(buffer, sizeof(char), count, newfh))
-            {
-                goto finish;
-            }
-        }
-        
-        if (DStoreAddTempDocsInfo(client->handle, &info)) {
-            goto finish;
-        }
-    }
-
-    if (DStoreMergeTempDocsTable(client->handle)) {
-        goto finish;
-    }
-
-    if (fclose(newfh)) {
-        goto finish;
-    }
-    newfh = NULL;
-
-    if (fclose(fh)) {
-        goto finish;
-    }
-    fh = NULL;
-
-    /* now move the compacted file into the correct place */
-
-    if (DStoreRemoveJournalEntry(client->handle, collection)) {
-        goto finish;
-    }
-
-    if (rename(newpath, path)) {
-        goto finish;
-    }
-    newpath[0] = 0;
-
-    if (DStoreCommitTransaction(client->handle)) {
-        goto finish;
-    }
-    trans = 0;
-
-    unlink(savepath);
-
-    /* success */
-    result = 0;
-
-finish:
-    if (stmt) {
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
-    if (trans) {
-        DStoreAbortTransaction(client->handle);
-    }
-
-    if (newfh) {
-        fclose(newfh);
-    }
-    if (fh) {
-        fclose(fh);
-    }
-
-    if (-2 == result) {
-        if (rename(savepath, path)) { 
-            /* Something has gone wrong, and the collection is now in an inconsistent 
-               state, despite our efforts to restore the backup file.  To prevent
-               corrupted access, we are going to return without releasing our lock 
-               on the collection.  FIXME - do something more graceful...
-            */
-            Log(LOG_ERROR, "Collection " GUID_FMT " requires maintenance "
-                   "after failed compaction.", collection);
-            
-            return -2;
-        } else {
-            /* Compaction failed, but at least we've returned to the original 
-               state (except we're going to leave a harmless journal entry) */
-            result = -1;
-        }
-    }
-
-    if (newpath[0]) {
-        unlink(newpath);
-    }
-
-    StoreReleaseExclusiveLock(client, lock);
-    StoreReleaseSharedLock(client, lock);
-
-    return result;
-}
-
-
-static void
-CompactAllCollections(StoreClient *client)
-{
-    DIR *dir;
-    struct dirent *dirent;
-
-    dir = opendir(client->store);
-    if (!dir) {
-        return;
-    }
-
-    while ((dirent = readdir(dir))) {
-        uint64_t guid;
-        char *endp;
-
-        guid = HexToUInt64(dirent->d_name, &endp);
-        if (endp != dirent->d_name + 16 || strcmp(".dat", endp)) {
-            continue;
-        }
-        
-        StoreCompactCollection(client, guid);
-    }
-
-    closedir(dir);
-}
-
-
 /* deliver message to a mailbox 
    msgfile must be an open file whose file pointer set to the start of the file.
 
@@ -800,6 +503,8 @@ CompactAllCollections(StoreClient *client)
 
 /* FIXME: If something goes wrong while writing to the incoming file, the store
    won't be able to recover (bug 175411) */
+
+/* FIXME: this should deliver to a maildir or something */
 
 NMAPDeliveryCode
 DeliverMessageToMailbox(StoreClient *client,
@@ -883,6 +588,8 @@ finish:
               -1 - failure (corrupt file, or incompatible version)
 */
 
+/* FIXME: this should support a maildir */
+
 int
 ImportIncomingMail(StoreClient *client)
 {
@@ -958,6 +665,7 @@ ImportIncomingMail(StoreClient *client)
         DStoreDocInfo collinfo;
         NLockStruct *collLock;
         char path[XPL_MAX_PATH+1];
+        char tmppath[XPL_MAX_PATH+1];
         FILE *destfile = NULL;
         char buffer[CONN_BUFSIZE];
         size_t count;
@@ -997,27 +705,16 @@ ImportIncomingMail(StoreClient *client)
             goto finish;
         }
 
-        FindPathToDocFile(client, info.collection, path, sizeof(path));
+        MaildirTempDocument(client, info.collection, tmppath, sizeof(tmppath));
 
-        destfile = fopen(path, "ab");
+        destfile = fopen(tmppath, "w");
         if (!destfile) {
             goto finish;
         }
 
-        info.start = ftell(destfile);
-        if (-1 == info.start) {
-            goto finish;
-        }
-
         info.timeCreatedUTC = (uint64_t) time(NULL);
-
-        info.headerlen = WriteDocumentHeaders(client, destfile, NULL,
-                                              info.timeCreatedUTC);
-        if (info.headerlen < 0) {
-            goto finish;
-        }
         
-        for (len = info.bodylen; len; len -= count) {
+        for (len = info.length; len; len -= count) {
             count = len < sizeof(buffer) ? len : sizeof(buffer);
             count = fread(buffer, sizeof(char), count, msgfile);
             if (!count) {
@@ -1036,6 +733,9 @@ ImportIncomingMail(StoreClient *client)
         if (DStoreSetDocInfo(client->handle, &info)) {
             goto finish;
         }
+        
+        if (MaildirDeliverTempDocument(client, info.collection, tmppath, info.guid) != 0)
+            goto finish;
 
         if (StoreProcessDocument(client, &info, &collinfo, path, index, 0)) {
             /* we were unable to process this message for some reason, so
@@ -1058,7 +758,7 @@ ImportIncomingMail(StoreClient *client)
             }
 
             if (fseek(msgfile, offset, SEEK_SET) || 
-                BongoFileCopyBytes(msgfile, failfile, sizeof(info) + info.bodylen) ||
+                BongoFileCopyBytes(msgfile, failfile, sizeof(info) + info.length) ||
                 fseek(msgfile, newoffset, SEEK_SET))
             {
                 fclose(failfile);
@@ -1227,86 +927,6 @@ finish:
     return ccode;
 }
 
-
-static int
-CheckJournal(DStoreHandle *handle)
-{
-    DStoreStmt *stmt;
-    uint64_t collection;
-    const char *filename;
-    int dcode;
-    int result = -1;
-    struct stat sb;
-    char *p;
-    char path[XPL_MAX_PATH + 1];
-
-    if (DStoreBeginTransaction(handle)) {
-        return -1;
-    }
-
-    while (1) {
-        stmt = DStoreListJournal(handle);
-        if (!stmt) {
-            goto finish;
-        }
-        
-        dcode = DStoreJournalStmtStep(handle, stmt, &collection, &filename);
-        switch (dcode) {
-        case 0:
-            if (!DStoreCommitTransaction(handle)) {
-                result = 0;
-            }
-            goto finish;
-        case -1:
-        default:
-            goto finish;
-        case 1:
-            if (stat(filename, &sb)) {
-                if (ENOENT != errno) {
-                    goto finish;
-                }
-            } else {
-                strncpy(path, filename, sizeof(path));
-                p = strrchr(path, '.');
-                if (!p || strcmp(".bak", p)) {
-                    Log (LOG_ERROR, "Don't know how to restore backup file %s", filename);
-                    goto finish;
-                }
-                strcpy(p, ".dat");
-                
-                if (rename(filename, path)) {
-                    Log (LOG_ERROR, "Couldn't restore backup file %s to %s", 
-                            filename, path);
-                    goto finish;
-                }
-            }
- 
-            /* a bit awkward: we have to close the journal table cursor 
-               in order to delete the current entry */
-            DStoreStmtEnd(handle, stmt);
-            stmt = NULL;
-            
-            if (DStoreRemoveJournalEntry(handle, collection)) {
-                Log (LOG_ERROR, "Couldn't update journal after restoring file %s", 
-                        filename);
-                goto finish;
-            }
-        }
-    }
-    
-finish:
-    if (stmt) {
-        DStoreStmtEnd(handle, stmt);
-    }
-
-    if (result) {
-        DStoreAbortTransaction(handle);
-    }
-
-    return result;
-}
-
-
 /* opens the store for the given user */
 /* returns: -1 on error */
 
@@ -1339,10 +959,12 @@ SelectStore(StoreClient *client, char *user)
         }
     }
 
+#if 0
     if (CheckJournal(dbhandle)) {
         DStoreClose(dbhandle);
         return -1;
     }
+#endif
 
     /* close the old store */
     UnselectStore(client);
@@ -1367,16 +989,6 @@ SelectStore(StoreClient *client, char *user)
 void
 UnselectStore(StoreClient *client)
 {
-    if (client->flags & STORE_CLIENT_FLAG_NEEDS_COMPACTING) {
-        CompactAllCollections(client);
-        client->flags &= ~STORE_CLIENT_FLAG_NEEDS_COMPACTING;
-    }
-
-/*
-    printf ("Stats: %d insertions, %d updates, %d deletions\n",
-            client->stats.insertions, client->stats.updates, client->stats.deletions);
-*/
-
     if (client->storeName && 
         client->stats.insertions + client->stats.updates + client->stats.deletions >
         (rand() % 50))
@@ -1542,25 +1154,20 @@ GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node)
     FILE *fh;
     char *buf;
     
-    FindPathToDocFile(client, info->collection, path, sizeof(path));
+    FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
 
     fh = fopen(path, "rb");
     if (!fh) {
         Log(LOG_ERROR, "Couldn't open file for doc " GUID_FMT, info->guid);
         goto finish;
     }
-    if (0 != XplFSeek64(fh, info->start + info->headerlen, SEEK_SET)) {
-        Log(LOG_ERROR, "Couldn't seek to doc " GUID_FMT, info->guid);
-        goto finish;
-    }
-
 
     /* FIXME: would be nice (and easy) to get a streaming API for
      * bongojson */ 
-    buf = MemMalloc(info->bodylen + 1);
+    buf = MemMalloc(info->length + 1);
     
-    if (fread(buf, 1, info->bodylen, fh) == info->bodylen) {
-        buf[info->bodylen] = '\0';        
+    if (fread(buf, 1, info->length, fh) == info->length) {
+        buf[info->length] = '\0';        
     } else {
         Log(LOG_ERROR, "Couldn't read doc " GUID_FMT, info->guid);
         goto finish;

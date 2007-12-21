@@ -21,7 +21,7 @@ AddTextPart(Document *doc,
     jstreams::BongoStreamInputStream <TCHAR> *istream = 
         new jstreams::BongoStreamInputStream<TCHAR>
         (fh, 
-         info->start + info->headerlen + part->start,
+         part->start,
          part->len,
          part->encoding[0] != '-' ? (char*)part->encoding : NULL,
          part->charset[0] != '-' ? (char*)part->charset : NULL);
@@ -72,12 +72,12 @@ AddParts(Document *doc,
     unsigned char buffer[XPL_MAX_RFC822_LINE];
     int ccode;    
 
-    if (0 != XplFSeek64(fh, info->start + info->headerlen, SEEK_SET)) {
+    if (0 != XplFSeek64(fh, 0, SEEK_SET)) {
         ccode = ConnWriteStr(client->conn, MSG4224CANTWRITE);
         goto finish;
     }
 
-    report = MimeParse(fh, info->bodylen, buffer, sizeof(buffer));
+    report = MimeParse(fh, info->length, buffer, sizeof(buffer));
     if (report) {
         for (unsigned long i = 0; i < report->lineCount; i++) {
             MimeResponseLine *part = &report->line[i];
@@ -190,7 +190,7 @@ FilterMail(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index)
 
     FilterAddKeyword(doc, _T("type"), "mail", false);
     
-    FindPathToDocFile(client, info->collection, path, sizeof(path));
+    FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
     
     fh = fopen(path, "rb");
     if (!fh) {
