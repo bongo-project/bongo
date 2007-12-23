@@ -109,9 +109,9 @@ MaildirTempDocument(StoreClient *client, uint64_t collection, char *dest, size_t
 int
 MaildirDeliverTempDocument(StoreClient *client, uint64_t collection, const char *path, uint64_t uid)
 {
-	char newpath[XPL_MAX_PATH];
+	char newpath[XPL_MAX_PATH+1];
 	
-	snprintf(newpath, XPL_MAX_PATH, "%s" GUID_FMT "/cur/" GUID_FMT, client->store, collection, uid);
+	FindPathToDocument(client, collection, uid, &newpath, XPL_MAX_PATH);
 	
 	if (link(path, newpath) != 0) {
 		// look at errno. EEXIST suggests we already delivered it; maybe ignore that?

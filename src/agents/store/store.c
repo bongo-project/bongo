@@ -664,7 +664,6 @@ ImportIncomingMail(StoreClient *client)
         int dcode = 0;
         DStoreDocInfo collinfo;
         NLockStruct *collLock;
-        char path[XPL_MAX_PATH+1];
         char tmppath[XPL_MAX_PATH+1];
         FILE *destfile = NULL;
         char buffer[CONN_BUFSIZE];
@@ -736,8 +735,11 @@ ImportIncomingMail(StoreClient *client)
         
         if (MaildirDeliverTempDocument(client, info.collection, tmppath, info.guid) != 0)
             goto finish;
+        
+        // Mail is no longer in the temporary file
+        FindPathToDocument(client, info.collection, info.guid, tmppath, sizeof(tmppath));
 
-        if (StoreProcessDocument(client, &info, &collinfo, path, index, 0)) {
+        if (StoreProcessDocument(client, &info, &collinfo, tmppath, index, 0)) {
             /* we were unable to process this message for some reason, so
                let's save it to the side and skip over it */
 
