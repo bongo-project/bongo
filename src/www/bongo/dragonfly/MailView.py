@@ -267,7 +267,7 @@ class ConversationsHandler(ResourceHandler):
 
     def _PropsToJson(self, props):
         jsob = {}
-        jsob["date"] = props["nmap.conversation.date"];
+        jsob["date"] = props.get("nmap.conversation.date")
 
         mfrom = props.get("bongo.from")
 
@@ -281,7 +281,7 @@ class ConversationsHandler(ResourceHandler):
         jsob["subject"] = props.get("bongo.conversation.subject", props.get("nmap.conversation.subject", "")) 
         jsob["unread"] = int(props.get("nmap.conversation.unread", 1))
         jsob["count"] = int(props.get("nmap.conversation.count", 1))
-        jsob["snippet"] = "there is no snippet.";
+        jsob["snippet"] = "there is no snippet."
         return jsob
 
     def _MsgToJson(self, store, msg, props):
