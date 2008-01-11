@@ -677,6 +677,8 @@ include/Makefile
 init/bongo.init.fc4
 init/bongo.init.sles9
 init/bongo.init.suse10
+init/bongo.init.rpl
+init/bongoinit.conf.rpl
 init/http-bongo.solaris-smf
 init/svc-bongo.solaris-smf
 src/agents/alarm/Makefile
