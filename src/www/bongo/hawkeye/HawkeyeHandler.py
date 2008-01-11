@@ -32,14 +32,19 @@ class HawkeyeHandler:
         
         return config
         
-    def SetStoreData(self, req, filename, data, storeName="_system"):
+    def SetStoreData(self, req, filename, data, storeName="_system", create=False):
         encoder = simplejson.JSONEncoder()
         store = None
         try:
             store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
             store.Store(storeName)
             configfile = encoder.encode(data)
-            store.Replace(filename, configfile)
+            if not create:
+                store.Replace(filename, configfile)
+            else:
+                # Create document
+                store.Write(filename, configfile)
+            
             if store:
                 store.Quit()
             return True

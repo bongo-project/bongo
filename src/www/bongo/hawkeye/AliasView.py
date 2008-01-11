@@ -35,20 +35,30 @@ class AliasHandler(HawkeyeHandler):
 
     def index_POST(self, req, rp):
         return bongo.commonweb.HTTP_UNAUTHORIZED
+    
+    def add_GET(self, req, rp):
+        self.SetVariable("newmode", True)
+        return self.SendTemplate(req, rp, "edit.tpl", title="Adding new domain")
         
+    def add_POST(self, req, rp):
+        return self.edit_POST(req, rp, addMode=True)
+    
     def edit_GET(self, req, rp):
         global storePath
         store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
         store.Store("_system")
         info = store.Info(rp.path)
-        #print "Doc info: %s" % info
+        print "Doc info: %s" % info
         #print "Actions on doc info: %s" % dir(info)
         
+        print "Doc filename: %s" % info.filename
+        
         # Template stuff
-        domainName = info.filename.replace(storePath + "/", "")
+        #domainName = info.filename.replace(storePath + "/", "")
+        domainName = info.filename
         
         # Fetch data and set template variables
-        dataobj = store.Read(info.filename)
+        dataobj = store.Read(storePath + "/" + info.filename)
         decoder = simplejson.JSONDecoder()
         data = { }
         try:
@@ -84,14 +94,20 @@ class AliasHandler(HawkeyeHandler):
         self.SetVariable("useraliases", tpl_aliases)
         self.SetVariable("domainalias", domainalias)
         self.SetVariable("name", domainName)
+        self.SetVariable("newmode", False)
         store.Quit()
         return self.SendTemplate(req, rp, "edit.tpl", title="Editing " + domainName)
     
-    def edit_POST(self, req, rp):
+    def edit_POST(self, req, rp, addMode=False):
         global storePath
         
         # Get stuff from request URI.
-        domainGuid = rp.path
+        if addMode:
+            # Set later in form loop
+            print "addMode is on, biatches!"
+            domainGuid = ""
+        else:
+            domainGuid = rp.path
         
         config = { }
         
@@ -99,6 +115,11 @@ class AliasHandler(HawkeyeHandler):
         form = req.form
         for key in form:
             value = form[key].value
+            if key == "name" and addMode:
+                print "Name was %s" % value
+                domainGuid = storePath + "/" + value
+                print "new path: %s" % domainGuid
+                rp.path = domainGuid
             if key == "domainwide":
                 # This is the checkbox thingy
                 print "Checkbox value returned was: " + value
@@ -110,13 +131,17 @@ class AliasHandler(HawkeyeHandler):
                 # Split this, and set array as value.
                 # eg we get input of "user=domain,user1=domain2"
                 commasplit = value.split(",")
+                userlist = { }
                 for entry in commasplit:
-                    entry = entry.split("=")
+                    tempy = entry.split("=")
+                    if len(tempy) == 2:
+                        userlist[tempy[0]] = tempy[1]
                 
-                config["aliases"] = commasplit
+                print "userlist: %s" % userlist
+                config["aliases"] = userlist
         
         # Write the fo-shizzle.
-        self.SetStoreData(req, storePath, config)
+        self.SetStoreData(req, domainGuid, config, create=addMode)
         
         # Stop using made up words and sent stuff back to the user to look at.
         return self.edit_GET(req, rp)

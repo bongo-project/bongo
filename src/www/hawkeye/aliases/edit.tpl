@@ -10,7 +10,7 @@
 <table cellpadding="1">
 
 <tr>
-    <td style="padding-right: 16px;">Domain name:</td><td><span tal:content="name"></span></td>
+    <td style="padding-right: 16px;">Domain name:</td><td><span tal:content="name"></span><input type="text" id="name" name="name" tal:condition="newmode" /></td>
 </tr>
 <tr>
     <td style="padding-right: 16px;">Domain-to-domain aliasing</td>
