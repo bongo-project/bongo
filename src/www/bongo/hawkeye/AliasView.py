@@ -28,6 +28,8 @@ class AliasHandler(HawkeyeHandler):
                 ret.append(obj)
         
         # Send template foo.
+        #self.SetVariable("error", None)
+        self.SetVariable("info", None)
         self.SetVariable("domainlist", ret)
         self.SetVariable("systab", "selecteditem")
         store.Quit()
@@ -52,6 +54,9 @@ class AliasHandler(HawkeyeHandler):
         #print "Actions on doc info: %s" % dir(info)
         
         print "Doc filename: %s" % info.filename
+        
+        self.SetVariable("error", None)
+        self.SetVariable("dremove", None)
         
         # Template stuff
         #domainName = info.filename.replace(storePath + "/", "")
@@ -104,10 +109,13 @@ class AliasHandler(HawkeyeHandler):
         # Get stuff from request URI.
         if addMode:
             # Set later in form loop
-            print "addMode is on, biatches!"
             domainGuid = ""
         else:
             domainGuid = rp.path
+        
+        self.SetVariable("error", None)
+        self.SetVariable("info", None)
+        self.SetVariable("dremove", None)
         
         config = { }
         
@@ -147,12 +155,25 @@ class AliasHandler(HawkeyeHandler):
         if addMode:
             return bongo.commonweb.BongoUtil.redirect(req, "edit/" + rp.path)
         else:
+            self.SetVariable("info", "Updated domain successfully.")
             return self.edit_GET(req, rp)
         
     def delete_GET(self, req, rp):
+        self.SetVariable("error", None)
+        self.SetVariable("info", None)
+        self.SetVariable("dremove", None)
         return self.SendTemplate(req, rp, "confirmdelete.tpl", title="Deleting domain")
         
     def delete_POST(self, req, rp):
         # Assume on post that we accept your battle challenge!
-        # TODO: Actually delete file, and return to main domains list.
-        return None
+        
+        try:
+            store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
+            store.Store("_system")
+            store.Delete(rp.path)
+            store.Quit()
+            self.SetVariable("dremove", "Domain removed successfully.")
+        except Exception, e:
+            self.SetVariable("error", "Failed to delete domain %s." % rp.path)
+        
+        return bongo.commonweb.BongoUtil.redirect(req, "../../")

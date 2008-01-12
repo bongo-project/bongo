@@ -4,7 +4,9 @@
 
 <h1>Domains</h1>
 
-<a href="%(url|/)saliases/add"><img src="/img/add-domain.png" alt="Add" border="0" /></a>
+<div class="info" id="opsuccess" tal:condition="dremove">Domain removed successfully.</div>
+
+<a class="button" href="%(url|/)saliases/add"><span>Add Domain</span></a>
 <br />
 <p>
 <table class="htable" width="100%%" cellspacing="0" >

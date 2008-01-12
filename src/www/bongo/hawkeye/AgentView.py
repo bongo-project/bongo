@@ -107,6 +107,7 @@ class AgentHandler(HawkeyeHandler):
         self.SetVariable("agentlist", agentlist)
         self.SetVariable("success", 1)
         self.SetVariable("error", None)
+        self.SetVariable("dremove", None)
 
         # Setup the all clear if we saved some stuff.
         if doneop:
@@ -252,4 +253,5 @@ class AgentHandler(HawkeyeHandler):
         self.SetVariable("agntab", "selecteditem")
         self.SetVariable("name", agentname)
         self.SetVariable("hname", agentdefs[agentname]["label"])
+        self.SetVariable("dremove", None)
         return self.SendTemplate(req, rp, "agentview.tpl", title=agentdefs[agentname]["label"])

@@ -90,6 +90,7 @@ class RootHandler(HawkeyeHandler):
         
         # send the template
         self.SetVariable("actionlist", act)
+        self.SetVariable("dremove", None)
         return self.SendTemplate(req, rp, "index.tpl", title="Desktop")
 
     def login_GET(self, req, rp):
@@ -107,6 +108,7 @@ class RootHandler(HawkeyeHandler):
             self.SetVariable("badauth", 0)
             self.SetVariable("loggedout", 0)
         
+        self.SetVariable("dremove", None)
         return self.SendTemplate(req, rp, "login.tpl")
 
     def login_POST(self, req, rp):

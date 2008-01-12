@@ -205,7 +205,6 @@ dist_img_DATA =					     \
 	src/www/img/agent-unknown.png	\
 	src/www/img/list-add.png	\
 	src/www/img/list-remove.png \
-	src/www/img/add-domain.png  \
 	src/www/img/document-properties.png \
 	src/www/img/document-delete.png
 	
