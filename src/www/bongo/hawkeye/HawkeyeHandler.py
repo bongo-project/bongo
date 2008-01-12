@@ -32,29 +32,31 @@ class HawkeyeHandler:
         
         return config
         
-    def SetStoreData(self, req, filename, data, storeName="_system", create=False):
+    def SetStoreData(self, req, filename, data, storeName="_system", create=False, newcollection=None):
         encoder = simplejson.JSONEncoder()
         store = None
         try:
             store = StoreClient(req.session["credUser"], req.session["credUser"], authPassword=req.session["credPass"])
             store.Store(storeName)
             configfile = encoder.encode(data)
+            guid = 0
             if not create:
-                store.Replace(filename, configfile)
+                guid = store.Replace(filename, configfile)
             else:
                 # Create document
-                store.Write(filename, configfile)
+                print "Writing (not replacing) to %s..." % (newcollection + "/" + filename)
+                guid = store.Write(newcollection, 7, configfile, filename=filename)
             
             if store:
                 store.Quit()
-            return True
+            return guid
         except ValueError:
             self.SetVariable("error", "Failed to parse JSON.")
             if store: 
                 store.Quit()
             return False
         except Exception, e:
-            self.SetVariable("error", "Unable to read data from store: %s" % str(e))
+            self.SetVariable("error", "Unable to save data to store: %s" % str(e))
             if store: 
                 store.Quit()
             return False

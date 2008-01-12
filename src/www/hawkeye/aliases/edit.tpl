@@ -1,8 +1,8 @@
 %(include|header.tpl)s
 
-<div class="breadcrumb"><p><a href="%(url|/)ssystem">System</a> &#187 <a href="%(url|/)saliases">Aliases</a>&#187 <a href="#">Editing <span tal:content="name"></span></a></p> </div>
+<div class="breadcrumb"><p><a href="%(url|/)ssystem/">System</a> &#187 <a href="%(url|/)saliases/">Aliases</a>&#187 <a href="#"><span tal:condition="not:newmode">Editing</span><span tal:condition="newmode">Creating new domain</span> <span tal:content="name"></span></a></p> </div>
 
-<h1>Editing <span tal:content="name"></span></h1>
+<h1><span tal:condition="not:newmode">Editing</span><span tal:condition="newmode">Creating new domain</span> <span tal:content="name"></span></h1>
 
 <p>
 

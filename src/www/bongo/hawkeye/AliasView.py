@@ -117,9 +117,9 @@ class AliasHandler(HawkeyeHandler):
             value = form[key].value
             if key == "name" and addMode:
                 print "Name was %s" % value
-                domainGuid = storePath + "/" + value
-                print "new path: %s" % domainGuid
-                rp.path = domainGuid
+                domainGuid = value
+                rp.path = storePath + "/" + value
+                print "new path: %s" % rp.path
             if key == "domainwide":
                 # This is the checkbox thingy
                 print "Checkbox value returned was: " + value
@@ -141,10 +141,13 @@ class AliasHandler(HawkeyeHandler):
                 config["aliases"] = userlist
         
         # Write the fo-shizzle.
-        self.SetStoreData(req, domainGuid, config, create=addMode)
+        rp.path = self.SetStoreData(req, domainGuid, config, create=addMode, newcollection=storePath)
         
         # Stop using made up words and sent stuff back to the user to look at.
-        return self.edit_GET(req, rp)
+        if addMode:
+            return bongo.commonweb.BongoUtil.redirect(req, "edit/" + rp.path)
+        else:
+            return self.edit_GET(req, rp)
         
     def delete_GET(self, req, rp):
         return self.SendTemplate(req, rp, "confirmdelete.tpl", title="Deleting domain")
