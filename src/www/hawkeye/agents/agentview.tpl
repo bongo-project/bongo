@@ -10,7 +10,7 @@
 
 <p>
 
-<p tal:condition="description">%(description)</p>
+<p tal:condition="description" tal:contect="description"></p>
 
 <form method="post">
 <table cellpadding="1">
@@ -41,7 +41,6 @@
             </select>
         </div>
         <div tal:attributes="id setting/revertbox">
-            	<!-- For non-JS browsers -->
             	<input type="text" tal:attributes="name setting/id;id setting/id;value setting/strvalue" />
             	<p>Please enter values into the above textbox, seperated by a comma.</p>
         </div>
