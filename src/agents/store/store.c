@@ -305,7 +305,7 @@ StoreProcessDocument(StoreClient *client,
             goto finish;
         }
     }
-    if (IndexDocument(indexer, client, info) != 0) {
+    if (IndexDocument(indexer, client, info, path) != 0) {
         result = MSG5007INDEXLIBERR;
     }
     if (freeindexer) {
@@ -1149,14 +1149,18 @@ SetParentCollectionIMAPUID(StoreClient *client,
 }
 
 BongoJsonResult
-GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node)
+GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node, char *filepath)
 {
     BongoJsonResult ret = BONGO_JSON_UNKNOWN_ERROR;
     char path[XPL_MAX_PATH + 1];
     FILE *fh;
     char *buf;
     
-    FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+    if (filepath) {
+        strncpy(path, filepath, XPL_MAX_PATH);
+    } else {
+        FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+    }
 
     fh = fopen(path, "rb");
     if (!fh) {

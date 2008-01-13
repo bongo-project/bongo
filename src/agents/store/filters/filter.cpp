@@ -26,14 +26,14 @@ utf8towcs(wchar_t *result, const char *str, int len)
 
 
 int 
-FilterDocument(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index)
+FilterDocument(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *path)
 {
     if (info->type == STORE_DOCTYPE_MAIL) {
-        return FilterMail(client, info, index);
+        return FilterMail(client, info, index, path);
     } else if (info->type == STORE_DOCTYPE_AB) {
-        return FilterContact(client, info, index);
+        return FilterContact(client, info, index, path);
     } else if (info->type == STORE_DOCTYPE_EVENT) {
-        return FilterEvent(client, info, index);
+        return FilterEvent(client, info, index, path);
     }
 
     return 0;

@@ -181,7 +181,7 @@ AddMailPropertyInfo(StoreClient *client, Document *doc, DStoreDocInfo *info)
 
 
 int
-FilterMail(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index)
+FilterMail(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *filepath)
 {
     FILE *fh;
     char path[XPL_MAX_PATH + 1];
@@ -190,7 +190,11 @@ FilterMail(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index)
 
     FilterAddKeyword(doc, _T("type"), "mail", false);
     
-    FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+    if (filepath) {
+        strncpy(path, filepath, XPL_MAX_PATH);
+    } else {
+        FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+    }
     
     fh = fopen(path, "rb");
     if (!fh) {

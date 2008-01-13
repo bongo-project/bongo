@@ -3384,7 +3384,7 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
         ccode = ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
         goto finish;
     }
-    if (IndexDocument(index, client, &info) != 0) {
+    if (IndexDocument(index, client, &info, NULL) != 0) {
         ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
         goto finish;
     }
@@ -3767,7 +3767,7 @@ StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode)
             }
         }
 
-        if (IndexDocument(index, client, &info) != 0) {
+        if (IndexDocument(index, client, &info, NULL) != 0) {
             ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
             goto finish;
         }
@@ -4318,7 +4318,7 @@ StoreCommandREINDEX(StoreClient *client, uint64_t guid)
             continue;
         }
 
-        IndexDocument(index, client, &info);
+        IndexDocument(index, client, &info, NULL);
     }
     
     ccode = ConnWriteStr(client->conn, MSG1000OK);

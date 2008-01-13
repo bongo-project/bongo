@@ -42,12 +42,13 @@ AddObject(StoreClient *client,
 int 
 FilterContact(StoreClient *client, 
               DStoreDocInfo *info, 
-              LuceneIndex *index)
+              LuceneIndex *index,
+              char *path)
 {
     BongoJsonNode *node;
     BongoJsonObject *obj;
     
-    if (GetJson(client, info, &node) != BONGO_JSON_OK || node->type != BONGO_JSON_OBJECT) {
+    if (GetJson(client, info, &node, path) != BONGO_JSON_OK || node->type != BONGO_JSON_OBJECT) {
         return -1;
     }
     

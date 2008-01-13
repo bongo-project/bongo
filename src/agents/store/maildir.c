@@ -1,6 +1,10 @@
 // Bongo copyright applies
 // (C) Alex Hudson 2007
 
+/** \file
+ * Various utility functions for dealing with maildir storage
+ */
+
 #include <config.h>
 #include <xpl.h>
 
@@ -18,6 +22,14 @@
 
 #include "stored.h"
 
+/**
+ * Find the path to a directory representing the maildir for a collection on disk
+ * \param	client		Calling store client
+ * \param	collection	UID of the collection we're looking for
+ * \param	dest		The path is written to this buffer
+ * \param	size		Size of the path buffer allocating
+ * \return 	Nothing
+ */
 void
 FindPathToCollection(StoreClient *client, uint64_t collection, char *dest, size_t size)
 {
@@ -25,6 +37,15 @@ FindPathToCollection(StoreClient *client, uint64_t collection, char *dest, size_
 	dest[size-1] = '\0';
 }
 
+/**
+ * Find the path to a file representing the file in a maildir for a document on disk
+ * \param	client		Calling store client
+ * \param	collection	UID of the collection we're looking for
+ * \param	document	UID of the document we want
+ * \param	dest		The path is written to this buffer
+ * \param	size		Size of the path buffer allocating
+ * \return 	Nothing
+ */
 void
 FindPathToDocument(StoreClient *client, uint64_t collection, uint64_t document,
 char *dest, size_t size)
@@ -33,9 +54,12 @@ char *dest, size_t size)
 	dest[size-1] = '\0';
 }
 
-/** Create a new maildir. If it already exists, we don't error
+/** 
+ * Create a new maildir. If it already exists, we don't error
+ * \param	store_path	Path to the file store to contain the collection we want to create
+ * \param	collection	UID of the collection we want to represent
+ * \return	0 on success, <0 otherwise
  */
-
 int
 MaildirNew(const char *store_path, uint64_t collection)
 {
@@ -59,6 +83,12 @@ MaildirNew(const char *store_path, uint64_t collection)
 	return 0;
 }
 
+/**
+ * Remove an existing maildir
+ * \param 	store_path	Path to the file store containing the maildir we want to remove
+ * \param	collection	UID of the collection we want to remove
+ * \return	0 on success, some error otherwise
+ */
 int
 MaildirRemove(const char *store_path, uint64_t collection)
 {
@@ -98,14 +128,38 @@ MaildirRemove(const char *store_path, uint64_t collection)
 	return 0;
 }
 
-void
+/**
+ * Create a temporary file in a maildir
+ * \param 	client		Store client
+ * \param	collection	UID of the collection we want to put the document in
+ * \param	dest		Buffer to contain the file path to the temp document
+ * \param	size		Size of the buffer allocated in dest
+ * \return	0 on success, -1 on error
+ */
+int
 MaildirTempDocument(StoreClient *client, uint64_t collection, char *dest, size_t size)
 {
+	int fd;
+
 	snprintf(dest, size, "%s" GUID_FMT "/tmp/XXXXXXXX", client->store, collection);
 	dest[size-1] = '\0';
-	mkstemp(dest);
+	fd = mkstemp(dest);
+	if (fd != -1) {
+		close(fd);
+		unlink(dest);
+		return 0;
+	}
+	return -1;
 }
 
+/**
+ * Move a temporary file into it's final position based on allocation UID
+ * \param 	client		Store client
+ * \param	collection	UID of the collection we want to put the document in
+ * \param	path		File path to the temporary document
+ * \param	uid		Allocated uid of the document
+ * \return	0 on success, -1 otherwise
+ */
 int
 MaildirDeliverTempDocument(StoreClient *client, uint64_t collection, const char *path, uint64_t uid)
 {

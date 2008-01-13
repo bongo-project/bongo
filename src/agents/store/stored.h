@@ -425,7 +425,7 @@ int SetParentCollectionIMAPUID(StoreClient *client,
                                DStoreDocInfo *parent,
                                DStoreDocInfo *doc);
 
-BongoJsonResult GetJson(StoreClient *client, DStoreDocInfo *doc, BongoJsonNode **node);
+BongoJsonResult GetJson(StoreClient *client, DStoreDocInfo *doc, BongoJsonNode **node, char *path);
 
 int StoreWatcherAdd(StoreClient *client, NLockStruct *cLock);
 int StoreWatcherRemove(StoreClient *client, NLockStruct *cLock);

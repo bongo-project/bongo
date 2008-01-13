@@ -4,7 +4,7 @@
 #include "stored.h"
 #include "lucene-index.h"
 
-int FilterDocument(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index);
+int FilterDocument(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *path);
 
 int FilterAddSummaryInfo(Document *doc, DStoreDocInfo *info);
 int FilterAddText(Document *doc, 
@@ -31,9 +31,9 @@ int FilterAddJsonString(Document *doc,
                         const char *childName, 
                         bool includeInEverything = true);
 
-int FilterMail(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index);
-int FilterContact(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index);
-int FilterEvent(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index);
+int FilterMail(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *path);
+int FilterContact(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *path);
+int FilterEvent(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *path);
 
 #endif
 

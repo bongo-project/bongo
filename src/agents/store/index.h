@@ -33,7 +33,7 @@ IndexHandle *IndexOpen(StoreClient *client);
 void IndexClose(IndexHandle *handle);
 void IndexOptimize(IndexHandle *handle);
 
-int IndexDocument(IndexHandle *handle, StoreClient *client, DStoreDocInfo *doc);
+int IndexDocument(IndexHandle *handle, StoreClient *client, DStoreDocInfo *doc, char *path);
 
 int IndexRemoveDocument(IndexHandle *handle, uint64_t guid);
 

@@ -47,7 +47,7 @@ StoreProcessIncomingEvent(StoreClient *client,
 
     /* FIXME */
 
-    if (GetJson(client, info, &node) != BONGO_JSON_OK) {
+    if (GetJson(client, info, &node, NULL) != BONGO_JSON_OK) {
         goto parse_error;
     }
 
@@ -236,7 +236,7 @@ StoreSetAlarm(StoreClient *client,
 
     /* load the event, and compute occurrences */
 
-    if (BONGO_JSON_OK != GetJson(client, docinfo, &node) ||
+    if (BONGO_JSON_OK != GetJson(client, docinfo, &node, NULL) ||
         BONGO_JSON_OBJECT != node->type) 
     {
         ccode = ConnWriteStr(client->conn, MSG4226BADEVENT);
