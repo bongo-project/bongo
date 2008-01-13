@@ -30,7 +30,8 @@ class PAXHeader:
 
         content = ""
         for key in self.keywords.keys():
-            content += "%d %s=%s\n" % (len(key) + len(self.keywords[key]) + 5, key, self.keywords[key])
+            if self.keywords[key] != None:
+                content += "%d %s=%s\n" % (len(key) + len(self.keywords[key]) + 5, key, self.keywords[key])
         header.size = len(content)
 
         result = header.tobuf()
@@ -95,8 +96,11 @@ class StoreBackupCommand(Command):
         for collection in collection_list:
             for document in store.List(collection):
                 # write out the documents in the collection
-                if document.filename[0] == '/':
+                if document.filename[0] == '/' or document.type & DocTypes.Folder:
                     # this is a collection
+                    continue
+                if document.type == DocTypes.Conversation or document.type == DocTypes.Calendar:
+                    # DB-only file type, don't attempt to back this up
                     continue
                 filename = "%s/%s" % (collection, document.filename)
                 try:

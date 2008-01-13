@@ -4271,6 +4271,8 @@ StoreCommandREAD(StoreClient *client,
 
     if (STORE_IS_FOLDER(info.type)) {
         ccode = StoreShowFolder(client, info.collection, 0);
+    } else if (STORE_IS_DBONLY(info.type)) {
+        ccode = ConnWriteStr(client->conn, MSG3016DOCTYPEUNREADABLE);
     } else {
         ccode = ShowDocumentBody(client, &info, requestStart, requestLength);
     }

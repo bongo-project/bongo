@@ -56,6 +56,7 @@
 #define MSG3015NOTCOLL "3015 Not a collection\r\n"
 #define MSG3015BADCOLLTYPE "3015 Not a collection type\n"
 #define MSG3016DOCTYPESYNTAX "3016 Invalid document type.\r\n"
+#define MSG3016DOCTYPEUNREADABLE "3016 Cannot read this document type.\r\n"
 #define MSG3017BADINTARG "3017 Integer expected\r\n"
 #define MSG3017INTARGRANGE "3017 Integer outside allowed range.\r\n"
 #define MSG3018BADPATH "3018 Bad path\r\n"

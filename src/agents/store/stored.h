@@ -49,6 +49,7 @@ XPL_BEGIN_C_LINKAGE
 #define STORE_INVALID_GUID 0
 #define STORE_ROOT_GUID 1
 #define STORE_IS_FOLDER(doctype) (doctype & STORE_DOCTYPE_FOLDER)
+#define STORE_IS_DBONLY(doctype) ((doctype == STORE_DOCTYPE_CONVERSATION) || (doctype == STORE_DOCTYPE_CALENDAR))
 #define STORE_IS_CONVERSATION(doctype) (doctype == STORE_DOCTYPE_CONVERSATION)
 
 typedef enum {
