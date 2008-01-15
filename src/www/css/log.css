@@ -1,0 +1,84 @@
+#logbox {
+    display: block;
+    z-index: 1000;
+    left: 0px;
+    bottom: 0px;
+    position: fixed;
+    width: 100%;
+}
+
+#log {
+    font-family: Inconsolata, Dejavu Sans Mono, monospace;
+    background-color: #2e3436;
+    color: #eeeeec;
+    padding: 2px;
+    height: 100px;
+    overflow: auto;
+}
+
+#jsprompt {
+    font-family: Inconsolata, Dejavu Sans Mono, monospace;
+    background-color: #555753;
+    color: #eeeeec;
+    
+    border: 0px none;
+    width: 100%;
+}
+
+#log div.error {
+    color: #ef2929;
+}
+
+#log div.debug {
+    color: #73d216;
+}
+
+#log div.warn {
+    color: #f57900;
+}
+
+#log .group div.error {
+    color: #a40000;
+}
+
+#log a, #log a:active {
+    text-decoration: none;
+    border-bottom: 1px dotted #babdb6;
+    color: #eeeeec;
+}
+
+#log .groupbox a, #log .groupbox a:active {
+    color: #2e3436;
+}
+
+#log div.a {
+    color: #eeeeec;
+}
+
+#log a:hover {
+    border-bottom: 0px none;
+}
+
+#log .titlespan {
+    background-color: #888a85;
+    width: 100%;
+}
+
+.group {
+    padding: 2px;
+    background-color: #555753;
+}
+
+.groupbox {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    margin-left: 1em;
+    border: 1px solid #babdb6;
+}
+
+#log .floatright {
+    float: right;
+    color: #eeeeec;
+    /*padding: 2px;
+    display: inline;*/
+}
