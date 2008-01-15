@@ -57,7 +57,7 @@ Object.extend(Locale, {
       onFailure: efunc.bind(this) || function(){}
     };
     
-    logDebug('Making request for ' + uri);
+    console.debug('Making request for ' + uri);
     new Ajax.Request(uri, options);
   },
 

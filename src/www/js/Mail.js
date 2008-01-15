@@ -19,26 +19,26 @@ Dragonfly.Mail.setLabels = {
 
 Dragonfly.Mail.getData = function (loc)
 {
-    logDebug('Dragonfly.Mail.getData(loc) called.');
+    console.debug('Dragonfly.Mail.getData(loc) called.');
     var d = Dragonfly;
     var m = d.Mail;
     
     var view = m.getView(loc);
     if (view.getData)
     {
-        logDebug('loc ', loc, ' has a getView function.');
+        console.debug('loc ', loc, ' has a getView function.');
         return view.getData(loc);
     }
     else
     {
-        logDebug('No getView function - falling back to requestJSON.');
+        console.debug('No getView function - falling back to requestJSON.');
         return d.requestJSON ('GET', loc);
     }
 };
 
 Dragonfly.Mail.getView = function (loc)
 {
-    logDebug('Dragonfly.Mail.getView(loc) called.');
+    console.debug('Dragonfly.Mail.getView(loc) called.');
     
     var d = Dragonfly;
     var m = d.Mail;
@@ -289,7 +289,7 @@ Dragonfly.Mail.toolbarAction = function (method)
         function (err) {
             if (!(err instanceof CancelledError)) {
                 d.notifyError ('Error marking messages as ' + method);
-                logError ('error is:', d.reprError (err));
+                console.error ('error is:', d.reprError (err));
             }
             d.enableToolbar ();
             return err;
@@ -466,7 +466,7 @@ Dragonfly.Mail.parseParticipant = function (name)
         name: cleanup (matches ? matches[1] || matches[2] : name),
         mail: matches ? matches[2] : name
     };
-    //logDebug ('person: |' + name + '|  -=>  |' + ret.name + '|');
+    //console.debug ('person: |' + name + '|  -=>  |' + ret.name + '|');
     if (part.name == '' && part.mail == '') {
         return null;
     }

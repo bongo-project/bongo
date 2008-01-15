@@ -284,3 +284,9 @@ class SummaryHandler(ResourceHandler):
         except:
             store.Quit()
             raise
+            
+#TODO: Put this in a seperate file.
+class LogHandler(ResourceHandler):
+    def do_POST(self, req, rp):
+        req.write("testing")
+        return bongo.commonweb.OK

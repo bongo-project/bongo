@@ -243,7 +243,7 @@ Dragonfly.Calendar.OccurrencePopup.prototype.save = function ()
                 }
             } else {
                 // show in sidecal!
-                logDebug('Show in sidecal!');
+                console.debug('Show in sidecal!');
             }
             return result;
         }, this), bind ('showError', this));
@@ -391,7 +391,7 @@ Dragonfly.Calendar.OccurrenceEditor.prototype.buildSharingTab = function (page)
     var cal = c.calendars.getByBongoId (calIds[0]);
 
     forEach (c.calendars, function (calendar) {
-                 logDebug (cal.name, '(' + cal.bongoId + '):', cal.type,
+                 console.debug (cal.name, '(' + cal.bongoId + '):', cal.type,
                            calendar.name, '(' + calendar.bongoId + '):', calendar.type);
 
                  if ((cal.type == 'personal' && calendar.type == 'personal') ||

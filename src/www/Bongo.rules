@@ -12,7 +12,6 @@ htl10n_DATA = $(htl10n_jsfiles)
 cssdir = $(htdocsdir)/css
 
 dist_css_DATA =				\
-	src/www/css/interpreter.css		\
 	src/www/css/layout.css			\
 	src/www/css/widgets.css         \
 	src/www/css/login.css			\
@@ -22,7 +21,8 @@ dist_css_DATA =				\
 	src/www/css/calendar.css		\
 	src/www/css/summary.css			\
 	src/www/css/print.css			\
-	src/www/css/admin.css
+	src/www/css/admin.css           \
+	src/www/css/log.css
 	
 screencssdir = $(cssdir)
 
@@ -241,7 +241,8 @@ dist_js_DATA =					\
 	src/www/js/MailListView.js		\
 	src/www/js/Browser.js   \
 	src/www/js/BrowserCheck.js  \
-	src/www/js/Admin.js
+	src/www/js/Admin.js             \
+	src/www/js/Log.js
 	
 eAreadir = $(htdocsdir)/js/eArea
 
@@ -284,17 +285,14 @@ mochidir = $(jsdir)/lib/MochiKit
 dist_mochi_DATA =				   \
     src/www/js/lib/MochiKit/Base.js		   \
     src/www/js/lib/MochiKit/Iter.js		   \
-    src/www/js/lib/MochiKit/Logging.js	   \
     src/www/js/lib/MochiKit/DateTime.js	   \
     src/www/js/lib/MochiKit/Format.js	   \
 	src/www/js/lib/MochiKit/Async.js	   \
 	src/www/js/lib/MochiKit/DOM.js		   \
-	src/www/js/lib/MochiKit/LoggingPane.js	   \
 	src/www/js/lib/MochiKit/Color.js	   \
 	src/www/js/lib/MochiKit/Signal.js	   \
 	src/www/js/lib/MochiKit/Visual.js      \
-	src/www/js/lib/MochiKit/MochiKit.js	   \
-	src/www/js/lib/MochiKit/interpreter.js
+	src/www/js/lib/MochiKit/MochiKit.js	
 
 scriptaculousdir = $(jsdir)/lib/script.aculo.us
 

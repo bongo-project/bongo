@@ -30,14 +30,14 @@ Dragonfly.format = function (s /*, args... */)
         var minWidth = parseInt (matches[2]);
         var fmtStr = matches[3];
 
-        //logDebug ('arg:', arg, 'minWidth:', minWidth, 'fmtStr:', fmtStr);
+        //console.debug ('arg:', arg, 'minWidth:', minWidth, 'fmtStr:', fmtStr);
 
         if (arg < 0 || arg + 1 >= arguments.length) {
             throw new Error ('Argument index out of range');
         }
 
         part = arguments[arg + 1];
-        //logDebug ('part:', part, 'type:', typeof part);
+        //console.debug ('part:', part, 'type:', typeof part);
 
         if (fmtStr) {
             fmtStr = f.unescapeBraces (fmtStr);
@@ -125,7 +125,7 @@ Dragonfly.format.splitParts = function (s)
 
     prof.toggle ('splitParts');
 
-    //logDebug (s, '->', serializeJSON (res));
+    //console.debug (s, '->', serializeJSON (res));
 
     return res;
 };
@@ -157,7 +157,7 @@ Dragonfly.format.matchPart = function (s)
     res[2] = comma != -1 ? s.substring (comma + 1, colon != -1 ? colon : s.length - 1) : null;
     res[3] = colon != -1 ? s.substring (colon + 1, s.length - 1) : null;
 
-    //logDebug (s, '=>', serializeJSON (res));
+    //console.debug (s, '=>', serializeJSON (res));
 
     prof.toggle ('matchPart');
 
@@ -246,7 +246,7 @@ Dragonfly.formatNumber = function (n, s)
         try {
             ret = numberFormatter (s)(n);
         } catch (e) {
-            logWarning ('numberFormatter failed:', e, '(' + s + ')');
+            console.warn ('numberFormatter failed:', e, '(' + s + ')');
             ret = s;
         }
     }
@@ -583,7 +583,7 @@ Dragonfly.formatDate = function (dt, s)
         tokens = ddf[s];
         if (typeof tokens == 'string') {
             tokens = d.parseDateFormat (tokens);
-            // logDebug ('formatDate: caching', s, '=', ddf[s], '->', serializeJSON (tokens));
+            // console.debug ('formatDate: caching', s, '=', ddf[s], '->', serializeJSON (tokens));
             ddf[s] = tokens;
         }
     } else {
@@ -595,7 +595,7 @@ Dragonfly.formatDate = function (dt, s)
         throw new Error ('Input string was not in a correct format:', s);
     }
 
-    // logDebug ('string:', s, '-> tokens:', serializeJSON (tokens));
+    // console.debug ('string:', s, '-> tokens:', serializeJSON (tokens));
 
     var ret = d._formatDate (dt, tokens);
     prof.toggle ('formatDate');

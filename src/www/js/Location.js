@@ -70,7 +70,7 @@ Dragonfly.Location = function (path)
 
     var handler = tab.handlers[this.handler];
     if (!handler) {
-        logError ('got invalid handler "' + this.handler + '" for tab "' + this.tab + '"');
+        console.error ('got invalid handler "' + this.handler + '" for tab "' + this.tab + '"');
         return;
     }
 

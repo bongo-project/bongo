@@ -326,11 +326,11 @@ Dragonfly.Calendar.MonthWidget.prototype._relabel = function (elem)
             }
             day = day.offsetBy (1);
         }
-        //logDebug ('showing row', i);
+        //console.debug ('showing row', i);
         this.rows[i + this.headerRows].style.visibility = 'visible';
     }
     for ( ; i < this.headerRows + 3; i++) {
-        //logDebug ('hiding row', i);
+        //console.debug ('hiding row', i);
         for (j = 0; j < 7; j++) {
             Element.setHTML (this.as[i][j], '&nbsp;');
             this.as[i][j].className = '';
@@ -339,7 +339,7 @@ Dragonfly.Calendar.MonthWidget.prototype._relabel = function (elem)
     }
 
     return elem;
-    //logDebug (d.format ('MonthWidget.relabel: {0}s', (new Date - startTime) / 1000));
+    //console.debug (d.format ('MonthWidget.relabel: {0}s', (new Date - startTime) / 1000));
 };
 
 Dragonfly.Calendar.MonthWidget.showPopup = function (evt) {

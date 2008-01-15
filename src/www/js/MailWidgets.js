@@ -143,7 +143,7 @@ Dragonfly.Mail.ConversationList.prototype.addConversations = function (html, con
     for (i = 0; i < convs.length; i++) {
         var conv = convs[i];
         if (!conv.props) {
-            logError ('conversation lacks properties');
+            console.error ('conversation lacks properties');
             return;
         }
         this.buildRow (html, conv, i % 2 ? 'odd' : 'even');

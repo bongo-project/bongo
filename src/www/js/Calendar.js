@@ -145,7 +145,7 @@ Dragonfly.Calendar.newCalendar = function (subscription)
             function (err) {
                 if (!(err instanceof CancelledError)) {
                     d.notifyError ('Could not create a new calendar', err);
-                    logDebug ('error creating calendar:', d.reprRequestError (err));
+                    console.debug ('error creating calendar:', d.reprRequestError (err));
                 }
                 return err;
             });
@@ -392,7 +392,7 @@ Dragonfly.Calendar.Events.build = function (loc)
 	} else if (loc.view == 'day') {
         c.setToColumnView (loc, 1, true, dateBaseUrl);
 	} else {
-        logError ('Unknown Calendar View: ' + loc.view);
+        console.error ('Unknown Calendar View: ' + loc.view);
         return fail();
     }
 

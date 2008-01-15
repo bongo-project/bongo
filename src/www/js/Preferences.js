@@ -75,7 +75,7 @@ Dragonfly.Preferences.load = function ()
                 });
             return p.prefs = prefs;
         } catch (e) {
-            logError ('Error applying preferences: ' + d.reprError (e));
+            console.error ('Error applying preferences: ' + d.reprError (e));
             if (fromError) {
                 throw new Error ('Error applying default preferences');
             }
@@ -86,17 +86,17 @@ Dragonfly.Preferences.load = function ()
     return d.requestJSON ('GET', '/user/' + d.userName + '/preferences/all/dragonfly.json').addCallbacks (
         function (jsob) {
             if (!jsob.addressbook) {
-                logDebug ('Empty preferences, loading defaults.');
+                console.debug ('Empty preferences, loading defaults.');
                 jsob = p.defaultPrefs;
             }
             return applyPrefs (jsob);
         },
         function (e) {
             if (e instanceof d.InvalidJsonTextError || e instanceof SyntaxError) {
-                logDebug ('Could not parse preferences, loading default.');
+                console.debug ('Could not parse preferences, loading default.');
                 return succeed (applyPrefs (deepclone (p.defaultPrefs), true));
             }
-            logError ('Error loading preferences: ' + d.reprError (e));
+            console.error ('Error loading preferences: ' + d.reprError (e));
             return e;
         });
 };
@@ -122,7 +122,7 @@ Dragonfly.Preferences.save = function ()
         return d.request ('PUT', '/user/' + d.userName + '/preferences/all/dragonfly.json',
                           d.Preferences.prefs);
     } catch (e) {
-        logError ('Error serializing preferences: ' + d.reprError (e));
+        console.error ('Error serializing preferences: ' + d.reprError (e));
         return d.Preferences.load();
     }
 };
@@ -190,7 +190,7 @@ Dragonfly.Preferences.get = function (key)
         return value;
     }
 
-    logWarning ('No preference value found for key', key, ', checking defaults');
+    console.warn ('No preference value found for key', key, ', checking defaults');
     value = p._lookup (p.defaultPrefs, path);
     if (value !== undefined) {
         return deepclone (value);
@@ -321,12 +321,12 @@ Dragonfly.Preferences.Editor.build = function (loc)
     
     // Now, fill in the content with tabs & buttons.
     this.buildInterface (form, actions, 'preferences-container');
-    logDebug('Created UI OK - setting up TzSelector widget...');
+    console.debug('Created UI OK - setting up TzSelector widget...');
     
     // Setup timezone widget
     d.tzselector = new d.TzSelector (d.curTzid, 'tzpicker', true);
     
-    logDebug('We just got built.');
+    console.debug('We just got built.');
 };
 
 
@@ -407,7 +407,7 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
         
         if (!jsob.mail)
         {
-            logWarning('You have no prefs. I should probably warn you, or.. something.');
+            console.warn('You have no prefs. I should probably warn you, or.. something.');
         }
     }
     
@@ -430,21 +430,21 @@ Dragonfly.Preferences.Editor.load = function (loc, jsob)
     var pe = new d.AddressBook.UserProfile('userprofile');
     if (jsob.addressbook && jsob.addressbook.me)
     {
-        logDebug('Awesome, we have a contact ID!');
+        console.debug('Awesome, we have a contact ID!');
         // We've already setup our profile - load it!
         this.oldId = jsob.addressbook.me;
         d.AddressBook.loadContact(jsob.addressbook.me).addCallback(bind ('build', pe));
     }
     else
     {
-        logDebug('me == null. Buid empty contact UI thingo.');
+        console.debug('me == null. Buid empty contact UI thingo.');
         // Build empty profile editor UI.
         pe.build(Dragonfly.AddressBook.buildNewContact());
     }
     
     this.profileEditor = pe;
     
-    logDebug('We just loaded.');
+    console.debug('We just loaded.');
 };
 
 Dragonfly.Preferences.Editor.buildInterface = function (children, actions, element)
@@ -464,9 +464,9 @@ Dragonfly.Preferences.Editor.buildInterface = function (children, actions, eleme
     
     html.set (element);    
     for (var i = 0; i < actions.length; i++){
-        logDebug('Setting up actions for ' + actions[i].value);
+        console.debug('Setting up actions for ' + actions[i].value);
         var clickHandler = actions[i].onclick;
         Event.observe (ids[i], 'click', bind (clickHandler, this));
-        logDebug('Done!');
+        console.debug('Done!');
     }
 };

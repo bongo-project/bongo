@@ -14,7 +14,7 @@ Dragonfly.setLoginDisabled = function (disabled)
 
 Dragonfly.setLoginMessage = function (msg)
 {
-    logDebug("Set from '" + $('login-message').innerHTML + "' to '" + msg + "'.");
+    console.debug("Set from '" + $('login-message').innerHTML + "' to '" + msg + "'.");
     Element.setHTML ('login-message', msg);
 };
 
@@ -44,7 +44,7 @@ Dragonfly.login = function (user)
         return d.start();
     }
 
-    logDebug ('trying to log in as ' + user);
+    console.debug ('trying to log in as ' + user);
 
     hideElement('login-button');
     showElement('status-indicator');
@@ -72,7 +72,7 @@ Dragonfly.login = function (user)
                //logError ('backend was fubared and returned: ' + d.responseText);
            } else {
                 d.setLoginMessage (_('Some error occured while logging in - check the logs.'));
-                logError ('login error: ' + d.reprError (err));
+                console.error ('login error: ' + d.reprError (err));
             }
             showElement('login-button');
             hideElement('status-indicator');
@@ -136,8 +136,8 @@ Dragonfly.languageError = function (json)
     if (json)
     {
         d.setLoginMessage ('Could not load translations. Check logs.<br />Using default language (English).');
-        logError ('error loading translations for "' + $('login-language').value + '": server returned status ' + json.status);
-        logError ('request content: ' + json.responseText);
+        console.error ('error loading translations for "' + $('login-language').value + '": server returned status ' + json.status);
+        console.error ('request content: ' + json.responseText);
         
         // Setup default form labels anyhoo.
         d.translateLogin();
@@ -145,7 +145,7 @@ Dragonfly.languageError = function (json)
     else
     {
         d.setLoginMessage ('Could not load translations. Check logs.<br />Using default language (English).');
-        logError ('Hmm, JSON was undefined. :s');
+        console.error ('Hmm, JSON was undefined. :s');
     }
 };
 
@@ -192,6 +192,15 @@ Dragonfly.showLoginPane = function ()
     hideElement ('status-indicator');
     Dragonfly.setLoginDisabled (false);
     addElementClass (document.body, 'login');
+    
+    if (!console.type || console.type == "internal") {
+        hideElement ('showLogs');
+        hideElement ('makeDumpLink');
+    }
+    else if (console.type == "browser" && console.maxLogLevel == INFO) {
+        // hide dump link if not debug build
+        hideElement ('makeDumpLink');
+    }
 
     if (location.hash == '#LoggedOut') {
         Dragonfly.setLoginMessage (Dragonfly.logoutMessage);
@@ -278,7 +287,7 @@ Dragonfly.getCurrentUser = function ()
         delete cookie.$value;
         cookie.storeSimple();
     }
-    logDebug ('got current user: ' + user);
+    console.debug ('got current user: ' + user);
     return user;
 };
 

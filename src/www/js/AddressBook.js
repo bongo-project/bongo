@@ -171,7 +171,7 @@ Dragonfly.AddressBook.Contacts.convert = function (contactname, email)
         var tempcontact = d.AddressBook.contactMap[bId];
         if (tempcontact)
         {        
-            logDebug('Checking contact ' + bId);
+            console.debug('Checking contact ' + bId);
         
             if (email && tempcontact.email)
             {
@@ -179,7 +179,7 @@ Dragonfly.AddressBook.Contacts.convert = function (contactname, email)
                 for (var x = 0; x < tempcontact.email.length; x++) {
                     if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == email)
                     {
-                        logDebug('Result found by checking contact email against mail.');
+                        console.debug('Result found by checking contact email against mail.');
                         contact = tempcontact;
                         continue;
                     }
@@ -192,7 +192,7 @@ Dragonfly.AddressBook.Contacts.convert = function (contactname, email)
                 {
                     for (var x = 0; x < tempcontact.email.length; x++) {
                         if (tempcontact.email[x] && tempcontact.email[x].toLowerCase() == myemail && contactname == myemail) {
-                            logDebug('Result found via checking if contact was us.');
+                            console.debug('Result found via checking if contact was us.');
                             contact = tempcontact;
                             continue;
                         }
@@ -203,7 +203,7 @@ Dragonfly.AddressBook.Contacts.convert = function (contactname, email)
                 // Search based on name, not email.
                 if (tempcontact.fn.toLowerCase() == contactname.toLowerCase())
                 {
-                    logDebug('Result found via name search.');
+                    console.debug('Result found via name search.');
                     contact = tempcontact;
                     continue;
                 }
@@ -410,10 +410,10 @@ Dragonfly.AddressBook.ContactPopup.prototype.loadContact = function ()
     form.fn.value = this.contact.fn;
     //var myId = AB.Preferences.getMyContactId();
     
-    //logDebug('myID: ' + myId);
-    logDebug('form id: ' + form);
-    logDebug('this.contact: ' + this.contact);
-    logDebug('this.contact.fn: ' + this.contact.fn);
+    //console.debug('myID: ' + myId);
+    console.debug('form id: ' + form);
+    console.debug('this.contact: ' + this.contact);
+    console.debug('this.contact.fn: ' + this.contact.fn);
     
     //form.isMyContact.checked = myId && (myId == this.contact.bongoId);
     
@@ -553,7 +553,7 @@ Dragonfly.AddressBook.ContactPopup.prototype.del = function ()
     var noremove = this.skipremovechild;
     Dragonfly.AddressBook.delContact(this.contact.bongoId).addCallback (
         function (result) {
-            logDebug('Remove child? ' + this.skipremovechild);
+            console.debug('Remove child? ' + this.skipremovechild);
             if (elem && !noremove) {
                 elem.parentNode.removeChild(elem);
             }
@@ -659,7 +659,7 @@ Dragonfly.AddressBook.UserProfile.prototype.loadContact = function ()
     var form = $(this.formId);
     form.fn.value = this.contact.fn;
     
-    //logDebug('myID: ' + myId);
+    //console.debug('myID: ' + myId);
     
     //form.isMyContact.checked = myId && (myId == this.contact.bongoId);
     

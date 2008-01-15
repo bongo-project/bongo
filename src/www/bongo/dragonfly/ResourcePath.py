@@ -137,6 +137,8 @@ class ResourcePath:
             handler = PreferencesView.RulesHandler()
         elif self.view == "summary" and self.handler == "summary":
             handler = SummaryView.SummaryHandler()
+        elif self.view == "sendlog":
+            handler = SummaryView.LogHandler()
 
         if handler is None:
             raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
