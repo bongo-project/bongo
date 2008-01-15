@@ -59,6 +59,7 @@ if (!console)
     
                     _logEvent: function(msg, className, prefix, callerprop, errStr) {
                         var logbox = document.getElementById(this.currentDiv);
+                        if (!logbox) { return; }
                         var div = window.parent.document.createElement('div');
                         var datetime = new Date();
                         div.className = className;
@@ -100,13 +101,16 @@ if (!console)
                     },
                     
                     _toggle: function(id) {
-                        if (document.getElementById(id).style.display == 'none')
+                        var elem = document.getElementById(id);
+                        if (!elem) { return; }
+                        
+                        if (elem.style.display == 'none')
                         {
-                            document.getElementById(id).style.display = 'block';
+                            elem.style.display = 'block';
                         }
                         else
                         {
-                            document.getElementById(id).style.display = 'none';
+                            elem.style.display = 'none';
                         }
                     },
                     
@@ -190,6 +194,7 @@ if (!console)
                         div.style.display = "block";
                         
                         var logbox = document.getElementById(this.currentDiv);
+                        if (!logbox) { return; }
                         divbox.appendChild(linky);
                         divbox.appendChild(div);
                         logbox.appendChild(divbox);
@@ -243,7 +248,7 @@ if (!console)
                         throw new Error('Could not find XMLHttpRequest or an alternative.');
                     },
                     
-                    sendLog: function(showAlert) {
+                    sendLog: function(uri, showAlert) {
                         xhr = this.create_xhr();
                         xhr.onreadystatechange = function (showAlert) {
                             try {
@@ -269,23 +274,28 @@ if (!console)
                                 {
                                     console.error("Pastebin provider returned bad data.");
                                 }
+                                else if (xhr.responseText == "URLLIB")
+                                {
+                                    console.error("Server is missing dependency urllib. Please install it.");
+                                }
                                 else
                                 {
                                     console.info("Log URL: <a href='http://slexy.org/view/" + xhr.responseText + "'>http://slexy.org/view/" + xhr.responseText + "</a>");
-                                }
-                                
-                                if (showAlert)
-                                {
                                     prompt("A dump of your current log is available from here:", "http://slexy.org/view/" + xhr.responseText);
                                 }
                             }
                         };
                         
-                        xhr.open('POST', 'user/sendlog', true);
+                        if (!uri)
+                        {
+                            uri = "send_log.php"
+                        }
+                        
+                        xhr.open('POST', uri, true);
                         xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
                         xhr.send("desc=Log+generated+on+" + new Date().toLocaleString() + "+from+" + window.location + "&contents=" + this.internalFatString);
                         
-                        console.debug("Sent log data, waiting for response...");
+                        console.debug("Sent log data to ", uri, ", waiting for response...");
                     }
                 };
     

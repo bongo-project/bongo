@@ -975,6 +975,8 @@ Dragonfly.start = function ()
                             $('admin-link').style.display = 'inline';
                         }
                         
+                        $('makeDumpLink-a').href = 'javascript:void(console.sendLog("user/' + d.userName + '/sendlog/all", true));';
+                        
                         removeElementClass (document.body, 'login');
                         
                         d._handleResize();
