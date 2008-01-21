@@ -907,6 +907,7 @@ StartOver:
                             /* alias this user */
                             unsigned char buffer[1024]; /* FIXME: is this too big? */
                             unsigned char *addrptr;
+                            unsigned char *flags = strchr(ptr2+1,' '); /* the original flags */
                             int cnt;
 
                             aliasing(cur+1, &cnt, buffer);
@@ -916,14 +917,24 @@ StartOver:
                             addrptr++;
                             switch(atoi(buffer)) {
                             case 1000:
-                                /* this is a local user, change the envelope to reflect that */
-                                fprintf(newFH, QUEUES_RECIP_LOCAL"%s %s\r\n", addrptr, cur+1);
+                                /* this is a local user, change the envelope to reflect that
+                                 * in this case ptr2+1 is the orecip which will also include the flags */
+                                fprintf(newFH, QUEUES_RECIP_LOCAL"%s %s\r\n", addrptr, ptr2+1);
                                 break;
                             case 1002:
-                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s\r\n", addrptr, cur+1);
+                                /* in this case ptr2+1 is the orecip which will also contain the flags */
+                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s\r\n", addrptr, ptr2+1);
                                 break;
                             default:
-                                fprintf(newFH, "%c%s %s %d\r\n", *cur, addrptr, cur+1, DSN_FAILURE);
+                                /* in this case we need to chop the flags off so that we can replace them
+                                 * with DSN_FAILURE */
+                                if (flags) {
+                                    *flags = '\0';
+                                }
+                                fprintf(newFH, "%c%s %s %d\r\n", *cur, addrptr, ptr2+1, DSN_FAILURE);
+                                if (flags) {
+                                    *flags = ' ';
+                                }
                                 break;
                             }
                             if (ptr) {

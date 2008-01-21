@@ -679,7 +679,7 @@ XplServiceMain(int argc, char *argv[])
 
     /* Initialize the Bongo libraries */
     startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP | BA_STARTUP_MSGLIB | BA_STARTUP_MSGAUTH;
-    ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
+    ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         Log(LOG_ERROR, "Initialization failed exiting.");
         return -1;
