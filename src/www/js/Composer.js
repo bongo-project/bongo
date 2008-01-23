@@ -1,6 +1,10 @@
 /*
     "Fiction writing is great, you can make up almost
     anything."                         -- Ivana Trump
+    
+    WARNING: This is probably the crappiest JS file
+             in the entire of Dragonfly. You have
+             been warned.
 */
 
 Dragonfly.Mail.Composer = function (parent, msg)
@@ -21,7 +25,7 @@ Dragonfly.Mail.Composer = function (parent, msg)
 
     this.pendingAttachments = [ ];
     
-    logDebug('Composer instantiated.');
+    console.debug('Composer instantiated.');
 
     if (parent) {
         d.HtmlBuilder.buildChild (parent, this);
@@ -317,19 +321,19 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
     var c = m.Composer;
 
     if (this.state != c.MaybeDirty) {
-        logDebug ('Not saving a composer in state:', this.state);
+        console.debug ('Not saving a composer in state:', this.state);
         return false;
     }
 
     msg = msg;
     if (!msg || !msg.from)
     {
-        logDebug('Arg passed was an event, not a real message.');
+        console.debug('Arg passed was an event, not a real message.');
         msg = this.getCurrentMessage();
     }
     
     if (!this.hasChanges (msg)) {
-        logDebug ('No changes to save');
+        console.debug ('No changes to save');
         return true;
     }
 
@@ -351,7 +355,9 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
         msg.subject = untitled
     }*/
 
-    loc = new d.Location (loc);
+    //loc = new d.Location (loc);
+    loc = new d.Location ({ tab: 'mail', set: 'drafts', handler: 'conversations', page: 1, 
+                                      conversation: this.conversation, message: this.bongoId, valid: true });
     this.def = d.requestJSONRPC ((this.draftSavedAlready ? 'update' : 'create') + 'Draft', loc,
                                  msg,
                                  this.inReplyTo || null,
@@ -368,7 +374,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
                   this.lastSavedMsg = msg;
                   
                   if (!this.bongoId && jsob.bongoId) {
-                      logDebug ('setting bongoId to |' + jsob.bongoId + '|');
+                      console.debug ('setting bongoId to |' + jsob.bongoId + '|');
                       this.bongoId = jsob.bongoId;
                   }
                   
@@ -394,7 +400,7 @@ Dragonfly.Mail.Composer.prototype.saveDraft = function (evt, msg)
               }, this),
         bind (function (err) {
                   if (!(err instanceof CancelledError)) {
-                      logError (_('Error saving draft:'), d.reprError (err));
+                      console.error (_('Error saving draft:'), d.reprError (err));
                   }
                   this.state = c.MaybeDirty;
                   this.scheduleSave();
@@ -437,7 +443,7 @@ Dragonfly.Mail.Composer.prototype.discardDraft = function (evt)
                   // Ignore the fact we errored - probably because we NEVER SAVED ANYTHING.
                   /*if (!(err instanceof CancelledError)) {
                       d.notifyError ('Could not discard draft');
-                      logDebug ('error deleting draft:', d.reprError (err));
+                      console.debug ('error deleting draft:', d.reprError (err));
                   }
                   this.state = c.MaybeDirty;
                   this.scheduleSave();
@@ -467,7 +473,7 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
         }
         else if (this.callCount > 10)
         {
-            logDebug('Save took more than 10sec, giving up.');
+            console.debug('Save took more than 10sec, giving up.');
             d.notifyError (_('Error sending message: Gave up while trying to send. Check logs.'));
             this.callCount = 0;             // Reset counter.
             this.draftSaveCalled = false;
@@ -476,7 +482,7 @@ Dragonfly.Mail.Composer.prototype.sendMessage = function (evt)
         else
         {
             // Still waiting for draft to save...
-            logDebug('Save not finished yet - checking again in 1sec.');
+            console.debug('Save not finished yet - checking again in 1sec.');
             this.callCount++;
             callLater(1, bind('sendMessage', this));
         }
@@ -550,7 +556,7 @@ Dragonfly.Mail.Composer.prototype.updateSendEnabled = function ()
     var m = d.Mail;
     var c = m.Composer;
 
-    logDebug ('updateSendEnabled:', this.pendingAttachments.length);
+    console.debug ('updateSendEnabled:', this.pendingAttachments.length);
     if (this.discard.disabled || this.pendingAttachments.length) {
         this.send.disabled = true;
         return;
@@ -562,7 +568,7 @@ Dragonfly.Mail.Composer.prototype.updateSendEnabled = function ()
         this.send.disabled = false;
         break;
     default:
-        logError ('this should probably not be reached, but we are in state:', this.state);
+        console.error ('this should probably not be reached, but we are in state:', this.state);
         break;
     }
 };
@@ -593,7 +599,7 @@ Dragonfly.Mail.Composer.prototype.addNewAttachment = function (evt)
 
     var def = attachment.getUploadComplete();
     this.pendingAttachments.push (def);
-    logDebug ('addNewAttachment:', this.pendingAttachments.length);
+    console.debug ('addNewAttachment:', this.pendingAttachments.length);
     def.addBoth (
         bind (function (res) {
                   for (var i = this.pendingAttachments.length - 1; i >= 0; --i) {
@@ -616,7 +622,7 @@ Dragonfly.Mail.Composer.prototype.canDisposeZone = function ()
     var d = Dragonfly;
     var c = d.Mail.Composer;
 
-    logDebug ('canDisposeZone: we are in state', this.state);
+    console.debug ('canDisposeZone: we are in state', this.state);
 
     switch (this.state) {
     case c.MaybeDirty:
@@ -635,7 +641,7 @@ Dragonfly.Mail.Composer.prototype.canDisposeZone = function ()
 
 Dragonfly.Mail.Composer.prototype.disposeZone = function ()
 {
-    logDebug ('disposing with a composer...');
+    console.debug ('disposing with a composer...');
     this.cancelScheduledSave();
     if (this.def) {
         this.def.cancel();
@@ -652,7 +658,7 @@ Dragonfly.Mail.Composer.composeNew = function (msg)
     if (def instanceof Deferred) {
         return def.addCallback (partial (c.composeNew, msg));
     } else if (!def) {
-        logWarning ('content-iframe is not clean, not composing new message');
+        console.warn ('content-iframe is not clean, not composing new message');
         return;
     }
     d.contentIFrameZone.disposeZone();
@@ -746,7 +752,7 @@ Dragonfly.Mail.RecipientsField.prototype.getUpdatedChoices = function ()
     var ret = [ ];
     var needle = this.getToken().toLowerCase ();
 
-    logDebug ('searching for:', needle);
+    console.debug ('searching for:', needle);
 
     var Found = new Error;
 
@@ -768,7 +774,7 @@ Dragonfly.Mail.RecipientsField.prototype.getUpdatedChoices = function ()
             forEach (contact.im || [], checkMatch);
         } catch (e) {
             if (e === Found) {
-                logDebug (contact.fn, 'matches!');
+                console.debug (contact.fn, 'matches!');
                 for (var i = 0; i < contact.email.length; i++) {
                     ret.push (d.escapeHTML (contact.fn) + ' &lt;' + d.escapeHTML (contact.email[i]) + '&gt;');
                 }
@@ -777,7 +783,7 @@ Dragonfly.Mail.RecipientsField.prototype.getUpdatedChoices = function ()
             throw e;
         }
     }
-    logDebug ('got ' + ret.length + ' matches');
+    console.debug ('got ' + ret.length + ' matches');
     if (ret.length) {
         this.updateChoices ('<ul><li>' + ret.join ('</li><li>') + '</li></ul>');
     } else {

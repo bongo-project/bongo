@@ -92,7 +92,7 @@ typedef struct {
 typedef struct {
     unsigned long sequenceNumber;
     unsigned char *header;
-    MDBValueStruct *mimeInfo;
+    BongoArray *mimeInfo;
 } MessageDetail;
 
 typedef struct {

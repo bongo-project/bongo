@@ -23,22 +23,15 @@
 #define MSGAPIP_H
 
 #include <xpl.h>
-#include <mdb.h>
 
 #include <msgapi.h>
 
 /*  msgapi.c */
-int MsgGetParentAttribute(const unsigned char *userDn, unsigned char *attribute, MDBValueStruct *v);
-BOOL MsgGetUserSettingsContainerDN(const unsigned char *userDn, unsigned char *containerDn, MDBValueStruct *v, BOOL create);
-MDBHandle MsgDirectoryHandle(void);
 BOOL MsgExiting(void);
 
 /*  msgdate.c */
 void MsgDateSetUTCOffset(long offset);
 BOOL MsgDateStart(void);
 
-/*  resolver.c */
-BOOL MsgResolveStart(void);
-BOOL MsgResolveStop(void);
 
 #endif /* MSGAPIP_H */

@@ -26,7 +26,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <bongostore.h>
 #include <msgapi.h>
@@ -129,17 +128,11 @@ static Connection *
 ConnectToStore(const char *user)
 {
     char buffer[CONN_BUFSIZE + 1];
-    char dn[MDB_MAX_OBJECT_CHARS + 1];
     struct sockaddr_in addr;
     Connection *conn;
     int ret;
 
-    if (!MsgFindObject(user, dn, NULL, &addr, NULL)) {
-        printf("bongocollector: couldn't find user object for '%s'\n", user);
-        return NULL;
-    }
-
-    if ((conn = NMAPConnect(NULL, &addr)) == NULL) {
+    if ((conn = NMAPConnect("127.0.0.1", NULL)) == NULL) {
         printf("bongocollector: couldn't connect to nmap\n");
         return NULL;
     }
@@ -661,31 +654,18 @@ MsgCollectUser(const char *user)
 void
 MsgCollectAllUsers(void)
 {
-    MDBValueStruct *vs;
-    MDBEnumStruct *es;
-    const unsigned char *name;
-    char context[MDB_MAX_OBJECT_CHARS + 1];
+    BongoArray *users;
+    int i;
 
-    vs = MDBCreateValueStruct(MsgDirectoryHandle(), NULL);
-    if (!vs) {
+    if (MsgAuthUserList(&users) < 0)
         return;
+
+    for(i = 0; i < BongoArrayCount(users); i++) {
+        char *user = BongoArrayIndex(users, char *, i);
+        MsgCollectUser(user);
     }
 
-    es = MDBCreateEnumStruct(vs);
-    if (!es) {
-        MDBDestroyValueStruct(vs);
-        return;
-    }
-
-    if (MsgGetConfigProperty(context, MSGSRV_CONFIG_PROP_DEFAULT_CONTEXT)) {
-        while ((name = MDBEnumerateObjectsEx(context, C_USER, NULL, 0, es, vs)) != NULL) {
-            unsigned char *user = strrchr(name, '\\');
-            MsgCollectUser(user ? user + 1 : name);
-        }
-    }
-
-    MDBDestroyEnumStruct(es, vs);
-    MDBDestroyValueStruct(vs);
+    BongoArrayFree(users, TRUE);
 }
 
 size_t

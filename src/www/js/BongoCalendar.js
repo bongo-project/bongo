@@ -387,6 +387,6 @@ Dragonfly.Calendar.calendarUpdated = function (calendar)
 
         Element.setText (span[1], calendar.cal.name);
     } else {
-        logWarning ('no calendar for:', calendar.bongoId);
+        console.warn ('no calendar for:', calendar.bongoId);
     }
 };

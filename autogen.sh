@@ -455,7 +455,7 @@ if test x$SVNREV = x; then
     echo Unable to discern build version
     echo \#define  BONGO_BUILD_BRANCH	\"unknown\" >  ./include/bongo-buildinfo.h
     echo \#define  BONGO_BUILD_VSTR	\"\" >>  ./include/bongo-buildinfo.h
-    echo \#define  BONGO_BUILD_VER	\"0\" >  ./include/bongo-buildinfo.h
+    echo \#define  BONGO_BUILD_VER	\"0\" >>  ./include/bongo-buildinfo.h
 else
     echo SVN Rev at $SVNREV
     echo \#define  BONGO_BUILD_BRANCH	\"trunk\"   >  ./include/bongo-buildinfo.h

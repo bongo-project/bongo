@@ -1,13 +1,13 @@
 # -*- Makefile -*-
 sbin_SCRIPTS += src/apps/setup/bongo-setup
 
-schemadir := $(XPL_DEFAULT_CONF_DIR)
-dist_schema_DATA :=			\
+schemadir = $(XPL_DEFAULT_CONF_DIR)
+dist_schema_DATA =			\
 	src/apps/setup/bongo-setup.xml	\
 	src/apps/setup/base-schema.xml	\
 	src/apps/setup/bongo-schema.xml
 
-nodist_schema_DATA := \
+nodist_schema_DATA = \
 	src/apps/setup/bongo-setup.xml
 
 dist_noinst_DATA += src/apps/setup/bongo-setup.xml.in

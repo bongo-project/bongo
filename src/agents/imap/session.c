@@ -25,61 +25,22 @@
 
 #include <logger.h>
 
-#include <mdb.h>
 #include <msgapi.h>
 
-/* Management Client Header Include */
-#include <management.h>
-
-#include <cmlib.h>
 #include "imapd.h"
 
 
 static long
 UserAuthenticate(ImapSession *session, unsigned char **userName, unsigned char *password, struct sockaddr_in *storeAddress)
 {
-    MDBValueStruct *user;
-    char *tmpName;
-
-    user = MDBCreateValueStruct(Imap.directory.handle, NULL);
-    if (user) {
-        if (MsgFindObject(*userName, session->user.dn, NULL, storeAddress, user)) {
-            if (MsgGetUserFeature(session->user.dn, FEATURE_IMAP, NULL, NULL)) {
-                if (!password || MDBVerifyPassword(session->user.dn, password, user)) {
-                    
-                    if (strcmp(*userName, user->Value[0]) == 0) {
-                        MDBDestroyValueStruct(user);
-                        return(STATUS_CONTINUE);
-                    }
-
-                    tmpName = MemStrdup(user->Value[0]);
-                    MDBDestroyValueStruct(user);
-                    if (tmpName) {
-                        MemFree(*userName);
-                        *userName = tmpName;
-                        return(STATUS_CONTINUE);
-                    }
-                    return(STATUS_MEMORY_ERROR);
-                }
-
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_WRONG_PASSWORD, LOG_NOTICE, 
-                            0, *userName, password, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-                MDBDestroyValueStruct(user);
-                return(STATUS_WRONG_PASSWORD);
-            }
-                
-            LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_DISABLED_FEATURE, LOG_NOTICE, 
-                        0, *userName, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-            MDBDestroyValueStruct(user);
-            return(STATUS_FEATURE_DISABLED);
-        }
-
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_UNKNOWN_USER, LOG_NOTICE, 
-                    0, *userName, password, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-        MDBDestroyValueStruct(user);
+    if (MsgAuthFindUser(*userName) != 0)
         return(STATUS_USERNAME_NOT_FOUND);
-    }
-    return(STATUS_IDENTITY_STORE_FAILURE);
+
+    if (MsgAuthVerifyPassword(*userName, password) != 0)
+        return(STATUS_WRONG_PASSWORD);
+
+    MsgAuthGetUserStore(*userName, storeAddress);
+    return(STATUS_CONTINUE);
 }
 
 __inline static long
@@ -240,8 +201,8 @@ ImapCommandAuthenticate(void *param)
 {
     ImapSession *session = (ImapSession *)param;
     long ccode;
-    unsigned char *username;
-    unsigned char *password;
+    unsigned char *username = NULL;
+    unsigned char *password = NULL;
 
     if (session->client.state == STATE_FRESH) {
         if (XplStrNCaseCmp(session->command.buffer + 13, "LOGIN", 5) == 0) {
@@ -258,7 +219,6 @@ ImapCommandAuthenticate(void *param)
                         /* We are flushing here so that we can update the connection manager */
                         /* while the client is working on the response and sending the next command */
                         if (ConnFlush(session->client.conn) != -1) {
-// Reenable me              CMAuthenticated((unsigned long)session->client.conn->socketAddress.sin_addr.s_addr, session->user.name);
                             return(STATUS_CONTINUE);
                         }
                     }
@@ -296,7 +256,6 @@ ImapCommandLogin(void *param)
                     /* We are flushing here so that we can update the connection manager */
                     /* while the client is working on the response and sending the next command */
                     if (ConnFlush(session->client.conn) != -1) {
-// Reenable me                        CMAuthenticated((unsigned long)session->client.conn->socketAddress.sin_addr.s_addr, session->user.name);
                         return(STATUS_CONTINUE);
                     } else {
                         ccode = STATUS_ABORT;
@@ -340,144 +299,3 @@ ImapCommandStartTls(void *param)
 
 
 }
-
-#if MDB_DEBUG
-/********** Mdb test commands - any state (User Lookup, User Verify, UserRead) **********/
-int
-ImapCommandUserLookup(void *param)
-{
-    MDBValueStruct *user;
-    ImapSession *session = (ImapSession *)param;
-    char *username;
-    struct sockaddr_in storeAddress;
-
-    if ((user = MDBCreateValueStruct(Imap.directory.handle, NULL)) != NULL) {
-        username = session->command.buffer + strlen("USER LOOKUP");
-        if (*username == ' ') {
-            username++;
-            if (MsgFindObject(username, session->user.dn, NULL, &storeAddress, user)) {
-                if (ConnWriteF(session->client.conn, "* %s\r\n", session->user.dn) == -1) {
-                    MDBDestroyValueStruct(user);
-                    return(STATUS_ABORT);
-                }
-            }
-            MDBDestroyValueStruct(user);
-            return(SendOk(session, "USER LOOKUP"));
-        }
-        MDBDestroyValueStruct(user);
-        return(SendError(session->client.conn, session->command.tag, "USER LOOKUP", STATUS_INVALID_ARGUMENT));
-    }
-    return(SendError(session->client.conn, session->command.tag, "USER LOOKUP", STATUS_IDENTITY_STORE_FAILURE));
-}
-
-int
-ImapCommandUserVerify(void *param)
-{
-    MDBValueStruct *user;
-    ImapSession *session = (ImapSession *)param;
-    unsigned char *userDn;
-    unsigned char *password;
-    char *spacePtr;
-
-    userDn = session->command.buffer + strlen("USER VERIFY");
-    if (*userDn == ' ') {
-        userDn++;
-        spacePtr = strchr(userDn, ' ');
-        if (spacePtr) {
-            password = spacePtr + 1;
-            if ((user = MDBCreateValueStruct(Imap.directory.handle, NULL)) != NULL) {
-                *spacePtr = '\0';
-                if (MDBVerifyPassword(userDn, password, user)) {
-                    *spacePtr = ' ';
-                    MDBDestroyValueStruct(user);
-                    return(SendOk(session, "USER VERIFY"));
-                }
-                *spacePtr = ' ';
-                MDBDestroyValueStruct(user);
-                return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_USERNAME_NOT_FOUND));
-            }
-            return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_IDENTITY_STORE_FAILURE));
-        }
-    }
-    return(SendError(session->client.conn, session->command.tag, "USER VERIFY", STATUS_INVALID_ARGUMENT));
-}
-
-int
-ImapCommandUserRead(void *param)
-{
-    MDBValueStruct *user;
-    ImapSession *session = (ImapSession *)param;
-    unsigned char *userDn;
-    unsigned char *attribute;
-    char *spacePtr;
-    unsigned long i;
-
-    userDn = session->command.buffer + strlen("USER READ");
-    if (*userDn == ' ') {
-        userDn++;
-        spacePtr = strchr(userDn, ' ');
-        if (spacePtr) {
-            attribute = spacePtr + 1;
-            if ((user = MDBCreateValueStruct(Imap.directory.handle, NULL)) != NULL) {
-                *spacePtr = '\0';
-                MsgGetUserSetting(userDn, attribute, user);
-                for(i = 0; i < user->Used; i++) {
-                    if (ConnWriteF(session->client.conn, "* %s\r\n", user->Value[i]) == -1) {
-                        *spacePtr = ' ';
-                        MDBDestroyValueStruct(user);
-                        return(STATUS_ABORT);
-                    }
-                }
-                *spacePtr = ' ';
-                MDBDestroyValueStruct(user);
-                return(SendOk(session, "USER READ"));
-            }
-            return(SendError(session->client.conn, session->command.tag, "USER READ", STATUS_IDENTITY_STORE_FAILURE));
-        }
-    }
-    return(SendError(session->client.conn, session->command.tag, "USER READ", STATUS_INVALID_ARGUMENT));
-}
-
-int
-ImapCommandUserWriteLocal(void *param)
-{
-    long ccode;
-    ImapSession *session = (ImapSession *)param;
-    unsigned char *userDn;
-    unsigned char *attribute;
-    unsigned long count;
-    unsigned long i;
-    unsigned char *ptr;
-    
-    ptr = session->command.buffer + strlen("USER WRITE LOCAL");
-    if ((ccode = GrabArgument(session, &ptr, &userDn)) == STATUS_CONTINUE) {
-        if ((ccode = GrabArgument(session, &ptr, &attribute)) == STATUS_CONTINUE) {
-            if (*ptr == ' ') {
-                count = atol(ptr + 1);
-                ccode = STATUS_IDENTITY_STORE_FAILURE;
-
-
-
-
-            }
-            MemFree(attribute);
-        }
-        MemFree(userDn);
-    }
-    return(SendError(session->client.conn, session->command.tag, "USER WRITE LOCAL", ccode));
-}
-
-int
-ImapCommandUserWriteSuper(void *param)
-{
-    return(STATUS_UNKNOWN_COMMAND);
-}
-
-int
-ImapCommandUserEnum(void *param)
-{
-    return(STATUS_UNKNOWN_COMMAND);
-}
-
-#endif
-

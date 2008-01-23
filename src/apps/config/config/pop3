@@ -1,0 +1,5 @@
+{
+	"version": 1,
+	"port": 110,
+	"port_ssl": 995
+}

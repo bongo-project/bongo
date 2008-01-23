@@ -17,13 +17,14 @@ AddObject(StoreClient *client,
 int 
 FilterEvent(StoreClient *client, 
             DStoreDocInfo *info, 
-            LuceneIndex *index)
+            LuceneIndex *index,
+            char *path)
 {
     BongoJsonNode *node;
     BongoJsonObject *obj;
     BongoCalObject *cal;
     
-    if (GetJson(client, info, &node) != BONGO_JSON_OK || node->type != BONGO_JSON_OBJECT) {
+    if (GetJson(client, info, &node, path) != BONGO_JSON_OK || node->type != BONGO_JSON_OBJECT) {
         return -1;
     }
 

@@ -85,10 +85,6 @@
 extern "C" {
 #endif
 
-/* The MSG Feature API Description */
-EXPORT BOOL MsgGetUserFeature(const unsigned char *UserDN, unsigned char FeatureRow, unsigned long FeatureCol, unsigned char *Attribute, MDBValueStruct *VReturn);
-EXPORT BOOL MsgDomainExists(const unsigned char *Domain, unsigned char *DomainObjectDN);
-
 #ifdef __cplusplus
 }
 #endif

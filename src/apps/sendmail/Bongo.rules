@@ -1,14 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongo-sendmail
 
-bongo_sendmail_SOURCES :=		\
+bongo_sendmail_SOURCES =		\
 	src/apps/sendmail/sendmail.h	\
 	src/apps/sendmail/sendmail.c
 
-bongo_sendmail_LDADD :=					   \
+bongo_sendmail_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

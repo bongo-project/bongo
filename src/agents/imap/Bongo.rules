@@ -1,7 +1,7 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongoimap
 
-bongoimap_SOURCES :=				\
+bongoimap_SOURCES =				\
 	src/agents/imap/imapd.c			\
 	src/agents/imap/imapd.h			\
 	src/agents/imap/copy.c			\
@@ -18,12 +18,9 @@ bongoimap_SOURCES :=				\
 	src/agents/imap/uid.c			\
 	src/agents/imap/inline.h
 
-bongoimap_LDADD :=					   \
+bongoimap_LDADD =					   \
 	libbongonmap.la					   \
-	libbongoconnmgr.la				   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

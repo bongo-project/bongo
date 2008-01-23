@@ -129,7 +129,7 @@ Day.get = function (year, month, date) // expects integer arguments
 Day.printCacheStats = function ()
 {
     var total = (Day._hits + Day._misses) / 100;
-    logDebug ('Day cache: hits:', Math.floor (Day._hits / total),
+    console.debug ('Day cache: hits:', Math.floor (Day._hits / total),
               'no alloc:', Math.floor (Day._noallocs / total),
               'size:', Day._total);
 };
@@ -256,7 +256,7 @@ Day.prototype.asDateWithTime = function (hours, minutes, seconds)
 Day.fromIntform = function (i)
 {
     return Day.get ((i / 10000) | 0, ((i % 10000) / 100) | 0, i % 100);
-}
+};
 
 Day.formatRange = function (s, a, b)
 {
@@ -283,7 +283,7 @@ Day.iter = function (day, end, increment) {
     } else {
         stopAt = day.offsetBy (increment * end - 1).intform;
     }
-    //logDebug ('iter: day:', day, 'end:', end, 'increment:', increment, 'stopAt:', stopAt);
+    //console.debug ('iter: day:', day, 'end:', end, 'increment:', increment, 'stopAt:', stopAt);
     return { 'next' : 
         function () {
             if (stopAt < day.intform) {
@@ -312,10 +312,10 @@ Dragonfly.JCal.parse = function (jsobs)
                  try {
                      objs.push (new j.VCalendar (jsob));
                  } catch (e) {
-                     logWarning ('error parsing object: ' + d.reprError (e) + ': ' + serializeJSON (jsob));
+                     console.warn ('error parsing object: ' + d.reprError (e) + ': ' + serializeJSON (jsob));
                  }
              });
-    //logDebug ('took ' + (new Date - start) / 1000 + 's to parse ' 
+    //console.debug ('took ' + (new Date - start) / 1000 + 's to parse ' 
     //          + objs.length + ' object' + ((objs.length != 1) ? 's' : ''));
     return objs;
 };
@@ -414,7 +414,7 @@ Dragonfly.JCal.updateDateTime = function (datetime, day, time, isUntimed, tzid)
     } else {
         datetime.params = params;
     }
-}
+};
 
 // offset is in days for date values, msecs for datetime values
 Dragonfly.JCal.offsetDateTime = function (datetime, offset)
@@ -427,7 +427,7 @@ Dragonfly.JCal.offsetDateTime = function (datetime, offset)
         var newdate = new Date (JCal.parseDateTime ($V(datetime)).valueOf() + offset);
         datetime.value = JCal.serializeDateTime (newdate);
     }
-}
+};
 
 Dragonfly.JCal.parseDuration = function (s, asUntimed)
 {
@@ -632,7 +632,7 @@ Dragonfly.JCal.VCalendar.prototype.parse = function (jsob)
     if (jsob) {
         this.jcal = jsob.jcal;
         if ($V(this.jcal.version) != '2.0') {
-            logWarning ('Unsupported iCalendar version: ' + $V(this.jcal.version));
+            console.warn ('Unsupported iCalendar version: ' + $V(this.jcal.version));
         }
 
         this.bongoId = jsob.bongoId;
@@ -661,7 +661,7 @@ Dragonfly.JCal.VCalendar.prototype.parse = function (jsob)
             this.timezones[timezone.tzid] = timezone;
             break;
         default:
-            logWarning ('Ignoring unknown iCalendar type: ' + comp.type);
+            console.warn ('Ignoring unknown iCalendar type: ' + comp.type);
         }
     }
     this.isRecurring = !!(this.event && this.event.jcal.rrules);
@@ -775,7 +775,7 @@ Dragonfly.JCal.VCalendar.prototype.updateTimes = function (occurrence, changes, 
             JCal.updateDateTime (jc.dtend, endDay, changes.endTime, isUntimed, changes.endTzid);
         }
     }
-}
+};
 
 Dragonfly.JCal.VCalendar.prototype.updateRrules = function (occurrence, changes)
 {
@@ -846,7 +846,7 @@ Dragonfly.JCal.VCalendar.prototype.split = function (occurrence)
     }
     sibling.update (occurrence, changes, JCal.allScope);
 
-    logDebug (serializeJSON (sibling.jcal));
+    console.debug (serializeJSON (sibling.jcal));
     this.updateRrulesEnd (JCal.serializeDay (occurrence.startDay.offsetBy (-1)));
     return sibling;
 };
@@ -971,7 +971,7 @@ Dragonfly.JCal.Occurrence.prototype.parse = function (jsob)
     this.jcal = jsob;
 
     if (!this.jcal.dtstart) {
-        logWarning ('Occurrence missing dtstart');
+        console.warn ('Occurrence missing dtstart');
     }
 
     this.recurid = $V(this.jcal.recurid) || $LV(this.jcal.dtstart);
@@ -1029,7 +1029,7 @@ Dragonfly.JCal.Occurrence.prototype.update = function (changes)
     for (var key in changes) {
         this[key] = changes[key];
     }
-}
+};
 
 Dragonfly.JCal.Occurrence.prototype.getAttr = function (attr)
 {
@@ -1046,10 +1046,10 @@ Dragonfly.JCal.Occurrence.prototype.getAttr = function (attr)
 Dragonfly.JCal.Occurrence.prototype.setAttr = function (attr, value)
 {
     if (this.exception && this.exception.jcal[attr]) {
-        //logDebug ('exception[' + attr + '] <= ' + serializeJSON (value));
+        //console.debug ('exception[' + attr + '] <= ' + serializeJSON (value));
         this.exception.jcal[attr] = value;
     } else if (this.event) {
-        //logDebug ('event[' + attr + '] <= ' + serializeJSON (value));
+        //console.debug ('event[' + attr + '] <= ' + serializeJSON (value));
         this.event.jcal[attr] = value;
     }
     if (this.jcal[attr]) {

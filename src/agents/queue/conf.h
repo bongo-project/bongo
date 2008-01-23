@@ -24,8 +24,6 @@
 
 #include <xpl.h>
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -38,22 +36,18 @@ typedef enum {
 } BounceFlags;
 
 typedef struct _QueueConfiguration {
+    BOOL debug;
+    
     XplRWLock lock;
 
     /* Server info */
-    char hostname[MAXEMAILNAMESIZE + 1];    
     char serverHash[NMAP_HASH_SIZE];
-    char postMaster[MAXEMAILNAMESIZE + 1];
-    char officialName[MAXEMAILNAMESIZE + 1];
 
     /* Quotas */
     char *quotaMessage;
 
     /* Trusted hosts */
-    struct {
-        int count;
-        unsigned long *hosts;
-    } trustedHosts;
+    BongoArray *trustedHosts;
 
     /* Paths */
     char spoolPath[XPL_MAX_PATH + 1];
@@ -61,6 +55,10 @@ typedef struct _QueueConfiguration {
 
     /* Deferral */
     BOOL deferEnabled;
+    char i_deferStartWD;
+    char i_deferStartWE;
+    char i_deferEndWD;
+    char i_deferEndWE;
     char deferStart[7];
     char deferEnd[7];
 
@@ -70,7 +68,7 @@ typedef struct _QueueConfiguration {
 
     /* Forward Undeliverable */
     BOOL forwardUndeliverableEnabled;
-    char forwardUndeliverableAddress[MAXEMAILNAMESIZE + 1];
+    char *forwardUndeliverableAddress;
 
     /* Queue tuning */
     long defaultConcurrentWorkers;
@@ -95,11 +93,28 @@ typedef struct _QueueConfiguration {
     unsigned long bounceMaxBodySize;
     unsigned long bounceMax;
 
+    BOOL b_bounceReturn;
+    BOOL b_bounceCCPostmaster;
     BounceFlags bounceHandling;
 
     /* Bookkeeping */
     unsigned long lastRead;
+    
+    /* aliasing system */
+    BongoArray *hostedDomains;
+    BongoArray *aliasList;
+
+    BongoArray *domains;
 } QueueConfiguration;
+
+struct _AliasStruct{
+    unsigned char* original;
+    unsigned char* to;
+    unsigned int mapping_type;
+    BongoArray *aliases;
+};
+
+typedef struct _AliasStruct AliasStruct;
 
 extern QueueConfiguration Conf;
 
@@ -108,5 +123,7 @@ void CheckConfig(BongoAgent *agent);
 BOOL ReadConfiguration(BOOL *recover);
 
 long CalculateCheckQueueLimit(unsigned long concurrent, unsigned long sequential);
+
+int hostedSortFunc(const void *str1, const void *str2);
 
 #endif /* _DELIVERYQUEUE_H */

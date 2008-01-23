@@ -25,7 +25,6 @@
 #include <memmgr.h>
 #include <logger.h>
 #include <bongoutil.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -885,7 +884,8 @@ IsNMAPShare(RulesClient *client, unsigned char *name, unsigned char *type, unsig
 
         MDBFreeValues(vs);
 
-        MsgGetUserSetting(client->dn, MSGSRV_A_AVAILABLE_SHARES, vs);
+	// FIXME
+        // MsgGetUserSetting(client->dn, MSGSRV_A_AVAILABLE_SHARES, vs);
         /*
         if (MsgGetUserSettingsDN(client->dn, configDn, vs, FALSE)) {
             MDBRead(configDn, MSGSRV_A_AVAILABLE_SHARES, vs);
@@ -957,7 +957,8 @@ IsNMAPShare(RulesClient *client, unsigned char *name, unsigned char *type, unsig
             memcpy(pattern + length, client->user, count);
             count += length;
 
-            MsgGetUserSetting(dn, MSGSRV_A_OWNED_SHARES, vs);
+            //FIXME
+            //MsgGetUserSetting(dn, MSGSRV_A_OWNED_SHARES, vs);
             /*
             if (MsgGetUserSettingsDN(dn, configDn, vs, FALSE)) {
                 MDBRead(configDn, MSGSRV_A_OWNED_SHARES, vs);
@@ -1808,8 +1809,9 @@ ProcessConnection(RulesClient *client)
                         if (MsgFindObject(client->recipient, client->dn, NULL, &(client->nmap), vs)) {
                             strcpy(client->user, vs->Value[0]);
 
-                            if (MDBFreeValues(vs) 
-                                    && MsgGetUserFeature(client->dn, FEATURE_RULES, MSGSRV_A_RULE, vs)) {
+                            if (MDBFreeValues(vs)) {
+                                // FIXME
+                                //    && MsgGetUserFeature(client->dn, FEATURE_RULES, MSGSRV_A_RULE, vs)) {
                                 ParseRules(client, vs);
                                 if (client->rules.head) {
                                     ccode = ProcessRules(client, &copy, &flags);
@@ -2099,36 +2101,11 @@ static BOOL
 ReadConfiguration(void)
 {
     unsigned long used;
-    MDBValueStruct *vs;
 
-    vs = MDBCreateValueStruct(Rules.handle.directory, MsgGetServerDN(NULL));
-    if (vs) {
-        if (MDBRead(MSGSRV_AGENT_RULESRV, MSGSRV_A_CONFIGURATION, vs)) {
-            used = atol(vs->Value[0]);
-            if (used & RULESRV_USER_RULES) {
-                Rules.flags |= RULES_FLAG_USER_RULES;
-            }
+    Rules.flags = RULES_FLAG_USER_RULES | RULES_FLAG_SYSTEM_RULES;
+    Rules.officialName[0] = '\0';
 
-            if (used & RULESRV_SYSTEM_RULES) {
-                Rules.flags |= RULES_FLAG_SYSTEM_RULES;
-            }
-
-            MDBFreeValues(vs);
-        }
-
-        if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_OFFICIAL_NAME, vs)) {
-            strcpy(Rules.officialName, vs->Value[0]);
-            MDBFreeValues(vs);
-        } else {
-            Rules.officialName[0] = '\0';
-        }
-
-        MDBDestroyValueStruct(vs);
-
-        return(TRUE);
-    }
-
-    return(FALSE);
+    return(TRUE);
 }
 
 #if defined(NETWARE) || defined(LIBC) || defined(WIN32)
@@ -2215,7 +2192,7 @@ QueueSocketInit(void)
             return(-1);
         }
 
-        if (NMAPRegister(MSGSRV_AGENT_ANTISPAM, Rules.nmap.queue, Rules.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
+        if (QueueRegister(MSGSRV_AGENT_ANTISPAM, Rules.nmap.queue, Rules.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
             XplConsolePrintf("bongorules: Could not register with bongonmap\r\n");
             ConnFree(Rules.nmap.conn);
             Rules.nmap.conn = NULL;
@@ -2307,7 +2284,7 @@ XplServiceMain(int argc, char *argv[])
     }
 
     StreamioInit();
-    NMAPInitialize(Rules.handle.directory);
+    NMAPInitialize();
 
     SetCurrentNameSpace(NWOS2_NAME_SPACE);
     SetTargetNameSpace(NWOS2_NAME_SPACE);

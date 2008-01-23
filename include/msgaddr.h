@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #ifndef MSGADDR_H
@@ -108,7 +109,7 @@
 
 EXPORT const unsigned char MsgAddressCharacters[];
 
-EXPORT BOOL MsgIsAddress(unsigned char *AddressLine, size_t AddressLineLength, unsigned char *Delimiters, unsigned char **LineOut);
+EXPORT BOOL MsgParseAddress(unsigned char *AddressLine, size_t AddressLineLength, unsigned char **local_part, unsigned char **domain);
 EXPORT int MsgIsComment(unsigned char *Base, unsigned char *Limit, unsigned char **Out);
 EXPORT BOOL MsgIsXText(unsigned char *In, unsigned char *Limit, unsigned char **Out);
 
@@ -126,7 +127,8 @@ IMPORT BOOL MsgIsXText(unsigned char *In, unsigned char *Limit, unsigned char **
 
 extern const unsigned char MsgAddressCharacters[];
 
-BOOL MsgIsAddress(unsigned char *AddressLine, size_t AddressLineLength, unsigned char *Delimiters, unsigned char **LineOut);
+BOOL MsgParseAddress(unsigned char *AddressLine, size_t AddressLineLength, unsigned char **local_part, unsigned char **domain);
+//BOOL MsgIsAddress(unsigned char *AddressLine, size_t AddressLineLength, unsigned char *Delimiters, unsigned char **LineOut);
 int MsgIsComment(unsigned char *Base, unsigned char *Limit, unsigned char **Out);
 BOOL MsgIsXText(unsigned char *In, unsigned char *Limit, unsigned char **Out);
 

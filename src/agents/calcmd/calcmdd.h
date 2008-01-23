@@ -23,8 +23,6 @@
 #define _CALCMDD_H
 
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -62,9 +60,5 @@ typedef struct _CalCmdAgentGlobals {
 } CalCmdAgentGlobals;
 
 extern CalCmdAgentGlobals CalCmdAgent;
-
-/* management.c */
-int CalCmdAgentManagementStart(void);
-void CalCmdAgentManagementShutdown(void);
 
 #endif /* _GENERIC_H */

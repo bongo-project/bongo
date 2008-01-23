@@ -1,19 +1,19 @@
 # -*- Makefile -*-
 pkgpyexecdir = $(pyexecdir)/libbongo
 
-pkgpyexec_PYTHON :=				\
+pkgpyexec_PYTHON =				\
 	src/libs/python/libbongo/__init__.py
 
-pkgpyexec_LTLIBRARIES :=			\
+pkgpyexec_LTLIBRARIES =			\
 	libs.la					\
 	bootstrap.la
 
-libs_la_SOURCES :=				\
+#	src/libs/python/libbongo/mdb.c		
+libs_la_SOURCES =				\
 	src/libs/python/libbongo/cal.c		\
 	src/libs/python/libbongo/calcmd.c	\
 	src/libs/python/libbongo/libs.c		\
 	src/libs/python/libbongo/libs.h		\
-	src/libs/python/libbongo/mdb.c		\
 	src/libs/python/libbongo/msgapi.c	\
 	src/libs/python/libbongo/msgapi-defs.c	\
 	src/libs/python/libbongo/msgapi-defs.h	\
@@ -22,40 +22,39 @@ libs_la_SOURCES :=				\
 	src/libs/python/libbongo/streamio.c	\
 	src/libs/python/libbongo/json.c		\
 	src/libs/python/libbongo/json.h		\
+	src/libs/python/libbongo/tests.c	\
 	src/libs/python/libbongo/bongoutil.c
 
-libs_la_CPPFLAGS := $(AM_CPPFLAGS)		\
+libs_la_CPPFLAGS = $(AM_CPPFLAGS)		\
 	$(PYTHON_CPPFLAGS)			\
 	$(bongo_CFLAGS)
 
-libs_la_LDFLAGS := -avoid-version -module
-libs_la_LIBADD :=				\
+libs_la_LDFLAGS = -avoid-version -module
+libs_la_LIBADD =				\
 	$(PYTHON_LIBS)				\
 	libbongocal.la				\
 	libbongocalcmd.la			\
 	libbongoutil.la				\
 	libbongo-json.la				\
-	libbongomdb.la				\
 	libbongomsgapi.la			\
 	libbongostreamio.la
 
-bootstrap_la_SOURCES :=				\
+#	src/libs/python/libbongo/mdb.c		
+bootstrap_la_SOURCES =				\
 	src/libs/python/libbongo/bootstrap.c	\
 	src/libs/python/libbongo/bootstrap.h	\
-	src/libs/python/libbongo/mdb.c		\
 	src/libs/python/libbongo/msgapi-defs.c	\
 	src/libs/python/libbongo/msgapi-defs.h	\
 	src/libs/python/libbongo/pybongo.c	\
 	src/libs/python/libbongo/pybongo.h
 
-bootstrap_la_CPPFLAGS := $(AM_CPPFLAGS)		\
+bootstrap_la_CPPFLAGS = $(AM_CPPFLAGS)		\
 	$(PYTHON_CPPFLAGS)			\
 	$(bongo_CFLAGS)
 
-bootstrap_la_LDFLAGS := -avoid-version -module
-bootstrap_la_LIBADD :=				\
+bootstrap_la_LDFLAGS = -avoid-version -module
+bootstrap_la_LIBADD =				\
 	$(PYTHON_LIBS)				\
-	libbongomdb.la				\
 	libbongomsgapi.la
 
 src/libs/python/libbongo/libs.so: libs.la

@@ -7,7 +7,6 @@ mannormal = man/bongo-admin.1 \
 	man/bongo-sendmail.1 \
 	man/bongo-standalone.1 \
 	man/bongo-storetool.1 \
-	man/mdbtool.1 \
 	man/bongoagents.8
 
 mansymlinked = man/bongoaddressbook.8 \

@@ -27,7 +27,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -482,18 +481,6 @@ CalCmdAgentServer(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
-    MDBValueStruct *config;
-
-    config = MDBCreateValueStruct(CalCmdAgent.agent.directoryHandle, 
-                                  MsgGetServerDN(NULL));
-    if (config) {
-        /* Read your agent's configuration here */
-    } else {
-        return FALSE;
-    }
-
-    MDBDestroyValueStruct(config);
-
     return TRUE;
 }
 
@@ -523,14 +510,14 @@ XplServiceMain(int argc, char *argv[])
     strcpy(CalCmdAgent.nmapAddress, "127.0.0.1");
 
     /* Initialize the Bongo libraries */
-    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
     ccode = BongoAgentInit(&CalCmdAgent.agent, AGENT_NAME, AGENT_DN, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;
     }
 
-    BongoCalInit(MsgGetDBFDir(NULL));
+    BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
 
     /* Set up socket for listening on an incoming queue */ 
     CalCmdAgent.queueNumber = Q_FIVE;

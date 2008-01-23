@@ -25,7 +25,6 @@
 #define BONGOAGENT_H
 
 #include <xpl.h>
-#include <mdb.h>
 #include <logger.h>
 #include <bongothreadpool.h>
 #include <connio.h>
@@ -57,10 +56,11 @@ typedef enum _BongoAgentStates {
 } BongoAgentState;
 
 #define BA_STARTUP_XPL     0
-#define BA_STARTUP_MDB     1
+#define BA_STARTUP_MSGLIB  1
 #define BA_STARTUP_CONNIO  2
 #define BA_STARTUP_NMAP    4
 #define BA_STARTUP_LOGGER  8
+#define BA_STARTUP_MSGAUTH 16
 
 typedef struct {
     int interval;
@@ -75,7 +75,6 @@ struct _BongoAgent {
 
     BongoAgentState state;
 
-    MDBHandle directoryHandle;
     LoggingHandle *loggingHandle;
     bongo_ssl_context *sslContext;
 
@@ -99,6 +98,7 @@ typedef struct _BongoConfigItem {
 } BongoConfigItem;
 
 BOOL ReadBongoConfiguration(BongoConfigItem *config, char *filename);
+BOOL ProcessBongoConfiguration(BongoConfigItem *config, const BongoJsonNode *node);
 BOOL SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node);
 void FreeBongoConfiguration(BongoConfigItem *config);
 
@@ -187,6 +187,20 @@ void BongoAgentShutdownFunc (BongoJsonRpcServer *server,
                             const char *method,
                             BongoArray *args, 
                             void *userData);
+
+struct _BongoGlobals {
+    char *hostname;
+    char *hostaddr;
+    char *postmaster;
+};
+
+extern struct _BongoGlobals BongoGlobals;
+static BongoConfigItem GlobalConfig[] = {
+    { BONGO_JSON_STRING, "o:hostname/s", &BongoGlobals.hostname },
+    { BONGO_JSON_STRING, "o:hostaddr/s", &BongoGlobals.hostaddr },
+    { BONGO_JSON_STRING, "o:postmaster/s", &BongoGlobals.postmaster },
+    { BONGO_JSON_NULL, NULL, NULL }
+};
 
 #define BONGO_ENVELOPE_NEXT(p) \
     { (p) = (p) + strlen(p) + 1;                 \

@@ -12,6 +12,7 @@ typedef struct {
 	BOOL interactive;
 	char *ip;
 	char *dns;
+    BongoJsonNode *domains;
 } BongoConfig;
 
 typedef struct {
@@ -24,16 +25,31 @@ typedef struct {
 
 /* function prototypes */
 
+// config.c
+void    GetInstallParameters(void);
+void    AddDomain(const char *str);
+void    SetStoreConfigurationModifications(StoreClient *client);
+void	LoadDefaultStoreConfiguration(void);
+void	InitializeDataArea(void);
 void	usage(void);
 void	RunAsBongoUser(void);
-BOOL	NMAPSimpleCommand(StoreClient *client, char *command);
-BOOL	SetAdminRights(StoreClient *client, char *document);
-BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len);
+void	RunAsRoot(void);
 void	InitialStoreConfiguration(void);
 void    GetInteractiveData(char *description, char **data, char *def);
 BOOL	GenerateCryptoData(void);
 void	CheckVersion(void);
+void	AddUser(const char *username);
 void	TzCache(void);
+
+void	UserAdd(const char *username);
+void	UserList(void);
+void	UserPassword(const char *username);
+
+// store.c
+BOOL	ImportSystemBackupFile(StoreClient *client, const char *path);
+BOOL	NMAPSimpleCommand(StoreClient *client, char *command);
+BOOL	SetAdminRights(StoreClient *client, char *document);
+BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len);
 
 /* compat with older gnutls */
 #ifndef GNUTLS_DIG_SHA1

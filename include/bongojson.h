@@ -220,7 +220,7 @@ BongoJsonResult BongoJsonJPathGetObject(BongoJsonNode *n, const char *path, Bong
 BongoJsonResult BongoJsonJPathGetArray(BongoJsonNode *n, const char *path, BongoArray **val);
 BongoJsonResult BongoJsonJPathGetBool(BongoJsonNode *n, const char *path, BOOL *val);
 BongoJsonResult BongoJsonJPathGetInt(BongoJsonNode *n, const char *path, int *val);
-BongoJsonResult BongoJsonJPathGetString(BongoJsonNode *n, const char *path, const char **val);
+BongoJsonResult BongoJsonJPathGetString(BongoJsonNode *n, const char *path, char **val);
 BongoJsonResult BongoJsonJPathGetDouble(BongoJsonNode *n, const char *path, double *val);
 BongoJsonResult BongoJsonJPathGetFloat(BongoJsonNode *n, const char *path, float *val);
 

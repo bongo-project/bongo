@@ -1,0 +1,30 @@
+### ODBC backend Options in bongo.conf
+
+# Any query can be overrided in the backend. 
+# Here are presented the query prototypes used by default. 
+# ? represents where the values are substituted.
+
+ODBC_SQL_Find_User = "SELECT count(username) FROM users WHERE username = ?;"
+ODBC_SQL_Verify_Password = "SELECT count(username) FROM users WHERE username = ? AND password = ?;"
+ODBC_SQL_Add_User = "INSERT INTO users (username) VALUES (?);"
+ODBC_SQL_Set_Password = "UPDATE users SET password = ? WHERE username= ?;"
+
+#the odbc connection string
+ODBC_connection=DRIVER=SQLite3;DATABASE=/usr/var/bongo/dbf/users.sqlite
+
+### other ODBC connection strings ####
+
+ODBC_connection=DRIVER={PostgreSQL Unicode};SERVER=localhost;PORT=5432;DATABASE=database_name;UID=db_username;PWD=db_user_password;
+
+
+#### Debug of ODBC connections #####
+
+a good way to debug odbc work, is to add this to the odbcinst.ini
+
+[ODBC]
+Trace = Yes
+TraceFile = /tmp/unixodbc.log
+ForceTrace = Yes
+
+
+this log file traces everything on the odbc connection and handles.

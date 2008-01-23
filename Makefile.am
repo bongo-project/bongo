@@ -10,41 +10,41 @@
 #     http://www.pcug.org.au/~millerp/rmch/recu-make-cons-harm.html
 #
 
-AUTOMAKE_OPTIONS := subdir-objects
+AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS = -I m4 -I macros
 
-NULL :=
+NULL =
 
-bin_PROGRAMS :=
-sbin_PROGRAMS :=
-noinst_PROGRAMS :=
-check_PROGRAMS :=
+bin_PROGRAMS =
+sbin_PROGRAMS =
+noinst_PROGRAMS =
+check_PROGRAMS =
 
-sbin_SCRIPTS :=
+sbin_SCRIPTS =
 
-dist_sbin_SCRIPTS :=
-dist_noinst_SCRIPTS :=
-dist_pkglibexec_SCRIPTS :=
+dist_sbin_SCRIPTS =
+dist_noinst_SCRIPTS =
+dist_pkglibexec_SCRIPTS =
 
-lib_LTLIBRARIES :=
+lib_LTLIBRARIES =
 
-nobase_dist_pkgdata_DATA :=
-dist_noinst_DATA := 
-noinst_DATA :=
+nobase_dist_pkgdata_DATA =
+dist_noinst_DATA = 
+noinst_DATA =
 
-noinst_HEADERS :=
+noinst_HEADERS =
 
-BUILT_SOURCES :=
-CLEANFILES :=
+BUILT_SOURCES =
+CLEANFILES =
 
-TESTS :=
+TESTS =
 
-AM_CPPFLAGS := $(ALL_CFLAGS)			  \
+AM_CPPFLAGS = $(ALL_CFLAGS)			  \
 	$(NO_POINTER_SIGN_WARNINGS)		  \
         $(PTHREAD_CFLAGS)			  \
 	-I$(top_srcdir)/include $(GNUTLS_CFLAGS)
 
-EXTRA_DIST :=					\
+EXTRA_DIST =					\
 	config.rpath				\
 	bongo.pc.in				\
 	HACKING					\
@@ -62,7 +62,7 @@ localedir = $(datadir)/locale
 DEFS = -DLOCALEDIR=\"$(localedir)\" @DEFS@
 
 pkgconfigdir = $(libdir)/pkgconfig
-pkgconfig_DATA := bongo.pc
+pkgconfig_DATA = bongo.pc
 
 pkglibexecdir = $(libexecdir)/$(PACKAGE)
 
@@ -86,7 +86,15 @@ docs:	doxygen/html
 clean:	clean-recursive
 	rm -rf ./doxygen/html ./doxygen/latex
 
-include_subdirs :=				\
+#	disabled agents
+#	src/agents/mailprox			
+#	src/agents/rules			
+
+#	src/libs/mdb				
+#	src/libs/mdb-file			
+#	src/libs/mdb-xldap			
+
+include_subdirs =				\
 	include					\
 	src/libs/xpl				\
 	src/libs/xpl/tests			\
@@ -96,18 +104,13 @@ include_subdirs :=				\
 	src/libs/connio				\
 	src/libs/connio/tests			\
 	src/libs/json				\
-	src/libs/mdb				\
-	src/libs/mdb-file			\
-	src/libs/mdb-xldap			\
 	src/libs/logger				\
 	src/libs/streamio			\
 	src/libs/streamio/codec			\
 	src/libs/cal				\
 	src/libs/cal/tests			\
 	src/libs/nmap				\
-	src/libs/management			\
 	src/libs/msgapi				\
-	src/libs/connmgr			\
 	src/libs/calcmd				\
 	src/libs/calcmd/tests			\
 	src/libs/python				\
@@ -117,30 +120,19 @@ include_subdirs :=				\
 	src/agents/avirus			\
 	src/agents/calcmd			\
 	src/agents/collector			\
-	src/agents/connmgr			\
-	src/agents/connmgr/cmmodules/user	\
-	src/agents/connmgr/cmmodules/rbl	\
-	src/agents/connmgr/cmmodules/rdns	\
-	src/agents/connmgr/cmmodules/lists	\
 	src/agents/generic			\
 	src/agents/imap				\
 	src/agents/imap/tests			\
 	src/agents/itip				\
-	src/agents/mailprox			\
-	src/agents/pluspack			\
 	src/agents/pop				\
 	src/agents/queue			\
-	src/agents/rules			\
 	src/agents/smtp				\
 	src/agents/store			\
 	src/agents/store/tests			\
-	src/apps/admin				\
 	src/apps/backup				\
 	src/apps/config				\
 	src/apps/manager			\
 	src/apps/sendmail			\
-	src/apps/setup				\
-	src/apps/mdbtool			\
 	src/apps/queuetool			\
 	src/apps/storetool			\
 	src/apps/storetool/demo			\
@@ -152,7 +144,7 @@ include_subdirs :=				\
 
 #	src/apps/migrate
 
-DIST_SUBDIRS := $(SUBDIRS) $(include_subdirs)
+DIST_SUBDIRS = $(SUBDIRS) $(include_subdirs)
 
 include include/Bongo.rules
 include src/libs/xpl/Bongo.rules
@@ -163,52 +155,40 @@ include src/libs/bongoutil/tests/Bongo.rules
 include src/libs/connio/Bongo.rules
 include src/libs/connio/tests/Bongo.rules
 include src/libs/json/Bongo.rules
-include src/libs/mdb/Bongo.rules
-include src/libs/mdb-file/Bongo.rules
-include src/libs/mdb-xldap/Bongo.rules
+#include src/libs/mdb/Bongo.rules
+#include src/libs/mdb-file/Bongo.rules
+#include src/libs/mdb-xldap/Bongo.rules
 include src/libs/logger/Bongo.rules
 include src/libs/streamio/Bongo.rules
 include src/libs/streamio/codec/Bongo.rules
 include src/libs/cal/Bongo.rules
 include src/libs/cal/tests/Bongo.rules
 include src/libs/nmap/Bongo.rules
-include src/libs/management/Bongo.rules
 include src/libs/msgapi/Bongo.rules
-include src/libs/connmgr/Bongo.rules
 include src/libs/calcmd/Bongo.rules
 include src/libs/calcmd/tests/Bongo.rules
 include src/libs/python/Bongo.rules
 include src/libs/python/libbongo/Bongo.rules
-include src/agents/addressbook/Bongo.rules
 include src/agents/alarm/Bongo.rules
 include src/agents/antispam/Bongo.rules
 include src/agents/avirus/Bongo.rules
 include src/agents/calcmd/Bongo.rules
 include src/agents/collector/Bongo.rules
-include src/agents/connmgr/Bongo.rules
-include src/agents/connmgr/cmmodules/user/Bongo.rules
-include src/agents/connmgr/cmmodules/rbl/Bongo.rules
-include src/agents/connmgr/cmmodules/rdns/Bongo.rules
-include src/agents/connmgr/cmmodules/lists/Bongo.rules
 include src/agents/generic/Bongo.rules
 include src/agents/imap/Bongo.rules
 include src/agents/imap/tests/Bongo.rules
 include src/agents/itip/Bongo.rules
-include src/agents/mailprox/Bongo.rules
-include src/agents/pluspack/Bongo.rules
+#include src/agents/mailprox/Bongo.rules
 include src/agents/pop/Bongo.rules
 include src/agents/queue/Bongo.rules
-include src/agents/rules/Bongo.rules
+#include src/agents/rules/Bongo.rules
 include src/agents/smtp/Bongo.rules
 include src/agents/store/Bongo.rules
 include src/agents/store/tests/Bongo.rules
-include src/apps/admin/Bongo.rules
 include src/apps/backup/Bongo.rules
 include src/apps/config/Bongo.rules
 include src/apps/manager/Bongo.rules
 include src/apps/sendmail/Bongo.rules
-include src/apps/setup/Bongo.rules
-include src/apps/mdbtool/Bongo.rules
 # include src/apps/migrate/Bongo.rules
 include src/apps/queuetool/Bongo.rules
 include src/apps/storetool/Bongo.rules

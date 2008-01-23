@@ -28,7 +28,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -124,9 +123,7 @@ IncomingParticipantCb(void *datap, MailHeaderName name, MailAddress *address)
         return;
     }
 
-#if 0
-    printf("got %s %s <%s>\n", type, address->displayName, address->address);
-#endif
+    Log(LOG_DEBUG, "IPCB got %s %s <%s>\n", type, address->displayName, address->address);
 }
 
 static void
@@ -246,18 +243,15 @@ StoreProcessIncomingMail(StoreClient *client,
     IncomingParseData data = {0, };
     DStoreDocInfo oldConversation;
     BOOL haveOldConversation;
-    BOOL isNewConversation;
     
     FILE *fh;
     
     fh = fopen(path, "rb");
     if (!fh) {
         return MSG4224CANTREADMBOX;
-    }
-    
-    fseek(fh, info->start + info->headerlen, SEEK_SET);    
+    }  
 
-    data.headerStartOffset = info->start + info->headerlen;
+    data.headerStartOffset = 0;
     data.handle = client->handle;
     data.info = info;
 

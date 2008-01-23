@@ -25,7 +25,6 @@
 #include "pybongo.h"
 #include <bongo-config.h>
 #include <xpl.h>
-#include <mdb.h>
 #include <connio.h>
 #include <memmgr.h>
 #include <msgapi.h>
@@ -50,12 +49,11 @@ extern EnumItemDef MsgApiEnums[];
 extern PyMethodDef StreamIOMethods[];
 extern PyMethodDef BongoJsonMethods[];
 extern PyMethodDef BongoUtilMethods[];
-
+extern PyMethodDef TestMethods[];
 
 PyMODINIT_FUNC
 initlibs()
 {
-    MDBHandle directoryHandle=NULL;
     char dbfdir[PATH_MAX];
 
     /* Initialize the various bongo libraries */
@@ -71,22 +69,15 @@ initlibs()
         return;
     }
 
-    directoryHandle = MsgInit();
-    if (!directoryHandle) {
-        PyErr_SetString(PyExc_ImportError,
-                        "bongo.libs error: MsgInit() failed");
-        return;
-    }
+    MsgInit();
 
-    MsgGetDBFDir(dbfdir);
-
-    if (!BongoCalInit(dbfdir)) {
+    if (!BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0))) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: BongoCalInit() failed");
         return;
     }
 
-    if (!NMAPInitialize(directoryHandle)) {
+    if (!NMAPInitialize()) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: NMAPInitialize() failed");
         return;
@@ -110,11 +101,11 @@ initlibs()
     /* Add the Bongo libs */
     AddLibrary(module, "cal", CalMethods, NULL);
     AddLibrary(module, "calcmd", CalCmdMethods, CalCmdEnums);
-    AddLibrary(module, "mdb", MdbMethods, MdbEnums);
-    AddLibrary(module, "msgapi", MsgApiMethods, MsgApiEnums);
+    AddLibrary(module, "msgapi", MsgApiMethods, NULL);
     AddLibrary(module, "streamio", StreamIOMethods, NULL);
     AddLibrary(module, "bongojson", BongoJsonMethods, NULL);
     AddLibrary(module, "bongoutil", BongoUtilMethods, NULL);
+    AddLibrary(module, "tests", TestMethods, NULL);
 
     BongoJsonPostInit(module);
     BongoCalPostInit(module);

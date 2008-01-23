@@ -146,7 +146,7 @@ Dragonfly.NumberEntry.prototype.handleKeyPress = function (evt)
     Event.stop (evt);
     var n = parseInt (String.fromCharCode (charcode), 10);
     if (isNaN (n)) {
-        //logDebug ('is NaN:', String.fromCharCode (evt.charCode));
+        //console.debug ('is NaN:', String.fromCharCode (evt.charCode));
         return;
     }
 
@@ -470,7 +470,7 @@ Dragonfly.DateRangeEntry.prototype.onStartTzidChange = function ()
     var timezone = this.startTzidEntry.getTimezone();
     this.endTzidEntry.setTimezone (timezone);
     this.endTzidEntry.setEnabled (timezone.tzid != '/bongo/floating');
-}
+};
 
 Dragonfly.DateRangeEntry.prototype.onEndTzidChange = function ()
 {

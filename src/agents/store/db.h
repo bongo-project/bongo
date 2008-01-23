@@ -26,6 +26,8 @@ typedef int InfoStmtFilter(DStoreDocInfo *info, void *userdata);
 DStoreHandle *DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms);
 void DStoreClose(DStoreHandle *handle);
 
+int DStoreCheckDBSchema(DStoreHandle *handle);
+
 BongoMemStack *DStoreGetMemStack(DStoreHandle *handle);
 void DStoreSetMemStack(DStoreHandle *handle, BongoMemStack *memstack);
 
@@ -98,6 +100,9 @@ int DStoreDeleteCollectionContents(DStoreHandle *handle, uint64_t guid);
 
 DStoreStmt *DStoreListColl(DStoreHandle *handle, uint64_t collection, int start, int end);
 
+DStoreStmt *DStoreListCollections(DStoreHandle *handle, char *root, int start, int end);
+
+
 DStoreStmt *DStoreListUnindexed(DStoreHandle *handle, int value, uint64_t collection);
 
 DStoreStmt *DStoreGuidList(DStoreHandle *handle, uint64_t *guids, int numGuids);
@@ -161,8 +166,8 @@ int DStoreSetProperty(DStoreHandle *handle,
 
 int DStoreSetPropertySimple(DStoreHandle *handle,
                             uint64_t guid, 
-                            char *name,
-                            char *value);
+                            const char *name,
+                            const char *value);
 
 /* Conversations table */
 DStoreStmt *DStoreListConversations(DStoreHandle *handle, 

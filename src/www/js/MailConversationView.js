@@ -40,7 +40,7 @@ Dragonfly.Mail.ConversationView.selectAlternative = function (part)
 {
     var favorite = null;
 
-    logDebug('checking alternatives');
+    console.debug('checking alternatives');
     for (var i = 0; i < part.children.length; i++) {
         var child = part.children[i];
         if (child.preview && (child.previewtype == 'text/plain' 
@@ -123,7 +123,7 @@ Dragonfly.Mail.ConversationView.formatPart = function (loc, msg, part)
         html.push ('</div>');
     }
     
-    //logDebug('returning ' + html);
+    //console.debug('returning ' + html);
     return html.join ('');
 };
 
@@ -212,7 +212,7 @@ Dragonfly.Mail.ConversationView.load = function (loc, jsob)
             continue;
         }
         
-        logDebug("List: " + msg.list);
+        console.debug("List: " + msg.list);
 
         if (msg.flags.draft) {
             new m.Composer (html, msg);
@@ -332,13 +332,13 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     
     var t = element.parentNode.title;
     var email = t.substring(t.indexOf('<') + 1, t.length-1).toLowerCase();
-    logDebug('Contact is ' + contactname + ' with email ' + email);
+    console.debug('Contact is ' + contactname + ' with email ' + email);
     
     var contact = d.AddressBook.Contacts.convert(contactname, email);
     
     if (!contact)
     {
-        logDebug('No contacts were found. Building a new one...');
+        console.debug('No contacts were found. Building a new one...');
         
         // Create a new contact.
         contact = Dragonfly.AddressBook.buildNewContact();
@@ -361,11 +361,11 @@ Dragonfly.Mail.ConversationView.handleClick = function (evt)
     }
     else
     {
-        logDebug('Using contact: ' + contact.bongoId);
+        console.debug('Using contact: ' + contact.bongoId);
     
         // Load the contact
         var bongoId = contact.bongoId;
-        logDebug('Contact ID: ' + bongoId);
+        console.debug('Contact ID: ' + bongoId);
         this.popup = new d.AddressBook.ContactPopup();
         
         if (!this.popup.canHideZone()) {

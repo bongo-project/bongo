@@ -1,0 +1,63 @@
+#!/bin/sh
+#
+#Startup script for the Bongo server
+#
+# chkconfig: 2345 22 01
+# description: This script starts your Bongo server
+# processname: bongo
+# pidfile: /var/spool/bongo/work/bongo-manager.pid
+
+[ -f @prefix@/sbin/bongo-manager ] || exit 0
+
+# Include bongoproject defaults if available
+if [ -f /etc/default/bongoinit.conf ] ; then
+        . /etc/default/bongoinit.conf
+fi
+
+set -e
+
+start() {
+        echo -n "Starting Bongo: "
+        @prefix@/sbin/bongo-manager &
+        if [ "1$RUN_STANDALONE" -eq "11" ]; then
+                sleep 3
+                @prefix@/sbin/bongo-standalone $RUN_STANDALONE_OPTS &
+        fi
+        echo "Bongo."
+}
+
+stop() {
+        echo -n "Stopping Bongo: "
+        if [ "1$RUN_STANDALONE" -eq "11" ]; then
+                pkill -f bongo-standalone || echo -n .
+        fi
+        @prefix@/sbin/bongo-manager -s
+        echo "Bongo."
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  restart|force-reload)
+        #
+        #       If the "reload" option is implemented, move the "force-reload"
+        #       option to the "reload" entry above. If not, "force-reload" is
+        #       just the same as "restart".
+        #
+        stop
+        start
+        echo "Bongo."
+        ;;
+  *)
+        N=/etc/init.d/$NAME
+        # echo "Usage: $N {start|stop|restart|reload|force-reload}" >&2
+        echo "Usage: $N {start|stop|restart|force-reload}" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

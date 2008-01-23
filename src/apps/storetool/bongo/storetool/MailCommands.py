@@ -38,12 +38,11 @@ class MailImportCommand(Command):
                 fd = open(file)
 
             mailstore = mailbox.PortableUnixMailbox(fd, email.message_from_file)
-	elif type == "maildir":
-	    mailstore = mailbox.Maildir(file, email.message_from_file)
+        elif type == "maildir":
+            mailstore = mailbox.Maildir(file, email.message_from_file)
 
         for msg in mailstore:
-            data = msg.as_string(True)
-            store.Write(collection, DocTypes.Mail, data)
+            store.Write(collection, DocTypes.Mail, msg.as_string(True))
 
         if fd:
             fd.close()
@@ -112,3 +111,53 @@ class MailExportCommand(Command):
                     print str(e)
         finally:
             store.Quit()
+
+class MailImapCommand(Command):
+    log = logging.getLogger("Bongo.StoreTool")
+
+    def __init__(self):
+        Command.__init__(self,"mail-importimap", aliases=["mii"],
+                        summary="Imports mail from an IMAP server",
+                        usage="%prog %cmd")
+
+        self.add_option("", "--imap_username", type="string", default="", help=_("IMAP server username"))
+        self.add_option("", "--imap_password", type="string", default="", help=_("IMAP server password"))
+        self.add_option("", "--imap_folder", type="string", default="INBOX", help=_("IMAP server folder to export from, defaults to INBOX"))
+        self.add_option("", "--imap_server", type="string", default="", help=_("IMAP server hostname"))
+        self.add_option("", "--imap_port", type="int", default=143, help=_("IMAP server port, defaults to 143"))
+        self.add_option("-f", "--folder", type="string", default="INBOX", help=_("Folder to import into, defaults to INBOX"))
+
+    def Run(self, options, args):
+        if (options.imap_username == "" or
+            options.imap_server == ""):
+            self.print_help()
+            self.exit()
+
+        store = StoreClient(options.user, options.store)
+        try:
+            self.ImportMail(store, options.folder, options.imap_username, options.imap_password, options.imap_folder, options.imap_server, options.imap_port)
+        finally:
+            store.Quit()
+
+    def ImportMail(self, store, folder, imap_username, imap_password, imap_folder, imap_server, imap_port):
+        import imaplib
+
+        collection = "/mail/" + folder
+        store.Create(collection, existingOk=True)
+
+        try:
+            M=imaplib.IMAP4(imap_server, imap_port)
+            M.login(imap_username, imap_password)
+            M.select(imap_folder)
+            
+            try:
+                typ, data = M.search(None, 'ALL')
+                for num in data[0].split():
+                    store.WriteImap(collection, DocTypes.Mail, M, num)
+
+            finally:
+                M.close()
+                M.logout()
+        finally:
+            return
+        

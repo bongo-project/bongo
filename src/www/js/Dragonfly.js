@@ -61,7 +61,7 @@ Dragonfly.setCurrentTzid = function (tzid)
             d.go (d.curLoc);
         }
     }
-}
+};
 
 Dragonfly.setLoc = function (loc)
 {
@@ -97,12 +97,12 @@ Dragonfly.checkForUrlChanges = function ()
         return;
     }
     if (d.isIE) {
-        logDebug ('adding history event listener...');
+        console.debug ('adding history event listener...');
         Event.observe ('history-iframe', 'load',
                        d.checkLocationChanged);
         d.locChangeId = true;
     } else if (!d.isWebkit || d.webkitVersion >= 420) {
-        logDebug ('Checking for url changes...');
+        console.debug ('Checking for url changes...');
         d.locChangeId = window.setInterval (d.checkLocationChanged, 250, null);
     }
 };
@@ -116,11 +116,11 @@ Dragonfly.stopCheckingForUrlChanges = function ()
     }
 
     if (d.isIE) {
-        logDebug ('removing history event listener...');
+        console.debug ('removing history event listener...');
         Event.stopObserving ('history-iframe', 'load',
                              d.checkLocationChanged);
     } else {
-        logDebug ('No longer checking for url changes.');
+        console.debug ('No longer checking for url changes.');
         window.clearInterval (d.locChangeId);
     }
     delete d.locChangeId;
@@ -143,7 +143,7 @@ Dragonfly.updateLocation = function (loc)
             location.hash = url;
             // add a .txt so ie doesn't think this is a malicious download url
             $('history-iframe').setAttribute ('src', 'history?' + url + '.txt');
-            logDebug ('history iframe src:', $('history-iframe').getAttribute ('src'));
+            console.debug ('history iframe src:', $('history-iframe').getAttribute ('src'));
         } else {
             location.hash = url;
         }
@@ -330,7 +330,7 @@ Dragonfly.go = function (path)
     }
 
     if (self.def) {
-        logDebug ('Trying to cancel def: ' + self.def.loc.getClientUrl ());
+        console.debug ('Trying to cancel def: ' + self.def.loc.getClientUrl ());
         self.def.cancel ();
     }
 
@@ -342,16 +342,16 @@ Dragonfly.go = function (path)
     }
     d.contentIFrameZone.disposeZone();
 
-    /*logDebug (startDate + ': Loading ', path, ':', serializeJSON (loc));
-    logDebug ('    from: ', d.currentView);
-    logDebug ('    location: ', window.location);
-    logDebug ('    hash: ', window.location.hash);
-    logDebug ('    loc: ', serializeJSON(loc));*/
+    /*console.debug (startDate + ': Loading ', path, ':', serializeJSON (loc));
+    console.debug ('    from: ', d.currentView);
+    console.debug ('    location: ', window.location);
+    console.debug ('    hash: ', window.location.hash);
+    console.debug ('    loc: ', serializeJSON(loc));*/
     
-    logDebug('curLoc: ', loc);
+    console.debug('curLoc: ', loc);
 
     if (!loc || !loc.valid) {
-        logError ('invalid path: ' + path);
+        console.error ('invalid path: ' + path);
         return emptyTab ();
     }
 
@@ -359,31 +359,31 @@ Dragonfly.go = function (path)
 
     var v = d.tabs[loc.tab];
     if (!v) {
-        logError ('no tab for ' + loc.tab);
+        console.error ('no tab for ' + loc.tab);
         return emptyTab ();
     }
 
     var h = v.handlers[loc.handler];
     if (!h) {
-        logError ('no handler for ' + loc.handler);
+        console.error ('no handler for ' + loc.handler);
         return emptyTab ();
     }
 
     prof.toggle ('request');
-    logDebug('checking if ' + loc.handler + ' contains function getData(loc)...');
+    console.debug('checking if ' + loc.handler + ' contains function getData(loc)...');
     if (h.getData) {
-        logDebug('Yup!');
+        console.debug('Yup!');
         self.def = h.getData (loc);
     } else {
-        logDebug('Nope! Checking if ' + loc.tab + ' contains function getData(loc)...');
+        console.debug('Nope! Checking if ' + loc.tab + ' contains function getData(loc)...');
         if (v.getData)
         {
-            logDebug('Yup!');
+            console.debug('Yup!');
             self.def = v.getData(loc);
         }
         else
         {
-            logDebug('Nope!');
+            console.debug('Nope!');
             self.def = d.requestJSON ('GET', loc);
         }
     }
@@ -412,7 +412,7 @@ Dragonfly.go = function (path)
                 // callLater (0.001, bind ('focus', $(elem)));
                 prof.toggle ('resizeScrolledView');
             } catch (e) {
-                logError ('Exception loading ' + path + ': ' + d.reprError (e));
+                console.error ('Exception loading ' + path + ': ' + d.reprError (e));
                 delete self.def;
                 return e;
             }
@@ -433,7 +433,7 @@ Dragonfly.go = function (path)
                 prof.dump (true, startDate, finishDate);
             }
             
-            logDebug ('Finished loading', path,
+            console.debug ('Finished loading', path,
                       '(' + (finishDate - startDate) / 1000 + 's; local:',
                       (finishDate - netFinish) / 1000 + 's =',
                       Math.round (100 * (finishDate - netFinish) / (finishDate - startDate)),
@@ -481,7 +481,7 @@ Dragonfly.checkLocationChanged = function ()
         }
         winloc = '#' + Element.getText (doc.body).replace (/\.txt$/, '');
         if (window.event) {
-            logDebug ('got winloc:', winloc);
+            console.debug ('got winloc:', winloc);
         }
     } else {
         winloc = window.location.toString ();
@@ -489,7 +489,7 @@ Dragonfly.checkLocationChanged = function ()
     var hashIdx = winloc.indexOf ('#');
 
     if (hashIdx != -1 && winloc.substr (hashIdx) != d.currentView) {
-        logWarning ('location has changed: ' + winloc.substr (hashIdx) + ' != ' + d.currentView);
+        console.warn ('location has changed: ' + winloc.substr (hashIdx) + ' != ' + d.currentView);
         d.go (winloc.substr(hashIdx));
     } else if (d.isIE) {
         // update the history's title
@@ -577,7 +577,7 @@ Dragonfly.handleHashClick = function (evt)
     if (!href || href.ignoreClick) {
         return;
     }
-    //logDebug ('got href: ' + href);
+    //console.debug ('got href: ' + href);
 
     var elem = Event.element (evt);
     if (elem.ignoreClick) {
@@ -607,13 +607,13 @@ Dragonfly.handleContextClick = function (evt)
 {
     var d = Dragonfly;
 
-    logDebug ('context: ' + (Event.element (evt) ? Event.element(evt).tagName : '???'));
+    console.debug ('context: ' + (Event.element (evt) ? Event.element(evt).tagName : '???'));
 
     var href = d.getEventHref (evt);
     if (!href) {
         return;
     }
-    //logDebug ('got href: ' + href);
+    //console.debug ('got href: ' + href);
     switch (d.getUrlType (href.getAttribute ('href'))) {
     case d.LocalUrl:
     case d.DragonflyUrl:
@@ -633,7 +633,7 @@ Dragonfly.getScrolledViewSize = function (elem, parentNode)
         var parentPos = Element.getMetrics (parentNode);
         elemPos = Element.getMetrics (elem);
 
-        //logDebug ('winSize:', repr(winSize), 'parentPos:', repr(parentPos), 'elemPos:', repr(elemPos));
+        //console.debug ('winSize:', repr(winSize), 'parentPos:', repr(parentPos), 'elemPos:', repr(elemPos));
         return Math.max (0, winSize.h - parentPos.y - parentPos.height + elemPos.height);
     } else {
         elemPos = elementPosition (elem);
@@ -656,7 +656,7 @@ Dragonfly.setScrolledViewSize = function (elem, parentNode)
     elem = $(elem);
     if (elem) {
         elem.style.height = d.getScrolledViewSize (elem, parentNode) + 'px';
-        logDebug ('scrolled height:', elem.style.height);
+        console.debug ('scrolled height:', elem.style.height);
     }
 };
 
@@ -689,7 +689,7 @@ Dragonfly.resizeSideBook = function ()
         }
 
         function maybeShrink() {
-            //logDebug ('height:', height, 'calHeight:', calHeight);
+            //console.debug ('height:', height, 'calHeight:', calHeight);
             if (height < calHeight / 3) {
                 switchMode();
             }
@@ -758,10 +758,10 @@ Dragonfly.handleResize = function (evt)
     var d = Dragonfly;
 
     if (d.resizeDef) {
-        //logDebug ('resize already defered...');
+        //console.debug ('resize already defered...');
         return;
     }
-    //logDebug ('defering resize...');
+    //console.debug ('defering resize...');
     d.resizeDef = window.setInterval (d._handleResize, 150);
 };
 
@@ -923,7 +923,7 @@ Dragonfly.translateElements = function ()
     Element.setHTML ('calendar-tab-label-alt', _('Calendar'));
     document.getElementById('calendar-tab-href').title = _('View your calendar.');
     Element.setHTML ('new-event-href', _('Create new event'));
-}
+};
 
 
 Dragonfly.start = function ()
@@ -951,7 +951,7 @@ Dragonfly.start = function ()
             d.setLoginMessage (_('Logged in: loading') + " " + d.escapeHTML (_(loc.tab)) + '...');
             return d.go (loc.user == d.userName ? loc : '#').addErrback (
                 function (err) {
-                    logDebug ('got error on first try:', d.reprError (err), '; trying summary...');
+                    console.debug ('got error on first try:', d.reprError (err), '; trying summary...');
                     return d.go ('#');
                 }).addCallbacks (
                     function (res) {
@@ -975,6 +975,8 @@ Dragonfly.start = function ()
                             $('admin-link').style.display = 'inline';
                         }
                         
+                        $('makeDumpLink-a').href = 'javascript:void(console.sendLog("user/' + d.userName + '/sendlog/all", true));';
+                        
                         removeElementClass (document.body, 'login');
                         
                         d._handleResize();
@@ -983,14 +985,14 @@ Dragonfly.start = function ()
                         return res;
                     },
                     function (err) {
-                        logError ('error loading', loc + ':', d.reprError (err));
+                        console.error ('error loading', loc + ':', d.reprError (err));
                         d.setLoginMessage ('Could not load ' + d.escapeHTML (loc.tab) + ' (check Logs)');
                         d.showLoginPane();
                         return err;
                     });
         },
         function (err) {
-            logError ('error loading contacts/calendars:', d.reprError (err));
+            console.error ('error loading contacts/calendars:', d.reprError (err));
             d.setLoginMessage ('Could not load contacts or calendars (check Logs)');
             d.showLoginPane();
             return err;
@@ -1036,14 +1038,14 @@ Dragonfly.hidePopups = function ()
     if (Dragonfly.lastPopup)
     {
         Dragonfly.lastPopup.dispose();
-        logDebug('Attempted popup dispose complete.');
+        console.debug('Attempted popup dispose complete.');
         Dragonfly.lastPopup = null;
     }
     else
     {
-        logDebug('Nothing to dispose');
+        console.debug('Nothing to dispose');
     }
-}
+};
 
 Dragonfly.main = function ()
 {
@@ -1053,15 +1055,15 @@ Dragonfly.main = function ()
     Dragonfly.observeLoginEvents ();
     Dragonfly.login();
     
-    logDebug('Login pane visiblity: ' + $('login-pane').style.display);
-    logDebug('Main UI visiblity: ' + $('content').style.display);
+    console.debug('Login pane visiblity: ' + $('login-pane').style.display);
+    console.debug('Main UI visiblity: ' + $('content').style.display);
     
     if ($('login-pane').style.display == "none")
     {
         // Only build and translate if we're already logged in.
         // Otherwise, only build and translate on login.
         
-        logDebug('Logged in already. Building and translating...');
+        console.debug('Logged in already. Building and translating...');
         Dragonfly.logoutMessage = _('You have logged out successfully.');    
         Dragonfly.buildSidebar();
         Dragonfly.translateElements();

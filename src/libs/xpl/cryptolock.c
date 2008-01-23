@@ -32,7 +32,6 @@
 void XPLCryptoLockInit(void);
 void XPLCryptoLockDestroy(void);
 
-static void CryptoLockCallback(int mode,int type,char *file,int line);
 #ifdef SOLARIS
 static unsigned long solaris_thread_id(void );
 #endif
@@ -232,13 +231,14 @@ solaris_thread_id(void)
 /* Linux and a few others */
 #if defined(LINUX) || defined(S390RH)
 
+#if 0
+// FIXME: This looks like a lock needed for OpenSSL - deprecated?
 static pthread_mutex_t *CryptoLocks = NULL;
 static long *CryptoLockCount = NULL;
 
 void 
 XPLCryptoLockInit(void)
 {
-/*
     int i;
 
     if (!CryptoLocks && !CryptoLockCount) {
@@ -266,14 +266,13 @@ XPLCryptoLockInit(void)
             free(CryptoLockCount);
             CryptoLockCount = NULL;
         }
-    } */
+    }
 
     return;
 }
 
 void XPLCryptoLockDestroy(void)
 {
-/*
     int i;
 
     if (CryptoLocks) {
@@ -290,30 +289,24 @@ void XPLCryptoLockDestroy(void)
         free(CryptoLockCount);
         CryptoLockCount = NULL;
     }
-*/
     return;
 }
 
 void 
 CryptoLockCallback(int mode, int type, char *file, int line)
 {
-/*
-#if 0
     fprintf(stderr,"thread=%4d mode=%s lock=%s %s:%d\n",CRYPTO_thread_id(), (mode&CRYPTO_LOCK)?"l":"u", (type&CRYPTO_READ)?"r":"w",file,line);
-#endif
-#if 0
     if (CRYPTO_LOCK_SSL_CERT == type) {
         fprintf(stderr,"(t,m,f,l) %ld %d %s %d\n", CRYPTO_thread_id(), mode,file,line);
     }
-#endif
     if (mode & CRYPTO_LOCK) {
         pthread_mutex_lock(&(CryptoLocks[type]));
         CryptoLockCount[type]++;
     } else {
         pthread_mutex_unlock(&(CryptoLocks[type]));
     }
-    */
 }
+#endif
 
 unsigned long 
 pthreads_thread_id(void)

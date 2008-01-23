@@ -39,15 +39,12 @@ struct {
 
     unsigned char access[NMAP_HASH_SIZE];
 
-    MDBHandle directoryHandle;
-
     bongo_ssl_context *context;
 
     BOOL debug;
 } NMAPLibrary = {
     REGISTRATION_LOADING, 
     { '\0' }, 
-    NULL, 
     NULL, 
 
     FALSE
@@ -129,7 +126,7 @@ FindEndOfLine(Connection *conn)
 
         if (count < CONN_TCP_MTU) {
             if (count == 0) {
-                CONN_TCP_RECEIVE(c, c->receive.buffer, CONN_TCP_MTU, count);
+                ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
                 if (count > 0) {
                     c->receive.read = c->receive.buffer;
                     c->receive.write = c->receive.buffer + count;
@@ -146,7 +143,7 @@ FindEndOfLine(Connection *conn)
             c->receive.read = c->receive.buffer;
             c->receive.write = c->receive.buffer + count;
             c->receive.remaining = CONN_TCP_MTU - count;
-            CONN_TCP_RECEIVE(c, c->receive.write, c->receive.remaining, count);
+            ConnTcpRead(c, c->receive.write, c->receive.remaining, &count);
             if (count > 0) {
                 c->receive.write += count;
                 c->receive.remaining -= count;
@@ -1309,7 +1306,7 @@ NMAPReadConfigFile(const unsigned char *file, unsigned char **output)
              goto nmapfinish;
         }
 		
-        *output = malloc(sizeof(unsigned char) * (count+1));
+        *output = MemMalloc(sizeof(unsigned char) * (count+1));
         written = NMAPReadCount(conn, *output, count);
         NMAPReadCrLf(conn);
         if (written != count) {
@@ -1608,13 +1605,13 @@ NMAPQuit(Connection *conn)
 {
     ConnWrite(conn, "QUIT\r\n", 6);
 
-    CONN_TCP_CLOSE(conn);
+    ConnTcpClose(conn);
 
     return;
 }
 
 __inline static RegistrationStates
-RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPort, unsigned long queueNumber, const char *queueAgentServerDn, const char *queueAgentCn, unsigned long queueAgentPort)
+RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPort, unsigned long queueNumber, const char *queueAgentCn, unsigned long queueAgentPort)
 {
     unsigned long j;
     Connection *conn = NULL;
@@ -1636,7 +1633,7 @@ RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPo
 
     if (NMAPLibrary.state == REGISTRATION_REGISTERING) {
         if (NMAPAuthenticate(conn, response, CONN_BUFSIZE)) {
-            if (ConnWriteF(conn, "QWAIT %lu %d %s%s%lu\r\n", queueNumber, ntohs(queueAgentPort), queueAgentServerDn, queueAgentCn, queueNumber) > 0) {
+            if (ConnWriteF(conn, "QWAIT %lu %d %s %lu\r\n", queueNumber, ntohs(queueAgentPort), queueAgentCn, queueNumber) > 0) {
                 if (ConnFlush(conn) > -1) {
                     if (NMAPReadAnswer(conn, response, CONN_BUFSIZE, TRUE) == 1000) {
                         NMAPLibrary.state = REGISTRATION_COMPLETED;
@@ -1656,14 +1653,8 @@ RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPo
 }
 
 RegistrationStates 
-NMAPRegister(const unsigned char *queueAgentCn, unsigned long queueNumber, unsigned short queueAgentPort)
+QueueRegister(const unsigned char *queueAgentCn, unsigned long queueNumber, unsigned short queueAgentPort)
 {
-    unsigned long i;
-    MDBValueStruct *queueServerDns = NULL;
-    MDBValueStruct *details = NULL;
-    unsigned short queueServerPort;
-    char *ptr;
-
     if (!queueAgentCn) {
         NMAPLibrary.state = REGISTRATION_FAILED;
         return(NMAPLibrary.state);
@@ -1671,59 +1662,10 @@ NMAPRegister(const unsigned char *queueAgentCn, unsigned long queueNumber, unsig
 
     NMAPLibrary.state = REGISTRATION_ALLOCATING;
 
-    queueServerDns = MDBCreateValueStruct(NMAPLibrary.directoryHandle, MsgGetServerDN(NULL));
-    if (queueServerDns == NULL) {
-        NMAPLibrary.state = REGISTRATION_FAILED;
-        return(NMAPLibrary.state);
-    }
-
-    MDBReadDN(queueAgentCn, MSGSRV_A_MONITORED_QUEUE, queueServerDns);
-    if ((queueServerDns->Used == 0) || (details = MDBCreateValueStruct(NMAPLibrary.directoryHandle, NULL)) == NULL) {
-        /* Failed to find a configuration object, use default connection information */
-        MDBDestroyValueStruct(queueServerDns);
-        XplConsolePrintf("Couldn't find configuration object for %s, attempting to connect to NMAP on 127.0.0.1\n", queueAgentCn);
-        RegisterWithQueueServer("127.0.0.1", BONGO_QUEUE_PORT, queueNumber, MsgGetServerDN(NULL), queueAgentCn, queueAgentPort);
-        if (NMAPLibrary.state != REGISTRATION_COMPLETED) {
-            NMAPLibrary.state = REGISTRATION_FAILED;
-        }
-        return(NMAPLibrary.state);
-    }
-
-    NMAPLibrary.state = REGISTRATION_CONNECTING;
-
-    for (i = 0; (i < queueServerDns->Used) && (NMAPLibrary.state == REGISTRATION_CONNECTING); i++) {
-        /* check for a non-standard port */
-        MDBRead(queueServerDns->Value[i], MSGSRV_A_PORT, details);
-        if (details->Used == 0) {
-            queueServerPort = BONGO_QUEUE_PORT;
-        } else {
-            queueServerPort = (unsigned short)atol(details->Value[0]);
-            MDBFreeValues(details);
-        }
-
-        /* find the ip address on the host server object */
-        if ((ptr = strrchr(queueServerDns->Value[i], '\\')) != NULL) {
-            *ptr = '\0';
-            MDBRead(queueServerDns->Value[i], MSGSRV_A_IP_ADDRESS, details);
-            *ptr = '\\';
-        } else {
-            MDBRead(queueServerDns->Value[i], MSGSRV_A_IP_ADDRESS, details);
-        }
-
-        if (details->Used > 0) {
-            RegisterWithQueueServer(details->Value[0], queueServerPort, queueNumber, MsgGetServerDN(NULL), queueAgentCn, queueAgentPort);
-            MDBFreeValues(details);
-        } else {
-            RegisterWithQueueServer("127.0.0.1", queueServerPort, queueNumber, MsgGetServerDN(NULL), queueAgentCn, queueAgentPort);
-        }
-    }
-
+    RegisterWithQueueServer("127.0.0.1", BONGO_QUEUE_PORT, queueNumber, queueAgentCn, queueAgentPort);
     if (NMAPLibrary.state != REGISTRATION_COMPLETED) {
         NMAPLibrary.state = REGISTRATION_FAILED;
     }
-
-    MDBDestroyValueStruct(queueServerDns);
-    MDBDestroyValueStruct(details);
     return(NMAPLibrary.state);
 }
 
@@ -1740,33 +1682,18 @@ NMAPSSLContextAlloc(void)
 {
     ConnSSLConfiguration config;
     
-    config.certificate.file = MsgGetTLSCertPath(NULL);
+    config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+    
     config.key.type = GNUTLS_X509_FMT_PEM;
-    config.key.file = MsgGetTLSKeyPath(NULL);
 
     return ConnSSLContextAlloc(&config);
 }
 
 BOOL 
-NMAPInitialize(MDBHandle directoryHandle)
+NMAPInitialize(void)
 {
-    BOOL result = FALSE;
-    MDBValueStruct *v;
-
-    if (directoryHandle) {
-        NMAPLibrary.directoryHandle = directoryHandle;
-
-        v = MDBCreateValueStruct(NMAPLibrary.directoryHandle, NULL);
-        if (v) {
-            MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, v);
-            if (v->Used) {
-                result = HashCredential(MsgGetServerDN(NULL), v->Value[0], NMAPLibrary.access);
-            }
-
-            MDBDestroyValueStruct(v);
-
-        }
-    }
-
-    return(result);
+    // single cred for both store and queue atm...
+    MsgGetServerCredential(NMAPLibrary.access);
+    return TRUE;
 }

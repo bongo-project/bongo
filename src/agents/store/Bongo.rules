@@ -1,13 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongostore
 
-bongostore_CPPFLAGS := $(AM_CPPFLAGS)		\
+bongostore_CPPFLAGS = $(AM_CPPFLAGS)		\
 	-I$(top_srcdir)/src/agents/store	\
 	-DCLUCENE_BONGO_API=$(CLUCENE_BONGO_API) \
 	$(SQLITE_CFLAGS)			\
 	$(CLUCENE_CXXFLAGS)
 
-bongostore_SOURCES :=					 \
+bongostore_SOURCES =					 \
 	src/agents/store/alarmdb.c			 \
 	src/agents/store/alarmdb.h			 \
 	src/agents/store/auth.c				 \
@@ -28,6 +28,7 @@ bongostore_SOURCES :=					 \
 	src/agents/store/lock.h				 \
 	src/agents/store/mail.c				 \
 	src/agents/store/mail.h				 \
+	src/agents/store/maildir.c			 \
 	src/agents/store/mail-parser.c			 \
 	src/agents/store/mail-parser.h			 \
 	src/agents/store/main.cpp			 \
@@ -53,9 +54,7 @@ bongostore_LDADD =					   \
 	libbongo-json.la				   \
 	libbongocal.la					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongostreamio.la				   \

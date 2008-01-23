@@ -57,7 +57,7 @@ OpenDatabase(char *db_filename, sqlite3 **db, int create_if_absent)
     FILE *db_file;
 
     /* check to see if database file already exists */
-    if (db_file = fopen(db_filename, "r")) {
+    if ((db_file = fopen(db_filename, "r"))) {
         if (fclose(db_file)) {
             if (BongoBackup.verbose) {
                 XplConsolePrintf(_("Couldn't close file (%s)\n"), db_filename);
@@ -396,7 +396,7 @@ SelectHistoricEvent(sqlite3 *db, char *guid, unsigned long date, int *event)
 }
 
 int
-InsertHistory(sqlite3 *db, char *guid, int event, unsigned long date)
+InsertHistory(sqlite3 *db, const char *guid, int event, unsigned long date)
 {
     int id = 0;
     char *qstr = "INSERT INTO history (history_id, guid, event, event_date) VALUES (NULL, '%s', %d, %d);";
@@ -498,7 +498,7 @@ GetConnection(char *user)
         /* (USER will create the account if it doesn't already exist) */
         sprintf(cmd, "VRFY %s ADDR\r\n", user);
     
-        if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == strlen(cmd)) {
+        if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == (int)strlen(cmd)) {
             while (1) {
                 code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE);
 
@@ -588,7 +588,6 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
     char buf[1024];
     char cmd[1024];
     int code;
-    int qc;
 
     int history_id = 0;
     int last_event = DOCSTATE_UNDEFINED;
@@ -613,7 +612,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
     /* get all properties for this document */
     sprintf((char *) cmd, "DPGET %s\r\n", document_guid);
 
-    if (NMAPSendCommand(nmap, cmd, strlen(cmd)) != strlen(cmd)) {
+    if (NMAPSendCommand(nmap, cmd, strlen(cmd)) != (int)strlen(cmd)) {
         if (BongoBackup.verbose) {
             XplConsolePrintf(_("NMAP connection error (DPGET)\n"));
         }
@@ -727,7 +726,7 @@ DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *d
     if (document_update) {
         sprintf(cmd, "DREAD %s\r\n", document_guid);
 
-        if (NMAPSendCommand(nmap, cmd, strlen(cmd)) != strlen(cmd)) {
+        if (NMAPSendCommand(nmap, cmd, strlen(cmd)) != (int)strlen(cmd)) {
             if (BongoBackup.verbose) {
                 XplConsolePrintf(_("NMAP connection error (DREAD)\n"));
             }
@@ -796,12 +795,11 @@ UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Con
     int code;
     char *document_guid;
 
-    char *tmp_db_name[256];
+    char tmp_db_name[256];
     sqlite3 *tmp_db;
     sqlite3_stmt *tmp_stmt_insert;
     sqlite3_stmt *tmp_stmt_select;
 
-    char *tmp_guid;
     sqlite3_stmt *stmt_all_docs;
 
     /* get list of user's documents */
@@ -817,7 +815,7 @@ UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Con
        during backup.  This should help keep the backup database optimal
        and so that it doesn't have to manage any unnecessary data.  */
 
-    sprintf(tmp_db_name, "/tmp/bongobackup-%d.db", BongoBackup.backup_date);
+    sprintf(tmp_db_name, "/tmp/bongobackup-%lu.db", BongoBackup.backup_date);
     sqlite3_open(tmp_db_name, &tmp_db);
     sqlite3_exec(tmp_db, "CREATE TABLE document (document_id INTEGER PRIMARY KEY AUTOINCREMENT, guid VARCHAR(47));", NULL, NULL, NULL);
     sqlite3_prepare(tmp_db, "INSERT INTO document (guid) VALUES (?);", -1, &tmp_stmt_insert, 0);
@@ -863,11 +861,11 @@ UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Con
     sqlite3_bind_int(stmt_all_docs, 2, BongoBackup.backup_date);
 
     while (sqlite3_step(stmt_all_docs) == SQLITE_ROW) {
-        tmp_guid = sqlite3_column_text(stmt_all_docs, 0);
+        const char *tmp_guid = sqlite3_column_text(stmt_all_docs, 0);
         sqlite3_bind_text(tmp_stmt_select, 1, tmp_guid, -1, SQLITE_STATIC);
 
         if (sqlite3_step(tmp_stmt_select) == SQLITE_OK) {
-            InsertHistory(db, DOCSTATE_DELETED, tmp_guid, BongoBackup.backup_date);
+            InsertHistory(db, tmp_guid, DOCSTATE_DELETED, BongoBackup.backup_date);
         }
 
         sqlite3_reset(stmt_all_docs);
@@ -888,7 +886,6 @@ BackupDocument(char* user_name, char* document_guid)
 {
     int result = 1;
 
-    FILE *db_file;
     FILE *data_file;
     sqlite3 *db;
     Connection *nmap;
@@ -897,11 +894,11 @@ BackupDocument(char* user_name, char* document_guid)
 
     sprintf(data_filename, "%s/%s%s", BongoBackup.store_path, user_name, DATA_EXT);
 
-    if (data_file = fopen(data_filename, "a")) {
+    if ((data_file = fopen(data_filename, "a"))) {
         sprintf(db_filename, "%s/%s%s", BongoBackup.store_path, user_name, DB_EXT);
 
         if (OpenDatabase(db_filename, &db, 1)) {
-            if (nmap = GetConnection(user_name)) {
+            if ((nmap = GetConnection(user_name))) {
                 if (DocumentBackup(user_name, document_guid, data_file, db, nmap) < 0) {
                     result = 0;
                 }
@@ -936,7 +933,6 @@ BackupUser(char* user_name)
 {
     int result = 1;
 
-    FILE *db_file;
     FILE *data_file;
     sqlite3 *db;
     Connection *nmap1;
@@ -945,14 +941,14 @@ BackupUser(char* user_name)
     char data_filename[1024];
 
     /* Try getting a connection first (just in case the user doesn't exist) */
-    if (nmap1 = GetConnection(user_name)) {
+    if ((nmap1 = GetConnection(user_name))) {
         sprintf(data_filename, "%s/%s%s", BongoBackup.store_path, user_name, DATA_EXT);
 
-        if (data_file = fopen(data_filename, "a")) {
+        if ((data_file = fopen(data_filename, "a"))) {
             sprintf(db_filename, "%s/%s%s", BongoBackup.store_path, user_name, DB_EXT);
 
             if (OpenDatabase(db_filename, &db, 1)) {
-                if (nmap2 = GetConnection(user_name)) {
+                if ((nmap2 = GetConnection(user_name))) {
                     result = UserBackup(user_name, data_file, db, nmap1, nmap2);
                     ReleaseConnection(nmap2);
                 } else {
@@ -1003,14 +999,11 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
     int document_position;
 
     sqlite3_stmt *stmt;
-    char *prop_name;
-    char *prop_val;
-    int prop_length;
 
     document_resource[0] = '\0';
     document_type = 0;
     document_length = 0;
-    qc = SelectDocumentInfo(db, document_guid, BongoBackup.backup_date, &document_resource, &document_type, &document_length);
+    qc = SelectDocumentInfo(db, document_guid, BongoBackup.backup_date, document_resource, &document_type, &document_length);
 
     if (qc > 0) {
         document_position = 0;
@@ -1021,7 +1014,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                 /* resoure is non-folder */
                 sprintf(cmd, "DSTOR %s %d %d G%s\r\n", document_resource, document_type, document_length, document_guid);
     
-                if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == strlen(cmd)) {
+                if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == (int)strlen(cmd)) {
                     while ((code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE)) != 1000) {
                         if (code == 2002) {
                             if (!fseek(data_file, document_position, SEEK_SET)) {
@@ -1058,7 +1051,7 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
                 /* resource is a folder */
                 sprintf(cmd, "DCREA %s %d %s\r\n", document_resource, document_type, document_guid);
 
-                if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == strlen(cmd)) {
+                if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == (int)strlen(cmd)) {
                     if ((code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE)) != 1000) {
                         if (BongoBackup.verbose) {
                             XplConsolePrintf(_("Unrecognized NMAP response (DCREA): %s\n"), buf);
@@ -1083,16 +1076,16 @@ DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *
             sqlite3_bind_text(stmt, 3, document_guid, -1, SQLITE_STATIC);
 
             while ((qc = sqlite3_step(stmt)) == SQLITE_ROW) {
-                prop_name = sqlite3_column_text(stmt, 1);
-                prop_val = sqlite3_column_text(stmt, 2);
-                prop_length = strlen(prop_val);
+                const char *prop_name = sqlite3_column_text(stmt, 1);
+                const char *prop_val = sqlite3_column_text(stmt, 2);
+                int prop_length = strlen(prop_val);
 
                 if (strcmp(prop_name, "nmap.resource") && strcmp(prop_name, "nmap.type") && 
                     strcmp(prop_name, "nmap.length") && strcmp(prop_name, "nmap.guid")) {
 
                     sprintf(cmd, "DPSET %s %d\r\n", prop_name, prop_length);
     
-                    if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == strlen(cmd)) {
+                    if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == (int)strlen(cmd)) {
                         while ((code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE)) != 1000) {
                             if (code == 2002) {
                                 if (ConnWrite(nmap, prop_val, prop_length) != prop_length) {
@@ -1210,7 +1203,7 @@ UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap)
         /* DPGET for named properties not currently implemented in NMAP */
         sprintf(cmd, "DPGET %s nmap.modified\r\n", document_guid);
 
-        if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == strlen(cmd)) {
+        if (NMAPSendCommand(nmap, cmd, strlen(cmd)) == (int)strlen(cmd)) {
             if ((code = NMAPReadAnswer(nmap, buf, sizeof(buf), TRUE)) == 2001) {
                 if ((property_name = strchr(buf, ' ')) == '\0') {
                     if (BongoBackup.verbose) {
@@ -1285,8 +1278,8 @@ RestoreDocument(char* user_name, char* document_guid)
     if (OpenDatabase(db_filename, &db, 0)) {
         sprintf(data_filename, "%s/%s%s", BongoBackup.store_path, user_name, DATA_EXT);
         
-        if (data_file = fopen(data_filename, "r")) {
-            if (nmap = GetConnection(user_name)) {
+        if ((data_file = fopen(data_filename, "r"))) {
+            if ((nmap = GetConnection(user_name))) {
                 if (DocumentRestore(user_name, document_guid, data_file, db, nmap) < 0) {
                     result = 0;
                 }
@@ -1331,8 +1324,8 @@ RestoreUser(char* user_name)
     if (OpenDatabase(db_filename, &db, 0)) {
         sprintf(data_filename, "%s/%s%s", BongoBackup.store_path, user_name, DATA_EXT);
         
-        if (data_file = fopen(data_filename, "r")) {
-            if (nmap = GetConnection(user_name)) {
+        if ((data_file = fopen(data_filename, "r"))) {
+            if ((nmap = GetConnection(user_name))) {
                 result = UserRestore(user_name, data_file, db, nmap);
                 ReleaseConnection(nmap);
             } else {
@@ -1376,8 +1369,6 @@ RestoreUser(char* user_name)
 int
 SearchStore(char **strings, char **users, char **types, unsigned long before, unsigned long after, char **guids)
 {
-    int rval = 1;
-
     if (!users) {
         /* full user search */
     } else {
@@ -1415,14 +1406,10 @@ main(int argc, char *argv[])
     int j;
     Connection *nmap;
     char buf[1024];
-    char cmd[1024];
     int code;
 
     int no_err = 1;
     int command = 0;
-
-    int count_docs = 0;
-    int temp_count = 0;
 
     int next_arg = 0;
     char *arg_ptr = NULL;
@@ -1553,7 +1540,7 @@ main(int argc, char *argv[])
         XplConsolePrintf(_("Backing up data\n"));
 
         if (ConnStartup((300), FALSE)) {
-            if (nmap = GetConnection(NULL)) {
+            if ((nmap = GetConnection(NULL))) {
                 if (next_backup_arg < 1) {
                     /* full backup */
                     NMAPSendCommand(nmap, "ULIST\r\n", 7);
@@ -1610,7 +1597,7 @@ main(int argc, char *argv[])
         if (ConnStartup((300), FALSE)) {
             if (next_backup_arg < 1) {
                 /* full restore */
-                if (store_dir = opendir(BongoBackup.store_path)) {
+                if ((store_dir = opendir(BongoBackup.store_path))) {
                     while (no_err && (d_ent = readdir(store_dir))) {
                         if ((d_ptr = strchr(d_ent->d_name, '.')) != '\0') {
                             *d_ptr++ = '\0';

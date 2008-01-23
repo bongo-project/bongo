@@ -35,8 +35,9 @@ class ServerHandler(HawkeyeHandler):
         self.SetVariable("breadcrumb", "Agents &#187 Enable/Disable Agents")
         self.SetVariable("title", "Enable/Disable Agents")
         self.SetVariable("agntab", "selecteditem")
+        self.SetVariable("dremove", None)
 
-        return self.SendTemplate(req, rp, "index.tpl")
+        return self.SendTemplate(req, rp, "index.tpl", title="Enable/Disable Agents")
 
     def index_POST(self, req, rp):
         global doneop

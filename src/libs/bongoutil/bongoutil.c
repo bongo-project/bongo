@@ -800,9 +800,8 @@ EncodeBase64(const unsigned char *UnencodedString)
 }
 
 BOOL 
-HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char *Hash)
+HashCredential(unsigned char *Credential, unsigned char *Hash)
 {
-    unsigned char *delim;
     unsigned char *srcPtr;
     unsigned char *dstPtr;
     unsigned char *dstEnd;
@@ -811,7 +810,7 @@ HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char
     unsigned long len;
     xpl_hash_context ctx;
 
-    if (Credential && DN && (DN[0] == '\\') && ((delim = strchr(DN + 1, '\\')) != NULL)) {
+    if (Credential) {
         len = strlen(Credential);
         if (len >= NMAP_CRED_STORE_SIZE) {
             srcPtr = Credential;
@@ -820,7 +819,6 @@ HashCredential(const unsigned char *DN, unsigned char *Credential, unsigned char
             
             XplHashNew(&ctx, XPLHASH_MD5);
             XplHashWrite(&ctx, srcPtr, NMAP_CRED_CHUNK_SIZE);
-            XplHashWrite(&ctx, DN, delim - DN);
             XplHashFinalBytes(&ctx, digest, XPLHASH_MD5BYTES_LENGTH);
 
             srcPtr += NMAP_CRED_CHUNK_SIZE;

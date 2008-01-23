@@ -27,8 +27,6 @@
 #include <xpl.h>
 #include <memmgr.h>
 #include <bongoutil.h>
-#include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -44,12 +42,17 @@ static int CommandAuth(void *param);
 static int CommandPass(void *param);
 static int CommandQuit(void *param);
 static int CommandHelp(void *param);
+static int CommandAddressResolve(void *param);
+static int CommandDomainLocation(void *param);
+int aliasFindFunc(const void *str, const void *node);
 
 static ProtocolCommand authCommands[] = {
     { NMAP_AUTH_COMMAND, NMAP_AUTH_HELP, sizeof(NMAP_AUTH_COMMAND) - 1, CommandAuth, NULL, NULL },
     { NMAP_HELP_COMMAND, NMAP_HELP_HELP, sizeof(NMAP_HELP_COMMAND) - 1, CommandHelp, NULL, NULL },
     { NMAP_PASS_COMMAND, NMAP_PASS_HELP, sizeof(NMAP_PASS_COMMAND) - 1, CommandPass, NULL, NULL },
     { NMAP_QUIT_COMMAND, NMAP_QUIT_HELP, sizeof(NMAP_QUIT_COMMAND) - 1, CommandQuit, NULL, NULL },
+    { NMAP_ADDRESS_RESOLVE_COMMAND, NMAP_ADDRESS_RESOLVE_HELP, sizeof(NMAP_ADDRESS_RESOLVE_COMMAND) -1, CommandAddressResolve, NULL, NULL },
+    { NMAP_DOMAIN_LOCATION_COMMAND, NMAP_DOMAIN_LOCATION_HELP, sizeof(NMAP_DOMAIN_LOCATION_COMMAND) -1, CommandDomainLocation, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
@@ -95,8 +98,175 @@ static ProtocolCommand commands[] = {
     { NMAP_QUIT_COMMAND, NMAP_QUIT_HELP, sizeof(NMAP_QUIT_COMMAND) - 1, CommandQuit, NULL, NULL },
     { NMAP_QWAIT_COMMAND, NMAP_QWAIT_HELP, sizeof(NMAP_QWAIT_COMMAND) - 1, CommandQwait, NULL, NULL }, 
     { NMAP_QFLUSH_COMMAND, NMAP_QFLUSH_HELP, sizeof(NMAP_QFLUSH_COMMAND) -1, CommandQflush, NULL, NULL },
+    { NMAP_ADDRESS_RESOLVE_COMMAND, NMAP_ADDRESS_RESOLVE_HELP, sizeof(NMAP_ADDRESS_RESOLVE_COMMAND) -1, CommandAddressResolve, NULL, NULL },
+    { NMAP_DOMAIN_LOCATION_COMMAND, NMAP_DOMAIN_LOCATION_HELP, sizeof(NMAP_DOMAIN_LOCATION_COMMAND) -1, CommandDomainLocation, NULL, NULL },
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
+
+int aliasFindFunc(const void *str, const void *node) {
+    AliasStruct *n = (AliasStruct *)(node);
+    return strcasecmp((char *)str, n->original);
+}
+
+int hostedFindFunc(const void *str1, const void *str2) {
+	int i = strcasecmp((char *)str1, *(char **)str2);
+	return i;
+}
+
+/* TODO: error handling on MsgParseAddress() */
+/* mapping types
+ *      0: username == local
+ *      1: username == local@domain
+ *      2: username == domain
+ *      3: username == auth subsystem
+*/
+BOOL aliasing(char *addr, int *cnt, unsigned char *buffer) {
+    unsigned char *local = NULL;
+    unsigned char *domain = NULL;
+    int i=-1;
+    BOOL result=FALSE;
+
+    if (addr[0] == '\0') {
+        sprintf(buffer, MSG4001NO_USER, "");
+        return TRUE;
+    }
+
+    /* very rudimentary way to prevent loops */
+    if (*cnt > 5) {
+        strcpy(buffer, MSG4000LOOP);
+        return TRUE;
+    }
+
+    (*cnt)++;
+
+    /* first parse out the address so that i can loop over the domains */
+    MsgParseAddress(addr, strlen(addr), &local, &domain);
+
+    if (local && !domain) {
+        /* if i get here, then i don't have a domain.  assume this is the username.  the only possible
+         * choices here are type 0 and type 3 */
+        if (MsgAuthFindUser(local) == 0) {
+            sprintf(buffer, MSG1000LOCAL, local);
+            result = TRUE;
+            goto ExitAliasing;
+        } else {
+            /* the user was not found.  it must be an invalid user */
+            sprintf(buffer, MSG4001NO_USER, local);
+            result = TRUE;
+            goto ExitAliasing;
+        }
+    }
+
+    /* if i get here, i've got a domain name that i can look up in the alias system */
+    i = BongoArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
+    if (i > -1) {
+        char new_addr[1000]; /* FIXME: seems a bit large */
+        AliasStruct a;
+
+        new_addr[0] = '\0';
+        a = BongoArrayIndex(Conf.aliasList, AliasStruct, i);
+
+        /* user aliases should take precedence over domain aliases.  check for one of those first */
+        if (a.aliases && a.aliases->len && ((i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc)) > -1)) {
+            AliasStruct b;
+            b = BongoArrayIndex(a.aliases, AliasStruct, i);
+            result = aliasing(b.to, cnt, buffer);
+        } else if (a.to && a.to[0] != '\0') {
+            /* there are no user aliasess is there a domain alias? */
+            snprintf(new_addr, 999, "%s@%s", local, a.to);
+            result = aliasing(new_addr, cnt, buffer);
+        }
+
+        /* we haven't already handled the address.  it must be a local address */
+        if (result == FALSE) {
+            /* based off the mapping_type of the current domain (a), i need to resolve username now */
+            switch (a.mapping_type) {
+            case 0:
+                if (MsgAuthFindUser(local) == 0) {
+                    sprintf(buffer, MSG1000LOCAL, local);
+                    result = TRUE;
+                }
+                break;
+            case 1:
+                if (MsgAuthFindUser(addr) == 0) {
+                    sprintf(buffer, MSG1000LOCAL, addr);
+                    result = TRUE;
+                }
+                break;
+            case 2:
+                if (MsgAuthFindUser(domain) == 0) {
+                    sprintf(buffer, MSG1000LOCAL, domain);
+                    result = TRUE;
+                }
+                break;
+            case 3:
+                /* unhandled for now */
+                strcpy(buffer, MSG4000UNKNOWN_TYPE);
+                result = TRUE;
+                break;
+            default:
+                /* unhandled forever */
+                strcpy(buffer, MSG4000UNKNOWN_TYPE);
+                result = TRUE;
+                break;
+            }
+        }
+
+        /* if we still haven't resolved the address, it is an unknown user */
+        if (result == FALSE) {
+            sprintf(buffer, MSG4001NO_USER, addr);
+            result = TRUE;
+        }
+    } else {
+        /* the user must be remote */
+        sprintf(buffer, MSG1002REMOTE, addr);
+        result = TRUE;
+        goto ExitAliasing;
+    }
+
+    ExitAliasing:
+        if (local) {
+            MemFree(local);
+        }
+
+        if (domain) {
+            MemFree(domain);
+        }
+
+        return result;
+}
+
+int CommandAddressResolve(void *param) {
+    BOOL handled=FALSE;
+    int cnt=0;
+    unsigned char buffer[1024]; /* FIXME: is this too big? */
+    QueueClient *client = (QueueClient *)param;
+
+    handled = aliasing(client->buffer + 16, &cnt, &buffer);
+    if (!handled) {
+        ConnWriteF(client->conn, MSG4001NO_USER"\r\n", client->buffer + 16);
+    } else {
+        ConnWriteF(client->conn, "%s\r\n", buffer);
+    }
+    return 0;
+}
+
+int CommandDomainLocation(void *param) {
+	QueueClient *client = (QueueClient *)param;
+
+	/* first find the domain in the request */
+	unsigned char *domain = client->buffer + 16;
+
+	/* now search for it */
+	int idx = BongoArrayFindSorted(Conf.hostedDomains, domain, (ArrayCompareFunc)hostedFindFunc);
+	if (idx > -1) {
+		ConnWriteF(client->conn, MSG1000LOCAL"\r\n", domain);
+	} else {
+		/* TODO: add the relay domain stuff */
+		ConnWriteF(client->conn, MSG1002REMOTE"\r\n", domain);
+	}
+	return 0;
+}
 
 int 
 CommandAuth(void *param)
@@ -136,9 +306,8 @@ CommandPass(void *param)
 {
     unsigned char *ptr;
     unsigned char *pass;
-    BOOL result;
+    int result;
     struct sockaddr_in nmap;
-    MDBValueStruct *vs;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 4;
@@ -155,20 +324,9 @@ CommandPass(void *param)
             ptr += 5;
             *pass++ = '\0';
 
-            vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-            if (vs) {
-                result = MsgFindObject(ptr, client->line, NULL, &nmap, vs);
-            } else {
-                return(ConnWrite(client->conn, MSG5001NOMEMORY, sizeof(MSG5001NOMEMORY) - 1));
-            }
+            result = MsgAuthVerifyPassword(ptr, pass);
 
-            if (result) {
-                result = MDBVerifyPassword(client->line, pass, vs);
-            }
-
-            MDBDestroyValueStruct(vs);
-
-            if (result && (nmap.sin_addr.s_addr == MsgGetHostIPAddress())) {
+            if ((result==0) && (nmap.sin_addr.s_addr == MsgGetHostIPAddress())) {
                 return(ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1));
             } else {
                 return(ConnWrite(client->conn, MSG4120USERLOCKED, sizeof(MSG4120USERLOCKED) - 1));
@@ -265,18 +423,15 @@ QueueClientFree(void *clientp)
 static BOOL 
 CheckTrustedHost(QueueClient *client)
 {
-    int i;
+    int i = 0;
     
-    XplRWReadLockAcquire(&Conf.lock);
-    for (i = 0; i < Conf.trustedHosts.count; i++) {
-        if (client->conn->socketAddress.sin_addr.s_addr == Conf.trustedHosts.hosts[i]) {
-            XplRWReadLockRelease(&Conf.lock);
-            return TRUE;
-        }
+    if (Conf.trustedHosts) {
+        /* TODO: this can be optimized a little bit */
+        XplRWReadLockAcquire(&Conf.lock);
+        i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)hostedFindFunc);
+        XplRWReadLockRelease(&Conf.lock);
     }
-    XplRWReadLockRelease(&Conf.lock);
-
-    return FALSE;
+    return (i > -1);
 }
 
 int
@@ -308,7 +463,7 @@ HandleCommand(QueueClient *client)
                     ccode = ConnWrite(client->conn, MSG3240NOAUTH, sizeof(MSG3240NOAUTH) - 1);
                 }
                 
-                Log(LOG_INFO, "Handled command from %s", LOGIP(client->conn->socketAddress));
+                Log(LOG_DEBUG, "Handled command from %s", LOGIP(client->conn->socketAddress));
             }
         } else if (ccode == -1) {
             break;
@@ -332,10 +487,10 @@ ProcessClient(void *clientp, Connection *conn)
     client->authorized = CheckTrustedHost(client);
 
     if (!client->authorized) {
-        sprintf(client->authChallenge, "%x%s%x", (unsigned int)XplGetThreadID(), Conf.hostname, (unsigned int)time(NULL));
+        sprintf(client->authChallenge, "%x%s%x", (unsigned int)XplGetThreadID(), BongoGlobals.hostname, (unsigned int)time(NULL));
         ccode = ConnWriteF(client->conn, MSG4242AUTHREQUIRED, client->authChallenge);
     } else {
-        ccode = ConnWriteF(client->conn, "1000 %s %s\r\n", Conf.hostname, MSG1000READY);
+        ccode = ConnWriteF(client->conn, "1000 %s %s\r\n", BongoGlobals.hostname, MSG1000READY);
     }
     
     if (ccode == -1) {
@@ -347,23 +502,6 @@ ProcessClient(void *clientp, Connection *conn)
     }
 
     return HandleCommand(client);
-}
-
-static BOOL
-InternalSetServerState(const unsigned char *state)
-{
-    MDBValueStruct *vs;
-
-    vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-    if (vs) {
-        MDBAddValue(state, vs);
-        MDBWrite(MsgGetServerDN(NULL), MSGSRV_A_SERVER_STATUS, vs);
-        MDBDestroyValueStruct(vs);
-
-        return(TRUE);
-    }
-
-    return(FALSE);
 }
 
 static void 
@@ -382,36 +520,27 @@ QueueServer(void *ignored)
                                   ProcessClient,
                                   &Agent.clientMemPool);
 
-    InternalSetServerState("Shutting down");
-
     /* Shutting down */
     if (Agent.clientListener) {
         ConnClose(Agent.clientListener, 1);
         Agent.clientListener = NULL;
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Closing queue database\r\n");
-#endif
+    Log(LOG_DEBUG, "Closing queue database.");
 
     QueueShutdown();
 
     XplRWLockDestroy(&Conf.lock);
 
-#if VERBOSE
-    /* Shutting down */
-    XplConsolePrintf(AGENT_NAME ": Shutting down.\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutting down.");
 
     BongoThreadPoolShutdown(Agent.clientThreadPool);
 
-    InternalSetServerState("Shutdown");
+    MsgClearRecoveryFlag("queue");
 
     BongoAgentShutdown(&Agent.agent);
 
-#if VERBOSE
-    XplConsolePrintf(AGENT_NAME ": Shutdown complete\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutdown complete");
 }
 
 
@@ -431,18 +560,18 @@ ServerSocketInit(int port)
         conn->socket = ConnServerSocket(conn, 2048);
 
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            XplConsolePrintf("bongoqueue: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
             ConnFree(conn);
             return NULL;
         }
 
         if (conn->socket == -1) {
-            XplConsolePrintf("bongoqueue: Could not bind to port %d\n", port);
+            Log(LOG_ERROR, "Could not bind to port %d.", port);
             ConnFree(conn);
             return NULL;
         }
     } else {
-        XplConsolePrintf("bongoqueue: Could not allocate connection\n");
+        Log(LOG_ERROR, "Could not allocate connection.");
         return NULL;
     }
 
@@ -539,7 +668,7 @@ XplServiceMain(int argc, char *argv[])
     LogStart();
 
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf(AGENT_NAME ": Could not drop to unprivileged user '%s'\r\n" AGENT_NAME ": exiting.\n", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
     
@@ -549,10 +678,11 @@ XplServiceMain(int argc, char *argv[])
     Agent.agent.port = BONGO_QUEUE_PORT;
 
     /* Initialize the Bongo libraries */
-    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP | BA_STARTUP_MSGLIB | BA_STARTUP_MSGAUTH;
+    //ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     ccode = BongoAgentInit(&Agent.agent, AGENT_NAME, MSGSRV_AGENT_QUEUE, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_ERROR, "Initialization failed exiting.");
         return -1;
     }
     
@@ -567,12 +697,12 @@ XplServiceMain(int argc, char *argv[])
 
     Agent.clientListener = ServerSocketInit(Agent.agent.port);
     if (Agent.clientListener == NULL) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_ERROR, "Server Initialization failed exiting.");
         return -1;
     }
 
     if (QueueInit() == FALSE) {
-        XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
+        Log(LOG_ERROR, "Queue Initialization failed exiting.");
         return -1;
     }
 
@@ -590,7 +720,7 @@ XplServiceMain(int argc, char *argv[])
 
     BongoAgentStartMonitor(&Agent.agent);
 
-    InternalSetServerState("Running");
+    MsgSetRecoveryFlag("queue");
 
     /* Start the server thread */
     XplStartMainThread(AGENT_NAME, &id, QueueServer, 8192, NULL, ccode);

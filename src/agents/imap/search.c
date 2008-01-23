@@ -251,7 +251,6 @@ ImapDateArgToUtc(char *dateText, unsigned long *dateUtc)
     char *monthPtr;
     char *yearPtr;
     unsigned long month;
-    long year;
 
     dayPtr = dateText;
     monthPtr = strchr(dateText, '-');
@@ -289,12 +288,12 @@ __inline static long
 GetMessageSentDate(ImapSession *session, uint64_t guid, unsigned long headerLen, time_t *dateUtc)
 {
     long ccode;
-    unsigned long len;
+    size_t len;
     char *dateString;
 
     if ((ccode = NMAPSendCommandF(session->store.conn, "READ %llx 0 %lu\r\n", guid, headerLen)) != -1) {
         if ((ccode = NMAPReadPropertyValueLength(session->store.conn, "nmap.document", &len)) == 2001) {
-            if ((dateString = BongoStreamGrabRfc822Header(ReadSourceConn, session->store.conn, len, "Date")) != NULL) {
+            if ((dateString = BongoStreamGrabRfc822Header(ReadSourceConn, session->store.conn, (unsigned long)len, "Date")) != NULL) {
                 if (NMAPReadCrLf(session->store.conn) == 2) {
                     *dateUtc = MsgParseRFC822Date(dateString);
                     MemFree(dateString);
@@ -481,7 +480,7 @@ SearchRemainingMatchSentBefore(ImapSession *session, MessageInformation *message
 {
     long ccode;
     time_t date = *(unsigned long *)arg2;
-    time_t messageDateUtc;
+    time_t messageDateUtc = 0;
 
     if ((ccode = GetMessageSentDate(session, message->guid, message->headerSize, &messageDateUtc)) == STATUS_CONTINUE) {
         *found = (messageDateUtc < date);
@@ -495,7 +494,7 @@ SearchRemainingMatchSentOn(ImapSession *session, MessageInformation *message, ch
 {
     long ccode;
     time_t date = *(unsigned long *)arg2;
-    time_t messageDateUtc;
+    time_t messageDateUtc = 0;
 
     if ((ccode = GetMessageSentDate(session, message->guid, message->headerSize, &messageDateUtc)) == STATUS_CONTINUE) {
         *found = ((messageDateUtc >= date) && (messageDateUtc < date + (60 * 60 * 24)));
@@ -509,7 +508,7 @@ SearchRemainingMatchSentSince(ImapSession *session, MessageInformation *message,
 {
     long ccode;
     time_t date = *(unsigned long *)arg2;
-    time_t messageDateUtc;
+    time_t messageDateUtc = 0;
 
     if ((ccode = GetMessageSentDate(session, message->guid, message->headerSize, &messageDateUtc)) == STATUS_CONTINUE) {
         *found = (messageDateUtc >= date);
@@ -1083,11 +1082,11 @@ SearchHandleTopKey(ImapSession *session, char **keyString, SearchKey *key)
 __inline static long
 SearchSendResults(ImapSession *session, long *matches, BOOL byUid)
 {
-    MessageInformation *message;
+    MessageInformation *message = NULL;
     if (byUid) {
         message = &session->folder.selected.message[0];
     } else {
-
+        // FIXME - What should we do here?
     }
 
     if (ConnWrite(session->client.conn, "* SEARCH", strlen("* SEARCH")) != -1) {
@@ -1096,7 +1095,7 @@ SearchSendResults(ImapSession *session, long *matches, BOOL byUid)
         for (;;) {
             if (matches[i] != -1) {
                 if (byUid) {
-                    if (ConnWriteF(session->client.conn, " %lu", message[matches[i]].uid) != -1) {
+                    if (ConnWriteF(session->client.conn, " %lu", (unsigned long)message[matches[i]].uid) != -1) {
                         i++;
                         continue;
                     }

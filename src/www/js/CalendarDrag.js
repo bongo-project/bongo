@@ -65,7 +65,7 @@ Dragonfly.ThrottledMoveHandler = function (func, origEvent, elem, useCapture)
     this.timeout = window.setInterval (
         function () {
             if (eventsIn) {
-                logDebug ('events in:', eventsIn, 'events out:', eventsOut);
+                console.debug ('events in:', eventsIn, 'events out:', eventsOut);
                 eventsIn = eventsOut = 0;
             }
         }, 1000);                      
@@ -155,7 +155,7 @@ Dragonfly.Calendar.getTimeBeforePos = function (pos)
     // round to 15 minutes
     var hours = percent * 24;
     var minutes = 15 * (Math.floor (percent * 96) % 4);
-    //logDebug ('hours:', Math.floor(hours), 'minutes:', minutes);
+    //console.debug ('hours:', Math.floor(hours), 'minutes:', minutes);
     return day.asDateWithTime (hours, minutes, 0);
 };
 
@@ -269,7 +269,7 @@ Dragonfly.Calendar.detectdragHandler = function (evt)
     Event.observe (document, 'mousemove', c.dragHandler);
     Event.observe (document, 'mouseup', c.dragendHandler);
     Event.observe (document, 'keypress', c.dragendHandler);
-}
+};
 
 Dragonfly.Calendar.dragHandler = function (evt) 
 {
@@ -288,7 +288,7 @@ Dragonfly.Calendar.dragHandler = function (evt)
         }
     }
     state.ondrag (state.occurrence, pos, state.origin);
-}
+};
 
 Dragonfly.Calendar.dragendHandler = function (evt) 
 {
@@ -338,7 +338,7 @@ Dragonfly.Calendar.dragendHandler = function (evt)
         c.updateBubles (occurrence);        
     }
     c.layoutEvents();
-}
+};
 
 Dragonfly.Calendar.columnDragMove = function (occurrence, pos, origin)
 {
@@ -361,8 +361,8 @@ Dragonfly.Calendar.columnDragMove = function (occurrence, pos, origin)
             origin.dayOffset = 0;
             origin.dayDuration = 1;
         }
-        //logDebug ('orig.dayOffset:', orig.dayOffset, 'orig.dayDuration:', orig.dayDuration);
-        //logDebug ('orig.dateOffset:', orig.dateOffset, 'orig.dateDuration:', orig.dateDuration);
+        //console.debug ('orig.dayOffset:', orig.dayOffset, 'orig.dayDuration:', orig.dayDuration);
+        //console.debug ('orig.dateOffset:', orig.dateOffset, 'orig.dateDuration:', orig.dateDuration);
     }
             
     occurrence.isUntimed = c.isPosUntimed (pos);
@@ -406,8 +406,8 @@ Dragonfly.Calendar.columnDragResize = function (occurrence, pos, origin)
         update (origin, elementPosition (occurrence.bubles[0]));
         origin.fixedDay = origin.occurrence.startDay;
         origin.fixedDate = origin.occurrence.startTime;
-        //logDebug ('orig.dayOffset:', orig.dayOffset, 'orig.dayDuration:', orig.dayDuration);
-        //logDebug ('orig.dateOffset:', orig.dateOffset, 'orig.dateDuration:', orig.dateDuration);
+        //console.debug ('orig.dayOffset:', orig.dayOffset, 'orig.dayDuration:', orig.dayDuration);
+        //console.debug ('orig.dateOffset:', orig.dateOffset, 'orig.dateDuration:', orig.dateDuration);
     }
             
     if (occurrence.isUntimed != c.isPosUntimed (pos)) {
@@ -419,7 +419,7 @@ Dragonfly.Calendar.columnDragResize = function (occurrence, pos, origin)
     var resizeAfter = (cmp < 0) || (cmp == 0 && (occurrence.isUntimed 
                                                  ? (origin.x < pos.x) 
                                                  : (origin.y < pos.y)));
-    //logDebug ('day:', day, 'cmp:', cmp, 'resizeAfter:', resizeAfter);
+    //console.debug ('day:', day, 'cmp:', cmp, 'resizeAfter:', resizeAfter);
     
     if (occurrence.isUntimed) {
         occurrence.startDay = resizeAfter ? origin.fixedDay : day;

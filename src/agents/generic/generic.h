@@ -23,8 +23,6 @@
 #define _GENERIC_H
 
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -55,9 +53,5 @@ typedef struct _GAgentGlobals {
 } GAgentGlobals;
 
 extern GAgentGlobals GAgent;
-
-/* management.c */
-int GenericAgentManagementStart(void);
-void GenericAgentManagementShutdown(void);
 
 #endif /* _GENERIC_H */

@@ -1,15 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongogeneric
 
-bongogeneric_SOURCES :=				\
+bongogeneric_SOURCES =				\
 	src/agents/generic/generic.c		\
 	src/agents/generic/generic.h		
 
-bongogeneric_LDADD :=					   \
+bongogeneric_LDADD =					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

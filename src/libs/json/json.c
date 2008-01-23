@@ -171,7 +171,7 @@ BongoJsonJPathGetFloat(BongoJsonNode *n, const char *path, float *val) {
     return BONGO_JSON_BAD_TYPE;
 }
 BongoJsonResult 
-BongoJsonJPathGetString(BongoJsonNode *n, const char *path, const char **val) {
+BongoJsonJPathGetString(BongoJsonNode *n, const char *path, char **val) {
 	// caller must free the memory allocated
 	BongoJsonNode *result = BongoJsonJPath(n, path);
 	if (!result) return BONGO_JSON_NOT_FOUND;

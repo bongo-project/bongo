@@ -7,7 +7,7 @@ Dragonfly.Widgets.addOptions = function (html, labels, selected)
     for (var i = 0; i < labels.length; i++) {
         html.push ('<option', (i==s) ? ' selected' : '', '>', labels[i], '</option>');
     }
-}
+};
 
 Dragonfly.Notebook = function (parent)
 {
@@ -40,7 +40,7 @@ Dragonfly.Notebook.prototype.buildHtml = function (html)
                '<div id="', this.contentId, '" class="notebook-content"></div>',
                '</div>');
     html.addCallback (bind ('connectHtml', this));
-}
+};
 
 Dragonfly.Notebook.prototype.connectHtml = function (elem)
 {
@@ -73,11 +73,11 @@ Dragonfly.Notebook.prototype.clickHandler = function (evt) {
      }
      var idx = findIdentical (this._labels, elem);
      if (idx < 0) {
-         logWarning ('Could not find label for tab');
+         console.warn ('Could not find label for tab');
          return;
      }
      this._switchToPage (idx);
- }
+ };
 
 
 Dragonfly.Notebook.prototype.setShowTabs = function (showTabs)
@@ -272,14 +272,14 @@ Dragonfly.ToggleButtons.prototype.handleMousedown = function (evt)
     toggleElementClass ('selected', this.mousedButton);
     Event.observe (button, 'mouseup', this.mouseupHandler);
     Event.observe (button, 'mouseout', this.mouseoutHandler);
-}
+};
 
 Dragonfly.ToggleButtons.prototype.mouseoutHandler = function (evt)
 {
     Event.stopObserving (this.mousedButton, 'mouseup', this.mouseupHandler);
     Event.stopObserving (this.mousedButton, 'mouseout', this.mouseoutHandler);
     toggleElementClass ('selected', this.mousedButton);
-}
+};
 
 Dragonfly.ToggleButtons.prototype.mouseupHandler = function (evt)
 {
@@ -291,24 +291,24 @@ Dragonfly.ToggleButtons.prototype.mouseupHandler = function (evt)
     } else {
         this.unselect (buttonNumber);
     }
-}
+};
 
 Dragonfly.ToggleButtons.prototype.select = function (buttonNumber)
 {
     this.selected[buttonNumber] = true;
     addElementClass ($(this.buttonIdBase + buttonNumber), 'selected');
-}
+};
 
 Dragonfly.ToggleButtons.prototype.unselect = function (buttonNumber)
 {
     delete this.selected[buttonNumber];
     removeElementClass ($(this.buttonIdBase + buttonNumber), 'selected');
-}
+};
 
 Dragonfly.ToggleButtons.prototype.getSelected = function ()
 {
     return map (Number, keys (this.selected));
-}
+};
 
 Dragonfly.PopupBuble = function (elem /*, children */)
 {
@@ -404,7 +404,7 @@ Dragonfly.PopupBuble.prototype.setElem = function (elem)
         $(this.frameId).style.zIndex = zindex;
         $(this.pointerId).style.zIndex = zindex + 1;
     }
-}
+};
 
 Dragonfly.PopupBuble.prototype.setForm = function (children, actions, observer)
 {
@@ -467,9 +467,9 @@ Dragonfly.PopupBuble.prototype._positionHorizontally = function (elemMetrics, fr
 Dragonfly.PopupBuble.prototype._tryAbove = function (elemMetrics, frameMetrics, docMetrics)
 {
     var top = elemMetrics.y - frameMetrics.height;
-    logDebug ('above:', top);
+    console.debug ('above:', top);
     if (top < 25) {
-        logDebug ('too high.');
+        console.debug ('too high.');
         return false;
     }
     $(this.id).style.right = '';
@@ -486,9 +486,9 @@ Dragonfly.PopupBuble.prototype._tryAbove = function (elemMetrics, frameMetrics, 
 Dragonfly.PopupBuble.prototype._tryBelow = function (elemMetrics, frameMetrics, docMetrics)
 {
     var bottom = elemMetrics.y + elemMetrics.height + frameMetrics.height
-    logDebug ('below:', bottom);
+    console.debug ('below:', bottom);
     if (bottom > docMetrics.h - 25) {
-        logDebug ('too low.');
+        console.debug ('too low.');
         return false;
     }
     $(this.id).style.right = '';
@@ -505,9 +505,9 @@ Dragonfly.PopupBuble.prototype._tryBelow = function (elemMetrics, frameMetrics, 
 Dragonfly.PopupBuble.prototype._tryLeft = function (elemMetrics, frameMetrics, docMetrics)
 {
     var left = elemMetrics.x - frameMetrics.width;
-    logDebug ('left:', left);
+    console.debug ('left:', left);
     if (left < 25) {
-        logDebug ('too left.');
+        console.debug ('too left.');
         return false;
     }
     $(this.id).style.left = 'auto';
@@ -524,9 +524,9 @@ Dragonfly.PopupBuble.prototype._tryLeft = function (elemMetrics, frameMetrics, d
 Dragonfly.PopupBuble.prototype._tryRight = function (elemMetrics, frameMetrics, docMetrics)
 {
     var right = elemMetrics.x + elemMetrics.width + frameMetrics.width;
-    logDebug ('right:', right);
+    console.debug ('right:', right);
     if (right > docMetrics.w - 25) {
-        logDebug ('too right.');
+        console.debug ('too right.');
         return false;
     }
     $(this.id).style.right = '';
@@ -625,14 +625,14 @@ Dragonfly.PopupBuble.prototype.show = function (elem, position)
     $(this.id).style.visibility = 'visible';
     
     return;
-    logDebug ('positioning summary:');
-    logDebug ('     elemMetrics:', repr (elemMetrics));
-    logDebug ('    frameMetrics:', repr (frameMetrics));
-    logDebug ('      docMetrics:', repr (docMetrics));
-    logDebug ('        this.top:', $(this.id).style.top, 'this.left:', $(this.id).style.left);
-    logDebug ('     this.bottom:', $(this.id).style.bottom, 'this.right:', $(this.id).style.right);
-    logDebug ('       frame.top:', $(this.frameId).style.top, 'frame.left:', $(this.frameId).style.left);
-    logDebug ('    frame.bottom:', $(this.frameId).style.bottom, 'frame.right:', $(this.frameId).style.right);
+    console.debug ('positioning summary:');
+    console.debug ('     elemMetrics:', repr (elemMetrics));
+    console.debug ('    frameMetrics:', repr (frameMetrics));
+    console.debug ('      docMetrics:', repr (docMetrics));
+    console.debug ('        this.top:', $(this.id).style.top, 'this.left:', $(this.id).style.left);
+    console.debug ('     this.bottom:', $(this.id).style.bottom, 'this.right:', $(this.id).style.right);
+    console.debug ('       frame.top:', $(this.frameId).style.top, 'frame.left:', $(this.frameId).style.left);
+    console.debug ('    frame.bottom:', $(this.frameId).style.bottom, 'frame.right:', $(this.frameId).style.right);
 };
 
 Dragonfly.PopupBuble.prototype.showAbove = function (elem) { this.show (elem, this.above); };
@@ -650,7 +650,7 @@ Dragonfly.PopupBuble.prototype.canDisposeZone = Dragonfly.PopupBuble.prototype.c
         Dragonfly.notify (_('You have unsaved changes.'));
     }
     return canHide;
-}
+};
 
 Dragonfly.PopupBuble.prototype.hide = Dragonfly.PopupBuble.prototype.hideZone = function (result)
 {
@@ -691,7 +691,7 @@ Dragonfly.PopupBuble.prototype.showError = function (err)
     if (err instanceof CancelledError) {
         return err;
     }
-    logError (Dragonfly.reprError (err));
+    console.error (Dragonfly.reprError (err));
     this.hide();
     var closeId = Dragonfly.nextId ('popup-close');
     var html = new Dragonfly.HtmlBuilder (
@@ -961,7 +961,7 @@ Dragonfly.TzSelector.prototype.buildTimezoneOptions = function (htmlbuilder, tim
     if (html !== htmlbuilder) {
         html.set (this.selectId);
     }
-}
+};
 
 Dragonfly.TzSelector.prototype.connectHtml = function (elem)
 {
@@ -975,7 +975,7 @@ Dragonfly.TzSelector.prototype.connectHtml = function (elem)
 Dragonfly.TzSelector.prototype.setChangeListener = function (listener)
 {
     this.changeListener = listener;
-}
+};
 
 Dragonfly.TzSelector.prototype.setEnabled = function (enabled)
 {
@@ -1029,7 +1029,7 @@ Dragonfly.TzSelector.prototype.addTimezone = function (timezone)
 Dragonfly.TzSelector.prototype.delTimezone = function (index)
 {
     if (!this.isGlobal) {
-        logError ('deleting timezones is only supported on global timezone selector');
+        console.error ('deleting timezones is only supported on global timezone selector');
         return;
     }
     this.timezones.splice (index, 1);

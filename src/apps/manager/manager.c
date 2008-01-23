@@ -28,8 +28,7 @@
 #define CRASH_WINDOW 10
 
 typedef struct {
-    const char *program;
-    const char *dn;
+    char *program;
     int priority;
     BOOL willCallback;
 } BongoAgentSpec;
@@ -59,9 +58,6 @@ static BOOL Exiting = FALSE;
 static BOOL ChildError = FALSE;
 static BOOL ReloadNow = FALSE;
 static int HighestPriority = 0;
-
-MDBHandle DirectoryHandle = NULL;
-char ServerDN[MDB_MAX_OBJECT_CHARS + 1];
 
 static BongoAgent *
 FindAgentByPid(pid_t pid)
@@ -423,7 +419,7 @@ Lock(BOOL force)
         exit(1);
     }
 
-    remaining = snprintf(pidstr, sizeof(pidstr), "%ld\n", pid);
+    remaining = snprintf(pidstr, sizeof(pidstr), "%ld\n", (long int)pid);
     ret = 0;
     written = 0;
     
@@ -571,19 +567,9 @@ ParseArgs(int argc, char **argv,
 static int
 StartSlapd(BOOL killExisting)
 {
-    int status = 0;
-    int err;
-    char buf[MDB_MAX_OBJECT_CHARS + 1];
-    char url[MDB_MAX_OBJECT_CHARS + 1];
+    int err = 0;
 
-    char *host = "127.0.0.1";
-    int port = 0;
     pid_t pid = 0;
-
-    int sockfd = 0;
-    struct sockaddr_in serv_addr;
-    struct hostent* host_info;
-    long host_addr;
 
     /* Get rid of an existing managed-slapd processs */
     pid = ReadPid(SLAPD_LOCKFILE);
@@ -600,7 +586,7 @@ StartSlapd(BOOL killExisting)
                     return 1;
                 }
             } else {
-                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %ld\n"), pid);
+                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %ld\n"), (long int)pid);
                 fprintf(stderr, _("bongo-manager: if this is definitely the bongo slapd, you can run with -e to kill it\n"));
                 return 1;
             }
@@ -608,7 +594,7 @@ StartSlapd(BOOL killExisting)
     }
 
     /* read config */
-
+#if 0
     if (!MsgGetConfigProperty((unsigned char *) buf,
 	   (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD_PORT)) {
         fprintf(stderr, _("bongo-manager: error reading managed slapd port from config file.\n"));
@@ -623,7 +609,7 @@ StartSlapd(BOOL killExisting)
 	return 1;
     }
 
-    snprintf(url, MDB_MAX_OBJECT_CHARS, "ldap://%s:%d", host, port);
+    snprintf(url, 100, "ldap://%s:%d", host, port);
 
     printf(_("bongo-manager: starting managed slapd...\n"));
 
@@ -687,7 +673,7 @@ StartSlapd(BOOL killExisting)
         break;
     }
     close(sockfd);
-
+#endif
     return err;
 }
 
@@ -776,11 +762,9 @@ main(int argc, char **argv)
     BOOL reload;
     BOOL slapdOnly;
     BOOL killExistingSlapd;
-    char buf[CONN_BUFSIZE];
     BOOL droppedPrivs = FALSE;
     BOOL unlockFile = FALSE;
     BOOL startLdap = FALSE;
-    MDBHandle directory;
 
     XplInit();
 
@@ -880,15 +864,8 @@ get_lock:
     }
     ConnStartup(DEFAULT_CONNECTION_TIMEOUT, TRUE);
 
-    if (!MsgGetConfigProperty(ServerDN, MSGSRV_CONFIG_PROP_MESSAGING_SERVER)) {
-        fprintf(stderr, _("bongo-manager: Couldn't read the server DN from bongo.conf.\n"));
-        goto err_handler;
-    }
-
-    if (MsgGetConfigProperty((unsigned char *) buf, 
-                             (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD)) {
-        startLdap = atoi(buf);
-    }
+    // set startLdap here if we want to start a managed slapd instance
+    // startLdap = atoi(buf);
 
     if (startLdap) {
         int err;
@@ -905,23 +882,8 @@ get_lock:
     }
 
     if (!slapdOnly) {
-        if (!MDBInit()) {
-            fprintf(stderr, _("bongo-manager: unable to intialize directory access.\n"));
-            goto err_handler;
-        }
-
-	directory = MsgInit();
-	if (!directory) {
-	    fprintf(stderr, _("bongo-manager: unable to MsgInit()\n"));
-	    goto err_handler;
-	}
-	NMAPInitialize(directory);
-
-        DirectoryHandle = MsgGetSystemDirectoryHandle();
-        if (DirectoryHandle == NULL) {
-            fprintf(stderr, _("bongo-manager: unable to initialize messaging library.\n"));
-            goto err_handler;
-        }
+	MsgInit();
+	NMAPInitialize();
     }
 
     signal(SIGTERM, SignalHandler);

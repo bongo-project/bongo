@@ -1,0 +1,7 @@
+{
+    "domainalias" : "",
+    "aliases" : { 
+        "postmaster" : "admin" 
+    },
+    "username-mapping" : 0
+}

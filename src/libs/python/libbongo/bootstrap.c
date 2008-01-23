@@ -31,7 +31,6 @@
 #include "bootstrap.h"
 #include "msgapi-defs.h"
 #include <bongo-config.h>
-#include <mdb.h>
 #include <memmgr.h>
 #include <msgapi.h>
 
@@ -54,7 +53,6 @@ PyMethodDef MsgApiMethods[] = {
 PyMODINIT_FUNC
 initbootstrap()
 {
-    MDBHandle directoryHandle=NULL;
     char dbfdir[PATH_MAX];
 
     /* Initialize the various bongo libraries */
@@ -68,7 +66,6 @@ initbootstrap()
     PyObject *module = Py_InitModule("bootstrap", ModuleMethods);
 
     /* Add the Bongo libs */
-    AddLibrary(module, "mdb", MdbMethods, MdbEnums);
     AddLibrary(module, "msgapi", MsgApiMethods, MsgApiEnums);
 }
 

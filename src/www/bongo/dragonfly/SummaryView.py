@@ -284,3 +284,35 @@ class SummaryHandler(ResourceHandler):
         except:
             store.Quit()
             raise
+            
+#TODO: Put this in a seperate file.
+class LogHandler(ResourceHandler):
+    def get_slexy_dest(self, data):
+        rawloc = data.find("/raw/")
+        if rawloc == -1:
+            return "BAD-RESP"
+        else:
+            rawloc += 5
+            return data[rawloc:rawloc + 10]
+
+    def do_POST(self, req, rp):                
+        #rp.handlerData = { "contents" : "just a test.", 
+        #                   "desc": "testing stuff" }
+                           
+        print rp.handlerData
+        
+        # FIXME: This is buggered atm since rp.handlerData always returns { }
+        # for some retarded reason. Look into this.
+        if rp.handlerData.has_key("contents") and rp.handlerData.has_key("desc"):
+            try:
+                import urllib
+                params = urllib.urlencode({"raw_paste" : rp.handlerData["contents"], "language" : "text", "submit" : "Submit Paste", "desc" : rp.handlerData["desc"]})
+                f = urllib.urlopen("http://slexy.org/index.php/submit", params)
+                req.write(self.get_slexy_dest(f.read()))
+            except ImportError, e:
+                # Tell client about missing dep and why we failed
+                req.write("URLLIB")
+        else:
+            req.write("FAIL")
+        
+        return bongo.commonweb.OK

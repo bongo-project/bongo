@@ -114,13 +114,13 @@ Dragonfly.Search.Contacts.connectHtml = function (elem)
 
     //d.Search.Contacts.prototype.connectHtml.apply (this, arguments);
     //$('contacts-search-results').style.overflow = 'auto';
-    logDebug('Observing contacts-search-results.');
+    console.debug('Observing contacts-search-results.');
     Event.observe ('contacts-search-results', 'click',
                    (function (evt) {
                        var elem = Event.element (evt);
-                       logDebug('Element: ' + elem);
+                       console.debug('Element: ' + elem);
                        var card = d.findElement (elem, 'TR', $('contacts-search'));
-                       logDebug('Card (element): ' + card);
+                       console.debug('Card (element): ' + card);
                        var bongoId = card && card.getAttribute ('bongoid');
                        if (!bongoId) {
                            return;

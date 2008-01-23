@@ -25,7 +25,6 @@
 #include <memmgr.h>
 #include <logger.h>
 #include <bongoutil.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -1306,15 +1305,7 @@ PlusPackQueueServer6(void *ignored)
 
     ConnCloseAll(1);
 
-    if (ManagementState() == MANAGEMENT_RUNNING) {
-        ManagementShutdown();
-    }
-
     for (i = 0; (XplSafeRead(PlusPack.server.active) > 1) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    for (i = 0; (ManagementState() != MANAGEMENT_STOPPED) && (i < 60); i++) {
         XplDelay(1000);
     }
 
@@ -1592,8 +1583,8 @@ QueueSocketInit(void)
             return(-1);
         }
 
-        if ((NMAPRegister(PLUSPACK_AGENT, Q_FIVE, PlusPack.nmap.conn.queue5->socketAddress.sin_port) != REGISTRATION_COMPLETED) 
-                || (NMAPRegister(PLUSPACK_AGENT, Q_DELIVER, PlusPack.nmap.conn.queue6->socketAddress.sin_port) != REGISTRATION_COMPLETED)) {
+        if ((QueueRegister(PLUSPACK_AGENT, Q_FIVE, PlusPack.nmap.conn.queue5->socketAddress.sin_port) != REGISTRATION_COMPLETED) 
+                || (QueueRegister(PLUSPACK_AGENT, Q_DELIVER, PlusPack.nmap.conn.queue6->socketAddress.sin_port) != REGISTRATION_COMPLETED)) {
             XplConsolePrintf("bongopluspack: Could not register with bongonmap\r\n");
             if (PlusPack.nmap.conn.queue5) {
                 ConnFree(PlusPack.nmap.conn.queue5);
@@ -1700,7 +1691,7 @@ XplServiceMain(int argc, char *argv[])
     XplDelay(20 * 1000);
 #endif
 
-    NMAPInitialize(PlusPack.handle.directory);
+    NMAPInitialize();
 
     SetCurrentNameSpace(NWOS2_NAME_SPACE);
     SetTargetNameSpace(NWOS2_NAME_SPACE);

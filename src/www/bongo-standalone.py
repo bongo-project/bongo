@@ -26,7 +26,9 @@ import bongo.dragonfly.Auth
 import bongo.commonweb.BongoUtil
 import bongo.commonweb.BongoSession as BongoSession
 import bongo.hawkeye.Auth
+import bongo.sundial.Auth
 from bongo.hawkeye.HawkeyePath import HawkeyePath
+from bongo.sundial.SundialPath import SundialPath
 from bongo.external.simplejson import loads, dumps
 import Cookie
 
@@ -179,28 +181,63 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
             rp = HawkeyePath(req)
             handler = rp.GetHandler()
 
+            req.log.debug("Got handler and stuff. Getting session...")
+
             req.session = BongoSession.Session(req)
             req.session.load()
 
+            req.log.debug("Checking we need auth:")
+
             if handler.NeedsAuth(rp):
+                req.log.debug("Yup!")
                 auth = bongo.hawkeye.Auth.authenhandler(req)
                 if auth != bongo.commonweb.HTTP_OK:
-                    target = "/admin/login?%s" % req.uri
-                    self.send_response(
-                        bongo.commonweb.BongoUtil.redirect(req, target))
+                    target = "/admin/login"
+                    self.send_response(bongo.commonweb.BongoUtil.redirect(req, target))
                     return
+            else:
+                req.log.debug("Nope.")
 
-            req.log.debug("request for %s (handled by %s)", req.uri, handler)
+            req.log.debug("request for %s (handled by %s)" % (req.uri, handler))
 
             mname = rp.action + "_" + req.method
+            hackymethod = False
+
+            req.log.debug("Doing attr check on %s (%s)" % (handler, mname))
+            req.log.debug("Action was: %s" % rp.action)
+            req.log.debug("View was: %s" % rp.view)
 
             if not hasattr(handler, mname):
-                req.log.debug("%s has no %s", handler, mname)
-                self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
-                return
+                req.log.debug("Handler: %s", handler)
+                req.log.debug("RP: %s", rp)
+                if rp.view == "agents":
+                    # Special case for agents view
+                    hackymethod = True
+                    if req.method == "POST":
+                        mname = "saveConfig"
+                    else:
+                        mname = "showConfig"
+                elif rp.view == "aliases":
+                    # Special case for domains
+                    hackymethod = True
+                else:
+                    req.log.debug("%s has no %s" % (handler, mname))
+                    self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
+                    return
+
+            req.log.debug("Getting attributes...")
 
             method = getattr(handler, mname)
-            ret = method(req, rp)
+            if hackymethod:
+                req.log.debug("Running new way.")
+                ret = method(rp.action, req, rp)
+            else:
+                req.log.debug("Running normal way.")
+                ret = method(req, rp)
+
+            if ret is None:
+                req.log.debug("Handler %s returned invalid value: None" % handler)
+                return bongo.commonweb.OK
 
             if ret is None:
                 self.send_response(bongo.commonweb.HTTP_OK)
@@ -208,33 +245,36 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                 self.send_response(ret)
             return
 
-        if self.path.startswith("/dav"):            
-            handler = DavHandler()
-            print "running %s" % (self.command)
-            mname = "do_" + self.command
-            if not hasattr(handler, mname):
-                self.send_error(501, "Unsupported method (%r)" % self.command)
-                return
-            method = getattr(handler, mname)
+        if self.path.startswith("/calendars"):
             self.dragonfly_req = True
-            req = HttpRequest(self, "/dav", self.server)
+            req = HttpRequest(self, "/calendars", self.server)
             self.req = req
-            auth = bongo.dragonfly.Auth.authenhandler(self.req)
-            if auth != bongo.commonweb.HTTP_OK:
-                print "no auth"
-                self.send_error(auth)
-                return auth
 
-            if req.user == None :
-                req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""
-                self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
-                return bongo.commonweb.HTTP_UNAUTHORIZED
-                
-            print "user: %s" % (req.user)
+            rp = SundialPath(req)
+            handler = rp.GetHandler(req, rp)
+
+            if handler.NeedsAuth(rp):
+                if req.user is None:
+                    self.req.headers_out["WWW-Authenticate"] = "Basic realm=\"Bongo\""
+                    self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
+                    return bongo.commonweb.HTTP_UNAUTHORIZED
+                else:
+                    auth = bongo.sundial.Auth.authenhandler(req)
+
+            req.log.debug("request for %s (handled by %s)", req.uri, handler)
+
+            mname = "do_" + req.method
+
+            if not hasattr(handler, mname):
+                req.log.debug("%s has no %s", handler, mname)
+                self.send_response(bongo.commonweb.HTTP_NOT_FOUND)
+                return
+
+            method = getattr(handler, mname)
 
             try:
-                print "running method"
-                ret = method(self.req)
+                print "running"
+                ret = method(req, rp)
             except HttpError, e:
                 print "http error"
                 self.send_error(e.code)
@@ -244,11 +284,12 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                 print "error"
                 self.send_error(bongo.commonweb.HTTP_INTERNAL_SERVER_ERROR)
                 return
-            
-            if ret is None:
-                print "valid response!"
-                self.send_response(bongo.commonweb.HTTP_OK)
+
+            if str(ret).startswith('20'):
+                print "Valid response!"
+                self.send_response(ret)
             else:
+                print "Uh oh. Bad response:"
                 self.send_response(ret)
             return
 

@@ -48,5 +48,18 @@
     </tr>
 </table>
 
+<br />
+
+<table class="htable" width="100%%" cellspacing="0" >
+    <tr style="height: 28px;" class="highlight">
+        <td class="hrow" colspan="2">Last 5 actions</td>
+    </tr>
+    <tr tal:repeat="action actionlist" tal:attributes="class string:highlight${repeat/action/odd}">
+        <td style="padding-left: 1em;"><a tal:attributes="href action/href" tal:content="action/title" style="color: #eeeeec;">Unknown</a></td>
+        <td class="hrow" width="16"><a tal:condition="action/img" tal:attributes="href action/href"><img tal:attributes="src action/img" /></a></td>
+    </tr>
+</table>
+
+
 
 %(include|footer.tpl)s

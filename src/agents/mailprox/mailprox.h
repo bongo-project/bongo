@@ -23,10 +23,8 @@
 #define _MAILPROX_H
 
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <nmap.h>
-#include <management.h>
 
 #define PRODUCT_SHORT_NAME "mailprox.nlm"
 
@@ -250,12 +248,6 @@ typedef struct _IMAPFolderList {
 void FreeFolderList(IMAPFolderPath *folder);
 ProxyUID *GetProxyUID(ProxyAccount *proxy, const unsigned char *folderPath);
 unsigned long ProxyIMAPAccount(MailProxyClient *client, ProxyAccount *account);
-
-/* management.c */
-ManagementVariables *GetMailProxyManagementVariables(void);
-int GetMailProxyManagementVariablesCount(void);
-ManagementCommands *GetMailProxyManagementCommands(void);
-int GetMailProxyManagementCommandsCount(void);
 
 /* pop.c */
 unsigned long ProxyPOP3Account(MailProxyClient *client, ProxyAccount *account);

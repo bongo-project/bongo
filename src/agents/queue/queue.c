@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #include <config.h>
@@ -28,7 +29,6 @@
 
 #include <xpl.h>
 #include <logger.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 
@@ -294,7 +294,7 @@ SpoolEntryIDLock(unsigned long id)
 
         XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
 
-        Log(LOG_INFO, "Unable to lock spool entry %x, table full", (unsigned int) id);
+        Log(LOG_ERROR, "Unable to lock spool entry %x, table full", (unsigned int) id);
     }
 
     return(NULL);
@@ -356,7 +356,7 @@ AddPushAgent(QueueClient *client,
     int count;
     QueuePushClient *temp;
 
-    Log(LOG_INFO, "Adding client on host %s:%d to queue %d", LOGIP(client->conn->socketAddress), port, queue);
+    Log(LOG_INFO, "Adding client (%s) on host %s:%d to queue %d", identifier, LOGIP(client->conn->socketAddress), port, queue);
 
     XplMutexLock(Queue.pushClients.lock);
 
@@ -499,7 +499,7 @@ GetNMAPConnection(NMAPConnections *list,
     
     conn = NMAPConnect(NULL, address);
     if (conn == NULL) {
-        XplConsolePrintf("bongoqueue: Couldn't connect to NMAP\r\n");
+        Log(LOG_ERROR, "Could not connect to bongoqueue.");
         return DELIVER_TRY_LATER;
     }
     
@@ -572,8 +572,6 @@ DeliverToStore(NMAPConnections *list,
                 (ccode = ConnWriteFile(nmap->conn, fh)) == -1 ||
                 (ccode = ConnFlush(nmap->conn)) == -1) {
                 nmap->error = TRUE;
-
-                FCLOSE_CHECK(fh);
 
                 return DELIVER_TRY_LATER;
             }
@@ -677,7 +675,6 @@ ProcessQueueEntry(unsigned char *entryIn)
     FILE *data = NULL;
     FILE *newFH = NULL;
     MIMEReportStruct *report = NULL;
-    MDBValueStruct *vs;
     QueueClient *client;
     void *handle;
 
@@ -876,8 +873,7 @@ StartOver:
                     return(TRUE);
                 }
 
-                vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-
+/* TODO: look this over to make sure this is still valid */
                 count = 0;
                 cur = qEnvelope;
                 while (cur < limit) {
@@ -897,47 +893,7 @@ StartOver:
                         }
 
                         case QUEUE_RECIP_LOCAL:
-                        case QUEUE_RECIP_MBOX_LOCAL: {
-                            if (ptr) {
-                                *ptr = '\0';
-                            }
-
-                            ptr2 = strchr(cur + 1, ' ');
-                            if (ptr2) {
-                                *ptr2 = '\0';
-                            }
-
-                            if (MsgFindObject(cur + 1, NULL, NULL, NULL, vs)) {
-                                if (ptr2) {
-                                    for (used = 0; (used < vs->Used); used++) {
-                                        fprintf(newFH, "%c%s %s\n", *cur, vs->Value[used], ptr2 + 1);
-                                        count++;
-                                    }
-                                } else {
-                                    for (used = 0; (used < vs->Used); used++) {
-                                        fprintf(newFH, "%c%s %s %d\r\n", *cur, vs->Value[used], vs->Value[used], DSN_FAILURE);
-                                        count++;
-                                    }
-                                }
-
-                                MDBFreeValues(vs);
-                            } else {
-                                Log(LOG_INFO, "Entry %ld queue %d, can't find %s", entryID, queue, cur + 1);
-
-                                if (ptr2) {
-                                    *ptr2 = ' ';
-                                }
-
-                                if (ptr) {
-                                    *ptr = '\n';
-                                }
-
-                                fwrite(cur, sizeof(unsigned char), next - cur, newFH);
-                            }
-
-                            break;
-                        }
-
+                        case QUEUE_RECIP_MBOX_LOCAL:
                         case QUEUE_RECIP_REMOTE: {
                             if (ptr) {
                                 *ptr = '\0';
@@ -948,13 +904,45 @@ StartOver:
                                 *ptr2 = '\0';
                             }
 
-                            if (ptr2) {
-                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s\n", cur + 1, ptr2 + 1);
-                            } else {
-                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s %d\r\n", cur + 1, cur + 1, DSN_FAILURE);
-                            }
+                            /* alias this user */
+                            unsigned char buffer[1024]; /* FIXME: is this too big? */
+                            unsigned char *addrptr;
+                            unsigned char *flags = strchr(ptr2+1,' '); /* the original flags */
+                            int cnt;
 
-                            break;
+                            aliasing(cur+1, &cnt, buffer);
+
+                            /* find the address in teh result buffer so that we can rewrite it properly */
+                            addrptr = strrchr(buffer, ' ');
+                            addrptr++;
+                            switch(atoi(buffer)) {
+                            case 1000:
+                                /* this is a local user, change the envelope to reflect that
+                                 * in this case ptr2+1 is the orecip which will also include the flags */
+                                fprintf(newFH, QUEUES_RECIP_LOCAL"%s %s\r\n", addrptr, ptr2+1);
+                                break;
+                            case 1002:
+                                /* in this case ptr2+1 is the orecip which will also contain the flags */
+                                fprintf(newFH, QUEUES_RECIP_REMOTE"%s %s\r\n", addrptr, ptr2+1);
+                                break;
+                            default:
+                                /* in this case we need to chop the flags off so that we can replace them
+                                 * with DSN_FAILURE */
+                                if (flags) {
+                                    *flags = '\0';
+                                }
+                                fprintf(newFH, "%c%s %s %d\r\n", *cur, addrptr, ptr2+1, DSN_FAILURE);
+                                if (flags) {
+                                    *flags = ' ';
+                                }
+                                break;
+                            }
+                            if (ptr) {
+                                *ptr = '\n';
+                            }
+                            if (ptr2) {
+                                *ptr2 = ' ';
+                            }
                         }
 
                         case QUEUE_ADDRESS: 
@@ -974,8 +962,6 @@ StartOver:
 
                     cur = next;
                 }
-
-                MDBDestroyValueStruct(vs);
 
                 MemFree(qEnvelope);
 
@@ -1068,6 +1054,7 @@ StartOver:
             sprintf(dataFilename, "d%s.msg", entry);
 
             if (!dSize) {
+                sprintf(path, "%s/%s", Conf.spoolPath, dataFilename);
                 if (stat(path, &sb)) {
                     ProcessQueueEntryCleanUp(idLock, report);
                     return(TRUE);
@@ -1172,18 +1159,17 @@ StartOver:
                                 *ptr = ' ';
                             }
 
-                            vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-                            if (!MsgFindObject(recipient, NULL, NULL, &siaddr, vs)) {
+                            if (MsgAuthFindUser(recipient) != 0) {
                                 Log(LOG_WARNING, "User %s unknown, entry %ld", recipient, entryID);
                                 status = DELIVER_USER_UNKNOWN;
                             } else {
+                                MsgAuthGetUserStore(recipient, &siaddr);
                                 Log(LOG_DEBUG, "Delivering %s on queue %d to %s", entry, queue, line+1);
                                 status = DeliverToStore(&list, &siaddr, NMAP_DOCTYPE_CAL, sender, authenticatedSender, dataFilename, data, dSize, recipient, mailbox, flags);
                                 if (Agent.agent.state == BONGO_AGENT_STATE_STOPPING) {
                                     status = DELIVER_TRY_LATER;
                                 }
                             }
-                            MDBDestroyValueStruct(vs);
 
                             /* Restore our buffer */
                             if (ptr2) {
@@ -1221,7 +1207,7 @@ StartOver:
                             while (ptr[0]!='\0') {
                                 if (ptr[0]==' ') {
                                     i++;
-                                    if (i > 2) {
+                                   if (i > 2) {
                                         switch(i) {
                                             case 3: {
                                                 preMailboxDelim = ptr;
@@ -1278,8 +1264,8 @@ StartOver:
                             }
 
                             /* Attempt delivery, check if local or remote */
-                            vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-                            if (MsgFindObject(recipient, NULL, NULL, &siaddr, vs)) {
+                            if (MsgAuthFindUser(recipient) == 0) {
+                                MsgAuthGetUserStore(recipient, &siaddr);
                                 Log(LOG_DEBUG, "Deliver to store entry %s in queue %d for host %s", entry, queue, LOGIP(siaddr));
                                 status = DeliverToStore(&list, &siaddr, NMAP_DOCTYPE_MAIL, sender, authenticatedSender, dataFilename, data, dSize, recipient, mailbox, messageFlags);
 
@@ -1317,8 +1303,6 @@ StartOver:
                                     XplRWReadLockRelease(&Conf.lock);
                                 }
                             }
-
-                            MDBDestroyValueStruct(vs);
 
                             if (status < DELIVER_SUCCESS) {
                                 Log(LOG_WARNING, "Couldn't deliver entry %s on queue %d, status %d", entry, queue, status);
@@ -1611,6 +1595,9 @@ StartOver:
             saddr.sin_addr.s_addr = Queue.pushClients.array[used].address;
             saddr.sin_port = Queue.pushClients.array[used].port;
 
+            /* FIXME: this is the lazy fix until we can figure this out */
+            memcpy(&(client->conn->socketAddress), &saddr, sizeof(struct sockaddr));
+
             len = connect(client->conn->socket, (struct sockaddr *)&saddr, sizeof(saddr));
             if (!len) {
                 /* Non-blocking, w/o nagele */
@@ -1641,6 +1628,7 @@ StartOver:
                 return(TRUE);
             }
 
+            Log(LOG_DEBUG, "Handing off to agent queue %d", queue);
             /* We got a connection to the guy, tell him what to do */
             ConnWriteF(client->conn, "6020 %03d-%s %ld %ld %ld\r\n", queue, entry, (unsigned long)sb.st_size, dSize, lines);
             ConnWriteFile(client->conn, fh);
@@ -1663,10 +1651,7 @@ StartOver:
             /* fixme - evaluate this section.
                Clean up behind us ? */
             if (client->entry.work) {
-                if (Agent.flags & QUEUE_AGENT_DEBUG) {
-                    XplConsolePrintf("bongoqueue: Ran into queue resend [C%s.%03d]!\r\n", entry, queue);
-                    XplConsolePrintf("bongoqueue: Last command:%s\r\n", client->buffer);
-                }
+                Log(LOG_DEBUG, "Ran into queue resend [C%s.%03d] Last Command: %s", entry, queue, client->buffer);
 
                 FCLOSE_CHECK(client->entry.work);
                 client->entry.work = NULL;
@@ -2021,7 +2006,6 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     unsigned char *transcript;
     unsigned char timeLine[80];
     unsigned char line[CONN_BUFSIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
     unsigned char postmaster[MAXEMAILNAMESIZE + 1];
     unsigned char sender[MAXEMAILNAMESIZE + 1];
     unsigned char aSender[MAXEMAILNAMESIZE + 1] = "";
@@ -2031,7 +2015,6 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     BOOL mBounce=FALSE;
     BOOL header;
     time_t now;
-    MDBValueStruct *vs;
 
     /* Step 0, check if we want to bounce at all */
     now = time(NULL);
@@ -2104,10 +2087,14 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
         return(FALSE);
     }
 
-    sprintf(postmaster, "%s@%s", Conf.postMaster, Conf.officialName);
+    sprintf(postmaster, "%s@%s", BongoGlobals.postmaster, BongoGlobals.hostname);
     handling = Conf.bounceHandling;
 
     /* We're guaranteed to have a recipient */
+/* TODO: fix postmaster */
+    
+// REMOVE-MDB
+#if 0
     ptr = strchr(recipient, '@');
     if (ptr) {
         if (MsgDomainExists(ptr + 1, dn)) {
@@ -2140,15 +2127,16 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
             MDBDestroyValueStruct(vs);
         }
     }
+#endif
 
     /* Step 2, create the bounce; we've got all information */
     MsgGetRFC822Date(-1, 0, timeLine);
 
     fprintf(rtsData, "Date: %s\r\n", timeLine);
     fprintf(rtsData, "From: Mail Delivery System <%s>\r\n", postmaster);
-    fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "Message-Id: <%lu-%lu@%s>\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
     fprintf(rtsData, "To: <%s>\r\n", sender);
-    fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "MIME-Version: 1.0\r\nContent-Type: multipart/report; report-type=delivery-status;\r\n\tboundary=\"%lu-%lu-%s\"\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
     switch (reason) {
         case DELIVER_FAILURE:           fprintf(rtsData, "Subject: Returned mail: Delivery failure\r\n");               break;
         case DELIVER_HOST_UNKNOWN:      fprintf(rtsData, "Subject: Returned mail: Host unknown\r\n");                   break;
@@ -2173,7 +2161,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     fprintf(rtsData, "Precedence: bulk\r\n\r\nThis is a MIME-encapsulated message\r\n\r\n");
 
     /* First section, human readable */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: text/plain; charset=US-ASCII\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: text/plain; charset=US-ASCII\r\n\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     MsgGetRFC822Date(-1, received, timeLine);
     fprintf(rtsData, "The original message was received %s\r\nfrom %s\r\n\r\n", timeLine, aSender[0]!='\0' ? aSender : sender);
@@ -2341,14 +2329,14 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     } while (!feof(control) && !ferror(control));
 
     /* Second section, computer readable */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/delivery-status\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/delivery-status\r\n\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     /* Per message fields */
     if (envID[0]!='\0') {
         fprintf(rtsData, "Original-Envelope-Id: %s\r\n", envID);
     }
 
-    fprintf(rtsData, "Reporting-MTA: dns; %s\r\n", Conf.officialName);
+    fprintf(rtsData, "Reporting-MTA: dns; %s\r\n", BongoGlobals.hostname);
 
     MsgGetRFC822Date(-1, received, timeLine);
     fprintf(rtsData, "Arrival-Date: %s\r\n", timeLine);
@@ -2409,7 +2397,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     } while (!feof(control) && !ferror(control));
 
     /* Third section, original message */
-    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/rfc822\r\n\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "--%lu-%lu-%s\r\nContent-type: message/rfc822\r\n\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     header = TRUE;
     maxBodySize = -1;
@@ -2447,7 +2435,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
     }
 
     /* End of message */
-    fprintf(rtsData, "\r\n--%lu-%lu-%s--\r\n", now, (long unsigned int)XplGetThreadID(), Conf.officialName);
+    fprintf(rtsData, "\r\n--%lu-%lu-%s--\r\n", now, (long unsigned int)XplGetThreadID(), BongoGlobals.hostname);
 
     /* Now create the control file */
     fprintf(rtsControl, "D%lu\r\n", now);
@@ -2563,16 +2551,12 @@ CheckQueue(void *queueIn)
         Queue.restartNeeded = Queue.flushNeeded = FALSE;
 
         if (flushing) {
-            XplConsolePrintf ("bongoqueue: flushing the queue\n");
-        }
-
-        if (Agent.flags & QUEUE_AGENT_DEBUG) {
-            XplConsolePrintf("bongoqueue: Restarting queue:");
-        }
-
-        if (!flushing) {
+            Log(LOG_INFO, "Flushing the queue.");
+        } else {
             now = time(NULL) - Conf.queueInterval + 60;
         }
+
+        Log(LOG_DEBUG, "Restarting the queue");
 
         dirP = XplOpenDir(Conf.spoolPath);
         if (dirP == NULL) {
@@ -2617,12 +2601,10 @@ CheckQueue(void *queueIn)
         }
 
         XplCloseDir(dirP);
-        if (Agent.flags & QUEUE_AGENT_DEBUG) {
-            XplConsolePrintf(" Entries found: %4lu, handled:%4lu, %srestart\r\n", found, handled, Queue.restartNeeded ? "Have " : "No ");
-        }
+        Log(LOG_DEBUG, "Entries found: %4lu, handled: %4lu, %srestart", found, handled, Queue.restartNeeded ? "Have " : "No ");
 
         if (flushing) {
-            XplConsolePrintf ("bongoqueue: finished flushing the queue\n");
+            Log(LOG_INFO, "Finished flushing the queue.");
         }
 
     delayQueue:
@@ -2637,9 +2619,7 @@ CheckQueue(void *queueIn)
 
     XplSafeDecrement(Queue.activeWorkers);
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Message queue monitor done.\r\n");
-#endif
+    Log(LOG_DEBUG, "Message queue monitor done.");
 
     XplExitThread(EXIT_THREAD, 0);
 
@@ -2650,7 +2630,7 @@ BOOL
 QueueInit(void) 
 {
     if (!InitSpoolEntryIDLocks()) {
-        XplConsolePrintf(AGENT_NAME ": Couldn't create spool locks.\r\n");
+        Log(LOG_ERROR, "Could not create spool locks.");
         return FALSE;
     }    
 
@@ -2672,9 +2652,7 @@ QueueInit(void)
 void
 QueueShutdown(void) 
 {
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Writing queue agent list\r\n");
-#endif
+    Log(LOG_DEBUG, "Writing queue agent list.");
     RemoveAllPushAgents();
 
     QDBShutdown();
@@ -2704,19 +2682,16 @@ CreateQueueThreads(BOOL failed)
     }
 
     if (failed) {
-        XplConsolePrintf("bongoqueue: System not shut down properly, verifying queue integrity.\r\n");
+        Log(LOG_INFO, "System not shut down properly, verifying queue integrity.");
+    } else {
+        Log(LOG_DEBUG, "Verifying queue integrity, quick mode.");
     }
-#if VERBOSE
-    else {
-        XplConsolePrintf("bongoqueue: Verifying queue integrity, quick mode.\r\n");
-    }
-#endif
 
     sprintf(path, "%s", Conf.spoolPath);
 
     dirP = XplOpenDir(path);
 
-    sprintf(path, "%s/fragfile", MsgGetDBFDir(NULL));
+    sprintf(path, "%s/fragfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     FOPEN_CHECK(killFile, path, "wb");
     if (!killFile) {
         if (dirP) {
@@ -2839,14 +2814,12 @@ CreateQueueThreads(BOOL failed)
         killFile=NULL;
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Queue integrity check complete, now cleaning irrelevant entries.\r\n");
-#endif
+    Log(LOG_DEBUG, "Queue integrity check complete, now cleaning irrelevant entries.");
 
-    sprintf(path, "%s/fragfile", MsgGetDBFDir(NULL));
+    sprintf(path, "%s/fragfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     FOPEN_CHECK(killFile, path, "rb");
     if (!killFile) {
-        XplConsolePrintf("bongoqueue: Could not re-open killfile.\r\n");
+        Log(LOG_ERROR, "Could not re-open killfile.");
     } else {
         current = 0;
         while (!feof(killFile) && !ferror(killFile)) {
@@ -2861,7 +2834,7 @@ CreateQueueThreads(BOOL failed)
         FCLOSE_CHECK(killFile);
     }
 
-    sprintf(path, "%s/killfile", MsgGetDBFDir(NULL));
+    sprintf(path, "%s/killfile", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     UNLINK_CHECK(path);
 
     XplCloseDir(dirP);
@@ -2900,13 +2873,13 @@ CreateQueueThreads(BOOL failed)
         }
     }
 
-#if VERBOSE
-    XplConsolePrintf("bongoqueue: Queue integrity check complete, starting Queue Monitor [%d].\r\n", XplSafeRead(Queue.queuedLocal));
-#endif
+    Log(LOG_DEBUG, "Queue integrity check complete, starting Queue Monitor [%d].", XplSafeRead(Queue.queuedLocal));
 
     XplSafeWrite(Queue.activeWorkers, 0);
 
-    XplBeginCountedThread(&id, CheckQueue, STACKSPACE_Q, NULL, i, Agent.activeThreads);
+    if (!Conf.debug) {
+        XplBeginCountedThread(&id, CheckQueue, STACKSPACE_Q, NULL, i, Agent.activeThreads);
+    }
 
     return(0);
 }
@@ -2972,16 +2945,13 @@ CommandQaddm(void *param)
     if (data) {
         NMAPConnections list = { 0, };
         struct sockaddr_in saddr;
-        MDBValueStruct *vs;
 
-        vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-
-        if (MsgFindObject(recipient, NULL, NULL, &saddr, vs)) {
-            result = DeliverToStore(&list, &saddr, NMAP_DOCTYPE_MAIL, sender, authSender, client->path, data, sb.st_size, recipient, mailbox, 0);
-            EndStoreDelivery(&list);
+        if (MsgAuthFindUser(recipient) == 0) {
+            if (MsgAuthGetUserStore(recipient, &saddr) == TRUE) {
+                result = DeliverToStore(&list, &saddr, NMAP_DOCTYPE_MAIL, sender, authSender, client->path, data, sb.st_size, recipient, mailbox, 0);
+                EndStoreDelivery(&list);
+            }
         }
-        MDBDestroyValueStruct(vs);
-        
     } else {
         return(ConnWrite(client->conn, MSG4224CANTREAD, sizeof(MSG4224CANTREAD) - 1));
     }
@@ -4260,24 +4230,17 @@ int
 CommandQsrchDomain(void *param)
 {
     int ccode;
-    unsigned long used;
     unsigned char *ptr;
     void *handle = NULL;
-    MDBValueStruct *vs = NULL;
     QueueClient *client = (QueueClient *)param;
 
     ptr = client->buffer + 12;
 
     /* QSRCH DOMAIN <domain> */
     if ((*ptr++ == ' ') && (!isspace(*ptr))) {
-        if (((vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL)) != NULL) 
-                && ((handle = QDBHandleAlloc()) != NULL)) {
-            ccode = QDBSearchDomain(handle, ptr, vs);
+        if ((handle = QDBHandleAlloc()) != NULL) {
+            ccode = QDBSearchDomain(handle, ptr);
             if (!ccode) {
-                for (used = 0; (ccode != -1) && (used < vs->Used); used++) {
-                    ccode = ConnWriteF(client->conn, "2001-007-%s\r\n", vs->Value[used]);
-                }
-
                 if (ccode != -1) {
                     ccode = ConnWrite(client->conn, MSG1000OK, sizeof(MSG1000OK) - 1);
                 }
@@ -4288,10 +4251,6 @@ CommandQsrchDomain(void *param)
         } else {
             LogFailure("Out of memory");
             ccode = ConnWrite(client->conn, MSG5230NOMEMORYERR, sizeof(MSG5230NOMEMORYERR) - 1);
-        }
-
-        if (vs) {
-            MDBDestroyValueStruct(vs);
         }
 
         if (handle) {
@@ -4705,6 +4664,16 @@ CommandQstorMessage(void *param)
 
     MsgGetRFC822Date(-1, 0, TimeBuf);
     fprintf(client->entry.data,
+            "Received: from %s (%d.%d.%d.%d) by %s\r\n\twith NMAP (bongoqueue Agent); %s\r\n",
+            BongoGlobals.hostname, /* FIXME: this should eventually be the remote hsotname of the agent */
+            client->conn->socketAddress.sin_addr.s_net,
+            client->conn->socketAddress.sin_addr.s_host,
+            client->conn->socketAddress.sin_addr.s_lh,
+            client->conn->socketAddress.sin_addr.s_impno,
+            BongoGlobals.hostname,
+            TimeBuf);
+/*
+    fprintf(client->entry.data,
             "Received: from %d.%d.%d.%d [%d.%d.%d.%d] by %s\r\n\twith NMAP (%s); %s\r\n",
             client->conn->socketAddress.sin_addr.s_net,
             client->conn->socketAddress.sin_addr.s_host,
@@ -4716,10 +4685,10 @@ CommandQstorMessage(void *param)
             client->conn->socketAddress.sin_addr.s_lh,
             client->conn->socketAddress.sin_addr.s_impno,
 
-            Agent.agent.officialName,
+            BongoGlobals.hostname,
             AGENT_NAME,
             TimeBuf);
-
+*/
     if (count) {
         ccode = ConnReadToFile(client->conn, client->entry.data, count);
     } else {
@@ -4800,7 +4769,7 @@ CommandQwait(void *param)
             && ((identifier = strchr(ptr + 1, ' ')) != NULL) 
             && (identifier[1]) 
             && (!isspace(identifier[1])) 
-            && (strlen(identifier + 1) < MDB_MAX_OBJECT_CHARS)) {
+            && (strlen(identifier + 1) < 100)) { // FIXME: REMOVE-MDB 100 was MDB maximum object identifier length
         *ptr++ = '\0';
         *identifier++ = '\0';
 

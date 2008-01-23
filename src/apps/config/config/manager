@@ -1,23 +1,16 @@
-/* bongo manager config is an object. One key should be 'agents', whose value
- * is an array of agent objects. Agent objects can have names, pri (priority)
- * and be enabled. Priorities are roughly in terms of dependency and/or which
- * order we want things to start in. Low pri == important, high pri == do this
- * last.
- */
-
 { "version": 1,
   "agents": [
-   	{ "name": "bongoqueue", "pri": 3, "enabled": true },
-	{ "name": "bongosmtp", "pri": 3, "enabled": true },
+   	{ "name": "bongoqueue", "pri": 1, "enabled": true },
+	{ "name": "bongosmtp", "pri": 10, "enabled": true },
 	{ "name": "bongoantispam", "pri": 5, "enabled": true },
 	{ "name": "bongoavirus", "pri": 5, "enabled": true },
 	{ "name": "bongocollector", "pri": 7, "enabled": true },
-	{ "name": "bongomailprox", "pri": 7, "enabled": true },
-	{ "name": "bongoconnmgr", "pri": 2, "enabled": true },
-	{ "name": "bongopluspack", "pri": 5, "enabled": true },
-	{ "name": "bongorules", "pri": 2, "enabled": true },
+	{ "name": "bongomailprox", "pri": 7, "enabled": false },
+	{ "name": "bongopluspack", "pri": 5, "enabled": false },
+	{ "name": "bongorules", "pri": 5, "enabled": false },
 	{ "name": "bongoimap", "pri": 10, "enabled": true },
 	{ "name": "bongopop3", "pri": 10, "enabled": true },
-	{ "name": "bongocalcmd", "pri": 7, "enabled": true }
+	{ "name": "bongocalcmd", "pri": 7, "enabled": true },
+	{ "name": "bongo-standalone", "pri": 10, "enabled": true }
   ]
 }

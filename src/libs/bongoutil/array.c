@@ -28,7 +28,11 @@
 int
 BongoArrayInit(BongoArray *array, unsigned int elementSize, unsigned int initialSize)
 {
-   if (initialSize > 0) {
+    if (!array) {
+        return -1;
+    }
+
+    if (initialSize > 0) {
         array->data = MemMalloc(initialSize * elementSize);
         if (!array->data) { 
             return -1;
@@ -46,6 +50,10 @@ void *
 BongoArrayDestroy(BongoArray *array, BOOL freeSegment)
 {
     void *ret;
+
+    if (!array) {
+        return NULL;
+    }
 
     if (freeSegment) {
         MemFree(array->data);
@@ -78,6 +86,10 @@ BongoArrayNew(unsigned int elementSize, unsigned int initialSize)
 void * 
 BongoArrayFree(BongoArray *array, BOOL freeSegment)
 {
+    if (!array) {
+        return NULL;
+    }
+
     void *ret = BongoArrayDestroy(array, freeSegment);
 
     MemFree(array);
@@ -90,6 +102,10 @@ BongoArrayExpand(BongoArray *array, unsigned int newLen)
 {
     unsigned int newSize;
     
+    if (!array) {
+        return;
+    }
+
     if (array->size >= newLen) {
         return;
     }
@@ -111,6 +127,10 @@ BongoArrayExpand(BongoArray *array, unsigned int newLen)
 void
 BongoArrayAppendValues(BongoArray *array, const void *data, unsigned int len)
 {
+    if (!array) {
+        return;
+    }
+
     BongoArrayExpand(array, array->len + len);
 
     memcpy((char*)array->data + (array->elemSize * array->len), data, (array->elemSize * len));
@@ -121,6 +141,10 @@ BongoArrayAppendValues(BongoArray *array, const void *data, unsigned int len)
 void 
 BongoArrayRemove(BongoArray *array, unsigned int i)
 {
+    if (!array) {
+        return;
+    }
+
     if (i >= array->len) {
         return;
     }
@@ -136,6 +160,10 @@ BongoArrayFindUnsorted(BongoArray *array, void *needle, ArrayCompareFunc compare
 {
     unsigned int i;
 
+    if (!array) {
+        return -1;
+    }
+
     for (i = 0; i < array->len; i++) {
         if (!compare(needle, (char*)array->data + (i * array->elemSize))) {
             return (int)i;
@@ -150,6 +178,10 @@ BongoArrayFindSorted(BongoArray *array, void *needle, ArrayCompareFunc compare)
 {
     void *data;
 
+    if (!array) {
+        return -1;
+    }
+
     data = bsearch(needle, array->data, array->len, array->elemSize, compare);
 
     if (data) {
@@ -162,6 +194,10 @@ BongoArrayFindSorted(BongoArray *array, void *needle, ArrayCompareFunc compare)
 void
 BongoArraySetLength(BongoArray *array, unsigned int len)
 {
+    if (!array) {
+        return;
+    }
+
     BongoArrayExpand(array, len);
 
     array->len = len;
@@ -170,6 +206,10 @@ BongoArraySetLength(BongoArray *array, unsigned int len)
 void
 BongoArraySort(BongoArray *array, ArrayCompareFunc compare)
 {
+    if (!array) {
+        return;
+    }
+
     qsort(array->data, array->len, array->elemSize, compare);
 }
 

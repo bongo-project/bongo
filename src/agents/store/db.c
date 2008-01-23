@@ -36,6 +36,7 @@ docs table:
    filename    - for collection: path w/o trailing slash
                  for document:   full path + '/' + document name (see stored.h)
    collection  - the guid of the containing collection
+   type        - the store type of the collection/document
 
    info        - contains DStoreDocInfo struct
 
@@ -104,6 +105,8 @@ struct _DStoreHandle {
         DStoreStmt getGuidColl;
         DStoreStmt listColl;
         DStoreStmt listCollRange;
+        DStoreStmt listCollections;
+        DStoreStmt listCollectionsRange;
         DStoreStmt listUnindexed;
         DStoreStmt listUnindexedColl;
         DStoreStmt setIndexed;
@@ -156,10 +159,6 @@ struct _DStoreHandle {
         DStoreStmt getMime;
         DStoreStmt setMime;
         DStoreStmt clearMime;
-
-        DStoreStmt listJournal;
-        DStoreStmt addJournalEntry;
-        DStoreStmt delJournalEntry;
 
         DStoreStmt getVersion;
 
@@ -229,7 +228,7 @@ DStoreCreateDB(DStoreHandle *handle)
                       "                   conversation INTEGER, "
                       "                   filename TEXT DEFAULT NULL, "
                       "                   collection INTEGER DEFAULT 0, "
-
+                      "                   type INTEGER DEFAULT 1, "
                       "                   info BLOB NOT NULL,"
                       "                   subject TEXT DEFAULT NULL,"
                       "                   senders TEXT DEFAULT NULL,"
@@ -243,6 +242,7 @@ DStoreCreateDB(DStoreHandle *handle)
                       ");"
                       "CREATE UNIQUE INDEX filename_idx ON docs (filename);"
                       "CREATE INDEX docs_idx ON docs (guid);"
+                      "CREATE INDEX docs_type ON docs (type);"
  
                       "CREATE TABLE props (guid INTEGER, "
                       "                    name TEXT NOT NULL, "
@@ -403,7 +403,7 @@ DStoreCreateDB(DStoreHandle *handle)
     return 0;
 
 fail:
-    printf("DStoreCreateDB error: %s\n", sqlite3_errmsg(handle->db));
+    Log(LOG_ERROR, "DStoreCreateDB error: %s", sqlite3_errmsg(handle->db));
 
     DStoreAbortTransaction(handle);
     DStoreClose(handle);
@@ -414,7 +414,12 @@ fail:
 /* ensure the database schema has been updated to the proper version 
    returns: 0 on success, -1 on error
 */
-
+/* FIXME: We were doing this check every time we opened the database.
+ * That's not great, though. Admins should be able to control if/when
+ * user data is upgraded, since it's a risky operation.
+ * As a control, we check the version of the DB when we first STORE, 
+ * calling DStoreCheckDBSchema() 
+ */
 static int
 UpgradeDB(DStoreHandle *handle)
 {
@@ -426,18 +431,18 @@ UpgradeDB(DStoreHandle *handle)
 #define CURRENT_VERSION 2
 
     if (DStoreBeginTransaction(handle)) {
-        printf("UpgradeDB error: %s\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
         return -1;
     }
 
     stmt = SqlPrepare(handle, "PRAGMA user_version;", &handle->stmts.getVersion);
     if (!stmt) {
-        printf("UpgradeDB error: %s\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
         goto fail;
     }
     
     if (1 != DStoreStmtStep(handle, stmt)) {
-        printf("UpgradeDB error: %s\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
         DStoreStmtEnd(handle, stmt);
         goto fail;
     }
@@ -457,7 +462,7 @@ UpgradeDB(DStoreHandle *handle)
                              ,
                              NULL, NULL, NULL);
         if (SQLITE_OK != dcode) {
-            printf("error: %s\n", sqlite3_errmsg(handle->db));
+            Log(LOG_ERROR, "Couldn't add mime_cache table: %s\n", sqlite3_errmsg(handle->db));
             goto fail;
         }        
     case 1:
@@ -465,13 +470,13 @@ UpgradeDB(DStoreHandle *handle)
                              "ALTER TABLE docs ADD COLUMN stamp TEXT DEFAULT NULL;",
                              NULL, NULL, NULL);
         if (SQLITE_OK != dcode) {
-            printf("error: %s\n", sqlite3_errmsg(handle->db));
+            Log(LOG_ERROR, "Couldn't update docs table: %s\n", sqlite3_errmsg(handle->db));
             goto fail;
         }
     case 2:
         break;
     default:
-        printf("Illegal database version %d", CURRENT_VERSION);
+        Log(LOG_ERROR, "Illegal database version %d found", CURRENT_VERSION);
         goto fail;
     }
 
@@ -484,18 +489,52 @@ UpgradeDB(DStoreHandle *handle)
 
     DStoreReset(handle);
 
-    printf("Upgraded store to version %d.\n", CURRENT_VERSION);
+    Log(LOG_INFO, "Upgraded store to version %d", CURRENT_VERSION);
     return 0;
 
 fail:
     DStoreAbortTransaction(handle);
     if (-1 != version) {
-        printf("Unable to upgrade store from version %d to version %d.\n", 
+        Log(LOG_ERROR, "Unable to upgrade store from version %d to version %d.", 
                version, CURRENT_VERSION);
     }
     return -1;
 }
 
+int
+DStoreCheckDBSchema(DStoreHandle *handle)
+{
+    DStoreStmt *stmt;
+    int version = 0;
+    int retcode = -1;
+    
+    if (DStoreBeginTransaction(handle)) {
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
+        return -1;
+    }
+
+    stmt = SqlPrepare(handle, "PRAGMA user_version;", &handle->stmts.getVersion);
+    if (!stmt) {
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
+        goto fail;
+    }
+    
+    if (1 != DStoreStmtStep(handle, stmt)) {
+        Log(LOG_ERROR, "UpgradeDB error: %s", sqlite3_errmsg(handle->db));
+        DStoreStmtEnd(handle, stmt);
+        goto fail;
+    }
+    version = sqlite3_column_int(stmt->stmt, 0);
+    DStoreStmtEnd(handle, stmt);
+
+    if (CURRENT_VERSION == version) {
+        retcode = 0;
+    } 
+
+fail:
+    DStoreAbortTransaction(handle);
+    return retcode;
+}
 
 static void test_info_flags(sqlite3_context *ctx, int argc, sqlite3_value **argv);
 
@@ -515,12 +554,11 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
 
     create = access(path, 0);
 
-    if (!(handle = MemMalloc(sizeof(struct _DStoreHandle))) ||
-        memset(handle, 0, sizeof(struct _DStoreHandle)), 0 ||
-        SQLITE_OK != sqlite3_open(path, &handle->db))
+    if (!(handle = MemMalloc(sizeof(struct _DStoreHandle)))   ||
+         (memset(handle, 0, sizeof(struct _DStoreHandle)), 0) ||
+         (SQLITE_OK != sqlite3_open(path, &handle->db)))
     {
-        XplConsolePrintf("NMAP: Failed to open dstore \"%s\".\r\n",
-                         path);
+        Log(LOG_ERROR, "Failed to open dstore \"%s\"", path);
         goto fail;
     }
 
@@ -529,11 +567,7 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
     handle->lockTimeoutMs = locktimeoutms;
 
     if (create && DStoreCreateDB(handle)) {
-        printf("Couldn't open db");
-        goto fail;
-    }
-
-    if (UpgradeDB(handle)) {
+        Log(LOG_ERROR, "Couldn't open dstore db");
         goto fail;
     }
 
@@ -569,7 +603,7 @@ DStoreClose(DStoreHandle *handle)
 {
     DStoreReset(handle);
     if (SQLITE_BUSY == sqlite3_close(handle->db)) {
-        XplConsolePrintf ("Store: couldn't close dstore database!\r\n");
+        Log (LOG_ERROR, "Couldn't close dstore database");
     }
 
     MemFree(handle);
@@ -615,12 +649,12 @@ SqlPrepare(DStoreHandle *handle, const char *statement, DStoreStmt *stmt)
             XplDelay(STMT_SLEEP_MS);
             continue;
         default:
-            XplConsolePrintf("SQL Prepare statement \"%s\" failed; %s\r\n", 
+            Log(LOG_INFO, "SQL Prepare statement \"%s\" failed; %s", 
                              statement, sqlite3_errmsg(handle->db));
             return NULL;
         }
     }
-    XplConsolePrintf("Sql Prepare failed because db is busy.\r\n");
+    Log(LOG_ERROR, "Sql Prepare failed because db is busy.\r\n");
     return NULL;
 }
 
@@ -681,11 +715,11 @@ DStoreStmtStep(DStoreHandle *handle,
             XplDelay(STMT_SLEEP_MS);
             continue;
         default:
-            XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+            Log(LOG_INFO, "Sql: %s", sqlite3_errmsg(handle->db));
             return -1;
         }
     }
-    XplConsolePrintf("Sql Busy.\r\n");
+    Log(LOG_ERROR, "Sql Busy.");
     return -1;
 }
 
@@ -700,7 +734,7 @@ DStoreStmtExecute(DStoreHandle *handle, DStoreStmt *_stmt)
     if (SQLITE_DONE == result) {
         return 0;
     } else {
-        XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+        Log(LOG_ERROR, "Sql: %s", sqlite3_errmsg(handle->db));
         return -1;
     }
 }
@@ -709,7 +743,7 @@ DStoreStmtExecute(DStoreHandle *handle, DStoreStmt *_stmt)
 void
 DStoreStmtError(DStoreHandle *handle, DStoreStmt *stmt)
 {
-    XplConsolePrintf("Sql: %s\r\n", sqlite3_errmsg(handle->db));
+    Log(LOG_ERROR, "Sql: %s\r\n", sqlite3_errmsg(handle->db));
 }
 
 
@@ -867,12 +901,12 @@ DStoreCancelTransactions(DStoreHandle *handle)
 #define DOCINFO_COLS " docs.guid, docs.info, " \
                      " docs.subject, docs.senders, docs.msgid, docs.parentmsgid, " \
                      " docs.conversation, docs.listid," \
-                     " docs.uid, docs.summary, docs.location, docs.stamp "
+                     " docs.uid, docs.summary, docs.location, docs.stamp, docs.type "
 #define CONVINFO_COLS " docs.guid, docs.info, conversations.subject "
 #define CONVINFO_COLSAS " docs.guid as guid, docs.info as info, conversations.subject as subject"
 #define EVENTINFO_COLS " events.guid, docs.info, " \
                        " 0, 0, 0, 0, 0, 0, " \
-                       " docs.uid, docs.summary, docs.location, docs.stamp "
+                       " docs.uid, docs.summary, docs.location, docs.stamp, docs.type "
 
 /* returns: 1 on success
             0 if no row available,
@@ -894,7 +928,7 @@ retry:
         return result;
     }
     if (DOCINFO_SIZE != sqlite3_column_bytes(stmt->stmt, 1)) {
-        XplConsolePrintf("Store DB error: Incompatible docs table.\r\n");
+        Log(LOG_ERROR, "Store DB error: Incompatible docs table.");
         return -1;
     }
     data = sqlite3_column_blob(stmt->stmt, 1);
@@ -917,6 +951,8 @@ retry:
         }                                                                   \
     }                                                                       \
 }
+    
+    info->type = sqlite3_column_int64(stmt->stmt, 12);
     
     switch (info->type) {
     case STORE_DOCTYPE_CONVERSATION:
@@ -1105,9 +1141,9 @@ DStoreSetDocInfo(DStoreHandle *handle, DStoreDocInfo *info)
                           "(guid, filename, collection, info, "
                           " conversation, "
                           " subject, senders, msgid, parentmsgid, listid, "
-                          " uid, summary, location, stamp) "
+                          " uid, summary, location, stamp, type) "
                           "VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, "
-                          "        ?11, ?12, ?13, ?14);", 
+                          "        ?11, ?12, ?13, ?14, ?15);", 
                           &handle->stmts.setInfo);
     } else {
         newDoc = TRUE;
@@ -1116,9 +1152,9 @@ DStoreSetDocInfo(DStoreHandle *handle, DStoreDocInfo *info)
                           "(filename, collection, info, "
                           " conversation, "
                           " subject, senders, msgid, parentmsgid, listid, "
-                          " uid, summary, location, stamp) "
+                          " uid, summary, location, stamp, type) "
                           "VALUES (?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, "
-                          "        ?11, ?12, ?13, ?14);", 
+                          "        ?11, ?12, ?13, ?14, ?15);", 
                           &handle->stmts.addInfo);
     }
     if (!stmt) {
@@ -1127,6 +1163,7 @@ DStoreSetDocInfo(DStoreHandle *handle, DStoreDocInfo *info)
     if ((info->guid && sqlite3_bind_int64(stmt->stmt, 1, info->guid)) ||
         DStoreBindStr(stmt->stmt, 2, filename) ||
         sqlite3_bind_int64(stmt->stmt, 3, info->collection) ||
+        sqlite3_bind_int64(stmt->stmt, 15, info->type) ||
         sqlite3_bind_blob(stmt->stmt, 4, info, DOCINFO_SIZE, SQLITE_STATIC) ||
         sqlite3_bind_int64(stmt->stmt, 5, info->conversation))
     {
@@ -1310,6 +1347,40 @@ DStoreListColl(DStoreHandle *handle, uint64_t collection, int start, int end)
                          sqlite3_bind_int(stmt->stmt, 3, (end - start) + 1)))) {
         DStoreStmtError(handle, stmt);
         return NULL;
+    }
+    return stmt;
+}
+
+DStoreStmt *
+DStoreListCollections(DStoreHandle *handle, char *root, int start, int end)
+{
+    DStoreStmt *stmt;
+    int rootlen;
+
+    if (root == NULL) root = "/";
+    rootlen = strlen(root);
+
+#define DS_LIST_COLL_QUERY "SELECT" DOCINFO_COLS "FROM docs WHERE type = 4096 AND substr(filename, 0, ?) = ?"
+
+    if (start != -1) {
+        stmt = SqlPrepare(handle,
+                      DS_LIST_COLL_QUERY " LIMIT ?, ?;",
+                      &handle->stmts.listCollectionsRange);
+    } else {
+        stmt = SqlPrepare(handle, 
+                      DS_LIST_COLL_QUERY ";",
+                      &handle->stmts.listCollections);
+    }
+
+    if (!stmt ||
+        sqlite3_bind_int64(stmt->stmt, 1, rootlen) ||
+        DStoreBindStr(stmt->stmt, 2, root)) {
+        DStoreStmtError(handle, stmt);
+        return NULL;
+    }
+    if (start != -1) {
+        sqlite3_bind_int64(stmt->stmt, 3, start);
+        sqlite3_bind_int64(stmt->stmt, 4, end);
     }
     return stmt;
 }
@@ -1600,15 +1671,15 @@ DStoreSetProperty(DStoreHandle *handle,
 int
 DStoreSetPropertySimple(DStoreHandle *handle,
                         uint64_t guid, 
-                        char *name,
-                        char *value)
+                        const char *name,
+                        const char *value)
 {
     StorePropInfo prop;
 
     prop.type = STORE_PROP_EXTERNAL;
     
-    prop.name = name;
-    prop.value = value;
+    prop.name = (char *)name;
+    prop.value = (char *)value;
     prop.valueLen = strlen(value);
     
     return DStoreSetProperty(handle, guid, &prop);
@@ -1887,7 +1958,7 @@ test_headers(sqlite3_context *ctx, int argc, sqlite3_value **argv)
             p = subject;
             break;
         default:
-            printf("test_headers(): Bad header type.\n");
+            Log(LOG_ERROR, "test_headers(): Bad header type.");
             continue;
         }
 
@@ -2637,84 +2708,6 @@ cleanup:
 
     return dcode;
 }
-
-
-int
-DStoreAddJournalEntry(DStoreHandle *handle, uint64_t collection, char *filename)
-{
-    DStoreStmt *stmt;
-    int result;
-
-    stmt = SqlPrepare(handle, 
-                      "INSERT into journal (collection, filename) "
-                      "VALUES (?, ?);",
-                      &handle->stmts.addJournalEntry);
-    if (!stmt ||
-        sqlite3_bind_int64(stmt->stmt, 1, collection) ||
-        DStoreBindStr(stmt->stmt, 2, filename))
-    {
-        return -1;
-    }
-    result = DStoreStmtExecute(handle, stmt);
-    
-    DStoreStmtEnd(handle, stmt);
-
-    return result;
-}
-
-
-int
-DStoreRemoveJournalEntry(DStoreHandle *handle, uint64_t collection)
-{
-    DStoreStmt *stmt;
-    int result;
-
-    stmt = SqlPrepare(handle, "DELETE FROM journal WHERE collection=?;",
-                      &handle->stmts.delJournalEntry);
-    if (!stmt ||
-        sqlite3_bind_int64(stmt->stmt, 1, collection))
-    {
-        return -1;
-    }
-    result = DStoreStmtExecute(handle, stmt);
-    DStoreStmtEnd(handle, stmt);
-
-    return result;
-}
-
-
-DStoreStmt *
-DStoreListJournal(DStoreHandle *handle)
-{
-    DStoreStmt *stmt;
-
-    stmt = SqlPrepare(handle, "SELECT collection, filename FROM journal;", 
-                      &handle->stmts.listJournal);
-
-    if (!stmt) {
-        DStoreStmtError(handle, stmt);
-        return NULL;
-    }
-    return stmt;
-}
-
-
-int
-DStoreJournalStmtStep(DStoreHandle *handle, DStoreStmt *stmt, 
-                      uint64_t *outGuid, const char **outFilename)
-{
-    int result;
-
-    if (1 != (result = DStoreStmtStep(handle, stmt))) {
-        return result;
-    }
-
-    *outGuid = sqlite3_column_int64(stmt->stmt, 0);
-    *outFilename = sqlite3_column_text(stmt->stmt, 1);
-
-    return 1;
-}
-
 
 /** mime cache **/
 

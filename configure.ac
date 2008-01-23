@@ -220,6 +220,10 @@ XPL_DEFAULT_MAIL_DIR=${XPL_DEFAULT_STATE_DIR}/users
 AC_SUBST(XPL_DEFAULT_MAIL_DIR)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_MAIL_DIR, "$XPL_DEFAULT_MAIL_DIR", [Default mail directory])
 
+XPL_DEFAULT_COOKIE_DIR=${XPL_DEFAULT_STATE_DIR}/dbf/cookies
+AC_SUBST(XPL_DEFAULT_COOKIE_DIR)
+AC_DEFINE_UNQUOTED(XPL_DEFAULT_COOKIE_DIR, "$XPL_DEFAULT_COOKIE_DIR", [Default cookie directory])
+
 XPL_DEFAULT_CERT_PATH=${XPL_DEFAULT_STATE_DIR}/dbf/osslcert.pem
 AC_SUBST(XPL_DEFAULT_CERT_PATH)
 AC_DEFINE_UNQUOTED(XPL_DEFAULT_CERT_PATH, "$XPL_DEFAULT_CERT_PATH", [Default cert path])
@@ -256,14 +260,28 @@ LIBS=$SAVE_LIBS
 AC_SUBST(RESOLV_LIBS)
 
 have_ldap="no"
+info_ldap="No. LDAP auth backend will be unavailable."
 AC_CHECK_HEADER(ldap.h,[
 	AC_CHECK_LIB(ldap, ldap_init,[
 		LDAP_LIBS="-lldap"
 		have_ldap="yes"
+		info_ldap="Yes. LDAP auth backend will be available."
 	])
 ])
 AM_CONDITIONAL(HAVE_LDAP,test "$have_ldap" = "yes")
 AC_SUBST(LDAP_LIBS)
+
+have_odbc="no"
+info_odbc="No. ODBC auth backend will be unavailable."
+AC_CHECK_HEADER(odbcinst.h,[
+	AC_CHECK_LIB(odbc, SQLConnect,[
+		ODBC_LIBS="-lodbc"
+		have_odbc="yes"
+		info_odbc="Yes. ODBC auth backend will be available."
+	])
+])
+AM_CONDITIONAL(HAVE_ODBC,test "$have_odbc" = "yes")
+AC_SUBST(ODBC_LIBS)
 
 have_kstat="no"
 AC_CHECK_LIB(kstat, kstat_open,[
@@ -357,6 +375,18 @@ case "$host" in
 	PYTHON_LIBS="-lpython$PYTHON_VERSION"
 	;;
 esac
+
+dnl Check for ElementTree lxml
+prog="
+import lxml.etree as et
+"
+
+if $PYTHON -c "$prog" 1>&AC_FD_CC 2>&AC_FD_CC
+then
+	AC_MSG_RESULT([Found ElementTree lxml])
+else
+	AC_MSG_ERROR([Couldn't find ElementTree lxml module for python])
+fi
 
 LIBS_save="$LIBS"
 CPPFLAGS_save="$CPPFLAGS"
@@ -628,6 +658,15 @@ fi
 
 ac_configure_args="$ac_configure_args --enable-threadsafe --enable-cross-thread-connections --disable-tcl"
 
+# disabled agents
+# src/agents/mailprox/Makefile
+# src/agents/rules/Makefile
+# src/agents/pluspack/Makefile
+
+#src/libs/mdb/Makefile
+#src/libs/mdb-file/Makefile
+#src/libs/mdb-xldap/Makefile
+
 AC_OUTPUT([
 Makefile
 bongo.pc
@@ -638,6 +677,8 @@ include/Makefile
 init/bongo.init.fc4
 init/bongo.init.sles9
 init/bongo.init.suse10
+init/bongo.init.rpl
+init/bongoinit.conf.rpl
 init/http-bongo.solaris-smf
 init/svc-bongo.solaris-smf
 src/agents/alarm/Makefile
@@ -645,31 +686,19 @@ src/agents/antispam/Makefile
 src/agents/avirus/Makefile
 src/agents/calcmd/Makefile
 src/agents/collector/Makefile
-src/agents/connmgr/Makefile
-src/agents/connmgr/cmmodules/lists/Makefile
-src/agents/connmgr/cmmodules/rbl/Makefile
-src/agents/connmgr/cmmodules/rdns/Makefile
-src/agents/connmgr/cmmodules/user/Makefile
 src/agents/generic/Makefile
 src/agents/imap/Makefile
 src/agents/imap/tests/Makefile
 src/agents/itip/Makefile
-src/agents/mailprox/Makefile
-src/agents/pluspack/Makefile
 src/agents/pop/Makefile
 src/agents/queue/Makefile
 src/agents/smtp/Makefile
 src/agents/store/Makefile
 src/agents/store/tests/Makefile
-src/agents/rules/Makefile
-src/apps/setup/Makefile
-src/apps/setup/bongo-setup.xml
 src/apps/manager/Makefile
-src/apps/admin/Makefile
 src/apps/config/Makefile
 src/apps/sendmail/Makefile
 src/apps/backup/Makefile
-src/apps/mdbtool/Makefile
 src/apps/queuetool/Makefile
 src/apps/storetool/Makefile
 src/apps/storetool/demo/Makefile
@@ -684,10 +713,6 @@ src/libs/json/Makefile
 src/libs/streamio/Makefile
 src/libs/streamio/codec/Makefile
 src/libs/logger/Makefile
-src/libs/management/Makefile
-src/libs/mdb/Makefile
-src/libs/mdb-file/Makefile
-src/libs/mdb-xldap/Makefile
 src/libs/memmgr/Makefile
 src/libs/msgapi/Makefile
 src/libs/nmap/Makefile
@@ -699,7 +724,6 @@ src/libs/bongoutil/Makefile
 src/libs/bongoutil/tests/Makefile
 src/libs/xpl/Makefile
 src/libs/xpl/tests/Makefile
-src/libs/connmgr/Makefile
 src/www/Makefile
 src/www/bongo.conf
 zoneinfo/Makefile
@@ -717,12 +741,14 @@ AC_MSG_NOTICE([Configured to build Bongo:
   Bongo user:      ${info_bongo_user}
   Debug CFLAGS:    ${info_debug_cflags}
 
-Imported libraries:
+Required libraries:
   CLucene:         ${info_clucene}
   CURL:            ${info_curl}
   SQLite:          ${info_sqlite}
   libical:         ${info_libical}
 
 Optional libraries:
+  LDAP:            ${info_ldap}
+  ODBC:            ${info_odbc}
   Check:           ${info_check}
 ])

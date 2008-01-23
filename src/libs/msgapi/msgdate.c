@@ -22,7 +22,6 @@
 #include <config.h>
 #include <xpl.h>
 
-#include <mdb.h>
 #include <msgapi.h>
 #include <msgdate.h>
 #include <nmap.h>

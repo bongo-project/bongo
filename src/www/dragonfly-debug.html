@@ -6,7 +6,7 @@
     <link rel="icon" href="img/bongo-favicon.png" type="image/png">
     <title>Bongo</title>
     <style type="text/css" media="screen">
-      @import url(css/interpreter.css);
+      @import url(css/log.css);
       @import url(css/layout.css);
       @import url(css/widgets.css);
       @import url(css/login.css);
@@ -33,13 +33,14 @@
       document.write ('<h1 id="loading">Loading...</h1>');
       // -->
     </script>
+    <script type="text/javascript" src="js/Log.js"></script>
+    
     <script type="text/javascript" src="js/lib/prototype/prototype.js"></script>
 
     <script type="text/javascript" src="js/lib/script.aculo.us/effects.js"></script>
     <script type="text/javascript" src="js/lib/script.aculo.us/controls.js"></script>
 
     <script type="text/javascript" src="js/lib/MochiKit/MochiKit.js"></script>
-    <script type="text/javascript" src="js/lib/MochiKit/interpreter.js"></script>
 
     <script type="text/javascript" src="js/Dragonfly.js"></script>
 
@@ -84,8 +85,7 @@
               Prototype: [ 'Version' ],
 
               MochiKit: [ 'Async', 'Base', 'DOM', 'Color', 'DateTime',
-                          'Format', 'Iter', 'Logging', 'LoggingPane', 'Signal',
-                          'Visual' ],
+                          'Format', 'Iter', 'Signal', 'Visual' ],
 
               Dragonfly: [ 'main', 'format', 'Cookie', 'Location',
                            'hasAuthCookie', 'getIFrameDocument', 'TzSelector',
@@ -177,8 +177,7 @@
             </tr>
             <tr>
 	      <td colspan="3">
-		<a id="login-console-href" href="javascript:void(Dragonfly.toggleConsole());">Console</a> / 
-		<a id="login-logs-href" href="javascript:void(createLoggingPane(true));">Logs</a> / 
+		<span id="showLogs"><a id="login-logs-href" href="javascript:void(ConsoleUtils.showHideConsole());">Logs</a> / </span>
 		<a href="dragonfly.html">Compiled</a>
 	      </td>
             </tr>
@@ -197,6 +196,7 @@
 	      <ul id="section-user">
 	    <li><a href="#preferences" id="settings-text">Settings</a></li>
 		<li id="admin-link"><a href="admin" target="_blank" id="admin-text">Administration</a></li>
+		<li id="makeDumpLink"><a href="javascript:void(console.sendLog(true));" id="makeDumpLink-a">Save log dump</a></li>
 		<li><a href="javascript:void(Dragonfly.logout());" id="logout-text">Log Out</a></li>
 		<!-- 
 		Feedback disabled. Check the destination address in Dragonfly.js
@@ -254,9 +254,17 @@
     </div>
     <div id="extra" style="display: none">
       <a id="source">Source</a>
-      | <a href="javascript:void(Dragonfly.toggleConsole());">Console</a>
-      | <a href="javascript:void(createLoggingPane(true));">Logs</a>
+      | <a href="javascript:void(ConsoleUtils.showHideLog());">Logs</a>
     </div>
     <form name="webkitKludge"></form>
+    
+    <!-- Logging and prompt. -->
+    <div id="logbox" style="display: none;">
+    <div id="log">
+    </div>
+    <form onsubmit="ConsoleUtils.runQuery('jsprompt'); return false;">
+    <input type="text" id="jsprompt" />
+    </form>
+    </div>
   </body>
 </html>

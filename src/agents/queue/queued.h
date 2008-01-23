@@ -17,6 +17,7 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #ifndef QUEUED_H
@@ -26,9 +27,8 @@
 
 #include <xpl.h>
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
+#include <msgaddr.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <bongoagent.h>
@@ -99,10 +99,7 @@ extern QueueAgent Agent;
 
 void QueueClientFree(void *clientp);
 int HandleCommand(QueueClient *client);
-
-/* management.c */
-int QueueManagementStart(void);
-void QueueManagementShutdown(void);
+BOOL aliasing(char *addr, int *cnt, unsigned char *buffer);
 
 #define STACKSPACE_Q (1024*80)
 

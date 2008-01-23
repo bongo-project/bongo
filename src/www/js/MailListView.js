@@ -132,7 +132,7 @@ Dragonfly.Mail.MultiListView.build = function (loc)
     // Element.setHTML ('content-iframe', '');
 };
 
-Dragonfly.Mail.MultiListView.getData = function (loc)
+/*Dragonfly.Mail.MultiListView.getData = function (loc)
 {
     var d = Dragonfly;
     var m = d.Mail;
@@ -147,7 +147,7 @@ Dragonfly.Mail.MultiListView.getData = function (loc)
                              propsStart,
                              propsStart + pageSize - 1,
                              true);
-};
+};*/
 
 Dragonfly.Mail.MultiListView.load = function (loc, jsob)
 {

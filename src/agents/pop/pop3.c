@@ -31,14 +31,13 @@
 #include <xpl.h>
 #include <bongoutil.h>
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <logger.h>
 #include <nmlib.h>
-#include <cmlib.h>
 #include <nmap.h>
-#include <management.h>
 #include <bongostore.h>
+
+#include <bongoagent.h>
 
 #include "pop3.h"
 
@@ -172,7 +171,6 @@ typedef struct _POP3Client {
     ProtocolCommand *handler;
 
     unsigned char user[MAXEMAILNAMESIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
 
     unsigned char command[CONN_BUFSIZE + 1];
     unsigned char buffer[CONN_BUFSIZE + 1];
@@ -263,10 +261,7 @@ struct {
         XplAtomic badPasswords;
     } stats;
 
-    unsigned char hostName[MAXEMAILNAMESIZE];
     unsigned char managementURL[256];
-
-    MDBHandle directoryHandle;
 
     void *loggingHandle;
 
@@ -380,6 +375,8 @@ SignalHandler(int sigtype)
     return;
 }
 
+#if 0
+// FIXME: Function deprecated, or just waiting for a new signal framework
 static BOOL 
 POP3Shutdown(unsigned char *arguments, unsigned char **response, BOOL *closeConnection)
 {
@@ -428,6 +425,7 @@ POP3Shutdown(unsigned char *arguments, unsigned char **response, BOOL *closeConn
 
     return(FALSE);
 }
+#endif
 
 static BOOL 
 POP3ClientAllocCB(void *buffer, void *clientData)
@@ -460,45 +458,21 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
 {
     BOOL result;
     struct sockaddr_in nmap;
-    MDBValueStruct *user;
 
-    user = MDBCreateValueStruct(POP3.directoryHandle, NULL);
-    if (user) {
-        result = MsgFindObject(username, client->dn, NULL, &nmap, user);
-    } else {
-        return(-1);
-    }
-
-    if (result) {
-        result = MDBVerifyPassword(client->dn, password, user);
-    } else {
+    if (MsgAuthFindUser(username) != 0) {
         Log(LOG_NOTICE, "Unknown user %s from host %s", username, LOGIP(client->conn->socketAddress));
-        MDBDestroyValueStruct(user);
         return(POP3_NMAP_USER_UNKNOWN);
     }
 
-    if (result) {
-        result = MsgGetUserFeature(client->dn, FEATURE_POP, NULL, NULL);
-    } else {
+    if (MsgAuthVerifyPassword(username, password) != 0) {
         XplSafeIncrement(POP3.stats.badPasswords);
         Log(LOG_NOTICE, "Incorrect password for user %s from host %s", username,
             LOGIP(client->conn->socketAddress));
-        MDBDestroyValueStruct(user);
-        return(POP3_NMAP_PASSWORD_INVALID);
     }
 
-    if (result) {
-        strcpy(client->user, user->Value[0]);
-    } else {
-        Log(LOG_NOTICE, "POP3 feature disabled on user %s account", username);
-        MDBDestroyValueStruct(user);
-        return(POP3_NMAP_FEATURE_DISABLED);
-    }
-
-    MDBDestroyValueStruct(user);
-
-    if ((client->store = NMAPConnectEx(NULL, &nmap, client->conn->trace.destination)) != NULL) {
-        result = NMAPAuthenticate(client->store, client->buffer, CONN_BUFSIZE);
+    MsgAuthGetUserStore(username, &nmap);
+    if ((client->store = NMAPConnectEx("127.0.0.1", NULL, client->conn->trace.destination)) != NULL) {
+        result = NMAPAuthenticateToStore(client->store, client->buffer, CONN_BUFSIZE);
     } else {
         Log(LOG_ERROR, "Cannot connect to Store Agent on host %s", LOGIP(nmap));
         return(POP3_NMAP_SERVER_DOWN);
@@ -680,7 +654,6 @@ POP3CommandAuth(void *param)
         if (!ccode) {
             LoggerEvent(POP3.loggingHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_LOGIN, LOG_INFO, 0, client->user, NULL, XplHostToLittle(client->conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
     
-            CMAuthenticated((unsigned long)client->conn->socketAddress.sin_addr.s_addr, client->user);
         } else {
             if (ccode == POP3_NMAP_SERVER_DOWN) {
                 ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", POP3.hostName, MSGERRNONMAP);
@@ -939,10 +912,9 @@ POP3CommandPass(void *param)
     ccode = ConnectUserToNMAPServer(client, client->user, ptr);
     if (!ccode) {
         Log(LOG_INFO, "User %s logged in from host %s", client->user, LOGIP(client->conn->socketAddress));
-        CMAuthenticated((unsigned long)client->conn->socketAddress.sin_addr.s_addr, client->user);
     } else {
         if (ccode == POP3_NMAP_SERVER_DOWN) {
-            ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", POP3.hostName, MSGERRNONMAP);
+            ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", BongoGlobals.hostname, MSGERRNONMAP);
         } else if (ccode != POP3_NMAP_FEATURE_DISABLED) {
             XplDelay(2000);
             client->loginCount++;
@@ -985,7 +957,7 @@ POP3CommandPass(void *param)
             }
     
             default: {
-                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", POP3.hostName, MSGERRNONMAP);
+                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", BongoGlobals.hostname, MSGERRNONMAP);
                 break;
             }
         }
@@ -1012,7 +984,7 @@ POP3CommandPass(void *param)
             }
     
             default: {
-                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", POP3.hostName, MSGERRNONMAP);
+                ConnWriteF(client->conn, "-ERR [SYS/PERM] %s %s\r\n", BongoGlobals.hostname, MSGERRNONMAP);
                 break;
             }
         }
@@ -1046,7 +1018,7 @@ static int
 POP3CommandQuit(void *param)
 {
     unsigned long id;
-    int ccode;
+    int ccode = 0;
     int lastccode = 0;
     POP3Client *client = (POP3Client *)param;
 
@@ -1072,7 +1044,7 @@ POP3CommandQuit(void *param)
     }
 
     if(lastccode == 0)
-        ConnWriteF(client->conn, "+OK %s %s\r\n", POP3.hostName,MSGOKBYE);
+        ConnWriteF(client->conn, "+OK %s %s\r\n", BongoGlobals.hostname,MSGOKBYE);
     else
         ConnWriteF(client->conn, "-ERR %s %d, %s\r\n", MSGERRINTERNAL, lastccode, MSGOKBYE);
 
@@ -1553,7 +1525,7 @@ HandleConnection(void *param)
                         LOGIP(client->conn->socketAddress));
                 }
 
-                ccode = ConnWriteF(client->conn, "+OK %s %s %s\r\n", POP3.hostName, PRODUCT_NAME, PRODUCT_VERSION);
+                ccode = ConnWriteF(client->conn, "+OK %s %s %s\r\n", BongoGlobals.hostname, PRODUCT_NAME, PRODUCT_VERSION);
 
                 if (ccode != -1) {
                     ccode = ConnFlush(client->conn);
@@ -1663,7 +1635,6 @@ ServerSocketInit (void)
 
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
             Log(LOG_ERROR, "Couldn't drop to unprivileged user %s", MsgGetUnprivilegedUser());
-            XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
             return -1;
         }
 
@@ -1671,13 +1642,11 @@ ServerSocketInit (void)
         if (POP3.server.conn->socket == -1) {
             int ret = POP3.server.conn->socket;
             Log(LOG_ERROR, "Unable to bind to port %ld", POP3ServerPort);
-            XplConsolePrintf("bongopop3: Could not bind to port %ld\n", POP3ServerPort);
             ConnFree(POP3.server.conn);
             return ret;
         }
     } else {
         Log(LOG_ERROR, "Unable to allocate create server socket");
-        XplConsolePrintf("bongopop3: Could not allocate connection.\n");
         return -1;
     }
 
@@ -1701,14 +1670,12 @@ ServerSocketSSLInit (void)
 
         if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
             Log(LOG_ERROR, "Could not drop to unprivileged user %s", MsgGetUnprivilegedUser());
-            XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
             return -1;
         }
        
         if (POP3.server.ssl.conn->socket == -1) {
             int ret = POP3.server.ssl.conn->socket;
             Log(LOG_ERROR, "Could not bind to secure port %ld", POP3ServerPortSSL);
-            XplConsolePrintf("bongopop3: Could not bind to SSL port %ld\n", POP3ServerPortSSL);
             ConnFree(POP3.server.conn);
             ConnFree(POP3.server.ssl.conn);
       
@@ -1716,7 +1683,6 @@ ServerSocketSSLInit (void)
         }
     } else {
         Log(LOG_ERROR, "Could not allocate secure socket");
-        XplConsolePrintf("bongopop3: Could not allocate connection.\n");
         ConnFree(POP3.server.conn);
         return -1;
     }
@@ -1806,7 +1772,6 @@ POP3Server(void *ignored)
             default: {
                 if (POP3.state < POP3_STOPPING) {
                     Log(LOG_ERROR, "Exiting after an accept() failure (%d)", errno);
-                    XplConsolePrintf("POP3D: Exiting after an accept() failure; error %d\n", errno);
                 }
 
                 POP3.state = POP3_STOPPING;
@@ -1818,10 +1783,7 @@ POP3Server(void *ignored)
         break;
     }
 
-#if VERBOSE
-    /* Shutting down */
-    XplConsolePrintf("POP3D: Shutdown started.\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutdown started");
 
     POP3.state = POP3_STOPPING;
 
@@ -1833,20 +1795,9 @@ POP3Server(void *ignored)
         POP3.server.conn = NULL;
     }
 
-#if VERBOSE
-    XplConsolePrintf("POP3D: Standard listener down\r\n");
-#endif
+    Log(LOG_DEBUG, "Standard listener down.");
     /* fixme - we need connection management flags for ConnClose to force the shutdown */
     ConnCloseAll(1);
-
-    /* Management Client Shutdown */
-    if (ManagementState() != MANAGEMENT_STOPPED) {
-        ManagementShutdown();
-
-       for (ccode = 0; (ManagementState() != MANAGEMENT_STOPPED) && (ccode < 60); ccode++) {
-          XplDelay(1000);
-       }
-    }
 
     XplWaitOnLocalSemaphore(POP3.client.semaphore);
 
@@ -1862,12 +1813,10 @@ POP3Server(void *ignored)
     }
 
     if (XplSafeRead(POP3.server.active) > 1) {
-        XplConsolePrintf("POP3D: %d server threads outstanding; attempting forceful unload.\r\n", XplSafeRead(POP3.server.active) - 1);
+        Log(LOG_INFO, "%d server threads outstanding; attempting forceful unload.", XplSafeRead(POP3.server.active)-1);
     }
 
-#if VERBOSE
-    XplConsolePrintf("\rPOP3D: Shutting down %d client threads\r\n", XplSafeRead(POP3.client.worker.active));
-#endif
+    Log(LOG_DEBUG, "Shutting down %d client threads.", XplSafeRead(POP3.client.worker.active));
 
     /* Make sure the kids have flown the coop. */
     for (ccode = 0; XplSafeRead(POP3.client.worker.active) && (ccode < 60); ccode++) {
@@ -1875,7 +1824,7 @@ POP3Server(void *ignored)
     }
 
     if (XplSafeRead(POP3.client.worker.active)) {
-        XplConsolePrintf("\rPOP3D: %d threads outstanding; attempting forceful unload.\r\n", XplSafeRead(POP3.client.worker.active));
+        Log(LOG_INFO, "%d threads outstanding; attempting forceful unload.", XplSafeRead(POP3.client.worker.active));
     }
 
     if (POP3.server.ssl.enable) {
@@ -1908,14 +1857,10 @@ POP3Server(void *ignored)
         }
     }
 
-    XPLCryptoLockDestroy();    
-
     LoggerClose(POP3.loggingHandle);
     POP3.loggingHandle = NULL;
 
     MsgShutdown();
-
-/*  MDBShutdown(); */
 
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
@@ -1923,9 +1868,7 @@ POP3Server(void *ignored)
     MemPrivatePoolFree(POP3.client.pool);
     MemoryManagerClose(MSGSRV_AGENT_POP);
 
-#if VERBOSE
-    XplConsolePrintf("\rPOP3D: Shutdown complete\r\n");
-#endif
+    Log(LOG_DEBUG, "Shutdown complete.");
 
     XplSignalLocalSemaphore(POP3.sem.main);
     XplWaitOnLocalSemaphore(POP3.sem.shutdown);
@@ -2029,7 +1972,6 @@ client->CSSL = NULL;
             default: {
                 if (POP3.state < POP3_STOPPING) {
                     Log(LOG_ERROR, "Secure server exiting after an accept() failure (%d)", errno);
-                    XplConsolePrintf("POP3D: Exiting after an accept() failure; error %d\n", errno);
 
                     POP3.state = POP3_STOPPING;
                 }
@@ -2065,68 +2007,35 @@ client->CSSL = NULL;
 
     XplSafeDecrement(POP3.server.active);
 
-#if VERBOSE
-    XplConsolePrintf("\rPOP3D: SSL listener down.\r\n");
-#endif
+    Log(LOG_DEBUG, "SSL listener down.");
 
     return;
 }
 
+static BongoConfigItem POP3Config[] = {
+        { BONGO_JSON_INT, "o:port/i", &POP3ServerPort },
+        { BONGO_JSON_INT, "o:port_ssl/i", &POP3ServerPortSSL },
+        { BONGO_JSON_NULL, NULL, NULL }
+};
+
 static BOOL
 ReadConfiguration(void)
 {
-    MDBValueStruct *config;
-    
-    config = MDBCreateValueStruct(POP3.directoryHandle, MsgGetServerDN(NULL));
+    POP3.server.ssl.config.options |= SSL_ALLOW_CHAIN;
+    POP3.server.ssl.config.options |= SSL_ALLOW_SSL3;
+    POP3.server.ssl.enable = TRUE;
+    POP3.nmap.ssl.enable = FALSE; // FIXME: why?
 
-    if (MDBRead(MSGSRV_AGENT_POP, MSGSRV_A_PORT, config)>0) {
-        POP3ServerPort = atol (config->Value[0]);
-    }
-    MDBFreeValues(config);
-    if (MDBRead(MSGSRV_AGENT_POP, MSGSRV_A_SSL_PORT, config)>0) {
-        POP3ServerPortSSL = atol (config->Value[0]);
-    }
-    MDBFreeValues(config);
+    if (! MsgGetServerCredential(POP3.nmap.hash))
+        return FALSE;
 
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_ALLOW_CHAINED, config)) {
-	if (atol(config->Value[0])) {
-	    POP3.server.ssl.config.options |= SSL_ALLOW_CHAIN;
-	}
-    }
-    MDBFreeValues(config);
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_TLS, config)) {
-	if (atol(config->Value[0])) {
-	    POP3.server.ssl.config.options |= SSL_ALLOW_SSL3;
-	    POP3.server.ssl.enable = TRUE;
-	    POP3.nmap.ssl.enable = FALSE;
-	}
-    }
-    MDBFreeValues(config);
-
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_URL, config)) {
-        strcpy(POP3.managementURL, config->Value[0]);
-
-        MDBFreeValues(config);
+    if (! ReadBongoConfiguration(POP3Config, "pop3")) {
+        return FALSE;
     }
 
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_OFFICIAL_NAME, config)) {
-        if (config->Value[0]) {
-            strcpy(POP3.hostName, config->Value[0]);
-        } else {
-            gethostname(POP3.hostName, sizeof(POP3.hostName));
-        }
-        
-        MDBFreeValues(config);
-    } else {
-        gethostname(POP3.hostName, sizeof(POP3.hostName));
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        return FALSE;
     }
-
-    MDBSetValueStructContext(NULL, config);
-    if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, config)) { 
-        HashCredential(MsgGetServerDN(NULL), config->Value[0], POP3.nmap.hash);
-    }
-
-    MDBDestroyValueStruct(config);
 
     return(TRUE);
 }
@@ -2140,8 +2049,8 @@ XplServiceMain(int argc, char *argv[])
     XplThreadID id;
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-   XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
-   return 1;
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
+        return 1;
     }
     XplInit();
 
@@ -2163,8 +2072,6 @@ XplServiceMain(int argc, char *argv[])
     POP3.server.ssl.enable = FALSE;
     POP3.server.ssl.context = NULL;
     POP3.server.ssl.config.options = 0;
-
-    POP3.directoryHandle = NULL;
 
     POP3.loggingHandle = NULL;
 
@@ -2192,30 +2099,19 @@ XplServiceMain(int argc, char *argv[])
         } else {
             MemoryManagerClose(MSGSRV_AGENT_POP);
 
-            XplConsolePrintf("POP3D: Unable to create connection pool; shutting down.\r\n");
+            Log(LOG_ERROR, "Unable to create connection pool; shutting down.");
             return(-1);
         }
     } else {
-        XplConsolePrintf("POP3D: Unable to initialize memory manager; shutting down.\r\n");
+        Log(LOG_ERROR, "Unable to initialize memory manager; shutting down.");
         return(-1);
     }
 
     ConnStartup(CONNECTION_TIMEOUT, TRUE);
 
-    MDBInit();
-    POP3.directoryHandle = (MDBHandle)MsgInit();
-    if (POP3.directoryHandle == NULL) {
-        XplBell();
-        XplConsolePrintf("\rPOP3D: Invalid directory credentials; exiting!\n");
-        XplBell();
-
-        MemoryManagerClose(MSGSRV_AGENT_POP);
-
-        return(-1);
-    }
-
-    NMAPInitialize(POP3.directoryHandle);
-    CMInitialize(POP3.directoryHandle, "POP3");
+    MsgInit();
+    MsgAuthInit();
+    NMAPInitialize();
 
     POP3.loggingHandle = LoggerOpen("bongopop3");
     if (POP3.loggingHandle == NULL) {
@@ -2228,18 +2124,16 @@ XplServiceMain(int argc, char *argv[])
 
 
     if (ServerSocketInit () < 0) {
-        XplConsolePrintf("bongopop3: Exiting.\n");
+        Log(LOG_ERROR, "Server Initialization failed.");
         return -1;
     }
 
     if (POP3.server.ssl.enable) {
 
         if (!ServerSocketSSLInit()) {
-             XPLCryptoLockInit();
-
-            POP3.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
+            POP3.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+            POP3.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
             POP3.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-            POP3.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
     
             POP3.server.ssl.context = ConnSSLContextAlloc(&(POP3.server.ssl.config));
             if (POP3.server.ssl.context) {
@@ -2252,17 +2146,17 @@ XplServiceMain(int argc, char *argv[])
         }
     }
 
-    /* Done binding, drop privs permanentely */
+    /* Done binding, drop privs permanently */
     if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-        XplConsolePrintf("bongopop3: Could not drop to unprivileged user '%s', exiting.\n", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
         return -1;
     }
 
     POP3.nmap.ssl.enable = FALSE;
-    POP3.nmap.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
+    POP3.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    POP3.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
     POP3.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-    POP3.nmap.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
-
+    
     POP3.nmap.ssl.context = ConnSSLContextAlloc(&(POP3.nmap.ssl.config));
     if (POP3.nmap.ssl.context) {
         POP3.nmap.ssl.enable = TRUE;

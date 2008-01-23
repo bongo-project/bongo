@@ -23,8 +23,6 @@
 #define _ITIP_H
 
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -55,9 +53,5 @@ typedef struct _ItipAgentGlobals {
 } ItipAgentGlobals;
 
 extern ItipAgentGlobals ItipAgent;
-
-/* management.c */
-int ItipAgentManagementStart(void);
-void ItipAgentManagementShutdown(void);
 
 #endif /* _ITIP_H */

@@ -23,7 +23,6 @@
 #ifndef _BONGO_NMAP_LIBRARY_H
 #define _BONGO_NMAP_LIBRARY_H
 
-#include <mdb.h>
 #include <connio.h>
 #include <nmap.h>
 #include <bongocal.h>
@@ -128,7 +127,7 @@ typedef struct {
 
 /*
 */
-BOOL NMAPInitialize(MDBHandle directoryHandle);
+BOOL NMAPInitialize();
 void NMAPSetEncryption(bongo_ssl_context *context);
 bongo_ssl_context *NMAPSSLContextAlloc(void);
 
@@ -181,11 +180,12 @@ BOOL NMAPEncrypt(Connection *conn, unsigned char *response, int length, BOOL for
 
 BOOL NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length);
 BOOL NMAPAuthenticateToQueue(Connection *conn, unsigned char *response, int length);
-int NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cookie,
-                               unsigned char *buffer, int length);
+int NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cookie, unsigned char *buffer, int length);
+BOOL NMAPAuthenticateThenUserAndStore(Connection *conn, unsigned char *user);
+
 
 void NMAPQuit(Connection *conn);
 
-RegistrationStates NMAPRegister(const unsigned char *dn, unsigned long queue, unsigned short port);
+RegistrationStates QueueRegister(const unsigned char *dn, unsigned long queue, unsigned short port);
 
 #endif  /* _BONGO_NMAP_LIBRARY_H */

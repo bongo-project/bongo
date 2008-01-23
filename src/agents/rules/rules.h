@@ -23,8 +23,6 @@
 #define _BONGORULES_H
 
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <streamio.h>
 #include <nmap.h>
@@ -262,14 +260,6 @@ typedef struct _RulesGlobals {
 } RulesGlobals;
 
 extern RulesGlobals Rules;
-
-/* management.c */
-ManagementVariables *GetRulesManagementVariables(void);
-int GetRulesManagementVariablesCount(void);
-ManagementCommands *GetRulesManagementCommands(void);
-int GetRulesManagementCommandsCount(void);
-
-void RulesStartManagement(void);
 
 /* stream.c */
 BOOL MWHandleNamedTemplate(void *ClientIn, unsigned char *TemplateName, void *ObjectData);

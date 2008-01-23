@@ -9,12 +9,13 @@
 #include <msgapi.h>
 #include <bongo-buildinfo.h>
 #include <bongostore.h>
+
 #include <bongoagent.h>
+
 #include <gnutls/gnutls.h>
 #include <gnutls/x509.h>
 #include <gcrypt.h>
 #include <time.h>
-#include <tar.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "config.h"
@@ -33,9 +34,12 @@ usage(void) {
 		"  -v, --verbose                   verbose output\n"
 		"  -s, --silent                    non-interactive mode\n\n"
 		"Commands:\n"
+		"  user add <user>                 add a user to the systen\n"
+		"  user list                       list the users on the system\n"
+		"  user password <user>            set the password of a user\n"
 		"  install                         do the initial Bongo install\n"
 		"  crypto                          regenerate data needed for encryption\n"
-                "  checkversion                    see if a newer Bongo is available\n" 
+		"  checkversion                    see if a newer Bongo is available\n" 
 		"  tzcache                         regenerate cached timezone information\n"
 		"";
 
@@ -43,154 +47,167 @@ usage(void) {
 }
 
 void
-RunAsBongoUser() {
-	if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {    
-		printf(_("bongo-config: Could not drop to unpriviliged user '%s'\n"), MsgGetUnprivilegedUser());
+RunAsBongoUser() 
+{
+	if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {    
+		printf(_("bongo-config: Could not drop to unprivileged user '%s'\n"), MsgGetUnprivilegedUser());
 		exit(-1);
 	}
 }
 
-BOOL
-NMAPSimpleCommand(StoreClient *client, char *command) {
-	CCode ccode;
-	
-	NMAPSendCommandF(client->conn, command);
-	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-	if (1000 == ccode)
-		return TRUE;
-
-	return FALSE;
-}
-
-BOOL
-SetAdminRights(StoreClient *client, char *document) {
-	CCode ccode;
-	char *rights = "grant user:admin all;";
-
-	ccode = NMAPRunCommandF(client->conn, client->buffer, sizeof(client->buffer),
-		"PROPSET %s nmap.access-control %d\r\n", document, strlen(rights));
-	if (ccode == 2002) {
-		NMAPSendCommandF(client->conn, rights);
-		ccode = NMAPReadAnswer(client->conn, client->buffer, 
-			sizeof(client->buffer), TRUE);
-		if (ccode == 1000)
-			return TRUE;
-	} 
-	return FALSE;
-}
-
-BOOL
-PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *content, long len) {
-	CCode ccode;
-	char command[1024];
-
-	snprintf(command, 1000, "INFO %s/%s\r\n", collection, filename);
-	ccode = NMAPSendCommandF(client->conn, command);
-	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-	while (ccode == 2001)
-		ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-
-	if (ccode == 1000) {
-		// INFO returned OK, document already exists
-		snprintf(command, 1000, "REPLACE %s/%s %ld\r\n", 
-			collection, filename, len);
-	} else {
-		// INFO errored, so document doesn't exist
-		snprintf(command, 1000, "WRITE %s %d %ld \"F%s\"\r\n", 
-			collection, STORE_DOCTYPE_CONFIG, len, filename);
-	}
-
-	NMAPSendCommandF(client->conn, command);
-	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
-
-	if (ccode == 2002) {
-		ConnWrite(client->conn, content, len);
-		ConnFlush(client->conn);
-		if (NMAPReadAnswer(client->conn, client->buffer, 
-		  sizeof(client->buffer), TRUE) == 1000) {
-			return TRUE;
-		}
-		XplConsolePrintf(_("ERROR: Couldn't write data\n"));
-	} else {
-		XplConsolePrintf(_("ERROR: Wouldn't accept data\n"));
-	}
-	return FALSE;
-}
-
-BOOL
-ImportSystemBackupFile(const StoreClient *client, const char *path)
+void
+RunAsRoot()
 {
-	FILE *config;
-	char header[513];
-	CCode result;
-	
-	result = NMAPSimpleCommand(client, "CREATE /config\r\n");
-	if ((result==1000) || (result==4226)) {
-		// collection can't be created and doesn't exist
-		XplConsolePrintf(_("ERROR: Couldn't create collection\n"));
-		return FALSE;
+	if (XplSetEffectiveUserId(0) < 0) {
+		XplConsolePrintf(_("bongo-config: Couldn't get back root privs.\n"));
 	}
-	if (! SetAdminRights(client, "/config")) {
-		XplConsolePrintf(_("ERROR: Couldn't set acls on /config\n"));
-		return FALSE;
-	}
-
-	config = fopen(path, "r");
-	if (config == NULL) {
-		XplConsolePrintf(_("ERROR: Couldn't load default config set\n"));
-		return FALSE;
-	}
-	while(512 == fread(&header, sizeof(char), 512, config)) {
-		long filesize, blocksize, read;
-		char str_filesize[13], filename[101];
-		char *file;
-		header[512] = 0;
-		
-		memcpy(&filename, &header, 100);
-		filename[100] = 0;
-		memcpy(&str_filesize, &header[124], 12);
-		str_filesize[12] = 0;
-		filesize = strtol(str_filesize, NULL, 8);
-		
-		if (! strncmp(filename, "", 100)) {
-			// end of tar is _two_ empty blocks... ah well :o>
-			break;
-		}
-		
-		blocksize = filesize / 512;
-		if (filesize % 512) blocksize++;
-		blocksize *= 512;
-
-		if (blocksize > 0 && !strncmp(filename, "config/", 7)) {
-			char fullpath[110];
-			file = MemMalloc((size_t) blocksize);
-			read = fread(file, sizeof(char), blocksize, config);
-			if (read != blocksize) {
-				XplConsolePrintf("  Read error!");
-			}
-			
-			snprintf(fullpath, 108, "/%s", filename);
-			if (!PutOrReplaceConfig(client, "/config", 
-				&filename[7], file, filesize)) {
-				XplConsolePrintf(_("ERROR: Couldn't write\n"));
-			} else {
-				if (! SetAdminRights(client, fullpath)) {
-					XplConsolePrintf(_("ERROR: rigts\n"));
-				}
-			}
-			MemFree(file);
-		}
-	}
-	
-	fclose(config);
-	return TRUE;
 }
 
 void
-InitialStoreConfiguration() {
-	char path[XPL_MAX_PATH];
-	int store_pid;
-	char *args[3];
+AddDomain(const char *str) {
+        BongoJsonNode *domain;
+
+        domain = BongoJsonNodeNewString(str);
+        BongoArrayAppendValue(BongoJsonNodeAsArray(config.domains), domain);
+}
+
+void
+GetInstallParameters(void){
+    char *tmp = NULL;
+
+    GetInteractiveData(_("IP address to run on"), &config.ip, "127.0.0.1");
+    GetInteractiveData(_("DNS name to use as main hostname:"), &config.dns, "localhost");
+
+    /* this is a little messy here due to the way the array works */
+    if (!config.domains) {
+        config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1));
+        while (1) {
+            GetInteractiveData(_("Mail Domains (enter \"\" to end adding domains):"), &tmp, "");
+            if (tmp[0] == '\0') {
+                tmp = NULL;
+                break;
+            }
+
+            AddDomain(tmp);
+            tmp = NULL;
+        }
+    }
+}
+
+void
+SetStoreConfigurationModifications(StoreClient *client) {
+    BongoJsonNode *node;
+    unsigned char *aconfig = NULL;
+    unsigned char *default_config = NULL;
+    unsigned int default_config_len;
+    /*
+     * unsigned char default_config[] = "{ \"domainalias\" : \"\", \"aliases\" : { \"postmaster\" : \"admin\" }, \"username-mapping\" : 0 }";
+    const unsigned int default_config_len = strlen(default_config);
+
+    */
+
+    NMAPReadConfigFile("aliases/default_config", &default_config);
+    if (default_config == NULL) return;
+    default_config_len = strlen(default_config);
+
+    /* first let's read in the queue document and store out the domains and hosted domains */
+    if(NMAPReadConfigFile("queue", &aconfig)) {
+        if (aconfig == NULL) return;
+        if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
+            BongoJsonNode *current;
+            char *content;
+            unsigned int x;
+            BongoArray *domains;
+
+            current = BongoJsonJPath(node, "o:domains/a");
+            domains = BongoJsonNodeAsArray(config.domains);
+            /* free the old array */
+            BongoArrayDestroy(BongoJsonNodeAsArray(current), TRUE);
+            BongoJsonNodeAsArray(current) = domains;
+
+            content = BongoJsonNodeToString(node);
+            PutOrReplaceConfig(client, "/config", "queue", content, strlen(content));
+
+            /* add the default configuration document for each domain */
+            for(x=0;x<domains->len;x++) {
+                BongoJsonNode *current = BongoJsonArrayGet(domains, x);
+                PutOrReplaceConfig(client, "/config/aliases", BongoJsonNodeAsString(current), default_config, default_config_len);
+            }
+            BongoJsonNodeFree(node);
+        }
+        MemFree(aconfig);
+        aconfig = NULL;
+    }
+
+    /* now store out the global file changes */
+    if (NMAPReadConfigFile("global", &aconfig)) {
+        if (aconfig == NULL) return;
+        if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
+            char *content;
+            BongoJsonNode *current;
+
+            current = BongoJsonJPath(node, "o:hostname/s");
+            MemFree(BongoJsonNodeAsString(current));
+            BongoJsonNodeAsString(current) = MemStrdup(config.dns);
+
+            current = BongoJsonJPath(node, "o:hostaddr/s");
+            MemFree(BongoJsonNodeAsString(current));
+            BongoJsonNodeAsString(current) = MemStrdup(config.ip);
+
+            current = BongoJsonJPath(node, "o:postmaster/s");
+            MemFree(BongoJsonNodeAsString(current));
+            BongoJsonNodeAsString(current) = MemStrdup("admin");
+
+            content = BongoJsonNodeToString(node);
+            PutOrReplaceConfig(client, "/config", "global", content, strlen(content));
+
+            BongoJsonNodeFree(node);
+        }
+        MemFree(aconfig);
+        aconfig = NULL;
+    }
+}
+
+void
+InitializeDataArea(void)
+{
+	MsgApiDirectory dir;
+	const unsigned char *unpriv_user;
+	uid_t uid = 0;
+	gid_t gid = 0;
+
+	unpriv_user = MsgGetUnprivilegedUser();
+	if (unpriv_user != NULL)
+		XplLookupUser(unpriv_user, &uid, &gid);
+	
+	XplConsolePrintf(_("Creating directory structure...\n"));
+	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
+		char path[XPL_MAX_PATH];
+		if (MsgGetDir(dir, path, XPL_MAX_PATH)) {
+			MsgMakePath(path);
+			chown(path, uid, gid);
+		}
+	}
+	
+	RunAsBongoUser();
+	
+	XplConsolePrintf(_("Initializing user database...\n"));
+	if (MsgAuthInit() != 0) {
+		XplConsolePrintf(_("ERROR: Couldn't initialise auth subsystem\n"));
+		exit(1);
+	}
+	if (MsgAuthInstall() != 0) {
+		XplConsolePrintf(_("Warning: Couldn't create user database\n"));
+	}
+	
+	if (!MsgSetServerCredential()) {
+		XplConsolePrintf(_("ERROR: Cannot create server credential\n"));
+		exit(2);
+	}
+}
+
+void
+InitialStoreConfiguration(void) {
 	BOOL cal_success;
 	
 	// attempt to initialise cal lib. This creates cached data, and can be time
@@ -202,7 +219,17 @@ InitialStoreConfiguration() {
 		exit(1);
 	}
 	
-	XplConsolePrintf(_("Initializing store...\n"));
+	XplConsolePrintf(_("Loading initial store configuration...\n"));
+	LoadDefaultStoreConfiguration();
+}
+
+void
+LoadDefaultStoreConfiguration(void)
+{
+	char path[XPL_MAX_PATH];
+	int store_pid;
+	char *args[3];
+	
 	store_pid = fork();
 	if (store_pid == 0) { 	// child 
 		static char *install = "--install";
@@ -250,6 +277,7 @@ InitialStoreConfiguration() {
 			XplConsolePrintf(_("Complete.\n"));
 		}
 
+        SetStoreConfigurationModifications(client);
 nmapcleanup:
 		NMAPQuit(client->conn);
 		ConnFree(client->conn);
@@ -272,10 +300,13 @@ GetInteractiveData(char *description, char **data, char *def) {
 	XplConsolePrintf("%s [%s]: ", description, def);
 	*data = (char *)MemMalloc(sizeof(char)*size);
 	line = fgets(*data, size, stdin);
-	if (!line || *line == '\0') {
+	if (!line || *line == '\0' || *line == '\n' || *line == '\r') {
 		MemFree(*data);
-		*data = def;
+		*data = MemStrdup(def);
 	}
+	
+	size = strlen(line);
+	if (line[size-1] == '\n') line[size-1] = 0;
 }
 
 #define CERTSIZE	10240
@@ -304,9 +335,6 @@ GenerateCryptoData() {
 	if (0 != mkdir(XPL_DEFAULT_DBF_DIR, 0755)) {
 		XplConsolePrintf(_("Couldn't create data directory!\n"));
 	}
-	
-	GetInteractiveData(_("IP address to run on"), &config.ip, "127.0.0.1");
-	GetInteractiveData(_("DNS name to use:"), &config.dns, "localhost");
 	
 	// save a random seed for faster Xpl startup in future.
 	XplConsolePrintf(_("Creating random seed...\n"));
@@ -430,30 +458,65 @@ GenerateCryptoData() {
 	gnutls_x509_crt_deinit(certificate);	
 	gnutls_x509_privkey_deinit(key);
 	
-	MemFree(config.ip);
-	MemFree(config.dns);
-
 	return TRUE;
 }
 
 void
 CheckVersion() {
-        int current_version, available_version;
+	int current_version, available_version;
 	BOOL custom_version;
 
-	
 	if (!MsgGetBuildVersion(&current_version, &custom_version)) {
-		printf(_("Can't get information on current build!\n"));
+		XplConsolePrintf(_("Can't get information on current build!\n"));
 		return;
 	} else {
-		printf(_("Installed build: %s %s%d\n"), BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
+		XplConsolePrintf(_("Installed build: %s %s%d\n"), BONGO_BUILD_BRANCH, BONGO_BUILD_VSTR, current_version);
 		if (custom_version)
-			printf(_("This is modified software.\n"));
+			XplConsolePrintf(_("This is modified software.\n"));
 	}
 	if (!MsgGetAvailableVersion(&available_version)) {
-		printf(_("Version currently available: unable to request online information.\n"));
+		XplConsolePrintf(_("Version currently available: unable to request online information.\n"));
 	} else {
-		printf(_("Version currently available: %s%d\n"), BONGO_BUILD_VSTR, available_version);
+		XplConsolePrintf(_("Version currently available: %s%d\n"), BONGO_BUILD_VSTR, available_version);
+	}
+}
+
+void
+UserAdd(const char *username) 
+{
+	if (MsgAuthAddUser(username) == 0) {
+		XplConsolePrintf(_("Added user %s\n"), username);
+	} else {
+		XplConsolePrintf(_("Couldn't add user %s\n"), username);
+	}
+}
+
+void
+UserList(void)
+{
+	// TODO
+}
+
+void
+UserPassword(const char *username) 
+{
+	char *password = NULL;
+	char *password2 = NULL;
+	
+	GetInteractiveData(_("New password for the user"), &password, "");
+	GetInteractiveData(_("Confirm the password"), &password2, "");
+	
+	if (strlen(password) == 0) {
+		XplConsolePrintf(_("ERROR: Can't set password to empty string.\n"));
+		return;
+	}
+	if (strncmp(password, password2, strlen(password))) {
+		XplConsolePrintf(_("ERROR: The passwords provided don't match.\n"));
+		return;
+	}
+	
+	if (MsgAuthSetPassword(username, password) != 0) {
+		XplConsolePrintf(_("ERROR: Couldn't set the password for the user.\n"));
 	}
 }
 
@@ -476,6 +539,9 @@ main(int argc, char *argv[]) {
 	BongoAgent configtool;
 	config.verbose = 0;
 
+    /* this just clears up a warning.  we don't need this here */
+    GlobalConfig[0].type = BONGO_JSON_NULL;
+
 	if (!MemoryManagerOpen("bongo-config")) {
 		XplConsolePrintf("ERROR: Failed to initialize memory manager\n");
 		return 1;
@@ -491,9 +557,15 @@ main(int argc, char *argv[]) {
 		} else if (!strcmp(arg, "--ip")) {
 			next_arg++;
 			config.ip = MemStrdup(argv[next_arg]);
-		} else if (!strcmp(arg, "--domain")) {
+		} else if (!strcmp(arg, "--hostname")) {
 			next_arg++;
 			config.dns = MemStrdup(argv[next_arg]);
+        } else if (!strcmp(arg, "--domain")) {
+            if (!config.domains) {
+               config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1)); 
+            }
+            next_arg++;
+            AddDomain(argv[next_arg]);
 		} else {
 			printf("Unrecognized option: %s\n", argv[next_arg]);
 		}
@@ -509,6 +581,8 @@ main(int argc, char *argv[]) {
 			command = 3;
 		} else if (!strcmp(argv[next_arg], "tzcache")) {
 			command = 4;
+		} else if (!strcmp(argv[next_arg], "user")) {
+			command = 5;
 		} else {
 			printf("Unrecognized command: %s\n", argv[next_arg]);
 		}
@@ -519,41 +593,78 @@ main(int argc, char *argv[]) {
 	}
 
 	// unusual libgcrypt options must occur before XplInit()
-	if (command == 2) {
+	if ((command == 2) || (command == 1)) {
 		gcry_control (GCRYCTL_ENABLE_QUICK_RANDOM, 0);
 	}
 	XplInit();
 
 	// we don't want to setup libraries unless we need to (e.g., to run an agent)
 	if (command == 1) {
-		startup = BA_STARTUP_CONNIO;	
+		startup = BA_STARTUP_CONNIO;
 		if (-1 == BongoAgentInit(&configtool, "bongoconfig", "", DEFAULT_CONNECTION_TIMEOUT, startup)) {
 			XplConsolePrintf(_("ERROR : Couldn't initialize Bongo libraries\n"));
 			return 2;
 		}
 	}
 
-	// don't give away privileges if we're going to need them later.
-	if (command != 1) {
-		RunAsBongoUser();
-	}
-
+	next_arg++;
 	switch(command) {
 		case 1:
+            GetInstallParameters();
+			InitializeDataArea(); // changes our user to unprivileged
+			GenerateCryptoData();
+			RunAsRoot();
 			InitialStoreConfiguration();
 			break;
 		case 2:
+			RunAsBongoUser();
 			GenerateCryptoData();
 			break;
-		case 3: 
+		case 3:
+			RunAsBongoUser();
 			CheckVersion();
 			break;
 		case 4:
+			RunAsBongoUser();
 			TzCache();
+			break;
+		case 5:
+			if (MsgAuthInit()) {
+				XplConsolePrintf(_("Couldn't initialise auth subsystem\n"));
+				return 3;
+			}
+			if ((next_arg + 1) >= argc) {
+				XplConsolePrintf(_("USAGE : user [add|password] <username>\n"));
+			} else {
+				char *command = argv[next_arg++];
+				char *username = argv[next_arg];
+				
+				if (! strncmp(command, "add", 3)) {
+					UserAdd(username);
+				} else if (!strncmp(command, "password", 8)) {
+					UserPassword(username);
+				} else if (!strncmp(command, "list", 4)) {
+					UserList();
+				} else {
+					XplConsolePrintf(_("ERROR: Unknown command '%s' on user\n"), command);
+				}
+			}
 			break;
 		default:
 			break;
 	}
+
+    if (config.ip) {
+        MemFree(config.ip);
+    }
+
+    if (config.dns) {
+        MemFree(config.dns);
+    }
+
+    if (config.domains) {
+        BongoJsonNodeFree(config.domains);
+    }
 
 	MemoryManagerClose("bongo-config");
 	exit(0);

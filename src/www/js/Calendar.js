@@ -114,7 +114,7 @@ Dragonfly.Calendar.postQuickEvent = function (text)
     var d = Dragonfly;
     var loc = new d.Location ({ tab: 'calendar', set: 'personal', view: 'week' });
     return d.requestJSON ('POST', loc, { method: 'parseCommand', command: text });
-}
+};
 
 Dragonfly.Calendar.newEvent = function (evt)
 {
@@ -134,7 +134,7 @@ Dragonfly.Calendar.newCalendar = function (subscription)
         pop.showVertical ('sub-calendar-href');
     } else {
         d.notify ('Creating "' + d.escapeHTML (name) + '"...', true);
-        var calendar = new c.BongoCalendar (null, { name: name, color: d.getRandomColor() });
+        var calendar = new c.BongoCalendar (null, { name: name, color: d.getRandomColor(), publish: d.Preferences.prefs.calendar.sharePublicDefault || false });
         calendar.create().addCallbacks (
             function (res) {
                 d.clearNotify ();
@@ -145,7 +145,7 @@ Dragonfly.Calendar.newCalendar = function (subscription)
             function (err) {
                 if (!(err instanceof CancelledError)) {
                     d.notifyError ('Could not create a new calendar', err);
-                    logDebug ('error creating calendar:', d.reprRequestError (err));
+                    console.debug ('error creating calendar:', d.reprRequestError (err));
                 }
                 return err;
             });
@@ -392,7 +392,7 @@ Dragonfly.Calendar.Events.build = function (loc)
 	} else if (loc.view == 'day') {
         c.setToColumnView (loc, 1, true, dateBaseUrl);
 	} else {
-        logError ('Unknown Calendar View: ' + loc.view);
+        console.error ('Unknown Calendar View: ' + loc.view);
         return fail();
     }
 

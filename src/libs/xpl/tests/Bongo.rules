@@ -8,7 +8,7 @@ dist_noinst_DATA +=				   \
 CLEANFILES += \
 	src/libs/xpl/tests/checklog.xml
 
-checktest_bongoxpl_dns_SOURCES := \
+checktest_bongoxpl_dns_SOURCES = \
 	src/libs/xpl/tests/dns-test.c
 
 checktest_bongoxpl_dns_LDADD = $(CHECK_LIBS)	\

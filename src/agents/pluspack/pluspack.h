@@ -23,8 +23,6 @@
 #define _BONGOPLUSPACK_H
 
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <streamio.h>
 #include <nmap.h>
@@ -218,12 +216,5 @@ typedef struct _PlusPackGlobals {
 #pragma pack(pop)
 
 extern PlusPackGlobals PlusPack;
-
-/* management.c */
-ManagementVariables *GetPlusPackManagementVariables(void);
-int GetPlusPackManagementVariablesCount(void);
-ManagementCommands *GetPlusPackManagementCommands(void);
-int GetPlusPackManagementCommandsCount(void);
-unsigned char *GetPlusPackVersion(void);
 
 #endif /* _BONGOPLUSPACK_H */

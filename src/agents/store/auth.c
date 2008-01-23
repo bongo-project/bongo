@@ -22,7 +22,6 @@
 #include <config.h>
 #include <xpl.h>
 #include <logger.h>
-#include <mdb.h>
 #include <nmap.h>
 
 #include "stored.h"

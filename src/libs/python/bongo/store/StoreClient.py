@@ -359,13 +359,16 @@ class CalendarACL :
 class StoreClient:
     def __init__(self, user, owner, authToken=None, authCookie=None,
                  authPassword=None):
-        from libbongo.libs import msgapi
+        #from libbongo.libs import msgapi
         self.owner = self.user = None
         
-        addr = msgapi.FindUserNmap(owner)
-        if addr is None:
-            raise bongo.BongoError ("Could not look up nmap host for user %s" % owner)
-        (host, port) = addr
+        #addr = msgapi.FindUserNmap(owner)
+        #if addr is None:
+        #    raise bongo.BongoError ("Could not look up nmap host for user %s" % owner)
+        #(host, port) = addr
+        
+        host = "localhost"
+        port = 689
 
         if authCookie:
             self.connection = StoreConnection(host, port, systemAuth=False)
@@ -397,6 +400,11 @@ class StoreClient:
     def _escape_query(self, s):
         return self._escape_quotes(s)
 
+    def Collections(self, path=""):
+        command = "COLLECTIONS %s" % path
+        self.stream.Write(command)
+        return CollectionIterator(self.stream)
+
     def CookieDelete(self, token):
         command = "COOKIE DELETE %s" % token
 
@@ -421,8 +429,8 @@ class StoreClient:
         self.stream.log.debug("READ: 1000 ****************")
         return r.message
 
-    def Create(self, path, existingOk=False):
-        command = "CREATE %s" % path
+    def Create(self, path, guid="", existingOk=False):
+        command = "CREATE %s %s" % (path, guid)
         self.stream.Write(command)
 
         r = self.stream.GetResponse()
@@ -732,6 +740,20 @@ class StoreClient:
         self.stream.Read(2)
         return StringIO(s)
 
+    def Remove(self, collection):
+        self.stream.Write("REMOVE %s" % collection)
+
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
+    
+    def Rename(self, oldname, newname):
+        self.stream.Write("RENAME %s %s" % (oldname, newname))
+        
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
+
     def Replace(self, doc, data):
         self.stream.Write("REPLACE %s %d" % (doc, len(data)))
 
@@ -784,6 +806,47 @@ class StoreClient:
             raise CommandError(r)
         self.user = name
         return r
+
+    def WriteImap(self, collection, type, imap, num, filename=None, index=None, guid=None, timeCreated=None, flags=None, link=None):
+
+        typ, data = imap.fetch(num, '(RFC822.SIZE)')
+        cnt = int(re.findall(r'RFC822\.SIZE (\d+)', data[0])[0])
+
+        command = "WRITE \"%s\" %d %d" % (collection, type, cnt)
+
+        if index is not None:
+            command = command + " I%s" % index
+
+        if filename is not None:
+            command = command + " \"F%s\"" % filename
+
+        if guid is not None:
+            command = command + " G%s" % guid
+
+        if timeCreated is not None:
+            command += " T" + timeCreated
+
+        if flags is not None:
+            command = command + " Z%d" % flags
+
+        if link is not None:
+            command = command + " \"L%s\"" % link
+
+        self.stream.Write(command)
+        
+
+        r = self.stream.GetResponse()
+        if r.code != 2002:
+            raise CommandError(r)
+
+        self.stream.WriteRaw(imap.fetch(num, '(body[])')[1][0][1])
+
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
+
+        (guid, junk) = r.message.split(" ", 1)
+        return guid
 
     def Write(self, collection, type, data, filename=None, index=None, guid=None, timeCreated=None, flags=None, link=None):
         if data is None:

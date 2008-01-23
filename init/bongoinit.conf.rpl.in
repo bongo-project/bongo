@@ -1,0 +1,11 @@
+# Defaults for bongoproject initscript
+# sourced by /etc/init.d/bongo
+# installed at /usr/etc/bongo/bongoinit.conf by the maintainer scripts
+#
+# This is a POSIX shell fragment
+#
+
+# Additional options that are passed to the Daemon.
+DAEMON_OPTS="-f -k"
+RUN_STANDALONE=0
+RUN_STANDALONE_OPTS=" -p 8080"

@@ -7,10 +7,10 @@ from bongo.commonweb.HttpError import HttpError
 
 import RootView
 import AgentView
-import AntispamView
 import BackupView
 import ServerView
 import SystemView
+import AliasView
 
 views = {
     "root" : RootView.RootHandler(),
@@ -18,11 +18,12 @@ views = {
     "backup" : BackupView.BackupHandler(),
     "system" : SystemView.SystemHandler(),
     "server" : ServerView.ServerHandler(),
-    "antispam" : AntispamView.AntispamHandler()
+    "aliases" : AliasView.AliasHandler()
     }
 
 class HawkeyePath:
     def __init__(self, req):
+        print "Creating new HawkeyePath from: %s" % req
         self.req = req
 
         self.view = self.action = self.path = None
@@ -75,9 +76,15 @@ class HawkeyePath:
         global views
 
         if views.has_key(self.view):
+            print "Found handler %s, using." % self.view
             handler = views[self.view]
         else:
-            raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
+            if self.view == "agents":
+                print "Using default crap handler"
+                handler = views["agents"]
+            else:
+                print "Yay, we 404ed while getting the handler"
+                raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)
 
         handler.ParsePath(self)
 

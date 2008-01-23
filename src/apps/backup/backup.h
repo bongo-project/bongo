@@ -48,4 +48,27 @@ typedef struct {
     int next_guid;
 } BackupArg;
 
+int	OpenDatabase(char *db_filename, sqlite3 **db, int create_if_absent);
+int	CloseDatabase(sqlite3 *db);
+int	SelectPropertyValue(sqlite3 *db, char *guid, char *property, unsigned long date, char **value);
+int	SelectDocumentAttributes(sqlite3 *db, char *guid, unsigned long date, int *len, int *pos);
+int	SelectDocumentInfo(sqlite3 *db, char *guid, unsigned long date, char *resource, int *type, int *length);
+int	SelectHistoricEvent(sqlite3 *db, char *guid, unsigned long date, int *event);
+int	InsertHistory(sqlite3 *db, const char *guid, int event, unsigned long date);
+int	InsertProperty(sqlite3 *db, int history, char *property, char *value);
+int	InsertDocument(sqlite3 *db, int history, int length, int position);
+Connection *GetConnection(char *user);
+void	ReleaseConnection(Connection *nmap);
+int	DocumentBackup(char* user_name, char* document_guid, FILE *data_file, sqlite3 *db, Connection *nmap);
+int	UserBackup(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap1, Connection *nmap2);
+int	BackupDocument(char* user_name, char* document_guid);
+int	BackupUser(char* user_name);
+int	DocumentRestore(char* user_name, char* document_guid, FILE *data_file, sqlite3 *db, Connection *nmap);
+int	UserRestore(char* user_name, FILE *data_file, sqlite3 *db, Connection *nmap);
+int	RestoreDocument(char* user_name, char* document_guid);
+int	RestoreUser(char* user_name);
+int	SearchStore(char **strings, char **users, char **types, unsigned long before, unsigned long after, char **guids);
+int	RollbackStore(unsigned long date);
+
+
 #endif

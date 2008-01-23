@@ -22,8 +22,10 @@
 #ifndef _ANTISPAM_H
 #define _ANTISPAM_H
 
+#define LOGGERNAME "antispam"
+#include <logger.h>
+
 #include <connio.h>
-#include <mdb.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -64,7 +66,6 @@ typedef struct {
     unsigned char *envelope;
     unsigned char line[CONN_BUFSIZE + 1];
     unsigned char command[CONN_BUFSIZE + 1];
-    unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
 } ASpamClient;
 
 typedef struct {
@@ -80,16 +81,6 @@ typedef struct _ASpamGlobals {
     unsigned long quarantineQueue;
 
     unsigned char officialName[MAXEMAILNAMESIZE + 1];
-
-    struct {
-        unsigned long used;
-        MDBValueStruct *list;
-    } allow;
-
-    struct {
-        unsigned long used;
-        MDBValueStruct *list;
-    } disallow;
 
     struct {
         XplSemaphore semaphore;
@@ -124,12 +115,9 @@ typedef struct _ASpamGlobals {
         unsigned long queue;
 
         unsigned char address[80];
-        unsigned char hash[NMAP_HASH_SIZE];
     } nmap;
 
     struct {
-        MDBHandle directory;
-
         void *logging;
     } handle;
 

@@ -632,11 +632,7 @@ ManagementInit(const unsigned char *Identity, MDBHandle DirectoryHandle)
             MDBFreeValues(config);
         }
 
-        if (MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, config)) {
-            result = HashCredential(Management.dmc.dn, config->Value[0], Management.dmc.credential);
-
-            MDBFreeValues(config);
-        }
+        MsgGetServerCredential(&Management.dmc.credential);
     }
 
     if (config) {

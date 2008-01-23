@@ -28,8 +28,6 @@ XPL_BEGIN_C_LINKAGE
 
 #include <bongoutil.h>
 #include <connio.h>
-#include <mdb.h>
-#include <management.h>
 #include <msgapi.h>
 #include <bongoagent.h>
 #include <nmap.h>
@@ -38,7 +36,8 @@ XPL_BEGIN_C_LINKAGE
 #include <bongojson.h>
 #include <bongocal.h>
 
-#define PRODUCT_SHORT_NAME "stored.nlm"
+#define LOGGERNAME "store"
+#include <logger.h>
 
 /** Store stuff: **/
 
@@ -50,6 +49,7 @@ XPL_BEGIN_C_LINKAGE
 #define STORE_INVALID_GUID 0
 #define STORE_ROOT_GUID 1
 #define STORE_IS_FOLDER(doctype) (doctype & STORE_DOCTYPE_FOLDER)
+#define STORE_IS_DBONLY(doctype) ((doctype == STORE_DOCTYPE_CONVERSATION) || (doctype == STORE_DOCTYPE_CALENDAR))
 #define STORE_IS_CONVERSATION(doctype) (doctype == STORE_DOCTYPE_CONVERSATION)
 
 typedef enum {
@@ -65,9 +65,7 @@ typedef enum {
 typedef struct _DStoreDocInfo {
     uint32_t flags;
     int32_t type;
-    int64_t start;
-    int32_t headerlen;
-    int64_t bodylen;           /* doclen = headerlen + bodylen */
+    int64_t length;            // size of the document
     
     uint32_t timeCreatedUTC;   /* for imap */
     uint32_t timeModifiedUTC;  /* FIXME: remove this */
@@ -328,8 +326,6 @@ struct StoreGlobals {
     XplRWLock configLock;
 
     struct {
-        MDBHandle directory;
-
         void *logging;
     } handle;
 
@@ -351,7 +347,6 @@ struct StoreGlobals {
         unsigned long ipAddress;
         unsigned long bytesPerBlock;
 
-        unsigned char dn[MDB_MAX_OBJECT_CHARS + 1];
         unsigned char host[MAXEMAILNAMESIZE + 1];
         unsigned char hash[NMAP_HASH_SIZE];
     } server;
@@ -403,8 +398,11 @@ void UnselectUser(StoreClient *client);
 void UnselectStore(StoreClient *client);
 void DeleteStore(StoreClient *client);
 
-void FindPathToDocFile(StoreClient *client, uint64_t collection, 
+void FindPathToCollection(StoreClient *client, uint64_t collection, 
                        char *dest, size_t size);
+void FindPathToDocument(StoreClient *client, uint64_t collection, 
+                       uint64_t document, char *dest, size_t size);
+
 
 CCode WriteDocumentHeaders(StoreClient *client, FILE *fh, const char *folder, time_t tod);
 
@@ -427,9 +425,7 @@ int SetParentCollectionIMAPUID(StoreClient *client,
                                DStoreDocInfo *parent,
                                DStoreDocInfo *doc);
 
-int StoreCompactCollection(StoreClient *client, uint64_t collection);
-
-BongoJsonResult GetJson(StoreClient *client, DStoreDocInfo *doc, BongoJsonNode **node);
+BongoJsonResult GetJson(StoreClient *client, DStoreDocInfo *doc, BongoJsonNode **node, char *path);
 
 int StoreWatcherAdd(StoreClient *client, NLockStruct *cLock);
 int StoreWatcherRemove(StoreClient *client, NLockStruct *cLock);
@@ -516,10 +512,6 @@ int MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport);
 
 /** config.c **/
 BOOL StoreAgentReadConfiguration(BOOL *recover);
-
-/** management.c **/
-int StoreAgentManagementStart(void);
-void StoreAgentManagementShutdown(void);
 
 /* hardcoded guids: */
 

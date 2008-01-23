@@ -22,6 +22,7 @@
 #include <xpl.h>
 #include <stdio.h>
 #include <bongoutil.h>
+#include <bongoagent.h>
 #include <nmlib.h>
 #include <bongostore.h>
 
@@ -195,16 +196,6 @@ static ImapErrorString ImapErrorStrings[] = {
 #define IMAP_COMMAND_PROXYAUTH "PROXYAUTH"  /* depricated - should use SASL */
 #define IMAP_HELP_NOT_DEFINED "%s - HELP not defined.\r\n"
 
-#if MDB_DEBUG
-/* directory test commands */
-#define IMAP_COMMAND_USER_LOOKUP "USER LOOKUP"
-#define IMAP_COMMAND_USER_VERIFY "USER VERIFY"
-#define IMAP_COMMAND_USER_READ "USER READ"
-#define IMAP_COMMAND_USER_WRITE_LOCAL "USER WRITE LOCAL"
-#define IMAP_COMMAND_USER_WRITE_SUPER "USER WRITE SUPER"
-#define IMAP_COMMAND_USER_ENUM "USER ENUM"
-#endif
-
 /* Internal stuff */
 #define CR     0x0d
 #define LF     0x0a
@@ -313,7 +304,6 @@ typedef struct {
 
     struct {
         char                *name;                          /* login name                       */
-        char                dn[MDB_MAX_OBJECT_CHARS + 1];   /* distinguished name               */
     } user;
 
     FolderListInformation folder;
@@ -351,10 +341,6 @@ typedef struct {
     } command;
 
     struct {
-        MDBHandle handle;
-    } directory;
-
-    struct {
         struct {
             XplAtomic inUse;
             XplAtomic idle;
@@ -367,8 +353,6 @@ typedef struct {
 
     struct {
         struct {
-            BOOL enable;
-
             ConnSSLConfiguration config;
 
             bongo_ssl_context *context;
@@ -384,8 +368,6 @@ typedef struct {
 
         struct sockaddr_in addr;
 
-        char hostname[256];
-        unsigned long  hostnameLen;
         unsigned short port;
         int threadGroupId;
         BOOL disabled;
@@ -465,13 +447,5 @@ int ImapCommandSetQuota(void *param);
 int ImapCommandGetQuota(void *param);
 int ImapCommandGetQuotaRoot(void *param);
 int ImapCommandNameSpace(void *param);
-int ImapCommandProxyAuth(void *param);
-#if MDB_DEBUG
-int ImapCommandUserLookup(void *param);
-int ImapCommandUserVerify(void *param);
-int ImapCommandUserRead(void *param);
-int ImapCommandUserWriteLocal(void *param);
-int ImapCommandUserWriteSuper(void *param);
-int ImapCommandUserEnum(void *param);
-#endif
+
 #include "inline.h"

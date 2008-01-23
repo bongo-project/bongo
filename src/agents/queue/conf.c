@@ -17,24 +17,24 @@
  * To contact Novell about this file by physical or electronic mail, you
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
 
 #include <config.h>
 
+#include "conf.h"
 #include "queue.h"
 
 #include <xpl.h>
 #include <memmgr.h>
 #include <logger.h>
 #include <bongoutil.h>
-#include <bongoagent.h>
-#include <mdb.h>
+
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
 #include <connio.h>
 
-#include "conf.h"
 #include "domain.h"
 #include "messages.h"
 
@@ -46,7 +46,9 @@
 #define QLIMIT_CONCURRENT 250
 #define QLIMIT_SEQUENTIAL 500
 
-QueueConfiguration Conf = { {0, }, };
+int aliasCmpFunc (const void *lft, const void *rgt);
+
+QueueConfiguration Conf = { 0, {0, }, };
 
 long
 CalculateCheckQueueLimit(unsigned long concurrent, unsigned long sequential)
@@ -58,196 +60,111 @@ CalculateCheckQueueLimit(unsigned long concurrent, unsigned long sequential)
     return(sequential);    
 }
 
-static BOOL 
-ReadStartupConfiguration(BOOL *recover)
+int hostedSortFunc(const void *str1, const void *str2) {
+	int i = strcasecmp(*(char **)str1, *(char **)str2);
+	return i;
+}
+
+
+static BongoConfigItem trustedHostsConfig[] = {
+    { BONGO_JSON_STRING, NULL, &Conf.trustedHosts},
+    { BONGO_JSON_NULL, NULL, NULL }
+};
+
+static BongoConfigItem domainsConfig[] = {
+    { BONGO_JSON_STRING, NULL, &Conf.domains},
+    { BONGO_JSON_NULL, NULL, NULL }
+};
+
+static BongoConfigItem QueueConfig[] = {
+    { BONGO_JSON_BOOL, "o:debug/b", &Conf.debug },
+    { BONGO_JSON_ARRAY, "o:domains/a", &domainsConfig },
+    { BONGO_JSON_BOOL, "o:limitremoteprocessing/b", &Conf.deferEnabled },
+    { BONGO_JSON_INT, "o:limitremotebegweekday/i", &Conf.i_deferStartWD },
+    { BONGO_JSON_INT, "o:limitremotebegweekend/i", &Conf.i_deferStartWE },
+    { BONGO_JSON_INT, "o:limitremoteendweekday/i", &Conf.i_deferEndWD },
+    { BONGO_JSON_INT, "o:limitremoteendweekend/i", &Conf.i_deferEndWE },
+    { BONGO_JSON_INT, "o:queuetuning_concurrent/i", &Conf.maxConcurrentWorkers },
+    { BONGO_JSON_INT, "o:queuetuning_sequential/i", &Conf.maxSequentialWorkers },
+    { BONGO_JSON_INT, "o:queuetuning_load_high/i", &Conf.loadMonitorHigh },
+    { BONGO_JSON_INT, "o:queuetuning_load_low/i", &Conf.loadMonitorLow },
+    { BONGO_JSON_INT, "o:queuetuning_trigger/i", &Conf.limitTrigger },
+    { BONGO_JSON_INT, "o:queuetimeout/i", &Conf.maxLinger },
+    { BONGO_JSON_STRING, "o:quotamessage/s", &Conf.quotaMessage },
+    { BONGO_JSON_INT, "o:port/i", &Agent.agent.port },
+    { BONGO_JSON_BOOL, "o:forwardundeliverable_enabled/b", &Conf.forwardUndeliverableEnabled },
+    { BONGO_JSON_STRING, "o:forwardundeliverable_to/s", &Conf.forwardUndeliverableAddress },
+    { BONGO_JSON_INT, "o:queueinterval/i", &Conf.queueInterval },
+    { BONGO_JSON_INT, "o:minimumfreespace/i", &Conf.minimumFree },
+    { BONGO_JSON_ARRAY, "o:trustedhosts/a", &trustedHostsConfig },
+    { BONGO_JSON_BOOL, "o:rtsantispamconfig_enabled/b", &Conf.bounceBlockSpam },
+    { BONGO_JSON_INT, "o:rtsantispamconfig_delay/i", &Conf.bounceInterval },
+    { BONGO_JSON_INT, "o:rtsantispamconfig_threshold/i", &Conf.bounceMax },
+    { BONGO_JSON_BOOL, "o:bouncereturn/b", &Conf.b_bounceReturn },
+    { BONGO_JSON_BOOL, "o:bounceccpostmaster/b", &Conf.b_bounceCCPostmaster },
+    { BONGO_JSON_NULL, NULL, NULL }
+};
+
+int aliasCmpFunc (const void *lft, const void *rgt){
+	struct _AliasStruct *l = (struct _AliasStruct *)(lft);
+	struct _AliasStruct *r = (struct _AliasStruct *)(rgt);;
+	return strcasecmp(l->original, r->original);
+}
+
+BOOL
+ReadConfiguration (BOOL *recover)
 {
-    MDBValueStruct *vs;
-    
-    gethostname(Conf.hostname, sizeof(Conf.hostname));
-
-    vs = MDBCreateValueStruct(Agent.agent.directoryHandle, NULL);
-
-    if (recover) {
-        *recover = FALSE;
-        if (MDBRead(MsgGetServerDN(NULL), MSGSRV_A_SERVER_STATUS, vs) > 0) {
-            if (XplStrCaseCmp(vs->Value[0], "Shutdown") != 0) {
-                *recover = TRUE;
-            }
-        }
-
-        MDBFreeValues(vs);
+    if (!MsgGetServerCredential((char *)&Conf.serverHash)) {
+        return FALSE;
     }
-
-    if (vs && MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, vs)) {
-        HashCredential(MsgGetServerDN(NULL), vs->Value[0], Conf.serverHash);
-        MDBFreeValues(vs);
-    } else {
+    
+    if (!ReadBongoConfiguration(QueueConfig, "queue")) {
         return FALSE;
     }
 
-    if (MDBRead(MsgGetServerDN(NULL), MSGSRV_A_OFFICIAL_NAME, vs) > 0) {
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_OFFICIAL_NAME", vs->Value[0], 0, 0, NULL, 0);
-
-        strcpy(Conf.officialName, vs->Value[0]);
-
-        MDBFreeValues(vs);
+    if (!ReadBongoConfiguration(GlobalConfig, "global")) {
+        return FALSE;
     }
-
-    if (MDBRead(MsgGetServerDN(NULL), MSGSRV_A_POSTMASTER, vs) > 0) {
-        if (vs->Value[0]) {
-            char *ptr;
-            
-            if ((ptr = strrchr(vs->Value[0], '\\')) != NULL) {
-                strcpy(Conf.postMaster, ptr + 1);
-            } else {
-                strcpy(Conf.postMaster, vs->Value[0]);
-            }
-        } else {
-            strcpy(Conf.postMaster, "admin");
-        }
-        
-        MDBFreeValues(vs);
-    }
-
-    MDBSetValueStructContext(MsgGetServerDN(NULL), vs);
     
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_LIMIT_REMOTE_PROCESSING, vs) > 0) { 
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_LIMIT_REMOTE_PROCESSING", vs->Value[0], 0, 0, NULL, 0);
-
-        if (atol(vs->Value[0])) {
-            Conf.deferEnabled = TRUE;
-        } else {
-            Conf.deferEnabled = FALSE;
-        }
-
-        MDBFreeValues(vs);
-
-        if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_LIMIT_REMOTE_START_WD, vs) > 0) { 
-            int count;
-            
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_LIMIT_REMOTE_START_WD", vs->Value[0], 0, 0, NULL, 0);
-            for (count = 1; count < 6; count++) {
-                /* Counting weekdays */
-                Conf.deferStart[count] = (unsigned char)atoi(vs->Value[0]);
-            }
-
-            MDBFreeValues(vs);
-        } else {
-            Conf.deferEnabled = FALSE;
-        }
-
-        if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_LIMIT_REMOTE_START_WE, vs) > 0) { 
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_LIMIT_REMOTE_START_WE", vs->Value[0], 0, 0, NULL, 0);
-
-            Conf.deferStart[0] = (unsigned char)atoi(vs->Value[0]);
-            Conf.deferStart[6] = (unsigned char)atoi(vs->Value[0]);
-
-            MDBFreeValues(vs);
-        } else {
-            Conf.deferEnabled = FALSE;
-        }
-
-        if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_LIMIT_REMOTE_END_WD, vs) > 0) { 
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_LIMIT_REMOTE_END_WD", vs->Value[0], 0, 0, NULL, 0);
-            int count;
-            
-            for (count = 1; count < 6; count++) {
-                /* Counting weekdays */
-                Conf.deferEnd[count] = (unsigned char)atoi(vs->Value[0]);
-            }
-
-            MDBFreeValues(vs);
-        } else {
-            Conf.deferEnabled = FALSE;
-        }
-
-        if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_LIMIT_REMOTE_END_WE, vs) > 0) { 
-            LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_LIMIT_REMOTE_END_WE", vs->Value[0], 0, 0, NULL, 0);
-
-            Conf.deferEnd[0] = (unsigned char)atoi(vs->Value[0]);
-            Conf.deferEnd[6] = (unsigned char)atoi(vs->Value[0]);
-
-            MDBFreeValues(vs);
-        } else {
-            Conf.deferEnabled = FALSE;
-        }
-    }
-
-    Conf.maxConcurrentWorkers = QLIMIT_CONCURRENT;
-    Conf.maxSequentialWorkers = QLIMIT_SEQUENTIAL;
-
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_QUEUE_TUNING, vs) > 0) { 
-        unsigned int used;
+    *recover = MsgGetRecoveryFlag("queue");
+    
+    /* set some arrays up */
+    if (Conf.deferEnabled) {
+        Conf.deferStart[0] = Conf.i_deferStartWE;   /* sunday */
+        Conf.deferStart[1] = Conf.i_deferStartWD;
+        Conf.deferStart[2] = Conf.i_deferStartWD;
+        Conf.deferStart[3] = Conf.i_deferStartWD;
+        Conf.deferStart[4] = Conf.i_deferStartWD;
+        Conf.deferStart[5] = Conf.i_deferStartWD;
+        Conf.deferStart[6] = Conf.i_deferStartWE;   /* saturday */
         
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_QUEUE_TUNING", vs->Value[0], 0, 0, NULL, 0);
-
-        for (used = 0; used < vs->Used; used++) {
-            if (XplStrNCaseCmp(vs->Value[used], "concurrent", 10) == 0) {
-                sscanf(vs->Value[used], "Concurrent: %ld  Sequential: %ld", &Conf.maxConcurrentWorkers, &Conf.maxSequentialWorkers);
-            } 
-
-            else if (XplStrNCaseCmp(vs->Value[used], "Load", 4) == 0) {
-                sscanf(vs->Value[used], "Load high: %ld Load Low: %ld Queue Trigger: %ld", &Conf.loadMonitorHigh, &Conf.loadMonitorLow, &Conf.limitTrigger);
-            } else if (XplStrNCaseCmp(vs->Value[used], "Debug", 5) == 0) {
-                if (atol(vs->Value[used]) + 6) {
-                    Agent.flags |= QUEUE_AGENT_DEBUG;
-                } else {
-                    Agent.flags &= ~QUEUE_AGENT_DEBUG;
-                }
-            }
-        }
-
-        MDBFreeValues(vs);
+        Conf.deferEnd[0] = Conf.i_deferEndWE;
+        Conf.deferEnd[1] = Conf.i_deferEndWD;
+        Conf.deferEnd[2] = Conf.i_deferEndWD;
+        Conf.deferEnd[3] = Conf.i_deferEndWD;
+        Conf.deferEnd[4] = Conf.i_deferEndWD;
+        Conf.deferEnd[5] = Conf.i_deferEndWD;
+        Conf.deferEnd[6] = Conf.i_deferEndWE;
     }
-
+    
+    if (Conf.debug) {
+        Agent.flags |= QUEUE_AGENT_DEBUG;
+    } else {
+        Agent.flags &= ~QUEUE_AGENT_DEBUG;
+    }
+    
     Conf.queueCheck = CalculateCheckQueueLimit(Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers);
-
+    
     /* Set the globals for loadmonitor */
     Conf.defaultConcurrentWorkers = Conf.maxConcurrentWorkers;
     Conf.defaultSequentialWorkers = Conf.maxSequentialWorkers;
-
-    strcpy(Conf.spoolPath, XPL_DEFAULT_SPOOL_DIR);
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_SPOOL_DIRECTORY, vs) > 0) {
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_SPOOL_DIRECTORY", vs->Value[0], 0, 0, NULL, 0);
-        
-        MsgCleanPath(vs->Value[0]);        
-        strcpy(Conf.spoolPath, vs->Value[0]);
-        MDBFreeValues(vs);
-    }
     
+    strcpy(Conf.spoolPath, XPL_DEFAULT_SPOOL_DIR);
     MsgMakePath(Conf.spoolPath);
-
-    sprintf(Conf.queueClientsPath, "%s/qclients", MsgGetDBFDir(NULL));
-
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_QUEUE_TIMEOUT, vs) > 0) { 
-        Conf.maxLinger = atoi(vs->Value[0]) * 24 * 60 * 60;
-        if (!Conf.maxLinger) {
-            Conf.maxLinger = DEFAULT_MAX_LINGER;
-        }
-
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_NUMERIC, LOG_INFO, 0, "MSGSRV_A_QUEUE_TIMEOUT", NULL, Conf.maxLinger, 0, NULL, 0);
-
-        MDBFreeValues(vs);
-    } else {
-        Conf.maxLinger = DEFAULT_MAX_LINGER;
-    }
-
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_QUOTA_MESSAGE, vs) > 0) { 
-        Conf.quotaMessage = MemStrdup(vs->Value[0]);
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_QUOTA_MESSAGE", Conf.quotaMessage, 0, 0, NULL, 0);
-
-        MDBFreeValues(vs);
-    }
-
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_PORT, vs) > 0) { 
-        Agent.agent.port = atol(vs->Value[0]);
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_NUMERIC, LOG_INFO, 0, "MSGSRV_A_PORT", NULL, Agent.agent.port, 0, NULL, 0);
-
-        MDBFreeValues(vs);
-    }
-
+    
+    sprintf(Conf.queueClientsPath, "%s/qclients", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
+    
     Conf.bounceMaxBodySize = 0;
-
     /* Some sanity checking on the QLimit stuff to prevent running out of memory */
     if (XplGetMemAvail() < (unsigned long)((STACKSPACE_Q + STACKSPACE_S) * Conf.maxSequentialWorkers)) {
         Conf.maxSequentialWorkers = (XplGetMemAvail() / (STACKSPACE_Q+STACKSPACE_S)) / 2;
@@ -258,158 +175,92 @@ ReadStartupConfiguration(BOOL *recover)
         XplConsolePrintf("bongoqueue: WARNING - Tuning parameters adjusted to %ld par./%ld seq.\r\n", Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers);
         XplBell();
 
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_QLIMITS_ADJUSTED, LOG_WARNING, 0, NULL, NULL, Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers, NULL, 0);
+        Log(LOG_INFO, "Not enough memory; tuning parameters adjusted; concurrent limit: %d, sequential limit: %d", Conf.maxConcurrentWorkers, Conf.maxSequentialWorkers);
         Conf.defaultConcurrentWorkers = Conf.maxConcurrentWorkers;
         Conf.defaultSequentialWorkers = Conf.maxSequentialWorkers;
     }
 
-    MDBDestroyValueStruct(vs);
-
-    return TRUE;
-}
-
-static BOOL
-ReadLiveConfiguration(void)
-{
-    MDBValueStruct *vs;
+    BongoArraySort(Conf.trustedHosts, (ArrayCompareFunc)strcmp);
     
-    vs = MDBCreateValueStruct(Agent.agent.directoryHandle, MsgGetServerDN(NULL));
-    
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_FORWARD_UNDELIVERABLE, vs) > 0) {
-        if (vs->Value[0][0] != '\0') {
-            strcpy(Conf.forwardUndeliverableAddress, vs->Value[0]);
-            Conf.forwardUndeliverableEnabled = TRUE;
-        } else {
-            Conf.forwardUndeliverableAddress[0] = '\0';
-            Conf.forwardUndeliverableEnabled = FALSE;
-        }
-
-        MDBFreeValues(vs);
+    if (Conf.b_bounceReturn) {
+        Conf.bounceHandling |= BOUNCE_RETURN;
     } else {
-        Conf.forwardUndeliverableAddress[0] = '\0';
-        Conf.forwardUndeliverableEnabled = FALSE;
-    }
-
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_QUEUE_INTERVAL, vs) > 0) { 
-        Conf.queueInterval = atol(vs->Value[0])*60;
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_NUMERIC, LOG_INFO, 0, "MSGSRV_A_QUEUE_INTERVAL", NULL, Conf.queueInterval, 0, NULL, 0);
-        if (Conf.queueInterval < 1) {
-            Conf.queueInterval = 4 * 60;
-        }
-        
-        MDBFreeValues(vs);
-    } else {
-        Conf.queueInterval = 4 * 60;
-    }
-
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_MINIMUM_SPACE, vs) > 0) { 
-        Conf.minimumFree = atol(vs->Value[0]) * 1024;
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_NUMERIC, LOG_INFO, 0, "MSGSRV_A_MINIMUM_SPACE", NULL, Conf.minimumFree, 0, NULL, 0);
-
-        MDBFreeValues(vs);
-    } else {
-        Conf.minimumFree = 5 * 1024 * 1024;
-    }
-
-    /* FIXME: we need to move the trusted hosts somewhere better */
-    Conf.trustedHosts.count = MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_STORE_TRUSTED_HOSTS, vs);
-    
-    if (Conf.trustedHosts.hosts) {
-        MemFree(Conf.trustedHosts.hosts);
+        Conf.bounceHandling &= ~BOUNCE_RETURN;
     }
     
-    if (Conf.trustedHosts.count) {
-        Conf.trustedHosts.hosts = MemMalloc(Conf.trustedHosts.count * sizeof(unsigned long));
-        if (Conf.trustedHosts.hosts) {            
-            unsigned long used;
-            int count = 0;
+    if (Conf.b_bounceCCPostmaster) {
+        Conf.bounceHandling |= BOUNCE_CC_POSTMASTER;
+    } else {
+        Conf.bounceHandling &= ~BOUNCE_CC_POSTMASTER;
+    }
+    
+    /* sort the hostedDomains to make searching later faster. */
+    BongoArraySort(Conf.domains, (ArrayCompareFunc)hostedSortFunc);
 
-            for (used = 0; used < vs->Used; used++) {
-                LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "NMAP_TRUSTED_HOSTS", vs->Value[used], 0, 0, NULL, 0);
-                
-                Conf.trustedHosts.hosts[count++] = inet_addr(vs->Value[used]);
+    /* now let's iterate over the domains and read in any aliasing information for those domains */
+    {
+        Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.domains->len);
+
+        unsigned int x;
+        for(x=0;x<Conf.domains->len;x++) {
+            unsigned char *aconfig;
+            unsigned char path[100];
+            BongoJsonNode *node;
+            struct _AliasStruct a;
+
+            a.original = MemStrdup(BongoArrayIndex(Conf.domains, unsigned char *, x));
+            a.to = NULL;
+            a.aliases = NULL;
+            a.mapping_type = 0;
+
+            sprintf(path, "aliases/%s", a.original);
+            if(NMAPReadConfigFile(path, &aconfig)) {
+                if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
+                    BongoJsonObject *obj;
+
+                    BongoJsonJPathGetString(node, "o:domainalias/s", (char **)&(a.to));
+                    BongoJsonJPathGetInt(node, "o:username-mapping/i", &a.mapping_type);
+
+                    /* now get any specific aliases */
+                    if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
+                        BongoJsonObjectIter iter;
+
+                        a.aliases = BongoArrayNew(sizeof(struct _AliasStruct), 1);
+
+                        BongoJsonObjectIterFirst(obj, &iter);
+                        while (iter.key) {
+                            /* TODO: do i need to parse the addresses?
+                            * 	I'd need to parse original and only use the user portion
+                            * 	I'd need to parse the to and append the domain if none exists
+                            */
+                            struct _AliasStruct b;
+                            b.original = MemStrdup(iter.key);
+                            b.to = MemStrdup(BongoJsonNodeAsString(iter.value));
+                            b.aliases = NULL;
+                            b.mapping_type = 0;
+
+                            BongoArrayAppendValue(a.aliases, b);
+
+                            BongoJsonObjectIterNext(obj, &iter);
+                        }
+                        BongoArraySort(a.aliases, (ArrayCompareFunc)aliasCmpFunc);
+                    }
+                    BongoJsonNodeFree(node);
+                }
             }
-        } else {
-            Conf.trustedHosts.count = 0;
+
+            BongoArrayAppendValue(Conf.aliasList, a);
         }
-    }
 
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_RTS_ANTISPAM_CONFIG, vs) > 0) { 
-        LoggerEvent(Agent.agent.loggingHandle, LOGGER_SUBSYSTEM_CONFIGURATION, LOGGER_EVENT_CONFIGURATION_STRING, LOG_INFO, 0, "MSGSRV_A_RTS_ANTISPAM_CONFIG", vs->Value[0], 0, 0, NULL, 0);
-        if (sscanf(vs->Value[0], "Enabled:%d Delay:%ld Threshhold:%lu", &Conf.bounceBlockSpam, &Conf.bounceInterval, &Conf.bounceMax) != 3) {
-            Conf.bounceBlockSpam = FALSE;
-        }
-        
-        if ((Conf.bounceMax < 1) || (Conf.bounceInterval < 1)) {
-            Conf.bounceBlockSpam = FALSE;
-        }
-        MDBFreeValues(vs);
-    } else {
-        Conf.bounceBlockSpam = FALSE;
+        /* sort the list for speed later */
+        BongoArraySort(Conf.aliasList, (ArrayCompareFunc)aliasCmpFunc);
     }
-
-    Conf.bounceHandling = BOUNCE_RETURN;
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_BOUNCE_RETURN, vs) > 0) {
-	if (atol(vs->Value[0])) {
-	    Conf.bounceHandling |= BOUNCE_RETURN;
-	} else {
-	    Conf.bounceHandling &= ~BOUNCE_RETURN;
-	}
-    }
-    MDBFreeValues(vs);
-    if (MDBRead(MSGSRV_AGENT_QUEUE, MSGSRV_A_BOUNCE_CC_POSTMASTER, vs) > 0) {
-	if (atol(vs->Value[0])) {
-	    Conf.bounceHandling |= BOUNCE_CC_POSTMASTER;
-	} else {
-	    Conf.bounceHandling &= ~BOUNCE_RETURN;
-	}
-    }
-    MDBFreeValues(vs);
-
-    if ((MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_CONFIG_CHANGED, vs) > 0)) {
-        Conf.lastRead = atol(vs->Value[0]);
-    }
-
-    MDBDestroyValueStruct(vs);
-
     return TRUE;
 }
-
-BOOL
-ReadConfiguration (BOOL *recover)
-{
-    if (!ReadStartupConfiguration (recover)) {
-        return FALSE;
-    }
-    
-    return ReadLiveConfiguration();
-}
-
 
 void
 CheckConfig(BongoAgent *agent)
 {
-    MDBValueStruct *vs;
-    
-    vs = MDBCreateValueStruct(Agent.agent.directoryHandle, MsgGetServerDN(NULL));
-    if (!vs) {
-        return;
-    }
-    
-    if ((MDBRead(MSGSRV_AGENT_STORE, MSGSRV_A_CONFIG_CHANGED, vs) > 0)
-        && ((unsigned long)atol(vs->Value[0]) != Conf.lastRead)) {
-        /* Clear what we just read */
-        Conf.lastRead = atol(vs->Value[0]);
-        
-        /* Acquire Write Lock */            
-        XplRWWriteLockAcquire(&Conf.lock);
-        
-        ReadLiveConfiguration();
-        
-        XplRWWriteLockRelease(&Conf.lock);
-    }
-    
-    MDBDestroyValueStruct(vs);
+/* TODO:  Figure out how we are going to handle this type of situation */
+    return;
 }
-
-

@@ -1,12 +1,14 @@
 # -*- Makefile -*-
-pkgpythonstoretooldir := $(pkgpythondir)/storetool
+pkgpythonstoretooldir = $(pkgpythondir)/storetool
 
-pkgpythonstoretool_PYTHON := \
+pkgpythonstoretool_PYTHON = \
 	src/apps/storetool/bongo/storetool/__init__.py \
+	src/apps/storetool/bongo/storetool/BackupCommands.py \
 	src/apps/storetool/bongo/storetool/CalendarCommands.py \
 	src/apps/storetool/bongo/storetool/ContactCommands.py \
 	src/apps/storetool/bongo/storetool/InteractiveCommands.py \
 	src/apps/storetool/bongo/storetool/MailCommands.py \
+	src/apps/storetool/bongo/storetool/TestCommands.py \
 	src/apps/storetool/bongo/storetool/ExportMailbox.py
 
 src/apps/storetool/bongo-storetool: $(top_builddir)/src/libs/python/bongo-python-wrapper

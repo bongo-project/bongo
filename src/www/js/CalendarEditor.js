@@ -509,11 +509,11 @@ Dragonfly.Calendar.PersonalProperties.prototype.selectNone = function (evt)
 Dragonfly.Calendar.PersonalProperties.prototype.verifies = function ()
 {
     if (!$(this.nameId).value) {
-        logDebug ('no name.');
+        console.debug ('no name.');
         return false;
     }
     if (this.pwState != 0) {
-        logDebug ('pwState:', this.pwState);
+        console.debug ('pwState:', this.pwState);
         return false;
     }
     return true;
@@ -846,7 +846,7 @@ Dragonfly.Calendar.NewSubscriptionPopup.prototype.submitClicked = function (evt)
         bind (function (err) {
                   if (!(err instanceof CancelledError)) {
                       d.notifyError (d.format(_('Error subscribing to calendar {0}: {1}'), d.escapeHTML (calendar.cal.name), err));
-                      logError ('error was:', d.reprError (err));
+                      console.error ('error was:', d.reprError (err));
                   }
                   return err;
               }, this));

@@ -1,0 +1,7 @@
+{
+	"version": 1,
+	"interval": 3600,
+	"queue": "localhost",
+	"max_threads": 10,
+	"max_accounts": 3
+}

@@ -8,9 +8,24 @@
 <div class="error" id="err" tal:condition="error" tal:content="error">An error occured while processing your request. No more information is available.</div>
 <div class="info" id="opsuccess" tal:condition="opsuccess">Operation completed sucessfully.</div>
 
-<ul>
-<li><a href="%(url|/)sserver/">Enable/Disable Agents</a></li>
-<li><a href="%(url|/)santispam/">Antispam</a></li>
-</ul>
+<table>
+<tr><td valign="top">
+<div id="iconview">
+
+<div style="float: left;">
+    <div class="icon">
+        <a href="%(url|/)sserver/"><img border="0" align="middle" src="../img/agent-control.png" alt="Enable/Disable" /><span>Enable/Disable</span></a>
+    </div>
+</div>
+
+<div tal:repeat="agent agentlist" style="float: left;">
+    <div class="icon">
+        <a tal:attributes="href agent/url"><img border="0" align="middle" src="../img/agent-unknown.png" tal:attributes="alt agent/name;src agent/img" /><span tal:content="agent/rname">Unknown Agent</span></a>
+    </div>
+</div>
+
+</div>
+</td></tr>
+</table>
 
 %(include|footer.tpl)s

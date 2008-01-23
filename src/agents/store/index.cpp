@@ -119,13 +119,13 @@ IndexRemoveDocument(IndexHandle *handle, uint64_t guid)
 }
 
 int
-IndexDocument(IndexHandle *handle, StoreClient *client, DStoreDocInfo *info)
+IndexDocument(IndexHandle *handle, StoreClient *client, DStoreDocInfo *info, char *path)
 {
     if (IndexRemoveDocument(handle, info->guid)) {
         return 1;
     }
     
-    return FilterDocument(client, info, handle->index);
+    return FilterDocument(client, info, handle->index, path);
 }
 
 int

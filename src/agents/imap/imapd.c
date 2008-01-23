@@ -1,4 +1,3 @@
-
 /****************************************************************************
  * <Novell-copyright>
  * Copyright (c) 2001 Novell, Inc. All Rights Reserved.
@@ -40,13 +39,8 @@
 
 #include <logger.h>
 
-#include <mdb.h>
 #include <msgapi.h>
 
-/* Management Client Header Include */
-#include <management.h>
-
-#include <cmlib.h>
 #include "imapd.h"
 
 ImapGlobal Imap;
@@ -89,15 +83,6 @@ static ProtocolCommand ImapProtocolCommands[] = {
     { IMAP_COMMAND_GETQUOTA, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_GETQUOTA) - 1, ImapCommandGetQuota, NULL, NULL },
     { IMAP_COMMAND_GETQUOTAROOT, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_GETQUOTAROOT) - 1, ImapCommandGetQuotaRoot, NULL, NULL },
     { IMAP_COMMAND_NAMESPACE, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_NAMESPACE) - 1, ImapCommandNameSpace, NULL, NULL },
-    { IMAP_COMMAND_PROXYAUTH, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_PROXYAUTH) - 1, ImapCommandProxyAuth, NULL, NULL },
-#if MDB_DEBUG
-    { IMAP_COMMAND_USER_LOOKUP, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_LOOKUP) - 1, ImapCommandUserLookup, NULL, NULL },
-    { IMAP_COMMAND_USER_VERIFY, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_VERIFY) - 1, ImapCommandUserVerify, NULL, NULL },
-    { IMAP_COMMAND_USER_READ, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserRead, NULL, NULL },
-    { IMAP_COMMAND_USER_WRITE_LOCAL, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserWriteLocal, NULL, NULL },
-    { IMAP_COMMAND_USER_WRITE_SUPER, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserWriteSuper, NULL, NULL },
-    { IMAP_COMMAND_USER_ENUM, IMAP_HELP_NOT_DEFINED, sizeof(IMAP_COMMAND_USER_READ) - 1, ImapCommandUserEnum, NULL, NULL },
-#endif    
     { NULL, NULL, 0, NULL, NULL, NULL }
 };
 
@@ -156,6 +141,8 @@ CreateReturnValueIndex()
     return(NULL);
 }
 
+#if 0
+// FIXME: Shutdown not needed atm
 static BOOL 
 IMAPShutdown(unsigned char *Arguments, unsigned char **Response, BOOL *CloseConnection)
 {
@@ -202,6 +189,7 @@ IMAPShutdown(unsigned char *Arguments, unsigned char **Response, BOOL *CloseConn
 
     return(FALSE);
 }
+#endif
 
 static BOOL 
 IMAPSessionAllocCB(void *Buffer, void *ClientData)
@@ -370,7 +358,7 @@ __inline static long
 FolderGetHighestUid(Connection *storeConn, FolderInformation *folder, uint32_t *highestUid)
 {
     long ccode;
-    size_t propertyValue;
+    unsigned long propertyValue;
 
     /* Get the highest UID for the collection */
     ccode = NMAPGetHexadecimalProperty(storeConn, folder->guid, "nmap.mail.imapuid", &propertyValue);
@@ -386,7 +374,7 @@ __inline static long
 FolderGetRecentUid(Connection *storeConn, FolderInformation *folder, uint32_t *recentUid)
 {
     long ccode;
-    size_t propertyValue;
+    unsigned long propertyValue;
 
     /* Get the recent UID for the collection */
     ccode = NMAPGetHexadecimalProperty(storeConn, folder->guid, "imap.recentuid", &propertyValue);
@@ -436,13 +424,13 @@ FolderSendStatus(Connection *conn, OpenedFolder *folder)
                            firstUnseen + 1,
                            firstUnseen + 1,
                            (unsigned long)(folder->info->guid & 0x00000000FFFFFFFF),
-                           folder->info->uidNext);
+                           (unsigned long)folder->info->uidNext);
     } else {
         ccode = ConnWriteF(conn, "* %lu EXISTS\r\n* %lu RECENT\r\n* OK [UIDVALIDITY %lu] UIDs valid\r\n* OK [UIDNEXT %lu] Predicted next UID\r\n* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n", 
                            folder->messageCount, 
                            folder->recentCount,
                            (unsigned long)(folder->info->guid & 0x00000000FFFFFFFF),
-                           folder->info->uidNext);
+                           (unsigned long)folder->info->uidNext);
     }
     if (ccode != -1) {
         return(STATUS_CONTINUE);
@@ -454,7 +442,7 @@ long
 FolderOpen(Connection *storeConn, OpenedFolder *openFolder, FolderInformation *folder, BOOL readOnly)
 {
     long ccode;
-    uint32_t highestUid;
+    uint32_t highestUid = 0;
 
     ccode = FolderGetRecentUid(storeConn, folder, &folder->uidRecent);
     if (ccode == STATUS_CONTINUE) {
@@ -617,7 +605,7 @@ long
 FolderListLoad(ImapSession *session)
 {
     char buffer[CONN_BUFSIZE];
-    uint64_t selectedGuid;
+    uint64_t selectedGuid = 0;
     FolderInformation *folderList;
     FolderInformation *newList;
     FolderInformation *currentFolder;
@@ -858,13 +846,6 @@ ImapCommandCapability(void *param)
     ImapSession *session = (ImapSession *)param;
     
     if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
-        if (!Imap.server.ssl.enable || session->client.conn->ssl.enable) {
-            if (ConnWrite(session->client.conn, Imap.command.capability.message, Imap.command.capability.len) != -1) {
-                return(SendOk(session, "CAPABILITY"));
-            }
-            return(STATUS_ABORT);
-        }
-        
         if (ConnWrite(session->client.conn, Imap.command.capability.ssl.message, Imap.command.capability.ssl.len) != -1) {
             return(SendOk(session, "CAPABILITY"));
         }
@@ -1054,7 +1035,7 @@ FolderHierarchyCreate(ImapSession *session, char *folderPathUtf8)
             if (NMAPSendCommandF(session->store.conn, "CREATE /mail/%s\r\n", folderPathUtf8) != -1) {
                 ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
                 if (ccode == 1000) {
-                    if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s +%lu\r\n", folderPathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) != -1) {
+                    if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s +%u\r\n", folderPathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) != -1) {
                         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
                         if (ccode == 1000) {
                             *ptr = '/';
@@ -1145,7 +1126,7 @@ ImapCommandCreate(void *param)
         }
 
         /* this folder is just hierarchy.  Make it a real folder */
-        if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s -%lu\r\n", pathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
+        if (NMAPSendCommandF(session->store.conn, "FLAG /mail/%s -%u\r\n", pathUtf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
             MemFree(pathUtf8);
             return(STATUS_NMAP_COMM_ERROR);
         }
@@ -1167,7 +1148,7 @@ ImapCommandCreate(void *param)
         return(SendError(session->client.conn, session->command.tag, "CREATE", ccode));
     }
     
-    if (NMAPSendCommandF(session->store.conn, "CREATE /mail/%s\r\n", pathUtf8) == -1) {
+    if (NMAPSendCommandF(session->store.conn, "CREATE \"/mail/%s\"\r\n", pathUtf8) == -1) {
         MemFree(pathUtf8);
         return(SendError(session->client.conn, session->command.tag, "CREATE", STATUS_NMAP_COMM_ERROR));
     }
@@ -1280,10 +1261,10 @@ FolderConvertToHierarchyOnly(ImapSession *session, FolderInformation *folder)
 {
     long ccode;
     uint64_t *guid;
-    uint64_t *guidList;
+    uint64_t *guidList = NULL;
     long guidCount;
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%lu\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_HIERARCHY_ONLY) == -1) {
         return(STATUS_NMAP_COMM_ERROR);
     }
 
@@ -1382,7 +1363,7 @@ ImapCommandDelete(void *param)
         FolderDeselect(session);
     }
 
-    if (NMAPSendCommandF(session->store.conn, "REMOVE %s\r\n", folder->name.utf8) == -1) {
+    if (NMAPSendCommandF(session->store.conn, "REMOVE \"%s\"\r\n", folder->name.utf8) == -1) {
         return(SendError(session->client.conn, session->command.tag, "DELETE", STATUS_NMAP_COMM_ERROR));
     }
 
@@ -1398,7 +1379,7 @@ __inline static long
 FolderMoveMessages(ImapSession *session, char *sourcePathUtf8, char *destinationPathUtf8)
 {
     long ccode;
-    uint64_t *guidList;
+    uint64_t *guidList = NULL;
     uint64_t *guid;
     long guidCount;
 
@@ -1540,7 +1521,7 @@ ImapCommandRename(void *param)
             FolderDeselect(session);
         } 
 
-        if (NMAPSendCommandF(session->store.conn, "RENAME %s /mail/%s\r\n", sourceFolder->name.utf8, destinationPathUtf8) == -1) {
+        if (NMAPSendCommandF(session->store.conn, "RENAME \"%s\" \"/mail/%s\"\r\n", sourceFolder->name.utf8, destinationPathUtf8) == -1) {
             MemFree(destinationPathUtf8);
             return(SendError(session->client.conn, session->command.tag, "RENAME", STATUS_NMAP_COMM_ERROR));
         }
@@ -1620,7 +1601,7 @@ ImapCommandSubscribe(void *param)
         return(SendError(session->client.conn, session->command.tag, "SUBSCRIBE", STATUS_NO_SUCH_FOLDER));
     }
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s -%lu\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG \"%s\" -%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
         FreePathArgument(&path);
         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
         if (ccode == 1000) {
@@ -1664,7 +1645,7 @@ ImapCommandUnsubscribe(void *param)
         return(SendError(session->client.conn, session->command.tag, "UNSUBSCRIBE", STATUS_NO_SUCH_FOLDER));
     }
 
-    if (NMAPSendCommandF(session->store.conn, "FLAG %s +%lu\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
+    if (NMAPSendCommandF(session->store.conn, "FLAG \"%s\" +%u\r\n", folder->name.utf8, STORE_COLLECTION_FLAG_NON_SUBSCRIBED) != -1) {
         FreePathArgument(&path);
         ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
         if (ccode == 1000) {
@@ -1847,7 +1828,7 @@ ImapCommandList(void *param)
 
     long ccode;
     char pattern[STORE_MAX_COLLECTION * 2];
-    unsigned long patternLen;
+    unsigned long patternLen = 0;
 
     if ((ccode = CheckState(session, STATE_AUTH)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -1870,7 +1851,7 @@ ImapCommandLsub(void *param)
 
     long ccode;
     char pattern[STORE_MAX_COLLECTION * 2];
-    unsigned long patternLen;
+    unsigned long patternLen = 0;
 
     if ((ccode = CheckState(session, STATE_AUTH)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -2274,7 +2255,7 @@ WriteMessageInMailbox(Connection *clientConn, Connection *storeConn, uint64_t fo
     char buffer[100];
 
     ccode = STATUS_NMAP_COMM_ERROR;
-    if (NMAPSendCommandF(storeConn, "WRITE %llx %lu %lu T%lu\r\n", folderGuid, STORE_DOCTYPE_MAIL, size, (unsigned long)creationTime) != -1) {
+    if (NMAPSendCommandF(storeConn, "WRITE %llx %u %lu T%lu\r\n", folderGuid, STORE_DOCTYPE_MAIL, size, (unsigned long)creationTime) != -1) {
         if ((ccode = CheckForNMAPCommError(NMAPReadResponse(storeConn, NULL, 0, 0))) == 2002) {
             ccode = STATUS_ABORT;
             if (ConnWrite(clientConn, "+ Ready for more data\r\n", sizeof("+ Ready for more data\r\n") - 1) != -1) {
@@ -2320,7 +2301,7 @@ ImapCommandAppend(void *param)
     unsigned long messageSize;
     unsigned long flags;
     time_t date;
-    uint64_t messageGuid;
+    uint64_t messageGuid = 0;
         
     if ((ccode = CheckState(session, STATE_AUTH)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -2370,7 +2351,7 @@ ImapCommandCheck(void *param)
 __inline static long
 PurgeDeletedMessages(Connection *storeConn, Connection *clientConn, MessageInformation *message, unsigned long messageCount)
 {
-    long ccode;
+    long ccode = 0;
     long count;
 
     count = messageCount;
@@ -3159,104 +3140,18 @@ ImapCommandGetQuotaRoot(void *param)
 int
 ImapCommandNameSpace(void *param)
 {
-#if defined(HAVE_SHARED_FOLDERS)
     ImapSession *session = (ImapSession *)param;
-    long ccode;
 
-    if (session->client.state == STATE_SELECTED) {
-        if (((ccode = PurgeMessageNotify(session)) == STATUS_CONTINUE) && ((ccode = NewMessageNotify(session)) == STATUS_CONTINUE)) {
-            ;    
-        } else {
-            return(SendError(session->client.conn, session->command.tag, "NAMESPACE", ccode));
-        }
-    } else if (session->client.state < STATE_AUTH) {
+    if (session->client.state < STATE_AUTH) {
         return(SendError(session->client.conn, session->command.tag, "NAMESPACE", STATUS_INVALID_STATE));
     }
 
     if (ConnWrite(session->client.conn, 
-                  "* NAMESPACE ((\"\" \"/\")) ((\"Shares/\" \"/\")) ((\"Public Shares\" \"/\"))\r\n", 
-                  strlen("* NAMESPACE ((\"\" \"/\")) ((\"Shares/\" \"/\")) ((\"Public Shares\" \"/\"))\r\n")) != -1) {
+                  "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n",
+                  strlen("* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n")) != -1) {
         return(SendOk(session, "NAMESPACE"));
     }
     return(STATUS_ABORT);
-#else
-    return(SendError(((ImapSession *)param)->client.conn, ((ImapSession *)param)->command.tag, "SETACL", STATUS_UNKNOWN_COMMAND));
-#endif
-}
-
-/********** non-standard commands **********/
-
-int
-ImapCommandProxyAuth(void *param)
-{
-#if defined(HAVE_SHARED_FOLDERS)
-    ImapSession *session = (ImapSession *)param;
-    long ccode;
-    unsigned char *ptr;
-    unsigned char  *user = NULL;
-    MDBValueStruct  *User;
-
-    if (session->client.state == STATE_SELECTED) {
-        if (((ccode = PurgeMessageNotify(session)) == STATUS_CONTINUE) && ((ccode = NewMessageNotify(session)) == STATUS_CONTINUE)) {
-            ;    
-        } else {
-            return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", ccode));
-        }
-    } else if (session->client.state < STATE_AUTH) {
-        return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", STATUS_INVALID_STATE));
-    }
-
-    /* One of the consequences of switching users the way we do is that proxyauth
-     * will only succeed the first time. After that, the user has changed and can
-     * no longer proxyauth. This is the way Netscape does it, so supposedly its
-     * correct, although inefficient for the session. */
-    if(session->client.state < STATE_AUTH || XplStrCaseCmp(session->user.name, Imap.server.postmaster)) {
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_UNHANDLED, LOGGER_EVENT_UNHANDLED_REQUEST, LOG_INFO, 0, session->user.name, session->command.buffer, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
-        return(SendError(session->client.conn, session->command.tag, "", STATUS_UNKNOWN_COMMAND));
-    }
-    ptr = session->command.buffer + 10;
-    while(IsWhiteSpace(*ptr)) {
-        ++ptr;
-    }
-
-    if(!*ptr) {
-        return(SendError(session->client.conn, session->command.tag, "", STATUS_INVALID_ARGUMENT));
-    }
-
-    ccode = GrabArgument(session, &ptr, &user);
-    if (ccode == STATUS_CONTINUE) {
-        /* Fixme - this doesn't connect the user to *his/her* nmap server */
-
-        User = MDBCreateValueStruct(Imap.directory.handle, NULL);
-        if (MsgFindObject(user, NULL, NULL, NULL, User)) { 
-            if(XplStrCaseCmp(session->user.name, User->Value[0]) != 0) {
-                if (strlen(User->Value[0]) < sizeof(session->user.name)) {
-                    strcpy(session->user.name, User->Value[0]);
-                }
-            }
-            MemFree(user);
-            MDBDestroyValueStruct(User);
-
-            session->client.state = STATE_AUTH;
-            if (NMAPSendCommandF(session->store.conn, "USER %s\r\n", session->user.name) != -1) {
-                ccode = NMAPReadResponse(session->store.conn, NULL, 0, 0);
-                if (ccode == 1000) {
-                    return(SendOk(session, "PROXYAUTH"));
-                }
-                return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", CheckForNMAPCommError(ccode)));
-            }
-            return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", STATUS_NMAP_COMM_ERROR));
-        }
-
-        MDBDestroyValueStruct(User);
-        MemFree(user);
-        return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", STATUS_USERNAME_NOT_FOUND));
-    }
-
-    return(SendError(session->client.conn, session->command.tag, "PROXYAUTH", ccode));
-#else
-    return(SendError(((ImapSession *)param)->client.conn, ((ImapSession *)param)->command.tag, "SETACL", STATUS_UNKNOWN_COMMAND));
-#endif
 }
 
 static BOOL
@@ -3275,7 +3170,7 @@ HandleConnection(void *param)
             LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
         }
 
-        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",Imap.server.hostname, PRODUCT_NAME, XplGetThreadID(),time(NULL),Imap.server.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
+        if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",BongoGlobals.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),BongoGlobals.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
             while (TRUE) {
                 ccode = ReadCommandLine(session->client.conn, &(session->command.buffer), &(session->command.bufferLen));
                 if (ccode == STATUS_CONTINUE) {
@@ -3472,22 +3367,17 @@ InitializeImapGlobals()
     Imap.server.disabled = FALSE;
     Imap.server.port = 143;
     Imap.server.ssl.port = 993;
-    Imap.server.ssl.enable = FALSE;
+    Imap.server.ssl.config.options = 0;
+    Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
+    Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
     Imap.server.threadGroupId = XplGetThreadGroupID();
-    Imap.server.hostname[0] = '\0';
-    Imap.server.hostnameLen = 0;
     strcpy(Imap.server.postmaster, "admin");
 
     /*      Imap.command.        */    
     Imap.command.capability.acl.enabled = TRUE;
-#if defined(HAVE_SHARED_FOLDERS)
-    Imap.command.capability.len = sprintf(Imap.command.capability.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 ACL AUTH=LOGIN NAMESPACE XSENDER");
-    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 ACL AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");`
-#else
-    Imap.command.capability.len = sprintf(Imap.command.capability.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN XSENDER");
-    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN STARTTLS XSENDER LOGINDISABLED");
-
-#endif
+    /* FIXME: ACL ?? */
+    Imap.command.capability.len = sprintf(Imap.command.capability.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE XSENDER");
+    Imap.command.capability.ssl.len = sprintf(Imap.command.capability.ssl.message, "%s\r\n", "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");
 
     Imap.command.months[0] = "Jan";
     Imap.command.months[1] = "Feb";
@@ -3505,7 +3395,6 @@ InitializeImapGlobals()
     /*      Imap.(misc).        */    
     Imap.exiting = FALSE;
     Imap.logHandle = NULL;
-    Imap.directory.handle = NULL;
 
     /* Global allocations */
     BongoKeywordIndexCreateFromTable(Imap.command.index, ImapProtocolCommands, .name, TRUE);
@@ -3637,12 +3526,6 @@ IMAPServer(void *unused)
         ConnClose(Imap.server.ssl.conn, 1);
     }
 
-    /*    Management Client Shutdown    */
-    ManagementShutdown();
-    for (j = 0; (ManagementState() != MANAGEMENT_STOPPED) && (j < 60); j++) {
-        XplDelay(1000);
-    }
-
     /*    Wake up the children and set them free!    */
     /* fixme - SocketShutdown; */
 
@@ -3672,13 +3555,11 @@ IMAPServer(void *unused)
     if (Imap.server.ssl.context) {
         ConnSSLContextFree(Imap.server.ssl.context);
     }
-    XPLCryptoLockDestroy();
 
     LoggerClose(Imap.logHandle);
     Imap.logHandle = NULL;
 
     MsgShutdown();
-//    MDBShutdown();
 
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
@@ -3812,12 +3693,16 @@ IMAPSSLServer(void *unused)
     return;
 }
 
+static BongoConfigItem IMAPConfig[] = {
+        { BONGO_JSON_INT, "o:port/i", &Imap.server.port },
+        { BONGO_JSON_INT, "o:port_ssl/i", &Imap.server.ssl.port },
+        { BONGO_JSON_INT, "o:threads_max/i", &Imap.session.threads.max },
+        { BONGO_JSON_NULL, NULL, NULL }
+};
 
 static BOOL
 ReadConfiguration(void)
 {
-    MDBValueStruct *Config;
-    unsigned char *ptr;
     time_t   gm_time_of_day, time_of_day;
     struct tm  gm, ltm;
 
@@ -3828,78 +3713,14 @@ ReadConfiguration(void)
     localtime_r(&time_of_day, &ltm);
     gm_time_of_day=mktime(&gm);
 
-    Config = MDBCreateValueStruct(Imap.directory.handle, MsgGetServerDN(NULL));
+    // Imap.server.postmaster needs to be set to something?
+    if (! ReadBongoConfiguration(IMAPConfig, "imap")) {
+        return FALSE;
+    }
 
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_PORT, Config)>0) {
-        Imap.server.port = (unsigned short)atol(Config->Value[0]);
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        return FALSE;
     }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_SSL_PORT, Config)>0) {
-        Imap.server.ssl.port = (unsigned short)atol(Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_MAX_LOAD, Config)>0) {
-        Imap.session.threads.max=atol(Config->Value[0]);
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MSGSRV_AGENT_IMAP, MSGSRV_A_ACL_ENABLED, Config)>0) {
-        if (atol(Config->Value[0])) {
-            Imap.command.capability.acl.enabled = TRUE;
-        } else {
-            Imap.command.capability.acl.enabled = FALSE;
-            Imap.command.capability.len =
-                sprintf(Imap.command.capability.message,
-                        "%s\r\n",
-                        "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE XSENDER");
-            Imap.command.capability.ssl.len =
-                sprintf(Imap.command.capability.ssl.message,
-                        "%s\r\n",
-                        "* CAPABILITY IMAP4 IMAP4rev1 AUTH=LOGIN NAMESPACE STARTTLS XSENDER LOGINDISABLED");
-        }
-    }
-    MDBFreeValues(Config);
-    
-    Imap.server.ssl.config.options = 0;
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_ALLOW_CHAINED, Config)) {
-	if (atol(Config->Value[0])) {
-	    Imap.server.ssl.config.options |= SSL_ALLOW_CHAIN;
-	}
-    }
-    MDBFreeValues(Config);
-    if (MDBRead(MDB_CURRENT_CONTEXT, MSGSRV_A_SSL_TLS, Config)) {
-	if (atol(Config->Value[0])) {
-	    Imap.server.ssl.config.options |= SSL_ALLOW_SSL3;
-	    Imap.server.ssl.enable = TRUE;
-	}
-    }
-    MDBFreeValues(Config);
-
-    if (MDBRead(MSGSRV_SELECTED_CONTEXT, MSGSRV_A_OFFICIAL_NAME, Config)) {
-        if ((Config->Value[0]) && (strlen(Config->Value[0]) < sizeof(Imap.server.hostname))) {
-      
-            strcpy(Imap.server.hostname, Config->Value[0]);
-        } else {
-            gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
-        }
-  
-    } else {
-        gethostname(Imap.server.hostname, sizeof(Imap.server.hostname));
-    }
-    Imap.server.hostnameLen = strlen(Imap.server.hostname);
-    MDBFreeValues(Config);
-
-    if (MDBRead(MSGSRV_SELECTED_CONTEXT, MSGSRV_A_POSTMASTER, Config)) {
-        ptr=strchr(Config->Value[0], '.');
-        if (ptr) {
-            *ptr='\0';
-        }
-        if (strlen(Config->Value[0]) < sizeof(Imap.server.postmaster)) {
-            strcpy(Imap.server.postmaster, Config->Value[0]);
-        }
-    }
-    MDBFreeValues(Config);
-
-    MDBDestroyValueStruct(Config);
 
     return(TRUE);
 }
@@ -3941,20 +3762,9 @@ XplServiceMain(int argc, char *argv[])
 
     ConnStartup(IMAP_CONNECTION_TIMEOUT, TRUE);
 
-    MDBInit();
-    Imap.directory.handle = (MDBHandle)MsgInit();
-    if (Imap.directory.handle == NULL) {
-        XplBell();
-        XplConsolePrintf("\rIMAPD: Invalid directory credentials; exiting!\n");
-        XplBell();
-
-        MemoryManagerClose(MSGSRV_AGENT_IMAP);
-
-        return(-1);
-    }
-
-    NMAPInitialize(Imap.directory.handle);
-    CMInitialize(Imap.directory.handle, "IMAP");
+    MsgInit();
+    MsgAuthInit();
+    NMAPInitialize();
 
     Imap.logHandle = LoggerOpen("bongoimap");
     if (Imap.logHandle != NULL) {
@@ -3972,21 +3782,15 @@ XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
-    if (Imap.server.ssl.enable) {
-        if (!ServerSocketSSLInit()) {
+    if (!ServerSocketSSLInit()) {
+        Imap.server.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+        Imap.server.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+            
+        Imap.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
         
-            Imap.server.ssl.config.certificate.file = MsgGetTLSCertPath(NULL);
-            Imap.server.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-            Imap.server.ssl.config.key.file = MsgGetTLSKeyPath(NULL);
-        
-            Imap.server.ssl.context = ConnSSLContextAlloc(&(Imap.server.ssl.config));
-            if (Imap.server.ssl.context) {
-                XplBeginCountedThread(&id, IMAPSSLServer, IMAP_STACK_SIZE, NULL, ccode, Imap.server.active);
-            } else {
-                Imap.server.ssl.enable = FALSE;
-            }
-        } else {
-            Imap.server.ssl.enable = FALSE;
+        Imap.server.ssl.context = ConnSSLContextAlloc(&(Imap.server.ssl.config));
+        if (Imap.server.ssl.context) {
+            XplBeginCountedThread(&id, IMAPSSLServer, IMAP_STACK_SIZE, NULL, ccode, Imap.server.active);
         }
     }
 

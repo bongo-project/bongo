@@ -10,6 +10,7 @@
 #include <xplhash.h>
 #include <memmgr.h>
 #include <gcrypt.h>
+#include <libintl.h>
 #include <locale.h>
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 

@@ -59,15 +59,39 @@ class RootHandler(HawkeyeHandler):
         sw_current = "%d" % build_ver
         if build_custom:
             sw_current += " (custom build)"
-        sw_available = msgapi.GetAvailableVersion()
         self.SetVariable("sw_current", sw_current)
-        if (sw_available - build_ver) > 9:
-            self.SetVariable("sw_upgrade", 1) 
-        if sw_available == 0:
-            sw_available = "Unknown (no network, or DNS failure)"
+        
+        #sw_available = msgapi.GetAvailableVersion()
+        #if (sw_available - build_ver) > 9:
+            #self.SetVariable("sw_upgrade", 1) 
+        #if sw_available == 0:
+            #sw_available = "Unknown (no network, or DNS failure)"
+        
+        sw_available = "Disabled"
         self.SetVariable("sw_available", sw_available)
+        
+        # Get last few actions
+        actions = self.GetStoreData(req, "/hawkeye/history")
+        sortedacts = sorted(actions)
+        
+        print "actions: %s" % actions
+        
+        act = []
+        for actid in sortedacts:
+            obj = { }
+            action = actions[actid]
+            if action["desc"] != "" and action["desc"] != None:
+                obj["href"] = "/admin/" + action["url"]
+                obj["title"] = action["desc"]
+                obj["img"] = None
+                act.append(obj)
+            
+        #print "Act: %s" % act
+        
         # send the template
-        return self.SendTemplate(req, rp, "index.tpl")
+        self.SetVariable("actionlist", act)
+        self.SetVariable("dremove", None)
+        return self.SendTemplate(req, rp, "index.tpl", title="Desktop")
 
     def login_GET(self, req, rp):
         global AuthMode
@@ -84,6 +108,7 @@ class RootHandler(HawkeyeHandler):
             self.SetVariable("badauth", 0)
             self.SetVariable("loggedout", 0)
         
+        self.SetVariable("dremove", None)
         return self.SendTemplate(req, rp, "login.tpl")
 
     def login_POST(self, req, rp):

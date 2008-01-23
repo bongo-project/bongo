@@ -26,7 +26,6 @@
 #include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
-#include <mdb.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
@@ -156,18 +155,6 @@ GenericAgentServer(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
-    MDBValueStruct *config;
-
-    config = MDBCreateValueStruct(GAgent.agent.directoryHandle, 
-                                  MsgGetServerDN(NULL));
-    if (config) {
-        /* Read your agent's configuration here */
-    } else {
-        return FALSE;
-    }
-
-    MDBDestroyValueStruct(config);
-
     return TRUE;
 }
 
@@ -197,7 +184,7 @@ XplServiceMain(int argc, char *argv[])
     strcpy(GAgent.nmapAddress, "127.0.0.1");
 
     /* Initialize the Bongo libraries */
-    startupOpts = BA_STARTUP_MDB | BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
     ccode = BongoAgentInit(&GAgent.agent, AGENT_NAME, AGENT_DN, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");

@@ -34,6 +34,8 @@
 
 #define MONITOR_SLEEP_INTERVAL 5000
 
+struct _BongoGlobals BongoGlobals;
+
 void 
 BongoAgentHandleSignal(BongoAgent *agent,
                       int sigtype)
@@ -204,8 +206,8 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 }
 
 /**
- * Read a configuration document from the Bongo Store, and bring information 
- * from that document into the agent
+ * Read a configuration document from the Bongo Store. This is a conveniance wrapper
+ * around ParseBongoConfiguration()
  * \param	config	BongoConfigItem array which defines configuration variables
  * \param	filename	Filename we wish to read from the store
  * \return	 		Whether or not we were successful
@@ -214,37 +216,47 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 BOOL 
 ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	unsigned char *pconfig;
-	BOOL retcode = FALSE;
 	BongoJsonNode *node = NULL;
+	BOOL retcode;
 	
 	if (! NMAPReadConfigFile(filename, &pconfig)) {
 		XplConsolePrintf("config: couldn't read config '%s' from store\r\n", filename);
 		return FALSE;
 	}
-	
 	if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
-		XplConsolePrintf("config: couldn't parse JSON content in '%s'\r\n", filename);
-		goto finish;
+		retcode = FALSE;
+	} else {
+		retcode = ProcessBongoConfiguration(config, node);
 	}
 	
+	if (node) BongoJsonNodeFree(node);
+	return retcode;
+}
+
+/**
+ * Process a configuration definition
+ * \param	config	BongoConfigItem array which defines configuration variables
+ * \param	JSON node tree we want to look in
+ * \return	Whether or not we were successful
+ */
+
+BOOL
+ProcessBongoConfiguration(BongoConfigItem *config, const BongoJsonNode *node)
+{
 	while (config->type != BONGO_JSON_NULL) {
 		BongoJsonNode *result = BongoJsonJPath(node, config->source);
 		if (!result) {
 			XplConsolePrintf("config: JSON tree for schema source %s not found\r\n", config->source);
-			goto finish;
+			return FALSE;
 		}
 		if (!SetBongoConfigItem(config, result)) {
-			// can't set item
+			// can't set item  - should return FALSE here?
 			XplConsolePrintf("config: schema source %s not found\r\n", config->source);
 		}
 		config++;
 	}
 	
-	retcode = TRUE;
-
-finish:
-	if (node) BongoJsonNodeFree(node);
-	return retcode;
+	return TRUE;
 }
 
 int
@@ -264,27 +276,23 @@ BongoAgentInit(BongoAgent *agent,
     if (startupResources & BA_STARTUP_CONNIO)
         ConnStartup(timeOut, TRUE);
 
-    if (startupResources & BA_STARTUP_MDB) {
-        MDBInit();
-
-        agent->directoryHandle = (MDBHandle)MsgInit();
-        if (agent->directoryHandle == NULL) {
-            XplConsolePrintf("%s: Invalid directory credentials; exiting!\r\n", agentName);
-            MemoryManagerClose(agentDn);
-            return -1;
+    if (startupResources & BA_STARTUP_MSGLIB) {
+        MsgInit();
+        if (startupResources & BA_STARTUP_MSGAUTH) {
+            if (MsgAuthInit()) {
+                XplConsolePrintf("%s: Could not initialize auth subsystem\r\n", agentName);
+                return -1;
+            }
         }
     }
 
-    if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize(agent->directoryHandle)) {
+    if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize()) {
         XplConsolePrintf("%s: Could not initialize nmap library\r\n", agentName);
         return -1;
     } else {
         agent->sslContext = NMAPSSLContextAlloc();
         NMAPSetEncryption(agent->sslContext);
     }
-
-    SetCurrentNameSpace(NWOS2_NAME_SPACE);
-    SetTargetNameSpace(NWOS2_NAME_SPACE);
 
     if (startupResources & BA_STARTUP_LOGGER) {
         agent->loggingHandle = LoggerOpen(agentDn);
@@ -294,12 +302,7 @@ BongoAgentInit(BongoAgent *agent,
     }
 
     agent->name = MemStrdup(agentName);
-    agent->dn = MemStrdup(agentDn);
-
-    if (startupResources & BA_STARTUP_MDB) {
-        /* Read general agent configuration */
-        ReadConfiguration(agent);
-    }
+    // agent->dn = MemStrdup(agentDn);
 
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), agentName);
     return 0;
@@ -615,7 +618,7 @@ BongoQueueConnectionInit(BongoAgent *agent,
             return NULL;
         }
         
-        reg = NMAPRegister(agent->dn, 
+        reg = QueueRegister(agent->dn, 
                            queue,
                            conn->socketAddress.sin_port);
         

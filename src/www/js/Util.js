@@ -148,7 +148,7 @@ Dragonfly.Profiler.prototype.dump = function (finished, startTime, endTime)
             }
         });
 
-    logDebug ('Dumping Profiler Info for ' + this.label);
+    console.debug ('Dumping Profiler Info for ' + this.label);
     this.totals.sortBy (
         function (value, index) {
             return -value.value;
@@ -158,15 +158,15 @@ Dragonfly.Profiler.prototype.dump = function (finished, startTime, endTime)
                 if (key.charAt (key.length - 1) == '*') {
                     return;
                 }
-                logDebug (
+                console.debug (
                     Dragonfly.format (
                         '    {0}: {2:#}pct, {3} new: {1:#.00}ms tot, {4:#.00}ms avg', 
                         key, pair.value, 100 * pair.value / total,
                         pending[key].length / 2, 
                         2 * pair.value / pending[key].length));
             });
-    logDebug ('    ----------------------');
-    logDebug ('    Total: ' + total + 'ms');
+    console.debug ('    ----------------------');
+    console.debug ('    Total: ' + total + 'ms');
     if (finished) {
         this.finished();
     } else {
@@ -214,26 +214,26 @@ Element.setHTML = function (elem, html)
     elem = $(elem);
 
     if (!elem) {
-        logError ('Could not find element ' + Element.repr(elem, origElem));
+        console.error ('Could not find element ' + Element.repr(elem, origElem));
     }
     
     try {
         html = html.join ? html.join ('') : html;
         elem.innerHTML = html;
     } catch (e) {
-        logError ('could not set html on ' + Element.repr(elem, origElem) + ': ' + repr (e) + ': |' + html + '|');
+        console.error ('could not set html on ' + Element.repr(elem, origElem) + ': ' + repr (e) + ': |' + html + '|');
         return;
     }
 
     if (!html || elem.innerHTML) {
         var finish = new Date();
         if (finish - start > 100) {
-            logWarning ('sync setHTML on', Element.repr(elem, origElem), 'took', (finish - start) / 1000, 'seconds.');
+            console.warn ('sync setHTML on', Element.repr(elem, origElem), 'took', (finish - start) / 1000, 'seconds.');
         }
         return;
     }
 
-    logError ('setting html had no effect on ' + Element.repr(elem, origElem) + ': |' + html + '|');
+    console.error ('setting html had no effect on ' + Element.repr(elem, origElem) + ': |' + html + '|');
     return;
 };
 
@@ -291,9 +291,9 @@ Dragonfly.HtmlBuilder.prototype = { };
 
 Dragonfly.HtmlBuilder.prototype.handleCallbackError = function (err)
 {
-    logError ('HtmlBuilder callback error: ', Dragonfly.reprError (err));
+    console.error ('HtmlBuilder callback error: ', Dragonfly.reprError (err));
     return err;
-}
+};
 
 Dragonfly.HtmlBuilder.prototype.set = function (elem)
 {
@@ -414,7 +414,7 @@ Dragonfly.HtmlZone.prototype.setParent = function (parentElem)
     this.unsetParent();
     this.parentZone = Dragonfly.HtmlZone.findZone (parentElem);
     if (this.parentZone) {
-        logDebug ('Adding zone for:', Element.repr (this.elem),
+        console.debug ('Adding zone for:', Element.repr (this.elem),
                   'to the zone for:', Element.repr (this.parentZone.elem));
         this.parentZone.add (this);
     }
@@ -455,13 +455,13 @@ Dragonfly.HtmlZone.prototype.remove = function (zoneable)
 
 Dragonfly.HtmlZone.canSomething = function (what)
 {
-    logDebug ('Checking if zone for', Element.repr (this.elem), what);
+    console.debug ('Checking if zone for', Element.repr (this.elem), what);
 
     if (this._def) {
-        logDebug ('Cancelling the currently pending deferred');
+        console.debug ('Cancelling the currently pending deferred');
         this._def.cancel();
         if (this._def) {
-            logError ('Our deferred persists after it was canceled');
+            console.error ('Our deferred persists after it was canceled');
         }
     }
 
@@ -495,9 +495,9 @@ Dragonfly.HtmlZone.prototype.canDisposeZone = partial (Dragonfly.HtmlZone.canSom
 
 Dragonfly.HtmlZone.prototype.doSomething = function (what)
 {
-    logDebug ('Doing', what, 'in zone', Element.repr (this.elem));
+    console.debug ('Doing', what, 'in zone', Element.repr (this.elem));
     if (this._def) {
-        logError ('We already have a deferred');
+        console.error ('We already have a deferred');
     }
 
     for (var i = this.zoneables.length - 1; i >= 0; --i) {
@@ -574,7 +574,7 @@ Dragonfly.clone = function (elem)
         if (e.id) {
             elem[e.id] = e;
             e.id = d.nextId (e.id);
-            logDebug ('created', e.id);
+            console.debug ('created', e.id);
             
         }
         forEach (e.childNodes, fixupId);
@@ -583,7 +583,7 @@ Dragonfly.clone = function (elem)
     var origElem = elem;
     elem = $(elem);
     if (!elem) {
-        logError ('Could not locate elem "' + origElem + '"');
+        console.error ('Could not locate elem "' + origElem + '"');
         return null;
     }
 
@@ -593,7 +593,7 @@ Dragonfly.clone = function (elem)
     fixupId (elem);
     var finish = new Date;
 
-    logDebug ('clone(' + elem.id + '):',
+    console.debug ('clone(' + elem.id + '):',
               'total:', (finish - start) / 1000,
               'clone:', (cloneFinish - start) / 1000,
               'fixup:', (finish - cloneFinish) / 1000);
@@ -696,7 +696,7 @@ Dragonfly.eval = function (text)
     var evalStart = new Date;
     var r = eval('(' + text + ')');
     var done = new Date;
-    //logDebug ('check:', (evalStart - checkStart) / 1000, 'eval:', (done - evalStart) / 1000);
+    //console.debug ('check:', (evalStart - checkStart) / 1000, 'eval:', (done - evalStart) / 1000);
     return r;
 };
 
@@ -834,7 +834,7 @@ Dragonfly.request = function (method, url, body, headers)
                 body = serializeJSON (body);
                 req.setRequestHeader ('Content-type', 'text/javascript');
             } catch (e) {
-                logError ('failed to serialize request body: ' + d.reprError (e));
+                console.error ('failed to serialize request body: ' + d.reprError (e));
                 return fail(e);
             }
         }
@@ -856,16 +856,16 @@ Dragonfly.request = function (method, url, body, headers)
         }
     }
 
-    logDebug (method, url, 'started...');
+    console.debug (method, url, 'started...');
     var start = new Date();
     return sendXMLHttpRequest (req, body).addCallbacks (
         function (res) {
             var finish = new Date();
-            logDebug (method, url, 'finished: (' + (finish - start) / 1000, 'seconds)');
+            console.debug (method, url, 'finished: (' + (finish - start) / 1000, 'seconds)');
             return res;
         },
         function (e) {
-            logError ('Exception', method, url + ':', d.reprError (e));
+            console.error ('Exception', method, url + ':', d.reprError (e));
             return e;
         });o
 };
@@ -890,7 +890,7 @@ Dragonfly.getJsonRpcResult = function (jsob)
     // if (typeof jsob == 'string') {
     //     jsob = d.eval (jsob);
     // }
-    logDebug ('RPC id', jsob.id, 'returned with', jsob.error ? 'Error' : jsob.result ? 'Success' : 'Nothing');
+    console.debug ('RPC id', jsob.id, 'returned with', jsob.error ? 'Error' : jsob.result ? 'Success' : 'Nothing');
     if (jsob.error) {
         throw new d.JsonRpcError (jsob);
     }
@@ -905,7 +905,11 @@ Dragonfly.requestJSONRPC = function (rpcMethod, url  /*, ... */)
     return d.requestJSON ('POST', url, jsob).addCallback (d.getJsonRpcResult);
 };
 
-Dragonfly.Colors = [ 'brown', 'red', 'gray', 'green', 'blue', 'indigo', 'maroon', 'navy', 'olive', 'purple', 'MidnightBlue', 'DimGrey', 'DarkSlateGrey', 'teal', 'SlateBlue', 'SeaGreen', 'Sienna', 'DarkGoldenRod', 'BlueViolet'  ];
+/*
+   Colors used for calendars etc. Note that these get used as CLASSES as well as color: x in 'style', so if you add any to here,
+   make sure the appropriate class for your element in CSS exists.
+*/
+Dragonfly.Colors = [ 'violet', 'indigo', 'blue', 'green', 'brown', 'yellow', 'orange', 'red', 'gray'  ];
 Dragonfly.getRandomColor = function ()
 {
     return Dragonfly.Colors[Math.floor ((Math.random() * 100) % Dragonfly.Colors.length)];
@@ -944,7 +948,7 @@ Dragonfly.undefer = function (deferred)
         throw new Error ('Deferred not yet fired');
     }
     return deferred.results[deferred.fired];
-}
+};
 
 /* wait for some number of deferreds to fire */
 Dragonfly.MultiDeferred = function (deferreds)
@@ -976,8 +980,8 @@ Dragonfly.MultiDeferred.prototype.addDeferred = function (def)
     this.defs.push (def);
 
     def.addBoth (bind (function (res) {
-                           //logDebug (this.id + ' got callback: ' + repr (res) + ', ' + (this.paused - 1) + ' remaining.');
-                           //logDebug (this.id + ' waiting on ' + (this.paused - 1) + ' more deferreds...');
+                           //console.debug (this.id + ' got callback: ' + repr (res) + ', ' + (this.paused - 1) + ' remaining.');
+                           //console.debug (this.id + ' waiting on ' + (this.paused - 1) + ' more deferreds...');
                            if (res instanceof Error) {
                                this.res = res;
                            }
@@ -1058,5 +1062,23 @@ Dragonfly.getIFrameDocument = function (iframe)
 {
     var iframe = $(iframe);
     // moz || (ie6 || ie5)
-    return iframe.contentDocument || (iframe.contentWindow || iframe).document;
+    if (!iframe.contentDocument)
+    {
+        if (!iframe.contentWindow)
+        {
+            // IE5
+            return iframe.document;
+        }
+        else
+        {
+            // IE6
+            return iframe.contentWindow.document;
+        }
+    }
+    else
+    {
+        // Mozilla
+        return iframe.contentDocument;
+    }
+    //return iframe.contentDocument || (iframe.contentWindow || iframe).document;
 };

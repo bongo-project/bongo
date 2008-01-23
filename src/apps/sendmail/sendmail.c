@@ -30,7 +30,6 @@
 #include <bongoutil.h>
 #include <nmap.h>
 #include <nmlib.h>
-#include <mdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -71,7 +70,6 @@ int
 main (int argc, char *argv[])
 {
     Connection *nmap;
-    MDBHandle directory;
     ssize_t size = 0;
     char *line = NULL;
     char *response;
@@ -84,14 +82,8 @@ main (int argc, char *argv[])
     
     ConnStartup((15*60), TRUE);
     
-    if (! MDBInit()) {
-        FatalError(1, "couldn't access MDB.");
-    }
-    directory = (MDBHandle)MsgInit();
-    if (! directory) {
-        FatalError(1, "invalid directory credentials.");
-    }
-    NMAPInitialize(directory);
+    MsgInit();
+    NMAPInitialize();
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "sendmail");
     // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
@@ -105,7 +97,7 @@ main (int argc, char *argv[])
     }
     
     response = MemMalloc(sizeof(char) * 1000);
-    if (! NMAPAuthenticate(nmap, response, 1000)) {
+    if (! NMAPAuthenticateToQueue(nmap, response, 1000)) {
         FatalError(1, "cannot authenticate with NMAP.");
     }
     MemFree(response);

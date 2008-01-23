@@ -23,7 +23,6 @@
 #define _ALARM_H
 
 #include <connio.h>
-#include <management.h>
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
@@ -75,9 +74,5 @@ typedef enum {
 
     ALARM_COMMAND_NOOP,
 } AlarmCommand;
-
-/* management.c */
-int AlarmManagementStart(void);
-void AlarmManagementShutdown(void);
 
 #endif /* _ALARM_H */

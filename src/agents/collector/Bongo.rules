@@ -1,19 +1,17 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongocollector
 
-bongocollector_SOURCES :=			\
+bongocollector_SOURCES =			\
 	src/agents/collector/collector.c	\
 	src/agents/collector/collector.h
 
-bongocollector_CPPFLAGS := $(AM_CPPFLAGS) \
+bongocollector_CPPFLAGS = $(AM_CPPFLAGS) \
 	$(LIBCURL_CPPFLAGS)
 
-bongocollector_LDADD :=						   \
+bongocollector_LDADD =						   \
 	libbongonmap.la						   \
 	libbongocal.la						   \
-	libbongomanagement.la					   \
 	libbongomsgapi.la					   \
-	libbongomdb.la						   \
 	libbongologger.la					   \
 	libbongoconnio.la					   \
 	libbongomemmgr.la					   \

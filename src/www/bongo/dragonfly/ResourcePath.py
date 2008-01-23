@@ -14,7 +14,8 @@ class ResourcePath:
               "mail" : 1,
               "preferences" : 1,
               "search" : 1,
-              "summary" : 1}
+              "summary" : 1,
+              "sendlog" : 0}
 
     def __init__(self, req):
         self.req = req
@@ -117,6 +118,9 @@ class ResourcePath:
 
     def GetHandler(self):
         handler = None
+        
+        print "View is " + self.view
+        
         if self.view == "addressbook" and self.handler == "contacts":
             handler = AddressbookView.ContactsHandler()
         elif self.view == "calendar" and self.handler == "events":
@@ -137,6 +141,8 @@ class ResourcePath:
             handler = PreferencesView.RulesHandler()
         elif self.view == "summary" and self.handler == "summary":
             handler = SummaryView.SummaryHandler()
+        elif self.view == "sendlog":
+            handler = SummaryView.LogHandler()
 
         if handler is None:
             raise HttpError(bongo.commonweb.HTTP_NOT_FOUND)

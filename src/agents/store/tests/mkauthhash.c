@@ -29,61 +29,14 @@ main (int argc, char** argv) {
         XplConsolePrintf("Good job, you passed the salt %s\n", argv[1]);
     }
     {
+	xpl_hash_context ctx;
+	unsigned char message[XPLHASH_MD5_LENGTH];
         unsigned char access[NMAP_HASH_SIZE]; // from libs/nmap/nmap.c
-        MDBHandle     directoryHandle;        // ditto
-        MDBValueStruct *v;
-        unsigned char message[XPLHASH_MD5_LENGTH];
-        xpl_hash_context ctx;
-        int i;
-        BOOL ccode;
 
-        // Initialize used libraries
-        if ( !MemoryManagerOpen("mkauthhash.c")) {
-            XplConsolePrintf("MemoryManagerOpen failed\n");
-            return 1;
-        } else if (debugging) {
-            XplConsolePrintf("MemoryManagerOpen succeeded\n");
-        }
-        if (!MDBInit()) {
-            XplConsolePrintf("MDBInit failed\n");
-            return 2;
-        } else if (debugging) {
-            XplConsolePrintf("MDBInit suceeded\n");
-        }
-        directoryHandle = (MDBHandle) MsgInit();
-        if ( !directoryHandle ) {
-            XplConsolePrintf("MsgInit failed\n");
-            return 3;
-        } else if (debugging) {
-            XplConsolePrintf("MsgInit succeeded\n");
-        }
-        // compute the contents of the access field
-        v = MDBCreateValueStruct(directoryHandle, NULL);
-        if ( !v ) {
-            XplConsolePrintf("MDBCreateValueStruct failed\n");
-            return 4;
-        } else if (debugging) {
-            XplConsolePrintf("Successfully created a MDB value struct\n");
-        }
-        if (debugging) {
-            XplConsolePrintf("Retrieving the acl property:\n"
-                "\tMSGSRV_ROOT=<%s>\n\tMSGSRV_A_ACL=<%s>\n", MSGSRV_ROOT, MSGSRV_A_ACL);
-        }
-        MDBRead(MSGSRV_ROOT, MSGSRV_A_ACL, v);
-        if ( !v->Used ) {
-            XplConsolePrintf("Couldn't retrieve the acl property\n");
-            return 5;
-        } else if (debugging) {
-            XplConsolePrintf("Retrieved the ACL property, %i bytes\n", strlen(v->Value[0]) );
-        }
-        ccode = HashCredential(MsgGetServerDN(NULL), v->Value[0], access);
-        if (!ccode) {
-            XplConsolePrintf("HashCredential failed\n");
-            return 6;
-        } else if (debugging) {
-            XplConsolePrintf("HashCredential result stored in access\n");
-        }
-        MDBDestroyValueStruct(v);
+	if (!MsgGetServerCredential(access)) {
+		XplConsolePrintf("HashCredential failed\n");
+		return 6;
+	}
 
         // mix access with salt
         XplHashNew(&ctx, XPLHASH_MD5);

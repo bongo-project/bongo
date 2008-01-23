@@ -1,17 +1,16 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongo-backup
 
-bongo_backup_SOURCES :=			\
+bongo_backup_SOURCES =			\
 	src/apps/backup/backup.h	\
 	src/apps/backup/backup.c
 
-bongo_backup_CPPFLAGS := $(AM_CPPFLAGS)	\
+bongo_backup_CPPFLAGS = $(AM_CPPFLAGS)	\
 	$(SQLITE_CFLAGS)
 
-bongo_backup_LDADD :=					   \
+bongo_backup_LDADD =					   \
 	libbongonmap.la					   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \

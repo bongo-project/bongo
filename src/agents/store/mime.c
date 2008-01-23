@@ -21,9 +21,6 @@
 
 #include <config.h>
 #include <xpl.h>
-// #include <mdb.h>
-// #include <nmap.h>
-// #include <nmlib.h>
 #include <rfc2231.h>
 
 #include "stored.h"
@@ -839,7 +836,7 @@ MimeGetHelper(StoreClient *client, DStoreDocInfo *info, MimeReport **outReport)
     int result = 1;
     char buffer[CONN_BUFSIZE];
 
-    FindPathToDocFile(client, info->collection, path, sizeof(path));
+    FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
 
     fh = fopen(path, "rb");
     if (!fh) {
@@ -847,12 +844,7 @@ MimeGetHelper(StoreClient *client, DStoreDocInfo *info, MimeReport **outReport)
         goto finish;
     }
 
-    if (0 != XplFSeek64(fh, info->start + info->headerlen, SEEK_SET)) {
-        result = -4;
-        goto finish;
-    }
-
-    *outReport = MimeParse(fh, info->bodylen, buffer, sizeof(buffer));
+    *outReport = MimeParse(fh, info->length, buffer, sizeof(buffer));
     if (!*outReport) {
         result = -5;
         goto finish;

@@ -14,7 +14,7 @@ class BackupHandler(HawkeyeHandler):
         today = datetime.date.today()
         self.SetVariable("set", today.strftime("%y%m%d"))
         self.SetVariable("systab", "selecteditem")
-        return self.SendTemplate(req, rp, "index.tpl")
+        return self.SendTemplate(req, rp, "index.tpl", title="Backup & Restore")
 
     def download_GET(self, req, rp):
         backup = ""

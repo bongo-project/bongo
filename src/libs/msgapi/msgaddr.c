@@ -17,8 +17,8 @@
  * To contact Novell about this file by physical or electronic mail, you 
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
+ * (C) 2007 Patrick Felt
  ****************************************************************************/
-
 #include <config.h>
 #include <xpl.h>
 #include <msgapi.h>
@@ -398,6 +398,23 @@ MsgIsComment(unsigned char *base, unsigned char *limit, unsigned char **out)
     return(FALSE);
 }
 
+EXPORT BOOL 
+MsgParseAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char **local_part, unsigned char **domain ) {
+    /*TODO: this is a terribly simple parser of an email address into the local_part and the domain.  this needs to be better */
+    unsigned char *at = strchr(addressLine, '@');
+    if (at) {
+        *at = '\0';
+        (*local_part)= MemStrdup(addressLine);
+        (*domain) = MemStrdup(at+1);
+        *at = '@';
+        return TRUE;
+    }
+    (*local_part) = MemStrdup(addressLine);
+    (*domain) = NULL;
+    return TRUE;
+}
+#if 0
+TODO: this is going to get replaced later with something better!!
 /*  RFC 2822 - 3.4.1 Addr-spec specification
  *      addr-spec = local-part"@"domain
  *      local-part = dot-atom / quoted-string / obs-local-part
@@ -413,15 +430,16 @@ MsgIsComment(unsigned char *base, unsigned char *limit, unsigned char **out)
  *      FWS = ([*WSP CRLF] 1*WSP) / obs-FWS
  *      CFWS = *([FWS] comment) (([FWS] comment) / FWS)  */
 EXPORT BOOL 
-MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char *delimiters, unsigned char **out)
+MsgParseAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char *delimiters, unsigned char **local_part, unsigned char **domain )
 {
     unsigned char *ptr;
     unsigned char *ptrLimit;
+    unsigned char *p_local_part = *local_part;
+    unsigned char *p_domain = *domain;
 
     ptr = addressLine;
     ptrLimit = addressLine + MAXEMAILNAMESIZE;
 
-#if defined(PROCESS_CFWS)
     /*    Validation step:    Handle [CFWS]    */
     if (MSG_IS_WSP(ptr[0])) {
         if (MSG_IS_CRLF(++ptr)) {
@@ -430,10 +448,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
             if (MSG_IS_WSP(ptr[0])) {
                 ptr++;
             } else {
-                if (out) {
-                    *out = ++ptr;
-                }
-
                 return(FALSE);
             }
         }
@@ -444,15 +458,17 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
         if (MsgIsComment(ptr, ptrLimit, &ptr)) {
             ;
         } else {
-            if (out != NULL) {
-                *out = ptr;
-            }
-
             return(FALSE);
         }
     }
-#endif
 
+#ifndef PROCESS_ADL
+    if (ptr[0] == '@') {
+        /* this is an adl address.  right now we want to skip this, but we don't just want to drop the code in case we need it later.
+        rfc 2821 specifically states that we should accept but ignore the adl formatted address. */
+        return (FALSE);
+    }
+#else
     /* Address could posibly have an A-d-l defined in RFC2821 */
     if (ptr[0] != '@') {
         ;
@@ -476,10 +492,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                 } else if ((ptr[0] == ',') && (ptr[1] == '@')) {
                     ptr += 2;
                     goto HandleADL;
-                }
-
-                if (out != NULL) {
-                    *out = ptr;
                 }
 
                 return(FALSE);
@@ -507,33 +519,37 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                     ptr++;
                     break;
                 }
-
-                if (out != NULL) {
-                    *out = ptr;
-                }
-
                 return(FALSE);
             }
         } else {
-            if (out != NULL) {
-                *out = ptr;
-            }
-
             return(FALSE);
         }
     }
+#endif /* process adl */
 
     /*    Validation step: Handle 1*atext*("."1*atext)
 	  Validation step: Handle DQUOTE    */
     if (MSG_IS_ATEXT(ptr[0])) {
         /*    Specification: dot-atom-text
 	      Validation step: Handle dot-atom-text    */
+	if (local_part) {
+	   *p_local_part = *ptr;
+	   p_local_part++;
+	}
         while (++ptr < ptrLimit) {
             if (MSG_IS_ATEXT(ptr[0])) {
                 /*    Specification: 1*atext    */
+                if (local_part) {
+                    *p_local_part = *ptr;
+                    p_local_part++;
+                }
                 continue;
             } else if (ptr[0] == '.') {
                 /*    Specification:    ("."1*atext)    */
+                if (local_part) {
+                    *p_local_part = *ptr;
+                    p_local_part++;
+                }
                 continue;
             } else if ((ptr[0] == ';') && (XplStrNCaseCmp(addressLine, "rfc822;", 7) == 0) && ((ptr - addressLine) == 6)) {
                 /*    RFC 1891 - Additional parameters for RCPT and MAIL commands
@@ -544,23 +560,14 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                 ptr++;
 
                 if (MsgIsXText(ptr, ptrLimit, &ptr)) {
-                    if (out != NULL) {
-                        *out = ptr;
-                    }
                     return(TRUE);
                 }
-
-                if (out != NULL) {
-                    *out = ptr;
-                }
-
                 return(FALSE);
             }
 
             break;
         }
     } else if (ptr[0] == '"') {
-#if defined(PROCESS_FWS)
         /*    Specification: *([FWS]qcontent)[FWS]DQUOTE
 	      Validation step: Handle [FWS]    */
         if (MSG_IS_WSP(ptr[0])) {
@@ -570,15 +577,10 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                 if (MSG_IS_WSP(ptr[0])) {
                     ptr++;
                 } else {
-                    if (out) {
-                        *out = ++ptr;
-                    }
-
                     return(FALSE);
                 }
             }
         }
-#endif
 
         /*    Validation step: Handle qtext
 	      Handle quoted-pair
@@ -590,7 +592,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
             } else if ((ptr[0] == '\\') && (MSG_IS_TEXT(ptr[1]))) {
                 ptr++;
                 continue;
-#if defined(PROCESS_FWS)
             } else if (MSG_IS_WSP(ptr[0])) {
                 if (MSG_IS_CRLF(++ptr)) {
                     ptr +=2;
@@ -599,34 +600,20 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                         continue;
                     }
 
-                    if (out != NULL) {
-                        *out = ptr;
-                    }
-
                     return(FALSE);
                 }
-#endif
             } else if (ptr[0] == '"') {
                 ptr++;
                 break;
             }
 
-            if (out != NULL) {
-                *out = ptr;
-            }
-
             return(FALSE);
         }
     } else {
-        if (out != NULL) {
-            *out = ptr;
-        }
-
         return(FALSE);
     }
 
     if (ptr < ptrLimit) {
-#if defined(PROCESS_CFWS)
         /*    Specification: [CFWS]
 	      Validation step: Handle [CFWS]
 	      Handle [FWS]    */
@@ -637,10 +624,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                 if (MSG_IS_WSP(ptr[0])) {
                     ptr++;
                 } else {
-                    if (out) {
-                        *out = ++ptr;
-                    }
-
                     return(FALSE);
                 }
             }
@@ -651,14 +634,9 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
             if (MsgIsComment(ptr, ptrLimit, &ptr)) {
                 ;
             } else {
-                if (out != NULL) {
-                    *out = ptr;
-                }
-
                 return(FALSE);
             }
         }
-#endif
 
         if (ptr[0] == '@') {
             /*    RFC 2822 - 3.4.1 Addr-spec specification
@@ -677,7 +655,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
 		  Validation step:    Handle [CFWS]    */
             ptr++;
 
-#if defined(PROCESS_CFWS)
             /*    Specification: [CFWS]
 		  Validation step: Handle [CFWS]
 		  Handle [FWS]    */
@@ -688,10 +665,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                     if (MSG_IS_WSP(ptr[0])) {
                         ptr++;
                     } else {
-                        if (out) {
-                            *out = ++ptr;
-                        }
-
                         return(FALSE);
                     }
                 }
@@ -702,24 +675,32 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                 if (MsgIsComment(ptr, ptrLimit, &ptr)) {
                     ;
                 } else {
-                    if (out != NULL) {
-                        *out = ptr;
-                    }
-
                     return(FALSE);
                 }
             }
-#endif
 
             if (MSG_IS_ATEXT(ptr[0])) {
                 /*    Specification: dot-atom-text
 		      Validation step: Handle dot-atom-text    */
+		if (domain) {
+		  *p_domain = *ptr;
+		  p_domain++;
+		}
+		
                 while (++ptr < ptrLimit) {
                     if (MSG_IS_ATEXT(ptr[0])) {
                         /*    Specification: 1*atext    */
+                        if (domain) {
+                            *p_domain = *ptr;
+                            p_domain++;
+                        }
                         continue;
                     } else if (ptr[0] == '.') {
                         /*    Specification:    ("."1*atext)    */
+                        if (domain) {
+                            *p_domain = *ptr;
+                            p_domain++;
+                        }
                         continue;
                     }
 
@@ -728,7 +709,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
             } else if (ptr[0] == '[') {
                 ptr++;
 
-#if defined(PROCESS_FWS)
                 /*    Specification: *([FWS]dcontent)[FWS]"]"
 		      Validation step: Handle [FWS]    */
                 if (MSG_IS_WSP(ptr[0])) {
@@ -738,20 +718,20 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                         if (MSG_IS_WSP(ptr[0])) {
                             ptr++;
                         } else {
-                            if (out) {
-                                *out = ++ptr;
-                            }
-
                             return(FALSE);
                         }
                     }
                 }
-#endif
 
                 /*    Validation step:    Handle dtext
 		      Handle quoted-pair    */
                 while (ptr < ptrLimit) {
                     if (MSG_IS_DTEXT(ptr[0])) {
+                        if (domain) {
+                            *p_domain = *ptr;
+                            p_domain++;
+                        }
+
                         ptr++;
                         continue;
                     } else if ((ptr[0] == '\\') && (MSG_IS_TEXT(ptr[1]))) {
@@ -760,7 +740,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                     } else if (ptr[0] == ']') {
                         ptr++;
                         break;
-#if defined(PROCESS_FWS)
                     } else if (MSG_IS_WSP(ptr[0])) {
                         /*    Validation step: Handle [FWS]    */
                         if (MSG_IS_CRLF(++ptr)) {
@@ -770,24 +749,14 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                                 continue;
                             }
                         }
-#endif
-                    }
-
-                    if (out != NULL) {
-                        *out = ptr;
                     }
 
                     return(FALSE);
                 }
             } else {
-                if (out != NULL) {
-                    *out = ptr;
-                }
-
                 return(FALSE);
             }
 
-#if defined(PROCESS_CFWS)
             /*    Specification: [CFWS]
 		  Validation step: Handle [CFWS]
 		  Handle [FWS]    */
@@ -798,10 +767,6 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                     if (MSG_IS_WSP(ptr[0])) {
                         ptr++;
                     } else {
-                        if (out) {
-                            *out = ++ptr;
-                        }
-
                         return(FALSE);
                     }
                 }
@@ -812,28 +777,15 @@ MsgIsAddress(unsigned char *addressLine, size_t addressLineLength, unsigned char
                 if (MsgIsComment(ptr, ptrLimit, &ptr)) {
                     ;
                 } else {
-                    if (out != NULL) {
-                        *out = ptr;
-                    }
-
                     return(FALSE);
                 }
             }
-#endif
         }
         
         if ((strchr(delimiters, ptr[0]) != NULL) || (ptr[0] == '\0')) {
-            if (out != NULL) {
-                *out = ptr;
-            }
-
             return(TRUE);
         }
     }
-
-    if (out != NULL) {
-        *out = ptr;
-    }
-
     return(FALSE);
 }
+#endif

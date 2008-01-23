@@ -20,7 +20,6 @@
 #include <bongoutil.h>
 #include <errno.h>
 #include <connio.h>
-#include <mdb.h>
 
 enum BongoAdminActions {
     BONGO_ADMIN_ADD,

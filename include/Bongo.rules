@@ -1,10 +1,11 @@
 # -*- Makefile -*-
 bongoincludedir=$(includedir)/bongo
 
-bongoinclude_HEADERS :=				\
+bongoinclude_HEADERS =				\
 	include/bongo-config.h			\
 	include/calcmd.h			\
 	include/connio.h			\
+	include/connio-trace.h			\
 	include/bongocal.h			\
 	include/bongocheck.h			\
 	include/bongojson.h			\
@@ -13,8 +14,6 @@ bongoinclude_HEADERS :=				\
 	include/bongostore.h			\
 	include/bongostream.h			\
 	include/logger.h			\
-	include/management.h			\
-	include/mdb.h				\
 	include/memmgr.h			\
 	include/msgaddr.h			\
 	include/msgapi.h			\
@@ -37,9 +36,7 @@ bongoinclude_HEADERS :=				\
 	include/xplschema.h			\
 	include/xplservice.h			\
 	include/xplthread.h			\
-	include/xplutil.h			\
-	include/connmgr.h			\
-	include/cmlib.h
+	include/xplutil.h			
 
 include/all:
 include/clean: clean

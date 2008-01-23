@@ -1,15 +1,13 @@
 # -*- Makefile -*-
 sbin_PROGRAMS += bongocalcmd
 
-bongocalcmd_SOURCES :=				\
+bongocalcmd_SOURCES =				\
 	src/agents/calcmd/calcmdd.c		\
 	src/agents/calcmd/calcmdd.h		
 
-bongocalcmd_LDADD :=					   \
+bongocalcmd_LDADD =					   \
 	libbongonmap.la					   \
-	libbongomanagement.la				   \
 	libbongomsgapi.la				   \
-	libbongomdb.la					   \
 	libbongologger.la				   \
 	libbongoconnio.la				   \
 	libbongomemmgr.la				   \
