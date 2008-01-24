@@ -974,9 +974,10 @@ Dragonfly.start = function ()
                             // Don't use showElement - not nice to non-divs
                             $('admin-link').style.display = 'inline';
                         }
-                        
-                        $('makeDumpLink-a').href = 'javascript:void(console.sendLog("user/' + d.userName + '/sendlog/all", true));';
-                        
+                       
+			if ($('makeDumpLink-a')) { 
+                        	$('makeDumpLink-a').href = 'javascript:void(console.sendLog("user/' + d.userName + '/sendlog/all", true));';
+                        }
                         removeElementClass (document.body, 'login');
                         
                         d._handleResize();

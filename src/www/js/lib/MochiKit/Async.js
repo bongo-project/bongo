@@ -220,7 +220,7 @@ MochiKit.Async.Deferred.prototype = {
                 if (!(err instanceof Error)) {
                     err = new MochiKit.Async.GenericError(err);
                 }
-                logError ('Error firing Deferred: ', err.message);
+                console.error ('Error firing Deferred: ', err.message);
                 res = err;
             }
         }
