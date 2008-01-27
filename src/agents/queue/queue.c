@@ -908,7 +908,7 @@ StartOver:
                             unsigned char buffer[1024]; /* FIXME: is this too big? */
                             unsigned char *addrptr;
                             unsigned char *flags = strchr(ptr2+1,' '); /* the original flags */
-                            int cnt;
+                            int cnt=0;
 
                             aliasing(cur+1, &cnt, buffer);
 
