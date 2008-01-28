@@ -484,11 +484,21 @@ CheckVersion() {
 void
 UserAdd(const char *username) 
 {
-	if (MsgAuthAddUser(username) == 0) {
-		XplConsolePrintf(_("Added user %s\n"), username);
-	} else {
-		XplConsolePrintf(_("Couldn't add user %s\n"), username);
-	}
+	int result = MsgAuthAddUser(username);
+	switch (result) {
+		case 0:
+			XplConsolePrintf(_("Added user %s\n"), username);
+			break;
+		case -1:
+			XplConsolePrintf(_("User %s already exists\n"), username);
+			break;
+		case -2:
+			XplConsolePrintf(_("Auth backend doesn't support adding user\n"));
+			break;
+		default:
+			XplConsolePrintf(_("Couldn't add user %s: internal error\n"), username);
+			break;
+	}	
 }
 
 void

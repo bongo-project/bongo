@@ -153,7 +153,7 @@ MsgAuthVerifyPassword(const char *user, const char *password)
 	
 	f = (AuthPlugin_VerifyPassword *)&function->func;
 	result = (*f)(user, password);
-    return result;
+	return result;
 }
 
 /* "Write" functions below */
@@ -169,9 +169,14 @@ MsgAuthAddUser(const char *user)
 	MsgAuthAPIFunction *function;
 	AuthPlugin_AddUser *f;
 	int result;
+
+	result = MsgAuthFindUser(user);
+	if (result == 0) {
+		return -1;
+	}
 	
 	function = &pluginapi[Func_AddUser];
-	if (! function->available) return FALSE;
+	if (! function->available) return -2;
 	
 	f = (AuthPlugin_AddUser *)&function->func;
 	result = (*f)(user);

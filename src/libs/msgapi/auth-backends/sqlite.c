@@ -26,7 +26,7 @@ MsgAuthStatements msgauth_stmts;
 int
 AuthODBC_Init(void)
 {
-    return 0;
+	return 0;
 }
 
 int
@@ -74,7 +74,7 @@ AuthSqlite_Install(void)
 
 	dcode = sqlite3_exec (handle->db, 
 			"PRAGMA user_version=0;"
-			"CREATE TABLE users (username TEXT DEFAULT NULL,"
+			"CREATE TABLE users (username TEXT DEFAULT NULL UNIQUE,"
 			"		password TEXT DEFAULT NULL"
 			");"
 			"INSERT INTO users (username, password)"
@@ -200,7 +200,7 @@ AuthSqlite_AddUser(const char *user)
 	handle = MsgSQLOpen(path, NULL, 1000);
 	if (NULL == handle) {
 		Log(LOG_ERROR, "Cannot open user db '%s'", path);
-		return -1;
+		return -10;
 	}
 	
 	stmt = MsgSQLPrepare (handle,
@@ -209,12 +209,12 @@ AuthSqlite_AddUser(const char *user)
 	
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL statement in AddUser");
-		return 1;
+		return -11;
 	}
 	
-	if (MsgSQLBindString(stmt, 1, user, TRUE)) return -2;
-	if (MsgSQLExecute(handle, stmt)) return -3;
-	
+	if (MsgSQLBindString(stmt, 1, user, TRUE)) return -12;
+	if (MsgSQLExecute(handle, stmt)) return -13;
+
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
 	
@@ -230,12 +230,12 @@ AuthSqlite_SetPassword(const char *user, const char *password)
 	MsgSQLHandle *handle;
 	
 	if (AuthSqlite_GenerateHash(user, password, hash, XPLHASH_SHA1_LENGTH + 1) != 0)
-		return -1;
+		return -10;
 	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
 	handle = MsgSQLOpen(path, NULL, 1000);
 	if (NULL == handle) {
 		Log(LOG_ERROR, "Cannot open user db '%s'", path);
-		return -2;
+		return -11;
 	}
 	
 	stmt = MsgSQLPrepare (handle,
@@ -243,12 +243,12 @@ AuthSqlite_SetPassword(const char *user, const char *password)
 		&msgauth_stmts.set_password);
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL in SetPassword()");
-		return 1;
+		return -12;
 	}
 	
-	if (MsgSQLBindString(stmt, 1, hash, TRUE)) return -3;
-	if (MsgSQLBindString(stmt, 2, user, TRUE)) return -3;
-	if (MsgSQLExecute(handle, stmt)) return -3;
+	if (MsgSQLBindString(stmt, 1, hash, TRUE)) return -13;
+	if (MsgSQLBindString(stmt, 2, user, TRUE)) return -13;
+	if (MsgSQLExecute(handle, stmt)) return -14;
 	
 	MsgSQLFinalize(stmt);
 	MsgSQLClose(handle);
