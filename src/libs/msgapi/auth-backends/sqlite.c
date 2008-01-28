@@ -18,6 +18,7 @@ typedef struct {
 	MsgSQLStatement find_user;
 	MsgSQLStatement auth_user;
 	MsgSQLStatement add_user;
+	MsgSQLStatement list_user;
 	MsgSQLStatement set_password;
 } MsgAuthStatements;
 
@@ -267,18 +268,49 @@ AuthSqlite_GetUserStore(const char *user, struct sockaddr_in *store)
 }
 
 int
-AuthSqlite_UserList(BongoArray **list)
+AuthSqlite_UserList(char **list[])
 {
-	/* TODO
-	BongoArray *userlist;
+	char **userlist;
+	MsgSQLStatement *stmt;
+	char path[XPL_MAX_PATH + 1];
+	MsgSQLHandle *handle;
+	int users = 0;
+	int alloc = 10;
 
-	userlist = BongoArrayNew(sizeof (char *), 0);
+	AuthSqlite_GetDbPath(path, XPL_MAX_PATH);
+	handle = MsgSQLOpen(path, NULL, 1000);
 
-	char *admin = strdup("admin");
-	BongoArrayAppendValue(userlist, admin);
+	if (NULL == handle) {
+		Log(LOG_ERROR, "Cannot open user db '%s'", path);
+		return 1;
+	}
+
+	stmt = MsgSQLPrepare (handle, "SELECT username FROM users;",
+		&msgauth_stmts.list_user);
+	if (NULL == stmt) {
+		Log(LOG_ERROR, "Unable to prepare SQL statement in ListUser");
+		return 1;
+	}
+
+	userlist = MemMalloc(sizeof(char *) * alloc);
+	{
+		int result;
+		while (1 == (result = MsgSQLStatementStep(handle, stmt))) {
+			userlist[users] = strdup((char *) sqlite3_column_text(stmt->stmt, 0));
+			users++;
+			if (users == alloc) {
+				alloc += 10;
+				userlist = MemRealloc(userlist, sizeof(char *) * alloc);
+			}
+		}
+	}
+
+	MsgSQLFinalize(stmt);
+	MsgSQLClose(handle);
+
+	userlist[users] = 0;
 
 	*list = userlist;
-	*/
 	return TRUE;
 }
 

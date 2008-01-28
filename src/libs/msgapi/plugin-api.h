@@ -13,6 +13,7 @@ typedef int (* AuthPlugin_VerifyPassword)(const char *user, const char *password
 typedef int (* AuthPlugin_AddUser)(const char *user);
 typedef int (* AuthPlugin_ChangePassword)(const char *user, const char *oldpassword, const char *newpassword);
 typedef int (* AuthPlugin_SetPassword)(const char *user, const char *password);
+typedef int (* AuthPlugin_UserList)(char **list[]);
 typedef int (* AuthPlugin_GetUserStore)(const char *user, struct sockaddr_in *store);
 typedef int (* AuthPlugin_Install)(void);
 typedef int (* AuthPlugin_Init)(void);
@@ -27,7 +28,7 @@ enum {
 	Func_SetPassword = 6,
 	Func_GetUserStore = 7,
 	Func_Install = 8,
-    Func_Init = 9
+	Func_Init = 9
 };
 
 static MsgAuthAPIFunction pluginapi[] = {

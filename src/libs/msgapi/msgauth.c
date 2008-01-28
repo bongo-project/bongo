@@ -264,8 +264,28 @@ MsgAuthGetUserStore(const char *user, struct sockaddr_in *store)
  * \return		Whether this was successful
  */
 int
-MsgAuthUserList(BongoArray **list)
+MsgAuthUserList(char **list[])
 {
-	return -1;
+	MsgAuthAPIFunction *function;
+	AuthPlugin_UserList *f;
+	int result;
+	
+	function = &pluginapi[Func_UserList];
+	if (! function->available) return FALSE;
+	
+	f = (AuthPlugin_UserList *)&function->func;
+	result = (*f)(list);
+	return result;
 }
 
+void 
+MsgAuthUserListFree(char **list[])
+{
+	char **users = *list;
+	int i;
+
+	for (i = 0; users[i] != 0x0; i++) {
+		MemFree(users[i]);
+	}
+	MemFree(users);
+}

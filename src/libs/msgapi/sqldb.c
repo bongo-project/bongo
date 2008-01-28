@@ -270,6 +270,30 @@ MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 }
 
 int
+MsgSQLStatementStep(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
+{
+	sqlite3_stmt *stmt = _stmt->stmt;
+	int count = 1 + handle->lockTimeoutMs / MSGSQL_STMT_SLEEP_MS;
+	int dbg;
+	while (count--) {
+		switch ((dbg = sqlite3_step(stmt))) {
+			case SQLITE_ROW:
+				return 1;
+			case SQLITE_DONE:
+				return 0;
+			case SQLITE_BUSY:
+				XplDelay(MSGSQL_STMT_SLEEP_MS);
+				continue;
+			default:
+				XplConsolePrintf("Sql: %s", sqlite3_errmsg(handle->db));
+				return -1;
+		}
+	}
+
+	return -1;
+}
+
+int
 MsgSQLResults(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 {
 	sqlite3_stmt *stmt = _stmt->stmt;

@@ -504,7 +504,18 @@ UserAdd(const char *username)
 void
 UserList(void)
 {
-	// TODO
+	char **userlist;
+	int result;
+
+	result = MsgAuthUserList(&userlist);
+	if (result) {
+		int i;
+
+		for (i = 0; userlist[i] != 0; i++) {
+			XplConsolePrintf("%s\n", userlist[i]);
+		}
+		MsgAuthUserListFree(&userlist);
+	}
 }
 
 void
@@ -549,8 +560,8 @@ main(int argc, char *argv[]) {
 	BongoAgent configtool;
 	config.verbose = 0;
 
-    /* this just clears up a warning.  we don't need this here */
-    GlobalConfig[0].type = BONGO_JSON_NULL;
+	/* this just clears up a warning.  we don't need this here */
+	GlobalConfig[0].type = BONGO_JSON_NULL;
 
 	if (!MemoryManagerOpen("bongo-config")) {
 		XplConsolePrintf("ERROR: Failed to initialize memory manager\n");
@@ -643,20 +654,28 @@ main(int argc, char *argv[]) {
 				XplConsolePrintf(_("Couldn't initialise auth subsystem\n"));
 				return 3;
 			}
-			if ((next_arg + 1) >= argc) {
-				XplConsolePrintf(_("USAGE : user [add|password] <username>\n"));
+			if (next_arg >= argc) {
+				XplConsolePrintf(_("USAGE : user [add|password|list] [<username>]\n"));
 			} else {
 				char *command = argv[next_arg++];
-				char *username = argv[next_arg];
 				
-				if (! strncmp(command, "add", 3)) {
-					UserAdd(username);
-				} else if (!strncmp(command, "password", 8)) {
-					UserPassword(username);
-				} else if (!strncmp(command, "list", 4)) {
+				if (!strncmp(command, "list", 4)) {
 					UserList();
 				} else {
-					XplConsolePrintf(_("ERROR: Unknown command '%s' on user\n"), command);
+					char *username;
+					if (next_arg >= argc) {
+						XplConsolePrintf(_("USAGE : user %s <username\n"), command);
+						break;
+					}
+					username = argv[next_arg];
+				
+					if (! strncmp(command, "add", 3)) {
+						UserAdd(username);
+					} else if (!strncmp(command, "password", 8)) {
+						UserPassword(username);
+					} else {
+						XplConsolePrintf(_("ERROR: Unknown command '%s'\n"), command);
+					}
 				}
 			}
 			break;
@@ -664,17 +683,9 @@ main(int argc, char *argv[]) {
 			break;
 	}
 
-    if (config.ip) {
-        MemFree(config.ip);
-    }
-
-    if (config.dns) {
-        MemFree(config.dns);
-    }
-
-    if (config.domains) {
-        BongoJsonNodeFree(config.domains);
-    }
+	if (config.ip) MemFree(config.ip);
+	if (config.dns) MemFree(config.dns);
+	if (config.domains) BongoJsonNodeFree(config.domains);
 
 	MemoryManagerClose("bongo-config");
 	exit(0);

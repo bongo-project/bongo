@@ -36,8 +36,10 @@ EXPORT BOOL MsgAuthVerifyPassword(const char *user, const char *password);
 EXPORT int MsgAuthChangePassword(const char *user, const char *oldpassword, const char *newpassword);
 EXPORT int MsgAuthSetPassword(const char *user, const char *password);
 EXPORT int MsgAuthGetUserStore(const char *user, struct sockaddr_in *store);
-EXPORT int  MsgAuthInitDB(void);
+EXPORT int MsgAuthInitDB(void);
 EXPORT int MsgAuthAddUser(const char *user);
+EXPORT int MsgAuthUserList(char **list[]);
+EXPORT void MsgAuthUserListFree(char **list[]);
 
 // Auth / cookie functions
 
@@ -123,6 +125,7 @@ int	MsgSQLBindString(MsgSQLStatement *stmt, int var, const char *str, BOOL nulli
 int	MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
 int	MsgSQLResults(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
 void	MsgSQLFinalize(MsgSQLStatement *stmt);
+int	MsgSQLStatementStep(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
 
 
 // Misc. util functions
