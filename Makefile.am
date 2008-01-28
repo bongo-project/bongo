@@ -90,10 +90,6 @@ clean:	clean-recursive
 #	src/agents/mailprox			
 #	src/agents/rules			
 
-#	src/libs/mdb				
-#	src/libs/mdb-file			
-#	src/libs/mdb-xldap			
-
 include_subdirs =				\
 	include					\
 	src/libs/xpl				\
@@ -155,9 +151,6 @@ include src/libs/bongoutil/tests/Bongo.rules
 include src/libs/connio/Bongo.rules
 include src/libs/connio/tests/Bongo.rules
 include src/libs/json/Bongo.rules
-#include src/libs/mdb/Bongo.rules
-#include src/libs/mdb-file/Bongo.rules
-#include src/libs/mdb-xldap/Bongo.rules
 include src/libs/logger/Bongo.rules
 include src/libs/streamio/Bongo.rules
 include src/libs/streamio/codec/Bongo.rules
