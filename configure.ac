@@ -329,11 +329,11 @@ if test "x$PKG_CONFIG" = "xno"; then
 fi
 
 have_check=no
-info_check="Not installed. Unit tests will not be run."
+info_check="No. Unit tests will not be run."
 AM_PATH_CHECK(0.9.0,
     [
         have_check=yes
-	info_check="Installed. Unit tests may be run."
+	info_check="Yes."
         AC_DEFINE(BONGO_HAVE_CHECK, [], [Controls how tests that depend on check compile.])
     ],
     [
@@ -384,8 +384,10 @@ import lxml.etree as et
 if $PYTHON -c "$prog" 1>&AC_FD_CC 2>&AC_FD_CC
 then
 	AC_MSG_RESULT([Found ElementTree lxml])
+	info_lxml="Yes."
 else
-	AC_MSG_ERROR([Couldn't find ElementTree lxml module for python])
+	AC_MSG_RESULT([Couldn't find ElementTree lxml module for python])
+	info_lxml="No. CalDAV runtime requires this library"
 fi
 
 LIBS_save="$LIBS"
@@ -747,4 +749,5 @@ Optional libraries:
   LDAP:            ${info_ldap}
   ODBC:            ${info_odbc}
   Check:           ${info_check}
+  lxml:            ${info_lxml}
 ])
