@@ -180,7 +180,6 @@ InitializeDataArea(void)
 	if (unpriv_user != NULL)
 		XplLookupUser(unpriv_user, &uid, &gid);
 	
-	XplConsolePrintf(_("Creating directory structure...\n"));
 	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
 		char path[XPL_MAX_PATH];
 		if (MsgGetDir(dir, path, XPL_MAX_PATH)) {
@@ -191,7 +190,6 @@ InitializeDataArea(void)
 	
 	RunAsBongoUser();
 	
-	XplConsolePrintf(_("Initializing user database...\n"));
 	if (MsgAuthInit() != 0) {
 		XplConsolePrintf(_("ERROR: Couldn't initialise auth subsystem\n"));
 		exit(1);
@@ -212,14 +210,12 @@ InitialStoreConfiguration(void) {
 	
 	// attempt to initialise cal lib. This creates cached data, and can be time
 	// consuming: do it now, rather than in the store (for now, at least)
-	XplConsolePrintf(_("Initializing calendar data...\n"));
 	cal_success = BongoCalInit(XPL_DEFAULT_DBF_DIR);
 	if (! cal_success) {
 		XplConsolePrintf(_("ERROR: Couldn't initialise calendar library\n"));
 		exit(1);
 	}
 	
-	XplConsolePrintf(_("Loading initial store configuration...\n"));
 	LoadDefaultStoreConfiguration();
 }
 
@@ -267,8 +263,6 @@ LoadDefaultStoreConfiguration(void)
 			XplConsolePrintf(_("ERROR: Couldn't access store\n"));
 			goto nmapcleanup;
 		}
-
-		XplConsolePrintf(_("Setting default agent configuration...\n"));
 
 		snprintf(path, XPL_MAX_PATH, "%s/conf/default.set", XPL_DEFAULT_DATA_DIR);
 		if (! ImportSystemBackupFile(client, path)) {
@@ -333,15 +327,14 @@ GenerateCryptoData() {
 
 	// hack: we need to ensure the files below can be saved...
 	if (0 != mkdir(XPL_DEFAULT_DBF_DIR, 0755)) {
-		XplConsolePrintf(_("Couldn't create data directory!\n"));
+		// TODO: check that the directory doesn't already exist.
+		// XplConsolePrintf(_("Couldn't create data directory!\n"));
 	}
 	
 	// save a random seed for faster Xpl startup in future.
-	XplConsolePrintf(_("Creating random seed...\n"));
 	XplSaveRandomSeed();
 
 	// various magic params
-	XplConsolePrintf(_("Creating DH parameters...\n"));
 	gnutls_dh_params_init(&dh_params);
 	gnutls_dh_params_generate2(dh_params, 1024);
 	dsize = CERTSIZE;
@@ -356,7 +349,6 @@ GenerateCryptoData() {
 		return FALSE;
 	}
 
-	XplConsolePrintf(_("Creating RSA parameters...\n"));	
 	gnutls_rsa_params_init(&rsa_params);
 	gnutls_rsa_params_generate2(rsa_params, 512);
 	dsize = CERTSIZE;
@@ -372,7 +364,6 @@ GenerateCryptoData() {
 	}
 
 	// create private key
-	XplConsolePrintf(_("Creating private key...\n"));
 	ret = gnutls_x509_privkey_init(&key);
 	if (ret < 0) {
 		XplConsolePrintf(_("ERROR: %s\n"), gnutls_strerror (ret));
@@ -402,7 +393,6 @@ GenerateCryptoData() {
 	}
 
 	// create certificate
-	XplConsolePrintf(_("Creating SSL/TLS certificate...\n"));
 	ret = gnutls_x509_crt_init(&certificate);
 	if (ret < 0) {
 		XplConsolePrintf(_("ERROR: %s\n"), gnutls_strerror(ret));
