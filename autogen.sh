@@ -347,9 +347,15 @@ fi
 
 for arg in $@; do
     case $arg in
+            --with-clucene=*import*)
+                   rm -f import/clucene/NO-AUTO-GEN
+                   ;;
             --with-clucene=*)
                     touch import/clucene/NO-AUTO-GEN
                     echo "Flagging import/clucene as no auto-gen as source is external"
+                    ;;
+            --with-sqlite3=*import*)
+                    rm -f import/sqlite3/NO-AUTO-GEN
                     ;;
             --with-sqlite3=*)
                     touch import/sqlite3/NO-AUTO-GEN
