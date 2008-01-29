@@ -1272,16 +1272,9 @@ POP3CommandTop(void *param)
     }
 
     /* Read message header size */
-    ccode = NMAPSendCommandF(client->store, "PROPGET %llx nmap.mail.headersize\r\n", client->message[id].guid);
-    if (ccode != -1) {
-        ccode = NMAPReadResponse(client->store, client->buffer, CONN_BUFSIZE, TRUE);
-        if (ccode == 2001) {
-            ccode = NMAPReadDecimalPropertyResponse(client->store, "nmap.mail.headersize", &headerSize);
-        }
-        if (ccode != 2001) {
-            return(ConnWriteF(client->conn, "%s %d\r\n",MSGERRNMAP, ccode));
-        }
-    }
+    ccode = NMAPGetDecimalProperty(client->store, client->message[id].guid, "nmap.mail.headersize", &headerSize);
+    if (ccode == -1)
+        return (ConnWriteF(client->conn, "%s %d\r\n", MSGERRNMAP, ccode));
 
     /* Read the message header */
     ccode = NMAPSendCommandF(client->store, "READ %llx 0 %lu\r\n", client->message[id].guid, headerSize);
@@ -1293,31 +1286,24 @@ POP3CommandTop(void *param)
                 if (ccode != -1) {
                     ccode = ConnReadToConn(client->store, client->conn, count);
                 }
-
-                if (ccode != -1) {
-                    ccode = NMAPReadAnswer(client->store, client->buffer, CONN_BUFSIZE, TRUE);
-                }
-
                 break;
             }
 
             case 4220: {
                 ccode = ConnWrite(client->conn, MSGERRNOMSG, sizeof(MSGERRNOMSG) - 1);
+                ccode = -1;
                 break;
             }
 
             default: {
                 ccode = ConnWriteF(client->conn, "%s %d\r\n",MSGERRNMAP, ccode);
+                ccode = -1;
                 break;
             }
         }
-
-        if (ccode != 2001) {
-            ccode = -1;
-        }
     }
 
-    if (ccode != 1000) {
+    if (ccode == -1) {
         return(ccode);
     }
 
@@ -1376,7 +1362,7 @@ POP3CommandTop(void *param)
         ConnWrite(client->conn, ".\r\n", 3);
     }
 
-    return(ccode);
+    return(1000);
 }
 
 static int 
