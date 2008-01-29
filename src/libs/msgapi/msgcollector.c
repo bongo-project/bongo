@@ -654,18 +654,17 @@ MsgCollectUser(const char *user)
 void
 MsgCollectAllUsers(void)
 {
-    BongoArray *users;
-    int i;
+    char **userlist;
+    int result, i;
 
-    if (MsgAuthUserList(&users) < 0)
-        return;
+    result = MsgAuthUserList(&userlist);
+    if (! result) return;
 
-    for(i = 0; i < BongoArrayCount(users); i++) {
-        char *user = BongoArrayIndex(users, char *, i);
-        MsgCollectUser(user);
+    for (i = 0; userlist[i] != 0; i++) {
+         MsgCollectUser(userlist[i]);
     }
 
-    BongoArrayFree(users, TRUE);
+    MsgAuthUserListFree(&userlist);
 }
 
 size_t
