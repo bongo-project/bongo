@@ -52,7 +52,10 @@ class SundialPath(object):
 
         self.sundialpath = '/'.join(pathparts)
 
-        if len(splituri) != 3:
+        if splituri[-1] == '':
+            splituri.pop()
+
+        if len(splituri) < 2:
             raise HttpError(404)
 
         # The user the calendar belongs to.
@@ -62,7 +65,10 @@ class SundialPath(object):
         self.calendar = urllib.unquote(splituri[1])
 
         # The file name.
-        self.filename = splituri[2]
+        try:
+            self.filename = splituri[2]
+        except IndexError:
+            self.filename = ''
 
         if self.filename != '':
             # This shop only serves up iCalendar.
