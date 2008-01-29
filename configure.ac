@@ -662,10 +662,7 @@ ac_configure_args="$ac_configure_args --enable-threadsafe --enable-cross-thread-
 # src/agents/mailprox/Makefile
 # src/agents/rules/Makefile
 # src/agents/pluspack/Makefile
-
-#src/libs/mdb/Makefile
-#src/libs/mdb-file/Makefile
-#src/libs/mdb-xldap/Makefile
+# src/agents/calcmd/Makefile
 
 AC_OUTPUT([
 Makefile
@@ -684,7 +681,6 @@ init/svc-bongo.solaris-smf
 src/agents/alarm/Makefile
 src/agents/antispam/Makefile
 src/agents/avirus/Makefile
-src/agents/calcmd/Makefile
 src/agents/collector/Makefile
 src/agents/generic/Makefile
 src/agents/imap/Makefile

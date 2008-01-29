@@ -89,6 +89,7 @@ clean:	clean-recursive
 #	disabled agents
 #	src/agents/mailprox			
 #	src/agents/rules			
+#	src/agents/calcmd
 
 include_subdirs =				\
 	include					\
@@ -114,7 +115,6 @@ include_subdirs =				\
 	src/agents/alarm			\
 	src/agents/antispam			\
 	src/agents/avirus			\
-	src/agents/calcmd			\
 	src/agents/collector			\
 	src/agents/generic			\
 	src/agents/imap				\
@@ -165,7 +165,7 @@ include src/libs/python/libbongo/Bongo.rules
 include src/agents/alarm/Bongo.rules
 include src/agents/antispam/Bongo.rules
 include src/agents/avirus/Bongo.rules
-include src/agents/calcmd/Bongo.rules
+#include src/agents/calcmd/Bongo.rules
 include src/agents/collector/Bongo.rules
 include src/agents/generic/Bongo.rules
 include src/agents/imap/Bongo.rules
