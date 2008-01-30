@@ -95,6 +95,20 @@ class AliasHandler(HawkeyeHandler):
         else:
             self.SetVariable("domainwide", None)
         
+        # handle the email->username mapping config
+        mapping_value = 0
+        if data.has_key("username-mapping"):
+            mapping_value = int(data["username-mapping"])
+        if mapping_value < 0 or mapping_value > 2:
+            mapping_value = 0
+        self.SetVariable("username-mapping", mapping_value)
+        for i in [0, 1, 2]:
+            select = "username-mapping-%d" % i
+            if i == mapping_value:
+                self.SetVariable(select, "selected")
+            else:
+                self.SetVariable(select, None)
+        
         self.SetVariable("useraliasestxt", aliases_txt)
         self.SetVariable("useraliases", tpl_aliases)
         self.SetVariable("domainalias", domainalias)
@@ -134,6 +148,9 @@ class AliasHandler(HawkeyeHandler):
             elif key == "domainalias":
                 # Actual domain alias val
                 config["domainalias"] = value
+            elif key == "username-mapping":
+                # Mapping scheme wanted
+                config["username-mapping"] = value
             elif key == "useralias":
                 # User aliases
                 # Split this, and set array as value.

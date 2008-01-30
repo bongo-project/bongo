@@ -47,6 +47,16 @@
         </script>
     </td>
 </tr>
+<tr>
+    <td style="padding-right: 16px;">Default address to username mapping</td>
+    <td>
+        <select name="username-mapping">
+            <option value="0" tal:attributes="selected username-mapping-0">Local part (before @) is the username</option>
+            <option value="1" tal:attributes="selected username-mapping-1">Full e-mail address is the username</option>
+            <option value="2" tal:attributes="selected username-mapping-2">Domain part (after @) is the username</option>
+        </select>
+    </td>
+</tr>
 </table>
 <br />
 <br />
