@@ -150,7 +150,7 @@ class AliasHandler(HawkeyeHandler):
                 config["domainalias"] = value
             elif key == "username-mapping":
                 # Mapping scheme wanted
-                config["username-mapping"] = value
+                config["username-mapping"] = int(value)
             elif key == "useralias":
                 # User aliases
                 # Split this, and set array as value.
