@@ -456,18 +456,9 @@ done
 rm -f import/clucene/NO-AUTO-GEN
 rm -f import/sqlite3/NO-AUTO-GEN
 
-SVNREV="`svnversion . 2>/dev/null`"
-if test x$SVNREV = x; then
-    echo Unable to discern build version
-    echo \#define  BONGO_BUILD_BRANCH	\"unknown\" >  ./include/bongo-buildinfo.h
-    echo \#define  BONGO_BUILD_VSTR	\"\" >>  ./include/bongo-buildinfo.h
-    echo \#define  BONGO_BUILD_VER	\"0\" >>  ./include/bongo-buildinfo.h
-else
-    echo SVN Rev at $SVNREV
-    echo \#define  BONGO_BUILD_BRANCH	\"trunk\"   >  ./include/bongo-buildinfo.h
-    echo \#define  BONGO_BUILD_VSTR	\"r\" >>  ./include/bongo-buildinfo.h
-    echo \#define  BONGO_BUILD_VER	\"$SVNREV\" >> ./include/bongo-buildinfo.h
-fi
+echo \#define  BONGO_BUILD_BRANCH	\"0.3\"   >  ./include/bongo-buildinfo.h
+echo \#define  BONGO_BUILD_VSTR	\"v\" >>  ./include/bongo-buildinfo.h
+echo \#define  BONGO_BUILD_VER	\"0\" >> ./include/bongo-buildinfo.h
 
 conf_flags="--enable-maintainer-mode"
 

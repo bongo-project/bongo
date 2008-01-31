@@ -3,7 +3,7 @@ AC_PREREQ(2.52)
 
 AC_INIT(src/libs/msgapi/msgapi.c)
 
-AM_INIT_AUTOMAKE(bongo, 0.1.0)
+AM_INIT_AUTOMAKE(bongo, 0.3.0)
 
 # this space is here to trick autogen.sh
  AM_GNU_GETTEXT([external])
