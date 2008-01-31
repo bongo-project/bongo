@@ -621,9 +621,19 @@ fi
 # import libraries
 
 ACX_CLUCENE()
-if test "x$CLUCENE_LIBS" = "x"; then
+case "x$CLUCENE_LIBS" in
+	x)
+		info_clucene="import"
+		;;
+	*import*)
+		info_clucene="import"
+		;;
+	*)
+		info_clucene="system"
+		;;
+esac
+if test "x$info_clucene" = "ximport"; then
 	AC_MSG_RESULT(Using imported CLucene)
-	info_clucene="import"
 	AC_CONFIG_SUBDIRS([import/clucene])
 	AC_SUBST(CLUCENE_BONGO_API, "1")
 	AC_SUBST(CLUCENE_LIBS, "\$(top_srcdir)/import/clucene/src/libclucene.la")
@@ -633,19 +643,27 @@ else
 		AC_MSG_ERROR([Compiling against CLucene system libraries on x86_64 is known to be buggy. Recommend you use --with-clucene=import/clucene])
 	fi
 	AC_MSG_RESULT(Using system CLucene)
-	info_clucene="system"
 fi
 
 AC_CHECK_SQLITE3()
-if test "x$SQLITE_LIBS" = "x"; then
+case "x$SQLITE_LIBS" in 
+	x)
+		info_sqlite="import"
+		;;
+	*import*)
+		info_sqlite="import"
+		;;
+	*)
+		info_sqlite="system"
+		;;
+esac
+if test "x$info_sqlite" = "ximport"; then
 	AC_MSG_RESULT(Using imported SQLite)
-	info_sqlite="import"
 	AC_CONFIG_SUBDIRS([import/sqlite3])
 	AC_SUBST(SQLITE_CFLAGS, "-I\$(top_srcdir)/import/sqlite3")
 	AC_SUBST(SQLITE_LIBS, "\$(top_srcdir)/import/sqlite3/libbongosqlite3.la")
 else
 	AC_MSG_RESULT(Using system SQLite)
-	info_sqlite="system"
 fi
 
 info_libical="import"
