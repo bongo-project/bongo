@@ -6,7 +6,17 @@ import simplejson
 from optparse import OptionParser
 
 class POParser(object):
-        "parse a .po file extracting msgids and msgstrs"
+        """ parse a .po file extracting msgids and msgstrs
+        
+        This class was found in a program with the following copyright. The
+        URL was <http://mail.python.org/pipermail/mailman-i18n/2002-May/000521.html>
+        
+        transcheck - (c) 2002 by Simone Piunno <pioppo@ferrara.linux.it>
+        
+        This program is free software; you can redistribute it and/or modify it
+        under the terms of the version 2.0 of the GNU General Public License as
+        published by the Free Software Foundation."""
+        
         def __init__(self, filename=""):
                 self.status = 0
                 self.files = []
