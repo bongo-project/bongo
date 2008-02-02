@@ -223,11 +223,19 @@ StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query)
             goto finish;
         case 1:
             if (!STORE_IS_FOLDER(child.type)) {
+                FindPathToDocument(client, child.collection, child.guid, path, sizeof(path));
+                f = fopen(path, "rb");
+                if (!f) {
+                    ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
+                    goto finish;
+                }
                 ccode = SearchDocument(client, &child, query, f);
+                fclose(f);
             }
             break;
         }
     }
+    ccode = ConnWriteStr(client->conn, MSG1000OK);
     
 finish:
     if (stmt) DStoreStmtEnd(client->handle, stmt);

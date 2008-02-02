@@ -157,14 +157,14 @@ class AgentHandler(HawkeyeHandler):
                         # It's a hostlist, and arraytype is the default port
                         # Check if value has port and/or weighting
                         defaultweight = 1
-                        defultport = arraytype
-                        
+                        defaultport = arraytype
+
                         if dobj.count(':') == 1:
                             # Port and hostname
                             dobj = dobj + ":" + defaultweight
                         elif dobj.count(':') == 0:
                             # Only hostname
-                            dobj = dobj + ":" + defaultport + ":" + defaultweight
+                            dobj = dobj + ":" + str(defaultport) + ":" + str(defaultweight)
                         
                     # Otherwise, type was string (default).
                     
@@ -215,11 +215,7 @@ class AgentHandler(HawkeyeHandler):
                         nkey["revertbox"] = key + "-normal"
                         nkey["revertjs"] = "$('" + nkey["revertbox"] + "').hide(); $('" + nkey["selectorid"] + "').show();"
                         
-                        strthingy = ""
-                        for value in config[key]:
-                            strthingy += value + ","
-                        
-                        nkey["strvalue"] = strthingy
+                        nkey["strvalue"] = ','.join(config[key])
 
                     rkeys.append(nkey)
                 
