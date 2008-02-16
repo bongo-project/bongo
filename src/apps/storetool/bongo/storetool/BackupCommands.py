@@ -118,7 +118,7 @@ class StoreBackupCommand(Command):
                 props = docstore.PropGet(document.uid)
                 for key in props.keys():
                     headerx.SetKey("BONGO.%s" % key, props[key])
-                backup_file.write(headerx.ToString())
+                backup_file.write(headerx.ToString().encode("utf-8"))
 
                 # tar files have a 512 byte header (tar_info.tobuf()), and then the content
                 # content is padded to a multiple of 512 bytes

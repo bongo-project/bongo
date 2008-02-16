@@ -596,6 +596,7 @@ class StoreClient:
             raise CommandError(r)
 
     def List(self, path, props=[], start=-1, end=-1, flags=None, mask=None):
+        path = path.replace(" ", "\ ")
         command = "LIST %s" % path
 
         if start == -1 and end == -1:
@@ -719,6 +720,7 @@ class StoreClient:
         self.connection.Close()
 
     def Read(self, doc):
+        doc = doc.replace(" ", "\ ")
         self.stream.Write("READ %s" % (doc))
         r = self.stream.GetResponse()
         if r.code != 2001:

@@ -43,7 +43,10 @@ class Collection:
         ret = re.split(r"(?<!\\) ", response.message)
         ret = [re.sub(r"\\ ", " ", x) for x in ret]
 
-        self.uid, self.type, self.flags, self.name = ret
+        if len(ret) < 4:
+             return null
+        self.uid, self.type, self.flags = ret[0:3]
+        self.name = " ".join(ret[3:])
 
         self.flags = int(self.flags)
         self.type = int(self.type)
