@@ -58,9 +58,31 @@ static int syslog_open(log4c_appender_t* this)
 static int syslog_append(log4c_appender_t*	this, 
 			 const log4c_logging_event_t* a_event)
 {
+    char *token;
+    int string_len;
+    char *stuffed_string;
+
+    // we want to remove any '%' formatting characters from the
+    // log string, since syslog will try to interpolate them
+
+    // break string where '%' occurs, and append those tokens 
+    // to the new string with '%%' following
+    string_len = strlen(a_event->evt_rendered_msg);
+    stuffed_string = malloc((string_len*2) + 1);
+    if (stuffed_string == NULL) {
+        // out of memory 
+        return -1;
+    }
+    token = strtok(a_event->evt_rendered_msg, "%");
+    strcpy(stuffed_string, token);
+    while(NULL != (token = strtok(NULL, "%"))) {
+        strcat(stuffed_string, "%%");
+        strcat(stuffed_string, token);
+    }
 
     syslog(log4c_to_syslog_priority(a_event->evt_priority) | LOG_USER, 
-	   a_event->evt_rendered_msg); 
+	   stuffed_string);
+    free(stuffed_string);
     return 0;
 }
 
