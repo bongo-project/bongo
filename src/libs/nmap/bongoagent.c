@@ -262,49 +262,44 @@ ProcessBongoConfiguration(BongoConfigItem *config, const BongoJsonNode *node)
 int
 BongoAgentInit(BongoAgent *agent,
               const char *agentName,
-              const char *agentDn,
               const unsigned long timeOut,
               int startupResources)
 {
     agent->state = BONGO_AGENT_STATE_RUNNING;
 
-    if (!MemoryManagerOpen(agentDn)) {
-        XplConsolePrintf("%s: Unable to initialize memory manager; shutting down.\r\n", agentName);
+    LoggerOpen(agentName);
+
+    if (!MemoryManagerOpen(agentName)) {
+        Log(LOG_ERROR, "Unable to initialize memory manager; shutting down.");
         return -1;
     }
 
-    if (startupResources & BA_STARTUP_CONNIO)
+    if (startupResources & BA_STARTUP_CONNIO) {
         ConnStartup(timeOut, TRUE);
+    }
 
     if (startupResources & BA_STARTUP_MSGLIB) {
         MsgInit();
         if (startupResources & BA_STARTUP_MSGAUTH) {
             if (MsgAuthInit()) {
-                XplConsolePrintf("%s: Could not initialize auth subsystem\r\n", agentName);
+                Log(LOG_ERROR, "Could not initialize auth subsystem.");
                 return -1;
             }
         }
     }
 
     if ((startupResources & BA_STARTUP_NMAP) && !NMAPInitialize()) {
-        XplConsolePrintf("%s: Could not initialize nmap library\r\n", agentName);
+        Log(LOG_ERROR, "Could not initialize nmap library.");
         return -1;
     } else {
         agent->sslContext = NMAPSSLContextAlloc();
         NMAPSetEncryption(agent->sslContext);
     }
 
-    if (startupResources & BA_STARTUP_LOGGER) {
-        agent->loggingHandle = LoggerOpen(agentDn);
-        if (!agent->loggingHandle) {
-            XplConsolePrintf("%s: Unable to initialize logging; disabled.\r\n", agentName);
-        }
-    }
-
     agent->name = MemStrdup(agentName);
-    // agent->dn = MemStrdup(agentDn);
 
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), agentName);
+    Log(LOG_DEBUG, "Agent Initialized");
     return 0;
 }
 
@@ -440,7 +435,7 @@ ListenInternal(BongoAgent *agent,
 #endif
             case EINTR: {
                 if (agent->state < BONGO_AGENT_STATE_STOPPING) {
-                    LoggerEvent(agent->loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
+                    Log(LOG_INFO, "accept() failed with error: %d");
                 }
 
                 continue;
@@ -448,10 +443,7 @@ ListenInternal(BongoAgent *agent,
 
             default: {
                 if (agent->state < BONGO_AGENT_STATE_STOPPING) {
-                    XplConsolePrintf("%s: Exiting after an accept() failure; error %d\r\n", agent->name, errno);
-
-                    LoggerEvent(agent->loggingHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
-
+                    Log(LOG_ERROR, "Exiting after an accept() failure; error %d.", errno);
                     agent->state = BONGO_AGENT_STATE_STOPPING;
                 }
 
@@ -586,14 +578,14 @@ BongoAgentShutdown(BongoAgent *agent)
 
     ConnCloseAll(1);
 
-    LoggerClose(agent->loggingHandle);
+    LoggerClose(NULL);
 
     MsgShutdown();
 
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
 
-    MemoryManagerClose(agent->dn); /* Use the appropriate MSGSRV_AGENT_NAME macro. */    
+    MemoryManagerClose(agent->name);
 }
 
 Connection * 
@@ -618,9 +610,7 @@ BongoQueueConnectionInit(BongoAgent *agent,
             return NULL;
         }
         
-        reg = QueueRegister(agent->dn, 
-                           queue,
-                           conn->socketAddress.sin_port);
+        reg = QueueRegister(agent->name, queue, conn->socketAddress.sin_port);
         
         if (reg != REGISTRATION_COMPLETED) {
             XplConsolePrintf("%s: Could not register with bongonmap (%d)\r\n", agent->name, reg);
@@ -649,37 +639,55 @@ int
 BongoQueueAgentHandshake(Connection *conn,
                         char *buffer,
                         char *qID,
-                        int *envelopeLength)
+                        int *envelopeLength,
+                        int *messageLength)
 {
-    int ccode;
+    int ccode, Result = -1;
     char *ptr;
     
-    if (((ccode = NMAPReadAnswer(conn,
-                                 buffer, 
-                                 CONN_BUFSIZE, 
-                                 TRUE)) != -1) 
-        && (ccode == 6020) 
-        && ((ptr = strchr(buffer, ' ')) != NULL)) {
-        *ptr++ = '\0';
-        
-        strcpy(qID, buffer);
-        
-        *envelopeLength = atoi(ptr);
+    ccode = NMAPReadAnswer(conn, buffer, CONN_BUFSIZE, TRUE);
+    if (ccode == 6020) {
+        ptr = strchr(buffer, ' ');
+        if (ptr == NULL) {
+            return Result;
+        }
 
-        return 0;
-    } else {
-        return -1;
+        /* copy out the qID */
+        if (qID) {
+            *ptr = '\0';
+            strcpy(qID, buffer);
+            *ptr = ' ';
+        }
+
+        Result = 0;
+        ptr++;  /* increment past the space */
+        if (*ptr && envelopeLength) {
+            *envelopeLength = atoi(ptr);
+            ptr = strchr(ptr, ' ');
+            if (ptr == NULL) {
+                return Result;
+            }
+
+            /* grabbing the message length only makes sense if the envelope length was there */
+            ptr++;
+            if (*ptr && messageLength) {
+                *messageLength = atoi(ptr);
+            }
+        }
     }
+    return Result;
 }
 
 char *
 BongoQueueAgentReadEnvelope(Connection *conn,
                            char *buffer,
-                           int envelopeLength) 
+                           int envelopeLength,
+                           int *Lines) 
 {
     int ccode;
     char *envelope;
     char *cur;
+    int LineCount=0;
     
     envelope = MemMalloc(envelopeLength + 5);
     if (XPL_UNLIKELY (envelope == NULL)) {
@@ -712,12 +720,18 @@ BongoQueueAgentReadEnvelope(Connection *conn,
             if (line[-1] == 0x0D) {
                 *(line - 1) = '\0';
             }
+            LineCount++;
         } else {
             line = cur + strlen(cur);
             line[1] = '\0';
             line[2] = '\0';
+            LineCount++;
         }
         cur = line + 1;
+    }
+
+    if (Lines) {
+        *Lines = LineCount;
     }
 
     return envelope;

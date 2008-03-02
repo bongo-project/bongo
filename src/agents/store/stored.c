@@ -226,7 +226,7 @@ _XplServiceMain(int argc, char *argv[])
 
     /* Initialize the Bongo libraries */
     startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_MSGLIB | BA_STARTUP_MSGAUTH;
-    ccode = BongoAgentInit(&StoreAgent.agent, AGENT_NAME, AGENT_DN, (30 * 60), startupOpts);
+    ccode = BongoAgentInit(&StoreAgent.agent, AGENT_NAME, (30 * 60), startupOpts);
     if (ccode == -1) {
         Log(LOG_FATAL, "Couldn't initialize Bongo libraries");
         return -1;

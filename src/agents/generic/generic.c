@@ -53,6 +53,7 @@ ProcessEntry(void *clientp,
 {
     int ccode;
     int envelopeLength;
+    int messageLength;
     char *ptr;
     char qID[16];
     GAgentClient *client = clientp;
@@ -62,7 +63,8 @@ ProcessEntry(void *clientp,
     ccode = BongoQueueAgentHandshake(client->conn, 
                                     client->line, 
                                     qID, 
-                                    &envelopeLength);
+                                    &envelopeLength,
+                                    &messageLength);
 
     sprintf(client->line, "GAgent: %s", qID);
     XplRenameThread(XplGetThreadID(), client->line);
@@ -73,7 +75,8 @@ ProcessEntry(void *clientp,
 
     client->envelope = BongoQueueAgentReadEnvelope(client->conn, 
                                                   client->line, 
-                                                  envelopeLength);
+                                                  envelopeLength,
+                                                  NULL);
 
     if (client->envelope == NULL) {
         return -1;
@@ -185,7 +188,7 @@ XplServiceMain(int argc, char *argv[])
 
     /* Initialize the Bongo libraries */
     startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
-    ccode = BongoAgentInit(&GAgent.agent, AGENT_NAME, AGENT_DN, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
+    ccode = BongoAgentInit(&GAgent.agent, AGENT_NAME, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
     if (ccode == -1) {
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;

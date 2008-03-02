@@ -4054,7 +4054,7 @@ int XplServiceMain (int argc, char *argv[])
         return 1;
     }
 
-    XplBeginCountedThread (&ID, QueueServerStartup, STACKSIZE_Q, NULL, ccode, SMTPServerThreads);
+//    XplBeginCountedThread (&ID, QueueServerStartup, STACKSIZE_Q, NULL, ccode, SMTPServerThreads);
 
     if (SMTP.allow_client_ssl) {
         if (!ServerSocketSSLInit()) {

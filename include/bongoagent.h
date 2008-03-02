@@ -69,13 +69,10 @@ typedef struct {
 
 struct _BongoAgent {
     const char *name;
-    const char *dn;
-    
     unsigned short port;
 
     BongoAgentState state;
 
-    LoggingHandle *loggingHandle;
     bongo_ssl_context *sslContext;
 
     unsigned char officialName[MAXEMAILNAMESIZE + 1];
@@ -104,7 +101,6 @@ void FreeBongoConfiguration(BongoConfigItem *config);
 
 int BongoAgentInit(BongoAgent *agent,
                   const char *agentName,
-                  const char *agentDn,
                   const unsigned long timeOut,
                   int startupResources);
 void BongoAgentHandleSignal(BongoAgent *agent,
@@ -174,11 +170,13 @@ void BongoQueueAgentGetThreadPoolParameters(BongoAgent *agent,
 int BongoQueueAgentHandshake(Connection *conn,
                             char *buffer,
                             char *qID,
-                            int *envelopeLength);
+                            int *envelopeLength,
+                            int *messageLength);
 
 char *BongoQueueAgentReadEnvelope(Connection *conn,
                                  char *buffer,
-                                 int envelopeLength);
+                                 int envelopeLength,
+                                 int *Lines);
 
 /* BongoManagee Functions */
 void BongoAgentShutdownFunc (BongoJsonRpcServer *server, 
