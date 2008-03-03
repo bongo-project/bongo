@@ -745,7 +745,13 @@ MessageListLoad(Connection *storeConn, OpenedFolder *folder)
                 if (ccode == 2001) {
                     ccode = NMAPReadDecimalPropertyResponse(storeConn, "nmap.mail.headersize", &headerSize);
                     if (ccode == 2001) {
-                        ccode = MessageListAddMessage(folder, reply, headerSize);
+                        // don't look at mails which are obviously bad. Bug #11199
+                        if (headerSize > 0) {
+                            ccode = MessageListAddMessage(folder, reply, headerSize);
+                        } else {
+                            // ignore this for now - we need to log a message
+                            // bug #11200
+                        }
                         continue;
                     }
 
