@@ -3,6 +3,7 @@ sbin_PROGRAMS += bongosmtp bongosmtpc
 
 bongosmtp_SOURCES =				\
 	src/agents/smtp/smtpd.c			\
+	src/agents/smtp/smtp.h			\
 	src/agents/smtp/smtpd.h
 
 bongosmtp_LDADD =					   \
@@ -19,6 +20,7 @@ bongosmtp_LDADD =					   \
 
 bongosmtpc_SOURCES =				\
 	src/agents/smtp/smtpc.c			\
+	src/agents/smtp/smtp.h			\
 	src/agents/smtp/smtpc.h
 
 bongosmtpc_LDADD =					   \
