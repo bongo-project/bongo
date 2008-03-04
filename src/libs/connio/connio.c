@@ -998,199 +998,124 @@ ConnReadAnswer(Connection *Conn, char *Line, int Length)
     return(dest - Line);
 }
 
-/* ConnReadToAllocatedBuffer() is designed to read the */
-/* next full line regardless of its length. */
-/* The buffer pointer passed to this function must be */
-/* NULL or point to an existing allocated buffer. */
-/* This function will reallocate the buffer if */
-/* the line is bigger than the current buffer. */
-/* If a line is so big that the system can not allocate */
-/* a buffer big enough to hold it, this function will: */
-/* - read and discard everything up to the next newline, */
-/* - free the buffer, */
-/* - set the buffer pointer to NULL */
-long 
-ConnReadToAllocatedBuffer(Connection *c, char **buffer, unsigned long *bufferSize)
+/**
+ * Append bytes to a buffer, allocating the buffer and/or resizing it as necessary.
+ * If enough space cannot be allocated, the buffer is destroyed, and further calls
+ * to this function appear to succeed. 
+ * \param	source	Where to copy bytes from
+ * \param	size	Number of bytes to copy
+ * \param	buffer	Pointer to the buffer (may point to NULL if you wish the buffer to be allocated)
+ * \param	start_of_buffer	How many bytes are already in the buffer
+ * \param	buffersize	How big the buffer is. 
+ * \return			The number of bytes copied from the source into the buffer
+ */
+long
+ConnAppendToAllocatedBuffer(const char *source, const long size, char **buffer,
+	unsigned long start_of_buffer, unsigned long *buffersize)
 {
-    long tmpSize;
-    char *tmpBuffer;
-    int count;
-    char *cur;
-    char *limit;
-    char *dest;
-
-    if (*buffer) {
-        ;
-    } else {
-        *buffer = MemMalloc(CONN_BUFSIZE);
-        if (*buffer == NULL) {
-            return(CONN_ERROR_MEMORY);
-        }
-        *bufferSize = CONN_BUFSIZE;
-    }
-
-    dest = *buffer;
-    cur = c->receive.read;
-    limit = c->receive.write;
-
-    for(;;) {
-        *limit = '\0';
-        if (cur < limit) {
-            if ((cur = strchr(cur, '\n')) != NULL) {
-                count = cur - c->receive.read;
-                if (count > 0) {
-                    if ((dest + count) < (*buffer + *bufferSize)) {
-                        ;
-                    } else {
-                        tmpSize = count + (dest - *buffer);
-                        tmpBuffer = MemRealloc(*buffer, tmpSize);
-                        if (!tmpBuffer) {
-                            /* flush the rest of the line */
-                            c->receive.read = cur + 1;
-                            if (c->receive.read == c->receive.write) {
-                                c->receive.read = c->receive.write = c->receive.buffer;
-                                c->receive.remaining = CONN_TCP_MTU;
-                                c->receive.write[0] = '\0';
-                            }
-                            
-                            /* free the buffer */
-                            MemFree(*buffer);
-                            *buffer = NULL;
-                            return(CONN_ERROR_MEMORY);
-                        }
-
-                        dest = tmpBuffer + (dest - *buffer);
-                        *buffer = tmpBuffer;
-                        *bufferSize = tmpSize;
-                    }
-
-                    memcpy(dest, c->receive.read, count);
-                    dest += count;
-
-                    c->receive.read = cur + 1;
-                    if (c->receive.read == c->receive.write) {
-                        c->receive.read = c->receive.write = c->receive.buffer;
-                        c->receive.remaining = CONN_TCP_MTU;
-
-                        c->receive.write[0] = '\0';
-                    }
-
-                    if (dest[-1] == '\r') {
-                        dest--;
-                        count--;
-                    }
-
-                    *dest = '\0';
-
-                    return(dest - *buffer);
-                }
-
-                c->receive.read = ++cur;
-                if (c->receive.read == c->receive.write) {
-                    c->receive.read = c->receive.write = c->receive.buffer;
-                    c->receive.remaining = CONN_TCP_MTU;
-
-                    c->receive.write[0] = '\0';
-                }
-
-                if ((dest > *buffer) && (dest[-1] == '\r')) {
-                    dest--;
-                }
-
-                *dest = '\0';
-
-                return(dest - *buffer);
-            }
-
-            cur = limit;
-        }
-
-        count = cur - c->receive.read;
-        if (count > 0) {
-            if ((dest + count) < (*buffer + *bufferSize)) {
-                ;
-            } else {
-                tmpSize = max((unsigned long)(count + (dest - *buffer)) << 1, (*bufferSize) << 1);
-                tmpBuffer = MemRealloc(*buffer, tmpSize);
-                if (!tmpBuffer) {
-                    /* flush the rest of the line */
-                    for(;;) {
-                        if ((cur = strchr(cur, '\n')) != NULL) {
-                            c->receive.read = cur + 1;
-                            if (c->receive.read == c->receive.write) {
-                                c->receive.read = c->receive.write = c->receive.buffer;
-                                c->receive.remaining = CONN_TCP_MTU;
-                                c->receive.write[0] = '\0';
-                            }
-                            break;
-                        }
-                        
-                        c->receive.read = c->receive.write = c->receive.buffer;
-                        c->receive.remaining = CONN_TCP_MTU;
-                        c->receive.write[0] = '\0';
-
-                        ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
-                        if (count <= 0) {
-                            break;
-                        }
-
-                        cur = c->receive.read = c->receive.buffer;
-                        limit = c->receive.write = cur + count;
-                        c->receive.remaining = CONN_TCP_MTU - count;
-                        c->receive.write[0] = '\0';
-                    }
-
-                    /* free the buffer */
-                    MemFree(*buffer);
-                    *buffer = NULL;
-                    return(CONN_ERROR_MEMORY);
-                }
-
-                dest = tmpBuffer + (dest - *buffer);
-                *buffer = tmpBuffer;
-                *bufferSize = tmpSize;
-            }
-
-            memcpy(dest, c->receive.read, count);
-            dest += count;
-
-            c->receive.read = c->receive.write = c->receive.buffer;
-            c->receive.remaining = CONN_TCP_MTU;
-
-            c->receive.write[0] = '\0';
-        } else if (dest == *buffer) {
-            /* There is nothing in *buffer or c->receive.buffer, and we are going to the wire. */
-            /* There is a good chance that we will block, lets make sure our buffer is not really big */
-            if (*bufferSize < (CONN_BUFSIZE + 1)) {
-                ;
-            } else {
-                /* shrink the buffer */
-                MemFree(*buffer);
-                *buffer = MemMalloc(CONN_BUFSIZE);
-                if (*buffer) {
-                    *bufferSize = CONN_BUFSIZE;
-                } else {
-                    *bufferSize = 0;
-                    return(CONN_ERROR_MEMORY);
-                }
-            }
-        }
-
-        ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
-        if (count <= 0) {
-            c->send.remaining = 0;
-            c->send.read = c->send.write;
-            return(CONN_ERROR_NETWORK);
-        }
-
-        cur = c->receive.read = c->receive.buffer;
-        limit = c->receive.write = cur + count;
-        c->receive.remaining = CONN_TCP_MTU - count;
-
-        c->receive.write[0] = '\0';
-    }
+	// do we need to allocate this buffer first?
+	if (*buffer == NULL) {
+		// buffer is not allocated
+		if (start_of_buffer != 0) {
+			// we've already discarded this buffer, so don't reallocate
+			return size;
+		}
+		*buffer = MemMalloc(size);
+		*buffersize = size;
+	}
+	
+	// is the buffer big enough to copy in the new data?
+	if ((buffersize - start_of_buffer) < size) {
+		char *new_buffer;
+		long new_size;
+		
+		new_size = start_of_buffer + size;
+		new_buffer = MemRealloc(*buffer, new_size);
+		if (new_buffer == NULL) {
+			// unable to allocate memory, so destroy the whole buffer
+			if (*buffer != NULL) MemFree(*buffer);
+			*buffer == NULL; 
+			*buffersize = 0;
+			return CONN_ERROR_MEMORY;
+		}
+		*buffer = new_buffer;
+		*buffersize = new_size;
+	}
+	
+	// we have enough space to append, so copy the memory
+	memcpy(*buffer + start_of_buffer, source, size);
+	
+	return size;
 }
 
+/** 
+ * Read a line (until \r\n) from a network socket, potentially blocking until enough
+ * data is available. This line is read to a buffer (which may be pre-allocated).
+ * The buffer may be resized, and if enough space is not available will be destroyed.
+ * If the buffer is destroyed (*buffer == NULL), the number of bytes consumed 
+ * from the network socket is still returned but the data discarded.
+ * The trailing \r\n on the line is consumed.
+ * \param	c		Connection to read the line from
+ * \param	buffer	Pointer to the allocated buffer (point to NULL if you want the buffer to be allocated for you)
+ * \param	bufferSize	Size of the pre-allocated buffer (0 if you want the buffer to be pre-allocated)
+ * \return	Number of bytes placed into the buffer.
+ */
+long
+ConnReadToAllocatedBuffer(Connection *c, char **buffer, unsigned long *bufferSize)
+{
+	BOOL found_end_of_line = FALSE;
+	char *end_of_line;
+	long data_consumed = 0;
+	
+	while (found_end_of_line == FALSE) {
+		if (c->receive.read == c->receive.write) {
+			// we need to fetch more data since the buffers are empty - this blocks
+			int count;
+			
+			ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
+			if (count <= 0) {
+				c->send.remaining = 0;
+				c->send.read = c->send.write;
+				return(CONN_ERROR_NETWORK);
+			} else {
+				c->receive.read = c->receive.buffer;
+				c->receive.write = c->receive.buffer + count;
+				c->receive.remaining = count;
+			}
+		}
+		
+		// look through the buffer for an end of line
+		for (end_of_line = c->receive.read; end_of_line < c->receive.write; end_of_line++) {
+			if (*end_of_line == '\r') {
+				end_of_line++;
+				if (*end_of_line == '\n') end_of_line++;
+				found_end_of_line = TRUE;
+				break;
+			}
+		}
+		
+		if (found_end_of_line == FALSE) {
+			// didn't find the end of the line
+			data_consumed += ConnAppendToAllocatedBuffer(c->receive.read, 
+				(c->receive.write - c->receive.read), buffer, data_consumed, bufferSize);
+		}
+	}
+	
+	// end of the line has been found, so consume the data to that point
+	data_consumed += ConnAppendToAllocatedBuffer(c->receive.read, 
+			(end_of_line - c->receive.read), buffer, data_consumed, bufferSize);
+	c->receive.read = end_of_line;
+	
+	// now want to chomp the carriage return off the end of the line
+	end_of_line = *buffer + data_consumed - 1;
+	while ((data_consumed > 0) && ((*end_of_line == '\n') || (*end_of_line == '\r'))) {
+		*end_of_line = '\0';
+		end_of_line--;
+		data_consumed--;
+	}
+	
+	return data_consumed;
+}
 
 int 
 ConnReadToFile(Connection *Conn, FILE *Dest, int Count)
