@@ -1074,13 +1074,13 @@ ConnReadToAllocatedBuffer(Connection *c, char **buffer, unsigned long *bufferSiz
 			
 			ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
 			if (count <= 0) {
-				c->send.remaining = 0;
+				c->send.remaining = CONN_TCP_MTU;
 				c->send.read = c->send.write;
 				return(CONN_ERROR_NETWORK);
 			} else {
 				c->receive.read = c->receive.buffer;
 				c->receive.write = c->receive.buffer + count;
-				c->receive.remaining = count;
+				c->receive.remaining = CONN_TCP_MTU - count;
 			}
 		}
 		
@@ -1112,6 +1112,12 @@ ConnReadToAllocatedBuffer(Connection *c, char **buffer, unsigned long *bufferSiz
 		*end_of_line = '\0';
 		end_of_line--;
 		data_consumed--;
+	}
+	
+	// reset connection
+	c->receive.remaining = CONN_TCP_MTU - (c->receive.write - c->receive.read);
+	if (c->receive.remaining == CONN_TCP_MTU) {
+		c->receive.read = c->receive.write = c->receive.buffer;
 	}
 	
 	return data_consumed;
