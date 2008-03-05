@@ -1223,6 +1223,12 @@ StoreGetExclusiveLock(StoreClient *client, NLockStruct **lock,
     return 0;
 }
 
+CCode
+StoreReleaseExclusiveLock(StoreClient *client, NLockStruct *lock)
+{
+	PurgeNLockRelease(lock);
+	return 0;
+}
 
 CCode
 StoreGetSharedLockQuiet(StoreClient *client, NLockStruct **lock,
@@ -1248,31 +1254,29 @@ StoreGetSharedLock(StoreClient *client, NLockStruct **lock,
     return 0;
 }
 
+CCode 
+StoreReleaseSharedLock(StoreClient *client, NLockStruct *lock)
+{
+	return ReadNLockRelease(lock);
+}
 
-/* gets an exclusive lock on the collection.  If client->watchLock is not NULL,
-   it is released.
+
+/* gets an exclusive lock on the collection. 
  */
 
 CCode 
 StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 {
-    if (StoreGetSharedLockQuiet(client, lock, coll, 3000)) {
-        return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-    }
-    
-    if (*lock == client->watchLock) {
-        StoreReleaseSharedLock(client, client->watchLock);
-        client->watchLock = NULL;
-    }
-
-    if (NLOCK_ACQUIRED != PurgeNLockAcquire(*lock, 3000)) {
-        ReadNLockRelease(*lock);
-        return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-    }
-    
-    return 0;
+	return StoreGetExclusiveLock(client, lock, coll, 3000);
 }
 
+CCode
+StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock)
+{
+	StoreReleaseExclusiveLock(client, *lock);
+	ReadNLockRelease(*lock);
+	*lock = NULL;
+}
 
 /** Pooled collection locks **/
 

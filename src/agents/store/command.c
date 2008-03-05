@@ -2916,10 +2916,7 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
                        info.guid, info.version);
     
 finish:
-    if (lock) {
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
-    }
+    if (lock) StoreReleaseCollectionLock(client, &lock);
 
     return ccode;
 }
@@ -3056,10 +3053,7 @@ finish:
         IndexClose(index);
     }
 
-    if (lock) {
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
-    }
+    if (lock) StoreReleaseCollectionLock(client, &lock);
 
     return ccode;
 }
@@ -3399,10 +3393,8 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
                       info.guid, info.imapuid, info.flags);
 
 finish:
-    if (lock) {
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
-    }
+    if (lock) StoreReleaseCollectionLock(client, &lock);
+    
     if (index) {
         IndexClose(index);
     }
@@ -4043,14 +4035,8 @@ abort:
     DStoreAbortTransaction(client->handle);
 
 finish:    
-    if (srclock) {
-        StoreReleaseExclusiveLock(client, srclock);
-        StoreReleaseSharedLock(client, srclock);        
-    }
-    if (dstlock) {
-        StoreReleaseExclusiveLock(client, dstlock);
-        StoreReleaseSharedLock(client, dstlock);
-    }
+    if (srclock) StoreReleaseCollectionLock(client, &srclock);
+    if (dstlock) StoreReleaseCollectionLock(client, &dstlock);
     
     return ccode;
 }
@@ -4220,8 +4206,7 @@ StoreCommandPROPSET(StoreClient *client,
     }
 
 finish:
-    StoreReleaseExclusiveLock(client, lock);
-    StoreReleaseSharedLock(client, lock);
+    if (lock) StoreReleaseCollectionLock(client, &lock);
 
     if (alarmjson) {
         BongoJsonNodeFree(alarmjson);
@@ -4471,8 +4456,7 @@ finish:
             StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_COLL_RENAMED, 
                               0, 0, 0);
         }
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
+        StoreReleaseCollectionLock(client, &lock);
     }
 
     BongoArrayDestroy(&subcolls, TRUE);
@@ -4624,8 +4608,7 @@ finish:
             StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_COLL_REMOVED, 
                               0, 0, 0);
         }
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
+        StoreReleaseCollectionLock(client, &lock);
     }
 
     BongoArrayDestroy(&subcolls, TRUE);
@@ -4797,9 +4780,7 @@ StoreCommandWATCH(StoreClient *client, DStoreDocInfo *collection, int flags)
         if (StoreWatcherRemove(client, lock)) {
             return ConnWriteStr(client->conn, MSG5004INTERNALERR);
         }
-
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
+        StoreReleaseCollectionLock(client, &lock);
     }
 
     /* watch the new collection */
@@ -4814,6 +4795,7 @@ StoreCommandWATCH(StoreClient *client, DStoreDocInfo *collection, int flags)
         }
 
         ccode = StoreGetExclusiveLock(client, &lock, collection->guid, 3000);
+        // ccode = StoreGetCollectionLock(client, &lock, collection->guid);
         if (ccode) {
             return ccode;
         }
@@ -4821,8 +4803,7 @@ StoreCommandWATCH(StoreClient *client, DStoreDocInfo *collection, int flags)
         client->watch.collection = collection->guid;
         client->watch.flags = flags;
         StoreWatcherAdd(client, lock);
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
+        StoreReleaseCollectionLock(client, &lock);
     }
 
     return ConnWriteStr(client->conn, MSG1000OK);
@@ -5046,10 +5027,7 @@ finish:
         unlink(tmppath);
     }
 
-    if (cLock) {
-        StoreReleaseExclusiveLock(client, cLock);
-        StoreReleaseSharedLock(client, cLock);
-    }
+    if (cLock) StoreReleaseCollectionLock(client, &cLock);
 
     return ccode;
 }
@@ -5347,10 +5325,7 @@ finish:
         fclose(fh);
     }
 
-    if (cLock) {
-        StoreReleaseExclusiveLock(client, cLock);
-        StoreReleaseSharedLock(client, cLock);
-    }
+    if (cLock) StoreReleaseCollectionLock(client, &cLock);
 
     if (index) {
         IndexClose(index);

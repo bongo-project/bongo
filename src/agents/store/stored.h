@@ -448,10 +448,11 @@ CCode StoreGetSharedLock(StoreClient *client, NLockStruct **lock,
 CCode StoreGetExclusiveLock(StoreClient *client, NLockStruct **lock,
                             uint64_t doc, time_t timeout);
 
-#define StoreReleaseExclusiveLock(_clientptr, _lockptr) PurgeNLockRelease(_lockptr)
-#define StoreReleaseSharedLock(_clientptr, _lockptr) ReadNLockRelease(_lockptr)
+CCode StoreReleaseExclusiveLock(StoreClient *client, NLockStruct *lock);
+CCode StoreReleaseSharedLock(StoreClient *client, NLockStruct *lock);
 
 CCode StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll);
+CCode StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock);
 
 
 typedef struct {
