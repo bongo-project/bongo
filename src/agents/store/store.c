@@ -526,7 +526,7 @@ DeliverMessageToMailbox(StoreClient *client,
         return DELIVER_TRY_LATER;
     }
 
-    if (StoreGetExclusiveLockQuiet(client, &lock, STORE_MAIL_GUID, 2000)) {
+    if (StoreGetCollectionLock(client, &lock, STORE_MAIL_GUID)) {
         return DELIVER_TRY_LATER;
     }
 
@@ -561,8 +561,7 @@ finish:
         result = ENOSPC == errno ? DELIVER_QUOTA_EXCEEDED : DELIVER_FAILURE;
     }
 
-    StoreReleaseExclusiveLock(client, lock);
-    StoreReleaseSharedLock(client, lock);
+    StoreReleaseCollectionLock(client, &lock);
 
     if (DELIVER_SUCCESS == result && 
         inclen > StoreAgent.store.incomingQueueBytes) 
@@ -613,7 +612,7 @@ ImportIncomingMail(StoreClient *client)
         return 0;
     }
 
-    if (StoreGetExclusiveLockQuiet(client, &incLock, STORE_MAIL_GUID, 2000)) {
+    if (StoreGetCollectionLock(client, &incLock, STORE_MAIL_GUID)) {
         CollectionLockPoolDestroy(&collLocks);
         WatchEventListDestroy(&events);
         return 0;
@@ -1018,16 +1017,13 @@ UnselectStore(StoreClient *client)
     if (client->watch.collection) {
         NLockStruct *lock;
 
-        while (StoreGetExclusiveLockQuiet(client, &lock, client->watch.collection, 
-                                          600000))
-        { } /* block b/c we need this lock no matter what to free the client */
+        StoreGetCollectionLock(client, &lock, client->watch.collection);
         
         if (StoreWatcherRemove(client, lock)) {
             Log(LOG_ERROR, "Internal error removing client watch");
         }
 
-        StoreReleaseExclusiveLock(client, lock);
-        StoreReleaseSharedLock(client, lock);
+        StoreReleaseCollectionLock(client, &lock);
     }
 
     if (client->storeName) {
@@ -1283,6 +1279,7 @@ StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock)
 	StoreReleaseExclusiveFairLockQuiet(&((*lock)->fairlock));
 	MemFree(*lock);
 	*lock = NULL;
+	return 0;
 }
 
 /** Pooled collection locks **/
@@ -1309,8 +1306,7 @@ CollectionLockPoolDestroy(CollectionLockPool *pool)
     for (i = 0; i < pool->colls.len; i++) {
         colldatum coll = BongoArrayIndex(&pool->colls, colldatum, i);
 
-        StoreReleaseExclusiveLock(pool->client, coll.lock);
-        StoreReleaseSharedLock(pool->client, coll.lock);
+        StoreReleaseCollectionLock(pool->client, &coll.lock);
     }
 
     BongoArrayDestroy(&pool->colls, TRUE);
@@ -1331,7 +1327,7 @@ CollectionLockPoolGet(CollectionLockPool *pool, uint64_t guid)
         }
     }
 
-    if (StoreGetExclusiveLockQuiet(pool->client, &coll.lock, guid, 5000)) {
+    if (StoreGetCollectionLock(pool->client, &coll.lock, guid)) {
         return NULL;
     }
     coll.guid = guid;

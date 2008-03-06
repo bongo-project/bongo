@@ -33,6 +33,8 @@ FairLockName(char *name, uint64_t guid)
 	char *result;
 	int result_len;
 	
+	if (name == NULL) name = "";
+	
 	result_len = strlen(name) + 33;
 	result = MemMalloc(result_len);
 	
