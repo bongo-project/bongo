@@ -571,6 +571,8 @@ DStoreOpen(char *basepath, BongoMemStack *memstack, int locktimeoutms)
         goto fail;
     }
 
+    sqlite3_busy_timeout(handle->db, 1000);
+
     if (sqlite3_create_function(handle->db, "test_info_flags", 3, 
                                 SQLITE_UTF8, NULL, 
                                 test_info_flags, NULL, NULL) ||
@@ -769,7 +771,10 @@ DStoreBeginTransaction(DStoreHandle *handle)
         return 0;
     }
 
-    stmt = SqlPrepare(handle, "BEGIN EXCLUSIVE TRANSACTION;", &handle->stmts.begin);
+    // this was an EXCLUSIVE transaction, but usually, we select and stuff first -
+    // seems pointless getting the lock that early; it just freezes out other
+    // sqlite processes.
+    stmt = SqlPrepare(handle, "BEGIN TRANSACTION;", &handle->stmts.begin);
     if (!stmt) {
         DStoreStmtError(handle, stmt);
         return -1;

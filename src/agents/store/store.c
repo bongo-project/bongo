@@ -954,10 +954,12 @@ SelectStore(StoreClient *client, char *user)
         if (!dbhandle) {
             return -1;
         }
+#if 0
         if (DStoreCheckDBSchema(dbhandle) != 0) {
             // store is either out-of-date or too new for us.
             return -2;
         }
+#endif
     }
 
 #if 0
