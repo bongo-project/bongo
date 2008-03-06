@@ -1269,7 +1269,6 @@ CCode
 StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 {
 	int result;
-	printf("Want to lock " GUID_FMT " in %s\n", coll, client->storeName);
 	*lock = MemMalloc0(sizeof(NLockStruct));
 	result = StoreGetExclusiveFairLockQuiet(client, &((*lock)->fairlock), coll, 3000);
 	if (result != 0) {
