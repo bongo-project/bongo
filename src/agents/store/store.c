@@ -1264,17 +1264,25 @@ StoreReleaseSharedLock(StoreClient *client, NLockStruct *lock)
 /* gets an exclusive lock on the collection. 
  */
 
+// FIXME: remove deprecated NLockStruct system
 CCode 
 StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 {
-	return StoreGetExclusiveLock(client, lock, coll, 3000);
+	int result;
+	printf("Want to lock " GUID_FMT " in %s\n", coll, client->storeName);
+	*lock = MemMalloc0(sizeof(NLockStruct));
+	result = StoreGetExclusiveFairLockQuiet(client, &((*lock)->fairlock), coll, 3000);
+	if (result != 0) {
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	} 
+	return 0;
 }
 
 CCode
 StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock)
 {
-	StoreReleaseExclusiveLock(client, *lock);
-	ReadNLockRelease(*lock);
+	StoreReleaseExclusiveFairLockQuiet(&((*lock)->fairlock));
+	MemFree(*lock);
 	*lock = NULL;
 }
 

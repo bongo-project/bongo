@@ -22,6 +22,7 @@ bongostore_SOURCES =					 \
 	src/agents/store/db.c				 \
 	src/agents/store/dbpool.c			 \
 	src/agents/store/db.h				 \
+	src/agents/store/fairlock.c			 \
 	src/agents/store/guid.c				 \
 	src/agents/store/help.h				 \
 	src/agents/store/lock.c				 \

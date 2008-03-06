@@ -4139,7 +4139,7 @@ StoreCommandPROPSET(StoreClient *client,
 {
     DStoreDocInfo info;
     int ccode;
-    NLockStruct *lock;
+    NLockStruct *lock = NULL;
     BongoJsonNode *alarmjson = NULL;
 
     switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
@@ -4233,7 +4233,7 @@ StoreCommandREAD(StoreClient *client,
 {
     int ccode = 0;
     DStoreDocInfo info;
-    NLockStruct *lock;
+    NLockStruct *lock = NULL;
 
     switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
     case -1:
@@ -4794,8 +4794,7 @@ StoreCommandWATCH(StoreClient *client, DStoreDocInfo *collection, int flags)
             return ccode;
         }
 
-        ccode = StoreGetExclusiveLock(client, &lock, collection->guid, 3000);
-        // ccode = StoreGetCollectionLock(client, &lock, collection->guid);
+        ccode = StoreGetCollectionLock(client, &lock, collection->guid);
         if (ccode) {
             return ccode;
         }

@@ -27,6 +27,50 @@ XPL_BEGIN_C_LINKAGE
 #define STORE_COLLECTION_MAX_WATCHERS 8
 
 /*********************** Structures ***********************/
+
+// "fair" lock implementation
+
+#define	SEM_UNLOCKED	1
+#define SEM_LOCKED	0
+
+typedef struct _NFairLockQueueEntry {
+	// "signal" is used by the queueing process to wait its turn
+	XplSemaphore *signal;
+	struct _NFairLockQueueEntry *next;
+	BOOL is_writer;
+} NFairLockQueueEntry;
+
+typedef struct _NFairLock {
+	char *lockname;
+	// "access" mediates changes to the internal data, shouldn't be held for long
+	XplSemaphore *access;
+	int readers;
+	int writer;
+	NFairLockQueueEntry *queue;
+} NFairLock;
+
+typedef struct _NFairLockList {
+	struct _NFairLockList *next;
+	NFairLock *lock;
+} NFairLockList;
+
+typedef struct _NFairLockPool {
+	// lock governs access to the Pool
+	XplSemaphore *lock;
+	NFairLockList *first;
+	NFairLockList *last;
+} NFairLockPool;
+
+void	StoreInitializeFairLocks();
+int		StoreGetExclusiveFairLockQuiet(StoreClient *client, NFairLock **lock,
+                                       uint64_t guid, time_t timeout);
+int		StoreGetSharedFairLockQuiet(StoreClient *client, NFairLock **lock, 
+                                    uint64_t guid, time_t timeout);
+int		StoreReleaseSharedFairLockQuiet(NFairLock **lock);
+int		StoreReleaseExclusiveFairLockQuiet(NFairLock **lock);
+
+// "normal" locks
+
 typedef struct _NLock {        /* FIXME: what's with all the unsigned longs? */
     struct _NLock *nextHash;
     struct _NLock *prevHash;
@@ -43,7 +87,7 @@ typedef struct _NLock {        /* FIXME: what's with all the unsigned longs? */
 
     /* used for WATCH command -- FIXME should be a linked list or growable array */
     StoreClient *watchers[STORE_COLLECTION_MAX_WATCHERS]; 
-
+    NFairLock *fairlock; // HACK - gets around API changes for now.
 } NLockStruct;
 
 typedef struct {

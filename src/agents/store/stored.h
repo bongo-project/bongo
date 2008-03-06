@@ -22,6 +22,8 @@
 #ifndef _STORED_H
 #define _STORED_H
 
+#define LOGGERNAME "store"
+
 #include <xpl.h>
 
 XPL_BEGIN_C_LINKAGE
@@ -36,7 +38,6 @@ XPL_BEGIN_C_LINKAGE
 #include <bongojson.h>
 #include <bongocal.h>
 
-#define LOGGERNAME "store"
 #include <logger.h>
 
 /** Store stuff: **/

@@ -240,6 +240,9 @@ _XplServiceMain(int argc, char *argv[])
         return -1;
     }
 
+    // create lock pool
+    StoreInitializeFairLocks();
+
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "store");
     CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
