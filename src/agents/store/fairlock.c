@@ -309,6 +309,33 @@ StoreGetSharedFairLockQuiet(StoreClient *client, NFairLock **lock,
 }
 
 /**
+ * Downgrade an existing Exclusive lock to Shared status 
+ * \param	lock	Reference to the Exlcusive lock we want to become shared
+ * \return		0 if successful
+ */
+int
+StoreDowngradeExclusiveFairLock(NFairLock **lock)
+{
+	NFairLock *l = *lock;
+	int result = 0;
+	
+	XplWaitOnLocalSemaphore(l->access);
+	if (l->writer) {
+		if (l->readers > 0) {
+			// writing and reading at the same time ... bug.
+		}
+		l->writer = 0;
+		l->readers++;
+	} else {
+		// this wasn't an exclusive lock.. bug.
+		result = -1;
+	}
+	FairLockSignalQueueHead(l);
+	XplSignalLocalSemaphore(l->access);
+	return result;
+}
+
+/**
  * Release a fair lock which was gained for read-only use.
  * \param	lock	Reference to the lock we're giving up
  * \return		0 if successful

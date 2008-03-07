@@ -61,13 +61,14 @@ typedef struct _NFairLockPool {
 	NFairLockList *last;
 } NFairLockPool;
 
-void	StoreInitializeFairLocks();
-int		StoreGetExclusiveFairLockQuiet(StoreClient *client, NFairLock **lock,
-                                       uint64_t guid, time_t timeout);
-int		StoreGetSharedFairLockQuiet(StoreClient *client, NFairLock **lock, 
+void StoreInitializeFairLocks();
+int  StoreGetExclusiveFairLockQuiet(StoreClient *client, NFairLock **lock,
                                     uint64_t guid, time_t timeout);
-int		StoreReleaseSharedFairLockQuiet(NFairLock **lock);
-int		StoreReleaseExclusiveFairLockQuiet(NFairLock **lock);
+int  StoreGetSharedFairLockQuiet(StoreClient *client, NFairLock **lock, 
+                                 uint64_t guid, time_t timeout);
+int  StoreReleaseSharedFairLockQuiet(NFairLock **lock);
+int  StoreReleaseExclusiveFairLockQuiet(NFairLock **lock);
+int  StoreDowngradeExclusiveFairLock(NFairLock **lock);
 
 // "normal" locks
 
