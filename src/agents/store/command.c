@@ -2887,7 +2887,12 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
         goto finish;
     }
 
-    errmsg = StoreProcessDocument(client, &info, collection, dstpath, NULL, 0);
+    errmsg = StoreProcessDocument(client, &info, collection, dstpath, 0);
+    if (errmsg) {
+        ccode = ConnWriteStr(client->conn, errmsg);
+        goto finish;
+    }
+    errmsg = StoreIndexDocument(client, &info, collection, NULL, dstpath);
     if (errmsg) {
         ccode = ConnWriteStr(client->conn, errmsg);
         goto finish;
@@ -4982,7 +4987,12 @@ StoreCommandWRITE(StoreClient *client,
     link(tmppath, path); // FIXME : error checking
     unlink(tmppath); // and again :)
 
-    errmsg = StoreProcessDocument(client, &info, collection, path, NULL, linkGuid);
+    errmsg = StoreProcessDocument(client, &info, collection, path, linkGuid);
+    if (errmsg) {
+        ccode = ConnWriteStr(client->conn, errmsg);
+        goto finish;
+    }
+    errmsg = StoreIndexDocument(client, &info, collection, NULL, path);
     if (errmsg) {
         ccode = ConnWriteStr(client->conn, errmsg);
         goto finish;
@@ -5089,7 +5099,11 @@ WriteHelper(StoreClient *client,
         return ConnWriteStr(client->conn, MSG5005DBLIBERR);
     }
 
-    errmsg = StoreProcessDocument(client, info, collection, path, index, linkGuid);
+    errmsg = StoreProcessDocument(client, info, collection, path, linkGuid);
+    if (errmsg) {
+        return ConnWriteStr(client->conn, errmsg);
+    }
+    errmsg = StoreIndexDocument(client, info, collection, index, path);
     if (errmsg) {
         return ConnWriteStr(client->conn, errmsg);
     }

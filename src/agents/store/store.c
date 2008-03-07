@@ -263,12 +263,10 @@ StoreProcessDocument(StoreClient *client,
                      DStoreDocInfo *info,
                      DStoreDocInfo *collection,
                      char *path,
-                     IndexHandle *indexer,
                      uint64_t linkGuid)
 {
     const char *result = NULL;
     DStoreDocInfo conversation;
-    int freeindexer = !indexer;
     void *mark = BongoMemStackPeek(&client->memstack);
 
     /* type-dependent processing */
@@ -276,34 +274,41 @@ StoreProcessDocument(StoreClient *client,
     switch (info->type) {
     case STORE_DOCTYPE_MAIL:
         result = StoreProcessIncomingMail(client, info, path, &conversation, linkGuid);
-        if (result) {
-            goto finish;
+        if (result == NULL) {
+            collection->imapuid = info->imapuid ? info->imapuid : info->guid;
+            if (DStoreSetDocInfo(client->handle, collection)) {
+                result = MSG5005DBLIBERR;
+            }
+            Log(LOG_INFO, "Processed mail with message-id %s", info->data.mail.messageId);
         }
-        collection->imapuid = info->imapuid ? info->imapuid : info->guid;
-        if (DStoreSetDocInfo(client->handle, collection)) {
-            result = MSG5005DBLIBERR;
-            goto finish;
-        }
-        Log(LOG_INFO, "Processed mail with message-id %s", info->data.mail.messageId);
         break;
     case STORE_DOCTYPE_EVENT:
         result = StoreProcessIncomingEvent(client, info, linkGuid);
-        if (result) {
-            goto finish;
-        }
         break;
     default:
         break;
     }
 
+    BongoMemStackPop(&client->memstack, mark);
+
+    return result;
+}
+
+const char *
+StoreIndexDocument(StoreClient *client, 
+                   DStoreDocInfo *info,
+                   DStoreDocInfo *collection,
+                   IndexHandle *indexer,
+                   char *path)
+{
+    const char *result = NULL;
+    int freeindexer = !indexer;
+
     /* Index the document */
 
     if (!indexer) {
         indexer = IndexOpen(client);
-        if (!indexer) {
-            result = MSG4120INDEXLOCKED;
-            goto finish;
-        }
+        if (!indexer) return MSG4120INDEXLOCKED;
     }
     if (IndexDocument(indexer, client, info, path) != 0) {
         result = MSG5007INDEXLIBERR;
@@ -311,9 +316,6 @@ StoreProcessDocument(StoreClient *client,
     if (freeindexer) {
         IndexClose(indexer);
     }
-
-finish:
-    BongoMemStackPop(&client->memstack, mark);
 
     return result;
 }
@@ -738,7 +740,8 @@ ImportIncomingMail(StoreClient *client)
         // Mail is no longer in the temporary file
         FindPathToDocument(client, info.collection, info.guid, tmppath, sizeof(tmppath));
 
-        if (StoreProcessDocument(client, &info, &collinfo, tmppath, index, 0)) {
+        if (StoreProcessDocument(client, &info, &collinfo, tmppath, 0) ||
+            StoreIndexDocument(client, &info, &collinfo, index, tmppath)) {
             /* we were unable to process this message for some reason, so
                let's save it to the side and skip over it */
 

@@ -419,8 +419,14 @@ const char *StoreProcessDocument(StoreClient *client,
                                  DStoreDocInfo *info,
                                  DStoreDocInfo *collection,
                                  char *path,
-                                 IndexHandle *indexer,
                                  uint64_t linkGuid);
+
+const char *
+StoreIndexDocument(StoreClient *client, 
+                   DStoreDocInfo *info,
+                   DStoreDocInfo *collection,
+                   IndexHandle *indexer,
+                   char *path);
 
 int SetParentCollectionIMAPUID(StoreClient *client, 
                                DStoreDocInfo *parent,
