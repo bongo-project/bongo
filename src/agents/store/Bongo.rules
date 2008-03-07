@@ -25,7 +25,6 @@ bongostore_SOURCES =					 \
 	src/agents/store/fairlock.c			 \
 	src/agents/store/guid.c				 \
 	src/agents/store/help.h				 \
-	src/agents/store/lock.c				 \
 	src/agents/store/lock.h				 \
 	src/agents/store/mail.c				 \
 	src/agents/store/mail.h				 \

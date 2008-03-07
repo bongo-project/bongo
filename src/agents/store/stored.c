@@ -289,7 +289,6 @@ _XplServiceMain(int argc, char *argv[])
     XplOpenLocalSemaphore(StoreAgent.guid.semaphore, 0);
     GuidReset();
     XplSignalLocalSemaphore(StoreAgent.guid.semaphore);
-    NLockInit(8000);
 
     XplSignalHandler(SignalHandler);
 

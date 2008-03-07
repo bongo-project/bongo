@@ -868,8 +868,7 @@ cleanup:
     CollectionLockPoolDestroy(&collLocks);
     WatchEventListDestroy(&events);
 
-    StoreReleaseExclusiveLock(client, incLock);
-    StoreReleaseSharedLock(client, incLock);
+    StoreReleaseCollectionLock(client, &incLock);
 
     if (result < 0) {
         Log(LOG_ERROR, "Unable to import mail for store %s: result %d",
@@ -1192,77 +1191,9 @@ finish :
 
 /** lock convenience functions **/
 
-
-int
-StoreGetExclusiveLockQuiet(StoreClient *client, NLockStruct **lock, 
-                           uint64_t doc, time_t timeout)
-{
-    *lock = NULL;
-    if (NLOCK_ACQUIRED != ReadNLockAcquire(lock, &client->storeHash, client->store, 
-                                           doc, timeout / 2))
-    {
-        return -1;
-    }    
-    if (NLOCK_ACQUIRED != PurgeNLockAcquire(*lock, timeout / 2)) {
-        ReadNLockRelease(*lock);
-        return -1;
-    }
-    return 0;
-}
-             
-
-CCode
-StoreGetExclusiveLock(StoreClient *client, NLockStruct **lock,
-                      uint64_t doc, time_t timeout)
-{
-    if (StoreGetExclusiveLockQuiet(client, lock, doc, timeout)) {
-        return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-    }
-    return 0;
-}
-
-CCode
-StoreReleaseExclusiveLock(StoreClient *client, NLockStruct *lock)
-{
-	PurgeNLockRelease(lock);
-	return 0;
-}
-
-CCode
-StoreGetSharedLockQuiet(StoreClient *client, NLockStruct **lock,
-                        uint64_t doc, time_t timeout)
-{
-    *lock = NULL;
-    if (NLOCK_ACQUIRED != ReadNLockAcquire(lock, &client->storeHash, client->store, 
-                                           doc, timeout))
-    {
-        return -1;
-    }
-    return 0;
-}
-
-
-CCode
-StoreGetSharedLock(StoreClient *client, NLockStruct **lock,
-                   uint64_t doc, time_t timeout)
-{
-    if (StoreGetSharedLockQuiet(client, lock, doc, timeout)) {
-        return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-    }
-    return 0;
-}
-
-CCode 
-StoreReleaseSharedLock(StoreClient *client, NLockStruct *lock)
-{
-	return ReadNLockRelease(lock);
-}
-
-
 /* gets an exclusive lock on the collection. 
  */
 
-// FIXME: remove deprecated NLockStruct system
 CCode 
 StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 {
@@ -1278,7 +1209,7 @@ StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 CCode
 StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock)
 {
-	StoreReleaseExclusiveFairLockQuiet(&((*lock)->fairlock));
+	StoreReleaseFairLockQuiet(&((*lock)->fairlock));
 	MemFree(*lock);
 	*lock = NULL;
 	return 0;

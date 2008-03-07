@@ -5,9 +5,10 @@
 /** Watch stuff **/
 
 
-/* adds the client as a watcher of the collection locked by cLock 
-   returns: -1 on failure, 0 o/w
-*/
+/** \internal
+ * Add the client as a watcher of the collection locked by cLock 
+ * returns: -1 on failure, 0 o/w
+ */
 
 int
 StoreWatcherAdd(StoreClient *client,
@@ -24,7 +25,9 @@ StoreWatcherAdd(StoreClient *client,
     return -1;
 }
 
-
+/** \internal
+ * Remove the client as a watcher of the collection
+ */
 int
 StoreWatcherRemove(StoreClient *client,
                    NLockStruct *cLock)
@@ -84,7 +87,7 @@ StoreShowWatcherEvents(StoreClient *client)
     CCode ccode = 0;
     int i;
 
-    ccode = StoreGetCollectionLock(client, &client->watchLock, client->watch.collection);
+    ccode = StoreGetCollectionLock(client, &(client->watchLock), client->watch.collection);
     if (ccode) { 
         return ccode;
     }
@@ -125,8 +128,9 @@ StoreShowWatcherEvents(StoreClient *client)
 
     client->watch.journal.count = 0;
 
-    StoreReleaseExclusiveLock(client, client->watchLock);
     /* we maintain the read lock until we are done processing the current command */
+    // why? StoreDowngradeExclusiveFairLock(&(client->watchLock->fairlock));
+    StoreReleaseCollectionLock(client, &(client->watchLock));
     return ccode;
 }
 

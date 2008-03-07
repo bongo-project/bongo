@@ -371,3 +371,30 @@ StoreReleaseExclusiveFairLockQuiet(NFairLock **lock)
 	*lock = NULL;
 	return 0;
 }
+
+/**
+ * Release a fair lock which could be exclusive or shared.
+ * \param	lock	Reference to the lock we're giving up
+ * \return		0 if successful
+ */
+int
+StoreReleaseFairLockQuiet(NFairLock **lock)
+{
+	NFairLock *l = *lock;
+	
+	XplWaitOnLocalSemaphore(l->access);
+	if (l->writer && l->readers) {
+		// bug - shouldn't have both!
+		l->writer = l->readers = 0;
+	} else if (l->writer) {
+		l->writer = 0;
+	} else if (l->readers) {
+		l->readers--;
+	} else {
+		// no readers or writers - another bug?
+	}
+	FairLockSignalQueueHead(l);
+	XplSignalLocalSemaphore(l->access);
+	*lock = NULL;
+	return 0;
+}

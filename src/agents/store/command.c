@@ -1977,7 +1977,7 @@ StoreCommandLoop(StoreClient *client)
         }
 
         if (client->watchLock) {
-            StoreReleaseSharedLock(client, client->watchLock);
+            StoreReleaseCollectionLock(client, &(client->watchLock));
             client->watchLock = NULL;
         }
 
@@ -3829,7 +3829,7 @@ StoreCommandMIME(StoreClient *client,
         return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
     }
  
-    ccode = StoreGetSharedLock(client, &lock, info.collection, 3000);
+    ccode = StoreGetSharedFairLockQuiet(client, &lock, info.collection, 3000);
     if (ccode) {
         return ccode;
     }
@@ -3862,7 +3862,7 @@ StoreCommandMIME(StoreClient *client,
     }
             
     if (lock) {
-        StoreReleaseSharedLock(client, lock);
+        StoreReleaseSharedFairLockQuiet(&lock);
     }
 
     /* we commit the transaction because MimeGetInfo() might have
@@ -4244,7 +4244,7 @@ StoreCommandREAD(StoreClient *client,
         break;
     }
 
-    ccode = StoreGetSharedLock(client, &lock, info.collection, 3000);
+    ccode = StoreGetSharedFairLockQuiet(client, &lock, info.collection, 3000);
     if (ccode) {
         return ccode;
     }
@@ -4263,7 +4263,9 @@ StoreCommandREAD(StoreClient *client,
     }
 
 finish:
-    StoreReleaseSharedLock(client, lock);
+    if (lock) {
+        StoreReleaseSharedFairLockQuiet(&lock);
+    }
 
     return ccode;
 }

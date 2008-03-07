@@ -22,6 +22,7 @@
 #include <config.h>
 
 #include "stored.h"
+#include "lock.h"
 #include "limits.h"
 #include "index.h"
 #include "lucene-index.h"
@@ -35,7 +36,7 @@ XPL_BEGIN_C_LINKAGE
   
 struct _IndexHandle {
     LuceneIndex *index;
-    NLockStruct *indexLock;
+    NFairLock *indexLock;
     DStoreHandle *dbHandle;
 };
 
@@ -56,14 +57,7 @@ IndexOpen(StoreClient *client)
     // right now we'll just use a big dumb lock.
 
     handle->indexLock = NULL;
-    if (NLOCK_ACQUIRED != ReadNLockAcquire(&handle->indexLock, &client->storeHash,
-                                           (unsigned char *) client->store,
-                                           STORE_DUMMY_INDEXER_GUID, 3000))
-    {
-        return NULL;
-    }
-    if (NLOCK_ACQUIRED != PurgeNLockAcquire(handle->indexLock, 3000)) {
-        ReadNLockRelease(handle->indexLock);
+    if (StoreGetExclusiveFairLockQuiet(client, &(handle->indexLock), STORE_DUMMY_INDEXER_GUID, 3000) != 0) {
         return NULL;
     }
 
@@ -81,8 +75,7 @@ void
 IndexClose(IndexHandle *handle)
 {
     delete handle->index;    
-    PurgeNLockRelease(handle->indexLock);
-    ReadNLockRelease(handle->indexLock);
+    StoreReleaseExclusiveFairLockQuiet(&(handle->indexLock));
 
     MemFree(handle);
 }
