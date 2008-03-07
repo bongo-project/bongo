@@ -171,7 +171,7 @@ FilterAddText(Document *doc, const TCHAR *fieldName, const char *value, bool inc
 }
 
 int
-FilterAddTextWithBoost(Document *doc, const TCHAR *fieldName, const char *value, float boost, bool includeInEverything)
+FilterAddTextWithBoost(Document *doc, const TCHAR *fieldName, const char *value, float_t boost, bool includeInEverything)
 {
     Field *f;
     TCHAR tbuf[TBUF_CHARS + 1];
