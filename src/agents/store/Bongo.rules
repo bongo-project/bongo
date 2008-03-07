@@ -40,6 +40,7 @@ bongostore_SOURCES =					 \
 	src/agents/store/store.c			 \
 	src/agents/store/stored.c			 \
 	src/agents/store/stored.h			 \
+	src/agents/store/watch.c			 \
 	src/agents/store/index.cpp			 \
 	src/agents/store/index.h			 \
 	src/agents/store/lucene-index.h			 \
