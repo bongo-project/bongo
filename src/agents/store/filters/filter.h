@@ -14,7 +14,7 @@ int FilterAddText(Document *doc,
 int FilterAddTextWithBoost(Document *doc, 
                            const TCHAR *fieldName, 
                            const char *value, 
-                           float boost, 
+                           float_t boost, 
                            bool includeInEverything = true);
 int FilterAddKeyword(Document *doc, 
                      const TCHAR *fieldName, 
