@@ -32,28 +32,15 @@ CCode
 StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout)
 {
 	MsgAuthCookie cookie;
-	NLockStruct *lock = NULL;
 	CCode ccode = 0;
     
 	assert(STORE_PRINCIPAL_USER == client->principal.type);
-
-	if (NLOCK_ACQUIRED != ReadNLockAcquire(&lock, NULL, client->principal.name, 
-                                           STORE_ROOT_GUID, 2000))
-		return ConnWriteStr(client->conn, MSG4120USERLOCKED);
-
-	if (NLOCK_ACQUIRED != PurgeNLockAcquire(lock, 2000)) {
-		ReadNLockRelease(lock);
-		return ConnWriteStr(client->conn, MSG4120USERLOCKED);
-	}
 	
 	if (MsgAuthCreateCookie(client->principal.name, &cookie, timeout)) {
-		ccode = ConnWriteF(client->conn, "1000 %.32s\r\n", cookie.token);		
+		ccode = ConnWriteF(client->conn, "1000 %.32s\r\n", cookie.token);
 	} else {
                 ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
 	}
-	
-	PurgeNLockRelease(lock);
-	ReadNLockRelease(lock);
 	
 	return ccode;
 }
@@ -63,29 +50,15 @@ CCode
 StoreCommandCOOKIEDELETE(StoreClient *client, const char *token)
 {
     CCode ccode = 0;
-    NLockStruct *lock = NULL;
 
     assert(STORE_PRINCIPAL_USER == client->principal.type);
-
-    if (NLOCK_ACQUIRED != ReadNLockAcquire(&lock, NULL, client->principal.name, 
-                                           STORE_ROOT_GUID, 2000))
-    {
-        return ConnWriteStr(client->conn, MSG4120USERLOCKED);
-    }
-    if (NLOCK_ACQUIRED != PurgeNLockAcquire(lock, 2000)) {
-        ReadNLockRelease(lock);
-        return ConnWriteStr(client->conn, MSG4120USERLOCKED);
-    }
 
     if (MsgAuthDeleteCookie(client->principal.name, token)) {
         ccode = ConnWriteStr(client->conn, MSG1000OK);
     } else {
         ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
     }
-
-    PurgeNLockRelease(lock);
-    ReadNLockRelease(lock);
-
+    
     return ccode;
 }
 
@@ -133,7 +106,6 @@ CCode
 StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
 {
     CCode ccode;
-    NLockStruct *lock = NULL;
 //    struct sockaddr_in serv;
 
     if (StoreAgent.installMode) {
@@ -157,15 +129,6 @@ StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
         goto finish;
     }
 #endif
-    
-    if (NLOCK_ACQUIRED != ReadNLockAcquire(&lock, NULL, user, STORE_ROOT_GUID, 2000))
-    {
-        return ConnWriteStr(client->conn, MSG4120USERLOCKED);
-    }
-    if (NLOCK_ACQUIRED != PurgeNLockAcquire(lock, 2000)) {
-        ReadNLockRelease(lock);
-        return ConnWriteStr(client->conn, MSG4120USERLOCKED);
-    }
 
     switch (MsgAuthFindCookie(user, token)) {
     case 0:
@@ -181,11 +144,6 @@ StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
     }
 
 finish:
-    if (lock) {
-        PurgeNLockRelease(lock);
-        ReadNLockRelease(lock);
-    }
-
     return ccode;
 }
 
