@@ -215,7 +215,7 @@ ImapCommandStore(void *param)
     ImapSession *session = (ImapSession *)param;
     BOOL purgedMessage = FALSE;
 
-    StartProgressUpdate(session, "Store");
+    StartProgressUpdate(session, NULL);
 
     if ((ccode = HandleStore(session, FALSE, &purgedMessage)) == STATUS_CONTINUE) {
         if (!purgedMessage) {
@@ -235,7 +235,7 @@ ImapCommandUidStore(void *param)
     ImapSession *session = (ImapSession *)param;
     BOOL purgedMessage = FALSE;
     
-    StartProgressUpdate(session, "UID Store");
+    StartProgressUpdate(session, NULL);
     
     memmove(session->command.buffer, session->command.buffer + strlen("UID "), strlen(session->command.buffer + strlen("UID ")) + 1);
     if ((ccode = HandleStore(session, TRUE, &purgedMessage)) == STATUS_CONTINUE) {

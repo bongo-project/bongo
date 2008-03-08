@@ -2355,25 +2355,28 @@ ImapCommandCheck(void *param)
 }
 
 __inline static long
-PurgeDeletedMessages(Connection *storeConn, Connection *clientConn, MessageInformation *message, unsigned long messageCount)
+PurgeDeletedMessages(ImapSession *session, BOOL client_response, MessageInformation *message, unsigned long messageCount)
 {
     long ccode = 0;
     long count;
+    Connection *store = session->store.conn;
+    Connection *client = session->client.conn;
 
     count = messageCount;
 
     while (count > 0) {
+        ProgressUpdate(session);
         if (!(message->flags & STORE_MSG_FLAG_DELETED) || (message->flags & STORE_MSG_FLAG_PURGED)) {
             message--;
             count--;
             continue;
         }
 
-        if (NMAPSendCommandF(storeConn, "PURGE %llx\r\n", message->guid) != -1) {
-            ccode = NMAPReadResponse(storeConn, NULL, 0, 0);
+        if (NMAPSendCommandF(store, "PURGE %llx\r\n", message->guid) != -1) {
+            ccode = NMAPReadResponse(store, NULL, 0, 0);
             if (ccode == 1000) {
-                if (clientConn) {
-                    if (ConnWriteF(clientConn, "* %lu EXPUNGE\r\n", count) != -1) {
+                if (client_response) {
+                    if (ConnWriteF(client, "* %lu EXPUNGE\r\n", count) != -1) {
                         message--;
                         count--;
                         continue;
@@ -2395,21 +2398,24 @@ ImapCommandClose(void *param)
     ImapSession *session = (ImapSession *)param;
     long ccode;
 
+    StartProgressUpdate(session, "Purging deleted messsages");
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if (session->folder.selected.readOnly) {
             FolderDeselect(session);
+            StopProgressUpdate(session);
             return(SendOk(session, "CLOSE"));
         }
         
-        ccode = PurgeDeletedMessages(session->store.conn, 0, &(session->folder.selected.message[session->folder.selected.messageCount - 1]), session->folder.selected.messageCount);
+        ccode = PurgeDeletedMessages(session, FALSE, &(session->folder.selected.message[session->folder.selected.messageCount - 1]), session->folder.selected.messageCount);
 
         FolderDeselect(session);
         if (ccode == STATUS_CONTINUE) {
+            StopProgressUpdate(session);
             return(SendOk(session, "CLOSE"));
         }
     }
+    StopProgressUpdate(session);
     return(SendError(session->client.conn, session->command.tag, "CLOSE", ccode));
-
 }
 
 int
@@ -2418,19 +2424,23 @@ ImapCommandExpunge(void *param)
     ImapSession *session = (ImapSession *)param;
     OpenedFolder *selected = &session->folder.selected;
     long ccode;
+    
+    StartProgressUpdate(session, NULL);
 
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
             ccode = STATUS_READ_ONLY_FOLDER;
             if (!(selected->readOnly)) {
-                if ((ccode = PurgeDeletedMessages(session->store.conn, session->client.conn, &(selected->message[selected->messageCount - 1]), selected->messageCount)) == STATUS_CONTINUE) {
+                if ((ccode = PurgeDeletedMessages(session, TRUE, &(selected->message[selected->messageCount - 1]), selected->messageCount)) == STATUS_CONTINUE) {
                     if ((ccode = MessageListLoad(session->store.conn, selected)) == STATUS_CONTINUE) {
+                        StopProgressUpdate(session);
                         return(SendOk(session, "EXPUNGE"));
                     }
                 }
             }
         }
     }
+    StopProgressUpdate(session);
     return(SendError(session->client.conn, session->command.tag, "EXPUNGE", ccode));
 }
 

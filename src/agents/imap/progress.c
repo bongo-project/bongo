@@ -12,10 +12,12 @@ DoProgressUpdate(ImapSession *session)
 	if (status == NULL) return;
 	status->messages_processed++;
 	if ((now - status->last_update) > 10) {
-		// update the client 
-		ConnWriteF(session->client.conn, 
-		           "* OK - %s (processed %d since last update)\n", 
-		           status->message, status->messages_processed);
+		// update the client - if we have no message, just Flush the output
+		if (status->message) {
+			ConnWriteF(session->client.conn, 
+			           "* OK - %s (processed %d since last update)\n", 
+			           status->message, status->messages_processed);
+		}
 		ConnFlush(session->client.conn);
 		status->last_update = now;
 		status->messages_processed = 0;
