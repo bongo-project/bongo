@@ -286,6 +286,46 @@ ConversationUpdateWithNewMail(DStoreHandle *handle,
     return DStoreSetDocInfo(handle, conversation);
 }
 
+// update a conversation when a member has a new flag set.
+/** \internal
+ * Update a conversation when flags are changed on a member mail
+ * \bug Doesn't work for 'all are' flags, only 'any are': STORE_MSG_FLAG_DELETED, ..JUNK
+ */
+// to fix the 'all are' bugs, we want a counter like .numUnread so that we don't need
+// to walk the list of all conversation members again, which is slow.
+int
+UpdateConversationMemberNewFlag(DStoreHandle *handle,
+                                DStoreDocInfo *conversation,
+                                uint32_t old_flags,
+                                uint32_t new_flags)
+{
+	if (new_flags & STORE_MSG_FLAG_DRAFT) {
+		conversation->data.conversation.sources |= CONVERSATION_SOURCE_DRAFTS;
+	}
+
+	if (new_flags & STORE_MSG_FLAG_SENT) {
+		conversation->data.conversation.sources |= CONVERSATION_SOURCE_SENT;
+	}
+
+	if ((old_flags & STORE_MSG_FLAG_SEEN) && !(new_flags & STORE_MSG_FLAG_SEEN)) {
+		// new mail is marked as unread
+		if (conversation->data.conversation.numUnread == 0)
+			conversation->flags |= STORE_MSG_FLAG_SEEN;
+		
+		conversation->data.conversation.numUnread++;
+	}
+	
+	if (!(old_flags & STORE_MSG_FLAG_SEEN) && (new_flags & STORE_MSG_FLAG_SEEN)) {
+		// new mail is marked as read
+		conversation->data.conversation.numUnread--;
+		
+		if (conversation->data.conversation.numUnread == 0)
+			conversation->flags &= ~STORE_MSG_FLAG_SEEN;
+	}
+
+	return DStoreSetDocInfo(handle, conversation);
+}
+
 
 /* recompute metadata from scratch for the given conversation */
 

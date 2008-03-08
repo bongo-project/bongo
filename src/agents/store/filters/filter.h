@@ -6,6 +6,8 @@
 
 int FilterDocument(StoreClient *client, DStoreDocInfo *info, LuceneIndex *index, char *path);
 
+int AddFlags(Document *doc, DStoreDocInfo *info);
+
 int FilterAddSummaryInfo(Document *doc, DStoreDocInfo *info);
 int FilterAddText(Document *doc, 
                   const TCHAR *fieldName, 

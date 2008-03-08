@@ -87,6 +87,26 @@ IndexOptimize(IndexHandle *handle)
     handle->index->GetIndexWriter()->optimize();
 }
 
+int
+IndexModifyDocumentFlags(IndexHandle *handle, DStoreDocInfo *info)
+{
+    char buf[CONN_BUFSIZE + 1];
+    TCHAR tbuf[CONN_BUFSIZE + 1];
+    
+    snprintf(buf, sizeof(buf), "%016llx", info->guid);
+    lucene_utf8towcs(tbuf, buf, CONN_BUFSIZE);
+    Term *t = new Term(_T("nmap.guid"), tbuf);
+    
+    IndexReader *reader = handle->index->GetIndexReader();
+    TermDocs *list = reader->termDocs(t);
+    list->skipTo(0);
+    
+    Document *doc = reader->document(list->doc());
+    
+    doc->removeFields(_T("nmap.flags"));
+    return AddFlags(doc, info);
+}
+
 
 int
 IndexRemoveDocument(IndexHandle *handle, uint64_t guid)

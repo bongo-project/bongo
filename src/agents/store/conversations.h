@@ -33,6 +33,11 @@ int GetConversation(DStoreHandle *handle,
                     DStoreDocInfo *info,
                     DStoreDocInfo *conversationOut);
 
+int UpdateConversationMemberNewFlag(DStoreHandle *handle,
+                                DStoreDocInfo *conversation,
+                                uint32_t old_flags,
+                                uint32_t new_flags);
+
 int UpdateConversationMetadata(DStoreHandle *handle,
                                DStoreDocInfo *conversation);
 

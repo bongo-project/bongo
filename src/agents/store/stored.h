@@ -250,12 +250,27 @@ typedef struct _StoreClient StoreClient;
 
 #include "lock.h"
 
+typedef struct _TimedMessage {
+	struct _TimedMessage *next;
+	struct timeval time;
+	char *message;
+} TimedMessage;
+
+typedef struct _TimedCommand {
+	TimedMessage *msgs;
+	TimedMessage *lastmsg;
+	char *command;
+	struct timeval start;
+	struct timeval end;
+} TimedCommand;
+
 struct _StoreClient {
     Connection *conn;
     DStoreHandle *handle;
     unsigned int flags;
     BongoMemStack memstack;
     int lockTimeoutMs;
+    TimedCommand *tc;
 
     char buffer[CONN_BUFSIZE + 1];
 

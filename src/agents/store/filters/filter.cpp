@@ -79,6 +79,7 @@ AddFlags(Document *doc, DStoreDocInfo *info)
         && (info->flags & (STORE_MSG_FLAG_JUNK | STORE_MSG_FLAG_DELETED)) == 0) {
         FilterAddKeyword(doc, _T("nmap.flags"), "inbox", FALSE);
     }
+    return 0;
 }
 
 int

@@ -3367,7 +3367,7 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
 
     if (info.type == STORE_DOCTYPE_MAIL && info.conversation != 0) {
         if (DStoreGetDocInfoGuid(client->handle, info.conversation, &conversation) == 1) {
-            if (UpdateConversationMetadata(client->handle, &conversation)) {
+            if (UpdateConversationMemberNewFlag(client->handle, &conversation, oldFlags, change)) {
                 return ConnWriteStr(client->conn, MSG5005DBLIBERR);
             }
         }
@@ -3383,7 +3383,7 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
         ccode = ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
         goto finish;
     }
-    if (IndexDocument(index, client, &info, NULL) != 0) {
+    if (IndexModifyDocumentFlags(index, &info) != 0) {
         ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
         goto finish;
     }
