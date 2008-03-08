@@ -1098,6 +1098,7 @@ ConnReadToAllocatedBuffer(Connection *c, char **buffer, unsigned long *bufferSiz
 			// didn't find the end of the line
 			data_consumed += ConnAppendToAllocatedBuffer(c->receive.read, 
 				(c->receive.write - c->receive.read), buffer, data_consumed, bufferSize);
+			c->receive.read += data_consumed;
 		}
 	}
 	
