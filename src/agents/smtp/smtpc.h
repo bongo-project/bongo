@@ -18,6 +18,7 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// Parts Copyright (C) 2007-2008 Patrick Felt. See COPYING for details.
 
 #ifndef _SMTPC_H
 #define _SMTPC_H
@@ -31,7 +32,7 @@
 
 #include "smtp.h"
 
-#define AGENT_NAME "smtpd_o"
+#define AGENT_NAME "smtpd_c"
 
 typedef struct {
     Connection *conn;
@@ -63,7 +64,7 @@ typedef struct _SMTPAgentGlobals {
 typedef struct {
     unsigned char To[MAXEMAILNAMESIZE+1];
     unsigned char ORecip[MAXEMAILNAMESIZE+1];
-    unsigned char SortField[MAXEMAILNAMESIZE+2]; /* will be formatted domain.com\0emailaddr -- used for comparisons and sorting */
+    unsigned char SortField[MAXEMAILNAMESIZE+2]; /* will be formatted domain.com@emailaddr -- used for comparisons and sorting */
     unsigned char *localPart; /* pointer into the SortField for the beginning of the localPart */
     size_t ToLen; /* just so we don't have to calculate the length a bunch of times */
     unsigned long Flags;

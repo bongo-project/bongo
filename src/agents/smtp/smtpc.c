@@ -18,6 +18,8 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// Parts Copyright (C) 2007-2008 Alex Hudson. See COPYING for details.
+// Parts Copyright (C) 2007-2008 Patrick Felt. See COPYING for details.
 
 #include <config.h>
 
@@ -182,13 +184,13 @@ DeliverMessage(SMTPClient *Queue, SMTPClient *Remote, RecipStruct *Recip) {
 
 beginConversation:
     Extensions = 0;
-    ConnWriteF(Remote->conn, "EHLO %s\r\n", "FIXME");
+    ConnWriteF(Remote->conn, "EHLO %s\r\n", BongoGlobals.hostname);
     ConnFlush(Remote->conn);
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
 
     if (Remote->line[0] != '2' ) {
         /* the remote server doesn't seem to support ehlo.  they should upgrade to bongo! */
-        ConnWriteF(Remote->conn, "HELO %s\r\n", "FIXME");
+        ConnWriteF(Remote->conn, "HELO %s\r\n", BongoGlobals.hostname);
         ConnFlush(Remote->conn);
         ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
         if (atoi(Remote->line) != 250) {
