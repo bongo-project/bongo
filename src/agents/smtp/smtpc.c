@@ -648,6 +648,10 @@ SMTPAgentServer(void *ignored)
 static BOOL 
 ReadConfiguration(void)
 {
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        return FALSE;
+    }
+
     return TRUE;
 }
 
