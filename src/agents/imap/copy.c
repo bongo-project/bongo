@@ -24,35 +24,11 @@
 #include "time.h"
 #include "imapd.h"
 
-typedef struct _CopyRangeStatusUpdate {
-	time_t last_update;
-	int messages_processed;
-	ImapSession *session;
-} CopyRangeStatusUpdate;
-
-// Update our internal status and warn the client if it has been waiting
-// for too long since it last heard from us.
-void
-CopyMessageRangeDoStatusUpdate(CopyRangeStatusUpdate *status)
-{
-	time_t now = time(0);
-	
-	status->messages_processed++;
-	if ((now - status->last_update) > 10) {
-		// update the client 
-		ConnWriteF(status->session->client.conn, 
-		           "* OK - Copied %d messages so far\n", status->messages_processed);
-		ConnFlush(status->session->client.conn);
-		status->last_update = now;
-		status->messages_processed = 0;
-	}
-}
-
 __inline static long
-CopyMessageRangeToTarget(Connection *storeConn, MessageInformation *message, 
-                         unsigned long rangeCount, uint64_t target, 
-                         CopyRangeStatusUpdate *status)
+CopyMessageRangeToTarget(ImapSession *session, MessageInformation *message, 
+                         unsigned long rangeCount, uint64_t target)
 {
+    Connection *storeConn = session->store.conn;
     long ccode;
     unsigned long count;
     count = rangeCount; 
@@ -63,7 +39,7 @@ CopyMessageRangeToTarget(Connection *storeConn, MessageInformation *message,
                 count--;
                 if (count > 0) {
                     message++;
-                    CopyMessageRangeDoStatusUpdate(status);
+                    DoProgressUpdate(session);
                     continue;
                 }
 
@@ -80,7 +56,7 @@ CopyMessageRangeToTarget(Connection *storeConn, MessageInformation *message,
 
 
 __inline static long
-CopyMessageSet(ImapSession *session, char *messageSet, uint64_t target, BOOL byUid, CopyRangeStatusUpdate *status)
+CopyMessageSet(ImapSession *session, char *messageSet, uint64_t target, BOOL byUid)
 {
     long ccode;
     char *nextRange;
@@ -91,9 +67,9 @@ CopyMessageSet(ImapSession *session, char *messageSet, uint64_t target, BOOL byU
     do {
         ccode = GetMessageRange(session->folder.selected.message, session->folder.selected.messageCount, &(nextRange), &rangeStart, &rangeEnd, byUid);
         if (ccode == STATUS_CONTINUE) {
-            ccode = CopyMessageRangeToTarget(session->store.conn, 
+            ccode = CopyMessageRangeToTarget(session, 
                         &(session->folder.selected.message[rangeStart]), 
-                        rangeEnd - rangeStart + 1, target, status);
+                        rangeEnd - rangeStart + 1, target);
             if (ccode == STATUS_CONTINUE) {
                 continue;
             }
@@ -116,11 +92,8 @@ HandleCopy(ImapSession *session, BOOL ByUID)
     FolderPath     targetPath;
     long ccode;
     char *ptr2;
-    CopyRangeStatusUpdate status;
 
-    status.last_update = time(0);
-    status.messages_processed = 0;
-    status.session = session;
+    StartProgressUpdate(session, "Copied UID range");
     
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -130,7 +103,7 @@ HandleCopy(ImapSession *session, BOOL ByUID)
                 if ((ccode = GetPathArgument(session, ptr2, &ptr2, &targetPath, FALSE)) == STATUS_CONTINUE) {
                     if ((ccode = FolderListLoad(session)) == STATUS_CONTINUE) {
                         if ((ccode = FolderGetByName(session, targetPath.name, &targetFolder)) == STATUS_CONTINUE) {
-                            ccode = CopyMessageSet(session, messageSet, targetFolder->guid, ByUID, &status);
+                            ccode = CopyMessageSet(session, messageSet, targetFolder->guid, ByUID);
                         }
                     }
                     FreePathArgument(&targetPath);
@@ -139,6 +112,7 @@ HandleCopy(ImapSession *session, BOOL ByUID)
             }
         }
     }
+    StopProgressUpdate(session);
     return(ccode);
 }
 

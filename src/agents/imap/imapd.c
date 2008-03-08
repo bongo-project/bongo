@@ -3169,6 +3169,7 @@ HandleConnection(void *param)
     unsigned char *ptr;
     ProtocolCommand *localCommand;
 
+    session->progress = NULL;
     if (ConnNegotiate(session->client.conn, Imap.server.ssl.context)) {
         if (session->client.conn->ssl.enable == FALSE) {
             LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);

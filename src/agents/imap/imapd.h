@@ -37,6 +37,12 @@ typedef struct {
     unsigned long bodySize;
 } MessageInformation;
 
+typedef struct _ProgressUpdate {
+	time_t last_update;
+	int messages_processed;
+	char *message;
+} ProgressUpdate;
+
 #include "store.h"
 #include "fetch.h"
 #include "rfc822parse.h"
@@ -307,6 +313,7 @@ typedef struct {
     } user;
 
     FolderListInformation folder;
+    ProgressUpdate          *progress;                      /* update client for long tasks      */
 } ImapSession;
 
 typedef struct {
@@ -399,6 +406,10 @@ long FolderListLoad(ImapSession *session);
 long FolderListInitialize(ImapSession *session);
 long MessageListLoad(Connection *conn, OpenedFolder *selected);
 
+/* progress.c */
+void DoProgressUpdate(ImapSession *session);
+void StartProgressUpdate(ImapSession *session, char *message);
+void StopProgressUpdate(ImapSession *session);
 
 void CommandFetchCleanup(void);
 BOOL CommandFetchInit(void);

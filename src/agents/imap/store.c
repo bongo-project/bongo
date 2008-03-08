@@ -95,13 +95,13 @@ CommandStoreCleanup()
 }
 
 __inline static long
-DoStoreForMessage(Connection *clientConn, Connection *storeConn, MessageInformation *message, unsigned long messageId, char *actionString, unsigned long flags, BOOL silent, BOOL byUid)
+DoStoreForMessage(ImapSession *session, MessageInformation *message, unsigned long messageId, char *actionString, unsigned long flags, BOOL silent, BOOL byUid)
 {
     long ccode;
 
-    if ((ccode = StoreMessageFlag(storeConn, message->guid, actionString, flags, &(message->flags))) == STATUS_CONTINUE) {
+    if ((ccode = StoreMessageFlag(session->store.conn, message->guid, actionString, flags, &(message->flags))) == STATUS_CONTINUE) {
         if (!silent) {
-            ccode = SendFetchFlag(clientConn, messageId, message->flags, byUid ? message->uid: 0);
+            ccode = SendFetchFlag(session->client.conn, messageId, message->flags, byUid ? message->uid: 0);
         }
     }
     return(ccode);
@@ -109,7 +109,7 @@ DoStoreForMessage(Connection *clientConn, Connection *storeConn, MessageInformat
 
 
 __inline static long
-DoStoreForMessageRange(Connection *clientConn, Connection *storeConn, MessageInformation *message, unsigned long rangeStart, unsigned long rangeCount, char *actionString, unsigned long flags, BOOL silent, BOOL byUid, BOOL *purgedMessage)
+DoStoreForMessageRange(ImapSession *session, MessageInformation *message, unsigned long rangeStart, unsigned long rangeCount, char *actionString, unsigned long flags, BOOL silent, BOOL byUid, BOOL *purgedMessage)
 {
     unsigned long messageId;
     unsigned long count;
@@ -120,9 +120,10 @@ DoStoreForMessageRange(Connection *clientConn, Connection *storeConn, MessageInf
 
     for (;;) {
         if (!(message->flags & STORE_MSG_FLAG_PURGED)) {
-            if ((ccode = DoStoreForMessage(clientConn, storeConn, message, messageId, actionString, flags, silent, byUid)) == STATUS_CONTINUE) {
+            if ((ccode = DoStoreForMessage(session, message, messageId, actionString, flags, silent, byUid)) == STATUS_CONTINUE) {
                 count--;
                 if (count > 0) {
+                    DoProgressUpdate(session);
                     message++;
                     messageId++;
                     continue;
@@ -145,7 +146,7 @@ DoStoreForMessageRange(Connection *clientConn, Connection *storeConn, MessageInf
 }
 
 __inline static long
-DoStoreForMessageSet(char *messageSet, unsigned long Flags, BOOL Silent, BOOL ByUID, char *actionString, Connection *clientConn, Connection *storeConn, MessageInformation *message, unsigned long messageCount, BOOL *purgedMessage)
+DoStoreForMessageSet(ImapSession *session, char *messageSet, unsigned long Flags, BOOL Silent, BOOL ByUID, char *actionString, MessageInformation *message, unsigned long messageCount, BOOL *purgedMessage)
 {
     char *nextRange;
     unsigned long rangeStart;
@@ -156,7 +157,7 @@ DoStoreForMessageSet(char *messageSet, unsigned long Flags, BOOL Silent, BOOL By
 
     do {
         if ((ccode = GetMessageRange(message, messageCount, &(nextRange), &rangeStart, &rangeEnd, ByUID)) == STATUS_CONTINUE) {
-            if ((ccode = DoStoreForMessageRange(clientConn, storeConn, &(message[rangeStart]), rangeStart, rangeEnd - rangeStart + 1, actionString, Flags, Silent, ByUID, purgedMessage)) == STATUS_CONTINUE) {
+            if ((ccode = DoStoreForMessageRange(session, &(message[rangeStart]), rangeStart, rangeEnd - rangeStart + 1, actionString, Flags, Silent, ByUID, purgedMessage)) == STATUS_CONTINUE) {
                 continue;
             }
         }
@@ -192,7 +193,7 @@ HandleStore(ImapSession *session, BOOL ByUID, BOOL *purgedMessage)
                             if ((ccode = ParseStoreFlags(flagString, &flags)) == STATUS_CONTINUE) {
                                 ccode = STATUS_INVALID_ARGUMENT;
                                 if ((keywordId = BongoKeywordBegins(Imap.command.store.typeIndex, type)) != -1) {
-                                    ccode = DoStoreForMessageSet(messageSet, flags, StoreCommandTypes[keywordId].silent, ByUID, StoreCommandTypes[keywordId].nmapCommand, session->client.conn, session->store.conn, session->folder.selected.message, session->folder.selected.messageCount, purgedMessage);
+                                    ccode = DoStoreForMessageSet(session, messageSet, flags, StoreCommandTypes[keywordId].silent, ByUID, StoreCommandTypes[keywordId].nmapCommand, session->folder.selected.message, session->folder.selected.messageCount, purgedMessage);
                                 }
                             }
                             MemFree(flagString);
@@ -214,12 +215,16 @@ ImapCommandStore(void *param)
     ImapSession *session = (ImapSession *)param;
     BOOL purgedMessage = FALSE;
 
+    StartProgressUpdate(session, "Store");
+
     if ((ccode = HandleStore(session, FALSE, &purgedMessage)) == STATUS_CONTINUE) {
         if (!purgedMessage) {
+            StopProgressUpdate(session);
             return(SendOk(session, "STORE"));
         }
         ccode = STATUS_REQUESTED_MESSAGE_NO_LONGER_EXISTS;
     }
+    StopProgressUpdate(session);
     return(SendError(session->client.conn, session->command.tag, "STORE", ccode));
 }
 
@@ -229,13 +234,17 @@ ImapCommandUidStore(void *param)
     long ccode;
     ImapSession *session = (ImapSession *)param;
     BOOL purgedMessage = FALSE;
-
+    
+    StartProgressUpdate(session, "UID Store");
+    
     memmove(session->command.buffer, session->command.buffer + strlen("UID "), strlen(session->command.buffer + strlen("UID ")) + 1);
     if ((ccode = HandleStore(session, TRUE, &purgedMessage)) == STATUS_CONTINUE) {
         if (!purgedMessage) {
+            StopProgressUpdate(session);
             return(SendOk(session, "UID STORE"));
         }
         ccode = STATUS_REQUESTED_MESSAGE_NO_LONGER_EXISTS;
     }
+    StopProgressUpdate(session);
     return(SendError(session->client.conn, session->command.tag, "UID STORE", ccode));
 }
