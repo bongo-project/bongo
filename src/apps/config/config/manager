@@ -2,6 +2,7 @@
   "agents": [
    	{ "name": "bongoqueue", "pri": 1, "enabled": true },
 	{ "name": "bongosmtp", "pri": 10, "enabled": true },
+	{ "name": "bongosmtpc", "pri": 10, "enabled": true },
 	{ "name": "bongoantispam", "pri": 5, "enabled": true },
 	{ "name": "bongoavirus", "pri": 5, "enabled": true },
 	{ "name": "bongocollector", "pri": 7, "enabled": true },
