@@ -1025,7 +1025,7 @@ ConnAppendToAllocatedBuffer(const char *source, const long size, char **buffer,
 	}
 	
 	// is the buffer big enough to copy in the new data?
-	if ((buffersize - start_of_buffer) < size) {
+	if ((*buffersize - start_of_buffer) < size) {
 		char *new_buffer;
 		long new_size;
 		
