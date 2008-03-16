@@ -123,7 +123,6 @@ DoStoreForMessageRange(ImapSession *session, MessageInformation *message, unsign
             if ((ccode = DoStoreForMessage(session, message, messageId, actionString, flags, silent, byUid)) == STATUS_CONTINUE) {
                 count--;
                 if (count > 0) {
-                    DoProgressUpdate(session);
                     message++;
                     messageId++;
                     continue;
@@ -214,17 +213,18 @@ ImapCommandStore(void *param)
     long ccode;
     ImapSession *session = (ImapSession *)param;
     BOOL purgedMessage = FALSE;
+    void *BusyHandle;
 
-    StartProgressUpdate(session, NULL);
+    BusyHandle = StartBusy(session);
 
     if ((ccode = HandleStore(session, FALSE, &purgedMessage)) == STATUS_CONTINUE) {
         if (!purgedMessage) {
-            StopProgressUpdate(session);
+            StopBusy(BusyHandle);
             return(SendOk(session, "STORE"));
         }
         ccode = STATUS_REQUESTED_MESSAGE_NO_LONGER_EXISTS;
     }
-    StopProgressUpdate(session);
+    StopBusy(BusyHandle);
     return(SendError(session->client.conn, session->command.tag, "STORE", ccode));
 }
 
@@ -234,17 +234,18 @@ ImapCommandUidStore(void *param)
     long ccode;
     ImapSession *session = (ImapSession *)param;
     BOOL purgedMessage = FALSE;
+    void *BusyHandle;
     
-    StartProgressUpdate(session, NULL);
+    BusyHandle = StartBusy(session);
     
     memmove(session->command.buffer, session->command.buffer + strlen("UID "), strlen(session->command.buffer + strlen("UID ")) + 1);
     if ((ccode = HandleStore(session, TRUE, &purgedMessage)) == STATUS_CONTINUE) {
         if (!purgedMessage) {
-            StopProgressUpdate(session);
+            StopBusy(BusyHandle);
             return(SendOk(session, "UID STORE"));
         }
         ccode = STATUS_REQUESTED_MESSAGE_NO_LONGER_EXISTS;
     }
-    StopProgressUpdate(session);
+    StopBusy(BusyHandle);
     return(SendError(session->client.conn, session->command.tag, "UID STORE", ccode));
 }

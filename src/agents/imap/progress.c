@@ -1,47 +1,59 @@
 #include "imapd.h"
 #include <time.h>
 
-// Update our internal status and warn the client if it has been waiting
-// for too long since it last heard from us.
+/* traverse the global list and send oks to everyone */
 void
-DoProgressUpdate(ImapSession *session)
+DoUpdate(void)
 {
-	ProgressUpdate *status = session->progress;
-	time_t now = time(0);
-	
-	if (status == NULL) return;
-	status->messages_processed++;
-	if ((now - status->last_update) > 10) {
-		// update the client - if we have no message, just Flush the output
-		if (status->message) {
-			ConnWriteF(session->client.conn, 
-			           "* OK - %s (processed %d since last update)\n", 
-			           status->message, status->messages_processed);
-		}
-		ConnFlush(session->client.conn);
-		status->last_update = now;
-		status->messages_processed = 0;
-	}
+    BongoList *cur = Imap.list_Busy;
+    ImapSession *session;
+
+    XplWaitOnLocalSemaphore(Imap.sem_Busy);
+    while(cur) {
+        session = (ImapSession *)cur->data;
+        ConnWriteStr(session->client.conn, "* OK - Still Busy\r\n");
+        ConnFlush(session->client.conn);
+        cur = cur->next;
+    }
+    XplSignalLocalSemaphore(Imap.sem_Busy);
 }
 
-void
-StartProgressUpdate(ImapSession *session, char *message)
+void *
+StartBusy(ImapSession *session)
 {
-	ProgressUpdate *p = MemMalloc(sizeof(ProgressUpdate));
-	
-	if (p == NULL) return;
-	
-	p->last_update = time(0);
-	p->messages_processed = 0;
-	p->message = message;
-	session->progress = p;
+    XplWaitOnLocalSemaphore(Imap.sem_Busy);
+
+    /* add ourselves to the list and return the pointer */
+    Imap.list_Busy = BongoListPrepend(Imap.list_Busy, session);
+    XplSignalLocalSemaphore(Imap.sem_Busy);
+
+    return Imap.list_Busy;
 }
 
+/* this function takes the handle returned from StartProgressUpdate */
 void
-StopProgressUpdate(ImapSession *session)
+StopBusy(void *handle)
 {
-	if (session->progress == NULL) return;
-	
-	MemFree(session->progress);
-	session->progress = NULL;
+    BongoList *me = (BongoList *)handle;
+
+    XplWaitOnLocalSemaphore(Imap.sem_Busy);
+    /* unlink me */
+    if (me->prev || me->next) {
+        if (me->prev) {
+            me->prev->next = me->next;
+        }
+
+        if (me->next) {
+            me->next->prev = me->prev;
+        }
+    } else {
+        /* i was the last item in the array.  null it */
+        Imap.list_Busy = NULL;
+    }
+
+    /* free me */
+    MemFree(me);
+
+    XplSignalLocalSemaphore(Imap.sem_Busy);
+    return;
 }

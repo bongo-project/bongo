@@ -2397,12 +2397,13 @@ ImapCommandClose(void *param)
 {
     ImapSession *session = (ImapSession *)param;
     long ccode;
+    void *BusyHandle;
 
-    StartProgressUpdate(session, "Purging deleted messsages");
+    BusyHandle = StartBusy(session);
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if (session->folder.selected.readOnly) {
             FolderDeselect(session);
-            StopProgressUpdate(session);
+            StopBusy(BusyHandle);
             return(SendOk(session, "CLOSE"));
         }
         
@@ -2410,11 +2411,11 @@ ImapCommandClose(void *param)
 
         FolderDeselect(session);
         if (ccode == STATUS_CONTINUE) {
-            StopProgressUpdate(session);
+            StopBusy(BusyHandle);
             return(SendOk(session, "CLOSE"));
         }
     }
-    StopProgressUpdate(session);
+    StopBusy(BusyHandle);
     return(SendError(session->client.conn, session->command.tag, "CLOSE", ccode));
 }
 
@@ -2424,8 +2425,9 @@ ImapCommandExpunge(void *param)
     ImapSession *session = (ImapSession *)param;
     OpenedFolder *selected = &session->folder.selected;
     long ccode;
+    void *BusyHandle;
     
-    StartProgressUpdate(session, NULL);
+    BusyHandle = StartBusy(session);
 
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -2433,14 +2435,14 @@ ImapCommandExpunge(void *param)
             if (!(selected->readOnly)) {
                 if ((ccode = PurgeDeletedMessages(session, TRUE, &(selected->message[selected->messageCount - 1]), selected->messageCount)) == STATUS_CONTINUE) {
                     if ((ccode = MessageListLoad(session->store.conn, selected)) == STATUS_CONTINUE) {
-                        StopProgressUpdate(session);
+                        StopBusy(BusyHandle);
                         return(SendOk(session, "EXPUNGE"));
                     }
                 }
             }
         }
     }
-    StopProgressUpdate(session);
+    StopBusy(BusyHandle);
     return(SendError(session->client.conn, session->command.tag, "EXPUNGE", ccode));
 }
 
@@ -3413,6 +3415,10 @@ InitializeImapGlobals()
     Imap.exiting = FALSE;
     Imap.logHandle = NULL;
 
+    /* Initialize the Busy List and Semaphore */
+    Imap.list_Busy = NULL;
+    XplOpenLocalSemaphore(Imap.sem_Busy, 1);
+
     /* Global allocations */
     BongoKeywordIndexCreateFromTable(Imap.command.index, ImapProtocolCommands, .name, TRUE);
     if (Imap.command.index) {
@@ -3598,6 +3604,15 @@ IMAPServer(void *unused)
     XplSetThreadGroupID(oldTGID);
 
     return;
+}
+
+static void
+BusyThread(void *unused)
+{
+    while (!Imap.exiting) {
+        DoUpdate();
+        XplDelay(10000);
+    }
 }
 
 static void 
@@ -3816,6 +3831,9 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf("bongoimap: Could not drop to unprivileged user '%s', exiting\n", MsgGetUnprivilegedUser());
         return 1;
     }
+
+    /* start the busy thread */
+    XplBeginCountedThread(&id, BusyThread, IMAP_STACK_SIZE, NULL, ccode, Imap.server.active);
 
     XplStartMainThread(PRODUCT_SHORT_NAME, &id, IMAPServer, 8192, NULL, ccode);
 

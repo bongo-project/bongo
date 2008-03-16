@@ -383,6 +383,9 @@ typedef struct {
         char postmaster[MAXEMAILNAMESIZE + 1];
     } server;
 
+    BongoList *list_Busy;      /* Singly linked list of sessions that we should update every 10 seconds */
+    XplSemaphore sem_Busy;      /* Semaphore protecting the busy list */
+    
     void *logHandle;
     BOOL exiting;
 } ImapGlobal;
@@ -407,9 +410,9 @@ long FolderListInitialize(ImapSession *session);
 long MessageListLoad(Connection *conn, OpenedFolder *selected);
 
 /* progress.c */
-void DoProgressUpdate(ImapSession *session);
-void StartProgressUpdate(ImapSession *session, char *message);
-void StopProgressUpdate(ImapSession *session);
+void DoUpdate(void);
+void *StartBusy(ImapSession *session);
+void StopBusy(void *handle);
 
 void CommandFetchCleanup(void);
 BOOL CommandFetchInit(void);

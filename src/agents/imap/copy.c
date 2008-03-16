@@ -39,7 +39,6 @@ CopyMessageRangeToTarget(ImapSession *session, MessageInformation *message,
                 count--;
                 if (count > 0) {
                     message++;
-                    DoProgressUpdate(session);
                     continue;
                 }
 
@@ -92,8 +91,9 @@ HandleCopy(ImapSession *session, BOOL ByUID)
     FolderPath     targetPath;
     long ccode;
     char *ptr2;
+    void *BusyHandle;
 
-    StartProgressUpdate(session, "Copied UID range");
+    BusyHandle = StartBusy(session);
     
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -112,7 +112,7 @@ HandleCopy(ImapSession *session, BOOL ByUID)
             }
         }
     }
-    StopProgressUpdate(session);
+    StopBusy(BusyHandle);
     return(ccode);
 }
 
