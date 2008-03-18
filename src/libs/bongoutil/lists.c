@@ -18,6 +18,7 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  ****************************************************************************/
+// (C) 2008 Patrick Felt
 
 #include <config.h>
 #include <xpl.h>
@@ -158,6 +159,34 @@ BongoSListLength(BongoSList *slist)
     return i;
 }
 
+BOOL
+BongoSListDelete(BongoSList *list, void *data)
+{
+    BongoSList *cur=list;
+    BongoSList *prev=NULL;
+    BOOL result=FALSE;
+
+    if (!list) {
+        return result;
+    }
+
+    while (cur) {
+        if (cur->data == data) {
+            result=TRUE;
+            /* unlink this item */
+            if (prev) {
+                prev->next = cur->next;
+            }
+
+            MemFree(cur);
+            break;
+        }
+        prev=cur;
+        cur=cur->next;
+    }
+
+    return result;
+}
 
 BongoList * 
 BongoListCopy(BongoList *list)
@@ -297,4 +326,34 @@ BongoListLength(BongoList *list)
         list = list->next;
     }
     return i;
+}
+
+BOOL
+BongoListDelete(BongoList *list, void *data)
+{
+    BOOL result=FALSE;
+    BongoList *cur=list;
+
+    if (!list) {
+        return result;
+    }
+
+    while (cur) {
+        if (cur->data == data) {
+            result=TRUE;
+            /* unlink this item */
+            if (cur->prev) {
+                cur->prev->next = cur->next;
+            }
+
+            if (cur->next) {
+                cur->next->prev = cur->prev;
+            }
+            MemFree(cur);
+            break;
+        }
+        cur = cur->next;
+    }
+
+    return result;
 }
