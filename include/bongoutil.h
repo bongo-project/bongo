@@ -332,7 +332,7 @@ BongoList *BongoListReverse(BongoList *list);
 void BongoListFree(BongoList *list);
 void BongoListFreeDeep(BongoList *list);
 int BongoListLength(BongoList *list);
-BOOL BongoListDelete(BongoList *list, void *data);
+BongoList *BongoListDelete(BongoList *list, void *data, BOOL deep);
 
 BongoSList *BongoSListCopy(BongoSList *slist);
 BongoSList *BongoSListAppend(BongoSList *slist, void *data);
@@ -342,7 +342,7 @@ BongoSList *BongoSListReverse(BongoSList *slist);
 void BongoSListFree(BongoSList *slist);
 void BongoSListFreeDeep(BongoSList *slist);
 int BongoSListLength(BongoSList *slist);
-BOOL BongoSListDelete(BongoSList *list, void *data);
+BongoSList *BongoSListDelete(BongoSList *list, void *data, BOOL deep);
 
 /** end lists.c **/
 

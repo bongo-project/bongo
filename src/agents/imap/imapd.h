@@ -411,8 +411,8 @@ long MessageListLoad(Connection *conn, OpenedFolder *selected);
 
 /* progress.c */
 void DoUpdate(void);
-void *StartBusy(ImapSession *session);
-void StopBusy(void *handle);
+void StartBusy(ImapSession *session, char *Message);
+void StopBusy(ImapSession *session);
 
 void CommandFetchCleanup(void);
 BOOL CommandFetchInit(void);

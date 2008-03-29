@@ -91,9 +91,8 @@ HandleCopy(ImapSession *session, BOOL ByUID)
     FolderPath     targetPath;
     long ccode;
     char *ptr2;
-    void *BusyHandle;
 
-    BusyHandle = StartBusy(session);
+    StartBusy(session, "* OK - Copied UID range");
     
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -112,7 +111,7 @@ HandleCopy(ImapSession *session, BOOL ByUID)
             }
         }
     }
-    StopBusy(BusyHandle);
+    StopBusy(session);
     return(ccode);
 }
 

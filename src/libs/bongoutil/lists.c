@@ -159,12 +159,12 @@ BongoSListLength(BongoSList *slist)
     return i;
 }
 
-BOOL
-BongoSListDelete(BongoSList *list, void *data)
+BongoSList *
+BongoSListDelete(BongoSList *list, void *data, BOOL deep)
 {
+    BongoSList *result=list;
     BongoSList *cur=list;
     BongoSList *prev=NULL;
-    BOOL result=FALSE;
 
     if (!list) {
         return result;
@@ -172,12 +172,20 @@ BongoSListDelete(BongoSList *list, void *data)
 
     while (cur) {
         if (cur->data == data) {
-            result=TRUE;
+            if (cur == list) {
+                /* the item we are deleting is the first in the list.  i need
+                * to reset the head of the list */
+                result = list->next;
+            }
+
             /* unlink this item */
             if (prev) {
                 prev->next = cur->next;
             }
 
+            if (deep) {
+                MemFree(cur->data);
+            }
             MemFree(cur);
             break;
         }
@@ -328,10 +336,10 @@ BongoListLength(BongoList *list)
     return i;
 }
 
-BOOL
-BongoListDelete(BongoList *list, void *data)
+BongoList *
+BongoListDelete(BongoList *list, void *data, BOOL deep)
 {
-    BOOL result=FALSE;
+    BongoList *result=list;
     BongoList *cur=list;
 
     if (!list) {
@@ -340,14 +348,24 @@ BongoListDelete(BongoList *list, void *data)
 
     while (cur) {
         if (cur->data == data) {
-            result=TRUE;
+            if (cur == list) {
+                /* the item we are deleting is the first in the list. i need
+                 * to reset the head of the list */
+                result = cur->next;
+            }
+
             /* unlink this item */
+            if (cur->next) {
+                cur->next->prev = cur->prev;
+            }
+
             if (cur->prev) {
                 cur->prev->next = cur->next;
             }
 
-            if (cur->next) {
-                cur->next->prev = cur->prev;
+            /* free the memory */
+            if (deep) {
+                MemFree(cur->data);
             }
             MemFree(cur);
             break;

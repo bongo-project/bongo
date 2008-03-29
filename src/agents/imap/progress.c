@@ -1,3 +1,5 @@
+// Parts Copyright (C) 2008 Patrick Felt. See COPYING for details.
+// Parts Copyright (C) 2008 Alex Hudson. See COPYING for details.
 #include "imapd.h"
 #include <time.h>
 
@@ -5,55 +7,59 @@
 void
 DoUpdate(void)
 {
-    BongoList *cur = Imap.list_Busy;
+    BongoList *cur;
     ImapSession *session;
+    ProgressUpdate *update;
 
     XplWaitOnLocalSemaphore(Imap.sem_Busy);
+    cur = Imap.list_Busy;
     while(cur) {
         session = (ImapSession *)cur->data;
-        ConnWriteStr(session->client.conn, "* OK - Still Busy\r\n");
+        update = session->progress;
+        if (update->message) {
+            ConnWriteF(session->client.conn, "%s\r\n", update->message);
+        }
         ConnFlush(session->client.conn);
         cur = cur->next;
     }
     XplSignalLocalSemaphore(Imap.sem_Busy);
 }
 
-void *
-StartBusy(ImapSession *session)
+void
+StartBusy(ImapSession *session, char *Message)
 {
-    XplWaitOnLocalSemaphore(Imap.sem_Busy);
+    ProgressUpdate *p = MemMalloc(sizeof(ProgressUpdate));
+    if (p == NULL) {
+        return;
+    }
 
-    /* add ourselves to the list and return the pointer */
+    /* add ourselves to the list */
+    XplWaitOnLocalSemaphore(Imap.sem_Busy);
     Imap.list_Busy = BongoListPrepend(Imap.list_Busy, session);
     XplSignalLocalSemaphore(Imap.sem_Busy);
 
-    return Imap.list_Busy;
+    p->last_update = time(0);
+    p->messages_processed = 0;
+    p->message = MemStrdup(Message);
+    session->progress = p;
+
+    return;
 }
 
 /* this function takes the handle returned from StartProgressUpdate */
 void
-StopBusy(void *handle)
+StopBusy(ImapSession *session)
 {
-    BongoList *me = (BongoList *)handle;
-
     XplWaitOnLocalSemaphore(Imap.sem_Busy);
-    /* unlink me */
-    if (me->prev || me->next) {
-        if (me->prev) {
-            me->prev->next = me->next;
-        }
-
-        if (me->next) {
-            me->next->prev = me->prev;
-        }
-    } else {
-        /* i was the last item in the array.  null it */
-        Imap.list_Busy = NULL;
-    }
-
-    /* free me */
-    MemFree(me);
-
+    BongoListDelete(Imap.list_Busy, session, FALSE);
     XplSignalLocalSemaphore(Imap.sem_Busy);
+
+    if (session->progress) {
+        if (session->progress->message) {
+            MemFree(session->progress->message);
+        }
+        MemFree(session->progress);
+        session->progress = NULL;
+    }
     return;
 }

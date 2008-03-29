@@ -2365,7 +2365,6 @@ PurgeDeletedMessages(ImapSession *session, BOOL client_response, MessageInformat
     count = messageCount;
 
     while (count > 0) {
-        ProgressUpdate(session);
         if (!(message->flags & STORE_MSG_FLAG_DELETED) || (message->flags & STORE_MSG_FLAG_PURGED)) {
             message--;
             count--;
@@ -2397,13 +2396,12 @@ ImapCommandClose(void *param)
 {
     ImapSession *session = (ImapSession *)param;
     long ccode;
-    void *BusyHandle;
 
-    BusyHandle = StartBusy(session);
+    StartBusy(session, "* OK - Purging deleted messages");
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if (session->folder.selected.readOnly) {
             FolderDeselect(session);
-            StopBusy(BusyHandle);
+            StopBusy(session);
             return(SendOk(session, "CLOSE"));
         }
         
@@ -2411,11 +2409,11 @@ ImapCommandClose(void *param)
 
         FolderDeselect(session);
         if (ccode == STATUS_CONTINUE) {
-            StopBusy(BusyHandle);
+            StopBusy(session);
             return(SendOk(session, "CLOSE"));
         }
     }
-    StopBusy(BusyHandle);
+    StopBusy(session);
     return(SendError(session->client.conn, session->command.tag, "CLOSE", ccode));
 }
 
@@ -2425,9 +2423,8 @@ ImapCommandExpunge(void *param)
     ImapSession *session = (ImapSession *)param;
     OpenedFolder *selected = &session->folder.selected;
     long ccode;
-    void *BusyHandle;
     
-    BusyHandle = StartBusy(session);
+    StartBusy(session, NULL);
 
     if ((ccode = CheckState(session, STATE_SELECTED)) == STATUS_CONTINUE) {
         if ((ccode = EventsSend(session, STORE_EVENT_ALL)) == STATUS_CONTINUE) {
@@ -2435,14 +2432,14 @@ ImapCommandExpunge(void *param)
             if (!(selected->readOnly)) {
                 if ((ccode = PurgeDeletedMessages(session, TRUE, &(selected->message[selected->messageCount - 1]), selected->messageCount)) == STATUS_CONTINUE) {
                     if ((ccode = MessageListLoad(session->store.conn, selected)) == STATUS_CONTINUE) {
-                        StopBusy(BusyHandle);
+                        StopBusy(session);
                         return(SendOk(session, "EXPUNGE"));
                     }
                 }
             }
         }
     }
-    StopBusy(BusyHandle);
+    StopBusy(session);
     return(SendError(session->client.conn, session->command.tag, "EXPUNGE", ccode));
 }
 
