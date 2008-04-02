@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os, sys
+import codecs
 sys.path.append(os.path.join(os.path.abspath(os.path.dirname(sys.argv[0])), '..', '..', 'libs', 'python', 'bongo', 'external'))
 import simplejson
 from optparse import OptionParser
@@ -26,13 +27,28 @@ class POParser(object):
                 self.f = None
                 self.esc = { "n": "\n", "r": "\r", "t": "\t" }
                 if filename:
-                        self.f = open(filename)
+                        self.open(filename)
 
         def open(self, filename):
-                self.f = open(filename)
+                self.f = codecs.open(filename, "r", "utf-8", "strict")
 
         def close(self):
                 self.f.close()
+
+        def readline(self, fh):
+                """ doing fh.readline() and then fh.read(1) fails for me
+                    on python 2.5.1 :( So, this is a version of readline()
+                    written as a series of read(1) calls. Lame, I know.
+                """
+                result = ""
+                while 1:
+                        char = fh.read(1)
+                        if char == "\r":
+                                pass
+                        elif char == "\n":
+                                return result
+                        else:
+                                result += char
 
         def parse(self):
                 """States table for the finite-states-machine parser:
@@ -70,7 +86,7 @@ class POParser(object):
                         if self.status == 1:
                                 if c == ":": 
                                         # was a line of filenames
-                                        row = self.f.readline()
+                                        row = self.readline(self.f)
                                         self.files += row.split()
                                         self.line += 1
                                 elif c == "\n":
@@ -78,7 +94,7 @@ class POParser(object):
                                         pass
                                 else:
                                         # was a comment... discard
-                                        self.f.readline()
+                                        self.readline(self.f)
                                         self.line += 1
                                 # in every case, we switch to idle status
                                 self.status = 0;
@@ -197,7 +213,7 @@ if __name__ == '__main__':
     json = simplejson.dumps(output)
 
     if options.outfile:
-        file = open(options.outfile, "w")
+        file = codecs.open(options.outfile, "w", "utf-8")
         file.write(json)
         file.close
     else:
