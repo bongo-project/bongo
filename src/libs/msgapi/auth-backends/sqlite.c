@@ -296,7 +296,7 @@ AuthSqlite_UserList(char **list[])
 	{
 		int result;
 		while (1 == (result = MsgSQLStatementStep(handle, stmt))) {
-			userlist[users] = strdup((char *) sqlite3_column_text(stmt->stmt, 0));
+			userlist[users] = MemStrdup((char *) sqlite3_column_text(stmt->stmt, 0));
 			users++;
 			if (users == alloc) {
 				alloc += 10;
