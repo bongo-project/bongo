@@ -3383,7 +3383,7 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
         ccode = ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
         goto finish;
     }
-    if (IndexModifyDocumentFlags(index, &info) != 0) {
+    if ((IndexDocument(index, client, &info, NULL) != 0)) {
         ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
         goto finish;
     }
