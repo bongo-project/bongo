@@ -711,6 +711,9 @@ Dragonfly.evalJSONRequest = function (req)
 {
     var d = Dragonfly;
     var contentType = req.getResponseHeader ('Content-Type');
+    var extra = contentType.indexOf(';');
+    if (extra)
+        contentType = contentType.substr(0, extra);
     if (!contentType) {
         throw new d.InvalidJsonContentTypeError ('Missing Content-Type header');
     }
