@@ -43,24 +43,27 @@
 #define SPAMD_DEFAULT_WEIGHT 1
 #define SPAMD_DEFAULT_CONNECTION_TIMEOUT 20 /* milliseconds */
 
-/** Connects to spamd to process the message.  Depending on your settings, analyzed
- * messages are left untouched, or requeued with additional spam information in the
- * headers, or they may be deleted from the queue entirely.
+/** Connect to spamd to process a message. 
+ * Depending on your settings, analyzed messages are left untouched, or
+ * requeued with additional spam information in the headers, or they may
+ * be deleted from the queue entirely.
  *
- * \param queueID is the queue-unique id of the message currently being processed.
- * NMAP provides this in the callback.
- *
- * \param client contains all the information for this particular session with NMAP.
- * 
- * \retval infected: returns a boolean summarizing whether or not the message was
- * determined to be spam.
+ * \param	spamd	SpamD configuration structure
+ * \param	client	SpamD client structure representing store session
+ * \param 	queueID Queue-unique id of the message currently being processed. NMAP provides this in the callback.
+ * \param 	hasFlags	To be documented
+ * \param 	msgFlags	To be documented
+ * \param	senderIp	IP address of the sending party
+ * \param	senderUserName	Username of the sending party (FIXME - check this)
+ * \return	True if infected.
  *
  * If you want verbose output from spamd portion of the antispam agent then 
- * #define VERBOSE_SPAMD
+ * define VERBOSE_SPAMD
  */
 /* #define VERBOSE_SPAMD */
 BOOL
-SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName)
+SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, 
+		   unsigned long msgFlags, unsigned long senderIp, char *senderUserName)
 {   
     int ccode;
     BOOL infected;

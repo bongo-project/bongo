@@ -935,8 +935,68 @@ RequireSharedTransaction(StoreClient *client)
     }
 }
 
+void
+TCStart(StoreClient *store, char *command)
+{
+	TimedCommand *result = MemMalloc(sizeof(TimedCommand));
+	gettimeofday(&(result->start), NULL);
+	result->msgs = result->lastmsg = NULL;
+	result->command = command;
+	store->tc = result;
+}
 
+void
+TCLog(StoreClient *store, char *message)
+{
+	TimedCommand *t = store->tc;
+	TimedMessage *m = MemMalloc(sizeof(TimedMessage));
+	if (t == NULL) return;
+	m->message = message;
+	gettimeofday(&(m->time), NULL);
+	m->next = NULL;
+	if (t->lastmsg == NULL) {
+		t->msgs = m;
+		t->lastmsg = m;
+	} else {
+		t->lastmsg->next = m;
+		t->lastmsg = m;
+	}
+}
 
+void
+TCEnd(StoreClient *store)
+{
+	TimedCommand *t = store->tc;
+	TimedMessage *m;
+	struct timeval *last;
+	long int seconds, useconds;
+	
+	gettimeofday(&(t->end), NULL);
+	seconds = (t->end.tv_sec - t->start.tv_sec);
+	useconds = t->end.tv_usec - t->start.tv_usec;
+	if (useconds < 0) {
+		seconds--; useconds+= 1000000;
+	}
+	printf("Command %s took %ld.%06ld seconds.\n", t->command, seconds, useconds);
+	
+	m = t->msgs;
+	last = &(t->start);
+	while (m) {
+		TimedMessage *delete = m;
+		seconds = (m->time.tv_sec - last->tv_sec);
+		useconds = (m->time.tv_usec - last->tv_usec);
+		if (useconds < 0) {
+			seconds--;
+			useconds += 1000000;
+		}
+		printf(" - %s (%ld.%06ld)\n", m->message, seconds, useconds);
+		last = &(m->time);
+		m = m->next;
+		MemFree(m);
+	}
+	MemFree(t);
+	store->tc = NULL;
+}
 
 #define TOK_ARR_SZ 10
 #define PROP_ARR_SZ 10
@@ -959,6 +1019,7 @@ StoreCommandLoop(StoreClient *client)
         if (-1 == ccode || ccode >= CONN_BUFSIZE) {
             break;
         }
+        TCStart(client, client->buffer);
                         
         memset(tokens, 0, sizeof(tokens));
         n = CommandSplit(client->buffer, tokens, TOK_ARR_SZ);
@@ -972,6 +1033,7 @@ StoreCommandLoop(StoreClient *client)
             /* Or maybe we want to do something clever, like check for new mail
                after a timeout has elapsed */
             ImportIncomingMail(client);
+            TCLog(client, "Import incoming");
         }
         
         if (client->watch.collection) {
@@ -984,6 +1046,7 @@ StoreCommandLoop(StoreClient *client)
             /* FIXME: What if there were an event related to a document relevant 
                to the command we just parsed?  (or any event?)  Should we ignore 
                the command? */
+            TCLog(client, "Out of band messages");
         }
 
         switch (command) {
@@ -1976,6 +2039,8 @@ StoreCommandLoop(StoreClient *client)
             break;
         }
 
+        TCLog(client, "Finished processing");
+
         if (client->watchLock) {
             StoreReleaseCollectionLock(client, &(client->watchLock));
             client->watchLock = NULL;
@@ -1990,6 +2055,8 @@ StoreCommandLoop(StoreClient *client)
         if (ccode >= 0) {
             ccode = ConnFlush(client->conn);
         }
+        
+        TCEnd(client);
     }
     
     return ccode;
@@ -2856,6 +2923,7 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
     if (ccode) {
         return ccode;
     }
+    TCLog(client, "Starting document copy");
 
     FindPathToDocument(client, info.collection, info.guid, srcpath, sizeof(srcpath));
     src = fopen(srcpath, "r");
@@ -2872,6 +2940,7 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
         goto finish;
     }
     // TODO: how to detect MSG5220QUOTAERR ?
+    TCLog(client, "Files linked");
     
     start = 0;
     end = info.length;
@@ -2887,16 +2956,19 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
         goto finish;
     }
 
+    TCLog(client, "Processed doc");
     errmsg = StoreProcessDocument(client, &info, collection, dstpath, 0);
     if (errmsg) {
         ccode = ConnWriteStr(client->conn, errmsg);
         goto finish;
     }
+    TCLog(client, "Parse contents");
     errmsg = StoreIndexDocument(client, &info, collection, NULL, dstpath);
     if (errmsg) {
         ccode = ConnWriteStr(client->conn, errmsg);
         goto finish;
     }
+    TCLog(client, "Index contents");
     
     // swap dest to src, and find new dest - move temp file into correct position
     srcpath[0] = '\0';
@@ -2912,6 +2984,7 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     } 
+    TCLog(client, "Commit transaction");
 
     ++client->stats.insertions;
     StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_NEW,
@@ -2984,6 +3057,7 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
         }
         
         updateConversation = FALSE;
+        TCLog(client, "Ready to remove document");
 
         switch (info.type) {
         case STORE_DOCTYPE_MAIL:
@@ -3012,10 +3086,12 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
             ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
             goto finish;
         }
+        TCLog(client, "Document removed");
 
         /* Try our best here, it's ok if it fails */ 
         if (updateConversation) {
             UpdateConversationMetadata(client->handle, &conversation);
+            TCLog(client, "Conversation updated");
         }
 
         break;
@@ -3038,6 +3114,7 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     }
+    TCLog(client, "Removed from file system");
 
     if (DStoreCommitTransaction(client->handle)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
@@ -3045,6 +3122,7 @@ StoreCommandDELETE(StoreClient *client, uint64_t guid)
     } 
 
     IndexRemoveDocument(index, guid);
+    TCLog(client, "Removed from Index");
 
     ++client->stats.deletions;
     StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_DELETED, 
@@ -3351,6 +3429,7 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
     if (ccode) {
         return ccode;
     }
+    TCLog(client, "Checked flags and auth");
 
     if (STORE_DOCTYPE_CONVERSATION == info.type) {
         /* propagate STARS flag to conversation source */
@@ -3364,12 +3443,14 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
     if (-1 == DStoreSetDocInfo(client->handle, &info)) {
         return ConnWriteStr(client->conn, MSG5005DBLIBERR);
     }
+    TCLog(client, "Set doc info");
 
     if (info.type == STORE_DOCTYPE_MAIL && info.conversation != 0) {
         if (DStoreGetDocInfoGuid(client->handle, info.conversation, &conversation) == 1) {
             if (UpdateConversationMemberNewFlag(client->handle, &conversation, oldFlags, change)) {
                 return ConnWriteStr(client->conn, MSG5005DBLIBERR);
             }
+            TCLog(client, "Updated conversation");
         }
     }
 
@@ -3387,11 +3468,13 @@ StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
         ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
         goto finish;
     }
+    TCLog(client, "Updated Index");
 
     if (0 != DStoreCommitTransaction(client->handle)) {
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     }
+    TCLog(client, "Transaction committed");
 
     ++client->stats.updates;
     StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_FLAGS, 

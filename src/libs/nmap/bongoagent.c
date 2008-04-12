@@ -236,7 +236,7 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 /**
  * Process a configuration definition
  * \param	config	BongoConfigItem array which defines configuration variables
- * \param	JSON node tree we want to look in
+ * \param	node	JSON node tree we want to look in
  * \return	Whether or not we were successful
  */
 

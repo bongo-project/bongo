@@ -1049,12 +1049,12 @@ ConnAppendToAllocatedBuffer(const char *source, const long size, char **buffer,
 }
 
 /** 
- * Read a line (until \r\n) from a network socket, potentially blocking until enough
+ * Read a line (until CRLF) from a network socket, potentially blocking until enough
  * data is available. This line is read to a buffer (which may be pre-allocated).
  * The buffer may be resized, and if enough space is not available will be destroyed.
  * If the buffer is destroyed (*buffer == NULL), the number of bytes consumed 
  * from the network socket is still returned but the data discarded.
- * The trailing \r\n on the line is consumed.
+ * The trailing CRLF on the line is consumed.
  * \param	c		Connection to read the line from
  * \param	buffer	Pointer to the allocated buffer (point to NULL if you want the buffer to be allocated for you)
  * \param	bufferSize	Size of the pre-allocated buffer (0 if you want the buffer to be pre-allocated)

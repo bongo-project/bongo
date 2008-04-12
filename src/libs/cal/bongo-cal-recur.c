@@ -589,18 +589,17 @@ PrintRecurrence(BongoCalRule *r)
 
 /**
  * BongoCalRecurGenerateInstances:
- * @inst: A calendar component object.
- * @start: Range start time.
- * @end: Range end time.
- * @cb: Callback function.
- * @cbData: Closure data for the callback function.
- * @tzCb: Callback for retrieving timezones.
- * @tzCbData: Closure data for the timezone callback.
- * @defaultTimezone: Default timezone to use when a timezone cannot be
- * found.
+ * \param	inst 	A calendar component object.
+ * \param	start	Range start time.
+ * \param	end		Range end time.
+ * \param	cb		Callback function.
+ * \param	cbData	Closure data for the callback function.
+ * \param	tzCb	Callback for retrieving timezones.
+ * \param	tzCbData	Closure data for the timezone callback.
+ * \param	defaultTimezone Default timezone to use when a timezone cannot be found.
  *
  * Calls the given callback function for each occurrence of the event that
- * intersects the range between the given @start and @end times (the end time is
+ * intersects the range between the given start and end times (the end time is
  * not included). Note that the occurrences may start before the given start
  * time.
  *

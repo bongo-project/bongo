@@ -29,7 +29,7 @@ MsgAuthCookiePath(const char *username, char *path, size_t length)
 /**
  * Create a 'cookie': a password-substitute token, and an associated expiry 
  * SECURITY: We shouldn't create cookies for non-authenticated users
- * \param	user	User whose token this will be
+ * \param	username	User whose token this will be
  * \param	cookie	Reference to the MsgAuthCookie we're creating
  * \param	timeout	When the token should expire
  * \return		Whether or not the cookie was created

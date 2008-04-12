@@ -833,22 +833,14 @@ NMAPGetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName
         - copies the first non 6000 line excluding the \\r\\n into the response buffer
         - advances read pointer to the beginning of the next line on success
 
-    @return 
-        - 2001 on success
-        - other values between 1000 and 9999 indicate protocol error
-        - negative value indicates a network error
-
-    @param conn the network connection to read the line from
-
-    @param guid the object where the property will be read
-
-    @param propertyName is the property name expected
-
-    @param propertyValue is a pointer where the property value will be set
-
+ * \param conn 	Network connection to read the line from
+ * \param propertyName 	Property name expected
+ * \param propertyValue Pointer where the property value will be set
+ * \return 2001 on success, 1000-9999 is protocol error. Negative values are network error.
  */
 int 
-NMAPReadHexadecimalPropertyResponse(Connection *conn, const char *propertyName, unsigned long *propertyValue)
+NMAPReadHexadecimalPropertyResponse(Connection *conn, const char *propertyName, 
+	unsigned long *propertyValue)
 {
     long ccode;
     char propertyBuffer[MAX_DIGITS];
@@ -895,24 +887,13 @@ NMAPGetHexadecimalProperty(Connection *conn, uint64_t guid, const char *property
 }
 
 /** Used to write decimal properties to NMAP.
-
-    Remarks
-        - Sends the PROPSET command to NMAP and processes the response
-        - processes 6000 response lines encountered
-
-    @return 
-        - 1000 on success
-        - other values between 1001 and 9999 indicate protocol error
-        - negative value indicates a network error
-
-    @param conn the network connection to read the line from
-
-    @param guid the object where the property will be applied
-
-    @param propertyName is the property name to be set
-
-    @param propertyValue is the property value to be set
-
+ * Sends the PROPSET command to NMAP and processes the response, also
+ * processes 6000 response lines encountered.
+ * \param	conn	Network connection to read line from
+ * \param	guid	Object to apply property to
+ * \param	propertyName	Name of property to be set
+ * \param	propertyValue	Value of property to be set
+ * \return 1000 on success, 1001-9999 is protocol error, negative is network error
  */
 int 
 NMAPSetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName, long propertyValue)
@@ -938,24 +919,13 @@ NMAPSetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName
 }
 
 /** Used to write hexadecimal properties to NMAP.
-
-    Remarks
-        - Sends the PROPSET command to NMAP and processes the response
-        - processes 6000 response lines encountered
-
-    @return 
-        - 1000 on success
-        - other values between 1001 and 9999 indicate protocol error
-        - negative value indicates a network error
-
-    @param conn the network connection to read the line from
-
-    @param guid the object where the property will be applied
-
-    @param propertyName is the property name to be set
-
-    @param propertyValue is the property value to be set
-
+ *  - Sends the PROPSET command to NMAP and processes the response
+ *  - processes 6000 response lines encountered
+ * \param	conn	Network connection to read the line from
+ * \param 	guid 	Object where the property will be applied
+ * \param 	propertyName Property name to be set
+ * \param 	propertyValue Property value to be set
+ * \return 1000 on success; 1001 to 9999 indicate protocol error, negative value indicates a network error
  */
 int 
 NMAPSetHexadecimalProperty(Connection *conn, uint64_t guid, const char *propertyName, unsigned long propertyValue)
@@ -1495,9 +1465,8 @@ NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cooki
 /**
  * AUTH SYSTEM with the Store agent, but then change to a user and 
  * go into their store.
- * \param	conn		Connection to the Queue agent
- * \param	response	Buffer to use talking to the agent
- * \param	length		Size of the 'response' buffer
+ * \param	conn	Connection to the Store agent
+ * \param	user	Which user we want to be
  * \return			Whether or not we succeeded
  */
 BOOL
