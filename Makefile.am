@@ -81,10 +81,17 @@ doxygen/html:
 	  echo "No doxygen available"; \
 	fi
 
-docs:	doxygen/html
+doxygen/diagrams:
+	mkdir -p doxygen/diagrams
+	find src/ -name \*.dot -printf "-o doxygen/diagrams/%f %h/%f" | xargs -l1 dot -Tpng -Nfontname="Bitstream Vera Sans" -Nfontsize=12
+	rename .dot .png doxygen/diagrams/* 
 
-clean:	clean-recursive
-	rm -rf ./doxygen/html ./doxygen/latex
+docs:	doxygen/html doxygen/diagrams
+
+clean:	clean-recursive clean-docs
+
+clean-docs:
+	rm -rf ./doxygen/html ./doxygen/latex ./doxygen/diagrams
 
 #	disabled agents
 #	src/agents/mailprox			

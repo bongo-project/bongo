@@ -1,0 +1,75 @@
+/* A UML-style diagram of the Store's SQL schema */
+
+digraph StoreSQLiteSchema {
+	Legend [
+		label = "{SQLite Schema in Bongo| Version : HEAD \lLast updated : 2008/04/12 \l}"
+		shape = "record"
+	]
+
+	node [
+			shape = "record"
+	]
+
+	/* Labels for classes should be:
+	 * { Name  | .. Attr1: type \l Attr2: type .. } 
+	 */
+
+	Object [
+		label = "{StoreObject| guid : uint64 \lfilename : string \
+			\ltype : enum \lflags : int32 \
+			\lsize : unit64 \ltime_created : date \
+			\ltime_modified : date \lversion : int \
+			\l}"
+	]
+	
+	Conversation [
+		label = "{Conversation| guid : FK uint64 \lsubject : string \
+			\ldate : date \l sources : int32 \
+			\l}"
+	]
+	
+	MailDocument [
+		label = "{MailDocument| guid : FK unit64 \limap_uid : int \lsubject : string \
+			\lsenders : string \lmessageid : string \lparent_messageid : string \
+			\llistid : string \lconversation : FK uint64 \ltime_sent : date \
+			\lmime_lines : int \
+			\l}"
+	]
+	
+	EventDocument [
+		label = "{EventDocument| guid : FK uint64 \luid : ?? \lsummary : string \
+			\llocation : string \lstamp : ?? \lstart: date \lend: date \
+			\l}"
+	]
+	
+	Links [
+		label = "{Links| left_guid : FK uint64 \lright_guid : FK uint64 \l}"
+	]
+	
+	/* optional one-to-one relations */
+	edge [
+		arrowhead = "open"
+		arrowtail = "dot"
+	]
+	
+	Conversation -> Object
+	MailDocument -> Object
+	EventDocument -> Object
+	
+	/* one-to-many relations */
+	edge [
+		arrowhead = "crow"
+		arrowtail = "none"
+	]
+	
+	Conversation -> MailDocument
+	
+	/* many to many relations */
+	edge [
+		arrowhead = "crow"
+		arrowtail = "none"
+	]
+	
+	Links -> Object
+	Links -> Object 
+}
