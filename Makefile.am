@@ -84,7 +84,7 @@ doxygen/html:
 doxygen/diagrams:
 	mkdir -p doxygen/diagrams
 	find src/ -name \*.dot -printf "-o doxygen/diagrams/%f %h/%f" | xargs -l1 dot -Tpng -Nfontname="Bitstream Vera Sans" -Nfontsize=12
-	rename .dot .png doxygen/diagrams/* 
+	for i in doxygen/diagrams/*.dot; do mv "$$i" "$${i/.dot}".png; done
 
 docs:	doxygen/html doxygen/diagrams
 
