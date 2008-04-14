@@ -34,14 +34,14 @@ StartBusy(ImapSession *session, char *Message)
     }
 
     /* add ourselves to the list */
-    XplWaitOnLocalSemaphore(Imap.sem_Busy);
-    Imap.list_Busy = BongoListPrepend(Imap.list_Busy, session);
-    XplSignalLocalSemaphore(Imap.sem_Busy);
-
     p->last_update = time(0);
     p->messages_processed = 0;
     p->message = MemStrdup(Message);
     session->progress = p;
+
+    XplWaitOnLocalSemaphore(Imap.sem_Busy);
+    Imap.list_Busy = BongoListPrepend(Imap.list_Busy, session);
+    XplSignalLocalSemaphore(Imap.sem_Busy);
 
     return;
 }
@@ -51,7 +51,7 @@ void
 StopBusy(ImapSession *session)
 {
     XplWaitOnLocalSemaphore(Imap.sem_Busy);
-    BongoListDelete(Imap.list_Busy, session, FALSE);
+    Imap.list_Busy = BongoListDelete(Imap.list_Busy, session, FALSE);
     XplSignalLocalSemaphore(Imap.sem_Busy);
 
     if (session->progress) {
