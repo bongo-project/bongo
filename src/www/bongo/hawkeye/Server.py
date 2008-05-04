@@ -2,8 +2,8 @@ from bongo.commonweb.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
 from HawkeyePath import HawkeyePath
 from bongo.commonweb.HttpError import HttpError
 
-import Auth
 import bongo.commonweb
+import bongo.commonweb.Auth as Auth
 import bongo.commonweb.BongoFieldStorage as BongoFieldStorage
 import bongo.commonweb.BongoUtil as BongoUtil
 import bongo.commonweb.BongoSession as BongoSession
@@ -41,7 +41,7 @@ def handler(req):
         
         if handler.NeedsAuth(rp):
             req.log.debug("Yup!")
-            auth = bongo.hawkeye.Auth.authenhandler(req)
+            auth = Auth.authenhandler(req)
             if auth != bongo.commonweb.HTTP_OK:
                 target = "/admin/login"
                 BongoUtil.redirect(req, target)

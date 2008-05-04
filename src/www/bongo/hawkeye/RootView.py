@@ -2,7 +2,7 @@ import bongo.commonweb
 import os
 import bongo.commonweb.BongoUtil
 from HawkeyeHandler import HawkeyeHandler
-import bongo.hawkeye.Auth as Auth
+import bongo.commonweb.Auth as Auth
 from libbongo.libs import msgapi
 
 AuthMode = 0
@@ -42,12 +42,12 @@ class RootHandler(HawkeyeHandler):
         # check ram free
         cm = self.memory("MemTotal:")
         used = cm - self.memory("MemFree:") - self.memory("Buffers:") - self.memory("Cached:")
-	used = used / (1024*1024)
-	cm = cm / (1024*1024)
+        used = used / (1024*1024)
+        cm = cm / (1024*1024)
         self.SetVariable("mem", str(round(used, 2)) + "MB / " + str(round(cm, 2)) + "MB")
         # check system load
         (rqmin1, rqmin5, rqmin15) = os.getloadavg()
-	recent_av = (rqmin1 + rqmin5) / 2
+        recent_av = (rqmin1 + rqmin5) / 2
         recent_load = "light"
         if recent_av > 0.7:
             recent_load = "moderate"

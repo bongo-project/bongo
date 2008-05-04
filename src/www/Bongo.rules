@@ -334,7 +334,6 @@ pkgpythonhawkeye_PYTHON =			\
 	src/www/bongo/hawkeye/__init__.py	\
 	src/www/bongo/hawkeye/AgentView.py  \
 	src/www/bongo/hawkeye/AliasView.py    \
-	src/www/bongo/hawkeye/Auth.py		\
 	src/www/bongo/hawkeye/BackupView.py      \
 	src/www/bongo/hawkeye/HawkeyeHandler.py	\
 	src/www/bongo/hawkeye/HawkeyePath.py	\
@@ -363,6 +362,7 @@ pkgpythoncommonwebdir = $(pkgpythondir)/commonweb
 
 pkgpythoncommonweb_PYTHON =		\
 	src/www/bongo/commonweb/__init__.py	\
+	src/www/bongo/commonweb/Auth.py	\
 	src/www/bongo/commonweb/HttpError.py	\
 	src/www/bongo/commonweb/ApacheLogHandler.py \
 	src/www/bongo/commonweb/BongoCookie.py	   \

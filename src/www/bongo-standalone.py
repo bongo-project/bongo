@@ -25,8 +25,7 @@ from bongo.commonweb.HttpError import HttpError
 import bongo.dragonfly.Auth
 import bongo.commonweb.BongoUtil
 import bongo.commonweb.BongoSession as BongoSession
-import bongo.hawkeye.Auth
-import bongo.sundial.Auth
+import bongo.commonweb.Auth as Auth
 from bongo.hawkeye.HawkeyePath import HawkeyePath
 from bongo.sundial.SundialPath import SundialPath
 from bongo.external.simplejson import loads, dumps
@@ -190,7 +189,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
 
             if handler.NeedsAuth(rp):
                 req.log.debug("Yup!")
-                auth = bongo.hawkeye.Auth.authenhandler(req)
+                auth = Auth.authenhandler(req)
                 if auth != bongo.commonweb.HTTP_OK:
                     target = "/admin/login"
                     self.send_response(bongo.commonweb.BongoUtil.redirect(req, target))
@@ -259,7 +258,7 @@ class DragonflyHandler(SimpleHTTPRequestHandler):
                     self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
                     return bongo.commonweb.HTTP_UNAUTHORIZED
                 else:
-                    auth = bongo.sundial.Auth.authenhandler(req)
+                    auth = Auth.authenhandler(req)
 
             req.log.debug("request for %s (handled by %s)", req.uri, handler)
 
