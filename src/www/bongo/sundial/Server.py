@@ -2,8 +2,8 @@ from bongo.commonweb.ApacheLogHandler import ApacheLogHandler, RequestLogProxy
 from SundialPath import SundialPath
 from bongo.commonweb.HttpError import HttpError
 
-import Auth
 import bongo.commonweb
+import bongo.commonweb.Auth as Auth
 
 # Add a handler so messages from python's logging module go to apache.
 # We don't use that module in the Bongo server proper, because we need
@@ -28,7 +28,7 @@ def handler(req):
 #                self.send_error(bongo.commonweb.HTTP_UNAUTHORIZED)
 #                return bongo.commonweb.HTTP_UNAUTHORIZED
 #            else:
-#                auth = bongo.sundial.Auth.authenhandler(req)
+#                auth = Auth.authenhandler(req)
 
         req.log.debug("request for %s (handled by %s)", req.path_info, handler)
 
