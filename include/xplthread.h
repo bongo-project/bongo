@@ -227,7 +227,7 @@ static __inline__ void _XplSafeAdd (int i, XplAtomic *v)
 #include <MacErrors.h>
 
 #define XplSemaphore									MPSemaphoreID
-#define XplOpenLocalSemaphore(sem, init)						(MPCreateSemaphore(0x7fffffff,init,&sem) != noErr ? -1 : (int) sem)
+#define XplOpenLocalSemaphore(sem, init)						(MPCreateSemaphore(0x7fffffff,init,&(sem)) != noErr ? -1 : (int) (sem))
 #define XplCloseLocalSemaphore(sem)							(MPDeleteSemaphore(sem) != noErr ? -1 : 0)
 #define XplWaitOnLocalSemaphore(sem)							(MPWaitOnSemaphore(sem,kDurationForever) != noErr ? -1 : 0)
 #define XplSignalLocalSemaphore(sem)							(MPSignalSemaphore(sem) != noErr ? -1 : 0)
@@ -236,11 +236,11 @@ static __inline__ void _XplSafeAdd (int i, XplAtomic *v)
 #else
 
 #define XplSemaphore									sem_t
-#define XplOpenLocalSemaphore(sem, init)						sem_init(&sem, 0, init)
-#define XplCloseLocalSemaphore(sem)							sem_destroy(&sem)
-#define XplWaitOnLocalSemaphore(sem)							sem_wait(&sem)
-#define XplSignalLocalSemaphore(sem)							sem_post(&sem)
-#define XplExamineLocalSemaphore(sem, cnt)						sem_getvalue(&sem, (int *)&cnt)
+#define XplOpenLocalSemaphore(sem, init)						sem_init(&(sem), 0, init)
+#define XplCloseLocalSemaphore(sem)							sem_destroy(&(sem))
+#define XplWaitOnLocalSemaphore(sem)							sem_wait(&(sem))
+#define XplSignalLocalSemaphore(sem)							sem_post(&(sem))
+#define XplExamineLocalSemaphore(sem, cnt)						sem_getvalue(&(sem), (int *)&(cnt))
 
 #endif
 
