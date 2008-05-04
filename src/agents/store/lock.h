@@ -35,7 +35,7 @@ XPL_BEGIN_C_LINKAGE
 
 typedef struct _NFairLockQueueEntry {
 	// "signal" is used by the queueing process to wait its turn
-	XplSemaphore *signal;
+	XplSemaphore signal;
 	struct _NFairLockQueueEntry *next;
 	BOOL is_writer;
 } NFairLockQueueEntry;
@@ -43,7 +43,7 @@ typedef struct _NFairLockQueueEntry {
 typedef struct _NFairLock {
 	char *lockname;
 	// "access" mediates changes to the internal data, shouldn't be held for long
-	XplSemaphore *access;
+	XplSemaphore access;
 	int readers;
 	int writer;
 	NFairLockQueueEntry *queue;
@@ -56,7 +56,7 @@ typedef struct _NFairLockList {
 
 typedef struct _NFairLockPool {
 	// lock governs access to the Pool
-	XplSemaphore *lock;
+	XplSemaphore lock;
 	NFairLockList *first;
 	NFairLockList *last;
 } NFairLockPool;
