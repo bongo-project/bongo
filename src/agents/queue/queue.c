@@ -499,7 +499,7 @@ GetNMAPConnection(NMAPConnections *list,
     
     conn = NMAPConnect(NULL, address);
     if (conn == NULL) {
-        Log(LOG_ERROR, "Could not connect to bongoqueue.");
+        Log(LOG_ERROR, "Could not connect to bongostore");
         return DELIVER_TRY_LATER;
     }
     
