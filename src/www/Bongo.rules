@@ -440,9 +440,9 @@ noinst_DATA += \
 	src/www/bongo/__init__.py
 
 src/www/bongo/__init__.py: src/www/bongo/__init__.py.in $(top_srcdir)/src/libs/python/bongo/__init__.py
-	cp $< $@.tmp
-	cat $(top_srcdir)/src/libs/python/bongo/__init__.py >> $@.tmp
-	mv $@.tmp $@
+	cp $< $(top_srcdir)/$@.tmp
+	cat $(top_srcdir)/src/libs/python/bongo/__init__.py >> $(top_srcdir)/$@.tmp
+	mv $(top_srcdir)/$@.tmp $(top_srcdir)/$@
 
 src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 	sed -e "s%\@DATADIR\@/\@PACKAGE\@/htdocs%${top_srcdir}/src/www%" \
@@ -455,11 +455,11 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 po2json = $(top_srcdir)/src/www/l10n/po2json
 
 src/www/l10n/%.js: po/bongo-web/%.mo config.status
-	$(po2json) -p po/bongo-web/$*.po -o $@
+	$(po2json) -p $(top_srcdir)/po/bongo-web/$*.po -o $(top_srcdir)/$@
 
 # This generates no translation. It simply does msgid:msgid on the potfile.
 src/www/l10n/en.js: config.status
-	$(po2json) -p po/bongo-web.pot -o $@ --en
+	$(po2json) -p $(top_srcdir)/po/bongo-web.pot -o $(top_srcdir)/$@ --en
 
 CLEANFILES +=					\
 	src/www/bongo-standalone			\

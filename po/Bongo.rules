@@ -18,7 +18,7 @@ po/install: po/all
 	for file in $(MOFILES); do \
 		lang=`echo $$file | sed -e 's,.*/,,' | sed -e 's/.mo//'`; \
 		$(MKINSTALLDIRS) $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/; \
-		installfilename=`echo $$file | sed -e 's,po/\([^/]*\)/.*,\1,'`; \
+		installfilename=`basename $$(dirname $$file)`; \
 		$(INSTALL) -m 0644 $$file $(DESTDIR)/$(localedir)/$$lang/LC_MESSAGES/$$installfilename.mo; \
 	done
 
