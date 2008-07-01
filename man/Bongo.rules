@@ -28,7 +28,7 @@ mansymlinked = man/bongoaddressbook.8 \
 	man/bongostore.8
 
 man/bongo%.8:
-	[ -L $(top_srcdir)/man/bongo$*.8 ] || ln -s $(top_srcdir)/man/bongoagents.8 $(top_srcdir)/man/bongo$*.8
+	[ -L $(top_srcdir)/man/bongo$*.8 ] || ln -s bongoagents.8 $(top_srcdir)/man/bongo$*.8
 
 dist_man_MANS = $(mannormal)
 nodist_man_MANS = $(mansymlinked)
