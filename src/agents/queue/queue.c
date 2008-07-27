@@ -60,6 +60,8 @@ typedef struct _NMAPConnections {
 
 /* Globals */
 MessageQueue Queue = { 0, };
+int FindQueue(const void *i, const void *node);
+int FindPool(const void *str, const void *node);
 
 static int HandleDSN(FILE *data, FILE *control);
 
@@ -314,143 +316,98 @@ SpoolEntryIDUnlock(unsigned long *idLock)
     return;
 }
 
-
-static void
-UpdatePushClientsRegistered(void) 
-{
-    int count;
-    Queue.pushClientsRegistered[0] = TRUE;
-    Queue.pushClientsRegistered[1] = TRUE;
-    Queue.pushClientsRegistered[2] = FALSE;
-    Queue.pushClientsRegistered[3] = FALSE;
-    Queue.pushClientsRegistered[4] = FALSE;
-    Queue.pushClientsRegistered[5] = FALSE;
-    Queue.pushClientsRegistered[6] = TRUE;
-    Queue.pushClientsRegistered[7] = TRUE;
-    for (count = 0; count < Queue.pushClients.count; count++) {
-        if (Queue.pushClients.array[count].queue < 8) {
-            Queue.pushClientsRegistered[Queue.pushClients.array[count].queue] = TRUE;
-        }
-    }
+int FindQueue(const void *n_lft, const void *n_rgt) {
+    /* casting them like this makes the code a bit easier to read */
+    QueueList *lft = *(QueueList **)n_lft;
+    QueueList *rgt = *(QueueList **)n_rgt;
+    return (lft->queue - rgt->queue);
 }
 
-static void
-WriteQAgents(void) 
-{
-    FILE *handle = NULL;
-
-    FOPEN_CHECK(handle, Conf.queueClientsPath, "wb");
-    if (handle) {
-        fwrite(Queue.pushClients.array, sizeof(QueuePushClient), Queue.pushClients.count, handle);
-        FCLOSE_CHECK(handle);
-    }
+int FindPool(const void *n_lft, const void *n_rgt) {
+    QueuePoolList *lft = *(QueuePoolList **)n_lft;
+    QueuePoolList *rgt = *(QueuePoolList **)n_rgt;
+    return strcmp(lft->identifier, rgt->identifier);
 }
 
 static unsigned long
 AddPushAgent(QueueClient *client, 
-             unsigned long address, 
+             char *address, 
              int port, 
              int queue, 
              unsigned char *identifier)
 {
-    int count;
-    QueuePushClient *temp;
+    /* since the sorting doesn't always pass in the int or the struct the same every time i need to put the int in a struct */
+    QueueList tempQueue;
+    QueueList *p_tempQueue = &tempQueue;
+    QueuePoolList tempPool;
+    QueuePoolList *p_tempPool = &tempPool;
+
+    QueueList *CurrentQueue;
+    QueuePoolList *CurrentPool;
+    int ItemIndex;
 
     Log(LOG_INFO, "Adding client (%s) on host %s:%d to queue %d", identifier, LOGIP(client->conn->socketAddress), port, queue);
 
-    XplMutexLock(Queue.pushClients.lock);
+    XplMutexLock(Queue.PushClients.lock);
 
-    for (count = 0; count < Queue.pushClients.count; count++) {
-        if ((port == Queue.pushClients.array[count].port) && (address == Queue.pushClients.array[count].address) && (queue == Queue.pushClients.array[count].queue)) {
-            XplMutexUnlock(Queue.pushClients.lock);
-            return(count);
-        }
+    /* first look through the list to find the right queue */
+    tempQueue.queue = queue;
+    ItemIndex = BongoArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
+    if (ItemIndex < 0) {
+        /* there is no queue item in the array yet.  we need to initialize one */
+        CurrentQueue = MemMalloc(sizeof(QueueList *));
+        CurrentQueue->queue = queue;
+        CurrentQueue->pools = BongoArrayNew(sizeof(QueuePoolList *), 1);
+        BongoArrayAppendValue(Queue.PushClients.queues, CurrentQueue); 
+    } else {
+        CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
     }
 
-    if ((Queue.pushClients.count + 1) >= Queue.pushClients.allocated) {
-        temp = MemRealloc(Queue.pushClients.array, (Queue.pushClients.allocated + PUSHCLIENTALLOC) * sizeof(QueuePushClient));
-        if (temp) {
-            Queue.pushClients.array = temp;
-            Queue.pushClients.allocated += PUSHCLIENTALLOC;
-        } else {
-            LogFailureF("Out of memory processing mailbox %s", identifier);
-            return(-1);
-        }
+    /* CurrentQueue should be set now */
+    strncpy(tempPool.identifier, identifier, 100);
+    ItemIndex = BongoArrayFindSorted(CurrentQueue->pools, &p_tempPool, FindPool);
+    if (ItemIndex < 0) {
+        /* there is no pool already.  we need to initialize one */
+        CurrentPool = MemMalloc(sizeof(QueuePoolList *));
+        strncpy(CurrentPool->identifier, identifier, 100);
+        ConnAddressPoolStartup(&CurrentPool->pool, 5, 60);
+        BongoArrayAppendValue(CurrentQueue->pools, CurrentPool);
+    } else {
+        //CurrentPool = (((QueuePoolList *)(CurrentQueue.pools)->data)[(ItemIndex)]);
+        CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, ItemIndex);
     }
 
-    Queue.pushClients.array[Queue.pushClients.count].queue = queue;
-    Queue.pushClients.array[Queue.pushClients.count].address = address;
-    Queue.pushClients.array[Queue.pushClients.count].port = port;
-    Queue.pushClients.array[Queue.pushClients.count].usageCount = 0;
-    Queue.pushClients.array[Queue.pushClients.count].errorCount = 0;
-    strcpy(Queue.pushClients.array[Queue.pushClients.count].identifier, identifier);
-    Queue.pushClients.count++;
+    /* CurrentPool should be set now */
+    ConnAddressPoolAddHost(&CurrentPool->pool, address, htons(port), 1);   /* the protocol doesn't support passing a weight so weight everything equally */
 
-    UpdatePushClientsRegistered();
-    WriteQAgents();
+    /* resort both arrays */
+    BongoArraySort(CurrentQueue->pools, FindPool);
+    BongoArraySort(Queue.PushClients.queues, FindQueue);
 
-    XplMutexUnlock(Queue.pushClients.lock);
-    return(Queue.pushClients.count);
-}
-
-static BOOL
-RemovePushAgentIndex(int index, BOOL force)
-{
-    XplMutexLock(Queue.pushClients.lock);
-
-    if (index < Queue.pushClients.count) {
-        if (!force) {
-            Queue.pushClients.array[index].errorCount++;
-        }
-
-        if (Queue.pushClients.array[index].usageCount > 1) {
-            Queue.pushClients.array[index].usageCount--;
-
-            XplMutexUnlock(Queue.pushClients.lock);
-
-            return(FALSE);
-        }
-
-        if ((Queue.pushClients.array[index].errorCount > MAX_PUSHCLIENTS_ERRORS) || force) {
-            if (force) {
-                Log(LOG_INFO, "Reregistered queue agent");
-            } else {
-                Log(LOG_INFO, "Removed queue agent");
-            }
-
-            if (index < (Queue.pushClients.count - 1)) {
-                memmove(&Queue.pushClients.array[index], &Queue.pushClients.array[index + 1], (Queue.pushClients.count - index - 1) * sizeof(QueuePushClient));
-            }
-
-            Queue.pushClients.count--;
-
-            UpdatePushClientsRegistered();
-            WriteQAgents();
-
-            XplMutexUnlock(Queue.pushClients.lock);
-
-            return(TRUE);
-        }
-    }
-
-    XplMutexUnlock(Queue.pushClients.lock);
-
-    return(FALSE);
+    XplMutexUnlock(Queue.PushClients.lock);
+    return 0;
 }
 
 static void
 RemoveAllPushAgents(void)
 {
-    XplMutexLock(Queue.pushClients.lock);
+    QueueList *CurrentQueue;
+    QueuePoolList *CurrentPool;
 
-    Queue.pushClients.count = 0;
+    XplMutexLock(Queue.PushClients.lock);
+    while (BongoArrayCount(Queue.PushClients.queues)) {
+        CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, 0);
+        while (BongoArrayCount(CurrentQueue->pools)) {
+            CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, 0);
+            ConnAddressPoolShutdown(&(CurrentPool->pool));
+            BongoArrayRemove(CurrentQueue->pools, 0);
+            MemFree(CurrentPool);
+        }
+        MemFree(CurrentQueue);
+        BongoArrayRemove(Queue.PushClients.queues, 0);
+    }
 
-    UpdatePushClientsRegistered();
-
-    MemFree(Queue.pushClients.array);
-    Queue.pushClients.array = NULL;
-
-    XplMutexUnlock(Queue.pushClients.lock);
+    XplMutexUnlock(Queue.PushClients.lock);
 
     return;
 }
@@ -638,7 +595,6 @@ static BOOL
 ProcessQueueEntry(unsigned char *entryIn)
 {
     int i;
-    int len;
     int queue;
     int count;
     int qDateLength = 0;
@@ -646,8 +602,12 @@ ProcessQueueEntry(unsigned char *entryIn)
     int qIDLength = 0;
     int qAddressLength = 0;
     int qFromLength = 0;
-    long lines = 0;
-    unsigned long used;
+    long lines=0;
+    QueueList *CurrentQueue;
+    QueueList tempQueue;
+    QueueList *p_tempQueue=&tempQueue;
+    int ItemIndex=0;
+    unsigned int iter_p=0;
     unsigned long dSize = 0;
     unsigned long entryID;
     unsigned long *idLock = NULL;
@@ -675,8 +635,8 @@ ProcessQueueEntry(unsigned char *entryIn)
     FILE *data = NULL;
     FILE *newFH = NULL;
     MIMEReportStruct *report = NULL;
-    QueueClient *client;
     void *handle;
+    QueueClient *client;
 
 StartOver:
     if (!entryIn) {
@@ -1512,155 +1472,81 @@ StartOver:
         return(TRUE);
     }
 
+    /* i want to get the current queue and iterate over its pools if there are any */
+    tempQueue.queue = queue;
+    ItemIndex = BongoArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
+    if (ItemIndex >= 0) {
+        QueueList *CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
+        for (iter_p=0; iter_p < BongoArrayCount(CurrentQueue->pools); iter_p++) {
+            QueuePoolList *CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, iter_p);
 
-    for (used = 0; (used < (unsigned long)Queue.pushClients.count) && (Agent.agent.state < BONGO_AGENT_STATE_STOPPING); used++) {
-        if ((Queue.pushClients.array[used].queue == queue) && (Queue.pushClients.array[used].errorCount <= MAX_PUSHCLIENTS_ERRORS)) {
             sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
-            if (stat(path, &sb) == 0) {
-                FOPEN_CHECK(fh, path, "rb");
-                if (fh) {
-                    /* Count the number of lines */
-                    do {
-                        if (fgets(line, CONN_BUFSIZE, fh) 
-                                && ((line[0] == QUEUE_RECIP_REMOTE) || (line[0] == QUEUE_RECIP_LOCAL) || (line[0] == QUEUE_RECIP_MBOX_LOCAL))) {
-                            lines++;
-                        }
-                    } while (!feof(fh) && !ferror(fh));
-                }
-            } else {
+            stat(path, &sb);
+            FOPEN_CHECK(fh, path, "rb");
+            if (!fh) {
                 ProcessQueueEntryCleanUp(idLock, report);
                 return(TRUE);
             }
+            do {
+                if (fgets(line, CONN_BUFSIZE, fh) && (
+                        (line[0] == QUEUE_RECIP_REMOTE) || (line[0] == QUEUE_RECIP_LOCAL) || (line[0] == QUEUE_RECIP_MBOX_LOCAL))) {
+                    lines++;
+                }
+            } while (!feof(fh) && !ferror(fh));
 
             fseek(fh, 0, SEEK_SET);
 
+            /* set up the QueueClient */
             client = QueueClientAlloc();
             memset(client, 0, sizeof(QueueClient));
-            
-            if (client && ((client->conn = ConnAlloc(TRUE)) != NULL)) {
-                client->authorized = TRUE;
-            } else {
-                if (client) {
-                    QueueClientFree(client);
-                }
-
+            if (!client) {
                 LogFailureF("Cannot allocate %d bytes memory (entry %ld)", sizeof(QueueClient), entryID);
-                if (fh) {
-                    FCLOSE_CHECK(fh);
-                }
-
-                fh = NULL;
+                FCLOSE_CHECK(fh);
+                fh=NULL;
                 continue;
             }
+            /* connect to the waiting client */
+            client->conn = ConnAddressPoolConnect(&(CurrentPool->pool), 60000);
 
-            /* fixme - reevaluate this section
-               This works around connecting to ourselves if the qclients info is broken */
-            ConnSocket(client->conn);
-            memset(&saddr, 0, sizeof(struct sockaddr_in));
-            saddr.sin_family = AF_INET;
-
-            bind(client->conn->socket, (struct sockaddr *)&saddr, sizeof(saddr));
-
-            len = sizeof(saddr);
-            getsockname(client->conn->socket, (struct sockaddr *)&saddr, &len);
-
-            Queue.pushClients.array[used].usageCount++;
-
-            if (saddr.sin_port == Queue.pushClients.array[used].port) {
-                if ((Queue.pushClients.array[used].address == 0x0100007F) || (Queue.pushClients.array[used].address == saddr.sin_addr.s_addr)) {
-                    ConnClose(client->conn, 0);
-                    ConnFree(client->conn);
-                    client->conn = NULL;
-
-                    if (RemovePushAgentIndex(used, TRUE)) {
-                        used--;
-                    }
-
-                    QueueClientFree(client);
-
-                    if (fh) {
-                        FCLOSE_CHECK(fh);
-                    }
-
-                    fh = NULL;
-
-                    ProcessQueueEntryCleanUp(idLock, report);
-                    return(TRUE);
-                }
-            }
-
-            /* Contacting waiting client */
-            memset(&saddr, 0, sizeof(struct sockaddr_in));
-            saddr.sin_family = AF_INET;
-            saddr.sin_addr.s_addr = Queue.pushClients.array[used].address;
-            saddr.sin_port = Queue.pushClients.array[used].port;
-
-            /* FIXME: this is the lazy fix until we can figure this out */
-            memcpy(&(client->conn->socketAddress), &saddr, sizeof(struct sockaddr));
-
-            len = connect(client->conn->socket, (struct sockaddr *)&saddr, sizeof(saddr));
-            if (!len) {
-                /* Non-blocking, w/o nagele */
-                len = 1;
-                setsockopt(client->conn->socket, IPPROTO_TCP, 1, (unsigned char *)&len, sizeof(len));
-
-                Queue.pushClients.array[used].errorCount = 0;
-            } else {
-                LogFailureF("Couldn't connect client %s", LOGIP(saddr));
-
-                ConnClose(client->conn, 0);
-                ConnFree(client->conn);
-                client->conn = NULL;
-
-                if (RemovePushAgentIndex(used, FALSE)) {
-                    used--;
-                }
-
+            if (!client->conn) {
+                /* FIXME: do we want to remove the whole pool at this point? */
+                LogFailureF("All agents in pool %s failed (entry %ld)", CurrentPool->identifier, entryID);
+                FCLOSE_CHECK(fh);
+                fh=NULL;
                 QueueClientFree(client);
-
-                if (fh) {
-                    FCLOSE_CHECK(fh);
-                }
-
-                fh = NULL;
-
-                ProcessQueueEntryCleanUp(idLock, report);
-                return(TRUE);
+                continue;
+            }
+            /* disable the nagle algorithm */
+            {
+                int opt = 1;
+                setsockopt(client->conn->socket, IPPROTO_TCP, 1, &opt, sizeof(opt));
             }
 
-            Log(LOG_DEBUG, "Handing off to agent queue %d", queue);
-            /* We got a connection to the guy, tell him what to do */
+            Log(LOG_DEBUG, "Handing off to agent queue/pool %d/%s", queue, CurrentPool->identifier);
             ConnWriteF(client->conn, "6020 %03d-%s %ld %ld %ld\r\n", queue, entry, (unsigned long)sb.st_size, dSize, lines);
             ConnWriteFile(client->conn, fh);
 
             FCLOSE_CHECK(fh);
-            fh = NULL;
+            fh=NULL;
 
             sprintf(client->entry.workQueue, "%03d-%s", queue, entry);
             client->entry.workQueue[3] = '\0';
-
-            ConnWrite(client->conn, "6021 Get busy!\r\n", 16);
+            ConnWriteStr(client->conn, "6021 Get busy!\r\n");
             ConnFlush(client->conn);
 
             client->entry.report = report;
 
             if (!HandleCommand(client)) {
-                LogFailureF("Couldn't handle command on entry %s for host %s", entry, LOGIP(saddr));
+                /* log message here ?? */
             }
 
-            /* fixme - evaluate this section.
-               Clean up behind us ? */
             if (client->entry.work) {
                 Log(LOG_DEBUG, "Ran into queue resend [C%s.%03d] Last Command: %s", entry, queue, client->buffer);
-
                 FCLOSE_CHECK(client->entry.work);
                 client->entry.work = NULL;
-
                 sprintf(client->path,"%s/w%s.%03d", Conf.spoolPath, entry, queue);
                 remove(client->path);
             }
-
-            Queue.pushClients.array[used].usageCount--;
 
             if (client->conn) {
                 ConnClose(client->conn, 0);
@@ -1681,18 +1567,10 @@ StartOver:
             }
 
             QueueClientFree(client);
-
             if (access(path, 0)) {
                 XplSafeDecrement(Queue.queuedLocal);
-
                 ProcessQueueEntryCleanUp(idLock, report);
                 return(TRUE);
-            }
-        } else {
-            if (Queue.pushClients.array[used].queue == queue) {
-                if (RemovePushAgentIndex(used, FALSE)) {
-                    used--;
-                }
             }
         }
     }
@@ -1710,11 +1588,33 @@ StartOver:
         case Q_FOUR:
         case Q_FIVE:
         case Q_DELIVER: {
-            i = queue + 1;
-            while(i < 8 && !Queue.pushClientsRegistered[i]) {
-                i++;
+            /* i need to take the next queue that has something in it.  Since we are sorted, if ItemIndex is we can bypass the find stuff
+             * and take the next item in the array!! */
+            if (ItemIndex >= 0) {
+                /* i can safely cast the int here to an unsigned as i know that it is positive */
+                if ((unsigned int)++ItemIndex < BongoArrayCount(Queue.PushClients.queues)) {
+                    CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
+                    i = CurrentQueue->queue;
+                } else {
+                    /* there are no more agents, we can just jump straight to Q_OUTGOING */
+                    i = Q_OUTGOING;
+                }
+            } else {
+                /* there was no item for the current queue, I need to search for the next queue greater than the one i was in.  HOpefully
+                 * this will only get hit for items that are created in a queue that has no agents in it, I don't really see an efficient
+                 * way of finding this out without looping over the whole array */
+                i = Q_OUTGOING;
+                /* i can safely cast here as ItemIndex is never going to be less than 0 */
+                for (ItemIndex=0;(unsigned int)ItemIndex<BongoArrayCount(Queue.PushClients.queues);ItemIndex++) {
+                    CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
+                    if (CurrentQueue->queue > queue) {
+                        i = CurrentQueue->queue;
+                        break;
+                    }
+                }
             }
 
+            Log(LOG_DEBUG, "Moving %ld from queue %d to queue %d", entryID, queue, i);
             sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
             sprintf(path2, "%s/c%s.%03d", Conf.spoolPath, entry, i);
             RENAME_CHECK(path, path2);
@@ -2634,7 +2534,6 @@ QueueInit(void)
         return FALSE;
     }    
 
-    XplMutexInit(Queue.pushClients.lock);
     XplMutexInit(Queue.queueIDLock);
 
     XplSafeWrite(Queue.queuedLocal, 0);
@@ -2642,9 +2541,8 @@ QueueInit(void)
 
     Queue.queueID = time(NULL) & ((1 << 28) - 1);
 
-    /* initialize the push agents registered array in case no agents
-     * connect to us */
-    RemoveAllPushAgents();
+    XplMutexInit(Queue.PushClients.lock);
+    Queue.PushClients.queues = BongoArrayNew(sizeof(QueueList *), 1);
 
     return TRUE;
 }
@@ -2659,8 +2557,10 @@ QueueShutdown(void)
 
     DeInitSpoolEntryIDLocks();
     
-    XplMutexDestroy(Queue.pushClients.lock);
     XplMutexDestroy(Queue.queueIDLock);
+
+    XplMutexDestroy(Queue.PushClients.lock);
+    BongoArrayDestroy(Queue.PushClients.queues, TRUE);
 }
 
 int 
@@ -4754,7 +4654,6 @@ CommandQwait(void *param)
     int ccode;
     int port;
     int queue;
-    int i;
     unsigned char *ptr;
     unsigned char *identifier;
     QueueClient *client = (QueueClient *)param;
@@ -4787,19 +4686,12 @@ CommandQwait(void *param)
     }
 
     if (ccode != -1) {
-        for (i = 0; i < Queue.pushClients.count; i++) {
-            if (strcmp(Queue.pushClients.array[i].identifier, identifier) == 0) {
-                if (RemovePushAgentIndex(i, TRUE)) {
-                    i--;
-                }
-            }
-        }
-
+        /* FIXME: this should be made a tad more efficient */
         if ((MsgGetHostIPAddress() != MsgGetAgentBindIPAddress())
             && (!client->conn->socketAddress.sin_addr.s_addr || (client->conn->socketAddress.sin_addr.s_addr == inet_addr("127.0.0.1")) || (client->conn->socketAddress.sin_addr.s_addr == MsgGetHostIPAddress()))) {
-            AddPushAgent(client, inet_addr("127.0.0.1"), htons(port), queue, identifier);
+            AddPushAgent(client, "127.0.0.1", htons(port), queue, identifier);
         } else {
-            AddPushAgent(client, client->conn->socketAddress.sin_addr.s_addr, htons(port), queue, identifier);
+            AddPushAgent(client, inet_ntoa(client->conn->socketAddress.sin_addr), htons(port), queue, identifier);
         }
 
         client->done = TRUE;

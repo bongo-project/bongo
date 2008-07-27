@@ -39,6 +39,18 @@ typedef struct _QueuePushClient {
     unsigned char identifier[101];
 } QueuePushClient;
 
+typedef struct _QueueList {
+    int queue;
+
+    BongoArray *pools;
+} QueueList;
+
+typedef struct _QueuePoolList {
+    unsigned char identifier[101];  /* each queue agent should have a unique identifier so that pooling will work correctly */
+
+    AddressPool pool;
+} QueuePoolList;
+
 typedef struct _Queue {
     /* Queue IDs */
     unsigned long queueID;
@@ -49,17 +61,11 @@ typedef struct _Queue {
         unsigned long *entryIDs;
     } spoolLocks;
 
-    /* Queue agent management  */
     struct {
         XplMutex lock;
-        
-        int count;
-        int allocated;
-        
-        QueuePushClient *array;
-    } pushClients;
 
-    BOOL pushClientsRegistered[8];
+        BongoArray *queues;
+    } PushClients;
 
     /* Worker threads */
     /* FIXME: use a thread pool here */
