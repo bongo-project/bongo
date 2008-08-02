@@ -35,6 +35,7 @@
 #include <msgapi.h>
 #include <streamio.h>
 #include <connio.h>
+#include <logger.h>
 
 #include "antispam.h"
 
@@ -49,18 +50,8 @@ static void SignalHandler(int sigtype);
 
 ASpamGlobals ASpam;
 
-static BOOL 
-ASpamClientAllocCB(void *buffer, void *data)
-{
-    register ASpamClient *c = (ASpamClient *)buffer;
-
-    memset(c, 0, sizeof(ASpamClient));
-
-    return(TRUE);
-}
-
 static void 
-ASpamClientFree(ASpamClient *client)
+ASpamClientFree(void *client)
 {
     register ASpamClient *c = client;
 
@@ -70,121 +61,13 @@ ASpamClientFree(ASpamClient *client)
         c->conn = NULL;
     }
 
+    if (c->envelope) {
+        MemFree(c->envelope);
+    }
     MemPrivatePoolReturnEntry(c);
 
     return;
 }
-
-static void 
-FreeClientData(ASpamClient *client)
-{
-    if (client && !(client->flags & ASPAM_CLIENT_FLAG_EXITING)) {
-        client->flags |= ASPAM_CLIENT_FLAG_EXITING;
-
-        if (client->conn) {
-            ConnClose(client->conn, 1);
-            ConnFree(client->conn);
-            client->conn = NULL;
-        }
-
-        if (client->envelope) {
-            MemFree(client->envelope);
-        }
-    }
-
-    return;
-}
-
-#if 0
-// FIXME: Deprecated? CmpAddr() and MatchAddr() are unused.
-static int 
-CmpAddr(const void *c, const void *d)
-{
-    int r = 0;
-    int clen;
-    int dlen;
-    int ci;
-    int di;
-    unsigned char cc;
-    unsigned char dc;
-    const unsigned char *candidate = *(unsigned char**)c;
-    const unsigned char *domain = *(unsigned char**)d;
-
-    if (candidate && domain) {
-        ci = clen = strlen(candidate) - 1;
-        di = dlen = strlen(domain) - 1;
-
-        while ((ci >= 0) && (di >= 0) && (r == 0)) {
-            cc = toupper(candidate[ci]);
-            dc = toupper(domain[di]);
-            if (cc == dc) {
-                --ci;
-                --di;
-            } else if (cc < dc) {
-                r = -1;
-            } else {
-                r = 1;
-            }
-        }
-
-        if (r == 0) {
-            if (clen < dlen) {
-                r = -1;
-            } else if ((clen > dlen) && (candidate[ci] != '.') && (candidate[ci] != '@')) {
-                r = 1;
-            } else {
-                r = 1;
-            }
-        }
-
-        return(r);
-    }
-
-    return(0);
-}
-
-static int 
-MatchAddr(unsigned char *candidate, unsigned char *domain)
-{
-    int r = 0;
-    int clen;
-    int dlen;
-    int ci;
-    int di;
-    unsigned char cc;
-    unsigned char dc;
-
-    if (candidate && domain) {
-        ci = clen = strlen(candidate) - 1;
-        di = dlen = strlen(domain) - 1;
-
-        while ((ci >= 0) && (di >= 0) && (r == 0)) {
-            cc = toupper(candidate[ci]);
-            dc = toupper(domain[di]);
-            if (cc == dc) {
-                --ci;
-                --di;
-            } else if(cc < dc) {
-                r = -1;
-            } else {
-                r = 1;
-            }
-        }
-
-        if ((r == 0) && (clen != dlen)) {
-            if (clen < dlen) {
-                r = -1;
-            } else if ((candidate[ci] != '.') && (candidate[ci] != '@')) {
-                r = 1;
-            }
-        }
-
-        return(r);
-    }
-
-    return(0);
-}
-#endif
 
 /** Callback function.  Whenever a new message arrives in the queue that
  * this agent has registered itself on, NMAP calls back to this function
@@ -194,12 +77,16 @@ MatchAddr(unsigned char *candidate, unsigned char *domain)
  * \param client The connection initiated by the NMAP store.
  */
 static __inline int 
-ProcessConnection(ASpamClient *client)
+ProcessConnection(void *clientp, Connection *conn)
 {
+    ASpamClient *client = clientp;
+    unsigned char *envelopeLine;
+    BOOL hasFlags = FALSE;
+    unsigned long msgFlags = 0;
     int ccode;
+
     int length;
     unsigned long source = 0;
-    unsigned long msgFlags;
     unsigned char *ptr;
     char *ptr2;
     unsigned char *cur;
@@ -207,205 +94,40 @@ ProcessConnection(ASpamClient *client)
     char *senderUserName = NULL;
     unsigned char qID[16];
     BOOL copy;
-    BOOL hasFlags;
     BOOL blocked = FALSE;
 
-    /* Read out the connection answer and determine the size of the message envelope. */
-    if (((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1) 
-            && (ccode == 6020) 
-            && ((ptr = strchr(client->line, ' ')) != NULL)) {
-        *ptr++ = '\0';
+    client->conn = conn;
+    ccode = BongoQueueAgentHandshake(client->conn, client->line, client->qID, &client->envelopeLength, &client->messageLength);
+    client->envelope = BongoQueueAgentReadEnvelope(client->conn, client->line, client->envelopeLength, &client->envelopeLines);
 
-        strcpy(qID, client->line);
-
-        length = atoi(ptr);
-        client->envelope = MemMalloc(length + 3);
-    } else {
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-        return(-1);
-    }
-
-    /* Rename the thread to something useful, and read in the entire envelope. */
-    if (client->envelope) {
-        sprintf(client->line, "ASpam: %s", qID);
-        XplRenameThread(XplGetThreadID(), client->line);
-
-        ccode = NMAPReadCount(client->conn, client->envelope, length);
-    } else {
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-        return(-1);
-    }
-
-    /* Finish the handshake with the NMAP store. */
-    if ((ccode != -1) 
-            && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 6021)) {
-        client->envelope[length] = '\0';
-
-        cur = client->envelope;
-    } else {
-        MemFree(client->envelope);
-        client->envelope = NULL;
-
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-        return(-1);
-    }
-
-    /* NMAP store is now in slave mode. Start processing. */
-
-    ptr = strstr(client->envelope, "\r\n"QUEUES_FLAGS);
-    if (ptr) {
-        hasFlags = TRUE;
-        msgFlags = atol(ptr + 3);
-        if (msgFlags & MSG_FLAG_SPAM_CHECKED) {
-            /* This message has already been processed */
-            MemFree(client->envelope);
-            client->envelope = NULL;
-
-            NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-            NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-
-            return 0;
-        }
-    } else {
-        hasFlags = FALSE;
-        msgFlags = 0;
-    }
-
-    ptr = strstr(client->envelope, "\r\n"QUEUES_ADDRESS);
-    if (ptr) {
-        source = atol(ptr + 3);
-    } else {
-        source = 0;
-    }
-
-    if ((ptr = strstr(client->envelope, "\r\n"QUEUES_FROM)) != NULL) {
-        char *endLine;
-        char *cReturn;
-       
-        ptr += 3;
-
-        if ((endLine = strchr(ptr, '\n')) != NULL) {
-            if (*(endLine - 1) == '\r') {
-                cReturn = endLine - 1;
-                *cReturn = '\0';
-            } else {
-                *endLine = '\0';
-            }
-        }
-
-        if ((ptr = strchr(ptr, ' ')) != NULL) {
-            ptr++;
-            ptr2 = strchr(ptr , ' ');
-            if (ptr2) {
-                *ptr2 = '\0';
-            }
-            if (strcmp(ptr, "-") != 0) {
-                senderUserName = MemStrdup(ptr);
-            }            
-            if (ptr2) {
-                *ptr2 = ' ';
-            }
-        }
-
-        if (endLine) {
-            if (cReturn) {
-                *cReturn = '\r';
-            } else {
-                *endLine = '\n';
-            }
-        }
-    }
-
-    //if (ASpam.allow.used || ASpam.disallow.used) 
-    {
-        unsigned char *tmpNull = NULL;
-        unsigned char tmpChar;
-        while (*cur) { 
-            /* Parsing the envelope to see if the sender is blacklisted.
-             */
-            copy = TRUE;
-            line = strchr(cur, 0x0A);
-            if (line) {
-                if (line[-1] == 0x0D) {
-                    tmpNull = line - 1;
-                } else {
-                    tmpNull = line;
-                }
-
-                tmpChar = *tmpNull;
-                *tmpNull = '\0';
-                line++;
-            } else {
-                line = cur + strlen(cur);
-                tmpChar = '\0';
-                tmpNull = NULL;
-            }
-
-            switch (cur[0]) {
-                case QUEUE_FLAGS: {
-                    copy = FALSE;
-                    /* this is handled by the QCREA done in spamd.c */
-                    /* ccode = NMAPSendCommandF(client->conn, "QMOD RAW "QUEUES_FLAGS"%ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED)); */
-                    break;
-                }
-                case QUEUE_FROM: {
-                    // code below used to check IPs for being spammy. Shouldn't
-                    // be doing this in here IMHO - alex.
-#if 0
-                    ptr = strchr(cur + 1, ' ');
-                    if (ptr) {
-                        *ptr = '\0';
-                        
-                        blockedAddr = IsSpammer(cur + 1);
-                        if (!blockedAddr) {
-                            *ptr = ' ';
-                        } else {
-                            blocked = TRUE;
-                            
-                            LoggerEvent(ASpam.handle.logging, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_SPAM_BLOCKED, LOG_NOTICE, 0, cur + 1, NULL, source, 0, NULL, 0);
-                            
-                            *ptr = ' ';
-                        }
+    envelopeLine = client->envelope;
+    while (*envelopeLine) {
+        switch(*envelopeLine) {
+        case QUEUE_FROM:
+            if ((ptr = strchr(envelopeLine, ' '))) {
+                ptr++;
+                if ((ptr2 = strchr(ptr, ' '))) {
+                    *ptr2 = '\0';
+                    if (strcmp(ptr, "-") != 0) {
+                        senderUserName = MemStrdup(ptr);
                     }
-#endif
-                    break;
-                }
-                    
-                case QUEUE_RECIP_REMOTE:
-                case QUEUE_RECIP_LOCAL:
-                case QUEUE_RECIP_MBOX_LOCAL: {
-                    if (blocked) {
-                        copy = FALSE;
-                    }
-                    
-                    break;
-                }
-                    
-                case QUEUE_ADDRESS: {
-                    source = atol(cur + 1);
-                    break;
+                    *ptr = ' ';
                 }
             }
-            /* this is handled by the QCREA in spamd.c */
-            /*
-            if (copy && (ccode != -1)) {
-                ccode = NMAPSendCommandF(client->conn, "QMOD RAW %s\r\n", cur);
-            }
-            */
-            cur = line;
-            if (tmpNull) {
-                /* Restore the local copy of the envelope. */
-                *tmpNull = tmpChar;
-            }
+            break;
+        case QUEUE_FLAGS:
+            hasFlags = TRUE;
+            copy = FALSE;
+            msgFlags = atol(envelopeLine+1);
+            break;
+        case QUEUE_ADDRESS:
+            source = atol(envelopeLine+1);
+            break;
         }
+        BONGO_ENVELOPE_NEXT(envelopeLine);
     }
 
-    if (!blocked) { 
-        blocked = SpamdCheck(&ASpam.spamd, client, qID, hasFlags, msgFlags, source, senderUserName);
-    }
+    blocked = SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags, source, senderUserName);
 
     if ((ccode != -1) 
             && ((ccode = NMAPSendCommand(client->conn, "QDONE\r\n", 7)) != -1)) {
@@ -424,270 +146,16 @@ ProcessConnection(ASpamClient *client)
     return(0);
 }
 
-static void 
-HandleConnection(void *param)
-{
-    int ccode;
-    long threadNumber = (long)param;
-    time_t sleep = time(NULL);
-    time_t wokeup;
-    ASpamClient *client;
-
-    if ((client = ASpamClientAlloc()) == NULL) {
-        Log(LOG_ERROR, "New worker failed to start up; out of memory.");
-
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-
-        XplSafeDecrement(ASpam.nmap.worker.active);
-
-        return;
-    }
-
-    do {
-        XplRenameThread(XplGetThreadID(), "ASpam Worker");
-
-        XplSafeIncrement(ASpam.nmap.worker.idle);
-
-        XplWaitOnLocalSemaphore(ASpam.nmap.worker.todo);
-
-        XplSafeDecrement(ASpam.nmap.worker.idle);
-
-        wokeup = time(NULL);
-
-        XplWaitOnLocalSemaphore(ASpam.nmap.semaphore);
-
-        client->conn = ASpam.nmap.worker.tail;
-        if (client->conn) {
-            ASpam.nmap.worker.tail = client->conn->queue.previous;
-            if (ASpam.nmap.worker.tail) {
-                ASpam.nmap.worker.tail->queue.next = NULL;
-            } else {
-                ASpam.nmap.worker.head = NULL;
-            }
-        }
-
-        XplSignalLocalSemaphore(ASpam.nmap.semaphore);
-
-        if (client->conn) {
-            if (ConnNegotiate(client->conn, ASpam.nmap.ssl.context)) {
-                ccode = ProcessConnection(client);
-            } else {
-                NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-                NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-            }
-        }
-
-        if (client->conn) {
-            ConnFlush(client->conn);
-        }
-
-        FreeClientData(client);
-
-        /* Live or die? */
-        if (threadNumber == XplSafeRead(ASpam.nmap.worker.active)) {
-            if ((wokeup - sleep) > ASpam.nmap.sleepTime) {
-                break;
-            }
-        }
-
-        sleep = time(NULL);
-
-        ASpamClientAllocCB(client, NULL);
-    } while (ASpam.state == ASPAM_STATE_RUNNING);
-
-    FreeClientData(client);
-
-    ASpamClientFree(client);
-
-    XplSafeDecrement(ASpam.nmap.worker.active);
-
-    XplExitThread(TSR_THREAD, 0);
-
-    return;
-}
-
-static void 
-AntiSpamServer(void *ignored)
-{
-    int i;
-    int ccode;
-    XplThreadID id;
-    Connection *conn;
-
-    XplSafeIncrement(ASpam.server.active);
-
-    XplRenameThread(XplGetThreadID(), "Anti-Spam Server");
-
-    while (ASpam.state < ASPAM_STATE_STOPPING) {
-        if (ConnAccept(ASpam.nmap.conn, &conn) != -1) {
-            if (ASpam.state < ASPAM_STATE_STOPPING) {
-                conn->ssl.enable = FALSE;
-
-                XplWaitOnLocalSemaphore(ASpam.nmap.semaphore);
-                if (XplSafeRead(ASpam.nmap.worker.idle)) {
-                    conn->queue.previous = NULL;
-                    if ((conn->queue.next = ASpam.nmap.worker.head) != NULL) {
-                        conn->queue.next->queue.previous = conn;
-                    } else {
-                        ASpam.nmap.worker.tail = conn;
-                    }
-                    ASpam.nmap.worker.head = conn;
-                    ccode = 0;
-                } else {
-                    XplSafeIncrement(ASpam.nmap.worker.active);
-                    XplSignalBlock();
-                    XplBeginThread(&id, HandleConnection, 24 * 1024, XPL_UINT_TO_PTR(XplSafeRead(ASpam.nmap.worker.active)), ccode);
-                    XplSignalHandler(SignalHandler);
-                    if (!ccode) {
-                        conn->queue.previous = NULL;
-                        if ((conn->queue.next = ASpam.nmap.worker.head) != NULL) {
-                            conn->queue.next->queue.previous = conn;
-                        } else {
-                            ASpam.nmap.worker.tail = conn;
-                        }
-                        ASpam.nmap.worker.head = conn;
-                    } else {
-                        XplSafeDecrement(ASpam.nmap.worker.active);
-                        ccode = -1;
-                    }
-                }
-                XplSignalLocalSemaphore(ASpam.nmap.semaphore);
-                if (!ccode) {
-                    XplSignalLocalSemaphore(ASpam.nmap.worker.todo);
-
-                    continue;
-                }
-            }
-
-            ConnWrite(conn, "QDONE\r\n", 7);
-            ConnClose(conn, 0);
-
-            ConnFree(conn);
-            conn = NULL;
-
-            continue;
-        }
-
-        switch (errno) {
-            case ECONNABORTED:
-#ifdef EPROTO
-            case EPROTO: 
-#endif
-            case EINTR: {
-                if (ASpam.state < ASPAM_STATE_STOPPING) {
-                    LoggerEvent(ASpam.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
-                }
-
-                continue;
-            }
-
-            default: {
-                if (ASpam.state < ASPAM_STATE_STOPPING) {
-                    Log(LOG_ERROR, "Exiting after an accept() failure; error %d", errno);
-
-                    LoggerEvent(ASpam.handle.logging, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "Server", NULL, errno, 0, NULL, 0);
-
-                    ASpam.state = ASPAM_STATE_STOPPING;
-                }
-
-                break;
-            }
-        }
-
-        break;
-    }
-
-    /* Shutting down */
-    ASpam.state = ASPAM_STATE_UNLOADING;
-
-    Log(LOG_DEBUG, "Shutting down");
-
-    id = XplSetThreadGroupID(ASpam.id.group);
-
-    if (ASpam.nmap.conn) {
-        ConnClose(ASpam.nmap.conn, 1);
-        ASpam.nmap.conn = NULL;
-    }
-
-    if (ASpam.nmap.ssl.enable) {
-        ASpam.nmap.ssl.enable = FALSE;
-
-        if (ASpam.nmap.ssl.conn) {
-            ConnClose(ASpam.nmap.ssl.conn, 1);
-            ASpam.nmap.ssl.conn = NULL;
-        }
-
-        if (ASpam.nmap.ssl.context) {
-            ConnSSLContextFree(ASpam.nmap.ssl.context);
-            ASpam.nmap.ssl.context = NULL;
-        }
-    }
-
-    ConnCloseAll(1);
-
-    for (i = 0; (XplSafeRead(ASpam.server.active) > 1) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    Log(LOG_DEBUG, "Shutting down %d queue threads", XplSafeRead(ASpam.nmap.worker.active));
-
-    XplWaitOnLocalSemaphore(ASpam.nmap.semaphore);
-
-    ccode = XplSafeRead(ASpam.nmap.worker.idle);
-    while (ccode--) {
-        XplSignalLocalSemaphore(ASpam.nmap.worker.todo);
-    }
-
-    XplSignalLocalSemaphore(ASpam.nmap.semaphore);
-
-    for (i = 0; XplSafeRead(ASpam.nmap.worker.active) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    if (XplSafeRead(ASpam.server.active) > 1) {
-        Log(LOG_INFO, "%d server threads outstanding; attempting forceful unload.", XplSafeRead(ASpam.server.active)-1);
-    }
-
-    if (XplSafeRead(ASpam.nmap.worker.active)) {
-        Log(LOG_INFO, "%d threads outstanding; attempting forceful unload.", XplSafeRead(ASpam.nmap.worker.active));
-    }
-
-    SpamdShutdown(&(ASpam.spamd));
-    LoggerClose(ASpam.handle.logging);
-    ASpam.handle.logging = NULL;
-
-    /* shutdown the scanning engine */
-
-    XplCloseLocalSemaphore(ASpam.nmap.worker.todo);
-    XplCloseLocalSemaphore(ASpam.nmap.semaphore);
-
-    MsgShutdown();
-
-    CONN_TRACE_SHUTDOWN();
-    ConnShutdown();
-
-    MemPrivatePoolFree(ASpam.nmap.pool);
-
-    MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
-
-    Log(LOG_DEBUG, "Shutdown complete.");
-
-    XplSignalLocalSemaphore(ASpam.sem.main);
-    XplWaitOnLocalSemaphore(ASpam.sem.shutdown);
-
-    XplCloseLocalSemaphore(ASpam.sem.shutdown);
-    XplCloseLocalSemaphore(ASpam.sem.main);
-
-    XplSetThreadGroupID(id);
-
-    return;
-}
-
 static BOOL 
 ReadConfiguration(void) {
     unsigned char *pconfig;
     BOOL retcode = FALSE;
     BongoJsonNode *node;
+
+
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        return FALSE;
+    }
 
     if (! NMAPReadConfigFile("antispam", &pconfig)) {
         printf("manager: couldn't read config from store\n");
@@ -762,55 +230,33 @@ SignalHandler(int sigtype)
     return;
 }
 
-static int 
-QueueSocketInit(void)
-{
-    ASpam.nmap.conn = ConnAlloc(FALSE);
-    if (ASpam.nmap.conn) {
-        memset(&(ASpam.nmap.conn->socketAddress), 0, sizeof(ASpam.nmap.conn->socketAddress));
-
-        ASpam.nmap.conn->socketAddress.sin_family = AF_INET;
-        ASpam.nmap.conn->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
-
-        /* Get root privs back for the bind.  It's ok if this fails -
-        * the user might not need to be root to bind to the port */
-        XplSetEffectiveUserId(0);
-
-        ASpam.nmap.conn->socket = ConnServerSocket(ASpam.nmap.conn, 2048);
-        if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
-            ConnFree(ASpam.nmap.conn);
-            ASpam.nmap.conn = NULL;
-            return(-1);
-        }
-
-        if (ASpam.nmap.conn->socket == -1) {
-            Log(LOG_ERROR, "Could not bind to dynamic port.");
-            ConnFree(ASpam.nmap.conn);
-            ASpam.nmap.conn = NULL;
-            return(-1);
-        }
-
-        if (QueueRegister(MSGSRV_AGENT_ANTISPAM, ASpam.nmap.queue, ASpam.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
-            Log(LOG_ERROR, "Could not register with bongoqueue");
-            ConnFree(ASpam.nmap.conn);
-            ASpam.nmap.conn = NULL;
-            return(-1);
-        }
-    } else {
-        Log(LOG_ERROR, "Could not allocate connection.");
-        return(-1);
-    }
-
-    return(0);
-}
-
 XplServiceCode(SignalHandler)
+
+static void
+AntispamServer(void *ignored) {
+    int minThreads, maxThreads, minSleep;
+
+    BongoQueueAgentGetThreadPoolParameters(&ASpam.agent, &minThreads, &maxThreads, &minSleep);
+    ASpam.QueueThreadPool = BongoThreadPoolNew(AGENT_NAME " Clients", BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE, minThreads, maxThreads, minSleep);
+    ASpam.QueueConnection = BongoQueueConnectionInit(&ASpam.agent, Q_INCOMING);
+
+    BongoQueueAgentListenWithClientPool(&ASpam.agent,
+                                            ASpam.QueueConnection,
+                                            ASpam.QueueThreadPool,
+                                            sizeof(ASpamClient),
+                                            ASpamClientFree,
+                                            ProcessConnection,
+                                            &ASpam.QueueMemPool);
+    BongoThreadPoolShutdown(ASpam.QueueThreadPool);
+    ConnClose(ASpam.QueueConnection, 1);
+    BongoAgentShutdown(&ASpam.agent);
+}
 
 int
 XplServiceMain(int argc, char *argv[])
 {
-    int                ccode;
+    int ccode;
+    int startupOpts;
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
         Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
@@ -818,116 +264,27 @@ XplServiceMain(int argc, char *argv[])
     }
     XplInit();
 
-    XplSignalHandler(SignalHandler);
-
-    ASpam.id.main = XplGetThreadID();
-    ASpam.id.group = XplGetThreadGroupID();
-
-    ASpam.state = ASPAM_STATE_INITIALIZING;
-    ASpam.flags = 0;
-
-    ASpam.nmap.conn = NULL;
-    ASpam.nmap.queue = Q_INCOMING;
-    ASpam.nmap.pool = NULL;
-    ASpam.nmap.sleepTime = (5 * 60);
-    ASpam.nmap.ssl.conn = NULL;
-    ASpam.nmap.ssl.enable = FALSE;
-    ASpam.nmap.ssl.context = NULL;
-    ASpam.nmap.ssl.config.options = 0;
- 
-    ASpam.handle.logging = NULL;
-
-    strcpy(ASpam.nmap.address, "127.0.0.1");
-
-    XplSafeWrite(ASpam.server.active, 0);
-
-    XplSafeWrite(ASpam.nmap.worker.idle, 0);
-    XplSafeWrite(ASpam.nmap.worker.active, 0);
-    XplSafeWrite(ASpam.nmap.worker.maximum, 100000);
-
-    if (MemoryManagerOpen(MSGSRV_AGENT_ANTISPAM) == TRUE) {
-        ASpam.nmap.pool = MemPrivatePoolAlloc("AntiSpam Connections", sizeof(ASpamClient), 0, 3072, TRUE, FALSE, ASpamClientAllocCB, NULL, NULL);
-        if (ASpam.nmap.pool != NULL) {
-            XplOpenLocalSemaphore(ASpam.sem.main, 0);
-            XplOpenLocalSemaphore(ASpam.sem.shutdown, 1);
-            XplOpenLocalSemaphore(ASpam.nmap.semaphore, 1);
-            XplOpenLocalSemaphore(ASpam.nmap.worker.todo, 1);
-        } else {
-            MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
-
-            Log(LOG_ERROR, "Unable to create connection pool");
-            return(-1);
-        }
-    } else {
-        Log(LOG_ERROR, "Unable to initialize memory manager");
-        return(-1);
-    }
-
-    ConnStartup(CONNECTION_TIMEOUT, TRUE);
-
-    MsgInit();
-    NMAPInitialize();
-
-    SetCurrentNameSpace(NWOS2_NAME_SPACE);
-    SetTargetNameSpace(NWOS2_NAME_SPACE);
-
-    ASpam.handle.logging = LoggerOpen("bongoantispam");
-    if (!ASpam.handle.logging) {
-            Log(LOG_ERROR, "Unable to initialze logging");
+    /* initialize all the libraries we need to */
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    ccode = BongoAgentInit(&ASpam.agent, AGENT_NAME, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
+    if ( ccode == -1) {
+        LogFailureF("%s: Exiting", AGENT_NAME);
+        return -1;
     }
 
     ReadConfiguration();
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "antispam");
-    // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
+    ASpam.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
+    ASpam.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    ASpam.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
+    ASpam.nmap.ssl.context = ConnSSLContextAlloc(&(ASpam.nmap.ssl.config));
 
     SpamdStartup(&(ASpam.spamd));
 
-    // TODO: *.used variables seem to be about spam IP sources. This doesn't seem to be
-    // the right place, really...
-    // if (ASpam.allow.used || ASpam.disallow.used) {
-        if (QueueSocketInit() < 0) {
-            Log(LOG_ERROR, "Init failed");
+    XplSignalHandler(SignalHandler);
 
-            MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
-
-            return -1;
-        }
-
-        /* initialize scanning engine here */
-
-        if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
-
-            MemoryManagerClose(MSGSRV_AGENT_ANTISPAM);
-
-            return 1;
-        }
-
-        ASpam.nmap.ssl.enable = FALSE;
-
-        ASpam.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
-        ASpam.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
-        
-        ASpam.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-
-        ASpam.nmap.ssl.context = ConnSSLContextAlloc(&(ASpam.nmap.ssl.config));
-        if (ASpam.nmap.ssl.context) {
-            ASpam.nmap.ssl.enable = TRUE;
-        }
-
-        NMAPSetEncryption(ASpam.nmap.ssl.context);
-
-        ASpam.state = ASPAM_STATE_RUNNING;
-#if 0
-    } else {
-        XplConsolePrintf("bongoantispam: no hosts allowed or disallowed; unloading\r\n");
-        
-        ASpam.state = ASPAM_STATE_STOPPING;        
-    }
-#endif
-
-    XplStartMainThread(PRODUCT_SHORT_NAME, &id, AntiSpamServer, 8192, NULL, ccode);
+    /* start the server thread */
+    XplStartMainThread(AGENT_NAME, &id, AntispamServer, 8192, NULL, ccode);
     
     XplUnloadApp(XplGetThreadID());
-    return(0);
+    return 0;
 }

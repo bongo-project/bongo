@@ -22,6 +22,12 @@
 #ifndef _ANTISPAM_H
 #define _ANTISPAM_H
 
+
+#ifdef LOGGERNAME
+#undef LOGGERNAME
+#endif
+
+#define AGENT_NAME  "antispam"
 #define LOGGERNAME "antispam"
 #include <logger.h>
 
@@ -63,6 +69,11 @@ typedef struct {
 
     Connection *conn;
 
+    unsigned int envelopeLength;
+    unsigned int messageLength;
+    unsigned int envelopeLines;
+
+    char qID[16];   /* holds the queueID */
     unsigned char *envelope;
     unsigned char line[CONN_BUFSIZE + 1];
     unsigned char command[CONN_BUFSIZE + 1];
@@ -140,6 +151,10 @@ typedef struct _ASpamGlobals {
     } stats;
 
     SpamdConfig spamd;
+    BongoAgent agent;
+    void *QueueMemPool;
+    BongoThreadPool *QueueThreadPool;
+    Connection *QueueConnection;
 } ASpamGlobals;
 
 extern ASpamGlobals ASpam;
