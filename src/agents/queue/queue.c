@@ -1498,13 +1498,15 @@ StartOver:
 
             /* set up the QueueClient */
             client = QueueClientAlloc();
-            memset(client, 0, sizeof(QueueClient));
             if (!client) {
                 LogFailureF("Cannot allocate %d bytes memory (entry %ld)", sizeof(QueueClient), entryID);
                 FCLOSE_CHECK(fh);
                 fh=NULL;
                 continue;
             }
+            memset(client, 0, sizeof(QueueClient));
+            client->authorized = TRUE;
+
             /* connect to the waiting client */
             client->conn = ConnAddressPoolConnect(&(CurrentPool->pool), 60000);
 
