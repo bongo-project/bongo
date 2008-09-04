@@ -311,6 +311,24 @@ int     DBPoolInit(void);
 int  StoreDBOpen(StoreClient *client, const char *user);
 void StoreDBClose(StoreClient *client);
 
+/** decoding.c **/
+
+typedef enum {
+	EW_ENC_NONE,
+	EW_ENC_BASE64,
+	EW_ENC_QP
+} RFC1432_EncodedWordEncoding;
+
+typedef struct {
+	char *charset;
+	RFC1432_EncodedWordEncoding encoding;
+	char *text;
+	char *decoded;
+} RFC1432_EncodedWord;
+
+int	EncodedWordInit (RFC1432_EncodedWord *word, char const *token);
+void	EncodedWordFinish(RFC1432_EncodedWord *word);
+
 /** lock.c **/
 
 CCode StoreShowWatcherEvents(StoreClient *client);
