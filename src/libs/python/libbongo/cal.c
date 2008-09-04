@@ -5,6 +5,7 @@
 
 #include <bongojson.h>
 #include <bongocal.h>
+#include <bongocal-raw.h>
 
 #include "libs.h"
 

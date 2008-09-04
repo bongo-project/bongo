@@ -2,26 +2,30 @@
 sbin_PROGRAMS += bongostore
 
 bongostore_CPPFLAGS = $(AM_CPPFLAGS)		\
+	-Wall -Werror				\
 	-I$(top_srcdir)/src/agents/store	\
-	-DCLUCENE_BONGO_API=$(CLUCENE_BONGO_API) \
-	$(SQLITE_CFLAGS)			\
-	$(CLUCENE_CXXFLAGS)
+	$(SQLITE_CFLAGS)			
+
+# this is a hack because certain automakes don't seem to output .o 
+# in the same directory the .s resides in. automake <= 1.9 ?
+# gcc call was: $(CC) $(CFLAGS) -I$(top_srcdir) -c -o $@ $<
+# however, it doesn't pass -I flags through... :(
+src/agents/store/create-store.o: src/agents/store/create-store.s src/agents/store/create-store.sql
+	$(AS) -I$(top_srcdir) -o $@ $<
 
 bongostore_SOURCES =					 \
-	src/agents/store/alarmdb.c			 \
-	src/agents/store/alarmdb.h			 \
+	src/agents/store/create-store.s			 \
+	src/agents/store/create-store.sql		 \
 	src/agents/store/auth.c				 \
 	src/agents/store/calendar.c			 \
 	src/agents/store/calendar.h			 \
 	src/agents/store/command.c			 \
 	src/agents/store/command.h			 \
+	src/agents/store/command-parsing.c		 \
+	src/agents/store/command-parsing.h		 \
 	src/agents/store/config.c			 \
-	src/agents/store/conversations.c		 \
-	src/agents/store/conversations.h		 \
 	src/agents/store/cookie.c			 \
 	src/agents/store/db.c				 \
-	src/agents/store/dbpool.c			 \
-	src/agents/store/db.h				 \
 	src/agents/store/fairlock.c			 \
 	src/agents/store/guid.c				 \
 	src/agents/store/help.h				 \
@@ -35,21 +39,19 @@ bongostore_SOURCES =					 \
 	src/agents/store/messages.h			 \
 	src/agents/store/mime.c				 \
 	src/agents/store/mime.h				 \
+	src/agents/store/object-model.h			 \
+	src/agents/store/object-model.c			 \
+	src/agents/store/properties.h			 \
+	src/agents/store/properties.c			 \
+	src/agents/store/query-builder.h		 \
+	src/agents/store/query-builder.c		 \
+	src/agents/store/query-parser.h			 \
+	src/agents/store/query-parser.c			 \
 	src/agents/store/search.c			 \
 	src/agents/store/store.c			 \
 	src/agents/store/stored.c			 \
 	src/agents/store/stored.h			 \
-	src/agents/store/watch.c			 \
-	src/agents/store/index.cpp			 \
-	src/agents/store/index.h			 \
-	src/agents/store/lucene-index.h			 \
-	src/agents/store/lucene-index.cpp		 \
-	src/agents/store/filters/BongoStreamInputStream.h \
-	src/agents/store/filters/filter.cpp		 \
-	src/agents/store/filters/filter.h		 \
-	src/agents/store/filters/contact-filter.cpp	 \
-	src/agents/store/filters/event-filter.cpp	 \
-	src/agents/store/filters/mail-filter.cpp
+	src/agents/store/watch.c			 
 
 bongostore_LDADD =					   \
 	libbongo-json.la				   \
@@ -64,7 +66,6 @@ bongostore_LDADD =					   \
 	libbongoxpl.la					   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la \
 	$(SQLITE_LIBS)				   \
-	$(CLUCENE_LIBS) 				   \
 	$(PTHREAD_LIBS)					   \
 	$(KSTAT_LIBS)					   \
 	$(ALL_LIBS)

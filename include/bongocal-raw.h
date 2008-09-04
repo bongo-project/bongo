@@ -19,16 +19,23 @@
  * </Novell-copyright>
  ****************************************************************************/
 
-#ifndef CALENDAR_H
-#define CALENDAR_H
-    
-#include "stored.h"
+#ifndef BONGOCAL_RAW_H
+#define BONGOCAL_RAW_H
+
+#include <xpl.h>
+#include <ical.h>
+#include <bongojson.h>
 
 XPL_BEGIN_C_LINKAGE
 
-const char * StoreProcessIncomingEvent(StoreClient *client, StoreObject *event, uint64_t linkGuid);
+BongoJsonObject *BongoIcalPropertyToJson(icalproperty *prop);
+BongoJsonObject *BongoIcalPropertyToJson(icalproperty *prop);
 
-CCode StoreSetAlarm(StoreClient *client, StoreObject *event, const char *alarmtext);
+BongoJsonObject *BongoIcalComponentToJson(icalcomponent *comp, BOOL recurse);
+icalcomponent *BongoJsonComponentToIcal(BongoJsonObject *object, icalcomponent *parent, BOOL recurse);
+
+icalcomponent *BongoCalJsonToIcal(BongoJsonObject *obj);
+BongoJsonObject *BongoCalIcalToJson(icalcomponent *comp);
 
 XPL_END_C_LINKAGE
 

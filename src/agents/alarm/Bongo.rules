@@ -5,6 +5,8 @@ bongoalarm_SOURCES =				\
 	src/agents/alarm/alarm.c		\
 	src/agents/alarm/alarm.h		
 
+bongoalarm_CFLAGS = $(LIBCURL_CFLAGS) $(LIBICAL_CFLAGS)
+
 bongoalarm_LDADD =						   \
 	libbongonmap.la						   \
 	libbongocal.la						   \
@@ -16,7 +18,7 @@ bongoalarm_LDADD =						   \
 	libbongoutil.la						   \
 	libbongoxpl.la						   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la	   \
-	$(top_builddir)/import/libical/src/libical/libical-bongo.la \
+	$(LIBICAL_LIBS)						   \
 	$(LIBCURL_LIBS)						   \
 	$(PTHREAD_LIBS)						   \
 	$(ALL_LIBS)

@@ -57,8 +57,8 @@ typedef struct _Queue {
     XplMutex queueIDLock;
 
     struct {
-        XplSemaphore semaphores[SPOOL_LOCK_ARRAY_SIZE];
-        unsigned long *entryIDs;
+        XplSemaphore semaphore;
+        BongoHashtable *hash;
     } spoolLocks;
 
     struct {

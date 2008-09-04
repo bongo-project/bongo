@@ -20,7 +20,6 @@ REQUIRED_DOC_COMMON_VERSION=${REQUIRED_DOC_COMMON_VERSION:-2.3.0}
 REQUIRED_M4MACROS=${REQUIRED_M4MACROS:-}
 FORBIDDEN_M4MACROS=${FORBIDDEN_M4MACROS:-}
 
-mkdir import/clucene/config 2>/dev/null
 
 
 # Not all echo versions allow -n, so we check what is possible. This test is
@@ -453,8 +452,8 @@ for configure_ac in $configure_files; do
 done
 
 # remove any flags which tell us not to autogen things
-rm -f import/clucene/NO-AUTO-GEN
-rm -f import/sqlite3/NO-AUTO-GEN
+#rm -f import/clucene/NO-AUTO-GEN
+#rm -f import/sqlite3/NO-AUTO-GEN
 
 SVNREV="`svnversion . 2>/dev/null`"
 if test x$SVNREV = x; then

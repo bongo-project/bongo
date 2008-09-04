@@ -22,6 +22,7 @@ AC_DEFINE_UNQUOTED(GETTEXT_PACKAGE,"$GETTEXT_PACKAGE",[The name of the gettext d
  ## must come before we use the $USE_MAINTAINER_MODE variable later
 AM_MAINTAINER_MODE
 
+AM_PROG_AS
 AC_PROG_CC
 AM_PROG_CC_C_O
 AC_PROG_CXX
@@ -313,7 +314,7 @@ AC_CHECK_HEADERS(sys/mount.h sys/statvfs.h sys/vfs.h alloca.h)
 
 AC_CHECK_DECLS([ns_c_in],,,[#include <arpa/nameser.h>])
 
-ALL_CFLAGS='-I$(top_srcdir)/import/log4c -I$(top_srcdir)/import/libical/src -I$(top_builddir)/import/libical/src -I$(top_srcdir)/import/libical/src/libical -I$(top_builddir)/import/libical/src/libical'
+ALL_CFLAGS='-I$(top_builddir) -I$(top_builddir)/include -I$(top_srcdir)/import/log4c'
 ALL_LIBS=
 
 AC_SUBST(ALL_CFLAGS)
@@ -333,7 +334,7 @@ info_check="No. Unit tests will not be run."
 AM_PATH_CHECK(0.9.0,
     [
         have_check=yes
-	info_check="Yes."
+        info_check="Yes."
         AC_DEFINE(BONGO_HAVE_CHECK, [], [Controls how tests that depend on check compile.])
     ],
     [
@@ -359,10 +360,13 @@ AM_PATH_PYTHON(2.3)
 PYTHON_INST_PREFIX=`$PYTHON -c 'import sys; print sys.prefix'`
 PYTHON_CPPFLAGS="-I$PYTHON_INST_PREFIX/include/python$PYTHON_VERSION"
 case "$host" in
-    *darwin*)
+	*darwin*)
 	PYTHON_LIBS="-framework Python"
 	;;
-    *)	
+	*freebsd*)
+	PYTHON_LIBS="-L$PYTHON_INST_PREFIX/lib -lpython$PYTHON_VERSION"
+	;;
+	*)	
 	# this is the correct way to find the python libdir, but
 	# people should just set LDFLAGS or whatever instead:
 #	PYTHON_LIBS=`$PYTHON -c 'import sys
@@ -620,31 +624,6 @@ fi
 
 # import libraries
 
-ACX_CLUCENE()
-case "x$CLUCENE_LIBS" in
-	x)
-		info_clucene="import"
-		;;
-	*import*)
-		info_clucene="import"
-		;;
-	*)
-		info_clucene="system"
-		;;
-esac
-if test "x$info_clucene" = "ximport"; then
-	AC_MSG_RESULT(Using imported CLucene)
-	AC_CONFIG_SUBDIRS([import/clucene])
-	AC_SUBST(CLUCENE_BONGO_API, "1")
-	AC_SUBST(CLUCENE_LIBS, "\$(top_srcdir)/import/clucene/src/libclucene.la")
-	AC_SUBST(CLUCENE_CXXFLAGS, "-I\$(top_srcdir)/import/clucene/src")
-else
-	if test "x$host_cpu" = "xx86_64"; then
-		AC_MSG_ERROR([Compiling against CLucene system libraries on x86_64 is known to be buggy. Recommend you use --with-clucene=import/clucene])
-	fi
-	AC_MSG_RESULT(Using system CLucene)
-fi
-
 AC_CHECK_SQLITE3()
 case "x$SQLITE_LIBS" in 
 	x)
@@ -666,8 +645,27 @@ else
 	AC_MSG_RESULT(Using system SQLite)
 fi
 
+have_libical="no"
 info_libical="import"
-AC_CONFIG_SUBDIRS([import/libical])
+AC_CHECK_HEADER(ical.h,[
+	AC_CHECK_LIB(ical, icalparser_parse_string, [
+		have_libical="yes"
+		info_libical="system"
+	])
+])
+AM_CONDITIONAL(HAVE_LIBICAL,test "$have_odbc" = "yes")
+AC_SUBST(LIBICAL_LIBS)
+if test "x$info_libical" = "ximport"; then
+	AC_MSG_RESULT(Using imported libical)
+	AC_CONFIG_SUBDIRS([import/libical])
+	AC_SUBST(LIBICAL_CFLAGS, "-I\$(top_srcdir)/import/libical/src -I\$(top_srcdir)/import/libical/src/libical")
+	AC_SUBST(LIBICAL_LIBS, "\$(top_srcdir)/import/libical/src/libical/libical-bongo.la")
+else
+	AC_MSG_RESULT(Using system libical)
+	AC_SUBST(LIBICAL_LIBS, "-lical")
+	AC_SUBST(LIBICAL_CFLAGS, "")
+fi
+
 AC_SUBST(IMPORT_SUBDIRS, $subdirs)
 
 # check for doxygen

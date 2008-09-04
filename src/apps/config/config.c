@@ -18,6 +18,7 @@
 #include <time.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <config.h>
 #include "config.h"
 
 #include <libintl.h>
@@ -270,12 +271,11 @@ LoadDefaultStoreConfiguration(void)
 		} else {
 			XplConsolePrintf(_("Complete.\n"));
 		}
-
-        SetStoreConfigurationModifications(client);
+		SetStoreConfigurationModifications(client);
 nmapcleanup:
 		NMAPQuit(client->conn);
 		ConnFree(client->conn);
-storecleanup:		
+storecleanup:
 		if (kill(store_pid, SIGTERM) != 0) {
 			XplConsolePrintf(_("ERROR: Couldn't shut down store\n"));
 		}

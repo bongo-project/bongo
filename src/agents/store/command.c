@@ -26,14 +26,13 @@
 #include <time.h>
 
 #include "stored.h"
+#include "command-parsing.h"
+#include "object-model.h"
 #include "calendar.h"
 
 #include "mail.h"
-#include "conversations.h"
 #include "messages.h"
 #include "mime.h"
-#include "index.h"
-
 
 static uint32_t
 CommandHash (const void *key)
@@ -49,6 +48,8 @@ CommandHash (const void *key)
     return h;
 }
 
+// internal prototypes
+CCode ReceiveToFile(StoreClient *client, const char *path, uint64_t *size);
 
 /* a strcmp() that ends on first space.  (might be optimizable by word-compares) */
 
@@ -114,11 +115,13 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "DELETE", (void *) STORE_COMMAND_DELETE) ||
         BongoHashtablePutNoReplace(CommandTable, "FLAG", (void *) STORE_COMMAND_FLAG) ||
         BongoHashtablePutNoReplace(CommandTable, "INFO", (void *) STORE_COMMAND_INFO) ||
+        BongoHashtablePutNoReplace(CommandTable, "LINK", (void *) STORE_COMMAND_LINK) ||
+        BongoHashtablePutNoReplace(CommandTable, "LINKS", (void *) STORE_COMMAND_LINKS) ||
+        BongoHashtablePutNoReplace(CommandTable, "UNLINK", (void *) STORE_COMMAND_UNLINK) ||
         BongoHashtablePutNoReplace(CommandTable, "MESSAGES ",  (void *) STORE_COMMAND_MESSAGES) ||
         BongoHashtablePutNoReplace(CommandTable, "MFLAG", (void *) STORE_COMMAND_MFLAG) ||
         BongoHashtablePutNoReplace(CommandTable, "MIME ",  (void *) STORE_COMMAND_MIME) ||
         BongoHashtablePutNoReplace(CommandTable, "MOVE ", (void *) STORE_COMMAND_MOVE) ||
-        BongoHashtablePutNoReplace(CommandTable, "MWRITE", (void *) STORE_COMMAND_MWRITE) ||
         BongoHashtablePutNoReplace(CommandTable, "PROPGET", (void *) STORE_COMMAND_PROPGET) ||
         BongoHashtablePutNoReplace(CommandTable, "PROPSET", (void *) STORE_COMMAND_PROPSET) ||
         BongoHashtablePutNoReplace(CommandTable, "PURGE", (void *) STORE_COMMAND_DELETE) ||
@@ -142,14 +145,13 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "CALENDARS", 
                          (void *) STORE_COMMAND_CALENDARS) ||
         BongoHashtablePutNoReplace(CommandTable, "EVENTS", (void *) STORE_COMMAND_EVENTS) ||
-        BongoHashtablePutNoReplace(CommandTable, "LINK", (void *) STORE_COMMAND_LINK) ||
-        BongoHashtablePutNoReplace(CommandTable, "UNLINK", (void *) STORE_COMMAND_UNLINK) ||
 
         /* alarm commands */
 
         BongoHashtablePutNoReplace(CommandTable, "ALARMS", (void *) STORE_COMMAND_ALARMS) ||
 
         /* other */
+        BongoHashtablePutNoReplace(CommandTable, "ACL", (void *) STORE_COMMAND_ACL) ||
         BongoHashtablePutNoReplace(CommandTable, "NOOP", (void *) STORE_COMMAND_NOOP) || 
         BongoHashtablePutNoReplace(CommandTable, "TIMEOUT", (void *) STORE_COMMAND_TIMEOUT) || 
 
@@ -157,6 +159,7 @@ StoreSetupCommands()
         
         BongoHashtablePutNoReplace(CommandTable, "REINDEX", (void *) STORE_COMMAND_REINDEX) ||
         BongoHashtablePutNoReplace(CommandTable, "RESET", (void *) STORE_COMMAND_RESET) ||
+        BongoHashtablePutNoReplace(CommandTable, "SHUTDOWN", (void *) STORE_COMMAND_SHUTDOWN) ||
 
         0)
     {
@@ -170,689 +173,6 @@ StoreSetupCommands()
     return 0;
 }
 
-
-#define TOKEN_OK 0xffff /* magic */
-
-__inline static CCode
-CheckTokC(StoreClient *client, int n, int min, int max)
-{
-    if (n < min || n > max) {
-        return ConnWriteStr(client->conn, MSG3010BADARGC);
-    }
-
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseGUID(StoreClient *client, char *token, uint64_t *out)
-{
-    uint64_t t;
-    char *endp;
-
-    t = HexToUInt64(token, &endp);
-    if (*endp || 0 == t /* || ULLONG_MAX == t */) {
-        return ConnWriteStr(client->conn, MSG3011BADGUID);
-    }
-
-    *out = t;
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseUnsignedLong(StoreClient *client, char *token, unsigned long *out)
-{
-    unsigned long t;
-    char *endp;
-
-    t = strtoul(token, &endp, 10);
-    if (*endp) {
-        return ConnWriteStr(client->conn, MSG3017BADINTARG);
-    }
-    *out = t;
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseInt(StoreClient *client, char *token, int *out)
-{
-    long t;
-    char *endp;
-
-    t = strtol(token, &endp, 10);
-    if (*endp) {
-        return ConnWriteStr(client->conn, MSG3017BADINTARG);
-    }
-    *out = t;
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseStreamLength(StoreClient *client, char *token, int *out) 
-{
-    long t;
-    char *endp;
-    
-    if (token[0] == '-' && token[1] == '\0') {
-        *out = -1;
-        return TOKEN_OK;
-    }
-    
-    t = strtol(token, &endp, 10);
-    if (*endp) {
-        return ConnWriteStr(client->conn, MSG3017BADINTARG);
-    }
-
-    *out = t;
-    return TOKEN_OK;    
-}
-
-
-static int 
-ParseRange(StoreClient *client, char *token, int *startOut, int *endOut) 
-{
-    long t;
-    char *endp;
-    
-    if (!strcmp(token, "all")) {
-        *startOut = *endOut = -1;
-        return TOKEN_OK;
-    }
-    
-    t = strtol(token, &endp, 10);
-    if (endp == token || *endp != '-' || t < 0) {
-        return ConnWriteStr(client->conn, MSG3020BADRANGEARG);
-    }
-    *startOut = t;
-    
-    t = strtol(endp + 1, &endp, 10);
-    if (*endp /* || t < *startOut */) {
-        return ConnWriteStr(client->conn, MSG3020BADRANGEARG);
-    }
-    *endOut = t;
-    
-    return TOKEN_OK;
-}
-
-static CCode
-ParseISODateTime(StoreClient *client,
-                 char *token,
-                 BongoCalTime *timeOut)
-{
-    /* iso-date-time: YYYY-MM-DD HH:MM:SS'Z' */
-    int n;
-    BongoCalTime t = BongoCalTimeEmpty();
-
-    t = BongoCalTimeSetTimezone(t, BongoCalTimezoneGetUtc());
-
-    n = sscanf(token, "%4d-%2d-%2d %2d:%2d:%2dZ",
-               &t.year, &t.month, &t.day,
-               &t.hour, &t.minute, &t.second);
-
-    if (6 != n) {
-        return ConnWriteStr(client->conn, MSG3021BADISODATETIME);
-    }
-
-    t.month--;
-
-    *timeOut = t;
-    
-    return TOKEN_OK;
-}
-
-static CCode
-ParseIcalDateTime(StoreClient *client,
-                  char *token,
-                  BongoCalTime *timeOut)
-{
-    BongoCalTime t;
-
-    t = BongoCalTimeParseIcal(token);
-    if (BongoCalTimeIsEmpty(t)) {
-        return ConnWriteStr(client->conn, MSG3021BADICALDATETIME);
-    }
-
-    *timeOut = BongoCalTimeSetTimezone(t, BongoCalTimezoneGetUtc());
-
-    return TOKEN_OK;
-}
-
-static CCode
-ParseDateTime(StoreClient *client, char *token, BongoCalTime *timeOut)
-{
-    int len;
-    
-    len = strlen(token);
-
-    if (len == 20) {
-        return ParseISODateTime(client, token, timeOut);
-    } else if (len == 15 || len == 16) {
-        return ParseIcalDateTime(client, token, timeOut);
-    } else {
-        unsigned long ulong;
-        CCode ccode;
-
-        ccode = ParseUnsignedLong(client, token, &ulong);
-
-        if (ccode == TOKEN_OK) {
-            *timeOut = BongoCalTimeNewFromUint64(ulong, FALSE, NULL);
-        }
-
-        return ccode;
-    }
-}
-
-static CCode
-ParseDateTimeToUint64(StoreClient *client, char *token, uint64_t *timeOut)
-{
-    CCode ccode;
-    int len;
-    
-    len = strlen(token);
-
-    if (len == 20 || len == 15 || len == 16) {
-        BongoCalTime t;
-
-        ccode = ParseDateTime(client, token, &t);
-        if (ccode == TOKEN_OK) {
-            *timeOut = BongoCalTimeAsUint64(t);
-        }
-
-        return ccode;
-    } else {
-        /* If it's a long arg, just pass it through */
-        unsigned long ulong;
-        CCode ccode;
-
-        ccode = ParseUnsignedLong(client, token, &ulong);
-
-        *timeOut = (uint64_t)ulong;
-
-        return ccode;
-    }
-}
-
-static CCode
-ParseDateTimeToString(StoreClient *client, char *token, char *buffer, int buflen)
-{
-    int len;
-
-    len = strlen(token);
-
-    if (len == 15 || len == 16) {
-        /* FIXME: do a better validation */
-        
-        if (!isdigit(token[0]) || !isdigit(token[1]) || !isdigit(token[2]) || 
-            !isdigit(token[3]) || !isdigit(token[4]) || !isdigit(token[5]) || 
-            !isdigit(token[6]) || !isdigit(token[7]))
-        {
-            return ConnWriteStr(client->conn, MSG3021BADDATETIME);
-        }
-        
-        if (len > 8) {
-            if ('T' != token[8] || 
-                !isdigit(token[9]) || !isdigit(token[10]) || !isdigit(token[11]) || 
-                !isdigit(token[12]) || !isdigit(token[13]) || !isdigit(token[14]))
-            {
-                return ConnWriteStr(client->conn, MSG3021BADDATETIME);
-            }
-        }
-
-        BongoStrNCpy(buffer, token, buflen);
-
-        return TOKEN_OK;
-    } else {
-        BongoCalTime t;
-        CCode ccode;
-        
-        ccode = ParseDateTime(client, token, &t);
-        if (ccode == TOKEN_OK) {
-            BongoCalTimeToIcal(t, buffer, buflen);
-        }
-
-        return ccode;
-    }
-}
-
-static CCode
-ParseDateRange(StoreClient *client, char *token, char *startOut, char *endOut)
-{
-    /* date-range: date-time '-' date-time */
- 
-    CCode ccode;
-    char *p;
-
-    p = strchr(token, '-');
-    if (!p) {
-        return ConnWriteStr(client->conn, MSG3021BADDATERANGE);
-    }
-    *p = 0;
-    ccode = ParseDateTimeToString(client, token, startOut, BONGO_CAL_TIME_BUFSIZE);
-    if (TOKEN_OK != ccode) {
-        return ccode;
-    }
-    ++p;
-    return ParseDateTimeToString(client, p, endOut, BONGO_CAL_TIME_BUFSIZE);
-}
-
-
-static CCode
-ParseFlag(StoreClient *client, char *token, int *valueOut, int *actionOut)
-{
-    long t;
-    char *endp;
-
-    if (*token == '+') {
-        *actionOut = STORE_FLAG_ADD;
-        token++;
-    } else if (*token == '-') {
-        *actionOut = STORE_FLAG_REMOVE;
-        token++;
-    } else {
-        *actionOut = STORE_FLAG_REPLACE;
-    }
-
-    t = strtol(token, &endp, 10);
-    if (*endp) {
-        return ConnWriteStr(client->conn, MSG3017BADINTARG);
-    }
-    *valueOut = t;
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseCollection(StoreClient *client, char *token, DStoreDocInfo *info)
-{
-    int ccode;
-    int dcode;
-
-    if ('/' != token[0]) {
-        uint64_t guid;
-        ccode = ParseGUID(client, token, &guid);
-        if (TOKEN_OK != ccode) {
-            return ccode;
-        } 
-        dcode = DStoreGetDocInfoGuid(client->handle, guid, info);
-    } else {
-        dcode = DStoreGetDocInfoFilename(client->handle, token, info);
-    }
-    switch (dcode) {
-    case 1:
-        if (STORE_IS_FOLDER(info->type)) {
-            return TOKEN_OK;
-        } else {
-            return (StoreCheckAuthorization(client, info, STORE_PRIV_READ) || 
-                    ConnWriteStr(client->conn, MSG3015NOTCOLL));
-        }
-    case 0:
-        if ('/' == token[0]) {
-            return (StoreCheckAuthorizationPath(client, token, STORE_PRIV_READ) ||
-                    ConnWriteStr(client->conn, MSG4224NOCOLLECTION));
-        } else {
-            return ConnWriteStr(client->conn, MSG4220NOGUID);
-        }
-    default:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseDocumentInfo(StoreClient *client, char *token, DStoreDocInfo *info)
-{
-    int ccode;
-    int dcode;
-    uint64_t guid;
-    
-    if ('/' != token[0]) {
-        ccode = ParseGUID(client, token, &guid);
-        if (ccode != TOKEN_OK) {
-            return ccode;
-        }
-        dcode = DStoreGetDocInfoGuid(client->handle, guid, info);
-    } else {
-        dcode = DStoreGetDocInfoFilename(client->handle, token, info);
-    }
-
-    switch (dcode) {
-    case 1:
-        return TOKEN_OK;
-    case 0:
-        if ('/' == token[0]) {
-            return (StoreCheckAuthorizationPath(client, token, STORE_PRIV_READ) ||
-                    ConnWriteStr(client->conn, MSG4224NODOCUMENT));
-        } else {
-            return ConnWriteStr(client->conn, MSG4220NOGUID);
-        }
-    default:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-}
-
-
-static CCode
-ParseDocument(StoreClient *client, char *token, uint64_t *outGuid)
-{
-    int ccode;
-    
-    if ('/' != token[0]) {
-        return ParseGUID(client, token, outGuid);
-    }
-
-    ccode = DStoreFindDocumentGuid(client->handle, token, outGuid);
-    
-    if (-1 == ccode) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    } else if (0 == ccode) {
-        if ('/' == token[0]) {
-            return (StoreCheckAuthorizationPath(client, token, STORE_PRIV_READ) ||
-                    ConnWriteStr(client->conn, MSG4224NODOCUMENT));
-        } else {
-            return ConnWriteStr(client->conn, MSG4220NOGUID);
-        }
-    }
-
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParseCreateDocument(StoreClient *client, char *token, uint64_t *outGuid, 
-                    StoreDocumentType type)
-{
-    int ccode;
-    int dcode;
-    DStoreDocInfo info;
-
-    if ('/' != token[0]) {
-        ccode = ParseGUID(client, token, outGuid);
-        if (TOKEN_OK != ccode) {
-            return ccode;
-        }
-        dcode = DStoreGetDocInfoGuid(client->handle, *outGuid, &info);
-    } else {
-        dcode = DStoreGetDocInfoFilename(client->handle, token, &info);
-    }
-    *outGuid = info.guid;
-
-    if (1 == dcode) {
-        return TOKEN_OK;
-    } else if (dcode) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    if ('/' != token[0]) {
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    }
-
-    switch (StoreCreateDocument(client, type, token, outGuid)) {
-    case 0:
-        return TOKEN_OK;
-    case -1:
-        return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
-    case -2:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    case -5:
-        return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
-    case -4:
-    default:
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-}
-
-
-static CCode
-ParseDocType(StoreClient *client, char *token, StoreDocumentType *out)
-{
-    long t;
-    char *endp;
-
-    t = strtol(token, &endp, 10);
-    if (*endp) {
-        return ConnWriteStr(client->conn, MSG3016DOCTYPESYNTAX);
-    }
-
-    *out = t;
-
-    t &= ~(STORE_DOCTYPE_FOLDER | STORE_DOCTYPE_SHARED);
-    if (t < STORE_DOCTYPE_UNKNOWN || t > STORE_DOCTYPE_CONFIG) {
-        return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-    }
-
-    return TOKEN_OK;
-}
-
-
-
-static CCode
-ParsePropName(StoreClient *client, char *token, StorePropInfo *prop)
-{
-    char *p;
-
-    if (strchr(token, ',') || strchr(token, '/')) {
-        return ConnWriteStr(client->conn, MSG3244BADPROPNAME);
-    }
-    p = strchr(token, '.');
-    if (!p) {
-        return ConnWriteStr(client->conn, MSG3244BADPROPNAME);
-    }
-    *p = 0;
-    if (!XplStrCaseCmp(token, "nmap")) {
-        p++;
-        if (!XplStrCaseCmp(p, "guid")) {
-            prop->type = STORE_PROP_GUID;
-        } else if (!XplStrCaseCmp(p, "collection")) {
-            prop->type = STORE_PROP_COLLECTION;
-        } else if (!XplStrCaseCmp(p, "document")) {
-            prop->type = STORE_PROP_DOCUMENT;
-        } else if (!XplStrCaseCmp(p, "index")) {
-            prop->type = STORE_PROP_INDEX;
-        } else if (!XplStrCaseCmp(p, "length")) {
-            prop->type = STORE_PROP_LENGTH;
-        } else if (!XplStrCaseCmp(p, "type")) {
-            prop->type = STORE_PROP_TYPE;
-        } else if (!XplStrCaseCmp(p, "flags")) {
-            prop->type = STORE_PROP_FLAGS;
-        } else if (!XplStrCaseCmp(p, "created")) {
-            prop->type = STORE_PROP_CREATED;
-        } else if (!XplStrCaseCmp(p, "lastmodified")) {
-            prop->type = STORE_PROP_LASTMODIFIED;
-        } else if (!XplStrCaseCmp(p, "version")) {
-            prop->type = STORE_PROP_VERSION;
-        } else if (!XplStrCaseCmp(p, "mail.conversation")) {
-            prop->type = STORE_PROP_MAIL_CONVERSATION;
-        } else if (!XplStrCaseCmp(p, "mail.imapuid")) {
-            prop->type = STORE_PROP_MAIL_IMAPUID;
-        } else if (!XplStrCaseCmp(p, "mail.sent")) {
-            prop->type = STORE_PROP_MAIL_SENT;
-        } else if (!XplStrCaseCmp(p, "mail.subject")) {
-            prop->type = STORE_PROP_MAIL_SUBJECT;
-        } else if (!XplStrCaseCmp(p, "mail.messageid")) {
-            prop->type = STORE_PROP_MAIL_MESSAGEID;
-        } else if (!XplStrCaseCmp(p, "mail.parentmessageid")) {
-            prop->type = STORE_PROP_MAIL_PARENTMESSAGEID;
-        } else if (!XplStrCaseCmp(p, "mail.headersize")) {
-            prop->type = STORE_PROP_MAIL_HEADERLEN;
-        } else if (!XplStrCaseCmp(p, "conversation.subject")) {
-            prop->type = STORE_PROP_CONVERSATION_SUBJECT;
-        } else if (!XplStrCaseCmp(p, "conversation.unread")) {
-            prop->type = STORE_PROP_CONVERSATION_UNREAD;
-        } else if (!XplStrCaseCmp(p, "conversation.count")) {
-            prop->type = STORE_PROP_CONVERSATION_COUNT;
-        } else if (!XplStrCaseCmp(p, "conversation.date")) {
-            prop->type = STORE_PROP_CONVERSATION_DATE;
-        } else if (!XplStrCaseCmp(p, "access-control")) {
-            prop->type = STORE_PROP_ACCESS_CONTROL;
-            prop->name = token;
-        } else if (!XplStrCaseCmp(p, "event.alarm")) {
-            prop->type = STORE_PROP_EVENT_ALARM;
-            prop->name = token;
-        } else if (!XplStrCaseCmp(p, "event.calendars")) {
-            prop->type = STORE_PROP_EVENT_CALENDARS;
-        } else if (!XplStrCaseCmp(p, "event.end")) {
-            prop->type = STORE_PROP_EVENT_END;
-        } else if (!XplStrCaseCmp(p, "event.location")) {
-            prop->type = STORE_PROP_EVENT_LOCATION;
-        } else if (!XplStrCaseCmp(p, "event.start")) {
-            prop->type = STORE_PROP_EVENT_START;
-        } else if (!XplStrCaseCmp(p, "event.summary")) {
-            prop->type = STORE_PROP_EVENT_SUMMARY;
-        } else if (!XplStrCaseCmp(p, "event.uid")) {
-            prop->type = STORE_PROP_EVENT_UID;
-        } else if (!XplStrCaseCmp(p, "event.stamp")) {
-            prop->type = STORE_PROP_EVENT_STAMP;
-        } else {
-            return ConnWriteStr(client->conn, MSG3244BADPROPNAME);
-        }
-        --p;
-    } else {
-        prop->type = STORE_PROP_EXTERNAL;
-        prop->name = token;
-    }
-    
-    *p = '.';
-    return TOKEN_OK;
-}
-
-
-static CCode
-ParsePropList(StoreClient *client,
-              char *token,
-              StorePropInfo * props,
-              int propcount,
-              int *count,
-              int requireLengths)
-{
-    int i;
-    char *p = token;
-    char *q;
-    CCode ccode = TOKEN_OK;
-
-    for (i = 0; i < propcount && p && TOKEN_OK == ccode; i++) {
-        p = strchr(token, ','); 
-        if (p && ',' == *p) {
-            *p = 0;
-        }
-        q = strchr(token, '/');
-        if (q) {
-            ccode = ParseInt(client, q + 1, &props[i].valueLen);
-            if (TOKEN_OK != ccode) {
-                return ccode;
-            }
-            *q = 0;
-        } else if (requireLengths) {
-            return ConnWriteStr(client->conn, MSG3244BADPROPLENGTH);
-        }
-        ccode = ParsePropName(client, token, props + i);
-        token = p + 1;
-    }
-    *count = i;
-    return ccode;
-}
-
-
-static CCode
-ParseHeaderList(StoreClient *client, 
-                char *token,
-                StoreHeaderInfo *headers,
-                int size,
-                int *count)
-{
-    /* <headerlist> ::= (<headerlist> '&') <andclause>
-       <andclause>  ::= (<andclause> '|') <header> 
-       <header>     ::= ('!') <headername> '=' <value>
-    */
-    
-    int flags = HEADER_INFO_OR;
-    int i;
-    char *p = token;
-    char *q;
-    CCode ccode = TOKEN_OK;
-
-    for (i = 0; i < size && p && TOKEN_OK == ccode; i++) {
-        headers[i].flags = flags;
-
-        p = strpbrk(token, "|&"); 
-        if (p) {
-            if ('&' == *p) {
-                flags = HEADER_INFO_AND;
-            } else {
-                flags = HEADER_INFO_OR;
-            }
-            *p = 0;
-        }
-        if ('!' == *token) {
-            headers[i].flags |= HEADER_INFO_NOT;
-            ++token;
-        }
-        q = strchr(token, '=');
-        if (!q) {
-            return ConnWriteStr(client->conn, MSG3022BADSYNTAX);
-        }
-        headers[i].value = q + 1;
-        *q = 0;
-        
-        for (q = headers[i].value; *q; q++) {
-            /* FIXME: not UTF-8 safe */
-            *q = tolower(*q);
-        }
-
-        if (!strcmp("from", token)) {
-            headers[i].type = HEADER_INFO_FROM;
-        } else if (!strcmp("to", token)) {
-            headers[i].type = HEADER_INFO_RECIP;
-        } else if (!strcmp("list", token)) {
-            headers[i].type = HEADER_INFO_LISTID;
-        } else if (!strcmp("subject", token)) {
-            headers[i].type = HEADER_INFO_SUBJECT;
-        } else {
-            return ConnWriteStr(client->conn, MSG3022BADSYNTAX);
-        }
-
-        token = p + 1;
-    }
-    *count = i;
-    return ccode;
-}
-
-/* FIXME: Unused, deprecated?
-static CCode
-ParseConversationSource(StoreClient *client,
-                        char *token,
-                        int *outflags)
-{
-    GetConversationSourceMask(token, outflags);
-    return TOKEN_OK;
-}
-*/
-
-static CCode
-ParseStoreName(StoreClient *client,
-               char *token) /* token will be modified */
-{
-    char *i;
-
-    for (i = token; i < token + STORE_MAX_STORENAME; i++) {
-        if (0 == *i) return TOKEN_OK;
-	*i = tolower(*i);
-    }
-
-    return ConnWriteStr(client->conn, MSG3023USERNAMETOOLONG);
-}
-
-
-static CCode
-ParseUserName(StoreClient *client, char *token)
-{
-    return ParseStoreName(client, token);
-}
-
-
 static CCode
 RequireUser(StoreClient *client)
 {
@@ -865,15 +185,15 @@ RequireUser(StoreClient *client)
 static CCode
 RequireStore(StoreClient *client)
 {
-    return client->handle ? TOKEN_OK 
-                          : ConnWriteStr(client->conn, MSG3243NOSTORE);
+	return client->storedb ? TOKEN_OK 
+                         : ConnWriteStr(client->conn, MSG3243NOSTORE);
 }
 
 
 static CCode
 RequireNoStore(StoreClient *client)
 {
-    return client->handle ? ConnWriteStr(client->conn, MSG3247STORE)
+	return client->storedb ? ConnWriteStr(client->conn, MSG3247STORE)
                           : TOKEN_OK;
 }
 
@@ -892,110 +212,6 @@ RequireIdentity(StoreClient *client)
     return (IS_MANAGER(client) || HAS_IDENTITY(client)) 
         ? TOKEN_OK
         : ConnWriteStr(client->conn, MSG3241NOUSER);
-}
-
-
-static CCode
-RequireAlarmDB(StoreClient *client)
-{
-    if (!client->system.alarmdb) {
-        client->system.alarmdb = AlarmDBOpen(&client->memstack);
-    }
-    return client->system.alarmdb ? TOKEN_OK 
-                                  : ConnWriteStr(client->conn, MSG5008NOALARMDB);
-}
-
-
-static CCode
-RequireExclusiveTransaction(StoreClient *client)
-{
-    switch (DStoreBeginTransaction(client->handle)) {
-    case 0:
-        return TOKEN_OK;
-    case -2:
-        return ConnWriteStr(client->conn, MSG4120DBLOCKED);
-    default:
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-}
-
-
-static CCode
-RequireSharedTransaction(StoreClient *client)
-{
-    switch (DStoreBeginSharedTransaction(client->handle)) {
-    case 0:
-        return TOKEN_OK;
-    case -2:
-        return ConnWriteStr(client->conn, MSG4120DBLOCKED);
-    default:
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-}
-
-void
-TCStart(StoreClient *store, char *command)
-{
-	TimedCommand *result = MemMalloc(sizeof(TimedCommand));
-	gettimeofday(&(result->start), NULL);
-	result->msgs = result->lastmsg = NULL;
-	result->command = command;
-	store->tc = result;
-}
-
-void
-TCLog(StoreClient *store, char *message)
-{
-	TimedCommand *t = store->tc;
-	TimedMessage *m = MemMalloc(sizeof(TimedMessage));
-	if (t == NULL) return;
-	m->message = message;
-	gettimeofday(&(m->time), NULL);
-	m->next = NULL;
-	if (t->lastmsg == NULL) {
-		t->msgs = m;
-		t->lastmsg = m;
-	} else {
-		t->lastmsg->next = m;
-		t->lastmsg = m;
-	}
-}
-
-void
-TCEnd(StoreClient *store)
-{
-	TimedCommand *t = store->tc;
-	TimedMessage *m;
-	struct timeval *last;
-	long int seconds, useconds;
-	
-	gettimeofday(&(t->end), NULL);
-	seconds = (t->end.tv_sec - t->start.tv_sec);
-	useconds = t->end.tv_usec - t->start.tv_usec;
-	if (useconds < 0) {
-		seconds--; useconds+= 1000000;
-	}
-	printf("Command %s took %ld.%06ld seconds.\n", t->command, seconds, useconds);
-	
-	m = t->msgs;
-	last = &(t->start);
-	while (m) {
-		TimedMessage *delete = m;
-		seconds = (m->time.tv_sec - last->tv_sec);
-		useconds = (m->time.tv_usec - last->tv_usec);
-		if (useconds < 0) {
-			seconds--;
-			useconds += 1000000;
-		}
-		printf(" - %s (%ld.%06ld)\n", m->message, seconds, useconds);
-		last = &(m->time);
-		m = m->next;
-		MemFree(m);
-	}
-	MemFree(t);
-	store->tc = NULL;
 }
 
 #define TOK_ARR_SZ 10
@@ -1019,7 +235,6 @@ StoreCommandLoop(StoreClient *client)
         if (-1 == ccode || ccode >= CONN_BUFSIZE) {
             break;
         }
-        TCStart(client, client->buffer);
                         
         memset(tokens, 0, sizeof(tokens));
         n = CommandSplit(client->buffer, tokens, TOK_ARR_SZ);
@@ -1028,14 +243,7 @@ StoreCommandLoop(StoreClient *client)
         } else {
             command = (StoreCommand) BongoHashtableGet(CommandTable, tokens[0]);
         }
-
-        if (STORE_COMMAND_NOOP == command) {
-            /* Or maybe we want to do something clever, like check for new mail
-               after a timeout has elapsed */
-            ImportIncomingMail(client);
-            TCLog(client, "Import incoming");
-        }
-        
+                
         if (client->watch.collection) {
             /* out of band events */
             ccode = StoreShowWatcherEvents(client);
@@ -1046,12 +254,12 @@ StoreCommandLoop(StoreClient *client)
             /* FIXME: What if there were an event related to a document relevant 
                to the command we just parsed?  (or any event?)  Should we ignore 
                the command? */
-            TCLog(client, "Out of band messages");
         }
 
         switch (command) {
             StoreDocumentType doctype;
-            DStoreDocInfo coll;
+            StoreObject object;
+            StoreObject collection;
             int int1;
             int int2;
             int int3;
@@ -1075,13 +283,97 @@ StoreCommandLoop(StoreClient *client)
         case STORE_COMMAND_NULL:
             ccode = ConnWriteStr(client->conn, MSG3000UNKNOWN);
             break;
+        
+        case STORE_COMMAND_ACL:
+            /* ACL GRANT <document> P<priv> T<principal> [W<who>] */
+            /* ACL DENY <document> P<priv> T<principal> [W<who>] */
+            /* ACL LIST [<document>] */
+            /* ACL REMOVE <document> P<priv> [T<principal>] [W<who>] */
             
+            int1 = 0; // priv
+            int2 = 0; // principal
+            query = NULL; // who
+            
+            if (TOKEN_OK == (ccode = RequireStore(client)) &&
+                TOKEN_OK == (ccode = CheckTokC(client, n, 0, 6))) 
+            {
+                StorePrincipalType type = 0;
+                StorePrivilege priv = 0;
+                char *who = NULL;
+
+                for (i = 3; TOKEN_OK == ccode && i < n; i++) {
+                    if ('P' == *tokens[i]) {
+                        ccode = ParsePrivilege(client, tokens[i] + 1, &priv);
+                    } else if ('T' == *tokens[i]) {
+                        ccode = ParsePrincipal(client, tokens[i] + 1, &type);
+                    } else if ('W' == *tokens[i]) {
+                        who = tokens[i] + 1;
+                        ccode = TOKEN_OK;
+                    } else {
+                        // 'bad' token - something we don't understand.
+                        ccode = 0;
+                    }
+                    if (ccode != TOKEN_OK) {
+                        ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                    }
+                }
+                if (ccode != TOKEN_OK) break;
+                
+                if (!XplStrCaseCmp(tokens[1], "list")) {
+                    if ((n == 1) && ParseDocument(client, tokens[2], &object) == TOKEN_OK) {
+                        ccode = StoreObjectListACL(client, &object);
+                        break;
+                    } else {
+                        ccode = StoreObjectListACL(client, NULL);
+                        break;
+                    }
+                } else {
+                     if (n < 1) {
+                        ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                     } else if (ParseDocument(client, tokens[2], &object) != TOKEN_OK) {
+                        ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                     }
+                }
+                
+                if (!XplStrCaseCmp(tokens[1], "remove")) {
+                    if (priv == 0) {
+                        ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                    } else {
+                        if (StoreObjectRemoveACL(client, &object, type, priv, who) == 0) {
+                            ccode = ConnWriteStr(client->conn, MSG1000OK);
+                        } else {
+                            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+                        }
+                    }
+                    break;
+                } else {
+                    BOOL deny;
+                    if (! XplStrCaseCmp(tokens[1], "grant")) {
+                        deny = FALSE;
+                    } else if (! XplStrCaseCmp(tokens[1], "deny")) {
+                        deny = TRUE;
+                    } else {
+                        ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                        break;
+                    }
+                    if ((priv == 0) || (type == 0) || (who == NULL)) {
+                        ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                        break;
+                    }
+                    if (StoreObjectAddACL(client, &object, type, priv, deny, who) == 0) {
+                        ccode = ConnWriteStr(client->conn, MSG1000OK);
+                    } else {
+                        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+                    }
+                    break;
+                }
+            }
+            break;
         case STORE_COMMAND_ALARMS:
             /* ALARMS <starttime> <endtime> */
             
             if (TOKEN_OK == (ccode = RequireManager(client)) &&
                 TOKEN_OK == (ccode = RequireNoStore(client)) &&
-                TOKEN_OK == (ccode = RequireAlarmDB(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
                 TOKEN_OK == (ccode = ParseDateTimeToUint64(client, tokens[1], 
                                                            &timestamp)) &&
@@ -1137,8 +429,7 @@ StoreCommandLoop(StoreClient *client)
             int1 = 0;          /* propcount */
             ulong = ULONG_MAX; /* flags */
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
-                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 3)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client))) 
+                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 3))) 
             {
                 break;
             }
@@ -1166,10 +457,9 @@ StoreCommandLoop(StoreClient *client)
             }
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 1, 2)) &&
-                TOKEN_OK == (ccode = RequireSharedTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &coll)))
+                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &object)))
             {
-                ccode = StoreCommandCOLLECTIONS(client, &coll);
+                ccode = StoreCommandCOLLECTIONS(client, &object);
             }
             break;
 
@@ -1180,8 +470,7 @@ StoreCommandLoop(StoreClient *client)
             */
 
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
-                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 10)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)))
+                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 10)))
             {
                 break;
             }
@@ -1206,7 +495,7 @@ StoreCommandLoop(StoreClient *client)
                 } else if ('Q' == *tokens[i]) {
                     query = tokens[i] + 1;
                 } else if ('C' == *tokens[i] && !guid) {
-                    ccode = ParseDocument(client, tokens[i] + 1, &guid);
+                    ccode = ParseDocument(client, tokens[i] + 1, &object);
                 } else if ('T' == *tokens[i] && !int4 && !tokens[i][1]) {
                     int4 = 1;
                 } else if ('M' == *tokens[i]) {
@@ -1227,7 +516,7 @@ StoreCommandLoop(StoreClient *client)
             }
             
             ccode = StoreCommandCONVERSATIONS(client, filename, query, 
-                                              int1, int2, guid, 
+                                              int1, int2, &object, 
                                               (uint32_t) ulong, (uint32_t) ulong2, 
                                               int4,
                                               hdrs, hdrcnt,
@@ -1239,13 +528,9 @@ StoreCommandLoop(StoreClient *client)
 
             guid = 0;
             int3 = 0; /* propcount */
-            if (TOKEN_OK != (ccode = RequireStore(client)) ||
-                TOKEN_OK != (ccode = CheckTokC(client, n, 2, 3)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &guid))) 
-            {
-                break;
-            }
+            if (TOKEN_OK != (ccode = RequireStore(client))) break;
+            if (TOKEN_OK != (ccode = CheckTokC(client, n, 2, 3))) break;
+            if (TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &object))) break;
             
             for (i = 2; i < n; i++) {
                 if ('P' == *tokens[i] && 0 == int3) {
@@ -1258,7 +543,7 @@ StoreCommandLoop(StoreClient *client)
             }
 
             if (TOKEN_OK == ccode) {
-                ccode = StoreCommandCONVERSATION(client, guid, props, int3);
+                ccode = StoreCommandCONVERSATION(client, &object, props, int3);
             }
             break;
 
@@ -1295,11 +580,10 @@ StoreCommandLoop(StoreClient *client)
 
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
-                TOKEN_OK == (ccode = ParseCollection(client, tokens[2], &coll)))
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)) &&
+                TOKEN_OK == (ccode = ParseCollection(client, tokens[2], &collection)))
             {
-                ccode = StoreCommandCOPY(client, guid, &coll);
+                ccode = StoreCommandCOPY(client, &object, &collection);
             }
             break;
 
@@ -1309,7 +593,6 @@ StoreCommandLoop(StoreClient *client)
             guid = 0;
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
                 (n <= 2 || TOKEN_OK == (ccode = ParseGUID(client, tokens[2], &guid))))
             {
                 ccode = StoreCommandCREATE(client, tokens[1], guid);
@@ -1322,10 +605,9 @@ StoreCommandLoop(StoreClient *client)
             
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 2)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)))
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)))
             {
-                ccode = StoreCommandDELETE(client, guid);
+                ccode = StoreCommandDELETE(client, &object);
             }
             break;
 
@@ -1358,8 +640,7 @@ StoreCommandLoop(StoreClient *client)
                [F<mask>] [Q<query>] [P<proplist>] */
 
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
-                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 6)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)))
+                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 6)))
             {
                 break;
             }
@@ -1374,7 +655,7 @@ StoreCommandLoop(StoreClient *client)
             ulong = ULONG_MAX;
             for (i = 1; TOKEN_OK == ccode && i < n; i++) {
                 if ('C' == *tokens[i] && !int2 && !query) {
-                    ccode = ParseDocumentInfo(client, tokens[i] + 1, &coll);
+                    ccode = ParseDocumentInfo(client, tokens[i] + 1, &object);
                     int2++;
                 } else if ('D' == *tokens[i] && !dt_start[0]) {
                     ccode = ParseDateRange(client, tokens[i] + 1, dt_start, dt_end);
@@ -1403,7 +684,7 @@ StoreCommandLoop(StoreClient *client)
                 strcpy(dt_end, "99999999T999999");
             }            
             ccode = StoreCommandEVENTS(client, dt_start, dt_end, 
-                                       int2 ? &coll : 0, 
+                                       int2 ? &object : NULL, 
                                        ulong, uid,
                                        query, int3, int4,
                                        props, int1);
@@ -1416,26 +697,12 @@ StoreCommandLoop(StoreClient *client)
             guid = 0;
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)) &&
                 (n < 3 || TOKEN_OK == (ccode = ParseFlag(client, tokens[2], &int1, &int2)))) 
                 
             {
-                ccode = StoreCommandFLAG(client, guid, int1, int2);
+                ccode = StoreCommandFLAG(client, &object, int1, int2);
             }
-            break;
-
-        case STORE_COMMAND_INDEXED:
-            /* INDEXED <value> <document> */
-
-            if (TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
-                TOKEN_OK == (ccode = ParseInt(client, tokens[1], &int1)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[2], &guid)))
-            {
-                ccode = StoreCommandINDEXED(client, int1, guid);
-            }
-
             break;
 
         case STORE_COMMAND_INFO:
@@ -1445,8 +712,7 @@ StoreCommandLoop(StoreClient *client)
             int1 = 0; /* proplist len */
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 2, 3)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &guid)))
+                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &object)))
             {
                 break;
             }
@@ -1459,7 +725,7 @@ StoreCommandLoop(StoreClient *client)
                 }
             }
             if (TOKEN_OK == ccode) {
-                ccode = StoreCommandINFO(client, guid, props, int1);
+                ccode = StoreCommandINFO(client, &object, props, int1);
             }
             break;
 
@@ -1500,26 +766,43 @@ StoreCommandLoop(StoreClient *client)
             break;
 
         case STORE_COMMAND_LINK:
-            /* LINK <calendar> <document> */
-            
+            /* LINK <document> <document> 
+             * abuses collection - first argument should be another document*/
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseCreateDocument(client, tokens[1], &guid,
-                                                         STORE_DOCTYPE_CALENDAR)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[2], &guid2)))
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &collection)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[2], &object)))
             {
-                ccode = StoreCommandLINK(client, guid, guid2);
+                ccode = StoreCommandLINK(client, &collection, &object);
             }
             break;
+        
+        case STORE_COMMAND_LINKS:
+            /* LINKS <document> */
+            if (TOKEN_OK == (ccode = RequireStore(client)) &&
+                TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[2], &object)))
+            {
+                BOOL reverse_links;
+                if (!XplStrCaseCmp(tokens[1], "TO")) {
+                    reverse_links = TRUE;
+                } else if (!XplStrCaseCmp(tokens[1], "FROM")) {
+                    reverse_links = FALSE;
+                } else {
+                    ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
+                    break;
+                }
+                
+                ccode = StoreCommandLINKS(client, reverse_links, &object);
+            }
+            break; 
 
         case STORE_COMMAND_LIST:
             /* LIST <collection> [Rxx-xx] [P<proplist>] [M<flags mask>] [F<flags>] */
 
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 2, 6)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseCollection(client, tokens[1], &coll))) 
+                TOKEN_OK != (ccode = ParseCollection(client, tokens[1], &object))) 
             {
                 break;
             }
@@ -1547,7 +830,7 @@ StoreCommandLoop(StoreClient *client)
                 break;
             }
             
-            ccode = StoreCommandLIST(client, &coll, int1, int2, 
+            ccode = StoreCommandLIST(client, &object, int1, int2, 
                                      (uint32_t) ulong, (uint32_t) ulong2, 
                                      props, int3);
             break;            
@@ -1570,8 +853,7 @@ StoreCommandLoop(StoreClient *client)
             */
             
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
-                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 10)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)))
+                TOKEN_OK != (ccode = CheckTokC(client, n, 1, 10)))
             {
                 break;
             }
@@ -1596,7 +878,7 @@ StoreCommandLoop(StoreClient *client)
                 } else if ('Q' == *tokens[i]) {
                     query = tokens[i] + 1;
                 } else if ('C' == *tokens[i] && !guid) {
-                    ccode = ParseDocument(client, tokens[i] + 1, &guid);
+                    ccode = ParseDocument(client, tokens[i] + 1, &object);
                 } else if ('T' == *tokens[i] && !int4 && !tokens[i][1]) {
                     int4 = 1;
                 } else if ('M' == *tokens[i]) {
@@ -1617,7 +899,7 @@ StoreCommandLoop(StoreClient *client)
             }
             
             ccode = StoreCommandMESSAGES(client, filename, query, 
-                                         int1, int2, guid, 
+                                         int1, int2, &object, 
                                          (uint32_t) ulong, (uint32_t) ulong2, 
                                          int4,
                                          hdrs, hdrcnt,
@@ -1631,7 +913,6 @@ StoreCommandLoop(StoreClient *client)
 
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 2)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
                 TOKEN_OK == (ccode = ParseFlag(client, tokens[1], &int1, &int2)))
             {
                 ccode = StoreCommandMFLAG(client, int1, int2);
@@ -1643,10 +924,9 @@ StoreCommandLoop(StoreClient *client)
 
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 2)) &&
-                TOKEN_OK == (ccode = RequireSharedTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)))
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)))
             {
-                ccode = StoreCommandMIME(client, guid);
+                ccode = StoreCommandMIME(client, &object);
             }
             break;
 
@@ -1655,25 +935,11 @@ StoreCommandLoop(StoreClient *client)
 
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 3, 4)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
-                TOKEN_OK == (ccode = ParseCollection(client, tokens[2], &coll)))
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)) &&
+                TOKEN_OK == (ccode = ParseCollection(client, tokens[2], &collection)))
             {
-                ccode = StoreCommandMOVE(client, guid, &coll, 
+                ccode = StoreCommandMOVE(client, &object, &collection, 
                                          4 == n ? tokens[3] : NULL);
-            }
-            break;
-
-        case STORE_COMMAND_MWRITE:
-            /* MWRITE <collection> <type> */
-            
-            if (TOKEN_OK == (ccode = RequireStore(client)) &&
-                TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &coll)) &&
-                TOKEN_OK == (ccode = ParseDocType(client, tokens[2], &doctype)))
-            {
-                ccode = StoreCommandMWRITE(client, &coll, doctype);
             }
             break;
 
@@ -1689,13 +955,12 @@ StoreCommandLoop(StoreClient *client)
             int3 = 0; /* propcount */
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 3)) &&
-                TOKEN_OK == (ccode = RequireSharedTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)) &&
                 (2 == n || 
                  TOKEN_OK == (ccode = ParsePropList(client, tokens[2], 
                                                     props, PROP_ARR_SZ, &int3, 0))))
             {
-                ccode = StoreCommandPROPGET(client, guid, props, int3);
+                ccode = StoreCommandPROPGET(client, &object, props, int3);
             }
             break;
 
@@ -1704,14 +969,13 @@ StoreCommandLoop(StoreClient *client)
             
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 4, 4)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)) &&
                 TOKEN_OK == (ccode = ParsePropName(client, tokens[2], &prop)) &&
                 TOKEN_OK == (ccode = ParseInt(client, tokens[3], &int1)))
                 
             {
                 prop.valueLen = int1;
-                ccode = StoreCommandPROPSET(client, guid, &prop);
+                ccode = StoreCommandPROPSET(client, &object, &prop, int1);
             }
             break;
 
@@ -1723,17 +987,16 @@ StoreCommandLoop(StoreClient *client)
 
         case STORE_COMMAND_READ:
             /* READ <document> [<start> [<length>]] */
-
+            // FIXME: need to get signedness etc. right on these args
             int1 = -1;
             int2 = -1;
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 4)) &&
-                TOKEN_OK == (ccode = RequireSharedTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)) &&
                 (n < 3 || TOKEN_OK == (ccode = ParseInt(client, tokens[2], &int1))) &&
                 (n < 4 || TOKEN_OK == (ccode = ParseInt(client, tokens[3], &int2))))
             {
-                ccode = StoreCommandREAD(client, guid, int1, int2);
+                ccode = StoreCommandREAD(client, &object, int1, int2);
             }
             break;
 
@@ -1743,11 +1006,10 @@ StoreCommandLoop(StoreClient *client)
             guid = 0;
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 1, 2)) &&
-                TOKEN_OK == (ccode = RequireSharedTransaction(client)) &&
                 (n < 2 || 
-                 TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid))))
+                 TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object))))
             {
-                ccode = StoreCommandREINDEX(client, guid);
+                ccode = StoreCommandREINDEX(client, &object);
             }
             break;
 
@@ -1756,10 +1018,9 @@ StoreCommandLoop(StoreClient *client)
             
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &coll)))
+                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &object)))
             {
-                ccode = StoreCommandRENAME(client, &coll, tokens[2]);
+                ccode = StoreCommandRENAME(client, &object, tokens[2]);
             }
             break;
 
@@ -1768,10 +1029,9 @@ StoreCommandLoop(StoreClient *client)
             
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 2, 2)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &coll)))
+                TOKEN_OK == (ccode = ParseCollection(client, tokens[1], &object)))
             {
-                ccode = StoreCommandREMOVE(client, &coll);
+                ccode = StoreCommandREMOVE(client, &object);
             }
             break;
 
@@ -1780,15 +1040,14 @@ StoreCommandLoop(StoreClient *client)
             /* REPLACE <document> <length> [R<xx-xx>] [V<version>] 
                        [L<link document>]*/
 
-            int2 = -1; /* range start */
-            int3 = -1; /* range end */
+            int2 = 0; /* range start */
+            int3 = 0; /* range end */
             int4 = -1; /* version */
             guid2 = 0;
             
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 3, 6)) ||
-                TOKEN_OK != (ccode = RequireExclusiveTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &guid)) ||
+                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &object)) ||
                 TOKEN_OK != (ccode = ParseStreamLength(client, tokens[2], &int1)))
             {
                 break;
@@ -1799,18 +1058,14 @@ StoreCommandLoop(StoreClient *client)
                     ccode = ParseRange(client, tokens[i] + 1 , &int2, &int3);
                 } else if ('V' == *tokens[i] && -1 == int4) {
                     ccode = ParseInt(client, tokens[i] + 1, &int4);
-                } else if ('L' == *tokens[i] && !guid2) {
-                    ccode = ParseDocument(client, 1 + tokens[i], &guid2);
+                //} else if ('L' == *tokens[i] && !guid2) {
+                //    ccode = ParseDocument(client, 1 + tokens[i], &guid2);
                 } else {
                     ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
                 }
             }
             if (TOKEN_OK == ccode) {
-                ccode = StoreCommandWRITE(client, 
-                                          NULL, 0, 
-                                          int1, int2, int3, 
-                                          0, guid, NULL, 
-                                          0, int4, guid2);
+            	ccode = StoreCommandREPLACE(client, &object, int1, int2, int3, int4);
             }
             break;
             
@@ -1818,8 +1073,7 @@ StoreCommandLoop(StoreClient *client)
             /* RESET */
 
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
-                TOKEN_OK == (ccode = CheckTokC(client, n, 1, 1)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)))
+                TOKEN_OK == (ccode = CheckTokC(client, n, 1, 1)))
             {
                 ccode = StoreCommandRESET(client); 
             }
@@ -1834,8 +1088,7 @@ StoreCommandLoop(StoreClient *client)
 
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 4, 5)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &guid)))
+                TOKEN_OK != (ccode = ParseDocument(client, tokens[1], &object)))
             {
                 break;
             }
@@ -1864,10 +1117,15 @@ StoreCommandLoop(StoreClient *client)
                     break;
                 }
 
-                ccode = StoreCommandSEARCH(client, guid, &search);
+                ccode = StoreCommandSEARCH(client, object.guid, &search);
             }
             break;
 
+        case STORE_COMMAND_SHUTDOWN:
+            /* SHUTDOWN */
+            exit(0);
+            break;
+            
         case STORE_COMMAND_STORE:
             /* STORE [<storename>] */
 
@@ -1921,15 +1179,14 @@ StoreCommandLoop(StoreClient *client)
             break;
             
         case STORE_COMMAND_UNLINK:
-            /* UNLINK <calendar> <document> */
+            /* UNLINK <document> <document> */
             
             if (TOKEN_OK == (ccode = RequireStore(client)) &&
                 TOKEN_OK == (ccode = CheckTokC(client, n, 3, 3)) &&
-                TOKEN_OK == (ccode = RequireExclusiveTransaction(client)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &guid)) &&
-                TOKEN_OK == (ccode = ParseDocument(client, tokens[2], &guid2)))
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &collection)) &&
+                TOKEN_OK == (ccode = ParseDocument(client, tokens[2], &object)))
             {
-                ccode = StoreCommandUNLINK(client, guid, guid2);
+                ccode = StoreCommandUNLINK(client, &collection, &object);
             }
             break;
 
@@ -1957,8 +1214,7 @@ StoreCommandLoop(StoreClient *client)
 
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 2, 6)) ||
-                TOKEN_OK != (ccode = RequireSharedTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseCollection(client, tokens[1], &coll)))
+                TOKEN_OK != (ccode = ParseCollection(client, tokens[1], &object)))
             {
                 break;
             }
@@ -1980,20 +1236,19 @@ StoreCommandLoop(StoreClient *client)
             }
             
             if (TOKEN_OK == ccode) {
-                ccode = StoreCommandWATCH(client, &coll, int1);
+                ccode = StoreCommandWATCH(client, &object, int1);
             }
             break;
 
         case STORE_COMMAND_WRITE:
             /* WRITE <collection> <type> <length> 
                      [F<filename>] [G<guid>] [T<timeCreated>] 
-                     [Z<flags>] [L<link guid>]
+                     [Z<flags>] [L<link guid>] [N]
              */
             
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 4, 9)) ||
-                TOKEN_OK != (ccode = RequireExclusiveTransaction(client)) ||
-                TOKEN_OK != (ccode = ParseCollection(client, tokens[1], &coll)) ||
+                TOKEN_OK != (ccode = ParseCollection(client, tokens[1], &object)) ||
                 TOKEN_OK != (ccode = ParseDocType(client, tokens[2], &doctype)) ||
                 TOKEN_OK != (ccode = ParseStreamLength(client, tokens[3], &int1)))
             {
@@ -2005,14 +1260,17 @@ StoreCommandLoop(StoreClient *client)
             ulong = 0; /* addflags */
             guid = 0;
             guid2 = 0; /* link guid */
+            int2 = 0; /* whether or not to process the document */
 
             for (i = 4; i < n; i++) {
                 if ('G' == *tokens[i] && !guid) {
                     ccode = ParseGUID(client, 1 + tokens[i], &guid);
-                } else if ('L' == *tokens[i] && !guid2) {
-                    ccode = ParseDocument(client, 1 + tokens[i], &guid2);
+                //} else if ('L' == *tokens[i] && !guid2) {
+                //    ccode = ParseDocument(client, 1 + tokens[i], &guid2);
                 } else if ('F' == *tokens[i] && tokens[i][1] != '\0') {
                     filename = tokens[i] + 1;
+                } else if ('N' == *tokens[i] && tokens[i][1] == '\0') {
+                    int2 = 1;
                 } else if ('T' == *tokens[i] && !timestamp) {
                     ccode = ParseDateTimeToUint64(client, 1 + tokens[i], &timestamp); 
                 } else if ('Z' == *tokens[i] && !ulong) {
@@ -2028,76 +1286,31 @@ StoreCommandLoop(StoreClient *client)
                 break;
             }
 
-            ccode = StoreCommandWRITE(client, 
-                                      &coll, doctype, 
-                                      int1, -1, -1,
-                                      (uint32_t) ulong, guid, filename,
-                                      timestamp, -1, guid2);
+            ccode = StoreCommandWRITE(client, &object, doctype, int1,
+                                      (uint32_t) ulong, guid, filename, 
+                                      timestamp, guid2, int2);
             break;
 
         default:
             break;
         }
 
-        TCLog(client, "Finished processing");
-
         if (client->watchLock) {
             StoreReleaseCollectionLock(client, &(client->watchLock));
             client->watchLock = NULL;
         }
 
-        if (client->handle && DStoreCancelTransactions(client->handle)) {
-            ConnWriteStr(client->conn, MSG5920FATALDBLIBERR);
-            ConnFlush(client->conn);
-            ccode = -1;
-        }
-
         if (ccode >= 0) {
             ccode = ConnFlush(client->conn);
         }
-        
-        TCEnd(client);
     }
     
     return ccode;
 }
 
-
 static CCode
-StoreShowFolder(StoreClient *client, int64_t coll, int typemask)
-{
-    DStoreStmt *stmt;
-    DStoreDocInfo info;
-    int ccode;
-
-    stmt = DStoreFindDocInfo(client->handle, coll, NULL, NULL);
-    if (!stmt) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        return -1;
-    }
-    
-    while (1) {
-        ccode = DStoreInfoStmtStep(client->handle, stmt, &info);
-        if (ccode > 0) {
-            ccode = ConnWriteF(client->conn, "2001 " GUID_FMT " %d\r\n", 
-                               info.guid, info.version);
-        } else if (ccode < 0) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            break;
-        } else {
-            ccode = ConnWriteStr(client->conn, MSG1000OK);
-            break;
-        }
-    };
-
-    DStoreStmtEnd(client->handle, stmt);
-    return ccode;
-}
-
-
-static CCode
-ShowDocumentBody(StoreClient *client, DStoreDocInfo *info,
-                 int64_t requestStart, int64_t requestLength)
+ShowDocumentBody(StoreClient *client, StoreObject *document,
+                 int64_t requestStart, uint64_t requestLength)
 {
     int ccode = 0;
     char path[XPL_MAX_PATH + 1];
@@ -2105,36 +1318,32 @@ ShowDocumentBody(StoreClient *client, DStoreDocInfo *info,
     uint64_t start;
     uint64_t length;
 
-    if (STORE_IS_FOLDER(info->type)) {
+    if (STORE_IS_FOLDER(document->type)) {
         return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
     } else {
-        FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+        FindPathToDocument(client, document->collection_guid, document->guid, path, sizeof(path));
         fh = fopen(path, "rb");
-        if (!fh) {
+        if (!fh)
             return ConnWriteStr(client->conn, MSG4224CANTREAD);
-        }
 
         if (requestStart < 0) {
             start = 0;
-            length = info->length;
+            length = document->size;
         } else {
-            if (requestStart < info->length) {
+            if ((uint64_t)requestStart < document->size) {
                 start = requestStart;
-                length = info->length - start;
-                if ((requestLength > -1) && ((unsigned long)requestLength < length)) {
+                length = document->size - start;
+                if ((requestLength < length) && (requestLength != 0)) {
                     length = requestLength; 
                 }
             } else {
-                start = info->length;
+                start = document->size;
                 length = 0;
             }
         }
 
-        ccode = ConnWriteF(client->conn, 
-                           "2001 nmap.document %ld\r\n", (long) length);
-        if (-1 == ccode) {
-            goto finish;
-        }
+        ccode = ConnWriteF(client->conn, "2001 nmap.document %ld\r\n", (long) length);
+        if (-1 == ccode) goto finish;
         
         if (0 != XplFSeek64(fh, start, SEEK_SET)) {
             ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
@@ -2155,454 +1364,11 @@ finish:
     return ccode;
 }
 
-
-static CCode
-ShowInternalProperty(StoreClient *client,
-                     StorePropertyType prop,
-                     DStoreDocInfo *info)
-{
-    struct tm tm;
-    time_t tt;
-    char buf[64];
-    int len;
-
-    switch (prop) {
-    case STORE_PROP_COLLECTION:
-        return ConnWriteF(client->conn, 
-                          "2001 nmap.collection 16\r\n" GUID_FMT "\r\n", 
-                          info->collection);
-    case STORE_PROP_DOCUMENT:
-        if (STORE_IS_FOLDER(info->type)) {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.document");
-        } else {
-            return ShowDocumentBody(client, info, -1, -1);
-        }
-    case STORE_PROP_GUID:
-        return ConnWriteF(client->conn, "2001 nmap.guid 16\r\n" GUID_FMT "\r\n", 
-                          info->guid);
-    case STORE_PROP_INDEX:
-        len = snprintf(buf, 64, "%d", info->indexed);
-        return ConnWriteF(client->conn, "2001 nmap.index %d\r\n%s\r\n", len, buf);
-    case STORE_PROP_FLAGS:
-        len = snprintf(buf, 64, "%lu", (unsigned long) info->flags);
-        return ConnWriteF(client->conn, "2001 nmap.flags %d\r\n%s\r\n", len, buf);
-    case STORE_PROP_LENGTH:
-        len = snprintf(buf, 64, "%lld", info->length);
-        return ConnWriteF(client->conn, "2001 nmap.length %d\r\n%s\r\n", len, buf);
-    case STORE_PROP_TYPE:
-        len = snprintf(buf, 64, "%d", info->type);
-        return ConnWriteF(client->conn, "2001 nmap.type %d\r\n%s\r\n", len, buf);
-    case STORE_PROP_CREATED:
-        tt = info->timeCreatedUTC;
-        gmtime_r(&tt, &tm);
-        len = strftime(buf, 64, "%Y-%m-%d %H:%M:%SZ", &tm);
-        return ConnWriteF(client->conn, "2001 nmap.created %d\r\n%s\r\n", len, buf);
-    case STORE_PROP_LASTMODIFIED:
-        tt = info->timeModifiedUTC;
-        gmtime_r(&tt, &tm);
-        len = strftime(buf, 64, "%Y-%m-%d %H:%M:%SZ", &tm);
-        return ConnWriteF(client->conn, "2001 nmap.lastmodified %d\r\n%s\r\n", 
-                          len, buf);
-    case STORE_PROP_VERSION:
-        len = snprintf(buf, 64, "%d", info->version);
-        return ConnWriteF(client->conn, "2001 nmap.version %d\r\n%s\r\n", len, buf);
-    case STORE_PROP_EVENT_CALENDARS:
-    {
-        CCode ccode;
-        BongoArray guidlist;
-        unsigned int i;
-
-        BongoArrayInit(&guidlist, sizeof(uint64_t), 64);
-        
-        if (DStoreFindCalendars(client->handle, info->guid, &guidlist)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        } else {
-            ccode = ConnWriteF(client->conn, "2001 nmap.event.calendars %d\r\n",
-                               guidlist.len * 17);
-            for (i = 0; i < guidlist.len && -1 != ccode; i++) {
-                ccode = ConnWriteF(client->conn, GUID_FMT "\n", 
-                                   BongoArrayIndex(&guidlist, uint64_t, i));
-            }
-            if (-1 != ccode) {
-                ccode = ConnWriteStr(client->conn, "\r\n");
-            }
-        }
-        BongoArrayDestroy(&guidlist, TRUE);
-        return ccode;
-    }
-    case STORE_PROP_EVENT_END:
-        if (STORE_DOCTYPE_EVENT == info->type) {
-            return ConnWriteF(client->conn, "2001 nmap.event.end %d\r\n%s\r\n", 
-                              strlen(info->data.event.end), 
-                              info->data.event.end);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.event.end");
-        }
-
-    case STORE_PROP_EVENT_LOCATION:
-        if (STORE_DOCTYPE_EVENT == info->type && info->data.event.location) {
-            return ConnWriteF(client->conn, "2001 nmap.event.location %d\r\n%s\r\n", 
-                              strlen(info->data.event.location), 
-                              info->data.event.location);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.event.location");
-        }
-    case STORE_PROP_EVENT_START:
-        if (STORE_DOCTYPE_EVENT == info->type) {
-            return ConnWriteF(client->conn, "2001 nmap.event.start %d\r\n%s\r\n", 
-                              strlen(info->data.event.start), 
-                              info->data.event.start);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.event.start");
-        }
-
-    case STORE_PROP_EVENT_SUMMARY:
-        if (STORE_DOCTYPE_EVENT == info->type && info->data.event.summary) {
-            return ConnWriteF(client->conn, "2001 nmap.event.summary %d\r\n%s\r\n", 
-                              strlen(info->data.event.summary), 
-                              info->data.event.summary);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.event.summary");
-        }
-    case STORE_PROP_EVENT_UID:
-        if (STORE_DOCTYPE_EVENT == info->type && info->data.event.uid) {
-            return ConnWriteF(client->conn, "2001 nmap.event.uid %d\r\n%s\r\n", 
-                              strlen(info->data.event.uid), 
-                              info->data.event.uid);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.event.uid");
-        }
-    case STORE_PROP_EVENT_STAMP:
-        if (STORE_DOCTYPE_EVENT == info->type && info->data.event.stamp) {
-            return ConnWriteF(client->conn, "2001 nmap.event.stamp %d\r\n%s\r\n", 
-                              strlen(info->data.event.stamp), 
-                              info->data.event.stamp);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.event.stamp");
-        }
-    case STORE_PROP_MAIL_CONVERSATION:
-        if (info->type == STORE_DOCTYPE_MAIL) {
-            return ConnWriteF(client->conn, 
-                              "2001 nmap.mail.conversation 16\r\n" GUID_FMT "\r\n", 
-                              info->conversation);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.mail.conversation");
-        }
-    case STORE_PROP_MAIL_HEADERLEN:
-        if (info->type == STORE_DOCTYPE_MAIL) {
-            len = snprintf(buf, 64, "%d", info->data.mail.headerSize);
-            return ConnWriteF(client->conn, "2001 nmap.mail.headersize %d\r\n%s\r\n",
-                              len, buf);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.mail.headersize");
-        }
-    case STORE_PROP_MAIL_IMAPUID:
-        if (STORE_DOCTYPE_MAIL != info->type && !STORE_IS_FOLDER(info->type)) {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.mail.imapuid");
-        }
-        return ConnWriteF(client->conn, 
-                          "2001 nmap.mail.imapuid 8\r\n%08x\r\n",
-                          info->imapuid ? info->imapuid : (uint32_t) info->guid);
-    case STORE_PROP_MAIL_SENT:
-        if (info->type == STORE_DOCTYPE_MAIL) {
-            tt = info->data.mail.sent;
-            gmtime_r(&tt, &tm);
-            len = strftime(buf, 64, "%Y-%m-%d %H:%M:%SZ", &tm);
-            return ConnWriteF(client->conn, "2001 nmap.mail.sent %d\r\n%s\r\n", 
-                              len, buf);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.mail.sent");
-        }
-    case STORE_PROP_MAIL_SUBJECT:
-        if (info->type == STORE_DOCTYPE_MAIL && info->data.mail.subject) {
-            return ConnWriteF(client->conn, "2001 nmap.mail.subject %d\r\n%s\r\n", 
-                              strlen(info->data.mail.subject), 
-                              info->data.mail.subject);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.mail.subject");
-        }
-    case STORE_PROP_MAIL_MESSAGEID:
-        if (info->type == STORE_DOCTYPE_MAIL && info->data.mail.messageId) {
-            return ConnWriteF(client->conn, "2001 nmap.mail.messageid %d\r\n%s\r\n", 
-                              strlen(info->data.mail.messageId), info->data.mail.messageId);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.mail.messageid");
-        }
-    case STORE_PROP_MAIL_PARENTMESSAGEID:
-        if (info->type == STORE_DOCTYPE_MAIL && info->data.mail.parentMessageId) {
-            return ConnWriteF(client->conn, 
-                              "2001 nmap.mail.parentmessageid %d\r\n%s\r\n", 
-                              strlen(info->data.mail.parentMessageId), 
-                              info->data.mail.parentMessageId);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, 
-                              "nmap.mail.parentmessageid");
-        }
-    case STORE_PROP_CONVERSATION_SUBJECT:
-        if (info->type == STORE_DOCTYPE_CONVERSATION && 
-            info->data.conversation.subject) 
-        {
-            return ConnWriteF(client->conn, 
-                              "2001 nmap.conversation.subject %d\r\n%s\r\n", 
-                              strlen(info->data.conversation.subject), 
-                              info->data.conversation.subject);
-        } else {
-            return ConnWriteF(client->conn, 
-                              MSG3245NOPROP, "nmap.conversation.subject");
-        }        
-    case STORE_PROP_CONVERSATION_COUNT:
-        if (info->type == STORE_DOCTYPE_CONVERSATION) {
-            len = snprintf(buf, 64, "%d", info->data.conversation.numDocs);
-            return ConnWriteF(client->conn, 
-                              "2001 nmap.conversation.count %d\r\n%s\r\n", len, buf);
-        } else {
-            return ConnWriteF(client->conn, 
-                              MSG3245NOPROP, "nmap.conversation.count");
-        }        
-    case STORE_PROP_CONVERSATION_UNREAD:
-        if (info->type == STORE_DOCTYPE_CONVERSATION) {
-            len = snprintf(buf, 64, "%d", info->data.conversation.numUnread);
-            return ConnWriteF(client->conn, 
-                              "2001 nmap.conversation.unread %d\r\n%s\r\n", len, buf);
-        } else {
-            return ConnWriteF(client->conn, 
-                              MSG3245NOPROP, "nmap.conversation.unread");
-        }        
-    case STORE_PROP_CONVERSATION_DATE:
-        if (info->type == STORE_DOCTYPE_CONVERSATION) {
-            tt = info->data.conversation.lastMessageDate;
-            gmtime_r(&tt, &tm);
-            len = strftime(buf, 64, "%Y-%m-%d %H:%M:%SZ", &tm);
-            return ConnWriteF(client->conn, 
-                              "2001 nmap.conversation.date %d\r\n%s\r\n", len, buf);
-        } else {
-            return ConnWriteF(client->conn, MSG3245NOPROP, "nmap.conversation.date");
-        } 
-    case STORE_PROP_EXTERNAL:
-    default:
-        assert(0);
-        return ConnWriteStr(client->conn, MSG5004INTERNALERR);
-    }
-}
-
-
-static CCode
-ShowExternalProperty(StoreClient *client, StorePropInfo *prop)
-{
-    /* FIXME - implement PRIV_READ_ACL and PRIV_READ_OWN_ACL? (bug 174097) */
-    
-    CCode ccode;
-    int len = strlen(prop->value);
-
-    ccode = ConnWriteF(client->conn, "2001 %s %d\r\n", prop->name, len);
-    if (ccode < 0) {
-        return -1;
-    }
-    ccode = ConnWrite(client->conn, prop->value, len);
-    if (ccode < 0) {
-        return -1;
-    }
-    return ConnWriteStr(client->conn, "\r\n");
-}
-
-
-static CCode
-ShowProperty(StoreClient *client, DStoreDocInfo *info, StorePropInfo *prop)
-{
-    CCode ccode;
-    int dcode;
-    DStoreStmt *stmt;
-
-    if (STORE_IS_EXTERNAL_PROPERTY_TYPE(prop->type)) {
-        char *propname = prop->name;
-
-        stmt = DStoreFindProperties(client->handle, info->guid, prop->name);
-        if (!stmt) {
-            return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-        dcode = DStorePropStmtStep(client->handle, stmt, prop);
-        if (1 == dcode) {
-            ccode = ShowExternalProperty(client, prop);
-        } else if (0 == dcode) {
-            ccode = ConnWriteF(client->conn, MSG3245NOPROP, propname);
-        } else {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-        DStoreStmtEnd(client->handle, stmt);
-        prop->name = propname;
-    } else {
-        ccode = ShowInternalProperty(client, prop->type, info);
-    }
-    return ccode;
-}
-
-
-static CCode
-ShowDocumentInfo(StoreClient *client, DStoreDocInfo *info,
-                 StorePropInfo *props, int propcount)
-{
-    CCode ccode;
-    char *filename;
-    int i;
-    char buffer[2 * sizeof(info->filename) + 1];
-    char *p;
-
-    ccode = StoreCheckAuthorizationQuiet(client, info, STORE_PRIV_READ_PROPS);
-    if (ccode) {
-        return ccode;
-    }
-
-    if (STORE_IS_FOLDER(info->type)) {
-        filename = info->filename;
-    } else {
-        filename = strrchr(info->filename, '/');
-        if (filename) {
-            filename++;
-        } else {
-            XplConsolePrintf("Invalid path for document " GUID_FMT ": '%s'.\r\n",
-                             info->guid, info->filename);
-            filename = info->filename;
-        }
-    }
-
-    for (p = buffer; *filename; ++filename, ++p) {
-        if (isspace(*filename)) {
-            *p++ = '\\';
-        }
-        *p = *filename;
-    }
-    *p = 0;
-
-    ccode = ConnWriteF(client->conn, 
-                       "2001 " GUID_FMT " %d %d %08x %d %lld %s\r\n", 
-                       info->guid, info->type, info->flags, 
-                       info->imapuid ? info->imapuid : (uint32_t) info->guid, 
-                       info->timeCreatedUTC, info->length,
-                       buffer);
-
-    for (i = 0; i < propcount && ccode >= 0; i++) {
-        ccode = ShowProperty(client, info, &props[i]);
-    }
-
-    return ccode;
-}
-
-
-static CCode
-ShowStmtDocumentsWithMessage(StoreClient *client, DStoreStmt *stmt, 
-                             StorePropInfo *props, int propcount,
-                             const char *msg)
-{
-    int ccode = 0;
-    int dcode;
-
-    DStoreDocInfo info;
-
-    while (-1 != ccode) {
-        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
-        if (1 == dcode) {
-            ccode = ShowDocumentInfo(client, &info, props, propcount);
-        } else if (0 == dcode) {
-            ccode = ConnWriteStr(client->conn, msg);
-            break;
-        } else if (-1 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            break;
-        }
-    }
-
-    return ccode;    
-}
-
-
-static CCode
-ShowStmtDocuments(StoreClient *client, DStoreStmt *stmt, 
-                  StorePropInfo *props, int propcount)
-{
-    return ShowStmtDocumentsWithMessage(client, stmt, props, propcount, MSG1000OK);
-}
-
-
-static CCode
-ShowGuidsDocumentsWithMessage(StoreClient *client, uint64_t *guids, 
-                              InfoStmtFilter *filter, void *userdata,
-                              StorePropInfo *props, int propcount,
-                              const char *msg)
-{
-    CCode ccode = 0;
-    int dcode;
-
-    DStoreDocInfo info;
-
-    while (*guids && -1 != ccode) {
-        dcode = DStoreGetDocInfoGuid(client->handle, *guids, &info);
-        if (1 == dcode) {
-            if (!filter || filter(&info, userdata)) {
-                ccode = ShowDocumentInfo(client, &info, props, propcount);
-            }
-        } else if (0 == dcode) {
-            /* */
-        } else if (-1 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            break;
-        }
-        ++guids;
-    }
-    
-    if (-1 != ccode) {
-        ccode = ConnWriteStr(client->conn, msg);
-    }
-    return ccode;    
-}
-
-static
-CCode
-StoreListCollections(StoreClient *client, DStoreDocInfo *coll)
-{
-    CCode ccode = 0;
-    DStoreStmt *stmt = NULL;
-
-    ccode = StoreCheckAuthorization(client, coll, STORE_PRIV_LIST);
-    if (ccode) {
-        return ccode;
-    }
-    stmt = DStoreListCollections(client->handle, coll->filename, -1, -1);
-    if (!stmt) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto abort;
-    }
-        
-    while (-1 != ccode) {
-        DStoreDocInfo info;
-        int dcode;
-
-        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
-        if (1 == dcode) {
-            if (coll->guid != info.guid)
-                ccode = ConnWriteF(client->conn, "2001 " GUID_FMT " %d %d %s\r\n", 
-                                   info.guid, info.type, info.flags, info.filename);
-        } else if (0 == dcode) {
-            break;
-        } else if (-1 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-    }
-    
-    DStoreStmtEnd(client->handle, stmt);
-  
-    return ConnWriteStr(client->conn, MSG1000OK);
-
-abort:
-    if (stmt) {
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
-    return ccode;
-}
-
 CCode
 StoreCommandALARMS(StoreClient *client, uint64_t start, uint64_t end)
 {
+	/* FIXME - redo this completely
+	 * 
     AlarmInfoStmt *stmt;
     AlarmInfo info;
     CCode ccode = 0;
@@ -2654,278 +1420,97 @@ StoreCommandALARMS(StoreClient *client, uint64_t start, uint64_t end)
 
 finish:
     AlarmStmtEnd(client->system.alarmdb, stmt);
-
-    return ccode;
+	*/
+	return ConnWriteStr(client->conn, MSG1000OK);
 }
-
 
 CCode
 StoreCommandCALENDARS(StoreClient *client, unsigned long mask,
                       StorePropInfo *props, int propcount)
 {
-    CCode ccode = 0;
-    DStoreStmt *stmt;
-    int dcode = 1;
-    DStoreDocInfo info;
-    
-    ccode = StoreCheckAuthorizationGuid(client, 
-                                        STORE_CALENDARS_GUID, STORE_PRIV_LIST);
-    if (ccode) {
-        return ccode;
-    }
+	StoreObject calendar_collection;
+	CCode ccode;
 
-    stmt = DStoreListColl(client->handle, STORE_CALENDARS_GUID, -1, -1);
-    if (!stmt) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    while (-1 != ccode && 1 == dcode) {
-        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
-        if (1 == dcode) {
-            if ((info.flags & mask) == info.flags) {
-                ccode = ShowDocumentInfo(client, &info, props, propcount);
-            }
-        } else if (0 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG1000OK);
-        } else if (-1 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-    }
-    
-    DStoreStmtEnd(client->handle, stmt);
-    return ccode;
+	StoreObjectFind(client, STORE_CALENDARS_GUID, &calendar_collection);
+	ccode = StoreObjectCheckAuthorization(client, &calendar_collection, STORE_PRIV_LIST);
+	if (ccode) return ccode;
+	
+	return StoreObjectIterCollectionContents(client, &calendar_collection, -1, 
+	    -1, 0, 0, props, propcount, "= nmap.type 6", NULL, FALSE);
 }
 
-
+// list the collections who are subcollections of container
 CCode
-StoreCommandCOLLECTIONS(StoreClient *client, DStoreDocInfo *coll)
+StoreCommandCOLLECTIONS(StoreClient *client, StoreObject *container)
 {
-    return StoreListCollections(client, coll);
-}            
+	CCode ccode;
+	
+	ccode = StoreObjectCheckAuthorization(client, container, STORE_PRIV_LIST);
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 
+	return StoreObjectIterSubcollections(client, container);
+}
 
 CCode
-StoreCommandCONVERSATION(StoreClient *client, uint64_t guid,
+StoreCommandCONVERSATION(StoreClient *client, StoreObject *conversation,
                          StorePropInfo *props, int propcount)
 {
-    DStoreStmt *stmt;
-    CCode ccode = 0;
+	CCode ccode = 0;
+	StoreObject conversation_collection;
 
-    ccode = StoreCheckAuthorizationGuid(client, 
-                                        STORE_CONVERSATIONS_GUID, STORE_PRIV_READ);
-    if (ccode) {
-        return ccode;
-    }
-
-    stmt = DStoreFindConversationMembers(client->handle, guid);
-    if (!stmt) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        return -1;
-    }
-
-    if (!stmt) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    ccode = ShowStmtDocuments(client, stmt, props, propcount);
-
-    DStoreStmtEnd(client->handle, stmt);
-    return ccode;
+	StoreObjectFind(client, STORE_CONVERSATIONS_GUID, &conversation_collection);
+	ccode = StoreObjectCheckAuthorization(client, &conversation_collection, STORE_PRIV_READ);
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+	
+	return StoreObjectIterConversationMails(client, conversation, props, propcount);
 }
 
-
-typedef struct {
-    uint32_t mask;
-    uint32_t flags;
-} MaskAndFlagStruct;
-
-
-static int
-MaskFilter(DStoreDocInfo *info, void *maskptr)
-{
-    MaskAndFlagStruct *mf = (MaskAndFlagStruct *) maskptr;
-
-    return (info->flags & mf->mask) == mf->flags;
-}
-
-
+// FIXME: Need to implement support for 'center' properly.
+// The headers options can take a running jump, though.
 CCode
 StoreCommandCONVERSATIONS(StoreClient *client, const char *source, const char *query, 
-                          int start, int end, uint64_t center, 
+                          int start, int end, StoreObject *center, 
                           uint32_t flagsmask, uint32_t flags,
                           int displayTotal,
                           StoreHeaderInfo *headers, int headercount, 
                           StorePropInfo *props, int propcount)
 {
-    CCode ccode = 0;
-    DStoreStmt *stmt = NULL;
-    uint64_t *guids = NULL;
-    uint64_t *guidsptr = NULL;
-    char buf[200];
-    int total;
-    MaskAndFlagStruct mf = { flagsmask, flags };
-    uint32_t required;
-
-    ccode = StoreCheckAuthorizationGuid(client, 
-                                        STORE_CONVERSATIONS_GUID, STORE_PRIV_READ);
-    if (ccode) {
-        return ccode;
-    }
-
-    GetConversationSourceMask(source, &required);
-
-    if (query) {
-        IndexHandle *index;
-        char newQuery[CONN_BUFSIZE * 2];
-        int i;
-        DStoreDocInfo *info;
-
-        snprintf(newQuery, sizeof(newQuery) - 1, "(nmap.type:mail) AND (%s)", query);
-
-        index = IndexOpen(client);
-        if (!index) {
-            return ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
-        }
-        guids = IndexSearch(index, newQuery, TRUE, TRUE, 
-                            -1, -1, NULL, &total, INDEX_SORT_DATE_DESC);
-        IndexClose(index);
-
-        if (!guids) {
-            return ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
-        }
-        
-        /* FIXME: This is a big allocation */
-        info = BONGO_MEMSTACK_ALLOC(&client->memstack, total * sizeof(DStoreDocInfo));
-
-        for (guidsptr = guids, i = 0; *guidsptr; ++guidsptr) {
-            switch (DStoreGetDocInfoGuid(client->handle, *guidsptr, &info[i])) {
-            case 1:
-                if ((flagsmask && !MaskFilter(&info[i], &mf)) ||
-                    (required && !(info[i].data.conversation.sources & required)))
-                {
-                    --total;
-                    continue;
-                }
-                i++;
-                break;
-            case 0:
-                --total;
-                continue;
-            case -1:
-                MemFree(guids);
-                return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            }
-        }
-
-        MemFree(guids);
-
-        if (center) {
-            /* fix up start and end */
-            for (i = 0; i < total; i++) {
-                if (info[i].guid == center) {
-                    start = i - start;
-                    if (start < 0) { 
-                        start = 0;
-                    }
-                    end = i + end + 1;
-                    if (end > total) {
-                        end = total;
-                    }
-                    center = 0;
-                    break;
-                }
-            }
-            if (center) {
-                start = end = 0;
-            }
-        }
-
-        if (-1 == start) {
-            start = 0;
-            end = total;
-        }
-
-        for (i = start; i < end && i < total && -1 != ccode; i++) {
-            ccode = ShowDocumentInfo(client, &info[i], props, propcount);
-        }
-        
-        if (-1 != ccode) {
-            if (displayTotal) {
-                ccode = ConnWriteF(client->conn, "1000 %d\r\n", total);
-            } else {
-                ccode = ConnWriteStr(client->conn, MSG1000OK);
-            }
-        }
-
-    } else {
-        if (displayTotal) {
-            total = DStoreCountConversations(client->handle, required, 0,
-                                             headers, headercount,
-                                             flagsmask, flags);
-            if (total == -1) {
-                return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            }
-            snprintf(buf, sizeof(buf), "1000 %d\r\n", total);
-        }
-
-        stmt = DStoreListConversations(client->handle, required, 0, 
-                                       headers, headercount,
-                                       start, end, center, 
-                                       flagsmask, flags);
-        if (!stmt) {
-            return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-
-        ccode = ShowStmtDocumentsWithMessage(client, stmt, props, propcount, 
-                                             displayTotal ? buf : MSG1000OK);
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
-    return ccode;
-}            
-
+	int ccode;
+	StoreObject conversation_collection;
+	BOOL show_total;
+	
+	StoreObjectFind(client, STORE_CONVERSATIONS_GUID, &conversation_collection);
+	
+	// FIXME: which priv should we really be checking? either/or/both?
+	ccode = StoreObjectCheckAuthorization(client, &conversation_collection, STORE_PRIV_LIST);
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+	ccode = StoreObjectCheckAuthorization(client, &conversation_collection, STORE_PRIV_READ);
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+	
+	show_total = (displayTotal == 0)? FALSE : TRUE;
+	
+	return StoreObjectIterCollectionContents(client, &conversation_collection, start, 
+	    end, flagsmask, flags, props, propcount, NULL, query, show_total);
+}
 
 CCode 
-StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
+StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collection)
 {
     CCode ccode;
-    const char *errmsg;
-    DStoreDocInfo info;
-    NLockStruct *lock = NULL;
     FILE *src = NULL;
-    FILE *dest = NULL;
     char srcpath[XPL_MAX_PATH + 1];
     char dstpath[XPL_MAX_PATH + 1];
-    struct stat sb;
-    size_t start;
-    size_t end;
+    StoreObject newobject;
+     
+    // check the parameters are ok and the document exists   
+    if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case 1:
-        break;
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-        
-    if (STORE_IS_FOLDER(info.type)) {
-        return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-    }
+	// check authorization on the parent collection
+	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_BIND | STORE_PRIV_READ);
+    if (ccode) return ccode;
 
-    ccode = StoreCheckAuthorization(client, collection, 
-                                    STORE_PRIV_BIND | STORE_PRIV_READ);
-    if (ccode) {
-        return ccode;
-    }
-        
-    ccode = StoreGetCollectionLock(client, &lock, collection->guid);
-    if (ccode) {
-        return ccode;
-    }
-    TCLog(client, "Starting document copy");
-
-    FindPathToDocument(client, info.collection, info.guid, srcpath, sizeof(srcpath));
+	// copy the files on disk
+    FindPathToDocument(client, object->collection_guid, object->guid, srcpath, sizeof(srcpath));
     src = fopen(srcpath, "r");
     if (!src) {
         ccode = ConnWriteStr(client->conn, MSG4224CANTREADMBOX);
@@ -2940,209 +1525,180 @@ StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection)
         goto finish;
     }
     // TODO: how to detect MSG5220QUOTAERR ?
-    TCLog(client, "Files linked");
     
-    start = 0;
-    end = info.length;
-
-    // FIXME: need to correct all this meta-data
-    info.guid = 0;
-    info.imapuid = 0;
-    info.collection = collection->guid;
-    snprintf(info.filename, sizeof(info.filename), "%s/", collection->filename);
-
-    if (DStoreSetDocInfo(client->handle, &info)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-
-    TCLog(client, "Processed doc");
-    errmsg = StoreProcessDocument(client, &info, collection, dstpath, 0);
-    if (errmsg) {
-        ccode = ConnWriteStr(client->conn, errmsg);
-        goto finish;
-    }
-    TCLog(client, "Parse contents");
-    errmsg = StoreIndexDocument(client, &info, collection, NULL, dstpath);
-    if (errmsg) {
-        ccode = ConnWriteStr(client->conn, errmsg);
-        goto finish;
-    }
-    TCLog(client, "Index contents");
+    // make a copy of the storeobject
+	memcpy(&newobject, object, sizeof(StoreObject));
+	newobject.guid = 0;
+	newobject.filename[0] = '\0';
+		
+	if (StoreObjectCreate(client, &newobject))
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+    
+    StoreObjectCopyInfo(client, object, &newobject);
     
     // swap dest to src, and find new dest - move temp file into correct position
     srcpath[0] = '\0';
     strncpy(srcpath, dstpath, sizeof(srcpath));
-    FindPathToDocument(client, collection->guid, info.guid, dstpath, sizeof(dstpath));
+    FindPathToDocument(client, collection->guid, newobject.guid, dstpath, sizeof(dstpath));
     if (link(srcpath, dstpath) != 0) {
+    	// StoreObjectCreate saved the new object; if we can't create
+    	// the data, we should remove that object
+    	StoreObjectRemove(client, &newobject);
         ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
         goto finish;
     }
     unlink(srcpath);
-
-    if (0 != DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    } 
-    TCLog(client, "Commit transaction");
-
-    ++client->stats.insertions;
-    StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_NEW,
-                      info.guid, info.imapuid, 0);
-
-    ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
-                       info.guid, info.version);
     
-finish:
-    if (lock) StoreReleaseCollectionLock(client, &lock);
+    // update metadata
+    newobject.collection_guid = collection->guid;
+    newobject.time_created = newobject.time_modified = time(NULL);
+    
+    StoreObjectFixUpFilename(collection, &newobject);
+    
+    StoreObjectSave(client, &newobject);
+    
+    // slight race here without store-level locking
+    StoreObjectUpdateImapUID(client, &newobject);
+    
+    ++client->stats.insertions;
+    StoreWatcherEvent(client, &newobject, STORE_WATCH_EVENT_NEW);
+    
+    ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n",
+                       newobject.guid, newobject.version);
 
-    return ccode;
+finish:
+	return ccode;
 }
 
 
+// FIXME: doesn't create subcollections as required
+// FIXME: doesn't detect all error conditions
 CCode
 StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 {
-    uint64_t newguid;
-    int32_t version;
-
-    switch (StoreCreateCollection(client, name, guid, &newguid, &version)) {
-    case 0:
-        if (DStoreCommitTransaction(client->handle)) {
-            return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-         }
-        return ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", newguid, version);
-    case -1:
+	StoreObject object;
+	StoreObject container;
+	int ret;
+	char container_path[MAX_FILE_NAME+1];
+	char *ptr;
+	
+	// look to see if container is valid
+	strncpy(container_path, name, MAX_FILE_NAME);
+	ptr = strrchr(container_path, '/');
+	if (ptr == NULL) {
+		return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
+	} else {
+		*ptr = '\0';
+		// special case - root container is always '/'
+		if (strcmp(container_path, "") == 0) {
+			container_path[0] = '/';
+			container_path[1] = '\0';
+		}
+	}
+	
+	// Create the object first to allocate our wanted guid
+	memset(&object, 0, sizeof(StoreObject));
+	object.type = STORE_DOCTYPE_FOLDER;
+	object.guid = guid;
+	strncpy(object.filename, name, MAX_FILE_NAME);
+	
+	ret = StoreObjectCreate(client, &object);
+	switch (ret) {
+		case 0:
+			// if it's successful, that's ok.
+			break;
+		case -1:
+			return ConnWriteF(client->conn, "4226 Guid " GUID_FMT " already exists\r\n", 
+				object.guid);
+			break;
+		default:
+			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+			break;
+	}
+	/* FIXME - detect following errors?
         return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
-    case -2:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    case -3:
-        return ConnWriteF(client->conn, "4226 Guid " GUID_FMT " already exists\r\n", 
-                          guid);
-    case -5:
         return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
-    case -4:
-    default:
         return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+    */
+    // now try to find the parent collection
+    if (StoreObjectFindByFilename(client, container_path, &container)) {
+    	// no such collection - we need to create it
+    	// FIXME
+    	return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
     }
+    
+    // FIXME - check we can write to this collection, and if not, delete
+    // the new object and error out.
+    object.collection_guid = container.guid;
+    StoreObjectFixUpFilename(&container, &object);
+    
+    if (StoreObjectSave(client, &object))
+    	return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+
+	return ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
+		object.guid, object.version);
 }
 
 
 CCode
-StoreCommandDELETE(StoreClient *client, uint64_t guid)
+StoreCommandDELETE(StoreClient *client, StoreObject *object)
 {
-    int ccode = 0;
-    DStoreDocInfo info;
-    DStoreDocInfo conversation;
-    NLockStruct *lock = NULL;
-    BOOL updateConversation;
-    IndexHandle *index = NULL;
-    char path[XPL_MAX_PATH];
-
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case 1:
-        if (STORE_IS_FOLDER(info.type)) {
-            return ConnWriteStr(client->conn, MSG4231USEREMOVE);
-        } 
-
-        ccode = StoreCheckAuthorizationGuid(client, info.collection, 
-                                            STORE_PRIV_UNBIND);
-        if (ccode) {
-            return ccode;
-        }
-
-        ccode = StoreGetCollectionLock(client, &lock, info.collection);
-        if (ccode) {
-            return ccode;
-        }
-        
-        updateConversation = FALSE;
-        TCLog(client, "Ready to remove document");
-
-        switch (info.type) {
-        case STORE_DOCTYPE_MAIL:
-            if (info.conversation) {
-                if (DStoreGetDocInfoGuid(client->handle, info.conversation, 
-                                         &conversation) == 1) 
-                {
-                    updateConversation = TRUE;
-                }
-            }
-            break;
-        case STORE_DOCTYPE_CALENDAR:
-            if (-1 == DStoreUnlinkCalendar(client->handle, guid)) {
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                goto finish;
-            }
-            break;
-        case STORE_DOCTYPE_EVENT:
-            /* FIXME: should unlink the event from its calendars */
-            break;
-        default:
-            break;
-        }
-
-        if (-1 == DStoreDeleteDocInfo(client->handle, guid)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-        TCLog(client, "Document removed");
-
-        /* Try our best here, it's ok if it fails */ 
-        if (updateConversation) {
-            UpdateConversationMetadata(client->handle, &conversation);
-            TCLog(client, "Conversation updated");
-        }
-
-        break;
-    case 0:
-        ccode = ConnWriteStr(client->conn, MSG4220NOGUID);
-        goto finish;
-    case -1:
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }        
-
-    index = IndexOpen(client);
-    if (!index) {
-        ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
-        goto finish;
-    }
-    
-    FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
-    if (unlink(path) != 0) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-    TCLog(client, "Removed from file system");
-
-    if (DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    } 
-
-    IndexRemoveDocument(index, guid);
-    TCLog(client, "Removed from Index");
-
-    ++client->stats.deletions;
-    StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_DELETED, 
-                      info.guid, info.imapuid, 0);
-
-
-    ccode = ConnWriteStr(client->conn, MSG1000OK);
-
+	StoreObject collection;
+	char path[XPL_MAX_PATH]; 
+	int ccode;
+		
+	if (STORE_IS_FOLDER(object->type))
+		return ConnWriteStr(client->conn, MSG4231USEREMOVE);
+	
+	// find the containing collection
+	ccode = StoreObjectFind(client, object->collection_guid, &collection);
+	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	
+	// check we have the required permissions.
+	ccode = StoreObjectCheckAuthorization(client, &collection, STORE_PRIV_UNBIND);
+	if (ccode) return ConnWriteStr(client->conn, MSG5005DBLIBERR); // TODO : less generic errors
+	
+	switch(object->type) {
+	case STORE_DOCTYPE_MAIL:
+		// check to see if we can remove this document from a conversation
+		break;
+	case STORE_DOCTYPE_CALENDAR:
+		// do we want to remove its events also?
+		break;
+	default:
+		break;
+	}
+	
+	// TODO: check to see if we can unlink other documents from this document
+	
+	// Remove the document from the store
+	StoreObjectRemove(client, object);
+	
+	// Remove document from the search index
+	// IndexRemoveDocument(index, guid);
+	
+	// Remove the file content from the filesystem
+	FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
+	if (unlink(path) != 0) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	
+	// update stats and fire any event
+	++client->stats.deletions;
+	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_DELETED);
+	
+	ccode = ConnWriteStr(client->conn, MSG1000OK);
+	
 finish:
-    if (index) {
-        IndexClose(index);
-    }
-
-    if (lock) StoreReleaseCollectionLock(client, &lock);
-
-    return ccode;
+	
+	return ccode;
 }
 
 
-/* one of filename and bytes must be set */
+// one of filename and bytes must be set 
+// if DELIVER FILE - it's filename
+// if DELIVER STREAM - it's bytes on a network socket
 
 CCode
 StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender, 
@@ -3229,8 +1785,10 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
             ccode = ConnWriteStr(client->conn, MSG5201FILEREADERR);
             goto cleanup;
         }
+        SelectStore(client, recipient);
         status = DeliverMessageToMailbox(client, sender, authSender, recipient, mbox,
                                          msgfile, 0, bytes, flags);
+        UnselectStore(client);
         switch (status) {
         case DELIVER_SUCCESS:
             ccode = ConnWriteStr(client->conn, MSG1000DELIVERYOK);
@@ -3258,35 +1816,22 @@ cleanup:
     return ccode;
 }
 
-
-typedef struct {
-    StoreClient *client;
-    unsigned int neededPrivileges;
-} AuthFilterStruct;
-
-
-static int
-AuthFilter(DStoreDocInfo *info, void *filterptr)
-{
-    AuthFilterStruct *f = (AuthFilterStruct *) filterptr;
-
-    return !StoreCheckAuthorizationQuiet(f->client, info, f->neededPrivileges);
-}
-
-
 CCode 
 StoreCommandEVENTS(StoreClient *client, 
                    char *startUTC, char *endUTC, 
-                   DStoreDocInfo *calendar, 
+                   StoreObject *calendar, 
                    unsigned int mask,
                    char *uid,
                    const char *query,
                    int start, int end,
                    StorePropInfo *props, int propcount)
 {
+	// pretend we have no events for now.
+	return ConnWriteStr(client->conn, MSG1000OK);
+/*
     CCode ccode = 0;
 
-    /* FIXME - need to handle STORE_PRIV_READ_BUSY (bug 174023) */
+    // FIXME - need to handle STORE_PRIV_READ_BUSY (bug 174023) 
 
     if (calendar) {
         ccode = StoreCheckAuthorization(client, calendar, 
@@ -3320,7 +1865,7 @@ StoreCommandEVENTS(StoreClient *client,
             return ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
         }
         
-        /* FIXME: This is a big allocation */
+        // FIXME: This is a big allocation 
         info = BONGO_MEMSTACK_ALLOC(&client->memstack, total * sizeof(DStoreDocInfo));
 
         for (guidsptr = guids, i = 0; *guidsptr; ++guidsptr) {
@@ -3382,160 +1927,51 @@ StoreCommandEVENTS(StoreClient *client,
     }
 
     return 0;
+    */
 }
 
-
 CCode
-StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode)
+StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int mode)
 {
-    DStoreDocInfo info;
-    DStoreDocInfo conversation;
-    uint32_t oldFlags = 0;
-    IndexHandle *index;
-    NLockStruct *lock = NULL;
-    CCode ccode;
+	uint32_t old_flags;
+	int ccode;
+	
+	if (mode == STORE_FLAG_SHOW) {
+		ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_READ_PROPS);
+		if (ccode) return ccode;
+		return ConnWriteF(client->conn, "1000 %u %u\r\n", object->flags, object->flags);
+	}
+	
+	// just handle ADD / REMOVE / REPLACE now
+	old_flags = object->flags;
+	if (mode == STORE_FLAG_ADD) 	object->flags |= change;
+	if (mode == STORE_FLAG_REMOVE)	object->flags &= ~change;
+	if (mode == STORE_FLAG_REPLACE)	object->flags = change;
+	
+	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_PROPS);
+	if (ccode) return ccode;
+	
+	// FIXME: need to propogate changes on mail documents to conversations?
+	if (object->type == STORE_DOCTYPE_MAIL) {
+		
+	}
+	
+	// save the changes
+	if (StoreObjectSave(client, object) != 0) {
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
+	
+	++client->stats.updates;
+	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_FLAGS);
 
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case 1:
-        break;
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }        
-
-    switch(mode) {
-    case STORE_FLAG_SHOW: 
-        ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_READ_PROPS);
-        if (ccode) {
-            return ccode;
-        }
-        return ConnWriteF(client->conn, "1000 %u %u\r\n", info.flags, info.flags);
-    case STORE_FLAG_ADD:
-        oldFlags = info.flags;
-        info.flags |= change;
-        break;
-    case STORE_FLAG_REMOVE:
-        oldFlags = info.flags;
-        info.flags &= ~change;
-        break;
-    case STORE_FLAG_REPLACE:
-        oldFlags = info.flags;
-        info.flags = change;
-        break;
-    }
-
-    ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_WRITE_PROPS);
-    if (ccode) {
-        return ccode;
-    }
-    TCLog(client, "Checked flags and auth");
-
-    if (STORE_DOCTYPE_CONVERSATION == info.type) {
-        /* propagate STARS flag to conversation source */
-        if (info.flags & STORE_DOCUMENT_FLAG_STARS) {
-            info.data.conversation.sources |= CONVERSATION_SOURCE_STARRED;
-        } else {
-            info.data.conversation.sources &= ~CONVERSATION_SOURCE_STARRED;
-        }
-    }
-
-    if (-1 == DStoreSetDocInfo(client->handle, &info)) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-    TCLog(client, "Set doc info");
-
-    if (info.type == STORE_DOCTYPE_MAIL && info.conversation != 0) {
-        if (DStoreGetDocInfoGuid(client->handle, info.conversation, &conversation) == 1) {
-            if (UpdateConversationMemberNewFlag(client->handle, &conversation, oldFlags, change)) {
-                return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            }
-            TCLog(client, "Updated conversation");
-        }
-    }
-
-    ccode = StoreGetCollectionLock(client, &lock, info.collection);
-    if (ccode) {
-        return ccode;
-    }
-
-    index = IndexOpen(client);
-    if (!index) {
-        ccode = ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
-        goto finish;
-    }
-    if ((IndexDocument(index, client, &info, NULL) != 0)) {
-        ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
-        goto finish;
-    }
-    TCLog(client, "Updated Index");
-
-    if (0 != DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-    TCLog(client, "Transaction committed");
-
-    ++client->stats.updates;
-    StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_FLAGS, 
-                      info.guid, info.imapuid, info.flags);
-
-finish:
-    if (lock) StoreReleaseCollectionLock(client, &lock);
-    
-    if (index) {
-        IndexClose(index);
-    }
-
-    return ConnWriteF(client->conn, "1000 %u %u\r\n", oldFlags, info.flags);
+	return ConnWriteF(client->conn, "1000 %u %u\r\n", old_flags, object->flags);
 }
 
-
 CCode
-StoreCommandINDEXED(StoreClient *client, int value, uint64_t guid)
-{
-    int ccode = 0;
-    
-    ccode = DStoreSetIndexed(client->handle, value, guid);
-
-    if (-1 == ccode) {
-        DStoreAbortTransaction(client->handle);
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    if (DStoreCommitTransaction(client->handle)) {
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    } else {
-        return ConnWriteStr(client->conn, MSG1000OK);
-    }
-
-    return ccode;
-}            
-
-
-CCode
-StoreCommandINFO(StoreClient *client, uint64_t guid,
+StoreCommandINFO(StoreClient *client, StoreObject *object,
                  StorePropInfo *props, int propcount)
 {
-    DStoreDocInfo info;
-    CCode ccode;
-
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case 1:
-        ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_READ_PROPS);
-        if (ccode) {
-            return ccode;
-        }
-        if (-1 == ShowDocumentInfo(client, &info, props, propcount)) {
-            return -1;
-        }
-    case 0:
-        break;
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }        
-    
-    return ConnWriteStr(client->conn, MSG1000OK);
+	return StoreObjectIterDocinfo(client, object, props, propcount, FALSE);
 }
 
 
@@ -3543,6 +1979,8 @@ CCode
 StoreCommandISEARCH(StoreClient *client, const char *query, int start, int end,
                     StorePropInfo *props, int propcount)
 {
+	return ConnWriteStr(client->conn, MSG1000OK);
+	/*
     char buf[200];
     int ccode = 0;
     IndexHandle *index;
@@ -3576,352 +2014,109 @@ StoreCommandISEARCH(StoreClient *client, const char *query, int start, int end,
     MemFree(guids);
 
     return ccode;
-}            
-
+    */
+}
 
 CCode
 StoreCommandLIST(StoreClient *client, 
-                 DStoreDocInfo *coll, 
+                 StoreObject *collection, 
                  int start, int end, 
                  uint32_t flagsmask, uint32_t flags,
                  StorePropInfo *props, int propcount)
 {
-    int ccode = 0;
-    DStoreStmt *stmt;
-    MaskAndFlagStruct mf = { flagsmask, flags };
+	int ccode;
+	
+	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_LIST);
+	if (ccode) return ccode;
+	
+	return StoreObjectIterCollectionContents(client, collection, start, 
+	    end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
+}
 
-    ccode = StoreCheckAuthorization(client, coll, STORE_PRIV_LIST);
-    if (ccode) {
-        return ccode;
-    }
-    
-    stmt = DStoreListColl(client->handle, coll->guid, start, end);
-    if (!stmt) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
+CCode
+StoreCommandLINK(StoreClient *client, StoreObject *document, StoreObject *related)
+{
+	if (StoreObjectLink(client, document, related) == 0) {
+		return ConnWriteStr(client->conn, MSG1000OK);
+	} else {
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
+}
 
-    if (flagsmask) {
-        DStoreInfoStmtAddFilter(stmt, MaskFilter, (void *) &mf);
-    }
+CCode
+StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document)
+{
+	int ccode;
+	
+	// FIXME: does this auth check make sense?
+	ccode = StoreObjectCheckAuthorization(client, document, STORE_PRIV_READ);
+	if (ccode) return ccode;
+	
+	return StoreObjectIterLinks(client, document, reverse);
+}
 
-    ccode = ShowStmtDocuments(client, stmt, props, propcount);
-    
-    DStoreStmtEnd(client->handle, stmt);
-    return ccode;
-}            
-
+CCode
+StoreCommandUNLINK(StoreClient *client, StoreObject *document, StoreObject *related)
+{
+	if (StoreObjectUnlink(client, document, related) == 0) {
+		return ConnWriteStr(client->conn, MSG1000OK);
+	} else {
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
+}
 
 CCode
 StoreCommandMAILINGLISTS(StoreClient *client, char *source)
 {
-    DStoreStmt *stmt;
-    uint32_t required;
-    CCode ccode = 0;
-    int dcode;
-
-    GetConversationSourceMask(source, &required);
-
-    stmt = DStoreFindMailingLists(client->handle, required);
-    if (!stmt) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-    
-    do {
-        const char *str;
-        
-        dcode = DStoreStrStmtStep(client->handle, stmt, &str);
-        if (1 == dcode) {
-            if (str) {
-                ccode = ConnWriteF(client->conn, "2001 %s\r\n", str);
-            }
-        } else if (0 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG1000OK);
-        } else {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-    } while (1 == dcode && ccode >= 0);
-
-    DStoreStmtEnd(client->handle, stmt);
-    
-    return ccode;
+	// TODO
+	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
-
 
 CCode
 StoreCommandMESSAGES(StoreClient *client, const char *source, const char *query, 
-                     int start, int end, uint64_t center, 
+                     int start, int end, StoreObject *center, 
                      uint32_t flagsmask, uint32_t flags,
                      int displayTotal,
                      StoreHeaderInfo *headers, int headercount, 
                      StorePropInfo *props, int propcount)
 {
-    CCode ccode = 0;
-    DStoreStmt *stmt = NULL;
-    uint64_t *guids = NULL;
-    char buf[200];
-    int total;
-    uint32_t required;
-
-    ccode = StoreCheckAuthorizationGuid(client, 
-                                        STORE_CONVERSATIONS_GUID, STORE_PRIV_READ);
-    if (ccode) {
-        return ccode;
-    }
-
-
-    GetConversationSourceMask(source, &required);
-
-
-    if (query) {
-        IndexHandle *index;
-        char newQuery[CONN_BUFSIZE * 2];
-
-        snprintf(newQuery, sizeof(newQuery) - 1, "(nmap.type:mail AND (%s))", query);
-
-        index = IndexOpen(client);
-        if (!index) {
-            return ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
-        }
-        guids = IndexSearch(index, newQuery, FALSE, TRUE, 
-                            -1, -1, NULL, &total, INDEX_SORT_GUID);
-        IndexClose(index);
-
-        if (!guids) {
-            return ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
-        }
-    }
-
-
-    if (displayTotal) {
-        total = DStoreCountMessages(client->handle, required, 0,
-                                    headers, headercount,
-                                    flagsmask, flags);
-        if (total == -1) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-        snprintf(buf, sizeof(buf), "1000 %d\r\n", total);
-    }
-        
-    stmt = DStoreFindMessages(client->handle, required, 0, 
-                              headers, headercount,
-                              guids,
-                              start, end, center, 
-                              flagsmask, flags);
-    if (!stmt) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-
-    ccode = ShowStmtDocumentsWithMessage(client, stmt, props, propcount, 
-                                             displayTotal ? buf : MSG1000OK);
-    DStoreStmtEnd(client->handle, stmt);
-
-finish:
-    if (guids) {
-        MemFree(guids);
-    }
-    return ccode;
-}            
-
+	// FIXME: obsolete? This looks very similar to LIST; just added
+	// source and query. Might as well make it one command...
+	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
+}
 
 CCode
 StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode)
 {
-    CCode ccode = 0;
-    CollectionLockPool collLocks;
-    WatchEventList events;
-    IndexHandle *index;
-    NLockStruct *lock = NULL;
-    int updates = 0;
-    
-    if (CollectionLockPoolInit(client, &collLocks)) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    if (WatchEventListInit(&events)) {
-        CollectionLockPoolDestroy(&collLocks);
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-
-    index = IndexOpen(client);
-    if (!index) {
-        ccode = ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
-        goto finish;
-    }
-
-    while (ccode >= 0) {
-        uint64_t guid;
-        char buffer[CONN_BUFSIZE];
-        DStoreDocInfo info;
-        DStoreDocInfo conversation;
-        uint32_t oldFlags = 0;
-
-        if (-1 == (ccode = ConnWriteStr(client->conn, MSG2054SENDDOCS)) ||
-            -1 == (ccode = ConnFlush(client->conn)) ||
-            -1 == (ccode = ConnReadAnswer(client->conn, buffer, sizeof(buffer))))
-        {
-            goto finish;
-        }
-
-        if (!buffer[0]) {
-            break;
-        }
-
-        /* <guid> */
-
-        if (TOKEN_OK != (ccode = ParseGUID(client, buffer, &guid))) {
-            continue;
-        }
-
-        switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-        case 1:
-            break;
-        case 0:
-            ccode = ConnWriteStr(client->conn, MSG4220NOGUID);
-            continue;
-        case -1:
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-
-        switch(mode) {
-        case STORE_FLAG_SHOW: 
-            ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-            goto finish;
-        case STORE_FLAG_ADD:
-            oldFlags = info.flags;
-            info.flags |= change;
-            break;
-        case STORE_FLAG_REMOVE:
-            oldFlags = info.flags;
-            info.flags &= ~change;
-            break;
-        case STORE_FLAG_REPLACE:
-            oldFlags = info.flags;
-            info.flags = change;
-            break;
-        }
-
-        /* FIXME: should use quiet version, and not abort on permission denied: */
-        ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_WRITE_PROPS);
-        if (ccode) {
-            goto finish;
-        }
-
-        lock = CollectionLockPoolGet(&collLocks, info.collection);
-        if (!lock) {
-            ccode = ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-            continue;
-        }
-
-        if (STORE_DOCTYPE_CONVERSATION == info.type) {
-            /* propagate STARS flag to conversation source */
-            if (info.flags & STORE_DOCUMENT_FLAG_STARS) {
-                info.data.conversation.sources |= CONVERSATION_SOURCE_STARRED;
-            } else {
-                info.data.conversation.sources &= ~CONVERSATION_SOURCE_STARRED;
-            }
-        }
-        
-        if (-1 == DStoreSetDocInfo(client->handle, &info)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-
-        if (info.type == STORE_DOCTYPE_MAIL && info.conversation != 0) {
-            switch (DStoreGetDocInfoGuid(client->handle, info.conversation, 
-                                         &conversation) == 1)
-            {
-            case 1:
-                if (UpdateConversationMetadata(client->handle, &conversation)) {
-                    ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                    goto finish;
-                }
-                break;
-            case 0:
-                break;
-            case -1:
-            default:
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                goto finish;
-            }
-        }
-
-        if (IndexDocument(index, client, &info, NULL) != 0) {
-            ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
-            goto finish;
-        }
-        ++updates;
-
-        if (WatchEventListAdd(&events, lock, STORE_WATCH_EVENT_FLAGS,
-                              info.guid, info.imapuid, info.flags))
-        {
-            ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-            goto finish;
-        }
-
-        ccode = ConnWriteF(client->conn, "2001 %u %u\r\n", oldFlags, info.flags);
-    }
-    
-    if (0 != DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    IndexClose(index);
-    index = NULL;
-    
-    client->stats.updates += updates;
-
-    WatchEventListFire(&events, NULL);
-    
-finish:
-
-    CollectionLockPoolDestroy(&collLocks);
-    WatchEventListDestroy(&events);
-
-    if (index) {
-        IndexClose(index);
-    }
-
-    return ConnWriteStr(client->conn, MSG1000OK);
+	// FIXME: obsolete.
+	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
 
 CCode
-StoreCommandMIME(StoreClient *client, 
-                 uint64_t guid)
+StoreCommandMIME(StoreClient *client, StoreObject *document)
 {
-
+	return -1;
+#if 0
+	StoreObject object;
     int ccode = 0;
     DStoreDocInfo info;
     MimeReport *report = NULL;
     NLockStruct *lock = NULL;
 
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case 1:
-        break;
-    case 0:
-        return ConnWriteF(client->conn, MSG4220NOGUID);
-    case -1:
-    default:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_READ);
-    if (ccode) {
-        return ccode;
-    }
-
-    if (STORE_IS_FOLDER(info.type)) {
-        return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-    }
- 
-    ccode = StoreGetSharedFairLockQuiet(client, &lock, info.collection, 3000);
-    if (ccode) {
-        return ccode;
-    }
+    ccode = StoreObjectFind(client, guid, &object);
+    if (ccode == -1) return ConnWriteStr(client->conn, MSG4220NOGUID);
+    if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
     
+	ccode = StoreObjectCheckAuthorization(client, &object, STORE_PRIV_READ);
+	if (ccode) return ccode;
+	
+    if (STORE_IS_FOLDER(object.type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+ 
+    ccode = StoreGetSharedFairLockQuiet(client, &lock, object.collection_guid, 3000);
+    if (ccode) return ccode;
+    
+    // FIXME: need to re-do the MimeGetInfo() API for store objects
     switch (MimeGetInfo(client, &info, &report)) {
     case 1:
         ccode = MimeReportSend(client, report);
@@ -3952,355 +2147,157 @@ StoreCommandMIME(StoreClient *client,
     if (lock) {
         StoreReleaseSharedFairLockQuiet(&lock);
     }
-
-    /* we commit the transaction because MimeGetInfo() might have
-       written data to the mime cache. */
-    DStoreCommitTransaction(client->handle);
-    
+        
     return ccode;
+#endif
 }
 
+// FIXME: needs to move any store properties etc. related to this document
 
 CCode 
-StoreCommandMOVE(StoreClient *client, uint64_t guid, 
-                 DStoreDocInfo *newcoll, const char *newfilename)
+StoreCommandMOVE(StoreClient *client, StoreObject *object, 
+                 StoreObject *destination_collection, const char *newfilename)
 {
-    int ccode = 0;
-    DStoreDocInfo oldcoll;
-    DStoreDocInfo info;
-    DStoreDocInfo conversation;
-    FILE *oldfile = NULL;
-    FILE *newfile = NULL;
-    uint32_t oldimapuid;
-    NLockStruct *srclock = NULL;
-    NLockStruct *dstlock = NULL;
-    char src_path[XPL_MAX_PATH];
-    char dst_path[XPL_MAX_PATH];
+	int ccode = 0;
+	char src_path[XPL_MAX_PATH];
+	char dst_path[XPL_MAX_PATH];
+	StoreObject source_collection;
+	StoreObject original;
+	
+	if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+	if (!STORE_IS_FOLDER(destination_collection->type)) 
+		return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+	
+	ccode = StoreObjectFind(client, object->collection_guid, &source_collection);
+	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	
+	// check we have the rights to do this move
+	ccode = StoreObjectCheckAuthorization(client, &source_collection, STORE_PRIV_UNBIND);
+	if (ccode) goto finish;
+	ccode = StoreObjectCheckAuthorization(client, destination_collection, STORE_PRIV_BIND);
+	if (ccode) goto finish;
+	
+	// copy the original object so we can fire events on it later
+	memcpy(&original, object, sizeof(StoreObject));
+	
+	// move the file to a temporary location
+	FindPathToDocument(client, object->collection_guid, object->guid, src_path, sizeof(src_path));  
+	MaildirTempDocument(client, destination_collection->guid, dst_path, sizeof(dst_path)); 
+	
+	if (link(src_path, dst_path) != 0) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
 
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case -1:
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto abort;
-    case 0:
-        ccode = ConnWriteStr(client->conn, MSG4220NOGUID);
-        goto abort;
-    default:
-        break;
-    }
+	if (unlink(src_path) != 0) {
+		// FIXME: try to remove the new link we just created?
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	
+	// now change the information on this object and fix up the filename
+	object->collection_guid = destination_collection->guid;
+	if (newfilename != NULL)
+		strncpy(object->filename, newfilename, MAX_FILE_NAME);
+	StoreObjectFixUpFilename(destination_collection, object);
+	StoreObjectUpdateImapUID(client, object);
+	
+	if (STORE_DOCTYPE_MAIL == object->type) {
+		// FIXME: do something with the conversations ??
+	}
+	
+	// move the temp doc we created to the new location
+	src_path[0] = '\0';
+	strncpy(src_path, dst_path, sizeof(src_path));
+	FindPathToDocument(client, object->collection_guid, object->guid, dst_path, sizeof(dst_path));
+	
+	if (link(src_path, dst_path) != 0) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	if (unlink(src_path) != 0) {
+		// FIXME: try to remove the new link we just created?
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	
+	// save our changes
+	StoreObjectSave(client, object);
 
-    if (STORE_IS_FOLDER(info.type)) {
-        ccode = ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-        goto abort;
-    }
-
-    if (info.imapuid) {
-        oldimapuid = info.imapuid;
-    } else {
-        oldimapuid = (uint32_t)guid;
-    }
-
-    ccode = StoreGetCollectionLock(client, &srclock, info.collection);
-    if (ccode) {
-        goto abort;
-    }
-
-    /* if the source collection is also the destination, */
-    /* then we only need one lock and we already have it */
-    if (info.collection != newcoll->guid) {
-        ccode = StoreGetCollectionLock(client, &dstlock, newcoll->guid);
-        if (ccode) {
-            goto abort;
-        }
-    }
-    
-    if (1 != DStoreGetDocInfoGuid(client->handle, info.collection, &oldcoll)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto abort;
-    }
-    
-    if ((ccode = StoreCheckAuthorization(client, &oldcoll, STORE_PRIV_UNBIND)) ||
-        (ccode = StoreCheckAuthorization(client, newcoll, STORE_PRIV_BIND)))
-    {
-        goto abort;
-    }
-
-    if (!newfilename) {
-        snprintf(info.filename, sizeof(info.filename), "%s/bongo-" GUID_FMT, 
-                 newcoll->filename, info.guid);
-        
-    } else {
-        snprintf(info.filename, sizeof(info.filename), "%s/%s",
-                 newcoll->filename, newfilename);
-    }
-
-    if (STORE_DOCTYPE_MAIL == info.type) {
-        uint64_t newguid;
-
-        if (DStoreGenerateGUID(client->handle, &newguid)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto abort;
-        }
-        info.imapuid = newguid;
-    }
-
-    if (newcoll->guid != info.collection) {
-        struct stat sb;
-        size_t total;
-        size_t count;
-        char buffer[CONN_BUFSIZE];
-
-        FindPathToDocument(client, info.collection, info.guid, src_path, sizeof(src_path));  
-        MaildirTempDocument(client, newcoll->guid, dst_path, sizeof(dst_path)); 
-        // FindPathToTempDocument(client, newcoll->guid, dst_path, sizeof(dst_path));
-        
-        if (link(src_path, dst_path) != 0) {
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-            goto abort;
-        }
-
-        if (unlink(src_path) != 0) {
-            // FIXME: try to remove the new link we just created?
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-            goto abort;
-        }
-    }
-
-    info.collection = newcoll->guid;
-
-    if (DStoreSetDocInfo(client->handle, &info)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    if (STORE_DOCTYPE_MAIL == info.type) {
-        newcoll->imapuid = info.imapuid;
-        if (DStoreSetDocInfo(client->handle, newcoll)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto abort;
-        }
-
-        if (DStoreGetDocInfoGuid(client->handle, info.conversation, &conversation) == 1) {
-            if (UpdateConversationMetadata(client->handle, &conversation)) {
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                goto abort;
-            }
-        }
-    }
-    
-    src_path[0] = '\0';
-    strncpy(src_path, dst_path, sizeof(src_path));
-    FindPathToDocument(client, info.collection, info.guid, dst_path, sizeof(dst_path));
-    
-    if (link(src_path, dst_path) != 0) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto abort;
-    }
-    if (unlink(src_path) != 0) {
-        // FIXME: try to remove the new link we just created?
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto abort;
-    }
-    
-    if (DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto abort;
-    }
-
-    StoreWatcherEvent(client, srclock, STORE_WATCH_EVENT_DELETED, 
-                      guid, oldimapuid, 0);
-    if (dstlock) {
-        StoreWatcherEvent(client, dstlock, STORE_WATCH_EVENT_NEW,
-                          info.guid, info.imapuid, 0);
-    } else {
-        StoreWatcherEvent(client, srclock, STORE_WATCH_EVENT_NEW,
-                          info.guid, info.imapuid, 0);
-    }
+	// fire off any events
+	StoreWatcherEvent(client, &original, STORE_WATCH_EVENT_DELETED);
+	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_NEW);
 
     ccode = ConnWriteStr(client->conn, MSG1000OK);
-    goto finish;
     
-abort:
-
-    DStoreAbortTransaction(client->handle);
-
-finish:    
-    if (srclock) StoreReleaseCollectionLock(client, &srclock);
-    if (dstlock) StoreReleaseCollectionLock(client, &dstlock);
+finish:
     
     return ccode;
 }
-
 
 CCode
 StoreCommandPROPGET(StoreClient *client, 
-                    uint64_t guid, 
+                    StoreObject *object, 
                     StorePropInfo *props, int propcount)
 {
-    DStoreStmt *stmt = NULL;
-    DStoreDocInfo info;
-    int ccode = 0;
-    int dcode;
-
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    default:
-        break;
-    }
-    
-    ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_READ_PROPS);
-    if (ccode) {
-        return ccode;
-    }
-
-    if (!propcount) { /* show them all */
-        StorePropInfo thisProp = { 0 };
-
-        if (-1 == ShowInternalProperty(client, STORE_PROP_GUID, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_TYPE, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_COLLECTION, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_INDEX, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_FLAGS, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_VERSION, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_CREATED, &info) ||
-            -1 == ShowInternalProperty(client, STORE_PROP_LASTMODIFIED, &info) ||
-            (info.type == STORE_DOCTYPE_EVENT &&
-             (-1 == ShowInternalProperty(client, STORE_PROP_EVENT_CALENDARS, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_EVENT_END, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_EVENT_LOCATION, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_EVENT_START, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_EVENT_SUMMARY, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_EVENT_STAMP, &info))) ||
-            (info.type == STORE_DOCTYPE_MAIL && 
-             (-1 == ShowInternalProperty(client, STORE_PROP_MAIL_CONVERSATION, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_MAIL_IMAPUID, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_MAIL_SENT, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_MAIL_MESSAGEID, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_MAIL_PARENTMESSAGEID, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_MAIL_HEADERLEN, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_MAIL_SUBJECT, &info))) ||
-            (info.type == STORE_DOCTYPE_CONVERSATION && 
-             (-1 == ShowInternalProperty(client, STORE_PROP_CONVERSATION_SUBJECT, &info) ||
-              -1 == ShowInternalProperty(client, STORE_PROP_CONVERSATION_COUNT, &info) || 
-              -1 == ShowInternalProperty(client, STORE_PROP_CONVERSATION_UNREAD, &info) || 
-              -1 == ShowInternalProperty(client, STORE_PROP_CONVERSATION_DATE, &info))))
-        {
-            return -1;
-        }
-        
-        stmt = DStoreFindProperties(client->handle, guid, NULL);
-        if (!stmt) {
-            return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-        do {
-            dcode = DStorePropStmtStep(client->handle, stmt, &thisProp);
-            if (1 == dcode) {
-                ccode = ShowExternalProperty(client, &thisProp);
-                if (-1 == ccode) {
-                    break;
-                }
-            } else if (-1 == dcode) {
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);                
-                break;
-            } else if (0 == dcode) {
-                ccode = ConnWriteStr(client->conn, MSG1000OK);
-            }
-        } while (dcode);
-        DStoreStmtEnd(client->handle, stmt);
-    } else {
-        int i;
-        
-        for (i = 0; i < propcount && ccode >= 0; i++) {
-            ccode = ShowProperty(client, &info, &props[i]);
-        }
-    }
-
-    return ccode;
+	if (propcount == 0) {
+		return StoreObjectIterProperties(client, object);
+	} else {
+		// output requested props for each document
+		return StoreObjectIterDocinfo(client, object, props, propcount, TRUE);
+	}
 }
-
 
 CCode
 StoreCommandPROPSET(StoreClient *client, 
-                    uint64_t guid, 
-                    StorePropInfo *prop)
+                    StoreObject *object,
+                    StorePropInfo *prop,
+                    int size)
 {
-    DStoreDocInfo info;
-    int ccode;
-    NLockStruct *lock = NULL;
-    BongoJsonNode *alarmjson = NULL;
-
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    default:
-        break;
-    }
-        
-    if (!STORE_IS_EXTERNAL_PROPERTY_TYPE(prop->type)) {
-        return ConnWriteStr(client->conn, MSG3244BADPROPNAME);
-    }
-
-    prop->value = BONGO_MEMSTACK_ALLOC(&client->memstack, prop->valueLen + 1);
-    if (!prop->value) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    if (-1 == (ccode = ConnWriteStr(client->conn, MSG2002SENDVALUE)) ||
-        -1 == (ccode = ConnFlush(client->conn)) ||
-        -1 == (ccode = ConnReadCount(client->conn, prop->value, prop->valueLen)))
-    {
-        return ccode;
-    }
-    prop->value[prop->valueLen] = 0;
-
-    if (STORE_PROP_ACCESS_CONTROL == prop->type) {
-        if (StoreParseAccessControlList(client, prop->value)) {
-            return ConnWriteStr(client->conn, MSG3025BADACL);
-        }
-    }
-
-    ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_WRITE_PROPS);
-    if (ccode) {
-        return ccode;
-    }
-
-    ccode = StoreGetCollectionLock(client, &lock, info.collection);
-    if (ccode) {
-        return ccode;
-    }
-    
-    if (STORE_PROP_EVENT_ALARM == prop->type) {
-        ccode = RequireAlarmDB(client);
-        if (TOKEN_OK != ccode) {
-            goto finish;
-        }
-        ccode = StoreSetAlarm(client, &info, prop->value);
-        if (ccode) {
-            goto finish;
-        }
-    }
-
-    if (DStoreSetProperty(client->handle, guid, prop)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    } else if (DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    } else {
-        ++client->stats.updates;
-        StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_MODIFIED, 
-                          info.guid, info.imapuid, 0);
-        ccode = ConnWriteStr(client->conn, MSG1000OK);
-    }
-
-finish:
-    if (lock) StoreReleaseCollectionLock(client, &lock);
-
-    if (alarmjson) {
-        BongoJsonNodeFree(alarmjson);
-    }
-
-    return ccode;
+	int ccode;
+	
+	prop->value = BONGO_MEMSTACK_ALLOC(&client->memstack, prop->valueLen + 1);
+	if (!prop->value) {
+		return ConnWriteStr(client->conn, MSG5001NOMEMORY);
+	}
+	if (-1 == (ccode = ConnWriteStr(client->conn, MSG2002SENDVALUE)) ||
+	    -1 == (ccode = ConnFlush(client->conn)) ||
+	    -1 == (ccode = ConnReadCount(client->conn, prop->value, prop->valueLen)))
+	{
+		return ccode;
+	}
+	prop->value[prop->valueLen] = 0;
+	
+	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_PROPS);
+	if (ccode) return ccode;
+	switch (prop->type) {
+		case STORE_PROP_EVENT_ALARM:
+			// FIXME: this did cache alarms in a separate DB.
+			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+			break;
+		case STORE_PROP_ACCESS_CONTROL:
+			// FIXME: this is how we used to set ACLs.
+			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+			break;
+		default:
+			// this is a plain external property
+			ccode = StoreObjectSetProperty(client, object, prop);
+			if (ccode < -1) {
+				return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+			} else if (ccode == -1) {
+				// failed, but already returned a notice to the client
+				return -1;
+			} else {
+				return ConnWriteStr(client->conn, MSG1000OK);
+			}
+			break;
+	}
+	
+	++client->stats.updates;
+	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_MODIFIED);
+	ccode = ConnWriteStr(client->conn, MSG1000OK);
+	
+	return ccode;
 }
 
 
@@ -4314,415 +2311,210 @@ StoreCommandQUIT(StoreClient *client)
     return -1;
 }
 
-
 CCode
-StoreCommandREAD(StoreClient *client, 
-                 uint64_t guid, int64_t requestStart, int64_t requestLength)
+StoreCommandREAD(StoreClient *client, StoreObject *object,
+                 int64_t requestStart, uint64_t requestLength)
 {
-    int ccode = 0;
-    DStoreDocInfo info;
-    NLockStruct *lock = NULL;
-
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    default:
-        break;
-    }
-
-    ccode = StoreGetSharedFairLockQuiet(client, &lock, info.collection, 3000);
-    if (ccode) {
-        return ccode;
-    }
-
-    ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_READ);
-    if (ccode) {
-        goto finish;
-    }
-
-    if (STORE_IS_FOLDER(info.type)) {
-        ccode = StoreShowFolder(client, info.collection, 0);
-    } else if (STORE_IS_DBONLY(info.type)) {
-        ccode = ConnWriteStr(client->conn, MSG3016DOCTYPEUNREADABLE);
-    } else {
-        ccode = ShowDocumentBody(client, &info, requestStart, requestLength);
-    }
+	int ccode = 0;
+	
+	// check that we're allowed to read
+	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_READ);
+	if (ccode) goto finish;
+	
+	if (STORE_IS_FOLDER(object->type)) {
+		// 2001 <guid> <version>
+		ccode = ConnWriteF(client->conn, "2001 " GUID_FMT " %d\r\n", object->guid, object->version);
+		ccode = ConnWriteStr(client->conn, MSG1000OK);
+	} else if (STORE_IS_DBONLY(object->type)) {
+		ccode = ConnWriteStr(client->conn, MSG3016DOCTYPEUNREADABLE);
+	} else {
+		ccode = ShowDocumentBody(client, object, requestStart, requestLength);
+	}
 
 finish:
-    if (lock) {
-        StoreReleaseSharedFairLockQuiet(&lock);
-    }
-
     return ccode;
 }
 
 
 CCode 
-StoreCommandREINDEX(StoreClient *client, uint64_t guid)
+StoreCommandREINDEX(StoreClient *client, StoreObject *document)
 {
-    IndexHandle *index;
-    CCode ccode = 0;
-    int dcode = 1;
-    DStoreStmt *stmt = NULL;
-    DStoreDocInfo info;
-
-    index = IndexOpen(client);
-    if (!index) {
-        return ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
-    }
-    
-    stmt = DStoreFindDocInfo(client->handle, guid, NULL, NULL);
-    if (!stmt) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-    while (stmt && 1 == dcode)
-    {
-        dcode = DStoreInfoStmtStep(client->handle, stmt, &info);
-        if (-1 == dcode) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-        if (guid) { /* kludgey */
-            DStoreStmtEnd(client->handle, stmt);
-            stmt = NULL;
-        }
-        if (STORE_IS_FOLDER(info.type)) {
-            continue;
-        }
-
-        IndexDocument(index, client, &info, NULL);
-    }
-    
-    ccode = ConnWriteStr(client->conn, MSG1000OK);
-finish:
-    if (index) {
-        IndexClose(index);
-    }
-    if (stmt) {
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
-    return ccode;
+	// want to re-do this completely.
+	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 }
 
-
+// FIXME: doesn't handle following errors
+// MSG3019BADCOLLNAME
+// MSG4240NOPERMISSION
+// MSG4228CANTWRITEMBOX
+// FIXME: doesn't create collections as needed to create destination tree
 CCode
-StoreCommandRENAME(StoreClient *client, DStoreDocInfo *collection,
+StoreCommandRENAME(StoreClient *client, StoreObject *collection,
                    char *newfilename)
 {
-    NLockStruct *lock = NULL;
-    CCode ccode = 0;
-    int dcode;
-    char oldfilename[STORE_MAX_PATH+1];
-    DStoreStmt *stmt = NULL;
-    DStoreDocInfo newcollection;
-    BongoArray subcolls;
-    BongoArray locks;
-    unsigned int i;
-    int success = 0;
+	int ccode = 0;
+	
+	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
+	if (ccode) return ccode;
+	
+	// locking: want to acquire first a lock on the source tree, 
+	// then take a lock on the non-existant destination tree
+	
+	if (StoreObjectRenameSubobjects(client, collection, newfilename))
+		goto dberror;
+	
+	strncpy(collection->filename, newfilename, MAX_FILE_NAME);
+	if (StoreObjectSave(client, collection)) 
+		goto dberror;
+	
+	// FIXME - need to fire an event for each collection renamed
+	StoreWatcherEvent(client, collection, STORE_WATCH_EVENT_COLL_RENAMED);
+	
+	return ConnWriteStr(client->conn, MSG1000OK);
 
-    ccode = StoreCheckAuthorizationGuid(client, collection->collection, 
-                                        STORE_PRIV_UNBIND);
-    if (ccode) {
-        return ccode;
-    }
-
-    if (BongoArrayInit(&subcolls, sizeof(uint64_t), 32)) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    if (BongoArrayInit(&locks, sizeof(NLockStruct *), 32)) {
-        BongoArrayDestroy(&subcolls, TRUE);
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-
-    BongoArrayAppendValue(&subcolls, collection->guid);
-
-    /* first, find and lock all the subcollections */
-    /* FIXME: this is kind of inefficient.  We need a db function for listing 
-       all subcollections.
-     */
-
-    for (i = 0; i < subcolls.len; i++) {
-        uint64_t guid;
-        DStoreDocInfo info;
-
-        guid = BongoArrayIndex(&subcolls, uint64_t, i);
-        
-        ccode = StoreGetCollectionLock(client, &lock, guid);
-        if (ccode) {
-            goto finish;
-        }
-        BongoArrayAppendValue(&locks, lock);
-
-        stmt = DStoreListColl(client->handle, guid, -1, -1);
-        if (!stmt) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-    
-        while ((dcode = DStoreInfoStmtStep(client->handle, stmt, &info))) {
-            if (1 == dcode) {
-                /* FIXME - check return code (bug 174103) */
-                if (STORE_IS_FOLDER(info.type)) {
-                    BongoArrayAppendValue(&subcolls, info.guid);
-                }
-            } else if (-1 == dcode) {
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                goto finish;
-            }
-        }
-        
-        DStoreStmtEnd(client->handle, stmt);
-        stmt = NULL;
-    }
-   
-    strncpy(oldfilename, collection->filename, sizeof(oldfilename));
-
-    if (DStoreDeleteDocInfo(client->handle, collection->guid)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-    
-    switch (StoreCreateCollection(client, newfilename, collection->guid, 
-                                  &collection->guid, NULL)) 
-    {
-    case 0:
-        break;
-    case -1:
-        ccode = ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
-        goto finish;
-    case -2: /* db lib err */
-    case -3: /* guid exists */
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    case -5: /* permission denied */
-        ccode = ConnWriteStr(client->conn, MSG4240NOPERMISSION);
-        goto finish;
-    case -4: /* io error */
-    default:
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    /* we want to keep most of the docinfo from the old collection, but need to 
-       pull in some info (such as the parent) from the collection we just created. */
-
-    if (1 != DStoreGetDocInfoGuid(client->handle, collection->guid, &newcollection)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }        
-
-    assert(!strcmp(newcollection.filename, newfilename));
-    
-    strncpy(collection->filename, newfilename, sizeof(collection->filename));
-    collection->collection = newcollection.collection;
-    if (DStoreSetDocInfo(client->handle, collection) ||
-        DStoreRenameDocuments(client->handle, oldfilename, newfilename))
-    {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-    
-    if (DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-    
-    ccode = ConnWriteStr(client->conn, MSG1000OK);
-    success = 1;
-    
-finish:
-    if (stmt) {
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
-    for (i = 0; i < locks.len; i++) {
-        lock = BongoArrayIndex(&locks, NLockStruct*, i);
-
-        if (success) {
-            StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_COLL_RENAMED, 
-                              0, 0, 0);
-        }
-        StoreReleaseCollectionLock(client, &lock);
-    }
-
-    BongoArrayDestroy(&subcolls, TRUE);
-    BongoArrayDestroy(&locks, TRUE);
-    
-    return ccode;
+dberror:
+	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 }
-
-
-static CCode
-RemoveCollections(StoreClient *client, uint64_t guid)
-{
-    CCode ccode = 0;
-    int dcode;
-    DStoreStmt *stmt = NULL;
-    NLockStruct *lock = NULL;
-    IndexHandle *index = NULL;
-    DStoreDocInfo info;
-
-    BongoArray subcolls;
-    BongoArray locks;
-    BongoArray docs;
-
-    unsigned int i;
-    int trans = 1;
-    int success = 0;
-
-    if (BongoArrayInit(&subcolls, sizeof(uint64_t), 32)) {
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    if (BongoArrayInit(&locks, sizeof(NLockStruct *), 32)) {
-        BongoArrayDestroy(&subcolls, TRUE);
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    if (BongoArrayInit(&docs, sizeof(uint64_t), 256)) {
-        BongoArrayDestroy(&subcolls, TRUE);
-        BongoArrayDestroy(&locks, TRUE);
-        return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-    }
-    
-    BongoArrayAppendValue(&subcolls, guid);
-
-    index = IndexOpen(client);
-    if (!index) {
-        ccode = ConnWriteStr(client->conn, MSG5007INDEXLIBERR);
-        goto finish;
-    }
-
-    /* first pass: find db objects */
-
-    for (i = 0; i < subcolls.len; i++) {
-        guid = BongoArrayIndex(&subcolls, uint64_t, i);
-        
-        ccode = StoreGetCollectionLock(client, &lock, guid);
-        if (ccode) {
-            goto finish;
-        }
-        BongoArrayAppendValue(&locks, lock);
-
-        stmt = DStoreListColl(client->handle, guid, -1, -1);
-        if (!stmt) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-    
-        while ((dcode = DStoreInfoStmtStep(client->handle, stmt, &info))) {
-            if (1 == dcode) {
-                /* FIXME - check return code (bug 174103) */
-                if (STORE_IS_FOLDER(info.type)) {
-                    BongoArrayAppendValue(&subcolls, info.guid);
-                } else {
-                    BongoArrayAppendValue(&docs, info.guid);
-                }
-            } else if (-1 == dcode) {
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                goto finish;
-            }
-        }
-        
-        DStoreStmtEnd(client->handle, stmt);
-        stmt = NULL;
-    }
-
-    /* second pass: remove db objects (couldn't do this in step one 
-       because the select stmt locks the db)
-    */
-
-    for (i = 0; i < subcolls.len; i++) {
-        guid = BongoArrayIndex(&subcolls, uint64_t, i);
-
-        if (-1 == DStoreDeleteCollectionContents(client->handle, guid) ||
-            -1 == DStoreDeleteDocInfo(client->handle, guid)) 
-        {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-    }
-
-    if (DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-    trans = 0;
-    
-    /* third pass: remove filesystem data */
-    for (i = 0; i < subcolls.len; i++) {
-        char path[XPL_MAX_PATH+1];
-
-        guid = BongoArrayIndex(&subcolls, uint64_t, i);
-        if (MaildirRemove(client->store, guid) != 0) {
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-            goto finish;
-        }
-    }
-
-    /* fourth pass: remove docs from the index */
-
-    for (i = 0; i < docs.len; i++) {
-        guid = BongoArrayIndex(&docs, uint64_t, i);
-        
-        IndexRemoveDocument(index, guid);
-        
-        ++client->stats.deletions;
-    }
-
-    IndexClose(index);
-    index = NULL;
-
-    ccode = ConnWriteStr(client->conn, MSG1000OK); 
-    success = 1;
-    
-finish:
-    if (stmt) {
-        DStoreStmtEnd(client->handle, stmt);
-    }
-
-    if (trans) {
-        DStoreAbortTransaction(client->handle);
-    }
-
-    if (index) {
-        IndexClose(index);
-    }
-
-    for (i = 0; i < locks.len; i++) {
-        lock = BongoArrayIndex(&locks, NLockStruct*, i);
-
-        if (success) {
-            StoreWatcherEvent(client, lock, STORE_WATCH_EVENT_COLL_REMOVED, 
-                              0, 0, 0);
-        }
-        StoreReleaseCollectionLock(client, &lock);
-    }
-
-    BongoArrayDestroy(&subcolls, TRUE);
-    BongoArrayDestroy(&locks, TRUE);
-    BongoArrayDestroy(&docs, TRUE);
-
-    return ccode;
-}
-
 
 CCode
-StoreCommandREMOVE(StoreClient *client, DStoreDocInfo *info)
+ReceiveToFile(StoreClient *client, const char *path, uint64_t *size)
+{
+	FILE *fh;
+	CCode ccode;
+	uint64_t receive_size;
+	
+	fh = fopen(path, "w");
+	if (!fh) {
+		if (ENOSPC == errno)
+			return ConnWriteStr(client->conn, MSG5220QUOTAERR); // FIXME
+		else
+			return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+	}	
+	if (-1 == (ccode = ConnWrite(client->conn, "2002 Send document.\r\n", 21)) || 
+	    -1 == (ccode = ConnFlush(client->conn))) {
+		return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+	}
+	
+	if (size >= 0) {
+		ccode = ConnReadToFile(client->conn, fh, *size);
+		receive_size = *size;
+	} else {
+		ccode = receive_size = ConnReadToFileUntilEOS(client->conn, fh);
+	}
+	if (-1 == ccode) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	*size = receive_size;
+	
+	ccode = fclose(fh);
+	fh = NULL;
+	if (ccode) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	
+	return 0;
+	
+finish:
+	return ccode;
+}
+
+// FIXME: rstart/rend range processing totally broken. 
+// FIXME: range processing needs to unlink and copy-on-write
+// FIXME: we should probably be removing some/all document properties?
+CCode
+StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t rstart, uint64_t rend, uint32_t version)
+{
+	CCode ccode;
+	char path[XPL_MAX_PATH + 1];
+	char tmppath[XPL_MAX_PATH + 1];
+	uint64_t tmpsize;
+	
+	if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
+		return ConnWriteStr(client->conn, MSG5221SPACELOW);
+	}
+	
+	// check object type and permissions
+	if (STORE_IS_FOLDER(object->type) || STORE_IS_CONVERSATION(object->type)) {
+		return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+	}
+	
+	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_CONTENT);
+	if (ccode) return ccode;
+	
+	// write the waiting data to a temporary file
+	MaildirTempDocument(client, object->collection_guid, tmppath, sizeof(tmppath));
+	
+	tmpsize = size;
+	ccode = ReceiveToFile(client, tmppath, &tmpsize);
+	if (ccode) goto finish;
+	
+	// update metadata
+	if ((rend != 0) && (rend > object->size)) {
+		// writing a range - new size must be maximum of old size and new end of range
+		tmpsize = rend;
+	}
+	
+	StoreObjectUpdateImapUID(client, object);
+	StoreProcessDocument(client, object, tmppath);
+	
+	// update the document
+	FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
+	if (rend != 0) {
+		// we're writing a range, not replacing the whole file
+		// TODO
+	} else {
+		if (unlink(path) != 0) {
+			ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+			goto finish;
+		}
+		link(tmppath, path);
+		unlink(tmppath);
+	}
+	
+	// update the version if required
+	if ((version > 0) && (version != object->version)) {
+		object->version = version;
+	}
+	// update other metadata
+	StoreObjectUpdateModifiedTime(object);
+	object->size = tmpsize;
+	
+	if (StoreObjectSave(client, object)) {
+		ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+		goto finish;
+	}
+	
+	// now we're done, do watcher events
+	++client->stats.updates;
+	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_MODIFIED);
+	
+	ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
+                       object->guid, object->version);
+
+finish:
+	return ccode;
+}
+
+CCode
+StoreCommandREMOVE(StoreClient *client, StoreObject *collection)
 {
     CCode ccode;
     
-    if (!STORE_IS_FOLDER(info->type)) {
+    if (! STORE_IS_FOLDER(collection->type)) {
         return ConnWriteStr(client->conn, MSG4231USEPURGE);
     } else {
-        ccode = StoreCheckAuthorizationGuid(client, info->collection, 
-                                            STORE_PRIV_UNBIND);
-        if (ccode) {
-            return ccode;
-        }
-        return RemoveCollections (client, info->guid);
+    	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
+    	if (ccode) return ccode;
+
+		if (StoreObjectRemoveCollection(client, collection) == 0) {
+			// finished with success!
+			return ConnWriteStr(client->conn, MSG1000OK);
+		} else {
+			// some error
+			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+		}
     } 
 }
 
@@ -4762,19 +2554,10 @@ StoreCommandSTORE(StoreClient *client, char *user)
     }
 
     if (0 != MsgAuthFindUser(user)) {
-        XplConsolePrintf("Couldn't find user object for %s\r\n", user);
+        Log(LOG_INFO, "Couldn't find user object for %s\r\n", user);
         /* the previous nmap returned some sort of user locked message? */
         return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
     }
-
-    // FIXME: Below is a check that the user resides in this store.
-    // For Bongo 1.0, we're assuming a single store?
-#if 0
-	if (serv.sin_addr.s_addr != MsgGetHostIPAddress()) {
-        // non-local store
-        return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
-    }
-#endif
     
     if (SelectStore(client, user)) {
         return ConnWriteStr(client->conn, MSG4224BADSTORE);
@@ -4783,23 +2566,12 @@ StoreCommandSTORE(StoreClient *client, char *user)
     }
 }
 
-
 CCode
 StoreCommandTIMEOUT(StoreClient *client, int lockTimeoutMs)
 {
-    if (-1 == lockTimeoutMs) {
-        return ConnWriteF(client->conn, "1000 %d\r\n", client->lockTimeoutMs);
-    } else if (lockTimeoutMs < 0) {
-        return ConnWriteStr(client->conn, MSG3022BADSYNTAX);
-    } else {
-        client->lockTimeoutMs = lockTimeoutMs;
-        if (client->handle) {
-            DStoreSetLockTimeout(client->handle, lockTimeoutMs);
-        }
-        return ConnWriteStr(client->conn, MSG1000OK);
-    }
+	// should be obsolete really
+	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
-
 
 CCode 
 StoreCommandTOKEN(StoreClient *client, char *token)
@@ -4816,7 +2588,6 @@ StoreCommandTOKEN(StoreClient *client, char *token)
 
     return ConnWriteStr(client->conn, MSG1000OK);
 }
-
 
 CCode 
 StoreCommandTOKENS(StoreClient *client)
@@ -4837,7 +2608,6 @@ StoreCommandTOKENS(StoreClient *client)
     return ccode;
 }
 
-
 CCode
 StoreCommandUSER(StoreClient *client, char *user, char *password, int nouser)
 {
@@ -4849,589 +2619,114 @@ StoreCommandUSER(StoreClient *client, char *user, char *password, int nouser)
     }
 }
 
-
-/* Set the watched flags for the specified collection.  If we were watching 
-   something else before, stop watching it now.
-*/
+// Set the watched flags for the specified collection.  If we were watching 
+// something else before, stop watching it now.
 
 CCode 
-StoreCommandWATCH(StoreClient *client, DStoreDocInfo *collection, int flags)
+StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags)
 {
     CCode ccode;
-    NLockStruct *lock;
 
-    /* stop watching whatever we were watching before */
+    // stop watching whatever we were watching before
     
     if (client->watch.collection) {
-        ccode = StoreGetCollectionLock(client, &lock, client->watch.collection);
-        if (ccode) {
-            return ccode;
-        }
-        if (StoreWatcherRemove(client, lock)) {
+        if (StoreWatcherRemove(client, client->watch.collection)) {
             return ConnWriteStr(client->conn, MSG5004INTERNALERR);
         }
-        StoreReleaseCollectionLock(client, &lock);
     }
 
-    /* watch the new collection */
+    // watch the new collection
 
     if (flags) {
         flags |= STORE_WATCH_EVENT_COLL_REMOVED;
         flags |= STORE_WATCH_EVENT_COLL_RENAMED;
 
-        ccode = StoreCheckAuthorization(client, collection, STORE_PRIV_READ);
-        if (ccode) {
-            return ccode;
-        }
-
-        ccode = StoreGetCollectionLock(client, &lock, collection->guid);
+        ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_READ);
         if (ccode) {
             return ccode;
         }
 
         client->watch.collection = collection->guid;
         client->watch.flags = flags;
-        StoreWatcherAdd(client, lock);
-        StoreReleaseCollectionLock(client, &lock);
+        StoreWatcherAdd(client, collection->guid);
     }
-
     return ConnWriteStr(client->conn, MSG1000OK);
 }
 
-
-/* if collection is 0 and guid is set, then this function performs a REPLACE.
-   startoffset and endoffset must be -1 unless in replace mode
-   if version is not -1 and in replace mode, no action is taken if the original
-   document version does not match the one provided.
-*/
-
+// FIXME: do something with the link document
 CCode
 StoreCommandWRITE(StoreClient *client, 
-                  DStoreDocInfo *collection,
-                  StoreDocumentType type, 
-                  int length, 
-                  int startoffset,
-                  int endoffset,
-                  uint32_t addflags,  /* will be ||'ed with docinfo flags */
-                  uint64_t guid,
-                  const char *filename,
-                  uint64_t timeCreatedUTC,
-                  int version,
-                  uint64_t linkGuid)
+				  StoreObject *collection, 
+				  int doctype, 
+				  uint64_t size,
+				  uint32_t addflags, 
+				  uint64_t guid, 
+				  const char *filename, 
+				  uint64_t timestamp, 
+				  uint64_t guid_link,
+				  int no_process)
 {
-    int ccode;
-    const char *errmsg;
-    DStoreDocInfo info;
-    DStoreDocInfo collinfo;     /* used if collection not provided */
-    NLockStruct *cLock = NULL;
-    int replace = 0;            /* are we in replace mode? */
-    char path[XPL_MAX_PATH + 1];
-    char tmppath[XPL_MAX_PATH + 1];
-    struct stat sb;
-    FILE *fh = NULL;
-    int commit = 0;
+	CCode ccode;
+	StoreObject newdocument;
+	uint64_t tmpsize;
+	char path[XPL_MAX_PATH+1];
+	char tmppath[XPL_MAX_PATH+1];
+	
+	if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
+		return ConnWriteStr(client->conn, MSG5221SPACELOW);
+	}
 
-    if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
-        return ConnWriteStr(client->conn, MSG5221SPACELOW);
-    }
+	if (STORE_IS_FOLDER(doctype) || STORE_IS_CONVERSATION(doctype)) {
+		return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+	}
 
-    memset(&info, 0, sizeof(info));
-    info.type = type;
-    
-    if (STORE_IS_FOLDER(type) || STORE_IS_CONVERSATION(type)) {
-        return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-    }
-
-    if (collection) {
-        info.collection = collection->guid;
-    }
-    if (guid) {
-        switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-        case -1:
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        case 1:
-            if (collection) {
-                ccode = ConnWriteF(client->conn, 
-                                   "4226 Guid " GUID_FMT " already exists\r\n", 
-                                   info.guid);
-                goto finish;
-            } else {
-                replace = 1;
-            }
-            break;
-        default:
-            if (!collection) {
-                // REPLACE mode requires existing document
-                ccode = ConnWriteStr(client->conn, MSG4220NOGUID);
-                goto finish;
-            }
-            break;
+	memset(&newdocument, 0, sizeof(StoreObject));
+	
+	// try to create new object
+	newdocument.guid = guid;
+	newdocument.type = doctype;
+	
+	if (StoreObjectCreate(client, &newdocument))
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	
+	// read content to temporary file
+	MaildirTempDocument(client, collection->guid, tmppath, sizeof(tmppath));
+	
+	tmpsize = size;
+	ccode = ReceiveToFile(client, tmppath, &tmpsize);
+	if (ccode) goto finish;
+	
+	// update new object metadata
+	newdocument.collection_guid = collection->guid;
+	newdocument.size = tmpsize;
+	newdocument.time_created = timestamp;
+	newdocument.time_modified = timestamp;
+	newdocument.flags = addflags;
+	if (filename) strncpy(newdocument.filename, filename, MAX_FILE_NAME);
+	
+	StoreObjectFixUpFilename(collection, &newdocument);
+	StoreObjectUpdateImapUID(client, &newdocument);
+	if (no_process == 0) {
+		// update metadata if we haven't been asked not to
+		StoreProcessDocument(client, &newdocument, tmppath);
         }
-        info.guid = guid;
-    }
-    if (collection) {
-        // Rely on the database to enforce uniqueness in the filename
-        snprintf(info.filename, sizeof(info.filename), "%s/%s",
-             collection->filename, filename ? filename : "");
-    }
-    
-    if (!collection) {
-        if (1 != DStoreGetDocInfoGuid(client->handle, info.collection, &collinfo)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        } 
-        collection = &collinfo;
-    }
-
-    if (replace) {
-        ccode = StoreCheckAuthorization(client, &info, STORE_PRIV_WRITE_CONTENT);
-    } else {
-        ccode = StoreCheckAuthorization(client, collection, STORE_PRIV_BIND);
-    }
-    if (ccode) {
-        goto finish;
-    }
-
-    if (replace && -1 != version && info.version != version) {
-        ccode = ConnWriteStr(client->conn, MSG4227OLDVERSION);
-        goto finish;
-    }
-
-    ccode = StoreGetCollectionLock(client, &cLock, info.collection);
-    if (ccode) {
-        goto finish;
-    }
-
-    // open a temporary file to write to
-    // FindPathToTempDocument(client, info.collection, tmppath, sizeof(tmppath));
-    MaildirTempDocument(client, info.collection, tmppath, sizeof(tmppath));
-
-    fh = fopen(tmppath, "w");
-    if (!fh) {
-        if (ENOSPC == errno) {
-            ccode = ConnWriteStr(client->conn, MSG5220QUOTAERR);
-        } else {
-            ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        }
-        goto finish;
-    }
-
-    if (-1 == (ccode = ConnWrite(client->conn, "2002 Send document.\r\n", 21)) || 
-        -1 == (ccode = ConnFlush(client->conn))) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-    
-    if (length >= 0) {
-        ccode = ConnReadToFile(client->conn, fh, length);
-    } else {
-        ccode = length = ConnReadToFileUntilEOS(client->conn, fh);
-    }
-    if (-1 == ccode) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    ccode = fclose(fh);
-    fh = NULL;
-    if (ccode) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    // create new metadata and index new mail
-    info.length = length;
-    info.timeCreatedUTC = timeCreatedUTC ? timeCreatedUTC : (uint64_t) time(NULL);
-    info.version++;
-    info.flags |= addflags;
-
-    if (STORE_DOCTYPE_MAIL == info.type && replace) {
-        uint64_t newguid;
-        
-        /* generate new imapuid for replace command */
-        if (DStoreGenerateGUID(client->handle, &newguid)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-            goto finish;
-        }
-        info.imapuid = newguid;
-    }
-
-    if (DStoreSetDocInfo(client->handle, &info)) {
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        goto finish;
-    }
-    
-    FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
-    if (replace && (unlink(path) != 0)) {
-        // can't get rid of existing mail file.
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }    
-    link(tmppath, path); // FIXME : error checking
-    unlink(tmppath); // and again :)
-
-    errmsg = StoreProcessDocument(client, &info, collection, path, linkGuid);
-    if (errmsg) {
-        ccode = ConnWriteStr(client->conn, errmsg);
-        goto finish;
-    }
-    errmsg = StoreIndexDocument(client, &info, collection, NULL, path);
-    if (errmsg) {
-        ccode = ConnWriteStr(client->conn, errmsg);
-        goto finish;
-    }
-
-    if (replace) {
-        /* Clear an existing mime report */
-        DStoreClearMimeReport(client->handle, info.guid);
-    }
-    
-    if (0 != DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    if (replace) {
-        ++client->stats.updates;
-        StoreWatcherEvent(client, cLock, STORE_WATCH_EVENT_MODIFIED,
-                          info.guid, info.imapuid, 0);
-        
-    } else {
-        ++client->stats.insertions;
-        StoreWatcherEvent(client, cLock, STORE_WATCH_EVENT_NEW,
-                          info.guid, info.imapuid, 0);
-    }
-
-    ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
-                       info.guid, info.version);
-
-    commit = 1;
+	
+	// put content in place
+	FindPathToDocument(client, collection->guid, newdocument.guid, path, sizeof(path));
+	link(tmppath, path);
+	unlink(tmppath);
+	
+	// save new object
+	if (StoreObjectSave(client, &newdocument)) {
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
+	
+	// announce its creation
+	++client->stats.insertions;
+	StoreWatcherEvent(client, &newdocument, STORE_WATCH_EVENT_NEW);
+	
+	return ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", newdocument.guid, newdocument.version);
 
 finish:
-    /* NOTE: It is possible for the db and the file to get out of sync here.  This
-       will result in a file with wasted space.
-    */
-
-    if (fh) {
-        fclose(fh);
-    }
-
-    if (!commit) {
-        DStoreAbortTransaction(client->handle);
-        unlink(tmppath);
-    }
-
-    if (cLock) StoreReleaseCollectionLock(client, &cLock);
-
-    return ccode;
+	return ccode;
 }
-
-
-/* caller must setup transaction and lock the collection 
-   replace mode is not supported
-*/
-
-
-static CCode
-WriteHelper(StoreClient *client,
-            IndexHandle *index,
-            DStoreDocInfo *collection,
-            DStoreDocInfo *info,         /* type and collection fields must be set */
-            FILE *fh,                    /* collection file opened in append mode */
-            char *path,
-            int length, 
-            uint32_t addflags,
-            uint64_t linkGuid,
-            StorePropInfo *props,
-            int propcount)
-{
-    CCode ccode;
-    int written = 0;
-    const char *errmsg;
-    int i;
-
-    if (-1 == (ccode = ConnWrite(client->conn, "2002 Send document.\r\n", 21)) || 
-        -1 == (ccode = ConnFlush(client->conn))) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-    
-    if (length >= 0) {
-        written = ConnReadToFile(client->conn, fh, length);
-    } else {
-        written = length = ConnReadToFileUntilEOS(client->conn, fh);
-    }
-    if (-1 == written) {
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-
-    info->length = length;
-
-    if (4 != fwrite("\r\n\r\n", sizeof(char), 4, fh)) {
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-
-    if (fflush(fh)) {
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    }
-
-    assert(0 == info->version);
-    info->version = 1;
-    info->flags |= addflags;
-
-    if (DStoreSetDocInfo(client->handle, info)) {
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    errmsg = StoreProcessDocument(client, info, collection, path, linkGuid);
-    if (errmsg) {
-        return ConnWriteStr(client->conn, errmsg);
-    }
-    errmsg = StoreIndexDocument(client, info, collection, index, path);
-    if (errmsg) {
-        return ConnWriteStr(client->conn, errmsg);
-    }
-
-    ConnWriteF(client->conn, "2001 " GUID_FMT " %d\r\n", info->guid, info->version);
-
-    if (propcount && 
-        (ccode = StoreCheckAuthorization(client, info, STORE_PRIV_WRITE_PROPS)))
-    {
-        return ccode;
-    }
-    
-    for (i = 0; i < propcount; i++) {
-        StorePropInfo *prop = props + i;
-        void *mark = BongoMemStackPeek(&client->memstack);
-
-        prop->value = BONGO_MEMSTACK_ALLOC(&client->memstack, prop->valueLen);
-        if (!prop->value) {
-            return ConnWriteStr(client->conn, MSG5001NOMEMORY);
-        }
-        
-        if (-1 == (ccode = ConnWriteStr(client->conn, MSG2002SENDVALUE)) ||
-            -1 == (ccode = ConnFlush(client->conn)) ||
-            -1 == (ccode = ConnReadCount(client->conn, prop->value, prop->valueLen)))
-        {
-            return ccode;
-        }
-        prop->value[prop->valueLen] = 0;
-
-        if (STORE_PROP_ACCESS_CONTROL == prop->type) {
-            if (StoreParseAccessControlList(client, prop->value)) {
-                return ConnWriteStr(client->conn, MSG3025BADACL);
-            }
-        }
-    
-        if (STORE_PROP_EVENT_ALARM == prop->type) {
-            return ConnWriteStr(client->conn, MSG3244BADPROPNAME);
-        }
-
-        if (DStoreSetProperty(client->handle, info->guid, prop)) {
-            ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-        
-        BongoMemStackPop(&client->memstack, mark);
-    }
-
-    return 0;
-}
-
-
-/* replace not allowed */
-
-CCode
-StoreCommandMWRITE(StoreClient *client,
-                   DStoreDocInfo *collection,
-                   StoreDocumentType type)
-{
-    CCode ccode;
-    NLockStruct *cLock = NULL;
-    FILE *fh = NULL;
-    char tmppath[XPL_MAX_PATH];
-    char path[XPL_MAX_PATH];
-    struct stat sb;
-    DStoreDocInfo info;
-    IndexHandle *index = NULL;
-    BongoArray guidlist;
-    unsigned int i;
-
-    BongoArrayInit(&guidlist, sizeof(uint64_t), 64);
-
-    if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
-        return ConnWriteStr(client->conn, MSG5221SPACELOW);
-    }
-
-    if (STORE_IS_FOLDER(type) || STORE_IS_CONVERSATION(type)) {
-        return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-    }
-
-    index = IndexOpen(client);
-    if (!index) {
-        return ConnWriteStr(client->conn, MSG4120INDEXLOCKED);
-    }
-
-    while (ccode >= 0) {
-        char *tokens[8]; 
-        int length;
-        char *filename = NULL;
-        uint64_t guid = 0;
-        uint64_t linkguid = 0;
-        uint64_t timeCreated = 0;
-        unsigned long flags = 0;
-        int propcount = 0;
-        StorePropInfo props[PROP_ARR_SZ];
-        unsigned int n;
-        char buffer[CONN_BUFSIZE];
-
-        if (-1 == (ccode = ConnWriteStr(client->conn, MSG2054SENDDOCS)) ||
-            -1 == (ccode = ConnFlush(client->conn)) ||
-            -1 == (ccode = ConnReadAnswer(client->conn, buffer, sizeof(buffer))))
-        {
-            goto finish;
-        }
-
-        if (!buffer[0]) {
-            break;
-        }
-    
-        /* <length> [F<filename>] [G<guid>] 
-           [T<time created>] [Z<flags>] [L<link guid>] 
-           [P<proplist>]
-        */
-
-        n = BongoStringSplit(buffer, ' ', tokens, 8);
-        if (TOKEN_OK != (ccode = CheckTokC(client, n, 1, 6)) ||
-            TOKEN_OK != (ccode = ParseStreamLength(client, tokens[0], &length)))
-        {
-            continue;
-        }
-
-        for (i = 1; i < n; i++) {
-            if ('G' == *tokens[i] && !guid) {
-                ccode = ParseGUID(client, 1 + tokens[i], &guid);
-            } else if ('L' == *tokens[i] && !linkguid) {
-                ccode = ParseDocument(client, 1 + tokens[i], &linkguid);
-            } else if ('F' == *tokens[i] && tokens[i][1] != '\0') {
-                filename = tokens[i] + 1;
-            } else if ('P' == *tokens[i] && !propcount) {
-                ccode = ParsePropList(client, tokens[i] + 1, 
-                                      props, PROP_ARR_SZ, &propcount, 1);
-            } else if ('T' == *tokens[i] && !timeCreated) {
-                ccode = ParseDateTimeToUint64(client, 1 + tokens[i], &timeCreated); 
-            } else if ('Z' == *tokens[i] && !flags) {
-                ccode = ParseUnsignedLong(client, tokens[i] + 1, &flags);
-            } else {
-                ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
-            }
-            if (TOKEN_OK != ccode) {
-                break;
-            }
-        }
-        if (TOKEN_OK != ccode) {
-            continue;
-        }
-
-        memset(&info, 0, sizeof(info));
-        info.type = type;
-        info.collection = collection->guid;
-
-        if (guid) {
-            switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-            case -1:
-                ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-                goto finish;
-            case 1:
-                ccode = ConnWriteF(client->conn, 
-                                   "4226 Guid " GUID_FMT " already exists\r\n", 
-                                   info.guid);
-                continue;
-            default:
-                info.guid = guid;
-                break;
-            }
-        } 
-        
-        snprintf(info.filename, sizeof(info.filename), "%s/%s",
-                 collection->filename, filename ? filename : "");
-
-        info.timeCreatedUTC = timeCreated ? timeCreated : (uint64_t) time(NULL);
-
-        ccode = StoreGetCollectionLock(client, &cLock, collection->guid);
-        if (ccode) {
-            goto finish;
-        }
-
-        // FindPathToTempDocument(client, collection->guid, tmppath, sizeof(tmppath));
-        MaildirTempDocument(client, collection->guid, tmppath, sizeof(tmppath));
-
-        fh = fopen(path, "w");
-        if (!fh) {
-            if (ENOSPC == errno) {
-                ccode = ConnWriteStr(client->conn, MSG5220QUOTAERR);
-            } else {
-                ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-            }
-            goto finish;
-        }
-    
-        ccode = WriteHelper(client, index,
-                            collection, &info,
-                            fh, path,
-                            length,
-                            flags, linkguid,
-                            props, propcount);
-
-        fclose(fh);
-        fh = NULL;
-               
-        if (ccode) {
-            goto finish;
-        }
-        
-        FindPathToDocument(client, collection->guid, info.guid, path, sizeof(path));
-        if (link(tmppath, path) != 0) {
-            goto finish;
-        }
-        unlink(tmppath); // FIXME: some sort of check?
-        
-        BongoArrayAppendValue(&guidlist, info.guid);
-    }
-
-    if (ccode) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-
-    if (DStoreCommitTransaction(client->handle)) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    } 
-
-    for (i = 0; i < guidlist.len; i++) {
-        ++client->stats.insertions;
-        StoreWatcherEvent(client, cLock, STORE_WATCH_EVENT_NEW,
-                          BongoArrayIndex(&guidlist, uint64_t, i),
-                          BongoArrayIndex(&guidlist, uint64_t, i), /* imapid is same */
-                          0);
-    }
-
-    ccode = ConnWriteStr(client->conn, MSG1000OK);
-
-finish:
-
-    if (fh) {
-        fclose(fh);
-    }
-
-    if (cLock) StoreReleaseCollectionLock(client, &cLock);
-
-    if (index) {
-        IndexClose(index);
-    }
-
-    BongoArrayDestroy(&guidlist, TRUE);
-
-    return ccode;
-}
-
-

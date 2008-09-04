@@ -101,17 +101,11 @@ ImportSystemBackupFile(StoreClient *client, const char *path)
 BOOL
 SetAdminRights(StoreClient *client, char *document) {
 	CCode ccode;
-	char *rights = "grant user:admin all;";
 
 	ccode = NMAPRunCommandF(client->conn, client->buffer, sizeof(client->buffer),
-		"PROPSET %s nmap.access-control %d\r\n", document, strlen(rights));
-	if (ccode == 2002) {
-		NMAPSendCommandF(client->conn, rights);
-		ccode = NMAPReadAnswer(client->conn, client->buffer, 
-			sizeof(client->buffer), TRUE);
-		if (ccode == 1000)
-			return TRUE;
-	} 
+		"ACL GRANT %s Pall Tuser Wadmin\r\n", document);
+	if (ccode == 1000)
+		return TRUE;
 	return FALSE;
 }
 

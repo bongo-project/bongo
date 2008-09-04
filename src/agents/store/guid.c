@@ -21,7 +21,6 @@
 
 #include <config.h>
 #include <xpl.h>
-#include <logger.h>
 
 #include "stored.h"
 

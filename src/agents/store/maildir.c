@@ -54,6 +54,18 @@ char *dest, size_t size)
 	dest[size-1] = '\0';
 }
 
+void
+FindPathToObject(StoreClient *client, StoreObject *object, char *dest, size_t size)
+{
+	if (STORE_IS_FOLDER(object->type)) {
+		snprintf(dest, size, "%s" GUID_FMT, client->store, object->guid);
+	} else {
+		snprintf(dest, size, "%s" GUID_FMT "/cur/" GUID_FMT, 
+			client->store, object->collection_guid, object->guid);
+	}
+	dest[size-1] = '\0';
+}
+
 /** 
  * Create a new maildir. If it already exists, we don't error
  * \param	store_path	Path to the file store to contain the collection we want to create
@@ -68,7 +80,7 @@ MaildirNew(const char *store_path, uint64_t collection)
 	char subdir[XPL_MAX_PATH + 5];
 	int i;
 	
-	snprintf(rootpath, XPL_MAX_PATH, "%s" GUID_FMT, store_path, collection);
+	snprintf(rootpath, XPL_MAX_PATH, "%s/" GUID_FMT, store_path, collection);
 	
 	for (i = 0; dirs[i] != NULL; i++) {
 		int res = 0;
@@ -165,7 +177,7 @@ MaildirDeliverTempDocument(StoreClient *client, uint64_t collection, const char 
 {
 	char newpath[XPL_MAX_PATH+1];
 	
-	FindPathToDocument(client, collection, uid, &newpath, XPL_MAX_PATH);
+	FindPathToDocument(client, collection, uid, newpath, XPL_MAX_PATH);
 	
 	if (link(path, newpath) != 0) {
 		// look at errno. EEXIST suggests we already delivered it; maybe ignore that?

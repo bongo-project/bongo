@@ -309,7 +309,7 @@ LoadAgentConfiguration()
 	BongoArray *agentlist;
 	unsigned int i;
 
-	if (! NMAPReadConfigFile("manager", &config)) {
+	if (! NMAPReadConfigFile("manager", &config) || (config == NULL)) {
 		printf(_("bongo-manager: couldn't read config from store\n"));
 		return FALSE;
 	}

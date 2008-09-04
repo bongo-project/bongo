@@ -62,6 +62,9 @@ typedef struct _NMAPConnections {
 MessageQueue Queue = { 0, };
 int FindQueue(const void *i, const void *node);
 int FindPool(const void *str, const void *node);
+BOOL SpoolEntryIDLock(unsigned long id);
+uint32_t IntHash (unsigned long *s);
+int IntCmp (const unsigned long *s1, const unsigned long *s2);
 
 static int HandleDSN(FILE *data, FILE *control);
 
@@ -123,6 +126,14 @@ rename_check(const char *oldpath, const char *newpath, int line)
     ret = rename(oldpath, newpath);
     LogAssertF(ret == 0, "Unable to rename %s to %s on line %d: %d", oldpath, newpath, line, errno);
     return ret;
+}
+
+uint32_t IntHash (unsigned long *s) {
+    return (unsigned long)s;
+}
+
+int IntCmp (const unsigned long *s1, const unsigned long *s2) {
+    return s1 - s2;
 }
 
 static int 
@@ -218,20 +229,10 @@ NoMatch:
 static BOOL 
 InitSpoolEntryIDLocks(void)
 {
-    int i;
-    int j;
-    unsigned long *id;
+    Queue.spoolLocks.hash = BongoHashtableCreate(64, (HashFunction)IntHash, (CompareFunction)IntCmp);
+    XplOpenLocalSemaphore(Queue.spoolLocks.semaphore, 1);
 
-    Queue.spoolLocks.entryIDs = (unsigned long *)MemMalloc(SPOOL_LOCK_ARRAY_SIZE * SPOOL_LOCK_IDARRAY_SIZE * sizeof(unsigned long));
-    if (Queue.spoolLocks.entryIDs != NULL) {
-        for (i = 0; i < SPOOL_LOCK_ARRAY_SIZE; i++) {
-            XplOpenLocalSemaphore(Queue.spoolLocks.semaphores[i], 1);
-
-            for (j = 0, id = &Queue.spoolLocks.entryIDs[i * SPOOL_LOCK_IDARRAY_SIZE]; j < SPOOL_LOCK_IDARRAY_SIZE; j++, id++) {
-                *id = UNUSED_SPOOL_LOCK_ID;
-            }
-        }
-
+    if (Queue.spoolLocks.hash) {
         return(TRUE);
     }
 
@@ -241,77 +242,37 @@ InitSpoolEntryIDLocks(void)
 static void 
 DeInitSpoolEntryIDLocks(void)
 {
-    register int    i;
-
-    if (Queue.spoolLocks.entryIDs != NULL) {
-        for (i = 0; i < SPOOL_LOCK_ARRAY_SIZE; i++) {
-            XplCloseLocalSemaphore(Queue.spoolLocks.semaphores[i]);
-        }
-
-        MemFree(Queue.spoolLocks.entryIDs);
-    }
-    return;
+    XplCloseLocalSemaphore(Queue.spoolLocks.semaphore);
+    BongoHashtableDelete(Queue.spoolLocks.hash);
 }
 
-static unsigned long * 
+BOOL
 SpoolEntryIDLock(unsigned long id)
 {
-    register unsigned long *unused;
-    register unsigned long *cur;
-    register unsigned long *limit;
+    BOOL result = FALSE;
 
-    if (Queue.spoolLocks.entryIDs != NULL) {
-        unused = NULL;
-        cur = &(Queue.spoolLocks.entryIDs[(SPOOL_LOCK_ARRAY_MASK & id) * SPOOL_LOCK_IDARRAY_SIZE]);
-        limit = cur + SPOOL_LOCK_IDARRAY_SIZE;
+    XplWaitOnLocalSemaphore(Queue.spoolLocks.semaphore);
+    void *p = BongoHashtableGet(Queue.spoolLocks.hash, (void *)id);
 
-        XplWaitOnLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
-
-        do {
-            if (*cur != id) {
-                if (*cur != UNUSED_SPOOL_LOCK_ID) {
-                    continue;
-                }
-
-                if (unused != NULL) {
-                    continue;
-                }
-
-                unused = cur;
-                continue;
-            }
-
-            XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
-
-            return(NULL);
-        } while (++cur < limit);
-
-        if (unused != NULL) {
-            *unused = id;
-
-            XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
-
-            return(unused);
-        }
-
-        XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
-
-        Log(LOG_ERROR, "Unable to lock spool entry %x, table full", (unsigned int) id);
+    if (!p) {
+        Log(LOG_DEBUG, "Aquiring Lock on %ld", id);
+        BongoHashtablePutNoReplace(Queue.spoolLocks.hash, (void *)id, (void *)id);
+        result = TRUE;
+    } else {
+        Log(LOG_DEBUG, "Failed to aquire lock on %ld.  Already locked!", id);
     }
+    XplSignalLocalSemaphore(Queue.spoolLocks.semaphore);
 
-    return(NULL);
+    return result;
 }
 
 static void 
-SpoolEntryIDUnlock(unsigned long *idLock)
+SpoolEntryIDUnlock(unsigned long id)
 {
-    unsigned long id = *idLock;
-
-    if ((Queue.spoolLocks.entryIDs != NULL) && (idLock != NULL)) {
-        XplWaitOnLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
-        *idLock = UNUSED_SPOOL_LOCK_ID;
-        XplSignalLocalSemaphore(Queue.spoolLocks.semaphores[SPOOL_LOCK_ARRAY_MASK & id]);
-    }
+    XplWaitOnLocalSemaphore(Queue.spoolLocks.semaphore);
+    Log(LOG_DEBUG, "Unlocked %ld", id);
+    BongoHashtableRemove(Queue.spoolLocks.hash, (void *)id);
+    XplSignalLocalSemaphore(Queue.spoolLocks.semaphore);
 
     return;
 }
@@ -355,7 +316,7 @@ AddPushAgent(QueueClient *client,
     ItemIndex = BongoArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
     if (ItemIndex < 0) {
         /* there is no queue item in the array yet.  we need to initialize one */
-        CurrentQueue = MemMalloc(sizeof(QueueList *));
+        CurrentQueue = MemNew0(QueueList, 1);
         CurrentQueue->queue = queue;
         CurrentQueue->pools = BongoArrayNew(sizeof(QueuePoolList *), 1);
         BongoArrayAppendValue(Queue.PushClients.queues, CurrentQueue); 
@@ -368,12 +329,11 @@ AddPushAgent(QueueClient *client,
     ItemIndex = BongoArrayFindSorted(CurrentQueue->pools, &p_tempPool, FindPool);
     if (ItemIndex < 0) {
         /* there is no pool already.  we need to initialize one */
-        CurrentPool = MemMalloc(sizeof(QueuePoolList *));
+        CurrentPool = MemNew0(QueuePoolList, 1);
         strncpy(CurrentPool->identifier, identifier, 100);
         ConnAddressPoolStartup(&CurrentPool->pool, 5, 60);
         BongoArrayAppendValue(CurrentQueue->pools, CurrentPool);
     } else {
-        //CurrentPool = (((QueuePoolList *)(CurrentQueue.pools)->data)[(ItemIndex)]);
         CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, ItemIndex);
     }
 
@@ -578,14 +538,14 @@ EndStoreDelivery(NMAPConnections *list)
 }
 
 static void
-ProcessQueueEntryCleanUp(unsigned long *idLock, MIMEReportStruct *report)
+ProcessQueueEntryCleanUp(unsigned long id, MIMEReportStruct *report)
 {
     if (report) {
         FreeMIME(report);
     }
 
-    if (idLock) {
-        SpoolEntryIDUnlock(idLock);
+    if (id) {
+        SpoolEntryIDUnlock(id);
     }
 
     XplSafeDecrement(Queue.activeWorkers);
@@ -609,8 +569,7 @@ ProcessQueueEntry(unsigned char *entryIn)
     int ItemIndex=0;
     unsigned int iter_p=0;
     unsigned long dSize = 0;
-    unsigned long entryID;
-    unsigned long *idLock = NULL;
+    unsigned long entryID = 0;
     unsigned char *ptr;
     unsigned char *ptr2 = NULL;
     unsigned char *cur;
@@ -640,7 +599,7 @@ ProcessQueueEntry(unsigned char *entryIn)
 
 StartOver:
     if (!entryIn) {
-        ProcessQueueEntryCleanUp(idLock, report);
+        ProcessQueueEntryCleanUp(entryID, report);
         return(FALSE);
     }
 
@@ -659,12 +618,11 @@ StartOver:
 
     Log(LOG_DEBUG, "Processing entry %ld on queue %d", entryID, queue);
 
-    idLock = SpoolEntryIDLock(entryID);
-    if (idLock) {
+    if (SpoolEntryIDLock(entryID)) {
         sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
         FOPEN_CHECK(fh, path, "r+b");
     } else {
-        ProcessQueueEntryCleanUp(NULL, report);
+        ProcessQueueEntryCleanUp(0, report);
         return(FALSE);
     }
 
@@ -673,7 +631,7 @@ StartOver:
         date = atoi(line + 1);
         FCLOSE_CHECK(fh);
     } else {
-        ProcessQueueEntryCleanUp(idLock, report);
+        ProcessQueueEntryCleanUp(entryID, report);
         return(FALSE);
     }
 
@@ -829,7 +787,7 @@ StartOver:
                     }
 
                     XplSafeDecrement(Queue.queuedLocal);
-                    ProcessQueueEntryCleanUp(idLock, report);
+                    ProcessQueueEntryCleanUp(entryID, report);
                     return(TRUE);
                 }
 
@@ -967,7 +925,7 @@ StartOver:
             sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
             UNLINK_CHECK(path);
 
-            ProcessQueueEntryCleanUp(idLock, report);
+            ProcessQueueEntryCleanUp(entryID, report);
             return(TRUE);
         }
 
@@ -981,13 +939,13 @@ StartOver:
                 RENAME_CHECK(path, path2);
 
                 sprintf(path, "%03d%s", Q_RTS, entry);
-                SpoolEntryIDUnlock(idLock);
+                SpoolEntryIDUnlock(entryID);
                 entryIn = MemStrdup(path);
                 goto StartOver;
             }
 
             if (Conf.deferEnabled && CheckIfDeliveryDeferred()) {
-                ProcessQueueEntryCleanUp(idLock, report);
+                ProcessQueueEntryCleanUp(entryID, report);
                 return(TRUE);
             }
 
@@ -1016,7 +974,7 @@ StartOver:
             if (!dSize) {
                 sprintf(path, "%s/%s", Conf.spoolPath, dataFilename);
                 if (stat(path, &sb)) {
-                    ProcessQueueEntryCleanUp(idLock, report);
+                    ProcessQueueEntryCleanUp(entryID, report);
                     return(TRUE);
                 }
 
@@ -1044,7 +1002,7 @@ StartOver:
                 sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
                 UNLINK_CHECK(path);
 
-                ProcessQueueEntryCleanUp(idLock, report);
+                ProcessQueueEntryCleanUp(entryID, report);
                 return(TRUE);
             }
 
@@ -1095,7 +1053,7 @@ StartOver:
                                     sprintf(path, "%s/w%s.%03d",Conf.spoolPath, entry, queue);
                                     FCLOSE_CHECK(newFH);
                                     UNLINK_CHECK(path);
-                                    ProcessQueueEntryCleanUp(idLock, report);
+                                    ProcessQueueEntryCleanUp(entryID, report);
                                     return(TRUE);
                                 }
                             }
@@ -1201,7 +1159,7 @@ StartOver:
                                     sprintf(path, "%s/w%s.%03d", Conf.spoolPath, entry, queue);
                                     UNLINK_CHECK(path);
 
-                                    ProcessQueueEntryCleanUp(idLock, report);
+                                    ProcessQueueEntryCleanUp(entryID, report);
                                     return(TRUE);
                                 }
                             }
@@ -1423,7 +1381,7 @@ StartOver:
                     }
 
                     Log(LOG_CRITICAL, "File open error for entry %ld, path: %s", entryID, path);
-                    ProcessQueueEntryCleanUp(idLock, report);
+                    ProcessQueueEntryCleanUp(entryID, report);
                     return(FALSE);
                 }                
             }
@@ -1449,7 +1407,7 @@ StartOver:
                 UNLINK_CHECK(path);
 
                 XplSafeDecrement(Queue.queuedLocal);
-                ProcessQueueEntryCleanUp(idLock, report);
+                ProcessQueueEntryCleanUp(entryID, report);
                 return(TRUE);
             }
         }
@@ -1461,14 +1419,14 @@ StartOver:
     if (Agent.agent.state < BONGO_AGENT_STATE_STOPPING) {
         sprintf(path, "%s/d%s.msg", Conf.spoolPath, entry);
     } else {
-        ProcessQueueEntryCleanUp(idLock, report);
+        ProcessQueueEntryCleanUp(entryID, report);
         return(TRUE);
     }
 
     if (stat(path, &sb) == 0) {
         dSize = (unsigned long)sb.st_size;
     } else {
-        ProcessQueueEntryCleanUp(idLock, report);
+        ProcessQueueEntryCleanUp(entryID, report);
         return(TRUE);
     }
 
@@ -1484,7 +1442,7 @@ StartOver:
             stat(path, &sb);
             FOPEN_CHECK(fh, path, "rb");
             if (!fh) {
-                ProcessQueueEntryCleanUp(idLock, report);
+                ProcessQueueEntryCleanUp(entryID, report);
                 return(TRUE);
             }
             do {
@@ -1563,7 +1521,7 @@ StartOver:
                 if (report == NULL) {
                     report = client->entry.report;
                 } else {
-                    ProcessQueueEntryCleanUp(idLock, NULL);
+                    ProcessQueueEntryCleanUp(entryID, NULL);
                     return(FALSE);
                 }
             }
@@ -1571,14 +1529,14 @@ StartOver:
             QueueClientFree(client);
             if (access(path, 0)) {
                 XplSafeDecrement(Queue.queuedLocal);
-                ProcessQueueEntryCleanUp(idLock, report);
+                ProcessQueueEntryCleanUp(entryID, report);
                 return(TRUE);
             }
         }
     }
 
     if (Agent.agent.state == BONGO_AGENT_STATE_STOPPING) {
-        ProcessQueueEntryCleanUp(idLock, report);
+        ProcessQueueEntryCleanUp(entryID, report);
         return(TRUE);
     }
 
@@ -1622,7 +1580,7 @@ StartOver:
             RENAME_CHECK(path, path2);
 
             sprintf(path, "%03d%s", i, entry);
-            SpoolEntryIDUnlock(idLock);
+            SpoolEntryIDUnlock(entryID);
 
             entryIn = MemStrdup(path);
             goto StartOver;
@@ -1743,7 +1701,7 @@ StartOver:
 
                     LogFailureF("File open failure: entry %ld, path %s", entryID, path);
 
-                    ProcessQueueEntryCleanUp(idLock, report);
+                    ProcessQueueEntryCleanUp(entryID, report);
                     return(TRUE);
                 }
             }
@@ -1861,7 +1819,7 @@ StartOver:
                     }
                 }
 
-                ProcessQueueEntryCleanUp(idLock, report);
+                ProcessQueueEntryCleanUp(entryID, report);
                 return(TRUE);
             } else {
                 count = 0;
@@ -1872,7 +1830,7 @@ StartOver:
                 sprintf(path, "%03d%s", Q_INCOMING, entry);
             }
 
-            SpoolEntryIDUnlock(idLock);
+            SpoolEntryIDUnlock(entryID);
             entryIn = MemStrdup(path);
             goto StartOver;
             break;
@@ -1888,7 +1846,7 @@ StartOver:
         }
     }
 
-    ProcessQueueEntryCleanUp(idLock, report);
+    ProcessQueueEntryCleanUp(entryID, report);
 
     return(TRUE);
 }
@@ -2362,7 +2320,6 @@ static int
 HandleDSN(FILE *data, FILE *control)
 {
     unsigned long id;
-    unsigned long *idLock;
     unsigned char path[XPL_MAX_PATH + 1];
     FILE *rtsControl = NULL;
     FILE *rtsData = NULL;
@@ -2381,7 +2338,7 @@ HandleDSN(FILE *data, FILE *control)
         return -1;
     }
 
-    idLock = SpoolEntryIDLock(id);
+    SpoolEntryIDLock(id);
 
     /* Create data file */
     sprintf(path, "%s/d%07lx.msg", Conf.spoolPath, id);
@@ -2404,7 +2361,7 @@ HandleDSN(FILE *data, FILE *control)
         sprintf(path, "%s/c%07lx.%03d", Conf.spoolPath, id, Q_INCOMING);
         UNLINK_CHECK(path);
 
-        SpoolEntryIDUnlock(idLock);
+        SpoolEntryIDUnlock(id);
         return 0;
     }
 
@@ -2413,7 +2370,7 @@ HandleDSN(FILE *data, FILE *control)
     FCLOSE_CHECK(rtsControl);
     FCLOSE_CHECK(rtsData);
 
-    SpoolEntryIDUnlock(idLock);
+    SpoolEntryIDUnlock(id);
     sprintf(path, "%03d%lx",Q_INCOMING, id);
 
     if (XplSafeRead(Queue.activeWorkers) < Conf.maxConcurrentWorkers) {

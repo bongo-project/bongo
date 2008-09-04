@@ -27,10 +27,8 @@
 XPL_BEGIN_C_LINKAGE
 
 const char *StoreProcessIncomingMail(StoreClient *client,
-                                     DStoreDocInfo *info,
-                                     const char *path,
-                                     DStoreDocInfo *conversationOut,
-                                     uint64_t forceConversationGuid);
+                                     StoreObject *document,
+                                     const char *path);
 XPL_END_C_LINKAGE
 
 #endif

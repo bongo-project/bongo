@@ -22,10 +22,10 @@
 /* Routines for parsing and manipulating mail messages */
 
 #include <config.h>
+#include "stored.h"
 
 #include <xpl.h>
 #include <memmgr.h>
-#include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
 #include <nmap.h>
@@ -35,13 +35,12 @@
 #include <bongoutil.h>
 
 #include "mail.h"
-#include "conversations.h"
+// #include "conversations.h"
 #include "mail-parser.h"
 #include "messages.h"
 
 typedef struct {
-    DStoreHandle *handle;
-    DStoreDocInfo *info;
+    StoreObject *document;
 
     BongoStringBuilder from;
     BongoStringBuilder sender;
@@ -60,6 +59,7 @@ typedef struct {
     BOOL haveListId;
 
     uint64_t headerStartOffset;
+    uint64_t headerSize;
 } IncomingParseData;
 
 static void 
@@ -137,7 +137,7 @@ IncomingUnstructuredCb(void *datap, MailHeaderName name, const char *headerName,
         break;
     case MAIL_SPAM_FLAG :
         if (tolower(buffer[0]) == 'y') {
-            data->info->flags |= STORE_MSG_FLAG_JUNK;
+            data->document->type |= STORE_MSG_FLAG_JUNK;
         }
         break;
     case MAIL_LIST_ID:
@@ -158,11 +158,12 @@ IncomingUnstructuredCb(void *datap, MailHeaderName name, const char *headerName,
 static void
 IncomingDateCb(void *datap, MailHeaderName name, uint64_t date)
 {
-    IncomingParseData *data = datap;
+    // IncomingParseData *data = datap;
 
     switch(name) {
     case MAIL_DATE:
-        data->info->data.mail.sent = date;
+        // FIXME
+        // data->info->data.mail.sent = date;
         break;
     default :
         /* Ignore */
@@ -177,7 +178,7 @@ IncomingOffsetCb(void *datap, MailHeaderName name, uint64_t offset)
 
     switch(name) {
     case MAIL_OFFSET_BODY_START:
-        data->info->data.mail.headerSize = offset - data->headerStartOffset;
+        data->headerSize = offset - data->headerStartOffset;
         break;
     default :
         /* Ignore */
@@ -231,147 +232,143 @@ IncomingMessageIdCb(void *datap, MailHeaderName name, const char *messageId)
             errormsg o/w
 */
 
+static void
+SetDocProp(StoreClient *client, StoreObject *doc, char *pname, char *value)
+{
+	StorePropInfo info;
+	
+	if (value != NULL) {
+		info.type = STORE_PROP_NONE;
+		info.name = pname;
+		info.value = value;
+		StorePropertyFixup(&info);
+		StoreObjectSetProperty(client, doc, &info);
+	}
+}
+
 const char *
 StoreProcessIncomingMail(StoreClient *client,
-                         DStoreDocInfo *info,
-                         const char *path,
-                         DStoreDocInfo *conversationOut,
-                         uint64_t forceConversationGuid)
+                         StoreObject *document,
+                         const char *path)
 {
-    const char *result = NULL;
-    MailParser *p;
-    IncomingParseData data = {0, };
-    DStoreDocInfo oldConversation;
-    BOOL haveOldConversation;
-    
-    FILE *fh;
-    
-    fh = fopen(path, "rb");
-    if (!fh) {
-        return MSG4224CANTREADMBOX;
-    }  
+	const char *result = NULL;
+	MailParser *p;
+	IncomingParseData data = {0, };
+	char prop[XPL_MAX_PATH + 1];
+	StoreObject conversation;
+	StoreConversationData conversation_data;
+	
+	FILE *fh;
 
-    data.headerStartOffset = 0;
-    data.handle = client->handle;
-    data.info = info;
+	fh = fopen(path, "rb");
+	if (!fh) return MSG4224CANTREADMBOX;
 
-    p = MailParserInit(fh, &data);
-    MailParserSetParticipantsCallback(p, IncomingParticipantCb);
-    MailParserSetUnstructuredCallback(p, IncomingUnstructuredCb);
-    MailParserSetDateCallback(p, IncomingDateCb);
-    MailParserSetOffsetCallback(p, IncomingOffsetCb);
-    MailParserSetMessageIdCallback(p, IncomingMessageIdCb);
+	data.headerStartOffset = 0;
+	data.document = document;
 
-    if (MailParseHeaders(p) == -1) {
-        result = MSG4226BADEMAIL;
-        goto finish;
-    }
+	p = MailParserInit(fh, &data);
+	MailParserSetParticipantsCallback(p, IncomingParticipantCb);
+	MailParserSetUnstructuredCallback(p, IncomingUnstructuredCb);
+	MailParserSetDateCallback(p, IncomingDateCb);
+	MailParserSetOffsetCallback(p, IncomingOffsetCb);
+	MailParserSetMessageIdCallback(p, IncomingMessageIdCb);
 
+	if (MailParseHeaders(p) == -1) {
+		result = MSG4226BADEMAIL;
+		goto finish;
+	}
 
+	SetDocProp(client, document, "bongo.from", data.from.value);
+	SetDocProp(client, document, "bongo.to", data.to.value);
+	SetDocProp(client, document, "bongo.sender", data.sender.value);
+	SetDocProp(client, document, "bongo.cc", data.cc.value);
+	SetDocProp(client, document, "bongo.inreplyto", data.inReplyTo);
+	SetDocProp(client, document, "bongo.references", data.references.value);
+	SetDocProp(client, document, "bongo.xauthok", data.xAuthOK.value);
+	SetDocProp(client, document, "bongo.listid", data.listId);
 
-    /* FIXME: temp */
-    if (DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.from", data.from.value ? data.from.value : "") ||
-        DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.to", data.to.value ? data.to.value : "") ||
-        DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.sender", data.sender.value ? data.sender.value : "") ||
-        DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.cc", data.cc.value ? data.cc.value : "") ||
-        DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.inreplyto", data.inReplyTo ? data.inReplyTo: "") ||
-        DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.references", data.references.value ? data.references.value : "") ||
-        DStoreSetPropertySimple(client->handle, info->guid, 
-                                "bongo.xauthok", data.xAuthOK.value ? data.xAuthOK.value : "") ||
-        DStoreSetPropertySimple(client->handle, info->guid,
-                                "bongo.listid", data.haveListId && data.listId ? data.listId : ""))
-    {
-        result = MSG5005DBLIBERR;
-        goto finish;
-    }
-
-    if (data.messageId) {
-        info->data.mail.messageId = 
-            BongoMemStackPushStr(&client->memstack, data.messageId);
-    } else {
-        info->data.mail.messageId =
-            BONGO_MEMSTACK_ALLOC(&client->memstack, MAXEMAILNAMESIZE + 1);
-        snprintf(info->data.mail.messageId, MAXEMAILNAMESIZE + 1, "%u.%llu@%s",
-            info->timeCreatedUTC, info->guid, StoreAgent.agent.officialName);
-    }
-    if (data.parentMessageId) {
-        info->data.mail.parentMessageId = 
-            BongoMemStackPushStr(&client->memstack, data.parentMessageId);
-    }
-    if (data.from.value) {
-        info->data.mail.from = 
-            BongoMemStackPushStr(&client->memstack, data.from.value);
-    }
-    if (data.subject) {
-        info->data.mail.subject = 
-            BongoMemStackPushStr(&client->memstack, data.subject);
-    }
-    if (data.haveListId && data.listId) {
-        info->data.mail.listId = BongoMemStackPushStr(&client->memstack, data.listId);
-    }
-
-    if (info->conversation != 0 && 
-        DStoreGetDocInfoGuid(client->handle, info->conversation, &oldConversation) == 1) {
-        haveOldConversation = TRUE;
-    } else {
-        haveOldConversation = FALSE;
-    }
-
-    if (forceConversationGuid != 0) {
-        if (DStoreGetDocInfoGuid(client->handle, forceConversationGuid, conversationOut) != 1) {
-            result = MSG4202CONVERSATIONNOTFOUND;
-            goto finish;
-        }
-    } else {
-        if (GetConversation(client->handle, info, conversationOut)) {
-            /* FIXME: need better error reporting for this stuff */
-            result = MSG5005DBLIBERR; 
-            goto finish;
-        }
-    }
-
-    /* Re-store the mail with the data and conversationid set */
-    info->conversation = conversationOut->guid;
-    if (DStoreSetDocInfo(client->handle, info)) {
-        result = MSG5005DBLIBERR;
-        goto finish;
-    }
-
-    
-    if (haveOldConversation) {
-        UpdateConversationMetadata(client->handle, &oldConversation);
-    } 
-
-    if (!haveOldConversation || oldConversation.guid != conversationOut->guid) {
-        if (ConversationUpdateWithNewMail(client->handle, conversationOut, info)) {
-            result = MSG5005DBLIBERR;
-            goto finish;
-        }
-    }
-
+	if (data.messageId) {
+		SetDocProp(client, document, "nmap.mail.messageid", data.messageId);
+	} else {
+		snprintf(prop, XPL_MAX_PATH, "%u." GUID_FMT "@%s", document->time_created, document->guid, 
+			StoreAgent.agent.officialName);
+		SetDocProp(client, document, "nmap.mail.messageid", prop);
+	}
+	
+	SetDocProp(client, document, "nmap.mail.parentmessageid", data.parentMessageId);
+	SetDocProp(client, document, "nmap.mail.subject", data.subject);
+	
+	if (data.headerSize > 0) {
+		snprintf(prop, XPL_MAX_PATH, FMT_UINT64_DEC, data.headerSize);
+		SetDocProp(client, document, "nmap.mail.headersize", prop);
+	}
+	
+	memset(&conversation_data, 0, sizeof(StoreConversationData));
+	memset(&conversation, 0, sizeof(conversation));
+	conversation_data.subject = MemStrdup(data.subject);
+	conversation_data.date = 0; // FIXME: should be 7 days ago or similar
+	
+	if (StoreObjectFindConversation(client, &conversation_data, &conversation) != 0) {
+		// need to create a conversation for this document
+		StoreObject convo_collection;
+		
+		if (StoreObjectFind(client, STORE_CONVERSATIONS_GUID, &convo_collection)) {
+			result = MSG5005DBLIBERR;
+			goto finish;
+		}
+		
+		conversation.type = STORE_DOCTYPE_CONVERSATION;
+		
+		if (StoreObjectCreate(client, &conversation) != 0) {
+			// can't create conversation
+			result = MSG5005DBLIBERR;
+			goto finish;
+		}
+		
+		conversation_data.guid = conversation.guid;
+		conversation_data.date = conversation.time_created;
+		conversation_data.sources = 0;
+		if (StoreObjectSaveConversation(client, &conversation_data)) {
+			result = MSG5005DBLIBERR;
+			goto finish;
+		}
+		
+		// save setting collection_guid til last, so that the new convo
+		// 'appears' atomically
+		conversation.collection_guid = STORE_CONVERSATIONS_GUID;
+		StoreObjectFixUpFilename(&convo_collection, &conversation);
+		if (StoreObjectSave(client, &conversation) != 0) {
+			result = MSG5005DBLIBERR;
+			goto finish;
+		}
+	}
+	// Link new mail to conversation
+	if (StoreObjectLink(client, &conversation, document)) {
+		// couldn't put the link in place, erk.
+		result = MSG5005DBLIBERR;
+		goto finish;
+	}
+	
+	// fix up conversation meta-data?
+	// TODO
+	
 finish:
+	if (conversation_data.subject) MemFree(conversation_data.subject);
+	MemFree(data.from.value);
+	MemFree(data.to.value);
+	MemFree(data.cc.value);
+	MemFree(data.sender.value);
+	MemFree(data.messageId);
+	MemFree(data.inReplyTo);
+	MemFree(data.references.value);
+	MemFree(data.parentMessageId);
+	MemFree(data.xAuthOK.value);
+	MemFree(data.listId);
 
-    MemFree(data.from.value);
-    MemFree(data.to.value);
-    MemFree(data.cc.value);
-    MemFree(data.sender.value);
-    MemFree(data.messageId);
-    MemFree(data.inReplyTo);
-    MemFree(data.references.value);
-    MemFree(data.parentMessageId);
-    MemFree(data.xAuthOK.value);
-    MemFree(data.listId);
-    
-    MailParserDestroy(p);
+	MailParserDestroy(p);
 
-    fclose(fh);
+	fclose(fh);
 
-    return result;
+	return result;
 }
 

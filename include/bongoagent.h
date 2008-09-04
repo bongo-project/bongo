@@ -186,6 +186,7 @@ void BongoAgentShutdownFunc (BongoJsonRpcServer *server,
                             BongoArray *args, 
                             void *userData);
 
+#ifndef _NO_BONGO_GLOBALS
 struct _BongoGlobals {
     char *hostname;
     char *hostaddr;
@@ -199,6 +200,7 @@ static BongoConfigItem GlobalConfig[] = {
     { BONGO_JSON_STRING, "o:postmaster/s", &BongoGlobals.postmaster },
     { BONGO_JSON_NULL, NULL, NULL }
 };
+#endif
 
 #define BONGO_ENVELOPE_NEXT(p) \
     { (p) = (p) + strlen(p) + 1;                 \

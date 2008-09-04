@@ -48,7 +48,7 @@
 #include <config.h>
 #include "bongo-cal-private.h"
 #include <bongocal.h>
-#include <libical/ical.h>
+#include <ical.h>
 
 typedef struct {
     int utcOffset;

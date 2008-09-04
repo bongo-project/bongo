@@ -27,12 +27,14 @@
 
 #include "stored.h"
 #include "messages.h"
+#include "object-model.h"
 #include "calendar.h"
 
 
+// this is called on any event which is saved to the store
 const char *
 StoreProcessIncomingEvent(StoreClient *client,
-                          DStoreDocInfo *info,
+                          StoreObject *event,
                           uint64_t linkGuid)
 {
     BongoJsonNode *node = NULL;
@@ -40,20 +42,17 @@ StoreProcessIncomingEvent(StoreClient *client,
     BongoCalTime start;
     BongoCalTime end;
 
-
-    if (linkGuid && DStoreLinkEvent(client->handle, linkGuid, info->guid)) {
-        return MSG5005DBLIBERR;
-    }
+	if (linkGuid) {
+		// FIXME: Link this event into a calendar
+	}
 
     /* FIXME */
 
-    if (GetJson(client, info, &node, NULL) != BONGO_JSON_OK) {
+    if (GetJson(client, event, &node, NULL) != BONGO_JSON_OK)
         goto parse_error;
-    }
 
-    if (node->type != BONGO_JSON_OBJECT) {
+    if (node->type != BONGO_JSON_OBJECT)
         goto parse_error;
-    }
     
     cal = BongoCalObjectNew(BongoJsonNodeAsObject(node));
 
@@ -67,6 +66,9 @@ StoreProcessIncomingEvent(StoreClient *client,
     start.isDate = FALSE;
     end.isDate = FALSE;
 
+    /*
+     * FIXME: need to get these event-specific properties from the object
+     *
     BongoCalTimeToIcal(start, info->data.event.start, sizeof(info->data.event.start));
     BongoCalTimeToIcal(end, info->data.event.end, sizeof(info->data.event.end));    
     
@@ -81,8 +83,10 @@ StoreProcessIncomingEvent(StoreClient *client,
         BongoCalObjectFree(cal, TRUE);
         return MSG5005DBLIBERR;
     }
-    BongoCalObjectFree(cal, TRUE);
-
+	*/
+	
+	StoreObjectSave(client, event); // FIXME: is this necessary?
+	BongoCalObjectFree(cal, TRUE);
     return NULL;
 
 parse_error:
@@ -94,54 +98,9 @@ parse_error:
     }
 
     return MSG4226BADEVENT;
-
 }
 
-
-CCode 
-StoreCommandLINK(StoreClient *client, uint64_t calendar, uint64_t guid)
-{
-    DStoreDocInfo event;
-    
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &event)) {
-    case 1:
-        if (DStoreLinkEvent(client->handle, calendar, guid) ||
-            DStoreCommitTransaction(client->handle)) 
-        {
-            return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-        return ConnWriteStr(client->conn, MSG1000OK);
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    default:
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-}
-
-
-CCode 
-StoreCommandUNLINK(StoreClient *client, uint64_t calendar, uint64_t guid)
-{
-    DStoreDocInfo event;
-    
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &event)) {
-    case 1:
-        if (DStoreUnlinkEvent(client->handle, calendar, guid) ||
-            DStoreCommitTransaction(client->handle)) 
-        {
-            return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-        return ConnWriteStr(client->conn, MSG1000OK);
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    default:
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-}
-
-
+#if 0
 static int
 ParseAlarmJson(BongoJsonObject *json, BongoArray *result, BongoMemStack *memstack)
 {
@@ -199,15 +158,19 @@ abort:
     }
     return -1;
 }
-
+#endif
 
 /* FIXME: this function probably leaks a lot of memory */
 
+// this is called when an alarm property is set on an event.
 CCode
 StoreSetAlarm(StoreClient *client, 
-              DStoreDocInfo *docinfo,
+              StoreObject *event, // docinfo
               const char *alarmtext)
 {
+	return 0;
+#if 0
+	// FIXME awful awful.
     CCode ccode = 0;
     BongoJsonNode *node = NULL;
     BongoCalObject *cal = NULL;
@@ -236,7 +199,7 @@ StoreSetAlarm(StoreClient *client,
 
     /* load the event, and compute occurrences */
 
-    if (BONGO_JSON_OK != GetJson(client, docinfo, &node, NULL) ||
+    if (BONGO_JSON_OK != GetJson(client, event, &node, NULL) ||
         BONGO_JSON_OBJECT != node->type) 
     {
         ccode = ConnWriteStr(client->conn, MSG4226BADEVENT);
@@ -253,12 +216,9 @@ StoreSetAlarm(StoreClient *client,
     BongoCalObjectCollect(cal, start, end, NULL, TRUE, occurrences);
 
     /* delete any old alarms with this guid */
-
-    AlarmDBDeleteAlarms(client->system.alarmdb, client->storeName, docinfo->guid);
+    AlarmDBDeleteAlarms(client->system.alarmdb, client->storeName, event->guid);
 
     /* for each instance, add alarms */
-
-    
     for (i = 0; i < occurrences->len; i++) {
         BongoCalOccurrence occ = BongoArrayIndex(occurrences, BongoCalOccurrence, i);
 
@@ -270,7 +230,7 @@ StoreSetAlarm(StoreClient *client,
                 goto finish;
             }
 
-            alarm->guid = docinfo->guid;
+            alarm->guid = event->guid;
             alarm->store = client->storeName;
 
             if (!alarm->summary) {
@@ -305,9 +265,5 @@ finish:
     }
 
     return ccode;
+#endif
 }
-              
-
-
-
-

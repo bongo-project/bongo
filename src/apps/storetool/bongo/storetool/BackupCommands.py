@@ -61,7 +61,7 @@ class StoreBackupCommand(Command):
                          usage="%prog %cmd [<output>]")
 
     def GetStoreConnection(self):
-        return StoreClient(self.user, self.store)
+        return StoreClient(self.user, self.store, host=self.host, port=int(self.port), authPassword=self.password)
 
     def BackupStore(self):
         # create a backup file which contains all the contents of the given store
@@ -102,6 +102,10 @@ class StoreBackupCommand(Command):
                 if document.type == DocTypes.Conversation or document.type == DocTypes.Calendar:
                     # DB-only file type, don't attempt to back this up
                     continue
+                if collection == '/conversations':
+                    # this is a hack; Bongo 0.3 doesn't seem to mark all conversations
+                    # as such correctly :(
+                    continue
                 filename = "%s/%s" % (collection, document.filename)
                 try:
                     content = docstore.Read(filename)
@@ -117,8 +121,12 @@ class StoreBackupCommand(Command):
                 headerx.SetKey("BONGO.flags", "%d" % document.flags)
                 props = docstore.PropGet(document.uid)
                 for key in props.keys():
-                    headerx.SetKey("BONGO.%s" % key, props[key])
-                backup_file.write(headerx.ToString().encode("utf-8"))
+                    value = props[key]
+                    if value != None:
+                        headerx.SetKey("BONGO.%s" % key, value.encode("utf-8"))
+                header_content = headerx.ToString()
+                
+                backup_file.write(header_content)
 
                 # tar files have a 512 byte header (tar_info.tobuf()), and then the content
                 # content is padded to a multiple of 512 bytes
@@ -131,7 +139,6 @@ class StoreBackupCommand(Command):
                 space = len(content) % 512
                 if space != 0:
                     backup_file.write("\0" * (512 - space))
-            
 
         store.Quit()
         docstore.Quit()
@@ -144,7 +151,10 @@ class StoreBackupCommand(Command):
             self.print_help()
             self.exit()
 
+        self.host = options.host
+        self.port = options.port
         self.user = options.user
+        self.password = options.password
         self.store = options.store
         self.BackupStore()
 
@@ -210,8 +220,16 @@ class StoreRestoreCommand(Command):
         del metadata["BONGO.nmap.flags"]
         del metadata["BONGO.nmap.collection"]
         del metadata["BONGO.nmap.index"]
+        if "BONGO.uid" in metadata:
+            del metadata["BONGO.uid"]
+        if "BONGO.type" in metadata:
+            del metadata["BONGO.type"]
+        if "BONGO.flags" in metadata:
+            del metadata["BONGO.flags"]
+        if "BONGO.imapuid" in metadata:
+            del metadata["BONGO.imapuid"]
         for key, value in metadata.items():
-            if key[0:10] == "BONGO.nmap":
+            if key[0:6] == "BONGO.":
                 prop = key[6:]
                 try:
                     store.PropSet(guid, prop, value)
@@ -236,7 +254,7 @@ class StoreRestoreCommand(Command):
             del metadata["BONGO.type"]
 
         try:
-            new_guid = store.Write(collection, file_type, content, filename=filename, guid=file_guid)
+            new_guid = store.Write(collection, file_type, content, filename=filename, guid=file_guid, noProcess=True)
         except: 
             print "Failed to restore %s/%s" % (collection, filename)
             return
@@ -253,6 +271,7 @@ class StoreRestoreCommand(Command):
         try:
             if "BONGO.uid" in metadata:
                 store.Create(collection, guid=metadata["BONGO.uid"])
+                del metadata["BONGO.uid"]
             else:
                 store.Create(collection)
         except:

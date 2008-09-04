@@ -1275,13 +1275,17 @@ NMAPReadConfigFile(const unsigned char *file, unsigned char **output)
              printf("couldn't load config from store\n");
              goto nmapfinish;
         }
-		
+
         *output = MemMalloc(sizeof(unsigned char) * (count+1));
         written = NMAPReadCount(conn, *output, count);
         NMAPReadCrLf(conn);
         if (written != count) {
             printf("couldn't read config from store\n");
             goto nmapfinish;
+        }
+        if (count == 0) {
+            // take into account "empty" files
+            *output = '\0';
         }
     }
     retcode = TRUE;

@@ -39,16 +39,16 @@ ReadSourceFile(void *source, char *buffer, unsigned long maxRead)
 }
 
 __inline static CCode
-ReportHit(Connection *conn, DStoreDocInfo *info)
+ReportHit(Connection *conn, StoreObject *document)
 {
-    return(ConnWriteF(conn, 
+	// FIXME: imap uids
+    return ConnWriteF(conn, 
                        "2001 " GUID_FMT " %08x\r\n", 
-                       info->guid, 
-                       info->imapuid ? info->imapuid : (uint32_t) info->guid));
+                       document->guid, (uint32_t) document->guid);
 }
 
 static CCode
-SearchDocument(StoreClient *client, DStoreDocInfo *info, 
+SearchDocument(StoreClient *client, StoreObject *document, 
                StoreSearchInfo *query, FILE *f)
 {
     CCode ccode = 0;
@@ -62,12 +62,14 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
             ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
             break;
         }
+        /* FIXME 
         if (BongoStreamSearchRfc822Header(ReadSourceFile, (void *)f, info->data.mail.headerSize, 
                                  NULL, query->query))
         {
             ccode = ReportHit(client->conn, info);
             break;
         }
+        */
         if (query->type == STORE_SEARCH_HEADERS) {
             break;
         }
@@ -78,7 +80,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
         MimeReport *report = NULL;
         unsigned i;
 
-        switch (MimeGetInfo(client, info, &report)) {
+        switch (MimeGetInfo(client, document, &report)) {
         case 1:
 
             MimeReportFixup(report);
@@ -98,7 +100,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
                                              line->charset, line->encoding, line->subtype,
                                              query->query))
                 {
-                    ccode = ReportHit(client->conn, info);
+                    ccode = ReportHit(client->conn, document);
                     break;
                 }
             }
@@ -129,6 +131,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
 
     case STORE_SEARCH_HEADER: {
         /* 'subject' and 'from' fields are special cases because they are already in utf-8 in the info structure */
+        /* FIXME
         if (info->data.mail.subject && XplStrCaseCmp(query->header, "subject") == 0) {
             if (BongoStrCaseStr(info->data.mail.subject, query->query)) {
                 ccode = ReportHit(client->conn, info);
@@ -153,7 +156,7 @@ SearchDocument(StoreClient *client, DStoreDocInfo *info,
         {
             ccode = ReportHit(client->conn, info);
         }
-
+		*/
         break;
     }
 
@@ -168,37 +171,34 @@ CCode
 StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query)
 {
     CCode ccode = 0;
-    DStoreStmt *stmt = NULL;
-    DStoreDocInfo info;
-    DStoreDocInfo child;
+    StoreObject document;
+//    DStoreStmt *stmt = NULL;
+//    DStoreDocInfo info;
+//    DStoreDocInfo child;
     char path[XPL_MAX_PATH + 1];
     FILE *f = NULL;
-
-    ccode = StoreCheckAuthorizationGuid(client, guid, STORE_PRIV_READ);
+    
+    // find the document to search, check our permission on it.
+    ccode = StoreObjectFind(client, guid, &document);
     if (ccode) {
-        return ccode;
-    }
+    	// FIXME: did used to disclose MSG4220NOGUID if perms were ok - how
+    	// did it work that out? perms on root collection maybe?
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
+    
+    ccode = StoreObjectCheckAuthorization(client, &document, STORE_PRIV_READ);
+    if (ccode) return ccode;
 
-    switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-    case 0:
-        return ConnWriteStr(client->conn, MSG4220NOGUID);
-    case 1:
-        break;
-    case -1:
-    default:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    }
-
-    // we're searching a document
-    if (!STORE_IS_FOLDER(info.type)) {
-        FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
+    if (! STORE_IS_FOLDER(document.type)) {
+    	// we're searching a document
+        FindPathToDocument(client, document.collection_guid, document.guid, path, sizeof(path));
 
         f = fopen(path, "rb");
         if (!f) {
             return ConnWriteStr(client->conn, MSG4224CANTREAD);
         }
         
-        ccode = SearchDocument(client, &info, query, f);
+        ccode = SearchDocument(client, &document, query, f);
         if (-1 != ccode) {
             ccode = ConnWriteStr(client->conn, MSG1000OK);
         }
@@ -206,7 +206,8 @@ StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query)
         return ccode;
     }
     
-    // we're searching a collection
+    // we're searching a collection - so search each document in it
+	/* FIXME
     stmt = DStoreListColl(client->handle, guid, -1, -1);
     if (!stmt) {
         return ConnWriteStr(client->conn, MSG5005DBLIBERR);
@@ -235,10 +236,10 @@ StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query)
             break;
         }
     }
+    */
     ccode = ConnWriteStr(client->conn, MSG1000OK);
     
-finish:
-    if (stmt) DStoreStmtEnd(client->handle, stmt);
+//finish:
+    
     return ccode;
 }
-

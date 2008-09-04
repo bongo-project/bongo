@@ -23,8 +23,11 @@
 #define _STORED_H
 
 #define LOGGERNAME "store"
+#define _NO_BONGO_GLOBALS "yes"
 
+#include <config.h>
 #include <xpl.h>
+#include <msgapi.h>
 
 XPL_BEGIN_C_LINKAGE
 
@@ -39,6 +42,8 @@ XPL_BEGIN_C_LINKAGE
 #include <bongocal.h>
 
 #include <logger.h>
+
+#include "properties.h"
 
 /** Store stuff: **/
 
@@ -63,136 +68,15 @@ typedef enum {
     CONVERSATION_SOURCE_DRAFTS = (1 << 6),
 } ConversationSource;
 
-typedef struct _DStoreDocInfo {
-    uint32_t flags;
-    int32_t type;
-    int64_t length;            // size of the document
-    
-    uint32_t timeCreatedUTC;   /* for imap */
-    uint32_t timeModifiedUTC;  /* FIXME: remove this */
-
-    int32_t version;
-    int32_t indexed;           /* FIXME: remove this */
-
-    uint32_t imapuid;     
-
-    union {
-        struct {
-            char *subject;
-            uint32_t numDocs;
-            uint32_t numUnread;
-            uint64_t lastMessageDate;
-            uint32_t sources;
-        } conversation;
-        
-        struct {
-            uint64_t sent;
-            uint32_t headerSize;
-            char *subject;
-            char *from;
-            char *messageId;
-            char *parentMessageId;
-            char *listId;          /* mailing list */
-            int32_t mimeLines;     /* 0 unknown, -1 none/error */
-        } mail;
-
-        struct {
-
-            
-        } calendar;
-
-        struct {
-            char start[DATETIME_LEN + 1];
-            char end[DATETIME_LEN + 1];
-            const char *uid;
-            const char *summary;
-            const char *location;
-            const char *stamp;
-        } event;
-
-        struct {
-            int needsCompaction;
-        } collection;
-
-        uint8_t padding[512];
-    } data;
-    
-    /* keys go at bottom of struct.  guid must be the first key */
-    uint64_t guid;
-    uint64_t collection;
-    uint64_t conversation;
-
-    char filename[STORE_MAX_PATH];  /* for collection: path w/o trailing slash */
-                                    /* for document:   full path '/' <docname> */
-                                    /*        docnames may not contain slashes */
-} DStoreDocInfo;
-
-
-typedef enum {
-    STORE_PROP_ALL,
-
-    STORE_PROP_EXTERNAL,
-
-    STORE_PROP_ACCESS_CONTROL,      /* an awkwardly-handled external property  */
-
-    STORE_PROP_COLLECTION,
-    STORE_PROP_CREATED,
-    STORE_PROP_DOCUMENT,
-    STORE_PROP_FLAGS,
-    STORE_PROP_GUID,
-    STORE_PROP_INDEX,
-    STORE_PROP_LASTMODIFIED,
-    STORE_PROP_LENGTH,
-    STORE_PROP_TYPE,
-    STORE_PROP_VERSION,
-
-    STORE_PROP_EVENT_ALARM,         /* another external property */
-    STORE_PROP_EVENT_CALENDARS,
-    STORE_PROP_EVENT_END,
-    STORE_PROP_EVENT_LOCATION,
-    STORE_PROP_EVENT_START,
-    STORE_PROP_EVENT_SUMMARY,
-    STORE_PROP_EVENT_UID,
-    STORE_PROP_EVENT_STAMP,
-
-    STORE_PROP_MAIL_CONVERSATION,
-    STORE_PROP_MAIL_HEADERLEN,
-    STORE_PROP_MAIL_IMAPUID,
-    STORE_PROP_MAIL_MESSAGEID,
-    STORE_PROP_MAIL_PARENTMESSAGEID,
-    STORE_PROP_MAIL_SENT,
-    STORE_PROP_MAIL_SUBJECT,
-
-    STORE_PROP_CONVERSATION_COUNT,
-    STORE_PROP_CONVERSATION_DATE,
-    STORE_PROP_CONVERSATION_SUBJECT,
-    STORE_PROP_CONVERSATION_UNREAD,
-
-} StorePropertyType;
-
-#define STORE_IS_EXTERNAL_PROPERTY_TYPE(_proptype)                                   \
-   (STORE_PROP_EXTERNAL == _proptype || STORE_PROP_ACCESS_CONTROL == _proptype ||    \
-    STORE_PROP_EVENT_ALARM == _proptype)
-
-typedef struct {
-    StorePropertyType type;
-    char *name;
-    char *value;
-    int valueLen;
-} StorePropInfo;
-
-
 /* Store Header Info stuff
    an array of these objects represents a header query in conjunctive normal form.
 */
-
 
 typedef enum {
     HEADER_INFO_OR   = 0,
     HEADER_INFO_NOT  = 1,
     HEADER_INFO_AND  = 2,
 } StoreHeaderInfoFlags;
-
 
 typedef struct {
     enum { 
@@ -205,10 +89,6 @@ typedef struct {
     int flags;
     char *value;
 } StoreHeaderInfo;
-
-
-#include "db.h"
-#include "alarmdb.h"
 
 /** Store agent stuff: **/
 
@@ -245,7 +125,6 @@ typedef struct _StoreToken {
     struct _StoreToken *next;
 } StoreToken;
 
-
 typedef struct _StoreClient StoreClient;
 
 #include "lock.h"
@@ -266,8 +145,8 @@ typedef struct _TimedCommand {
 
 struct _StoreClient {
     Connection *conn;
-    DStoreHandle *handle;
     unsigned int flags;
+    MsgSQLHandle *storedb;
     BongoMemStack memstack;
     int lockTimeoutMs;
     TimedCommand *tc;
@@ -309,16 +188,8 @@ struct _StoreClient {
         int insertions;
         int updates;
         int deletions;
-    } stats;    
-
-    struct {
-        AlarmDBHandle *alarmdb;
-    } system;
+    } stats;
 };
-
-
-typedef struct _DBPoolEntry DBPoolEntry;
-
 
 struct StoreGlobals {
     BongoAgent agent;
@@ -378,8 +249,6 @@ struct StoreGlobals {
 
     struct {
         BongoHashtable *entries;
-        DBPoolEntry *first;
-        DBPoolEntry *last;
         XplMutex lock;
         int capacity;
     } dbpool;
@@ -397,8 +266,7 @@ struct StoreGlobals {
 
 extern struct StoreGlobals StoreAgent;
 
-
-#include "index.h"
+#include "object-model.h"
 
 /** store.c **/
 int IsOwnStoreSelected(StoreClient *client);
@@ -414,12 +282,6 @@ void UnselectUser(StoreClient *client);
 void UnselectStore(StoreClient *client);
 void DeleteStore(StoreClient *client);
 
-void FindPathToCollection(StoreClient *client, uint64_t collection, 
-                       char *dest, size_t size);
-void FindPathToDocument(StoreClient *client, uint64_t collection, 
-                       uint64_t document, char *dest, size_t size);
-
-
 CCode WriteDocumentHeaders(StoreClient *client, FILE *fh, const char *folder, time_t tod);
 
 NMAPDeliveryCode DeliverMessageToMailbox(StoreClient *client,
@@ -431,29 +293,25 @@ NMAPDeliveryCode DeliverMessageToMailbox(StoreClient *client,
 int ImportIncomingMail(StoreClient *client);
 
 const char *StoreProcessDocument(StoreClient *client, 
-                                 DStoreDocInfo *info,
-                                 DStoreDocInfo *collection,
-                                 char *path,
-                                 uint64_t linkGuid);
+                                 StoreObject *document,
+                                 const char *path);
 
-const char *
-StoreIndexDocument(StoreClient *client, 
-                   DStoreDocInfo *info,
-                   DStoreDocInfo *collection,
-                   IndexHandle *indexer,
-                   char *path);
+BongoJsonResult GetJson(StoreClient *client, StoreObject *object, BongoJsonNode **node, char *path);
 
-int SetParentCollectionIMAPUID(StoreClient *client, 
-                               DStoreDocInfo *parent,
-                               DStoreDocInfo *doc);
+/** watch.c **/
+void StoreWatcherInit(void);
+int StoreWatcherAdd(StoreClient *client, uint64_t collection);
+int StoreWatcherRemove(StoreClient *client, uint64_t collection);
+void StoreWatcherEvent(StoreClient *client, StoreObject *object, 
+                       StoreWatchEvents event);
 
-BongoJsonResult GetJson(StoreClient *client, DStoreDocInfo *doc, BongoJsonNode **node, char *path);
+/** db.c **/
 
-int StoreWatcherAdd(StoreClient *client, NLockStruct *cLock);
-int StoreWatcherRemove(StoreClient *client, NLockStruct *cLock);
-void StoreWatcherEvent(StoreClient *client, NLockStruct *cLock, 
-                       StoreWatchEvents event,
-                       uint64_t guid, uint32_t imapuid, uint32_t flags);
+int     DBPoolInit(void);
+int  StoreDBOpen(StoreClient *client, const char *user);
+void StoreDBClose(StoreClient *client);
+
+/** lock.c **/
 
 CCode StoreShowWatcherEvents(StoreClient *client);
 
@@ -506,6 +364,7 @@ int StoreSetupCommands(void);
 #include "command.h"
 
 /** auth.c **/
+#if 0
 CCode StoreCheckAuthorization(StoreClient *client, DStoreDocInfo *info,
                               unsigned int neededPrivileges);
 
@@ -520,6 +379,7 @@ int StoreCheckAuthorizationGuidQuiet(StoreClient *client, uint64_t guid,
 
 CCode StoreCheckAuthorizationPath(StoreClient *client, const char *path,
                                   unsigned int neededPrivileges);
+#endif
 
 int StoreParseAccessControlList(StoreClient *client, const char *acl);
 
@@ -528,9 +388,21 @@ void GuidReset(void);
 void GuidAlloc(unsigned char *guid);
 int NmapCommandGuid(void *param);
 
-/** mime.c **/
+/** maildir.c **/
+void FindPathToCollection(StoreClient *client, uint64_t collection, 
+                          char *dest, size_t size);
+void FindPathToDocument(StoreClient *client, uint64_t collection, 
+                        uint64_t document, char *dest, size_t size);
+void FindPathToObject(StoreClient *client, StoreObject *object, 
+                      char *dest, size_t size);
+int MaildirNew(const char *store_path, uint64_t collection);
+int MaildirRemove(const char *store_path, uint64_t collection);
+int MaildirTempDocument(StoreClient *client, uint64_t collection, char *dest, size_t size);
+int MaildirDeliverTempDocument(StoreClient *client, uint64_t collection, const char *path, uint64_t uid);
 
-int MimeGetInfo(StoreClient *client, DStoreDocInfo *info, MimeReport **outReport);
+/** mime.c **/
+#include "mime.h"
+int MimeGetInfo(StoreClient *client, StoreObject *object, MimeReport **outReport);
 int MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport);
 
 /** config.c **/

@@ -22,6 +22,7 @@
 /* Routines for parsing and manipulating mail messages */
 
 #include <config.h>
+#include "stored.h"
 
 #include <xpl.h>
 #include <memmgr.h>
@@ -34,6 +35,7 @@
 #include <connio.h>
 #include <bongoutil.h>
 #include <bongostream.h>
+#include <assert.h>
 
 #include "mail-parser.h"
 #include "mime.h"

@@ -8,6 +8,7 @@ import time
 import random
 import md5
 import socket
+import string
 
 class DocTypes:
     Unknown = 0x0001
@@ -358,7 +359,7 @@ class CalendarACL :
 
 class StoreClient:
     def __init__(self, user, owner, authToken=None, authCookie=None,
-                 authPassword=None):
+                 authPassword=None, host="localhost", port=689):
         #from libbongo.libs import msgapi
         self.owner = self.user = None
         
@@ -367,9 +368,6 @@ class StoreClient:
         #    raise bongo.BongoError ("Could not look up nmap host for user %s" % owner)
         #(host, port) = addr
         
-        host = "localhost"
-        port = 689
-
         if authCookie:
             self.connection = StoreConnection(host, port, systemAuth=False)
             if not self.connection.CookieAuth(user, authCookie):
@@ -668,6 +666,20 @@ class StoreClient:
         if r.code != 1000:
             raise CommandError(r)
 
+    # this function is here to coerce strings in unknown encodings
+    # into something approaching utf-8. This is obviously lossy,
+    # and we really don't want to have to do this - need to get the
+    # store as utf-8 clean as possible, really.
+    def force_utf8(self, str):
+        out = []
+        append = out.append
+        for ch in str:
+            if ch < "\200":
+                append(ch)
+            else:
+                append('?')
+        return string.join(out, "")
+
     def PropGet(self, doc, name=None):
         command = "PROPGET %s" % doc
 
@@ -677,7 +689,11 @@ class StoreClient:
             if r.code != 2001:
                 raise CommandError(r)
             (key, length) = r.message.split(" ", 2)
-            data = unicode(self.stream.Read(int(length)), "utf-8")
+            raw_data = self.stream.Read(int(length))
+            try:
+                data = unicode(raw_data, "utf-8")
+            except UnicodeDecodeError, e:
+                data = self.force_utf8(raw_data)
             # eat the \r\n afterward
             self.stream.Read(2)
             return data
@@ -693,11 +709,24 @@ class StoreClient:
                 continue
 
             (key, length) = r.message.split(" ", 2)
-            props[key] = unicode(self.stream.Read(int(length)), "utf-8")
+            raw_data = self.stream.Read(int(length))
+            try:
+                props[key] = unicode(raw_data, "utf-8")
+            except UnicodeDecodeError, e:
+                data = self.force_utf8(raw_data)
             # eat the \r\n afterward
             self.stream.Read(2)
             r = self.stream.GetResponse()
-
+        # automatically pull out imap_uid from Bongo 0.3.
+        if name is None and not props.has_key("nmap.mail.imapuid"):
+            self.stream.Write("PROPGET %s nmap.mail.imapuid" % (doc))
+            r = self.stream.GetResponse()
+            if r.code != 2001:
+                raise CommandError(r)
+            (key, length) = r.message.split(" ", 2)
+            raw_data = self.stream.Read(int(length))
+            self.stream.Read(2)
+            props["nmap.mail.imapuid"] = raw_data
         return props
 
     def PropSet(self, doc, name, value=None):
@@ -850,7 +879,7 @@ class StoreClient:
         (guid, junk) = r.message.split(" ", 1)
         return guid
 
-    def Write(self, collection, type, data, filename=None, index=None, guid=None, timeCreated=None, flags=None, link=None):
+    def Write(self, collection, type, data, filename=None, index=None, guid=None, timeCreated=None, flags=None, link=None, noProcess=None):
         if data is None:
             data = ""
 
@@ -873,6 +902,9 @@ class StoreClient:
 
         if link is not None:
             command = command + " \"L%s\"" % link
+        
+        if noProcess is not None:
+            command = command + " N"
 
         self.stream.Write(command)
         

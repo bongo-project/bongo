@@ -135,6 +135,8 @@ EXPORT void *MemReallocDebugDirect(void *Source, size_t Size, const char *Source
 #define MemNew0(type, num) ((type*)MemMalloc0(sizeof(type) * (num)))
 #define MemNew(type, num) ((type*)MemMalloc(sizeof(type) * (num)))
 
+EXPORT void * MemClear(void *Source, size_t Size);
+
 /*    Memory De-Allocation API's    */
 EXPORT void MemFreeDirect(void *Source);
 EXPORT void MemFreeDebugDirect(void *Source, const char *SourceFile, unsigned long SourceLine);

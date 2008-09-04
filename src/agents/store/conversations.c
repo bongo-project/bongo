@@ -127,7 +127,14 @@ CreateConversation(DStoreHandle *handle,
                    DStoreDocInfo *conversation)
 {   
     int ccode;
+    // FIXME
     
+    // create a new StoreObject for this conversation
+    
+    // set "bongo.conversation.subject" property?
+    
+    return 0;
+    /*
     memset(conversation, 0, sizeof(DStoreDocInfo));
      
     conversation->guid = 0;
@@ -150,11 +157,13 @@ CreateConversation(DStoreHandle *handle,
     
     return DStoreSetPropertySimple(handle, conversation->guid, 
                                    "bongo.conversation.subject", displaySubject);
+	*/
 }
 
 
 /* recompute merge metadata from the given mail into conversation metadata */
 
+#if 0
 int
 ConversationUpdateWithNewMail(DStoreHandle *handle,
                               DStoreDocInfo *conversation,
@@ -285,6 +294,7 @@ ConversationUpdateWithNewMail(DStoreHandle *handle,
 
     return DStoreSetDocInfo(handle, conversation);
 }
+#endif
 
 // update a conversation when a member has a new flag set.
 /** \internal
@@ -489,11 +499,12 @@ GetConversation(DStoreHandle *handle,
     } else {
         modifiedAfter = 0;
     }
-
+/*
     dcode = DStoreGetConversation(handle, 
                                   normalizedSubject, 
                                   modifiedAfter, 
                                   conversationOut);
+*
     
     if (dcode < 0) {
         goto done;
@@ -518,7 +529,6 @@ done :
     MemFree(displaySubject);
     return dcode;
 }
-
 
 void
 GetConversationSourceMask(const char *sourceName,
@@ -547,5 +557,3 @@ GetConversationSourceMask(const char *sourceName,
         *required = 0;
     }
 }
-
-

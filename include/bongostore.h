@@ -19,6 +19,8 @@
  * </Novell-copyright>
  ****************************************************************************/
 
+#include <config.h>
+
 #define BONGO_STORE_DEFAULT_PORT 689
 
 typedef enum {
@@ -108,17 +110,23 @@ typedef enum {
 
 typedef enum {
     STORE_PRINCIPAL_NONE = 0,
-    STORE_PRINCIPAL_USER,          /* a particular user */
-    STORE_PRINCIPAL_TOKEN,         /* a particular non-user, id'ed by their token */
-    STORE_PRINCIPAL_AUTHENTICATED, /* any authenticated user */
-    STORE_PRINCIPAL_ALL,           /* anyone at all */
+    STORE_PRINCIPAL_ALL = 1,           // anyone at all
+    STORE_PRINCIPAL_AUTHENTICATED = 2, // any authenticated user
+    STORE_PRINCIPAL_USER = 3,          // a particular user
+    STORE_PRINCIPAL_GROUP = 4,         // a member of a particular group
+    STORE_PRINCIPAL_TOKEN = 5         // a particular non-user, id'ed by their token
 } StorePrincipalType;
 
 
 #ifdef HAVE_INTTYPES_H
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
-#define STORE_GUID_FMT "%016" PRIxFAST64 
+#define FMT_UINT64_HEX "%" PRIxFAST64
+#define FMT_UINT64_DEC "%" PRIuFAST64
+#define STORE_GUID_FMT "%016" PRIxFAST64
 #else
+#error You don't have inttypes.h available. This will cause compile problems.
+#define FMT_UINT64_HEX "%llx"
+#define FMT_UINT64_DEC "%llu"
 #define STORE_GUID_FMT "%016llx"
 #endif

@@ -23,7 +23,6 @@
 #define BONGOCAL_H
 
 #include <xpl.h>
-#include <libical/ical.h>
 #include <bongojson.h>
 
 XPL_BEGIN_C_LINKAGE
@@ -417,15 +416,6 @@ BongoJsonObject *BongoCalValueString(const char *value);
 BongoJsonObject *BongoCalValueTime(BongoCalTime time);
 
 BongoCalType BongoCalTypeFromJson(BongoJsonObject *object);
-
-BongoJsonObject *BongoIcalPropertyToJson(icalproperty *prop);
-BongoJsonObject *BongoIcalPropertyToJson(icalproperty *prop);
-
-BongoJsonObject *BongoIcalComponentToJson(icalcomponent *comp, BOOL recurse);
-icalcomponent *BongoJsonComponentToIcal(BongoJsonObject *object, icalcomponent *parent, BOOL recurse);
-
-icalcomponent *BongoCalJsonToIcal(BongoJsonObject *obj);
-BongoJsonObject *BongoCalIcalToJson(icalcomponent *comp);
 
 /* Split a json calendar object into a json array of calendar objects
  * with one uid per object.  Destroys the original object */

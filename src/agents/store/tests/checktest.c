@@ -2,6 +2,7 @@
 #ifdef BONGO_HAVE_CHECK
 
 #include "conversations_test.c"
+#include "query_parser_test.c"
 // #include "mail_parser_test.c"
 
 // TODO Write your tests above, and/or
@@ -12,6 +13,7 @@ START_CHECK_SUITE_SETUP("Unit testing the store agent.\n")
     CHECK_SUITE_ADD_CASE(top_suite, tc_core  );
     CHECK_CASE_ADD_TEST (tc_core  , testnormalizesubject    );
 //    CHECK_CASE_ADD_TEST (tc_core  , testmailparser    );
+    CHECK_CASE_ADD_TEST (tc_core , testqueryparser );
     // TODO register additional tests here
 END_CHECK_SUITE_SETUP
 #else

@@ -6,7 +6,7 @@ bongocollector_SOURCES =			\
 	src/agents/collector/collector.h
 
 bongocollector_CPPFLAGS = $(AM_CPPFLAGS) \
-	$(LIBCURL_CPPFLAGS)
+	$(LIBCURL_CPPFLAGS) $(LIBICAL_CFLAGS)
 
 bongocollector_LDADD =						   \
 	libbongonmap.la						   \
@@ -20,7 +20,7 @@ bongocollector_LDADD =						   \
 	libbongoxpl.la						   \
 	$(top_builddir)/import/log4c/log4c/libbongolog4c.la	   \
 	$(LIBCURL_LIBS)						   \
-	$(top_builddir)/import/libical/src/libical/libical-bongo.la \
+	$(LIBICAL_LIBS)						   \
 	$(PTHREAD_LIBS)						   \
 	$(ALL_LIBS)
 

@@ -24,6 +24,7 @@
 #define COMMAND_H
 
 #include <xpl.h>
+#include "object-model.h"
 
 XPL_BEGIN_C_LINKAGE
 
@@ -44,6 +45,7 @@ typedef enum {
     /* collection commands */
     STORE_COMMAND_COLLECTIONS,
     STORE_COMMAND_CREATE,
+    STORE_COMMAND_LIST,
     STORE_COMMAND_MAILINGLISTS,
     STORE_COMMAND_REMOVE,
     STORE_COMMAND_RENAME,
@@ -54,29 +56,26 @@ typedef enum {
     /* document commands */
     STORE_COMMAND_COPY,
     STORE_COMMAND_DELETE,
-    STORE_COMMAND_INDEXED,
     STORE_COMMAND_FLAG,
     STORE_COMMAND_INFO,
-    STORE_COMMAND_LIST,
+    STORE_COMMAND_LINK,
+    STORE_COMMAND_LINKS,
+    STORE_COMMAND_UNLINK,
     STORE_COMMAND_MFLAG,
     STORE_COMMAND_MIME,
     STORE_COMMAND_MESSAGES,
     STORE_COMMAND_META,
     STORE_COMMAND_MOVE,
-    STORE_COMMAND_MWRITE,
     STORE_COMMAND_PROPGET,
     STORE_COMMAND_PROPSET,
     STORE_COMMAND_READ,
     STORE_COMMAND_REPLACE,
     STORE_COMMAND_SALVAGE,
-    STORE_COMMAND_UNINDEXED,
     STORE_COMMAND_WRITE,
 
     /* calendar commands */
     STORE_COMMAND_CALENDARS,
     STORE_COMMAND_EVENTS,
-    STORE_COMMAND_LINK,
-    STORE_COMMAND_UNLINK,
 
     /* conversation commands */
     STORE_COMMAND_CONVERSATION,
@@ -92,12 +91,14 @@ typedef enum {
     STORE_COMMAND_ALARMS,
 
     /* misc. commands */
+    STORE_COMMAND_ACL, /* GRANT and DENY */
     STORE_COMMAND_NOOP,
     STORE_COMMAND_TIMEOUT,
 
     /* debugging commands */
     STORE_COMMAND_REINDEX,
     STORE_COMMAND_RESET,
+    STORE_COMMAND_SHUTDOWN
 } StoreCommand;
 
 typedef enum {
@@ -133,14 +134,14 @@ CCode StoreCommandAUTHUSER(StoreClient *client,
 CCode StoreCommandCALENDARS(StoreClient *client, unsigned long mask,
                             StorePropInfo *props, int propcount);
 
-CCode StoreCommandCOLLECTIONS(StoreClient *client, DStoreDocInfo *collections);
+CCode StoreCommandCOLLECTIONS(StoreClient *client, StoreObject *container);
 
-CCode StoreCommandCONVERSATION(StoreClient *client, uint64_t guid,
+CCode StoreCommandCONVERSATION(StoreClient *client, StoreObject *conversation,
                                StorePropInfo *props, int propcount);
 
 CCode StoreCommandCONVERSATIONS(StoreClient *client, const char *source, 
                                 const char *query, 
-                                int start, int end, uint64_t center, 
+                                int start, int end, StoreObject *center, 
                                 uint32_t flagsmask, uint32_t flags,
                                 int displayTotal,
                                 StoreHeaderInfo *headers, int headercount, 
@@ -150,25 +151,23 @@ CCode StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout);
 
 CCode StoreCommandCOOKIEDELETE(StoreClient *client, const char *token);
 
-CCode StoreCommandCOPY(StoreClient *client, uint64_t guid, DStoreDocInfo *collection);
+CCode StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collection);
 
 CCode StoreCommandCREATE(StoreClient *client, char *collection, uint64_t guid);
 
-CCode StoreCommandDELETE(StoreClient *client, uint64_t guid);
+CCode StoreCommandDELETE(StoreClient *client, StoreObject *object);
 
 CCode StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
                           char *filename, size_t bytes);
 
 CCode StoreCommandEVENTS(StoreClient *client, char *startUTC, char *endUTC, 
-                         DStoreDocInfo *calendar, unsigned int mask, char *uid,
+                         StoreObject *calendar, unsigned int mask, char *uid,
                          const char *query, int start, int end,
                          StorePropInfo *props, int propcount);
 
-CCode StoreCommandFLAG(StoreClient *client, uint64_t guid, uint32_t change, int mode);
+CCode StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int mode);
 
-CCode StoreCommandINDEXED(StoreClient *client, int value, uint64_t guid);
-
-CCode StoreCommandINFO(StoreClient *client, uint64_t guid,
+CCode StoreCommandINFO(StoreClient *client, StoreObject *object,
                        StorePropInfo *props, int propcount);
 
 CCode StoreCommandINSET(StoreClient *client, int value, uint64_t guid);
@@ -177,10 +176,12 @@ CCode StoreCommandISEARCH(StoreClient *client, const char *query, int start, int
                           StorePropInfo *props, int propcount);
 
 
-CCode StoreCommandLINK(StoreClient *client, uint64_t calendar, uint64_t guid);
+CCode StoreCommandLINK(StoreClient *client, StoreObject *document, StoreObject *related);
+
+CCode StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document);
 
 CCode StoreCommandLIST(StoreClient *client, 
-                       DStoreDocInfo *collection, int start, int end, 
+                       StoreObject *collection, int start, int end, 
                        uint32_t flagsmask, uint32_t flags,
                        StorePropInfo *props, int propcount);
 
@@ -191,7 +192,7 @@ CCode StoreCommandMANAGE(StoreClient *client);
 CCode StoreCommandMESSAGES(StoreClient *client,
                            const char *source, 
                            const char *query,
-                           int start, int end, uint64_t center,
+                           int start, int end, StoreObject *center,
                            uint32_t flagsmask, uint32_t flags,
                            int displayTotal,
                            StoreHeaderInfo *headers, int headercount,
@@ -199,31 +200,37 @@ CCode StoreCommandMESSAGES(StoreClient *client,
 
 CCode StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode);
 
-CCode StoreCommandMIME(StoreClient *client, uint64_t guid);
+CCode StoreCommandMIME(StoreClient *client, StoreObject *document);
 
-CCode StoreCommandMOVE(StoreClient *client, uint64_t guid, 
-                       DStoreDocInfo *collection, const char *filename);
+CCode StoreCommandMOVE(StoreClient *client, StoreObject *object, 
+                       StoreObject *collection, const char *filename);
 
-CCode StoreCommandMWRITE(StoreClient *client, 
-                         DStoreDocInfo *collection, StoreDocumentType type);
 
-CCode StoreCommandPROPGET(StoreClient *client, uint64_t guid, 
+void StoreCommandPropgetCollectCallback(StoreClient *client,
+            const char *name, const char *value, StoreObjectPropertyIterator *iterator);
+
+void StoreCommandPropgetShowAllCallback(StoreClient *client, 
+            char *name, char *value, StoreObjectPropertyIterator *iterator);
+
+CCode StoreCommandPROPGET(StoreClient *client, StoreObject *object, 
                           StorePropInfo *props, int propcount);
 
-CCode StoreCommandPROPSET(StoreClient *client, uint64_t guid, 
-                        StorePropInfo *prop);
+CCode StoreCommandPROPSET(StoreClient *client, StoreObject *object, 
+                        StorePropInfo *prop, int size);
 
 CCode StoreCommandQUIT(StoreClient *client);
 
-CCode StoreCommandREAD(StoreClient *client, uint64_t guid, 
-                       int64_t requestStart, int64_t requestLength);
+CCode StoreCommandREAD(StoreClient *client, StoreObject *object, 
+                       int64_t requestStart, uint64_t requestLength);
 
-CCode StoreCommandREINDEX(StoreClient *client, uint64_t guid);
+CCode StoreCommandREINDEX(StoreClient *client, StoreObject *document);
 
-CCode StoreCommandRENAME(StoreClient *client, DStoreDocInfo *collection,
+CCode StoreCommandRENAME(StoreClient *client, StoreObject *collection,
                          char *newfilename);
 
-CCode StoreCommandREMOVE(StoreClient *client, DStoreDocInfo *collection);
+CCode StoreCommandREMOVE(StoreClient *client, StoreObject *collection);
+
+CCode StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t rstart, uint64_t rend, uint32_t version);
 
 CCode StoreCommandRESET(StoreClient *client);
 
@@ -239,21 +246,24 @@ CCode StoreCommandTOKENS(StoreClient *client);
 
 CCode StoreCommandUNFO(StoreClient *client);
 
-CCode StoreCommandUNINDEXED(StoreClient *client, int value, uint64_t guid);
-
-CCode StoreCommandUNLINK(StoreClient *client, uint64_t calendar, uint64_t guid);
+CCode StoreCommandUNLINK(StoreClient *client, StoreObject *document, StoreObject *related);
 
 CCode StoreCommandUNSET(StoreClient *client);
 
 CCode StoreCommandUSER(StoreClient *client, char *user, char *password, int nouser);
 
-CCode StoreCommandWATCH(StoreClient *client, DStoreDocInfo *collection, int flags);
+CCode StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags);
 
 CCode StoreCommandWRITE(StoreClient *client, 
-                        DStoreDocInfo *collection, StoreDocumentType type, 
-                        int length, int startoffset, int endoffset,
-                        uint32_t addflags, uint64_t guid, const char *filename,
-                        uint64_t timeCreatedUTC, int requiredVersion, uint64_t calendar);
+				  StoreObject *collection, 
+				  int doctype, 
+				  uint64_t size,
+				  uint32_t addflags, 
+				  uint64_t guid, 
+				  const char *filename, 
+				  uint64_t timestamp, 
+				  uint64_t guid_link,
+				  int no_process);
 
 XPL_END_C_LINKAGE
 

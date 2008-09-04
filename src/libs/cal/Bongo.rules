@@ -12,7 +12,7 @@ libbongocal_la_SOURCES =			    \
 
 libbongocal_la_CPPFLAGS = $(AM_CPPFLAGS)	\
 	-DZONEINFODIR=\""$(datadir)/bongo/zoneinfo"\" \
-	-I$(top_srcdir)/import/libical/src
+	$(LIBICAL_CFLAGS)
 
 libbongocal_la_LIBADD =						   \
         libbongomemmgr.la					   \
@@ -20,15 +20,15 @@ libbongocal_la_LIBADD =						   \
         libbongoxpl.la						   \
         libbongo-json.la						   \
         libbongoconnio.la                       \
-        $(top_builddir)/import/libical/src/libical/libical-bongo.la \
+        $(LIBICAL_LIBS)						   \
         $(PTHREAD_LIBS)						   \
         $(ALL_LIBS)
 
 noinst_PROGRAMS += bongo-import-tz
 
 bongo_import_tz_SOURCES = src/libs/cal/bongo-import-tz.c
-bongo_import_tz_LDADD = libbongocal.la
-bongo_import_tz_CPPFLAGS = $(AM_CPPFLAGS) \
+bongo_import_tz_LDADD = libbongocal.la $(LIBICAL_LIBS)
+bongo_import_tz_CPPFLAGS = $(AM_CPPFLAGS) $(LIBICAL_CFLAGS)\
 	-I$(top_srcdir)/src/libs/cal
 
 src/libs/cal/all: libbongocal.la bongo-import-tz

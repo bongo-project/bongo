@@ -24,6 +24,7 @@
 
 #include <connio.h>
 #include <sqlite3.h>
+#include <xpl.h>
 
 #include <msgftrs.h>
 #include <msgdate.h>
@@ -59,6 +60,7 @@ EXPORT BOOL MsgAuthDeleteCookie(const char *username, const char *token);
 typedef struct _MsgSQLStatement {
 	sqlite3_stmt *stmt;
 	void *userdata;
+	const char *query;
 } MsgSQLStatement;
 
 typedef struct _MsgSQLHandle {
@@ -71,8 +73,10 @@ typedef struct _MsgSQLHandle {
 	} stmts;
 
 	BongoMemStack *memstack;
+	XplSemaphore *transactionLock;
 	int transactionDepth;
 	int lockTimeoutMs;
+	BOOL isNew;		// have we just created this?
 } MsgSQLHandle;
 
 typedef enum {
@@ -121,11 +125,24 @@ int	MsgSQLBeginTransaction(MsgSQLHandle *handle);
 int	MsgSQLCommitTransaction(MsgSQLHandle *handle);
 int	MsgSQLAbortTransaction(MsgSQLHandle *handle);
 int	MsgSQLCancelTransactions(MsgSQLHandle *handle);
+
 int	MsgSQLBindString(MsgSQLStatement *stmt, int var, const char *str, BOOL nullify);
-int	MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
+int	MsgSQLBindInt(MsgSQLStatement *stmt, int var, int value);
+int	MsgSQLBindInt64(MsgSQLStatement *stmt, int var, uint64_t value);
+int	MsgSQLBindNull(MsgSQLStatement *stmt, int var);
+
+int	MsgSQLResultInt(MsgSQLStatement *_stmt, int column);
+uint64_t MsgSQLResultInt64(MsgSQLStatement *_stmt, int column);
+int	MsgSQLResultText(MsgSQLStatement *_stmt, int column, char *result, size_t result_size);
+int	MsgSQLResultTextPtr(MsgSQLStatement *_stmt, int column, char **ptr);
 int	MsgSQLResults(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
+
+int	MsgSQLQuickExecute(MsgSQLHandle *handle, const char *query);
+int	MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
 void	MsgSQLFinalize(MsgSQLStatement *stmt);
+void	MsgSQLEndStatement(MsgSQLStatement *_stmt);
 int	MsgSQLStatementStep(MsgSQLHandle *handle, MsgSQLStatement *_stmt);
+uint64_t MsgSQLLastRowID(MsgSQLHandle *handle);
 
 
 // Misc. util functions

@@ -829,14 +829,14 @@ MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineS
 
 
 static int
-MimeGetHelper(StoreClient *client, DStoreDocInfo *info, MimeReport **outReport)
+MimeGetHelper(StoreClient *client, StoreObject *document, MimeReport **outReport)
 {
     char path[XPL_MAX_PATH + 1];
     FILE *fh = NULL;
     int result = 1;
     char buffer[CONN_BUFSIZE];
 
-    FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+    FindPathToDocument(client, document->collection_guid, document->guid, path, sizeof(path));
 
     fh = fopen(path, "rb");
     if (!fh) {
@@ -844,13 +844,14 @@ MimeGetHelper(StoreClient *client, DStoreDocInfo *info, MimeReport **outReport)
         goto finish;
     }
 
-    *outReport = MimeParse(fh, info->length, buffer, sizeof(buffer));
+    *outReport = MimeParse(fh, document->size, buffer, sizeof(buffer));
     if (!*outReport) {
         result = -5;
         goto finish;
     }
 
-    (void) DStoreSetMimeReport(client->handle, info->guid, *outReport);
+	// FIXME: cache mime information into DB?
+    // (void) DStoreSetMimeReport(client->handle, info->guid, *outReport);
         
 finish:
     if (fh) {
@@ -872,39 +873,17 @@ finish:
 
 
 int
-MimeGetInfo(StoreClient *client, DStoreDocInfo *info, MimeReport **outReport)
+MimeGetInfo(StoreClient *client, StoreObject *document, MimeReport **outReport)
 {
+/*
+  	FIXME
     DCode dcode;
 
     dcode = DStoreGetMimeReport(client->handle, info->guid, outReport);
     if (0 != dcode) {
         return dcode;
     }
+    */
 
-    return MimeGetHelper(client, info, outReport);
+    return MimeGetHelper(client, document, outReport);
 }
-
-
-
-int 
-MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport)
-{
-    DCode dcode;
-    DStoreDocInfo info;
-
-    dcode = DStoreGetMimeReport(client->handle, guid, outReport);
-    if (0 != dcode) {
-        return dcode;
-    }
-
-    dcode = DStoreGetDocInfoGuid(client->handle, guid, &info);
-    if (-1 == dcode) {
-        return -1;
-    } else if (0 == dcode) {
-        return -3;
-    }
-
-    return MimeGetHelper(client, &info, outReport);
-}
-
-

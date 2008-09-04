@@ -28,7 +28,7 @@
 #include <nmlib.h>
 #include <bongoagent.h>
 
-#include <libical/ical.h>
+#include <ical.h>
 
 #define AGENT_NAME "bongoalarm"
 #define AGENT_DN "Alarm Agent"

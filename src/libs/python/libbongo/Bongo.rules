@@ -27,6 +27,7 @@ libs_la_SOURCES =				\
 
 libs_la_CPPFLAGS = $(AM_CPPFLAGS)		\
 	$(PYTHON_CPPFLAGS)			\
+	$(LIBICAL_CFLAGS)			\
 	$(bongo_CFLAGS)
 
 libs_la_LDFLAGS = -avoid-version -module

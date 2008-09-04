@@ -7,6 +7,7 @@ bongoinclude_HEADERS =				\
 	include/connio.h			\
 	include/connio-trace.h			\
 	include/bongocal.h			\
+	include/bongocal-raw.h		\
 	include/bongocheck.h			\
 	include/bongojson.h			\
 	include/bongojsonrpc.h			\

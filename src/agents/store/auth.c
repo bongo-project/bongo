@@ -21,7 +21,6 @@
 
 #include <config.h>
 #include <xpl.h>
-#include <logger.h>
 #include <nmap.h>
 
 #include "stored.h"
@@ -37,8 +36,13 @@
 
 typedef struct {
     StorePrincipalType type;
+    
+    // this union _must_ be of all the same type, else assumptions elsewhere
+    // will fail..
     union {
+    	char *hack;
         char *user;
+        char *group;
         char *token;
     };
 } StorePrincipal;
@@ -46,14 +50,14 @@ typedef struct {
 
 /* Access Control Entry */
 typedef struct {
+	BOOL deny;
     StorePrincipal principal;
     unsigned int privileges;   /* granted privileges */
 } StoreACE;
 
-
-
 /* 
    <user-principal>         ::= 'user:' <username>
+   <group-principal>        ::= 'group:' <groupname>
    <token-principal>        ::= 'token:' <token>
    <principal>              ::= <user-principal> | <token-principal> | 'all' | 'auth'
    <operation>              ::= 'grant' | 'deny'
@@ -67,6 +71,8 @@ typedef struct {
 
    FIXME: we should store ACLs in the db in a pre-parsed form for speed. (bug 178217)
 */
+#if 0
+// FIXME: need to re-do how ACLs are set and read
 
 static int
 parseACE (char **ptr, StoreACE *ace)
@@ -82,9 +88,9 @@ parseACE (char **ptr, StoreACE *ace)
     /* operation */
     GetNextToken(q, p, ' ');
     if (!strncmp("grant", p, 5)) {
-        
+        ace->deny = FALSE;
     } else if (!strncmp("deny", p, 4)) {
-        return -1; /* unsupported */
+        ace->deny = TRUE;
     } else {
         return -1;
     }
@@ -101,6 +107,9 @@ parseACE (char **ptr, StoreACE *ace)
     } else if (!strncmp(p, "user:", 5)) {
         ace->principal.type = STORE_PRINCIPAL_USER;
         ace->principal.user = p + 5;
+    } else if (! strncmp(p, "group:", 6)) {
+    	ace->principal.type = STORE_PRINCIPAL_GROUP;
+    	ace->principal.group = p + 6;
     } else if (!strncmp(p, "token:", 6)) {
         ace->principal.type = STORE_PRINCIPAL_TOKEN;
         ace->principal.token =  p + 6;
@@ -172,253 +181,7 @@ StoreParseAccessControlList(StoreClient *client, const char *acl)
     }
     return 0;
 }
-
-
-/* 
-   modifies: privileges are ORed with any privileges found by this function.
-
-   returns: 0 on success
-            -1 db lib err
-            -2 corrupt acl
-
-*/
-
-static int
-computePrivileges (StoreClient *client, uint64_t guid,
-                   unsigned int *privileges)
-{
-    char buf[CONN_BUFSIZE + 1];
-    char *ptr;
-    StoreACE ace;
-    StoreToken *token;
-
-    switch (DStoreGetProperty(client->handle, guid, "nmap.access-control", 
-                              buf, sizeof(buf))) 
-    {
-    case -1:
-        return -1;
-    case 0:
-        return 0;
-    }
-
-    for (ptr = buf; *ptr; ) {
-        if (parseACE(&ptr, &ace)) {
-            return -2;
-        }
-        
-#if 0
-        printf("ACE: grant %s %s %x\r\n", 
-               STORE_PRINCIPAL_NONE == ace.principal.type ? "NONE" :
-               STORE_PRINCIPAL_ALL == ace.principal.type ? "ALL" :
-               STORE_PRINCIPAL_USER == ace.principal.type ? "user" :
-               STORE_PRINCIPAL_TOKEN == ace.principal.type ? "token" :
-               STORE_PRINCIPAL_AUTHENTICATED == ace.principal.type ? "authenticated" :
-               "????",
-               ace.principal.user, ace.privileges);
 #endif
-            
-        switch (ace.principal.type) {
-        case STORE_PRINCIPAL_NONE:
-        case STORE_PRINCIPAL_ALL:
-            goto accept;
-        case STORE_PRINCIPAL_AUTHENTICATED:
-            if (!HAS_IDENTITY(client) && !IS_MANAGER(client)) {
-                continue;
-            }
-            goto accept;
-        case STORE_PRINCIPAL_USER:
-            if (STORE_PRINCIPAL_USER != client->principal.type || 
-                strcmp(ace.principal.user, client->principal.name)) 
-            {
-                continue;
-            }
-            goto accept;
-        case STORE_PRINCIPAL_TOKEN:
-            for (token = client->principal.tokens;
-                 token;
-                 token = token->next)
-            {
-                if (!strcmp(token->data, ace.principal.token)) {
-                    goto accept;
-                }
-            }
-            continue;
-        }
-    accept:
-        *privileges |= ace.privileges;
-    } while (*ptr);
-
-    return 0;
-}
-
-
-/** Checks that the client is authorized to perform the requested 
-    operation on the given document.
-
-    returns: 0 if authorized
-             1 if unauthorized
-             -1 db lib error
-             -2 corrupt acl
-             -3 other error
-*/
-
-int
-StoreCheckAuthorizationQuiet(StoreClient *client, DStoreDocInfo *info, 
-                             unsigned int neededPrivileges)
-{
-    unsigned int privileges = 0;
-    int pcode;
-    DStoreDocInfo coll;
-    DStoreDocInfo *infoptr;
-
-    if (STORE_PRINCIPAL_USER == client->principal.type && 
-        (!strcmp(client->principal.name, client->storeName)))
-    {
-        /* user always has full permissions to her own store. */
-        return 0;
-    }
-    if ((!strncmp(client->storeName, "_system", 7)) && IS_MANAGER(client)) {
-        // agents have full permissions the system store. (might want to change this in future)
-        return 0;
-    }
-
-    infoptr = info;
-
-    while (1) {
-        pcode = computePrivileges (client, infoptr->guid, &privileges);
-        if (pcode) {
-            return pcode;
-        } 
-        
-        if (neededPrivileges == (privileges & neededPrivileges)) {
-            return 0;
-        } 
-
-        XplConsolePrintf("have privs: %x need: %x; checking parent (read is %x)\r\n", 
-                         privileges, neededPrivileges, STORE_PRIV_READ);
-        
-        /* don't have privs, check the parent collection */
-        switch (DStoreGetDocInfoGuid(client->handle, infoptr->collection, &coll)) {
-        case 1:
-            infoptr = &coll;
-            break;
-
-        case 0:
-            if (STORE_DOCTYPE_EVENT == info->type) {
-                /* didn't find privs for event, but maybe we can access a calendar */
-                BongoArray cals;
-                unsigned int i;
-                int result = 1;
-
-                if (BongoArrayInit(&cals, sizeof(uint64_t), 10)) {
-                    return -3;
-                }
-                if (DStoreFindCalendars(client->handle, info->guid, &cals)) {
-                    result = -1;
-                }
-                for (i = 0; i < cals.len && 1 == result; i++) {
-                    result = StoreCheckAuthorizationGuidQuiet(
-                        client, 
-                        BongoArrayIndex(&cals, uint64_t, i), 
-                        neededPrivileges
-                    );
-                }
-                BongoArrayDestroy(&cals, 0);
-
-                return result;
-            }
-
-            return 1;
-
-        case -1:
-        default:
-            return -1;
-        }
-    }
-}
-
-
-CCode
-StoreCheckAuthorization(StoreClient *client, DStoreDocInfo *info,
-                        unsigned int neededPrivileges)
-{
-    switch (StoreCheckAuthorizationQuiet(client, info, neededPrivileges)) {
-    case 0:
-        return 0;
-    case 1:
-        return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
-    case -1:
-        return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    case -2:
-        return ConnWriteStr(client->conn, MSG5006CORRUPTACL);
-    case -3:
-    default:
-        return ConnWriteStr(client->conn, MSG5004INTERNALERR);
-    }
-
-}
-
-
-int
-StoreCheckAuthorizationGuidQuiet(StoreClient *client, uint64_t guid,
-                                 unsigned int neededPrivileges)
-{
-    DStoreDocInfo info;
-
-    if (1 != DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-        return -1;
-    }
-
-    return StoreCheckAuthorizationQuiet(client, &info, neededPrivileges);
-}
-
-
-CCode StoreCheckAuthorizationGuid(StoreClient *client, uint64_t guid, 
-                                  unsigned int neededPrivileges)
-{
-    DStoreDocInfo info;
-
-    if (1 != DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-        return -1;
-    }
-
-    return StoreCheckAuthorization(client, &info, neededPrivileges);
-}
-
-
-CCode
-StoreCheckAuthorizationPath(StoreClient *client, const char *_path, 
-                            unsigned int neededPrivileges)
-{
-    DStoreDocInfo info;
-    char *p;
-    char *path = BongoMemStackPushStr(&client->memstack, _path);
-
-    p = path + strlen(path);
-
-    do {
-        switch (DStoreGetDocInfoFilename(client->handle, path, &info)) {
-        case 1:
-            return StoreCheckAuthorization(client, &info, neededPrivileges);
-        case 0:
-            break;
-        case -1:
-        default:
-            return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        }
-
-        --p;
-        p = strrchr(path, '/');
-        if (!p) {
-            /* the document or collection doesn't exist */
-            return StoreCheckAuthorizationGuid(client, STORE_ROOT_GUID, 
-                                               neededPrivileges);
-        }
-        *p = 0;
-
-    } while (1);
-}
-
 
 CCode 
 StoreCommandAUTHSYSTEM(StoreClient *client, char *md5hash)
@@ -444,5 +207,3 @@ success:
 	client->flags |= STORE_CLIENT_FLAG_MANAGER;
 	return ConnWriteStr(client->conn, MSG1000OK);
 }
-
-

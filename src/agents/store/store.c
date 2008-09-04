@@ -32,10 +32,7 @@
 #include "messages.h"
 #include "mime.h"
 #include "mail.h"
-#include "conversations.h"
 #include "calendar.h"
-#include "index.h"
-
 
 int
 IsOwnStoreSelected(StoreClient *client)
@@ -60,9 +57,7 @@ int
 StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
                       uint64_t *outGuid, int32_t *outVersion)
 {
-    int dcode = 0;
-    DStoreDocInfo info;
-    char path[XPL_MAX_PATH + 1];
+    StoreObject new_collection;
     char *p;
     int res;
     int namelen = strlen(name);
@@ -76,31 +71,28 @@ StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
         return -1;
     }
 
-    memset (&info, 0, sizeof(DStoreDocInfo));
-    info.type = STORE_DOCTYPE_FOLDER;
-    info.collection = 1; /* root guid */
-
-    if (guid) {
-        switch (DStoreGetDocInfoGuid(client->handle, guid, &info)) {
-        case -1:
-            return -2;
-        case 1:
-            return -3;
-        default:
-            break;
-        }
-    }
+    memset (&new_collection, 0, sizeof(StoreObject));
+    new_collection.type = STORE_DOCTYPE_FOLDER;
+    new_collection.collection_guid = 1; /* root guid */
+    
+	if (guid)
+		new_collection.guid = guid;	// check at some point?
 
     p = name;
     do {
-        info.guid = 0;
+    	// FIXME: recursively create any collections in our path which don't exist yet
+    	StoreObject collection;
+    	collection.guid = 0;
+
+/*    	
+    	collection.guid = 0;
         *p++ = '/';
         p = strchr(p, '/');
-        if (p) {
-            *p = 0;
-        } else {
-            info.guid = guid;
-        }
+        if (p)
+        	*p = 0;
+        else
+        	collection.guid = guid;
+        
            
         dcode = DStoreFindCollectionGuid(client->handle, name, &info.collection);
         if (-1 == dcode) {
@@ -125,90 +117,17 @@ StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
             return -2;
         }
         info.collection = info.guid;
-
-        res = MaildirNew(client->store, info.guid);
+*/
+        res = MaildirNew(client->store, collection.guid);
         if (res != 0) return res;
     } while (p);
 
-    if (outGuid) {
-        *outGuid = info.guid;
-    }
-    if (outVersion) {
-        *outVersion = info.version;
-    }
+    if (outGuid) *outGuid = new_collection.guid;
+    if (outVersion) *outVersion = new_collection.version;
+    
     return 0;
 }
                  
-
-/* Creates a new document, including any required ancestor collections.
-   The new document will have no content.
-
-   returns:  0 success
-            -1 bad document name
-            -2 db lib err
-            -4 io error
-            -5 permission denied
-*/
-
-int
-StoreCreateDocument(StoreClient *client, 
-                    StoreDocumentType type, 
-                    char *name, 
-                    uint64_t *outGuid)
-{
-    int dcode = 0;
-    DStoreDocInfo collinfo;
-    DStoreDocInfo info;
-    FILE *f;
-    char *p;
-    char path[XPL_MAX_PATH];
-
-    memset (&info, 0, sizeof(DStoreDocInfo));
-    info.type = type;
-
-    if (strlen(name) > STORE_MAX_PATH - 1) {
-        return -1;
-    }
-    strncpy(info.filename, name, sizeof(info.filename));
-    p = strrchr(info.filename, '/');
-    if (!p) {
-        return -1;
-    }
-    *p = 0;
-    
-    switch (DStoreGetDocInfoFilename(client->handle, info.filename, &collinfo)) {
-    case 0:
-        dcode = StoreCreateCollection(client, info.filename, 0, 
-                                      &info.collection, NULL);
-        if (dcode) {
-            return dcode;
-        }
-        break;
-    case 1:
-        info.collection = collinfo.guid;
-        break;
-    default:
-        return -1;
-    }
-    
-    *p = '/';
-    
-    if (DStoreSetDocInfo(client->handle, &info)) {
-        return -2;
-    }
-
-    FindPathToDocument(client, info.collection, info.guid, path, sizeof(path));
-    f = fopen(path, "ab");
-    if (!f) {
-        return -4;
-    }
-    fclose(f);
-    
-    *outGuid = info.guid;
-
-    return 0;
-}
-
 /* find the user's store path, creating it if necessary 
    path must be a buffer of size XPL_MAX_PATH + 1 or greater
    returns 0 on success, -1 o/w
@@ -260,30 +179,21 @@ SetupStore(const char *user, const char **storeRoot, char *path, size_t len)
 
 const char *
 StoreProcessDocument(StoreClient *client, 
-                     DStoreDocInfo *info,
-                     DStoreDocInfo *collection,
-                     char *path,
-                     uint64_t linkGuid)
+                     StoreObject *document,
+                     const char *path)
 {
     const char *result = NULL;
-    DStoreDocInfo conversation;
     void *mark = BongoMemStackPeek(&client->memstack);
 
     /* type-dependent processing */
 
-    switch (info->type) {
+    switch (document->type) {
     case STORE_DOCTYPE_MAIL:
-        result = StoreProcessIncomingMail(client, info, path, &conversation, linkGuid);
-        if (result == NULL) {
-            collection->imapuid = info->imapuid ? info->imapuid : info->guid;
-            if (DStoreSetDocInfo(client->handle, collection)) {
-                result = MSG5005DBLIBERR;
-            }
-            Log(LOG_INFO, "Processed mail with message-id %s", info->data.mail.messageId);
-        }
+        result = StoreProcessIncomingMail(client, document, path);
         break;
     case STORE_DOCTYPE_EVENT:
-        result = StoreProcessIncomingEvent(client, info, linkGuid);
+        // FIXME: how do we link this into a calendar automatically?
+        result = StoreProcessIncomingEvent(client, document, 0);
         break;
     default:
         break;
@@ -294,591 +204,137 @@ StoreProcessDocument(StoreClient *client,
     return result;
 }
 
-const char *
-StoreIndexDocument(StoreClient *client, 
-                   DStoreDocInfo *info,
-                   DStoreDocInfo *collection,
-                   IndexHandle *indexer,
-                   char *path)
-{
-    const char *result = NULL;
-    int freeindexer = !indexer;
-
-    /* Index the document */
-
-    if (!indexer) {
-        indexer = IndexOpen(client);
-        if (!indexer) return MSG4120INDEXLOCKED;
-    }
-    if (IndexDocument(indexer, client, info, path) != 0) {
-        result = MSG5007INDEXLIBERR;
-    }
-    if (freeindexer) {
-        IndexClose(indexer);
-    }
-
-    return result;
-}
-
-
-static size_t
-GenerateFromDelimiter(char *time, char *sender, char *buf, size_t len)
-{
-    int result;
-
-    if (' ' == time[3]) {
-        result = snprintf(buf, len, "From %s %s\r\n", sender, time);        
-    } else {
-        result = snprintf(buf, len, "From %s %c%c%c%s\r\n", 
-                          sender, time[0], time[1], time[2], time + 4);
-    }
-    buf[len-1] = 0;
-    return result;
-}
-
-
-/* FIXME - quota warning (bug 174118) */
-
-/* requires: msgfile open for reading, with file pointer rewound to beginning 
-             mboxfile open for writing, with file pointer set to the end of file
-             caller is responsible for locking/transactions
-
-   modifies: appends mail record to mboxfile, and leaves that file pointer at EOF
-             leaves msgfile pointer at EOF
-             writes are not flushed and files are not closed.
-
-   returns: a DELIVERY code
-*/
-
-static NMAPDeliveryCode
-CopyMessageToMailbox(StoreClient *client,
-                     FILE *msgfile, FILE *mboxfile, 
-                     char *recipient, 
-                     char *sender, char *authSender, char *mbox,
-                     unsigned long scmsID, int messageSize, unsigned long flags)
-{
-    size_t count;
-    size_t overhead;
-    char timeBuffer[80];
-    time_t time_of_day;
-    char buffer[CONN_BUFSIZE];
-    long startoff;
-    long endoff;
-
-    DStoreDocInfo info;
-
-    memset(&info, 0, sizeof(info));
-
-    info.flags = flags;
-    info.type = STORE_DOCTYPE_MAIL;
-
-    if (-1 == (startoff = ftell(mboxfile)) || 
-        sizeof(info) != fwrite(&info, sizeof(char), sizeof(info), mboxfile))
-    {
-        goto StoreIOError;
-    }
-
-    time(&time_of_day);
-    strftime(timeBuffer, 80, "%a %b %d %H:%M %Y", gmtime(&time_of_day));
-    overhead = GenerateFromDelimiter(timeBuffer, sender, buffer, sizeof(buffer));
-    if (overhead != fwrite(buffer, sizeof(char), overhead, mboxfile)) {
-        goto StoreIOError;
-    }
-
-    if (authSender && authSender[0] != '-') {
-        overhead = sprintf(buffer, "X-Auth-OK: %s\r\n", authSender);
-    } else {
-        overhead = sprintf(buffer, "X-Auth-No: \r\n");
-    }
-    if (overhead != fwrite(buffer, sizeof(char), overhead, mboxfile)) {
-        goto StoreIOError;
-    }
-
-    if (flags) {
-        overhead = sprintf(buffer, "X-NIMS-flags: %lu\r\n", flags);
-        if (overhead != fwrite(buffer, sizeof(char), overhead, mboxfile)) {
-            goto StoreIOError;
-        }
-    }
-
-    if (mbox) {
-        snprintf(info.filename, sizeof(info.filename), "/mail%s%s", (mbox[0] == '/') ? "" : "/", mbox);
-        info.filename[sizeof(info.filename)-1] = 0;
-        overhead = sprintf(buffer, "X-Mailbox: %s\r\n", mbox);
-        if (overhead != fwrite(buffer, sizeof(char), overhead, mboxfile)) {
-            goto StoreIOError;
-        }
-        if (!strcmp(mbox, "/INBOX") || !strcmp(mbox, "INBOX")) {
-            info.collection = STORE_MAIL_INBOX_GUID;
-        }
-    } else {
-        strncpy(info.filename, "/mail/INBOX", sizeof(info.filename));
-        info.collection = STORE_MAIL_INBOX_GUID;
-    }
-    
-    MsgGetRFC822Date(-1, 0, timeBuffer);
-    overhead = fprintf(mboxfile,
-                       "Received: from %d.%d.%d.%d [%d.%d.%d.%d] by %s\r\n\twith NMAP (%s); %s\r\n",
-                       client->conn->socketAddress.sin_addr.s_net,
-                       client->conn->socketAddress.sin_addr.s_host,
-                       client->conn->socketAddress.sin_addr.s_lh,
-                       client->conn->socketAddress.sin_addr.s_impno,
-
-                       client->conn->socketAddress.sin_addr.s_net,
-                       client->conn->socketAddress.sin_addr.s_host,
-                       client->conn->socketAddress.sin_addr.s_lh,
-                       client->conn->socketAddress.sin_addr.s_impno,
-
-                       StoreAgent.agent.officialName,
-                       AGENT_NAME,
-                       timeBuffer);
-    if (overhead < 0) {
-        goto StoreIOError;
-    }
-
-    if (scmsID) {
-        /* We're using SCMS, only write our minimal header, stop at the body */
-        overhead = sprintf(buffer, "X-SCMS-ID: %lu\r\n", scmsID);
-        if (overhead != fwrite(buffer, sizeof(char), overhead, mboxfile)) {
-            goto StoreIOError;
-        }
-
-        overhead = sprintf(buffer, "\r\nThis message is stored in SCMS\r\n");
-        if (overhead != fwrite(buffer, sizeof(char), overhead, mboxfile)) {
-            goto StoreIOError;
-        }
-    } else {
-        overhead = sprintf(buffer, "Return-Path: <%s>\r\n", sender);
-        if (overhead != fwrite(buffer, sizeof( char), overhead, mboxfile)) {
-            goto StoreIOError;
-        }
-
-        while (!feof(msgfile)) {
-            count = fread(buffer, sizeof(char), sizeof(buffer), msgfile);
-            if (count > 0) {
-                if (count != fwrite(buffer, sizeof(char), count, mboxfile)) {
-                    goto StoreIOError;
-                }
-            } else if (ferror(msgfile)) {
-                goto StoreIOError;
-            }
-        }
-        
-        //XplSafeAdd(NMAP.stats.storedLocal.bytes, (messageSize + 1023) / 1024);
-        //XplSafeIncrement(NMAP.stats.storedLocal.count);
-    }
-
-    if (2 != fwrite("\r\n", sizeof(unsigned char), 2, mboxfile)) {
-        goto StoreIOError;
-    }
-
-    if (-1 == (endoff = ftell(mboxfile)) || 
-        fseek(mboxfile, startoff, SEEK_SET))
-    {
-        goto StoreIOError;
-    }
-
-    info.length = endoff - startoff - sizeof(info);
-    if (sizeof(info) != fwrite(&info, sizeof(char), sizeof(info), mboxfile) ||
-        fseek(mboxfile, 0, SEEK_END))
-    {
-        goto StoreIOError;
-    }
-
-    return DELIVER_SUCCESS;
-
-StoreIOError:
-
-    Log (LOG_ERROR, "Couldn't deliver mail to incoming file: %s", strerror(errno));
-    if (ENOSPC == errno) {
-        return DELIVER_QUOTA_EXCEEDED;
-    }
-    return DELIVER_TRY_LATER;
-}
-
 /* deliver message to a mailbox 
    msgfile must be an open file whose file pointer set to the start of the file.
 
-   Implementation: This function actually delivers mail to an "incoming" file, 
-   which is read upon store selection.  
+   Implementation: this delivers mail straight into the store. Previously it wrote to
+   an 'incoming' file, leading to long wait selecting a store when lots of mail is waiting.
 */
 
-/* FIXME: If something goes wrong while writing to the incoming file, the store
-   won't be able to recover (bug 175411) */
-
-/* FIXME: this should deliver to a maildir or something */
-
+// can return: DELIVER_QUOTA_EXCEEDED  DELIVER_FAILURE DELIVER_TRY_LATER
 NMAPDeliveryCode
 DeliverMessageToMailbox(StoreClient *client,
                         char *sender, char *authSender, char *recipient, char *mbox,
                         FILE *msgfile, unsigned long scmsID, size_t msglen, 
                         unsigned long flags)
 {
-    int result = DELIVER_FAILURE;
-    int fd;
-    FILE *mboxfile = NULL;
-    NLockStruct *lock;
-    const char *storeRoot;
-    char path[XPL_MAX_PATH+1];
-    ssize_t inclen = 0;
+	StoreObject collection;
+	StoreObject newmail;
+	FILE *tmp = NULL;
+	const char *storeRoot;
+	char tmppath[XPL_MAX_PATH+1];
+	char path[XPL_MAX_PATH+1];
+	char mailbox[XPL_MAX_PATH+1];
+	unsigned char timeBuffer[80];
+	char buffer[1024];
 
-    lock = NULL;
+	if (SetupStore(recipient, &storeRoot, path, sizeof(path))) {
+		return DELIVER_TRY_LATER;
+	}
 
-    if (SetupStore(recipient, &storeRoot, path, sizeof(path))) {
-        return DELIVER_TRY_LATER;
-    }
+	memset(&newmail, 0, sizeof(StoreObject));
+	
+	if (mbox == NULL)
+		mbox = "INBOX";
+	
+	snprintf(mailbox, XPL_MAX_PATH, "/mail/%s", mbox);
+	mailbox[XPL_MAX_PATH] = '\0';
+	
+	if (StoreObjectFindByFilename(client, mailbox, &collection)) {
+		// couldn't find the wanted folder;
+		return DELIVER_FAILURE;
+	}
+	
+	MaildirTempDocument(client, collection.guid, tmppath, sizeof(tmppath));
+	tmp = fopen(tmppath, "w");
+	if (tmp == NULL)
+		return DELIVER_TRY_LATER;
+	
+	// write out the mail headers
+	if (authSender && authSender[0] != '-') {
+		fprintf(tmp, "X-Auth-OK: %s\r\n", authSender);
+	} else {
+		fprintf(tmp, "X-Auth-No: \r\n");
+	}
+	
+	MsgGetRFC822Date(-1, 0, timeBuffer);
+	fprintf(tmp, "Received: from %d.%d.%d.%d [%d.%d.%d.%d] by %s\r\n\twith Store (%s); %s\r\n",
+		client->conn->socketAddress.sin_addr.s_net,
+		client->conn->socketAddress.sin_addr.s_host,
+		client->conn->socketAddress.sin_addr.s_lh,
+		client->conn->socketAddress.sin_addr.s_impno,
 
-    if (StoreGetCollectionLock(client, &lock, STORE_MAIL_GUID)) {
-        return DELIVER_TRY_LATER;
-    }
+		client->conn->socketAddress.sin_addr.s_net,
+		client->conn->socketAddress.sin_addr.s_host,
+		client->conn->socketAddress.sin_addr.s_lh,
+		client->conn->socketAddress.sin_addr.s_impno,
 
-    strcat (path, "incoming");
+		StoreAgent.agent.officialName,
+		AGENT_NAME,
+		timeBuffer);
+	fprintf(tmp, "Return-Path: <%s>\r\n", sender);
+	
+	// now try to append the mail content itself.
+	while (!feof(msgfile)) {
+		unsigned int count;
+		
+		count = fread(buffer, sizeof(char), sizeof(buffer), msgfile);
+		if (count > 0) {
+			if (count != fwrite(buffer, sizeof(char), count, tmp)) {
+				goto ioerror;
+			}
+		} else if (ferror(msgfile)) {
+			goto ioerror;
+		}
+	}
+	
+	// all done 
+	newmail.size = (uint64_t) ftell(tmp);
+	fclose(tmp);
+	tmp = NULL;
+	
+	// try to create store object.
+	newmail.type = STORE_DOCTYPE_MAIL;
+	
+	if (StoreObjectCreate(client, &newmail)) {
+		printf("Couldn't create new mail object\n");
+		goto ioerror;
+	}
+	newmail.collection_guid = collection.guid;
+	newmail.flags = flags;
+	newmail.time_created = newmail.time_modified = (uint64_t) time(NULL);
+	
+	StoreProcessDocument(client, &newmail, tmppath);
+	
+	// need to acquire lock from this point
+	
+	// now we have guid etc., move the mail into the right place
+	if (MaildirDeliverTempDocument(client, collection.guid, tmppath, newmail.guid)) {
+		printf("Can't put temporary mail into the store\n");
+		StoreObjectRemove(client, &newmail);
+		goto ioerror;
+	}
+	
+	// all done!
+	StoreObjectFixUpFilename(&collection, &newmail);
+	StoreObjectSave(client, &newmail);
+	StoreObjectUpdateImapUID(client, &newmail); // FIXME: racy?
+	
+	// release lock here?
+	
+	// announce new mail has arrived
+	++client->stats.insertions;
+	StoreWatcherEvent(client, &newmail, STORE_WATCH_EVENT_NEW);
 
-    /* I want read/write/create/!truncate - don't think it can be done with fopen? */
-    if (-1 == (fd = open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)) ||
-        NULL == (mboxfile = fdopen(fd, "r+b")))
-    {
-        result = ENOSPC == errno ? DELIVER_QUOTA_EXCEEDED : DELIVER_FAILURE;
-        goto finish;
-    }
-    if (fseek (mboxfile, 0L, SEEK_END)) {
-        result = DELIVER_FAILURE;
-        goto finish;
-    }
+	
+	return DELIVER_SUCCESS;
 
-    /* XplConsolePrintf("OFFSET: %ld\r\n", ftell(mboxfile)); */
-
-    result = CopyMessageToMailbox (client, msgfile, mboxfile, recipient, 
-                                   sender, authSender, mbox, 
-                                   scmsID, msglen, flags);
-
-    inclen = ftell(mboxfile);
-    if (-1 == inclen) {
-        result = DELIVER_FAILURE;
-    }
-
-finish:
-
-    if (mboxfile && fclose(mboxfile)) {
-        result = ENOSPC == errno ? DELIVER_QUOTA_EXCEEDED : DELIVER_FAILURE;
-    }
-
-    StoreReleaseCollectionLock(client, &lock);
-
-    if (DELIVER_SUCCESS == result && 
-        inclen > StoreAgent.store.incomingQueueBytes) 
-    {
-        /* this store has a bit of incoming mail, let's try to import it now.
-           FIXME: it'd probably be better to pass the "incoming" lock through
-        */
-
-        SelectStore(client, recipient);
-        UnselectStore(client);
-    }
-
-    return result;
-}
-
-
-
-/* modifies: imports mail from the "incoming" file into the store.  Upon success,
-             the incoming file is truncated.  
-
-   returns:   1+ - success, number of imported documents
-              0  - retry (recoverable failure due to locked file, etc.)
-              -1 - failure (corrupt file, or incompatible version)
-*/
-
-/* FIXME: this should support a maildir */
-
-int
-ImportIncomingMail(StoreClient *client)
-{
-    int result = 0;
-    DStoreDocInfo info;
-    char incomingPath[XPL_MAX_PATH+1];
-    FILE *msgfile = NULL;
-    int trans = 0;
-    NLockStruct *incLock = NULL; /* lock of "incoming" file */
-    struct stat sb;
-    IndexHandle *index = NULL;
-    long offset = 0;
-    CollectionLockPool collLocks;
-    WatchEventList events;
-    
-    if (CollectionLockPoolInit(client, &collLocks)) {
-        return 0;
-    }
-    if (WatchEventListInit(&events)) {
-        CollectionLockPoolDestroy(&collLocks);
-        return 0;
-    }
-
-    if (StoreGetCollectionLock(client, &incLock, STORE_MAIL_GUID)) {
-        CollectionLockPoolDestroy(&collLocks);
-        WatchEventListDestroy(&events);
-        return 0;
-    }
-
-    snprintf(incomingPath, sizeof(incomingPath), "%sincoming", client->store);
-    incomingPath[sizeof(incomingPath)-1] = 0;
-
-    if (-1 == stat(incomingPath, &sb)) {
-        if (ENOENT != errno) {
-            result = -1;
-        }
-        goto cleanup;
-    }
-
-    if (0 == sb.st_size) {
-        goto cleanup;
-    }
-
-    msgfile = fopen(incomingPath, "r");
-
-    if (!msgfile) {
-        result = ENOENT == errno ? 0 : -1;
-        goto cleanup;
-    }
-    
-    index = IndexOpen(client);
-    if (!index) {
-        result = 0;
-        goto cleanup;
-    }
-
-    if (DStoreBeginTransaction(client->handle)) {
-        goto cleanup;
-    }
-    trans = 1;
-
-    /* Read through the incoming file, and import messages one by one.
-       If something goes wrong, jump to "finish" if the already
-       imported mail is okay, and to "cleanup" to abort the entire
-       import.
-    */
-
-    for (offset = 0;
-         sizeof(info) == fread(&info, sizeof(char), sizeof(info), msgfile);
-         offset = ftell(msgfile))
-    {
-        int dcode = 0;
-        DStoreDocInfo collinfo;
-        NLockStruct *collLock;
-        char tmppath[XPL_MAX_PATH+1];
-        FILE *destfile = NULL;
-        char buffer[CONN_BUFSIZE];
-        size_t count;
-        unsigned long len;
-
-
-        if (-1 == offset) {
-            result = -1;
-            goto cleanup;
-        }            
-
-        if (!info.collection) {
-            dcode = DStoreFindCollectionGuid(client->handle, info.filename,
-                                         &info.collection);
-            if (0 == dcode) { 
-                /* delivery to non-existing collection; try to create it */
-                if (StoreCreateCollection(client, info.filename, 0, 
-                                          &info.collection, NULL)) 
-                {
-                    /* fallback to /mail/INBOX */
-                    info.collection = STORE_MAIL_INBOX_GUID;
-                } 
-            } else if (-1 == dcode) {
-                Log (LOG_ERROR, "Couldn't write to collection %s due to db error.", 
-                        info.filename);
-                goto finish;
-            }
-        }
-
-        if (1 != DStoreGetDocInfoGuid(client->handle, info.collection, &collinfo)) {
-            goto finish;
-        }
-        snprintf(info.filename, sizeof(info.filename), "%s/", collinfo.filename);
-
-        collLock = CollectionLockPoolGet(&collLocks, collinfo.guid);
-        if (!collLock) {
-            goto finish;
-        }
-
-        MaildirTempDocument(client, info.collection, tmppath, sizeof(tmppath));
-
-        destfile = fopen(tmppath, "w");
-        if (!destfile) {
-            goto finish;
-        }
-
-        info.timeCreatedUTC = (uint64_t) time(NULL);
-        
-        for (len = info.length; len; len -= count) {
-            count = len < sizeof(buffer) ? len : sizeof(buffer);
-            count = fread(buffer, sizeof(char), count, msgfile);
-            if (!count) {
-                result = -1;
-                goto cleanup;
-            }
-            if (count != fwrite(buffer, sizeof(char), count, destfile)) {
-                goto finish;
-            }
-        }
-        
-        if (fclose(destfile)) {
-            goto finish;
-        }
-        
-        if (DStoreSetDocInfo(client->handle, &info)) {
-            goto finish;
-        }
-        
-        if (MaildirDeliverTempDocument(client, info.collection, tmppath, info.guid) != 0)
-            goto finish;
-        
-        // Mail is no longer in the temporary file
-        FindPathToDocument(client, info.collection, info.guid, tmppath, sizeof(tmppath));
-
-        if (StoreProcessDocument(client, &info, &collinfo, tmppath, 0) ||
-            StoreIndexDocument(client, &info, &collinfo, index, tmppath)) {
-            /* we were unable to process this message for some reason, so
-               let's save it to the side and skip over it */
-
-            char failedPath[XPL_MAX_PATH+1];
-            FILE *failfile;
-            long newoffset = ftell(msgfile);
-
-            if (DStoreDeleteDocInfo(client->handle, info.guid)) {
-                goto cleanup;
-            }
-
-            snprintf(failedPath, sizeof(failedPath), "%sfailed", client->store);
-            failedPath[sizeof(failedPath)-1] = 0;
-
-            failfile = fopen(failedPath, "ab");
-            if (!failfile) {
-                goto finish;
-            }
-
-            if (fseek(msgfile, offset, SEEK_SET) || 
-                BongoFileCopyBytes(msgfile, failfile, sizeof(info) + info.length) ||
-                fseek(msgfile, newoffset, SEEK_SET))
-            {
-                fclose(failfile);
-                goto finish;
-            }
-
-            if (fclose(failfile)) {
-                goto finish;
-            }
-
-            Log(LOG_ERROR, "Unparsable message saved in %s", failedPath);
-        } else {
-            /* success! */
-            collinfo.imapuid = info.guid;
-            if (DStoreSetDocInfo(client->handle, &collinfo)) {
-                result = -1;
-                goto cleanup;
-            }
-            ++result;
-
-            if (WatchEventListAdd(&events, collLock, STORE_WATCH_EVENT_NEW, 
-                                  info.guid, info.guid, 0))
-            {
-                result = -1;
-                goto cleanup;
-            }
-        }
-    }
-
-finish:
-    IndexClose(index);
-    index = NULL;
-
-    if (fseek(msgfile, offset, SEEK_SET)) {
-        result = 0;
-        goto cleanup;
-    }
-
-    if (DStoreCommitTransaction(client->handle)) {
-        result = 0;
-        goto cleanup;
-    }
-    trans = 0;
-
-    /* FIXME: In the (hopefully unlikely) event that something goes wrong
-       after the transaction is commited, but before the incoming file
-       is truncated, then duplicate documents will result from the
-       next time this function is called.  This could be fixed by using
-       a journal (see StoreCompactCollections).  (bug 175413)
-    */
-
-    client->stats.insertions += result;
-
-    if (feof(msgfile)) {
-        truncate(incomingPath, 0);
-    } else {
-        char tmppath[XPL_MAX_PATH+1];
-        char *p;
-        int tmpfd;
-        FILE *tmpfile;
-
-        strncpy(tmppath, incomingPath, sizeof(tmppath));
-        p = strrchr(tmppath, '/');
-        strncpy(p + 1, "i.XXXXXX", strlen("incoming")); 
-        tmpfd = mkstemp(tmppath);
-        if (-1 == tmpfd) {
-            goto cleanup;
-        }
-        tmpfile = fdopen(tmpfd, "wb");
-        if (!tmpfile) {
-            close (tmpfd);
-            unlink(tmppath);
-            goto cleanup;
-        }
-
-        if (BongoFileCopyBytes(msgfile, tmpfile, 0)) {
-            fclose(tmpfile);
-            unlink(tmppath);
-            goto cleanup;
-        }
-        fclose(tmpfile);
-        fclose(msgfile);
-        msgfile = NULL;
-
-        if (rename(tmppath, incomingPath)) {
-            /* unlink(tmppath); */
-        }
-
-        WatchEventListFire(&events, NULL);
-    }
-
-cleanup:
-    if (msgfile) {
-        fclose(msgfile);
-    }
-
-    if (trans) {
-        client->flags |= STORE_CLIENT_FLAG_NEEDS_COMPACTING;
-        DStoreAbortTransaction(client->handle);
-    }
-
-    if (index) {
-        IndexClose(index);
-    }
-    
-    CollectionLockPoolDestroy(&collLocks);
-    WatchEventListDestroy(&events);
-
-    StoreReleaseCollectionLock(client, &incLock);
-
-    if (result < 0) {
-        Log(LOG_ERROR, "Unable to import mail for store %s: result %d",
-               client->store, result);
-    }
-
-    return result;
+ioerror:
+	if (tmp) {
+		fclose(tmp);
+		unlink(tmppath);
+	}
+	return DELIVER_TRY_LATER;
 }
 
 /* login */
@@ -936,55 +392,48 @@ finish:
 int 
 SelectStore(StoreClient *client, char *user)
 {
-    const char *storeRoot;
+    const char *storeRoot = NULL;
     char path[XPL_MAX_PATH + 1];
-    DStoreHandle *dbhandle;
-    
+    struct stat sb;
+	
+	// check if we already have this store selected
     if (client->storeName && !strcmp(user, client->storeName)) {
         return 0;
     }
-
-    if (SetupStore(user, &storeRoot, path, sizeof(path))) {
-        return -1;
-    }
-
-    dbhandle = DBPoolGet(user);
-    if (dbhandle) {
-        DStoreSetMemStack(dbhandle, &client->memstack);
-    } else {
-        dbhandle = DStoreOpen(path, &client->memstack, client->lockTimeoutMs);
-        if (!dbhandle) {
-            return -1;
-        }
-#if 0
-        if (DStoreCheckDBSchema(dbhandle) != 0) {
-            // store is either out-of-date or too new for us.
-            return -2;
-        }
-#endif
-    }
-
-#if 0
-    if (CheckJournal(dbhandle)) {
-        DStoreClose(dbhandle);
-        return -1;
-    }
-#endif
-
-    /* close the old store */
+    
+    // close current selected store if necessary
     UnselectStore(client);
 
+    snprintf(path, XPL_MAX_PATH, "%s/%s/", StoreAgent.store.rootDir, user);
     strcpy(client->store, path);
     client->storeRoot = storeRoot;
     client->storeHash = BongoStringHash(user);
     client->storeName = MemStrdup(user);
-    client->handle = dbhandle;
 
     client->stats.insertions = 0;
     client->stats.updates = 0;
     client->stats.deletions = 0;
 
-    ImportIncomingMail(client);
+	if (stat(path, &sb)) {
+		// this store hasn't been created yet
+		if (XplMakeDir(path)) {
+			Log(LOG_ERROR, "Error creating store directory: %s.", strerror(errno));
+			return -1;
+		}
+		if (StoreDBOpen(client, user)) {
+			Log(LOG_ERROR, "Couldn't open store database for %s", user);
+			return -2;
+		}
+		if (StoreObjectDBCreate(client)) {
+			Log(LOG_ERROR, "Couldn't setup initial store database for %s", user);
+			return -3;
+		}
+	} else {
+		if (StoreDBOpen(client, user)) {
+			Log(LOG_ERROR, "Couldn't access store database for %s", user);
+			return -4;
+		}
+	}
 
     return 0;
 }
@@ -998,16 +447,10 @@ UnselectStore(StoreClient *client)
         client->stats.insertions + client->stats.updates + client->stats.deletions >
         (rand() % 50))
     {
-        IndexHandle *index;
-
-        index = IndexOpen(client);
-        if (index) {
-            Log(LOG_DEBUG, "Optimizing index for store %s", client->storeName);
-            IndexOptimize(index);
-            IndexClose(index);
-        }
+        // FIXME: did optimise the Index here - could do a vacuum? could be costly tho...
     }
 
+	/*
     if (client->handle) {
         if ((client->flags & STORE_CLIENT_FLAG_DONT_CACHE) || 
             DBPoolPut(client->storeName, client->handle)) 
@@ -1017,18 +460,22 @@ UnselectStore(StoreClient *client)
         client->handle = NULL;
         client->flags &= ~STORE_CLIENT_FLAG_DONT_CACHE;
     }
+    */
 
     if (client->watch.collection) {
         NLockStruct *lock;
 
         StoreGetCollectionLock(client, &lock, client->watch.collection);
         
-        if (StoreWatcherRemove(client, lock)) {
+        if (StoreWatcherRemove(client, client->watch.collection)) {
             Log(LOG_ERROR, "Internal error removing client watch");
         }
 
         StoreReleaseCollectionLock(client, &lock);
     }
+
+	StoreDBClose(client);
+	client->storedb = NULL;
 
     if (client->storeName) {
         MemFree(client->storeName);
@@ -1123,59 +570,34 @@ DeleteStore(StoreClient *client)
     fchdir(cwd);
 }
 
-
-/* */
-/* returns: -1 on error */
-int
-SetParentCollectionIMAPUID(StoreClient *client, 
-                           DStoreDocInfo *parent,
-                           DStoreDocInfo *doc)
-{
-    DStoreDocInfo info;
-
-    if (!parent) {
-        switch (DStoreGetDocInfoGuid(client->handle, doc->collection, &info)) {
-        case 0:
-            return -1;
-        case 1:
-            parent = &info;
-            break;
-        case -1:
-            return -1;
-        }
-    }
-    parent->imapuid = doc->guid + 1;
-    return DStoreSetDocInfo(client->handle, parent);
-}
-
 BongoJsonResult
-GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node, char *filepath)
+GetJson(StoreClient *client, StoreObject *object, BongoJsonNode **node, char *filepath)
 {
     BongoJsonResult ret = BONGO_JSON_UNKNOWN_ERROR;
     char path[XPL_MAX_PATH + 1];
-    FILE *fh;
-    char *buf;
+    FILE *fh = NULL;
+    char *buf = NULL;
     
     if (filepath) {
         strncpy(path, filepath, XPL_MAX_PATH);
     } else {
-        FindPathToDocument(client, info->collection, info->guid, path, sizeof(path));
+        FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
     }
 
     fh = fopen(path, "rb");
     if (!fh) {
-        Log(LOG_ERROR, "Couldn't open file for doc " GUID_FMT, info->guid);
+        Log(LOG_ERROR, "Couldn't open file for doc " GUID_FMT, object->guid);
         goto finish;
     }
 
     /* FIXME: would be nice (and easy) to get a streaming API for
      * bongojson */ 
-    buf = MemMalloc(info->length + 1);
+    buf = MemMalloc(object->size + 1);
     
-    if (fread(buf, 1, info->length, fh) == info->length) {
-        buf[info->length] = '\0';        
+    if (fread(buf, 1, object->size, fh) == object->size) {
+        buf[object->size] = '\0';        
     } else {
-        Log(LOG_ERROR, "Couldn't read doc " GUID_FMT, info->guid);
+        Log(LOG_ERROR, "Couldn't read doc " GUID_FMT, object->guid);
         goto finish;
     }
     
@@ -1183,10 +605,11 @@ GetJson(StoreClient *client, DStoreDocInfo *info, BongoJsonNode **node, char *fi
 
     if (ret != BONGO_JSON_OK) {
         Log(LOG_ERROR, "Couldn't parse json object %s", buf);
-    }   
+    }
     
 finish :
     fclose (fh);
+    if (buf) MemFree(buf);
 
     return ret;    
 }

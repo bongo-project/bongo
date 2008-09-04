@@ -34,7 +34,7 @@
 #include <bongocal.h>
 #include <nmlib.h>
 
-#include <libical/ical.h>
+#include <ical.h>
 
 #include <curl/curl.h>
 #include "msghttp.h"

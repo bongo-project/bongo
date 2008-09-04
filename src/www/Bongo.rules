@@ -32,7 +32,8 @@ dist_screencss_DATA =                  \
 	src/www/css/screen.css
 
 src/www/css/screen.css: $(dist_css_DATA)
-	$(compress_script) $(dist_css_DATA) --measure -o src/www/css/screen.css -i src/www/css/print.css -i src/www/css/admin.css --no-linebreaks
+	mkdir -p src/www/css
+	$(compress_script) -I$(top_srcdir) $(dist_css_DATA) --measure -o src/www/css/screen.css -i $(top_srcdir)/src/www/css/print.css -i $(top_srcdir)src/www/css/admin.css --no-linebreaks
 
 imgdir = $(htdocsdir)/img
 
@@ -307,7 +308,8 @@ dist_finaljs_DATA =						\
 	src/www/js/final.js
 
 src/www/js/final.js: $(dist_js_DATA) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA)
-	$(compress_script) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) src/www/js/eArea/editableArea.js -o src/www/js/final.js --measure --type js -i src/www/js/Admin.js -i src/www/js/Browser.js -i src/www/js/BrowserCheck.js
+	mkdir -p src/www/js
+	$(compress_script) -I$(top_srcdir) $(dist_prototype_DATA) $(dist_scriptaculous_DATA) $(dist_mochi_DATA) $(dist_js_DATA) src/www/js/eArea/editableArea.js -o src/www/js/final.js --measure --type js -i src/www/js/Admin.js -i src/www/js/Browser.js -i src/www/js/BrowserCheck.js
 
 install-data-local:: install-dist_htdocsDATA
 	ln -sf dragonfly.html "$(DESTDIR)$(htdocsdir)/index.html"
@@ -455,10 +457,12 @@ src/www/bongo-devel.conf: src/www/bongo.conf.in Makefile
 po2json = $(top_srcdir)/src/www/l10n/po2json
 
 src/www/l10n/%.js: po/bongo-web/%.mo config.status
+	mkdir -p src/www/l10n
 	$(po2json) -p $(top_srcdir)/po/bongo-web/$*.po -o $(top_srcdir)/$@
 
 # This generates no translation. It simply does msgid:msgid on the potfile.
 src/www/l10n/en.js: config.status
+	mkdir -p src/www/l10n
 	$(po2json) -p $(top_srcdir)/po/bongo-web.pot -o $(top_srcdir)/$@ --en
 
 CLEANFILES +=					\

@@ -19,8 +19,8 @@
  * </Novell-copyright>
  ****************************************************************************/
 
-#ifndef __NMAP_LOCK_H
-#define __NMAP_LOCK_H
+#ifndef __STORE_LOCK_H
+#define __STORE_LOCK_H
 
 XPL_BEGIN_C_LINKAGE
 
@@ -61,14 +61,22 @@ typedef struct _NFairLockPool {
 	NFairLockList *last;
 } NFairLockPool;
 
-void StoreInitializeFairLocks();
+void StoreInitializeFairLocks(void);
 int  StoreGetExclusiveFairLockQuiet(StoreClient *client, NFairLock **lock,
                                     uint64_t guid, time_t timeout);
 int  StoreGetSharedFairLockQuiet(StoreClient *client, NFairLock **lock, 
                                  uint64_t guid, time_t timeout);
 int  StoreReleaseSharedFairLockQuiet(NFairLock **lock);
 int  StoreReleaseExclusiveFairLockQuiet(NFairLock **lock);
+int  StoreReleaseFairLockQuiet(NFairLock **lock);
 int  StoreDowngradeExclusiveFairLock(NFairLock **lock);
+
+char *FairLockName(char *name, uint64_t guid);
+NFairLock *FairLockFind(char *store, uint64_t guid);
+
+NFairLockQueueEntry *FairLockNewQueueEntry (NFairLock *lock, BOOL is_writer);
+void FairLockRemoveQueueHead (NFairLock *lock);
+void FairLockSignalQueueHead (NFairLock *lock);
 
 // "normal" locks
 
@@ -196,4 +204,4 @@ void NMAPLockDestroy(void);
 
 XPL_END_C_LINKAGE
 
-#endif /* __NMAP_LOCK_H */
+#endif

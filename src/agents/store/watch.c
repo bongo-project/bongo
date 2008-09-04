@@ -4,6 +4,45 @@
 
 /** Watch stuff **/
 
+typedef struct {
+	char *store;
+	uint64_t collection;
+	StoreClient *watchers[STORE_COLLECTION_MAX_WATCHERS];
+} WatchItem;
+
+WatchItem * StoreWatcherFindWatchItem(StoreClient *client, uint64_t collection);
+
+#define MAX_STORE_WATCH	50
+
+static XplMutex global_watch_list_lock;
+static WatchItem global_watch_list[MAX_STORE_WATCH];
+
+void
+StoreWatcherInit()
+{
+	XplMutexInit(global_watch_list_lock);
+	memset(global_watch_list, 0, sizeof(global_watch_list));
+}
+
+WatchItem *
+StoreWatcherFindWatchItem(StoreClient *client, uint64_t collection)
+{
+	int i;
+	WatchItem *to_watch = NULL;
+	
+	for (i = 0; i < MAX_STORE_WATCH; i++) {
+    	WatchItem *item = &global_watch_list[i];
+    	if ((item->collection == collection) &&(strcmp(item->store, client->storeName)==0)) {
+    		// found the watch item for this collection in the right store
+    		to_watch = item;
+    	}
+    	if ((to_watch == NULL) && (item->store == NULL)) {
+    		// found the first free entry (overridden by above)
+    		to_watch = item;
+    	}
+    }
+    return to_watch;
+}
 
 /** \internal
  * Add the client as a watcher of the collection locked by cLock 
@@ -11,58 +50,98 @@
  */
 
 int
-StoreWatcherAdd(StoreClient *client,
-                NLockStruct *cLock)
+StoreWatcherAdd(StoreClient *client, uint64_t collection)
 {
+	WatchItem *to_watch = NULL;
+	StoreClient **watchers = NULL;
     int i;
+    int retcode = -1;
+    
+    XplMutexLock(global_watch_list_lock);
+    
+    to_watch = StoreWatcherFindWatchItem(client, collection);
+    if (to_watch == NULL)
+    	// can't find a free entry
+    	goto done;
+    
+    if (to_watch->store == NULL) {
+    	// we need to start a new item
+    	to_watch->store = strdup(client->storeName);
+    	to_watch->collection = collection;
+    	memset(to_watch->watchers, 0, sizeof(to_watch->watchers));
+	}
+	watchers = to_watch->watchers;
 
     for (i = 0; i < STORE_COLLECTION_MAX_WATCHERS; i++) {
-        if (!cLock->watchers[i]) {
-            cLock->watchers[i] = client;
-            return 0;
+        if (watchers[i] == NULL) {
+            watchers[i] = client;
+            retcode = 0;
+            goto done;
         }
     }
-    return -1;
+    
+    // can't find a free watch slot on this entry
+
+done:
+	XplMutexUnlock(global_watch_list_lock);
+	return retcode;
 }
 
 /** \internal
  * Remove the client as a watcher of the collection
  */
 int
-StoreWatcherRemove(StoreClient *client,
-                   NLockStruct *cLock)
+StoreWatcherRemove(StoreClient *client, uint64_t collection)
 {
+	WatchItem *to_watch = NULL;
+	StoreClient **watchers = NULL;
     int i;
+    int retcode = -1;
+    
+    XplMutexLock(global_watch_list_lock);
+    
+    to_watch = StoreWatcherFindWatchItem(client, collection);
+    if ((to_watch == NULL) || (to_watch->store == NULL))
+    	// can't find the entry
+    	goto done;
+    
+	watchers = to_watch->watchers;
 
     for (i = 0; i < STORE_COLLECTION_MAX_WATCHERS; i++) {
-        if (client == cLock->watchers[i]) {
-            cLock->watchers[i] = NULL;
-            client->watch.collection = 0;
-            return 0;
+        if (watchers[i] == client) {
+            watchers[i] = NULL;
+            retcode = 0;
+            goto done;
         }
     }
-    return -1;
+    
+    // FIXME - remove unused slots from the global list, otherwise we run out!
+    
+done:
+	XplMutexUnlock(global_watch_list_lock);
+	return retcode;
 }
 
 
 void
-StoreWatcherEvent(StoreClient *thisClient,  /* can be NULL */
-                  NLockStruct *cLock,
-                  StoreWatchEvents event,
-                  uint64_t guid,
-                  uint32_t imapuid,
-                  uint32_t flags)
+StoreWatcherEvent(StoreClient *thisClient,
+                  StoreObject *object,
+                  StoreWatchEvents event)
 {
-    int i;
+	WatchItem *to_watch = NULL;
     StoreClient *client;
-
-    if (!imapuid) {
-        imapuid = guid;
-    }
+    int i;
+    
+    XplMutexLock(global_watch_list_lock);
+    
+    to_watch = StoreWatcherFindWatchItem(thisClient, object->collection_guid);
+    if ((to_watch == NULL) || (to_watch->store == NULL))
+    	// can't find the entry
+    	goto done;
                   
     for (i = 0; i < STORE_COLLECTION_MAX_WATCHERS; i++) {
-        if (cLock->watchers[i]) {
-            client = cLock->watchers[i];
+        if (to_watch->watchers[i]) {
+            client = to_watch->watchers[i];
 
             if (client != thisClient) {
                 if (!(client->watch.flags & event)) {
@@ -70,14 +149,17 @@ StoreWatcherEvent(StoreClient *thisClient,  /* can be NULL */
                 }
                 if (client->watch.journal.count < STORE_CLIENT_WATCH_JOURNAL_LEN) {
                     client->watch.journal.events[client->watch.journal.count] = event;
-                    client->watch.journal.guids[client->watch.journal.count] = guid;
-                    client->watch.journal.imapuids[client->watch.journal.count] = imapuid;
-                    client->watch.journal.flags[client->watch.journal.count] = flags;
+                    client->watch.journal.guids[client->watch.journal.count] = object->guid;
+                    client->watch.journal.imapuids[client->watch.journal.count] = object->imap_uid;
+                    client->watch.journal.flags[client->watch.journal.count] = object->flags;
                 }
                 ++client->watch.journal.count;
             }
         }
     }
+
+done: 
+    XplMutexUnlock(global_watch_list_lock);
 }
 
 
@@ -107,7 +189,7 @@ StoreShowWatcherEvents(StoreClient *client)
                 ccode = ConnWriteF(client->conn, 
                                    "6000 REMOVED " GUID_FMT "\r\n",
                                    client->watch.collection);
-                if (StoreWatcherRemove(client, client->watchLock)) {
+                if (StoreWatcherRemove(client, client->watch.collection)) {
                     ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
                 }
             } else if (STORE_WATCH_EVENT_COLL_RENAMED == event) {
@@ -134,7 +216,7 @@ StoreShowWatcherEvents(StoreClient *client)
     return ccode;
 }
 
-
+#if 0
 /* watch event lists */
 
 typedef struct {
@@ -144,7 +226,6 @@ typedef struct {
     uint64_t imapuid;
     uint32_t flags;
 } eventdatum;
-
 
 int 
 WatchEventListInit(WatchEventList *events)
@@ -192,3 +273,4 @@ WatchEventListFire(WatchEventList *events, StoreClient *client)
                           evt.guid, evt.imapuid, evt.flags);
     }
 }
+#endif

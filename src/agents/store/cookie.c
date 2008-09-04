@@ -21,9 +21,9 @@
 
 #include <config.h>
 #include <xpl.h>
-#include <logger.h>
 #include <nmlib.h>
 #include <msgapi.h>
+#include <assert.h>
 
 #include "stored.h"
 #include "messages.h"

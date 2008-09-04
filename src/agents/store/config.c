@@ -21,17 +21,16 @@
 
 #include <config.h>
 
+#include "stored.h"
+
 #include <xpl.h>
 #include <memmgr.h>
-#include <logger.h>
 #include <bongoutil.h>
 #include <bongoagent.h>
 #include <nmap.h>
 #include <nmlib.h>
 #include <msgapi.h>
 #include <connio.h>
-
-#include "stored.h"
 
 BOOL
 StoreAgentReadConfiguration(BOOL *recover)

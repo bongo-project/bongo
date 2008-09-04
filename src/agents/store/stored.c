@@ -20,6 +20,8 @@
  ****************************************************************************/
 
 #include <config.h>
+#include "stored.h"
+#include "messages.h"
 
 #include <xpl.h>
 #include <memmgr.h>
@@ -29,9 +31,6 @@
 #include <nmlib.h>
 #include <msgapi.h>
 #include <connio.h>
-
-#include "stored.h"
-#include "messages.h"
 
 #define STACKSPACE (128 * 1024)
 
@@ -47,10 +46,6 @@ StoreClientFree(void *clientp)
     UnselectStore(client);
 
     UnselectUser(client);
-
-    if (client->system.alarmdb) {
-        AlarmDBClose(client->system.alarmdb);
-    }
 
     BongoMemStackDestroy(&client->memstack);
 
@@ -75,7 +70,7 @@ ProcessEntry(void *clientp,
                 client->flags |= STORE_CLIENT_FLAG_MANAGER;
                 break;
             }
-        }        
+        }
     } XplRWReadLockRelease(&StoreAgent.configLock);
 
     client->lockTimeoutMs = StoreAgent.store.lockTimeoutMs;
@@ -205,9 +200,7 @@ _XplServiceMain(int argc, char *argv[])
     int i;
     BOOL cal_success;
     int startupOpts;
-#ifdef WIN32
-    XplThreadID id;
-#endif
+
     LogStart();
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
@@ -242,6 +235,9 @@ _XplServiceMain(int argc, char *argv[])
 
     // create lock pool
     StoreInitializeFairLocks();
+    
+    // initialise watch list
+    StoreWatcherInit();
 
     CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "store");
     CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */

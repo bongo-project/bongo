@@ -255,6 +255,10 @@ if __name__ == "__main__":
                         dest='nocompression',
                         default=False,
                         help="don't compress anything")
+    parser.add_option('-I', '--include',
+                        dest='include_dir',
+                        default=None,
+                        help="directory to search for source files")
 
     (options, args) = parser.parse_args()
     
@@ -319,6 +323,9 @@ if __name__ == "__main__":
         if not options.quiet:
             print "Compressing " + fn + "..."
         try:
+            if not os.path.exists(fn) and options.include_dir != None:
+                fn = options.include_dir + "/" + fn
+            
             if not os.path.exists(fn):
                 if not options.quiet:
                     print "** Warning: file " + fn + " does not exist."

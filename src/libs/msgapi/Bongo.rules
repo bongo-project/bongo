@@ -16,6 +16,7 @@ libbongomsgapi_la_SOURCES =			\
 
 libbongomsgapi_la_CPPFLAGS = $(AM_CPPFLAGS) \
 	$(LIBCURL_CPPFLAGS) \
+	$(LIBICAL_CFLAGS) \
 	$(SQLITE_CFLAGS)
 
 libbongomsgapi_la_LIBADD =					   \
@@ -28,7 +29,7 @@ libbongomsgapi_la_LIBADD =					   \
 	libbongoxpl.la						   \
 	$(LIBCURL_LIBS)						   \
 	$(SQLITE_LIBS)                                             \
-	$(top_builddir)/import/libical/src/libical/libical-bongo.la \
+	$(LIBICAL_LIBS)                                            \
         $(DL_LIBS)						   
 
 # auth backends

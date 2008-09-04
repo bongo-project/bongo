@@ -916,6 +916,18 @@ MemReallocDebugDirect(void *Source, size_t Size, const char *SourceFile, unsigne
 #endif
 }
 
+EXPORT void *
+MemClear(void *Source, size_t Size)
+{
+    unsigned char *src = Source;
+    unsigned char value = '\0';
+
+    while (Size-- != 0) {
+        *src++ = value;
+    }
+    return Source;
+}
+
 EXPORT void 
 MemFreeDirect(void *Source)
 {

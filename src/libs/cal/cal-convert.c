@@ -22,7 +22,8 @@
 #include <config.h>
 #include <xpl.h>
 #include <bongocal.h>
-#include <libical/ical.h>
+#include <bongocal-raw.h>
+#include <ical.h>
 #include <bongojson.h>
 #include <bongoutil.h>
 
