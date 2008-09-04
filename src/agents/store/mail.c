@@ -281,7 +281,7 @@ StoreProcessIncomingMail(StoreClient *client,
 	if (data.from.value) {
 		RFC1432_EncodedWord ew;
 		
-		if (EncodedWordInit(&ew, data.from.value)) {
+		if (EncodedWordInit(&ew, data.from.value) == 0) {
 			SetDocProp(client, document, "bongo.from", ew.decoded);
 			EncodedWordFinish(&ew);
 		} else {
