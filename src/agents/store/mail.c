@@ -277,18 +277,8 @@ StoreProcessIncomingMail(StoreClient *client,
 		result = MSG4226BADEMAIL;
 		goto finish;
 	}
-	
-	if (data.from.value) {
-		RFC1432_EncodedWord ew;
-		
-		if (EncodedWordInit(&ew, data.from.value) == 0) {
-			SetDocProp(client, document, "bongo.from", ew.decoded);
-			EncodedWordFinish(&ew);
-		} else {
-			SetDocProp(client, document, "bongo.from", data.from.value);
-		}
-	}
-	
+
+	SetDocProp(client, document, "bongo.from", data.from.value);
 	SetDocProp(client, document, "bongo.to", data.to.value);
 	SetDocProp(client, document, "bongo.sender", data.sender.value);
 	SetDocProp(client, document, "bongo.cc", data.cc.value);
