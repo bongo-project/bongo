@@ -30,6 +30,8 @@ AC_ISC_POSIX
 AC_HEADER_STDC
 AC_C_BIGENDIAN
 
+GCC_STACK_PROTECTOR
+
 # Check taken from glib
 AC_MSG_CHECKING(for the suffix of shared libraries)
 case "$host_os" in
