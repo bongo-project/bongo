@@ -138,7 +138,7 @@ Connection *LookupRemoteMX(RecipStruct *Recipient) {
             Result->socketAddress.sin_family = AF_INET;
             Result->socketAddress.sin_port = htons (25);
             status = ConnConnect(Result, NULL, 0, NULL);
-            if (status < 0) {
+            if (status <= 0) {
                 switch (errno) {
                     case ETIMEDOUT:
                         Recipient->Result = DELIVER_TIMEOUT;
@@ -153,8 +153,9 @@ Connection *LookupRemoteMX(RecipStruct *Recipient) {
                         Recipient->Result = DELIVER_TRY_LATER;
                         break;
                 }
-                goto finish;
+                continue;
             }
+            goto finish;
         }
     }
 
@@ -219,7 +220,7 @@ beginConversation:
         }
     }
 
-    if (Extensions & Extensions && Remote->conn->ssl.enable == FALSE) {
+    if ((Extensions & EXT_TLS) && (Remote->conn->ssl.enable == FALSE)) {
         /* start up that tls badboy before doing anything else!! */
         ConnWriteF(Remote->conn, "STARTTLS\r\n");
         ConnFlush(Remote->conn);
@@ -235,7 +236,7 @@ beginConversation:
     }
 
     /* begin the delivery process */
-    if (Extensions & Size && Queue->messageLength > Size) {
+    if ((Extensions & EXT_SIZE) && (Queue->messageLength > Size)) {
         /* the message is too big */
         ConnWrite(Remote->conn, "QUIT\r\n", 6);
         ConnFlush(Remote->conn);
