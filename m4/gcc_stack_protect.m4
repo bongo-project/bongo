@@ -85,15 +85,30 @@ AC_DEFUN([GCC_STACK_PROTECT_CXX],[
   fi
 ])
 
+dnl By default, we don't enable unless we're on glibc 2.5 or better.
+dnl For some reason, linking on Debian etch (glibc=2.3, gcc=4.1) completely
+dnl fails unless -shared is in CCLD/CXXLD, but setting that flag causes
+dnl other configure tests to fail :( For now, I'm giving up on those
+dnl old versions since time will fix this bug for us (I hope!)
+
 AC_DEFUN([GCC_STACK_PROTECTOR],[
-  GCC_STACK_PROTECT_LIB
+  dnl -lssp shouldn't even be needed on recent glibc/gcc
+  dnl GCC_STACK_PROTECT_LIB
 
-  AC_LANG_PUSH([C])
-  GCC_STACK_PROTECT_CC
-  AC_LANG_POP([C])
+  AC_MSG_CHECKING([for GNU libc 2.4 or better])
+  AC_EGREP_CPP(yes, [
+  #include <features.h>
+  #if __GLIBC__ >= 2 && __GLIBC_MINOR__ >= 4
+  yes
+  #endif], [glibc_24=yes; AC_MSG_RESULT(yes)], AC_MSG_RESULT(no))
+  if test "x$glibc_24" == "xyes"; then
+    AC_LANG_PUSH([C])
+    GCC_STACK_PROTECT_CC
+    AC_LANG_POP([C])
 
-  AC_LANG_PUSH([C++])
-  GCC_STACK_PROTECT_CXX
-  AC_LANG_POP([C++])
+    AC_LANG_PUSH([C++])
+    GCC_STACK_PROTECT_CXX
+    AC_LANG_POP([C++])
+  fi
 ])
 
