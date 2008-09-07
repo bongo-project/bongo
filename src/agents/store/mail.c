@@ -105,7 +105,7 @@ StoreProcessIncomingMail(StoreClient *client,
 	header_str = g_mime_object_get_headers(GMIME_OBJECT(message));
 	
 	if (header_str != NULL) {
-		snprintf(prop, XPL_MAX_PATH, FMT_UINT64_DEC, strlen(header_str));
+		snprintf(prop, XPL_MAX_PATH, FMT_UINT64_DEC, (uint64_t)strlen(header_str));
 		SetDocProp(client, document, "nmap.mail.headersize", prop);
 		g_free(header_str);
 	}
