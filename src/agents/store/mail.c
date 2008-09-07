@@ -1,236 +1,18 @@
-/****************************************************************************
- * <Novell-copyright>
- * Copyright (c) 2005-6 Novell, Inc. All Rights Reserved.
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of version 2 of the GNU General Public License
- * as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, contact Novell, Inc.
- * 
- * To contact Novell about this file by physical or electronic mail, you 
- * may find current contact information at www.novell.com.
- * </Novell-copyright>
- ****************************************************************************/
-
-/* Routines for parsing and manipulating mail messages */
+// parse incoming mail messages using GMime
 
 #include <config.h>
 #include "stored.h"
 
+#include <unistd.h>
+
+#include <glib.h>
+#include <gmime/gmime.h>
+
 #include <xpl.h>
 #include <memmgr.h>
-#include <bongoutil.h>
-#include <bongoagent.h>
-#include <nmap.h>
-#include <nmlib.h>
-#include <msgapi.h>
-#include <connio.h>
-#include <bongoutil.h>
 
 #include "mail.h"
-// #include "conversations.h"
-#include "mail-parser.h"
 #include "messages.h"
-
-typedef struct {
-    StoreObject *document;
-
-    BongoStringBuilder from;
-    BongoStringBuilder sender;
-    BongoStringBuilder to;
-    BongoStringBuilder cc;
-    BongoStringBuilder bcc;
-    BongoStringBuilder xAuthOK;
-    BongoStringBuilder references;
-
-    char *subject;
-    char *messageId;
-    char *parentMessageId;
-    char *inReplyTo;    
-    char *listId;
-
-    BOOL haveListId;
-
-    uint64_t headerStartOffset;
-    uint64_t headerSize;
-} IncomingParseData;
-
-static void 
-IncomingParticipantCb(void *datap, MailHeaderName name, MailAddress *address)
-{
-    IncomingParseData *data = datap;
-    const char *type = NULL;
-    char buf[1024];
-    snprintf(buf, 1024, "%s%s<%s>\n", 
-             address->displayName ? address->displayName : "",
-             address->displayName ? " " : "",
-             address->address);
-
-    switch(name) {        
-    case MAIL_FROM:
-        BongoStringBuilderAppend(&data->from, buf);
-        type = "from";
-        break;
-    case MAIL_SENDER:
-        BongoStringBuilderAppend(&data->sender, buf);
-        type = "sender";
-
-        /* For listservs that don't set a good listid, we use the
-         * sender.  Save the sender as the listid if no listid
-         * has been saved. */
-        if (!data->listId) {
-            snprintf(buf, 1024, "<%s>", address->address);
-            data->listId = MemStrdup(buf);
-        }
-        
-        break;
-    case MAIL_TO:
-        BongoStringBuilderAppend(&data->to, buf);
-        type = "to";
-        break;
-    case MAIL_CC:
-        BongoStringBuilderAppend(&data->cc, buf);
-        type = "cc";
-        break;
-    case MAIL_BCC:
-        BongoStringBuilderAppend(&data->bcc, buf);
-        type = "bcc";
-        break;
-    case MAIL_X_AUTH_OK:
-        BongoStringBuilderAppend(&data->xAuthOK, buf);
-        type = "xAuthOK";
-        break;
-    case MAIL_X_BEEN_THERE:
-    case MAIL_X_LOOP : 
-        snprintf(buf, 1024, "<%s>", address->address);
-
-        data->haveListId = TRUE;
-        
-        if (data->listId) {
-            MemFree(data->listId);
-        }
-        data->listId = MemStrdup(buf);
-        break;
-    default :
-        /* Ignore */
-        return;
-    }
-
-    Log(LOG_DEBUG, "IPCB got %s %s <%s>\n", type, address->displayName, address->address);
-}
-
-static void
-IncomingUnstructuredCb(void *datap, MailHeaderName name, const char *headerName, const char *buffer)
-{
-    IncomingParseData *data = datap;
-
-    switch(name) {
-    case MAIL_SUBJECT:
-        data->subject = MemStrdup(buffer);
-        break;
-    case MAIL_SPAM_FLAG :
-        if (tolower(buffer[0]) == 'y') {
-            data->document->type |= STORE_MSG_FLAG_JUNK;
-        }
-        break;
-    case MAIL_LIST_ID:
-        /* If no proper listid is given, the sender will be saved
-         * in the listid */
-        data->haveListId = TRUE;
-        break;
-    default:
-        if (!XplStrCaseCmp(headerName, "X-Listprocessor-Version")) {
-            /* If no proper listid is given, the sender will be saved
-             * in the listid */
-            data->haveListId = TRUE;
-        }
-        break;
-    }
-}
-
-static void
-IncomingDateCb(void *datap, MailHeaderName name, uint64_t date)
-{
-    // IncomingParseData *data = datap;
-
-    switch(name) {
-    case MAIL_DATE:
-        // FIXME
-        // data->info->data.mail.sent = date;
-        break;
-    default :
-        /* Ignore */
-        return;
-    }
-}
-
-static void
-IncomingOffsetCb(void *datap, MailHeaderName name, uint64_t offset)
-{
-    IncomingParseData *data = datap;
-
-    switch(name) {
-    case MAIL_OFFSET_BODY_START:
-        data->headerSize = offset - data->headerStartOffset;
-        break;
-    default :
-        /* Ignore */
-        return;
-    }
-}
-
-static void
-IncomingMessageIdCb(void *datap, MailHeaderName name, const char *messageId)
-{
-    IncomingParseData *data = datap;
-    
-    switch(name) {
-    case MAIL_MESSAGE_ID:
-        if (!data->messageId) {
-            data->messageId = MemStrdup(messageId);
-        }
-        break;
-    case MAIL_IN_REPLY_TO :
-        if (!data->inReplyTo) {
-            data->inReplyTo = MemStrdup(messageId);
-
-            MemFree(data->parentMessageId);
-            data->parentMessageId = MemStrdup(messageId);
-        }
-
-        break;
-    case MAIL_REFERENCES :
-        if (data->references.len > 0) {
-            BongoStringBuilderAppend(&data->references, ", ");
-        }
-
-        BongoStringBuilderAppend(&data->references, messageId);
-
-        if (!data->inReplyTo) {
-            /* If In-Reply-To isn't set, use the last References:
-             * messageId as the parent */
-            MemFree(data->parentMessageId);
-            data->parentMessageId = MemStrdup(messageId);
-        }
-            
-        break;
-    default :
-        /* Ignore */
-        return;
-    }
-}
-
-
-/* returns: NULL on success
-            errormsg o/w
-*/
 
 static void
 SetDocProp(StoreClient *client, StoreObject *doc, char *pname, char *value)
@@ -246,66 +28,90 @@ SetDocProp(StoreClient *client, StoreObject *doc, char *pname, char *value)
 	}
 }
 
+struct wanted_header {
+	const char const *header; 
+	const char const *propname;
+};
+
+// properties we want to look for and set automatically
+static struct wanted_header header_list[] = {
+	{ "From", "bongo.from" },
+	{ "To", "bongo.to" },
+	{ "CC", "bongo.cc" },
+	{ "Sender", "bongo.sender" },
+	{ "In-Reply-To", "bongo.inreplyto" },
+	{ "References", "bongo.references" },
+	{ "X-Auth-OK", "bongo.xauthok" },
+	{ "List-Id", "bongo.listid" },
+	{ "Subject", "bongo.subject" },
+	{ NULL, NULL }
+};
+
 const char *
 StoreProcessIncomingMail(StoreClient *client,
                          StoreObject *document,
                          const char *path)
 {
-	const char *result = NULL;
-	MailParser *p;
-	IncomingParseData data = {0, };
-	char prop[XPL_MAX_PATH + 1];
+	GMimeMessage *message;
+	GMimeParser *parser;
+	GMimeStream *stream;
 	StoreObject conversation;
 	StoreConversationData conversation_data;
-	
-	FILE *fh;
-
-	fh = fopen(path, "rb");
-	if (!fh) return MSG4224CANTREADMBOX;
-
-	data.headerStartOffset = 0;
-	data.document = document;
-
-	p = MailParserInit(fh, &data);
-	MailParserSetParticipantsCallback(p, IncomingParticipantCb);
-	MailParserSetUnstructuredCallback(p, IncomingUnstructuredCb);
-	MailParserSetDateCallback(p, IncomingDateCb);
-	MailParserSetOffsetCallback(p, IncomingOffsetCb);
-	MailParserSetMessageIdCallback(p, IncomingMessageIdCb);
-
-	if (MailParseHeaders(p) == -1) {
-		result = MSG4226BADEMAIL;
-		goto finish;
-	}
-
-	SetDocProp(client, document, "bongo.from", data.from.value);
-	SetDocProp(client, document, "bongo.to", data.to.value);
-	SetDocProp(client, document, "bongo.sender", data.sender.value);
-	SetDocProp(client, document, "bongo.cc", data.cc.value);
-	SetDocProp(client, document, "bongo.inreplyto", data.inReplyTo);
-	SetDocProp(client, document, "bongo.references", data.references.value);
-	SetDocProp(client, document, "bongo.xauthok", data.xAuthOK.value);
-	SetDocProp(client, document, "bongo.listid", data.listId);
-
-	if (data.messageId) {
-		SetDocProp(client, document, "nmap.mail.messageid", data.messageId);
-	} else {
-		snprintf(prop, XPL_MAX_PATH, "%u." GUID_FMT "@%s", document->time_created, document->guid, 
-			StoreAgent.agent.officialName);
-		SetDocProp(client, document, "nmap.mail.messageid", prop);
-	}
-	
-	SetDocProp(client, document, "nmap.mail.parentmessageid", data.parentMessageId);
-	SetDocProp(client, document, "nmap.mail.subject", data.subject);
-	
-	if (data.headerSize > 0) {
-		snprintf(prop, XPL_MAX_PATH, FMT_UINT64_DEC, data.headerSize);
-		SetDocProp(client, document, "nmap.mail.headersize", prop);
-	}
+	struct wanted_header *headers = header_list;
+	char prop[XPL_MAX_PATH+1];
+	char *result = NULL;
+	char *header_str = NULL;
+	int fd;
 	
 	memset(&conversation_data, 0, sizeof(StoreConversationData));
 	memset(&conversation, 0, sizeof(conversation));
-	conversation_data.subject = MemStrdup(data.subject);
+	
+	// open up the mail
+	fd = open(path, O_RDONLY);
+	if (fd == -1) return MSG4224CANTREADMBOX;
+	
+	stream = g_mime_stream_fs_new(fd);
+	parser = g_mime_parser_new_with_stream(stream);
+	g_mime_parser_set_scan_from (parser, FALSE);
+	g_object_unref(stream);
+	message = g_mime_parser_construct_message(parser);
+	g_object_unref(parser);
+	
+	if (message == NULL) {
+		// message didn't parse. What should we do?
+		goto finish;
+	}
+	
+	while (headers->header != NULL) {
+		const char *value = g_mime_object_get_header(GMIME_OBJECT(message), headers->header);
+		
+		if (value != NULL)
+			SetDocProp(client, document, (char *)headers->propname, (char *)value);
+		
+		headers++;
+	}
+	
+	// treat message ID specially because we want to invent one if it 
+	// doesn't already exist.
+	if (message->message_id) {
+		SetDocProp(client, document, "nmap.mail.messageid", message->message_id);
+	} else {
+		snprintf(prop, XPL_MAX_PATH, "%u." GUID_FMT "@%s", document->time_created, document->guid, 
+			StoreAgent.agent.officialName);
+		prop[XPL_MAX_PATH] = '\0';
+		SetDocProp(client, document, "nmap.mail.messageid", prop);
+	}
+	
+	header_str = g_mime_object_get_headers(GMIME_OBJECT(message));
+	
+	if (header_str != NULL) {
+		snprintf(prop, XPL_MAX_PATH, FMT_UINT64_DEC, strlen(header_str));
+		SetDocProp(client, document, "nmap.mail.headersize", prop);
+		g_free(header_str);
+	}
+	
+	// now, see if we can find a matching conversation
+	conversation_data.subject = MemStrdup(message->subject);
 	conversation_data.date = 0; // FIXME: should be 7 days ago or similar
 	
 	if (StoreObjectFindConversation(client, &conversation_data, &conversation) != 0) {
@@ -349,26 +155,11 @@ StoreProcessIncomingMail(StoreClient *client,
 		goto finish;
 	}
 	
-	// fix up conversation meta-data?
-	// TODO
-	
 finish:
-	if (conversation_data.subject) MemFree(conversation_data.subject);
-	MemFree(data.from.value);
-	MemFree(data.to.value);
-	MemFree(data.cc.value);
-	MemFree(data.sender.value);
-	MemFree(data.messageId);
-	MemFree(data.inReplyTo);
-	MemFree(data.references.value);
-	MemFree(data.parentMessageId);
-	MemFree(data.xAuthOK.value);
-	MemFree(data.listId);
-
-	MailParserDestroy(p);
-
-	fclose(fh);
-
+	if (conversation_data.subject != NULL) MemFree(conversation_data.subject);
+	g_object_unref(message);
+	close(fd);
+	
 	return result;
 }
 

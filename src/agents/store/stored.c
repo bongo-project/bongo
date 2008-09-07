@@ -23,6 +23,7 @@
 #include "stored.h"
 #include "messages.h"
 
+#include <gmime/gmime.h>
 #include <xpl.h>
 #include <memmgr.h>
 #include <bongoutil.h>
@@ -232,6 +233,9 @@ _XplServiceMain(int argc, char *argv[])
         Log(LOG_FATAL, "Couldn't initialize calendaring library");
         return -1;
     }
+    
+    // initialize the mail parsing code
+    g_mime_init(0);
 
     // create lock pool
     StoreInitializeFairLocks();
@@ -294,6 +298,8 @@ _XplServiceMain(int argc, char *argv[])
     
     XplUnloadApp(XplGetThreadID());
     MsgClearRecoveryFlag("store");
+    
+    g_mime_shutdown();
     
     return 0;
 }
