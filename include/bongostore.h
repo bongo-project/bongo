@@ -125,7 +125,7 @@ typedef enum {
 #define FMT_UINT64_DEC "%" PRIuFAST64
 #define STORE_GUID_FMT "%016" PRIxFAST64
 #else
-#error You don't have inttypes.h available. This will cause compile problems.
+#error You don not have inttypes.h available. This will cause compile problems.
 #define FMT_UINT64_HEX "%llx"
 #define FMT_UINT64_DEC "%llu"
 #define STORE_GUID_FMT "%016llx"
