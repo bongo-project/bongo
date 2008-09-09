@@ -1570,8 +1570,6 @@ finish:
 	return ccode;
 }
 
-
-// FIXME: doesn't create subcollections as required
 // FIXME: doesn't detect all error conditions
 CCode
 StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
@@ -1580,6 +1578,7 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 	StoreObject container;
 	int ret;
 	char container_path[MAX_FILE_NAME+1];
+	char *container_final_sep = NULL;
 	char *ptr;
 	
 	// look for existing name/guid first?
@@ -1594,19 +1593,17 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 		}
 	}
 	
-	// look to see if container is valid
+	// first, find the name of the containing collection from the
+	// name given. This will end in a /, but we will want to remove
+	// that final / later unless the path is literally '/', so we
+	// save the pointer for later...
 	strncpy(container_path, name, MAX_FILE_NAME);
 	ptr = strrchr(container_path, '/');
 	if (ptr == NULL) {
 		return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
-	} else {
-		*ptr = '\0';
-		// special case - root container is always '/'
-		if (strcmp(container_path, "") == 0) {
-			container_path[0] = '/';
-			container_path[1] = '\0';
-		}
-	}
+	} 
+	container_final_sep = ptr++;
+	*ptr = '\0';
 	
 	// Create the object first to allocate our wanted guid
 	memset(&object, 0, sizeof(StoreObject));
@@ -1628,19 +1625,54 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 			break;
 	}
 	/* FIXME - detect following errors?
-	return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
 	return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
 	*/
-	// now try to find the parent collection
-	if (StoreObjectFindByFilename(client, container_path, &container)) {
-		// no such collection - we need to create it
-		// FIXME
-		return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
+	// now try to find the parent collection, creating any collections
+	// as needed.
+	if (container_path[1] != '\0') {
+		uint64_t parent_guid = 0;
+		
+		ptr = container_path + 1;
+		while (*ptr != '\0') {
+			if (*ptr == '/') {
+				*ptr = '\0';
+				if (StoreObjectFindByFilename(client, container_path, &container)) {
+					// need to create this path
+					memset(&container, 0, sizeof(StoreObject));
+					container.type = STORE_DOCTYPE_FOLDER;
+					container.collection_guid = parent_guid;
+					strncpy(container.filename, container_path, MAX_FILE_NAME);
+					ret = StoreObjectCreate(client, &container);
+					if (ret != 0) {
+						StoreObjectRemove(client, &container);
+						return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+					}
+					// save the guid for later.
+					parent_guid = container.guid;
+				} else {
+					if (container.type != 4096) {
+						// this isn't a collection - erk!
+						return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
+					}
+				}
+				*ptr = '/';
+			}
+			ptr++;
+		}
 	}
 	
-	// FIXME - check we can write to this collection, and if not, delete
-	// the new object and error out.
+	// remove any trailing / from the path unless it's literally /
+	if (container_final_sep != container_path) {
+		*container_final_sep = '\0';
+	}
+	// now find the containing collection
+	if (StoreObjectFindByFilename(client, container_path, &container)) {
+		// no such collection - but it should have been created. Must be DB error
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
+	
+	// check we can save this new object and if not, error out
 	object.collection_guid = container.guid;
 	StoreObjectFixUpFilename(&container, &object);
 	
