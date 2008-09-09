@@ -1628,25 +1628,31 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 			break;
 	}
 	/* FIXME - detect following errors?
-        return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
-        return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
-        return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-    */
-    // now try to find the parent collection
-    if (StoreObjectFindByFilename(client, container_path, &container)) {
-    	// no such collection - we need to create it
-    	// FIXME
-    	return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
-    }
-    
-    // FIXME - check we can write to this collection, and if not, delete
-    // the new object and error out.
-    object.collection_guid = container.guid;
-    StoreObjectFixUpFilename(&container, &object);
-    
-    if (StoreObjectSave(client, &object))
-    	return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-
+	return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
+	return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+	return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+	*/
+	// now try to find the parent collection
+	if (StoreObjectFindByFilename(client, container_path, &container)) {
+		// no such collection - we need to create it
+		// FIXME
+		return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
+	}
+	
+	// FIXME - check we can write to this collection, and if not, delete
+	// the new object and error out.
+	object.collection_guid = container.guid;
+	StoreObjectFixUpFilename(&container, &object);
+	
+	if (StoreObjectSave(client, &object)) {
+		StoreObjectRemove(client, &object);
+		return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+	}
+	
+	// announce creation on parent container
+	++client->stats.insertions;
+	StoreWatcherEvent(client, &container, STORE_WATCH_EVENT_NEW);
+	
 	return ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
 		object.guid, object.version);
 }
@@ -2730,6 +2736,7 @@ StoreCommandWRITE(StoreClient *client,
 	
 	// save new object
 	if (StoreObjectSave(client, &newdocument)) {
+	        StoreObjectRemove(client, &newdocument);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 	
