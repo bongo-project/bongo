@@ -131,6 +131,7 @@
 #define MSG4226BADEVENT "4226 Unable to parse event\r\n"
 #define MSG4226ADBKEXISTS "4226 Calendar already exists\r\n"
 #define MSG4226QUEUEOPEN "4226 Queue entry still open\r\n"
+#define MSG4226GUIDINUSE "4226 Guid already in use\r\n"
 #define MSG4227OLDVERSION "4227 Document has different version\r\n"
 #define MSG4228CANTWRITEMBOX "4228 Can't write to mailbox\r\n"
 #define MSG4228CANTWRITECAL "4228 Can't write to calendar\r\n"

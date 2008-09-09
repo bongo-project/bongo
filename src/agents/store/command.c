@@ -1582,6 +1582,18 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 	char container_path[MAX_FILE_NAME+1];
 	char *ptr;
 	
+	// look for existing name/guid first?
+	if (name != NULL) {
+		if (StoreObjectFindByFilename(client, name, &object) == 0) {
+			return ConnWriteStr(client->conn, MSG4226MBOXEXISTS);
+		}
+	}
+	if (guid != 0) {
+		if (StoreObjectFind(client, guid, &object) == 0) {
+			return ConnWriteStr(client->conn, MSG4226GUIDINUSE);
+		}
+	}
+	
 	// look to see if container is valid
 	strncpy(container_path, name, MAX_FILE_NAME);
 	ptr = strrchr(container_path, '/');
