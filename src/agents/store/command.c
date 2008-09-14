@@ -2675,32 +2675,34 @@ StoreCommandUSER(StoreClient *client, char *user, char *password, int nouser)
 CCode 
 StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags)
 {
-    CCode ccode;
-
-    // stop watching whatever we were watching before
-    
-    if (client->watch.collection) {
-        if (StoreWatcherRemove(client, client->watch.collection)) {
-            return ConnWriteStr(client->conn, MSG5004INTERNALERR);
-        }
-    }
-
-    // watch the new collection
-
-    if (flags) {
-        flags |= STORE_WATCH_EVENT_COLL_REMOVED;
-        flags |= STORE_WATCH_EVENT_COLL_RENAMED;
-
-        ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_READ);
-        if (ccode) {
-            return ccode;
-        }
-
-        client->watch.collection = collection->guid;
-        client->watch.flags = flags;
-        StoreWatcherAdd(client, collection->guid);
-    }
-    return ConnWriteStr(client->conn, MSG1000OK);
+	CCode ccode;
+	
+	// stop watching whatever we were watching before
+	if (client->watch.collection) {
+		if (StoreWatcherRemove(client, client->watch.collection))
+			return ConnWriteStr(client->conn, MSG5004INTERNALERR);
+		
+		client->watch.collection = 0;
+		client->watch.flags = 0;
+	}
+	
+	// watch the new collection
+	if (flags) {
+		flags |= STORE_WATCH_EVENT_COLL_REMOVED;
+		flags |= STORE_WATCH_EVENT_COLL_RENAMED;
+		
+		ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_READ);
+		if (ccode) {
+			return ccode;
+		}
+		
+		if (StoreWatcherAdd(client, collection->guid))
+			return ConnWriteStr(client->conn, MSG5004INTERNALERR);
+		
+		client->watch.collection = collection->guid;
+		client->watch.flags = flags;
+	}
+	return ConnWriteStr(client->conn, MSG1000OK);
 }
 
 // FIXME: do something with the link document
