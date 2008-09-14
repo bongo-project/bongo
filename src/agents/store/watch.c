@@ -31,17 +31,17 @@ StoreWatcherFindWatchItem(StoreClient *client, uint64_t collection)
 	WatchItem *to_watch = NULL;
 	
 	for (i = 0; i < MAX_STORE_WATCH; i++) {
-    	WatchItem *item = &global_watch_list[i];
-    	if ((item->collection == collection) &&(strcmp(item->store, client->storeName)==0)) {
-    		// found the watch item for this collection in the right store
-    		to_watch = item;
-    	}
-    	if ((to_watch == NULL) && (item->store == NULL)) {
-    		// found the first free entry (overridden by above)
-    		to_watch = item;
-    	}
-    }
-    return to_watch;
+	WatchItem *item = &global_watch_list[i];
+		if ((item->collection == collection) && (item->store != NULL) && (strcmp(item->store, client->storeName)==0)) {
+			// found the watch item for this collection in the right store
+			to_watch = item;
+		}
+		if ((to_watch == NULL) && (item->store == NULL)) {
+			// found the first free entry (overridden by above)
+			to_watch = item;
+		}
+	}
+	return to_watch;
 }
 
 /** \internal
