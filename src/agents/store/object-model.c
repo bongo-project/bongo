@@ -594,7 +594,7 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 		printf("Couldn't create the SQL\n");
 		goto abort;
 	} else {
-		printf("SQL: %s\n", sql);
+		// printf("SQL: %s\n", sql);
 	}
 	
 	MsgSQLBeginTransaction(client->storedb);
