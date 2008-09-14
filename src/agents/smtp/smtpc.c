@@ -182,6 +182,16 @@ DeliverMessage(SMTPClient *Queue, SMTPClient *Remote, RecipStruct *Recip) {
     /* we are connected to the remote smtp server, but we haven't done any conversation yet */
     /*  read out the banner */
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
+    if (Remote->line[0] != '2') {
+        // we can't deliver to this server...
+        if (Remote->line[0] == '4') {
+            // temporary error
+            Recip->Result = DELIVER_TRY_LATER;
+            return FALSE;
+        }
+        Recip->Result = DELIVER_REFUSED;
+        return FALSE;
+    }
 
 beginConversation:
     Extensions = 0;
