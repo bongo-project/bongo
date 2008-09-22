@@ -53,7 +53,7 @@ static void XPLSignalProcessor(int signo, siginfo_t *info, void *context)
 }
 
 unsigned int _XplSignalList[] = { 
-    SIGTERM, SIGINT, SIGUSR1, SIGUSR2, SIGHUP, SIGPIPE,
+    SIGTERM, SIGINT, SIGUSR1, SIGUSR2, SIGHUP, SIGPIPE, SIGSEGV, SIGILL,
     
     /* debugging - catch these signals too for now */
     SIGALRM, SIGVTALRM,

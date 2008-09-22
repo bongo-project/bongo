@@ -30,6 +30,8 @@
 #include "msgapi.h"
 #include "nmlib.h"
 
+#include <execinfo.h>
+
 #define CONNECTION_TIMEOUT (15 * 60)
 
 #define MONITOR_SLEEP_INTERVAL 5000
@@ -40,27 +42,51 @@ void
 BongoAgentHandleSignal(BongoAgent *agent,
                       int sigtype)
 {
-    switch(sigtype) {
-    case SIGHUP:
-        if (agent->state < BONGO_AGENT_STATE_UNLOADING) {
-            agent->state = BONGO_AGENT_STATE_UNLOADING;
-        }
-        
-        break;
-    case SIGINT:
-    case SIGTERM:
-        if (agent->state == BONGO_AGENT_STATE_STOPPING) {
-            XplExit(0);
-        } else if (agent->state < BONGO_AGENT_STATE_STOPPING) {
-            agent->state = BONGO_AGENT_STATE_STOPPING;
-        }
-        
-        break;
-    default:
-        break;
-    }
-    
-    return;
+	switch(sigtype) {
+	// handle various fatal errors to spurt a backtrace when possible
+	case SIGILL:
+	case SIGABRT:
+	case SIGPIPE:
+	case SIGKILL:
+	case SIGSEGV: 
+		{
+			char path[XPL_MAX_PATH + 1];
+			int boomfile;
+			const int buff_size = 50;
+			
+			snprintf(path, XPL_MAX_PATH, "%s/guru-meditation-%d", XPL_DEFAULT_WORK_DIR, (int)time(NULL));
+			boomfile = open(path, O_CREAT | O_WRONLY);
+			if (boomfile != -1) {
+				void * const buffer[buff_size];
+				int buff_used;
+				
+				buff_used = backtrace(&buffer, buff_size);
+				backtrace_symbols_fd(&buffer, buff_used, boomfile);
+				close(boomfile);
+			}
+			XplExit(-1);
+		}
+		break;
+	case SIGHUP:
+		if (agent->state < BONGO_AGENT_STATE_UNLOADING) {
+			agent->state = BONGO_AGENT_STATE_UNLOADING;
+		}
+		
+		break;
+	case SIGINT:
+	case SIGTERM:
+		if (agent->state == BONGO_AGENT_STATE_STOPPING) {
+			XplExit(0);
+		} else if (agent->state < BONGO_AGENT_STATE_STOPPING) {
+			agent->state = BONGO_AGENT_STATE_STOPPING;
+		}
+		
+		break;
+	default:
+		break;
+	}
+	
+	return;
 }
 
 BOOL ReadConfiguration(BongoAgent *agent);
