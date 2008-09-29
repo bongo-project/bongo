@@ -18,16 +18,15 @@
  * may find current contact information at www.novell.com.
  * </Novell-copyright>
  * (C) 2007 Patrick Felt
- * (C) 2007 Alex Hudson
  ****************************************************************************/
+
+/** \file avirus.c Code for the anti-virus agent
+ */
 
 #include <config.h>
 
 #include <xpl.h>
 #include <memmgr.h>
-
-#define LOGGERNAME "antivirus"
-#include <logger.h>
 
 #include <bongoagent.h>
 #include <bongoutil.h>
@@ -36,33 +35,19 @@
 #include <msgapi.h>
 #include <streamio.h>
 #include <connio.h>
+#include <logger.h>
 
 #include "avirus.h"
 
-#if defined(RELEASE_BUILD)
-#define AVClientAlloc() MemPrivatePoolGetEntry(AVirus.nmap.pool)
-#else
-#define AVClientAlloc() MemPrivatePoolGetEntryDebug(AVirus.nmap.pool, __FILE__, __LINE__)
-#endif
-
 static void SignalHandler(int sigtype);
+
 
 AVirusGlobals AVirus;
 
-static BOOL 
-AVClientAllocCB(void *buffer, void *data)
-{
-    register AVClient *c = (AVClient *)buffer;
-
-    memset(c, 0, sizeof(AVClient));
-
-    return(TRUE);
-}
-
 static void 
-AVClientFree(AVClient *client)
+AVirusClientFree(void *client)
 {
-    register AVClient *c = client;
+    register AVirusClient *c = client;
 
     if (c->conn) {
         ConnClose(c->conn, 1);
@@ -70,159 +55,21 @@ AVClientFree(AVClient *client)
         c->conn = NULL;
     }
 
+    if (c->envelope) {
+        MemFree(c->envelope);
+    }
     MemPrivatePoolReturnEntry(c);
 
     return;
 }
 
-static void 
-FreeClientData(AVClient *client)
-{
-    unsigned long i;
-
-    if (client && !(client->flags & AV_CLIENT_FLAG_EXITING)) {
-        client->flags |= AV_CLIENT_FLAG_EXITING;
-
-        if (client->conn) {
-            ConnClose(client->conn, 1);
-            ConnFree(client->conn);
-            client->conn = NULL;
-        }
-
-        if (client->envelope) {
-            MemFree(client->envelope);
-        }
-
-	for (i = 0; i < client->foundViruses.used; i++) {
-	    MemFree(client->foundViruses.names[i]);
-	}
-	MemFree(client->foundViruses.names);
-
-        ClearMIMECache(client);
-    }
-
-    return;
-}
-
-static __inline BOOL 
-ScanMessageParts(AVClient *client, unsigned char *queueID)
-{
-    BOOL scan;
-    int infected;
-    int ccode;
-    unsigned int used;
-    unsigned long i;
-    unsigned long id;
-    unsigned char *ptr;
-    unsigned char *ptr2;
-
-    scan = FALSE;
-    ccode = NMAPSendCommandF(client->conn, "QMIME %s\r\n", queueID);
-    if ((ccode != -1) 
-	&& ((ccode = LoadMIMECache(client)) != -1)) {
-        scan = FALSE;
-        for (used = 0; used < client->mime.used; used++) {
-            switch(toupper(client->mime.cache[used].type[0])) {
-	    case 'M': /* multipart & message */
-		if (QuickNCmp(client->mime.cache[used].type, "multipart", 9) || QuickNCmp(client->mime.cache[used].type, "message", 7)) {
-		    continue;
-		}
-		break;
-	    case 'T': /* Text */
-		if (QuickCmp(client->mime.cache[used].type, "text/plain") || QuickCmp(client->mime.cache[used].type, "text/html")) {
-		    continue;
-		}
-		
-		break;
-            }
-	    
-            client->mime.cache[used].flags |= AV_FLAG_SCAN;
-            scan = TRUE;
-        }
-	if (!scan) {
-	    return 0;
-	}
-    } else {
-	return -1;
-    }
-    
-    infected = 0;
-
-    for (i = 0; i < client->mime.used; i++) {
-        if (!(client->mime.cache[i].flags & AV_FLAG_SCAN)) {
-            continue;
-        }
-
-        client->mime.current = i;
-        XplSafeIncrement(AVirus.stats.attachments.scanned);
-
-        XplWaitOnLocalSemaphore(AVirus.id.semaphore);
-        id = AVirus.id.next;
-        AVirus.id.next++;
-        XplSignalLocalSemaphore(AVirus.id.semaphore);
-
-        ptr = strrchr(client->mime.cache[i].fileName, '.');
-        if (ptr) {
-            ptr2 = ptr + 1;
-            while (*ptr2) {
-                if (!isalnum(*ptr2)) {
-                    *ptr2 = 'x';
-                }
-
-                ptr2++;
-            }
-
-            sprintf(client->line, "AVScan: %lu%s", id, ptr);
-            XplRenameThread(XplGetThreadID(), client->line);
-
-            sprintf(client->work, "%s/%lu%s", AVirus.path.work, id, ptr);
-        } else {
-            sprintf(client->line, "AV Scan: %lu.exe", id);
-            XplRenameThread(XplGetThreadID(), client->line);
-
-            sprintf(client->work, "%s/%lu.exe", AVirus.path.work, id);
-        }
-
-        if (StreamAttachmentToFile(client, queueID, &(client->mime.cache[i])) > 0) {
-            /*
-                Based on the configured scanner, scan the attachment in client->work.
-
-                Set client->mime.cache[i].flags accordingly.
-            */
-            switch (AVirus.flags & (AV_FLAG_USE_CA | AV_FLAG_USE_MCAFEE | AV_FLAG_USE_SYMANTEC | AV_FLAG_USE_COMMANDAV)) {
-                case AV_FLAG_USE_CA: 
-                case AV_FLAG_USE_MCAFEE: 
-                case AV_FLAG_USE_SYMANTEC: 
-                case AV_FLAG_USE_COMMANDAV: {
-                    client->mime.cache[i].flags &= ~(AV_FLAG_INFECTED | AV_FLAG_CURED);
-		    break;
-                }
-            }
-
-            /* We've scanned it, do we have a virus? */
-            if (client->mime.cache[i].flags & AV_FLAG_INFECTED) {
-                XplSafeIncrement(AVirus.stats.viruses);
-		infected = 1;		
-            }
-        }
-
-        unlink(client->work);
-    }
-
-    return infected;
-}
-
-static __inline int
-ScanMessageClam(AVClient *client, char *queueID)
-{
+BOOL VirusCheck(AVirusClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName) {
     int ccode;
     long size;
-    BOOL infected;
+    BOOL infected = FALSE;
     Connection *conn;
 
-    infected = 0;
-
-    conn = ConnAddressPoolConnect(&(AVirus.clam.hosts), AVirus.clam.timeout); 
+    conn = ConnAddressPoolConnect(&(AVirus.clamd.hosts), AVirus.clamd.connectionTimeout); 
     if (conn) {
 	    Connection *data;
 	    unsigned short port;
@@ -288,13 +135,15 @@ ScanMessageClam(AVClient *client, char *queueID)
                 *ptr = '\0';
                 ptr = client->line + strlen("stream: ");
 
+#if 0
                 if(client->foundViruses.used == client->foundViruses.allocated) {
                     client->foundViruses.names = MemRealloc(client->foundViruses.names, sizeof(char*) * (client->foundViruses.allocated + MIME_REALLOC_SIZE));
                 }
                 client->foundViruses.names[client->foundViruses.used++] = MemStrdup(ptr);
 
                 XplSafeIncrement(AVirus.stats.viruses);
-                infected = 1;
+#endif
+                infected = TRUE;
             }
 	    }
 	    ConnFree(conn);
@@ -303,876 +152,108 @@ ScanMessageClam(AVClient *client, char *queueID)
     return infected;
 }
 
-static __inline int
-ScanMessage(AVClient *client, char *qID)
-{
-    int ccode = 0;
-    if (AVirus.flags & (AV_FLAG_USE_CLAMAV)) {
-	ccode = ScanMessageClam(client, qID);
-    }
-    
-    if (ccode != -1 && (AVirus.flags & (AV_FLAG_USE_CA | AV_FLAG_USE_MCAFEE | AV_FLAG_USE_SYMANTEC | AV_FLAG_USE_COMMANDAV))) {
-	ccode = ScanMessageParts(client, qID);
-    }
-
-    return ccode;
-}
-
+/** Callback function.  Whenever a new message arrives in the queue that
+ * this agent has registered itself on, NMAP calls back to this function
+ * and provides the agent with the unique hash of the new message.  The 
+ * connection then remains open, and NMAP goes into slave state while
+ * the agent does all necessary processing.
+ * \param client The connection initiated by the NMAP store.
+ */
 static __inline int 
-SendNotification(AVClient *client, unsigned char *from, unsigned char *qID, BongoSList *users)
+ProcessConnection(void *clientp, Connection *conn)
 {
+    AVirusClient *client = clientp;
+    unsigned char *envelopeLine;
+    BOOL hasFlags = FALSE;
+    unsigned long msgFlags = 0;
     int ccode;
-    unsigned long used;
-    unsigned char *ptr;
-    unsigned char *subject = NULL;
 
-    ccode = -1;
-    if (from 
-            && (from[0] != '-') 
-            && ((ccode = NMAPSendCommandF(client->conn, "QGREP %s subject:\r\n", qID)) != -1)) {
-        ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE);
-    } else {
-        return(ccode);
-    }
-
-    while ((ccode != 1000) && (ccode != -1)) {
-        if (ccode == 2002) {
-            if (!subject) {
-                /* Message infected -> + \0 */
-                subject = MemMalloc(strlen(client->line) + 24);
-                if (subject) {
-                    if (client->line[8]!='\0') {
-                        sprintf(subject, "Subject: Virus Alert [%s]", client->line+9);
-                    } else {
-                        sprintf(subject, "Subject: Virus Alert [%s]", client->line+8);
-                    }
-                }
-            } else if ((ptr = MemRealloc(subject, strlen(subject) + strlen(client->line) + 4)) != NULL) {
-                subject = ptr;
-                strcat(subject, "\r\n");
-                strcat(subject, client->line);
-            }
-        }
-
-        ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE);
-    }
-
-    if ((ccode != -1) 
-            && ((ccode = NMAPSendCommand(client->conn, "QCREA\r\n", 7)) != -1) 
-            && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1) 
-            && (ccode == 1000)) {
-        ccode = NMAPSendCommand(client->conn, "QSTOR FROM - -\r\n", 16);
-    } else {
-        if (subject) {
-            MemFree(subject);
-        }
-
-        return(ccode);
-    }
-
-    if ((ccode != -1) 
-            && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1) 
-            && (ccode == 1000)) {
-        BongoSList *userlist;
-        for (userlist = users; userlist != NULL; userlist = userlist->next) {
-            AVRecipient *recip;
-            recip = (AVRecipient *)userlist->data;
-            if (strchr(recip->name, '@')) {
-                ccode = NMAPSendCommandF(client->conn, "QSTOR TO %s %s %lu\r\n", 
-                    recip->name, recip->address, (long unsigned int)0);
-            } else {
-                ccode = NMAPSendCommandF(client->conn, "QSTOR LOCAL %s %s %lu\r\n", 
-                    recip->name, recip->address, (long unsigned int)0);
-            }
-
-            if (ccode != -1) {
-                ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-            }
-        }
-    } else {
-        if (subject) {
-            MemFree(subject);
-        }
-
-        NMAPSendCommand(client->conn, "\r\n.\r\nQABRT\r\n", 12);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-
-        return(ccode);
-    }
-
-/* TODO: AVirus.officialName ???? */
-    if ((ccode != -1) 
-            && ((ccode = NMAPSendCommand(client->conn, "QSTOR MESSAGE\r\n", 15)) != -1) 
-            && ((ccode = ConnWriteF(client->conn, "From: Virus Scanning Agent <postmaster@mailserver>\r\n")) != -1) 
-            && ((ccode = ConnWriteF(client->conn, "To: undisclosed-recipient-list\r\n")) != -1)) {
-        MsgGetRFC822Date(-1, 0, client->line);
-    } else {
-        if (subject) {
-            MemFree(subject);
-        }
-
-        NMAPSendCommand(client->conn, "\r\n.\r\nQABRT\r\n", 12);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-
-        return(ccode);
-    }
-
-    if (((ccode = ConnWriteF(client->conn, "Date: %s\r\n", client->line)) != -1) 
-            && ((ccode = ConnWrite(client->conn, subject, strlen(subject))) != -1) 
-            && ((ccode = ConnWrite(client->conn, "\r\nPrecedence: bulk\r\n", 20)) != -1) 
-            && ((ccode = ConnWrite(client->conn, "X-Sender: Bongo AntiVirus Agent\r\n", 35)) != -1) 
-            && ((ccode = ConnWrite(client->conn, "MIME-Version: 1.0\r\n", 19)) != -1) 
-            && ((ccode = ConnWrite(client->conn, "Content-Type: text/plain; charset=\"UTF-8\"\r\n", 43)) != -1) 
-            && ((ccode = ConnWrite(client->conn, "Content-Transfer-Encoding: 8bit\r\n\r\n", 35)) != -1) 
-            && ((ccode = ConnWriteF(client->conn, "User %s tried to send you a message\r\n", from)) != -1)) {
-        for (used = 0; used < client->foundViruses.used; used++) {
-            if (client->foundViruses.names[used]) {
-                ccode = ConnWriteF(client->conn, "containing the %s virus.\r\n\r\n", client->foundViruses.names[used]);
-                break;
-            }
-        }
-
-        if ((ccode != -1) 
-                && (AVirus.flags & AV_FLAG_NOTIFY_SENDER) 
-                && ((ccode = ConnWrite(client->conn, "The infected message has been returned to the sender with a notice\r\n", 68)) != -1)) {
-            ccode = ConnWrite(client->conn, "that it was infected.\r\n", 23);
-        }
-    } else {
-        if (subject) {
-            MemFree(subject);
-        }
-
-        NMAPSendCommand(client->conn, "\r\n.\r\nQABRT\r\n", 12);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-
-        return(ccode);
-    }
-
-    if ((ccode != -1) 
-            && ((ccode = NMAPSendCommand(client->conn, "\r\n.\r\nQRUN\r\n", 11)) != -1)) {
-        ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-    } else {
-        NMAPSendCommand(client->conn, "\r\n.\r\nQABRT\r\n", 12);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-    }
-
-    if (subject) {
-        MemFree(subject);
-    }
-
-    return(ccode);
-}
-
-static __inline int 
-ProcessConnection(AVClient *client)
-{
-    int ccode;
-    int length;
     unsigned long source = 0;
-    unsigned long used;
-    unsigned char preserve;
     unsigned char *ptr;
-    unsigned char *cur;
-    unsigned char *eol;
-    unsigned char *line;
-    unsigned char *email;
-    unsigned char *from = NULL;
-    unsigned char qID[16];
-    BOOL copy;
-    BOOL infected = FALSE;
-    BongoSList *users;
+    char *ptr2;
+    char *senderUserName = NULL;
+    BOOL blocked = FALSE;
 
-    if (((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1) 
-            && (ccode == 6020) 
-            && ((ptr = strchr(client->line, ' ')) != NULL)) {
-        *ptr++ = '\0';
+    client->conn = conn;
+    ccode = BongoQueueAgentHandshake(client->conn, client->line, client->qID, &client->envelopeLength, &client->messageLength);
+    client->envelope = BongoQueueAgentReadEnvelope(client->conn, client->line, client->envelopeLength, &client->envelopeLines);
 
-        strcpy(qID, client->line);
-
-        length = atoi(ptr);
-        client->envelope = MemMalloc(length + 3);
-    } else {
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-        return(-1);
+    envelopeLine = client->envelope;
+    while (*envelopeLine) {
+        switch(*envelopeLine) {
+        case QUEUE_FROM:
+            if ((ptr = strchr(envelopeLine, ' '))) {
+                ptr++;
+                if ((ptr2 = strchr(ptr, ' '))) {
+                    *ptr2 = '\0';
+                    if (strcmp(ptr, "-") != 0) {
+                        senderUserName = MemStrdup(ptr);
+                    }
+                    *ptr = ' ';
+                }
+            }
+            break;
+        case QUEUE_FLAGS:
+            hasFlags = TRUE;
+            msgFlags = atol(envelopeLine+1);
+            break;
+        case QUEUE_ADDRESS:
+            source = atol(envelopeLine+1);
+            break;
+        }
+        BONGO_ENVELOPE_NEXT(envelopeLine);
     }
 
-    if (client->envelope) {
-        sprintf(client->line, "AVirus: %s", qID);
-        XplRenameThread(XplGetThreadID(), client->line);
+    blocked = VirusCheck(client, client->qID, hasFlags, msgFlags, source, senderUserName);
 
-        ccode = NMAPReadCount(client->conn, client->envelope, length);
-    } else {
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-        return(-1);
+    if (blocked == TRUE) {
+        /* we found a virus of some kind.  drop the mail */
+        /* FIXME: we should generate a notice of some kindshouldn't we? */
+        ConnWriteF(client->conn, "QDELE %s\r\n", client->qID);
+        ConnFlush(client->conn);
     }
-
-    if ((ccode != -1) 
-            && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 6021)) {
-        client->envelope[length] = '\0';
-    } else {
-        MemFree(client->envelope);
-        client->envelope = NULL;
-	
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-        NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-        return(-1);
-    }
-
-    /*
-    if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-        users = MemMalloc0(sizeof(BongoSList));
-        if (!users) {
-            MemFree(client->envelope);
-            client->envelope = NULL;
-            
-            NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-            NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-            return(-1);
-        }
-    } else {
-        users = NULL;
-    }
-    */
-    users = NULL;
-
-    preserve = '\0';
-    
-    if (AVirus.flags & AV_FLAG_SCAN_INCOMING) {
-        XplSafeIncrement(AVirus.stats.messages.scanned);
-
-        ccode = ScanMessage(client, qID);
-        
-        if (ccode == -1) {
-            MemFree(client->envelope);
-            client->envelope = NULL;
-            
-            NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-            NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-            return(-1);
-        }
-
-        infected = (ccode > 0);
-
-        if (infected) {
-            XplSafeIncrement(AVirus.stats.attachments.blocked);
-
-            eol = NULL;
-            cur = client->envelope;
-            while ((ccode != -1) && *cur) {
-                copy = TRUE;
-
-                if (eol) {
-                    *eol = preserve;
-                }
-
-                line = strchr(cur, 0x0A);
-                if (line) {
-                    if (line[-1] == 0x0D) {
-                        eol = line - 1;
-                    } else {
-                        eol = line;
-                    }
-
-                    preserve = *eol;
-                    *eol = '\0';
-
-                    line++;
-                } else {
-                    eol = NULL;
-                    line = cur + strlen(cur);
-                }
-
-                switch (cur[0]) {
-                    case QUEUE_FROM: {
-                        if (!from) {
-                            ptr = cur + 1;
-                            while(*ptr && !isspace(*ptr)) {
-                                ++ptr;
-                            }
-
-                            *ptr = '\0';
-                            from = MemStrdup(cur + 1);
-                            *ptr = ' ';
-                        }
-
-                        break;
-                    }
-
-                    case QUEUE_RECIP_REMOTE:
-                    case QUEUE_RECIP_LOCAL:
-                    case QUEUE_RECIP_MBOX_LOCAL: {
-                        email = strchr(cur + 1, ' ');
-                        if (email) {
-                            *email++ = '\0';
-
-                            ptr = strchr(email, ' ');
-                            if (ptr) {
-                                *ptr = '\0';
-                            }
-                        } else {
-                            email = cur + 1;
-                            ptr = NULL;
-                        }
-
-                        client->line[0] = '\0';
-
-                        if ((AVirus.flags & AV_FLAG_NOTIFY_SENDER)
-                                && ((ccode = NMAPSendCommandF(client->conn, "QGREP %s Precedence:\r\n", qID)) != -1)
-                                && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1)) {
-                            BOOL bounce = TRUE;
-                            while ((ccode != 1000) && (ccode != -1)) {
-                                if (bounce && (ccode == 2002) && (strlen(client->line) > 12) 
-                                        && ((XplStrCaseCmp(client->line + 12, "bulk") == 0)
-                                        || (XplStrCaseCmp(client->line + 12, "list") == 0)
-                                        || (XplStrCaseCmp(client->line + 12, "junk") == 0))) {
-                                    bounce = FALSE;
-                                }
-                                ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE);
-                            }
-
-                            if (bounce) {
-                                for (used = 0; used < client->foundViruses.used; used++) {
-                                    if (client->foundViruses.names[used]) {
-                                        sprintf(client->line, "Your message is being returned since it seems to contain the %s virus", client->foundViruses.names[used]);
-                                        break;
-                                    }
-                                }
-
-                                ccode = NMAPSendCommandF(client->conn, "QRTS %s %s %lu %d %s\r\n", cur + 1, email, (long unsigned int)(DSN_HEADER | DSN_FAILURE), DELIVER_VIRUS_REJECT, client->line);
-                            }
-                        }
-
-                        Log(LOG_INFO, "(%s) Blocked %d viruses including '%s' sent from '%s' to '%s'", qID, client->foundViruses.used, client->foundViruses.names[0], from, email);
-                        if (email > cur + 1) {
-                            email[-1] = ' ';
-
-                            if (ptr) {
-                                *ptr = ' ';
-                            }
-                        }
-
-                        copy = FALSE;
-                        if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-                            AVRecipient *recip;
-                            recip = MemMalloc0(sizeof(AVRecipient));
-                            recip->name = MemStrdup(cur + 1);
-                            recip->address = MemStrdup(email);
-                            users = BongoSListAppend(users, (void *)recip);
-                        }
-
-                        break;
-                    }
-
-                    case 'A': {
-                        source = atol(cur + 1);
-                        break;
-                    }
-                }
-
-                if (copy && (ccode != -1)) {
-                    ccode = NMAPSendCommandF(client->conn, "QMOD RAW %s\r\n", cur);
-                }
-
-                cur = line;
-            }
-
-            if (eol) {
-                *eol = preserve;
-            }
-
-            if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-                SendNotification(client, from, qID, users);
-            }
-        }
-    } else {
-        eol = NULL;
-        cur = client->envelope;
-        while ((ccode != -1) && *cur) {
-            copy = TRUE;
-
-            if (eol) {
-                *eol = preserve;
-            }
-
-            line = strchr(cur, 0x0A);
-            if (line) {
-                if (line[-1] == 0x0D) {
-                    eol = line - 1;
-                } else {
-                    eol = line;
-                }
-
-                preserve = *eol;
-                *eol = '\0';
-
-                line++;
-            } else {
-                eol = NULL;
-                line = cur + strlen(cur);
-            }
-
-            switch (cur[0]) {
-                case 'F': {
-                    /* from */
-                    if (!from) {
-                        ptr = cur + 1;
-                        while(*ptr && !isspace(*ptr)) {
-                            ++ptr;
-                        }
-
-                        *ptr = '\0';
-                        from = MemStrdup(cur + 1);
-                        *ptr = ' ';
-
-                        ccode = NMAPSendCommandF(client->conn, "QMOD RAW %s\r\n", cur);
-
-                        copy = FALSE;
-                    }
-
-                    break;
-                }
-
-                case 'M':
-                case 'L': {
-                    /* Local recipient */
-                    if (from) {
-#if 0
-                        /* Always scan, however; if not, uncomment this section */
-
-                        ptr = line - 1;
-                        while ((*ptr != ' ') && (ptr > cur)) {
-                            ptr--;
-                        }
-
-                        dsnFlags = atol(ptr + 1);
-                        if (dsnFlags & NO_VIRUSSCANNING) {
-                            break;
-                        }
-#endif
-
-                        email = strchr(cur + 1, ' ');
-                        if (email) {
-                            *email++ = '\0';
-
-                            ptr = strchr(email, ' ');
-                            if (ptr) {
-                                *ptr = '\0';
-                            }
-                        } else {
-                            email = cur + 1;
-                            ptr = NULL;
-                        }
-
-#if 0
-// REMOVE-MDB
-// FIXME! What is this code actually doing?
-                        if (!MsgFindObject(cur + 1, client->dn, NULL, NULL, client->uservs)) {
-                            MDBFreeValues(client->uservs);
-
-                            if (email > cur + 1) {
-                                *email = ' ';
-
-                                if (ptr) {
-                                    *ptr = ' ';
-                                }
-                            }
-
-                            break;
-                        }
-
-                        MDBFreeValues(client->uservs);
-#endif
-                    } else {
-                        break;
-                    }
-
-                    //if (MsgGetUserFeature(client->dn, FEATURE_ANTIVIRUS, NULL, NULL)) {
-			XplSafeIncrement(AVirus.stats.messages.scanned);
-
-			ccode = ScanMessage(client, qID);
-			infected = (ccode == 1);
-
-                        if (infected) {
-                            /* Message is infected, do not copy this recipient on it, since he has virus protection */
-                            if (AVirus.flags & AV_FLAG_NOTIFY_USER) {
-                                AVRecipient *recip;
-                                recip = MemMalloc0(sizeof(AVRecipient));
-                                recip->name = MemStrdup(cur + 1);
-                                recip->address = MemStrdup(email);
-                                users = BongoSListAppend(users, (void *)recip);
-                            }
-#if 0
-// we bounce virus messages back to the sender over my dead body
-
-                            if ((AVirus.flags & AV_FLAG_NOTIFY_SENDER)
-                                    && ((ccode = NMAPSendCommandF(client->conn, "QGREP %s Precedence:\r\n", qID)) != -1)
-                                    && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) != -1)) {
-                                while ((ccode != 1000) && (ccode != -1)) {
-                                    if (bounce && (ccode == 2002) && (strlen(client->line) > 12)
-                                            && ((XplStrCaseCmp(client->line + 12, "bulk") != 0)
-                                            || (XplStrCaseCmp(client->line + 12, "list") != 0)
-                                            || (XplStrCaseCmp(client->line + 12, "junk") != 0))) {
-                                        bounce = FALSE;
-                                    }
-                                    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE);
-                                }
-                            }
-
-                            if (bounce) {
-                                client->line[0] = '\0';
-                                for (used = 0; used < client->foundViruses.used; used++) {
-                                    if (client->foundViruses.names[used]) {
-                                        sprintf(client->line, "Your message is being returned since it seems to contain the %s virus", client->foundViruses.names[used]);
-                                        break;
-                                    }
-                                }
-
-                                ccode = NMAPSendCommandF(client->conn, "QRTS %s %s %lu %d %s\r\n", cur + 1, email, (long unsigned int)(DSN_HEADER | DSN_FAILURE), DELIVER_VIRUS_REJECT, client->line);
-
-                                LoggerEvent(AVirus.handle.logging, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_VIRUS_BLOCKED, LOG_INFO, 0, cur + 1, client->foundViruses.used > 0 ? client->foundViruses.names[used] : "", source, 0, from, from? strlen(from) + 1: 0);
-                            } else {
-                                for (used = 0; used < client->foundViruses.used; used++) {
-				    LoggerEvent(AVirus.handle.logging, LOGGER_SUBSYSTEM_QUEUE, LOGGER_EVENT_VIRUS_BLOCKED, LOG_INFO, 0, cur + 1, client->foundViruses.names[used], source, 0, from, from? strlen(from) + 1: 0);
-				    break;
-                                }
-                            }
-#endif
-
-                            XplSafeIncrement(AVirus.stats.attachments.blocked);
-                            copy = FALSE;
-                        }
-                    // }
-
-                    if ((email - 1) > cur + 1) {
-                        *(email - 1) = ' ';
-
-                        if (ptr) {
-                            *ptr = ' ';
-                        }
-                    }
-
-                    break;
-                }
-
-                case 'A': {
-                    source = atol(cur+1);
-                    break;
-                }
-            }
-
-            if (copy) {
-                ccode = NMAPSendCommandF(client->conn, "QMOD RAW %s\r\n", cur);
-            }
-
-            cur = line;
-        }
-
-        if (eol) {
-            *eol = preserve;
-        }
-
-        if (infected && (AVirus.flags & AV_FLAG_NOTIFY_USER)) {
-            SendNotification(client, from, qID, users);
-        }
-    }
-
-    if (from) {    
-        MemFree(from);
-    }
-
     if ((ccode != -1) 
             && ((ccode = NMAPSendCommand(client->conn, "QDONE\r\n", 7)) != -1)) {
         ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     }
 
-    if ((AVirus.flags & AV_FLAG_NOTIFY_USER) && users) {
-        BongoSList *userlist;
-        for (userlist = users; userlist != NULL; userlist = userlist->next) {
-            AVRecipient *recip;
-            recip = (AVRecipient *)userlist->data;
-            if (recip){
-                MemFree(recip->name);
-                MemFree(recip->address);
-                MemFree(recip);
-            }
-            userlist->data = NULL;
-        }
-        BongoSListFree(users);
+    if (client->envelope) {
+        MemFree(client->envelope);
+        client->envelope = NULL;
     }
 
-    MemFree(client->envelope);
-    client->envelope = NULL;
+    if (senderUserName) {
+        MemFree(senderUserName);
+    }
 
     return(0);
 }
 
-static void 
-HandleConnection(void *param)
+static BongoConfigItem ClamHostList = {
+    BONGO_JSON_STRING, NULL, &AVirus.clamd.hostlist
+};
+
+static BongoConfigItem AVirusConfigSchema[] = {
+    { BONGO_JSON_INT, "o:flags/i", &AVirus.flags },
+    { BONGO_JSON_INT, "o:queue/i", &AVirus.nmap.queue },
+    { BONGO_JSON_INT, "o:timeout/i", &AVirus.clamd.connectionTimeout },
+    { BONGO_JSON_ARRAY, "o:hosts/a", &ClamHostList},
+    { BONGO_JSON_NULL, NULL, NULL },
+};
+
+/*
 {
-    int ccode;
-    long threadNumber = (long)param;
-    time_t sleep = time(NULL);
-    time_t wokeup;
-    AVClient *client;
-
-    if ((client = AVClientAlloc()) == NULL) {
-        if (client) {
-            AVClientFree(client);
-        }
-
-        Log(LOG_ERROR, "New worker failed startup; out of memory.");
-
-        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-
-        XplSafeDecrement(AVirus.nmap.worker.active);
-
-        return;
-    }
-
-    do {
-        XplRenameThread(XplGetThreadID(), "AVirus Worker");
-
-        XplSafeIncrement(AVirus.nmap.worker.idle);
-
-        XplWaitOnLocalSemaphore(AVirus.nmap.worker.todo);
-
-        XplSafeDecrement(AVirus.nmap.worker.idle);
-
-        wokeup = time(NULL);
-
-        XplWaitOnLocalSemaphore(AVirus.nmap.semaphore);
-
-        client->conn = AVirus.nmap.worker.tail;
-        if (client->conn) {
-            AVirus.nmap.worker.tail = client->conn->queue.previous;
-            if (AVirus.nmap.worker.tail) {
-                AVirus.nmap.worker.tail->queue.next = NULL;
-            } else {
-                AVirus.nmap.worker.head = NULL;
-            }
-        }
-
-        XplSignalLocalSemaphore(AVirus.nmap.semaphore);
-
-        if (client->conn) {
-            if (ConnNegotiate(client->conn, AVirus.nmap.ssl.context)) {
-                ccode = ProcessConnection(client);
-            } else {
-                NMAPSendCommand(client->conn, "QDONE\r\n", 7);
-                NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
-            }
-        }
-
-        if (client->conn) {
-            ConnFlush(client->conn);
-        }
-
-        FreeClientData(client);
-
-        /* Live or die? */
-        if (threadNumber == XplSafeRead(AVirus.nmap.worker.active)) {
-            if ((wokeup - sleep) > AVirus.nmap.sleepTime) {
-                break;
-            }
-        }
-
-        sleep = time(NULL);
-
-	AVClientAllocCB(client, NULL);
-    } while (AVirus.state == AV_STATE_RUNNING);
-
-    FreeClientData(client);
-
-    AVClientFree(client);
-
-    XplSafeDecrement(AVirus.nmap.worker.active);
-
-    XplExitThread(TSR_THREAD, 0);
-
-    return;
+"version": 1,
+"flags": 168,
+"patterns": "",
+"queue": 5,
+"hosts": [ "127.0.0.1:3310:1" ],
+"timeout": 15
 }
-
-static void 
-AntiVirusServer(void *ignored)
-{
-    int i;
-    int ccode;
-    XplThreadID id;
-    Connection *conn;
-
-    XplSafeIncrement(AVirus.server.active);
-
-    XplRenameThread(XplGetThreadID(), "AntiVirus Server");
-
-    AVirus.state = AV_STATE_RUNNING;
-
-    while (AVirus.state < AV_STATE_STOPPING) {
-        if (ConnAccept(AVirus.nmap.conn, &conn) != -1) {
-            if (AVirus.state < AV_STATE_STOPPING) {
-                conn->ssl.enable = FALSE;
-
-                XplWaitOnLocalSemaphore(AVirus.nmap.semaphore);
-                if (XplSafeRead(AVirus.nmap.worker.idle)) {
-                    conn->queue.previous = NULL;
-                    if ((conn->queue.next = AVirus.nmap.worker.head) != NULL) {
-                        conn->queue.next->queue.previous = conn;
-                    } else {
-                        AVirus.nmap.worker.tail = conn;
-                    }
-                    AVirus.nmap.worker.head = conn;
-                    ccode = 0;
-                } else {
-                    XplSafeIncrement(AVirus.nmap.worker.active);
-                    XplSignalBlock();
-                    XplBeginThread(&(id), HandleConnection, 24 * 1024, XPL_INT_TO_PTR(XplSafeRead(AVirus.nmap.worker.active)), ccode);
-                    XplSignalHandler(SignalHandler);
-                    if (!ccode) {
-                        conn->queue.previous = NULL;
-                        if ((conn->queue.next = AVirus.nmap.worker.head) != NULL) {
-                            conn->queue.next->queue.previous = conn;
-                        } else {
-                            AVirus.nmap.worker.tail = conn;
-                        }
-                        AVirus.nmap.worker.head = conn;
-                    } else {
-                        XplSafeDecrement(AVirus.nmap.worker.active);
-                        ccode = -1;
-                    }
-                }
-                XplSignalLocalSemaphore(AVirus.nmap.semaphore);
-
-                if (!ccode) {
-                    XplSignalLocalSemaphore(AVirus.nmap.worker.todo);
-
-                    continue;
-                }
-            }
-
-            ConnWrite(conn, "QDONE\r\n", 7);
-            ConnClose(conn, 0);
-
-            ConnFree(conn);
-            conn = NULL;
-
-            continue;
-        }
-
-        switch (errno) {
-            case ECONNABORTED:
-#ifdef EPROTO
-            case EPROTO: 
-#endif
-            case EINTR: {
-                if (AVirus.state < AV_STATE_STOPPING) {
-                    Log(LOG_ERROR, "accept() failed; errno: %d", errno);
-                }
-
-                continue;
-            }
-
-            default: {
-                if (AVirus.state < AV_STATE_STOPPING) {
-                    Log(LOG_ERROR, "Exiting after an accept() failure; error %d.", errno);
-                    AVirus.state = AV_STATE_STOPPING;
-                }
-
-                break;
-            }
-        }
-
-        break;
-    }
-
-    /* Shutting down */
-    AVirus.state = AV_STATE_UNLOADING;
-
-    Log(LOG_DEBUG, "Shutting down");
-
-    id = XplSetThreadGroupID(AVirus.id.group);
-
-    if (AVirus.nmap.conn) {
-        ConnClose(AVirus.nmap.conn, 1);
-        AVirus.nmap.conn = NULL;
-    }
-
-    if (AVirus.nmap.ssl.enable) {
-        AVirus.nmap.ssl.enable = FALSE;
-
-        if (AVirus.nmap.ssl.conn) {
-            ConnClose(AVirus.nmap.ssl.conn, 1);
-            AVirus.nmap.ssl.conn = NULL;
-        }
-
-        if (AVirus.nmap.ssl.context) {
-            ConnSSLContextFree(AVirus.nmap.ssl.context);
-            AVirus.nmap.ssl.context = NULL;
-        }
-    }
-
-    ConnCloseAll(1);
-
-    for (i = 0; (XplSafeRead(AVirus.server.active) > 1) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    Log(LOG_DEBUG, "Shutting down %d queue threads.", XplSafeRead(AVirus.nmap.worker.active));
-
-    XplWaitOnLocalSemaphore(AVirus.nmap.semaphore);
-
-    ccode = XplSafeRead(AVirus.nmap.worker.idle);
-    while (ccode--) {
-        XplSignalLocalSemaphore(AVirus.nmap.worker.todo);
-    }
-
-    XplSignalLocalSemaphore(AVirus.nmap.semaphore);
-
-    for (i = 0; XplSafeRead(AVirus.nmap.worker.active) && (i < 60); i++) {
-        XplDelay(1000);
-    }
-
-    if (XplSafeRead(AVirus.server.active) > 1) {
-        Log(LOG_DEBUG, "%d server threads outstanding; attempting forceful unload.", XplSafeRead(AVirus.server.active) -1);
-    }
-
-    if (XplSafeRead(AVirus.nmap.worker.active)) {
-        Log(LOG_DEBUG, "%d threads outstanding; attempting forceful unload.", XplSafeRead(AVirus.nmap.worker.active));
-    }
-
-    /* shutdown the scanning engine */
-
-    XplCloseLocalSemaphore(AVirus.nmap.worker.todo);
-    XplCloseLocalSemaphore(AVirus.nmap.semaphore);
-    XplCloseLocalSemaphore(AVirus.id.semaphore);
-
-    XplRWLockDestroy(&AVirus.lock.pattern);
-
-    StreamioShutdown();
-    MsgShutdown();
-
-    CONN_TRACE_SHUTDOWN();
-    ConnShutdown();
-
-    MemPrivatePoolFree(AVirus.nmap.pool);
-
-    MemoryManagerClose(MSGSRV_AGENT_ANTIVIRUS);
-
-    Log(LOG_DEBUG, "Shutdown complete");
-
-    XplSignalLocalSemaphore(AVirus.sem.main);
-    XplWaitOnLocalSemaphore(AVirus.sem.shutdown);
-
-    XplCloseLocalSemaphore(AVirus.sem.shutdown);
-    XplCloseLocalSemaphore(AVirus.sem.main);
-
-    XplSetThreadGroupID(id);
-
-    return;
-}
+*/
 
 static void
-ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight)
+ParseHost(char *buffer, char **host, int *port, int *weight)
 {
     char *portPtr;
     char *weightPtr;
@@ -1181,7 +262,7 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
     weightPtr = NULL;
 
     if (*buffer == '\0') {
-        return;
+            return;
     }
 
     if (*buffer == ':') {
@@ -1200,7 +281,6 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
             *port = (unsigned short)atol(portPtr);
             weightPtr = strchr(portPtr + 1, ':');
         }
-
         if (weightPtr) {
             weightPtr++;
             if ( *weightPtr != '\0' ) {
@@ -1210,61 +290,28 @@ ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight
     }
 }
 
-
-static BongoConfigItem AVirusHostList = { BONGO_JSON_STRING, NULL, &AVirus.clam.hostlist };
-
-static BongoConfigItem AVirusConfig[] = {
-	{ BONGO_JSON_INT, "o:flags/i", &AVirus.flags },
-	{ BONGO_JSON_STRING, "o:patterns/s", &AVirus.path.patterns },
-	{ BONGO_JSON_INT, "o:queue/i", &AVirus.nmap.queue },
-    { BONGO_JSON_ARRAY, "o:hosts/a", &AVirusHostList },
-    { BONGO_JSON_INT, "o:timeout/i", &AVirus.clam.timeout },
-	{ BONGO_JSON_NULL, NULL, NULL }
-};
-
 static BOOL 
-ReadConfiguration(void)
-{
-    unsigned char path[XPL_MAX_PATH + 1];
-    XplDir *dir;
-    XplDir *dirEntry;
+ReadConfiguration(void) {
     unsigned int i;
-
-    if (! ReadBongoConfiguration(AVirusConfig, "antivirus")) {
-	    return FALSE;
-    }
 
     if (! ReadBongoConfiguration(GlobalConfig, "global")) {
         return FALSE;
     }
 
+    if (! ReadBongoConfiguration(AVirusConfigSchema, "antivirus")) {
+        return FALSE;
+    }
 
-    ConnAddressPoolStartup(&AVirus.clam.hosts, 0, 0);
-    for (i=0; i<BongoArrayCount(AVirus.clam.hostlist); i++) {
-        char *lHost = MemStrdup(BongoArrayIndex(AVirus.clam.hostlist, unsigned char *, i));
+    for (i=0; i < BongoArrayCount(AVirus.clamd.hostlist); i++) {
+        char *hostitem = BongoArrayIndex(AVirus.clamd.hostlist, char*, i);
+        char *lHost = MemStrdup(hostitem);
         char *host;
-        unsigned short port = 3310; /* these are pretty standard */
-        unsigned long weight = 1;
+        int port, weight;
         ParseHost(lHost, &host, &port, &weight);
-        ConnAddressPoolAddHost(&AVirus.clam.hosts, host, port, weight);
+        ConnAddressPoolAddHost(&AVirus.clamd.hosts, host, port, weight);
         MemFree(lHost);
     }
 
-    snprintf(AVirus.path.work, XPL_MAX_PATH, "%s/avirus", MsgGetDir(MSGAPI_DIR_WORK, NULL, 0));
-
-    MsgMakePath(AVirus.path.work);
-
-    dirEntry = XplOpenDir(AVirus.path.work);
-    if (dirEntry) {
-        while((dir = XplReadDir(dirEntry)) != NULL) {
-            sprintf(path, "%s/%s", AVirus.path.work, dir->d_name);
-            if (dir->d_nameDOS[0] != '.') {
-                unlink(path);
-            }
-        }
-
-        XplCloseDir(dirEntry);
-    }
     return TRUE;
 }
 
@@ -1277,7 +324,7 @@ _NonAppCheckUnload(void)
 
     if (!checked) {
         checked = TRUE;
-        AVirus.state = AV_STATE_UNLOADING;
+        AVirus.state = AVIRUS_STATE_UNLOADING;
 
         XplWaitOnLocalSemaphore(AVirus.sem.shutdown);
 
@@ -1297,18 +344,19 @@ SignalHandler(int sigtype)
 {
     switch(sigtype) {
         case SIGHUP: {
-            if (AVirus.state < AV_STATE_UNLOADING) {
-                AVirus.state = AV_STATE_UNLOADING;
+            if (AVirus.state < AVIRUS_STATE_UNLOADING) {
+                AVirus.state = AVIRUS_STATE_UNLOADING;
             }
 
             break;
         }
+
         case SIGINT:
         case SIGTERM: {
-            if (AVirus.state == AV_STATE_STOPPING) {
+            if (AVirus.state == AVIRUS_STATE_STOPPING) {
                 XplUnloadApp(getpid());
-            } else if (AVirus.state < AV_STATE_STOPPING) {
-                AVirus.state = AV_STATE_STOPPING;
+            } else if (AVirus.state < AVIRUS_STATE_STOPPING) {
+                AVirus.state = AVIRUS_STATE_STOPPING;
             }
 
             break;
@@ -1322,160 +370,59 @@ SignalHandler(int sigtype)
     return;
 }
 
-static int 
-QueueSocketInit(void)
-{
-    AVirus.nmap.conn = ConnAlloc(FALSE);
-    if (AVirus.nmap.conn) {
-        memset(&(AVirus.nmap.conn->socketAddress), 0, sizeof(AVirus.nmap.conn->socketAddress));
-
-        AVirus.nmap.conn->socketAddress.sin_family = AF_INET;
-        AVirus.nmap.conn->socketAddress.sin_addr.s_addr = MsgGetAgentBindIPAddress();
-
-        /* Get root privs back for the bind.  It's ok if this fails -
-        * the user might not need to be root to bind to the port */
-        XplSetEffectiveUserId(0);
-
-        AVirus.nmap.conn->socket = ConnServerSocket(AVirus.nmap.conn, 2048);
-        if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
-            ConnFree(AVirus.nmap.conn);
-            AVirus.nmap.conn = NULL;
-            return(-1);
-        }
-
-        if (AVirus.nmap.conn->socket == -1) {
-            Log(LOG_ERROR, "Could not bind to dynamic port.");
-            ConnFree(AVirus.nmap.conn);
-            AVirus.nmap.conn = NULL;
-            return(-1);
-        }
-
-        if (QueueRegister(MSGSRV_AGENT_ANTIVIRUS, AVirus.nmap.queue, AVirus.nmap.conn->socketAddress.sin_port) != REGISTRATION_COMPLETED) {
-            Log(LOG_ERROR, "Could not register with bongoqueue");
-            ConnFree(AVirus.nmap.conn);
-            AVirus.nmap.conn = NULL;
-            return(-1);
-        }
-    } else {
-        Log(LOG_ERROR, "Could not allocate connection.");
-        return(-1);
-    }
-
-    return(0);
-}
-
 XplServiceCode(SignalHandler)
+
+static void
+AntiVirusServer(void *ignored) {
+    int minThreads, maxThreads, minSleep;
+
+    BongoQueueAgentGetThreadPoolParameters(&AVirus.agent, &minThreads, &maxThreads, &minSleep);
+    AVirus.QueueThreadPool = BongoThreadPoolNew(AGENT_NAME " Clients", BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE, minThreads, maxThreads, minSleep);
+    AVirus.QueueConnection = BongoQueueConnectionInit(&AVirus.agent, Q_INCOMING);
+
+    BongoQueueAgentListenWithClientPool(&AVirus.agent,
+                                            AVirus.QueueConnection,
+                                            AVirus.QueueThreadPool,
+                                            sizeof(AVirusClient),
+                                            AVirusClientFree,
+                                            ProcessConnection,
+                                            &AVirus.QueueMemPool);
+    BongoThreadPoolShutdown(AVirus.QueueThreadPool);
+    ConnClose(AVirus.QueueConnection, 1);
+    BongoAgentShutdown(&AVirus.agent);
+}
 
 int
 XplServiceMain(int argc, char *argv[])
 {
-    int                ccode;
+    int ccode;
+    int startupOpts;
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return(1);
     }
     XplInit();
 
-    XplSignalHandler(SignalHandler);
-
-    AVirus.id.main = XplGetThreadID();
-    AVirus.id.group = XplGetThreadGroupID();
-    AVirus.id.next = 0;
-
-    AVirus.state = AV_STATE_INITIALIZING;
-    AVirus.flags = 0;
-
-    AVirus.nmap.conn = NULL;
-    AVirus.nmap.queue = Q_INCOMING;
-    AVirus.nmap.pool = NULL;
-    AVirus.nmap.sleepTime = (5 * 60);
-    AVirus.nmap.ssl.conn = NULL;
-    AVirus.nmap.ssl.enable = FALSE;
-    AVirus.nmap.ssl.context = NULL;
-    AVirus.nmap.ssl.config.options = 0;
-
-    strcpy(AVirus.nmap.address, "127.0.0.1");
-
-    XplSafeWrite(AVirus.server.active, 0);
-
-    XplSafeWrite(AVirus.nmap.worker.idle, 0);
-    XplSafeWrite(AVirus.nmap.worker.active, 0);
-    XplSafeWrite(AVirus.nmap.worker.maximum, 100000);
-
-    XplSafeWrite(AVirus.stats.messages.scanned, 0);
-    XplSafeWrite(AVirus.stats.attachments.scanned, 0);
-    XplSafeWrite(AVirus.stats.attachments.blocked, 0);
-    XplSafeWrite(AVirus.stats.viruses, 0);
-
-    if (MemoryManagerOpen(MSGSRV_AGENT_ANTIVIRUS) == TRUE) {
-        AVirus.nmap.pool = MemPrivatePoolAlloc("Anti-Virus Connections", sizeof(AVClient), 0, 3072, TRUE, FALSE, AVClientAllocCB, NULL, NULL);
-        if (AVirus.nmap.pool != NULL) {
-            XplOpenLocalSemaphore(AVirus.sem.main, 0);
-            XplOpenLocalSemaphore(AVirus.sem.shutdown, 1);
-            XplOpenLocalSemaphore(AVirus.id.semaphore, 1);
-            XplOpenLocalSemaphore(AVirus.nmap.semaphore, 1);
-            XplOpenLocalSemaphore(AVirus.nmap.worker.todo, 1);
-        } else {
-            MemoryManagerClose(MSGSRV_AGENT_ANTIVIRUS);
-
-            Log(LOG_ERROR, "Unable to create connection pool; shutting down.");
-            return(-1);
-        }
-    } else {
-        Log(LOG_ERROR, "Unable to initialize memory manager; shutting down.");
-        return(-1);
-    }
-
-    ConnStartup(CONNECTION_TIMEOUT, TRUE);
-
-    MsgInit();
-    StreamioInit();
-    NMAPInitialize();
-
-    XplRWLockInit(&AVirus.lock.pattern);
-
-    SetCurrentNameSpace(NWOS2_NAME_SPACE);
-    SetTargetNameSpace(NWOS2_NAME_SPACE);
-
-    ReadConfiguration();
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "avirus");
-    // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
-
-    if (QueueSocketInit() < 0) {
-        Log(LOG_ERROR, "Initialization failed.");
-
-        MemoryManagerClose(MSGSRV_AGENT_ANTIVIRUS);
-
+    /* initialize all the libraries we need to */
+    startupOpts = BA_STARTUP_CONNIO | BA_STARTUP_NMAP;
+    ccode = BongoAgentInit(&AVirus.agent, AGENT_NAME, DEFAULT_CONNECTION_TIMEOUT, startupOpts);
+    if ( ccode == -1) {
+        LogFailureF("%s: Exiting", AGENT_NAME);
         return -1;
     }
 
-    /* initialize scanning engine here */
-
-
-    if (XplSetRealUser(MsgGetUnprivilegedUser()) < 0) {
-        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'.", MsgGetUnprivilegedUser());
-
-        MemoryManagerClose(MSGSRV_AGENT_ANTIVIRUS);
-
-        return 1;
-    }
-
-    AVirus.nmap.ssl.enable = FALSE;
-    AVirus.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
-    AVirus.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    ReadConfiguration();
     AVirus.nmap.ssl.config.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);
-
+    AVirus.nmap.ssl.config.certificate.file = MsgGetFile(MSGAPI_FILE_PUBKEY, NULL, 0);
+    AVirus.nmap.ssl.config.key.type = GNUTLS_X509_FMT_PEM;
     AVirus.nmap.ssl.context = ConnSSLContextAlloc(&(AVirus.nmap.ssl.config));
-    if (AVirus.nmap.ssl.context) {
-        AVirus.nmap.ssl.enable = TRUE;
-    }
 
-    NMAPSetEncryption(AVirus.nmap.ssl.context);
+    XplSignalHandler(SignalHandler);
 
-    XplStartMainThread(PRODUCT_SHORT_NAME, &id, AntiVirusServer, 8192, NULL, ccode);
+    /* start the server thread */
+    XplStartMainThread(AGENT_NAME, &id, AntiVirusServer, 8192, NULL, ccode);
     
     XplUnloadApp(XplGetThreadID());
-    return(0);
+    return 0;
 }

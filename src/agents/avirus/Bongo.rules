@@ -3,9 +3,7 @@ sbin_PROGRAMS += bongoavirus
 
 bongoavirus_SOURCES =				\
 	src/agents/avirus/avirus.c		\
-	src/agents/avirus/avirus.h		\
-	src/agents/avirus/mime.c		\
-	src/agents/avirus/stream.c
+	src/agents/avirus/avirus.h		
 
 bongoavirus_LDADD =					   \
 	libbongonmap.la					   \
