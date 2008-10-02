@@ -152,6 +152,115 @@ BOOL VirusCheck(AVirusClient *client, const char *queueID, BOOL hasFlags, unsign
     return infected;
 }
 
+void BounceToPostmaster(AVirusClient *client, char *senderUserName) {
+    int ccode;
+
+    ConnWriteF(client->conn, "QCREA\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        return;
+    }
+
+    ConnWriteF(client->conn, "QSTOR FROM -\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+
+    ConnWriteF(client->conn, "QSTOR TO postmaster\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+    /* this could definately be lumped into one function call for speed */
+    /* FIXME: this should also be fleshed out a bit */
+    ConnWriteF(client->conn, "QSTOR MESSAGE\r\n");
+    ConnWriteF(client->conn, "From: postmaster\r\n");
+    ConnWriteF(client->conn, "Subject: Virus Alert\r\n\r\n");
+    ConnWriteF(client->conn, "The mailserver has detected that %s attempted to send a message with a virus.\r\n", senderUserName);
+    ConnWriteF(client->conn, "The message did not get delivered.\r\n");
+    ConnWriteF(client->conn, ".\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+
+    ConnWriteF(client->conn, "QRUN\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+    Log(LOG_DEBUG, "Sent bounce for Queue ID %s to postmaster", client->qID);
+}
+
+void BounceToSender(AVirusClient *client, char *senderUserName) {
+    int ccode;
+
+    ConnWriteF(client->conn, "QCREA\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        return;
+    }
+
+    ConnWriteF(client->conn, "QSTOR FROM -\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+
+    ConnWriteF(client->conn, "QSTOR TO %s\r\n", senderUserName);
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+
+    /* this could definately be lumped into one function call for speed */
+    /* FIXME: this should also be fleshed out a bit */
+    ConnWriteF(client->conn, "QSTOR MESSAGE\r\n");
+    ConnWriteF(client->conn, "From: postmaster\r\n");
+    ConnWriteF(client->conn, "Subject: Virus Alert\r\n\r\n");
+    ConnWriteF(client->conn, "The mailserver has detected that you attempted to send a message with a virus.\r\n");
+    ConnWriteF(client->conn, "The message did not get delivered.\r\n");
+    ConnWriteF(client->conn, ".\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+
+    ConnWriteF(client->conn, "QRUN\r\n");
+    ConnFlush(client->conn);
+    ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
+    if (ccode != 1000) {
+        ConnWriteF(client->conn, "QABRT\r\n");
+        ConnFlush(client->conn);
+        return;
+    }
+    Log(LOG_DEBUG, "Sent bounce for Queue ID %s to the sender", client->qID);
+}
+
 /** Callback function.  Whenever a new message arrives in the queue that
  * this agent has registered itself on, NMAP calls back to this function
  * and provides the agent with the unique hash of the new message.  The 
@@ -208,12 +317,26 @@ ProcessConnection(void *clientp, Connection *conn)
 
     if (blocked == TRUE) {
         /* we found a virus of some kind.  drop the mail */
-        /* FIXME: we should generate a notice of some kindshouldn't we? */
+        Log(LOG_DEBUG, "Queue ID %s Infected and blocked", client->qID);
         ConnWriteF(client->conn, "QDELE %s\r\n", client->qID);
         ConnFlush(client->conn);
-    }
-    if ((ccode != -1) 
-            && ((ccode = NMAPSendCommand(client->conn, "QDONE\r\n", 7)) != -1)) {
+
+        /* the rules here are:
+         * 1) notify the sender if they are auth'd
+         * 2) notify postmaster if the flag for such is set */
+        /* are we auth'd? */
+        if (senderUserName) {
+            /* create the bounce to the sender */
+            BounceToSender(client, senderUserName);
+        }
+
+        if (AVirus.flags & AVIRUS_FLAG_NOTIFY_POSTMASTER) {
+            /* create the bounce to the postmaster */
+            BounceToPostmaster(client, senderUserName);
+        }
+    } else {
+        Log(LOG_DEBUG, "Queue ID %s clean", client->qID);
+        NMAPSendCommand(client->conn, "QDONE\r\n", 7);
         ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     }
 

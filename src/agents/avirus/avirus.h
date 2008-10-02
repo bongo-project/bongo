@@ -130,9 +130,10 @@ typedef struct _AVirusGlobals {
 extern AVirusGlobals AVirus;
 
 /* spamd.c */
+void BounceToSender(AVirusClient *client, char *senderUserName);
+void BounceToPostmaster(AVirusClient *client, char *senderUserName);
 BOOL VirusCheck(AVirusClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName);
 void VirusShutdown();
 void VirusStartup();
 BOOL VirusReadConfiguration(BongoJsonNode *node);
-
 #endif /* _ANTIVIRUS_H */
