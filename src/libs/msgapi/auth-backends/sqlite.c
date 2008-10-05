@@ -100,6 +100,7 @@ int
 AuthSqlite_FindUser(const char *user)
 {
 	MsgSQLStatement *stmt;
+	MsgSQLStatement find;
 	char path[XPL_MAX_PATH + 1];
 	MsgSQLHandle *handle;
 	int users = -1;
@@ -113,8 +114,9 @@ AuthSqlite_FindUser(const char *user)
 		return 1;
 	}
 
+	memset(&find, 0, sizeof(MsgSQLStatement));
 	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ?;",
-		&msgauth_stmts.find_user);
+		&find);
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL statement in FindUser");
 		return 1;
@@ -143,6 +145,7 @@ int
 AuthSqlite_VerifyPassword(const char *user, const char *password)
 {
 	MsgSQLStatement *stmt;
+	MsgSQLStatement verify;
 	char path[XPL_MAX_PATH + 1];
 	char hash[XPLHASH_SHA1_LENGTH + 1];
 	MsgSQLHandle *handle;
@@ -160,8 +163,9 @@ AuthSqlite_VerifyPassword(const char *user, const char *password)
 		return 2;
 	}
 
+	memset(&verify, 0, sizeof(MsgSQLStatement));
 	stmt = MsgSQLPrepare (handle, "SELECT count(username) FROM users WHERE username = ? AND password = ?;",
-		&msgauth_stmts.auth_user);
+		&verify);
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL statement in VerifyPassword");
 		return 1;
@@ -194,6 +198,7 @@ int
 AuthSqlite_AddUser(const char *user)
 {
 	MsgSQLStatement *stmt;
+	MsgSQLStatement add;
 	char path[XPL_MAX_PATH + 1];
 	MsgSQLHandle *handle;
 	
@@ -204,9 +209,10 @@ AuthSqlite_AddUser(const char *user)
 		return -10;
 	}
 	
+	memset(&add, 0, sizeof(MsgSQLStatement));
 	stmt = MsgSQLPrepare (handle,
 		"INSERT INTO users (username) VALUES (?);",
-		&msgauth_stmts.add_user);
+		&add);
 	
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL statement in AddUser");
@@ -226,6 +232,7 @@ int
 AuthSqlite_SetPassword(const char *user, const char *password)
 {
 	MsgSQLStatement *stmt;
+	MsgSQLStatement set;
 	char path[XPL_MAX_PATH + 1];
 	char hash[XPLHASH_SHA1_LENGTH + 1];
 	MsgSQLHandle *handle;
@@ -239,9 +246,10 @@ AuthSqlite_SetPassword(const char *user, const char *password)
 		return -11;
 	}
 	
+	memset(&set, 0, sizeof(MsgSQLStatement));
 	stmt = MsgSQLPrepare (handle,
 		"UPDATE users SET password = ? WHERE username= ?;",
-		&msgauth_stmts.set_password);
+		&set);
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL in SetPassword()");
 		return -12;
@@ -272,6 +280,7 @@ AuthSqlite_UserList(char **list[])
 {
 	char **userlist;
 	MsgSQLStatement *stmt;
+	MsgSQLStatement list_stmt;
 	char path[XPL_MAX_PATH + 1];
 	MsgSQLHandle *handle;
 	int users = 0;
@@ -285,8 +294,9 @@ AuthSqlite_UserList(char **list[])
 		return 1;
 	}
 
+	memset(&list_stmt, 0, sizeof(MsgSQLStatement));
 	stmt = MsgSQLPrepare (handle, "SELECT username FROM users;",
-		&msgauth_stmts.list_user);
+		&list_stmt);
 	if (NULL == stmt) {
 		Log(LOG_ERROR, "Unable to prepare SQL statement in ListUser");
 		return 1;
