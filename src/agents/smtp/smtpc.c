@@ -174,7 +174,8 @@ CheckResponse(const char *Response) {
 BOOL
 DeliverMessage(SMTPClient *Queue, SMTPClient *Remote, RecipStruct *Recip) {
     int Extensions;
-    unsigned long Size=0, MessageLength=0, MessageLineLen=0;
+    unsigned long Size=0, MessageLineLen=0;
+    long long MessageLength = 0;
     int Ret;
     unsigned char TimeBuf[80];
     char *MessageLine=NULL;
