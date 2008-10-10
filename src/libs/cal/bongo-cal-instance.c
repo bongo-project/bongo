@@ -22,7 +22,7 @@
 #include <config.h>
 #include "bongo-cal-private.h"
 #include <bongocal.h>
-#include <ical.h>
+#include <libical/ical.h>
 
 typedef struct {
     BongoCalRecurFrequency freq;

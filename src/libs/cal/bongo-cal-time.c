@@ -41,7 +41,7 @@
 #include <config.h>
 #include "bongo-cal-private.h"
 #include <bongocal.h>
-#include <ical.h>
+#include <libical/ical.h>
 
 #define ASSERTTZ(t) {assert(!t.isUtc || (t.isUtc && t.tz == NULL) || (t.isUtc && t.tz == BongoCalTimezoneGetUtc())); assert(!t.tz || !t.tzid  || (!strcmp(t.tzid,  BongoCalTimezoneGetTzid(t.tz)))); }
 

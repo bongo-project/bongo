@@ -27,7 +27,7 @@
 #include <nmap.h>
 #include "msgapip.h"
 
-#include <icaltime.h>
+#include <libical/icaltime.h>
 #include "bongoutil.h"
 
 #define LAST 5

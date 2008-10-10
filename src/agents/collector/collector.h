@@ -28,7 +28,7 @@
 #include <nmlib.h>
 #include <bongoagent.h>
 
-#include <ical.h>
+#include <libical/ical.h>
 
 #define AGENT_NAME "bongocollector"
 #define AGENT_DN "Collector Agent"

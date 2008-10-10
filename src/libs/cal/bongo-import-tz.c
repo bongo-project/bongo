@@ -2,7 +2,7 @@
 #include <bongocal.h>
 
 #include <stdio.h>
-#include <ical.h>
+#include <libical/ical.h>
 #include <xpl.h>
 #include <bongoutil.h>
 #include <bongojson.h>
