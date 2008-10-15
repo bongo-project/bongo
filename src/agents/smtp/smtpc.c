@@ -193,6 +193,10 @@ DeliverMessage(SMTPClient *Queue, SMTPClient *Remote, RecipStruct *Recip) {
         Recip->Result = DELIVER_REFUSED;
         return FALSE;
     }
+    // read out any additional banner lines
+    while(Remote->line[0] == '2' && Remote->line[3] == '-') {
+        ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
+    }
 
 beginConversation:
     Extensions = 0;
