@@ -440,7 +440,6 @@ beginConversation:
     ConnFlush(Remote->conn);
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
 
-    ConnClose(Remote->conn, 1);
     Recip->Result = DELIVER_SUCCESS;
     return TRUE;
 }
@@ -594,6 +593,9 @@ ProcessEntry(void *clientp, Connection *conn)
         }
 
         DeliverMessage(Queue, &Remote, &CurrentRecip);
+        
+        // we're responsible for closing this connection
+        ConnClose(Remote.conn, 1);
 
         /* now handle delivery result codes */
         switch(CurrentRecip.Result) {
