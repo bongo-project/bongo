@@ -73,6 +73,17 @@ CommandCmp(const void *cmda, const void *cmdb)
     return 0;
 }
 
+#define CHECK_NOT_READONLY(x)	{ CCode ret = IsStoreReadonly((x)); if (ret != 0) return ret; }
+
+static CCode
+IsStoreReadonly(StoreClient *client)
+{
+	if (client->readonly) {
+		ConnWriteStr(client->conn, client->ro_reason);
+		return 4250;
+	}
+	return 0;
+}
 
 static BongoHashtable *CommandTable;
 
@@ -1502,6 +1513,8 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
     char dstpath[XPL_MAX_PATH + 1];
     StoreObject newobject;
      
+     CHECK_NOT_READONLY(client)
+     
     // check the parameters are ok and the document exists   
     if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 
@@ -1580,6 +1593,8 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 	char container_path[MAX_FILE_NAME+1];
 	char *container_final_sep = NULL;
 	char *ptr;
+	
+	CHECK_NOT_READONLY(client)
 	
 	// look for existing name/guid first?
 	if (name != NULL) {
@@ -1696,7 +1711,10 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	StoreObject collection;
 	char path[XPL_MAX_PATH]; 
 	int ccode;
-		
+	
+	// FIXME: do we want some kind of delete-only mode too?
+	CHECK_NOT_READONLY(client)
+	
 	if (STORE_IS_FOLDER(object->type))
 		return ConnWriteStr(client->conn, MSG4231USEREMOVE);
 	
@@ -1836,8 +1854,13 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
             goto cleanup;
         }
         SelectStore(client, recipient);
-        status = DeliverMessageToMailbox(client, sender, authSender, recipient, mbox,
+        
+        if (! client->readonly) {
+            status = DeliverMessageToMailbox(client, sender, authSender, recipient, mbox,
                                          msgfile, 0, bytes, flags);
+        } else {
+            status = DELIVER_FAILURE;
+        }
         UnselectStore(client);
         switch (status) {
         case DELIVER_SUCCESS:
@@ -1986,6 +2009,8 @@ StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int 
 	uint32_t old_flags;
 	int ccode;
 	
+	CHECK_NOT_READONLY(client)
+	
 	if (mode == STORE_FLAG_SHOW) {
 		ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_READ_PROPS);
 		if (ccode) return ccode;
@@ -2086,6 +2111,8 @@ StoreCommandLIST(StoreClient *client,
 CCode
 StoreCommandLINK(StoreClient *client, StoreObject *document, StoreObject *related)
 {
+	CHECK_NOT_READONLY(client)
+	
 	if (StoreObjectLink(client, document, related) == 0) {
 		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
@@ -2108,6 +2135,8 @@ StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document)
 CCode
 StoreCommandUNLINK(StoreClient *client, StoreObject *document, StoreObject *related)
 {
+	CHECK_NOT_READONLY(client)
+	
 	if (StoreObjectUnlink(client, document, related) == 0) {
 		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
@@ -2214,6 +2243,8 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 	StoreObject source_collection;
 	StoreObject original;
 	
+	CHECK_NOT_READONLY(client)
+	
 	if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 	if (!STORE_IS_FOLDER(destination_collection->type)) 
 		return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
@@ -2278,11 +2309,11 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 	StoreWatcherEvent(client, &original, STORE_WATCH_EVENT_DELETED);
 	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_NEW);
 
-    ccode = ConnWriteStr(client->conn, MSG1000OK);
-    
+	ccode = ConnWriteStr(client->conn, MSG1000OK);
+	
 finish:
-    
-    return ccode;
+	
+	return ccode;
 }
 
 CCode
@@ -2305,6 +2336,8 @@ StoreCommandPROPSET(StoreClient *client,
                     int size)
 {
 	int ccode;
+	
+	CHECK_NOT_READONLY(client)
 	
 	prop->value = BONGO_MEMSTACK_ALLOC(&client->memstack, prop->valueLen + 1);
 	if (!prop->value) {
@@ -2355,10 +2388,10 @@ StoreCommandPROPSET(StoreClient *client,
 CCode
 StoreCommandQUIT(StoreClient *client)
 {
-    if (-1 != ConnWriteStr(client->conn, MSG1000BYE)) {
-        ConnFlush(client->conn);
-    }
-    return -1;
+	if (-1 != ConnWriteStr(client->conn, MSG1000BYE)) {
+		ConnFlush(client->conn);
+	}
+	return -1;
 }
 
 CCode
@@ -2382,7 +2415,7 @@ StoreCommandREAD(StoreClient *client, StoreObject *object,
 	}
 
 finish:
-    return ccode;
+	return ccode;
 }
 
 
@@ -2390,6 +2423,8 @@ CCode
 StoreCommandREINDEX(StoreClient *client, StoreObject *document)
 {
 	// want to re-do this completely.
+	CHECK_NOT_READONLY(client)
+	
 	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 }
 
@@ -2403,6 +2438,8 @@ StoreCommandRENAME(StoreClient *client, StoreObject *collection,
                    char *newfilename)
 {
 	int ccode = 0;
+	
+	CHECK_NOT_READONLY(client)
 	
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
 	if (ccode) return ccode;
@@ -2481,9 +2518,7 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 	char tmppath[XPL_MAX_PATH + 1];
 	uint64_t tmpsize;
 	
-	if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
-		return ConnWriteStr(client->conn, MSG5221SPACELOW);
-	}
+	CHECK_NOT_READONLY(client)
 	
 	// check object type and permissions
 	if (STORE_IS_FOLDER(object->type) || STORE_IS_CONVERSATION(object->type)) {
@@ -2550,14 +2585,17 @@ finish:
 CCode
 StoreCommandREMOVE(StoreClient *client, StoreObject *collection)
 {
-    CCode ccode;
-    
-    if (! STORE_IS_FOLDER(collection->type)) {
-        return ConnWriteStr(client->conn, MSG4231USEPURGE);
-    } else {
-    	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
-    	if (ccode) return ccode;
-
+	CCode ccode;
+	
+	// FIXME: do we want some kind of 'can delete' state?
+	CHECK_NOT_READONLY(client)
+	
+	if (! STORE_IS_FOLDER(collection->type)) {
+		return ConnWriteStr(client->conn, MSG4231USEPURGE);
+	} else {
+		ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
+		if (ccode) return ccode;
+		
 		if (StoreObjectRemoveCollection(client, collection) == 0) {
 			// finished with success!
 			return ConnWriteStr(client->conn, MSG1000OK);
@@ -2565,7 +2603,7 @@ StoreCommandREMOVE(StoreClient *client, StoreObject *collection)
 			// some error
 			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 		}
-    } 
+	}
 }
 
 
@@ -2574,46 +2612,48 @@ StoreCommandREMOVE(StoreClient *client, StoreObject *collection)
 CCode 
 StoreCommandRESET(StoreClient *client)
 {
-    DeleteStore(client);
-    return ConnWriteStr(client->conn, MSG1000OK);
+	CHECK_NOT_READONLY(client)
+	
+	DeleteStore(client);
+	return ConnWriteStr(client->conn, MSG1000OK);
 }
 
 
 CCode
 StoreCommandSTORE(StoreClient *client, char *user)
 {
-    if (!user) {
-        UnselectStore(client);
-        return ConnWriteStr(client->conn, MSG1000OK);
-    }
-
-    if (StoreAgent.installMode || !strncmp(user, "_system", 7)) {
-        int ret = 0;
-        ret = SelectStore(client, user);
-        switch (ret) {
-            case 0:
-                return ConnWriteStr(client->conn, MSG1000OK);
-                break;
-            case -2:
-                return ConnWriteStr(client->conn, MSG4225BADVERSION);
-            case -1:
-            default:
-                return ConnWriteStr(client->conn, MSG4224BADSTORE);
-                break;
-        }
-    }
-
-    if (0 != MsgAuthFindUser(user)) {
-        Log(LOG_INFO, "Couldn't find user object for %s\r\n", user);
-        /* the previous nmap returned some sort of user locked message? */
-        return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
-    }
-    
-    if (SelectStore(client, user)) {
-        return ConnWriteStr(client->conn, MSG4224BADSTORE);
-    } else {
-        return ConnWriteStr(client->conn, MSG1000OK);
-    }
+	if (!user) {
+		UnselectStore(client);
+		return ConnWriteStr(client->conn, MSG1000OK);
+	}
+	
+	if (StoreAgent.installMode || !strncmp(user, "_system", 7)) {
+		int ret = 0;
+		ret = SelectStore(client, user);
+		switch (ret) {
+			case 0:
+				return ConnWriteStr(client->conn, MSG1000OK);
+				break;
+			case -2:
+				return ConnWriteStr(client->conn, MSG4225BADVERSION);
+			case -1:
+			default:
+				return ConnWriteStr(client->conn, MSG4224BADSTORE);
+				break;
+		}
+	}
+	
+	if (0 != MsgAuthFindUser(user)) {
+		Log(LOG_INFO, "Couldn't find user object for %s\r\n", user);
+		/* the previous nmap returned some sort of user locked message? */
+		return ConnWriteStr(client->conn, MSG4100STORENOTFOUND);
+	}
+	
+	if (SelectStore(client, user)) {
+		return ConnWriteStr(client->conn, MSG4224BADSTORE);
+	} else {
+		return ConnWriteStr(client->conn, MSG1000OK);
+	}
 }
 
 CCode
@@ -2724,14 +2764,12 @@ StoreCommandWRITE(StoreClient *client,
 	char path[XPL_MAX_PATH+1];
 	char tmppath[XPL_MAX_PATH+1];
 	
-	if (StoreAgent.flags & STORE_DISK_SPACE_LOW) {
-		return ConnWriteStr(client->conn, MSG5221SPACELOW);
-	}
-
+	CHECK_NOT_READONLY(client)
+	
 	if (STORE_IS_FOLDER(doctype) || STORE_IS_CONVERSATION(doctype)) {
 		return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 	}
-
+	
 	memset(&newdocument, 0, sizeof(StoreObject));
 	
 	// try to create new object

@@ -158,6 +158,8 @@ struct _StoreClient {
     unsigned long storeHash;         /* hash of store, should be uint32_t  */
     char store[XPL_MAX_PATH + 1];    /* "/storeroot/store/" */
     char *storeName;                 /* "store" */
+    BOOL readonly;                   // are we in read-only mode
+    char const *ro_reason;                 // the reason we're read-only
 
     /* the principal is initialized by the USER command: */
     struct {
@@ -281,6 +283,8 @@ int SelectStore(StoreClient *client, char *user);
 void UnselectUser(StoreClient *client);
 void UnselectStore(StoreClient *client);
 void DeleteStore(StoreClient *client);
+void SetStoreReadonly(StoreClient *client, char const *reason);
+void UnsetStoreReadonly(StoreClient *client);
 
 CCode WriteDocumentHeaders(StoreClient *client, FILE *fh, const char *folder, time_t tod);
 

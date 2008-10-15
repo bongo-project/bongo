@@ -392,28 +392,29 @@ finish:
 int 
 SelectStore(StoreClient *client, char *user)
 {
-    const char *storeRoot = NULL;
-    char path[XPL_MAX_PATH + 1];
-    struct stat sb;
+	const char *storeRoot = NULL;
+	char path[XPL_MAX_PATH + 1];
+	struct stat sb;
 	
 	// check if we already have this store selected
-    if (client->storeName && !strcmp(user, client->storeName)) {
-        return 0;
-    }
-    
-    // close current selected store if necessary
-    UnselectStore(client);
-
-    snprintf(path, XPL_MAX_PATH, "%s/%s/", StoreAgent.store.rootDir, user);
-    strcpy(client->store, path);
-    client->storeRoot = storeRoot;
-    client->storeHash = BongoStringHash(user);
-    client->storeName = MemStrdup(user);
-
-    client->stats.insertions = 0;
-    client->stats.updates = 0;
-    client->stats.deletions = 0;
-
+	if (client->storeName && !strcmp(user, client->storeName)) {
+		return 0;
+	}
+	
+	// close current selected store if necessary
+	UnselectStore(client);
+	
+	snprintf(path, XPL_MAX_PATH, "%s/%s/", StoreAgent.store.rootDir, user);
+	strcpy(client->store, path);
+	
+	client->storeRoot = storeRoot;
+	client->storeHash = BongoStringHash(user);
+	client->storeName = MemStrdup(user);
+	
+	client->stats.insertions = 0;
+	client->stats.updates = 0;
+	client->stats.deletions = 0;
+	
 	if (stat(path, &sb)) {
 		// this store hasn't been created yet
 		if (XplMakeDir(path)) {
@@ -434,8 +435,8 @@ SelectStore(StoreClient *client, char *user)
 			return -4;
 		}
 	}
-
-    return 0;
+	
+	return 0;
 }
 
 
@@ -443,46 +444,46 @@ SelectStore(StoreClient *client, char *user)
 void
 UnselectStore(StoreClient *client)
 {
-    if (client->storeName && 
-        client->stats.insertions + client->stats.updates + client->stats.deletions >
-        (rand() % 50))
-    {
-        // FIXME: did optimise the Index here - could do a vacuum? could be costly tho...
-    }
+	if (client->storeName && 
+	client->stats.insertions + client->stats.updates + client->stats.deletions >
+	(rand() % 50))
+	{
+		// FIXME: did optimise the Index here - could do a vacuum? could be costly tho...
+	}
 
-	/*
-    if (client->handle) {
-        if ((client->flags & STORE_CLIENT_FLAG_DONT_CACHE) || 
-            DBPoolPut(client->storeName, client->handle)) 
-        {
-            DStoreClose(client->handle);
-        }
-        client->handle = NULL;
-        client->flags &= ~STORE_CLIENT_FLAG_DONT_CACHE;
-    }
-    */
-
-    if (client->watch.collection) {
-        NLockStruct *lock;
-
-        StoreGetCollectionLock(client, &lock, client->watch.collection);
-        
-        if (StoreWatcherRemove(client, client->watch.collection)) {
-            Log(LOG_ERROR, "Internal error removing client watch");
-        }
-
-        StoreReleaseCollectionLock(client, &lock);
-    }
+	if (client->watch.collection) {
+		NLockStruct *lock;
+		
+		StoreGetCollectionLock(client, &lock, client->watch.collection);
+		
+		if (StoreWatcherRemove(client, client->watch.collection))
+			Log(LOG_ERROR, "Internal error removing client watch");
+		
+		StoreReleaseCollectionLock(client, &lock);
+	}
 
 	StoreDBClose(client);
 	client->storedb = NULL;
 
-    if (client->storeName) {
-        MemFree(client->storeName);
-        client->storeName = NULL;
-    }
+	if (client->storeName) {
+		MemFree(client->storeName);
+		client->storeName = NULL;
+	}
 }
 
+void
+SetStoreReadonly(StoreClient *client, char const* reason)
+{
+	client->readonly = TRUE;
+	client->ro_reason = reason;
+}
+
+void
+UnsetStoreReadonly(StoreClient *client)
+{
+	client->readonly = FALSE;
+	client->ro_reason = NULL;
+}
 
 void
 UnselectUser(StoreClient *client)

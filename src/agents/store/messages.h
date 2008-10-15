@@ -148,9 +148,11 @@
 #define MSG4261NODOMAIN "4261 No queue entry with that domain\r\n"
 #define MSG4262NOTFOUND "4262 Field/Content not found\r\n"
 #define MSG4242NOTALLOWED "4242 Not allowed via FLAG\r\n"
-#define MSG4243READONLY "4243 Read-only message store\r\n"
 #define MSG4244NOTSUPPORTED "4244 Not supported\r\n"
 #define MSG5244USERLOOKUPFAILURE "5244 Failed looking up User %s\r\n"
+
+#define MSG4250READONLY "4250 Read-only message store\r\n"
+#define MSG4250SPACELOW "4250 Free disk space too low\r\n"
 
 /* 5xxx - internal errors */
 
@@ -168,7 +170,6 @@
 #define MSG5230NOMEMORYERR "5230 Out of memory\r\n"
 #define MSG5004INTERNALERR "5004 Internal error\r\n"
 #define MSG5202TMPWRITEERR "5202 Couldn't open temporary file.\r\n"
-#define MSG5221SPACELOW "5221 Free disk space too low\r\n"
 #define MSG5260DELIVERYFAILED "5260 Delivery failed with status %d\r\n"
 
 #define MSG5920FATALDBLIBERR "5920 Fatal DB Library error.\r\n"
