@@ -4,6 +4,10 @@
 #include <memmgr.h>
 #include <msgapi.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "properties.h"
 #include "object-model.h"
 #include "query-builder.h"
@@ -233,6 +237,60 @@ abort:
 }
 
 /**
+ * Attempt to repair an object in the store.
+ * 
+ * \param 	client	Store client we're operating for
+ * \param	object	Object to repair
+ * \return	0 on object ok, 1 is object fixed, -1 is object broken, -2 is object removed
+ */
+
+int
+StoreObjectRepair(StoreClient *client, StoreObject *object)
+{
+	if (STORE_IS_FOLDER(object->type)) {
+		// try to create the maildir again. We don't error
+		// if it's already there. FIXME: can't detect a repair..
+		if (MaildirNew(client->store, object->guid) != 0) {
+			return -1;
+		}
+	} else {
+		// check file exists
+		int result;
+		struct stat buffer;
+		char path[XPL_MAX_PATH + 1];
+		BOOL need_save = FALSE;
+		
+		FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
+		
+		result = stat(path, &buffer);
+		if (result != 0) {
+			switch(errno) {
+				case ENOENT:
+				case ENOTDIR:
+				case ELOOP:
+					StoreObjectRemove(client, object);
+					break;
+				default:
+					break;
+			}
+			return -1;
+		}
+		
+		if (object->size != (uint64_t)buffer.st_size) {
+			object->size = (uint64_t)buffer.st_size;
+			need_save = TRUE;
+		}
+		
+		if (need_save) {
+			StoreObjectSave(client, object);
+			return 1;
+		}
+	}
+	
+	return 0;
+}
+
+/**
  * Find an object in the store by its guid
  * 
  * \param 	client	Store client we're operating for
@@ -258,8 +316,28 @@ StoreObjectFindQueryToObject(StoreObject *object, MsgSQLStatement *find)
 	object->version = 1; 	// TODO - we don't do this yet.
 }
 
+/* this is written in terms of StoreObjectFindNext() because we need
+ * both functions, and this reduces to a special case of the other.
+ * We incur a minor performance penalty for looking for documents by
+ * GUID which don't exist, but this is a relatively uncommon path.
+ */
 int 
 StoreObjectFind(StoreClient *client, uint64_t guid, StoreObject *object)
+{
+	int result;
+	
+	result = StoreObjectFindNext(client, guid, object);
+	
+	if ((result == 0) && (object->guid != guid)) {
+		// didn't find the right object - doesn't exist
+		memset(object, 0, sizeof(StoreObject));
+		return -1;
+	}
+	return result;
+}
+
+int 
+StoreObjectFindNext(StoreClient *client, uint64_t guid, StoreObject *object)
 {
 	MsgSQLStatement stmt;
 	MsgSQLStatement *find = NULL;
@@ -268,7 +346,7 @@ StoreObjectFind(StoreClient *client, uint64_t guid, StoreObject *object)
 	if (MsgSQLBeginTransaction(client->storedb)) return -2;
 	
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
-	find = MsgSQLPrepare(client->storedb, "SELECT " storeobj_cols " FROM storeobject so WHERE so.guid = ?1 LIMIT 1;", &stmt);
+	find = MsgSQLPrepare(client->storedb, "SELECT " storeobj_cols " FROM storeobject so WHERE so.guid >= ?1 LIMIT 1;", &stmt);
 	if (find == NULL) goto abort;
 	
 	MsgSQLBindInt64(find, 1, guid);

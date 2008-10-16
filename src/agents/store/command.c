@@ -120,6 +120,7 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "REMOVE", (void *) STORE_COMMAND_REMOVE) ||
         BongoHashtablePutNoReplace(CommandTable, "SEARCH", (void *) STORE_COMMAND_SEARCH) ||
         BongoHashtablePutNoReplace(CommandTable, "WATCH", (void *) STORE_COMMAND_WATCH) ||
+        BongoHashtablePutNoReplace(CommandTable, "REPAIR", (void *) STORE_COMMAND_REPAIR) ||
 
         /* document commands */
         BongoHashtablePutNoReplace(CommandTable, "COPY", (void *) STORE_COMMAND_COPY) ||
@@ -1046,6 +1047,14 @@ StoreCommandLoop(StoreClient *client)
             }
             break;
 
+        case STORE_COMMAND_REPAIR:
+            /* REPAIR */
+            
+            if (TOKEN_OK == (ccode = RequireStore(client))) 
+            {
+                ccode = StoreCommandREPAIR(client);
+            }
+            break;
 
         case STORE_COMMAND_REPLACE:
             /* REPLACE <document> <length> [R<xx-xx>] [V<version>] 
@@ -2580,6 +2589,61 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 
 finish:
 	return ccode;
+}
+
+// we want to check through this store and fix up any bad data
+// FIXME: there is a race condition in here. When we turn on read-only
+// mode, we should wait for any other users to finish up. In reality,
+// this is going to be exceptionally hard to trigger though.
+CCode 
+StoreCommandREPAIR(StoreClient *client)
+{
+	StoreObject object;
+	int result;
+	char reason[200];
+	
+	// put the store into read-only mode to prevent other people
+	// fiddling with it!
+	SetStoreReadonly(client, MSG4250READONLY);
+	
+	// we want to loop through each document in the store and make
+	// sure that it's "sane"
+	object.guid = 0;
+	while ((result = StoreObjectFindNext(client, object.guid + 1, &object)) == 0) {
+		int test = StoreObjectRepair(client, &object);
+		
+		switch (test) {
+			case 1:
+				// repaired
+				sprintf(reason, "2001 %s\r\n", object.filename);
+				break;
+			case -1:
+				// broken
+				sprintf(reason, "2011 %s\r\n", object.filename);
+				break;
+			case -2:
+				// removed
+				sprintf(reason, "2012 %s\r\n", object.filename);
+				break;
+			default:
+				break;
+		}
+		if (test != 0) {
+			ConnWriteStr(client->conn, reason);
+		}
+	}
+	
+	// put it back in read-write mode
+	UnsetStoreReadonly(client);
+	
+	if (result == -1) {
+		// no such document - therefore, we went through all ok
+		return ConnWriteStr(client->conn, MSG1000OK);
+	} else {
+		// result must be -2 or something - some error occured
+		// sad; DB repair shouldn't return a db error... :D
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
 }
 
 CCode

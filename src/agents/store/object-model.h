@@ -70,6 +70,7 @@ struct _StoreObjectIterator {
 /* Functions for operating on these objects */
 
 int StoreObjectFind(StoreClient *client, uint64_t guid, StoreObject *object);
+int StoreObjectFindNext(StoreClient *client, uint64_t guid, StoreObject *object);
 int StoreObjectFindByFilename(StoreClient *client, const char *filename, StoreObject *object);
 int StoreObjectFindConversation(StoreClient *client, StoreConversationData *data, StoreObject *conversation);
 
@@ -77,6 +78,7 @@ int StoreObjectCreate(StoreClient *client, StoreObject *object);
 int StoreObjectSave(StoreClient *client, StoreObject *object);
 int StoreObjectSaveConversation(StoreClient *client, StoreConversationData *data);
 int StoreObjectRemove(StoreClient *client, StoreObject *object);
+int StoreObjectRepair(StoreClient *client, StoreObject *object);
 
 int StoreObjectCheckAuthorization(StoreClient *client, StoreObject *object, int prop);
 int StoreObjectLink(StoreClient *client, StoreObject *document, StoreObject *related);

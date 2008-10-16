@@ -49,6 +49,7 @@ typedef enum {
     STORE_COMMAND_MAILINGLISTS,
     STORE_COMMAND_REMOVE,
     STORE_COMMAND_RENAME,
+    STORE_COMMAND_REPAIR,
     STORE_COMMAND_SEARCH,
     STORE_COMMAND_STATUS,
     STORE_COMMAND_WATCH,
@@ -229,6 +230,8 @@ CCode StoreCommandRENAME(StoreClient *client, StoreObject *collection,
                          char *newfilename);
 
 CCode StoreCommandREMOVE(StoreClient *client, StoreObject *collection);
+
+CCode StoreCommandREPAIR(StoreClient *client);
 
 CCode StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t rstart, uint64_t rend, uint32_t version);
 
