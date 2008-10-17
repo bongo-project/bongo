@@ -524,8 +524,24 @@ ParseCollectionLine(char *buffer, FolderInformation *folder)
                     len = strlen(ptr);
                     folder->name.utf8 = MemMalloc(len + 1);
                     if (folder->name.utf8) {
+                        char *to, *from;
+                        
                         memcpy(folder->name.utf8, ptr, len);
                         folder->name.utf8[len] = '\0';
+                        
+                        // remove any escaped spaces
+                        to = from = folder->name.utf8;
+                        while (*from != '\0') {
+                            if (*from != '\\') {
+                                *to = *from;
+                                to++;
+                            } else {
+                                len--;
+                            }
+                            from++;
+                        }
+                        *to = '\0';
+                        
                         if (memcmp(folder->name.utf8, "/mail/", strlen("/mail/")) == 0) {
                             len = GetModifiedUtf7FromUtf8(folder->name.utf8 + strlen("/mail/"), len - strlen("/mail/"), &folder->name.utf7);
                             if (len > 0) {
