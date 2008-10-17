@@ -260,6 +260,11 @@ StoreObjectRepair(StoreClient *client, StoreObject *object)
 		char path[XPL_MAX_PATH + 1];
 		BOOL need_save = FALSE;
 		
+		if (STORE_IS_DBONLY(object->type)) {
+			// no need to look for anything on the file system here
+			return 0;
+		}
+		
 		FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
 		
 		result = stat(path, &buffer);
