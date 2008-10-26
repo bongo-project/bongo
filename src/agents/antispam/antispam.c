@@ -111,7 +111,7 @@ ProcessConnection(void *clientp, Connection *conn)
                     if (strcmp(ptr, "-") != 0) {
                         senderUserName = MemStrdup(ptr);
                     }
-                    *ptr = ' ';
+                    *ptr2 = ' ';
                 }
             }
             break;
@@ -119,6 +119,10 @@ ProcessConnection(void *clientp, Connection *conn)
             hasFlags = TRUE;
             copy = FALSE;
             msgFlags = atol(envelopeLine+1);
+            if (msgFlags & MSG_FLAG_SPAM_CHECKED) {
+                /* we've already scanned this.  don't do it again */
+                goto done;
+            }
             break;
         case QUEUE_ADDRESS:
             source = atol(envelopeLine+1);
@@ -128,6 +132,8 @@ ProcessConnection(void *clientp, Connection *conn)
     }
 
     blocked = SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags, source, senderUserName);
+
+done:
 
     if ((ccode != -1) 
             && ((ccode = NMAPSendCommand(client->conn, "QDONE\r\n", 7)) != -1)) {

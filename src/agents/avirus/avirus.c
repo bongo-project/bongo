@@ -298,7 +298,7 @@ ProcessConnection(void *clientp, Connection *conn)
                     if (strcmp(ptr, "-") != 0) {
                         senderUserName = MemStrdup(ptr);
                     }
-                    *ptr = ' ';
+                    *ptr2 = ' ';
                 }
             }
             break;

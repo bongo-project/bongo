@@ -194,41 +194,27 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
 
             ptr = client->envelope;
             while (*ptr) {
-                /* Parse the old envelope and send all but the FROM line with 
-                 * RAW commands, send the from using QSTOR FROM. 
-                 */
-                ptr2 = strchr(ptr, '\n');
-                if (ptr2 == NULL){
-                    /* error in the envelope structure. */
-                    NMAPSendCommand(client->conn, "QABRT\r\n", 7);
-                    goto ErrConnFree;
-                }
-                *ptr2 = '\0';
                 switch (*ptr) {
-                case QUEUE_FLAGS: {
+                case QUEUE_FLAGS:
                     /* Add our own flag to the envelope structure.
                      */
                     success = (((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW X%ld\r\n", (msgFlags | MSG_FLAG_SPAM_CHECKED))) != -1)
                                && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000));
-                    break;
-                }
-                case QUEUE_DATE: {
+                   break;
+                case QUEUE_DATE:
                     success = TRUE;
                     break;
-                }
-                default: {
+                default:
                     success = (((ccode = NMAPSendCommandF(client->conn, "QSTOR RAW %s\n", ptr)         ) != -1)
                                && ((ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE)) == 1000));
                 }
-                }
-                *ptr2++ = '\n';
-                ptr = ptr2;
                 if (success) {
                     ;
                 } else {
                     NMAPSendCommand(client->conn, "QABRT\r\n", 7);
                     goto ErrConnFree;
                 }
+                BONGO_ENVELOPE_NEXT(ptr);
             }
             if (  ((ccode = NMAPSendCommandF(client->conn, "QSTOR MESSAGE %ld\r\n",    size)) != -1)
                   &&((ccode =   ConnReadToConn(conn,         client->conn,               size)) != -1)
