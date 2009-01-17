@@ -596,6 +596,7 @@ ProcessEntry(void *clientp, Connection *conn)
         
         // we're responsible for closing this connection
         ConnClose(Remote.conn, 1);
+        ConnFree(Remote.conn);
 
         /* now handle delivery result codes */
         switch(CurrentRecip.Result) {
@@ -625,6 +626,9 @@ ProcessEntry(void *clientp, Connection *conn)
         }
     }
 
+    if (Recipients) {
+        BongoArrayFree(Recipients, TRUE);
+    }
     /* The Queue struct, connection, and QDONE will be cleaned up by
      * the caller */
     return 0;
