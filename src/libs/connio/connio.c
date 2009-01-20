@@ -59,43 +59,45 @@ ConnIOGlobals ConnIO;
 gnutls_dh_params_t dh_params;
 gnutls_rsa_params_t rsa_params;
 
-gnutls_session_t
-__gnutls_new(bongo_ssl_context *context, gnutls_connection_end_t con_end) {
-    gnutls_session_t session;
+BOOL
+__gnutls_new(SSL_Context_and_Credentials *new_session, bongo_ssl_context *context, gnutls_connection_end_t con_end) {
     int ccode;
 
-    ccode = gnutls_init(&session, con_end);
+    new_session->context = NULL;
+    new_session->credentials = NULL;
+
+    ccode = gnutls_init(&new_session->context, con_end);
     if (ccode) {
-        return(NULL);
+        return FALSE;
     }
 
     if (con_end == GNUTLS_SERVER) {
-        ccode = gnutls_set_default_export_priority(session);
+        ccode = gnutls_set_default_export_priority(new_session->context);
 
         /* store in the credetials loaded earler */
-        ccode = gnutls_credentials_set(session, GNUTLS_CRD_CERTIFICATE, context->cert_cred);
+        ccode = gnutls_credentials_set(new_session->context, GNUTLS_CRD_CERTIFICATE, context->cert_cred);
 
         /* initialize the dh bits */
-        gnutls_dh_set_prime_bits(session, 1024);
+        gnutls_dh_set_prime_bits(new_session->context, 1024);
     } else {
-        gnutls_certificate_credentials_t xcred = NULL;
+        new_session->credentials = NULL;
 
         const int cert_type_priority[4] = { GNUTLS_CRT_X509, GNUTLS_CRT_OPENPGP, 0 };
 
         /* defaults are ok here */
-        gnutls_set_default_priority (session);
+        gnutls_set_default_priority (new_session->context);
 
         /* store the priority for x509 or openpgp out there
          * i doubt that openpgp will be used but perhaps there is a server that supports it */
-        gnutls_certificate_type_set_priority (session, cert_type_priority);
-        gnutls_certificate_allocate_credentials (&xcred);
-        gnutls_certificate_set_x509_trust_file (xcred, XPL_DEFAULT_CERT_PATH, GNUTLS_X509_FMT_PEM);
+        gnutls_certificate_type_set_priority (new_session->context, cert_type_priority);
+        gnutls_certificate_allocate_credentials (&new_session->credentials);
+        gnutls_certificate_set_x509_trust_file (new_session->credentials, XPL_DEFAULT_CERT_PATH, GNUTLS_X509_FMT_PEM);
 
         /* set the empty credentials in the session */
-        gnutls_credentials_set (session, GNUTLS_CRD_CERTIFICATE, xcred);
+        gnutls_credentials_set (new_session->context, GNUTLS_CRD_CERTIFICATE, new_session->credentials);
     }
 
-    return session;
+    return TRUE;
 }
 
 BOOL 
@@ -349,6 +351,7 @@ __inline static IPSOCKET
 ConnConnectInternal(Connection *conn, struct sockaddr *saddr, socklen_t slen, bongo_ssl_context *context, TraceDestination *destination, unsigned long timeOut)
 {
     int ccode;
+    SSL_Context_and_Credentials ssl_info;
 
     conn->socket = IPsocket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (conn->socket != -1) {
@@ -376,7 +379,10 @@ ConnConnectInternal(Connection *conn, struct sockaddr *saddr, socklen_t slen, bo
                 conn->ssl.enable = FALSE;
 
                 return(conn->socket);
-            } else if ((conn->ssl.context = __gnutls_new(context, GNUTLS_CLIENT)) != NULL) {
+            } else if (__gnutls_new(&ssl_info, context, GNUTLS_CLIENT) != FALSE) {
+                conn->ssl.context = ssl_info.context;
+                conn->ssl.credentials = ssl_info.credentials;
+
                 setsockopt(conn->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
                 
                 gnutls_transport_set_ptr (conn->ssl.context, (gnutls_transport_ptr_t) conn->socket);
@@ -425,8 +431,12 @@ ConnEncrypt(Connection *conn, bongo_ssl_context *context)
 {
     int ccode;
     register Connection *c = conn;
+    SSL_Context_and_Credentials ssl_info;
 
-    if ((c->ssl.context = __gnutls_new(context, GNUTLS_CLIENT)) != NULL) {
+    if (__gnutls_new(&ssl_info, context, GNUTLS_CLIENT) != FALSE) {
+        c->ssl.context = ssl_info.context;
+        c->ssl.credentials = ssl_info.credentials;
+
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
         gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) c->socket);
@@ -438,7 +448,9 @@ ConnEncrypt(Connection *conn, bongo_ssl_context *context)
         }
 
         gnutls_deinit(c->ssl.context);
+        gnutls_certificate_free_credentials(c->ssl.credentials);
         c->ssl.context = NULL;
+        c->ssl.credentials = NULL;
     }
     c->ssl.enable = FALSE;
 
@@ -450,6 +462,7 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
 {
     int ccode;
     register Connection *c = conn;
+    SSL_Context_and_Credentials ssl_info;
 
     if (c->ssl.enable == FALSE) {
         ccode = 1;
@@ -458,7 +471,10 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
         return(TRUE);
     }
     
-    if ((c->ssl.context = __gnutls_new(context, GNUTLS_SERVER)) != NULL) {
+    if (__gnutls_new(&ssl_info, context, GNUTLS_SERVER) != FALSE) {
+        c->ssl.context = ssl_info.context;
+        c->ssl.credentials = ssl_info.credentials;
+
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
         gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) c->socket);
@@ -468,9 +484,10 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
             return(TRUE);
         }
         gnutls_deinit(c->ssl.context);
+        gnutls_certificate_free_credentials(c->ssl.credentials);
         c->ssl.enable = FALSE;
         c->ssl.context = NULL;
-
+        c->ssl.credentials = NULL;
     }
 
     return(FALSE);
@@ -529,6 +546,10 @@ ConnFree(Connection *Conn)
 
     if (c->send.buffer) {
         MemFree(c->send.buffer);
+    }
+
+    if (c->ssl.credentials) {
+        gnutls_certificate_free_credentials(c->ssl.credentials);
     }
 
     if (c->ssl.context) {

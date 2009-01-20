@@ -153,14 +153,25 @@ Connection *LookupRemoteMX(RecipStruct *Recipient) {
                         Recipient->Result = DELIVER_TRY_LATER;
                         break;
                 }
+                ConnFree(Result);
+                Result = NULL;
                 continue;
             }
             goto finish;
+        }
+
+        if (list) {
+            MemFree(list);
+            list = NULL;
         }
     }
 
 
 finish:
+    if (list) {
+        MemFree(list);
+        list = NULL;
+    }
     XplDnsFreeMxLookup(mx);
 
     return Result;
@@ -597,6 +608,7 @@ ProcessEntry(void *clientp, Connection *conn)
         // we're responsible for closing this connection
         ConnClose(Remote.conn, 1);
         ConnFree(Remote.conn);
+        Remote.conn = NULL;
 
         /* now handle delivery result codes */
         switch(CurrentRecip.Result) {
@@ -629,8 +641,9 @@ ProcessEntry(void *clientp, Connection *conn)
     if (Recipients) {
         BongoArrayFree(Recipients, TRUE);
     }
-    /* The Queue struct, connection, and QDONE will be cleaned up by
-     * the caller */
+    /* The caller will call the free function specified on agent init
+     * which will free the queue struct.  the caller will then free the
+     * connection and do the qdone */
     return 0;
 }
 
@@ -646,7 +659,8 @@ SMTPAgentServer(void *ignored)
 
     /* Listen for incoming queue items.  Call ProcessEntry with a
      * SMTPAgentClient allocated for each incoming queue entry. */
-    SMTPAgent.OutgoingThreadPool = BongoThreadPoolNew(AGENT_NAME " Clients", BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE, minThreads, maxThreads, minSleep);
+    SMTPAgent.OutgoingThreadPool = BongoThreadPoolNew(AGENT_NAME " Clients", BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE, 0, 1, minSleep);
+    //SMTPAgent.OutgoingThreadPool = BongoThreadPoolNew(AGENT_NAME " Clients", BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE, minThreads, maxThreads, minSleep);
     SMTPAgent.nmapOutgoing = BongoQueueConnectionInit(&SMTPAgent.agent, Q_OUTGOING);
     BongoQueueAgentListenWithClientPool(&SMTPAgent.agent,
                                        SMTPAgent.nmapOutgoing,
