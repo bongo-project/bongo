@@ -174,6 +174,10 @@ finish:
     }
     XplDnsFreeMxLookup(mx);
 
+    if (Result) {
+        CONN_TRACE_BEGIN(Result, CONN_TYPE_OUTBOUND, NULL);
+        Result->trace.flags = CONN_TRACE_ALL;
+    }
     return Result;
 }
 
@@ -721,6 +725,7 @@ XplServiceMain(int argc, char *argv[])
         XplConsolePrintf(AGENT_NAME ": Exiting.\r\n");
         return -1;
     }
+    CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL);
 
     ReadConfiguration();
     sslconfig.key.file = MsgGetFile(MSGAPI_FILE_PRIVKEY, NULL, 0);

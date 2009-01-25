@@ -109,17 +109,17 @@ ConnTcpRead(Connection *c, char *b, size_t l, int *r)
 						*r = gnutls_record_recv(c->ssl.context, (void *)b, l);
 					}
 					if (*r >= 0) {
-						CONN_TRACE_DATA(c, CONN_TRACE_EVENT_READ, b, r);
+						CONN_TRACE_DATA(c, CONN_TRACE_EVENT_READ, b, *r);
 						break;
 					} else if (errno == EINTR) {
 						continue;
 					}
-					CONN_TRACE_ERROR(c, "RECV", r);
+					CONN_TRACE_ERROR(c, "RECV", *r);
 					break;
 				} while (TRUE);
 				break;
 			} else if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
-				CONN_TRACE_ERROR(c, "POLL EVENT", r);
+				CONN_TRACE_ERROR(c, "POLL EVENT", *r);
 				*r = -2;
 				break;
 			}
@@ -127,7 +127,7 @@ ConnTcpRead(Connection *c, char *b, size_t l, int *r)
 		if (errno == EINTR) {
 			continue;
 		}
-		CONN_TRACE_ERROR(c, "POLL", r);
+		CONN_TRACE_ERROR(c, "POLL", *r);
 		*r = -3;
 		break;
 	} while (TRUE);
@@ -143,12 +143,12 @@ ConnTcpWrite(Connection *c, char *b, size_t l, int *r)
 			*r = gnutls_record_send(c->ssl.context, (void *)b, l);
 		}
 		if (*r >= 0) {
-			CONN_TRACE_DATA(c, CONN_TRACE_EVENT_WRITE, b, r);
+			CONN_TRACE_DATA(c, CONN_TRACE_EVENT_WRITE, b, *r);
 			break;
 		} else if (errno == EINTR) {
 			continue;
 		}
-		CONN_TRACE_ERROR(c, "POLL", r);
+		CONN_TRACE_ERROR(c, "POLL", *r);
 		*r = -1;
 		break;
 	} while (TRUE);

@@ -243,7 +243,7 @@ _XplServiceMain(int argc, char *argv[])
     // initialise watch list
     StoreWatcherInit();
 
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "store");
+    CONN_TRACE_INIT(XPL_DEFAULT_WORK_DIR, "store");
     CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
     /* Create and bind the server connection */

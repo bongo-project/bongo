@@ -324,7 +324,7 @@ BongoAgentInit(BongoAgent *agent,
 
     agent->name = MemStrdup(agentName);
 
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), agentName);
+    CONN_TRACE_INIT(XPL_DEFAULT_WORK_DIR, agentName);
     Log(LOG_DEBUG, "Agent Initialized");
     return 0;
 }

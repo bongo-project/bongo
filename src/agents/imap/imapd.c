@@ -3819,7 +3819,7 @@ XplServiceMain(int argc, char *argv[])
     }
 
     ReadConfiguration();
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "imap");
+    CONN_TRACE_INIT(XPL_DEFAULT_WORK_DIR, "imap");
     CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
     if (ServerSocketInit() < 0) {

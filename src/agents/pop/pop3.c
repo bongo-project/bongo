@@ -2105,7 +2105,7 @@ XplServiceMain(int argc, char *argv[])
     }
 
     ReadConfiguration();
-    CONN_TRACE_INIT((char *)MsgGetWorkDir(NULL), "pop");
+    CONN_TRACE_INIT(XPL_DEFAULT_WORK_DIR, "pop");
     // CONN_TRACE_SET_FLAGS(CONN_TRACE_ALL); /* uncomment this line and pass '--enable-conntrace' to autogen to get the agent to trace all connections */
 
 
