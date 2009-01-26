@@ -156,12 +156,6 @@ typedef struct {
     unsigned long useCount;
 } TraceDestination;
 
-/* this struct is used to pass the new context and the credentials */
-typedef struct _ssl_context_and_credentials {
-    gnutls_session_t context;
-    gnutls_certificate_credentials_t credentials;
-} SSL_Context_and_Credentials;
-
 typedef struct _Connection {
     IPSOCKET socket;
     BOOL bSelfManage;
