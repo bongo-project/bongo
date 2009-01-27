@@ -346,13 +346,6 @@ fi
 
 for arg in $@; do
     case $arg in
-            --with-clucene=*import*)
-                   rm -f import/clucene/NO-AUTO-GEN
-                   ;;
-            --with-clucene=*)
-                    touch import/clucene/NO-AUTO-GEN
-                    echo "Flagging import/clucene as no auto-gen as source is external"
-                    ;;
             --with-sqlite3=*import*)
                     rm -f import/sqlite3/NO-AUTO-GEN
                     ;;
@@ -452,7 +445,6 @@ for configure_ac in $configure_files; do
 done
 
 # remove any flags which tell us not to autogen things
-#rm -f import/clucene/NO-AUTO-GEN
 #rm -f import/sqlite3/NO-AUTO-GEN
 
 SVNREV="`svnversion . 2>/dev/null`"

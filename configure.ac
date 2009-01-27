@@ -760,7 +760,6 @@ AC_MSG_NOTICE([Configured to build Bongo:
   Debug CFLAGS:    ${info_debug_cflags}
 
 Required libraries:
-  CLucene:         ${info_clucene}
   CURL:            ${info_curl}
   SQLite:          ${info_sqlite}
   libical:         ${info_libical}
