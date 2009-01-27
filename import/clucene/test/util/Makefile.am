@@ -1,9 +1,0 @@
-## Makefile.am -- Process this file with automake to produce Makefile.in
-
-test_utildir = $(tstsrcdir)/util
-test_utilhdir = $(includedir)/CLucene/util
- 
-cl_test_SOURCES  += $(test_utildir)/TestPriorityQueue.cpp
-cl_test_SOURCES  += $(test_utildir)/English.cpp
-
-test_utilh_HEADERS = $(test_utildir)/*.h
