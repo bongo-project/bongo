@@ -1,0 +1,168 @@
+parse_text.o parse_text.o: parse_text.c /usr/include/stdio.h \
+  /usr/include/features.h /usr/include/sys/cdefs.h \
+  /usr/include/gnu/stubs.h \
+  /usr/lib64/gcc-lib/x86_64-suse-linux/3.3.5/include/stddef.h \
+  /usr/include/bits/types.h /usr/include/bits/wordsize.h \
+  /usr/include/bits/typesizes.h /usr/include/libio.h \
+  /usr/include/_G_config.h /usr/include/wchar.h /usr/include/bits/wchar.h \
+  /usr/include/gconv.h \
+  /usr/lib64/gcc-lib/x86_64-suse-linux/3.3.5/include/stdarg.h \
+  /usr/include/bits/stdio_lim.h /usr/include/bits/sys_errlist.h \
+  /usr/include/bits/stdio.h /usr/include/errno.h \
+  /usr/include/bits/errno.h /usr/include/linux/errno.h \
+  /usr/include/asm/errno.h /usr/include/asm-x86_64/errno.h \
+  /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
+  /usr/include/string.h /usr/include/bits/string.h \
+  /usr/include/bits/string2.h /usr/include/endian.h \
+  /usr/include/bits/endian.h /usr/include/stdlib.h ../src/libical/ical.h \
+  ../src/libical/icaltime.h /usr/include/time.h /usr/include/bits/time.h \
+  ../src/libical/icalduration.h ../src/libical/icalperiod.h \
+  ../src/libical/icalenums.h ../src/libical/icaltypes.h \
+  ../src/libical/icalrecur.h ../src/libical/icalattach.h \
+  ../src/libical/icalvalue.h ../src/libical/icalderivedproperty.h \
+  ../src/libical/icalparameter.h ../src/libical/icalderivedparameter.h \
+  ../src/libical/icalderivedvalue.h ../src/libical/icalproperty.h \
+  ../src/libical/pvl.h ../src/libical/icalarray.h \
+  ../src/libical/icalcomponent.h ../src/libical/icaltimezone.h \
+  ../src/libical/icalparser.h ../src/libical/icalmemory.h \
+  /usr/include/sys/types.h /usr/include/sys/select.h \
+  /usr/include/bits/select.h /usr/include/bits/sigset.h \
+  /usr/include/sys/sysmacros.h /usr/include/bits/pthreadtypes.h \
+  /usr/include/bits/sched.h ../src/libical/icalerror.h \
+  /usr/include/assert.h ../config.h ../src/libical/icalrestriction.h \
+  ../src/libical/sspm.h ../src/libical/icalmime.h \
+  ../src/libical/icallangbind.h /usr/include/alloca.h
+
+/usr/include/stdio.h:
+
+/usr/include/features.h:
+
+/usr/include/sys/cdefs.h:
+
+/usr/include/gnu/stubs.h:
+
+/usr/lib64/gcc-lib/x86_64-suse-linux/3.3.5/include/stddef.h:
+
+/usr/include/bits/types.h:
+
+/usr/include/bits/wordsize.h:
+
+/usr/include/bits/typesizes.h:
+
+/usr/include/libio.h:
+
+/usr/include/_G_config.h:
+
+/usr/include/wchar.h:
+
+/usr/include/bits/wchar.h:
+
+/usr/include/gconv.h:
+
+/usr/lib64/gcc-lib/x86_64-suse-linux/3.3.5/include/stdarg.h:
+
+/usr/include/bits/stdio_lim.h:
+
+/usr/include/bits/sys_errlist.h:
+
+/usr/include/bits/stdio.h:
+
+/usr/include/errno.h:
+
+/usr/include/bits/errno.h:
+
+/usr/include/linux/errno.h:
+
+/usr/include/asm/errno.h:
+
+/usr/include/asm-x86_64/errno.h:
+
+/usr/include/asm-generic/errno.h:
+
+/usr/include/asm-generic/errno-base.h:
+
+/usr/include/string.h:
+
+/usr/include/bits/string.h:
+
+/usr/include/bits/string2.h:
+
+/usr/include/endian.h:
+
+/usr/include/bits/endian.h:
+
+/usr/include/stdlib.h:
+
+../src/libical/ical.h:
+
+../src/libical/icaltime.h:
+
+/usr/include/time.h:
+
+/usr/include/bits/time.h:
+
+../src/libical/icalduration.h:
+
+../src/libical/icalperiod.h:
+
+../src/libical/icalenums.h:
+
+../src/libical/icaltypes.h:
+
+../src/libical/icalrecur.h:
+
+../src/libical/icalattach.h:
+
+../src/libical/icalvalue.h:
+
+../src/libical/icalderivedproperty.h:
+
+../src/libical/icalparameter.h:
+
+../src/libical/icalderivedparameter.h:
+
+../src/libical/icalderivedvalue.h:
+
+../src/libical/icalproperty.h:
+
+../src/libical/pvl.h:
+
+../src/libical/icalarray.h:
+
+../src/libical/icalcomponent.h:
+
+../src/libical/icaltimezone.h:
+
+../src/libical/icalparser.h:
+
+../src/libical/icalmemory.h:
+
+/usr/include/sys/types.h:
+
+/usr/include/sys/select.h:
+
+/usr/include/bits/select.h:
+
+/usr/include/bits/sigset.h:
+
+/usr/include/sys/sysmacros.h:
+
+/usr/include/bits/pthreadtypes.h:
+
+/usr/include/bits/sched.h:
+
+../src/libical/icalerror.h:
+
+/usr/include/assert.h:
+
+../config.h:
+
+../src/libical/icalrestriction.h:
+
+../src/libical/sspm.h:
+
+../src/libical/icalmime.h:
+
+../src/libical/icallangbind.h:
+
+/usr/include/alloca.h:
