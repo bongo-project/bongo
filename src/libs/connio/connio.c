@@ -1376,7 +1376,7 @@ int
 ConnReadToConnUntilEOS(Connection *Src, Connection *Dest)
 {
     int written = 0;
-    unsigned int count;
+    int count;
     char *cur;
     char *limit;
     BOOL finished = FALSE;
