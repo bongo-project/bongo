@@ -49,5 +49,7 @@ typedef struct _ConnIO {
 extern ConnIOGlobals ConnIO;
 
 BOOL __gnutls_new(Connection *conn, bongo_ssl_context *context, gnutls_connection_end_t con_end);
+long ConnAppendToAllocatedBuffer(const char *source, const long size, char **buffer,
+    unsigned long start_of_buffer, unsigned long *buffersize);
 
 #endif

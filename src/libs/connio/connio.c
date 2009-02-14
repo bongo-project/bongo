@@ -1020,6 +1020,12 @@ long
 ConnAppendToAllocatedBuffer(const char *source, const long size, char **buffer,
 	unsigned long start_of_buffer, unsigned long *buffersize)
 {
+    if (size < 0) {
+        //there should be no way to copy less than 0 bytes right?
+        //this should also allow me to cast below with little worry
+        return size;
+    }
+
 	// do we need to allocate this buffer first?
 	if (*buffer == NULL) {
 		// buffer is not allocated
@@ -1032,7 +1038,7 @@ ConnAppendToAllocatedBuffer(const char *source, const long size, char **buffer,
 	}
 	
 	// is the buffer big enough to copy in the new data?
-	if ((*buffersize - start_of_buffer) < size) {
+	if ((*buffersize - start_of_buffer) < (unsigned long)size) {
 		char *new_buffer;
 		long new_size;
 		
@@ -1422,7 +1428,7 @@ ConnReadToConnUntilEOS(Connection *Src, Connection *Dest)
                                                                                                                                                                             
         if (Src->receive.read < cur) {
             ConnTcpFlush(Dest, Src->receive.read, cur, &count);
-            if ((size_t)(cur - Src->receive.read) == count) {
+            if ((cur - Src->receive.read) == count) {
                 written += count;
 
                 if (!finished) {

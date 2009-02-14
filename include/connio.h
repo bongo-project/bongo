@@ -231,7 +231,7 @@ typedef struct {
 
 void ConnTcpWrite(Connection *c, char *b, size_t l, int *r);
 void ConnTcpRead(Connection *c, char *b, size_t l, int *r);
-void ConnTcpFlush(Connection *c, char *b, char *e, int *r);
+void ConnTcpFlush(Connection *c, const char *b, const char *e, int *r);
 void ConnTcpClose(Connection *c);
 
 void ConnAddressPoolStartup(AddressPool *pool, unsigned long errorThreshold, unsigned long errorTimeThreshold);

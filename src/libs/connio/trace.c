@@ -24,6 +24,8 @@ ConnTraceAvailable(void)
     return(FALSE);
 }
 #else 
+__inline unsigned long ConnTraceGetConnectionFlags(unsigned long type);
+
 BOOL
 ConnTraceAvailable(void)
 {

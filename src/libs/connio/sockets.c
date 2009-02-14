@@ -37,7 +37,7 @@ SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s)
 }
 
 void
-ConnTcpFlush(Connection *c, char *b, char *e, int *r)
+ConnTcpFlush(Connection *c, const char *b, const char *e, int *r)
 {
 	if (b < e) {
 		char *curPTR = (char *)b;
@@ -52,7 +52,7 @@ ConnTcpFlush(Connection *c, char *b, char *e, int *r)
 		if (curPTR == e) {
 			*r = e - b;
 		} else {
-			b = -1;
+			*r = -1;
 		}
 	} else {
 		*r = 0;

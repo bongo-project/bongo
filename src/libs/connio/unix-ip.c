@@ -340,6 +340,8 @@ XplIsLocalIPAddress(unsigned long Address)
 	return(FALSE);
 }
 
+#if 0
+//FIXME: this appears unused
 static int 
 IPshouldretry(int i)
 {
@@ -362,6 +364,7 @@ IPshouldretry(int i)
 	}
 	return(0);
 }
+#endif
 
 int
 XplIPRead(void *socket, unsigned char *Buf, int Len, int readTimeout)
