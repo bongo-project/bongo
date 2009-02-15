@@ -23,6 +23,9 @@
 #include <log4c/defs.h>
 #include <log4c/layout.h>
 #include <stdio.h>
+#include <sd/malloc.h>
+#include <sd/sprintf.h>
+#include <string.h>
 
 __LOG4C_BEGIN_DECLS
 

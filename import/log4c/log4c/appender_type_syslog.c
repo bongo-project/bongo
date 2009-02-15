@@ -64,7 +64,7 @@ static int syslog_append(log4c_appender_t*	this,
     // we want to remove any '%' formatting characters from the
     // log string, since syslog will try to interpolate them
     source = a_event->evt_rendered_msg;
-    dest = (char *)malloc((strlen(source)*2) + 1);
+    dest = (char *)sd_malloc((strlen(source)*2) + 1);
     if (dest == NULL) return -1; // out of memory
     *dest = '\0';
     origdest = dest;
