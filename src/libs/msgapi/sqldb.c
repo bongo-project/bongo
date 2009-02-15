@@ -454,4 +454,5 @@ int
 MsgSQLResultTextPtr(MsgSQLStatement *_stmt, int column, char **ptr)
 {
 	*ptr = sqlite3_column_text(_stmt->stmt, column);
+	return 0;
 }
