@@ -2440,7 +2440,7 @@ CheckQueue(void *queueIn)
                 
             /* skip recently-touched messages that are in the outgoing
              * queue (queue 7) */
-            if (!flushing && path[2] == '7' && XplCalendarTime(dirEntry->d_cdatetime) > (unsigned long)now) {
+            if (!flushing && path[2] == '7' && (XplCalendarTime(dirEntry->d_cdatetime)+600) > (unsigned long)now) {
                 continue;
             }
 
