@@ -181,11 +181,6 @@ finish:
     return Result;
 }
 
-inline BOOL
-CheckResponse(const char *Response) {
-    return FALSE;
-};
-
 BOOL
 DeliverMessage(SMTPClient *Queue, SMTPClient *Remote, RecipStruct *Recip) {
     int Extensions;
@@ -203,10 +198,10 @@ DeliverMessage(SMTPClient *Queue, SMTPClient *Remote, RecipStruct *Recip) {
         if (Remote->line[0] == '4') {
             // temporary error
             Recip->Result = DELIVER_TRY_LATER;
-            return FALSE;
+            goto finalization;
         }
         Recip->Result = DELIVER_REFUSED;
-        return FALSE;
+        goto finalization;
     }
     // read out any additional banner lines
     while(Remote->line[0] == '2' && Remote->line[3] == '-') {
@@ -226,7 +221,7 @@ beginConversation:
         ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
         if (atoi(Remote->line) != 250) {
             Recip->Result = DELIVER_TRY_LATER;
-            return FALSE;
+            goto finalization;
         }
     }
 
@@ -259,7 +254,7 @@ beginConversation:
             if (ConnEncrypt(Remote->conn, SMTPAgent.SSL_Context) < 0) {
                 /* if the tls negotiation fails then we've got a pretty serious error */
                 Recip->Result = DELIVER_TRY_LATER;
-                return FALSE;
+                goto finalization;
             }
             goto beginConversation;
         }
@@ -271,7 +266,7 @@ beginConversation:
         ConnWrite(Remote->conn, "QUIT\r\n", 6);
         ConnFlush(Remote->conn);
         Recip->Result = DELIVER_FAILURE;
-        return FALSE;
+        goto finalization;
     }
 
     /* mail from */
@@ -303,13 +298,13 @@ beginConversation:
     Ret += ConnWriteStr(Remote->conn, "\r\n");
     if (ConnFlush(Remote->conn) != Ret) {
         Recip->Result = DELIVER_TRY_LATER;
-        return FALSE;
+        goto finalization;
     }
 
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
     if (atoi(Remote->line) != 250) {
         Recip->Result = DELIVER_TRY_LATER;
-        return FALSE;
+        goto finalization;
     }
 
     /* recip to */
@@ -386,23 +381,17 @@ beginConversation:
      *      5xx are fatal errors */
     Remote->line[3] = '\0';
     if (Remote->line[0] == '5') {
-        Log(LOG_INFO, "Message permanantly rejected from %s to %s (flags: %d, status: %s)",
-            Queue->sender, Recip->To, Recip->Flags, Remote->line);
         Recip->Result = DELIVER_FAILURE;
 
         /* TODO: am i supposed to bounce the mail here? */
-        return FALSE;
+        goto finalization;
     } else if (Remote->line[0] != '2') {
         /* all other errors will be re-tried later */
-        Log(LOG_INFO, "Message temporarily rejected from %s to %s (flags: %d, status: %s)",
-            Queue->sender, Recip->To, Recip->Flags, Remote->line);
         Recip->Result = DELIVER_TRY_LATER;
-        return FALSE;
+        goto finalization;
     }
 
     /* delivery accepted, continue on */
-    Log(LOG_INFO, "Message accepted from %s to %s (flags: %d, status: %s)",
-        Queue->sender, Recip->To, Recip->Flags, Remote->line);
 
     ConnWriteStr(Remote->conn, "DATA\r\n");
     ConnFlush(Remote->conn);
@@ -410,7 +399,7 @@ beginConversation:
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
     if (atoi(Remote->line) != 354) {
         Recip->Result = DELIVER_TRY_LATER;
-        return FALSE;
+        goto finalization;
     }
 
     MsgGetRFC822Date(-1, 0, TimeBuf);
@@ -429,7 +418,7 @@ beginConversation:
     ConnReadAnswer(Queue->conn, Queue->line, CONN_BUFSIZE);
     if (atoi(Queue->line) != 2023) {
         Recip->Result = DELIVER_TRY_LATER;
-        return FALSE;
+        goto finalization;
     }
 
     /* according to rfc2821 section 4.5.2 TransparencyL
@@ -451,12 +440,25 @@ beginConversation:
     ConnFlush(Remote->conn);
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
 
+    if (atoi(Remote->line) == 250) {
+        Recip->Result = DELIVER_SUCCESS;
+    } else {
+        Recip->Result = DELIVER_TRY_LATER;
+    }
+
     ConnWriteStr(Remote->conn, "QUIT\r\n");
     ConnFlush(Remote->conn);
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
 
-    Recip->Result = DELIVER_SUCCESS;
-    return TRUE;
+finalization:
+    Log(LOG_INFO, "Remote server responded with: '%s' for message %s from %s to %s",
+        Remote->line, Queue->qID, Queue->sender, Recip->To);
+
+    if (Recip->Result == DELIVER_SUCCESS) {
+        return TRUE;
+    } else {
+        return FALSE;
+    }
 }
 
 static int 
