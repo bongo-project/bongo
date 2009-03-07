@@ -8,6 +8,7 @@
 #include <bongojson.h>
 #include <bongocal.h>
 #include <bongo-cal-private.h>
+#include <bongocal-raw.h>
 
 static char *
 ReadStream(char *s, size_t size, void *d)

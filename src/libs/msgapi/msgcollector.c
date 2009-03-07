@@ -33,6 +33,7 @@
 #include <bongojson.h>
 #include <bongocal.h>
 #include <nmlib.h>
+#include <bongocal-raw.h>
 
 #include <libical/ical.h>
 

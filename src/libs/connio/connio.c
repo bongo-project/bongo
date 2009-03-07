@@ -379,7 +379,7 @@ ConnConnectInternal(Connection *conn, struct sockaddr *saddr, socklen_t slen, bo
             } else if (__gnutls_new(conn, context, GNUTLS_CLIENT) != FALSE) {
                 setsockopt(conn->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
                 
-                gnutls_transport_set_ptr (conn->ssl.context, (gnutls_transport_ptr_t) conn->socket);
+                gnutls_transport_set_ptr (conn->ssl.context, (gnutls_transport_ptr_t) (long) conn->socket);
                 ccode = gnutls_handshake (conn->ssl.context);
                 if (!ccode) {
                     CONN_TRACE_EVENT(conn, CONN_TRACE_EVENT_SSL_CONNECT);
@@ -429,7 +429,7 @@ ConnEncrypt(Connection *conn, bongo_ssl_context *context)
     if (__gnutls_new(c, context, GNUTLS_CLIENT) != FALSE) {
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
-        gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) c->socket);
+        gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) (long) c->socket);
         ccode = gnutls_handshake (c->ssl.context);
         if (!ccode) {
             CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
@@ -463,7 +463,7 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
     if (__gnutls_new(conn, context, GNUTLS_SERVER) != FALSE) {
         setsockopt(c->socket, IPPROTO_TCP, 1, (unsigned char *)&ccode, sizeof(ccode));
 
-        gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) c->socket);
+        gnutls_transport_set_ptr(c->ssl.context, (gnutls_transport_ptr_t) (long) c->socket);
         ccode = gnutls_handshake(c->ssl.context);
         if (!ccode) {
             CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);

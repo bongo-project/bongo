@@ -22,6 +22,7 @@
 #include <config.h>
 #include <bongocal.h>
 #include <ical.h>
+#include <bongocal-raw.h>
 #include "bongo-cal-private.h"
 
 typedef struct { 

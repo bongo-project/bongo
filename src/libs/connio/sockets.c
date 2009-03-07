@@ -107,6 +107,10 @@ ConnTcpRead(Connection *c, char *b, size_t l, int *r)
 						*r = IPrecv((c)->socket, b, l, 0);
 					} else {
 						*r = gnutls_record_recv(c->ssl.context, (void *)b, l);
+						if (*r < 0) {
+							CONN_TRACE_ERROR(c, "RECV", *r);
+							break;
+						}
 					}
 					if (*r >= 0) {
 						CONN_TRACE_DATA(c, CONN_TRACE_EVENT_READ, b, *r);
