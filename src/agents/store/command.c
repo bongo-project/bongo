@@ -2485,7 +2485,7 @@ ReceiveToFile(StoreClient *client, const char *path, uint64_t *size)
 			return ConnWriteStr(client->conn, MSG5220QUOTAERR); // FIXME
 		else
 			return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-	}	
+	}
 	if (-1 == (ccode = ConnWrite(client->conn, "2002 Send document.\r\n", 21)) || 
 	    -1 == (ccode = ConnFlush(client->conn))) {
 		return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
@@ -2502,6 +2502,14 @@ ReceiveToFile(StoreClient *client, const char *path, uint64_t *size)
 		goto finish;
 	}
 	*size = receive_size;
+	
+	ccode = fsync(fileno(fh));
+	if (ccode) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		fclose(fh);
+		fh = NULL;
+		goto finish;
+	}
 	
 	ccode = fclose(fh);
 	fh = NULL;
@@ -2559,12 +2567,10 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 		// we're writing a range, not replacing the whole file
 		// TODO
 	} else {
-		if (unlink(path) != 0) {
+		if (rename(tmppath, path) != 0) {
 			ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
 			goto finish;
 		}
-		link(tmppath, path);
-		unlink(tmppath);
 	}
 	
 	// update the version if required
@@ -2863,7 +2869,7 @@ StoreCommandWRITE(StoreClient *client,
 	if (no_process == 0) {
 		// update metadata if we haven't been asked not to
 		StoreProcessDocument(client, &newdocument, tmppath);
-        }
+	}
 	
 	// put content in place
 	FindPathToDocument(client, collection->guid, newdocument.guid, path, sizeof(path));
@@ -2872,7 +2878,7 @@ StoreCommandWRITE(StoreClient *client,
 	
 	// save new object
 	if (StoreObjectSave(client, &newdocument)) {
-	        StoreObjectRemove(client, &newdocument);
+		StoreObjectRemove(client, &newdocument);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 	
