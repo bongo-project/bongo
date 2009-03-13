@@ -290,6 +290,11 @@ DeliverMessageToMailbox(StoreClient *client,
 	
 	// all done 
 	newmail.size = (uint64_t) ftell(tmp);
+	
+	if (fsync(fileno(tmp)) != 0) {
+		goto ioerror;
+	}
+	
 	fclose(tmp);
 	tmp = NULL;
 	
