@@ -101,27 +101,25 @@ BOOL ReadConfiguration(BongoAgent *agent) {
  */
 void
 FreeBongoConfiguration(BongoConfigItem *config) {
+	BOOL FreeSegment = FALSE;
 	while (config->type != BONGO_JSON_NULL) {
 		switch (config->type) {
 			case BONGO_JSON_STRING:
 				if (config->destination) MemFree(config->destination);
 				break;
 			case BONGO_JSON_ARRAY: {
-				BongoConfigItem *sub = config->destination;
-				/* if (sub->type == BONGO_JSON_STRING) {
-					int i;
-					for (i=0; i<BongoArrayCount(sub->destination); i++) {
-						char *s = &BongoArrayIndex(sub->destination, char*, i);
-						MemFree(s);
-					}
-				}*/
-				BongoArrayFree(sub->destination, TRUE);
+				    BongoConfigItem *sub = config->destination;
+				    if (sub->type == BONGO_JSON_STRING) {
+					FreeSegment = TRUE;
+				    }
+				    BongoArrayFree(sub->destination, FreeSegment);
 				}
 				break;
 			default:
 				// nothing to do?
 				break;
 		}
+		config++;
 	}
 }
 
@@ -199,10 +197,12 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 				case BONGO_JSON_STRING: {
 					const char *dest;
 					int i;
+					char *newstr;
 					result = BongoArrayNew(sizeof(char *), size);
 					for (i=0; i<size; i++) {
 						if (BongoJsonArrayGetString(data, i, &dest) == BONGO_JSON_OK) {
-							BongoArrayAppendValue(result, dest);
+							newstr = MemStrdup(dest);
+							BongoArrayAppendValue(result, newstr);
 						} else {
 							return FALSE;
 						}
