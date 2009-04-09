@@ -55,7 +55,7 @@ BOOL	PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, c
 #ifndef GNUTLS_DIG_SHA1
 	// older GNUTLS
 #	define GNUTLS_SELF_SIGN(c, k) 	gnutls_x509_crt_sign((c), (c), (k))
-#elif
+#else
 	// new GNUTLS
 #	define GNUTLS_SELF_SIGN(c, k)	gnutls_x509_crt_sign2((c), (c), (k), GNUTLS_DIG_SHA1, 0)
 #endif
