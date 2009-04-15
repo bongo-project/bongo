@@ -41,7 +41,7 @@ BongoJsonJPath(BongoJsonNode *root, const char *path)
 
     if (! nextrule) {
         strncpy(rule, path, 49);
-        rulelen = 50;
+        rulelen = 49;
     } else {
         strncpy(rule, path, min(nextrule - path, 49));
         rulelen = nextrule - path;
