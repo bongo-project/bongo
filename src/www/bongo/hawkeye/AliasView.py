@@ -59,11 +59,10 @@ class AliasHandler(HawkeyeHandler):
         self.SetVariable("dremove", None)
         
         # Template stuff
-        #domainName = info.filename.replace(storePath + "/", "")
-        domainName = info.filename
+        domainName = info.filename.replace(storePath + "/", "")
         
         # Fetch data and set template variables
-        dataobj = store.Read(storePath + "/" + info.filename)
+        dataobj = store.Read(info.filename)
         decoder = simplejson.JSONDecoder()
         data = { }
         try:
