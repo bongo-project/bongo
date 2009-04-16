@@ -1022,6 +1022,10 @@ RulesCleanupInformation(RulesClient *client)
     }
 
     if (client->RulesStrings) {
+        /* let's free all the strings ... */
+        for(x=0;x<BongoArrayCount(client->RulesStrings);x++) {
+            MemFree(BongoArrayIndex(client->RulesStrings, char *, x));
+        }
         FreeBongoConfiguration(client->UserConfig);
         client->RulesStrings = NULL;
     }

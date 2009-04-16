@@ -241,7 +241,7 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 
 BOOL 
 ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
-	unsigned char *pconfig;
+	unsigned char *pconfig = NULL;
 	BongoJsonNode *node = NULL;
 	BOOL retcode;
 	
@@ -256,6 +256,7 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
 	}
 	
 	if (node) BongoJsonNodeFree(node);
+    if (pconfig) MemFree(pconfig);
 	return retcode;
 }
 
