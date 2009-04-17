@@ -1016,16 +1016,17 @@ RulesCleanupInformation(RulesClient *client)
     unsigned int x;
 
     if (client->RulesList.head) {
-        FreeBongoRule(client->RulesList.head);
+        BongoRule *cur = client->RulesList.head;
+        while(cur) {
+            BongoRule *next = cur->next;
+            FreeBongoRule(cur);
+            cur = next;
+        }
         client->RulesList.head = NULL;
         client->RulesList.tail = NULL;
     }
 
     if (client->RulesStrings) {
-        /* let's free all the strings ... */
-        for(x=0;x<BongoArrayCount(client->RulesStrings);x++) {
-            MemFree(BongoArrayIndex(client->RulesStrings, char *, x));
-        }
         FreeBongoConfiguration(client->UserConfig);
         client->RulesStrings = NULL;
     }

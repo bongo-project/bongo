@@ -101,18 +101,22 @@ BOOL ReadConfiguration(BongoAgent *agent) {
  */
 void
 FreeBongoConfiguration(BongoConfigItem *config) {
-	BOOL FreeSegment = FALSE;
 	while (config->type != BONGO_JSON_NULL) {
 		switch (config->type) {
 			case BONGO_JSON_STRING:
 				if (config->destination) MemFree(config->destination);
 				break;
 			case BONGO_JSON_ARRAY: {
-				    BongoConfigItem *sub = config->destination;
-				    if (sub->type == BONGO_JSON_STRING) {
-					FreeSegment = TRUE;
-				    }
-				    BongoArrayFree(sub->destination, FreeSegment);
+					BongoConfigItem *sub = config->destination;
+					/* sub->destination here is the address of a pointer to an array */
+					BongoArray **output = (BongoArray **)sub->destination;                    
+					if (sub->type == BONGO_JSON_STRING) {
+						int x;
+						for(x=0;x<BongoArrayCount(*output);x++) {
+							MemFree(BongoArrayIndex(*output, char *, x));
+						}
+					}
+					BongoArrayFree(*output, TRUE);
 				}
 				break;
 			default:
