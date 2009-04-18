@@ -1578,7 +1578,7 @@ NMAPQuit(Connection *conn)
 {
     ConnWrite(conn, "QUIT\r\n", 6);
 
-    ConnTcpClose(conn);
+    ConnClose(conn, 0);
 
     return;
 }
