@@ -2184,60 +2184,51 @@ StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode)
 CCode
 StoreCommandMIME(StoreClient *client, StoreObject *document)
 {
-	return -1;
-#if 0
-	StoreObject object;
-    int ccode = 0;
-    DStoreDocInfo info;
-    MimeReport *report = NULL;
-    NLockStruct *lock = NULL;
-
-    ccode = StoreObjectFind(client, guid, &object);
-    if (ccode == -1) return ConnWriteStr(client->conn, MSG4220NOGUID);
-    if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	int ccode = 0;
+	MimeReport *report = NULL;
+	NLockStruct *lock = NULL;
     
-	ccode = StoreObjectCheckAuthorization(client, &object, STORE_PRIV_READ);
+	ccode = StoreObjectCheckAuthorization(client, document, STORE_PRIV_READ);
 	if (ccode) return ccode;
 	
-    if (STORE_IS_FOLDER(object.type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
- 
-    ccode = StoreGetSharedFairLockQuiet(client, &lock, object.collection_guid, 3000);
-    if (ccode) return ccode;
-    
-    // FIXME: need to re-do the MimeGetInfo() API for store objects
-    switch (MimeGetInfo(client, &info, &report)) {
-    case 1:
-        ccode = MimeReportSend(client, report);
-        MimeReportFree(report);
-        if (-1 != ccode) {
-            ccode = ConnWriteStr(client->conn, MSG1000OK);
-        }
-        break;
-    case -1:
-        ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-        break;
-    case -2:
-        ccode = ConnWriteStr(client->conn, MSG4120DBLOCKED);
-        break;
-    case -3:
-        ccode = ConnWriteF(client->conn, MSG4220NOGUID);
-        break;
-    case -4:
-        ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
-        break;
-    case -5:
-    case 0:
-    default:
-        ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-        break;
-    }
-            
-    if (lock) {
-        StoreReleaseSharedFairLockQuiet(&lock);
-    }
-        
-    return ccode;
-#endif
+	if (STORE_IS_FOLDER(document->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+
+//	ccode = StoreGetSharedFairLockQuiet(client, &lock, document->collection_guid, 3000);
+//	if (ccode) return ccode;
+
+	// FIXME: need to re-do the MimeGetInfo() API for store objects
+	switch (MimeGetInfo(client, document, &report)) {
+	case 1:
+		ccode = MimeReportSend(client, report);
+		MimeReportFree(report);
+		if (-1 != ccode) {
+		    ccode = ConnWriteStr(client->conn, MSG1000OK);
+		}
+		break;
+	case -1:
+		ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+		break;
+	case -2:
+		ccode = ConnWriteStr(client->conn, MSG4120DBLOCKED);
+		break;
+	case -3:
+		ccode = ConnWriteF(client->conn, MSG4220NOGUID);
+		break;
+	case -4:
+		ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
+		break;
+	case -5:
+	case 0:
+	default:
+		ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
+		break;
+	}
+	
+	if (lock) {
+		// StoreReleaseSharedFairLockQuiet(&lock);
+	}
+	
+	return ccode;
 }
 
 // FIXME: needs to move any store properties etc. related to this document
