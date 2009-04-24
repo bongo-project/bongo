@@ -162,7 +162,7 @@ void BounceToPostmaster(AVirusClient *client, char *senderUserName) {
         return;
     }
 
-    ConnWriteF(client->conn, "QSTOR FROM -\r\n");
+    ConnWriteF(client->conn, "QSTOR FROM - -\r\n");
     ConnFlush(client->conn);
     ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     if (ccode != 1000) {
@@ -171,7 +171,7 @@ void BounceToPostmaster(AVirusClient *client, char *senderUserName) {
         return;
     }
 
-    ConnWriteF(client->conn, "QSTOR TO postmaster\r\n");
+    ConnWriteF(client->conn, "QSTOR TO postmaster - 0\r\n");
     ConnFlush(client->conn);
     ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     if (ccode != 1000) {
@@ -216,7 +216,7 @@ void BounceToSender(AVirusClient *client, char *senderUserName) {
         return;
     }
 
-    ConnWriteF(client->conn, "QSTOR FROM -\r\n");
+    ConnWriteF(client->conn, "QSTOR FROM - -\r\n");
     ConnFlush(client->conn);
     ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     if (ccode != 1000) {
@@ -225,7 +225,7 @@ void BounceToSender(AVirusClient *client, char *senderUserName) {
         return;
     }
 
-    ConnWriteF(client->conn, "QSTOR TO %s\r\n", senderUserName);
+    ConnWriteF(client->conn, "QSTOR TO %s - 0\r\n", senderUserName);
     ConnFlush(client->conn);
     ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, FALSE);
     if (ccode != 1000) {
