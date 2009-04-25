@@ -450,6 +450,9 @@ beginConversation:
     ConnFlush(Remote->conn);
     ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
 
+    /* read in the 1000 OK */
+    ConnReadAnswer(Queue->conn, Queue->line, CONN_BUFSIZE);
+
 finalization:
     Log(LOG_INFO, "Remote server responded with: '%s' for message %s from %s to %s",
         Remote->line, Queue->qID, Queue->sender, Recip->To);

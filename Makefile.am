@@ -95,7 +95,6 @@ clean-docs:
 
 #	disabled agents
 #	src/agents/mailprox			
-#	src/agents/rules			
 #	src/agents/calcmd
 
 include_subdirs =				\
@@ -129,6 +128,7 @@ include_subdirs =				\
 	src/agents/itip				\
 	src/agents/pop				\
 	src/agents/queue			\
+	src/agents/rules			\
 	src/agents/smtp				\
 	src/agents/store			\
 	src/agents/store/tests			\
@@ -181,7 +181,7 @@ include src/agents/itip/Bongo.rules
 #include src/agents/mailprox/Bongo.rules
 include src/agents/pop/Bongo.rules
 include src/agents/queue/Bongo.rules
-#include src/agents/rules/Bongo.rules
+include src/agents/rules/Bongo.rules
 include src/agents/smtp/Bongo.rules
 include src/agents/store/Bongo.rules
 include src/agents/store/tests/Bongo.rules
