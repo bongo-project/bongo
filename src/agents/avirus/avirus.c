@@ -49,12 +49,6 @@ AVirusClientFree(void *client)
 {
     register AVirusClient *c = client;
 
-    if (c->conn) {
-        ConnClose(c->conn, 1);
-        ConnFree(c->conn);
-        c->conn = NULL;
-    }
-
     if (c->envelope) {
         MemFree(c->envelope);
     }
