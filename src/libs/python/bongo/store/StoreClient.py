@@ -717,6 +717,7 @@ class StoreClient:
             # eat the \r\n afterward
             self.stream.Read(2)
             r = self.stream.GetResponse()
+        
         # automatically pull out imap_uid from Bongo 0.3.
         if name is None and not props.has_key("nmap.mail.imapuid"):
             self.stream.Write("PROPGET %s nmap.mail.imapuid" % (doc))

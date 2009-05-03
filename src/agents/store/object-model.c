@@ -750,14 +750,12 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 	if (MsgSQLCommitTransaction(client->storedb))
 		goto abort;
 	
-	if (builder->output_mode != MODE_PROPGET) {
-		// we don't output a final success code in PROPGET 
-		if (show_total) {
-			ConnWriteF(client->conn, "1000 %ld\r\n", total);
-		} else {
-			ConnWriteStr(client->conn, MSG1000OK);
-		}
+	if (show_total) {
+		ConnWriteF(client->conn, "1000 %ld\r\n", total);
+	} else {
+		ConnWriteStr(client->conn, MSG1000OK);
 	}
+	
 	
 	QueryBuilderFinish(builder);
 	return 1000;
