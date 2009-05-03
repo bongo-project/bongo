@@ -825,8 +825,14 @@ NMAPReadDecimalPropertyResponse(Connection *conn, const char *propertyName, long
 int 
 NMAPGetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName, long *propertyValue)
 {
+    int retval;
     if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
-        return(NMAPReadDecimalPropertyResponse(conn, propertyName, propertyValue));
+        retval = NMAPReadDecimalPropertyResponse(conn, propertyName, propertyValue);
+        if (retval == 2001) {
+            if (NMAPReadJustResponseCode(conn) == 1000) {
+                return retval;
+            }
+        }
     }
     return(-1);
 }
@@ -885,10 +891,15 @@ NMAPReadHexadecimalPropertyResponse(Connection *conn, const char *propertyName,
 int 
 NMAPGetHexadecimalProperty(Connection *conn, uint64_t guid, const char *propertyName, unsigned long *propertyValue)
 {
+    int retval;
     if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
-        return(NMAPReadHexadecimalPropertyResponse(conn, propertyName, propertyValue));
+        retval = NMAPReadHexadecimalPropertyResponse(conn, propertyName, propertyValue);
+        if (retval == 2001) {
+            if (NMAPReadJustResponseCode(conn) == 1000) {
+                return retval;
+            }
+        }
     }
-
     return(-1);
 }
 
