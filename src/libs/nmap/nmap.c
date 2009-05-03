@@ -690,8 +690,14 @@ NMAPReadTextPropertyResponse(Connection *conn, const char *propertyName, char *p
 int 
 NMAPGetTextProperty(Connection *conn, uint64_t guid, const char *propertyName, char *propertyBuffer, size_t propertyBufferLen)
 {
+    int retval = 0;
     if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
-        return(ReadProperty(conn, propertyName, propertyBuffer, propertyBufferLen));
+        retval = ReadProperty(conn, propertyName, propertyBuffer, propertyBufferLen);
+        if (retval == 2001) {
+            if (NMAPReadJustResponseCode(conn) == 1000) {
+                return retval;
+            }
+        }
     }
     return(-1);
 }
