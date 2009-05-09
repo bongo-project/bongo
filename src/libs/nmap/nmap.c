@@ -693,10 +693,8 @@ NMAPGetTextProperty(Connection *conn, uint64_t guid, const char *propertyName, c
     int retval = 0;
     if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
         retval = ReadProperty(conn, propertyName, propertyBuffer, propertyBufferLen);
-        if (retval == 2001) {
-            if (NMAPReadJustResponseCode(conn) == 1000) {
-                return retval;
-            }
+        if (NMAPReadJustResponseCode(conn) == 1000) {
+            return retval;
         }
     }
     return(-1);
@@ -828,10 +826,8 @@ NMAPGetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName
     int retval;
     if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
         retval = NMAPReadDecimalPropertyResponse(conn, propertyName, propertyValue);
-        if (retval == 2001) {
-            if (NMAPReadJustResponseCode(conn) == 1000) {
-                return retval;
-            }
+        if (NMAPReadJustResponseCode(conn) == 1000) {
+            return retval;
         }
     }
     return(-1);
@@ -894,10 +890,8 @@ NMAPGetHexadecimalProperty(Connection *conn, uint64_t guid, const char *property
     int retval;
     if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
         retval = NMAPReadHexadecimalPropertyResponse(conn, propertyName, propertyValue);
-        if (retval == 2001) {
-            if (NMAPReadJustResponseCode(conn) == 1000) {
-                return retval;
-            }
+        if (NMAPReadJustResponseCode(conn) == 1000) {
+            return retval;
         }
     }
     return(-1);
