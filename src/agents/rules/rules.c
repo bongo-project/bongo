@@ -1139,6 +1139,7 @@ ProcessEntry(void *clientp, Connection *conn)
             /* i need to read out this user's rules from the server and parse them */
             snprintf(Queue->line, CONN_BUFSIZE, "rules/%s", Queue->recipient);
             if (!ReadBongoConfiguration(Queue->UserConfig, Queue->line)) {
+            	ConnWriteF(Queue->conn, "QMOD RAW %s\r\n", Queue->envelopeLine);
                 break;
             }
 
