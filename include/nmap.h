@@ -333,7 +333,8 @@ typedef enum _NMAPMessageFlags {
     MSG_FLAG_PROXIED_MESSAGE = (1 << 7), /* Must always be 128 */
     MSG_FLAG_SPAM_CHECKED = (1 << 8), 
     MSG_FLAG_PLUSPACK_PROCESSED = (1 << 9), 
-    MSG_FLAG_PLUSPACK_COPIED = (1 << 10)
+    MSG_FLAG_PLUSPACK_COPIED = (1 << 10),
+    MSG_FLAG_SMTPC_NOSSL = (1 << 11)
 } NMAPMessageFlags;
 
 /* Queue "names" */

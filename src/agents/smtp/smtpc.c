@@ -245,14 +245,16 @@ beginConversation:
         }
     }
 
-    if ((Extensions & EXT_TLS) && (Remote->conn->ssl.enable == FALSE)) {
+    /* if the message says no ssl don't do it */
+    if (!(Queue->flags & MSG_FLAG_SMTPC_NOSSL) && (Extensions & EXT_TLS) && (Remote->conn->ssl.enable == FALSE)) {
         /* start up that tls badboy before doing anything else!! */
         ConnWriteF(Remote->conn, "STARTTLS\r\n");
         ConnFlush(Remote->conn);
         ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
         if (atoi(Remote->line) == 220) {
-            if (ConnEncrypt(Remote->conn, SMTPAgent.SSL_Context) < 0) {
+            if ((Ret = ConnEncrypt(Remote->conn, SMTPAgent.SSL_Context)) < 0) {
                 /* if the tls negotiation fails then we've got a pretty serious error */
+		snprintf(Remote->line, CONN_BUFSIZE, "Remote SSL Failed: %d", Ret);
                 Recip->Result = DELIVER_TRY_LATER;
                 goto finalization;
             }
