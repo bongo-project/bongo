@@ -356,6 +356,11 @@ PKG_CHECK_MODULES(GNUTLS, gnutls,
 	GNUTLS_CFLAGS=""
 )
 
+AM_PATH_GLIB_2_0(2.6.0, ,
+	AC_MSG_ERROR(Bongo requires GLib v2.6 or better installed with development headers.),
+	gobject gmodule gthread)
+
+
 AM_PATH_LIBGCRYPT()
 
 AC_CHECK_GMIME()
