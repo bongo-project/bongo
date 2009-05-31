@@ -15,6 +15,7 @@
  * Parser of Store Protocol queries into structures, for later use in SQL queries
  */
 
+#include "stored.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -151,7 +152,7 @@ QueryParserRun(struct parser_state *state)
 	char *token;
 	struct expression *current_expression = state->start;
 	
-	while (pull_token(&(state->query), &token) != -1) {
+	while (pull_token(&(state->query_ptr), &token) != -1) {
 		if (current_expression < state->start) {
 			// ran off the top of our stack, but there were still tokens
 			DEBUG_MESSAGE("ERR: tokens remaining in data\n");
@@ -260,6 +261,8 @@ QueryParserStart(struct parser_state *state, const char *query, int max_expr) {
 		MemFree(state->start);
 		return -2;
 	}
+	
+	state->query_ptr = state->query;
 	
 	return 0;
 }

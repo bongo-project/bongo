@@ -21,6 +21,7 @@ struct parser_state {
 	struct expression *last;
 	int entries;
 	char *query;
+	char *query_ptr;
 };
 
 int	QueryParserStart(struct parser_state *state, const char *query, int max_expr);
