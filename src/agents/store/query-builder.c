@@ -43,11 +43,33 @@ QueryBuilderStart(QueryBuilder *builder)
 void
 QueryBuilderFinish(QueryBuilder *builder)
 {
+	unsigned int x;
+	StorePropInfo *newprop;
+	ExtraLink *link;
+	QueryBuilder_Param *param;
+
 	QueryParserFinish(&builder->internal_parser);
 	QueryParserFinish(&builder->external_parser);
 	
+	/* free all the properties */
+	for(x=0;x<BongoArrayCount(builder->properties);x++) {
+		newprop = BongoArrayIndex(builder->properties, StorePropInfo *, x);
+		MemFree(newprop);
+	}
 	BongoArrayFree(builder->properties, TRUE);
+
+	/* free all the links */
+	for(x=0;x<BongoArrayCount(builder->links);x++) {
+		link = BongoArrayIndex(builder->links, ExtraLink *, x);
+		MemFree(link);
+	}
 	BongoArrayFree(builder->links, TRUE);
+
+	/* free all the parameters */
+	for(x=0;x<BongoArrayCount(builder->parameters);x++) {
+		param = BongoArrayIndex(builder->parameters, QueryBuilder_Param *, x);
+		MemFree(param);
+	}
 	BongoArrayFree(builder->parameters, TRUE);
 }
 
@@ -307,6 +329,7 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 {
 	BongoStringBuilder b;
 	unsigned int i;
+	int ccode;
 	
 	if (BongoStringBuilderInit(&b)) {
 		// unable to start... ick
@@ -359,7 +382,8 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	// add in any constraints specified on the various columns
 	if (builder->int_query) {
 		if (QueryExpressionToSQL(builder, builder->internal_parser.start, &b)) {
-			return -2;
+			ccode = -2;
+			goto abort;
 		}
 	}
 	if (builder->int_query && builder->ext_query) {
@@ -367,7 +391,8 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	}
 	if (builder->ext_query) {
 		if (QueryExpressionToSQL(builder, builder->external_parser.start, &b)) {
-			return -3;
+			ccode = -3;
+			goto abort;
 		}
 	}
 	
@@ -399,6 +424,10 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	BongoStringBuilderDestroy(&b);
 	
 	return 0;
+
+abort:
+	BongoStringBuilderDestroy(&b);
+	return ccode;
 }
 
 static int

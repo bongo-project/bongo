@@ -274,6 +274,9 @@ QueryParserFinish(struct parser_state *state) {
 	if (state->start != NULL) {
 		MemFree(state->start);
 	}
+	if (state->query != NULL) {
+		MemFree(state->query);
+	}
 	state->start = state->last = NULL;
 	state->entries = 0;
 }
