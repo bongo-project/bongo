@@ -757,10 +757,14 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 	}
 	
 	
+	MemFree(sql);
 	QueryBuilderFinish(builder);
 	return 1000;
 
 abort:
+	if (sql) {
+		MemFree(sql);
+	}
 	MsgSQLAbortTransaction(client->storedb);
 	QueryBuilderFinish(builder);
 	
