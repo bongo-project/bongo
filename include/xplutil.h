@@ -22,7 +22,7 @@
 #ifndef XPLUTIL_H
 #define XPLUTIL_H
 
-#include "bongo-config.h"
+#include <config.h>
 #include "xplthread.h"
 
 #include <ctype.h>
@@ -35,11 +35,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _BONGO_HAVE_SYS_STAT_H
+#ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
 
-#ifdef _BONGO_LINUX
 # include <dirent.h>
 # include <netdb.h>
 # include <netinet/in.h>
@@ -49,10 +48,6 @@
 # include <sys/types.h>
 # include <arpa/inet.h>
 # include <unistd.h>
-#elif defined WIN32
-# include <windows.h>
-# include <io.h>
-#endif
 
 /* Product Definitions */
 
@@ -63,10 +58,6 @@
 /* Basic Definitions */
 
 typedef int BOOL;
-
-#ifndef WIN32
-typedef unsigned long LONG;
-#endif
 
 typedef	unsigned char BYTE;
 typedef	unsigned short WORD;
@@ -92,12 +83,6 @@ typedef unsigned short unicode;
 # define max(a,b)                                               (((a)<(b)) ? (b) : (a))
 #endif
 
-/* Casts */
-#define XPL_PTR_TO_INT(p)      ((int) XPL_POINTER_TO_INT_CAST (p))
-#define XPL_PTR_TO_UINT(p)     ((unsigned int) XPL_POINTER_TO_UINT_CAST (p))
-#define XPL_INT_TO_PTR(i)      ((void*) XPL_POINTER_TO_INT_CAST (i))
-#define XPL_UINT_TO_PTR(i)     ((void*) XPL_POINTER_TO_UINT_CAST (i))
-
 /* Branch hints */
 #if defined(__GNUC__) && (__GNUC__ > 2)
 #define XPL_LIKELY(e) (__builtin_expect(!!(e), 1))
@@ -106,6 +91,8 @@ typedef unsigned short unicode;
 #define XPL_LIKELY(e) (e)
 #define XPL_UNLIKELY(e) (e)
 #endif
+
+#define EXPORT
 
 /* Format string helpers */
 #if defined(__GNUC__) && (__GNUC__ > 2)
@@ -139,7 +126,7 @@ typedef unsigned short unicode;
 #define MAXEMAILNAMESIZE    256
 
 /* Packing/Byte order */
-#ifdef _BONGO_LINUX
+#ifdef UNIX
 # define Xpl8BitPackedStructure __attribute__ ((aligned(1),packed))
 # define Xpl64BitPackedStructure __attribute__ ((aligned(8),packed))
 #elif defined WIN32
@@ -160,64 +147,19 @@ typedef unsigned short unicode;
   
 /* C Library functions */
 
-#ifdef _BONGO_HAVE_STRCASECMP
 # define XplStrCaseCmp(a,b) strcasecmp(a,b)
-#elif defined(HAVE_STRICMP)
-# define XplStrCaseCmp(a,b) stricmp(a,b)
-#else
-# error "XplStrCaseCmp is not implemented on this platform"
-#endif
-
-#ifdef _BONGO_HAVE_STRNCASECMP
 # define XplStrNCaseCmp(a,b,c) strncasecmp(a,b,c)
-#elif defined(HAVE_STRNICMP)
-# define XplStrNCaseCmp(a,b,c) strnicmp(a,b,c)
-#else
-# error "XplStrNCaseCmp is not implemented on this platform"
-#endif
-
-#ifdef _BONGO_HAVE_VSNPRINTF
 # define XplVsnprintf vsnprintf
-#elif defined (HAVE__VSNPRINTF)
-# define XplVsnprintf _vsnprintf
-#endif
-
-#ifdef _BONGO_HAVE_GETTIMEOFDAY
 # define XplGetHighResolutionTimer()   0
 # define XplGetHighResolutionTime(counter)						{	struct timeval	tOfDaYs;					  \
 																				gettimeofday(&tOfDaYs,NULL);						\
 																				(counter) = (time_t) tOfDaYs.tv_usec;	\
                                                                 }
-#elif defined (WIN32)
-
-
-# define XplGetHighResolutionTimer() 0
-# define XplGetHighResolutionTime(counter) {	LARGE_INTEGER	c;									\
-																		if (QueryPerformanceCounter(&c) != 0) {	\
-																			(counter) = c.LowPart;						\
-																		}														\
-															}
-#else
-# error "XplGetHighResolutionTime is not implemented on this platform"
-#endif
-
 /* UI Definitions - need to reconsider these*/
 
-#ifdef _BONGO_HAVE_RINGTHEBELL
-# define XplBell() XplBell()
-#else
 # define XplBell()
-#endif
 
-#if defined WIN32 && (defined DEBUG || defined _DEBUG)
-
-void XplDebugOut(const char *Format, ...);
-# define  XplConsolePrintf						XplDebugOut
-#elif defined _BONGO_HAVE_CONSOLEPRINTF
-# define XplConsolePrintf consoleprintf
-#else
 # define XplConsolePrintf printf
-#endif
 
 #ifdef HAVE_UNGETCHARACTER
 # define XplUngetCh(a) ungetcharacter((a))
@@ -235,7 +177,7 @@ int XplTruncate(const char *path, int64_t length);
 # define XPL_DIR_SEPARATOR '/'
 #endif
 
-#ifdef _BONGO_LINUX
+#ifdef UNIX
 
 #define XplFSeek64(FILEPTR, OFFSET, WHENCE)         fseek(FILEPTR, OFFSET, WHENCE)
 
@@ -276,15 +218,7 @@ XplDir   *XplOpenDir(const char  *dirname);
 XplDir   *XplReadDir(XplDir *dirp);
 int       XplCloseDir(XplDir *dirp);
 
-#ifdef _BONGO_HAVE_FSYNC
 # define XplFlushWrites(fileptr)		      fsync(fileno(fileptr))
-#elif defined (_BONGO_HAVE_FEFLUSHWRITE)
-# define XplFlushWrites(fileptr)                      FEFlushWrite(fileno(fileptr))
-#elif defined (HAVE__COMMIT)
-# define XplFlushWrites(fileptr)                      _commit(fileno(fileptr))
-#else
-# error "XplFlushWrites not defined for this platform"
-#endif
 
 #if defined(_A_SUBDIR)
 # define XPL_A_SUBDIR _A_SUBDIR
@@ -351,45 +285,20 @@ int XplGetCurrentOSLangaugeID(void);
 int XplReturnLanguageName(int lang, unsigned char *buffer);
 
 /* Time */
-#ifdef _BONGO_HAVE__CONVERTDOSTIMETOCALENDAR
-# define XplCalendarTime(time) _ConvertDOSTimeToCalendar(time)
-#elif defined (HAVE_DOS2CALENDAR)
-# define XplCalendarTime(time) dos2calendar(time)
-#else
 # define XplCalendarTime(time) (time)
-#endif
 
 void XplDelaySelect(int msec);
 
-#ifdef _BONGO_HAVE_DELAY
-# define XplDelay(msec) delay(msec)
-#elif defined (_BONGO_HAVE_SLEEP)
-# define XplDelay(msec) Sleep(msec)
-#elif defined (_BONGO_HAVE_NANOSLEEP)
 void XplDelayNanosleep(int msec);
-# define XplDelay(msec) XplDelayNanosleep(msec)
-#elif defined (_BONGO_HAVE_USLEEP)
-# define XplDelay(msec) usleep((msec) * 1000)
-#else
-# define  XplDelay(msec) XplDelaySelect(msec)
-#endif
+#define XplDelay(msec) XplDelayNanosleep(msec)
 
 /* Signal handling */
-
-#ifdef WIN32
-#define XplExit(ccode)                          exit(ccode)
-#define XplSignalHandler(handler)				signal(SIGTERM, (handler));
-#define XplSignalBlock() 
-
-#else
 
 #define XplExit(ccode)                          kill(getpid(), 9)
 typedef void (*XplShutdownFunc)(int Signal);
 void XplSignalCatcher(XplShutdownFunc ShutdownFunction);
 void XplSignalBlock(void);
 #define XplSignalHandler(handler)								XplSignalCatcher((handler));
-
-#endif
 
 
 #ifdef WIN32
@@ -414,7 +323,7 @@ BOOL	XplRWWriteLockAcquire(XplRWLock *RWLock);
 BOOL	XplRWReadLockRelease(XplRWLock *RWLock);
 BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
 
-#ifdef _BONGO_LINUX
+#ifdef UNIX
 
 #define s_addr_1	s_addr>>24 & 0xff
 #define s_addr_2	s_addr>>16 & 0xff
@@ -422,7 +331,7 @@ BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
 #define s_addr_4        s_addr     & 0xff
 
 #ifndef s_net
-#if _BONGO_XPL_LITTLE_ENDIAN
+#ifdef _BONGO_XPL_LITTLE_ENDIAN
 
 #define s_net	s_addr_4
 #define s_host	s_addr_3
@@ -439,46 +348,6 @@ BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
 #endif
 
 #endif
-#endif
-
-/* Windows specifics */
-
-#if defined(BONGO_HAVE__SNPRINTF) && !defined(_BONGO_HAVE_SNPRINTF)
-#define snprintf _snprintf
-#endif
-
-#ifndef _BONGO_HAVE_GMTIME_R
-#define	gmtime_r(in, out)			{	struct tm *tmp; tmp=gmtime((time_t *)in); if (!tmp) {	time_t t=1;	tmp=gmtime(&t);}	memcpy(out, tmp, sizeof(struct tm)); }
-#endif
-
-#ifndef _BONGO_HAVE_LOCALTIME_R
-#define	localtime_r(in, out)		{	struct tm *tmp; tmp=localtime((time_t *)in); if (!tmp) {	time_t t=1;	tmp=localtime(&t);}	memcpy(out, tmp, sizeof(struct tm)); }
-#endif
-
-#ifdef WIN32
-# define        WIN_CDECL   __cdecl
-# define        WIN_STDCALL __stdcall
-# define        EXPORT      __declspec(dllexport)
-# define        IMPORT      __declspec(dllimport)
-#else
-# define	WIN_CDECL									
-# define	WIN_STDCALL									
-# define	EXPORT
-# define	IMPORT
-#endif
-
-#ifndef ECONNABORTED
-#define ECONNABORTED 130
-#endif
-
-#ifndef SIGHUP
-/* Dummy */
-#define SIGHUP 1000
-#endif
-
-#ifndef SIGUSR1
-/* Dummy */
-#define SIGUSR1 10
 #endif
 
 #ifdef __cplusplus

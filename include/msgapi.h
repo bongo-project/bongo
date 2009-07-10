@@ -73,7 +73,7 @@ typedef struct _MsgSQLHandle {
 	} stmts;
 
 	BongoMemStack *memstack;
-	XplSemaphore transactionLock;
+	XplMutex transactionLock;
 	int transactionDepth;
 	int lockTimeoutMs;
 	BOOL isNew;		// have we just created this?

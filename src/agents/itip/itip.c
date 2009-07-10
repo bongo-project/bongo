@@ -52,7 +52,7 @@ ItipAgentClientFree(void *clientp)
         MemFree(client->envelope);
     }
 
-    MemPrivatePoolReturnEntry(client);
+    MemPrivatePoolReturnEntry(ItipAgent.clientPool, client);
 }
 
 static BOOL

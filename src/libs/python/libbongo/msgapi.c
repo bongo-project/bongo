@@ -22,7 +22,6 @@
 
 #include <Python.h>
 
-#include <bongo-config.h>
 #include <xpl.h>
 #include <msgapi.h>
 #include <connio.h>

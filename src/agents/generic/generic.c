@@ -44,7 +44,7 @@ GAgentClientFree(void *clientp)
         MemFree(client->envelope);
     }
 
-    MemPrivatePoolReturnEntry(client);
+    MemPrivatePoolReturnEntry(GAgent.clientPool, client);
 }
 
 static int 

@@ -417,7 +417,7 @@ QueueClientFree(void *clientp)
 {
     QueueClient *client = clientp;
 
-    MemPrivatePoolReturnEntry(client);
+    MemPrivatePoolReturnEntry(Agent.clientMemPool, client);
 }
 
 static BOOL 

@@ -12,12 +12,12 @@ typedef struct {
 	BOOL interactive;
 	char *ip;
 	char *dns;
-    BongoJsonNode *domains;
+	BongoJsonNode *domains;
 } BongoConfig;
 
 typedef struct {
-    Connection *conn;
-    char buffer[CONN_BUFSIZE + 1];
+	Connection *conn;
+	char buffer[CONN_BUFSIZE + 1];
 } StoreClient;
 
 #define malloc(bytes) MemMalloc(bytes)
@@ -26,16 +26,15 @@ typedef struct {
 /* function prototypes */
 
 // config.c
-void    GetInstallParameters(void);
-void    AddDomain(const char *str);
-void    SetStoreConfigurationModifications(StoreClient *client);
+void	GetInstallParameters(void);
+void	SetStoreConfigurationModifications(StoreClient *client);
 void	LoadDefaultStoreConfiguration(void);
 void	InitializeDataArea(void);
 void	usage(void);
 void	RunAsBongoUser(void);
 void	RunAsRoot(void);
 void	InitialStoreConfiguration(void);
-void    GetInteractiveData(char *description, char **data, char *def);
+void	GetInteractiveData(char *description, char **data, char *def);
 BOOL	GenerateCryptoData(void);
 void	CheckVersion(void);
 void	AddUser(const char *username);

@@ -34,11 +34,7 @@
 
 MailProxyGlobals MailProxy;
 
-#if defined(RELEASE_BUILD)
-#define GetMailProxyClientPoolEntry()            MemPrivatePoolGetEntry(MailProxy.client.pool)
-#else
-#define GetMailProxyClientPoolEntry()            MemPrivatePoolGetEntryDebug(MailProxy.client.pool, __FILE__, __LINE__)
-#endif
+#define GetMailProxyClientPoolEntry()            MemPrivatePoolGetEntryDirect(MailProxy.client.pool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
 
@@ -160,7 +156,7 @@ MailProxyClientFree(MailProxyClient *client)
     memset(c, 0, sizeof(MailProxyClient));
     c->state = MAILPROXY_CLIENT_FRESH;
 
-    MemPrivatePoolReturnEntry(c);
+    MemPrivatePoolReturnEntry(MailProxy.client.pool, c);
 
     return;
 }
@@ -900,10 +896,7 @@ XplServiceMain(int argc, char *argv[])
 
     NMAPInitialize();
 
-    MailProxy.handle.logging = LoggerOpen("bongomailprox");
-    if (MailProxy.handle.logging == NULL) {
-        XplConsolePrintf("bongomailprox: Unable to initialize Nsure Audit.  Logging disabled.\r\n");
-    }
+    LogOpen("bongomailprox");
 
     XplRWLockInit(&MailProxy.lock);
 

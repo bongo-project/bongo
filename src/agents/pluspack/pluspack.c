@@ -32,11 +32,7 @@
 
 #include "pluspack.h"
 
-#if defined(RELEASE_BUILD)
-#define PlusPackClientAlloc() MemPrivatePoolGetEntry(PlusPack.nmap.pool)
-#else
-#define PlusPackClientAlloc() MemPrivatePoolGetEntryDebug(PlusPack.nmap.pool, __FILE__, __LINE__)
-#endif
+#define PlusPackClientAlloc() MemPrivatePoolGetEntryDirect(PlusPack.nmap.pool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
 
@@ -96,7 +92,7 @@ PlusPackClientFree(PlusPackClient *client)
         c->conn = NULL;
     }
 
-    MemPrivatePoolReturnEntry(c);
+    MemPrivatePoolReturnEntry(PlusPack.nmap.pool, c);
 
     return;
 }

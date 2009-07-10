@@ -19,8 +19,6 @@
  * </Novell-copyright>
  ****************************************************************************/
 
-#include <bongo-config.h>
-
 /** \defgroup BongoCheck The Check Framework in the Bongo Project 
  * \brief Provides unit testing for C code in the Bongo Project.
  *
@@ -74,7 +72,6 @@
  * 
  */
 #include <config.h>
-#include <bongo-config.h>
 #include <stdlib.h> 
 #include <stdio.h> 
 

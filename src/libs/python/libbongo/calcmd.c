@@ -1,6 +1,5 @@
 #include <Python.h>
 
-#include <bongo-config.h>
 #include <calcmd.h>
 #include <msgapi.h>
 

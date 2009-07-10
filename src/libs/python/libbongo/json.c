@@ -1,7 +1,6 @@
 #include <Python.h>
 #include "structmember.h"
 
-#include <bongo-config.h>
 #include <bongojson.h>
 #include <bongocal.h>
 

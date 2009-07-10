@@ -26,10 +26,6 @@
 
 XPL_BEGIN_C_LINKAGE
 
-/* Library Specific */
-#define MEMMGR_API_VERSION          1
-#define MEMMGR_API_COMPATIBILITY    1
-
 /* Alignment macros */
 #if defined(TARGET_CPU_68K) || defined(__CFM68K__) || defined(m68k) || defined(_M_M68K)
 #define ALIGNMENT 2
@@ -63,73 +59,19 @@ XPL_BEGIN_C_LINKAGE
 
 #define ALIGN_SIZE(s, a) (((s) + a - 1) & ~(a - 1))
 
-typedef BOOL (*PoolEntryCB)(void *Buffer, void *ClientData);
-
-typedef struct _MemStatistics {
-    struct {
-        unsigned long count;
-        unsigned long size;
-    } totalAlloc;
-
-    unsigned long pitches;
-    unsigned long hits;
-    unsigned long strikes;
-
-    struct {
-        unsigned long size;
-
-        unsigned long minimum;
-        unsigned long maximum;
-
-        unsigned long allocated;
-    } entry;
-
-    unsigned char *name;
-
-    struct _MemStatistics *next;
-    struct _MemStatistics *previous;
-} MemStatistics;
-
 EXPORT BOOL MemoryManagerOpen(const unsigned char *AgentName);
 EXPORT BOOL MemoryManagerClose(const unsigned char *AgentName);
 
 /*    Memory Allocation API's    */
-EXPORT void *MemCallocDirect(size_t Number, size_t Size);
-EXPORT void *MemCallocDebugDirect(size_t Number, size_t Size, const char *SourceFile, unsigned long SourceLine);
+EXPORT void *MemMallocDirect(size_t Size, const char *SourceFile, unsigned long SourceLine);
+EXPORT void *MemMalloc0Direct(size_t size, const char *sourceFile, unsigned long sourceLine);
+EXPORT void *MemReallocDirect(void *Source, size_t Size, const char *SourceFile, unsigned long SourceLine);
 
-EXPORT void *MemMallocDirect(size_t Size);
-EXPORT void *MemMallocDebugDirect(size_t Size, const char *SourceFile, unsigned long SourceLine);
-
-EXPORT void *MemMalloc0Direct(size_t size);
-EXPORT void *MemMalloc0DebugDirect(size_t size, const char *sourceFile, unsigned long sourceLine);
-
-
-EXPORT void *MemReallocDirect(void *Source, size_t Size);
-EXPORT void *MemReallocDebugDirect(void *Source, size_t Size, const char *SourceFile, unsigned long SourceLine);
-
-#if !defined(MEMMGR_DEBUG)
-#define MemCalloc(n, s)     MemCallocDirect((n), (s))
-#else
-#define MemCalloc(n, s)     MemCallocDebugDirect((n), (s), __FILE__, __LINE__)
-#endif
-
-#if !defined(MEMMGR_DEBUG)
-#define MemMalloc(s)        MemMallocDirect((s))
-#else
-#define MemMalloc(s)        MemMallocDebugDirect((s), __FILE__, __LINE__)
-#endif
-
-#if !defined(MEMMGR_DEBUG)
-#define MemMalloc0(s)        MemMalloc0Direct((s))
-#else
-#define MemMalloc0(s)        MemMalloc0DebugDirect((s), __FILE__, __LINE__)
-#endif
-
-#if !defined(MEMMGR_DEBUG)
-#define MemRealloc(m, s)    MemReallocDirect((m), (s))
-#else
-#define MemRealloc(m, s)    MemReallocDebugDirect((m), (s), __FILE__, __LINE__)
-#endif
+// deprecate Calloc()
+#define MemCalloc(n, s)     MemMallocDirect((n)*(s), __FILE__, __LINE__)
+#define MemMalloc(s)        MemMallocDirect((s), __FILE__, __LINE__)
+#define MemMalloc0(s)        MemMalloc0Direct((s), __FILE__, __LINE__)
+#define MemRealloc(m, s)    MemReallocDirect((m), (s), __FILE__, __LINE__)
 
 /* Helpers */
 #define MemNew0(type, num) ((type*)MemMalloc0(sizeof(type) * (num)))
@@ -138,47 +80,26 @@ EXPORT void *MemReallocDebugDirect(void *Source, size_t Size, const char *Source
 EXPORT void * MemClear(void *Source, size_t Size);
 
 /*    Memory De-Allocation API's    */
-EXPORT void MemFreeDirect(void *Source);
-EXPORT void MemFreeDebugDirect(void *Source, const char *SourceFile, unsigned long SourceLine);
-
-#if !defined(MEMMGR_DEBUG)
-#define MemFree(m)          MemFreeDirect((m))
-#else
-#define MemFree(m)          MemFreeDebugDirect((m), __FILE__, __LINE__)
-#endif
+EXPORT void MemFreeDirect(void *Source, const char *SourceFile, unsigned long SourceLine);
+EXPORT void MemFreeDirectCallback(void *Source);
+#define MemFree(m)          MemFreeDirect((m), __FILE__, __LINE__)
 
 /*    String Allocation API's    */
-EXPORT char *MemStrdupDirect(const char *StrSource);
-EXPORT char *MemStrndupDirect(const char *StrSource, int n);
-EXPORT char *MemStrdupDebugDirect(const char *StrSource, const char *SourceFile, unsigned long SourceLine);
-EXPORT char *MemStrndupDebugDirect(const char *StrSource, int n, const char *SourceFile, unsigned long SourceLine);
-EXPORT char *MemStrCatDirect(const char *stra, const char *strb);
-EXPORT char *MemStrCatDebugDirect(const char *stra, const char *strb, const char *sourceFile, unsigned long sourceLine);
-
-#if !defined(MEMMGR_DEBUG)
-#define MemStrdup(s)        MemStrdupDirect((s))
-#define MemStrndup(s, n)        MemStrndupDirect((s), (n))
-#define MemStrCat(s1, s2)        MemStrCatDirect((s1), (s2))
-#else
-#define MemStrdup(s)        MemStrdupDebugDirect((s), __FILE__, __LINE__)
-#define MemStrndup(s, n)        MemStrndupDebugDirect((s), (n), __FILE__, __LINE__)
-#define MemStrCat(s1, s2)        MemStrCatDebugDirect((s1), (s2), __FILE__, __LINE__)
-#endif
-
-/*    Management Statistics    */
-EXPORT MemStatistics *MemAllocStatistics(void);
-EXPORT void MemFreeStatistics(MemStatistics *Statistics);
+EXPORT char *MemStrdupDirect(const char *StrSource, const char *SourceFile, unsigned long SourceLine);
+EXPORT char *MemStrndupDirect(const char *StrSource, int n, const char *SourceFile, unsigned long SourceLine);
+#define MemStrdup(s)        MemStrdupDirect((s), __FILE__, __LINE__)
+#define MemStrndup(s, n)        MemStrndupDirect((s), (n), __FILE__, __LINE__)
 
 /*    Private Pool API's    */
+typedef BOOL (*PoolEntryCB)(void *Buffer, void *ClientData);
+
 EXPORT void *MemPrivatePoolAlloc(unsigned char *Ident, size_t AllocationSize, unsigned int MinAllocCount, unsigned int MaxAllocCount, BOOL Dynamic, BOOL Temporary, PoolEntryCB AllocCB, PoolEntryCB FreeCB, void *ClientData);
 EXPORT void MemPrivatePoolFree(void *PoolHandle);
-EXPORT void MemPrivatePoolEnumerate(void *PoolHandle, PoolEntryCB EnumerationCB, void *Data);
-EXPORT void MemPrivatePoolStatistics(void *PoolHandle, MemStatistics *PoolStats);
 
-EXPORT void *MemPrivatePoolGetEntry(void *PoolHandle);
-EXPORT void *MemPrivatePoolGetEntryDebug(void *PoolHandle, const char *SourceFile, unsigned long SourceLine);
-EXPORT void MemPrivatePoolReturnEntry(void *PoolEntry);
-EXPORT void MemPrivatePoolDiscardEntry(void *Source);
+EXPORT void *MemPrivatePoolGetEntryDirect(void *PoolHandle, const char *SourceFile, unsigned long SourceLine);
+EXPORT void MemPrivatePoolReturnEntryDirect(void *PoolHandle, void *PoolEntry, const char *SourceFile, unsigned long SourceLine);
+#define	MemPrivatePoolGetEntry(p)	MemPrivatePoolGetEntryDirect((p), __FILE__, __LINE__)
+#define MemPrivatePoolReturnEntry(p, e)	MemPrivatePoolReturnEntryDirect((p), (e), __FILE__, __LINE__);
 
 EXPORT BOOL MemPrivatePoolZeroCallback(void *buffer, void *clientData);
 
@@ -188,6 +109,7 @@ EXPORT BOOL MemPrivatePoolZeroCallback(void *buffer, void *clientData);
 typedef struct _BongoMemChunk BongoMemChunk;
 
 struct _BongoMemChunk {
+    // TODO: review pointers below; not sure the types make sense.
     uint8_t *curptr;
     uint8_t *endptr;
 

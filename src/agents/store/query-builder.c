@@ -24,7 +24,7 @@ static int QueryBuilderAddProperty(QueryBuilder *builder, const char *property, 
 int
 QueryBuilderStart(QueryBuilder *builder)
 {
-	MemClear(builder, sizeof(QueryBuilder));
+	memset(builder, 0, sizeof(QueryBuilder));
 	builder->order_prop = builder->int_query = builder->ext_query =  NULL;
 	builder->order_direction = ORDER_NONE;
 	builder->output_mode = MODE_COLLECTIONS;

@@ -1,7 +1,5 @@
 #include <Python.h>
 
-#include <bongo-config.h>
-
 #include "libs.h"
 
 #ifdef __cplusplus

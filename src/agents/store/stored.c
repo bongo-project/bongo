@@ -50,7 +50,7 @@ StoreClientFree(void *clientp)
 
     BongoMemStackDestroy(&client->memstack);
 
-    MemPrivatePoolReturnEntry(client);
+    MemPrivatePoolReturnEntry(StoreAgent.memPool, client);
 }
 
 static int 

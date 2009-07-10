@@ -46,7 +46,7 @@ SMTPClientFree(void *clientp)
         MemFree(client->envelope);
     }
 
-    MemPrivatePoolReturnEntry(client);
+    MemPrivatePoolReturnEntry(SMTPAgent.OutgoingPool, client);
 }
 
 int RecipientCompare(const void *lft, const void *rgt) {

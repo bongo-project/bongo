@@ -23,7 +23,6 @@
 #include <Python.h>
 #include "libs.h"
 #include "pybongo.h"
-#include <bongo-config.h>
 #include <xpl.h>
 #include <connio.h>
 #include <memmgr.h>

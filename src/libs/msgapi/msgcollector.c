@@ -200,9 +200,9 @@ static void
 FreeEventData (void *data)
 {
     if (data) {
-        MemFreeDirect (((EventData *)data)->guid);
-        MemFreeDirect (((EventData *)data)->dtstamp);
-        MemFreeDirect (data);
+        MemFree (((EventData *)data)->guid);
+        MemFree (((EventData *)data)->dtstamp);
+        MemFree (data);
     }
 }
 
@@ -221,7 +221,7 @@ ReadCalendar(Connection *conn, const char *calendar)
     guids = BongoHashtableCreateFull(16, 
                                     (HashFunction)BongoStringHash, 
                                     (CompareFunction)strcmp,
-                                    MemFreeDirect,
+                                    MemFreeDirectCallback,
                                     FreeEventData);
     
     ccode = NMAPRunCommandF(conn, buffer, CONN_BUFSIZE, "EVENTS \"C/calendars/%s\" Pnmap.event.uid,nmap.event.stamp\r\n", calendar);
@@ -263,7 +263,7 @@ ReadCalendar(Connection *conn, const char *calendar)
 
                 BongoHashtablePut(guids, uid, data);
             } else {
-                MemFreeDirect(guid);
+                MemFree(guid);
             }
         }
 
@@ -278,7 +278,7 @@ ReadCalendar(Connection *conn, const char *calendar)
             NMAPReadAnswer(conn, buffer, sizeof(buffer), TRUE);
         }
 
-        MemFreeDirect(guid);
+        MemFree(guid);
     }
     BongoArrayDestroy(&oldDuplicates, TRUE);
 
@@ -675,18 +675,6 @@ write_data(void *buffer, size_t size, size_t nmemb, void *stream)
     return nmemb*size;
 }
 
-static char *
-AliasProtocol(const char *url, const char *proto, const char *newProto)
-{
-    unsigned int protoLen = strlen(proto);
-
-    if (strlen(url) > protoLen && XplStrNCaseCmp(proto, url, protoLen) == 0) {
-        return MemStrCat(newProto, url + protoLen);
-    }
-
-    return NULL;
-}
-
 int
 MsgImportIcsUrl(const char *user,
                 const char *calendarName, 
@@ -702,11 +690,10 @@ MsgImportIcsUrl(const char *user,
     char *aliasedUrl = NULL;
     int ret = 0;
 
-    /* replace webcal: with http: */
-    aliasedUrl = AliasProtocol(url, "webcal:", "http:");
-    if (!aliasedUrl) {
-        aliasedUrl = AliasProtocol(url, "feed:", "http:");
-    }
+    /* TODO: fix up url.
+     * Protocol could be webcal://, feed://, dav://, ical://, etc.
+     * Need to replace with http:// for curl to understand it.
+     */
 
     curl = curl_easy_init();
     if (curl) {

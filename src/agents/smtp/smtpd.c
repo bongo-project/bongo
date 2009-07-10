@@ -193,11 +193,7 @@ typedef struct
 
 #define	SENDER_LOCAL (1<<10)
 
-#if !defined(DEBUG)
-#define	GetSMTPConnection() MemPrivatePoolGetEntry(SMTPConnectionPool)
-#else
-#define	GetSMTPConnection() MemPrivatePoolGetEntryDebug(SMTPConnectionPool, __FILE__, __LINE__)
-#endif
+#define	GetSMTPConnection() MemPrivatePoolGetEntryDirect(SMTPConnectionPool, __FILE__, __LINE__)
 
 void *SMTPConnectionPool = NULL;
 
@@ -235,7 +231,7 @@ ReturnSMTPConnection (ConnectionStruct * Client)
     c->MsgFlags = MSG_FLAG_ENCODING_NONE;
 
 
-    MemPrivatePoolReturnEntry (c);
+    MemPrivatePoolReturnEntry (SMTPConnectionPool, c);
 
     return;
 }

@@ -56,13 +56,13 @@ UserStoreConnect(ImapSession *session, struct sockaddr_in *store)
             return(STATUS_CONTINUE);
         }
 
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE, LOG_ERROR, 0, NULL, NULL, store->sin_addr.s_addr, 0, NULL, 0);                
+        Log(LOG_WARN, "Couldn't authenticate user from %s", LOGIPPTR(store));
         NMAPQuit(session->store.conn);
         session->store.conn = NULL;
         return(STATUS_NMAP_AUTH_ERROR);
     }
 
-    LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE, LOG_ERROR, 0, NULL, NULL, store->sin_addr.s_addr, 0, NULL, 0);                
+    Log(LOG_ERROR, "NMAP connection error");
     return(STATUS_NMAP_CONNECT_ERROR);
 }
 
@@ -94,8 +94,7 @@ UserStoreInitialize(ImapSession *session, unsigned char *username)
         ccode = STATUS_NMAP_COMM_ERROR;
     }
 
-    LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_NMAP_UNAVAILABLE, LOG_ERROR, 
-                0, NULL, NULL, session->store.conn->socketAddress.sin_addr.s_addr, ccode, NULL, 0);
+    Log(LOG_ERROR, "NMAP unavailable");
     return(ccode);
 }
 
@@ -111,8 +110,7 @@ UserLogin(ImapSession *session, unsigned char **username, unsigned char *passwor
         if (ccode == STATUS_CONTINUE) {
             ccode = UserStoreInitialize(session, *username);
             if (ccode == STATUS_CONTINUE) {
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_LOGIN, LOG_INFO, 
-                            0, *username, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+                Log(LOG_INFO, "Successful login for user %s", *username);
                 return(STATUS_CONTINUE);
             }
         }
@@ -145,8 +143,7 @@ SendLoginFailure(ImapSession *session, unsigned char *username, unsigned char *c
         XplDelay(2000);
         session->client.authFailures++;
         if (session->client.authFailures > MAX_FAILED_LOGINS) {
-            LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_MAX_FAILED_LOGINS, LOG_NOTICE, 
-                        0, username, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), MAX_FAILED_LOGINS, NULL, 0);
+            Log(LOG_INFO, "Authentication failure for user %s", username);
             if (ConnWrite(session->client.conn, "* BYE IMAP4rev1 Server signing off\r\n", sizeof("* BYE IMAP4rev1 Server signing off\r\n") - 1) != -1) {
                 if (SendError(session->client.conn, session->command.tag, "LOGIN", STATUS_PERMISSION_DENIED) == STATUS_CONTINUE) {
                     ConnFlush(session->client.conn);

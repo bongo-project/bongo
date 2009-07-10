@@ -553,7 +553,7 @@ static void
 PrintIntList(BongoList *list)
 {
     for (; list != NULL; list = list->next) {
-        printf("%d,", XPL_PTR_TO_INT(list->data));
+        printf("%d,", (int)(list->data));
     }
 }
 
@@ -1705,7 +1705,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of months from bymonths for fast lookup. */
     elem = recur->bymonth;
     while (elem) {
-        month = XPL_PTR_TO_INT (elem->data);
+        month = (int) (elem->data);
         recurData->months[month] = 1;
         elem = elem->next;
     }
@@ -1715,7 +1715,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
        element there corresponds to the last day of the year. */
     elem = recur->byyearday;
     while (elem) {
-        yearday = XPL_PTR_TO_INT (elem->data);
+        yearday = (int) (elem->data);
         if (yearday >= 0)
             recurData->yeardays[yearday] = 1;
         else
@@ -1728,7 +1728,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
        element there corresponds to the last day of the month. */
     elem = recur->bymonthday;
     while (elem) {
-        monthday = XPL_PTR_TO_INT (elem->data);
+        monthday = (int) (elem->data);
         if (monthday >= 0)
             recurData->monthdays[monthday] = 1;
         else
@@ -1739,10 +1739,10 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of weekdays from byday for fast lookup. */
     elem = recur->byday;
     while (elem) {
-        weekday = XPL_PTR_TO_INT (elem->data);
+        weekday = (int) (elem->data);
         elem = elem->next;
         /* The week number is not used when filtering. */
-        week_num = XPL_PTR_TO_INT (elem->data);
+        week_num = (int) (elem->data);
         elem = elem->next;
 
         recurData->weekdays[weekday] = 1;
@@ -1751,7 +1751,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of hours from byhour for fast lookup. */
     elem = recur->byhour;
     while (elem) {
-        hour = XPL_PTR_TO_INT (elem->data);
+        hour = (int) (elem->data);
         recurData->hours[hour] = 1;
         elem = elem->next;
     }
@@ -1759,7 +1759,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of minutes from byminutes for fast lookup. */
     elem = recur->byminute;
     while (elem) {
-        minute = XPL_PTR_TO_INT (elem->data);
+        minute = (int) (elem->data);
         recurData->minutes[minute] = 1;
         elem = elem->next;
     }
@@ -1767,7 +1767,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of seconds from byseconds for fast lookup. */
     elem = recur->bysecond;
     while (elem) {
-        second = XPL_PTR_TO_INT (elem->data);
+        second = (int) (elem->data);
         recurData->seconds[second] = 1;
         elem = elem->next;
     }
@@ -1960,7 +1960,7 @@ CalObjBySetPosFilter (BongoCalRule *recur,
        element from occs to new_occs. */
     len = occs->len;
     while (elem) {
-        pos = XPL_PTR_TO_INT (elem->data);
+        pos = (int) (elem->data);
 
         /* Negative values count back from the end of the array. */
         if (pos < 0)
@@ -2488,7 +2488,7 @@ CalObjByMonthExpand             (RecurData  *recurData,
         elem = recurData->recur->bymonth;
         while (elem) {
             /* NOTE: The day may now be invalid, e.g. 31st Feb. */
-            occ->month = XPL_PTR_TO_INT (elem->data);
+            occ->month = (int) (elem->data);
             BongoArrayAppendValues (new_occs, occ, 1);
             elem = elem->next;
         }
@@ -2569,7 +2569,7 @@ CalObjByWeeknoExpand            (RecurData  *recurData,
            new occurrence for each one. */
         elem = recurData->recur->byweekno;
         while (elem) {
-            weekno = XPL_PTR_TO_INT (elem->data);
+            weekno = (int) (elem->data);
             if (weekno > 0) {
                 cotime = year_start_cotime;
                 CalObjTimeAddDays (&cotime,
@@ -2640,7 +2640,7 @@ CalObjByYeardayExpand   (RecurData  *recurData,
            new occurrence for each one. */
         elem = recurData->recur->byyearday;
         while (elem) {
-            dayno = XPL_PTR_TO_INT (elem->data);
+            dayno = (int) (elem->data);
             if (dayno > 0) {
                 cotime = year_start_cotime;
                 CalObjTimeAddDays (&cotime, dayno - 1);
@@ -2734,7 +2734,7 @@ CalObjBymonthdayExpand  (RecurData  *recurData,
            new occurrence for each one. */
         elem = recurData->recur->bymonthday;
         while (elem) {
-            dayno = XPL_PTR_TO_INT (elem->data);
+            dayno = (int) (elem->data);
             if (dayno > 0) {
                 cotime = month_start_cotime;
                 CalObjTimeAddDays (&cotime, dayno - 1);
@@ -2819,9 +2819,9 @@ CalObjByDayExpandYearly (RecurData  *recurData,
 
         elem = recurData->recur->byday;
         while (elem) {
-            weekday = XPL_PTR_TO_INT (elem->data);
+            weekday = (int) (elem->data);
             elem = elem->next;
-            week_num = XPL_PTR_TO_INT (elem->data);
+            week_num = (int) (elem->data);
             elem = elem->next;
 
             year = occ->year;
@@ -2897,9 +2897,9 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
 
         elem = recurData->recur->byday;
         while (elem) {
-            weekday = XPL_PTR_TO_INT (elem->data);
+            weekday = (int) (elem->data);
             elem = elem->next;
-            week_num = XPL_PTR_TO_INT (elem->data);
+            week_num = (int) (elem->data);
             elem = elem->next;
 
             year = occ->year;
@@ -2986,7 +2986,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
 
         elem = recurData->recur->byday;
         while (elem) {
-            weekday = XPL_PTR_TO_INT (elem->data);
+            weekday = (int) (elem->data);
             DPRINT("weekday is %d\n", weekday);
             
             elem = elem->next;
@@ -2994,7 +2994,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
             /* FIXME: Currently we just ignore this, but maybe we
                should skip all elements where week_num != 0.
                The spec isn't clear about this. */
-            week_num = XPL_PTR_TO_INT (elem->data);
+            week_num = (int) (elem->data);
             DPRINT("week num is %d\n", week_num);
 
             elem = elem->next;
@@ -3075,7 +3075,7 @@ CalObjByhourExpand              (RecurData  *recurData,
 
         elem = recurData->recur->byhour;
         while (elem) {
-            occ->hour = XPL_PTR_TO_INT (elem->data);
+            occ->hour = (int) (elem->data);
             BongoArrayAppendValues (new_occs, occ, 1);
             elem = elem->next;
         }
@@ -3142,7 +3142,7 @@ CalObjByminuteExpand            (RecurData  *recurData,
 
         elem = recurData->recur->byminute;
         while (elem) {
-            occ->minute = XPL_PTR_TO_INT (elem->data);
+            occ->minute = (int) (elem->data);
             BongoArrayAppendValues (new_occs, occ, 1);
             elem = elem->next;
         }
@@ -3209,7 +3209,7 @@ CalObjBysecondExpand            (RecurData  *recurData,
 
         elem = recurData->recur->bysecond;
         while (elem) {
-            occ->second = XPL_PTR_TO_INT (elem->data);
+            occ->second = (int) (elem->data);
             BongoArrayAppendValues (new_occs, occ, 1);
             elem = elem->next;
         }

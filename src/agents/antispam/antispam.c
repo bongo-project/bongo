@@ -39,11 +39,7 @@
 
 #include "antispam.h"
 
-#if defined(RELEASE_BUILD)
-#define ASpamClientAlloc() MemPrivatePoolGetEntry(ASpam.nmap.pool)
-#else
-#define ASpamClientAlloc() MemPrivatePoolGetEntryDebug(ASpam.nmap.pool, __FILE__, __LINE__)
-#endif
+#define ASpamClientAlloc() MemPrivatePoolGetEntryDirect(ASpam.nmap.pool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
 
@@ -64,7 +60,7 @@ ASpamClientFree(void *client)
     if (c->envelope) {
         MemFree(c->envelope);
     }
-    MemPrivatePoolReturnEntry(c);
+    MemPrivatePoolReturnEntry(ASpam.nmap.pool, c);
 
     return;
 }

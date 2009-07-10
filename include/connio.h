@@ -22,8 +22,6 @@
 #ifndef _BONGO_CONNIO_H
 #define _BONGO_CONNIO_H
 
-#include "bongo-config.h"
-
 #include <stdarg.h>
 #include <gnutls/openssl.h>
 #include <gnutls/gnutls.h>
@@ -85,7 +83,7 @@ typedef struct {
 void CHOP_NEWLINE(unsigned char *s);
 void SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s); // FIXME: Unused?
 
-#if defined(_BONGO_LINUX) || defined(S390RH) || defined(SOLARIS)
+#if defined (UNIX) || defined(S390RH) || defined(SOLARIS)
 
 #include <unistd.h>
 #include <sys/poll.h>

@@ -2,7 +2,6 @@
 #define PYBONGO_MSGAPI_DEFS_H
 
 #include "pybongo.h"
-#include <bongo-config.h>
 #include <xpl.h>
 #include <msgapi.h>
 

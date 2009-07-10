@@ -302,7 +302,7 @@ IntArrayToList(BongoArray *array, int min, int max)
         int intVal;
         if (BongoJsonArrayGetInt(array, i, &intVal) == BONGO_JSON_OK) {
             if (intVal >= min && intVal <= max) {
-                ret = BongoListPrepend(ret, XPL_INT_TO_PTR(intVal));
+                ret = BongoListPrepend(ret, (char *)(intVal));
             }
         }
     }
@@ -327,8 +327,8 @@ DayArrayToList(BongoArray *array)
             day = GetWeekday(end);
             
             if (ord >= -53 && ord <= 53) {
-                ret = BongoListPrepend(ret, XPL_INT_TO_PTR(day));
-                ret = BongoListPrepend(ret, XPL_INT_TO_PTR(ord));
+                ret = BongoListPrepend(ret, (char *)(day));
+                ret = BongoListPrepend(ret, (char *)(ord));
             }
         }
     }
@@ -394,7 +394,7 @@ ReadRecur(BongoCalInstance *inst, BongoJsonObject *obj, BongoCalRule *recur)
         recur->bymonth = IntArrayToList(arrayVal, 1, 12);
         
         for (l = recur->bymonth; l != NULL; l = l->next) {
-            l->data = XPL_INT_TO_PTR(XPL_PTR_TO_INT(l->data) - 1);
+            l->data = ((int)(l->data)) - 1;
         }
     }
 

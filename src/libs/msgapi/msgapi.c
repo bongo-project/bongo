@@ -39,7 +39,6 @@
 #include <msgapi.h>
 #include "msgapip.h"
 
-#include <bongo-buildinfo.h>
 #include <bongoutil.h>
 #include <bongostore.h>
 #include <curl/curl.h>

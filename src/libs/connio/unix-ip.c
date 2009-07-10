@@ -374,7 +374,7 @@ XplIPRead(void *socket, unsigned char *Buf, int Len, int readTimeout)
 
    /* All sockets are closed when exiting.  */
    /* Closed socket will error on read. */
-   pfd.fd = XPL_PTR_TO_INT(socket);
+   pfd.fd = (int)(socket);
    pfd.events = POLLIN;
    rc = poll(&pfd, 1, readTimeout * 1000);
 	if (rc > 0) {
@@ -384,7 +384,7 @@ XplIPRead(void *socket, unsigned char *Buf, int Len, int readTimeout)
 
 XPLIPRead_Again:
 
-			rc = recv(XPL_PTR_TO_INT(socket), Buf, Len, 0);
+			rc = recv((int)(socket), Buf, Len, 0);
 			if (rc >= 0) {
 				/* success  */
 				return(rc);
@@ -414,7 +414,7 @@ XplIPWrite(void * socket, unsigned char *Buf, int Len)
 
 XPLIPWrite_Again:
 
-	rc = send(XPL_PTR_TO_INT(socket), Buf, Len, 0);
+	rc = send((int)(socket), Buf, Len, 0);
 	if (rc >= 0) {
 		/* common predicted path */
 		return(rc);

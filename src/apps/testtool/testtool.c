@@ -7,7 +7,6 @@
 #include <xpldns.h>
 #include <msgapi.h>
 #include <arpa/inet.h>
-#include <bongo-buildinfo.h>
 #include "config.h"
 
 #include <libintl.h>

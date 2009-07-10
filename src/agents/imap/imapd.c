@@ -88,11 +88,7 @@ static ProtocolCommand ImapProtocolCommands[] = {
 
 #undef DEBUG
 
-#if !defined(DEBUG)
-#define ImapSessionGet()   MemPrivatePoolGetEntry(IMAPConnectionPool)
-#else
-#define ImapSessionGet()   MemPrivatePoolGetEntryDebug(IMAPConnectionPool, __FILE__, __LINE__)
-#endif
+#define ImapSessionGet()   MemPrivatePoolGetEntryDirect(IMAPConnectionPool, __FILE__, __LINE__)
 
 void    *IMAPConnectionPool  = NULL;
 
@@ -236,11 +232,8 @@ ImapSessionReturn(ImapSession *session)
         s->command.buffer = command;
 
         s->command.buffer[0] = '\0';
-
-        MemPrivatePoolReturnEntry(s);
-    } else {
-        MemPrivatePoolDiscardEntry(s);
     }
+    MemPrivatePoolReturnEntry(IMAPConnectionPool, s);
 
     return;
 }
@@ -849,13 +842,7 @@ ImapCommandUnknown(void *param)
 {
     ImapSession *session = (ImapSession *)param;
 
-    LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_UNHANDLED, LOGGER_EVENT_UNHANDLED_REQUEST, LOG_INFO, 0, 
-                session->user.name, 
-                session->command.buffer, 
-                XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 
-                0, 
-                NULL, 
-                0);
+    Log(LOG_INFO, "Unhandled command for user %s", session->user.name);
     
     return(SendError(session->client.conn, "*", session->command.tag, STATUS_UNKNOWN_COMMAND));
 }
@@ -3197,9 +3184,9 @@ HandleConnection(void *param)
     session->progress = NULL;
     if (ConnNegotiate(session->client.conn, Imap.server.ssl.context)) {
         if (session->client.conn->ssl.enable == FALSE) {
-            LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+            Log(LOG_INFO, "Non-SSL connection from %s", LOGIP(session->client.conn->socketAddress));
         } else {
-            LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_AUTH, LOGGER_EVENT_SSL_CONNECTION, LOG_INFO, 0, NULL, NULL, XplHostToLittle(session->client.conn->socketAddress.sin_addr.s_addr), 0, NULL, 0);
+            Log(LOG_INFO, "SSL connection from %s", LOGIP(session->client.conn->socketAddress));
         }
 
         if ((ConnWriteF(session->client.conn, "* OK %s %s server ready <%ud.%lu@%s>\r\n",BongoGlobals.hostname, PRODUCT_NAME, (unsigned int)XplGetThreadID(),time(NULL),BongoGlobals.hostname) != -1) && (ConnFlush(session->client.conn) != -1)) {
@@ -3328,15 +3315,13 @@ ServerSocketInit(void)
     Imap.server.conn->socket = ConnServerSocket(Imap.server.conn, 2048);
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, 0, MsgGetUnprivilegedUser(), NULL, 0, 0, NULL, 0);
-        XplConsolePrintf("bongoimap: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
 
     if (Imap.server.conn->socket < 0) {
         int ret = Imap.server.conn->socket;
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_BIND_FAILURE, LOG_ERROR, 0, "IMAP ", NULL, Imap.server.port, 0, NULL, 0);
-        XplConsolePrintf("bongoimap: Could not bind to port %d\n", Imap.server.port);
+        Log(LOG_ERROR, "Could not bind to port %d", Imap.server.port);
         ConnFree(Imap.server.conn);
         return ret;
     }
@@ -3349,7 +3334,7 @@ ServerSocketSSLInit(void)
 {
     Imap.server.ssl.conn = ConnAlloc(FALSE);
     if (Imap.server.ssl.conn == NULL) {
-        XplConsolePrintf("bongoimap: Could not allocate connection.\n");
+        Log(LOG_ERROR, "Could not allocate SSL connection");
         ConnFree(Imap.server.conn);
         return -1;
     }
@@ -3365,16 +3350,14 @@ ServerSocketSSLInit(void)
     Imap.server.ssl.conn->socket = ConnServerSocket(Imap.server.ssl.conn, 2048);
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_PRIV_FAILURE, LOG_ERROR, 0, MsgGetUnprivilegedUser(), NULL, 0, 0, NULL, 0);
-        XplConsolePrintf("bongoimap: Could not drop to unprivileged user '%s'\n", MsgGetUnprivilegedUser());
+        Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
         return -1;
     }
         
     if (Imap.server.ssl.conn->socket < 0) {
         int ret = Imap.server.ssl.conn->socket;
 
-        LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_BIND_FAILURE, LOG_ERROR, 0, "IMAP-SSL ", NULL, Imap.server.ssl.port, 0, NULL, 0);
-        XplConsolePrintf("bongoimap: Could not bind to SSL port %d\n", Imap.server.ssl.port);
+        Log(LOG_ERROR, "Could not bind to SSL port %d", Imap.server.ssl.port);
         ConnFree(Imap.server.conn);
         ConnFree(Imap.server.ssl.conn);
         
@@ -3529,13 +3512,12 @@ IMAPServer(void *unused)
             case EPROTO: 
 #endif
             case EINTR: {
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, NULL, NULL, errno, 0, NULL, 0);
+                Log(LOG_WARN, "Connection interrupted");
                 continue;
             }
 
             case EIO: {
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, NULL, NULL, errno, 2, NULL, 0);
-                XplConsolePrintf("IMAPD: Server exiting after an accept() failure with an errno: %d\n", errno);
+                Log(LOG_WARN, "Server exiting after an accept() failure with an errno: %d\n", errno);
 
                 break;
             }
@@ -3592,8 +3574,7 @@ IMAPServer(void *unused)
         ConnSSLContextFree(Imap.server.ssl.context);
     }
 
-    LoggerClose(Imap.logHandle);
-    Imap.logHandle = NULL;
+    LogClose();
 
     MsgShutdown();
 
@@ -3696,22 +3677,18 @@ IMAPSSLServer(void *unused)
             case EPROTO:
 #endif
             case EINTR: {
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "SSL Server", NULL, errno, 1, NULL, 0);
+                Log(LOG_WARN, "accept() interrupted");
                 continue;
             }
 
             case EIO: {
                 Imap.exiting = TRUE;
-                XplConsolePrintf("IMAPD: SSL Server exiting after an accept() failure with an errno: %d\n", errno);
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ERROR, 0, "SSL Server", NULL, errno, 3, NULL, 0);
-
+                Log(LOG_WARN, "SSL Server exiting after an accept() failure with an errno: %d\n", errno);
                 break;
             }
 
             default: {
-                XplConsolePrintf("IMAPD: SSL Server exiting after an accept() failure with an errno: %d\n", errno);
-                LoggerEvent(Imap.logHandle, LOGGER_SUBSYSTEM_GENERAL, LOGGER_EVENT_ACCEPT_FAILURE, LOG_ALERT, 0, "SSL Server", NULL, errno, 1, NULL, 0);
-
+                Log(LOG_WARN, "SSL Server exiting after an accept() failure with an errno: %d\n", errno);
                 break;
             }
             }
@@ -3811,12 +3788,7 @@ XplServiceMain(int argc, char *argv[])
     MsgAuthInit();
     NMAPInitialize();
 
-    Imap.logHandle = LoggerOpen("bongoimap");
-    if (Imap.logHandle != NULL) {
-        ;
-    } else {
-        XplConsolePrintf("IMAPD: Unable to initialize Nsure Audit.  Logging disabled.\r\n");
-    }
+    LogOpen("bongoimap");
 
     ReadConfiguration();
     CONN_TRACE_INIT(XPL_DEFAULT_WORK_DIR, "imap");

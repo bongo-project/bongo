@@ -1,8 +1,6 @@
 #include <Python.h>
 #include <datetime.h>
 
-#include <bongo-config.h>
-
 #include <bongojson.h>
 #include <bongocal.h>
 #include <bongocal-raw.h>

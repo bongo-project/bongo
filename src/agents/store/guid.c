@@ -24,60 +24,6 @@
 
 #include "stored.h"
 
-#if defined(WIN32)
-#include <rpcdce.h>
-
-void 
-GuidReset(void) 
-{
-	unsigned long length;
-	unsigned char salt[32];
-	unsigned char name[MAX_COMPUTERNAME_LENGTH + 1];
-	unsigned char *uid = NULL;
-	FILETIME date;
-	UUID uuid;
-	xpl_hash_context context;
-
-	XplHashNew(&context, XPLHASH_SHA1);
-
-	GetSystemTimeAsFileTime(&date);
-	sprintf(salt, "%010lu%010lu", date.dwHighDateTime, date.dwLowDateTime);
-	XplHashWrite(&context, salt, strlen(salt));
-
-	length = sizeof(name) - 1;
-	if (GetComputerName(name, &length)) {
-		XplHashWrite(&context, name, strlen(name));
-	} else {
-		XplRandomData(&name, sizeof(name) - 1);
-		XplHashWrite(&context, name, sizeof(name) - 1);
-	}
-	
-	if ((UuidCreate(&uuid) == RPC_S_OK) && 
-	    (UuidToString(&uuid, &uid) == RPC_S_OK)) {
-		XplHashWrite(&context, uid, strlen(uid));
-	} else {
-		XplRandomData(&name, sizeof(name) - 1);
-		XplHashWrite(&context, name, sizeof(name) - 1);
-	}
-	if (uid)
-		RpcStringFree(&uid);
-	
-	XplHashFinal(&context, XPLHASH_UPPERCASE, StoreAgent.guid.next,
-		XPLHASH_SHA1_LENGTH);
-	
-	memset(StoreAgent.guid.next + NMAP_GUID_PREFIX_LENGTH, '0',
-		NMAP_GUID_SUFFIX_LENGTH);
-}
-#elif defined(NETWARE) || defined(LIBC)
-#error GuidReset not implemented on this platform.
-
-void 
-GuidReset(void)
-{
-    return;
-}
-#elif defined(LINUX)
-
 #if HAVE_KSTAT_H
 #include <kstat.h>
 #elif HAVE_SYS_SYSINFO_H
@@ -87,10 +33,10 @@ GuidReset(void)
 void GuidReset(void) {
 	char name[256 + 1];
 	unsigned char salt[32];
-#if HAVE_KSTAT_H
+#ifdef HAVE_KSTAT_H
 	kstat_t *ksp;
 	kstat_ctl_t *kc;
-#elif HAVE_SYS_SYSINFO_H
+#elifdef HAVE_SYS_SYSINFO_H
 	struct sysinfo si;
 #endif
 	struct timeval tv;
@@ -142,9 +88,6 @@ void GuidReset(void) {
 
 	return;
 }
-#else
-#error GuidReset not implemented on this platform.
-#endif
 
 void 
 GuidAlloc(unsigned char *guid)

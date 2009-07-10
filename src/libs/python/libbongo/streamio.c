@@ -1,6 +1,5 @@
 #include <Python.h>
 
-#include <bongo-config.h>
 #include <streamio.h>
 #include <bongostream.h>
 

@@ -7,6 +7,7 @@
  */
 
 #include <config.h>
+#include <libintl.h>
 #include <xplhash.h>
 #include <memmgr.h>
 #include <gcrypt.h>

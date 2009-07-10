@@ -1,0 +1,15 @@
+add_executable(bongopop3
+	pop3.c
+)
+
+target_link_libraries(bongopop3
+	bongomemmgr
+	bongoxpl
+	bongoconnio
+	bongoutil
+	bongojson
+	bongomsgapi
+	bongologging
+)
+
+install(TARGETS bongopop3 DESTINATION ${SBIN_INSTALL_DIR})

@@ -30,7 +30,6 @@
 #include <Python.h>
 #include "bootstrap.h"
 #include "msgapi-defs.h"
-#include <bongo-config.h>
 #include <memmgr.h>
 #include <msgapi.h>
 

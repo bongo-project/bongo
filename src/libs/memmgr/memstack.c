@@ -32,7 +32,7 @@ BongoMemChunkNew (size_t size)
         return NULL;
     }
 
-    result->curptr = &result->data[0];
+    result->curptr = (uint8_t *) &result->data[0];
     result->endptr = result->curptr + size;
     result->next = NULL;
 
@@ -103,7 +103,7 @@ BongoMemStackReset(BongoMemStack *stack)
         if (next) {
             MemFree(chunk);
         } else {
-            chunk->curptr = &chunk->data[0];
+            chunk->curptr = (uint8_t *) &chunk->data[0];
             chunk->next = NULL;
             stack->chunk = chunk;
             return;
@@ -164,7 +164,7 @@ BongoMemStackPop(BongoMemStack *stack, void *obj)
         if (next) {
             MemFree(chunk);
         } else {
-            chunk->curptr = &chunk->data[0];
+            chunk->curptr = (uint8_t *) &chunk->data[0];
             chunk->next = NULL;
             stack->chunk = chunk;
             return;

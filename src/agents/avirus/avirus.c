@@ -52,7 +52,7 @@ AVirusClientFree(void *client)
     if (c->envelope) {
         MemFree(c->envelope);
     }
-    MemPrivatePoolReturnEntry(c);
+    MemPrivatePoolReturnEntry(AVirus.QueueMemPool, c);
 
     return;
 }

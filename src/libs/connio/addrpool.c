@@ -222,7 +222,7 @@ AddressPoolAddressAdd(AddressPool *pool, uint32_t ipAddress, unsigned short port
         return(TRUE);
     }
 
-    newAddrList = MemMalloc(sizeof(AddressPoolAddress) * pool->addressCount + 1);
+    newAddrList = MemMalloc(sizeof(AddressPoolAddress) * (pool->addressCount + 1));
     if (!newAddrList) {
         XplRWWriteLockRelease(&(pool->lock));
         return(FALSE);

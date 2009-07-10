@@ -1,7 +1,7 @@
 #ifndef QUERY_BUILDER_H
 #define QUERY_BUILDER_H
 
-#include <query-parser.h>
+#include "query-parser.h"
 
 typedef enum {
 	ORDER_NONE,

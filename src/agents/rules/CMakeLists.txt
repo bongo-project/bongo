@@ -1,0 +1,16 @@
+add_executable(bongorules
+	rules.c
+	stream.c
+)
+
+target_link_libraries(bongorules
+	bongomemmgr
+	bongoxpl
+	bongoconnio
+	bongoutil
+	bongojson
+	bongomsgapi
+	bongologging
+)
+
+install(TARGETS bongorules DESTINATION ${SBIN_INSTALL_DIR})

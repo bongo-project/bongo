@@ -1002,7 +1002,7 @@ StoreObjectIterProperties(StoreClient *client, StoreObject *document)
 	
 	while ((ccode = MsgSQLResults(client->storedb, &stmt)) > 0) {
 		StorePropInfo prop;
-		MemClear(&prop, sizeof(StorePropInfo));
+		memset(&prop, 0, sizeof(StorePropInfo));
 		
 		prop.type = MsgSQLResultInt(&stmt, 0);
 		MsgSQLResultTextPtr(&stmt, 1, &prop.name);

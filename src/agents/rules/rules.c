@@ -1056,7 +1056,7 @@ RulesClientFree(void *clientp)
 
     RulesCleanupInformation(client);
 
-    MemPrivatePoolReturnEntry(client);
+    MemPrivatePoolReturnEntry(RulesAgent.OutgoingPool, client);
 }
 
 static int 

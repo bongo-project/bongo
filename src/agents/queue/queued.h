@@ -91,11 +91,7 @@ typedef struct _QueueAgent {
 
 extern QueueAgent Agent;
 
-#if defined(RELEASE_BUILD)
-#define QueueClientAlloc() MemPrivatePoolGetEntry(Agent.clientMemPool)
-#else
-#define QueueClientAlloc() MemPrivatePoolGetEntryDebug(Agent.clientMemPool, __FILE__, __LINE__);
-#endif
+#define QueueClientAlloc() MemPrivatePoolGetEntryDirect(Agent.clientMemPool, __FILE__, __LINE__);
 
 void QueueClientFree(void *clientp);
 int HandleCommand(QueueClient *client);

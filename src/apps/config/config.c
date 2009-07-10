@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <nmlib.h>
 #include <msgapi.h>
-#include <bongo-buildinfo.h>
 #include <bongostore.h>
 
 #include <bongoagent.h>
@@ -65,51 +64,42 @@ RunAsRoot()
 }
 
 void
-AddDomain(const char *str) {
-        BongoJsonNode *domain;
-
-        domain = BongoJsonNodeNewString(str);
-        BongoArrayAppendValue(BongoJsonNodeAsArray(config.domains), domain);
-}
-
-void
 GetInstallParameters(void){
-    char *tmp = NULL;
+	GetInteractiveData(_("IP address to run on"), &config.ip, "127.0.0.1");
+	GetInteractiveData(_("DNS name to use as main hostname:"), &config.dns, "localhost");
 
-    GetInteractiveData(_("IP address to run on"), &config.ip, "127.0.0.1");
-    GetInteractiveData(_("DNS name to use as main hostname:"), &config.dns, "localhost");
-
-    /* this is a little messy here due to the way the array works */
-    if (!config.domains) {
-        config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1));
-        while (1) {
-            GetInteractiveData(_("Mail Domains (enter \"\" to end adding domains):"), &tmp, "");
-            if (tmp[0] == '\0') {
-                tmp = NULL;
-                break;
-            }
-
-            AddDomain(tmp);
-            tmp = NULL;
-        }
-    }
+	/* this is a little messy here due to the way the array works */
+	if (!config.domains) {
+		config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1)); 
+		while (1) {
+			char *tmp = NULL;
+			BongoJsonNode *domain;
+			
+			GetInteractiveData(_("Mail Domains (one per line, blank line to finish):"), &tmp, "");
+			if ((tmp == NULL) || (tmp[0] == '\0')) return;
+			
+			BongoJsonArrayAppendString(BongoJsonNodeAsArray(config.domains), tmp);
+			MemFree(tmp);
+			tmp = NULL;
+		}
+	}
 }
 
 void
 SetStoreConfigurationModifications(StoreClient *client) {
-    BongoJsonNode *node;
-    unsigned char *aconfig = NULL;
-    unsigned char *default_config = NULL;
-    unsigned int default_config_len;
-    /*
-     * unsigned char default_config[] = "{ \"domainalias\" : \"\", \"aliases\" : { \"postmaster\" : \"admin\" }, \"username-mapping\" : 0 }";
-    const unsigned int default_config_len = strlen(default_config);
+	BongoJsonNode *node;
+	unsigned char *aconfig = NULL;
+	unsigned char *default_config = NULL;
+	unsigned int default_config_len;
+	/*
+	* unsigned char default_config[] = 
+	* "{ \"domainalias\" : \"\", \"aliases\" : { \"postmaster\" : \"admin\" }, \"username-mapping\" : 0 }";
+	* const unsigned int default_config_len = strlen(default_config);
+	*/
 
-    */
-
-    NMAPReadConfigFile("aliases/default_config", &default_config);
-    if (default_config == NULL) return;
-    default_config_len = strlen(default_config);
+	NMAPReadConfigFile("aliases/default_config", &default_config);
+	if (default_config == NULL) return;
+	default_config_len = strlen(default_config);
 
     /* first let's read in the queue document and store out the domains and hosted domains */
     if(NMAPReadConfigFile("queue", &aconfig)) {
@@ -118,13 +108,15 @@ SetStoreConfigurationModifications(StoreClient *client) {
             BongoJsonNode *current;
             char *content;
             unsigned int x;
-            BongoArray *domains;
+            BongoArray *domains, *oldDomains;
 
+            /* node is what is in the store.  it should basically be any defaults */
+            /* pull out the domain array so that i can replace it with the new list of domains */
             current = BongoJsonJPath(node, "o:domains/a");
+            oldDomains = BongoJsonNodeAsArray(current);
+
             domains = BongoJsonNodeAsArray(config.domains);
-            /* free the old array */
-            BongoArrayDestroy(BongoJsonNodeAsArray(current), TRUE);
-            BongoJsonNodeAsArray(current) = domains;
+	    BongoJsonNodeAsArray(current) = domains;
 
             content = BongoJsonNodeToString(node);
             PutOrReplaceConfig(client, "/config", "queue", content, strlen(content));
@@ -134,6 +126,9 @@ SetStoreConfigurationModifications(StoreClient *client) {
                 BongoJsonNode *current = BongoJsonArrayGet(domains, x);
                 PutOrReplaceConfig(client, "/config/aliases", BongoJsonNodeAsString(current), default_config, default_config_len);
             }
+
+            /* put back the old domains array so that the free can sanely free it */
+            BongoJsonNodeAsArray(current) = oldDomains;
             BongoJsonNodeFree(node);
         }
         MemFree(aconfig);
@@ -295,12 +290,14 @@ GetInteractiveData(char *description, char **data, char *def) {
 	*data = (char *)MemMalloc(sizeof(char)*size);
 	line = fgets(*data, size, stdin);
 	if (!line || *line == '\0' || *line == '\n' || *line == '\r') {
-		MemFree(*data);
-		*data = MemStrdup(def);
+		if (*data) {
+			MemFree(*data);
+		}
+		line = *data = MemStrdup(def);
 	}
 	
 	size = strlen(line);
-	if (line[size-1] == '\n') line[size-1] = 0;
+	if (size != 0 && line[size-1] == '\n') line[size-1] = 0;
 }
 
 #define CERTSIZE	10240
@@ -488,7 +485,7 @@ UserAdd(const char *username)
 		default:
 			XplConsolePrintf(_("Couldn't add user %s: internal error\n"), username);
 			break;
-	}	
+	}
 }
 
 void
@@ -519,16 +516,25 @@ UserPassword(const char *username)
 	
 	if (strlen(password) == 0) {
 		XplConsolePrintf(_("ERROR: Can't set password to empty string.\n"));
-		return;
+		goto cleanup;
 	}
 	if (strncmp(password, password2, strlen(password))) {
 		XplConsolePrintf(_("ERROR: The passwords provided don't match.\n"));
-		return;
+		goto cleanup;
 	}
 	
 	if (MsgAuthSetPassword(username, password) != 0) {
 		XplConsolePrintf(_("ERROR: Couldn't set the password for the user.\n"));
 	}
+
+cleanup:
+	if (password) {
+		MemFree(password);
+	}
+	if (password2) {
+		MemFree(password2);
+	}
+	return;
 }
 
 void
@@ -550,14 +556,14 @@ main(int argc, char *argv[]) {
 	BongoAgent configtool;
 	config.verbose = 0;
 
-	/* this just clears up a warning.  we don't need this here */
-	GlobalConfig[0].type = BONGO_JSON_NULL;
-
 	if (!MemoryManagerOpen("bongo-config")) {
 		XplConsolePrintf("ERROR: Failed to initialize memory manager\n");
 		return 1;
 	}
-	
+
+	// this just clears up a warning.  we don't need this here
+	GlobalConfig[0].type = BONGO_JSON_NULL;
+
 	// parse options
 	while (++next_arg < argc && argv[next_arg][0] == '-') {
 		char *arg = argv[next_arg];
@@ -571,12 +577,12 @@ main(int argc, char *argv[]) {
 		} else if (!strcmp(arg, "--hostname")) {
 			next_arg++;
 			config.dns = MemStrdup(argv[next_arg]);
-        } else if (!strcmp(arg, "--domain")) {
-            if (!config.domains) {
-               config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1)); 
-            }
-            next_arg++;
-            AddDomain(argv[next_arg]);
+		} else if (!strcmp(arg, "--domain")) {
+			next_arg++;
+			if (!config.domains) {
+				config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1)); 
+			}
+			BongoJsonArrayAppendString(BongoJsonNodeAsArray(config.domains), MemStrdup(argv[next_arg]));
 		} else {
 			printf("Unrecognized option: %s\n", argv[next_arg]);
 		}
@@ -621,7 +627,7 @@ main(int argc, char *argv[]) {
 	next_arg++;
 	switch(command) {
 		case 1:
-            GetInstallParameters();
+			GetInstallParameters();
 			InitializeDataArea(); // changes our user to unprivileged
 			GenerateCryptoData();
 			RunAsRoot();

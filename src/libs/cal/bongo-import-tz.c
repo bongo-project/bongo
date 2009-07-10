@@ -7,7 +7,7 @@
 #include <bongoutil.h>
 #include <bongojson.h>
 #include <bongocal.h>
-#include <bongo-cal-private.h>
+#include "bongo-cal-private.h"
 #include <bongocal-raw.h>
 
 static char *

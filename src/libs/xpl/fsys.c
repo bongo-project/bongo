@@ -250,7 +250,7 @@ XplGetDiskspaceUsed(unsigned char *Path)
 unsigned long
 XplGetDiskspaceFree(unsigned char *Path)
 {
-#if HAVE_STATVFS
+#ifdef _SYS_STATVFS_H
 	struct statvfs	stv;
 
 	if (statvfs(Path, &stv)==0) {
@@ -271,7 +271,7 @@ XplGetDiskspaceFree(unsigned char *Path)
 unsigned long
 XplGetDiskBlocksize(unsigned char *Path)
 {
-#if HAVE_STATVFS
+#ifdef _SYS_STATVFS_H
 	struct statvfs	stv;
 
 	if (statvfs(Path, &stv)==0) {

@@ -298,7 +298,7 @@ BongoAgentInit(BongoAgent *agent,
 {
     agent->state = BONGO_AGENT_STATE_RUNNING;
 
-    LoggerOpen(agentName);
+    LogOpen(agentName);
 
     if (!MemoryManagerOpen(agentName)) {
         Log(LOG_ERROR, "Unable to initialize memory manager; shutting down.");
@@ -351,11 +351,7 @@ QueueHandleConnection (void *datap)
     int ccode;
     char line[CONN_BUFSIZE];
   
-#if defined(RELEASE_BUILD)
-    client = MemPrivatePoolGetEntry(data->clientPool);
-#else
-    client = MemPrivatePoolGetEntryDebug(data->clientPool, __FILE__, __LINE__);
-#endif
+    client = MemPrivatePoolGetEntryDirect(data->clientPool, __FILE__, __LINE__);
 
     memset(client, 0, data->clientSize);
 
@@ -388,11 +384,7 @@ HandleConnection (void *datap)
     void *client;
     int ccode;
   
-#if defined(RELEASE_BUILD)
-    client = MemPrivatePoolGetEntry(data->clientPool);
-#else
-    client = MemPrivatePoolGetEntryDebug(data->clientPool, __FILE__, __LINE__);
-#endif
+    client = MemPrivatePoolGetEntryDirect(data->clientPool, __FILE__, __LINE__);
 
     memset(client, 0, data->clientSize);
 
@@ -609,7 +601,7 @@ BongoAgentShutdown(BongoAgent *agent)
 
     ConnCloseAll(1);
 
-    LoggerClose(NULL);
+    LogClose();
 
     MsgShutdown();
 

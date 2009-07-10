@@ -39,11 +39,7 @@
 
 #include "connmgrp.h"
 
-#if !defined(DEBUG)
-#define GetConnMgrClientPoolEntry() MemPrivatePoolGetEntry(ConnMgr.client.pool)
-#else
-#define GetConnMgrClientPoolEntry() MemPrivatePoolGetEntryDebug(ConnMgr.client.pool, __FILE__, __LINE__)
-#endif
+#define GetConnMgrClientPoolEntry() MemPrivatePoolGetEntryDirect(ConnMgr.client.pool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
 
@@ -236,7 +232,7 @@ ConnMgrReturnClientPoolEntry(ConnMgrClient *client)
 
     c->state = CONNMGR_CLIENT_FRESH;
 
-    MemPrivatePoolReturnEntry(c);
+    MemPrivatePoolReturnEntry(ConnMgr.client.pool, c);
 
     return;
 }
@@ -913,7 +909,7 @@ SendConnMgrStatistics(unsigned char *arguments, unsigned char **response, BOOL *
                         + 10                            /* DMCMV_BAD_PASSWORD_COUNT         */
                         + 28);                          /* Formatting                       */
 
-        MemPrivatePoolStatistics(ConnMgr.client.pool, &poolStats);
+        // MemPrivatePoolStatistics(ConnMgr.client.pool, &poolStats);
 
         if (*response) {
             sprintf(*response, "%s (%s: v%d.%d.%d)\r\n%lu:%lu:%lu:%lu:%d:%d:%d:%d:%d:%d\r\n", 

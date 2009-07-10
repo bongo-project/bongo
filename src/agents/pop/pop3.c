@@ -79,11 +79,7 @@
 #define POP3_NMAP_PASSWORD_INVALID -4
 #define POP3_NMAP_FEATURE_DISABLED -5
 
-#if !defined(DEBUG)
-#define GetPOP3ClientPoolEntry() MemPrivatePoolGetEntry(POP3.client.pool)
-#else
-#define GetPOP3ClientPoolEntry() MemPrivatePoolGetEntryDebug(POP3.client.pool, __FILE__, __LINE__)
-#endif
+#define GetPOP3ClientPoolEntry() MemPrivatePoolGetEntryDirect(POP3.client.pool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
 
@@ -102,7 +98,7 @@ static void SignalHandler(int sigtype);
             } else if (XplSafeRead(POP3.client.worker.active) < XplSafeRead(POP3.client.worker.maximum)) { \
                 XplSafeIncrement(POP3.client.worker.active); \
                 XplSignalBlock(); \
-                XplBeginThread(&(id), HandleConnection, POP_STACK_SPACE, XPL_INT_TO_PTR(XplSafeRead(POP3.client.worker.active)), (r)); \
+                XplBeginThread(&(id), HandleConnection, POP_STACK_SPACE, (char *)(XplSafeRead(POP3.client.worker.active)), (r)); \
                 XplSignalHandler(SignalHandler); \
                 if (!(r)) { \
                     (c)->queue.previous = NULL; \
@@ -448,7 +444,7 @@ POP3ReturnClientPoolEntry(POP3Client *client)
 
     c->state = POP3_CLIENT_FRESH;
 
-    MemPrivatePoolReturnEntry(c);
+    MemPrivatePoolReturnEntry(POP3.client.pool, c);
 
     return;
 }
@@ -1843,8 +1839,7 @@ POP3Server(void *ignored)
         }
     }
 
-    LoggerClose(POP3.loggingHandle);
-    POP3.loggingHandle = NULL;
+    LogClose();
 
     MsgShutdown();
 
@@ -2099,10 +2094,7 @@ XplServiceMain(int argc, char *argv[])
     MsgAuthInit();
     NMAPInitialize();
 
-    POP3.loggingHandle = LoggerOpen("bongopop3");
-    if (POP3.loggingHandle == NULL) {
-        XplConsolePrintf("POP3D: Unable to initialize logging interface.  Logging disabled.\r\n");
-    }
+    LogOpen("bongopop3");
 
     ReadConfiguration();
     CONN_TRACE_INIT(XPL_DEFAULT_WORK_DIR, "pop");
