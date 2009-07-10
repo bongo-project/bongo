@@ -1,0 +1,9 @@
+# Defaults for bongoproject initscript
+# sourced by /etc/init.d/bongo-manager
+# It should be installed at /etc/default/bongo-manager
+#
+# This is a POSIX shell fragment
+#
+
+# Additional options that are passed to the Daemon.
+DAEMON_ARGS="-d -k"
