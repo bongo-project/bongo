@@ -449,7 +449,7 @@ done
 
 echo \#define  BONGO_BUILD_BRANCH	\"0.5\" >  ./include/bongo-buildinfo.h
 echo \#define  BONGO_BUILD_VSTR	\"v\" >>  ./include/bongo-buildinfo.h
-echo \#define  BONGO_BUILD_VER	\"1073\" >>  ./include/bongo-buildinfo.h
+echo \#define  BONGO_BUILD_VER	\"1104\" >>  ./include/bongo-buildinfo.h
 
 conf_flags="--enable-maintainer-mode"
 
