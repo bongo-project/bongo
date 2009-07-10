@@ -38,7 +38,7 @@ MemPrivatePoolGetEntryDirect(void *PoolHandle, const char *SourceFile, unsigned 
 {
 	struct MemPoolPrivateRef *ref = (struct MemPoolPrivateRef *)PoolHandle;
 	
-	return g_slice_alloc(ref->size);
+	return g_slice_alloc0(ref->size);
 }
 
 EXPORT void 
