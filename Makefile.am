@@ -53,7 +53,7 @@ EXTRA_DIST =					\
 	init/bongo.init.sles9.in		\
 	init/bongo.init.suse10.in		\
 	init/bongo.init.debian.in		\
-	init/bongobongo-manager.default.debian	\
+	init/bongo-manager.default.debian	\
 	init/bongo.xml.solaris-smf		\
 	init/http-bongo.xml.solaris-smf		\
 	init/http-bongo.solaris-smf.in		\
