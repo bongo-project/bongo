@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
@@ -42,6 +43,7 @@
 # include <dirent.h>
 # include <netdb.h>
 # include <netinet/in.h>
+# include <sys/param.h>
 # include <sys/poll.h>
 # include <sys/socket.h>
 # include <sys/time.h>
@@ -113,12 +115,6 @@ typedef unsigned short unicode;
 /* Limits */
 #ifdef PATH_MAX
 # define XPL_MAX_PATH PATH_MAX
-#elif defined (XPL_MAX_PATH)
-# define XPL_MAX_PATH XPL_MAX_PATH
-#elif defined (_PC_PATH_MAX)
-# define XPL_MAX_PATH sysconf(_PC_PATH_MAX)
-#elif defined (_MAX_PATH)
-# define XPL_MAX_PATH _MAX_PATH
 #else
 # error "XPL_MAX_PATH is not implemented on this platform"
 #endif

@@ -115,11 +115,7 @@ struct _BongoMemChunk {
 
     BongoMemChunk *next;
 
-    /* Force alignment */
-    union {
-        double dummy;
-        uint32_t data[1];
-    };
+    uint32_t data[1];
 };
 
 typedef struct _BongoMemStack {

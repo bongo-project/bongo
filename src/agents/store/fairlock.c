@@ -208,6 +208,10 @@ StoreGetExclusiveFairLockQuiet(StoreClient *client, NFairLock **lock,
 	NFairLock *found_lock;
 	int result = 0;
 	
+	if (timeout) {
+		// FIXME : unused parameter; should use this somehow!
+	}
+	
 	// find the lock
 	found_lock = FairLockFind(client->storeName, guid);
 	if (found_lock == NULL) return -1; // error
@@ -263,6 +267,10 @@ StoreGetSharedFairLockQuiet(StoreClient *client, NFairLock **lock,
 {
 	NFairLock *found_lock;
 	int result = 0;
+	
+	if (timeout) {
+		// FIXME : unused parameter; should use this somehow!
+	}
 	
 	// first, find the lock
 	found_lock = FairLockFind(client->store, guid);

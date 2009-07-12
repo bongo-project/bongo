@@ -39,6 +39,8 @@ ParsePrivilege(StoreClient *client, const char const *token, StorePrivilege *pri
 {
 	StorePrivName const *priventry = StorePrivilegeTable;
 	
+	if (client == NULL) return -1;
+	
 	while (priventry->name != NULL) {
 		if (strcmp(token, priventry->name) == 0) {
 			*priv = priventry->priv;
@@ -75,6 +77,8 @@ PrivilegeToString(const StorePrivilege priv, char const **out)
 CCode
 ParsePrincipal(StoreClient *client, const char const *token, StorePrincipalType *type)
 {
+	if (client == NULL) return -1;
+	
 	if (strcmp(token, "user") == 0) {
 		*type = STORE_PRINCIPAL_USER;
 		return TOKEN_OK;

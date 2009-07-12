@@ -3,7 +3,7 @@
 
 #define TOKEN_OK 0xffff /* magic */
 
-__inline CCode
+CCode
 CheckTokC(StoreClient *client, int n, int min, int max);
 
 // parse simple data types

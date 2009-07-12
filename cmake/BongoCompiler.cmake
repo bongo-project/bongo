@@ -22,6 +22,6 @@ if (DEBUG)
 endif (DEBUG)
 
 function (StrictCompile)
-	set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -std=c99" PARENT_SCOPE)
-	set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -std=c++98" PARENT_SCOPE)
+	set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror -std=c99 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200112" PARENT_SCOPE)
+	set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Werror -std=c++98 -D_XOPEN_SOURCE=500 -D_POSIX_C_SOURCE=200112" PARENT_SCOPE)
 endfunction (StrictCompile)

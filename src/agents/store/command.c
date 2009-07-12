@@ -24,6 +24,8 @@
 #include <assert.h>
 #include <limits.h>
 #include <time.h>
+#include <unistd.h>
+#include <stdio.h>
 
 #include "stored.h"
 #include "command-parsing.h"
@@ -131,7 +133,6 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "LINKS", (void *) STORE_COMMAND_LINKS) ||
         BongoHashtablePutNoReplace(CommandTable, "UNLINK", (void *) STORE_COMMAND_UNLINK) ||
         BongoHashtablePutNoReplace(CommandTable, "MESSAGES ",  (void *) STORE_COMMAND_MESSAGES) ||
-        BongoHashtablePutNoReplace(CommandTable, "MFLAG", (void *) STORE_COMMAND_MFLAG) ||
         BongoHashtablePutNoReplace(CommandTable, "MIME ",  (void *) STORE_COMMAND_MIME) ||
         BongoHashtablePutNoReplace(CommandTable, "MOVE ", (void *) STORE_COMMAND_MOVE) ||
         BongoHashtablePutNoReplace(CommandTable, "PROPGET", (void *) STORE_COMMAND_PROPGET) ||
@@ -918,19 +919,6 @@ StoreCommandLoop(StoreClient *client)
                                          props, int3);
             break;
 
-        case STORE_COMMAND_MFLAG:
-            /* MFLAG [+ | -] <value> */
-
-            int2 = STORE_FLAG_SHOW; /* action */
-
-            if (TOKEN_OK == (ccode = RequireStore(client)) &&
-                TOKEN_OK == (ccode = CheckTokC(client, n, 2, 2)) &&
-                TOKEN_OK == (ccode = ParseFlag(client, tokens[1], &int1, &int2)))
-            {
-                ccode = StoreCommandMFLAG(client, int1, int2);
-            }
-            break;
-
         case STORE_COMMAND_MIME:
             /* MIME <document> */
 
@@ -1387,6 +1375,9 @@ finish:
 CCode
 StoreCommandALARMS(StoreClient *client, uint64_t start, uint64_t end)
 {
+	if (client) {} // FIXME compile error
+	if (start) {} // FIXME compile error
+	if (end) {} // FIXME compile error
 	/* FIXME - redo this completely
 	 * 
     AlarmInfoStmt *stmt;
@@ -1451,6 +1442,10 @@ StoreCommandCALENDARS(StoreClient *client, unsigned long mask,
 	StoreObject calendar_collection;
 	CCode ccode;
 
+	if (mask) {
+		// FIXME : mask is unused in this function thus far
+	}
+
 	StoreObjectFind(client, STORE_CALENDARS_GUID, &calendar_collection);
 	ccode = StoreObjectCheckAuthorization(client, &calendar_collection, STORE_PRIV_LIST);
 	if (ccode) return ccode;
@@ -1498,6 +1493,10 @@ StoreCommandCONVERSATIONS(StoreClient *client, const char *source, const char *q
 	int ccode;
 	StoreObject conversation_collection;
 	BOOL show_total;
+
+	if (headers || headercount || source || center) {
+		// FIXME : these are current unused
+	}
 	
 	StoreObjectFind(client, STORE_CONVERSATIONS_GUID, &conversation_collection);
 	
@@ -1788,10 +1787,12 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
     tmpFile[0] = 0;
 
     if (!filename) {
+	const char *work_dir = (char *)MsgGetDir(MSGAPI_DIR_WORK, NULL, 0);
+
         if (bytes <= 0) {
             return ConnWriteStr(client->conn, MSG3017INTARGRANGE);
         }
-        msgfile = XplOpenTemp(MsgGetDir(MSGAPI_DIR_WORK, NULL, 0), "w+b", tmpFile);
+        msgfile = XplOpenTemp(work_dir, "w+b", tmpFile);
         if (!msgfile) {
             return ConnWriteStr(client->conn, MSG5202TMPWRITEERR);
         }
@@ -1909,6 +1910,10 @@ StoreCommandEVENTS(StoreClient *client,
                    StorePropInfo *props, int propcount)
 {
 	// pretend we have no events for now.
+	if (client || startUTC || endUTC || calendar || mask ||
+		uid || query || start || end || props || propcount) {
+		// FIXME : compiler warnings in blank function
+	}
 	return ConnWriteStr(client->conn, MSG1000OK);
 /*
     CCode ccode = 0;
@@ -2063,6 +2068,9 @@ CCode
 StoreCommandISEARCH(StoreClient *client, const char *query, int start, int end,
                     StorePropInfo *props, int propcount)
 {
+	if (client || query || start || end || props || propcount) {
+		// FIXME : compiler warnings in blank function
+	}
 	return ConnWriteStr(client->conn, MSG1000OK);
 	/*
     char buf[200];
@@ -2157,6 +2165,9 @@ CCode
 StoreCommandMAILINGLISTS(StoreClient *client, char *source)
 {
 	// TODO
+	if (client || source) {
+		// FIXME : blank function
+	}
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
@@ -2170,16 +2181,13 @@ StoreCommandMESSAGES(StoreClient *client, const char *source, const char *query,
 {
 	// FIXME: obsolete? This looks very similar to LIST; just added
 	// source and query. Might as well make it one command...
+	if (client || source || query || start || end || center ||
+		flagsmask || flags || displayTotal || headers || headercount ||
+		props || propcount) {
+		// FIXME : stop compiler warning on empty function
+	}
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
-
-CCode
-StoreCommandMFLAG(StoreClient *client, uint32_t change, int mode)
-{
-	// FIXME: obsolete.
-	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
-}
-
 
 CCode
 StoreCommandMIME(StoreClient *client, StoreObject *document)
@@ -2338,6 +2346,8 @@ StoreCommandPROPSET(StoreClient *client,
 	int ccode;
 	
 	CHECK_NOT_READONLY(client)
+
+	if (size) {} // FIXME : unused variable
 	
 	prop->value = BONGO_MEMSTACK_ALLOC(&client->memstack, prop->valueLen + 1);
 	if (!prop->value) {
@@ -2424,6 +2434,8 @@ StoreCommandREINDEX(StoreClient *client, StoreObject *document)
 {
 	// want to re-do this completely.
 	CHECK_NOT_READONLY(client)
+
+	if (document) { } // FIXME : stop compiler whining
 	
 	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 }
@@ -2482,7 +2494,7 @@ ReceiveToFile(StoreClient *client, const char *path, uint64_t *size)
 		return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
 	}
 	
-	if (size >= 0) {
+	if (*size > 0) {
 		ccode = ConnReadToFile(client->conn, fh, *size);
 		receive_size = *size;
 	} else {
@@ -2525,8 +2537,13 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 	char path[XPL_MAX_PATH + 1];
 	char tmppath[XPL_MAX_PATH + 1];
 	uint64_t tmpsize;
-	
+
 	CHECK_NOT_READONLY(client)
+
+	if (rend <= rstart) {
+		// given a range that makes no sense....!
+		return ConnWriteStr(client->conn, MSG3021BADRANGESIZE);
+	}
 	
 	// check object type and permissions
 	if (STORE_IS_FOLDER(object->type) || STORE_IS_CONVERSATION(object->type)) {
@@ -2540,6 +2557,8 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 	MaildirTempDocument(client, object->collection_guid, tmppath, sizeof(tmppath));
 	
 	tmpsize = size;
+	if (size < 0) tmpsize = 0;
+
 	ccode = ReceiveToFile(client, tmppath, &tmpsize);
 	if (ccode) goto finish;
 	
@@ -2721,6 +2740,9 @@ CCode
 StoreCommandTIMEOUT(StoreClient *client, int lockTimeoutMs)
 {
 	// should be obsolete really
+	if (client || lockTimeoutMs) {
+		// FIXME : unused parameters
+	}
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
@@ -2825,6 +2847,10 @@ StoreCommandWRITE(StoreClient *client,
 	char path[XPL_MAX_PATH+1];
 	char tmppath[XPL_MAX_PATH+1];
 	
+	if (guid_link) {
+		// FIXME : should use this parameter to link to another doc
+	}
+
 	CHECK_NOT_READONLY(client)
 	
 	if (STORE_IS_FOLDER(doctype) || STORE_IS_CONVERSATION(doctype)) {

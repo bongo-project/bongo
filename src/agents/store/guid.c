@@ -32,7 +32,7 @@
 
 void GuidReset(void) {
 	char name[256 + 1];
-	unsigned char salt[32];
+	char salt[32];
 #ifdef HAVE_KSTAT_H
 	kstat_t *ksp;
 	kstat_ctl_t *kc;

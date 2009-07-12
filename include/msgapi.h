@@ -109,7 +109,7 @@ typedef enum {
 
 EXPORT const unsigned char *
 MsgGetFile(MsgApiFile file, char *buffer, size_t buffer_size);
-EXPORT const unsigned char *
+EXPORT const char *
 MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size);
 
 #define MSGSQL_STMT_SLEEP_MS 250
@@ -147,9 +147,9 @@ uint64_t MsgSQLLastRowID(MsgSQLHandle *handle);
 
 // Misc. util functions
 
-EXPORT BOOL MsgSetRecoveryFlag(unsigned char *agent_name);
-EXPORT BOOL MsgGetRecoveryFlag(unsigned char *agent_name);
-EXPORT BOOL MsgClearRecoveryFlag(unsigned char *agent_name);
+EXPORT BOOL MsgSetRecoveryFlag(char *agent_name);
+EXPORT BOOL MsgGetRecoveryFlag(char *agent_name);
+EXPORT BOOL MsgClearRecoveryFlag(char *agent_name);
 
 EXPORT BOOL MsgGetServerCredential(char *buffer);
 EXPORT BOOL MsgSetServerCredential(void);
@@ -211,8 +211,8 @@ EXPORT unsigned long MsgGetAgentBindIPAddress(void);
 
 EXPORT const char *MsgGetUnprivilegedUser(void);	
 
-EXPORT void MsgMakePath(unsigned char *path);
-EXPORT BOOL MsgCleanPath(unsigned char *path);
+EXPORT void MsgMakePath(char *path);
+EXPORT BOOL MsgCleanPath(char *path);
 
 EXPORT BOOL MsgResolveStart();
 EXPORT BOOL MsgResolveStop();    

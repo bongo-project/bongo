@@ -1,4 +1,4 @@
-/****************************************************************************
+	/****************************************************************************
  * <Novell-copyright>
  * Copyright (c) 2001 Novell, Inc. All Rights Reserved.
  * 
@@ -164,10 +164,10 @@ MsgDomainExists(const unsigned char *domain, unsigned char *domainObjectDN)
 }
 
 EXPORT BOOL
-MsgCleanPath(unsigned char *path)
+MsgCleanPath(char *path)
 {
-    unsigned char *ptr;
-    unsigned char *ptr2;
+    char *ptr;
+    char *ptr2;
 
     /* This code strips off any server names that might be configured in the Path */
     ptr = path;
@@ -208,10 +208,10 @@ MsgCleanPath(unsigned char *path)
 }
 
 EXPORT void
-MsgMakePath(unsigned char *path)
+MsgMakePath(char *path)
 {
-    unsigned char *ptr = path;
-    unsigned char *ptr2;
+    char *ptr = path;
+    char *ptr2;
     struct stat sb;
 
     ptr = strchr(path, '/');
@@ -236,10 +236,10 @@ MsgMakePath(unsigned char *path)
     }
 }
 
-EXPORT const unsigned char *
+EXPORT const char *
 MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size)
 {
-	const unsigned char *path;
+	const char *path;
 	switch(directory) {
 		case MSGAPI_DIR_BIN:
 			path = XPL_DEFAULT_BIN_DIR;
@@ -661,11 +661,11 @@ MsgRecoveryFlagFile(char *agent, char *buffer, size_t buffer_len)
 }
 
 EXPORT BOOL
-MsgSetRecoveryFlag(unsigned char *agent_name)
+MsgSetRecoveryFlag(char *agent_name)
 {
 	FILE *flag;
-	unsigned char flagfile[XPL_MAX_PATH];
-	unsigned char pidstr[20];
+	char flagfile[XPL_MAX_PATH];
+	char pidstr[20];
 	
 	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
 	
@@ -675,7 +675,7 @@ MsgSetRecoveryFlag(unsigned char *agent_name)
 	}
 	
 	snprintf(pidstr, 18, "%u\n", getpid());
-	fwrite(pidstr, strlen(pidstr), sizeof(unsigned char), flag);
+	fwrite(pidstr, strlen(pidstr), sizeof(char), flag);
 	
 	fclose(flag);
 	
@@ -683,9 +683,9 @@ MsgSetRecoveryFlag(unsigned char *agent_name)
 }
 
 EXPORT BOOL
-MsgGetRecoveryFlag(unsigned char *agent_name)
+MsgGetRecoveryFlag(char *agent_name)
 {
-	unsigned char flagfile[XPL_MAX_PATH];
+	char flagfile[XPL_MAX_PATH];
 	struct stat filestat;
 	
 	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
@@ -697,9 +697,9 @@ MsgGetRecoveryFlag(unsigned char *agent_name)
 }
 
 EXPORT BOOL
-MsgClearRecoveryFlag(unsigned char *agent_name)
+MsgClearRecoveryFlag(char *agent_name)
 {
-	unsigned char flagfile[XPL_MAX_PATH];
+	char flagfile[XPL_MAX_PATH];
 	
 	MsgRecoveryFlagFile(agent_name, flagfile, XPL_MAX_PATH);
 	unlink(flagfile);

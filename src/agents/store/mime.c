@@ -222,7 +222,7 @@ MimeReportFree(MimeReport *report)
 
 
 __inline static BOOL
-ParseDispositionParameters(unsigned char *ptr, MIMEPartStruct *part)
+ParseDispositionParameters(char *ptr, MIMEPartStruct *part)
 {
     RFC2231ParamStruct *rfc2231Name = NULL;
 
@@ -259,7 +259,7 @@ ParseDispositionParameters(unsigned char *ptr, MIMEPartStruct *part)
 }
 
 __inline static BOOL
-ParseTypeParameters(unsigned char *ptr, MIMEPartStruct *part)
+ParseTypeParameters(char *ptr, MIMEPartStruct *part)
 {
     RFC2231ParamStruct *rfc2231Name = NULL;
 
@@ -322,7 +322,7 @@ FileGetLine(FILE *fh, char *buffer, unsigned long bufferLen, unsigned long offse
 }
 
 MimeReport *
-MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineSize)
+MimeParse(FILE *fh, size_t messageSize, char *line, unsigned long lineSize)
 {
     MimeReport *report;
     int i;
@@ -342,12 +342,12 @@ MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineS
     size_t lastHeaderStart = 0;
     size_t lastHeaderLen = 0;
     size_t contentHeaderLen = 0;
-    unsigned char *ptr;
-    unsigned char *start;
-    unsigned char *end;
-    unsigned char *header = NULL;
-    unsigned char *currentSeparator = NULL;
-    unsigned char *allocatedSeparator = NULL;
+    char *ptr;
+    char *start;
+    char *end;
+    char *header = NULL;
+    char *currentSeparator = NULL;
+    char *allocatedSeparator = NULL;
     BOOL lastInHeader = TRUE;
     BOOL inHeader = TRUE;
     BOOL skip = FALSE;
@@ -357,7 +357,7 @@ MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineS
     
     partsAllocated = MIME_STRUCT_ALLOC;
     part = (MIMEPartStruct *)MemMalloc((sizeof(MIMEPartStruct) * partsAllocated));
-    header = (unsigned char *)MemMalloc(sizeof(unsigned char)*MAX_HEADER);
+    header = (char *)MemMalloc(sizeof(char)*MAX_HEADER);
     if (!part || !header) {
         if (part) {
             MemFree(part);
@@ -415,7 +415,7 @@ MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineS
             } else {
                 header[0]=toupper(header[0]);
                 if (header[0]=='C' && toupper(header[1])=='O') {
-                    CHOP_NEWLINE(header);
+                    RemoveLineEnding(header);
                     ptr=line;
                     while (isspace(*ptr)) {
                         ptr++;
@@ -548,7 +548,7 @@ MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineS
                     while (isspace(*ptr)) {
                         ptr++;
                     }
-                    CHOP_NEWLINE(header);
+                    RemoveLineEnding(header);
                     TempLen = min(strlen(ptr), MIME_ENCODING_LEN);
                     memcpy(part[useThisPartNo].encoding, ptr, TempLen);
                     part[useThisPartNo].encoding[TempLen] = '\0';

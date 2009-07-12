@@ -234,6 +234,8 @@ QueryBuilderAddProperty(QueryBuilder *builder, char const *property, BOOL output
 static int
 QueryBuilderPropertyToColumn(QueryBuilder *builder, BongoStringBuilder *sb, StorePropInfo *prop)
 {
+	if (builder == NULL) return -1;
+	
 	if ((prop->table_name != NULL) && (prop->column != NULL)) {
 		BongoStringBuilderAppendF(sb, "%s.%s", prop->table_name, prop->column);
 	} else {

@@ -145,7 +145,7 @@ StoreSocketInit()
 
 
 static void 
-StoreServer(void *ignored)
+StoreServer()
 {
     XplRenameThread(XplGetThreadID(), AGENT_DN " Server");
 

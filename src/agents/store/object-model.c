@@ -1163,10 +1163,10 @@ StoreObjectRemoveCollection(StoreClient *client, StoreObject *collection)
 		goto abort;
 
 	// remove each document and then collection
-	for	(j = 0; j < i; j++) {
+	for (j = 0; j < i; j++) {
 		StoreObject object;
 		
-		if (guid_list[j] > 0) {
+		if (*(guid_list[j]) > 0) {
 			// don't include the container in the results...
 			StoreObjectFind(client, *(guid_list[j]), &object);
 			StoreObjectRemove(client, &object);
@@ -1261,6 +1261,7 @@ int
 StoreObjectSetProperty(StoreClient *client, StoreObject *object, StorePropInfo *prop)
 {
 	uint64_t timeval;
+	uint32_t int32val;
 	int intval;
 	
 	switch (prop->type) {
@@ -1305,8 +1306,8 @@ StoreObjectSetProperty(StoreClient *client, StoreObject *object, StorePropInfo *
 		
 		// hexadecimal properties
 		case STORE_PROP_MAIL_IMAPUID:
-			if (ParseHexU32(client, prop->value, &intval) != TOKEN_OK) return -1;
-			object->imap_uid = intval;
+			if (ParseHexU32(client, prop->value, &int32val) != TOKEN_OK) return -1;
+			object->imap_uid = int32val;
 			goto save_object;
 		
 		case STORE_PROP_EXTERNAL:

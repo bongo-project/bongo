@@ -40,12 +40,12 @@ XPL_BEGIN_C_LINKAGE
 #define	MIME_ENCODING_LEN		64
 
 typedef struct _MIMEPartStruct {
-    unsigned char separator[MIME_SEPARATOR_LEN+1];
-    unsigned char type[MIME_TYPE_LEN+1];
-    unsigned char subtype[MIME_SUBTYPE_LEN+1];
-    unsigned char charset[MIME_CHARSET_LEN+1];
-    unsigned char encoding[MIME_ENCODING_LEN+1];
-    unsigned char name[MIME_NAME_LEN+1];
+    char separator[MIME_SEPARATOR_LEN+1];
+    char type[MIME_TYPE_LEN+1];
+    char subtype[MIME_SUBTYPE_LEN+1];
+    char charset[MIME_CHARSET_LEN+1];
+    char encoding[MIME_ENCODING_LEN+1];
+    char name[MIME_NAME_LEN+1];
     size_t headerStart;
     size_t headerLen;
     size_t start;
@@ -61,11 +61,11 @@ typedef struct _MIMEPartStruct {
 
 typedef struct {
     unsigned long code;
-    unsigned char *type;
-    unsigned char *subtype;
-    unsigned char *charset;
-    unsigned char *encoding;
-    unsigned char *name;
+    char *type;
+    char *subtype;
+    char *charset;
+    char *encoding;
+    char *name;
     unsigned long headerStart;
     unsigned long headerLen;
     unsigned long start;
@@ -82,7 +82,7 @@ typedef struct {
     MimeResponseLine *line;
 } MimeReport;
 
-MimeReport *MimeParse(FILE *fh, size_t messageSize, unsigned char *line, unsigned long lineSize);
+MimeReport *MimeParse(FILE *fh, size_t messageSize, char *line, unsigned long lineSize);
 BOOL MimeReportSend(void *param, MimeReport *report);
 void MimeReportFixup(MimeReport *report);
 void MimeReportFree(MimeReport *report);

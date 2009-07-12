@@ -28,7 +28,7 @@
 #include <xpl.h>
 
 typedef struct {
-	unsigned char	*Value;
+	char	*Value;
 	unsigned long 	ValueLen;
 	BOOL				Encoded;
 } RFC2231LineStruct;
@@ -45,7 +45,7 @@ rfc2231FreeParamLines(RFC2231ParamStruct *ParamLines)
 }
 
 __inline static BOOL
-rcf2231SaveLine(unsigned char *paramValue, unsigned long paramLen, RFC2231ParamStruct **ParamLines, unsigned long LineNum, BOOL Encoded)
+rcf2231SaveLine(char *paramValue, unsigned long paramLen, RFC2231ParamStruct **ParamLines, unsigned long LineNum, BOOL Encoded)
 {
 	RFC2231LineStruct	*line;
 
@@ -86,7 +86,7 @@ rcf2231SaveLine(unsigned char *paramValue, unsigned long paramLen, RFC2231ParamS
 			}
 		}
 
-		line = (RFC2231LineStruct *)((unsigned char *)(*ParamLines) + sizeof(RFC2231ParamStruct));
+		line = (RFC2231LineStruct *)((char *)(*ParamLines) + sizeof(RFC2231ParamStruct));
 		line[LineNum].Value = paramValue;
 		line[LineNum].ValueLen = paramLen;
 		line[LineNum].Encoded = Encoded;
@@ -98,14 +98,14 @@ rcf2231SaveLine(unsigned char *paramValue, unsigned long paramLen, RFC2231ParamS
 }
 
 __inline static BOOL
-rfc2231JoinParamLines(unsigned char *ParamValue, unsigned long *ParamLen, RFC2231ParamStruct *ParamLines)
+rfc2231JoinParamLines(char *ParamValue, unsigned long *ParamLen, RFC2231ParamStruct *ParamLines)
 {
 
 	if (ParamLines->Used > 0) {
 
-		RFC2231LineStruct	*line	= (RFC2231LineStruct *)((unsigned char *)ParamLines + sizeof(RFC2231ParamStruct));
-		unsigned char		*ptr	= ParamValue;		
-		unsigned char		*endPtr	= ParamValue + *ParamLen;		
+		RFC2231LineStruct	*line	= (RFC2231LineStruct *)((char *)ParamLines + sizeof(RFC2231ParamStruct));
+		char		*ptr	= ParamValue;		
+		char		*endPtr	= ParamValue + *ParamLen;		
 		unsigned long		i;
 		BOOL					encodingStillLegal;		/* rfc2231 says that once you stop enconding, you can't start again */
 
@@ -158,10 +158,10 @@ rfc2231JoinParamLines(unsigned char *ParamValue, unsigned long *ParamLen, RFC223
 	return(FALSE);
 }
 
-__inline static unsigned char *
-GetParamValue(unsigned char *Data, unsigned char **Value, unsigned long *ValueLen)
+__inline static char *
+GetParamValue(char *Data, char **Value, unsigned long *ValueLen)
 {
-	unsigned char *end;
+	char *end;
 
 	if ((*Data == '"') && (end = strchr(Data + 1, '"'))) {
 		Data++;
@@ -189,11 +189,11 @@ GetParamValue(unsigned char *Data, unsigned char **Value, unsigned long *ValueLe
 }
 
 
-__inline static unsigned char *
-ParseParam(unsigned char *Data, unsigned char *Buffer, unsigned long *BuffLen, RFC2231ParamStruct **RFC2231ParamLines)
+__inline static char *
+ParseParam(char *Data, char *Buffer, unsigned long *BuffLen, RFC2231ParamStruct **RFC2231ParamLines)
 {
-	unsigned char *nextChar;
-	unsigned char *paramValue;
+	char *nextChar;
+	char *paramValue;
 	unsigned long paramLen;
 
 	if (Data[0] == '=') {
@@ -222,7 +222,7 @@ ParseParam(unsigned char *Data, unsigned char *Buffer, unsigned long *BuffLen, R
 		
 		if (isdigit(Data[1])) {
 			/* We have a multi-lined rfc2231 parameter */
-			unsigned char	*ptr;
+			char	*ptr;
 
 			ptr = Data + 1; 
 

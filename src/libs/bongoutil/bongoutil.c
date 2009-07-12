@@ -29,7 +29,7 @@
 const unsigned char *Base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
 BOOL
-QuickNCmp(unsigned char *str1, unsigned char *str2, int len)
+QuickNCmp(char *str1, char *str2, int len)
 {
     while (--len && *str1 && *str2 && toupper(*str1) == toupper(*str2)) {
         str1++;
@@ -40,7 +40,7 @@ QuickNCmp(unsigned char *str1, unsigned char *str2, int len)
 }
 
 BOOL
-QuickCmp(unsigned char *str1, unsigned char *str2)
+QuickCmp(char *str1, char *str2)
 {
     while (*str1 && *str2 && toupper(*str1) == toupper(*str2)) {
         str1++;
@@ -309,6 +309,19 @@ const unsigned char HexChars[] = {
 /*  0xFF    255                                     */  0
 };
 
+void
+RemoveLineEnding(char *s)
+{
+        char *p;
+        p = strchr(s, 0x0A);
+        if (p) {
+                *p = '\0';
+        }
+        p = strrchr(s, 0x0D);
+        if (p) {
+                *p = '\0';
+        }
+}
 
 uint64_t
 HexToUInt64(char *hexString, char **endp)

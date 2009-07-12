@@ -1,4 +1,4 @@
-# StrictCompile()
+StrictCompile()
 
 enable_language(ASM-ATT)
 

@@ -166,8 +166,9 @@ void QuickSortIndexFree(unsigned long *index);
 void LoadProtocolCommandTree(ProtocolCommandTree *tree, ProtocolCommand *commands);
 ProtocolCommand *ProtocolCommandTreeSearch(ProtocolCommandTree *tree, const unsigned char *command);
 
-BOOL QuickNCmp(unsigned char *str1, unsigned char *str2, int len);
-BOOL QuickCmp(unsigned char *str1, unsigned char *str2);
+void RemoveLineEnding(char *s);
+BOOL QuickNCmp(char *str1, char *str2, int len);
+BOOL QuickCmp(char *str1, char *str2);
 
 #define BongoStrNCpy(dest, src, len) {strncpy((dest), (src), (len)); (dest)[(len) - 1] = '\0';}
 

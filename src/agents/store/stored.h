@@ -236,14 +236,14 @@ struct StoreGlobals {
         unsigned long ipAddress;
         unsigned long bytesPerBlock;
 
-        unsigned char host[MAXEMAILNAMESIZE + 1];
-        unsigned char hash[NMAP_HASH_SIZE];
+        char host[MAXEMAILNAMESIZE + 1];
+        char hash[NMAP_HASH_SIZE];
     } server;
 
     struct {
-        unsigned char rootDir[XPL_MAX_PATH + 1];
-        unsigned char spoolDir[XPL_MAX_PATH + 1];
-        unsigned char systemDir[XPL_MAX_PATH + 1];
+        char rootDir[XPL_MAX_PATH + 1];
+        char spoolDir[XPL_MAX_PATH + 1];
+        char systemDir[XPL_MAX_PATH + 1];
         /* FIXME: need a better name for this var: */
         int incomingQueueBytes;  /* max size of "incoming" file */ 
         int lockTimeoutMs;

@@ -39,7 +39,7 @@ typedef struct {
     
     // this union _must_ be of all the same type, else assumptions elsewhere
     // will fail..
-    union {
+    __extension__ union {
     	char *hack;
         char *user;
         char *group;
@@ -196,7 +196,7 @@ StoreCommandAUTHSYSTEM(StoreClient *client, char *md5hash)
 	XplHashWrite(&hash, StoreAgent.server.hash, NMAP_HASH_SIZE);
 	XplHashFinal(&hash, XPLHASH_LOWERCASE, credential, XPLHASH_MD5_LENGTH);
 
-	if (strcmp(credential, md5hash)) {
+	if (strcmp((const char *)credential, md5hash)) {
 		XplDelay(2000);
 		ConnWriteStr(client->conn, MSG3242BADAUTH);
 		ConnFlush(client->conn);

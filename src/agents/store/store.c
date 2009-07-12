@@ -228,6 +228,11 @@ DeliverMessageToMailbox(StoreClient *client,
 	unsigned char timeBuffer[80];
 	char buffer[1024];
 
+	if (scmsID || msglen) {
+		// FIXME : SCMS isn't implemented this way any more.
+		// can we get rid of msglen also?
+	}
+
 	if (SetupStore(recipient, &storeRoot, path, sizeof(path))) {
 		return DELIVER_TRY_LATER;
 	}
@@ -630,6 +635,9 @@ CCode
 StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 {
 	int result;
+	
+	if (client == NULL) return 0;
+	
 	*lock = MemMalloc0(sizeof(NLockStruct));
 	result = StoreGetExclusiveFairLockQuiet(client, &((*lock)->fairlock), coll, 3000);
 	if (result != 0) {
@@ -641,6 +649,8 @@ StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
 CCode
 StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock)
 {
+	if (client == NULL) return 0;
+	
 	StoreReleaseFairLockQuiet(&((*lock)->fairlock));
 	MemFree(*lock);
 	*lock = NULL;

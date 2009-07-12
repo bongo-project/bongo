@@ -168,6 +168,10 @@ StoreSetAlarm(StoreClient *client,
               StoreObject *event, // docinfo
               const char *alarmtext)
 {
+	if (client) {} // compiler error FIXME
+	if (event) {} // compiler error FIXME
+	if (alarmtext) {} // compiler error FIXME
+
 	return 0;
 #if 0
 	// FIXME awful awful.
