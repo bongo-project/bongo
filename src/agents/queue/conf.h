@@ -47,7 +47,7 @@ typedef struct _QueueConfiguration {
     char *quotaMessage;
 
     /* Trusted hosts */
-    BongoArray *trustedHosts;
+    GArray *trustedHosts;
 
     /* Paths */
     char spoolPath[XPL_MAX_PATH + 1];
@@ -101,17 +101,17 @@ typedef struct _QueueConfiguration {
     unsigned long lastRead;
     
     /* aliasing system */
-    BongoArray *hostedDomains;
-    BongoArray *aliasList;
+    GArray *hostedDomains;
+    GArray *aliasList;
 
-    BongoArray *domains;
+    GArray *domains;
 } QueueConfiguration;
 
 struct _AliasStruct{
     unsigned char* original;
     unsigned char* to;
     unsigned int mapping_type;
-    BongoArray *aliases;
+    GArray *aliases;
 };
 
 typedef struct _AliasStruct AliasStruct;

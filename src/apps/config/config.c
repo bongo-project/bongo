@@ -70,7 +70,7 @@ GetInstallParameters(void){
 
 	/* this is a little messy here due to the way the array works */
 	if (!config.domains) {
-		config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1)); 
+		config.domains = BongoJsonNodeNewArray(g_array_new(FALSE, FALSE, sizeof(char *))); 
 		while (1) {
 			char *tmp = NULL;
 			BongoJsonNode *domain;
@@ -108,7 +108,7 @@ SetStoreConfigurationModifications(StoreClient *client) {
             BongoJsonNode *current;
             char *content;
             unsigned int x;
-            BongoArray *domains, *oldDomains;
+            GArray *domains, *oldDomains;
 
             /* node is what is in the store.  it should basically be any defaults */
             /* pull out the domain array so that i can replace it with the new list of domains */
@@ -580,7 +580,7 @@ main(int argc, char *argv[]) {
 		} else if (!strcmp(arg, "--domain")) {
 			next_arg++;
 			if (!config.domains) {
-				config.domains = BongoJsonNodeNewArray(BongoArrayNew(sizeof(char *), 1)); 
+				config.domains = BongoJsonNodeNewArray(g_array_new(FALSE, FALSE, sizeof(char *))); 
 			}
 			BongoJsonArrayAppendString(BongoJsonNodeAsArray(config.domains), MemStrdup(argv[next_arg]));
 		} else {

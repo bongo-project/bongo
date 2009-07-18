@@ -37,7 +37,7 @@ typedef struct {
 
 typedef struct {
     BongoCalObject *cal;
-    BongoArray *occs;
+    GArray *occs;
 } CollectData;
 
 static MethodName methodNames[] = {
@@ -104,7 +104,7 @@ FindInstanceById(const void *voida, const void *voidb)
 static void
 FindInstances(BongoCalObject *cal)
 {
-    BongoArray *components;
+    GArray *components;
     unsigned int i;
     
     if (BongoJsonObjectGetArray(cal->json, "components", &components) != BONGO_JSON_OK) {
@@ -126,12 +126,12 @@ FindInstances(BongoCalObject *cal)
                 BongoHashtablePut(cal->timezones, (char*)BongoCalTimezoneGetTzid(tz), tz);
             } else {
                 BongoCalInstance *inst = BongoCalInstanceNew(cal, object);
-                BongoArrayAppendValue(cal->instances, inst);
+                g_array_append_val(cal->instances, inst);
             }
         }
     }
 
-    BongoArraySort(cal->instances, CompareInstancesId);
+    g_array_sort(cal->instances, CompareInstancesId);
     cal->instancesSorted = TRUE;
 }
 
@@ -170,7 +170,7 @@ NewCalJson(void)
     BongoJsonObject *json;
     
     json = BongoJsonObjectNew();
-    BongoArray *array = BongoArrayNew(sizeof(BongoJsonNode*), 1);
+    GArray *array = g_array_new(FALSE, FALSE, sizeof(BongoJsonNode *));
 
     if (json && array &&
         AddValueObject(json, "version", "2.0") &&
@@ -179,7 +179,7 @@ NewCalJson(void)
         return json;
     } else {
         if (array) {
-            BongoArrayFree(array, TRUE);
+            g_array_free(array, TRUE);
         }
         
         if (json) {
@@ -203,7 +203,7 @@ BongoCalObjectNew(BongoJsonObject *json)
 
     cal->json = json;
 
-    cal->instances = BongoArrayNew(sizeof(BongoCalInstance *), 10);    
+    cal->instances = g_array_sized_new(FALSE, FALSE, sizeof(BongoCalInstance *), 10);
     cal->timezones = BongoHashtableCreateFull(15, 
                                              (HashFunction)BongoStringHash,
                                              (CompareFunction)strcmp,
@@ -297,10 +297,10 @@ BongoCalObjectFree(BongoCalObject *cal, BOOL freeJson)
     unsigned int i;
 
     for (i = 0; i < cal->instances->len; i++) {
-        BongoCalInstanceFree(BongoArrayIndex(cal->instances, BongoCalInstance *, i), FALSE);
+        BongoCalInstanceFree(g_array_index(cal->instances, BongoCalInstance *, i), FALSE);
     }
 
-    BongoArrayFree(cal->instances, TRUE);
+    g_array_free(cal->instances, TRUE);
 
     if (freeJson) {
         BongoJsonObjectFree(cal->json);
@@ -379,7 +379,7 @@ BongoCalObjectGetUid(BongoCalObject *cal)
 {
     
     if (cal->instances->len > 0) {
-        return BongoCalInstanceGetUid(BongoArrayIndex(cal->instances, BongoCalInstance *, 0));
+        return BongoCalInstanceGetUid(g_array_index(cal->instances, BongoCalInstance *, 0));
     }
     return NULL;
 }
@@ -389,7 +389,7 @@ BongoCalObjectGetStamp(BongoCalObject *cal)
 {
     
     if (cal->instances->len > 0) {
-        return BongoCalInstanceGetStamp(BongoArrayIndex(cal->instances, BongoCalInstance *, 0));
+        return BongoCalInstanceGetStamp(g_array_index(cal->instances, BongoCalInstance *, 0));
     }
     return NULL;
 }
@@ -404,7 +404,7 @@ BongoCalObjectGetStart(BongoCalObject *cal)
     start = BongoCalTimeEmpty();
     
     for (i = 0; i < cal->instances->len; i++) {
-        BongoCalInstance *inst = BongoArrayIndex(cal->instances, BongoCalInstance *, i);
+        BongoCalInstance *inst = g_array_index(cal->instances, BongoCalInstance *, i);
         BongoCalTime instStart;
         
         instStart = BongoCalInstanceGetStart(inst);
@@ -428,7 +428,7 @@ BongoCalObjectGetEnd(BongoCalObject *cal)
     end = BongoCalTimeEmpty();
     
     for (i = 0; i < cal->instances->len; i++) {
-        BongoCalInstance *inst = BongoArrayIndex(cal->instances, BongoCalInstance *, i);
+        BongoCalInstance *inst = g_array_index(cal->instances, BongoCalInstance *, i);
         BongoCalTime instEnd;
         char buffer[1024];
         
@@ -452,7 +452,7 @@ BongoCalObjectGetSummary(BongoCalObject *cal)
         return NULL;
     }
     
-    return BongoCalInstanceGetSummary(BongoArrayIndex(cal->instances, BongoCalInstance *, 0));
+    return BongoCalInstanceGetSummary(g_array_index(cal->instances, BongoCalInstance *, 0));
 }
 
 const char *
@@ -462,7 +462,7 @@ BongoCalObjectGetLocation(BongoCalObject *cal)
         return NULL;
     }
     
-    return BongoCalInstanceGetLocation(BongoArrayIndex(cal->instances, BongoCalInstance *, 0));
+    return BongoCalInstanceGetLocation(g_array_index(cal->instances, BongoCalInstance *, 0));
 }
 
 const char *
@@ -472,7 +472,7 @@ BongoCalObjectGetDescription(BongoCalObject *cal)
         return NULL;
     }
     
-    return BongoCalInstanceGetDescription(BongoArrayIndex(cal->instances, BongoCalInstance *, 0));
+    return BongoCalInstanceGetDescription(g_array_index(cal->instances, BongoCalInstance *, 0));
 }
 
 BongoCalTimezone *
@@ -497,7 +497,7 @@ BongoCalObjectGetTimezones(BongoCalObject *cal)
 }
 
 static void
-AddTimezone(BongoCalObject *cal, BongoArray *components, BongoCalTime t)
+AddTimezone(BongoCalObject *cal, GArray *components, BongoCalTime t)
 {
     if (t.tz && t.tz->type == BONGO_CAL_TIMEZONE_SYSTEM) {
         BongoCalTimezone *newTz;
@@ -511,7 +511,7 @@ AddTimezone(BongoCalObject *cal, BongoArray *components, BongoCalTime t)
 }
 
 static void
-AddTimezones(BongoCalObject *cal, BongoArray *components, BongoCalInstance *inst)
+AddTimezones(BongoCalObject *cal, GArray *components, BongoCalInstance *inst)
 {
     AddTimezone(cal, components, BongoCalInstanceGetStart(inst));
     AddTimezone(cal, components, BongoCalInstanceGetEnd(inst));
@@ -522,14 +522,14 @@ void
 BongoCalObjectResolveSystemTimezones(BongoCalObject *cal)
 {
     unsigned int i;
-    BongoArray *components;
+    GArray *components;
 
     if (BongoJsonObjectGetArray(cal->json, "components", &components) != BONGO_JSON_OK) {
         return;
     }
     
     for (i = 0; i < cal->instances->len; i++) {
-        BongoCalInstance *inst = BongoArrayIndex(cal->instances, BongoCalInstance *, i);
+        BongoCalInstance *inst = g_array_index(cal->instances, BongoCalInstance *, i);
         
         AddTimezones(cal, components, inst);
     }
@@ -541,7 +541,7 @@ BongoCalObjectStripSystemTimezones(BongoCalObject *cal)
     BongoHashtableIter iter;
     BongoSList *remove = NULL;
     BongoSList *l;
-    BongoArray *components;
+    GArray *components;
 
     if (BongoJsonObjectGetArray(cal->json, "components", &components) != BONGO_JSON_OK) {
         return;
@@ -588,16 +588,16 @@ BongoCalObjectGetInstance(BongoCalObject *cal, const char *uid, BongoCalTime rec
     IdSearchData data;
     
     if (!cal->instancesSorted) {
-        BongoArraySort(cal->instances, CompareInstancesId);
+        g_array_sort(cal->instances, CompareInstancesId);
         cal->instancesSorted = TRUE;
     }
 
     data.uid = uid;
     data.recurid = recurid;
 
-    i = BongoArrayFindSorted(cal->instances, &data, FindInstanceById);    
+    i = GArrayFindSorted(cal->instances, &data, FindInstanceById);    
     if (i != -1) {
-        return BongoArrayIndex(cal->instances, BongoCalInstance *, i);
+        return g_array_index(cal->instances, BongoCalInstance *, i);
     } else {
         return FALSE;
     }
@@ -636,7 +636,7 @@ ExpandCb(BongoCalInstance *inst,
     occ.generated = TRUE;
     occ.instance = inst;
 
-    BongoArrayAppendValue(data->occs, occ);
+    g_array_append_val(data->occs, occ);
 
     return TRUE;
 }
@@ -660,7 +660,7 @@ BongoCalObjectPrimaryOccurrence(BongoCalObject *cal,
            multiple occurrances there. */
         BongoCalInstance *instance;
 
-        instance = BongoArrayIndex(cal->instances, BongoCalInstance *, 0);
+        instance = g_array_index(cal->instances, BongoCalInstance *, 0);
 
         return BongoCalInstanceGetOccurrence(instance);
     } else {
@@ -679,7 +679,7 @@ BongoCalObjectCollect(BongoCalObject *cal,
                      BongoCalTime end,
                      BongoCalTimezone *defaultTz,
                      BOOL includeGenerated,
-                     BongoArray *occurrences)
+                     GArray *occurrences)
 {
     unsigned int i;
     unsigned int lenBefore;
@@ -691,7 +691,7 @@ BongoCalObjectCollect(BongoCalObject *cal,
         BongoCalInstance *instance;
         CollectData data;
 
-        instance = BongoArrayIndex(cal->instances, BongoCalInstance *, i);
+        instance = g_array_index(cal->instances, BongoCalInstance *, i);
 
         add = TRUE;
 
@@ -720,14 +720,14 @@ BongoCalObjectCollect(BongoCalObject *cal,
                 
             occ = BongoCalInstanceGetOccurrence(instance);
             
-            BongoArrayAppendValue(occurrences, occ);
+            g_array_append_val(occurrences, occ);
         }
     }
 
     return (occurrences->len > lenBefore);
 }
 
-BongoArray *
+GArray *
 BongoCalObjectGetInstances(BongoCalObject *cal) 
 {
     return cal->instances;
@@ -745,7 +745,7 @@ BongoCalObjectGetSingleInstance(BongoCalObject *cal)
 {
     /* FIXME: wrong */
     if (cal->instances->len == 1) {
-        return BongoArrayIndex(cal->instances, BongoCalInstance *, 0);
+        return g_array_index(cal->instances, BongoCalInstance *, 0);
     } else {
         return NULL;
     }
@@ -760,7 +760,7 @@ BongoCalObjectLocalizeTimes(BongoCalObject *cal,
     unsigned int i;
     
     for (i = 0; i < cal->instances->len; i++) {
-        BongoCalInstance *inst = BongoArrayIndex(cal->instances, BongoCalInstance *, i);
+        BongoCalInstance *inst = g_array_index(cal->instances, BongoCalInstance *, i);
         BongoCalInstanceLocalizeTimes(inst, tz, attribute);
     }
 }
@@ -770,10 +770,10 @@ BOOL
 BongoCalObjectAddInstance(BongoCalObject *cal,
                          BongoCalInstance *inst)
 {
-    BongoArray *components;
+    GArray *components;
     
     if (BongoJsonObjectGetArray(cal->json, "components", &components) != BONGO_JSON_OK) {
-        components = BongoArrayNew(sizeof(BongoJsonNode*), 1);
+        components = g_array_new(FALSE, FALSE, sizeof(BongoJsonNode *));
         if (BongoJsonObjectPutArray(cal->json, "components", components) != BONGO_JSON_OK) {
             return FALSE;
         }
@@ -781,7 +781,7 @@ BongoCalObjectAddInstance(BongoCalObject *cal,
 
     inst->cal = cal;
     BongoJsonArrayAppendObject(components, inst->json);
-    BongoArrayAppendValue(cal->instances, inst);
+    g_array_append_val(cal->instances, inst);
 
     cal->instancesSorted = FALSE;
 

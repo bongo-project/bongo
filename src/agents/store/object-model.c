@@ -637,7 +637,7 @@ StoreObjectIterQueryBuilderPropResult(StoreClient *client,
 	// start value below "col_id + 9" depends on how many columns
 	// we pull back in our initial query; careful :)
 	for (col_id = 0, result_id = 0; col_id < properties; col_id++) {
-		const StorePropInfo const *prop = BongoArrayIndex(builder->properties, 
+		const StorePropInfo const *prop = g_array_index(builder->properties, 
 			StorePropInfo *, col_id);
 		
 		// ignore properties we don't want output; 
@@ -686,8 +686,8 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 	if (ret == NULL) goto abort;
 	
 	// bind in any variables we need
-	for (i = 0; i < BongoArrayCount(builder->parameters); i++) {
-		QueryBuilder_Param *p = BongoArrayIndex((builder->parameters), 
+	for (i = 0; i < builder->parameters->len; i++) {
+		QueryBuilder_Param *p = g_array_index((builder->parameters), 
 			QueryBuilder_Param *, i);
 		
 		switch (p->type) {
@@ -705,7 +705,7 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 		}
 	}
 	
-	properties = BongoArrayCount(builder->properties);
+	properties = builder->properties->len;
 	
 	while ((status = MsgSQLResults(client->storedb, &stmt)) > 0) {
 		int ccode;

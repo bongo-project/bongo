@@ -90,7 +90,7 @@ BongoCalInstanceFree(BongoCalInstance *inst, BOOL freeJson)
 
 #if 0
 static void
-FreeInstanceArray(BongoArray *instances, BOOL freeJson) 
+FreeInstanceArray(GArray *instances, BOOL freeJson) 
 {
     unsigned int i;
     
@@ -99,10 +99,10 @@ FreeInstanceArray(BongoArray *instances, BOOL freeJson)
     }
 
     for (i = 0; i < instances->len; i++) {
-        BongoCalInstanceFree(BongoArrayIndex(instances, BongoCalInstance*, i), freeJson);
+        BongoCalInstanceFree(g_array_index(instances, BongoCalInstance*, i), freeJson);
     }
     
-    BongoArrayFree(instances, TRUE);
+    g_array_free(instances, TRUE);
 }
 #endif
 
@@ -293,7 +293,7 @@ GetWeekday(const char *name)
 }
 
 static BongoList *
-IntArrayToList(BongoArray *array, int min, int max)
+IntArrayToList(GArray *array, int min, int max)
 {
     BongoList *ret = NULL;
     unsigned int i;
@@ -311,7 +311,7 @@ IntArrayToList(BongoArray *array, int min, int max)
 }
 
 static BongoList *
-DayArrayToList(BongoArray *array)
+DayArrayToList(GArray *array)
 {
     BongoList *ret = NULL;
     unsigned int i;
@@ -339,7 +339,7 @@ DayArrayToList(BongoArray *array)
 static BOOL
 ReadRecur(BongoCalInstance *inst, BongoJsonObject *obj, BongoCalRule *recur)
 {
-    BongoArray *arrayVal;
+    GArray *arrayVal;
     const char *stringVal;
     int intVal;
     BongoJsonObject *jsonValue;
@@ -573,7 +573,7 @@ CacheUtcOffset(BongoCalInstance *inst, const char *id, BOOL *haveCache, int *cac
 static void
 CacheRDates(BongoCalInstance *inst, const char *key, BongoSList **dates)
 {
-    BongoArray *array;
+    GArray *array;
     unsigned int i;
     
     if (*dates) {
@@ -616,7 +616,7 @@ CacheRDates(BongoCalInstance *inst, const char *key, BongoSList **dates)
 static void
 CacheRRules(BongoCalInstance *inst, const char *key, BongoSList **rules)
 {
-    BongoArray *array;
+    GArray *array;
     unsigned int i;
     
     if (*rules) {
@@ -969,22 +969,22 @@ BongoCalInstanceGetInstance(BongoCalInstance *inst,
             inst->exceptionsSorted = TRUE;
         }
 
-        i = BongoArrayFindSorted(inst->exceptions, &recurid, FindRecurId);    
+        i = GArrayFindSorted(inst->exceptions, &recurid, FindRecurId);    
         if (i != -1) {
-            *instOut = BongoArrayIndex(inst->exceptions, BongoCalInstance *, i);
+            *instOut = g_array_index(inst->exceptions, BongoCalInstance *, i);
             return TRUE;
         }
     }
 
     if (inst->generated && allowGenerated) {
         if (!inst->generatedSorted) {
-            BongoArraySort(inst->generated, CompareRecurId);
+            g_array_sort(inst->generated, CompareRecurId);
             inst->generatedSorted = TRUE;
         }
 
-        i = BongoArrayFindSorted(inst->generated, &recurid, FindRecurId);
+        i = GArrayFindSorted(inst->generated, &recurid, FindRecurId);
         if (i != -1) {
-            *instOut = BongoArrayIndex(inst->generated, BongoCalInstance *, i);
+            *instOut = g_array_index(inst->generated, BongoCalInstance *, i);
             return TRUE;
         }
     }
@@ -998,12 +998,12 @@ AddGeneratedInstance(BongoCalInstance *inst,
                      BongoCalInstance *child,
                      BOOL isGenerated)
 {        
-    BongoArray *array;
+    GArray *array;
    
     /* Requires "generated" to be created first */
 
     if (BongoJsonObjectGetArray(inst->json, "generated", &array) != BONGO_JSON_OK) {
-        array = BongoArrayNew(sizeof(BongoJsonNode*), 15);
+        array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode *), 15);
         BongoJsonObjectPutArray(inst->json, "generated", array);
     }
 
@@ -1011,10 +1011,10 @@ AddGeneratedInstance(BongoCalInstance *inst,
         BongoJsonArrayAppendObject(array, child->json);
 
         if (!inst->generated) {
-            inst->generated = BongoArrayNew(sizeof(BongoCalInstance*), 16);
+            inst->generated = g_array_sized_new(FALSE, FALSE, sizeof(BongoCalInstance *), 16);
         }
         
-        BongoArrayAppendValue(inst->generated, child);
+        g_array_append_val(inst->generated, child);
         inst->generatedSorted = FALSE;
     }
 }
@@ -1061,9 +1061,9 @@ CompareOccs(const void *voida, const void *voidb)
 }
 
 void
-BongoCalOccurrencesSort(BongoArray *occurrences)
+BongoCalOccurrencesSort(GArray *occurrences)
 {
-    BongoArraySort(occurrences, CompareOccs);
+    g_array_sort(occurrences, CompareOccs);
 }
 
 BongoJsonObject *
@@ -1119,18 +1119,18 @@ BongoCalOccurrenceToJson(BongoCalOccurrence occ, BongoCalTimezone *tz)
     return obj;
 }
 
-BongoArray *
-BongoCalOccurrencesToJson(BongoArray *occs, BongoCalTimezone *tz)
+GArray *
+BongoCalOccurrencesToJson(GArray *occs, BongoCalTimezone *tz)
 {
-    BongoArray *jsonArray;
+    GArray *jsonArray;
     unsigned int i;
     
-    jsonArray = BongoArrayNew(sizeof(BongoJsonNode *), 16);
+    jsonArray = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode *), 16);
     
     for (i = 0; i < occs->len; i++) {
         BongoJsonObject *obj;
         
-        obj = BongoCalOccurrenceToJson(BongoArrayIndex(occs, BongoCalOccurrence, i), tz);
+        obj = BongoCalOccurrenceToJson(g_array_index(occs, BongoCalOccurrence, i), tz);
         
         if (obj) {
             BongoJsonArrayAppendObject(jsonArray, obj);

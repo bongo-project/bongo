@@ -97,7 +97,7 @@ BongoCalTimezoneNewJsonForSystem(BongoCalObject *cal, const char *tzid)
     FILE *tzfile;
     BongoJsonNode *tzNode;
     BongoJsonObject *tzObj;
-    BongoArray *components;
+    GArray *components;
 
     if (!tzid || strncmp(tzid, "/bongo/", strlen("/bongo/")) != 0) {
         return NULL;
@@ -174,7 +174,7 @@ BongoCalTimezoneFree(BongoCalTimezone *tz, BOOL freeJson)
     }
     
     if (tz->changes) {
-        BongoArrayFree(tz->changes, TRUE);
+        g_array_free(tz->changes, TRUE);
     }
 
     MemFree(tz);
@@ -322,7 +322,7 @@ AddOccurrence(BongoCalTimezone *tz,
     change.second = occ.start.second;
     
     change = AdjustChange(change, 0, 0, 0, change.prevUtcOffset);
-    BongoArrayAppendValue(tz->changes, change);
+    g_array_append_val(tz->changes, change);
 
     if (updateBounds) {
         uint64_t startTime = BongoCalTimeAsUint64(occ.start);
@@ -339,17 +339,17 @@ AddOccurrence(BongoCalTimezone *tz,
 static void
 ReadChanges(BongoCalTimezone *tz)
 {
-    BongoArray *changes;
+    GArray *changes;
     
     if (tz->type != BONGO_CAL_TIMEZONE_JSON) {
         return;
     }
 
     if (tz->changes) {
-        BongoArrayFree(tz->changes, TRUE);
+        g_array_free(tz->changes, TRUE);
     }
     
-    tz->changes = BongoArrayNew(sizeof(TimezoneChange), 32);
+    tz->changes = g_array_sized_new(FALSE, FALSE, sizeof(TimezoneChange), 32);
 
     if (BongoJsonObjectGetArray(tz->json, "changes", &changes) == BONGO_JSON_OK) {
         unsigned int i;
@@ -367,7 +367,7 @@ ReadChanges(BongoCalTimezone *tz)
         }
     }
 
-    BongoArraySort(tz->changes, CompareChange);
+    g_array_sort(tz->changes, CompareChange);
 }
 
 static BOOL
@@ -402,7 +402,7 @@ TimezoneCb(const char *tzid, void *data)
 void
 BongoCalTimezoneExpand(BongoCalTimezone *tz, BongoCalTime start, BongoCalTime end)
 {                
-    BongoArray *changes;
+    GArray *changes;
     uint64_t startt;
     uint64_t endt;
     
@@ -418,10 +418,10 @@ BongoCalTimezoneExpand(BongoCalTimezone *tz, BongoCalTime start, BongoCalTime en
     }
     
     if (tz->changes) {
-        BongoArrayFree(tz->changes, TRUE);
+        g_array_free(tz->changes, TRUE);
     }
     
-    tz->changes = BongoArrayNew(sizeof(TimezoneChange), 32);
+    tz->changes = g_array_sized_new(FALSE, FALSE, sizeof(TimezoneChange), 32);
     
     if (BongoJsonObjectGetArray(tz->json, "changes", &changes) == BONGO_JSON_OK) {
         unsigned int i;
@@ -450,7 +450,7 @@ BongoCalTimezoneExpand(BongoCalTimezone *tz, BongoCalTime start, BongoCalTime en
         }
     }
 
-    BongoArraySort(tz->changes, CompareChange);
+    g_array_sort(tz->changes, CompareChange);
 
     tz->changesStart = startt;
     tz->changesEnd = endt;
@@ -483,7 +483,7 @@ FindNearbyChange(BongoCalTimezone *tz, TimezoneChange *change)
     while (lower < upper) {
         middle = (lower + upper) / 2;
 
-        zoneChange = &BongoArrayIndex(tz->changes, TimezoneChange, middle);
+        zoneChange = &g_array_index(tz->changes, TimezoneChange, middle);
 
         cmp = CompareChange(change, zoneChange);
 
@@ -541,7 +541,7 @@ BongoCalTimezoneGetUtcOffset(BongoCalTimezone *tz,
     assert((unsigned int)changeNum < tz->changes->len);
     
     /* Now move backwards or forwards to find the tz change that applies */
-    zoneChange = &BongoArrayIndex(tz->changes, TimezoneChange, changeNum);
+    zoneChange = &g_array_index(tz->changes, TimezoneChange, changeNum);
 
     step = 1;
     changeNumToUse = -1;
@@ -599,7 +599,7 @@ BongoCalTimezoneGetUtcOffset(BongoCalTimezone *tz,
             break;
         }
         
-        zoneChange = &BongoArrayIndex(tz->changes, TimezoneChange, changeNum);
+        zoneChange = &g_array_index(tz->changes, TimezoneChange, changeNum);
     }
         
     /* If we didn't find a change to use, then we have a bug! */
@@ -607,7 +607,7 @@ BongoCalTimezoneGetUtcOffset(BongoCalTimezone *tz,
 
     /* Now we just need to check if the time is in the overlapped region of
        time when clocks go back. */
-    zoneChange = &BongoArrayIndex(tz->changes, TimezoneChange, changeNumToUse);
+    zoneChange = &g_array_index(tz->changes, TimezoneChange, changeNumToUse);
 
     utcOffsetChange = zoneChange->utcOffset - zoneChange->prevUtcOffset;
     if (utcOffsetChange < 0 && changeNumToUse > 0) {
@@ -619,7 +619,7 @@ BongoCalTimezoneGetUtcOffset(BongoCalTimezone *tz,
                either the current zone_change or the previous one. If the
                time has the is_daylight field set we use the matching change,
                else we use the change with standard time. */
-            prevZoneChange = &BongoArrayIndex(tz->changes, TimezoneChange, changeNumToUse - 1);
+            prevZoneChange = &g_array_index(tz->changes, TimezoneChange, changeNumToUse - 1);
         }
     }
 
@@ -679,16 +679,18 @@ UnpackString(FILE *from, char **str)
 }
 
 static BOOL
-PackArray(FILE *to, BongoArray *array)
+PackArray(FILE *to, GArray *array)
 {
+    int elemSize = (sizeof(array->data) / array->len);
+
     if (fwrite(&array->len, sizeof(unsigned int), 1, to) != 1) {
         return FALSE;
     }
-    if (fwrite(&array->elemSize, sizeof(unsigned int), 1, to) != 1) {
+    if (fwrite(&elemSize, sizeof(unsigned int), 1, to) != 1) {
         return FALSE;
     }
     
-    if (fwrite(array->data, array->elemSize, array->len, to) != array->len) {
+    if (fwrite(array->data, elemSize, array->len, to) != array->len) {
         return FALSE;
     }
 
@@ -696,7 +698,7 @@ PackArray(FILE *to, BongoArray *array)
 }
 
 static BOOL
-UnpackArray(FILE *from, BongoArray **array, unsigned int expectedElemSize)
+UnpackArray(FILE *from, GArray **array, unsigned int expectedElemSize)
 {
     unsigned int len;
     unsigned int elemSize;
@@ -721,10 +723,8 @@ UnpackArray(FILE *from, BongoArray **array, unsigned int expectedElemSize)
         return FALSE;
     }
     
-    *array = MemMalloc(sizeof(BongoArray));
-    (*array)->len = (*array)->size = len;
-    (*array)->elemSize = elemSize;
-    (*array)->data = data;
+    *array = g_array_new(FALSE, FALSE, elemSize);
+    g_array_append_vals(*array, data, len);
     
     return TRUE;
 }
@@ -765,7 +765,7 @@ BongoCalTimezoneUnpack(FILE *from)
     char *tzid;
     uint64_t changesStart;
     uint64_t changesEnd;
-    BongoArray *changes;
+    GArray *changes;
     
     if (fgetc(from) != PACK_MAGIC) {
         return NULL;

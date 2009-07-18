@@ -431,7 +431,7 @@ MessageDetailsFree(MessageDetail *messageDetail)
     }
 
     if (messageDetail->mimeInfo) {
-        BongoArrayFree(messageDetail->mimeInfo, TRUE);
+        g_array_free(messageDetail->mimeInfo, TRUE);
         messageDetail->mimeInfo = NULL;
     }
 }
@@ -946,7 +946,7 @@ FetchFlagResponderBodyStructure(void *param1, void *param2, void *param3)
 
             if (ccode != -1) {
                 do {
-                    char *mime_string = BongoArrayIndex(FetchRequest->messageDetail.mimeInfo,
+                    char *mime_string = g_array_index(FetchRequest->messageDetail.mimeInfo,
 			char *, mimeResponseLine);
                     switch(atol(mime_string)) {
                         case 2002: {
@@ -1280,7 +1280,7 @@ FetchFlagResponderBodyStructure(void *param1, void *param2, void *param3)
                     }
 
                     mimeResponseLine++;
-                    if (mimeResponseLine < BongoArrayCount(FetchRequest->messageDetail.mimeInfo)) {
+                    if (mimeResponseLine < FetchRequest->messageDetail.mimeInfo->len) {
                         continue;
                     }
 
@@ -1704,7 +1704,7 @@ FetchFlagResponderBodyHeaderFields(void *param1, void *param2, void *param3)
 }
 
 __inline static BOOL
-HasPart(BongoArray *mimeInfo, BodyPartRequestStruct *request)
+HasPart(GArray *mimeInfo, BodyPartRequestStruct *request)
 {
     unsigned char type[MIME_TYPE_LEN+1];
     unsigned char dummy[MIME_NAME_LEN+1];
@@ -1720,7 +1720,7 @@ HasPart(BongoArray *mimeInfo, BodyPartRequestStruct *request)
     unsigned long matchDepthPart = 0;
 
     do {
-        char *mime_string = BongoArrayIndex(mimeInfo, char *, mimeResponseLine);
+        char *mime_string = g_array_index(mimeInfo, char *, mimeResponseLine);
         switch (atol(mime_string)) {
             case 2002: {
                 ParseMIMEDLine(mime_string + 5, 
@@ -1808,7 +1808,7 @@ HasPart(BongoArray *mimeInfo, BodyPartRequestStruct *request)
         }
 
         mimeResponseLine++;
-        if (mimeResponseLine < BongoArrayCount(mimeInfo)) {
+        if (mimeResponseLine < mimeInfo->len) {
             if (depthChange == 0) {
                 continue;
             }
@@ -3015,12 +3015,12 @@ GetMimeInfo(ImapSession *session, FetchStruct *FetchRequest)
     long ccode;
 
     if (FetchRequest->messageDetail.mimeInfo == NULL) {
-        FetchRequest->messageDetail.mimeInfo = BongoArrayNew(sizeof(char *), 0);
+        FetchRequest->messageDetail.mimeInfo = g_array_new(FALSE, FALSE, sizeof(char *));
         if (! FetchRequest->messageDetail.mimeInfo) {
             return(STATUS_MEMORY_ERROR);
         }
     } else {
-        BongoArrayFree(FetchRequest->messageDetail.mimeInfo, TRUE);
+        g_array_free(FetchRequest->messageDetail.mimeInfo, TRUE);
     }
 
     if (NMAPSendCommandF(session->store.conn, "MIME %llx\r\n", FetchRequest->message->guid) != -1) {
@@ -3033,7 +3033,7 @@ GetMimeInfo(ImapSession *session, FetchStruct *FetchRequest)
                 entry = MemMalloc(len);
                 memcpy(entry, session->store.response, len);
 
-                BongoArrayAppendValue(FetchRequest->messageDetail.mimeInfo, entry);
+                g_array_append_val(FetchRequest->messageDetail.mimeInfo, entry);
                 ccode = NMAPReadResponse(session->store.conn, session->store.response, sizeof(session->store.response), FALSE);
                 continue;
             }

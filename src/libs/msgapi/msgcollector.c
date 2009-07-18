@@ -212,11 +212,11 @@ ReadCalendar(Connection *conn, const char *calendar)
     int ccode;
     char buffer[CONN_BUFSIZE + 1];
     BongoHashtable *guids;
-    BongoArray oldDuplicates;
+    GArray *oldDuplicates;
     unsigned int i;
     char *guid;
 
-    BongoArrayInit(&oldDuplicates, sizeof (char *), 8);
+    oldDuplicates = g_array_sized_new(FALSE, FALSE, sizeof(char *), 8);
 
     guids = BongoHashtableCreateFull(16, 
                                     (HashFunction)BongoStringHash, 
@@ -242,7 +242,7 @@ ReadCalendar(Connection *conn, const char *calendar)
                 if (oldData) {
                     /*fprintf (stderr, "Found duplicate of ical uid %s in guid %s\n", buffer, guid);*/
                     uid = MemStrdup(guid);
-                    BongoArrayAppendValue(&oldDuplicates, uid);
+                    g_array_append_val(oldDuplicates, uid);
                     uid = NULL;
                 } else {
                     uid = MemStrdup(buffer);
@@ -270,8 +270,8 @@ ReadCalendar(Connection *conn, const char *calendar)
         ccode = NMAPReadAnswer(conn, buffer, CONN_BUFSIZE, TRUE);
     }
 
-    for (i = 0; i < BongoArrayCount(&oldDuplicates); i++) {
-        guid = BongoArrayIndex (&oldDuplicates, char *, i);
+    for (i = 0; i < oldDuplicates->len; i++) {
+        guid = g_array_index(oldDuplicates, char *, i);
 
         if (ccode == 1000) {
             NMAPSendCommandF(conn, "UNLINK /calendars/%s %s\r\n", calendar, guid);
@@ -280,7 +280,7 @@ ReadCalendar(Connection *conn, const char *calendar)
 
         MemFree(guid);
     }
-    BongoArrayDestroy(&oldDuplicates, TRUE);
+    g_array_free(oldDuplicates, TRUE);
 
     if (ccode == 1000) {            
         return guids;
@@ -311,7 +311,7 @@ RemoveGuidForeach (void *key, void *value, void *data)
 }
 
 static int
-ImportJson(BongoArray *objects, 
+ImportJson(GArray *objects, 
            const char *user, 
            const char *calendarName,
            const char *icsName,
@@ -423,7 +423,7 @@ MsgImportIcs(FILE *fh,
     icalcomponent *component;
     BongoJsonObject *obj;
     BongoCalObject *cal;
-    BongoArray *objects;
+    GArray *objects;
     int ret;
     const char *icsName;
     char *icsNameDup = NULL;

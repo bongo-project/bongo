@@ -25,6 +25,7 @@
 #include <xpl.h>
 #include <bongojson.h>
 #include <connio.h>
+#include <glib.h>
 
 typedef struct _BongoJsonRpc BongoJsonRpc;
 typedef struct _BongoJsonRpcServer BongoJsonRpcServer;
@@ -34,7 +35,7 @@ typedef void (*BongoJsonRpcMethodFunc) (BongoJsonRpcServer *server,
                                        BongoJsonRpc *rpc,
                                        int requestId,
                                        const char *method, 
-                                       BongoArray *params,
+                                       GArray *params,
                                        void *userData);
 
 typedef BOOL (*BongoJsonRpcConnectionFunc) (BongoJsonRpcServer *server,
@@ -66,7 +67,7 @@ void BongoJsonRpcFree (BongoJsonRpc *rpc);
 
 BongoJsonObject *BongoJsonRpcRequest (BongoJsonRpc *rpc, 
                                     const char *method, 
-                                    BongoArray *params);
+                                    GArray *params);
 
 /* === Server Side === */
 BongoJsonRpcServer *BongoJsonRpcServerNew (Connection *listener);

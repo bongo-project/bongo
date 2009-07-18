@@ -51,7 +51,7 @@ typedef struct {
     BOOL crashy;
 } BongoAgent;
 
-static BongoArray *AllAgents;
+static GArray *AllAgents;
 static pid_t LeaderPID = 0;
 static pid_t SlapdPID = 0;
 static BOOL Exiting = FALSE;
@@ -65,7 +65,7 @@ FindAgentByPid(pid_t pid)
     unsigned int i;
     
     for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
+        BongoAgent *agent = &g_array_index(AllAgents, BongoAgent, i);
         if (agent->pid == pid) {
             return agent;
         }
@@ -77,13 +77,13 @@ FindAgentByPid(pid_t pid)
 static BOOL
 SetupAgentList(void)
 {
-    AllAgents = BongoArrayNew(sizeof(BongoAgent), 1);
+    AllAgents = g_array_new(FALSE, FALSE, sizeof(BongoAgent));
     
     BongoAgent store = {{0,} };
     store.spec.program = "bongostore";
     store.spec.priority = 0;
     store.enabled = TRUE;
-    BongoArrayAppendValue(AllAgents, store);
+    g_array_append_val(AllAgents, store);
 
     return TRUE;
 }
@@ -95,7 +95,7 @@ AgentsStillRunning(void)
     int ret = 0;
     
     for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
+        BongoAgent *agent = &g_array_index(AllAgents, BongoAgent, i);
         if (agent->pid != 0) {
             ret++;
         }
@@ -109,7 +109,7 @@ BlameAgents(void)
 {
     unsigned int i;
     for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
+        BongoAgent *agent = &g_array_index(AllAgents, BongoAgent, i);
         if (agent->pid != 0) {
             fprintf(stderr, "%s ", agent->spec.program);
         }
@@ -150,7 +150,7 @@ WaitingForCallbacks(void)
     unsigned int i;
 
     for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
+        BongoAgent *agent = &g_array_index(AllAgents, BongoAgent, i);
         if (agent->waitingForCallback) {
             return TRUE;
         }
@@ -237,7 +237,7 @@ ResetCrashiness(void)
     unsigned int i;
 
     for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
+        BongoAgent *agent = &g_array_index(AllAgents, BongoAgent, i);
         agent->crashy = FALSE;
         agent->lastCrash = 0;
         agent->numCrashes = 0;
@@ -283,7 +283,7 @@ StartAgentsWithPriority(int priority, BOOL onlyCrashed, BOOL printMessage)
     unsigned int i;
     
     for (i = 0; i < AllAgents->len; i++) {
-        BongoAgent *agent = &BongoArrayIndex(AllAgents, BongoAgent, i);
+        BongoAgent *agent = &g_array_index(AllAgents, BongoAgent, i);
         if (agent->enabled 
             && agent->spec.priority == priority
             && agent->pid == 0
@@ -306,7 +306,7 @@ LoadAgentConfiguration()
 	BOOL retcode = FALSE;
 	BongoJsonNode *node;
 	BongoJsonResult res;
-	BongoArray *agentlist;
+	GArray *agentlist;
 	unsigned int i;
 
 	if (! NMAPReadConfigFile("manager", &config) || (config == NULL)) {
@@ -332,7 +332,7 @@ LoadAgentConfiguration()
 		BongoJsonJPathGetInt(anode, "o:pri/i", &agent.spec.priority);
 		BongoJsonJPathGetString(anode, "o:name/s", &agent.spec.program);
 
-		BongoArrayAppendValue(AllAgents, agent);
+		g_array_append_val(AllAgents, agent);
 		HighestPriority = max(HighestPriority, agent.spec.priority); 
 	}
 	retcode = TRUE;

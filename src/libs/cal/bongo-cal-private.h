@@ -35,7 +35,7 @@
 struct _BongoCalObject {
     BongoJsonObject *json;
 
-    BongoArray *instances;
+    GArray *instances;
     BOOL instancesSorted;
     BongoHashtable *timezones;
     
@@ -88,7 +88,7 @@ struct _BongoCalTimezone {
     int offset;
 
     /* System and json-backed timezones */
-    BongoArray *changes;
+    GArray *changes;
 
     /* Json-backed timezones */
     BongoCalObject *cal;

@@ -419,8 +419,8 @@ ReadConfiguration(void) {
         return FALSE;
     }
 
-    for (i=0; i < BongoArrayCount(AVirus.clamd.hostlist); i++) {
-        char *hostitem = BongoArrayIndex(AVirus.clamd.hostlist, char*, i);
+    for (i=0; i < AVirus.clamd.hostlist->len; i++) {
+        char *hostitem = g_array_index(AVirus.clamd.hostlist, char*, i);
         char *lHost = MemStrdup(hostitem);
         char *host;
         int port, weight;

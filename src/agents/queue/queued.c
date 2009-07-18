@@ -158,18 +158,18 @@ BOOL aliasing(char *addr, int *cnt, unsigned char *buffer) {
     }
 
     /* if i get here, i've got a domain name that i can look up in the alias system */
-    i = BongoArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
+    i = GArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
     if (i > -1) {
         char new_addr[1000]; /* FIXME: seems a bit large */
         AliasStruct a;
 
         new_addr[0] = '\0';
-        a = BongoArrayIndex(Conf.aliasList, AliasStruct, i);
+        a = g_array_index(Conf.aliasList, AliasStruct, i);
 
         /* user aliases should take precedence over domain aliases.  check for one of those first */
-        if (a.aliases && a.aliases->len && ((i = BongoArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc)) > -1)) {
+        if (a.aliases && a.aliases->len && ((i = GArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc)) > -1)) {
             AliasStruct b;
-            b = BongoArrayIndex(a.aliases, AliasStruct, i);
+            b = g_array_index(a.aliases, AliasStruct, i);
             result = aliasing(b.to, cnt, buffer);
         } else if (a.to && a.to[0] != '\0') {
             /* there are no user aliasess is there a domain alias? */
@@ -258,7 +258,7 @@ int CommandDomainLocation(void *param) {
 	unsigned char *domain = client->buffer + 16;
 
 	/* now search for it */
-	int idx = BongoArrayFindSorted(Conf.hostedDomains, domain, (ArrayCompareFunc)hostedFindFunc);
+	int idx = GArrayFindSorted(Conf.hostedDomains, domain, (ArrayCompareFunc)hostedFindFunc);
 	if (idx > -1) {
 		ConnWriteF(client->conn, MSG1000LOCAL"\r\n", domain);
 	} else {
@@ -428,7 +428,7 @@ CheckTrustedHost(QueueClient *client)
     if (Conf.trustedHosts) {
         /* TODO: this can be optimized a little bit */
         XplRWReadLockAcquire(&Conf.lock);
-        i = BongoArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)hostedFindFunc);
+        i = GArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)hostedFindFunc);
         XplRWReadLockRelease(&Conf.lock);
     }
     return (i > -1);

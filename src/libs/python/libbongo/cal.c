@@ -111,7 +111,7 @@ cal_Collect(PyObject *self, PyObject *args)
 {
     JsonObject *json;
     BongoCalObject *cal;
-    BongoArray *occs;
+    GArray *occs;
     PyObject *dtstart;
     PyObject *dtend;
     const char *tzid;
@@ -140,12 +140,12 @@ cal_Collect(PyObject *self, PyObject *args)
     
     cal = BongoCalObjectNew(json->obj);
     
-    occs = BongoArrayNew(sizeof(BongoCalOccurrence), 16);
+    occs = g_array_sized_new(FALSE, FALSE, sizeof(BongoCalOccurrence), 16);
     if (BongoCalObjectCollect(cal, start, end, NULL, TRUE, occs)) {
         JsonArray *ret;
-        BongoArray *occsJson;
+        GArray *occsJson;
         occsJson = BongoCalOccurrencesToJson(occs, BongoCalObjectGetTimezone(cal, tzid));
-        BongoArrayFree(occs, TRUE);
+        g_array_free(occs, TRUE);
 
         ret = PyObject_New(JsonArray, &JsonArrayType);
         ret->array = occsJson;
@@ -153,7 +153,7 @@ cal_Collect(PyObject *self, PyObject *args)
 
         return (PyObject*)ret;
     } else {
-        BongoArrayFree(occs, TRUE);
+        g_array_free(occs, TRUE);
         Py_INCREF(Py_None);
         return Py_None;
     }

@@ -122,7 +122,7 @@ static void
 HandleRequest (BongoJsonRpcServer *server, BongoJsonRpc *rpc, BongoJsonObject *request)
 {
     const char *method;
-    BongoArray *params;
+    GArray *params;
     int requestId;
     MethodHandler *handler;
     

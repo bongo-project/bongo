@@ -29,9 +29,9 @@ QueryBuilderStart(QueryBuilder *builder)
 	builder->order_direction = ORDER_NONE;
 	builder->output_mode = MODE_COLLECTIONS;
 	
-	builder->properties = BongoArrayNew(sizeof(StorePropInfo *), 20);
-	builder->links = BongoArrayNew(sizeof(ExtraLink *), 10);
-	builder->parameters = BongoArrayNew(sizeof(QueryBuilder_Param *), 10);
+	builder->properties = g_array_sized_new(FALSE, FALSE, sizeof(StorePropInfo *), 20);
+	builder->links = g_array_sized_new(FALSE, FALSE, sizeof(ExtraLink *), 10);
+	builder->parameters = g_array_sized_new(FALSE, FALSE, sizeof(QueryBuilder_Param *), 10);
 	
 	return 0;
 }
@@ -52,25 +52,25 @@ QueryBuilderFinish(QueryBuilder *builder)
 	QueryParserFinish(&builder->external_parser);
 	
 	/* free all the properties */
-	for(x=0;x<BongoArrayCount(builder->properties);x++) {
-		newprop = BongoArrayIndex(builder->properties, StorePropInfo *, x);
+	for(x=0;x<builder->properties->len;x++) {
+		newprop = g_array_index(builder->properties, StorePropInfo *, x);
 		MemFree(newprop);
 	}
-	BongoArrayFree(builder->properties, TRUE);
+	g_array_free(builder->properties, TRUE);
 
 	/* free all the links */
-	for(x=0;x<BongoArrayCount(builder->links);x++) {
-		link = BongoArrayIndex(builder->links, ExtraLink *, x);
+	for(x=0;x<builder->links->len;x++) {
+		link = g_array_index(builder->links, ExtraLink *, x);
 		MemFree(link);
 	}
-	BongoArrayFree(builder->links, TRUE);
+	g_array_free(builder->links, TRUE);
 
 	/* free all the parameters */
-	for(x=0;x<BongoArrayCount(builder->parameters);x++) {
-		param = BongoArrayIndex(builder->parameters, QueryBuilder_Param *, x);
+	for(x=0;x<builder->parameters->len;x++) {
+		param = g_array_index(builder->parameters, QueryBuilder_Param *, x);
 		MemFree(param);
 	}
-	BongoArrayFree(builder->parameters, TRUE);
+	g_array_free(builder->parameters, TRUE);
 }
 
 /**
@@ -186,7 +186,7 @@ QueryBuilderAddParam(QueryBuilder *builder, int position,
 			return -1;
 	}
 	
-	BongoArrayAppendValues(builder->parameters, &p, 1);
+	g_array_append_val(builder->parameters, p);
 	return 0;
 }
 
@@ -209,8 +209,8 @@ QueryBuilderAddProperty(QueryBuilder *builder, char const *property, BOOL output
 	StorePropInfo *newprop;
 	unsigned int i;
 	
-	for (i=0; i < BongoArrayCount(builder->properties); i++) {
-		StorePropInfo *prop = BongoArrayIndex(builder->properties, StorePropInfo *, i);
+	for (i=0; i < builder->properties->len; i++) {
+		StorePropInfo *prop = g_array_index(builder->properties, StorePropInfo *, i);
 		
 		if (strcmp(prop->name, property) == 0) {
 			// we already have this property
@@ -222,12 +222,12 @@ QueryBuilderAddProperty(QueryBuilder *builder, char const *property, BOOL output
 	newprop = MemNew0(StorePropInfo, 1);
 	newprop->type = 0;
 	newprop->name = (char *)property;
-	newprop->index = BongoArrayCount(builder->properties);
+	newprop->index = builder->properties->len;
 	
 	StorePropertyFixup(newprop);
 	
 	newprop->output = output;
-	BongoArrayAppendValues(builder->properties, &newprop, 1);
+	g_array_append_val(builder->properties, newprop);
 	return 0;
 }
 
@@ -267,10 +267,10 @@ QueryBuilderFindExpressionProps(QueryBuilder *builder, struct expression *exp)
 			link->join_column = "related_guid";
 			link->test_column = "doc_guid";
 		}
-		link->pos = BongoArrayCount(builder->links);
+		link->pos = builder->links->len;
 		
 		// add the new link to our list of links
-		BongoArrayAppendValues(builder->links, &link, 1);
+		g_array_append_val(builder->links, link);
 		exp->exp1 = link;	// FIXME: [linkhack] very hacky :(
 		return 0;
 	}
@@ -342,8 +342,8 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	BongoStringBuilderAppend(&b, "SELECT so.guid, so.collection_guid, so.imap_uid, so.filename, so.type, so.flags, so.size, so.time_created, so.time_modified");
 	
 	// extra columns for additional properties
-	for (i=0; i < BongoArrayCount(builder->properties); i++) {
-		StorePropInfo *prop = BongoArrayIndex(builder->properties, StorePropInfo *, i);
+	for (i=0; i < builder->properties->len; i++) {
+		StorePropInfo *prop = g_array_index(builder->properties, StorePropInfo *, i);
 		// only add those columns which we want returned.
 		BongoStringBuilderAppend(&b, ", ");
 		QueryBuilderPropertyToColumn(builder, &b, prop);
@@ -355,14 +355,14 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	if (builder->linkin_conversations) {
 		BongoStringBuilderAppend(&b, " INNER JOIN conversation c ON so.guid=c.guid");
 	}
-	for (i=0; i < BongoArrayCount(builder->links); i++) {
-		ExtraLink *link = BongoArrayIndex(builder->links, ExtraLink *, i);
+	for (i=0; i < builder->links->len; i++) {
+		ExtraLink *link = g_array_index(builder->links, ExtraLink *, i);
 		BongoStringBuilderAppendF(&b, 
 			" INNER JOIN links link_%d ON so.guid=link_%d.%s",
 			i, i, link->join_column);
 	}
-	for (i=0; i < BongoArrayCount(builder->properties); i++) {
-		StorePropInfo *prop = BongoArrayIndex(builder->properties, StorePropInfo *, i);
+	for (i=0; i < builder->properties->len; i++) {
+		StorePropInfo *prop = g_array_index(builder->properties, StorePropInfo *, i);
 		// only add those columns which we want returned.
 		if ((prop->table_name == NULL) && (prop->column == NULL)) {
 			// FIXME. Both following queries should use bound parameters really.
@@ -378,7 +378,7 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 		}
 	}
 	
-	if (builder->int_query || builder->ext_query || (BongoArrayCount(builder->properties) > 0))
+	if (builder->int_query || builder->ext_query || (builder->properties->len > 0))
 		BongoStringBuilderAppend(&b, " WHERE ");
 	
 	// add in any constraints specified on the various columns

@@ -22,6 +22,7 @@
 
 /** \file spamd.c Code used by the anti-spam agent to use the spamd engine.
  */
+#define _NO_BONGO_GLOBALS
 
 #include <config.h>
 
@@ -53,7 +54,6 @@
  * \param 	queueID Queue-unique id of the message currently being processed. NMAP provides this in the callback.
  * \param 	hasFlags	To be documented
  * \param 	msgFlags	To be documented
- * \param	senderIp	IP address of the sending party
  * \param	senderUserName	Username of the sending party (FIXME - check this)
  * \return	True if infected.
  *
@@ -63,7 +63,7 @@
 /* #define VERBOSE_SPAMD */
 BOOL
 SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, 
-		   unsigned long msgFlags, unsigned long senderIp, char *senderUserName)
+		   unsigned long msgFlags)
 {   
     int ccode;
     BOOL infected;
@@ -267,7 +267,7 @@ this is commented out until we determine how we'd want to do this sort of thing,
 }
 
 static void
-ParseHost(char *buffer, char **host, unsigned short *port, unsigned long *weight)
+ParseHost(char *buffer, char **host, int *port, int *weight)
 {
     char *portPtr;
     char *weightPtr;
@@ -330,9 +330,8 @@ static BongoConfigItem SpamdConfigSchema[] = {
 };
 
 BOOL
-SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
+SpamdReadConfiguration(SpamdConfig *spamd)
 {
-    const char *tempHost;
     unsigned int i;
 
     memset(spamd, 0, sizeof(SpamdConfig));
@@ -344,8 +343,8 @@ SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node)
     if (!ReadBongoConfiguration(SpamdConfigSchema, "antispam"))
 	return FALSE;
 
-    for (i=0; i < BongoArrayCount(ASpam.spamd.hostlist); i++) {
-	char *hostitem = &BongoArrayIndex(ASpam.spamd.hostlist, char*, i);
+    for (i=0; i < ASpam.spamd.hostlist->len; i++) {
+	char *hostitem = g_array_index(ASpam.spamd.hostlist, char*, i);
         char *lHost = MemStrdup(hostitem);
         char *host;
         int port, weight;

@@ -381,14 +381,14 @@ static BongoJsonNode *
 BongoJsonParserNextArrayNode(BongoJsonParser *t)
 {
     BongoJsonNode *ret;
-    BongoArray *array;
+    GArray *array;
     
     if (BongoJsonParserNextClean(t) != '[') {
         BongoJsonParserError(t, BONGO_JSON_UNEXPECTED_CHAR);
         return NULL;
     }
 
-    array = BongoArrayNew(sizeof(BongoJsonNode *), 15);
+    array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode *), 15);
     ret = BongoJsonNodeNewArray(array);
 
     if (BongoJsonParserNextClean(t) == ']') {
@@ -405,7 +405,7 @@ BongoJsonParserNextArrayNode(BongoJsonParser *t)
             goto done;
         }
 
-        BongoArrayAppendValue(array, nextNode);
+        g_array_append_val(array, nextNode);
 
         switch(BongoJsonParserNextClean(t)) {
         case '0' :

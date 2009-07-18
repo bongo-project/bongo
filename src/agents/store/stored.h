@@ -341,7 +341,7 @@ CCode StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock);
 
 typedef struct {
     StoreClient *client;
-    BongoArray colls;
+    GArray *colls;
 } CollectionLockPool;
 
 int CollectionLockPoolInit(StoreClient *client, CollectionLockPool *pool);
@@ -349,7 +349,7 @@ void CollectionLockPoolDestroy(CollectionLockPool *pool);
 NLockStruct *CollectionLockPoolGet(CollectionLockPool *pool, uint64_t coll);
 
 
-typedef BongoArray WatchEventList;
+typedef GArray WatchEventList;
 
 int WatchEventListInit(WatchEventList *events);
 void WatchEventListDestroy(WatchEventList *events);

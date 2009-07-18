@@ -189,8 +189,8 @@ typedef BOOL (*CalObjFindNextFn)  (CalObjTime *cotime,
                                    CalObjTime *eventEnd,
                                    RecurData  *recurData,
                                    CalObjTime *intervalEnd);
-typedef BongoArray*       (*CalObjFilterFn)    (RecurData  *recurData,
-                                               BongoArray     *occs);
+typedef GArray*       (*CalObjFilterFn)    (RecurData  *recurData,
+                                               GArray     *occs);
 
 typedef struct _BongoCalRecurVTable BongoCalRecurVTable;
 struct _BongoCalRecurVTable {
@@ -230,7 +230,7 @@ static void BongoCalRecurGenerateInstancesOfRule (BongoCalInstance *inst,
                                                  BongoCalTimezone *defaultTimezone);
 
 static BOOL CalObjectGetRDateEnd        (CalObjTime     *occ,
-                                         BongoArray              *rdate_periods);
+                                         GArray              *rdate_periods);
 static void     CalObjectComputeDuration        (CalObjTime     *start,
                                                  CalObjTime     *end,
                                                  int            *days,
@@ -255,20 +255,20 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
                            BongoCalRecurInstanceFn cb,
                            void *cbData);
 
-static BongoArray* CalObjExpandRecurrence        (CalObjTime       *eventStart,
+static GArray* CalObjExpandRecurrence        (CalObjTime       *eventStart,
                                                  BongoCalTimezone     *zone,
                                                  BongoCalRule        *recur,
                                                  CalObjTime       *intervalStart,
                                                  CalObjTime       *intervalEnd,
                                                  BOOL     *finished);
 
-static BongoArray*       CalObjGenerateSetYearly (RecurData      *recurData,
+static GArray*       CalObjGenerateSetYearly (RecurData      *recurData,
                                                  BongoCalRecurVTable *vtable,
                                                  CalObjTime     *occ);
-static BongoArray*       CalObjGenerateSetMonthly (RecurData      *recurData,
+static GArray*       CalObjGenerateSetMonthly (RecurData      *recurData,
                                                  BongoCalRecurVTable *vtable,
                                                  CalObjTime     *occ);
-static BongoArray*       CalObjGenerateSetDefault        (RecurData      *recurData,
+static GArray*       CalObjGenerateSetDefault        (RecurData      *recurData,
                                                          BongoCalRecurVTable *vtable,
                                                          CalObjTime     *occ);
 
@@ -277,14 +277,14 @@ static BongoCalRecurVTable* CalObjGetVtable      (BongoCalRecurFrequency recurTy
 static void     CalObjInitializeRecurData       (RecurData      *recurData,
                                                  BongoCalRule      *recur,
                                                  CalObjTime     *eventStart);
-static void     CalObjSortOccurrences   (BongoArray              *occs);
+static void     CalObjSortOccurrences   (GArray              *occs);
 static int      CalObjCompareFunc       (const void     *arg1,
                                          const void     *arg2);
-static void     CalObjRemoveDuplicatesAndInvalidDates (BongoArray        *occs);
-static void     CalObjRemoveExceptions  (BongoArray              *occs,
-                                         BongoArray              *exOccs);
-static BongoArray*       CalObjBySetPosFilter            (BongoCalRule      *recur,
-                                                         BongoArray              *occs);
+static void     CalObjRemoveDuplicatesAndInvalidDates (GArray        *occs);
+static void     CalObjRemoveExceptions  (GArray              *occs,
+                                         GArray              *exOccs);
+static GArray*       CalObjBySetPosFilter            (BongoCalRule      *recur,
+                                                         GArray              *occs);
 
 
 static BOOL CalObjYearlyFindStartPosition (CalObjTime *eventStart,
@@ -363,45 +363,45 @@ static BOOL CalObjSecondlyFindNextPosition  (CalObjTime *cotime,
                                              CalObjTime *eventEnd,
                                              RecurData  *recurData,
                                              CalObjTime *intervalEnd);
-static BongoArray* CalObjByMonthExpand           (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByMonthFilter           (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByWeeknoExpand          (RecurData  *recurData,
-                                                 BongoArray     *occs);
+static GArray* CalObjByMonthExpand           (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByMonthFilter           (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByWeeknoExpand          (RecurData  *recurData,
+                                                 GArray     *occs);
 #if 0
 /* This isn't used at present. */
-static BongoArray* CalObjByWeeknoFilter          (RecurData  *recurData,
-                                                 BongoArray     *occs);
+static GArray* CalObjByWeeknoFilter          (RecurData  *recurData,
+                                                 GArray     *occs);
 #endif
-static BongoArray* CalObjByYeardayExpand         (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByYeardayFilter         (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjBymonthdayExpand        (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjBymonthdayFilter        (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByDayExpandYearly       (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByDayExpandMonthly      (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByDayExpandWeekly       (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjBydayFilter             (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByhourExpand            (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByhourFilter            (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByminuteExpand          (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjByminuteFilter          (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjBysecondExpand          (RecurData  *recurData,
-                                                 BongoArray     *occs);
-static BongoArray* CalObjBysecondFilter          (RecurData  *recurData,
-                                                 BongoArray     *occs);
+static GArray* CalObjByYeardayExpand         (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByYeardayFilter         (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjBymonthdayExpand        (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjBymonthdayFilter        (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByDayExpandYearly       (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByDayExpandMonthly      (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByDayExpandWeekly       (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjBydayFilter             (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByhourExpand            (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByhourFilter            (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByminuteExpand          (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjByminuteFilter          (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjBysecondExpand          (RecurData  *recurData,
+                                                 GArray     *occs);
+static GArray* CalObjBysecondFilter          (RecurData  *recurData,
+                                                 GArray     *occs);
 
 static void CalObjTimeAddMonths         (CalObjTime *cotime,
                                          int         months);
@@ -917,7 +917,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
                            BongoCalRecurInstanceFn cb,
                            void *cbData)
 {
-    BongoArray *occs, *exOccs, *tmpOccs, *rdatePeriods;
+    GArray *occs, *exOccs, *tmpOccs, *rdatePeriods;
     CalObjTime cotime, *occ;
     BongoSList *elem;
     unsigned int i;
@@ -938,9 +938,9 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
             chunkEnd->year, chunkEnd->hour,
             chunkEnd->minute, chunkEnd->second);
 
-    occs = BongoArrayNew(sizeof(CalObjTime), 0);
-    exOccs = BongoArrayNew(sizeof(CalObjTime), 0);
-    rdatePeriods = BongoArrayNew (sizeof (CalObjRecurrenceDate), 0);
+    occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+    exOccs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+    rdatePeriods = g_array_new (FALSE, FALSE, sizeof (CalObjRecurrenceDate));
 
     /* The original DTSTART property is included in the occurrence set,
        but not if we are just generating occurrences for a single rule. */
@@ -952,7 +952,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
             finished = FALSE;
         } else if (CalObjCompareFunc (eventStart, chunkStart) >= 0) {
             DPRINT("adding original DTSTART to the occurrence set\n");
-            BongoArrayAppendValues (occs, eventStart, 1);
+            g_array_append_val(occs, eventStart);
         }
     }
         
@@ -974,8 +974,8 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
         }
         DPRINT("added %d occurrences to %d existing occurrences\n", tmpOccs->len, occs->len);
 
-        BongoArrayAppendValues (occs, tmpOccs->data, tmpOccs->len);
-        BongoArrayFree (tmpOccs, TRUE);
+        g_array_append_vals(occs, tmpOccs->data, tmpOccs->len);
+        g_array_free(tmpOccs, TRUE);
     }
     DPRINT("finished %d\n", ruleFinished);
 
@@ -1028,12 +1028,12 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
 
             rdate.start = cotime;
             rdate.period = &p->value.period;
-            BongoArrayAppendValue (rdatePeriods, rdate);
+            g_array_append_val(rdatePeriods, rdate);
         }
 
         DPRINT("adding an rdate\n");
 
-        BongoArrayAppendValue (occs, cotime);
+        g_array_append_val(occs, cotime);
     }
 
     /* Expand each of the exception rules. */
@@ -1049,8 +1049,8 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
 
         DPRINT("adding exrules\n");
         
-        BongoArrayAppendValues (exOccs, tmpOccs->data, tmpOccs->len);
-        BongoArrayFree (tmpOccs, TRUE);
+        g_array_append_vals(exOccs, tmpOccs->data, tmpOccs->len);
+        g_array_free(tmpOccs, TRUE);
     }
 
     /* Add on specific exception dates. */
@@ -1091,7 +1091,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
 
         DPRINT("adding exdates\n");
 
-        BongoArrayAppendValue (exOccs, cotime);
+        g_array_append_val(exOccs, cotime);
     }
 
     /* Sort all the arrays. */
@@ -1115,7 +1115,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
     for (i = 0; i < occs->len; i++) {
         /* Convert each CalObjTime into a start & end time, and
            check it is within the bounds of the event & interval. */
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         DPRINT ("Checking occurrence: %s\n",
                  CalObjTimeToString (occ));
@@ -1204,9 +1204,9 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
             break;
     }
 
-    BongoArrayFree (occs, TRUE);
-    BongoArrayFree (exOccs, TRUE);
-    BongoArrayFree (rdatePeriods, TRUE);
+    g_array_free(occs, TRUE);
+    g_array_free(exOccs, TRUE);
+    g_array_free(rdatePeriods, TRUE);
 
     /* We return TRUE (i.e. carry on) only if the callback has always
        returned TRUE and we know that we have more occurrences to generate
@@ -1220,7 +1220,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
    is set it returns FALSE and the default duration will be used. */
 static BOOL
 CalObjectGetRDateEnd    (CalObjTime     *occ,
-                         BongoArray              *rdatePeriods)
+                         GArray              *rdatePeriods)
 {
     CalObjRecurrenceDate *rdate = NULL;
     BongoCalPeriod *p;
@@ -1232,7 +1232,7 @@ CalObjectGetRDateEnd    (CalObjTime     *occ,
     while (lower < upper) {
         middle = (lower + upper) >> 1;
           
-        rdate = &BongoArrayIndex (rdatePeriods, CalObjRecurrenceDate,
+        rdate = &g_array_index(rdatePeriods, CalObjRecurrenceDate,
                                  middle);
 
         cmp = CalObjCompareFunc (occ, &rdate->start);
@@ -1302,14 +1302,14 @@ CalObjectComputeDuration (CalObjTime *start,
 }
 
 
-/* Returns an unsorted BongoArray of CalObjTime's resulting from expanding the
+/* Returns an unsorted GArray of CalObjTime's resulting from expanding the
    given recurrence rule within the given interval. Note that it doesn't
    clip the generated occurrences to the interval, i.e. if the interval
    starts part way through the year this function still returns all the
    occurrences for the year. Clipping is done later.
    The finished flag is set to FALSE if there are more occurrences to generate
    after the given interval.*/
-static BongoArray*
+static GArray*
 CalObjExpandRecurrence          (CalObjTime *eventStart,
                                  BongoCalTimezone *zone,
                                  BongoCalRule *recur,
@@ -1321,11 +1321,11 @@ CalObjExpandRecurrence          (CalObjTime *eventStart,
     CalObjTime *eventEnd = NULL, eventEndCotime;
     RecurData recurData;
     CalObjTime occ, *cotime;
-    BongoArray *allOccs, *occs;
+    GArray *allOccs, *occs;
     int len;
 
     /* This is the resulting array of CalObjTime elements. */
-    allOccs = BongoArrayNew(sizeof(CalObjTime), 0);
+    allOccs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     *finished = TRUE;
 
@@ -1407,10 +1407,8 @@ CalObjExpandRecurrence          (CalObjTime *eventStart,
         len = occs->len - 1;
         if (eventEnd) {
             while (len >= 0) {
-                cotime = &BongoArrayIndex (occs, CalObjTime,
-                                          len);
-                if (CalObjCompareFunc (cotime,
-                                       eventEnd) <= 0)
+                cotime = &g_array_index(occs, CalObjTime, len);
+                if (CalObjCompareFunc (cotime, eventEnd) <= 0)
                     break;
                 len--;
             }
@@ -1418,9 +1416,9 @@ CalObjExpandRecurrence          (CalObjTime *eventStart,
 
         /* Add the occurrences onto the main array. */
         if (len >= 0)
-            BongoArrayAppendValues (allOccs, occs->data, len + 1);
+            g_array_append_vals(allOccs, occs->data, len + 1);
 
-        BongoArrayFree (occs, TRUE);
+        g_array_free(occs, TRUE);
 
         DPRINT("finding next position\n");
         /* Skip to the next period, or exit the loop if finished. */
@@ -1437,13 +1435,13 @@ CalObjExpandRecurrence          (CalObjTime *eventStart,
 }
 
 
-static BongoArray*
+static GArray*
 CalObjGenerateSetYearly (RecurData *recurData,
                          BongoCalRecurVTable *vtable,
                          CalObjTime *occ)
 {
     BongoCalRule *recur = recurData->recur;
-    BongoArray *occsArrays[4], *occs, *occs2;
+    GArray *occsArrays[4], *occs, *occs2;
     int numOccsArrays = 0, i;
 
     /* This is a bit complicated, since the iCalendar spec says that
@@ -1463,12 +1461,12 @@ CalObjGenerateSetYearly (RecurData *recurData,
        independantly.
 
        We expand the occurrences in parallel into the occsArrays[] array,
-       and then merge them all into one BongoArray before expanding BYHOUR,
+       and then merge them all into one GArray before expanding BYHOUR,
        BYMINUTE & BYSECOND. */
 
     if (recur->bymonth) {
-        occs = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs, occ, 1);
+        occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_val(occs, occ);
 
         occs = (*vtable->bymonth_filter) (recurData, occs);
 
@@ -1476,8 +1474,8 @@ CalObjGenerateSetYearly (RecurData *recurData,
            in parallel and add the results. */
         if (recur->bymonthday && recur->byday) {
             /* Copy the occs array. */
-            occs2 = BongoArrayNew (sizeof (CalObjTime), 0);
-            BongoArrayAppendValues (occs2, occs->data, occs->len);
+            occs2 = g_array_new(FALSE, FALSE, sizeof (CalObjTime));
+            g_array_append_vals(occs2, occs->data, occs->len);
 
             occs = (*vtable->bymonthday_filter) (recurData, occs);
             /* Note that we explicitly call the monthly version
@@ -1486,8 +1484,8 @@ CalObjGenerateSetYearly (RecurData *recurData,
                                               occs2);
 
             /* Add the 2 resulting arrays together. */
-            BongoArrayAppendValues (occs, occs2->data, occs2->len);
-            BongoArrayFree (occs2, TRUE);
+            g_array_append_vals(occs, occs2->data, occs2->len);
+            g_array_free(occs2, TRUE);
         } else {
             occs = (*vtable->bymonthday_filter) (recurData, occs);
             /* Note that we explicitly call the monthly version
@@ -1501,8 +1499,8 @@ CalObjGenerateSetYearly (RecurData *recurData,
     }
 
     if (recur->byweekno) {
-        occs = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs, occ, 1);
+        occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_val(occs, occ);
 
         occs = (*vtable->byweekno_filter) (recurData, occs);
         /* Note that we explicitly call the weekly version of the
@@ -1515,8 +1513,8 @@ CalObjGenerateSetYearly (RecurData *recurData,
     }
 
     if (recur->byyearday) {
-        occs = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs, occ, 1);
+        occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_val(occs, occ);
 
         occs = (*vtable->byyearday_filter) (recurData, occs);
 
@@ -1527,8 +1525,8 @@ CalObjGenerateSetYearly (RecurData *recurData,
     /* If BYMONTHDAY is set, and BYMONTH is not set, we need to
        expand BYMONTHDAY independantly. */
     if (recur->bymonthday && !recur->bymonth) {
-        occs = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs, occ, 1);
+        occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_val(occs, occ);
 
         occs = (*vtable->bymonthday_filter) (recurData, occs);
 
@@ -1540,8 +1538,8 @@ CalObjGenerateSetYearly (RecurData *recurData,
     /* If BYDAY is set, and BYMONTH and BYWEEKNO are not set, we need to
        expand BYDAY independantly. */
     if (recur->byday && !recur->bymonth && !recur->byweekno) {
-        occs = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs, occ, 1);
+        occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_val(occs, occ);
 
         occs = (*vtable->byday_filter) (recurData, occs);
 
@@ -1555,12 +1553,12 @@ CalObjGenerateSetYearly (RecurData *recurData,
         occs = occsArrays[0];
         for (i = 1; i < numOccsArrays; i++) {
             occs2 = occsArrays[i];
-            BongoArrayAppendValues (occs, occs2->data, occs2->len);
-            BongoArrayFree (occs2, TRUE);
+            g_array_append_vals(occs, occs2->data, occs2->len);
+            g_array_free(occs2, TRUE);
         }
     } else {
-        occs = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs, occ, 1);
+        occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_val(occs, occ);
     }
 
     /* Now expand BYHOUR, BYMINUTE & BYSECOND. */
@@ -1572,16 +1570,16 @@ CalObjGenerateSetYearly (RecurData *recurData,
 }
 
 
-static BongoArray*
+static GArray*
 CalObjGenerateSetMonthly (RecurData *recurData,
                          BongoCalRecurVTable *vtable,
                          CalObjTime *occ)
 {
-    BongoArray *occs, *occs2;
+    GArray *occs, *occs2;
 
     /* We start with just the one time in each set. */
-    occs = BongoArrayNew(sizeof(CalObjTime), 0);
-    BongoArrayAppendValues (occs, occ, 1);
+    occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+    g_array_append_val(occs, occ);
 
     occs = (*vtable->bymonth_filter) (recurData, occs);
 
@@ -1590,14 +1588,14 @@ CalObjGenerateSetMonthly (RecurData *recurData,
        then we would lose the occurrences generated by BYMONTHDAY, and
        instead have repetitions of the occurrences from BYDAY. */
     if (recurData->recur->bymonthday && recurData->recur->byday) {
-        occs2 = BongoArrayNew(sizeof(CalObjTime), 0);
-        BongoArrayAppendValues (occs2, occs->data, occs->len);
+        occs2 = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+        g_array_append_vals(occs2, occs->data, occs->len);
 
         occs = (*vtable->bymonthday_filter) (recurData, occs);
         occs2 = (*vtable->byday_filter) (recurData, occs2);
 
-        BongoArrayAppendValues (occs, occs2->data, occs2->len);
-        BongoArrayFree (occs2, TRUE);
+        g_array_append_vals(occs, occs2->data, occs2->len);
+        g_array_free(occs2, TRUE);
     } else {
         occs = (*vtable->bymonthday_filter) (recurData, occs);
         occs = (*vtable->byday_filter) (recurData, occs);
@@ -1611,20 +1609,20 @@ CalObjGenerateSetMonthly (RecurData *recurData,
 }
 
 
-static BongoArray*
+static GArray*
 CalObjGenerateSetDefault        (RecurData *recurData,
                                  BongoCalRecurVTable *vtable,
                                  CalObjTime *occ)
 {
-    BongoArray *occs;
+    GArray *occs;
 
     DPRINT ("Generating set for %i/%i/%i %02i:%02i:%02i\n",
             occ->day, occ->month + 1, occ->year, occ->hour, occ->minute,
             occ->second);
 
     /* We start with just the one time in the set. */
-    occs = BongoArrayNew(sizeof(CalObjTime), 0);
-    BongoArrayAppendValues (occs, occ, 1);
+    occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
+    g_array_append_val(occs, occ);
 
     occs = (*vtable->bymonth_filter) (recurData, occs);
     if (vtable->byweekno_filter)
@@ -1775,7 +1773,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
 
 
 static void
-CalObjSortOccurrences (BongoArray *occs)
+CalObjSortOccurrences (GArray *occs)
 {
     qsort (occs->data, occs->len, sizeof (CalObjTime),
            CalObjCompareFunc);
@@ -1783,7 +1781,7 @@ CalObjSortOccurrences (BongoArray *occs)
 
 
 static void
-CalObjRemoveDuplicatesAndInvalidDates (BongoArray *occs)
+CalObjRemoveDuplicatesAndInvalidDates (GArray *occs)
 {
     static const int days_in_month[12] = {
         31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
@@ -1795,7 +1793,7 @@ CalObjRemoveDuplicatesAndInvalidDates (BongoArray *occs)
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         keep_occ = TRUE;
 
         if (prev_occ && CalObjCompareFunc (occ,
@@ -1818,23 +1816,23 @@ CalObjRemoveDuplicatesAndInvalidDates (BongoArray *occs)
 
         if (keep_occ) {
             if (i != j)
-                BongoArrayIndex (occs, CalObjTime, j)
-                    = BongoArrayIndex (occs, CalObjTime, i);
+                g_array_index(occs, CalObjTime, j)
+                    = g_array_index(occs, CalObjTime, i);
             j++;
         }
 
         prev_occ = occ;
     }
 
-    BongoArraySetLength (occs, j);
+    g_array_set_size(occs, j);
 }
 
 
 /* Removes the exceptions from the exOccs array from the occurrences in the
    occs array, and removes any duplicates. Both arrays are sorted. */
 static void
-CalObjRemoveExceptions (BongoArray *occs,
-                        BongoArray *exOccs)
+CalObjRemoveExceptions (GArray *occs,
+                        GArray *exOccs)
 {
     CalObjTime *occ, *prevOcc = NULL, *exOcc = NULL, *lastOccKept;
     int i, j = 0, cmp, exIndex, occsLen, exOccsLen;
@@ -1848,10 +1846,10 @@ CalObjRemoveExceptions (BongoArray *occs,
     exOccsLen = exOccs->len;
 
     if (exOccsLen > 0)
-        exOcc = &BongoArrayIndex (exOccs, CalObjTime, exIndex);
+        exOcc = &g_array_index(exOccs, CalObjTime, exIndex);
 
     for (i = 0; i < occsLen; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         keepOcc = TRUE;
 
         /* If the occurrence is a duplicate of the previous one, skip
@@ -1866,7 +1864,7 @@ CalObjRemoveExceptions (BongoArray *occs,
                array was kept, set the RDATE flag of the last one,
                so we still use the end date or duration. */
             if (occ->flags && !currentTimeIsException) {
-                lastOccKept = &BongoArrayIndex (occs,
+                lastOccKept = &g_array_index(occs,
                                                  CalObjTime,
                                                  j - 1);
                 lastOccKept->flags = TRUE;
@@ -1902,7 +1900,7 @@ CalObjRemoveExceptions (BongoArray *occs,
                        end of array. */
                     exIndex++;
                     if (exIndex < exOccsLen)
-                        exOcc = &BongoArrayIndex (exOccs, CalObjTime, exIndex);
+                        exOcc = &g_array_index(exOccs, CalObjTime, exIndex);
                     else
                         exOcc = NULL;
 
@@ -1926,24 +1924,24 @@ CalObjRemoveExceptions (BongoArray *occs,
                changed (i.e. all previous occurrences were also
                kept). */
             if (i != j)
-                BongoArrayIndex (occs, CalObjTime, j)
-                    = BongoArrayIndex (occs, CalObjTime, i);
+                g_array_index(occs, CalObjTime, j)
+                    = g_array_index(occs, CalObjTime, i);
             j++;
         }
 
         prevOcc = occ;
     }
 
-    BongoArraySetLength (occs, j);
+    g_array_set_size(occs, j);
 }
 
 
 
-static BongoArray*
+static GArray*
 CalObjBySetPosFilter (BongoCalRule *recur,
-                      BongoArray     *occs)
+                      GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, pos;
@@ -1954,7 +1952,7 @@ CalObjBySetPosFilter (BongoCalRule *recur,
     if (!elem || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     /* Iterate over the indices given in bysetpos, adding the corresponding
        element from occs to new_occs. */
@@ -1971,13 +1969,13 @@ CalObjBySetPosFilter (BongoCalRule *recur,
             pos--;
 
         if (pos >= 0 && pos < len) {
-            occ = &BongoArrayIndex (occs, CalObjTime, pos);
-            BongoArrayAppendValues (new_occs, occ, 1);
+            occ = &g_array_index(occs, CalObjTime, pos);
+            g_array_append_val(new_occs, occ);
         }
         elem = elem->next;
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -2465,11 +2463,11 @@ CalObjSecondlyFindNextPosition (CalObjTime *cotime,
 
 /* If the BYMONTH rule is specified it expands each occurrence in occs, by
    using each of the months in the bymonth list. */
-static BongoArray*
+static GArray*
 CalObjByMonthExpand             (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i;
@@ -2479,22 +2477,22 @@ CalObjByMonthExpand             (RecurData  *recurData,
     if (!recurData->recur->bymonth || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->bymonth;
         while (elem) {
             /* NOTE: The day may now be invalid, e.g. 31st Feb. */
             occ->month = (int) (elem->data);
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -2502,11 +2500,11 @@ CalObjByMonthExpand             (RecurData  *recurData,
 
 /* If the BYMONTH rule is specified it filters out all occurrences in occs
    which do not match one of the months in the bymonth list. */
-static BongoArray*
+static GArray*
 CalObjByMonthFilter             (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int len, i;
 
@@ -2515,27 +2513,27 @@ CalObjByMonthFilter             (RecurData  *recurData,
     if (!recurData->recur->bymonth || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->months[occ->month])
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
 
-static BongoArray*
+static GArray*
 CalObjByWeeknoExpand            (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ, year_start_cotime, year_end_cotime, cotime;
     BongoList *elem;
     int len, i, weekno;
@@ -2545,11 +2543,11 @@ CalObjByWeeknoExpand            (RecurData  *recurData,
     if (!recurData->recur->byweekno || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         /* Find the day that would correspond to week 1 (note that
            week 1 is the first week starting from the specified week
@@ -2581,12 +2579,12 @@ CalObjByWeeknoExpand            (RecurData  *recurData,
 
             /* Skip occurrences if they fall outside the year. */
             if (cotime.year == occ->year)
-                BongoArrayAppendValue (new_occs, cotime);
+                g_array_append_val(new_occs, cotime);
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -2594,9 +2592,9 @@ CalObjByWeeknoExpand            (RecurData  *recurData,
 
 #if 0
 /* This isn't used at present. */
-static BongoArray*
+static GArray*
 CalObjByWeeknoFilter            (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
 
     return occs;
@@ -2604,11 +2602,11 @@ CalObjByWeeknoFilter            (RecurData  *recurData,
 #endif
 
 
-static BongoArray*
+static GArray*
 CalObjByYeardayExpand   (RecurData  *recurData,
-                         BongoArray     *occs)
+                         GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ, year_start_cotime, year_end_cotime, cotime;
     BongoList *elem;
     int len, i, dayno;
@@ -2618,11 +2616,11 @@ CalObjByYeardayExpand   (RecurData  *recurData,
     if (!recurData->recur->byyearday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         /* Find the day that would correspond to day 1. */
         year_start_cotime = *occ;
@@ -2651,23 +2649,23 @@ CalObjByYeardayExpand   (RecurData  *recurData,
 
             /* Skip occurrences if they fall outside the year. */
             if (cotime.year == occ->year)
-                BongoArrayAppendValue (new_occs, cotime);
+                g_array_append_val(new_occs, cotime);
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
 /* Note: occs must not contain invalid dates, e.g. 31st September. */
-static BongoArray*
+static GArray*
 CalObjByYeardayFilter   (RecurData  *recurData,
-                         BongoArray     *occs)
+                         GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int yearday, len, i, days_in_year;
 
@@ -2676,35 +2674,35 @@ CalObjByYeardayFilter   (RecurData  *recurData,
     if (!recurData->recur->byyearday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         yearday = CalObjDayOfYear (occ);
         if (recurData->yeardays[yearday]) {
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
         } else {
             days_in_year = BongoCalIsLeapYear (occ->year)
                 ? 366 : 365;
             if (recurData->negYeardays[days_in_year + 1
                                          - yearday])
-                BongoArrayAppendValues (new_occs, occ, 1);
+                g_array_append_val(new_occs, occ);
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
 
-static BongoArray*
+static GArray*
 CalObjBymonthdayExpand  (RecurData  *recurData,
-                         BongoArray     *occs)
+                         GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ, month_start_cotime, month_end_cotime, cotime;
     BongoList *elem;
     int len, i, dayno;
@@ -2714,11 +2712,11 @@ CalObjBymonthdayExpand  (RecurData  *recurData,
     if (!recurData->recur->bymonthday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         /* Find the day that would correspond to day 1. */
         month_start_cotime = *occ;
@@ -2743,29 +2741,29 @@ CalObjBymonthdayExpand  (RecurData  *recurData,
                 CalObjTimeAddDays (&cotime, dayno);
             }
             if (cotime.month == occ->month) {
-                BongoArrayAppendValue (new_occs, cotime);
+                g_array_append_val(new_occs, cotime);
             } else {
                 /* set to last day in month */
                 cotime.month = occ->month;
                 cotime.day = BongoCalDaysInMonth(occ->month, occ->year);
-                BongoArrayAppendValue (new_occs, cotime);
+                g_array_append_val(new_occs, cotime);
             }
                                 
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
-static BongoArray*
+static GArray*
 CalObjBymonthdayFilter  (RecurData  *recurData,
-                         BongoArray     *occs)
+                         GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int len, i, daysInMonth;
 
@@ -2774,32 +2772,32 @@ CalObjBymonthdayFilter  (RecurData  *recurData,
     if (!recurData->recur->bymonthday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->monthdays[occ->day]) {
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
         } else {
             daysInMonth = BongoCalDaysInMonth (occ->month, occ->year);
             if (recurData->negMonthdays[daysInMonth + 1 - occ->day])
-                BongoArrayAppendValues (new_occs, occ, 1);
+                g_array_append_val(new_occs, occ);
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
 
-static BongoArray*
+static GArray*
 CalObjByDayExpandYearly (RecurData  *recurData,
-                         BongoArray     *occs)
+                         GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i, weekday, week_num;
@@ -2811,11 +2809,11 @@ CalObjByDayExpandYearly (RecurData  *recurData,
     if (!recurData->recur->byday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->byday;
         while (elem) {
@@ -2834,7 +2832,7 @@ CalObjByDayExpandYearly (RecurData  *recurData,
                 CalObjTimeAddDays (occ, offset);
 
                 while (occ->year == year) {
-                    BongoArrayAppendValues (new_occs, occ, 1);
+                    g_array_append_val(new_occs, occ);
                     CalObjTimeAddDays (occ, 7);
                 }
 
@@ -2847,7 +2845,7 @@ CalObjByDayExpandYearly (RecurData  *recurData,
                 offset += (week_num - 1) * 7;
                 CalObjTimeAddDays (occ, offset);
                 if (occ->year == year)
-                    BongoArrayAppendValues (new_occs, occ, 1);
+                    g_array_append_val(new_occs, occ);
 
             } else {
                 /* Add the -nth Mon/Tue/etc. in the year. */
@@ -2858,7 +2856,7 @@ CalObjByDayExpandYearly (RecurData  *recurData,
                 offset += (week_num - 1) * 7;
                 CalObjTimeAddDays (occ, -offset);
                 if (occ->year == year)
-                    BongoArrayAppendValues (new_occs, occ, 1);
+                    g_array_append_val(new_occs, occ);
             }
 
             /* Reset the year, as we may have gone past the end. */
@@ -2866,17 +2864,17 @@ CalObjByDayExpandYearly (RecurData  *recurData,
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
-static BongoArray*
+static GArray*
 CalObjByDayExpandMonthly        (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i, weekday, week_num;
@@ -2889,11 +2887,11 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
     if (!recurData->recur->byday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->byday;
         while (elem) {
@@ -2913,7 +2911,7 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
 
                 while (occ->year == year
                        && occ->month == month) {
-                    BongoArrayAppendValues (new_occs, occ, 1);
+                    g_array_append_val(new_occs, occ);
                     CalObjTimeAddDays (occ, 7);
                 }
 
@@ -2925,7 +2923,7 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
                 offset += (week_num - 1) * 7;
                 CalObjTimeAddDays (occ, offset);
                 if (occ->year == year && occ->month == month)
-                    BongoArrayAppendValues (new_occs, occ, 1);
+                    g_array_append_val(new_occs, occ);
 
             } else {
                 /* Add the -nth Mon/Tue/etc. in the month. */
@@ -2942,7 +2940,7 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
 
                 CalObjTimeAddDays (occ, -offset);
                 if (occ->year == year && occ->month == month)
-                    BongoArrayAppendValues (new_occs, occ, 1);
+                    g_array_append_val(new_occs, occ);
             }
 
             /* Reset the year & month, as we may have gone past
@@ -2952,18 +2950,18 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
 /* Note: occs must not contain invalid dates, e.g. 31st September. */
-static BongoArray*
+static GArray*
 CalObjByDayExpandWeekly (RecurData  *recurData,
-                         BongoArray     *occs)
+                         GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i, weekday, week_num;
@@ -2978,11 +2976,11 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
     
     DPRINT("expanding byday\n");
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->byday;
         while (elem) {
@@ -3008,22 +3006,22 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
             CalObjTimeAddDays (occ, new_weekdayOffset - weekdayOffset);
 
             DPRINT("appending a value\n");
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
 
 
 /* Note: occs must not contain invalid dates, e.g. 31st September. */
-static BongoArray*
+static GArray*
 CalObjBydayFilter               (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int len, i, weekday;
 
@@ -3032,19 +3030,19 @@ CalObjBydayFilter               (RecurData  *recurData,
     if (!recurData->recur->byday || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         weekday = CalObjTimeWeekday (occ);
 
         /* See if the weekday on its own is set. */
         if (recurData->weekdays[weekday])
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -3053,11 +3051,11 @@ CalObjBydayFilter               (RecurData  *recurData,
 
 /* If the BYHOUR rule is specified it expands each occurrence in occs, by
    using each of the hours in the byhour list. */
-static BongoArray*
+static GArray*
 CalObjByhourExpand              (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i;
@@ -3067,21 +3065,21 @@ CalObjByhourExpand              (RecurData  *recurData,
     if (!recurData->recur->byhour || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->byhour;
         while (elem) {
             occ->hour = (int) (elem->data);
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -3089,11 +3087,11 @@ CalObjByhourExpand              (RecurData  *recurData,
 
 /* If the BYHOUR rule is specified it filters out all occurrences in occs
    which do not match one of the hours in the byhour list. */
-static BongoArray*
+static GArray*
 CalObjByhourFilter              (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int len, i;
 
@@ -3102,16 +3100,16 @@ CalObjByhourFilter              (RecurData  *recurData,
     if (!recurData->recur->byhour || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->hours[occ->hour])
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -3120,11 +3118,11 @@ CalObjByhourFilter              (RecurData  *recurData,
 
 /* If the BYMINUTE rule is specified it expands each occurrence in occs, by
    using each of the minutes in the byminute list. */
-static BongoArray*
+static GArray*
 CalObjByminuteExpand            (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i;
@@ -3134,21 +3132,21 @@ CalObjByminuteExpand            (RecurData  *recurData,
     if (!recurData->recur->byminute || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->byminute;
         while (elem) {
             occ->minute = (int) (elem->data);
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -3156,11 +3154,11 @@ CalObjByminuteExpand            (RecurData  *recurData,
 
 /* If the BYMINUTE rule is specified it filters out all occurrences in occs
    which do not match one of the minutes in the byminute list. */
-static BongoArray*
+static GArray*
 CalObjByminuteFilter            (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int len, i;
 
@@ -3169,16 +3167,16 @@ CalObjByminuteFilter            (RecurData  *recurData,
     if (!recurData->recur->byminute || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->minutes[occ->minute])
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -3187,11 +3185,11 @@ CalObjByminuteFilter            (RecurData  *recurData,
 
 /* If the BYSECOND rule is specified it expands each occurrence in occs, by
    using each of the seconds in the bysecond list. */
-static BongoArray*
+static GArray*
 CalObjBysecondExpand            (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
     int len, i;
@@ -3201,21 +3199,21 @@ CalObjBysecondExpand            (RecurData  *recurData,
     if (!recurData->recur->bysecond || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         elem = recurData->recur->bysecond;
         while (elem) {
             occ->second = (int) (elem->data);
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }
@@ -3223,11 +3221,11 @@ CalObjBysecondExpand            (RecurData  *recurData,
 
 /* If the BYSECOND rule is specified it filters out all occurrences in occs
    which do not match one of the seconds in the bysecond list. */
-static BongoArray*
+static GArray*
 CalObjBysecondFilter            (RecurData  *recurData,
-                                 BongoArray     *occs)
+                                 GArray     *occs)
 {
-    BongoArray *new_occs;
+    GArray *new_occs;
     CalObjTime *occ;
     int len, i;
 
@@ -3236,16 +3234,16 @@ CalObjBysecondFilter            (RecurData  *recurData,
     if (!recurData->recur->bysecond || occs->len == 0)
         return occs;
 
-    new_occs = BongoArrayNew(sizeof(CalObjTime), 0);
+    new_occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
 
     len = occs->len;
     for (i = 0; i < len; i++) {
-        occ = &BongoArrayIndex (occs, CalObjTime, i);
+        occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->seconds[occ->second])
-            BongoArrayAppendValues (new_occs, occ, 1);
+            g_array_append_val(new_occs, occ);
     }
 
-    BongoArrayFree (occs, TRUE);
+    g_array_free(occs, TRUE);
 
     return new_occs;
 }

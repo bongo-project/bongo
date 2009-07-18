@@ -471,7 +471,7 @@ ProcessEntry(void *clientp, Connection *conn)
 {
     int ccode;
     char *envelopeLine;
-    BongoArray *Recipients;
+    GArray *Recipients;
     RecipStruct CurrentRecip;
     SMTPClient *Queue = clientp;
     unsigned int startLocation, Length;
@@ -494,7 +494,7 @@ ProcessEntry(void *clientp, Connection *conn)
     }
 
     /* array of all the recipients and their information */
-    Recipients = BongoArrayNew(sizeof(RecipStruct), Queue->envelopeLines);
+    Recipients = g_array_sized_new(FALSE, FALSE, sizeof(RecipStruct), Queue->envelopeLines);
     
     /* parse the envelope lines.  since i could be changing the recipients later in the flow
      * i need to write out all lines as i go */
@@ -565,7 +565,7 @@ ProcessEntry(void *clientp, Connection *conn)
                     CurrentRecip.localPart = NULL;
                 }
 
-                BongoArrayAppendValue(Recipients, CurrentRecip);
+                g_array_append_val(Recipients, CurrentRecip);
                 break;
             }
         default:
@@ -581,7 +581,7 @@ ProcessEntry(void *clientp, Connection *conn)
     }
 
     /* now that we've got all recipients and locations, let's sort them to use connections more efficiently */
-    BongoArraySort(Recipients, (ArrayCompareFunc)RecipientCompare);
+    g_array_sort(Recipients, (ArrayCompareFunc)RecipientCompare);
 
     /* now i can skip over any duplicates an do lookups once per remote domain */
     for(startLocation=0;startLocation<Recipients->len;startLocation++) {
@@ -589,12 +589,12 @@ ProcessEntry(void *clientp, Connection *conn)
         RecipStruct NextRecip;
         unsigned char *lft;
 
-        CurrentRecip = BongoArrayIndex(Recipients, RecipStruct, startLocation);
+        CurrentRecip = g_array_index(Recipients, RecipStruct, startLocation);
         lft = CurrentRecip.SortField;
         Length=startLocation+1;
         while (Length < Recipients->len) {
             /* skip over duplicates */
-            NextRecip = BongoArrayIndex(Recipients, RecipStruct, Length);
+            NextRecip = g_array_index(Recipients, RecipStruct, Length);
             if (strcasecmp(NextRecip.SortField, lft) != 0) {
                 startLocation = Length-1; /* i'm going to inc at the end of the loop... */
                 break;
@@ -650,7 +650,7 @@ ProcessEntry(void *clientp, Connection *conn)
     }
 
     if (Recipients) {
-        BongoArrayFree(Recipients, TRUE);
+        g_array_free(Recipients, TRUE);
     }
     /* The caller will call the free function specified on agent init
      * which will free the queue struct.  the caller will then free the

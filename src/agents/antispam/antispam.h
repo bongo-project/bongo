@@ -69,19 +69,19 @@ typedef struct {
 
     Connection *conn;
 
-    unsigned int envelopeLength;
-    unsigned int messageLength;
-    unsigned int envelopeLines;
+    int envelopeLength;
+    int messageLength;
+    int envelopeLines;
 
     char qID[16];   /* holds the queueID */
-    unsigned char *envelope;
-    unsigned char line[CONN_BUFSIZE + 1];
+    char *envelope;
+    char line[CONN_BUFSIZE + 1];
     unsigned char command[CONN_BUFSIZE + 1];
 } ASpamClient;
 
 typedef struct {
     AddressPool hosts;
-    BongoArray *hostlist;
+    GArray *hostlist;
     BOOL enabled;
     unsigned long connectionTimeout;
 } SpamdConfig;
@@ -118,8 +118,6 @@ typedef struct _ASpamGlobals {
         } ssl;
 
         Connection *conn;
-
-        void *pool;
 
         time_t sleepTime;
 
@@ -160,9 +158,9 @@ typedef struct _ASpamGlobals {
 extern ASpamGlobals ASpam;
 
 /* spamd.c */
-BOOL SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags, unsigned long senderIp, char *senderUserName);
+BOOL SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL hasFlags, unsigned long msgFlags);
 void SpamdShutdown(SpamdConfig *spamd);
 void SpamdStartup(SpamdConfig *spamd);
-BOOL SpamdReadConfiguration(SpamdConfig *spamd, BongoJsonNode *node);
+BOOL SpamdReadConfiguration(SpamdConfig *spamd);
 
 #endif /* _ANTISPAM_H */

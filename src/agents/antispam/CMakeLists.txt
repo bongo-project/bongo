@@ -1,3 +1,5 @@
+StrictCompile()
+
 add_executable(bongoantispam
 	antispam.c
 	spamd.c

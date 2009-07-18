@@ -2,6 +2,7 @@
 #define QUERY_BUILDER_H
 
 #include "query-parser.h"
+#include <glib.h>
 
 typedef enum {
 	ORDER_NONE,
@@ -41,15 +42,15 @@ typedef struct {
 	BOOL linkin_conversations;	// whether or not we want to access conv. data
 	
 	// properties we reference in the queries
-	BongoArray *properties;		// what their names are
+	GArray *properties;		// what their names are
 	
 	// links we reference in the queries
-	BongoArray *links;		// linked documents to find
+	GArray *links;		// linked documents to find
 	
 	// internal query - something setup by the Bongo store as part of a command
 	char const *int_query;
 	struct parser_state internal_parser;
-	BongoArray *parameters;
+	GArray *parameters;
 	
 	// external query - additional constraints defined by the client
 	char const *ext_query;

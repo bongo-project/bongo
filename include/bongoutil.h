@@ -348,7 +348,8 @@ BongoSList *BongoSListDelete(BongoSList *list, void *data, BOOL deep);
 /** end lists.c **/
 
 /** begin array.c **/
-
+typedef int (*ArrayCompareFunc)(const void *, const void *);
+#if 0
 typedef struct _BongoArray BongoArray;
 
 struct _BongoArray {
@@ -358,7 +359,6 @@ struct _BongoArray {
     unsigned int elemSize;
 };
 
-typedef int (*ArrayCompareFunc)(const void *, const void *);
 
 int BongoArrayInit(BongoArray *array, 
                   unsigned int elementSize, unsigned int numElements);
@@ -381,6 +381,7 @@ int BongoArrayFindUnsorted(BongoArray *array, void *needle, ArrayCompareFunc com
 
 
 #define BongoArrayCount(arrayptr) ((arrayptr)->len)
+#endif
 
 /** end array.c **/
 

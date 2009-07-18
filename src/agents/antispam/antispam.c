@@ -78,19 +78,15 @@ static __inline int
 ProcessConnection(void *clientp, Connection *conn)
 {
     ASpamClient *client = clientp;
-    unsigned char *envelopeLine;
+    char *envelopeLine;
     BOOL hasFlags = FALSE;
     unsigned long msgFlags = 0;
     int ccode;
 
-    int length;
     unsigned long source = 0;
-    unsigned char *ptr;
+    char *ptr;
     char *ptr2;
-    unsigned char *cur;
-    unsigned char *line;
     char *senderUserName = NULL;
-    unsigned char qID[16];
     BOOL copy;
     BOOL blocked = FALSE;
 
@@ -129,7 +125,7 @@ ProcessConnection(void *clientp, Connection *conn)
         BONGO_ENVELOPE_NEXT(envelopeLine);
     }
 
-    blocked = SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags, source, senderUserName);
+    blocked = SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags);
 
 done:
 
@@ -152,7 +148,7 @@ done:
 
 static BOOL 
 ReadConfiguration(void) {
-    unsigned char *pconfig;
+    char *pconfig;
     BOOL retcode = FALSE;
     BongoJsonNode *node;
 
@@ -165,13 +161,17 @@ ReadConfiguration(void) {
         printf("manager: couldn't read config from store\n");
         return FALSE;
     }
+    if (! ReadBongoConfiguration(GlobalConfig, "global")) {
+        Log(LOG_ERROR, "Unable to read Global configration from the store.");
+        exit(-1);
+    }
 
     if (BongoJsonParseString(pconfig, &node) != BONGO_JSON_OK) {
         printf("manager: couldn't parse JSON config\n");
         goto finish;
     }
 
-    SpamdReadConfiguration(&ASpam.spamd, node);
+    SpamdReadConfiguration(&ASpam.spamd);
 
     retcode = TRUE;
 finish:
@@ -237,7 +237,7 @@ SignalHandler(int sigtype)
 XplServiceCode(SignalHandler)
 
 static void
-AntispamServer(void *ignored) {
+AntispamServer() {
     int minThreads, maxThreads, minSleep;
 
     BongoQueueAgentGetThreadPoolParameters(&ASpam.agent, &minThreads, &maxThreads, &minSleep);
@@ -257,7 +257,7 @@ AntispamServer(void *ignored) {
 }
 
 int
-XplServiceMain(int argc, char *argv[])
+XplServiceMain()
 {
     int ccode;
     int startupOpts;

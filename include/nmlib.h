@@ -131,7 +131,7 @@ BOOL NMAPInitialize();
 void NMAPSetEncryption(bongo_ssl_context *context);
 bongo_ssl_context *NMAPSSLContextAlloc(void);
 
-int NMAPSendCommand(Connection *conn, const unsigned char *command, size_t length);
+int NMAPSendCommand(Connection *conn, const char *command, size_t length);
 int NMAPSendCommandF(Connection *conn, const char *format, ...) XPL_PRINTF(2, 3);
 
 int NMAPReadResponse(Connection *conn, unsigned char *response, size_t length, BOOL check);
@@ -143,7 +143,7 @@ int NMAPRunCommandF(Connection *conn, char *response, size_t length, const char 
 
 /* Configuration function for agents etc. */
 BOOL
-NMAPReadConfigFile(const unsigned char *file, unsigned char **output);
+NMAPReadConfigFile(const char *file, char **output);
 
 int NMAPReadCrLf(Connection *conn);
 int NMAPReadPropertyValueLength(Connection *conn, const char *propertyName, size_t *propertyValueLen);
@@ -169,7 +169,7 @@ BongoCalObject *NMAPGetEvents(Connection *conn, const char *calendar, BongoCalTi
 BOOL NMAPAddEvent(Connection *conn, BongoCalObject *cal, const char *calendar, char *uid, int uidLen);
 
 /* NMAPReadAnswer and NMAPReadAnswerLine are deprecated in favor of NMAPReadResponse and NMAPReadResponseLine */
-int NMAPReadAnswer(Connection *conn, unsigned char *response, size_t length, BOOL checkForResult);
+int NMAPReadAnswer(Connection *conn, char *response, size_t length, BOOL checkForResult);
 int NMAPReadAnswerLine(Connection *conn, unsigned char *response, size_t length, BOOL checkForResult);
 
 Connection *NMAPConnect(unsigned char *address, struct sockaddr_in *addr);

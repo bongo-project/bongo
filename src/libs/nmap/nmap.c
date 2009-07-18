@@ -51,7 +51,7 @@ struct {
 };
 
 int 
-NMAPSendCommand(Connection *conn, const unsigned char *command, size_t length)
+NMAPSendCommand(Connection *conn, const char *command, size_t length)
 {
     int written;
 
@@ -1219,12 +1219,12 @@ NMAPRunCommandF(Connection *conn, char *response, size_t length, const char *for
  *    that; -1 otherwise.
  */
 int
-NMAPReadAnswer(Connection *conn, unsigned char *response, size_t length, BOOL checkForResult)
+NMAPReadAnswer(Connection *conn, char *response, size_t length, BOOL checkForResult)
 {
     int len;
     int result = -1;
     size_t count;
-    unsigned char *cur;
+    char *cur;
 
     len = ConnReadAnswer(conn, response, length);
     if (len > 0) {
@@ -1246,7 +1246,7 @@ NMAPReadAnswer(Connection *conn, unsigned char *response, size_t length, BOOL ch
 }
 
 BOOL
-NMAPReadConfigFile(const unsigned char *file, unsigned char **output)
+NMAPReadConfigFile(const char *file, char **output)
 {
     Connection *conn;
     char buffer[CONN_BUFSIZE + 1];

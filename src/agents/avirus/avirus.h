@@ -116,7 +116,7 @@ typedef struct _AVirusGlobals {
 
     struct {
         AddressPool hosts;
-        BongoArray *hostlist;
+        GArray *hostlist;
         BOOL enabled;
         unsigned long connectionTimeout;
     } clamd;

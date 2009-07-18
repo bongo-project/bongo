@@ -29,6 +29,7 @@
 #include <bongothreadpool.h>
 #include <connio.h>
 #include <bongomanagee.h>
+#include <glib.h>
 
 /* FIXME: need to tweak these */
 #define BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE (80 * 1024)
@@ -183,7 +184,7 @@ void BongoAgentShutdownFunc (BongoJsonRpcServer *server,
                             BongoJsonRpc *rpc, 
                             int requestId,
                             const char *method,
-                            BongoArray *args, 
+                            GArray *args, 
                             void *userData);
 
 #ifndef _NO_BONGO_GLOBALS

@@ -161,15 +161,15 @@ JsonPyToNode(PyObject *obj)
         node = BongoJsonNodeNewString(PyString_AsString(utf8));
         Py_DECREF(utf8);
     } else if (PyList_Check(obj)) {
-        BongoArray *array;
+        GArray *array;
         int len = PyList_Size(obj);
         int i;
 
-        array = BongoArrayNew(sizeof(BongoJsonNode*), len);
+        array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), len);
 
         for (i=0; i<len; i++) {
             BongoJsonNode *item = JsonPyToNode(PyList_GetItem(obj, i));
-            BongoArrayAppendValue(array, item);
+            g_array_append_val(array, item);
         }
 
         node = BongoJsonNodeNewArray(array);
@@ -230,7 +230,7 @@ JsonObjectToPyNative(BongoJsonObject *obj)
 }
 
 static PyObject *
-JsonArrayToPyNative(BongoArray *array)
+JsonArrayToPyNative(GArray *array)
 {
     PyObject *ret;
     unsigned int i;
@@ -331,7 +331,7 @@ int
 JsonArray_init(JsonArray *self, PyObject *args, PyObject *kwds)
 {
     self->own = TRUE;
-    self->array = BongoArrayNew(sizeof(BongoJsonNode*), 16);
+    self->array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 16);
     return 0;
 }
 

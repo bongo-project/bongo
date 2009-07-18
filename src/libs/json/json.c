@@ -26,7 +26,7 @@
 
 #define PRETTY_JSON 1
 
-static void BongoJsonArrayToStringBuilderInternal(BongoArray *array, BongoStringBuilder *sb, int depth);
+static void BongoJsonArrayToStringBuilderInternal(GArray *array, BongoStringBuilder *sb, int depth);
 static void BongoJsonObjectToStringBuilderInternal(BongoJsonObject *object, BongoStringBuilder *sb, int depth);
 
 BongoJsonNode *
@@ -116,7 +116,7 @@ BongoJsonJPathGetObject(BongoJsonNode *n, const char *path, BongoJsonObject **va
 }
 
 BongoJsonResult 
-BongoJsonJPathGetArray(BongoJsonNode *n, const char *path, BongoArray **val) {
+BongoJsonJPathGetArray(BongoJsonNode *n, const char *path, GArray **val) {
 	BongoJsonNode *result = BongoJsonJPath(n, path);
 	if (!result) return BONGO_JSON_NOT_FOUND;
 	if (result->type == BONGO_JSON_ARRAY) {
@@ -201,7 +201,7 @@ BongoJsonNodeNewObject(BongoJsonObject *val)
 }
 
 BongoJsonNode *
-BongoJsonNodeNewArray(BongoArray *val)
+BongoJsonNodeNewArray(GArray *val)
 {
     BongoJsonNode *node = MemMalloc0(sizeof(BongoJsonNode));
     node->type = BONGO_JSON_ARRAY;
@@ -446,13 +446,13 @@ BongoJsonNodeResolve(BongoJsonNode *node, const char *path, BongoJsonNode **out)
 
 /*** BongoJsonArray **/
 
-BongoArray *
-BongoJsonArrayDup(BongoArray *old)
+GArray *
+BongoJsonArrayDup(GArray *old)
 {
-    BongoArray *array;
+    GArray *array;
     unsigned int i;
 
-    array = BongoArrayNew(sizeof(BongoJsonNode*), old->len);
+    array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), old->len);
 
     for (i = 0; i < old->len; i++) {
         BongoJsonNode *node;
@@ -465,30 +465,29 @@ BongoJsonArrayDup(BongoArray *old)
 
 
 void
-BongoJsonArrayAppend(BongoArray *array, BongoJsonNode *node)
+BongoJsonArrayAppend(GArray *array, BongoJsonNode *node)
 {
-    BongoArrayAppendValue(array, node);
+    g_array_append_val(array, node);
 }
 
 void 
-BongoJsonArrayRemove(BongoArray *array, int i)
+BongoJsonArrayRemove(GArray *array, int i)
 {
     BongoJsonNode *node;
     
     node = BongoJsonArrayGet(array, i);
-    BongoArrayRemove(array, i);
+    g_array_remove_index(array, i);
     BongoJsonNodeFree(node);
 }
 
 void
-BongoJsonArrayRemoveSteal(BongoArray *array, int i)
+BongoJsonArrayRemoveSteal(GArray *array, int i)
 {
-    BongoArrayRemove(array, i);
-
+    g_array_remove_index(array, i);
 }
 
 char *
-BongoJsonArrayToString(BongoArray *array)
+BongoJsonArrayToString(GArray *array)
 {
     BongoStringBuilder sb;
     
@@ -499,7 +498,7 @@ BongoJsonArrayToString(BongoArray *array)
 }
 
 static void
-BongoJsonArrayToStringBuilderInternal(BongoArray *array, BongoStringBuilder *sb, int depth)
+BongoJsonArrayToStringBuilderInternal(GArray *array, BongoStringBuilder *sb, int depth)
 {
     unsigned int i;
     BOOL first;    
@@ -521,13 +520,13 @@ BongoJsonArrayToStringBuilderInternal(BongoArray *array, BongoStringBuilder *sb,
 }
 
 void
-BongoJsonArrayToStringBuilder(BongoArray *array, BongoStringBuilder *sb)
+BongoJsonArrayToStringBuilder(GArray *array, BongoStringBuilder *sb)
 {
     BongoJsonArrayToStringBuilderInternal(array, sb, 0);
 }
 
 void
-BongoJsonArrayFree(BongoArray *array)
+BongoJsonArrayFree(GArray *array)
 {
     unsigned int i;
 
@@ -538,7 +537,7 @@ BongoJsonArrayFree(BongoArray *array)
         BongoJsonNodeFree(node);
     }
 
-    BongoArrayFree(array, TRUE);
+    g_array_free(array, TRUE);
 }
 
 
@@ -692,7 +691,7 @@ BongoJsonObjectGetObject(BongoJsonObject *obj, const char *key, BongoJsonObject 
 }
 
 BongoJsonResult 
-BongoJsonObjectGetArray(BongoJsonObject *obj, const char *key, BongoArray **val)
+BongoJsonObjectGetArray(BongoJsonObject *obj, const char *key, GArray **val)
 {
     BongoJsonNode *node;
     BongoJsonResult res;
@@ -839,7 +838,7 @@ BongoJsonObjectPutObject(BongoJsonObject *obj, const char *key, BongoJsonObject 
 }
 
 BongoJsonResult
-BongoJsonObjectPutArray(BongoJsonObject *obj, const char *key, BongoArray *val)
+BongoJsonObjectPutArray(BongoJsonObject *obj, const char *key, GArray *val)
 {
     BongoJsonNode *node;
     

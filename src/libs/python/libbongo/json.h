@@ -28,7 +28,7 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     BOOL own;
-    BongoArray *array;
+    GArray *array;
 } JsonArray;
     
 /* Object protocol */

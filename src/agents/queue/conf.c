@@ -180,7 +180,7 @@ ReadConfiguration (BOOL *recover)
         Conf.defaultSequentialWorkers = Conf.maxSequentialWorkers;
     }
 
-    BongoArraySort(Conf.trustedHosts, (ArrayCompareFunc)strcmp);
+    g_array_sort(Conf.trustedHosts, (ArrayCompareFunc)strcmp);
     
     if (Conf.b_bounceReturn) {
         Conf.bounceHandling |= BOUNCE_RETURN;
@@ -195,11 +195,11 @@ ReadConfiguration (BOOL *recover)
     }
     
     /* sort the hostedDomains to make searching later faster. */
-    BongoArraySort(Conf.domains, (ArrayCompareFunc)hostedSortFunc);
+    g_array_sort(Conf.domains, (ArrayCompareFunc)hostedSortFunc);
 
     /* now let's iterate over the domains and read in any aliasing information for those domains */
     {
-        Conf.aliasList = BongoArrayNew(sizeof(struct _AliasStruct), Conf.domains->len);
+        Conf.aliasList = g_array_sized_new(FALSE, FALSE, sizeof(struct _AliasStruct), Conf.domains->len);
 
         unsigned int x;
         for(x=0;x<Conf.domains->len;x++) {
@@ -208,7 +208,7 @@ ReadConfiguration (BOOL *recover)
             BongoJsonNode *node;
             struct _AliasStruct a;
 
-            a.original = MemStrdup(BongoArrayIndex(Conf.domains, unsigned char *, x));
+            a.original = MemStrdup(g_array_index(Conf.domains, unsigned char *, x));
             a.to = NULL;
             a.aliases = NULL;
             a.mapping_type = 0;
@@ -225,7 +225,7 @@ ReadConfiguration (BOOL *recover)
                     if (BongoJsonJPathGetObject(node, "o:aliases/o", &obj) == BONGO_JSON_OK) {
                         BongoJsonObjectIter iter;
 
-                        a.aliases = BongoArrayNew(sizeof(struct _AliasStruct), 1);
+                        a.aliases = g_array_new(FALSE, FALSE, sizeof(struct _AliasStruct));
 
                         BongoJsonObjectIterFirst(obj, &iter);
                         while (iter.key) {
@@ -239,21 +239,21 @@ ReadConfiguration (BOOL *recover)
                             b.aliases = NULL;
                             b.mapping_type = 0;
 
-                            BongoArrayAppendValue(a.aliases, b);
+                            g_array_append_val(a.aliases, b);
 
                             BongoJsonObjectIterNext(obj, &iter);
                         }
-                        BongoArraySort(a.aliases, (ArrayCompareFunc)aliasCmpFunc);
+                        g_array_sort(a.aliases, (ArrayCompareFunc)aliasCmpFunc);
                     }
                     BongoJsonNodeFree(node);
                 }
             }
 
-            BongoArrayAppendValue(Conf.aliasList, a);
+            g_array_append_val(Conf.aliasList, a);
         }
 
         /* sort the list for speed later */
-        BongoArraySort(Conf.aliasList, (ArrayCompareFunc)aliasCmpFunc);
+        g_array_sort(Conf.aliasList, (ArrayCompareFunc)aliasCmpFunc);
     }
     return TRUE;
 }

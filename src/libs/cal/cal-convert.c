@@ -675,14 +675,14 @@ JsonRecurPropertyToIcalInt(char *key, BongoJsonNode *value, BongoStringBuilder *
 static void
 IcalRecurPropertyToJsonKeywordArray(char *key, char *value, BongoJsonObject *obj)
 {
-    BongoArray *array;
+    GArray *array;
     char *dup;
     char *split[100];
     int n;
     int i;
 
     dup = MemStrdup(value);    
-    array = BongoArrayNew(sizeof(BongoJsonNode*), 10);
+    array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 10);
 
     do {
         n = BongoStringSplit(value, ',', split, 100);
@@ -700,7 +700,7 @@ IcalRecurPropertyToJsonKeywordArray(char *key, char *value, BongoJsonObject *obj
 static void
 JsonRecurPropertyToIcalKeywordArray(char *key, BongoJsonNode *value, BongoStringBuilder *sb)
 {
-    BongoArray *array;
+    GArray *array;
     char *dup;
     BOOL first = TRUE;
     
@@ -729,14 +729,14 @@ JsonRecurPropertyToIcalKeywordArray(char *key, BongoJsonNode *value, BongoString
 static void
 IcalRecurPropertyToJsonIntArray(char *key, char *value, BongoJsonObject *obj)
 {
-    BongoArray *array;
+    GArray *array;
     char *dup;
     char *split[100];
     int n;
     int i;
 
     dup = MemStrdup(value);    
-    array = BongoArrayNew(sizeof(BongoJsonNode*), 10);
+    array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 10);
 
     do {
         n = BongoStringSplit(value, ',', split, 100);
@@ -753,7 +753,7 @@ IcalRecurPropertyToJsonIntArray(char *key, char *value, BongoJsonObject *obj)
 static void
 JsonRecurPropertyToIcalIntArray(char *key, BongoJsonNode *value, BongoStringBuilder *sb)
 {
-    BongoArray *array;
+    GArray *array;
     BOOL first = TRUE;
     
     array = BongoJsonNodeAsArray(value);
@@ -1063,7 +1063,7 @@ FindComponentTypeForIcal(icalcomponent *comp)
 static ComponentType *
 FindComponentTypeForJson(BongoJsonObject *obj)
 {
-    BongoArray *children;
+    GArray *children;
     
     /* A toplevel/vcalendar json component will have a "components" child */
     if (BongoJsonObjectGetArray(obj, "components", &children) == BONGO_JSON_OK) {
@@ -1099,13 +1099,13 @@ AddIcalSinglePropertyToJson(BongoJsonObject *obj, const char *name, icalproperty
 static void
 AddIcalMultiPropertyToJson(BongoJsonObject *obj, const char *name, icalproperty *prop)
 {
-    BongoArray *array;
+    GArray *array;
     BongoJsonObject *jsonProp;
 
     assert(name != NULL);
 
     if (BongoJsonObjectGetArray(obj, name, &array) != BONGO_JSON_OK) {
-        array = BongoArrayNew(sizeof(BongoJsonNode*), 10);
+        array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 10);
         BongoJsonObjectPutArray(obj, name, array);
     }
     
@@ -1147,7 +1147,7 @@ IcalComponentToJsonWithType(ComponentType *componentType, icalcomponent *compone
              child;
              child  = icalcomponent_get_next_component(component, ICAL_ANY_COMPONENT)) {
             BongoJsonObject *childObj;
-            BongoArray *children;
+            GArray *children;
             char *childAttribute;
             icalcomponent_kind childType;
             
@@ -1174,7 +1174,7 @@ IcalComponentToJsonWithType(ComponentType *componentType, icalcomponent *compone
             }
             
             if (BongoJsonObjectGetArray(obj, childAttribute, &children) != BONGO_JSON_OK) {
-                children = BongoArrayNew(sizeof(BongoJsonNode*), 2);
+                children = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 2);
                 BongoJsonObjectPutArray(obj, childAttribute, children);
             }
             
@@ -1222,7 +1222,7 @@ AddJsonValueToIcal(icalcomponent *comp, const char *propertyName, PropertyType *
 }
 
 static void
-JsonComponentArrayToIcal(BongoArray *array, icalcomponent *parent, BOOL recurse)
+JsonComponentArrayToIcal(GArray *array, icalcomponent *parent, BOOL recurse)
 {
     unsigned int i;
     
@@ -1266,7 +1266,7 @@ JsonComponentToIcalWithType(ComponentType *componentType, BongoJsonObject *obj, 
                                            iter.key);
 
         if (node->type == BONGO_JSON_ARRAY) {
-            BongoArray *array = BongoJsonNodeAsArray(node);
+            GArray *array = BongoJsonNodeAsArray(node);
             if (!XplStrCaseCmp(iter.key, "alarms")
                 || !XplStrCaseCmp(iter.key, "changes") 
                 || !XplStrCaseCmp(iter.key, "components") 
@@ -1340,13 +1340,13 @@ BongoCalIcalToJson(icalcomponent *comp)
 {
     BongoJsonObject *calObj;
     icalcomponent *child;
-    BongoArray *components;
+    GArray *components;
     
     DPRINT("converting component: %s\n", icalcomponent_as_ical_string(comp));
 
     calObj = BongoIcalComponentToJson(comp, FALSE);
     
-    components = BongoArrayNew(sizeof(BongoJsonNode *), 10);
+    components = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode *), 10);
 
     for (child = icalcomponent_get_first_component (comp, ICAL_ANY_COMPONENT);
          child;
@@ -1363,7 +1363,7 @@ BongoCalIcalToJson(icalcomponent *comp)
 }
 
 static BongoHashtable *
-GetTimezones(BongoArray *components)
+GetTimezones(GArray *components)
 {
     BongoHashtable *timezones;
     unsigned int i;
@@ -1394,7 +1394,7 @@ GetTimezones(BongoArray *components)
             
             if (BongoJsonObjectResolveString(object, "tzid/value", &tzid) == BONGO_JSON_OK) {
                 BongoHashtablePut(timezones, (char*)tzid, objectNode);
-                BongoArrayIndex(components, BongoJsonNode*, i) = NULL;
+                g_array_index(components, BongoJsonNode *, i) = NULL;
             }
         } 
     }
@@ -1403,7 +1403,7 @@ GetTimezones(BongoArray *components)
 }
 
 static BOOL
-HasTimezone(BongoArray *components, const char *tzid)
+HasTimezone(GArray *components, const char *tzid)
 {
     unsigned int i;
     for (i = 0; i < components->len; i++) {
@@ -1422,7 +1422,7 @@ HasTimezone(BongoArray *components, const char *tzid)
 
 
 static void
-AddTimezones(BongoArray *newComponents, 
+AddTimezones(GArray *newComponents, 
              BongoHashtable *tzs, 
              BongoJsonObject *component)
 {
@@ -1452,13 +1452,13 @@ AddTimezones(BongoArray *newComponents,
     }
 }
 
-BongoArray *
+GArray *
 BongoCalSplit(BongoJsonObject *obj)
 {
     BongoJsonNode *componentsNode;
-    BongoArray *components;
+    GArray *components;
     unsigned i;
-    BongoArray *ret;
+    GArray *ret;
     BongoHashtable *tzs;
     BongoHashtable *newObjs;
     
@@ -1480,12 +1480,12 @@ BongoCalSplit(BongoJsonObject *obj)
     /* What's left is a bare object with toplevel object attributes
      * and timezones.  We'll dup this for each new object.  */
 
-    ret = BongoArrayNew(sizeof (BongoJsonNode *), components->len);
+    ret = g_array_sized_new(FALSE, FALSE, sizeof (BongoJsonNode *), components->len);
     
     for(i = 0; i < components->len; i++) {
         BongoJsonObject *newObj;
         BongoJsonNode *componentNode;
-        BongoArray *newComponents;
+        GArray *newComponents;
         const char *uid;
         const char *type;
         
@@ -1516,7 +1516,7 @@ BongoCalSplit(BongoJsonObject *obj)
             if (uid) {
                 BongoHashtablePut(newObjs, (void*)uid, newObj);
             }
-            newComponents = BongoArrayNew(sizeof(BongoJsonNode*), 1);
+            newComponents = g_array_new(FALSE, FALSE, sizeof(BongoJsonNode*));
             BongoJsonObjectPutArray(newObj, "components", newComponents);
         }
 
@@ -1536,8 +1536,8 @@ BongoCalSplit(BongoJsonObject *obj)
     BongoHashtableDelete(tzs);
     BongoHashtableDelete(newObjs);
     
-    /* Use BongoArrayFree to prevent freeing the reparented nodes */
-    BongoArrayFree(components, TRUE);
+    /* Use g_array_free to prevent freeing the reparented nodes */
+    g_array_free(components, TRUE);
     BongoJsonObjectFree(obj);
 
     return ret;
@@ -1547,8 +1547,8 @@ static BongoJsonResult
 MergeObjectComponents(BongoJsonObject *dest, BongoJsonObject *src)
 {
     BongoJsonNode *srcComponentsNode;
-    BongoArray *srcComponents;
-    BongoArray *destComponents;
+    GArray *srcComponents;
+    GArray *destComponents;
     BongoJsonResult res;
     unsigned int i;
     
@@ -1590,8 +1590,8 @@ MergeObjectComponents(BongoJsonObject *dest, BongoJsonObject *src)
      * array ourselves */
     BongoJsonNodeFreeSteal(srcComponentsNode);
 
-    /* Use BongoArrayFree to prevent freeing the reparented nodes */
-    BongoArrayFree(srcComponents, TRUE);
+    /* Use g_array_free to prevent freeing the reparented nodes */
+    g_array_free(srcComponents, TRUE);
 
     return BONGO_JSON_OK;
 }

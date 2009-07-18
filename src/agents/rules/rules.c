@@ -45,11 +45,11 @@ GetMimeStructure(RulesClient *c)
     if (c->MimeStructure) {
         return Result;
     }
-    c->MimeStructure = BongoArrayNew(sizeof(char *), 1);
+    c->MimeStructure = g_array_new(FALSE, FALSE, sizeof(char *));
     if ((Result = NMAPSendCommandF(c->conn, "QMIME %s\r\n", c->qID)) != -1) {
         while ((Result = NMAPReadAnswer(c->conn, c->line, CONN_BUFSIZE, FALSE)) == 2002) {
             dup = MemStrdup(c->line);
-            BongoArrayAppendValue(c->MimeStructure, dup);
+            g_array_append_val(c->MimeStructure, dup);
         }
     }
     return Result;
@@ -278,8 +278,8 @@ ProcessRules(RulesClient *client)
                 case RULE_COND_BODY_NOT: {
                     GetMimeStructure(client);
 
-                    for (used = 0; used < BongoArrayCount(client->MimeStructure); used++) {
-                        ptr = BongoArrayIndex(client->MimeStructure, char *, used);
+                    for (used = 0; used < client->MimeStructure->len; used++) {
+                        ptr = g_array_index(client->MimeStructure, char *, used);
 
                         if ((XplStrNCaseCmp(ptr, "2002-text ", 10) == 0) 
                                 || (XplStrNCaseCmp(ptr, "2002 text ", 10) == 0)) {
@@ -357,8 +357,8 @@ ProcessRules(RulesClient *client)
                     GetMimeStructure(client);
                     //GET_MIME_STRUCTURE(client, ccode);
 
-                    for (used = 0; used < BongoArrayCount(client->MimeStructure); used++) {
-                        ptr = BongoArrayIndex(client->MimeStructure, char *, used);
+                    for (used = 0; used < client->MimeStructure->len; used++) {
+                        ptr = g_array_index(client->MimeStructure, char *, used);
 
                         if (XplStrNCaseCmp(ptr + 5, condition->string[0], condition->length[0]) == 0) {
                             result = TRUE;
@@ -378,8 +378,8 @@ ProcessRules(RulesClient *client)
                     //GET_MIME_STRUCTURE(client, ccode);
 
                     result = TRUE;
-                    for (used = 0; used < BongoArrayCount(client->MimeStructure); used++) {
-                        ptr = BongoArrayIndex(client->MimeStructure, char *, used);
+                    for (used = 0; used < client->MimeStructure->len; used++) {
+                        ptr = g_array_index(client->MimeStructure, char *, used);
 
                         if (XplStrNCaseCmp(ptr + 5, condition->string[0], condition->length[0]) == 0) {
                             result = FALSE;
@@ -618,10 +618,10 @@ ParseRules(RulesClient *client)
     BongoRule *rule = NULL;
 
     /* sort the array by rule id... */
-    BongoArraySort(client->RulesStrings, CompareRuleID);
+    g_array_sort(client->RulesStrings, CompareRuleID);
 
-    for (used = 0; used < BongoArrayCount(client->RulesStrings); used++) {
-        cur = BongoArrayIndex(client->RulesStrings, unsigned char *, used);
+    for (used = 0; used < client->RulesStrings->len; used++) {
+        cur = g_array_index(client->RulesStrings, unsigned char *, used);
         ptr = cur;
         limit = cur + strlen(cur);
 
@@ -1032,10 +1032,10 @@ RulesCleanupInformation(RulesClient *client)
     }
 
     if (client->MimeStructure) {
-        for(x=0;x<BongoArrayCount(client->MimeStructure);x++) {
-            MemFree(BongoArrayIndex(client->MimeStructure, char *, x));
+        for(x=0;x<client->MimeStructure->len;x++) {
+            MemFree(g_array_index(client->MimeStructure, char *, x));
         }
-        BongoArrayFree(client->MimeStructure, TRUE);
+        g_array_free(client->MimeStructure, TRUE);
         client->MimeStructure = NULL;
     }
 

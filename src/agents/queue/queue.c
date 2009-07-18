@@ -313,36 +313,36 @@ AddPushAgent(QueueClient *client,
 
     /* first look through the list to find the right queue */
     tempQueue.queue = queue;
-    ItemIndex = BongoArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
+    ItemIndex = GArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
     if (ItemIndex < 0) {
         /* there is no queue item in the array yet.  we need to initialize one */
         CurrentQueue = MemNew0(QueueList, 1);
         CurrentQueue->queue = queue;
-        CurrentQueue->pools = BongoArrayNew(sizeof(QueuePoolList *), 1);
-        BongoArrayAppendValue(Queue.PushClients.queues, CurrentQueue); 
+        CurrentQueue->pools = g_array_new(FALSE, FALSE, sizeof(QueuePoolList *));
+        g_array_append_val(Queue.PushClients.queues, CurrentQueue); 
     } else {
-        CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
+        CurrentQueue = g_array_index(Queue.PushClients.queues, QueueList *, ItemIndex);
     }
 
     /* CurrentQueue should be set now */
     strncpy(tempPool.identifier, identifier, 100);
-    ItemIndex = BongoArrayFindSorted(CurrentQueue->pools, &p_tempPool, FindPool);
+    ItemIndex = GArrayFindSorted(CurrentQueue->pools, &p_tempPool, FindPool);
     if (ItemIndex < 0) {
         /* there is no pool already.  we need to initialize one */
         CurrentPool = MemNew0(QueuePoolList, 1);
         strncpy(CurrentPool->identifier, identifier, 100);
         ConnAddressPoolStartup(&CurrentPool->pool, 5, 60);
-        BongoArrayAppendValue(CurrentQueue->pools, CurrentPool);
+        g_array_append_val(CurrentQueue->pools, CurrentPool);
     } else {
-        CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, ItemIndex);
+        CurrentPool = g_array_index(CurrentQueue->pools, QueuePoolList *, ItemIndex);
     }
 
     /* CurrentPool should be set now */
     ConnAddressPoolAddHost(&CurrentPool->pool, address, htons(port), 1);   /* the protocol doesn't support passing a weight so weight everything equally */
 
     /* resort both arrays */
-    BongoArraySort(CurrentQueue->pools, FindPool);
-    BongoArraySort(Queue.PushClients.queues, FindQueue);
+    g_array_sort(CurrentQueue->pools, FindPool);
+    g_array_sort(Queue.PushClients.queues, FindQueue);
 
     XplMutexUnlock(Queue.PushClients.lock);
     return 0;
@@ -355,16 +355,16 @@ RemoveAllPushAgents(void)
     QueuePoolList *CurrentPool;
 
     XplMutexLock(Queue.PushClients.lock);
-    while (BongoArrayCount(Queue.PushClients.queues)) {
-        CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, 0);
-        while (BongoArrayCount(CurrentQueue->pools)) {
-            CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, 0);
+    while (Queue.PushClients.queues->len) {
+        CurrentQueue = g_array_index(Queue.PushClients.queues, QueueList *, 0);
+        while (CurrentQueue->pools->len) {
+            CurrentPool = g_array_index(CurrentQueue->pools, QueuePoolList *, 0);
             ConnAddressPoolShutdown(&(CurrentPool->pool));
-            BongoArrayRemove(CurrentQueue->pools, 0);
+            g_array_remove_index_fast(CurrentQueue->pools, 0);
             MemFree(CurrentPool);
         }
         MemFree(CurrentQueue);
-        BongoArrayRemove(Queue.PushClients.queues, 0);
+        g_array_remove_index_fast(Queue.PushClients.queues, 0);
     }
 
     XplMutexUnlock(Queue.PushClients.lock);
@@ -1432,11 +1432,11 @@ StartOver:
 
     /* i want to get the current queue and iterate over its pools if there are any */
     tempQueue.queue = queue;
-    ItemIndex = BongoArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
+    ItemIndex = GArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
     if (ItemIndex >= 0) {
-        QueueList *CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
-        for (iter_p=0; iter_p < BongoArrayCount(CurrentQueue->pools); iter_p++) {
-            QueuePoolList *CurrentPool = BongoArrayIndex(CurrentQueue->pools, QueuePoolList *, iter_p);
+        QueueList *CurrentQueue = g_array_index(Queue.PushClients.queues, QueueList *, ItemIndex);
+        for (iter_p=0; iter_p < CurrentQueue->pools->len; iter_p++) {
+            QueuePoolList *CurrentPool = g_array_index(CurrentQueue->pools, QueuePoolList *, iter_p);
 
             sprintf(path, "%s/c%s.%03d", Conf.spoolPath, entry, queue);
             stat(path, &sb);
@@ -1552,8 +1552,8 @@ StartOver:
              * and take the next item in the array!! */
             if (ItemIndex >= 0) {
                 /* i can safely cast the int here to an unsigned as i know that it is positive */
-                if ((unsigned int)++ItemIndex < BongoArrayCount(Queue.PushClients.queues)) {
-                    CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
+                if ((unsigned int)++ItemIndex < Queue.PushClients.queues->len) {
+                    CurrentQueue = g_array_index(Queue.PushClients.queues, QueueList *, ItemIndex);
                     i = CurrentQueue->queue;
                 } else {
                     /* there are no more agents, we can just jump straight to Q_OUTGOING */
@@ -1565,8 +1565,8 @@ StartOver:
                  * way of finding this out without looping over the whole array */
                 i = Q_OUTGOING;
                 /* i can safely cast here as ItemIndex is never going to be less than 0 */
-                for (ItemIndex=0;(unsigned int)ItemIndex<BongoArrayCount(Queue.PushClients.queues);ItemIndex++) {
-                    CurrentQueue = BongoArrayIndex(Queue.PushClients.queues, QueueList *, ItemIndex);
+                for (ItemIndex=0;(unsigned int)ItemIndex<Queue.PushClients.queues->len;ItemIndex++) {
+                    CurrentQueue = g_array_index(Queue.PushClients.queues, QueueList *, ItemIndex);
                     if (CurrentQueue->queue > queue) {
                         i = CurrentQueue->queue;
                         break;
@@ -2501,7 +2501,7 @@ QueueInit(void)
     Queue.queueID = time(NULL) & ((1 << 28) - 1);
 
     XplMutexInit(Queue.PushClients.lock);
-    Queue.PushClients.queues = BongoArrayNew(sizeof(QueueList *), 1);
+    Queue.PushClients.queues = g_array_new(FALSE, FALSE, sizeof(QueueList *));
 
     return TRUE;
 }
@@ -2519,7 +2519,7 @@ QueueShutdown(void)
     XplMutexDestroy(Queue.queueIDLock);
 
     XplMutexDestroy(Queue.PushClients.lock);
-    BongoArrayDestroy(Queue.PushClients.queues, TRUE);
+    g_array_free(Queue.PushClients.queues, TRUE);
 }
 
 int 

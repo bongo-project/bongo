@@ -24,6 +24,7 @@
 
 #include <xpl.h>
 #include <bongojson.h>
+#include <glib.h>
 
 XPL_BEGIN_C_LINKAGE
 
@@ -230,7 +231,7 @@ BongoHashtable *BongoCalObjectGetTimezones(BongoCalObject *cal);
 void BongoCalObjectResolveSystemTimezones(BongoCalObject *cal);
 void BongoCalObjectStripSystemTimezones(BongoCalObject *cal);
 
-BongoArray *BongoCalObjectGetInstances(BongoCalObject *cal);
+GArray *BongoCalObjectGetInstances(BongoCalObject *cal);
 
 BOOL BongoCalObjectIsSingle(BongoCalObject *cal);
 BongoCalInstance *BongoCalObjectGetSingleInstance(BongoCalObject *cal);
@@ -246,7 +247,7 @@ BOOL BongoCalObjectCollect(BongoCalObject *cal,
                           BongoCalTime end,
                           BongoCalTimezone *tz,
                           BOOL generate,
-                          BongoArray *instances);
+                          GArray *instances);
 
 /* Return the primary occurrence of a cal object */
 BongoCalOccurrence BongoCalObjectPrimaryOccurrence(BongoCalObject *cal,
@@ -335,8 +336,8 @@ BOOL BongoCalInstanceCrosses(BongoCalInstance *instance,
                             BongoCalTime end);
 
 BongoJsonObject *BongoCalOccurrenceToJson(BongoCalOccurrence occ, BongoCalTimezone *tz);
-BongoArray *BongoCalOccurrencesToJson(BongoArray *occs, BongoCalTimezone *tz);
-void BongoCalOccurrencesSort(BongoArray *occs);
+GArray *BongoCalOccurrencesToJson(GArray *occs, BongoCalTimezone *tz);
+void BongoCalOccurrencesSort(GArray *occs);
 
 /*** BongoCalTimezone ***/
 
@@ -419,7 +420,7 @@ BongoCalType BongoCalTypeFromJson(BongoJsonObject *object);
 
 /* Split a json calendar object into a json array of calendar objects
  * with one uid per object.  Destroys the original object */
-BongoArray *BongoCalSplit(BongoJsonObject *obj);
+GArray *BongoCalSplit(BongoJsonObject *obj);
 
 /* Merge a json calendar object into another one.  Destroys src */
 BongoJsonResult BongoCalMerge(BongoJsonObject *dest, BongoJsonObject *src);

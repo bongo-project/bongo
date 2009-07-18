@@ -669,7 +669,8 @@ int
 CollectionLockPoolInit(StoreClient *client, CollectionLockPool *pool)
 {
     pool->client = client;
-    return BongoArrayInit(&pool->colls, sizeof(colldatum), 8);
+    pool->colls = g_array_sized_new(FALSE, FALSE, sizeof(colldatum), 8);
+    return 0;
 }
 
 
@@ -678,13 +679,13 @@ CollectionLockPoolDestroy(CollectionLockPool *pool)
 {
     unsigned int i;
 
-    for (i = 0; i < pool->colls.len; i++) {
-        colldatum coll = BongoArrayIndex(&pool->colls, colldatum, i);
+    for (i = 0; i < pool->colls->len; i++) {
+        colldatum coll = g_array_index(pool->colls, colldatum, i);
 
         StoreReleaseCollectionLock(pool->client, &coll.lock);
     }
 
-    BongoArrayDestroy(&pool->colls, TRUE);
+    g_array_free(pool->colls, TRUE);
 }
 
 
@@ -694,8 +695,8 @@ CollectionLockPoolGet(CollectionLockPool *pool, uint64_t guid)
     colldatum coll;
     unsigned int i;
     
-    for (i = 0; i < pool->colls.len; i++) {
-        colldatum coll = BongoArrayIndex(&pool->colls, colldatum, i);
+    for (i = 0; i < pool->colls->len; i++) {
+        colldatum coll = g_array_index(pool->colls, colldatum, i);
         
         if (guid == coll.guid) {
             return coll.lock;
@@ -706,7 +707,7 @@ CollectionLockPoolGet(CollectionLockPool *pool, uint64_t guid)
         return NULL;
     }
     coll.guid = guid;
-    BongoArrayAppendValue(&pool->colls, coll);
+    g_array_append_val(pool->colls, coll);
     return coll.lock;
 }
 

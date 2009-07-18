@@ -42,7 +42,7 @@ typedef struct _QueuePushClient {
 typedef struct _QueueList {
     int queue;
 
-    BongoArray *pools;
+    GArray *pools;
 } QueueList;
 
 typedef struct _QueuePoolList {
@@ -64,7 +64,7 @@ typedef struct _Queue {
     struct {
         XplMutex lock;
 
-        BongoArray *queues;
+        GArray *queues;
     } PushClients;
 
     /* Worker threads */

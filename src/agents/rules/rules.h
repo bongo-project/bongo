@@ -94,8 +94,8 @@ typedef struct {
     BongoConfigItem rulesConfig[2];
     BongoConfigItem UserConfig[2];
 
-    BongoArray *RulesStrings;
-    BongoArray *MimeStructure;
+    GArray *RulesStrings;
+    GArray *MimeStructure;
 
     struct {
         BongoRule *head;

@@ -57,11 +57,11 @@ BongoAgentHandleSignal(BongoAgent *agent,
 			snprintf(path, XPL_MAX_PATH, "%s/guru-meditation-%d", XPL_DEFAULT_WORK_DIR, (int)time(NULL));
 			boomfile = open(path, O_CREAT | O_WRONLY);
 			if (boomfile != -1) {
-				void * const buffer[buff_size];
+				void * buffer[buff_size];
 				int buff_used;
 				
-				buff_used = backtrace(&buffer, buff_size);
-				backtrace_symbols_fd(&buffer, buff_used, boomfile);
+				buff_used = backtrace(buffer, buff_size);
+				backtrace_symbols_fd(buffer, buff_used, boomfile);
 				close(boomfile);
 			}
 			XplExit(-1);
@@ -109,14 +109,14 @@ FreeBongoConfiguration(BongoConfigItem *config) {
 			case BONGO_JSON_ARRAY: {
 					BongoConfigItem *sub = config->destination;
 					/* sub->destination here is the address of a pointer to an array */
-					BongoArray **output = (BongoArray **)sub->destination;                    
+					GArray **output = (GArray **)sub->destination;                    
 					if (sub->type == BONGO_JSON_STRING) {
 						int x;
-						for(x=0;x<BongoArrayCount(*output);x++) {
-							MemFree(BongoArrayIndex(*output, char *, x));
+						for(x=0;x<(*output)->len;x++) {
+							MemFree(g_array_index(*output, char *, x));
 						}
 					}
-					BongoArrayFree(*output, TRUE);
+                    g_array_free(*output, TRUE);
 				}
 				break;
 			default:
@@ -165,21 +165,21 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 			break;
 		case BONGO_JSON_ARRAY: {
 			BongoConfigItem *subschema = (BongoConfigItem *)schema->destination;
-			BongoArray **output = (BongoArray **)subschema->destination;
-			BongoArray *data, *result = NULL;
+			GArray **output = (GArray **)subschema->destination;
+			GArray *data, *result = NULL;
 			int size;
 
 			data = BongoJsonNodeAsArray(node);
-			size = BongoArrayCount(data);
+			size = data->len;
 			
 			switch (subschema->type) {
 				case BONGO_JSON_BOOL: { 
 					BOOL dest;
 					int i;
-					result = BongoArrayNew(sizeof(BOOL), size);
+                    result = g_array_sized_new(FALSE, FALSE, sizeof(BOOL), size);
 					for(i = 0; i < size; i++) {
 						if (BongoJsonArrayGetBool(data, i, &dest) == BONGO_JSON_OK) {
-							BongoArrayAppendValue(result, dest);
+                            g_array_append_val(result, dest);
 						} else {
 							return FALSE;
 						}
@@ -188,10 +188,10 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 					break;
 				case BONGO_JSON_INT: {
 					int dest, i;
-					result = BongoArrayNew(sizeof(int), size);
+                    result = g_array_sized_new(FALSE, FALSE, sizeof(int), size);
 					for(i = 0; i < size; i++) {
 						if (BongoJsonArrayGetInt(data, i, &dest) == BONGO_JSON_OK) {
-							BongoArrayAppendValue(result, dest);
+                            g_array_append_val(result, dest);
 						} else {
 							return FALSE;
 						}
@@ -202,11 +202,11 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 					const char *dest;
 					int i;
 					char *newstr;
-					result = BongoArrayNew(sizeof(char *), size);
+                    result = g_array_sized_new(FALSE, FALSE, sizeof(char *), size);
 					for (i=0; i<size; i++) {
 						if (BongoJsonArrayGetString(data, i, &dest) == BONGO_JSON_OK) {
 							newstr = MemStrdup(dest);
-							BongoArrayAppendValue(result, newstr);
+                            g_array_append_val(result, newstr);
 						} else {
 							return FALSE;
 						}
@@ -766,7 +766,7 @@ BongoAgentShutdownFunc (BongoJsonRpcServer *server,
                        BongoJsonRpc *rpc,
                        int requestId,
                        const char *method,
-                       BongoArray *args, 
+                       GArray *args, 
                        void *userData)
 {
     kill (getpid (), SIGTERM);
