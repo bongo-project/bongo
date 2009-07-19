@@ -522,7 +522,7 @@ QueueServer(void *ignored)
 
     /* Shutting down */
     if (Agent.clientListener) {
-        ConnClose(Agent.clientListener, 1);
+        ConnClose(Agent.clientListener);
         Agent.clientListener = NULL;
     }
 

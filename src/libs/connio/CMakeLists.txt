@@ -1,3 +1,4 @@
+#StrictCompile()
 
 add_library(bongoconnio SHARED
 	connio.c

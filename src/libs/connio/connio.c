@@ -99,14 +99,12 @@ __gnutls_new(Connection *conn, bongo_ssl_context *context, gnutls_connection_end
 }
 
 BOOL 
-ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
+ConnStartup(unsigned long TimeOut)
 {
     /**
      * Start up the connio library - must be initialised before use
      */
     int i;
-    unsigned char c;
-    unsigned char seed[129];
     FILE *genparams;
 
     /* initialize the gnutls library */
@@ -164,22 +162,9 @@ ConnStartup(unsigned long TimeOut, BOOL EnableSSL)
     ConnIO.allocated.head = NULL;
     ConnIO.encryption.enabled = FALSE;
     ConnIO.trace.enabled = FALSE;
+    ConnIO.encryption.enabled = TRUE;
 
     IPInit();
-
-    if (EnableSSL && (ConnIO.encryption.enabled == FALSE)) {
-        ConnIO.encryption.enabled = TRUE;
-
-        srand((unsigned int)time(NULL));
-
-        memset(seed, 0, sizeof(seed));
-        for (i = 0; i < 64; i++) {
-            c = ' ' + ((unsigned char)rand() % 0x60) ;
-            sprintf(seed + (i * 2), "%02x", c);
-        }
-
-        seed[sizeof(seed) - 1] = '\0';
-    }
 
     XplSignalLocalSemaphore(ConnIO.allocated.sem);
 
@@ -480,7 +465,7 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
 }
 
 int 
-ConnClose(Connection *Conn, unsigned long Flags)
+ConnClose(Connection *Conn)
 {
     register Connection *c = Conn;
 
@@ -493,7 +478,7 @@ ConnClose(Connection *Conn, unsigned long Flags)
 }
 
 void 
-ConnCloseAll(unsigned long Flags)
+ConnCloseAll()
 {
     register Connection *c;
 

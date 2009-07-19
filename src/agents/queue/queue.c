@@ -423,7 +423,7 @@ GetNMAPConnection(NMAPConnections *list,
     result = NMAPAuthenticateToStore(conn, line, CONN_BUFSIZE);
     if (!result) {
         NMAPQuit(conn);
-        ConnClose(conn, 0);
+        ConnClose(conn);
         ConnFree(conn);
         return DELIVER_TRY_LATER;
     }
@@ -434,7 +434,7 @@ GetNMAPConnection(NMAPConnections *list,
             list->connections = (NMAPConnection *)temp;
         } else {
             NMAPQuit(conn);
-            ConnClose(conn, 0);
+            ConnClose(conn);
             ConnFree(conn);
             return DELIVER_TRY_LATER;
         }
@@ -529,7 +529,7 @@ EndStoreDelivery(NMAPConnections *list)
                 NMAPReadAnswer(nmap->conn, line, CONN_BUFSIZE, FALSE);
             }
 
-            ConnClose(nmap->conn, 0);
+            ConnClose(nmap->conn);
             ConnFree(nmap->conn);
         } 
     }
@@ -1509,7 +1509,7 @@ StartOver:
             }
 
             if (client->conn) {
-                ConnClose(client->conn, 0);
+                ConnClose(client->conn);
                 ConnFree(client->conn);
                 client->conn = NULL;
             }

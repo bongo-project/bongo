@@ -729,7 +729,7 @@ POP3CommandAuth(void *param)
     }
     else {
         /* fixme - we need connection management flags for ConnClose to force the shutdown */
-        ConnClose(client->conn, 1);
+        ConnClose(client->conn);
         ConnFree(client->conn);
         client->conn = NULL;
         return(ccode);
@@ -924,7 +924,7 @@ POP3CommandPass(void *param)
         }
 
         /* fixme - we need connection management flags for ConnClose to force the shutdown */
-        ConnClose(client->conn, 1);
+        ConnClose(client->conn);
         ConnFree(client->conn);
         client->conn = NULL;
 
@@ -1003,7 +1003,7 @@ POP3CommandPass(void *param)
     }
     else {
         /* fixme - we need connection management flags for ConnClose to force the shutdown */
-        ConnClose(client->conn, 1);
+        ConnClose(client->conn);
         ConnFree(client->conn);
         client->conn = NULL;
         return(ccode);
@@ -1045,7 +1045,7 @@ POP3CommandQuit(void *param)
         ConnWriteF(client->conn, "-ERR %s %d, %s\r\n", MSGERRINTERNAL, lastccode, MSGOKBYE);
 
     ConnFlush(client->conn);
-    ConnClose(client->conn, 0);
+    ConnClose(client->conn);
     ConnFree(client->conn);
     client->conn = NULL;
 
@@ -1229,7 +1229,7 @@ POP3CommandSTLS(void *param)
         result = ConnNegotiate(client->conn, POP3.server.ssl.context);
         if (!result) {
             /* fixme - we need connection management flags for ConnClose to force the shutdown */
-            ConnClose(client->conn, 1);
+            ConnClose(client->conn);
             ConnFree(client->conn);
             client->conn = NULL;
         }
@@ -1518,7 +1518,7 @@ HandleConnection(void *param)
 
             if (ccode == -1) {
                 /* fixme - we need connection management flags for ConnClose to force the shutdown */
-                ConnClose(client->conn, 1);
+                ConnClose(client->conn);
                 ConnFree(client->conn);
                 client->conn = NULL;
             }
@@ -1569,7 +1569,7 @@ HandleConnection(void *param)
         }
 
         if (client->conn) {
-            ConnClose(client->conn, 0);
+            ConnClose(client->conn);
             ConnFree(client->conn);
         }
 
@@ -1730,7 +1730,7 @@ POP3Server(void *ignored)
             }
 
             /* fixme - we need connection management flags for ConnClose to force the shutdown */
-            ConnClose(conn, 1);
+            ConnClose(conn);
 
             ConnFree(conn);
             conn = NULL;
@@ -1773,13 +1773,13 @@ POP3Server(void *ignored)
 
     if (POP3.server.conn) {
         /* fixme - we need connection management flags for ConnClose to force the shutdown */
-        ConnClose(POP3.server.conn, 1);
+        ConnClose(POP3.server.conn);
         POP3.server.conn = NULL;
     }
 
     Log(LOG_DEBUG, "Standard listener down.");
     /* fixme - we need connection management flags for ConnClose to force the shutdown */
-    ConnCloseAll(1);
+    ConnCloseAll();
 
     XplWaitOnLocalSemaphore(POP3.client.semaphore);
 
@@ -1814,7 +1814,7 @@ POP3Server(void *ignored)
 
         if (POP3.server.ssl.conn) {
             /* fixme - we need connection management flags for ConnClose to force the shutdown */
-            ConnClose(POP3.server.ssl.conn, 1);
+            ConnClose(POP3.server.ssl.conn);
             POP3.server.ssl.conn = NULL;
         }
 
@@ -1829,7 +1829,7 @@ POP3Server(void *ignored)
 
         if (POP3.nmap.ssl.conn) {
             /* fixme - we need connection management flags for ConnClose to force the shutdown */
-            ConnClose(POP3.nmap.ssl.conn, 1);
+            ConnClose(POP3.nmap.ssl.conn);
             POP3.nmap.ssl.conn = NULL;
         }
 
@@ -1929,7 +1929,7 @@ client->CSSL = NULL;
             }
 
             /* fixme - we need connection management flags for ConnClose to force the shutdown */
-            ConnClose(conn, 1);
+            ConnClose(conn);
 
             ConnFree(conn);
             conn = NULL;
@@ -1968,14 +1968,14 @@ client->CSSL = NULL;
 
     if (POP3.server.conn) {
         /* fixme - we need connection management flags for ConnClose to force the shutdown */
-        ConnClose(POP3.server.conn, 1);
+        ConnClose(POP3.server.conn);
         POP3.server.conn = NULL;
     }
 
     POP3.server.ssl.enable = FALSE;
 
     if (POP3.server.ssl.conn) {
-        ConnClose(POP3.server.ssl.conn, 1);
+        ConnClose(POP3.server.ssl.conn);
         POP3.server.ssl.conn = NULL;
     }
 
@@ -2088,7 +2088,7 @@ XplServiceMain(int argc, char *argv[])
         return(-1);
     }
 
-    ConnStartup(CONNECTION_TIMEOUT, TRUE);
+    ConnStartup(CONNECTION_TIMEOUT);
 
     MsgInit();
     MsgAuthInit();

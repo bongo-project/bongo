@@ -252,7 +252,7 @@ AntispamServer() {
                                             ProcessConnection,
                                             &ASpam.QueueMemPool);
     BongoThreadPoolShutdown(ASpam.QueueThreadPool);
-    ConnClose(ASpam.QueueConnection, 1);
+    ConnClose(ASpam.QueueConnection);
     BongoAgentShutdown(&ASpam.agent);
 }
 

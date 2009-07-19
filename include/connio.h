@@ -240,7 +240,7 @@ BOOL ConnAddressPoolRemoveSockAddr(AddressPool *pool, struct sockaddr_in *addr);
 BOOL ConnAddressPoolRemoveHost(AddressPool *pool, char *hostName, unsigned short hostPort);
 Connection *ConnAddressPoolConnect(AddressPool *pool, unsigned long timeOut);
 
-BOOL ConnStartup(unsigned long TimeOut, BOOL EnableSSL);
+BOOL ConnStartup(unsigned long TimeOut);
 void ConnShutdown(void);
 
 void ConnSSLContextFree(bongo_ssl_context *Context);
@@ -258,8 +258,8 @@ IPSOCKET ConnConnect(Connection *conn, struct sockaddr *saddr, socklen_t slen, b
 int ConnEncrypt(Connection *conn, bongo_ssl_context *context);
 BOOL ConnNegotiate(Connection *conn, bongo_ssl_context *Context);
 
-int ConnClose(Connection *Conn, unsigned long Flags);
-void ConnCloseAll(unsigned long Flags);
+int ConnClose(Connection *Conn);
+void ConnCloseAll();
 
 void ConnFree(Connection *Conn);
 

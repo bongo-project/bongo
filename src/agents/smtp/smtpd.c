@@ -267,7 +267,7 @@ strchrRN (unsigned char *Buffer, unsigned char SrchChar,
 
 #define FreeInternalConnection(c)           \
     if (c.conn) {                           \
-        ConnClose(c.conn, 1);               \
+        ConnClose(c.conn);               \
         ConnFree(c.conn);                   \
         c.conn = NULL;                      \
                                             \
@@ -2141,7 +2141,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
             RetVal = DeliverSMTPMessage(Client, Sender, Recips, RecipCount,
                                         MsgFlags, Result, ResultLen);
         }
-        ConnClose(conn, 1);
+        ConnClose(conn);
         ConnFree(conn);
         if (RetVal != DELIVER_SUCCESS) {
             DELIVER_ERROR(DELIVER_TRY_LATER);
@@ -3561,11 +3561,11 @@ QueueServerStartup (void *ignored)
                     ReturnSMTPConnection(client);
                 }
                 /* GetSMTPConnection failed */
-                ConnClose(conn, 1);
+                ConnClose(conn);
                 ConnFree(conn);
                 continue;
             }
-            ConnClose(conn, 1);
+            ConnClose(conn);
             ConnFree(conn);
         }
     }
@@ -3586,7 +3586,7 @@ SMTPShutdownSigHandler (int sigtype)
         signaled = Exiting = TRUE;
 
         if (SMTPServerConnection) {
-            ConnClose(SMTPServerConnection, 1);
+            ConnClose(SMTPServerConnection);
             ConnFree(SMTPServerConnection);
             SMTPServerConnection = NULL;
         }
@@ -3701,23 +3701,23 @@ SMTPServer (void *ignored)
                         /* GetSMTPConnection failed */
 
                         ConnSend(conn, MSG500NOMEMORY, MSG500NOMEMORY_LEN);
-                        ConnClose(conn, 1);
+                        ConnClose(conn);
                         ConnFree(conn);
                         continue;
                     } else {
                         /* No more threads available */
                         ConnSend(conn, MSG451NOCONNECTIONS, MSG451NOCONNECTIONS_LEN);
-                        ConnClose(conn, 1);
+                        ConnClose(conn);
                         ConnFree(conn);
                     }
                 } else {
                     /* RecieverStopped */
                     ConnSend(conn, MSG451RECEIVERDOWN, MSG451RECEIVERDOWN_LEN);
-                    ConnClose(conn, 1);
+                    ConnClose(conn);
                     ConnFree(conn);
                 }
             }
-            ConnClose(conn, 1);
+            ConnClose(conn);
             ConnFree(conn);
             continue;
         }
@@ -3762,24 +3762,24 @@ SMTPServer (void *ignored)
     Log(LOG_DEBUG, "Closing server socket");
 
     if (SMTPServerConnection) {
-        ConnClose(SMTPServerConnection, 1);
+        ConnClose(SMTPServerConnection);
         ConnFree(SMTPServerConnection);
         SMTPServerConnection = NULL;
     }
     if (SMTPServerConnectionSSL) {
-        ConnClose(SMTPServerConnectionSSL, 1);
+        ConnClose(SMTPServerConnectionSSL);
         ConnFree(SMTPServerConnectionSSL);
         SMTPServerConnectionSSL = NULL;
     }
 
     if (SMTPQServerConnection) {
-        ConnClose(SMTPQServerConnection, 1);
+        ConnClose(SMTPQServerConnection);
         ConnFree(SMTPQServerConnection);
         SMTPQServerConnection = NULL;
     }
 
     if (SMTPQServerConnectionSSL) {
-        ConnClose(SMTPQServerConnectionSSL, 1);
+        ConnClose(SMTPQServerConnectionSSL);
         ConnFree(SMTPQServerConnectionSSL);
         SMTPQServerConnectionSSL = NULL;
     }
@@ -3864,7 +3864,7 @@ SMTPSSLServer (void *ignored)
                                 continue;
                             }
                             ReturnSMTPConnection(client);
-                            ConnClose(conn, 1);
+                            ConnClose(conn);
                             ConnFree(conn);
                             continue;
                         } else {
@@ -3887,13 +3887,13 @@ SMTPSSLServer (void *ignored)
                     if (ConnWrite(conn, message, arg) != -1) {
                         ConnFlush(conn);
                     }
-                    ConnClose(conn, 1);
+                    ConnClose(conn);
                     ConnFree(conn);
                     continue;
                 }
 
                 ConnSend(conn, message, arg);
-                ConnClose(conn, 1);
+                ConnClose(conn);
                 ConnFree(conn);
                 continue;
             }
@@ -4022,7 +4022,7 @@ int XplServiceMain (int argc, char *argv[])
 
     // FIXME: Connio socket timeout needs to be a run-time tunable. bug #9924
     // ConnStartup (SMTP.socket_timeout, TRUE);
-    ConnStartup(600, TRUE);
+    ConnStartup(600);
 
     NMAPInitialize();
 

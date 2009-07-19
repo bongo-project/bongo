@@ -62,7 +62,7 @@ initlibs()
         return;
     }
 
-    if (!ConnStartup(DEFAULT_CONNECTION_TIMEOUT, TRUE)) {
+    if (!ConnStartup(DEFAULT_CONNECTION_TIMEOUT)) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: ConnStartup() failed");
         return;

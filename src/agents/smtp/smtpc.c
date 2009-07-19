@@ -617,7 +617,7 @@ ProcessEntry(void *clientp, Connection *conn)
         DeliverMessage(Queue, &Remote, &CurrentRecip);
         
         // we're responsible for closing this connection
-        ConnClose(Remote.conn, 1);
+        ConnClose(Remote.conn);
         ConnFree(Remote.conn);
         Remote.conn = NULL;
 
@@ -681,7 +681,7 @@ SMTPAgentServer(void *ignored)
                                        ProcessEntry,
                                        &SMTPAgent.OutgoingPool);
     BongoThreadPoolShutdown(SMTPAgent.OutgoingThreadPool);
-    ConnClose(SMTPAgent.nmapOutgoing, 1);
+    ConnClose(SMTPAgent.nmapOutgoing);
     SMTPAgent.nmapOutgoing = NULL;
 
     /* Shutting down */

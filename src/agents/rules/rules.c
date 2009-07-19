@@ -1191,7 +1191,7 @@ RulesAgentServer(void *ignored)
                                        ProcessEntry,
                                        &RulesAgent.OutgoingPool);
     BongoThreadPoolShutdown(RulesAgent.OutgoingThreadPool);
-    ConnClose(RulesAgent.nmapOutgoing, 1);
+    ConnClose(RulesAgent.nmapOutgoing);
     RulesAgent.nmapOutgoing = NULL;
 
     /* Shutting down */

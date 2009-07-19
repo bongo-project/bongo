@@ -1589,7 +1589,7 @@ NMAPQuit(Connection *conn)
 {
     ConnWrite(conn, "QUIT\r\n", 6);
 
-    ConnClose(conn, 0);
+    ConnClose(conn);
 
     return;
 }

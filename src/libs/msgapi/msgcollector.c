@@ -140,21 +140,21 @@ ConnectToStore(const char *user)
     
     if (!NMAPAuthenticateToStore(conn, buffer, sizeof(buffer))) {
         printf("bongocollector: couldn't authenticate\n");
-        ConnClose(conn, TRUE);
+        ConnClose(conn);
         return NULL;
     }
     
     ret = NMAPRunCommandF(conn, buffer, sizeof(buffer), "USER %s\r\n", user);
     if (ret != 1000) {
         printf("bongocollector: couldn't select user '%s'\n", user);
-        ConnClose(conn, TRUE);
+        ConnClose(conn);
         return NULL;
     }
 
     ret = NMAPRunCommandF(conn, buffer, sizeof(buffer), "STORE %s\r\n", user);
     if (ret != 1000) {
         printf("bongocollector: couldn't change store '%s'\n", user);
-        ConnClose(conn, TRUE);
+        ConnClose(conn);
         return NULL;
     }
 
@@ -406,7 +406,7 @@ ImportJson(GArray *objects,
 done:
 
     if (!existingConn) {
-        ConnClose(conn, TRUE);
+        ConnClose(conn);
         ConnFree(conn);
     }
     
@@ -645,7 +645,7 @@ MsgCollectUser(const char *user)
         cur = cur->next;
     }
 
-    ConnClose(conn, TRUE);
+    ConnClose(conn);
     ConnFree(conn);
 
     BongoSubscribedCalListFree(cals);
@@ -774,7 +774,7 @@ MsgIcsSubscribe(const char *user, const char *name, const char *color, const cha
     cal = SubscribedCalNew(0, name, color, url, urlUsername, urlPassword, 0);
     ret = MsgImportSubscribedCal(user, cal, conn, guidOut);
 
-    ConnClose(conn, TRUE);
+    ConnClose(conn);
     ConnFree(conn);
 
     SubscribedCalFree(cal);
@@ -796,7 +796,7 @@ MsgIcsImport(const char *user, const char *name, const char *color, const char *
     cal = SubscribedCalNew(0, name, color, url, urlUsername, urlPassword, 0);
     ret = MsgImportCal(user, cal, conn, guidOut);
 
-    ConnClose(conn, TRUE);
+    ConnClose(conn);
     ConnFree(conn);
 
     SubscribedCalFree(cal);

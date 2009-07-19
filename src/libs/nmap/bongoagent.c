@@ -306,7 +306,7 @@ BongoAgentInit(BongoAgent *agent,
     }
 
     if (startupResources & BA_STARTUP_CONNIO) {
-        ConnStartup(timeOut, TRUE);
+        ConnStartup(timeOut);
     }
 
     if (startupResources & BA_STARTUP_MSGLIB) {
@@ -370,7 +370,7 @@ QueueHandleConnection (void *datap)
     NMAPSendCommand(data->conn, "QDONE\r\n", 7);
     NMAPReadAnswer(data->conn, line, CONN_BUFSIZE, FALSE);
 
-    ConnClose(data->conn, 1);
+    ConnClose(data->conn);
     ConnFree(data->conn);
     
     data->clientFree(client);
@@ -397,7 +397,7 @@ HandleConnection (void *datap)
         ccode = data->handler(client, data->conn);
     }
 
-    ConnClose(data->conn, 1);
+    ConnClose(data->conn);
     ConnFree(data->conn);
     
     data->clientFree(client);
@@ -444,7 +444,7 @@ ListenInternal(BongoAgent *agent,
                 if (queueSocket) {
                     ConnWrite(conn, "QDONE\r\n", 7);
                 }
-                ConnClose(conn, 0);
+                ConnClose(conn);
                 ConnFree(conn);
                 conn = NULL;
             }

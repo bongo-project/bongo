@@ -53,7 +53,7 @@ BongoJsonRpcFree (BongoJsonRpc *rpc)
     
     BongoJsonParserFree (rpc->parser);
     
-    ConnClose (rpc->conn, 0);
+    ConnClose (rpc->conn);
     ConnFree (rpc->conn);
     
     MemFree (rpc);

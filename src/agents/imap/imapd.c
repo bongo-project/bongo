@@ -154,7 +154,7 @@ IMAPShutdown(unsigned char *Arguments, unsigned char **Response, BOOL *CloseConn
                     Imap.exiting = TRUE;
 
                     if (Imap.server.conn) {
-                        ConnClose(Imap.server.conn, 1);
+                        ConnClose(Imap.server.conn);
                         Imap.server.conn = NULL;
                     }
 
@@ -803,7 +803,7 @@ SessionCleanup(ImapSession *session)
         if (session->store.conn) {
             if (session->store.conn->socket != -1) {
                 NMAPSendCommand(session->store.conn, "QUIT\r\n", 6);
-                ConnClose(session->store.conn, 1);
+                ConnClose(session->store.conn);
                 session->store.conn->socket = -1;
             }
 
@@ -814,7 +814,7 @@ SessionCleanup(ImapSession *session)
         if (session->client.conn) {
             if (session->client.conn->socket != -1) {
                 ConnFlush(session->client.conn);
-                ConnClose(session->client.conn, 1);
+                ConnClose(session->client.conn);
                 session->client.conn->socket = -1;
             }
 
@@ -3282,7 +3282,7 @@ IMAPShutdownSigHandler(int sigtype)
         signaled = Imap.exiting = TRUE;
 
         if (Imap.server.conn) {
-            ConnClose(Imap.server.conn, 1);
+            ConnClose(Imap.server.conn);
             Imap.server.conn = NULL;
         }
 
@@ -3483,25 +3483,25 @@ IMAPServer(void *unused)
                         }
                 
                         ConnSend(conn, "* BYE IMAP server out of memory\r\n", strlen("* BYE IMAP server out of memory\r\n"));
-                        ConnClose(conn, 1);
+                        ConnClose(conn);
                         ConnFree(conn);
                         continue;
                     }
 
                     ConnSend(conn, "* BYE IMAP connection limit for this server reached\r\n", strlen("* BYE IMAP connection limit for this server reached\r\n"));
-                    ConnClose(conn, 1);
+                    ConnClose(conn);
                     ConnFree(conn);
                     continue;
                 }
 
                 ConnSend(conn, "* BYE IMAP access to this server currently disabled\r\n", strlen("* BYE IMAP access to this server currently disabled\r\n"));
-                ConnClose(conn, 1);
+                ConnClose(conn);
                 ConnFree(conn);
                 continue;
             }
             
             ConnSend(conn, "* BYE IMAP server shutting down\r\n", strlen("* BYE IMAP server shutting down\r\n"));
-            ConnClose(conn, 1);
+            ConnClose(conn);
             ConnFree(conn);
             break;
         }
@@ -3532,7 +3532,7 @@ IMAPServer(void *unused)
     oldTGID = XplSetThreadGroupID(Imap.server.threadGroupId);
 
     if (Imap.server.conn) {
-        ConnClose(Imap.server.conn, 1);
+        ConnClose(Imap.server.conn);
         Imap.server.conn = NULL;
     }
 
@@ -3541,7 +3541,7 @@ IMAPServer(void *unused)
 #endif
 
     if (Imap.server.ssl.conn) {
-        ConnClose(Imap.server.ssl.conn, 1);
+        ConnClose(Imap.server.ssl.conn);
     }
 
     /*    Wake up the children and set them free!    */
@@ -3656,13 +3656,13 @@ IMAPSSLServer(void *unused)
                     if (ConnWrite(conn, message, messageLen) != -1) {
                         ConnFlush(conn);
                     }
-                    ConnClose(conn, 1);
+                    ConnClose(conn);
                     ConnFree(conn);
                     continue;
                 } 
 
                 ConnSend(conn, message, messageLen);
-                ConnClose(conn, 1);
+                ConnClose(conn);
                 ConnFree(conn);
                 continue;
             }
@@ -3782,7 +3782,7 @@ XplServiceMain(int argc, char *argv[])
 
     InitializeImapGlobals();
 
-    ConnStartup(IMAP_CONNECTION_TIMEOUT, TRUE);
+    ConnStartup(IMAP_CONNECTION_TIMEOUT);
 
     MsgInit();
     MsgAuthInit();

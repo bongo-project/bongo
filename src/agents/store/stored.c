@@ -163,7 +163,7 @@ StoreServer()
     Log(LOG_INFO, "Shutting down.");
 
     if (StoreAgent.nmapConn) {
-        ConnClose(StoreAgent.nmapConn, 1);
+        ConnClose(StoreAgent.nmapConn);
         StoreAgent.nmapConn = NULL;
     }
 

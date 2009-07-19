@@ -505,7 +505,7 @@ AntiVirusServer(void *ignored) {
                                             ProcessConnection,
                                             &AVirus.QueueMemPool);
     BongoThreadPoolShutdown(AVirus.QueueThreadPool);
-    ConnClose(AVirus.QueueConnection, 1);
+    ConnClose(AVirus.QueueConnection);
     BongoAgentShutdown(&AVirus.agent);
 }
 
