@@ -236,7 +236,7 @@ SpamdCheck(SpamdConfig *spamd, ASpamClient *client, const char *queueID, BOOL ha
             ccode = NMAPSendCommandF(client->conn, "QDELE %s\r\n", queueID); /* expect ccode != -1*/
             ccode = NMAPReadAnswer(client->conn, client->line, CONN_BUFSIZE, TRUE); /* expect ccode == 1000 */
 #if 0
-this is commented out until we determine how we'd want to do this sort of thing, or even if we would
+this is commented out until we determine how we want to do this sort of thing, or even if we would
             if (ASpam.quarantineThreshold) {
                 /* Quarantine message. */
                         
