@@ -25,6 +25,7 @@
 #include <xpl.h>
 #include <stddef.h>
 #include <stdarg.h>
+#include <glib.h>
 
 XPL_BEGIN_C_LINKAGE
 
@@ -349,6 +350,10 @@ BongoSList *BongoSListDelete(BongoSList *list, void *data, BOOL deep);
 
 /** begin array.c **/
 typedef int (*ArrayCompareFunc)(const void *, const void *);
+
+int GArrayFindUnsorted(GArray *array, void *needle, ArrayCompareFunc compare);
+int GArrayFindSorted(GArray *array, void *needle, ArrayCompareFunc compare);
+
 #if 0
 typedef struct _BongoArray BongoArray;
 
@@ -358,7 +363,6 @@ struct _BongoArray {
     unsigned int size;
     unsigned int elemSize;
 };
-
 
 int BongoArrayInit(BongoArray *array, 
                   unsigned int elementSize, unsigned int numElements);
