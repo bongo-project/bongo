@@ -1117,7 +1117,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
     for (i = 0; i < occs->len; i++) {
         /* Convert each CalObjTime into a start & end time, and
            check it is within the bounds of the event & interval. */
-        occ = g_array_index(occs, CalObjTime *, i);
+        occ = &g_array_index(occs, CalObjTime, i);
 
         DPRINT ("Checking occurrence: %s\n",
                  CalObjTimeToString (occ));
