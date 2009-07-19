@@ -186,7 +186,7 @@ StoreParseAccessControlList(StoreClient *client, const char *acl)
 CCode 
 StoreCommandAUTHSYSTEM(StoreClient *client, char *md5hash)
 {
-	unsigned char credential[XPLHASH_MD5_LENGTH];
+	char credential[XPLHASH_MD5_LENGTH];
 	xpl_hash_context hash;
 
 	if (StoreAgent.installMode) goto success;

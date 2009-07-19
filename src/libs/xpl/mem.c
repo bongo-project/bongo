@@ -22,7 +22,6 @@
 #include <config.h>
 #include <xpl.h>
 
-#if defined(SOLARIS) || defined(LINUX) || defined(S390RH)
 #include <sys/resource.h>
 #include <signal.h>
 
@@ -33,22 +32,25 @@ static void XPLSignalProcessor(int signo, siginfo_t *info, void *context)
 	if (ApplicationXplShutdownFunction) {
 		ApplicationXplShutdownFunction(signo);
 	}
+	if (info && context) {
+		// FIXME: compiler warning 
+	}
 
-    switch (signo) {
-        case SIGHUP:
-        case SIGUSR2:
-        case SIGUSR1:
-        case SIGINT:
-        case SIGCHLD:
-        case SIGTERM:
-        case SIGPIPE :
-        case SIGPROF: {
-            break;        
-        }
-        default: {
-            XplConsolePrintf("SignalDebug: Received %d\n", signo);
-        }
-    }
+	switch (signo) {
+		case SIGHUP:
+		case SIGUSR2:
+		case SIGUSR1:
+		case SIGINT:
+		case SIGCHLD:
+		case SIGTERM:
+		case SIGPIPE :
+		case SIGPROF: {
+			break;        
+		}
+		default: {
+			XplConsolePrintf("SignalDebug: Received %d\n", signo);
+		}
+	}
 	return;
 }
 
@@ -137,33 +139,31 @@ XplGetMemAvail(void)
 	return(rlp.rlim_cur);
 }
 
-#endif
-
-const unsigned char CAN[] = { 'F', 'r', 'a', 'n', 0xC3, 0xA7, 'a', 'i', 's', ' ', 'C', 'A', 'N', 0 };
-const unsigned char CHS[] = { 0xE7, 0xAE, 0x80, 0xE4, 0xBD, 0x93, 0xE4, 
+const char CAN[] = { 'F', 'r', 'a', 'n', 0xC3, 0xA7, 'a', 'i', 's', ' ', 'C', 'A', 'N', 0 };
+const char CHS[] = { 0xE7, 0xAE, 0x80, 0xE4, 0xBD, 0x93, 0xE4, 
 										0xB8, 0xAD, 0xE6, 0x96, 0x87, 0x20, ' ', 'C', 'H', 'S', 0 };
 
-const unsigned char FRA[] = { 'F', 'r', 'a', 'n', 0xC3, 0xA7, 'a', 'i', 's', ' ', 'F', 'R', 'A', 0 };
-const unsigned char JPN[] = { 0xE6, 0x97, 0xA5, 0xE6, 0x9C, 0xAC, 0xE8, 0xAA, 0x9E, ' ', 'J', 'P', 'N', 0};
-const unsigned char KOR[] = { 0xED, 0x95, 0x9C, 0xEA, 0xB5, 0xAD, 0xEC, 0x96, 0xB4, ' ', 'K', 'O', 'R', 0};
-const unsigned char BRA[] = { 0x50, 0x6F, 0x72, 0x74, 0x75,  0x67, 0x75, 0xC3, 0xAA, 0x73, 0x20, 
+const char FRA[] = { 'F', 'r', 'a', 'n', 0xC3, 0xA7, 'a', 'i', 's', ' ', 'F', 'R', 'A', 0 };
+const char JPN[] = { 0xE6, 0x97, 0xA5, 0xE6, 0x9C, 0xAC, 0xE8, 0xAA, 0x9E, ' ', 'J', 'P', 'N', 0};
+const char KOR[] = { 0xED, 0x95, 0x9C, 0xEA, 0xB5, 0xAD, 0xEC, 0x96, 0xB4, ' ', 'K', 'O', 'R', 0};
+const char BRA[] = { 0x50, 0x6F, 0x72, 0x74, 0x75,  0x67, 0x75, 0xC3, 0xAA, 0x73, 0x20, 
 										0x64, 0x6F,  0x20, 0x42, 0x72, 0x61, 0x73, 0x69, 0x6C, ' ', 'P', 'T', 'B', 0};
-const unsigned char RUS[] = { 0xD1, 0x80, 0xD1, 0x83, 0xD1,  0x81, 0xD1, 0x81, 0xD0, 0xBA, 0xD0, 
+const char RUS[] = { 0xD1, 0x80, 0xD1, 0x83, 0xD1,  0x81, 0xD1, 0x81, 0xD0, 0xBA, 0xD0, 
 										0xB8, 0xD0, 0xB9, ' ', 'R', 'U', 'S', 0};
-const unsigned char SA[] =  { 0x45, 0x73, 0x70, 0x61, 0xC3,  0xB1, 0x6F, 0x6C, ' ', 'L', 'A', 'T', 0};
-const unsigned char CHT[] = { 0xE7, 0xB9, 0x81, 0xE9, 0xAB,  0x94, 0xE4, 0xB8, 0xAD, 0xE6, 0x96, 0x87, ' ', 'C', 'H', 'T', 0};
-const unsigned char POR[] = { 0x50, 0x6F, 0x72, 0x74, 0x75,  0x67, 0x75, 0xC3, 0xAA, 0x73, ' ', 'P', 'O', 'R', 0};
-const unsigned char SPA[] = { 0x45, 0x73, 0x70, 0x61, 0xC3,  0xB1, 0x6F, 0x6C, ' ', 'S', 'P', 'A', 0};
-const unsigned char CZE[] = { 0xC4, 0x8D, 0x65, 0x73, 0x6B, 0x79, ' ', 'C', 'Z', 'E', 0};
-const unsigned char THA[] = { 0xE0, 0xB9, 0x82, 0xE0, 0xB8,  0x94, 0xE0, 0xB8, 0xA2, ' ', 'T', 'H', 'A', 0};
-const unsigned char TUR[] = { 0x54, 0xC3, 0xBC, 0x72, 0x6B,  0xC3, 0xA7, 0x65, ' ', 'T', 'U', 'R', 0};
-const unsigned char HEB[] = { 0xD7, 0xA2, 0xD7, 0x91, 0xD7,  0xA8, 0xD7, 0x99, 0xD7, 0xAA, ' ', 'H', 'E', 'B', 0};
-const unsigned char ARA[] = { 0xEF, 0xBB, 0x8B, 0xEF, 0xBA, 0xAD, 0xEF, 0xBA,  0x91, 0xEF, 0xBB, 0xB2, ' ', 'A', 'R', 'A', 0};
+const char SA[] =  { 0x45, 0x73, 0x70, 0x61, 0xC3,  0xB1, 0x6F, 0x6C, ' ', 'L', 'A', 'T', 0};
+const char CHT[] = { 0xE7, 0xB9, 0x81, 0xE9, 0xAB,  0x94, 0xE4, 0xB8, 0xAD, 0xE6, 0x96, 0x87, ' ', 'C', 'H', 'T', 0};
+const char POR[] = { 0x50, 0x6F, 0x72, 0x74, 0x75,  0x67, 0x75, 0xC3, 0xAA, 0x73, ' ', 'P', 'O', 'R', 0};
+const char SPA[] = { 0x45, 0x73, 0x70, 0x61, 0xC3,  0xB1, 0x6F, 0x6C, ' ', 'S', 'P', 'A', 0};
+const char CZE[] = { 0xC4, 0x8D, 0x65, 0x73, 0x6B, 0x79, ' ', 'C', 'Z', 'E', 0};
+const char THA[] = { 0xE0, 0xB9, 0x82, 0xE0, 0xB8,  0x94, 0xE0, 0xB8, 0xA2, ' ', 'T', 'H', 'A', 0};
+const char TUR[] = { 0x54, 0xC3, 0xBC, 0x72, 0x6B,  0xC3, 0xA7, 0x65, ' ', 'T', 'U', 'R', 0};
+const char HEB[] = { 0xD7, 0xA2, 0xD7, 0x91, 0xD7,  0xA8, 0xD7, 0x99, 0xD7, 0xAA, ' ', 'H', 'E', 'B', 0};
+const char ARA[] = { 0xEF, 0xBB, 0x8B, 0xEF, 0xBA, 0xAD, 0xEF, 0xBA,  0x91, 0xEF, 0xBB, 0xB2, ' ', 'A', 'R', 'A', 0};
 
-const unsigned char GRC[] = { 'G', 'R', 'E', 'E', 'K', ' ', 'G', 'R', 'C', 0};
+const char GRC[] = { 'G', 'R', 'E', 'E', 'K', ' ', 'G', 'R', 'C', 0};
 
 int
-XplReturnLanguageName(int lang, unsigned char *Buffer)
+XplReturnLanguageName(int lang, char *Buffer)
 {
 	switch(lang) {
 		case 0: memcpy(Buffer, CAN, strlen(CAN)+1); break;
@@ -200,115 +200,3 @@ XplReturnLanguageName(int lang, unsigned char *Buffer)
 	}
 	return(0);
 }
-
-#if defined(WIN32)
-
-BOOL
-XPLGetNullDACL(SECURITY_ATTRIBUTES *sa)
-{
-	PSECURITY_DESCRIPTOR		pHandleSD = NULL;
-
-	memset ((void *)sa, 0, sizeof(SECURITY_ATTRIBUTES));
-
-	pHandleSD = (PSECURITY_DESCRIPTOR)(malloc(SECURITY_DESCRIPTOR_MIN_LENGTH));
-	if (!pHandleSD) {
-		return(FALSE);
-	}
-
-	if (!InitializeSecurityDescriptor(pHandleSD, SECURITY_DESCRIPTOR_REVISION)) {
-		return(FALSE);
-	}
-
-	// set NULL DACL on the SD
-	if (!SetSecurityDescriptorDacl(pHandleSD, TRUE, (PACL) NULL, FALSE)) {
-		return(FALSE);
-	}
-
-	// now set up the security attributes
-	sa->nLength = sizeof(SECURITY_ATTRIBUTES);
-	sa->bInheritHandle = TRUE; 
-	sa->lpSecurityDescriptor = pHandleSD;
-
-	return(TRUE);
-}
-
-
-XplPluginHandle
-XplLoadDLL(unsigned char *Name)
-{
-	unsigned char	CopyBuf[XPL_MAX_PATH];
-	unsigned char	*ptr; 
-
-	strcpy(CopyBuf, Name); 
-	ptr=CopyBuf; 
-	while(*ptr) {
-		if (*ptr=='/') {
-			*ptr='\\'; 
-		}
-		ptr++;
-	}
-	return(LoadLibrary(CopyBuf));
-}
-
-
-BOOL
-XplIsDLLLoaded(unsigned char *Name)
-{
-	unsigned char	CopyBuf[XPL_MAX_PATH];
-	unsigned char	*ptr; 
-
-	strcpy(CopyBuf, Name); 
-	ptr=CopyBuf; 
-	while(*ptr) {
-		if (*ptr=='/') {
-			*ptr='\\'; 
-		}
-		ptr++;
-	}
-	return(GetModuleHandle(CopyBuf)!=NULL);
-}
-
-int
-XplGetCurrentOSLanguageID(void)
-{
-	/* Should build something around GetLocaleInfo() */
-	return(4);
-}
-
-unsigned long
-XplGetMemAvail(void)
-{
-    MEMORYSTATUS	MemStat;
-
-	GlobalMemoryStatus(&MemStat);
-	return(MemStat.dwAvailPhys);
-}
-
-void
-XplDebugOut(const char *Format, ...)
-{
-	unsigned char	DebugBuffer[10240];
-	va_list	argptr;
-
-	va_start(argptr, Format);	
-	vsprintf(DebugBuffer, Format, argptr);
-	va_end(argptr);
-
-	OutputDebugString(DebugBuffer);
-}
-
-#endif /* WIN32 */
-
-#if defined(LIBC)
-unsigned long 
-XplGetMemAvail(void)
-{
-	struct memory_info	info;
-
-	if (netware_mem_info(&info) == 0) {
-		return(info.CacheBufferMemory);
-	}
-
-	return(0);
-}
-#endif	/*	defined(LIBC)	*/

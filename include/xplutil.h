@@ -51,12 +51,6 @@
 # include <arpa/inet.h>
 # include <unistd.h>
 
-/* Product Definitions */
-
-#define	PRODUCT_MAJOR_VERSION	3
-#define	PRODUCT_MINOR_VERSION	52
-#define	PRODUCT_LETTER_VERSION	0
-
 /* Basic Definitions */
 
 typedef int BOOL;
@@ -122,18 +116,8 @@ typedef unsigned short unicode;
 #define MAXEMAILNAMESIZE    256
 
 /* Packing/Byte order */
-#ifdef UNIX
-# define Xpl8BitPackedStructure __attribute__ ((aligned(1),packed))
-# define Xpl64BitPackedStructure __attribute__ ((aligned(8),packed))
-#elif defined WIN32
-# define Xpl8BitPackedStructure
-# define Xpl64BitPackedStructure
-#elif defined(NETWARE) || defined(LIBC)
-# define Xpl8BitPackedStructure
-# define Xpl64BitPackedStructure
-#else
-# error "Packing not defined on this platform"
-#endif
+#define Xpl8BitPackedStructure __attribute__ ((aligned(1),packed))
+#define Xpl64BitPackedStructure __attribute__ ((aligned(8),packed))
 
 #if _BONGO_XPL_BIG_ENDIAN
 # define XplHostToLittle(LongWord) (((LongWord & 0xFF000000) >>24) | ((LongWord & 0x00FF0000) >> 8) | ((LongWord & 0x0000FF00) << 8) | ((LongWord & 0x000000FF) << 24))
@@ -147,10 +131,11 @@ typedef unsigned short unicode;
 # define XplStrNCaseCmp(a,b,c) strncasecmp(a,b,c)
 # define XplVsnprintf vsnprintf
 # define XplGetHighResolutionTimer()   0
-# define XplGetHighResolutionTime(counter)						{	struct timeval	tOfDaYs;					  \
-																				gettimeofday(&tOfDaYs,NULL);						\
-																				(counter) = (time_t) tOfDaYs.tv_usec;	\
-                                                                }
+# define XplGetHighResolutionTime(counter) {	\
+	struct timeval tOfDaYs;			\
+	gettimeofday(&tOfDaYs,NULL);		\
+	(counter) = (time_t) tOfDaYs.tv_usec;	\
+}
 /* UI Definitions - need to reconsider these*/
 
 # define XplBell()
@@ -167,48 +152,22 @@ typedef unsigned short unicode;
 /* File and Directory Functions */
 int XplTruncate(const char *path, int64_t length);
 
-#if defined (WIN32) || defined(NETWARE)
-# define XPL_DIR_SEPARATOR '\\'
-#else
 # define XPL_DIR_SEPARATOR '/'
-#endif
-
-#ifdef UNIX
 
 #define XplFSeek64(FILEPTR, OFFSET, WHENCE)         fseek(FILEPTR, OFFSET, WHENCE)
 
 typedef struct _XplDir {
 	unsigned long  d_attr;
 	unsigned long  d_size;
-	unsigned char *d_name;
+	char *d_name;
 	unsigned long  d_cdatetime;
 	DIR *dirp;
 	struct dirent *direntp;
-	unsigned char Path[XPL_MAX_PATH];
+	struct stat stats;
+	char Path[XPL_MAX_PATH];
 } XplDir;
 
 #define   XplMakeDir(path)                             mkdir(path, S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP)
-
-#elif defined WIN32
-
-#include <direct.h>
-
-#define XplFSeek64(FILEPTR, OFFSET, WHENCE)         ((int)(!((_lseeki64(fileno(FILEPTR), OFFSET, WHENCE)) > -1)))
-
-typedef struct _XplDir {
-	unsigned long			d_attr;
-	unsigned long			d_size;
-	unsigned char			*d_name;
-	unsigned long			d_cdatetime;
-	long						dirp;  
-	struct _finddata_t	FindData;
-	unsigned char			Path[_MAX_PATH+1];
-} XplDir;
-
-
-#define	XplMakeDir(path)											mkdir(path)
-
-#endif
 
 XplDir   *XplOpenDir(const char  *dirname);
 XplDir   *XplReadDir(XplDir *dirp);
@@ -233,52 +192,26 @@ FILE *XplOpenTemp(const char *dir,
 /* Statistics Functions */
 unsigned long XplGetMemAvail (void);
 long          XplGetServerUtilization (unsigned long *previousSeconds, unsigned long *previousIdle);
-unsigned long XplGetDiskspaceUsed(unsigned char *Path);
-unsigned long XplGetDiskspaceFree(unsigned char *Path);
-unsigned long XplGetDiskBlocksize(unsigned char *Path);
+unsigned long XplGetDiskspaceUsed(char *Path);
+unsigned long XplGetDiskspaceFree(char *Path);
+unsigned long XplGetDiskBlocksize(char *Path);
 
-/* Shared Library functions */
-/* rough cut */
-
-#ifdef WIN32
-# define XPL_DLL_EXTENSION ".dll"
-#elif defined (NETWARE)
-# define XPL_DLL_EXTENSION ".nlm"
-#else
 # define XPL_DLL_EXTENSION ".so"
-#endif
 
-#ifdef _BONGO_HAVE_DLFCN_H
+// #ifdef _BONGO_HAVE_DLFCN_H
 #include <dlfcn.h>
-							      
+
 typedef void *XplPluginHandle;
 # define  XplLoadDLL(Path)                                dlopen((Path), RTLD_NOW | RTLD_GLOBAL)
 # define  XplGetDLLFunction(Name, Function, Handle)       dlsym((Handle), (Function))
 # define  XplReleaseDLLFunction(Name, Function, Handle)
 # define  XplUnloadDLL(Name, Handle)                      if (Handle) dlclose((Handle))
-# define	XplIsDLLLoaded(Name)										0
-# define	FARPROC						 void *
-#elif defined WIN32
+# define  XplIsDLLLoaded(Name)										0
+# define  FARPROC						 void *
 
-typedef HINSTANCE XplPluginHandle;
-
-XplPluginHandle XplLoadDLL(unsigned char *Path);			/* Defined in libxpl */
-BOOL		    XplIsDLLLoaded(unsigned char *Name);				/* Defined in libxpl */
-
-#define	XplGetDLLFunction(Name, Function, Handle)			GetProcAddress((Handle), (Function))
-#define	XplReleaseDLLFunction(Name, Function, Handle)	
-#define	XplUnloadDLL(Name, Handle)							FreeLibrary(Handle);
-
-#endif
-
-/* Internationalization */
-#ifdef WIN32
-int XplGetCurrentOSLangaugeID(void);
-#else
 # define XplGetCurrentOSLanguageID() 4
-#endif
 
-int XplReturnLanguageName(int lang, unsigned char *buffer);
+int XplReturnLanguageName(int lang, char *buffer);
 
 /* Time */
 # define XplCalendarTime(time) (time)
@@ -296,15 +229,11 @@ void XplSignalCatcher(XplShutdownFunc ShutdownFunction);
 void XplSignalBlock(void);
 #define XplSignalHandler(handler)								XplSignalCatcher((handler));
 
+#define XplUnloadApp(ID)	kill((ID), SIGKILL)
 
-#ifdef WIN32
-#define XplUnloadApp(id)
-#else
-#define XplUnloadApp(ID)											kill((ID), SIGKILL)
-#endif
 /* Read/Write locks */
 typedef struct {
-	long				RWState;
+	long		RWState;
 	unsigned long	RWMode;
 	unsigned long	RWReaders;
 	XplSemaphore	RWLock;
@@ -318,8 +247,6 @@ BOOL	XplRWReadLockAcquire(XplRWLock *RWLock);
 BOOL	XplRWWriteLockAcquire(XplRWLock *RWLock);
 BOOL	XplRWReadLockRelease(XplRWLock *RWLock);
 BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
-
-#ifdef UNIX
 
 #define s_addr_1	s_addr>>24 & 0xff
 #define s_addr_2	s_addr>>16 & 0xff
@@ -340,8 +267,6 @@ BOOL	XplRWWriteLockRelease(XplRWLock *RWLock);
 #define s_host  s_addr_2
 #define s_lh    s_addr_3
 #define s_impno s_addr_4
-
-#endif
 
 #endif
 #endif

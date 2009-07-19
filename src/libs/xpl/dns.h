@@ -68,8 +68,8 @@ typedef struct {
 #pragma pack (pop)
 #endif
 
-int 	_XplDns_ParseName(const char *response, const int response_len, const char *name, char *buffer, int buffer_len);
-void 	_XplDns_ParseQuery(const char *answer_buffer, int answer_len, XplDns_Result *result);
+int 	_XplDns_ParseName(const unsigned char *response, const int response_len, const unsigned char *name, char *buffer, int buffer_len);
+void 	_XplDns_ParseQuery(const unsigned char *answer_buffer, int answer_len, XplDns_Result *result);
 void 	_XplDnsResult_AppendRecord(XplDns_Result *result, XplDns_RecordList *item);
 XplDns_Result * _XplDns_QueryFakeMx(const char *domain);
 void	 _XplDnsResult_PrintResults(XplDns_Result *result);

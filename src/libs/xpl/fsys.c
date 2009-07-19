@@ -24,7 +24,6 @@
 #include <xplservice.h>
 #include <stdarg.h>
 
-#if defined (SOLARIS) || defined (LINUX) || defined(S390RH)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -214,7 +213,7 @@ XplOpenTemp(const char *dir,
 
 /* Returns space used in and below Path in kilobytes */
 unsigned long
-XplGetDiskspaceUsed(unsigned char *Path)
+XplGetDiskspaceUsed(char *Path)
 {
 	DIR				*DirPtr;
 	struct dirent	*Slot;
@@ -248,7 +247,7 @@ XplGetDiskspaceUsed(unsigned char *Path)
 }
 
 unsigned long
-XplGetDiskspaceFree(unsigned char *Path)
+XplGetDiskspaceFree(char *Path)
 {
 #ifdef _SYS_STATVFS_H
 	struct statvfs	stv;
@@ -269,7 +268,7 @@ XplGetDiskspaceFree(unsigned char *Path)
 }
 
 unsigned long
-XplGetDiskBlocksize(unsigned char *Path)
+XplGetDiskBlocksize(char *Path)
 {
 #ifdef _SYS_STATVFS_H
 	struct statvfs	stv;
@@ -294,252 +293,6 @@ XplTruncate(const char *path, int64_t length)
 {
     return(truncate(path, length));
 }
-
-#ifdef HAVE_KSTAT_H
-long
-XplGetServerUtilization(unsigned long *PreviousSeconds, unsigned long *PreviousIdle)
-{
-	kstat_ctl_t             *kc;
-   kstat_t                 *sysinfo_ks;
-	kstat_t                 *cpu_ks;
-   sysinfo_t					sysinfo_buff;
-	cpu_stat_t              cpu_buff;
-   unsigned long				CurrentSeconds;
-   unsigned long 				CurrentIdle;
-   unsigned long				AverageUtilization;
-
-	kc = kstat_open();
-	if (kc == NULL) {
-		return(-1);
-	}
-
-   /* Get the number of cpu ticks (max of 100 per second) spent in idle */
-   cpu_ks = kstat_lookup(kc, "cpu_stat", -1, NULL);                        /* Check first processor in the list.  */
-	kstat_read(kc, cpu_ks, &cpu_buff);                                      /* Should be representative even on MP */
-   CurrentIdle = cpu_buff.cpu_sysinfo.cpu[CPU_IDLE];
-
-   /* Get the number of seconds since boot time */
-	sysinfo_ks = kstat_lookup(kc, "unix", 0, "sysinfo");
-   kstat_read(kc, sysinfo_ks, &sysinfo_buff);
-   CurrentSeconds = sysinfo_buff.updates;
-   
-   kstat_close(kc);
-  
-   AverageUtilization = (100 - (CurrentIdle-*PreviousIdle)/(CurrentSeconds-*PreviousSeconds));
-   *PreviousSeconds = CurrentSeconds;
-   *PreviousIdle    = CurrentIdle;
-	
-	return(AverageUtilization);
-}
-
-#elif defined(__linux__)
-#define	PROC_SUPER_MAGIC		0x9fa0
-#define	PROCFS					"/proc"
-
-long
-XplGetServerUtilization(unsigned long *previousSeconds, unsigned long *previousIdle)
-{
-	struct statfs  sb;
-	char				Buff2[1024], Buff1[1024], *Ptr;
-	int				fd1, fd2;
-	long				cpu[5];
-
-	if (statfs(PROCFS, &sb) < 0 || sb.f_type != PROC_SUPER_MAGIC) {
-                static int warned = 0;
-                if (!warned) {
-                    fprintf(stderr, "PROC filesystem is not mounted\n");
-                    warned = 1;
-                }
-		return 0;
-	}
-	Ptr = Buff1;
-	chdir(PROCFS);
-	fd1 = open("stat", O_RDONLY);
-	read(fd1, Buff1, sizeof(Buff2)-1);
-	sleep(1);
-	close(fd1);
-	fd2 = open("stat", O_RDONLY);
-	read(fd2, Buff2, sizeof(Buff2)-1);
-	close(fd2);
-	Ptr+=4;
-	cpu[0] = strtoul(Ptr, &Ptr, 10);
-	cpu[0] += strtoul(Ptr, &Ptr, 10);
-	cpu[0] += strtoul(Ptr, &Ptr, 10);
-	cpu[1] = strtoul(Ptr, NULL, 10);
-
-	Ptr = Buff2;
-	Ptr+=4;
-	cpu[2] = strtoul(Ptr, &Ptr, 10);
-	cpu[2] += strtoul(Ptr, &Ptr, 10);
-	cpu[2] += strtoul(Ptr, &Ptr, 10);
-	cpu[3] = strtoul(Ptr, NULL, 10);
-
-	cpu[2] -= cpu[0];
-	cpu[3] -= cpu[1];
-	if (cpu[3] == 0) return(100);
-	cpu[4] = (100 *cpu[2]) / (cpu[2] + cpu[3]);
-	return(cpu[4]);
-}
-
-#endif
-
-
-
-#endif
-
-#ifdef NETWARE
-#include <nit/nwdir.h>
-
-int
-XPLDosToLong(unsigned char *In, int PrefixLen, unsigned char *Out, int OutSize)
-{
-	unsigned char	*ptr, *OutPtr;
-	int				len=0;
-	BOOL				Last=TRUE;
-
-	ptr=strchr(In+PrefixLen+1, '/');
-	OutPtr=Out;
-
-	do {
-		if (ptr) {
-			*ptr='\0';
-		}
-
-		if (NWGetNameSpaceEntryName(In, NWOS2_NAME_SPACE, OutSize-len, OutPtr)!=0) {
-			Out[0]='\0';
-			return(0);
-		}
-		len=strlen(Out);
-		if (ptr) {
-			Out[len]='/';
-			len++;
-			*ptr='/';
-			ptr=strchr(ptr+1, '/');
-		} else {
-			Out[len]='\0';
-			Last=FALSE;
-		}
-		OutPtr=Out+len;
-	} while (ptr || Last);
-
-	return(len);
-}
-
-int
-XPLLongToDos(unsigned char *In, unsigned char *Out, int OutSize)
-{
-	unsigned char	*ptr, *OutPtr;
-	int				len=0;
-	BOOL				Last=TRUE;
-
-	OutPtr=Out;
-	
-	ptr=strchr(In, ':');
-	if (ptr) {
-		if (ptr[1]=='\0') {
-			len=strlen(In);
-			if (len<OutSize) {
-				strcpy(Out, In);
-			} else {
-				strncpy(Out, In, OutSize);
-			}
-			return(len);
-		}
-		memcpy(OutPtr, In, ptr-In+1);
-		OutPtr+=ptr-In+1;
-		ptr++;
-		if (*ptr=='/') {
-			*OutPtr='/';
-			ptr++;
-			OutPtr++;
-		}
-		ptr=strchr(ptr, '/');
-	} else {
-		ptr=strchr(In+1, '/');
-	}
-
-	do {
-		if (ptr) {
-			*ptr='\0';
-		}
-
-		if (NWGetNameSpaceEntryName(In, NWDOS_NAME_SPACE, OutSize-len, OutPtr)!=0) {
-			Out[0]='\0';
-			return(0);
-		}
-		len=strlen(Out);
-		if (ptr) {
-			Out[len]='/';
-			len++;
-			*ptr='/';
-			ptr=strchr(ptr+1, '/');
-		} else {
-			Out[len]='\0';
-			Last=FALSE;
-		}
-		OutPtr=Out+len;
-	} while (ptr || Last);
-
-	return(len);
-}
-
-unsigned long
-XPLGetDiskspaceUsed(unsigned char *Path)
-{
-	struct AnswerStructure	answerBuffer[2];
-	unsigned long				SpaceUsed;
-
-	if (ReturnSpaceRestrictionForDirectory(Path, 2, (BYTE *)&answerBuffer, &SpaceUsed)==0) {
-		SpaceUsed=(unsigned long)(answerBuffer[0].AMaximumAmount-answerBuffer[0].ACurrentAmount)*4;
-	} else {
-		SpaceUsed=0;
-	}
-	return(SpaceUsed);
-}
-
-unsigned long
-XPLGetDiskspaceFree(unsigned char *Path)
-{
-	unsigned long Space;
-
-	if (GetAvailableUserDiskSpace(Path, &Space)!=0) {
-		return(0x7f000000L);
-	} else {
-		return(Space);
-	}
-}
-
-unsigned long
-XPLGetDiskBlocksize(unsigned char *PathIn)
-{
-	VOLUME_STATS	vi;
-	unsigned char	*ptr, *ptr2;
-	unsigned long	BytesPerBlock=512;
-	int				PathVolNumber;
-	char				Path[XPL_MAX_PATH+1];
-
-	strcpy(Path, PathIn);
-	/* Break down path */
-	ptr=strchr(Path, ':');
-	if (ptr) {
-		*ptr = '\0';
-		ptr2 = strchr(Path, '/');
-		if (ptr2) {
-			*ptr2 = '\0';
-			GetVolumeNumber(ptr2+1, &PathVolNumber);
-			GetVolumeInformation(0, PathVolNumber, sizeof(vi), &vi);
-			BytesPerBlock=vi.sectorsPerBlock*512;
-			*ptr=':';
-			*ptr2='/';
-		} else {
-			GetVolumeNumber(Path, &PathVolNumber);
-			GetVolumeInformation(0, PathVolNumber, sizeof(vi), &vi);
-			BytesPerBlock=vi.sectorsPerBlock*512;
-		}
-	}
-	return(BytesPerBlock);
-}
-#endif /* NETWARE */
 
 #if defined(LIBC)
 unsigned long XPLGetDiskspaceUsed(unsigned char *PathIn)
@@ -656,86 +409,4 @@ long XplGetServerUtilization(unsigned long *PreviousSeconds, unsigned long *Prev
 
 	return(0);
 }
-#endif
-
-#ifdef WIN32
-
-#include <io.h>
-
-int
-XplTruncate(const char *path, int64_t length)
-{
-    /* This needs to fail unless somebody wants to implement this function */
-    return(-1);
-}
-
-long
-XplGetServerUtilization(unsigned long *previousSeconds, unsigned long *previousIdle)
-{
-    return 1;
-}
-
-unsigned long
-XplGetDiskspaceUsed(unsigned char *Path)
-{
-	unsigned long			Used=0L;
-	char						PathBuffer[XPL_MAX_PATH+1];
-	struct _finddata_t	FindData;
-	long						Handle;
-
-	sprintf(PathBuffer, "%s/*.*", Path);
-
-	if ((Handle=_findfirst(PathBuffer, &FindData))==-1L) {
-		return(0);
-	}
-
-	do {
-		if (FindData.name[0]=='.' && ((FindData.name[1]=='\0') || (FindData.name[1]=='.' && FindData.name[2]=='\0'))) {
-			continue;
-		}
-		if ((FindData.attrib & XPL_A_SUBDIR) && (FindData.name[0]!='.')) {
-			sprintf(PathBuffer, "%s/%s", Path, FindData.name);
-			Used+=XplGetDiskspaceUsed(PathBuffer);
-		} else {
-			Used+=FindData.size;
-		}
-	} while (_findnext(Handle, &FindData)==0);
-
-	_findclose(Handle);
-
-	return(Used/1024);
-}
-
-unsigned long
-XplGetDiskspaceFree(unsigned char *Path)
-{
-	ULARGE_INTEGER	FreeBytes;
-	ULARGE_INTEGER	Dummy1;
-	ULARGE_INTEGER	Dummy2;
-
-	if (GetDiskFreeSpaceEx(Path, &FreeBytes, &Dummy1, &Dummy2)) {
-		return((unsigned long)(FreeBytes.QuadPart/1024));
-	} else {
-		return(0x7f000000L);
-	}
-}
-
-unsigned long
-XplGetDiskBlocksize(unsigned char *Path)
-{
-	return(1024);
-}
-
-FILE *
-XplOpenTemp(const char *dir,
-            char *mode,
-            char *filename)
-{
-    if (GetTempFileName(dir, "xpl", 0, filename) != 0) {
-        return fopen(filename, mode);
-    } else {
-        return NULL;
-    }
-}
-
 #endif

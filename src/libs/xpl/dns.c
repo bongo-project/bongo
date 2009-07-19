@@ -22,9 +22,10 @@ XplDnsInit()
 }
 
 int
-_XplDns_ParseName(const char *response, const int response_len, const char *name, char *buffer, int buffer_len)
+_XplDns_ParseName(const unsigned char *response, const int response_len, const unsigned char *name, char *buffer, int buffer_len)
 {
-	const char *ptr;
+	const unsigned char *ptr;
+	const unsigned char *orig_response = response;
 	int len = 0;
 	int result = 0;
 
@@ -32,7 +33,10 @@ _XplDns_ParseName(const char *response, const int response_len, const char *name
 	len = buffer_len - strlen(buffer);
 	if (len <= 0) return -1; // out of space
 
+	if (orig_response) {}
+	if (response_len) {}
 	ptr = name;
+
 	while ((response <= ptr) && (ptr < (response + response_len))) {
 		if (*ptr == '\0') {
 			// we've reached the end
@@ -53,7 +57,8 @@ _XplDns_ParseName(const char *response, const int response_len, const char *name
 		} else {
 			// append the next label if we have room in the buffer
 			if ((*ptr + 1) < len) {
-				strncat(buffer, ptr + 1, *ptr);
+				// FIXME - cast below should be removed somehow.
+				strncat(buffer, (char *)ptr + 1, *ptr);
 				strncat(buffer, ".", 1);
 				len -= *ptr + 1;
 				ptr += *ptr + 1;
@@ -328,7 +333,7 @@ XplDns_Result *
 _XplDns_Query(const char *domain, XplDns_RecordType type)
 {
 	XplDns_Result *result;
-	char answer_buffer[4096];
+	unsigned char answer_buffer[4096];
 	int answer_len = -1;
 
 	result = MemMalloc(sizeof(XplDns_Result));
@@ -360,10 +365,10 @@ _XplDns_Query(const char *domain, XplDns_RecordType type)
 }
 
 void
-_XplDns_ParseQuery(const char *answer_buffer, int answer_len, XplDns_Result *result)
+_XplDns_ParseQuery(const unsigned char *answer_buffer, int answer_len, XplDns_Result *result)
 {
 	XplDnsResponseHeader *header;
-	const char *response, *response_end;
+	const unsigned char *response, *response_end;
 	int x;
 	int res;
 

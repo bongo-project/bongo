@@ -1,3 +1,5 @@
+StrictCompile()
+
 add_library(bongoxpl SHARED
 	dir.c
 	dns.c
@@ -8,7 +10,6 @@ add_library(bongoxpl SHARED
 	resolve.c
 	rwlock.c
 	util.c
-	cryptolock.c
 )
 
 target_link_libraries(bongoxpl

@@ -24,17 +24,10 @@
 #include <connio.h>
 #include <xplresolve.h>
 
-#ifdef HAVE_RESOLV_H
 #include <resolv.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/nameser.h>
-#endif
-
-
-#ifndef HAVE_RESOLV_H
-# define USE_INTERNAL_RESOLVER
-#endif
 
 #define MTU 1024
 
@@ -46,29 +39,8 @@
 #define MAXCNAMELOOPS 10
 #define TIMEOUT       5    /* Seconds */
 
-#define DEBUG_RESOLVER  0
-
-#if DEBUG_RESOLVER
-# define d XplConsolePrintf
-#else
-# define d if(0) printf
-#endif
-
 #if !HAVE_DECL_NS_C_IN
 # define ns_c_in C_IN
-#endif
-
-
-#ifdef USE_INTERNAL_RESOLVER
-static struct
-{
-    char **resolvers;
-    int resolverCount;
-}  Resolver = { 0 };
-#endif
-
-#if defined(WIN32) || defined(NETWARE) || defined(LIBC)
-#pragma pack (push, 1)
 #endif
 
 /* Pieces of a DNS packet */
@@ -115,10 +87,6 @@ struct _ResolveAData {
 } Xpl8BitPackedStructure;
 
 typedef struct _ResolveAData ResolveAData;
-
-#if defined(WIN32) || defined(NETWARE) || defined(LIBC)
-#pragma pack (pop)
-#endif
 
 /* Constants for flags field of ResolveHeader */
 #define F_TYPERESPONSE      0x8000    /* Packet contains response                       */
@@ -168,11 +136,6 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
     unsigned long numAnswers;
     int size;
 
-#if DEBUG_RESOLVER
-#ifdef NETWARE
-    NETINET_DEFINE_CONTEXT                                        /* To make the netware happy                */
-#endif
-#endif
     /* Setup */
     if (type != XPL_RR_PTR) {
         strcpy(hostCopy, host);
@@ -219,27 +182,15 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
      * we get an MX or A record, which is what we're looking for */
     do {
 	int len = 0;
-        d("Starting query loop\n");
-
+ 
         cnameLooping = FALSE;    /* Will be set to TRUE if we get a CNAME response */
 
-	d("hostname: %s\n", hostCopy);
 	size = ResolveName(hostCopy, type, answer, sizeof(answer));
 
 	if (size < 0) {
 		return(size);
 	}
 	
-#if DEBUG_RESOLVER
-        XplConsolePrintf("---------- RESPONSE ----------\n");
-#if 0
-        for(x = 0; x < size; ++x) {
-            XplConsolePrintf("%02x %c ", answer[x], answer[x]);
-        }
-#endif
-        XplConsolePrintf("\n------------------------------\n");
-#endif
-
         /* Decode packet */
         answerH->flags = ntohs(answerH->flags);
         if ((answerH->flags & F_RCMASK) != F_ERRNONE) {
@@ -271,8 +222,6 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
 	    recInfo = (ResolveRecordInfo*)(answer + answerOff);
             answerOff += RECINFOSIZE;
 
-            d("Question  : %s\n", answers[i].A.name);
-
             recInfo->type = ntohs(recInfo->type);
             switch(recInfo->type) {
 	    case XPL_RR_MX:
@@ -282,9 +231,6 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
 		answerOff += DecodeName(answer, answerOff, answers[i].MX.name);
 		answers[i].MX.addr.s_addr = 0;
 
-		d("MX Record\n");
-		d("Preference: %d\n", ntohs(answers[i].MX.preference));
-		d("Name      : %s\n", answers[i].MX.name);
 		break;
                 
 	    case XPL_RR_A:
@@ -292,15 +238,12 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
 		answers[i].A.addr.s_addr = aData->address;
 		answerOff += ADATASIZE;
 		
-		d("A Record\n");
-		d("Address   : %s\n", inet_ntoa(answers[i].A.addr));
 		break;
 
 	    case XPL_RR_CNAME:
 		/* Instead of giving the CNAME back to the caller, we'll be nice and do the
 		 * A lookup for them. */
 		answerOff += DecodeName(answer, answerOff, answers[i].A.name);
-		d("Got CNAME, looking up %s\n", answers[i].A.name);
 		strcpy(hostCopy, answers[i].A.name);
 		MemFree(answers);
 		answers = NULL;
@@ -312,19 +255,16 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
             case XPL_RR_TXT:
 		len = (int) answer[answerOff];
                 strncpy(answers[i].TXT.txt, answer + answerOff + 1, len);
-                d("TXT Record\n");
-                d("Answer   : %s\n", answers[i].TXT.txt);
                 break;
 
 	    case XPL_RR_PTR: {
 		ptrData = (struct PTRData*)(answer + answerOff);
 		answerOff += DecodeName(answer, answerOff, answers[i].PTR.name);
-		d("Got PTR, name:%s\n", answers[i].PTR.name);
 		break;
 	    }
 
 	    case XPL_RR_SOA: {
-		unsigned char    *ptr;
+		char    *ptr;
 
 		answerOff += DecodeName(answer, answerOff, answers[i].SOA.mname);
 		answerOff += DecodeName(answer, answerOff, answers[i].SOA.rname);
@@ -353,15 +293,6 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
 		if (ptr[0] == '.') {
 		    ptr[0] = '@';
 		}
-
-		d("SOA Record\n");
-		d("MName     : %s\n", answers[i].SOA.mname);
-		d("RName     : %s\n", answers[i].SOA.rname);
-		d("Serial    : %lu\n", answers[i].SOA.serial);
-		d("Refresh   : %lu\n", answers[i].SOA.refresh);
-		d("Retry     : %lu\n", answers[i].SOA.retry);
-		d("Expire    : %lu\n", answers[i].SOA.expire);
-		d("Minimum   : %lu\n", answers[i].SOA.minimum);
 
 		break;
 	    }
@@ -415,16 +346,6 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
     answers[numAnswers].MX.preference = 0;
 
     *list = answers;
-
-#if DEBUG_RESOLVER
-    if (type == XPL_RR_A) {
-        i = 0;
-        while ((*list)[i].A.name[0] != '\0') {
-            XplConsolePrintf("%15s  : %s\n", inet_ntoa((*list)[i].A.addr), (*list)[i].A.name);
-            ++i;
-        }
-    }
-#endif
 
     return(XPL_DNS_SUCCESS);
 }
@@ -502,224 +423,6 @@ DecodeName(char *response, unsigned long offset, char *name)
     return(encodedLen);
 }
 
-#ifdef USE_INTERNAL_RESOLVER
-
-static int 
-EncodeName(char *name, char *buf) 
-{
-    BOOL done = FALSE;
-    char *ptr1 = name;
-    char *ptr2 = NULL;
-    unsigned char length = 0;
-    unsigned char index = 0;
-    
-    /* Encode one label at a time */
-    do {
-        /* Find the end of the label */
-        ptr2 = strchr(ptr1, '.');
-
-        /* Is this the last label? */
-        if (ptr2 == NULL) {
-            ptr2 = ptr1 + strlen(ptr1) + 1;    /* Should already be '\0' */
-            done = TRUE;
-        }
-
-        /* Separate this label */
-        *ptr2 = '\0';
-        
-        /* Put in length byte */
-        length = (unsigned char)strlen(ptr1);
-        buf[index++] = length;
-
-        /* Copy label */
-        strcpy(buf + index, ptr1);
-        index += length;
-
-        /* Set up for the next loop */
-        if (!done)
-            *ptr2 = '.';
-
-        ptr1 = ptr2 + 1;
-    } while (!done);
-    
-    /* Terminate with 0 length byte */
-    buf[index++] = 0;
-    
-    return(index);        /* Tell caller how long the encoded name is */
-}
-
-static int
-ResolveName (char *host, int type, char *answer, int answerLen)
-{
-    int sock;
-    unsigned char tries;
-    ResolveHeader *queryH;
-    ResolveHeader *answerH;
-    ResolveQuestionInfo *queryQuestion;
-    struct sockaddr_in toSin;
-    struct sockaddr_in fromSin;
-    unsigned long queryOff;
-    int actualTries;
-    int curResolver;
-    char query[MTU];
-    int size;
-
-    if (Resolver.resolverCount < 1) {
-        return(XPL_DNS_FAIL);
-    }
-
-    if ((strlen(host) > MAXEMAILNAMESIZE) || (!strchr(host, '.'))) {
-        return(XPL_DNS_BADHOSTNAME);
-    }
-
-    curResolver = 0;
-
-    queryH = (ResolveHeader*)query;      /* These are overlays to make the code */
-    answerH = (ResolveHeader*)answer;    /* easier to write and more readable */
-
-    sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock < 0) {
-	return(XPL_DNS_FAIL);
-    }
-    
-    memset(&toSin, 0, sizeof(toSin));
-    toSin.sin_family = AF_INET;
-    /* Address set in the loop below */
-    toSin.sin_port = htons(53);
-    
-    memset(&fromSin, 0, sizeof(fromSin));
-    fromSin.sin_family = AF_INET;
-    fromSin.sin_port = htons(0);
-
-    if (bind(sock, (struct sockaddr*)&fromSin, sizeof(fromSin))) {
-	    IPclose(sock);
-	    return(XPL_DNS_FAIL);
-    }
-
-    /* Initialize */
-    tries = 0;
-    actualTries = Resolver.resolverCount*MAXTRIES;
-
-    /* Build query */
-    d("Building query\n");
-
-    queryH->id = htons((unsigned short)rand());
-    queryH->flags = htons(F_TYPEQUERY | F_OPSTANDARD | F_WANTRECURSIVE);
-    queryH->qdcount = htons(1);
-    queryH->ancount = queryH->nscount = queryH->arcount = htons(0);
-
-    queryOff = HEADERSIZE;
-    queryOff += EncodeName(host, query + queryOff);
-    queryQuestion = (ResolveQuestionInfo*)(query + queryOff);
-    queryQuestion->type = htons((unsigned short)type);
-    queryQuestion->class = htons(CLASS_IN);
-    queryOff += sizeof(queryQuestion->type) + sizeof(queryQuestion->class);
-    
-#if DEBUG_RESOLVER
-    { unsigned long x;
-    XplConsolePrintf("---------- QUERY ----------\n");
-#if 0
-    for(x = 0; x < queryOff; ++x) {
-	XplConsolePrintf("%02x %c ", query[x], query[x]);
-    }
-#endif
-    d("hostname: %s\n", host);
-    
-    XplConsolePrintf("\n---------------------------\n");
-    }
-    
-#endif
-	
-    /* Run query */
-    do {
-	toSin.sin_addr.s_addr = inet_addr(Resolver.resolvers[curResolver]);
-
-	if (sendto(sock, query, queryOff, 0, (struct sockaddr*)&toSin, sizeof(toSin)) != (int)queryOff) {
-	    IPclose(sock);
-	    return(XPL_DNS_FAIL);
-	}
-
-	size = XplIPRead((void *)sock, answer, answerLen, TIMEOUT);
-	if (size < 0) {
-	    curResolver++;
-	    if (curResolver >= Resolver.resolverCount)
-		curResolver = 0;
-	    /* Timed out */
-	    continue;
-	}
-
-	d("Size = %d\n", size);
-
-	if (size > 0 && answerH->id == queryH->id) {
-	    break;
-	}
-
-	curResolver++;
-	if (curResolver >= Resolver.resolverCount) {
-	    curResolver = 0;
-	}
-    } while (++tries < actualTries);
-    IPclose(sock);
-	
-    if (tries >= actualTries) {
-	return(XPL_DNS_TIMEOUT);
-    }
-    return size;
-}
-
-EXPORT void
-XplDnsAddResolver(const char *resolverValue)
-{
-    Resolver.resolvers = MemRealloc(Resolver.resolvers, (Resolver.resolverCount+1) * sizeof(char *));
-    if (!Resolver.resolvers) {
-        XplConsolePrintf("Could not add resolver, out of memory.");
-        return;
-    }
-
-    Resolver.resolvers[Resolver.resolverCount] = MemStrdup(resolverValue);
-    if (!Resolver.resolvers[Resolver.resolverCount]) {
-        XplConsolePrintf("Could not add resolver, out of memory.");
-        return;
-    }
-
-    Resolver.resolverCount++;
-}
-
-static void
-FreeResolvers(void)
-{
-    int i;
-
-    for (i = 0; i < Resolver.resolverCount; i++)
-        MemFree(Resolver.resolvers[i]);
-
-    if (Resolver.resolvers) {
-        MemFree(Resolver.resolvers);
-    }
-}
-
-
-BOOL
-XplResolveStop(void)
-{
-    FreeResolvers();
-    return(TRUE);
-}
-
-BOOL
-XplResolveStart(void)
-{
-    return TRUE;
-}
-
-#elif defined (HAVE_RESOLV_H)
-
-EXPORT void
-XplDnsAddResolver(const char *resolverValue)
-{
-    /* FIXME: Ignored, maybe we should munge _res ? */
-}
-
 static int
 ResolveName (char *host, int type, char *answer, int answerLen) 
 {
@@ -727,7 +430,8 @@ ResolveName (char *host, int type, char *answer, int answerLen)
     
     h_errno = 0;
     
-    size = res_search(host, ns_c_in, type, answer, answerLen);
+    // FIXME: cast below is wrong.
+    size = res_search(host, ns_c_in, type, (u_char *)answer, answerLen);
     
     if (size >= 0) {
 	return size;
@@ -759,5 +463,3 @@ XplResolveStart(void)
 	return FALSE;
     }
 }
-
-#endif

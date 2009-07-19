@@ -607,6 +607,9 @@ CheckDiskspace(BongoAgent *agent)
     }
 }
 
+#if 0
+// disabled because the load monitor was awful.
+// can we do this via some kind of automatic tunable?
 static void
 CheckLoad(BongoAgent *agent)
 {
@@ -649,6 +652,7 @@ CheckLoad(BongoAgent *agent)
         }
     }    
 }
+#endif
 
 static void 
 SignalHandler(int sigtype) 
@@ -692,7 +696,8 @@ XplServiceMain(int argc, char *argv[])
 
     BongoAgentAddConfigMonitor(&Agent.agent, CheckConfig);
     BongoAgentAddDiskMonitor(&Agent.agent, CheckDiskspace);
-    BongoAgentAddLoadMonitor(&Agent.agent, CheckLoad);
+    // Load monitor disabled, see CheckLoad()
+    //BongoAgentAddLoadMonitor(&Agent.agent, CheckLoad);
 
     Agent.clientListener = ServerSocketInit(Agent.agent.port);
     if (Agent.clientListener == NULL) {
