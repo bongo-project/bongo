@@ -682,10 +682,8 @@ UnpackString(FILE *from, char **str)
 }
 
 static BOOL
-PackArray(FILE *to, GArray *array)
+PackArray(FILE *to, GArray *array, unsigned int elemSize)
 {
-    int elemSize = (sizeof(array->data) / array->len);
-
     if (fwrite(&array->len, sizeof(unsigned int), 1, to) != 1) {
         return FALSE;
     }
@@ -754,7 +752,7 @@ BongoCalTimezonePack(BongoCalTimezone *tz, FILE *to)
         return FALSE;
     }
 
-    if (!PackArray(to, tz->changes)) {
+    if (!PackArray(to, tz->changes, sizeof(TimezoneChange))) {
         return FALSE;
     }
 
