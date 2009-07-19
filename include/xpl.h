@@ -22,6 +22,14 @@
 #ifndef XPL_H
 #define XPL_H
 
+// this define should be used to mark function parameters that are currently 
+// unused but ought to be used / will be used in the future.
+#define UNUSED_PARAMETER(x)	if(x) {}
+
+// this define should be used to mark function parameters that are unused
+// and possibly should be removed.
+#define UNUSED_PARAMETER_REFACTOR(x)	if(x) {}
+
 #include "xplutil.h"
 #include "xplthread.h"
 #include "xplservice.h"

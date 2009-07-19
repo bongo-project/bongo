@@ -406,7 +406,9 @@ JsonParametersToIcal(BongoJsonObject *obj, icalproperty *prop)
 static void
 IcalValueToJsonString(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
-    BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
+	UNUSED_PARAMETER_REFACTOR(kind)
+	
+ 	BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
 }
 
 static void
@@ -424,6 +426,8 @@ IcalValueToJsonText(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kin
 {
     icalvalue *value;
 
+    UNUSED_PARAMETER_REFACTOR(kind)
+
     value = icalproperty_get_value(prop);
     BongoJsonObjectPutString(obj, "value", icalvalue_get_text(value));
 }
@@ -432,6 +436,7 @@ static void
 JsonValueToIcalText(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     const char *val;
+    UNUSED_PARAMETER_REFACTOR(kind)
 
     if (BongoJsonObjectGetString(obj, "value", &val) == BONGO_JSON_OK) {
         icalvalue *value;
@@ -444,6 +449,7 @@ JsonValueToIcalText(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kin
 static void
 IcalValueToJsonBool(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
     BongoJsonObjectPutBool(obj, "value", icalvalue_get_boolean(icalproperty_get_value(prop)));
 }
 
@@ -451,7 +457,8 @@ static void
 JsonValueToIcalBool(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     BOOL val;
-
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     if (BongoJsonObjectGetBool(obj, "value", &val) == BONGO_JSON_OK) {
         icalproperty_set_value(prop, icalvalue_new_boolean(val));
     }
@@ -460,6 +467,7 @@ JsonValueToIcalBool(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kin
 static void
 IcalValueToJsonDate(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
     /* FIXME: treating dates as strings? */
     BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
 }
@@ -468,7 +476,7 @@ static void
 JsonValueToIcalDate(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     const char *val;
-
+    UNUSED_PARAMETER_REFACTOR(kind)
     /* FIXME: treating dates as strings? */
 
     if (BongoJsonObjectGetString(obj, "value", &val) == BONGO_JSON_OK) {
@@ -479,6 +487,7 @@ JsonValueToIcalDate(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kin
 static void
 IcalValueToJsonDateTime(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
     /* FIXME: treating datetimes as strings? */
     BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
 }
@@ -487,7 +496,8 @@ static void
 JsonValueToIcalDateTime(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     const char *val;
-
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     /* FIXME: treating dates as strings? */
 
     if (BongoJsonObjectGetString(obj, "value", &val) == BONGO_JSON_OK) {
@@ -498,6 +508,7 @@ JsonValueToIcalDateTime(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind
 static void
 IcalValueToJsonDuration(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
     /* FIXME: treating dates as strings? */
     BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
 }
@@ -506,7 +517,8 @@ static void
 JsonValueToIcalDuration(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     const char *val;
-
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     /* FIXME: treating dates as strings? */
 
     if (BongoJsonObjectGetString(obj, "value", &val) == BONGO_JSON_OK) {
@@ -517,6 +529,7 @@ JsonValueToIcalDuration(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind
 static void
 IcalValueToJsonFloat(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
     BongoJsonObjectPutDouble(obj, "value", icalvalue_get_float(icalproperty_get_value(prop)));
 }
 
@@ -524,7 +537,8 @@ static void
 JsonValueToIcalFloat(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     double val;
-
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     /* FIXME: treating dates as strings? */
 
     if (BongoJsonObjectGetDouble(obj, "value", &val) == BONGO_JSON_OK) {
@@ -535,6 +549,7 @@ JsonValueToIcalFloat(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind ki
 static void
 IcalValueToJsonInt(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
     BongoJsonObjectPutInt(obj, "value", icalvalue_get_integer(icalproperty_get_value(prop)));
 }
 
@@ -542,7 +557,8 @@ static void
 JsonValueToIcalInt(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     int val;
-
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     /* FIXME: treating dates as strings? */
 
     if (BongoJsonObjectGetInt(obj, "value", &val) == BONGO_JSON_OK) {
@@ -555,6 +571,8 @@ IcalValueToJsonPeriod(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind k
 {
     struct icalperiodtype period;
     BongoJsonObject *value;
+
+    UNUSED_PARAMETER_REFACTOR(kind)
 
     value = BongoJsonObjectNew();
 
@@ -577,6 +595,8 @@ JsonValueToIcalPeriod(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind k
     const char *val;
     struct icalperiodtype period;
     BongoJsonObject *jsonValue;
+
+    UNUSED_PARAMETER_REFACTOR(kind)
 
     if (BongoJsonObjectGetObject(obj, "value", &jsonValue) != BONGO_JSON_OK) {
         return;
@@ -818,7 +838,7 @@ IcalRecurArgToJson(BongoJsonObject *obj, char *key, char *value)
     if (prop) {
         prop->toJson(prop->jsonKey, value, obj);
     } else {
-#warning X- bits not implemented
+        // FIXME X- bits not implemented
     }
 }
 static void
@@ -829,6 +849,8 @@ IcalValueToJsonRecur(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind ki
     char *p;
     char *p2;
     BongoJsonObject *jsonValue;
+    
+    UNUSED_PARAMETER_REFACTOR(kind)
     
     jsonValue = BongoJsonObjectNew();
     
@@ -875,6 +897,8 @@ JsonValueToIcalRecur(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind ki
     BOOL first = TRUE;
     BongoJsonObject *jsonValue;
     
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     if (BongoJsonObjectGetObject(obj, "value", &jsonValue) != BONGO_JSON_OK) {
         return;
     }
@@ -897,7 +921,7 @@ JsonValueToIcalRecur(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind ki
                 first = FALSE;
             }
         } else {
-#warning X- bits not implemented
+            // FIXME X- bits not implemented
         }
     }
 
@@ -909,6 +933,8 @@ JsonValueToIcalRecur(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind ki
 static void
 IcalValueToJsonTime(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     /* FIXME: treating times as strings? */
 
     BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
@@ -918,6 +944,8 @@ static void
 JsonValueToIcalTime(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     const char *val;
+
+    UNUSED_PARAMETER_REFACTOR(kind)
 
     /* FIXME: treating times as strings? */
     if (BongoJsonObjectGetString(obj, "value", &val) == BONGO_JSON_OK) {
@@ -929,6 +957,8 @@ JsonValueToIcalTime(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kin
 static void
 IcalValueToJsonGeo(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
+    UNUSED_PARAMETER_REFACTOR(kind)
+    
     /* FIXME: treating geos as strings? */
     BongoJsonObjectPutString(obj, "value", icalproperty_get_value_as_string(prop));
 }
@@ -937,6 +967,8 @@ static void
 JsonValueToIcalGeo(BongoJsonObject *obj, icalproperty *prop, icalvalue_kind kind)
 {
     const char *val;
+
+    UNUSED_PARAMETER_REFACTOR(kind)
 
     /* FIXME: treating geos as strings? */
     if (BongoJsonObjectGetString(obj, "value", &val) == BONGO_JSON_OK) {
@@ -1245,6 +1277,8 @@ JsonComponentToIcalWithType(ComponentType *componentType, BongoJsonObject *obj, 
 {
     icalcomponent *comp;
     BongoJsonObjectIter iter;
+    
+    UNUSED_PARAMETER(parent)
     
     comp = icalcomponent_new(componentType->icalKind);
     

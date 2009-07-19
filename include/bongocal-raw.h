@@ -23,7 +23,7 @@
 #define BONGOCAL_RAW_H
 
 #include <xpl.h>
-#include <ical.h>
+#include <libical/ical.h>
 #include <bongojson.h>
 
 XPL_BEGIN_C_LINKAGE

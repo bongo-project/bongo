@@ -239,7 +239,7 @@ WriteLocalizedTime(BongoCalTime t, BongoCalTimezone *tz)
 }
 
 static BOOL
-ReadPeriod(BongoCalInstance *inst, BongoJsonObject *obj, BongoCalPeriod *period)
+ReadPeriod(BongoJsonObject *obj, BongoCalPeriod *period)
 {
     const char *value;
     BongoJsonObject *jsonValue;
@@ -302,7 +302,7 @@ IntArrayToList(GArray *array, int min, int max)
         int intVal;
         if (BongoJsonArrayGetInt(array, i, &intVal) == BONGO_JSON_OK) {
             if (intVal >= min && intVal <= max) {
-                ret = BongoListPrepend(ret, (char *)(intVal));
+                ret = BongoListPrepend(ret, BongoListIntToVoid(intVal));
             }
         }
     }
@@ -327,8 +327,8 @@ DayArrayToList(GArray *array)
             day = GetWeekday(end);
             
             if (ord >= -53 && ord <= 53) {
-                ret = BongoListPrepend(ret, (char *)(day));
-                ret = BongoListPrepend(ret, (char *)(ord));
+                ret = BongoListPrepend(ret, BongoListIntToVoid(day));
+                ret = BongoListPrepend(ret, BongoListIntToVoid(ord));
             }
         }
     }
@@ -337,7 +337,7 @@ DayArrayToList(GArray *array)
 }
 
 static BOOL
-ReadRecur(BongoCalInstance *inst, BongoJsonObject *obj, BongoCalRule *recur)
+ReadRecur(BongoJsonObject *obj, BongoCalRule *recur)
 {
     GArray *arrayVal;
     const char *stringVal;
@@ -394,7 +394,7 @@ ReadRecur(BongoCalInstance *inst, BongoJsonObject *obj, BongoCalRule *recur)
         recur->bymonth = IntArrayToList(arrayVal, 1, 12);
         
         for (l = recur->bymonth; l != NULL; l = l->next) {
-            l->data = ((int)(l->data)) - 1;
+            l->data--;
         }
     }
 
@@ -601,7 +601,7 @@ CacheRDates(BongoCalInstance *inst, const char *key, BongoSList **dates)
 
             if (period) {
                 rdate->type = BONGO_CAL_RDATE_PERIOD;
-                ReadPeriod(inst, obj, &rdate->value.period);
+                ReadPeriod(obj, &rdate->value.period);
             } else {
                 rdate->type = BONGO_CAL_RDATE_DATETIME;
                 ReadTime(inst, obj, &rdate->value.time);
@@ -634,7 +634,7 @@ CacheRRules(BongoCalInstance *inst, const char *key, BongoSList **rules)
             
             r = MemNew0(BongoCalRule, 1);
             
-            ReadRecur(inst, obj, r);
+            ReadRecur(obj, r);
 
             *rules = BongoSListPrepend(*rules, r);
         }

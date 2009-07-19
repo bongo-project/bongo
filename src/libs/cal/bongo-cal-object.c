@@ -20,8 +20,9 @@
  ****************************************************************************/
 
 #include <config.h>
+#include <bongoutil.h>
 #include <bongocal.h>
-#include <ical.h>
+#include <libical/ical.h>
 #include <bongocal-raw.h>
 #include "bongo-cal-private.h"
 
@@ -653,6 +654,7 @@ BongoCalOccurrence
 BongoCalObjectPrimaryOccurrence(BongoCalObject *cal,
                                BongoCalTimezone *defaultTz)
 {
+    UNUSED_PARAMETER_REFACTOR(defaultTz)
     if (cal->instances->len > 0) {
         /* This needs to have some logic to find the primary instance,
            rather than the first instance.  However, for now we're

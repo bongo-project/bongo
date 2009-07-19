@@ -63,7 +63,7 @@ typedef struct {
     int isDaylight;
 } TimezoneChange;
 
-BongoCalTimezone utcTz = { BONGO_CAL_TIMEZONE_OFFSET, "UTC", 0 };
+BongoCalTimezone utcTz = { BONGO_CAL_TIMEZONE_OFFSET, "UTC", 0, NULL, NULL, NULL, 0, 0 };
 static int timezonesInitialized = FALSE;
 static BongoHashtable *systemTimezones = NULL;
 
@@ -165,19 +165,18 @@ BongoCalTimezoneGetSystem(const char *tzid)
 void
 BongoCalTimezoneFree(BongoCalTimezone *tz, BOOL freeJson)
 {
-    if (tz == &utcTz) {
-        return;
-    }
+	if (tz == &utcTz) return;
 
-    if (tz->tzid) {
-        MemFree(tz->tzid);
-    }
-    
-    if (tz->changes) {
-        g_array_free(tz->changes, TRUE);
-    }
+	if (tz->tzid)
+		MemFree(tz->tzid);
 
-    MemFree(tz);
+	if (tz->changes)
+		g_array_free(tz->changes, TRUE);
+
+	if (freeJson)
+		BongoJsonObjectFree(tz->json);
+
+	MemFree(tz);
 }
 
 BongoCalTime 
@@ -356,8 +355,9 @@ ReadChanges(BongoCalTimezone *tz)
         for (i = 0; i < changes->len; i++) {
             BongoJsonObject *jsonInst = NULL;
             if (BongoJsonArrayGetObject(changes, i, &jsonInst) == BONGO_JSON_OK) {
-                BongoCalInstance calInst = {0, };
+                BongoCalInstance calInst;
                 
+                memset(&calInst, 0, sizeof(BongoCalInstance));
                 BongoCalInstanceInit(&calInst, tz->cal, jsonInst);
    
                 AddOccurrence(tz, BongoCalInstanceGetOccurrence(&calInst), TRUE);
@@ -378,6 +378,8 @@ ExpandCb(BongoCalInstance *inst,
 {
     BongoCalOccurrence occ;
     BongoCalTimezone *tz = datap;
+    
+    UNUSED_PARAMETER_REFACTOR(instanceEnd)
 
     occ.start = BongoCalTimeNewFromUint64(instanceStart, FALSE, BongoCalTimezoneGetUtc());
     occ.end = BongoCalTimeNewFromUint64(instanceStart, FALSE, BongoCalTimezoneGetUtc());
@@ -429,8 +431,9 @@ BongoCalTimezoneExpand(BongoCalTimezone *tz, BongoCalTime start, BongoCalTime en
         for (i = 0; i < changes->len; i++) {
             BongoJsonObject *jsonInst = NULL;
             if (BongoJsonArrayGetObject(changes, i, &jsonInst) == BONGO_JSON_OK) {
-                BongoCalInstance calInst = {0, };
+                BongoCalInstance calInst;
                 
+                memset(&calInst, 0, sizeof(BongoCalInstance));
                 BongoCalInstanceInit(&calInst, tz->cal, jsonInst);
 
                 /* Add the original instances */

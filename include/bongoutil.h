@@ -316,14 +316,15 @@ typedef struct _BongoList BongoList;
 typedef struct _BongoSList BongoSList;
 
 struct _BongoList {
-    void *data;
-    BongoList *next;
-    BongoList *prev;
+	void *data;
+	
+	BongoList *next;
+	BongoList *prev;
 };
 
 struct _BongoSList {
-    void *data;
-    BongoSList *next;
+	void *data;
+	BongoSList *next;
 };
 
 BongoList *BongoListCopy(BongoList *list);
@@ -345,6 +346,9 @@ void BongoSListFree(BongoSList *slist);
 void BongoSListFreeDeep(BongoSList *slist);
 int BongoSListLength(BongoSList *slist);
 BongoSList *BongoSListDelete(BongoSList *list, void *data, BOOL deep);
+
+void *BongoListIntToVoid (int val);
+int BongoListVoidToInt (void * ptr);
 
 /** end lists.c **/
 

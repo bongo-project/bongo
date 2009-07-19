@@ -375,3 +375,31 @@ BongoListDelete(BongoList *list, void *data, BOOL deep)
 
     return result;
 }
+
+// dodgy conversion routines to allow ints to be stored in lists
+typedef union {
+	void *ptr;
+	int i;
+} _bongo_list_conversion;
+
+void *
+BongoListIntToVoid (int val)
+{
+	_bongo_list_conversion conv;
+	
+	memset(&conv, 0, sizeof(_bongo_list_conversion));
+	
+	conv.i = val;
+	return conv.ptr;
+}
+
+int
+BongoListVoidToInt (void * ptr)
+{
+	_bongo_list_conversion conv;
+	
+	memset(&conv, 0, sizeof(_bongo_list_conversion));
+	
+	conv.ptr = ptr;
+	return conv.i;
+}

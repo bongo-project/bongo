@@ -1,3 +1,5 @@
+StrictCompile()
+
 add_library(bongocal SHARED
 	bongo-cal-object.c
 	bongo-cal-instance.c
@@ -19,6 +21,7 @@ add_library(bongocal SHARED
 
 target_link_libraries(bongocal
 	bongoxpl
+	bongoutil
 	bongomemmgr
 	${LIBICAL_LIBRARIES}
 )

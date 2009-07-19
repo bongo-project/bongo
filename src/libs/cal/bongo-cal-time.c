@@ -51,8 +51,8 @@ static int NumLeap(int64_t y1, int64_t y2) {
   return (y2/4 - y1/4) - (y2/100 - y1/100) + (y2/400 - y1/400);
 }
 
-static const BongoCalTime emptyTime = { 0, 0, 0, 0, 0, 0, 0, TRUE};
-static const BongoCalDuration emptyDuration = { 0, };
+static const BongoCalTime emptyTime = { 0, 0, 0, 0, 0, 0, 0, TRUE, NULL, NULL};
+static const BongoCalDuration emptyDuration = { 0, 0, 0, 0, 0, 0};
 
 static const unsigned int daysInMonth[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
 static const unsigned int daysInYear[2][14] = {
@@ -662,7 +662,7 @@ BongoCalTimeGetDayOfYear(BongoCalTime t)
 BongoCalDuration 
 BongoCalDurationParseIcal(const char *str)
 {
-    BongoCalDuration d = {0, };
+    BongoCalDuration d = {0, 0, 0, 0, 0, 0};
     int len;
     BOOL beginFlag = FALSE;
     BOOL timeFlag = FALSE;

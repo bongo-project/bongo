@@ -925,6 +925,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
     BongoCalTime startt, endt;
     BOOL cbStatus = TRUE, ruleFinished, finished = TRUE;
 
+    UNUSED_PARAMETER(convertEndDate)
 
     DPRINT ("In GenerateInstancesForChunk rrules: %p %p %llud"
             "  %i/%i/%i %02i:%02i:%02i - %i/%i/%i %02i:%02i:%02i\n",
@@ -987,6 +988,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
         BongoCalRDate *p;
         BongoCalTime *cdt;
         CalObjRecurrenceDate rdate;
+        CalObjTime *new_cot;
 
         p = elem->data;
         if (p->type == BONGO_CAL_RDATE_DATETIME) {
@@ -1031,9 +1033,9 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
             g_array_append_val(rdatePeriods, rdate);
         }
 
-        DPRINT("adding an rdate\n");
-
-        g_array_append_val(occs, cotime);
+        new_cot = MemNew(CalObjTime, 1);
+        memcpy(new_cot, &cotime, sizeof(CalObjTime));
+        g_array_append_val(occs, new_cot);
     }
 
     /* Expand each of the exception rules. */
@@ -1115,7 +1117,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
     for (i = 0; i < occs->len; i++) {
         /* Convert each CalObjTime into a start & end time, and
            check it is within the bounds of the event & interval. */
-        occ = &g_array_index(occs, CalObjTime, i);
+        occ = g_array_index(occs, CalObjTime *, i);
 
         DPRINT ("Checking occurrence: %s\n",
                  CalObjTimeToString (occ));
@@ -1703,7 +1705,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of months from bymonths for fast lookup. */
     elem = recur->bymonth;
     while (elem) {
-        month = (int) (elem->data);
+        month = BongoListVoidToInt(elem->data);
         recurData->months[month] = 1;
         elem = elem->next;
     }
@@ -1713,7 +1715,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
        element there corresponds to the last day of the year. */
     elem = recur->byyearday;
     while (elem) {
-        yearday = (int) (elem->data);
+        yearday = BongoListVoidToInt(elem->data);
         if (yearday >= 0)
             recurData->yeardays[yearday] = 1;
         else
@@ -1726,7 +1728,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
        element there corresponds to the last day of the month. */
     elem = recur->bymonthday;
     while (elem) {
-        monthday = (int) (elem->data);
+        monthday = BongoListVoidToInt(elem->data);
         if (monthday >= 0)
             recurData->monthdays[monthday] = 1;
         else
@@ -1737,10 +1739,10 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of weekdays from byday for fast lookup. */
     elem = recur->byday;
     while (elem) {
-        weekday = (int) (elem->data);
+        weekday = BongoListVoidToInt(elem->data);
         elem = elem->next;
         /* The week number is not used when filtering. */
-        week_num = (int) (elem->data);
+        week_num = BongoListVoidToInt(elem->data);
         elem = elem->next;
 
         recurData->weekdays[weekday] = 1;
@@ -1749,7 +1751,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of hours from byhour for fast lookup. */
     elem = recur->byhour;
     while (elem) {
-        hour = (int) (elem->data);
+        hour = BongoListVoidToInt(elem->data);
         recurData->hours[hour] = 1;
         elem = elem->next;
     }
@@ -1757,7 +1759,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of minutes from byminutes for fast lookup. */
     elem = recur->byminute;
     while (elem) {
-        minute = (int) (elem->data);
+        minute = BongoListVoidToInt(elem->data);
         recurData->minutes[minute] = 1;
         elem = elem->next;
     }
@@ -1765,7 +1767,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
     /* Create an array of seconds from byseconds for fast lookup. */
     elem = recur->bysecond;
     while (elem) {
-        second = (int) (elem->data);
+        second = BongoListVoidToInt(elem->data);
         recurData->seconds[second] = 1;
         elem = elem->next;
     }
@@ -1958,7 +1960,7 @@ CalObjBySetPosFilter (BongoCalRule *recur,
        element from occs to new_occs. */
     len = occs->len;
     while (elem) {
-        pos = (int) (elem->data);
+        pos = BongoListVoidToInt(elem->data);
 
         /* Negative values count back from the end of the array. */
         if (pos < 0)
@@ -2486,7 +2488,7 @@ CalObjByMonthExpand             (RecurData  *recurData,
         elem = recurData->recur->bymonth;
         while (elem) {
             /* NOTE: The day may now be invalid, e.g. 31st Feb. */
-            occ->month = (int) (elem->data);
+            occ->month = BongoListVoidToInt(elem->data);
             g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
@@ -2567,7 +2569,7 @@ CalObjByWeeknoExpand            (RecurData  *recurData,
            new occurrence for each one. */
         elem = recurData->recur->byweekno;
         while (elem) {
-            weekno = (int) (elem->data);
+            weekno = BongoListVoidToInt(elem->data);
             if (weekno > 0) {
                 cotime = year_start_cotime;
                 CalObjTimeAddDays (&cotime,
@@ -2638,7 +2640,7 @@ CalObjByYeardayExpand   (RecurData  *recurData,
            new occurrence for each one. */
         elem = recurData->recur->byyearday;
         while (elem) {
-            dayno = (int) (elem->data);
+            dayno = BongoListVoidToInt(elem->data);
             if (dayno > 0) {
                 cotime = year_start_cotime;
                 CalObjTimeAddDays (&cotime, dayno - 1);
@@ -2732,7 +2734,7 @@ CalObjBymonthdayExpand  (RecurData  *recurData,
            new occurrence for each one. */
         elem = recurData->recur->bymonthday;
         while (elem) {
-            dayno = (int) (elem->data);
+            dayno = BongoListVoidToInt(elem->data);
             if (dayno > 0) {
                 cotime = month_start_cotime;
                 CalObjTimeAddDays (&cotime, dayno - 1);
@@ -2817,9 +2819,9 @@ CalObjByDayExpandYearly (RecurData  *recurData,
 
         elem = recurData->recur->byday;
         while (elem) {
-            weekday = (int) (elem->data);
+            weekday = BongoListVoidToInt(elem->data);
             elem = elem->next;
-            week_num = (int) (elem->data);
+            week_num = BongoListVoidToInt(elem->data);
             elem = elem->next;
 
             year = occ->year;
@@ -2895,9 +2897,9 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
 
         elem = recurData->recur->byday;
         while (elem) {
-            weekday = (int) (elem->data);
+            weekday = BongoListVoidToInt(elem->data);
             elem = elem->next;
-            week_num = (int) (elem->data);
+            week_num = BongoListVoidToInt(elem->data);
             elem = elem->next;
 
             year = occ->year;
@@ -2984,7 +2986,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
 
         elem = recurData->recur->byday;
         while (elem) {
-            weekday = (int) (elem->data);
+            weekday = BongoListVoidToInt(elem->data);
             DPRINT("weekday is %d\n", weekday);
             
             elem = elem->next;
@@ -2992,7 +2994,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
             /* FIXME: Currently we just ignore this, but maybe we
                should skip all elements where week_num != 0.
                The spec isn't clear about this. */
-            week_num = (int) (elem->data);
+            week_num = BongoListVoidToInt(elem->data);
             DPRINT("week num is %d\n", week_num);
 
             elem = elem->next;
@@ -3073,7 +3075,7 @@ CalObjByhourExpand              (RecurData  *recurData,
 
         elem = recurData->recur->byhour;
         while (elem) {
-            occ->hour = (int) (elem->data);
+            occ->hour = BongoListVoidToInt(elem->data);
             g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
@@ -3140,7 +3142,7 @@ CalObjByminuteExpand            (RecurData  *recurData,
 
         elem = recurData->recur->byminute;
         while (elem) {
-            occ->minute = (int) (elem->data);
+            occ->minute = BongoListVoidToInt(elem->data);
             g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
@@ -3207,7 +3209,7 @@ CalObjBysecondExpand            (RecurData  *recurData,
 
         elem = recurData->recur->bysecond;
         while (elem) {
-            occ->second = (int) (elem->data);
+            occ->second = BongoListVoidToInt(elem->data);
             g_array_append_val(new_occs, occ);
             elem = elem->next;
         }
@@ -3688,6 +3690,8 @@ BongoCalRecurEnsureRuleEndDate (BongoCalInstance *comp,
 {
     BongoCalRecurEnsureEndDateData cbData;
 
+    UNUSED_PARAMETER_REFACTOR(exception)
+
     /* If the rule doesn't use COUNT just return. */
     if (recur->count == 0) {
         return FALSE;
@@ -3728,6 +3732,11 @@ BongoCalRecurEnsureRuleEndDateCb (BongoCalInstance *inst,
                                  void *data)
 {
     BongoCalRecurEnsureEndDateData *cbData;
+
+    // these parameters are required by the prototype for the callback
+    // if we want to remove them, we need to refactor the callback
+    UNUSED_PARAMETER(inst)
+    UNUSED_PARAMETER(instanceEnd)
 
     cbData = (BongoCalRecurEnsureEndDateData*) data;
 
