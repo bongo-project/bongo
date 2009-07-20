@@ -323,7 +323,6 @@ BongoCalTimeUtcAsUint64(BongoCalTime t)
 
     year = t.year;
 
-printf("Month: %d\n", t.month);
     assert(t.month >= 0 && t.month <= 11);
 
     days = 365 * (year - 1970) + NumLeap(1970, year);

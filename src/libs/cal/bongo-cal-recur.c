@@ -952,8 +952,11 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
         if (CalObjCompareFunc (eventStart, chunkEnd) >= 0) {
             finished = FALSE;
         } else if (CalObjCompareFunc (eventStart, chunkStart) >= 0) {
+            CalObjTime *new_cot;
             DPRINT("adding original DTSTART to the occurrence set\n");
-            g_array_append_val(occs, eventStart);
+            new_cot = MemNew(CalObjTime, 1);
+            memcpy(new_cot, eventStart, sizeof(CalObjTime));
+            g_array_append_vals(occs, new_cot, 1);
         }
     }
         
@@ -1026,16 +1029,18 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
            second to -1 to denote an unset time. See icalvalue.c)
            FIXME. */
         if (p->type != BONGO_CAL_PERIOD_DATETIME) {
+            CalObjTime *c = MemNew(CalObjTime, 1);
             cotime.flags = TRUE;
 
             rdate.start = cotime;
             rdate.period = &p->value.period;
-            g_array_append_val(rdatePeriods, rdate);
+            memcpy(c, &rdate, sizeof(CalObjTime));
+            g_array_append_vals(rdatePeriods, c, 1);
         }
 
         new_cot = MemNew(CalObjTime, 1);
         memcpy(new_cot, &cotime, sizeof(CalObjTime));
-        g_array_append_val(occs, new_cot);
+        g_array_append_vals(occs, new_cot, 1);
     }
 
     /* Expand each of the exception rules. */
@@ -1468,7 +1473,7 @@ CalObjGenerateSetYearly (RecurData *recurData,
 
     if (recur->bymonth) {
         occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-        g_array_append_val(occs, occ);
+        g_array_append_vals(occs, occ, 1);
 
         occs = (*vtable->bymonth_filter) (recurData, occs);
 
@@ -1502,7 +1507,7 @@ CalObjGenerateSetYearly (RecurData *recurData,
 
     if (recur->byweekno) {
         occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-        g_array_append_val(occs, occ);
+        g_array_append_vals(occs, occ, 1);
 
         occs = (*vtable->byweekno_filter) (recurData, occs);
         /* Note that we explicitly call the weekly version of the
@@ -1516,7 +1521,7 @@ CalObjGenerateSetYearly (RecurData *recurData,
 
     if (recur->byyearday) {
         occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-        g_array_append_val(occs, occ);
+        g_array_append_vals(occs, occ, 1);
 
         occs = (*vtable->byyearday_filter) (recurData, occs);
 
@@ -1528,7 +1533,7 @@ CalObjGenerateSetYearly (RecurData *recurData,
        expand BYMONTHDAY independantly. */
     if (recur->bymonthday && !recur->bymonth) {
         occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-        g_array_append_val(occs, occ);
+        g_array_append_vals(occs, occ, 1);
 
         occs = (*vtable->bymonthday_filter) (recurData, occs);
 
@@ -1541,7 +1546,7 @@ CalObjGenerateSetYearly (RecurData *recurData,
        expand BYDAY independantly. */
     if (recur->byday && !recur->bymonth && !recur->byweekno) {
         occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-        g_array_append_val(occs, occ);
+        g_array_append_vals(occs, occ, 1);
 
         occs = (*vtable->byday_filter) (recurData, occs);
 
@@ -1560,7 +1565,7 @@ CalObjGenerateSetYearly (RecurData *recurData,
         }
     } else {
         occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-        g_array_append_val(occs, occ);
+        g_array_append_vals(occs, occ, 1);
     }
 
     /* Now expand BYHOUR, BYMINUTE & BYSECOND. */
@@ -1581,7 +1586,7 @@ CalObjGenerateSetMonthly (RecurData *recurData,
 
     /* We start with just the one time in each set. */
     occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-    g_array_append_val(occs, occ);
+    g_array_append_vals(occs, occ, 1);
 
     occs = (*vtable->bymonth_filter) (recurData, occs);
 
@@ -1624,7 +1629,7 @@ CalObjGenerateSetDefault        (RecurData *recurData,
 
     /* We start with just the one time in the set. */
     occs = g_array_new(FALSE, FALSE, sizeof(CalObjTime));
-    g_array_append_val(occs, occ);
+    g_array_append_vals(occs, occ, 1);
 
     occs = (*vtable->bymonth_filter) (recurData, occs);
     if (vtable->byweekno_filter)
@@ -1972,7 +1977,7 @@ CalObjBySetPosFilter (BongoCalRule *recur,
 
         if (pos >= 0 && pos < len) {
             occ = &g_array_index(occs, CalObjTime, pos);
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
         }
         elem = elem->next;
     }
@@ -2489,7 +2494,7 @@ CalObjByMonthExpand             (RecurData  *recurData,
         while (elem) {
             /* NOTE: The day may now be invalid, e.g. 31st Feb. */
             occ->month = BongoListVoidToInt(elem->data);
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
             elem = elem->next;
         }
     }
@@ -2521,7 +2526,7 @@ CalObjByMonthFilter             (RecurData  *recurData,
     for (i = 0; i < len; i++) {
         occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->months[occ->month])
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
     }
 
     g_array_free(occs, TRUE);
@@ -2683,13 +2688,13 @@ CalObjByYeardayFilter   (RecurData  *recurData,
         occ = &g_array_index(occs, CalObjTime, i);
         yearday = CalObjDayOfYear (occ);
         if (recurData->yeardays[yearday]) {
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
         } else {
             days_in_year = BongoCalIsLeapYear (occ->year)
                 ? 366 : 365;
             if (recurData->negYeardays[days_in_year + 1
                                          - yearday])
-                g_array_append_val(new_occs, occ);
+                g_array_append_vals(new_occs, occ, 1);
         }
     }
 
@@ -2780,11 +2785,11 @@ CalObjBymonthdayFilter  (RecurData  *recurData,
     for (i = 0; i < len; i++) {
         occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->monthdays[occ->day]) {
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
         } else {
             daysInMonth = BongoCalDaysInMonth (occ->month, occ->year);
             if (recurData->negMonthdays[daysInMonth + 1 - occ->day])
-                g_array_append_val(new_occs, occ);
+                g_array_append_vals(new_occs, occ, 1);
         }
     }
 
@@ -2834,7 +2839,7 @@ CalObjByDayExpandYearly (RecurData  *recurData,
                 CalObjTimeAddDays (occ, offset);
 
                 while (occ->year == year) {
-                    g_array_append_val(new_occs, occ);
+                    g_array_append_vals(new_occs, occ, 1);
                     CalObjTimeAddDays (occ, 7);
                 }
 
@@ -2847,7 +2852,7 @@ CalObjByDayExpandYearly (RecurData  *recurData,
                 offset += (week_num - 1) * 7;
                 CalObjTimeAddDays (occ, offset);
                 if (occ->year == year)
-                    g_array_append_val(new_occs, occ);
+                    g_array_append_vals(new_occs, occ, 1);
 
             } else {
                 /* Add the -nth Mon/Tue/etc. in the year. */
@@ -2858,7 +2863,7 @@ CalObjByDayExpandYearly (RecurData  *recurData,
                 offset += (week_num - 1) * 7;
                 CalObjTimeAddDays (occ, -offset);
                 if (occ->year == year)
-                    g_array_append_val(new_occs, occ);
+                    g_array_append_vals(new_occs, occ, 1);
             }
 
             /* Reset the year, as we may have gone past the end. */
@@ -2913,7 +2918,7 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
 
                 while (occ->year == year
                        && occ->month == month) {
-                    g_array_append_val(new_occs, occ);
+                    g_array_append_vals(new_occs, occ, 1);
                     CalObjTimeAddDays (occ, 7);
                 }
 
@@ -2925,7 +2930,7 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
                 offset += (week_num - 1) * 7;
                 CalObjTimeAddDays (occ, offset);
                 if (occ->year == year && occ->month == month)
-                    g_array_append_val(new_occs, occ);
+                    g_array_append_vals(new_occs, occ, 1);
 
             } else {
                 /* Add the -nth Mon/Tue/etc. in the month. */
@@ -2942,7 +2947,7 @@ CalObjByDayExpandMonthly        (RecurData  *recurData,
 
                 CalObjTimeAddDays (occ, -offset);
                 if (occ->year == year && occ->month == month)
-                    g_array_append_val(new_occs, occ);
+                    g_array_append_vals(new_occs, occ, 1);
             }
 
             /* Reset the year & month, as we may have gone past
@@ -3008,7 +3013,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
             CalObjTimeAddDays (occ, new_weekdayOffset - weekdayOffset);
 
             DPRINT("appending a value\n");
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
         }
     }
 
@@ -3041,7 +3046,7 @@ CalObjBydayFilter               (RecurData  *recurData,
 
         /* See if the weekday on its own is set. */
         if (recurData->weekdays[weekday])
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
     }
 
     g_array_free(occs, TRUE);
@@ -3076,7 +3081,7 @@ CalObjByhourExpand              (RecurData  *recurData,
         elem = recurData->recur->byhour;
         while (elem) {
             occ->hour = BongoListVoidToInt(elem->data);
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
             elem = elem->next;
         }
     }
@@ -3108,7 +3113,7 @@ CalObjByhourFilter              (RecurData  *recurData,
     for (i = 0; i < len; i++) {
         occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->hours[occ->hour])
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
     }
 
     g_array_free(occs, TRUE);
@@ -3143,7 +3148,7 @@ CalObjByminuteExpand            (RecurData  *recurData,
         elem = recurData->recur->byminute;
         while (elem) {
             occ->minute = BongoListVoidToInt(elem->data);
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
             elem = elem->next;
         }
     }
@@ -3175,7 +3180,7 @@ CalObjByminuteFilter            (RecurData  *recurData,
     for (i = 0; i < len; i++) {
         occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->minutes[occ->minute])
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
     }
 
     g_array_free(occs, TRUE);
@@ -3210,7 +3215,7 @@ CalObjBysecondExpand            (RecurData  *recurData,
         elem = recurData->recur->bysecond;
         while (elem) {
             occ->second = BongoListVoidToInt(elem->data);
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
             elem = elem->next;
         }
     }
@@ -3242,7 +3247,7 @@ CalObjBysecondFilter            (RecurData  *recurData,
     for (i = 0; i < len; i++) {
         occ = &g_array_index(occs, CalObjTime, i);
         if (recurData->seconds[occ->second])
-            g_array_append_val(new_occs, occ);
+            g_array_append_vals(new_occs, occ, 1);
     }
 
     g_array_free(occs, TRUE);
