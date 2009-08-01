@@ -2540,7 +2540,7 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 
 	CHECK_NOT_READONLY(client)
 
-	if (rend <= rstart) {
+	if ((rend <= rstart) && ( rstart > 0)) {
 		// given a range that makes no sense....!
 		return ConnWriteStr(client->conn, MSG3021BADRANGESIZE);
 	}
