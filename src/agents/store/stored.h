@@ -262,7 +262,7 @@ struct StoreGlobals {
 
     struct { /** guid.c **/
         XplSemaphore semaphore;
-        char next[NMAP_GUID_LENGTH];
+        unsigned char next[NMAP_GUID_LENGTH];
     } guid;
 };
 

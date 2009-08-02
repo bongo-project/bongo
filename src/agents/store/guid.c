@@ -94,7 +94,7 @@ GuidAlloc(unsigned char *guid)
 {
     int i;
     unsigned char c;
-    char *ptr;
+    unsigned char *ptr;
 
     if (guid) {
         XplWaitOnLocalSemaphore(StoreAgent.guid.semaphore);

@@ -104,11 +104,11 @@ XplHashFinalBytes(xpl_hash_context *context, unsigned char *buffer, size_t lengt
  * \param	length	Amount of data from buffer to be written
  */
 void 
-XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, char *buffer, size_t length) 
+XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, unsigned char *buffer, size_t length) 
 {
 	char format[5];
-	char *digest;
-	char *p;
+	unsigned char *digest;
+	unsigned char *p;
 	unsigned int i;
 	
 	memcpy(format, "%02X\0", 5);
@@ -120,7 +120,7 @@ XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, char *buffe
 	gcry_md_close(context->gcrypt_context);
 	
 	for (i = 0, p = buffer; i < context->buffer_size && p < buffer+length-1; i++, p += 2) {
-		sprintf(p, format, digest[i]);
+		sprintf((char *)p, format, digest[i]);
    	}
    	buffer[length-1] = 0;
 	
