@@ -125,10 +125,10 @@ MsgNmapChallenge(const unsigned char *response, unsigned char *reply, size_t len
 { 	 
     unsigned char *ptr; 	 
     unsigned char *salt; 	 
-    static unsigned char access[NMAP_HASH_SIZE] = { '\0' };
+    static char access[NMAP_HASH_SIZE] = { '\0' };
     xpl_hash_context ctx; 	 
  	 
-    MsgGetServerCredential(&access);
+    MsgGetServerCredential(access);
  	 
     if (access[0] && reply && (length > 32) && ((ptr = strchr(response, '<')) != NULL)) { 	 
         salt = ++ptr; 	 
@@ -291,7 +291,7 @@ MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size)
 	return path;
 }
 
-EXPORT const unsigned char *
+EXPORT const char *
 MsgGetFile(MsgApiFile file, char *buffer, size_t buffer_size)
 {
 	const unsigned char *path;

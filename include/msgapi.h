@@ -107,7 +107,7 @@ typedef enum {
 	MSGAPI_FILE_END
 } MsgApiFile;
 
-EXPORT const unsigned char *
+EXPORT const char *
 MsgGetFile(MsgApiFile file, char *buffer, size_t buffer_size);
 EXPORT const char *
 MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size);

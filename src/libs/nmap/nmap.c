@@ -112,7 +112,8 @@ FindNewLineChar(unsigned char *Buffer, unsigned char *EndPtr) {
 __inline static unsigned char *
 FindEndOfLine(Connection *conn)
 {
-    int count;
+    size_t count;
+    int err;
     char *newLine;
 
     Connection *c = conn;
@@ -126,7 +127,7 @@ FindEndOfLine(Connection *conn)
 
         if (count < CONN_TCP_MTU) {
             if (count == 0) {
-                ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
+                err = ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
                 if (count > 0) {
                     c->receive.read = c->receive.buffer;
                     c->receive.write = c->receive.buffer + count;
@@ -143,7 +144,7 @@ FindEndOfLine(Connection *conn)
             c->receive.read = c->receive.buffer;
             c->receive.write = c->receive.buffer + count;
             c->receive.remaining = CONN_TCP_MTU - count;
-            ConnTcpRead(c, c->receive.write, c->receive.remaining, &count);
+            err = ConnTcpRead(c, c->receive.write, c->receive.remaining, &count);
             if (count > 0) {
                 c->receive.write += count;
                 c->receive.remaining -= count;

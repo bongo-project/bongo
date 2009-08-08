@@ -1,10 +1,10 @@
-#StrictCompile()
+StrictCompile()
 
 add_library(bongoconnio SHARED
+	sockets.c
 	connio.c
 	trace.c
 	addrpool.c
-	sockets.c
 	unix-ip.c
 )
 

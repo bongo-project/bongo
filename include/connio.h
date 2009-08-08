@@ -80,8 +80,11 @@ typedef struct {
 #define SSL_DISABLE_EMPTY_FRAGMENTS     (1 << 4)
 #define SSL_DONT_INSERT_EMPTY_FRAGMENTS (1 << 5)
 
-void CHOP_NEWLINE(unsigned char *s);
-void SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s); // FIXME: Unused?
+void CHOP_NEWLINE(char *s);
+#if 0
+//TODO:  do we need this?
+void SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s);
+#endif
 
 #if defined (UNIX) || defined(S390RH) || defined(SOLARIS)
 
@@ -138,12 +141,12 @@ typedef struct _ConnSSLConfiguration {
 
     struct {
         long type;
-        const unsigned char *file;
+        const char *file;
     } certificate;
 
     struct {
         long type;
-        const unsigned char *file;
+        const char *file;
     } key;
 } ConnSSLConfiguration;
 
@@ -227,9 +230,9 @@ typedef struct {
 
 #include <connio-trace.h>
 
-void ConnTcpWrite(Connection *c, char *b, size_t l, int *r);
-void ConnTcpRead(Connection *c, char *b, size_t l, int *r);
-void ConnTcpFlush(Connection *c, const char *b, const char *e, int *r);
+int ConnTcpWrite(Connection *c, char *b, size_t l, size_t *r);
+int ConnTcpRead(Connection *c, char *b, size_t l, size_t *r);
+int ConnTcpFlush(Connection *c, const char *b, const char *e, size_t *r);
 void ConnTcpClose(Connection *c);
 
 void ConnAddressPoolStartup(AddressPool *pool, unsigned long errorThreshold, unsigned long errorTimeThreshold);
@@ -304,10 +307,13 @@ BOOL XplIsLocalIPAddress(unsigned long Address);
 int XplGetInterfaceList(void);
 int XplDestroyInterfaceList(void);
 
+#if 0
+//TODO:  Do we need these?  They aren't used anywhere but connmgr */
 int XplIPRead(void *sktCtx, unsigned char *Buf, int Len, int socketTimeout);
 int XplIPReadSSL(void *sktCtx, unsigned char *Buf, int Len, int socketTimeout);
 int XplIPWrite(void *sktCtx, unsigned char *Buf, int Len);
 int XplIPWriteSSL(void *sktCtx, unsigned char *Buf, int Len);
+#endif
 int XplIPConnectWithTimeout(IPSOCKET soc, struct sockaddr *addr, long addrSize, long timeout);
 
 #endif /* _BONGO_CONNIO_H */

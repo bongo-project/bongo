@@ -7,9 +7,9 @@
 #include "config.h"
 
 void
-CHOP_NEWLINE(unsigned char *s)
+CHOP_NEWLINE(char *s)
 {
-	unsigned char *p; 
+	char *p; 
 	p = strchr(s, 0x0A);
 	if (p) {
 		*p = '\0';
@@ -20,31 +20,17 @@ CHOP_NEWLINE(unsigned char *s)
 	}
 }
 
-void
-SET_POINTER_TO_VALUE(unsigned char *p, unsigned char *s)
+int
+ConnTcpFlush(Connection *c, const char *b, const char *e, size_t *r)
 {
-	// FIXME: Unused?
-	p = s;
-	while(isspace(*p)) {
-		p++;
-	}
-	if ((*p == '=') || (*p == ':')) {
-		p++;
-	}
-	while(isspace(*p)) {
-		p++;
-	}
-}
+	int Result=0;
 
-void
-ConnTcpFlush(Connection *c, const char *b, const char *e, int *r)
-{
 	if (b < e) {
 		char *curPTR = (char *)b;
 		while (curPTR < e) {
-			ConnTcpWrite(c, curPTR, e - curPTR, r);
+			Result = ConnTcpWrite(c, curPTR, e - curPTR, r);
 			if (*r > 0) {
-				curPTR = curPTR + (int)*r;
+				curPTR = curPTR + *r;
 				continue;
 			}
 			break;
@@ -52,11 +38,14 @@ ConnTcpFlush(Connection *c, const char *b, const char *e, int *r)
 		if (curPTR == e) {
 			*r = e - b;
 		} else {
-			*r = -1;
+			*r = 0;
+            Result = -1;
 		}
 	} else {
 		*r = 0;
 	}
+
+	return Result;
 }
 
 void
@@ -88,104 +77,85 @@ ConnTcpClose(Connection *c)
 	}
 }
 
-//#if defined(S390RH) || defined(SOLARIS)
-
-// TODO: is this correct for Solaris?
-
-void
-ConnTcpRead(Connection *c, char *b, size_t l, int *r) 
+int
+ConnTcpRead(Connection *c, char *b, size_t l, size_t *r) 
 {
+	int Result=0;
+
 	struct pollfd pfd;
 	do {
 		pfd.fd = (int)c->socket;
 		pfd.events = POLLIN;
-		*r = poll(&pfd, 1, c->receive.timeOut * 1000);
-		if (*r > 0) {
+		Result = poll(&pfd, 1, c->receive.timeOut * 1000);
+		if (Result > 0) {
 			if ((pfd.revents & (POLLIN | POLLPRI))) {
 				do {
 					if (!c->ssl.enable) {
-						*r = IPrecv((c)->socket, b, l, 0);
+						Result = IPrecv((c)->socket, b, l, 0);
 					} else {
-						*r = gnutls_record_recv(c->ssl.context, (void *)b, l);
-						if (*r < 0) {
-							CONN_TRACE_ERROR(c, "RECV", *r);
-							break;
-						}
+						Result = gnutls_record_recv(c->ssl.context, (void *)b, l);
 					}
-					if (*r >= 0) {
-						CONN_TRACE_DATA(c, CONN_TRACE_EVENT_READ, b, *r);
+					if (Result >= 0) {
+						CONN_TRACE_DATA(c, CONN_TRACE_EVENT_READ, b, Result);
+						/* we actually worked.  reset Result to 0 indicating that */
+						/* Result is > 0 so i should be able to safely cast it here */
+						*r = (size_t)Result;
+						Result = 0;
 						break;
 					} else if (errno == EINTR) {
 						continue;
 					}
-					CONN_TRACE_ERROR(c, "RECV", *r);
+					/* we failed with something other than eintr... we'll reset Result below */
+					CONN_TRACE_ERROR(c, "RECV", Result);
 					break;
 				} while (TRUE);
 				break;
 			} else if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL))) {
-				CONN_TRACE_ERROR(c, "POLL EVENT", *r);
-				*r = -2;
+				CONN_TRACE_ERROR(c, "POLL EVENT", Result);
+				*r = 0;
+				Result = -2;
 				break;
 			}
 		}
 		if (errno == EINTR) {
 			continue;
 		}
-		CONN_TRACE_ERROR(c, "POLL", *r);
-		*r = -3;
+		CONN_TRACE_ERROR(c, "POLL", Result);
+		Result = -3;
+		*r = 0;
 		break;
 	} while (TRUE);
+
+	return Result;
 }
 
-void
-ConnTcpWrite(Connection *c, char *b, size_t l, int *r)
+int
+ConnTcpWrite(Connection *c, char *b, size_t l, size_t *r)
 {
+	int Result=0;
+
 	do {
 		if (!c->ssl.enable) {
-			*r = IPsend(c->socket, b, l, MSG_NOSIGNAL);
+			Result = IPsend(c->socket, b, l, MSG_NOSIGNAL);
 		} else {
-			*r = gnutls_record_send(c->ssl.context, (void *)b, l);
+			Result = gnutls_record_send(c->ssl.context, (void *)b, l);
 		}
-		if (*r >= 0) {
-			CONN_TRACE_DATA(c, CONN_TRACE_EVENT_WRITE, b, *r);
+		if (Result >= 0) {
+			CONN_TRACE_DATA(c, CONN_TRACE_EVENT_WRITE, b, Result);
+			/* we actually worked.  reset Result to 0 indicating that */
+			/* Result is > 0 so i should be able to safely cast here */
+			*r = Result;
+			Result = 0;
 			break;
 		} else if (errno == EINTR) {
 			continue;
 		}
-		CONN_TRACE_ERROR(c, "POLL", *r);
-		*r = -1;
+		CONN_TRACE_ERROR(c, "POLL", Result);
+		Result = -1;
+		*r = 0;
 		break;
 	} while (TRUE);
+
+	return Result;
 }
 
-//#else
-#if 0
-
-void
-ConnTcpRead(Connection *c, char *b, size_t l, int *r)
-{
-	fd_set rfds;
-	struct timeval timeout;
-	FD_ZERO(&rfds);
-	FD_SET(c->socket, &rfds);
-	timeout.tv_usec = 0;
-	timeout.tv_sec = c->receive.timeOut;
-	*r = select(FD_SETSIZE, &rfds, NULL, NULL, &timeout);
-	if (*r > 0) {
-		*r = recv(c->socket, b, l, 0);
-		CONN_TRACE_DATA_AND_ERROR(c, CONN_TRACE_EVENT_READ, b, *r, "RECV");
-	} else {
-		CONN_TRACE_ERROR(c, "SELECT", *r);
-		*r = -1;
-	}
-}
-
-void
-ConnTcpWrite(Connection *c, char *b, size_t l, int *r)
-{
-	*r = IPsend(c->socket, b, l, 0);
-	CONN_TRACE_DATA_AND_ERROR(c, CONN_TRACE_EVENT_WRITE, b, *r, "SEND");
-}
-
-
-#endif
