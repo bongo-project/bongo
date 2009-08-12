@@ -7,24 +7,36 @@
 EXPORT void *
 MemMallocDirect(size_t Size, const char *SourceFile, unsigned long SourceLine)
 {
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
+
 	return g_malloc(Size);
 }
 
 EXPORT void *
 MemMalloc0Direct(size_t size, const char *sourceFile, unsigned long sourceLine)
 {
+	UNUSED_PARAMETER_REFACTOR(sourceFile);
+	UNUSED_PARAMETER_REFACTOR(sourceLine);
+
 	return g_malloc0(size);
 }
 
 EXPORT void *
 MemReallocDirect(void *Source, size_t Size, const char *SourceFile, unsigned long SourceLine)
 {
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
+
 	return g_realloc(Source, Size);
 }
 
 EXPORT char *
 MemStrdupDirect(const char *StrSource, const char *SourceFile, unsigned long SourceLine)
 {
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
+
 	return MemStrndupDirect(StrSource, strlen(StrSource), SourceFile, SourceLine);
 }
 
@@ -32,6 +44,9 @@ EXPORT char *
 MemStrndupDirect(const char *StrSource, int n, const char *SourceFile, unsigned long SourceLine)
 {
 	char *new;
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
+
 	
 	new = MemMallocDirect(n + 1, SourceFile, SourceLine);
 	memcpy(new, StrSource, n);
@@ -43,6 +58,9 @@ MemStrndupDirect(const char *StrSource, int n, const char *SourceFile, unsigned 
 EXPORT void 
 MemFreeDirect(void *Source, const char *SourceFile, unsigned long SourceLine)
 {
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
+
 	g_free(Source);
 }
 

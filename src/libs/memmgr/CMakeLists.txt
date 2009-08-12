@@ -1,3 +1,5 @@
+StrictCompile()
+
 add_library(bongomemmgr SHARED
 	allocator.c
 	pools.c

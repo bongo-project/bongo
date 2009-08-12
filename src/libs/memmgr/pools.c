@@ -3,14 +3,6 @@
 #include <glib.h>
 #include "memmgrp.h"
 
-EXPORT BOOL 
-MemPrivatePoolZeroCallback(void *buffer, void *clientData)
-{
-    memset(buffer, 0, (int)(clientData));
-
-    return TRUE;
-}
-
 struct MemPoolPrivateRef {
 	size_t size;
 	PoolEntryCB on_alloc;
@@ -22,6 +14,11 @@ EXPORT void *
 MemPrivatePoolAlloc(unsigned char *name, size_t AllocationSize, unsigned int MinAllocCount, unsigned int MaxAllocCount, BOOL Dynamic, BOOL Temporary, PoolEntryCB allocCB, PoolEntryCB freeCB, void *clientData)
 {
 	struct MemPoolPrivateRef *ref;
+	UNUSED_PARAMETER_REFACTOR(name);
+	UNUSED_PARAMETER_REFACTOR(MinAllocCount);
+	UNUSED_PARAMETER_REFACTOR(MaxAllocCount);
+	UNUSED_PARAMETER_REFACTOR(Dynamic);
+	UNUSED_PARAMETER_REFACTOR(Temporary);
 	
 	ref = g_new0(struct MemPoolPrivateRef, 1);
 	ref->size = AllocationSize;
@@ -44,6 +41,8 @@ MemPrivatePoolGetEntryDirect(void *PoolHandle, const char *SourceFile, unsigned 
 {
 	BOOL result = TRUE;
 	struct MemPoolPrivateRef *ref = (struct MemPoolPrivateRef *)PoolHandle;
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
 	
 	void *new = g_slice_alloc0(ref->size);
 	
@@ -64,6 +63,8 @@ EXPORT void
 MemPrivatePoolReturnEntryDirect(void *PoolHandle, void *Source, const char *SourceFile, unsigned long SourceLine)
 {
 	struct MemPoolPrivateRef *ref = (struct MemPoolPrivateRef *)PoolHandle;
+	UNUSED_PARAMETER_REFACTOR(SourceFile);
+	UNUSED_PARAMETER_REFACTOR(SourceLine);
 	
 	if (ref->on_free != NULL) {
 		PoolEntryCB callback = ref->on_free;
@@ -78,6 +79,8 @@ MemPrivatePoolReturnEntryDirect(void *PoolHandle, void *Source, const char *Sour
 EXPORT BOOL 
 MemoryManagerOpen(const unsigned char *AgentName)
 {
+	UNUSED_PARAMETER_REFACTOR(AgentName);
+
 	// do we need this?
 	return(TRUE);
 }
@@ -85,6 +88,8 @@ MemoryManagerOpen(const unsigned char *AgentName)
 EXPORT BOOL 
 MemoryManagerClose(const unsigned char *AgentName)
 {
+	UNUSED_PARAMETER_REFACTOR(AgentName);
+
 	// do we need this?
 	return(TRUE);
 }

@@ -101,8 +101,6 @@ EXPORT void MemPrivatePoolReturnEntryDirect(void *PoolHandle, void *PoolEntry, c
 #define	MemPrivatePoolGetEntry(p)	MemPrivatePoolGetEntryDirect((p), __FILE__, __LINE__)
 #define MemPrivatePoolReturnEntry(p, e)	MemPrivatePoolReturnEntryDirect((p), (e), __FILE__, __LINE__);
 
-EXPORT BOOL MemPrivatePoolZeroCallback(void *buffer, void *clientData);
-
 
 /** memstack.c **/
 
