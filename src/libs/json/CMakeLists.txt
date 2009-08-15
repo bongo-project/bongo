@@ -1,3 +1,5 @@
+StrictCompile()
+
 add_library(bongojson SHARED
 	bongojsonrpc.c
 	json.c

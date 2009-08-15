@@ -34,7 +34,7 @@ BongoJsonJPath(BongoJsonNode *root, const char *path)
 {
     char rule[50];
     char *select, *nextrule;
-    int rulelen;
+    size_t rulelen;
     BongoJsonResult result;
 
     nextrule = strchr(path, '/');
@@ -84,7 +84,6 @@ BongoJsonJPath(BongoJsonNode *root, const char *path)
             if (root->type != BONGO_JSON_ARRAY) break;
             if (strlen(rule)>2) {
                 BongoJsonNode *node;
-                int i;
                 select = rule + 2;
                 node = BongoJsonArrayGet(root->value.arrayVal, atoi(select));
                 if (! node) break;
