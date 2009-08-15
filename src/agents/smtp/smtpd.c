@@ -119,10 +119,10 @@ time_t LastBounce;
 time_t BounceInterval;
 unsigned long MaxBounceCount;
 unsigned long BounceCount;
-unsigned char NMAPServer[20] = "127.0.0.1";
+char NMAPServer[20] = "127.0.0.1";
 unsigned long LocalAddress = 0;
 bongo_ssl_context *SSLContext = NULL;
-static unsigned char NMAPHash[NMAP_HASH_SIZE];
+static char NMAPHash[NMAP_HASH_SIZE];
 
 #ifdef USE_HOPCOUNT_DETECTION
 int MAX_HOPS = 16;
@@ -148,7 +148,7 @@ int MAX_HOPS = 16;
 /* Seconds */
 #define	MAILBOX_TIMEOUT 15
 
-#define ChopNL(String) { unsigned char *pTr; pTr=strchr((String), 0x0a); if (pTr) *pTr='\0'; pTr=strrchr((String), 0x0d); if (pTr) *pTr='\0'; }
+#define ChopNL(String) { char *pTr; pTr=strchr((String), 0x0a); if (pTr) *pTr='\0'; pTr=strrchr((String), 0x0d); if (pTr) *pTr='\0'; }
 
 struct __InternalConnectionStruct {
     Connection      *conn;
@@ -168,18 +168,18 @@ typedef struct
     unsigned long RecipCount;   /* Number of recipients */
     NMAPMessageFlags MsgFlags;  /* current msg flags    */
 
-    unsigned char RemoteHost[MAXEMAILNAMESIZE + 1]; /* Name of remote host   */
-    unsigned char *Command;             /* Current command       */
-    unsigned char *From;                            /* For Routing Disabled  */
-    unsigned char *AuthFrom;                     /* Sender Authenticated As  */
-    unsigned char User[64];                      /* Fixme - Make this bigger */
+    char RemoteHost[MAXEMAILNAMESIZE + 1]; /* Name of remote host   */
+    char *Command;             /* Current command       */
+    char *From;                            /* For Routing Disabled  */
+    char *AuthFrom;                     /* Sender Authenticated As  */
+    char User[64];                      /* Fixme - Make this bigger */
     BOOL IsEHLO;                                /* used for RFC 3848 */
 } ConnectionStruct;
 
 typedef struct
 {
-    unsigned char To[MAXEMAILNAMESIZE+1];
-    unsigned char ORecip[MAXEMAILNAMESIZE+1];
+    char To[MAXEMAILNAMESIZE+1];
+    char ORecip[MAXEMAILNAMESIZE+1];
     unsigned long Flags;
     int Result;
 } RecipStruct;
@@ -200,18 +200,20 @@ void *SMTPConnectionPool = NULL;
 /* Prototypes */
 long ReadConnection(Connection *conn, char **buffer, unsigned long *buflen);
 void ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines);
-int RewriteAddress (Connection * conn, unsigned char *Source, unsigned char *Target, unsigned int TargetSize);
+int RewriteAddress (Connection * conn, char *Source, char *Target, unsigned int TargetSize);
 BOOL FlushClient (ConnectionStruct * Client);
 BOOL EndClientConnection (ConnectionStruct * Client);
-static int PullLine (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine);
+static int PullLine (char *Line, unsigned long LineSize, char **NextLine);
 /* this PullLine will strip off the crlf where the other one only seems to strip off the lf
  * eventually i'd like to remove the first and convert everything to using the straight connio
  * stuff for speed and security */
-static int PullLine2 (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine);
+static int PullLine2 (char *Line, unsigned long LineSize, char **NextLine);
 
 static BOOL
 SMTPConnectionAllocCB (void *Buffer, void *ClientData)
 {
+    UNUSED_PARAMETER(ClientData);
+
     ConnectionStruct *c = (ConnectionStruct *) Buffer;
 
     memset (c, 0, sizeof (ConnectionStruct));
@@ -236,12 +238,12 @@ ReturnSMTPConnection (ConnectionStruct * Client)
     return;
 }
 
-__inline static unsigned char *
-strchrRN (unsigned char *Buffer, unsigned char SrchChar,
-          unsigned char *EndPtr)
+__inline static char *
+strchrRN (char *Buffer, char SrchChar,
+          char *EndPtr)
 {
-    unsigned char *ptr = Buffer;
-    unsigned char srchChar = SrchChar;
+    char *ptr = Buffer;
+    char srchChar = SrchChar;
 
     do {
         while (*ptr != '\0') {
@@ -281,7 +283,7 @@ strchrRN (unsigned char *Buffer, unsigned char SrchChar,
 BOOL
 EndClientConnection (ConnectionStruct * Client)
 {
-    unsigned char Reply[BUFSIZE + 1];
+    char Reply[BUFSIZE + 1];
 
     if (Client) {
         if (Client->State == STATE_ENDING) {
@@ -358,9 +360,9 @@ HandleConnection (void *param)
     BOOL AllowAuth = TRUE;
     BOOL NullSender = FALSE;
     BOOL TooManyNullSenderRecips = FALSE;
-    unsigned char *ptr, *ptr2;
-    unsigned char Answer[BUFSIZE + 1];
-    unsigned char Reply[BUFSIZE + 1];
+    char *ptr, *ptr2;
+    char Answer[BUFSIZE + 1];
+    char Reply[BUFSIZE + 1];
     struct sockaddr_in soc_address;
     struct sockaddr_in *sin = &soc_address;
     time_t connectionTime;
@@ -505,7 +507,7 @@ HandleConnection (void *param)
             }
 
         case 'A':{             /* AUTH */
-                unsigned char *PW;
+                char *PW;
 
                 if (AllowAuth == FALSE) {
                     ConnWrite (Client->client.conn, MSG500UNKNOWN, MSG500UNKNOWN_LEN);
@@ -598,10 +600,10 @@ HandleConnection (void *param)
 
 
             case 'C':{         /* RCPT TO */
-                    unsigned char temp, *name;
+                    char temp, *name;
                     BOOL GotFlags = FALSE;
-                    unsigned char To[MAXEMAILNAMESIZE + 1] = "";
-                    unsigned char *Orcpt = NULL;
+                    char To[MAXEMAILNAMESIZE + 1] = "";
+                    char *Orcpt = NULL;
 
                     if (Client->State < STATE_FROM) {
                         ConnWrite (Client->client.conn, MSG501NOSENDER,
@@ -875,9 +877,9 @@ HandleConnection (void *param)
 
         case 'M':{             /* MAIL FROM */
                 unsigned long size = 0;
-                unsigned char temp, *name;
-                unsigned char *Envid = NULL;
-                unsigned char *more;
+                char temp, *name;
+                char *Envid = NULL;
+                char *more;
 
                 if (SMTP.require_auth && !IsTrusted) {
                     ConnWrite (Client->client.conn, MSG553SPAMBLOCK, MSG553SPAMBLOCK_LEN);
@@ -1205,9 +1207,9 @@ HandleConnection (void *param)
             break;
 
         case 'D':{             /* DATA */
-                unsigned char TimeBuf[80];
+                char TimeBuf[80];
                 unsigned long BReceived = 0;
-                unsigned char WithProtocol[8]; /* ESMTPSA */
+                char WithProtocol[8]; /* ESMTPSA */
 #ifdef USE_HOPCOUNT_DETECTION
                 long HopCount = 0;
 #endif
@@ -1531,7 +1533,7 @@ GetEHLO (ConnectionStruct * Client, unsigned long *Extensions, long *Size)
 {
     BOOL MultiLine;
     int Result;
-    unsigned char *ptr;
+    char *ptr;
 
     *Size = 0;
 
@@ -1579,11 +1581,11 @@ GetEHLO (ConnectionStruct * Client, unsigned long *Extensions, long *Size)
 
 
 static int
-GetAnswer (ConnectionStruct * Client, unsigned char *Reply, int ReplyLen)
+GetAnswer (ConnectionStruct * Client, char *Reply, int ReplyLen)
 {
     BOOL MultiLine;
     int Result;
-    unsigned char *ptr;
+    char *ptr;
 
     do {
         ConnReadToAllocatedBuffer(Client->remotesmtp.conn, &(Client->remotesmtp.buffer), &(Client->remotesmtp.buflen));
@@ -1605,10 +1607,10 @@ GetAnswer (ConnectionStruct * Client, unsigned char *Reply, int ReplyLen)
 }
 
 static BOOL
-SendServerEscaped (ConnectionStruct * Client, unsigned char *Data,
+SendServerEscaped (ConnectionStruct * Client, char *Data,
                    unsigned long Len, BOOL * EscapedState)
 {
-    unsigned char *ptr = Data;
+    char *ptr = Data;
     unsigned long Pos, EndPos;
 
     EndPos = Len - 1;
@@ -1650,21 +1652,21 @@ SendServerEscaped (ConnectionStruct * Client, unsigned char *Data,
 }
 
 static int
-DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
+DeliverSMTPMessage (ConnectionStruct * Client, char *Sender,
                     RecipStruct * Recips, unsigned int RecipCount,
-                    unsigned int MsgFlags, unsigned char *Result,
+                    unsigned int MsgFlags, char *Result,
                     int ResultLen)
 {
     unsigned long Extensions = 0;
-    unsigned char Answer[1026];
-    unsigned char Reply[1024];
-    unsigned char *ptr, *EnvID = NULL;
+    char Answer[1026];
+    char Reply[1024];
+    char *ptr, *EnvID = NULL;
     int status;
     long Size, len, MessageSize;
     unsigned int i;
     BOOL EscapedState = FALSE;
     unsigned long LastNMAPContact;
-    unsigned char TimeBuf[80];
+    char TimeBuf[80];
     BOOL ehlo=TRUE;
     BOOL tls=FALSE;
 
@@ -1839,9 +1841,9 @@ DeliverSMTPMessage (ConnectionStruct * Client, unsigned char *Sender,
                 }
                 else {
                     /* Encode according to RFC 1891 */
-                    unsigned char HexTable[] = "0123456789ABCDEF";
-                    unsigned char *src;
-                    unsigned char *dst;
+                    char HexTable[] = "0123456789ABCDEF";
+                    char *src;
+                    char *dst;
 
                     strcpy (Answer, " ORCPT=rfc822;");
                     dst = Answer + 14;
@@ -2113,13 +2115,13 @@ IPAddressIsLocal (struct in_addr IPAddress)
 }
 
 static int
-DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
+DeliverRemoteMessage (ConnectionStruct * Client, char *Sender,
                       RecipStruct * Recips, unsigned int RecipCount,
-                      unsigned long MsgFlags, unsigned char *Result,
+                      unsigned long MsgFlags, char *Result,
                       int ResultLen)
 {
-    unsigned char Host[MAXEMAILNAMESIZE + 1];
-    unsigned char *ptr;
+    char Host[MAXEMAILNAMESIZE + 1];
+    char *ptr;
     int status;
     int RetVal;
     XplDns_MxLookup *mx = NULL;
@@ -2156,7 +2158,7 @@ DeliverRemoteMessage (ConnectionStruct * Client, unsigned char *Sender,
     ptr++;
     if (ptr[0] == '[') {
         // potential ip address in the host name (e.g. jdoe@[1.1.1.1])
-        unsigned char *end;
+        char *end;
         end = strchr(ptr, ']');
         if (end) { 
             *end = '\0';
@@ -2252,10 +2254,10 @@ finish:
 }
 
 int
-RewriteAddress(Connection * conn, unsigned char *Source, unsigned char *Target, unsigned int TargetSize)
+RewriteAddress(Connection * conn, char *Source, char *Target, unsigned int TargetSize)
 {
-    unsigned char WorkSpace[1024];
-    unsigned char *Src, *Dst;
+    char WorkSpace[1024];
+    char *Src, *Dst;
     unsigned int i;
     int RetVal = MAIL_BOGUS;
 
@@ -2399,8 +2401,8 @@ RewriteAddress(Connection * conn, unsigned char *Source, unsigned char *Target, 
 
     /* TODO: i'm not sure this code is functionally equivalient with its replacement due to the address checking */
     {
-    	unsigned char addr[1024];
-        unsigned char *ptr;
+    	char addr[1024];
+        char *ptr;
 
     	NMAPSendCommandF(conn, "ADDRESS RESOLVE %s\r\n", WorkSpace);
     	RetVal = NMAPReadResponse(conn, addr, 1023, FALSE);
@@ -2451,8 +2453,8 @@ RewriteAddress(Connection * conn, unsigned char *Source, unsigned char *Target, 
 static int
 RecipCompare (const RecipStruct * Recip1, const RecipStruct * Recip2)
 {
-    unsigned char *ptr1, *ptr2;
-    unsigned char char1, char2;
+    char *ptr1, *ptr2;
+    char char1, char2;
 
     if ((!(Recip1->To[0])) || (!(Recip2->To[0]))) {
         return (-1);
@@ -2476,17 +2478,17 @@ RecipCompare (const RecipStruct * Recip1, const RecipStruct * Recip2)
 void
 ProcessRemoteEntry (ConnectionStruct * Client, unsigned long Size, int Lines)
 {
-    unsigned char *ptr, *ptr2;
-    unsigned char From[BUFSIZE + 1];
-    unsigned char Reply[BUFSIZE + 1];
-    unsigned char Result[BUFSIZE + 1];
+    char *ptr, *ptr2;
+    char From[BUFSIZE + 1];
+    char Reply[BUFSIZE + 1];
+    char Result[BUFSIZE + 1];
     BOOL Local = FALSE;
     int rc, i, j = 0, len;
     unsigned long MsgFlags = MSG_FLAG_ENCODING_7BIT;
     RecipStruct *Recips;
     int NumRecips = 0;
-    unsigned char *Envelope;
-    unsigned char *EnvelopePtr;
+    char *Envelope;
+    char *EnvelopePtr;
 
     if (!Client)
         return;
@@ -2708,13 +2710,13 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
     int j = 0;
     int recipCount = 0;
     unsigned long msgFlags = MSG_FLAG_ENCODING_7BIT;
-    unsigned char *ptr;
-    unsigned char *ptr2;
-    unsigned char *buffer;
-    unsigned char *bufferPtr;
-    unsigned char from[BUFSIZE + 1];
-    unsigned char reply[BUFSIZE + 1];
-    unsigned char result[BUFSIZE + 1];
+    char *ptr;
+    char *ptr2;
+    char *buffer;
+    char *bufferPtr;
+    char from[BUFSIZE + 1];
+    char reply[BUFSIZE + 1];
+    char result[BUFSIZE + 1];
     BOOL local = FALSE;
     RecipStruct *recips;
 
@@ -2736,10 +2738,10 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
 
     /* This makes sure the recip structure gets freed if we */
     /* go into EndClientConnection for an error or shutdown */
-    client->From = (unsigned char *) recips;
+    client->From = (char *) recips;
 
     /* This adds lines * sizeof(RecipStruct) */
-    buffer = (unsigned char *) (recips + lines);
+    buffer = (char *) (recips + lines);
     bufferPtr = buffer;
 
     while ((rc = NMAPReadResponse (client->client.conn, reply, sizeof (reply), FALSE)) != 6021) {
@@ -3025,8 +3027,8 @@ RelayRemoteEntry (ConnectionStruct * client, unsigned long size, int lines)
     return;
 }
 
-static int PullLine2 (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine) {
-    unsigned char *ptr;
+static int PullLine2 (char *Line, unsigned long LineSize, char **NextLine) {
+    char *ptr;
 
     ptr = *NextLine;
     *NextLine = strchr (ptr, '\r');
@@ -3049,8 +3051,8 @@ static int PullLine2 (unsigned char *Line, unsigned long LineSize, unsigned char
     }
 }
 
-static int PullLine (unsigned char *Line, unsigned long LineSize, unsigned char **NextLine) {
-    unsigned char *ptr;
+static int PullLine (char *Line, unsigned long LineSize, char **NextLine) {
+    char *ptr;
 
     ptr = *NextLine;
     *NextLine = strchr (ptr, '\n');
@@ -3080,14 +3082,14 @@ RelayLocalEntry (ConnectionStruct * client, unsigned long size,
     int rc;
     int flags;
     unsigned long msgFlags = MSG_FLAG_ENCODING_7BIT;
-    unsigned char *ptr;
-    unsigned char *ptr2;
-    unsigned char *next;
-    unsigned char *envelope;
-    unsigned char buffer[1024];
-    unsigned char to[MAXEMAILNAMESIZE + 1];
-    unsigned char from[BUFSIZE + 1];
-    unsigned char reply[BUFSIZE + 1];
+    char *ptr;
+    char *ptr2;
+    char *next;
+    char *envelope;
+    char buffer[1024];
+    char to[MAXEMAILNAMESIZE + 1];
+    char from[BUFSIZE + 1];
+    char reply[BUFSIZE + 1];
     BOOL Local = FALSE;
 
     envelope = MemMalloc (size + 1);
@@ -3278,17 +3280,17 @@ ProcessLocalEntry (ConnectionStruct * Client, unsigned long Size,
                    unsigned long Lines)
 {
     unsigned long msgFlags = 0;
-    unsigned char Line[1024];
-    unsigned char Reply[BUFSIZE + 1];
-    unsigned char From[BUFSIZE + 1];
-    unsigned char To[MAXEMAILNAMESIZE + 1];
-    unsigned char *ptr, *ptr2;
+    char Line[1024];
+    char Reply[BUFSIZE + 1];
+    char From[BUFSIZE + 1];
+    char To[MAXEMAILNAMESIZE + 1];
+    char *ptr, *ptr2;
     int len;
     int rc, j;
     int Flags;
     BOOL Local = FALSE;
-    unsigned char *Envelope = MemMalloc (Size + 1);
-    unsigned char *NextLine = Envelope;
+    char *Envelope = MemMalloc (Size + 1);
+    char *NextLine = Envelope;
 
     while ((rc = NMAPReadResponse (Client->client.conn, Line, sizeof (Line), FALSE)) != 6021) {
         rc = strlen (Line);
@@ -3424,9 +3426,9 @@ static void
 HandleQueueConnection (void *ClientIn)
 {
     int ReplyInt, Queue = Q_INCOMING;
-    unsigned char Reply[1024];
+    char Reply[1024];
     ConnectionStruct *Client = (ConnectionStruct *) ClientIn;
-    unsigned char *ptr;
+    char *ptr;
     unsigned long Lines;
     unsigned long Size;
 
@@ -3823,7 +3825,6 @@ SMTPServer (void *ignored)
     ConnShutdown ();
 
     MemPrivatePoolFree (SMTPConnectionPool);
-    MemoryManagerClose (MSGSRV_AGENT_SMTP);
 
     Log(LOG_DEBUG, "Shutdown complete.");
 
@@ -3844,7 +3845,7 @@ SMTPSSLServer (void *ignored)
     Connection *conn;
     int ccode;
     int arg;
-    unsigned char *message;
+    char *message;
     ConnectionStruct *client;
     XplThreadID id = 0;
 
@@ -3997,23 +3998,16 @@ int XplServiceMain (int argc, char *argv[])
 
     TGid = XplGetThreadGroupID ();
 
-    if (MemoryManagerOpen (MSGSRV_AGENT_SMTP) == TRUE) {
-        SMTPConnectionPool =
-            MemPrivatePoolAlloc ("SMTP Connections",
-                                 sizeof (ConnectionStruct), 0, 3072, TRUE,
-                                 FALSE, SMTPConnectionAllocCB, NULL, NULL);
-        if (SMTPConnectionPool != NULL) {
-            XplOpenLocalSemaphore (SMTPServerSemaphore, 0);
-            XplOpenLocalSemaphore (SMTPShutdownSemaphore, 1);
-        }
-        else {
-            MemoryManagerClose (MSGSRV_AGENT_SMTP);
-            Log(LOG_ERROR, "Unable to create connection pool, shutting down");
-            return (-1);
-        }
+    SMTPConnectionPool =
+        MemPrivatePoolAlloc ("SMTP Connections",
+                             sizeof (ConnectionStruct), 0, 3072, TRUE,
+                             FALSE, SMTPConnectionAllocCB, NULL, NULL);
+    if (SMTPConnectionPool != NULL) {
+        XplOpenLocalSemaphore (SMTPServerSemaphore, 0);
+        XplOpenLocalSemaphore (SMTPShutdownSemaphore, 1);
     }
     else {
-        Log(LOG_ERROR, "Unable to initialize memory manager, shutting down");
+        Log(LOG_ERROR, "Unable to create connection pool, shutting down");
         return (-1);
     }
     

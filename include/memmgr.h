@@ -68,16 +68,9 @@ XPL_BEGIN_C_LINKAGE
 #define MemFree(m)      g_free((m))
 #define MemCalloc(n, s) g_malloc((n)*(s))
 
-EXPORT BOOL MemoryManagerOpen(const unsigned char *AgentName);
-EXPORT BOOL MemoryManagerClose(const unsigned char *AgentName);
-
 /* Helpers */
 #define MemNew0(type, num) ((type*)MemMalloc0(sizeof(type) * (num)))
 #define MemNew(type, num) ((type*)MemMalloc(sizeof(type) * (num)))
-
-EXPORT void * MemClear(void *Source, size_t Size);
-
-/*    Memory De-Allocation API's    */
 
 /*    Private Pool API's    */
 typedef BOOL (*PoolEntryCB)(void *Buffer, void *ClientData);

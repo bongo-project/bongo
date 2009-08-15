@@ -6,7 +6,6 @@ add_executable(bongoantispam
 )
 
 target_link_libraries(bongoantispam
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

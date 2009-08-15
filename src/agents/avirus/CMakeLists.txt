@@ -3,7 +3,6 @@ add_executable(bongoavirus
 )
 
 target_link_libraries(bongoavirus
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

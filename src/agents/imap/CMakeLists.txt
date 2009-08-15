@@ -12,7 +12,6 @@ add_executable(bongoimap
 )
 
 target_link_libraries(bongoimap
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

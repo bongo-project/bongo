@@ -3583,8 +3583,6 @@ IMAPServer(void *unused)
         
     FreeImapGlobals();
     MemPrivatePoolFree(IMAPConnectionPool);
-    MemoryManagerClose(MSGSRV_AGENT_IMAP);
-
 #if VERBOSE
     XplConsolePrintf("IMAPD: Shutdown complete\r\n");
 #endif
@@ -3764,19 +3762,12 @@ XplServiceMain(int argc, char *argv[])
 
     XplSignalHandler(IMAPShutdownSigHandler);
 
-    if (MemoryManagerOpen(MSGSRV_AGENT_IMAP) == TRUE) {
-        IMAPConnectionPool = MemPrivatePoolAlloc("IMAP Connections", sizeof(ImapSession), 0, 3072, TRUE, FALSE, IMAPSessionAllocCB, IMAPSessionFreeCB, NULL);
-        if (IMAPConnectionPool != NULL) {
-            XplOpenLocalSemaphore(Imap.server.mainSemaphore, 0);
-            XplOpenLocalSemaphore(Imap.server.shutdownSemaphore, 1);
-        } else {
-            MemoryManagerClose(MSGSRV_AGENT_IMAP);
-
-            XplConsolePrintf("IMAPD: Unable to create command buffer pool; shutting down.\r\n");
-            return(-1);
-        }
+    IMAPConnectionPool = MemPrivatePoolAlloc("IMAP Connections", sizeof(ImapSession), 0, 3072, TRUE, FALSE, IMAPSessionAllocCB, IMAPSessionFreeCB, NULL);
+    if (IMAPConnectionPool != NULL) {
+        XplOpenLocalSemaphore(Imap.server.mainSemaphore, 0);
+        XplOpenLocalSemaphore(Imap.server.shutdownSemaphore, 1);
     } else {
-        XplConsolePrintf("IMAPD: Unable to initialize memory manager; shutting down.\r\n");
+        XplConsolePrintf("IMAPD: Unable to create command buffer pool; shutting down.\r\n");
         return(-1);
     }
 

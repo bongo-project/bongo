@@ -92,6 +92,8 @@ BongoAgentHandleSignal(BongoAgent *agent,
 BOOL ReadConfiguration(BongoAgent *agent);
 
 BOOL ReadConfiguration(BongoAgent *agent) {
+    UNUSED_PARAMETER(agent);
+
 	return TRUE;
 }
 
@@ -111,7 +113,7 @@ FreeBongoConfiguration(BongoConfigItem *config) {
 					/* sub->destination here is the address of a pointer to an array */
 					GArray **output = (GArray **)sub->destination;                    
 					if (sub->type == BONGO_JSON_STRING) {
-						int x;
+						unsigned int x;
 						for(x=0;x<(*output)->len;x++) {
 							MemFree(g_array_index(*output, char *, x));
 						}
@@ -245,7 +247,7 @@ SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node) {
 
 BOOL 
 ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
-	unsigned char *pconfig = NULL;
+	char *pconfig = NULL;
 	BongoJsonNode *node = NULL;
 	BOOL retcode;
 	
@@ -299,11 +301,6 @@ BongoAgentInit(BongoAgent *agent,
     agent->state = BONGO_AGENT_STATE_RUNNING;
 
     LogOpen(agentName);
-
-    if (!MemoryManagerOpen(agentName)) {
-        Log(LOG_ERROR, "Unable to initialize memory manager; shutting down.");
-        return -1;
-    }
 
     if (startupResources & BA_STARTUP_CONNIO) {
         ConnStartup(timeOut);
@@ -607,8 +604,6 @@ BongoAgentShutdown(BongoAgent *agent)
 
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
-
-    MemoryManagerClose(agent->name);
 }
 
 Connection * 
@@ -653,6 +648,8 @@ BongoQueueAgentGetThreadPoolParameters(BongoAgent *agent,
                                       int *maxThreads,
                                       int *minSleep)
 {
+    UNUSED_PARAMETER(agent);
+
     *minThreads = BONGO_QUEUE_AGENT_MIN_THREADS;
     *maxThreads = BONGO_QUEUE_AGENT_MAX_THREADS;
     *minSleep = BONGO_QUEUE_AGENT_MIN_SLEEP;
@@ -769,6 +766,11 @@ BongoAgentShutdownFunc (BongoJsonRpcServer *server,
                        GArray *args, 
                        void *userData)
 {
+    UNUSED_PARAMETER(server);
+    UNUSED_PARAMETER(method);
+    UNUSED_PARAMETER(args);
+    UNUSED_PARAMETER(userData);
+
     kill (getpid (), SIGTERM);
     
     /* Might not make it here */

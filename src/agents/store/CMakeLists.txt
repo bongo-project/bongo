@@ -27,7 +27,6 @@ add_executable(bongostore
 	watch.c)
 
 target_link_libraries(bongostore
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

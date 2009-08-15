@@ -1847,7 +1847,6 @@ POP3Server(void *ignored)
     ConnShutdown();
 
     MemPrivatePoolFree(POP3.client.pool);
-    MemoryManagerClose(MSGSRV_AGENT_POP);
 
     Log(LOG_DEBUG, "Shutdown complete.");
 
@@ -2070,21 +2069,14 @@ XplServiceMain(int argc, char *argv[])
 
     LoadProtocolCommandTree(&POP3.commands, POP3CommandEntries);
 
-    if (MemoryManagerOpen(MSGSRV_AGENT_POP) == TRUE) {
-        POP3.client.pool = MemPrivatePoolAlloc("Pop Connections", sizeof(POP3Client), 0, 3072, TRUE, FALSE, POP3ClientAllocCB, NULL, NULL);
-        if (POP3.client.pool != NULL) {
-            XplOpenLocalSemaphore(POP3.sem.main, 0);
-            XplOpenLocalSemaphore(POP3.sem.shutdown, 1);
-            XplOpenLocalSemaphore(POP3.client.semaphore, 1);
-            XplOpenLocalSemaphore(POP3.client.worker.todo, 1);
-        } else {
-            MemoryManagerClose(MSGSRV_AGENT_POP);
-
-            Log(LOG_ERROR, "Unable to create connection pool; shutting down.");
-            return(-1);
-        }
+    POP3.client.pool = MemPrivatePoolAlloc("Pop Connections", sizeof(POP3Client), 0, 3072, TRUE, FALSE, POP3ClientAllocCB, NULL, NULL);
+    if (POP3.client.pool != NULL) {
+        XplOpenLocalSemaphore(POP3.sem.main, 0);
+        XplOpenLocalSemaphore(POP3.sem.shutdown, 1);
+        XplOpenLocalSemaphore(POP3.client.semaphore, 1);
+        XplOpenLocalSemaphore(POP3.client.worker.todo, 1);
     } else {
-        Log(LOG_ERROR, "Unable to initialize memory manager; shutting down.");
+        Log(LOG_ERROR, "Unable to create connection pool; shutting down.");
         return(-1);
     }
 

@@ -7,7 +7,6 @@ add_executable(bongoqueue
 )
 
 target_link_libraries(bongoqueue
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

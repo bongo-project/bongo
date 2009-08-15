@@ -4,7 +4,6 @@ add_executable(bongorules
 )
 
 target_link_libraries(bongorules
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

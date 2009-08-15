@@ -3,7 +3,6 @@ add_executable(bongopop3
 )
 
 target_link_libraries(bongopop3
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

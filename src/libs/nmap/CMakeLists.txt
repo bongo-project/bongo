@@ -1,3 +1,4 @@
+#StrictCompile()
 
 add_library(bongonmap SHARED
 	bongoagent.c
@@ -7,7 +8,6 @@ add_library(bongonmap SHARED
 
 target_link_libraries(bongonmap
 	bongoconnio
-	bongomemmgr
 	bongoxpl
 	bongologging
 	bongostreamio

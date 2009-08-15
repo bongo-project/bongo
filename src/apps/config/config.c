@@ -556,11 +556,6 @@ main(int argc, char *argv[]) {
 	BongoAgent configtool;
 	config.verbose = 0;
 
-	if (!MemoryManagerOpen("bongo-config")) {
-		XplConsolePrintf("ERROR: Failed to initialize memory manager\n");
-		return 1;
-	}
-
 	// this just clears up a warning.  we don't need this here
 	GlobalConfig[0].type = BONGO_JSON_NULL;
 
@@ -683,6 +678,5 @@ main(int argc, char *argv[]) {
 	if (config.dns) MemFree(config.dns);
 	if (config.domains) BongoJsonNodeFree(config.domains);
 
-	MemoryManagerClose("bongo-config");
 	exit(0);
 }

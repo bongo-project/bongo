@@ -565,12 +565,8 @@ MsgLibraryInit(void)
     XplOpenLocalSemaphore(MsgGlobal.sem.shutdown, 0);
     XplMutexInit(MsgGlobal.sem.uid);
 
-    MemoryManagerOpen(NULL);
-
     if (!MsgReadConfiguration()) {
         XplConsolePrintf("Cannot read configuration. Shutting down.\n");
-
-        MemoryManagerClose(NULL);
 
         return(0);
     }
@@ -601,8 +597,6 @@ MsgLibraryShutdown(void)
         oldGid = XplSetThreadGroupID(MsgGlobal.groupID);
 
         MsgLibraryStop();
-
-        MemoryManagerClose(NULL);
 
         MSGAPIState = LIBRARY_SHUTDOWN;
 

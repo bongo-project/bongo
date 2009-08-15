@@ -1,9 +1,10 @@
+#StrictCompile()
+
 add_executable(bongosmtp
 	smtpd.c
 )
 
 target_link_libraries(bongosmtp
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil
@@ -17,7 +18,6 @@ add_executable(bongosmtpc
 )
 
 target_link_libraries(bongosmtpc
-	bongomemmgr
 	bongoxpl
 	bongoconnio
 	bongoutil

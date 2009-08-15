@@ -35,7 +35,7 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include/)
 include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR}/include/)
 
 # now build our various libraries, agents, binaries.
-foreach (LIBRARY xpl streamio logging msgapi memmgr connio bongoutil 
+foreach (LIBRARY xpl streamio logging msgapi connio bongoutil 
 		json cal nmap python/libbongo python/bongo)
 	add_subdirectory (src/libs/${LIBRARY})
 endforeach (LIBRARY)

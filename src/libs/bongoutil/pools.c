@@ -75,21 +75,3 @@ MemPrivatePoolReturnEntryDirect(void *PoolHandle, void *Source, const char *Sour
 	g_slice_free1(ref->size, Source);
 	return;
 }
-
-EXPORT BOOL 
-MemoryManagerOpen(const unsigned char *AgentName)
-{
-	UNUSED_PARAMETER_REFACTOR(AgentName);
-
-	// do we need this?
-	return(TRUE);
-}
-
-EXPORT BOOL 
-MemoryManagerClose(const unsigned char *AgentName)
-{
-	UNUSED_PARAMETER_REFACTOR(AgentName);
-
-	// do we need this?
-	return(TRUE);
-}

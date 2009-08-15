@@ -1,5 +1,7 @@
 
 add_library(bongoutil SHARED
+    pools.c
+    memstack.c
 	array.c
 	fileio.c
 	hashtable.c
@@ -10,5 +12,9 @@ add_library(bongoutil SHARED
 	quicksort.c
 	utf7mod.c
 	bongoutil.c)
+
+target_link_libraries(bongoutil
+    ${GLIB2_LIBRARIES}
+)
 
 install(TARGETS bongoutil DESTINATION ${LIB_INSTALL_DIR})

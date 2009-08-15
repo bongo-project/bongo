@@ -11,7 +11,6 @@ add_library(bongomsgapi SHARED
 
 target_link_libraries(bongomsgapi
 	bongoxpl
-	bongomemmgr
 	bongonmap
 	bongocal
 	${SQLITE_LIBRARIES}

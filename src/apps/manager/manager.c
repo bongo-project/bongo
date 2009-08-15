@@ -858,10 +858,6 @@ get_lock:
     }
     unlockFile = TRUE;
 
-    if (!MemoryManagerOpen("bongomanager")) {
-        fprintf(stderr, _("bongo-manager: failed to initialize memory manager.  Exiting\n"));
-        goto err_handler;
-    }
     ConnStartup(DEFAULT_CONNECTION_TIMEOUT);
 
     // set startLdap here if we want to start a managed slapd instance

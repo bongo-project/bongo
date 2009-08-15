@@ -35,6 +35,7 @@
 #include <msgapi.h>
 #include <nmap.h>
 #include <nmlib.h>
+#include <bongoutil.h>
 
 #define PRODUCT_SHORT_NAME "bongoantispam.nlm"
 
