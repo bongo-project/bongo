@@ -221,7 +221,7 @@ ReadCalendar(Connection *conn, const char *calendar)
     guids = BongoHashtableCreateFull(16, 
                                     (HashFunction)BongoStringHash, 
                                     (CompareFunction)strcmp,
-                                    MemFreeDirectCallback,
+                                    g_free,
                                     FreeEventData);
     
     ccode = NMAPRunCommandF(conn, buffer, CONN_BUFSIZE, "EVENTS \"C/calendars/%s\" Pnmap.event.uid,nmap.event.stamp\r\n", calendar);

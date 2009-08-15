@@ -1153,7 +1153,7 @@ StoreObjectRemoveCollection(StoreClient *client, StoreObject *collection)
 		
 		if (i >= guid_alloc) {
 			guid_alloc += 1000;
-			MemRealloc(guid_list, sizeof(uint64_t) * guid_alloc);
+			guid_list = MemRealloc(guid_list, sizeof(uint64_t) * guid_alloc);
 		}
 	}
 	if (status < 0) goto abort; // SQL failure

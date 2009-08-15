@@ -23,6 +23,7 @@
 #define MEMMGR_H
 
 #include "xpl.h"
+#include <glib.h>
 
 XPL_BEGIN_C_LINKAGE
 
@@ -59,19 +60,16 @@ XPL_BEGIN_C_LINKAGE
 
 #define ALIGN_SIZE(s, a) (((s) + a - 1) & ~(a - 1))
 
+#define MemMalloc(s)    g_malloc((s))
+#define MemMalloc0(s)   g_malloc0((s))
+#define MemRealloc(m, s)    g_realloc((m), (s))
+#define MemStrdup(s)    g_strdup((s))
+#define MemStrndup(m, s)   g_strndup((m), (s))
+#define MemFree(m)      g_free((m))
+#define MemCalloc(n, s) g_malloc((n)*(s))
+
 EXPORT BOOL MemoryManagerOpen(const unsigned char *AgentName);
 EXPORT BOOL MemoryManagerClose(const unsigned char *AgentName);
-
-/*    Memory Allocation API's    */
-EXPORT void *MemMallocDirect(size_t Size, const char *SourceFile, unsigned long SourceLine);
-EXPORT void *MemMalloc0Direct(size_t size, const char *sourceFile, unsigned long sourceLine);
-EXPORT void *MemReallocDirect(void *Source, size_t Size, const char *SourceFile, unsigned long SourceLine);
-
-// deprecate Calloc()
-#define MemCalloc(n, s)     MemMallocDirect((n)*(s), __FILE__, __LINE__)
-#define MemMalloc(s)        MemMallocDirect((s), __FILE__, __LINE__)
-#define MemMalloc0(s)        MemMalloc0Direct((s), __FILE__, __LINE__)
-#define MemRealloc(m, s)    MemReallocDirect((m), (s), __FILE__, __LINE__)
 
 /* Helpers */
 #define MemNew0(type, num) ((type*)MemMalloc0(sizeof(type) * (num)))
@@ -80,15 +78,6 @@ EXPORT void *MemReallocDirect(void *Source, size_t Size, const char *SourceFile,
 EXPORT void * MemClear(void *Source, size_t Size);
 
 /*    Memory De-Allocation API's    */
-EXPORT void MemFreeDirect(void *Source, const char *SourceFile, unsigned long SourceLine);
-EXPORT void MemFreeDirectCallback(void *Source);
-#define MemFree(m)          MemFreeDirect((m), __FILE__, __LINE__)
-
-/*    String Allocation API's    */
-EXPORT char *MemStrdupDirect(const char *StrSource, const char *SourceFile, unsigned long SourceLine);
-EXPORT char *MemStrndupDirect(const char *StrSource, int n, const char *SourceFile, unsigned long SourceLine);
-#define MemStrdup(s)        MemStrdupDirect((s), __FILE__, __LINE__)
-#define MemStrndup(s, n)        MemStrndupDirect((s), (n), __FILE__, __LINE__)
 
 /*    Private Pool API's    */
 typedef BOOL (*PoolEntryCB)(void *Buffer, void *ClientData);

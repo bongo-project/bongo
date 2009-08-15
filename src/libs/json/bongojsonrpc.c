@@ -69,7 +69,7 @@ BongoJsonRpcServerNew (Connection *listener)
     server->methods = BongoHashtableCreateFull(16, 
                                               (HashFunction)BongoStringHash, 
                                               (CompareFunction)strcmp, 
-                                               MemFreeDirect, MemFreeDirect);
+                                               g_free, g_free);
     
     return server;
 }
