@@ -21,20 +21,23 @@
 # Default VARS
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC="Bongo Colaborative Suite"
-NAME=bongo-manager
-SCRIPTNAME=/etc/init.d/$NAME
-BONGO_DIR=@prefix@
-BONGO_BIN=@prefix@/sbin
-BONGO_PROCLIST="bongomanager bongodmc bongostore bongoqueue bongosmtp bongoimap bongopop3 bongoantispam bongoavirus bongocalagent bongomailprox bongorules bongopluspack bongoconnmgr"
+BONGO_NAME=bongo-manager
+SCRIPTNAME=/etc/init.d/$BONGO_NAME
+BONGO_DIR=@CMAKE_INSTALL_PREFIX@
+BONGO_BIN=@CMAKE_INSTALL_PREFIX@/sbin
+BONGO_CONFIG=bongo-config
+BONGO_PROCLIST="bongoantisapm bongoavirus bongo-config bongoimap bongo-manager bongopop3 bongoqueue bongo-queuetool bongorules bongosmtp bongosmtpc bongostore bongo-testtool"
+BONGO_DATA=@CMAKE_INSTALL_PREFIX@/var/bongo/dbf/userdb.sqlite
+
 PIDFILE="$BONGO_DIR/var/bongo/work/bongomanager.pid"
-DAEMON=$BONGO_BIN/$NAME
+DAEMON=$BONGO_BIN/$BONGO_NAME
 DAEMON_ARGS="-d -k"
 
 # Exit if the package is not installed
 [ -x "$DAEMON" ] || exit 0
 
 # Read configuration variable file if it is present
-[ -r /etc/default/$NAME ] && . /etc/default/$NAME
+[ -r /etc/default/$BONGO_NAME ] && . /etc/default/$BONGO_NAME
 
 # Load the VERBOSE setting and other rcS variables
 #. /lib/init/vars.sh
@@ -62,7 +65,7 @@ function do_stop() {
 	#   2 if daemon could not be stopped
         #   other if a failure occurred
 
-        start-stop-daemon --verbose --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name $NAME
+        start-stop-daemon --verbose --stop --quiet --retry=TERM/30/KILL/5 --pidfile $PIDFILE --name $BONGO_NAME
 
         RETVAL="$?"
         [ "$RETVAL" = 2 ] && return 2
@@ -76,7 +79,7 @@ function do_reload() {
         # restarting (for example, when it is sent a SIGHUP),
         # then implement that here.
         #
-        start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $NAME
+        start-stop-daemon --stop --signal 1 --quiet --pidfile $PIDFILE --name $BONGO_NAME
 
         return 0
 }
@@ -84,7 +87,7 @@ function do_reload() {
 case "$1" in
 	start)
 
-	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$NAME"
+	[ "$VERBOSE" != no ] && log_daemon_msg "Starting $DESC" "$BONGO_NAME"
 
         do_start
 
@@ -96,7 +99,7 @@ case "$1" in
 	;;
 
 	stop)
-        [ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$NAME"   
+        [ "$VERBOSE" != no ] && log_daemon_msg "Stopping $DESC" "$BONGO_NAME"   
     	do_stop
     	case "$?" in
                 0|1) [ "$VERBOSE" != no ] && log_end_msg 0 ;;
@@ -109,7 +112,7 @@ case "$1" in
         # If the "reload" option is implemented then remove the
         # 'force-reload' alias
         #
-        log_daemon_msg "Restarting $DESC" "$NAME"
+        log_daemon_msg "Restarting $DESC" "$BONGO_NAME"
         do_stop
         case "$?" in
         	0|1)  

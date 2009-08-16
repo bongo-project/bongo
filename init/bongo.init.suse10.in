@@ -22,13 +22,12 @@ else
   OPTIONS=
 fi
 
-BONGO_DIR=@prefix@
-BONGO_BIN=@prefix@/sbin
+BONGO_DIR=@CMAKE_INSTALL_PREFIX@
+BONGO_BIN=@CMAKE_INSTALL_PREFIX@/sbin
 BONGO_NAME=bongo-manager
-BONGO_SETUP=bongo-setup
-BONGO_LIST="bongomanager bongodmc bongostore bongoqueue bongosmtp bongoimap bongopop3 bongoantispam bongoavirus bongocalagent bongomailprox bongorules bongoforward bongopluspack bongoconnmgr"
-BONGO_DATA=@SYSCONFDIR@/mdb.conf
-OPTIONS=
+BONGO_CONFIG=bongo-config
+BONGO_LIST="bongoantisapm bongoavirus bongo-config bongoimap bongo-manager bongopop3 bongoqueue bongo-queuetool bongorules bongosmtp bongosmtpc bongostore bongo-testtool"
+BONGO_DATA=@CMAKE_INSTALL_PREFIX@/var/bongo/dbf/userdb.sqlite
 test -x $BONGO_BIN/$BONGO_NAME || exit 5
 
 # Shell functions sourced from /etc/rc.status:
@@ -61,8 +60,8 @@ case "$1" in
     start)
  	if [ ! -r $BONGO_DATA ] ; then
 		HOSTNAME=`/bin/hostname`
-		echo "Initializing bongo: @XPL_DEFAULT_STATE_DIR@"
-		$BONGO_BIN/$BONGO_SETUP --smtp=2525 --domain=$HOSTNAME 2>&1
+		echo "Initializing bongo: @DATA_INSTALL_DIR@"
+		$BONGO_BIN/$BONGO_CONFIG --smtp=2525 --domain=$HOSTNAME 2>&1
 	fi
 	echo -n "Starting Bongo Daemon:"
 	startproc $BONGO_BIN/$BONGO_NAME $OPTIONS 2>&1

@@ -10,11 +10,11 @@
 # Source function library.
 . /etc/rc.d/init.d/functions
 
-DAEMON_DIR=@prefix@/sbin
+DAEMON_DIR=@CMAKE_INSTALL_PREFIX@/sbin
 DAEMON_NAME=bongo-manager
-DAEMON_SETUP=bongo-setup
-DAEMON_LIST="bongo-manager bongodmc bongostore bongosmtp bongoantispam bongocalcmd bongocalagent bongoimap bongopop3 bongomailprox bongorules "
-DATADIR=@XPL_DEFAULT_STATE_DIR@/mdb
+DAEMON_SETUP=bongo-config
+DAEMON_LIST="bongoantisapm bongoavirus bongo-config bongoimap bongo-manager bongopop3 bongoqueue bongo-queuetool bongorules bongosmtp bongosmtpc bongostore bongo-testtool"
+DATADIR=@CMAKE_INSTALL_PREFIX@/var/bongo/dbf/userdb.sqlite
 OPTIONS=
 
 [ -f /etc/sysconfig/$DAEMON_NAME ] && . /etc/sysconfig/$DAEMON_NAME

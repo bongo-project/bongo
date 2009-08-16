@@ -7,7 +7,7 @@
 # processname: bongo
 # pidfile: /var/spool/bongo/work/bongo-manager.pid
 
-[ -f @prefix@/sbin/bongo-manager ] || exit 0
+[ -f @CMAKE_INSTALL_PREFIX@/sbin/bongo-manager ] || exit 0
 
 # Include bongoproject defaults if available
 if [ -f /etc/default/bongoinit.conf ] ; then
@@ -18,10 +18,10 @@ set -e
 
 start() {
         echo -n "Starting Bongo: "
-        @prefix@/sbin/bongo-manager &
+        @CMAKE_INSTALL_PREFIX@/sbin/bongo-manager &
         if [ "1$RUN_STANDALONE" -eq "11" ]; then
                 sleep 3
-                @prefix@/sbin/bongo-standalone $RUN_STANDALONE_OPTS &
+                @CMAKE_INSTALL_PREFIX@/sbin/bongo-standalone $RUN_STANDALONE_OPTS &
         fi
         echo "Bongo."
 }
@@ -31,7 +31,7 @@ stop() {
         if [ "1$RUN_STANDALONE" -eq "11" ]; then
                 pkill -f bongo-standalone || echo -n .
         fi
-        @prefix@/sbin/bongo-manager -s
+        @CMAKE_INSTALL_PREFIX@/sbin/bongo-manager -s
         echo "Bongo."
 }
 

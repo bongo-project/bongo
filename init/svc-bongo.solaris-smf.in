@@ -5,16 +5,15 @@
 # Source key SMF constants and variables
 . /lib/svc/share/smf_include.sh
 
-DAEMON_DIR=@XPL_DEFAULT_BIN_DIR@
+BONGO_BIN=@CMAKE_INSTALL_PREFIX@/sbin
+
+DAEMON_DIR=@CMAKE_INSTALL_PREFIX@
 DAEMON_NAME=bongo-manager
-DAEMON_SETUP=bongo-setup
-DAEMON_LIST="bongo-manager bongodmc bongostore bongosmtp bongoantispam bongocalcmd bongocalagent bongoimap bongopop3 bongomailprox bongorules "
+DAEMON_SETUP=bongo-config
+DAEMON_LIST="bongoantisapm bongoavirus bongo-config bongoimap bongo-manager bongopop3 bongoqueue bongo-queuetool bongorules bongosmtp bongosmtpc bongostore bongo-testtool"
+
 DAEMON_USER=@BONGO_USER@
-DATADIR=@XPL_DEFAULT_STATE_DIR@/dbf
-#DATADIR=@XPL_DEFAULT_STATE_DIR@/mdb
-#MAILDIR=@XPL_DEFAULT_STATE_DIR@/netmail
-#MONODATADIR=@prefix@/.wapi
-#MONO_SETUP=/opt/mono/setup.sh
+DATADIR=@CMAKE_INSTALL_PREFIX@/var/bongo/dbf/
 OPTIONS=-d
 
 start() {
