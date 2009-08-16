@@ -48,6 +48,8 @@ foreach (EXECUTABLE config manager testtool queuetool)
 	add_subdirectory (src/apps/${EXECUTABLE})
 endforeach (EXECUTABLE)
 
+add_subdirectory (init)
+
 # install various other files
 install(DIRECTORY include/
 	DESTINATION "${CMAKE_INSTALL_PREFIX}/include/bongo" 

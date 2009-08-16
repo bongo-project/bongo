@@ -1,3 +1,5 @@
+#StrictCompile()
+
 add_library(bongomsgapi SHARED
 	cookie.c
 	msgaddr.c

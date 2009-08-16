@@ -42,6 +42,7 @@
 #define ASpamClientAlloc() MemPrivatePoolGetEntryDirect(ASpam.QueueMemPool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
+static void AntispamServer();
 
 
 ASpamGlobals ASpam;
