@@ -42,8 +42,7 @@
 #define ASpamClientAlloc() MemPrivatePoolGetEntryDirect(ASpam.QueueMemPool, __FILE__, __LINE__)
 
 static void SignalHandler(int sigtype);
-static void AntispamServer();
-
+static void AntispamServer(void *ignored);
 
 ASpamGlobals ASpam;
 
@@ -238,8 +237,10 @@ SignalHandler(int sigtype)
 XplServiceCode(SignalHandler)
 
 static void
-AntispamServer() {
+AntispamServer(void *ignored) {
     int minThreads, maxThreads, minSleep;
+
+    UNUSED_PARAMETER(ignored)
 
     BongoQueueAgentGetThreadPoolParameters(&ASpam.agent, &minThreads, &maxThreads, &minSleep);
     ASpam.QueueThreadPool = BongoThreadPoolNew(AGENT_NAME " Clients", BONGO_QUEUE_AGENT_DEFAULT_STACK_SIZE, minThreads, maxThreads, minSleep);

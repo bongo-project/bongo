@@ -37,6 +37,8 @@
 
 #define MEMSTACKSIZE (4 * 1024)
 
+static void StoreServer(void *ignored);
+
 struct StoreGlobals StoreAgent;
 
 static void 
@@ -145,9 +147,11 @@ StoreSocketInit()
 
 
 static void 
-StoreServer()
+StoreServer(void *ignored)
 {
     XplRenameThread(XplGetThreadID(), AGENT_DN " Server");
+
+    UNUSED_PARAMETER(ignored)
 
     /* Listen for incoming connections.  Call ProcessEntry with a
      * StoreAgentClient allocated for each incoming queue entry. */
