@@ -2,6 +2,8 @@
 
 import logging, os, pwd, sys
 
+sys.path.insert(0, "${PYTHON_SITEPACKAGES_PATH}")
+
 from bongo.cmdparse import CommandParser, Command
 
 from bongo.storetool import BackupCommands
