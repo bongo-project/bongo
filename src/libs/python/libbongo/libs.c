@@ -38,8 +38,11 @@ extern "C" {
 static PyMethodDef ModuleMethods[] = { {NULL} };
 
 /* Pull in the methods from the bindings */
+#if 0
+// we don't yet build calcmd
 extern PyMethodDef CalCmdMethods[];
 extern EnumItemDef CalCmdEnums[];
+#endif
 extern PyMethodDef CalMethods[];
 extern PyMethodDef MdbMethods[];
 extern EnumItemDef MdbEnums[];
@@ -56,12 +59,6 @@ initlibs()
     char dbfdir[PATH_MAX];
 
     /* Initialize the various bongo libraries */
-    if (!MemoryManagerOpen((unsigned char*)"pybongo")) {
-        PyErr_SetString(PyExc_ImportError,
-                        "bongo.libs error: MemoryManagerOpen() failed");
-        return;
-    }
-
     if (!ConnStartup(DEFAULT_CONNECTION_TIMEOUT)) {
         PyErr_SetString(PyExc_ImportError,
                         "bongo.libs error: ConnStartup() failed");
@@ -99,7 +96,7 @@ initlibs()
 
     /* Add the Bongo libs */
     AddLibrary(module, "cal", CalMethods, NULL);
-    AddLibrary(module, "calcmd", CalCmdMethods, CalCmdEnums);
+    //AddLibrary(module, "calcmd", CalCmdMethods, CalCmdEnums);
     AddLibrary(module, "msgapi", MsgApiMethods, NULL);
     AddLibrary(module, "streamio", StreamIOMethods, NULL);
     AddLibrary(module, "bongojson", BongoJsonMethods, NULL);

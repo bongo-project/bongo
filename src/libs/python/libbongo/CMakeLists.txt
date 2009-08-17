@@ -2,7 +2,7 @@ include_directories(AFTER ${PYTHON_INCLUDE_PATH})
 
 python_add_module(libs
 	cal.c
-	calcmd.c
+	#calcmd.c
 	libs.c
 	msgapi.c
 	msgapi-defs.c
@@ -40,3 +40,4 @@ target_link_libraries(bootstrap
 )
 
 install(TARGETS libs bootstrap DESTINATION ${PYTHON_SITEPACKAGES_PATH}/libbongo/)
+install(FILES __init__.py __init__.pyc DESTINATION ${PYTHON_SITEPACKAGES_PATH}/libbongo/)
