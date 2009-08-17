@@ -4,15 +4,32 @@
 // our package name
 #cmakedefine PACKAGE	"@CMAKE_PROJECT_NAME@"
 
+// the way we do includes on the python code seems to cause problems
+//  with the cmake style of defines.
 // include defines
-#cmakedefine HAVE_INTTYPES_H
-#cmakedefine HAVE_SYS_STATVFS_H
-#cmakedefine HAVE_SYS_STAT_H
-#cmakedefine HAVE_SYS_VFS_H
-#cmakedefine HAVE_KSTAT_H
-#cmakedefine HAVE_SEMAPHORE_H
+#ifndef HAVE_INTTYPES_H
+    #cmakedefine HAVE_INTTYPES_H
+#endif
 
-// Directories.txt
+#ifndef HAVE_SYS_STATVFS_H
+    #cmakedefine HAVE_SYS_STATVFS_H
+#endif
+
+#ifndef HAVE_SYS_STAT_H
+    #cmakedefine HAVE_SYS_STAT_H
+#endif
+
+#ifndef HAVE_SYS_VFS_H
+    #cmakedefine HAVE_SYS_VFS_H
+#endif
+
+#ifndef HAVE_KSTAT_H
+    #cmakedefine HAVE_KSTAT_H
+#endif
+
+#ifndef HAVE_SEMAPHORE_H
+    #cmakedefine HAVE_SEMAPHORE_H
+#endif// Directories.txt
 
 #cmakedefine BINDIR		"@BINDIR@"
 #cmakedefine SBINDIR		"@SBINDIR@"
