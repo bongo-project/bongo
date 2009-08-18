@@ -31,6 +31,9 @@
     #cmakedefine HAVE_SEMAPHORE_H
 #endif// Directories.txt
 
+#cmakedefine HAVE_ICAL_H	1
+#cmakedefine HAVE_OLD_ICAL_H	1
+
 #cmakedefine BINDIR		"@BINDIR@"
 #cmakedefine SBINDIR		"@SBINDIR@"
 #cmakedefine LIBDIR		"@LIBDIR@"

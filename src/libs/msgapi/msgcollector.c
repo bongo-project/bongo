@@ -35,7 +35,7 @@
 #include <nmlib.h>
 #include <bongocal-raw.h>
 
-#include <libical/ical.h>
+#include <ical-wrapper.h>
 
 #include <curl/curl.h>
 #include "msghttp.h"

@@ -22,7 +22,7 @@
 #include <config.h>
 #include <bongoutil.h>
 #include <bongocal.h>
-#include <libical/ical.h>
+#include <ical-wrapper.h>
 #include <bongocal-raw.h>
 #include "bongo-cal-private.h"
 

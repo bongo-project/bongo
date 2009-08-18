@@ -19,7 +19,7 @@
  * </Novell-copyright>
  ****************************************************************************/
 
-#include <libical.h>
+#include <ical-wrapper.h>
 #include <msgdate.h>
 #include <memmgr.h>
 

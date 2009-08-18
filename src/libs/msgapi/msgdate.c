@@ -28,7 +28,7 @@
 #include "msgapip.h"
 
 //#include <libical/icaltime.h>
-#include <libical/ical.h>
+#include <ical-wrapper.h>
 #include "bongoutil.h"
 
 #define LAST 5

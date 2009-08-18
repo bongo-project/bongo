@@ -72,7 +72,20 @@ pkg_check_modules (SQLITE REQUIRED sqlite3)
 pkg_check_modules (CURL REQUIRED libcurl)
 
 # check for libical
-pkg_check_modules (LIBICAL REQUIRED libical)
+check_include_file(libical/ical.h HAVE_ICAL_H)
+if (NOT HAVE_ICAL_H)
+	check_include_file(ical.h HAVE_OLD_ICAL_H)
+	if (NOT HAVE_OLD_ICAL_H)
+		message(FATAL_ERROR "Bongo needs libical in order to compile")
+	endif (NOT HAVE_OLD_ICAL_H)
+endif (NOT HAVE_ICAL_H)
+
+check_library_exists(ical icaltime_compare "" HAVE_ICAL)
+if (HAVE_ICAL)
+	set(LIBICAL_LIBRARIES "ical")
+else (HAVE_ICAL)
+	message(FATAL_ERROR "Bongo couldn't find the libical runtime library")
+endif (HAVE_ICAL)
 
 # check for Python
 include(FindPythonLibs)

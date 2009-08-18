@@ -23,7 +23,7 @@
 #include <xpl.h>
 #include <bongocal.h>
 #include <bongocal-raw.h>
-#include <libical/ical.h>
+#include <ical-wrapper.h>
 #include <bongojson.h>
 #include <bongoutil.h>
 
