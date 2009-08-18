@@ -5,4 +5,5 @@ install(DIRECTORY ./bongo
     )
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/bongo-storetool.py ${CMAKE_CURRENT_BINARY_DIR}/bongo-storetool)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bongo-storetool DESTINATION ${SBIN_INSTALL_DIR} PERMISSIONS WORLD_EXECUTE)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bongo-storetool DESTINATION
+${SBIN_INSTALL_DIR})
