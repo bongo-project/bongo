@@ -88,8 +88,8 @@ GetInstallParameters(void){
 void
 SetStoreConfigurationModifications(StoreClient *client) {
 	BongoJsonNode *node;
-	unsigned char *aconfig = NULL;
-	unsigned char *default_config = NULL;
+	char *aconfig = NULL;
+	char *default_config = NULL;
 	unsigned int default_config_len;
 	/*
 	* unsigned char default_config[] = 
@@ -375,7 +375,7 @@ GenerateCryptoData() {
 	ret = gnutls_x509_privkey_export(key, GNUTLS_X509_FMT_PEM, &private_key, &dsize);
 	if (ret < 0) {
 		XplConsolePrintf(_("ERROR: Couldn't export private key. %s\n"), gnutls_strerror(ret));
-		XplConsolePrintf(_("       Size: %d, Ret: %d\n"), dsize, ret);
+		XplConsolePrintf(_("       Size: %zd, Ret: %d\n"), dsize, ret);
 		return FALSE;
 	} else {
 		params = fopen(XPL_DEFAULT_KEY_PATH, "w");
