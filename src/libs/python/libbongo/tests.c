@@ -12,7 +12,7 @@ extern "C" {
 // print tests.GetUnicodeString()
 
 static PyObject *
-test_GetAsciiString(void)
+test_GetAsciiString(PyObject *one, PyObject *two)
 {
 	char *hello_english = "Hello";
 	PyObject *ret;
@@ -23,7 +23,7 @@ test_GetAsciiString(void)
 }
 
 static PyObject *
-test_GetUnicodeString(void)
+test_GetUnicodeString(PyObject *one, PyObject *two)
 {
 	char *hello_finnish = "hyvää päivää";
 	PyObject *ret;

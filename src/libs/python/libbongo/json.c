@@ -84,8 +84,23 @@ static PySequenceMethods JsonArray_sequence = {
     JsonArray_assign_slice,
     JsonArray_contains,
     JsonArray_inplace_concat,
-    JsonArray_inplace_repeat
+    JsonArray_inplace_repeat,
 };
+
+#if 0
+    lenfunc sq_length;
+    binaryfunc sq_concat;
+    ssizeargfunc sq_repeat;
+    ssizeargfunc sq_item;
+    ssizessizeargfunc sq_slice;
+    ssizeobjargproc sq_ass_item;
+    ssizessizeobjargproc sq_ass_slice;
+    objobjproc sq_contains;
+    /* Added in release 2.0 */
+    binaryfunc sq_inplace_concat;
+    ssizeargfunc sq_inplace_repeat;
+#endif
+
 
 PyTypeObject JsonArrayType = {
     PyObject_HEAD_INIT(NULL)
@@ -324,7 +339,10 @@ JsonArray_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self->own = FALSE;
     self->array = NULL;
 
-    return self;
+    /* JsonArray is defined as a c subclass of the PyObject.
+     * i should be able to cast here safely because i'm casting
+     * a pointer either way */
+    return (PyObject *)self;
 }
 
 int
@@ -375,11 +393,11 @@ JsonArray_str(PyObject *selfp)
     return ret;
 }
 
-int
+Py_ssize_t
 JsonArray_length(PyObject *selfp)
 {
     JsonArray *self = (JsonArray *)selfp;
-    return self->array->len;
+    return (self->array->len > 0) ? (Py_ssize_t)self->array->len : 0;
 }
 
 PyObject *
@@ -390,14 +408,14 @@ JsonArray_concat(PyObject *selfp, PyObject *b)
 }
 
 PyObject *
-JsonArray_repeat(PyObject *selfp, int i)
+JsonArray_repeat(PyObject *selfp, Py_ssize_t i)
 {
     PyErr_SetString(PyExc_NotImplementedError, "Not implemented");
     return NULL;
 }
 
 PyObject *
-JsonArray_item(PyObject *selfp, int i)
+JsonArray_item(PyObject *selfp, Py_ssize_t i)
 {
     JsonArray *self = (JsonArray *)selfp;
     BongoJsonNode *node;
@@ -413,21 +431,21 @@ JsonArray_item(PyObject *selfp, int i)
 }
 
 PyObject *
-JsonArray_slice(PyObject *selfp, int i1, int i2)
+JsonArray_slice(PyObject *selfp, Py_ssize_t i1, Py_ssize_t i2)
 {
     PyErr_SetString(PyExc_NotImplementedError, "Not implemented");
     return NULL;
 }
 
 int 
-JsonArray_assign(PyObject *selfp, int i, PyObject *obj)
+JsonArray_assign(PyObject *selfp, Py_ssize_t i, PyObject *obj)
 {
     PyErr_SetString(PyExc_NotImplementedError, "Not implemented");
     return 0;
 }
 
 int 
-JsonArray_assign_slice(PyObject *selfp, int i1, int i2, PyObject *obj)
+JsonArray_assign_slice(PyObject *selfp, Py_ssize_t i1, Py_ssize_t i2, PyObject *obj)
 {
     PyErr_SetString(PyExc_NotImplementedError, "Not implemented");
     return 0;
@@ -448,7 +466,7 @@ JsonArray_inplace_concat(PyObject *selfp, PyObject *b)
 }
 
 PyObject *
-JsonArray_inplace_repeat(PyObject *selfp, int i)
+JsonArray_inplace_repeat(PyObject *selfp, Py_ssize_t i)
 {
     PyErr_SetString(PyExc_NotImplementedError, "Not implemented");
     return NULL;
@@ -479,7 +497,10 @@ JsonObject_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
     self->own = FALSE;
     self->valid = TRUE;
 
-    return self;
+    /* JsonObject is defined as a c subclass of the PyObject.
+     * i should be able to cast here safely because i'm casting
+     * a pointer either way */
+    return (PyObject *)self;
 }
 
 int
@@ -507,7 +528,7 @@ JsonObject_str(PyObject *selfp)
     return ret;
 }
 
-int
+Py_ssize_t
 JsonObject_length(PyObject *self)
 {
     /* FIXME */
