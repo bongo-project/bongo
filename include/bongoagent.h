@@ -96,7 +96,7 @@ typedef struct _BongoConfigItem {
 } BongoConfigItem;
 
 BOOL ReadBongoConfiguration(BongoConfigItem *config, char *filename);
-BOOL ProcessBongoConfiguration(BongoConfigItem *config, const BongoJsonNode *node);
+BOOL ProcessBongoConfiguration(BongoConfigItem *config, BongoJsonNode *node);
 BOOL SetBongoConfigItem(BongoConfigItem *schema, BongoJsonNode *node);
 void FreeBongoConfiguration(BongoConfigItem *config);
 
