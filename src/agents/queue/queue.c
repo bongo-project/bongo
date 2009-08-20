@@ -2135,7 +2135,7 @@ CreateDSNMessage(FILE *data, FILE *control, FILE *rtsData, FILE *rtsControl, BOO
 
                     case DELIVER_QUOTA_EXCEEDED: {
                         if (Conf.quotaMessage && (Conf.quotaMessage[0] != '\0')) {
-                            fprintf(rtsData, Conf.quotaMessage);
+                            fprintf(rtsData, "%s", Conf.quotaMessage);
                         } else {
                             fprintf(rtsData, DEFAULT_QUOTA_MESSAGE);
                         }                              
