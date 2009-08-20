@@ -180,7 +180,7 @@ MsgSQLBeginTransaction(MsgSQLHandle *handle)
 		case SQLITE_BUSY:
 			return -2;
 		default:
-			printf("Database error %d : %s\n", result, sqlite3_errmsg(stmt->stmt));
+			printf("Database error %d : %s\n", result, sqlite3_errmsg(handle->db));
 			//DStoreStmtError(handle, stmt);
 			return -1;
 	}
@@ -212,7 +212,7 @@ MsgSQLCommitTransaction(MsgSQLHandle *handle)
 
 	if (SQLITE_DONE != result) {
 		// DStoreStmtError(handle, stmt);
-		printf("Database commit error %d: %s\n", result, sqlite3_errmsg(stmt->stmt));
+		printf("Database commit error %d: %s\n", result, sqlite3_errmsg(handle->db));
 		return -1;
 	}
 	return 0;
@@ -440,10 +440,8 @@ MsgSQLResultInt64(MsgSQLStatement *_stmt, int column)
 int
 MsgSQLResultText(MsgSQLStatement *_stmt, int column, char *result, size_t result_size)
 {
-	char *out;
-	
+	const char *out = sqlite3_column_text(_stmt->stmt, column);
 	DEBUG(" - result text %ld\n", _stmt->stmt)
-	out = sqlite3_column_text(_stmt->stmt, column);
 	if (out != NULL)
 		strncpy(result, out, result_size);
 	
@@ -453,6 +451,6 @@ MsgSQLResultText(MsgSQLStatement *_stmt, int column, char *result, size_t result
 int
 MsgSQLResultTextPtr(MsgSQLStatement *_stmt, int column, char **ptr)
 {
-	*ptr = sqlite3_column_text(_stmt->stmt, column);
+	*ptr = strdup(sqlite3_column_text(_stmt->stmt, column));
 	return 0;
 }
