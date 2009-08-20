@@ -158,7 +158,7 @@ MsgAuthDeleteCookie(const char *username, const char *token)
 
 	// next, clear the existing file
 	rewind(cookiefile);
-	ftruncate((int)cookiefile, 0);
+	ftruncate(fileno(cookiefile), 0);
 
 	// now, go through memory writing out only the cookies we want to keep
 	for (i = 0; i < cookiecount; i++) {
