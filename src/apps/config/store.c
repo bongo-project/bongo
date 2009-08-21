@@ -115,7 +115,7 @@ PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *
 	char command[1024];
 
 	snprintf(command, 1000, "INFO %s/%s\r\n", collection, filename);
-	ccode = NMAPSendCommandF(client->conn, command);
+	ccode = NMAPSendCommandF(client->conn, "%s", command);
 	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
 	while (ccode == 2001)
 		ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
@@ -130,7 +130,7 @@ PutOrReplaceConfig(StoreClient *client, char *collection, char *filename, char *
 			collection, STORE_DOCTYPE_CONFIG, len, filename);
 	}
 
-	NMAPSendCommandF(client->conn, command);
+	NMAPSendCommandF(client->conn, "%s", command);
 	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
 
 	if (ccode == 2002) {
@@ -151,7 +151,7 @@ BOOL
 NMAPSimpleCommand(StoreClient *client, char *command) {
 	CCode ccode;
 	
-	NMAPSendCommandF(client->conn, command);
+	NMAPSendCommandF(client->conn, "%s", command);
 	ccode = NMAPReadAnswer(client->conn, client->buffer, sizeof(client->buffer), TRUE);
 	if (1000 == ccode)
 		return TRUE;
