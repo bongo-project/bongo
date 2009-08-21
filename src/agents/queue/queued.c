@@ -242,7 +242,7 @@ int CommandAddressResolve(void *param) {
     unsigned char buffer[1024]; /* FIXME: is this too big? */
     QueueClient *client = (QueueClient *)param;
 
-    handled = aliasing(client->buffer + 16, &cnt, &buffer);
+    handled = aliasing(client->buffer + 16, &cnt, buffer);
     if (!handled) {
         ConnWriteF(client->conn, MSG4001NO_USER"\r\n", client->buffer + 16);
     } else {

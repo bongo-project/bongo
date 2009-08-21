@@ -274,7 +274,7 @@ ReadBongoConfiguration(BongoConfigItem *config, char *filename) {
  */
 
 BOOL
-ProcessBongoConfiguration(BongoConfigItem *config, const BongoJsonNode *node)
+ProcessBongoConfiguration(BongoConfigItem *config, BongoJsonNode *node)
 {
 	while (config->type != BONGO_JSON_NULL) {
 		BongoJsonNode *result = BongoJsonJPath(node, config->source);

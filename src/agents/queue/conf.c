@@ -22,6 +22,7 @@
 
 #include <config.h>
 
+#include "queued.h"
 #include "conf.h"
 #include "queue.h"
 
@@ -203,7 +204,7 @@ ReadConfiguration (BOOL *recover)
 
         unsigned int x;
         for(x=0;x<Conf.domains->len;x++) {
-            unsigned char *aconfig;
+            char *aconfig;
             unsigned char path[100];
             BongoJsonNode *node;
             struct _AliasStruct a;

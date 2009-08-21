@@ -302,7 +302,7 @@ StartAgentsWithPriority(int priority, BOOL onlyCrashed, BOOL printMessage)
 static BOOL
 LoadAgentConfiguration()
 {
-	unsigned char *config;
+	char *config;
 	BOOL retcode = FALSE;
 	BongoJsonNode *node;
 	BongoJsonResult res;

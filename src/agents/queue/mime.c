@@ -228,7 +228,7 @@ SendMimeDetails(Connection *conn, MIMEReportStruct *report)
         for (i=0; i < parts; i++) {
             /* 2002 <type> <subtype> <charset> <encoding> <name> <part-head-start> <part-head-size> <part-start-pos> <Size> <RFC822 Header-Size> <lines> */
             if (XplStrCaseCmp(part[i].subtype, "RFC822") && ((i + 1) < parts)) {
-                ccode = ConnWriteF(conn, "2002-%s %s %s %s \"%s\" %d %lu %lu %lu %lu %lu\r\n", 
+                ccode = ConnWriteF(conn, "2002-%s %s %s %s \"%s\" %ld %lu %lu %lu %lu %lu\r\n", 
                                    part[i].type, 
                                    part[i].subtype, 
                                    part[i].charset, 
@@ -241,7 +241,7 @@ SendMimeDetails(Connection *conn, MIMEReportStruct *report)
                                    part[i + 1].start - part[i].start, 
                                    part[i].lines);
             } else if (XplStrCaseCmp(part[i].type, "TEXT")) {
-                ccode = ConnWriteF(conn, "2002-%s %s %s %s \"%s\" %d %lu %lu %lu 0 %lu\r\n", 
+                ccode = ConnWriteF(conn, "2002-%s %s %s %s \"%s\" %ld %lu %lu %lu 0 %lu\r\n", 
                                    part[i].type, 
                                    part[i].subtype, 
                                    part[i].charset, 
@@ -253,7 +253,7 @@ SendMimeDetails(Connection *conn, MIMEReportStruct *report)
                                    part[i].length, 
                                    part[i].lines);
             } else {
-                ccode = ConnWriteF(conn, "2002-%s %s %s %s \"%s\" %d %lu %lu %lu 0 0\r\n", 
+                ccode = ConnWriteF(conn, "2002-%s %s %s %s \"%s\" %ld %lu %lu %lu 0 0\r\n", 
                                    part[i].type, 
                                    part[i].subtype, 
                                    part[i].charset, 

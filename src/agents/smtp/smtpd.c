@@ -3969,7 +3969,7 @@ ReadConfiguration (void)
 
     LocalAddress = MsgGetHostIPAddress ();
 
-    MsgGetServerCredential(&NMAPHash);
+    MsgGetServerCredential(NMAPHash);
 
     return (TRUE);
 }
