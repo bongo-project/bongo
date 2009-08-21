@@ -6,6 +6,11 @@ cmake_minimum_required(VERSION 2.6)
 cmake_policy(VERSION 2.6)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
+set(BONGO_V_MAJOR 0)
+set(BONGO_V_MINOR 1)
+set(BONGO_V_BUILD 0)
+set(BONGO_V_STR "${BONGO_V_MAJOR}.${BONGO_V_MINOR}.${BONGO_V_BUILD}")
+
 # arguments we can supply to the build system - TODO
 set(BONGO_USER "root" CACHE STRING "User account Bongo should run under")
 option(CONN_TRACE "Enable connection tracing" OFF)
@@ -35,10 +40,17 @@ include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include/)
 include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR}/include/)
 
 # now build our various libraries, agents, binaries.
-foreach (LIBRARY xpl streamio logging msgapi connio bongoutil 
-		json cal nmap python/libbongo python/bongo)
+# DO NOT ALTER (SO)VERSION ON LIBRARIES WITHOUT ASKING!
+foreach (LIBRARY xpl streamio logging msgapi connio util json cal nmap)
 	add_subdirectory (src/libs/${LIBRARY})
+	set_target_properties(bongo${LIBRARY} PROPERTIES
+	        SOVERSION 0 
+		VERSION ${BONGO_V_STR}
+	)
 endforeach (LIBRARY)
+
+add_subdirectory(src/libs/python/libbongo)
+add_subdirectory(src/libs/python/bongo)
 
 foreach (AGENT antispam avirus imap pop queue rules smtp store)
 	add_subdirectory (src/agents/${AGENT})
