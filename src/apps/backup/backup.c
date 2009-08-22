@@ -1455,11 +1455,6 @@ main(int argc, char *argv[])
     BongoBackup.backup_date = time(NULL);
     BongoBackup.verbose = 0;
 
-    if (!MemoryManagerOpen("Bongo Backup")) {
-        XplConsolePrintf(_("Failed to initialize memory manager\n"));
-        return 1;
-    }
-
     /* parse options */
     while (++next_arg < argc && argv[next_arg][0] == '-') {
         if ((arg_ptr = strchr(argv[next_arg], '=')) != '\0') {
@@ -1539,7 +1534,7 @@ main(int argc, char *argv[])
         /* backup */
         XplConsolePrintf(_("Backing up data\n"));
 
-        if (ConnStartup((300), FALSE)) {
+        if (ConnStartup((300))) {
             if ((nmap = GetConnection(NULL))) {
                 if (next_backup_arg < 1) {
                     /* full backup */
@@ -1594,7 +1589,7 @@ main(int argc, char *argv[])
         /* restore */
         XplConsolePrintf(_("Restoring data\n"));
 
-        if (ConnStartup((300), FALSE)) {
+        if (ConnStartup((300))) {
             if (next_backup_arg < 1) {
                 /* full restore */
                 if ((store_dir = opendir(BongoBackup.store_path))) {
@@ -1642,9 +1637,8 @@ main(int argc, char *argv[])
         XplConsolePrintf(_("Search command not implemented\n"));
     } else {
         /* help */
-        XplConsolePrintf(usage);
+        XplConsolePrintf("%s", usage);
     }
 
-    MemoryManagerClose("Bongo Backup");
     return 1;
 }
