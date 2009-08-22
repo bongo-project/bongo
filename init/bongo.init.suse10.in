@@ -8,6 +8,7 @@
 # Required-Stop:	      $remote_fs
 # Default-Start:              3 4 5
 # Default-Stop:               0 1 2 6
+# Short-Description: Bongo
 # Description: Bongo collaboration system, visit: http://www.bongo-project.com
 ### END INIT INFO
 
