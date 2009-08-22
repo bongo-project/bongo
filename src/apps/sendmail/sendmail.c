@@ -76,11 +76,7 @@ main (int argc, char *argv[])
     char command[200];
     int i;
       
-    if (! MemoryManagerOpen("BongoSendmail")) {
-        FatalError(1, "unable to initialise memory manager.");
-    }
-    
-    ConnStartup((15*60), TRUE);
+    ConnStartup((15*60));
     
     MsgInit();
     NMAPInitialize();
@@ -177,7 +173,6 @@ main (int argc, char *argv[])
     
     NMAPQuit(nmap);
     CONN_TRACE_SHUTDOWN();
-    MemoryManagerClose("BongoSendmail");
     
     return(0);
 }
