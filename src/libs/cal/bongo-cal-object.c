@@ -596,7 +596,7 @@ BongoCalObjectGetInstance(BongoCalObject *cal, const char *uid, BongoCalTime rec
     data.uid = uid;
     data.recurid = recurid;
 
-    i = GArrayFindSorted(cal->instances, &data, FindInstanceById);    
+    i = GArrayFindSorted(cal->instances, &data, sizeof(BongoCalInstance *), FindInstanceById);    
     if (i != -1) {
         return g_array_index(cal->instances, BongoCalInstance *, i);
     } else {

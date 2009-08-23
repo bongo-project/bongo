@@ -313,7 +313,7 @@ AddPushAgent(QueueClient *client,
 
     /* first look through the list to find the right queue */
     tempQueue.queue = queue;
-    ItemIndex = GArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
+    ItemIndex = GArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, sizeof(QueueList *), FindQueue);
     if (ItemIndex < 0) {
         /* there is no queue item in the array yet.  we need to initialize one */
         CurrentQueue = MemNew0(QueueList, 1);
@@ -326,7 +326,7 @@ AddPushAgent(QueueClient *client,
 
     /* CurrentQueue should be set now */
     strncpy(tempPool.identifier, identifier, 100);
-    ItemIndex = GArrayFindSorted(CurrentQueue->pools, &p_tempPool, FindPool);
+    ItemIndex = GArrayFindSorted(CurrentQueue->pools, &p_tempPool, sizeof(QueuePoolList *), FindPool);
     if (ItemIndex < 0) {
         /* there is no pool already.  we need to initialize one */
         CurrentPool = MemNew0(QueuePoolList, 1);
@@ -1432,7 +1432,7 @@ StartOver:
 
     /* i want to get the current queue and iterate over its pools if there are any */
     tempQueue.queue = queue;
-    ItemIndex = GArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, FindQueue);
+    ItemIndex = GArrayFindSorted(Queue.PushClients.queues, &p_tempQueue, sizeof(QueueList *), FindQueue);
     if (ItemIndex >= 0) {
         QueueList *CurrentQueue = g_array_index(Queue.PushClients.queues, QueueList *, ItemIndex);
         for (iter_p=0; iter_p < CurrentQueue->pools->len; iter_p++) {

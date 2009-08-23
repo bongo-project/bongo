@@ -20,9 +20,8 @@ GArrayFindUnsorted(GArray *array, void *needle, ArrayCompareFunc compare)
     return -1;
 }
 
-/* TODO: the old function had a char *.  should this be more generic somehow? */
 int
-GArrayFindSorted(GArray *array, void *needle, ArrayCompareFunc compare)
+GArrayFindSorted(GArray *array, void *needle, ssize_t type_size, ArrayCompareFunc compare)
 {
     void *data;
 
@@ -30,10 +29,10 @@ GArrayFindSorted(GArray *array, void *needle, ArrayCompareFunc compare)
         return -1;
     }
 
-    data = bsearch(needle, array->data, array->len, sizeof(char *), compare);
+    data = bsearch(needle, array->data, array->len, type_size, compare);
 
     if (data) {
-        return ((char*)data - (char*)array->data) / sizeof(char *);
+        return ((void *)data - (void *)array->data) / type_size;
     } else {
         return -1;
     }
