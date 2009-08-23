@@ -1,5 +1,5 @@
 /* The username which bongo runs as. */
-#cmakedefine BONGO_USER	"root"
+#cmakedefine BONGO_USER	"@BONGO_USER@"
 
 // our package name
 #cmakedefine PACKAGE	"@CMAKE_PROJECT_NAME@"
