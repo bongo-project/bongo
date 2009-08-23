@@ -451,6 +451,10 @@ MsgSQLResultText(MsgSQLStatement *_stmt, int column, char *result, size_t result
 int
 MsgSQLResultTextPtr(MsgSQLStatement *_stmt, int column, char **ptr)
 {
-	*ptr = strdup(sqlite3_column_text(_stmt->stmt, column));
+	*ptr = NULL;
+	
+	char *result = sqlite3_column_text(_stmt->stmt, column);
+	if (result != NULL) *ptr = g_strdup(result);
+	
 	return 0;
 }
