@@ -356,7 +356,7 @@ int BongoListVoidToInt (void * ptr);
 typedef int (*ArrayCompareFunc)(const void *, const void *);
 
 int GArrayFindUnsorted(GArray *array, void *needle, ArrayCompareFunc compare);
-int GArrayFindSorted(GArray *array, void *needle, ArrayCompareFunc compare);
+int GArrayFindSorted(GArray *array, void *needle, ssize_t type_size, ArrayCompareFunc compare);
 
 #if 0
 typedef struct _BongoArray BongoArray;

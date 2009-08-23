@@ -158,7 +158,7 @@ BOOL aliasing(char *addr, int *cnt, unsigned char *buffer) {
     }
 
     /* if i get here, i've got a domain name that i can look up in the alias system */
-    i = GArrayFindSorted(Conf.aliasList, domain, (ArrayCompareFunc)aliasFindFunc);
+    i = GArrayFindSorted(Conf.aliasList, domain, sizeof(struct _AliasStruct), (ArrayCompareFunc)aliasFindFunc);
     if (i > -1) {
         char new_addr[1000]; /* FIXME: seems a bit large */
         AliasStruct a;
@@ -167,7 +167,7 @@ BOOL aliasing(char *addr, int *cnt, unsigned char *buffer) {
         a = g_array_index(Conf.aliasList, AliasStruct, i);
 
         /* user aliases should take precedence over domain aliases.  check for one of those first */
-        if (a.aliases && a.aliases->len && ((i = GArrayFindSorted(a.aliases, local, (ArrayCompareFunc)aliasFindFunc)) > -1)) {
+        if (a.aliases && a.aliases->len && ((i = GArrayFindSorted(a.aliases, local, sizeof(struct _AliasStruct), (ArrayCompareFunc)aliasFindFunc)) > -1)) {
             AliasStruct b;
             b = g_array_index(a.aliases, AliasStruct, i);
             result = aliasing(b.to, cnt, buffer);
@@ -253,10 +253,11 @@ int CommandAddressResolve(void *param) {
 
 int CommandDomainLocation(void *param) {
 	QueueClient *client = (QueueClient *)param;
-
+	// FIXME: is this actually used at all with our current aliasing stuff?
 	/* first find the domain in the request */
 	unsigned char *domain = client->buffer + 16;
-
+	
+#if 0
 	/* now search for it */
 	int idx = GArrayFindSorted(Conf.hostedDomains, domain, (ArrayCompareFunc)hostedFindFunc);
 	if (idx > -1) {
@@ -265,6 +266,8 @@ int CommandDomainLocation(void *param) {
 		/* TODO: add the relay domain stuff */
 		ConnWriteF(client->conn, MSG1002REMOTE"\r\n", domain);
 	}
+#endif
+	ConnWriteF(client->conn, MSG1000LOCAL"\r\n", domain);
 	return 0;
 }
 
@@ -428,7 +431,7 @@ CheckTrustedHost(QueueClient *client)
     if (Conf.trustedHosts) {
         /* TODO: this can be optimized a little bit */
         XplRWReadLockAcquire(&Conf.lock);
-        i = GArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), (ArrayCompareFunc)hostedFindFunc);
+        i = GArrayFindSorted(Conf.trustedHosts, inet_ntoa(client->conn->socketAddress.sin_addr), sizeof (char *), (ArrayCompareFunc)hostedFindFunc);
         XplRWReadLockRelease(&Conf.lock);
     }
     return (i > -1);
