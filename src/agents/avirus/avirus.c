@@ -38,6 +38,8 @@
 #include <logger.h>
 
 #include "avirus.h"
+#define AVIRUS_DEFAULT_PORT 3310
+#define AVIRUS_DEFAULT_WEIGHT 1
 
 static void SignalHandler(int sigtype);
 
@@ -423,7 +425,7 @@ ReadConfiguration(void) {
         char *hostitem = g_array_index(AVirus.clamd.hostlist, char*, i);
         char *lHost = MemStrdup(hostitem);
         char *host;
-        int port, weight;
+        int port=AVIRUS_DEFAULT_PORT, weight=AVIRUS_DEFAULT_WEIGHT;
         ParseHost(lHost, &host, &port, &weight);
         ConnAddressPoolAddHost(&AVirus.clamd.hosts, host, port, weight);
         MemFree(lHost);
