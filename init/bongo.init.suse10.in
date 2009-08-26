@@ -29,6 +29,8 @@ BONGO_NAME=bongo-manager
 BONGO_CONFIG=bongo-config
 BONGO_LIST="bongoantisapm bongoavirus bongo-config bongoimap bongo-manager bongopop3 bongoqueue bongo-queuetool bongorules bongosmtp bongosmtpc bongostore bongo-testtool"
 BONGO_DATA=@CMAKE_INSTALL_PREFIX@/var/bongo/dbf/userdb.sqlite
+
+echo $BONGO_BIN/$BONGO_NAME
 test -x $BONGO_BIN/$BONGO_NAME || exit 5
 
 # Shell functions sourced from /etc/rc.status:
@@ -93,7 +95,7 @@ case "$1" in
         rc_status -v
         ;;
     *)
-        echo "Usage: $0 {start|stop|status|restart}"
+        echo "Usage: $0 {start|stop|status|restart|reload}"
         exit 1
         ;;
 esac
