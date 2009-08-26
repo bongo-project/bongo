@@ -4,7 +4,7 @@
 #
 ### BEGIN INIT INFO
 # Provides:                   bongo
-# Required-Start:             $network
+# Required-Start:             $network $remote_fs
 # Required-Stop:	      $remote_fs
 # Default-Start:              3 4 5
 # Default-Stop:               0 1 2 6
