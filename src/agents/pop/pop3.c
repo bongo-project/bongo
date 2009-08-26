@@ -464,6 +464,8 @@ ConnectUserToNMAPServer(POP3Client *client, unsigned char *username, unsigned ch
         XplSafeIncrement(POP3.stats.badPasswords);
         Log(LOG_NOTICE, "Incorrect password for user %s from host %s", username,
             LOGIP(client->conn->socketAddress));
+        /* the use was not found.  Error, don't continue */
+        return(POP3_NMAP_USER_UNKNOWN);
     }
 
     MsgAuthGetUserStore(username, &nmap);
