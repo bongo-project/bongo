@@ -447,11 +447,15 @@ ConnNegotiate(Connection *conn, bongo_ssl_context *context)
             CONN_TRACE_EVENT(c, CONN_TRACE_EVENT_SSL_CONNECT);
             return(TRUE);
         }
-        gnutls_deinit(c->ssl.context);
-        gnutls_certificate_free_credentials(c->ssl.credentials);
+        if (c->ssl.context) {
+            gnutls_deinit(c->ssl.context);
+            c->ssl.context = NULL;
+        }
+        if (c->ssl.credentials) {
+            gnutls_certificate_free_credentials(c->ssl.credentials);
+            c->ssl.credentials = NULL;
+        }
         c->ssl.enable = FALSE;
-        c->ssl.context = NULL;
-        c->ssl.credentials = NULL;
     }
 
     return(FALSE);
