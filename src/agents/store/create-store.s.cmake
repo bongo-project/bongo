@@ -1,3 +1,4 @@
+.section ".note.GNU-stack","",%progbits
 .section ".rodata"
 .globl sql_create_store
 .type sql_create_store,@object
