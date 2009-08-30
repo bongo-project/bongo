@@ -209,9 +209,10 @@ EXPORT BOOL MsgFindUserNmap(const unsigned char *user, unsigned char *nmap, int 
 EXPORT unsigned long MsgGetHostIPAddress(void);
 EXPORT unsigned long MsgGetAgentBindIPAddress(void);
 
-EXPORT const char *MsgGetUnprivilegedUser(void);	
+EXPORT const char *MsgGetUnprivilegedUser(void);
 
 EXPORT void MsgMakePath(char *path);
+EXPORT void MsgMakePathChown(char *path, int uid, int gid);
 EXPORT BOOL MsgCleanPath(char *path);
 
 EXPORT BOOL MsgResolveStart();

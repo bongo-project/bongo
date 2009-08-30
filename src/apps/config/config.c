@@ -179,8 +179,7 @@ InitializeDataArea(void)
 	for (dir = MSGAPI_DIR_START; dir < MSGAPI_DIR_END; dir++) {
 		char path[XPL_MAX_PATH];
 		if (MsgGetDir(dir, path, XPL_MAX_PATH)) {
-			MsgMakePath(path);
-			chown(path, uid, gid);
+			MsgMakePathChown(path, uid, gid);
 		}
 	}
 	
