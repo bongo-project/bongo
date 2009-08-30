@@ -210,30 +210,44 @@ MsgCleanPath(char *path)
 EXPORT void
 MsgMakePath(char *path)
 {
-    char *ptr = path;
-    char *ptr2;
-    struct stat sb;
+	return MsgMakePathChown(path, -1, -1);
+}
 
-    ptr = strchr(path, '/');
-    if (!ptr)
-        ptr=strchr(path, '\\');
+EXPORT void
+MsgMakePathChown(char *path, int uid, int gid)
+{
+	char *ptr = path;
+	char *ptr2;
+	struct stat sb;
 
-    while (ptr) {
-        *ptr = '\0';
-        if (stat(path, &sb) != 0) {
-            XplMakeDir(path);
-        }
+	ptr = strchr(path, '/');
+	if (!ptr)
+		ptr=strchr(path, '\\');
 
-        *ptr = '/';
-        ptr2 = ptr;
-        ptr = strchr(ptr2 + 1, '/');
-        if (!ptr)
-	    ptr = strchr(ptr2 + 1, '\\');
-    }
-
-    if (stat(path, &sb) != 0) {
-        XplMakeDir(path);
-    }
+	while (ptr) {
+		*ptr = '\0';
+		if (stat(path, &sb) != 0) {
+			XplMakeDir(path);
+			if ((uid != -1) && (gid != -1)) {
+				// TODO: this assumes success. Usually we
+				// ought to be root when calling this, so...
+				chown(path, uid, gid);
+			}
+		}
+		
+		*ptr = '/';
+		ptr2 = ptr;
+		ptr = strchr(ptr2 + 1, '/');
+		if (!ptr)
+			ptr = strchr(ptr2 + 1, '\\');
+	}
+	
+	if (stat(path, &sb) != 0) {
+		XplMakeDir(path);
+		if ((uid != -1) && (gid != -1)) {
+			chown(path, uid, gid);
+		}
+	}
 }
 
 EXPORT const char *
