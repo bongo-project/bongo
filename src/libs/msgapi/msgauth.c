@@ -27,7 +27,7 @@ MsgAuthLoadBackend(const char *name, const char *file)
 	AuthPlugin_Init *init_func;
 	MsgAuthAPIFunction *func;
 	
-	snprintf(path, XPL_MAX_PATH, "%s/bongo-auth/%s", LIBDIR, file);
+	snprintf(path, XPL_MAX_PATH, "%s/bongo-auth/%s", XPL_DEFAULT_LIB_DIR, file);
 	auth = XplLoadDLL(path);
 	if (! auth) {
 		Log(LOG_FATAL, "Unable to load auth backend '%s'", file);

@@ -274,7 +274,7 @@ MsgGetDir(MsgApiDirectory directory, char *buffer, size_t buffer_size)
 			path = XPL_DEFAULT_DBF_DIR;
 			break;
 		case MSGAPI_DIR_LIB:
-			path = LIBDIR;
+			path = XPL_DEFAULT_LIB_DIR;
 			break;
 		case MSGAPI_DIR_MAIL:
 			path = XPL_DEFAULT_MAIL_DIR;
