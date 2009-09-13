@@ -76,9 +76,6 @@ __gnutls_new(Connection *conn, bongo_ssl_context *context, gnutls_connection_end
 
         /* store in the credetials loaded earler */
         ccode = gnutls_credentials_set(conn->ssl.context, GNUTLS_CRD_CERTIFICATE, context->cert_cred);
-
-        /* initialize the dh bits */
-        gnutls_dh_set_prime_bits(conn->ssl.context, 1024);
     } else {
         const int cert_type_priority[4] = { GNUTLS_CRT_X509, GNUTLS_CRT_OPENPGP, 0 };
 
@@ -93,6 +90,9 @@ __gnutls_new(Connection *conn, bongo_ssl_context *context, gnutls_connection_end
 
         /* set the empty credentials in the session */
         gnutls_credentials_set (conn->ssl.context, GNUTLS_CRD_CERTIFICATE, conn->ssl.credentials);
+
+        /* require at least 512 dh bits */
+        gnutls_dh_set_prime_bits(conn->ssl.context, 512);
     }
 
     return TRUE;
