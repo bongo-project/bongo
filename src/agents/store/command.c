@@ -2126,7 +2126,7 @@ StoreCommandLIST(StoreClient *client,
 	int ccode;
 	
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_LIST);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	return StoreObjectIterCollectionContents(client, collection, start, 
 	    end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
