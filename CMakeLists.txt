@@ -19,14 +19,14 @@ include(cmake/BongoCompiler.cmake)
 # find our various build requirements
 include(cmake/Requirements.cmake)
 
+# set up defines for build directories
+include(cmake/Directories.cmake)
+include(cmake/DefineInstallationPaths.cmake)
+
 # define RPATH for debug/etc. builds - allows us to install libraries
 # in non-system location and the binaries still link to them
-set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+set(CMAKE_INSTALL_RPATH "${XPL_DEFAULT_LIB_DIR}")
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-
-# set up defines for build directories
-include(cmake/DefineInstallationPaths.cmake)
-include(cmake/Directories.cmake)
 
 # any legacy defines which we want to get rid of eventually
 include(cmake/Legacy.cmake)
