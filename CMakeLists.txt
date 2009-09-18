@@ -8,7 +8,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
 
 set(BONGO_V_MAJOR 0)
 set(BONGO_V_MINOR 6)
-set(BONGO_V_BUILD 0)
+set(BONGO_V_BUILD 1)
 set(BONGO_V_STR "${BONGO_V_MAJOR}.${BONGO_V_MINOR}.${BONGO_V_BUILD}")
 
 # arguments we can supply to the build system - TODO
