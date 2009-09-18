@@ -105,6 +105,7 @@ StoreObjectDBCreate(StoreClient *client)
 	StoreObjectCreate(client, &collection);
 	
 	collection.guid = STORE_CALENDARS_PERSONAL_GUID;
+	collection.collection_guid = STORE_CALENDARS_GUID;
 	snprintf(collection.filename, MAX_FILE_NAME, "/calendars/personal");
 	StoreObjectCreate(client, &collection);
 	
