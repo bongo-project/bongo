@@ -1,9 +1,18 @@
 # various directory definitions we use throughout Bongo
 
+if(EXISTS /lib64)
+	set(_LIB_DIR_NAME lib64)
+else(EXISTS /lib64)
+	set(_LIB_DIR_NAME lib)
+endif(EXISTS /lib64)
+
+set(LIB_DIR_NAME ${_LIB_DIR_NAME} CACHE PATH 
+	"Name of library location (arch-specific), usually 'lib' or 'lib64'")
+
 # 'default' locations for where objects get built
 set(BINDIR			${PROJECT_BINARY_DIR}/bin)
 set(SBINDIR			${PROJECT_BINARY_DIR}/sbin)
-set(LIBDIR			${LIBRARY_OUTPUT_PATH})
+set(LIBDIR			${PROJECT_BINARY_DIR}/${LIB_DIR_NAME})
 set(LIBEXECDIR			${PROJECT_BINARY_DIR}/libexec)
 set(DATAROOTDIR			${PROJECT_BINARY_DIR}/share)
 set(DATADIR			${PROJECT_BINARY_DIR}/share)
@@ -15,7 +24,7 @@ set(XPL_DEFAULT_DATA_DIR	${CMAKE_INSTALL_PREFIX}/share/bongo)
 set(XPL_DEFAULT_STATE_DIR	${CMAKE_INSTALL_PREFIX}/var/bongo)
 
 set(XPL_DEFAULT_BIN_DIR		${CMAKE_INSTALL_PREFIX}/sbin)
-set(XPL_DEFAULT_LIB_DIR		${CMAKE_INSTALL_PREFIX}/lib)
+set(XPL_DEFAULT_LIB_DIR		${CMAKE_INSTALL_PREFIX}/${LIB_DIR_NAME})
 set(XPL_DEFAULT_CONF_DIR	${CMAKE_INSTALL_PREFIX}/etc/bongo)
 set(XPL_DEFAULT_NLS_DIR		${CMAKE_INSTALL_PREFIX}/share/bongo/nls)
 

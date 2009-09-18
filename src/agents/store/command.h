@@ -37,6 +37,7 @@ typedef enum {
     STORE_COMMAND_IDENTITY,
     STORE_COMMAND_MANAGE,
     STORE_COMMAND_QUIT,
+    STORE_COMMAND_STORES,
     STORE_COMMAND_STORE,
     STORE_COMMAND_TOKEN,
     STORE_COMMAND_TOKENS,
@@ -238,6 +239,8 @@ CCode StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, ui
 CCode StoreCommandRESET(StoreClient *client);
 
 CCode StoreCommandSEARCH(StoreClient *client, uint64_t guid, StoreSearchInfo *query);
+
+CCode StoreCommandSTORES(StoreClient *client);
 
 CCode StoreCommandSTORE(StoreClient *client, char *user);
 

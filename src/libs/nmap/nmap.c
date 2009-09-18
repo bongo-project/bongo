@@ -33,6 +33,7 @@
 #include <msgapi.h>
 #include <nmap.h>
 #include <bongostore.h>
+#include <logger.h>
 
 struct {
     RegistrationStates state;
@@ -1264,18 +1265,18 @@ NMAPReadConfigFile(const char *file, char **output)
         XplDelay(1000);
     }
     if (!conn) {
-        printf("could not connect to store\n");
+        Log(LOG_WARN, "could not connect to store\n");
         return FALSE;
     }
     if (!NMAPAuthenticate(conn, buffer, sizeof(buffer))) {
-        printf("could not authenticate to the store\n");
+        Log(LOG_WARN, "could not authenticate to the store\n");
         goto nmapfinish;
     }
 
     NMAPSendCommandF(conn, "STORE _system\r\n");
     ccode = NMAPReadAnswer(conn, buffer, sizeof(buffer), TRUE);
     if (ccode != 1000) {
-        printf("cannot access _system collection\n");
+        Log(LOG_WARN, "cannot access _system collection\n");
         goto nmapfinish;
     }
 
@@ -1284,7 +1285,7 @@ NMAPReadConfigFile(const char *file, char **output)
 
         ccode = NMAPReadPropertyValueLength(conn, "nmap.document", &count);
         if (ccode != 2001) {
-             printf("couldn't load config from store\n");
+             Log(LOG_INFO, "couldn't load config from store: /config/%s\n", file);
              goto nmapfinish;
         }
 
@@ -1292,7 +1293,7 @@ NMAPReadConfigFile(const char *file, char **output)
         written = NMAPReadCount(conn, *output, count);
         NMAPReadCrLf(conn);
         if (written != count) {
-            printf("couldn't read config from store\n");
+            Log(LOG_INFO, "couldn't read config from store: /config/%s\n", file);
             goto nmapfinish;
         }
         if (count == 0) {

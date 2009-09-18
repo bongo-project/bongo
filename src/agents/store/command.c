@@ -107,6 +107,7 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "COOKIE", (void *) STORE_COMMAND_COOKIE) ||
         BongoHashtablePutNoReplace(CommandTable, "QUIT", (void *) STORE_COMMAND_QUIT) ||
         BongoHashtablePutNoReplace(CommandTable, "STORE", (void *) STORE_COMMAND_STORE) ||
+        BongoHashtablePutNoReplace(CommandTable, "STORES", (void *) STORE_COMMAND_STORES) ||
         BongoHashtablePutNoReplace(CommandTable, "TOKEN", (void *) STORE_COMMAND_TOKEN) ||
         BongoHashtablePutNoReplace(CommandTable, "TOKENS", (void *) STORE_COMMAND_TOKENS) ||
         BongoHashtablePutNoReplace(CommandTable, "USER", (void *) STORE_COMMAND_USER) ||
@@ -1133,7 +1134,13 @@ StoreCommandLoop(StoreClient *client)
             /* SHUTDOWN */
             exit(0);
             break;
-            
+        
+        case STORE_COMMAND_STORES:
+            if (TOKEN_OK == (ccode = RequireIdentity(client))) {
+                ccode = StoreCommandSTORES(client);
+            }
+            break;
+        
         case STORE_COMMAND_STORE:
             /* STORE [<storename>] */
 
@@ -2119,7 +2126,7 @@ StoreCommandLIST(StoreClient *client,
 	int ccode;
 	
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_LIST);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	return StoreObjectIterCollectionContents(client, collection, start, 
 	    end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
@@ -2698,6 +2705,23 @@ StoreCommandRESET(StoreClient *client)
 	return ConnWriteStr(client->conn, MSG1000OK);
 }
 
+CCode
+StoreCommandSTORES(StoreClient *client)
+{
+	char **userlist;
+	int result;
+
+	result = MsgAuthUserList(&userlist);
+	if (result) {
+		int i;
+		
+		for (i = 0; userlist[i] != 0; i++) {
+			ConnWriteF(client->conn, "2001 %s\r\n", userlist[i]);
+		}
+		MsgAuthUserListFree(&userlist);
+	}
+	return ConnWriteStr(client->conn, MSG1000OK);
+}
 
 CCode
 StoreCommandSTORE(StoreClient *client, char *user)

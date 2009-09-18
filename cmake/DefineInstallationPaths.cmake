@@ -54,7 +54,7 @@ if (UNIX)
     CACHE PATH "The ${APPLICATION_NAME} sbin install dir (default prefix/sbin)"
   )
   SET(LIB_INSTALL_DIR
-    "${EXEC_INSTALL_PREFIX}/lib${LIB_SUFFIX}"
+    "${EXEC_INSTALL_PREFIX}/${LIB_DIR_NAME}"
     CACHE PATH "The subdirectory relative to the install prefix where libraries will be installed (default is prefix/lib)"
   )
   SET(LIBEXEC_INSTALL_DIR

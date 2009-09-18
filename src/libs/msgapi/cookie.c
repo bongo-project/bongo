@@ -44,7 +44,7 @@ MsgAuthCreateCookie(const char *username, MsgAuthCookie *cookie, uint64_t timeou
 	xpl_hash_context context;
 
 	// create the cookie
-	cookie->expiration = timeout;
+	cookie->expiration = time(NULL) + timeout;
 	
 	XplHashNew(&context, XPLHASH_MD5);
 	snprintf(cookie->token, sizeof(cookie->token), "%x%x", 
