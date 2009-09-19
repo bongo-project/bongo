@@ -29,7 +29,7 @@ LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type)
 	UNUSED_PARAMETER_REFACTOR(object);
 	UNUSED_PARAMETER_REFACTOR(type);
 	
-	return 0;
+	return 1;
 }
 
 /* Free the desired logical lock.
