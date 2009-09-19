@@ -1,0 +1,130 @@
+Locking within the Store
+========================
+
+The store does various bits of locking to serialize access to certain
+resources for different reasons:
+
+ * to ensure consistency of data on disk
+ * to ensure clients get a consistent view of a given store
+ * to ensure concurrent access "works"
+
+Clients are not allowed to invoke locks within the store, as this would
+constitute a kind of denial of service. Locks occur within the store 
+as commands are run to ensure consistency, but means that atomicity
+is limited to the run of a command.
+
+Therefore, something like:
+
+	MOVE /tmp/document /addressbook
+
+.. is atomic, but there is no way to do:
+
+	MOVE /tmp/document1 /addressbook 
+	MOVE /tmp/document2 /addressbook
+
+.. in an atomic fashion.
+
+Locking within Sqlite
+---------------------
+
+We use transaction locks on Sqlite to ensure that the database is written
+to in a consistent way. Generally all this locking occurs within 
+object-model.c, and only happen when we actually need those locks.
+Thus, reading or writing StoreObjects from the database is locked so
+that the underlying database is consistent - you cannot rely on these 
+locks to prevent other database users changing data while you're using it:
+
+	// pull an object from the database
+	ccode = StoreObjectFind(client, collection_guid, &object);
+	
+	// meddle with the object, update it etc.
+	// the object is not locked from other users at this point!
+	
+	// Save the new object
+	StoreObjectSave(client, &object);
+
+The transaction locks within the Store object system ensure that the
+object is retrieved and saved correctly; however, it does not ensure 
+that other threads don't meddle with the object in the meantime.
+
+File locking
+------------
+
+Currently, the store does no locking of physical files whatsoever. This
+means that only one store process can be active (though that process
+may have many threads), and the files the store accesses may not be
+read/written to while it is alive.
+
+This may change in the future, however, the assumption that the store
+is free to do as it pleases holds for now.
+
+Logical locking
+---------------
+
+As described in the Sqlite section above, transactions in the database
+cannot be used to ensure atomicity while a store object / file / etc.
+is being updated.
+
+Logical locks are used at this level:
+
+	// Sqlite code from above - find our object
+	ccode = StoreObjectFind(client, collection_guid, &object);
+	
+	// now gain a lock on the object
+	LogicalLockGain(client, &object, LLOCK_READWRITE);
+	
+	// meddle with the object, update it etc., then save
+	StoreObjectSave(client, &object);
+	
+	// now release our logical lock
+	LogicalLockRelease(client, &object)
+
+The logical lock ensures that other threads do not mess with objects that
+we are currently reading / writing to. There are two types of locks, 
+READONLY ones (which can be held by many threads at once) and READWRITE
+ones (which can only be held by one thread, to the exclusion of any
+READONLY locks).
+
+Locks are taken on the Store path of an object, and conflict with another
+lock which has the same path suffix. So, given the following paths:
+
+	1	/mail/INBOX/mail1
+	2	/mail/INBOX/mail2
+	3	/mail
+	4	/addressbook
+
+If we have a lock (either type) on 1: (& vice-versa for 2)
+	- we can gain a read-only lock on 2, 3 and 4
+	- we can gain a read-write lock on 2 and 4
+
+If we have a read-only lock on 3:
+	- we can gain a read-only lock on 1, 2 or 4
+	- we can gain a read-write lock only on 4
+
+If we have a read-write lock on 3:
+	- we can gain a read-only lock only on 4
+	- we can gain a read-write lock only on 4
+
+If we have a lock (either type) on 4:
+	- we can gain a read-only lock on 1, 2 or 3
+	- we can gain a read-write lock on 1, 2 or 3
+
+Where locks cannot be immediately gained, the locking code waits to 
+acquire it, as it generally should not take very long (e.g., blocking
+disk i/o etc. should occur outside logical locks).
+
+Logical locks are commented on in the code a bit like this:
+
+// [LOCKING] Copy(X to Y) => RoLock(X), RwLock(Y)
+
+In this example, the command issued is to copy the document X into the 
+collection Y. The comment above says that in order to perform this 
+operation, it will take a read-only lock on the document X and a read-
+write lock on the collection Y.
+
+A read-only lock is always taken if we need to ensure that our view of
+an object in the database is consistent.
+
+A write lock on an object is taken if we are changing the content of
+that object. A write lock on the parent of the object is taken if we 
+are changing the metadata of the object.
