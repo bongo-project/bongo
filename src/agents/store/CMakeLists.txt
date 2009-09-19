@@ -13,6 +13,7 @@ add_executable(bongostore
 	db.c
 	fairlock.c
 	guid.c
+	locking.c
 	mail.c
 	maildir.c
 	main.c

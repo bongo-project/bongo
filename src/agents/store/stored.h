@@ -412,6 +412,16 @@ int MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport);
 /** config.c **/
 BOOL StoreAgentReadConfiguration(BOOL *recover);
 
+/** locking.c **/
+typedef enum {
+	LLOCK_NONE,
+	LLOCK_READONLY,
+	LLOCK_READWRITE
+} LogicalLockType;
+
+int LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type);
+int LogicalLockRelease(StoreClient *client, StoreObject *object);
+
 /* hardcoded guids: */
 
 #define STORE_ROOT_GUID 1
