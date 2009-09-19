@@ -1382,9 +1382,9 @@ finish:
 CCode
 StoreCommandALARMS(StoreClient *client, uint64_t start, uint64_t end)
 {
-	if (client) {} // FIXME compile error
-	if (start) {} // FIXME compile error
-	if (end) {} // FIXME compile error
+	UNUSED_PARAMETER_REFACTOR(client);
+	UNUSED_PARAMETER_REFACTOR(start);
+	UNUSED_PARAMETER_REFACTOR(end);
 	/* FIXME - redo this completely
 	 * 
     AlarmInfoStmt *stmt;
@@ -1448,17 +1448,15 @@ StoreCommandCALENDARS(StoreClient *client, unsigned long mask,
 {
 	StoreObject calendar_collection;
 	CCode ccode;
-
-	if (mask) {
-		// FIXME : mask is unused in this function thus far
-	}
-
+	
+	UNUSED_PARAMETER_REFACTOR(mask);
+	
 	StoreObjectFind(client, STORE_CALENDARS_GUID, &calendar_collection);
 	ccode = StoreObjectCheckAuthorization(client, &calendar_collection, STORE_PRIV_LIST);
 	if (ccode) return ccode;
 	
 	return StoreObjectIterCollectionContents(client, &calendar_collection, -1, 
-	    -1, 0, 0, props, propcount, "= nmap.type 6", NULL, FALSE);
+		-1, 0, 0, props, propcount, "= nmap.type 6", NULL, FALSE);
 }
 
 // list the collections who are subcollections of container
@@ -1469,7 +1467,7 @@ StoreCommandCOLLECTIONS(StoreClient *client, StoreObject *container)
 	
 	ccode = StoreObjectCheckAuthorization(client, container, STORE_PRIV_LIST);
 	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
-
+	
 	return StoreObjectIterSubcollections(client, container);
 }
 
@@ -1479,7 +1477,7 @@ StoreCommandCONVERSATION(StoreClient *client, StoreObject *conversation,
 {
 	CCode ccode = 0;
 	StoreObject conversation_collection;
-
+	
 	StoreObjectFind(client, STORE_CONVERSATIONS_GUID, &conversation_collection);
 	ccode = StoreObjectCheckAuthorization(client, &conversation_collection, STORE_PRIV_READ);
 	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
@@ -1500,10 +1498,11 @@ StoreCommandCONVERSATIONS(StoreClient *client, const char *source, const char *q
 	int ccode;
 	StoreObject conversation_collection;
 	BOOL show_total;
-
-	if (headers || headercount || source || center) {
-		// FIXME : these are current unused
-	}
+	
+	UNUSED_PARAMETER_REFACTOR(headers);
+	UNUSED_PARAMETER_REFACTOR(headercount);
+	UNUSED_PARAMETER_REFACTOR(source);
+	UNUSED_PARAMETER_REFACTOR(center);
 	
 	StoreObjectFind(client, STORE_CONVERSATIONS_GUID, &conversation_collection);
 	
@@ -1516,83 +1515,83 @@ StoreCommandCONVERSATIONS(StoreClient *client, const char *source, const char *q
 	show_total = (displayTotal == 0)? FALSE : TRUE;
 	
 	return StoreObjectIterCollectionContents(client, &conversation_collection, start, 
-	    end, flagsmask, flags, props, propcount, NULL, query, show_total);
+		end, flagsmask, flags, props, propcount, NULL, query, show_total);
 }
 
 CCode 
 StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collection)
 {
-    CCode ccode;
-    FILE *src = NULL;
-    char srcpath[XPL_MAX_PATH + 1];
-    char dstpath[XPL_MAX_PATH + 1];
-    StoreObject newobject;
-     
-     CHECK_NOT_READONLY(client)
-     
-    // check the parameters are ok and the document exists   
-    if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
-
+	CCode ccode;
+	FILE *src = NULL;
+	char srcpath[XPL_MAX_PATH + 1];
+	char dstpath[XPL_MAX_PATH + 1];
+	StoreObject newobject;
+	
+	CHECK_NOT_READONLY(client)
+	
+	// check the parameters are ok and the document exists   
+	if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
+	
 	// check authorization on the parent collection
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_BIND | STORE_PRIV_READ);
-    if (ccode) return ccode;
-
+	if (ccode) return ccode;
+	
 	// copy the files on disk
-    FindPathToDocument(client, object->collection_guid, object->guid, srcpath, sizeof(srcpath));
-    src = fopen(srcpath, "r");
-    if (!src) {
-        ccode = ConnWriteStr(client->conn, MSG4224CANTREADMBOX);
-        goto finish;
-    }
-    fclose(src);
-
-    MaildirTempDocument(client, collection->guid, dstpath, sizeof(dstpath));
-    
-    if (link(srcpath, dstpath) != 0) {
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-    // TODO: how to detect MSG5220QUOTAERR ?
-    
-    // make a copy of the storeobject
+	FindPathToDocument(client, object->collection_guid, object->guid, srcpath, sizeof(srcpath));
+	src = fopen(srcpath, "r");
+	if (!src) {
+		ccode = ConnWriteStr(client->conn, MSG4224CANTREADMBOX);
+		goto finish;
+	}
+	fclose(src);
+	
+	MaildirTempDocument(client, collection->guid, dstpath, sizeof(dstpath));
+	
+	if (link(srcpath, dstpath) != 0) {
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	// TODO: how to detect MSG5220QUOTAERR ?
+	
+	// make a copy of the storeobject
 	memcpy(&newobject, object, sizeof(StoreObject));
 	newobject.guid = 0;
 	newobject.filename[0] = '\0';
 		
 	if (StoreObjectCreate(client, &newobject))
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-    
-    StoreObjectCopyInfo(client, object, &newobject);
-    
-    // swap dest to src, and find new dest - move temp file into correct position
-    srcpath[0] = '\0';
-    strncpy(srcpath, dstpath, sizeof(srcpath));
-    FindPathToDocument(client, collection->guid, newobject.guid, dstpath, sizeof(dstpath));
-    if (link(srcpath, dstpath) != 0) {
-    	// StoreObjectCreate saved the new object; if we can't create
-    	// the data, we should remove that object
-    	StoreObjectRemove(client, &newobject);
-        ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
-        goto finish;
-    }
-    unlink(srcpath);
-    
-    // update metadata
-    newobject.collection_guid = collection->guid;
-    newobject.time_created = newobject.time_modified = time(NULL);
-    
-    StoreObjectFixUpFilename(collection, &newobject);
-    
-    StoreObjectSave(client, &newobject);
-    
-    // slight race here without store-level locking
-    StoreObjectUpdateImapUID(client, &newobject);
-    
-    ++client->stats.insertions;
-    StoreWatcherEvent(client, &newobject, STORE_WATCH_EVENT_NEW);
-    
-    ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n",
-                       newobject.guid, newobject.version);
+	
+	StoreObjectCopyInfo(client, object, &newobject);
+	
+	// swap dest to src, and find new dest - move temp file into correct position
+	srcpath[0] = '\0';
+	strncpy(srcpath, dstpath, sizeof(srcpath));
+	FindPathToDocument(client, collection->guid, newobject.guid, dstpath, sizeof(dstpath));
+	if (link(srcpath, dstpath) != 0) {
+		// StoreObjectCreate saved the new object; if we can't create
+		// the data, we should remove that object
+		StoreObjectRemove(client, &newobject);
+		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
+		goto finish;
+	}
+	unlink(srcpath);
+	
+	// update metadata
+	newobject.collection_guid = collection->guid;
+	newobject.time_created = newobject.time_modified = time(NULL);
+	
+	StoreObjectFixUpFilename(collection, &newobject);
+	
+	StoreObjectSave(client, &newobject);
+	
+	// slight race here without store-level locking
+	StoreObjectUpdateImapUID(client, &newobject);
+	
+	++client->stats.insertions;
+	StoreWatcherEvent(client, &newobject, STORE_WATCH_EVENT_NEW);
+	
+	ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n",
+		newobject.guid, newobject.version);
 
 finish:
 	return ccode;
@@ -1719,7 +1718,6 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 		object.guid, object.version);
 }
 
-
 CCode
 StoreCommandDELETE(StoreClient *client, StoreObject *object)
 {
@@ -1782,7 +1780,7 @@ finish:
 // one of filename and bytes must be set 
 // if DELIVER FILE - it's filename
 // if DELIVER STREAM - it's bytes on a network socket
-
+// DEPRECATED
 CCode
 StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender, 
                     char *filename, size_t bytes)
@@ -1917,10 +1915,18 @@ StoreCommandEVENTS(StoreClient *client,
                    StorePropInfo *props, int propcount)
 {
 	// pretend we have no events for now.
-	if (client || startUTC || endUTC || calendar || mask ||
-		uid || query || start || end || props || propcount) {
-		// FIXME : compiler warnings in blank function
-	}
+	UNUSED_PARAMETER_REFACTOR(client);
+	UNUSED_PARAMETER_REFACTOR(startUTC);
+	UNUSED_PARAMETER_REFACTOR(endUTC);
+	UNUSED_PARAMETER_REFACTOR(calendar);
+	UNUSED_PARAMETER_REFACTOR(mask);
+	UNUSED_PARAMETER_REFACTOR(uid);
+	UNUSED_PARAMETER_REFACTOR(query);
+	UNUSED_PARAMETER_REFACTOR(start);
+	UNUSED_PARAMETER_REFACTOR(end);
+	UNUSED_PARAMETER_REFACTOR(props);
+	UNUSED_PARAMETER_REFACTOR(propcount);
+	
 	return ConnWriteStr(client->conn, MSG1000OK);
 /*
     CCode ccode = 0;
@@ -2075,9 +2081,13 @@ CCode
 StoreCommandISEARCH(StoreClient *client, const char *query, int start, int end,
                     StorePropInfo *props, int propcount)
 {
-	if (client || query || start || end || props || propcount) {
-		// FIXME : compiler warnings in blank function
-	}
+	UNUSED_PARAMETER_REFACTOR(client);
+	UNUSED_PARAMETER_REFACTOR(query);
+	UNUSED_PARAMETER_REFACTOR(start);
+	UNUSED_PARAMETER_REFACTOR(end);
+	UNUSED_PARAMETER_REFACTOR(props);
+	UNUSED_PARAMETER_REFACTOR(propcount);
+	
 	return ConnWriteStr(client->conn, MSG1000OK);
 	/*
     char buf[200];
@@ -2129,7 +2139,7 @@ StoreCommandLIST(StoreClient *client,
 	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	return StoreObjectIterCollectionContents(client, collection, start, 
-	    end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
+		end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
 }
 
 CCode
@@ -2172,9 +2182,9 @@ CCode
 StoreCommandMAILINGLISTS(StoreClient *client, char *source)
 {
 	// TODO
-	if (client || source) {
-		// FIXME : blank function
-	}
+	UNUSED_PARAMETER_REFACTOR(client);
+	UNUSED_PARAMETER_REFACTOR(source);
+	
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
@@ -2188,11 +2198,20 @@ StoreCommandMESSAGES(StoreClient *client, const char *source, const char *query,
 {
 	// FIXME: obsolete? This looks very similar to LIST; just added
 	// source and query. Might as well make it one command...
-	if (client || source || query || start || end || center ||
-		flagsmask || flags || displayTotal || headers || headercount ||
-		props || propcount) {
-		// FIXME : stop compiler warning on empty function
-	}
+	UNUSED_PARAMETER_REFACTOR(client);
+	UNUSED_PARAMETER_REFACTOR(source);
+	UNUSED_PARAMETER_REFACTOR(query);
+	UNUSED_PARAMETER_REFACTOR(start);
+	UNUSED_PARAMETER_REFACTOR(end);
+	UNUSED_PARAMETER_REFACTOR(center);
+	UNUSED_PARAMETER_REFACTOR(flagsmask);
+	UNUSED_PARAMETER_REFACTOR(flags);
+	UNUSED_PARAMETER_REFACTOR(displayTotal);
+	UNUSED_PARAMETER_REFACTOR(headers);
+	UNUSED_PARAMETER_REFACTOR(headercount);
+	UNUSED_PARAMETER_REFACTOR(props);
+	UNUSED_PARAMETER_REFACTOR(propcount);
+	
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
@@ -2213,30 +2232,30 @@ StoreCommandMIME(StoreClient *client, StoreObject *document)
 
 	// FIXME: need to re-do the MimeGetInfo() API for store objects
 	switch (MimeGetInfo(client, document, &report)) {
-	case 1:
-		ccode = MimeReportSend(client, report);
-		MimeReportFree(report);
-		if (-1 != ccode) {
-		    ccode = ConnWriteStr(client->conn, MSG1000OK);
-		}
-		break;
-	case -1:
-		ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
-		break;
-	case -2:
-		ccode = ConnWriteStr(client->conn, MSG4120DBLOCKED);
-		break;
-	case -3:
-		ccode = ConnWriteF(client->conn, MSG4220NOGUID);
-		break;
-	case -4:
-		ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
-		break;
-	case -5:
-	case 0:
-	default:
-		ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-		break;
+		case 1:
+			ccode = MimeReportSend(client, report);
+			MimeReportFree(report);
+			if (-1 != ccode) {
+				ccode = ConnWriteStr(client->conn, MSG1000OK);
+			}
+			break;
+		case -1:
+			ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+			break;
+		case -2:
+			ccode = ConnWriteStr(client->conn, MSG4120DBLOCKED);
+			break;
+		case -3:
+			ccode = ConnWriteF(client->conn, MSG4220NOGUID);
+			break;
+		case -4:
+			ccode = ConnWriteStr(client->conn, MSG4224CANTREAD);
+			break;
+		case -5:
+		case 0:
+		default:
+			ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
+			break;
 	}
 	
 	if (lock) {
@@ -2353,8 +2372,8 @@ StoreCommandPROPSET(StoreClient *client,
 	int ccode;
 	
 	CHECK_NOT_READONLY(client)
-
-	if (size) {} // FIXME : unused variable
+	
+	UNUSED_PARAMETER_REFACTOR(size);
 	
 	prop->value = BONGO_MEMSTACK_ALLOC(&client->memstack, prop->valueLen + 1);
 	if (!prop->value) {
@@ -2441,8 +2460,8 @@ StoreCommandREINDEX(StoreClient *client, StoreObject *document)
 {
 	// want to re-do this completely.
 	CHECK_NOT_READONLY(client)
-
-	if (document) { } // FIXME : stop compiler whining
+	
+	UNUSED_PARAMETER_REFACTOR(document);
 	
 	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 }
@@ -2764,9 +2783,8 @@ CCode
 StoreCommandTIMEOUT(StoreClient *client, int lockTimeoutMs)
 {
 	// should be obsolete really
-	if (client || lockTimeoutMs) {
-		// FIXME : unused parameters
-	}
+	UNUSED_PARAMETER_REFACTOR(client);
+	UNUSED_PARAMETER_REFACTOR(lockTimeoutMs);
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
@@ -2871,9 +2889,7 @@ StoreCommandWRITE(StoreClient *client,
 	char path[XPL_MAX_PATH+1];
 	char tmppath[XPL_MAX_PATH+1];
 	
-	if (guid_link) {
-		// FIXME : should use this parameter to link to another doc
-	}
+	UNUSED_PARAMETER_REFACTOR(guid_link);
 
 	CHECK_NOT_READONLY(client)
 	
