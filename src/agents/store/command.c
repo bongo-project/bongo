@@ -1460,6 +1460,7 @@ StoreCommandCALENDARS(StoreClient *client, unsigned long mask,
 }
 
 // list the collections who are subcollections of container
+// [LOCKING] Collections(X) -> RoLock(X)
 CCode
 StoreCommandCOLLECTIONS(StoreClient *client, StoreObject *container)
 {
@@ -1468,9 +1469,16 @@ StoreCommandCOLLECTIONS(StoreClient *client, StoreObject *container)
 	ccode = StoreObjectCheckAuthorization(client, container, STORE_PRIV_LIST);
 	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
-	return StoreObjectIterSubcollections(client, container);
+	if (LogicalLockGain(client, container, LLOCK_READONLY)) {
+		ccode = StoreObjectIterSubcollections(client, container);
+		LogicalLockRelease(client, container);
+		return ccode;
+	} else {
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
 }
 
+// FIXME : needs logical locking 
 CCode
 StoreCommandCONVERSATION(StoreClient *client, StoreObject *conversation,
                          StorePropInfo *props, int propcount)
@@ -1486,6 +1494,7 @@ StoreCommandCONVERSATION(StoreClient *client, StoreObject *conversation,
 }
 
 // FIXME: Need to implement support for 'center' properly.
+// FIXME: needs logical locking
 // The headers options can take a running jump, though.
 CCode
 StoreCommandCONVERSATIONS(StoreClient *client, const char *source, const char *query, 
@@ -1518,6 +1527,7 @@ StoreCommandCONVERSATIONS(StoreClient *client, const char *source, const char *q
 		end, flagsmask, flags, props, propcount, NULL, query, show_total);
 }
 
+// [LOCKING] Copy(X to Y) => RoLock(X), RwLock(Y)
 CCode 
 StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collection)
 {
@@ -1532,9 +1542,16 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
 	// check the parameters are ok and the document exists   
 	if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 	
+	// take a RO lock on the source to ensure it doesn't change while we copy it
+	if (! LogicalLockGain(client, object, LLOCK_READONLY))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
 	// check authorization on the parent collection
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_BIND | STORE_PRIV_READ);
-	if (ccode) return ccode;
+	if (ccode) {
+		LogicalLockRelease(client, object);
+		return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+	}
 	
 	// copy the files on disk
 	FindPathToDocument(client, object->collection_guid, object->guid, srcpath, sizeof(srcpath));
@@ -1576,7 +1593,11 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
 	}
 	unlink(srcpath);
 	
-	// update metadata
+	// update metadata, at this point we need our RW-lock
+	if (! LogicalLockGain(client, collection, LLOCK_READWRITE)) {
+		ccode = ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+		goto finish;
+	}
 	newobject.collection_guid = collection->guid;
 	newobject.time_created = newobject.time_modified = time(NULL);
 	
@@ -1584,8 +1605,10 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
 	
 	StoreObjectSave(client, &newobject);
 	
-	// slight race here without store-level locking
 	StoreObjectUpdateImapUID(client, &newobject);
+	
+	LogicalLockRelease(client, collection);
+	LogicalLockRelease(client, object);
 	
 	++client->stats.insertions;
 	StoreWatcherEvent(client, &newobject, STORE_WATCH_EVENT_NEW);
@@ -1594,10 +1617,12 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
 		newobject.guid, newobject.version);
 
 finish:
+	LogicalLockRelease(client, object);
 	return ccode;
 }
 
 // FIXME: doesn't detect all error conditions
+// [LOCKING] Create(X) => RwLock(Parent(X))
 CCode
 StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 {
@@ -1701,14 +1726,25 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 	
+	// grab the lock on the container now we're modifying it directly
+	if (! LogicalLockGain(client, &container, LLOCK_READWRITE)) {
+		// FIXME: here and below, what if we created other collections?
+		StoreObjectRemove(client, &object);
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
 	// check we can save this new object and if not, error out
 	object.collection_guid = container.guid;
 	StoreObjectFixUpFilename(&container, &object);
 	
 	if (StoreObjectSave(client, &object)) {
 		StoreObjectRemove(client, &object);
+		LogicalLockRelease(client, &container);
 		return ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
 	}
+	
+	// release any lock we hold
+	LogicalLockRelease(client, &container);
 	
 	// announce creation on parent container
 	++client->stats.insertions;
@@ -1718,6 +1754,8 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 		object.guid, object.version);
 }
 
+
+// [LOCKING] Delete(X) => RwLock(Parent(X))
 CCode
 StoreCommandDELETE(StoreClient *client, StoreObject *object)
 {
@@ -1739,6 +1777,11 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	ccode = StoreObjectCheckAuthorization(client, &collection, STORE_PRIV_UNBIND);
 	if (ccode) return ConnWriteStr(client->conn, MSG5005DBLIBERR); // TODO : less generic errors
 	
+	// grab a read/write lock on the containing collection
+	if (! LogicalLockGain(client, &collection, LLOCK_READWRITE)) {
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
 	switch(object->type) {
 	case STORE_DOCTYPE_MAIL:
 		// check to see if we can remove this document from a conversation
@@ -1757,6 +1800,10 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	
 	// Remove document from the search index
 	// IndexRemoveDocument(index, guid);
+	
+	// Release our RW lock now - we can still fail, but that doesn't bring
+	// back the store object we just nuked :)
+	LogicalLockRelease(client, &collection);
 	
 	// Remove the file content from the filesystem
 	FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
@@ -2030,6 +2077,7 @@ StoreCommandEVENTS(StoreClient *client,
     */
 }
 
+// [LOCKING] Flag(X) => RwLock(X)
 CCode
 StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int mode)
 {
@@ -2054,14 +2102,19 @@ StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int 
 	if (ccode) return ccode;
 	
 	// FIXME: need to propogate changes on mail documents to conversations?
+	// if so, this may also change our locking requirements since we'd also
+	// need to lock the conversation.
 	if (object->type == STORE_DOCTYPE_MAIL) {
 		
 	}
 	
 	// save the changes
+	LogicalLockGain(client, object, LLOCK_READWRITE);
 	if (StoreObjectSave(client, object) != 0) {
+		LogicalLockRelease(client, object);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
+	LogicalLockRelease(client, object);
 	
 	++client->stats.updates;
 	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_FLAGS);
@@ -2069,11 +2122,19 @@ StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int 
 	return ConnWriteF(client->conn, "1000 %u %u\r\n", old_flags, object->flags);
 }
 
+// [LOCKING] Info(X) => RoLock(X)
 CCode
 StoreCommandINFO(StoreClient *client, StoreObject *object,
                  StorePropInfo *props, int propcount)
 {
-	return StoreObjectIterDocinfo(client, object, props, propcount, FALSE);
+	CCode ret;
+	if (! LogicalLockGain(client, object, LLOCK_READONLY))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
+	ret = StoreObjectIterDocinfo(client, object, props, propcount, FALSE);
+	
+	LogicalLockRelease(client, object);
+	return ret;
 }
 
 
@@ -2126,6 +2187,7 @@ StoreCommandISEARCH(StoreClient *client, const char *query, int start, int end,
     */
 }
 
+// [LOCKING] List(X) => RoLock(X)
 CCode
 StoreCommandLIST(StoreClient *client, 
                  StoreObject *collection, 
@@ -2135,25 +2197,54 @@ StoreCommandLIST(StoreClient *client,
 {
 	int ccode;
 	
+	// check we have permission to List this collection
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_LIST);
 	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
-	return StoreObjectIterCollectionContents(client, collection, start, 
+	// grab a read-only lock to ensure consistency
+	if (! LogicalLockGain(client, collection, LLOCK_READONLY)) 
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
+	ccode = StoreObjectIterCollectionContents(client, collection, start, 
 		end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
+	
+	// release the lock
+	LogicalLockRelease(client, collection);
+	return ccode;
 }
 
+// [LOCKING] Link(X to Y) => RoLock(X), RwLock(Y)
 CCode
 StoreCommandLINK(StoreClient *client, StoreObject *document, StoreObject *related)
 {
+	CCode ret;
+	
 	CHECK_NOT_READONLY(client)
 	
-	if (StoreObjectLink(client, document, related) == 0) {
+	// grab the pair of locks we need
+	// FIXME: we need to check first this will not deadlock?
+	if (! LogicalLockGain(client, related, LLOCK_READONLY))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	if (! LogicalLockGain(client, document, LLOCK_READWRITE)) {
+		LogicalLockRelease(client, related);
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
+	// link the documents together
+	ret = StoreObjectLink(client, document, related);
+	
+	// release our locks
+	LogicalLockRelease(client, document);
+	LogicalLockRelease(client, related);
+	
+	if (ret == 0) {
 		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 }
 
+// [LOCKING] Links(X) => RoLock(X)
 CCode
 StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document)
 {
@@ -2163,15 +2254,32 @@ StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document)
 	ccode = StoreObjectCheckAuthorization(client, document, STORE_PRIV_READ);
 	if (ccode) return ccode;
 	
-	return StoreObjectIterLinks(client, document, reverse);
+	if (! LogicalLockGain(client, document, LLOCK_READONLY))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
+	ccode = StoreObjectIterLinks(client, document, reverse);
+	
+	LogicalLockRelease(client, document);
+	
+	return ccode;
 }
 
+// [LOCKING] Unlink(X to Y) => RwLink(Y)
+// Don't think we need a lock on X, because the link is going away.
 CCode
 StoreCommandUNLINK(StoreClient *client, StoreObject *document, StoreObject *related)
 {
+	CCode ret;
 	CHECK_NOT_READONLY(client)
 	
-	if (StoreObjectUnlink(client, document, related) == 0) {
+	if (! LogicalLockGain(client, document, LLOCK_READWRITE))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
+	ret = StoreObjectUnlink(client, document, related);
+	
+	LogicalLockRelease(client, document);
+	
+	if (ret == 0) {
 		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
@@ -2215,20 +2323,20 @@ StoreCommandMESSAGES(StoreClient *client, const char *source, const char *query,
 	return ConnWriteStr(client->conn, MSG3000UNKNOWN);
 }
 
+// [LOCKING] Mime(X) => RoLock(X)
 CCode
 StoreCommandMIME(StoreClient *client, StoreObject *document)
 {
 	int ccode = 0;
 	MimeReport *report = NULL;
-	NLockStruct *lock = NULL;
     
 	ccode = StoreObjectCheckAuthorization(client, document, STORE_PRIV_READ);
 	if (ccode) return ccode;
 	
 	if (STORE_IS_FOLDER(document->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 
-//	ccode = StoreGetSharedFairLockQuiet(client, &lock, document->collection_guid, 3000);
-//	if (ccode) return ccode;
+	if (! LogicalLockGain(client, document, LLOCK_READONLY))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
 
 	// FIXME: need to re-do the MimeGetInfo() API for store objects
 	switch (MimeGetInfo(client, document, &report)) {
@@ -2258,15 +2366,13 @@ StoreCommandMIME(StoreClient *client, StoreObject *document)
 			break;
 	}
 	
-	if (lock) {
-		// StoreReleaseSharedFairLockQuiet(&lock);
-	}
+	LogicalLockRelease(client, document);
 	
 	return ccode;
 }
 
 // FIXME: needs to move any store properties etc. related to this document
-
+// [LOCKING] Move(X to Y) => RwLock(Parent(X)), RwLock(Y)
 CCode 
 StoreCommandMOVE(StoreClient *client, StoreObject *object, 
                  StoreObject *destination_collection, const char *newfilename)
@@ -2279,10 +2385,12 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 	
 	CHECK_NOT_READONLY(client)
 	
+	// ensure the request makes sense (eg., not moving a collection into a doc..)
 	if (STORE_IS_FOLDER(object->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 	if (!STORE_IS_FOLDER(destination_collection->type)) 
 		return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 	
+	// find the parent collection of the document we want to move.
 	ccode = StoreObjectFind(client, object->collection_guid, &source_collection);
 	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	
@@ -2291,6 +2399,16 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 	if (ccode) goto finish;
 	ccode = StoreObjectCheckAuthorization(client, destination_collection, STORE_PRIV_BIND);
 	if (ccode) goto finish;
+	
+	// grab the locks that we need to do the move
+	// FIXME: both RW locks, real chance of deadlock here.
+	if (! LogicalLockGain(client, &source_collection, LLOCK_READWRITE)) {
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	if (! LogicalLockGain(client, destination_collection, LLOCK_READWRITE)) {
+		LogicalLockRelease(client, &source_collection);
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
 	
 	// copy the original object so we can fire events on it later
 	memcpy(&original, object, sizeof(StoreObject));
@@ -2303,7 +2421,7 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
 		goto finish;
 	}
-
+	
 	if (unlink(src_path) != 0) {
 		// FIXME: try to remove the new link we just created?
 		ccode = ConnWriteStr(client->conn, MSG4228CANTWRITEMBOX);
@@ -2338,31 +2456,48 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 	
 	// save our changes
 	StoreObjectSave(client, object);
-
+	
+	// unlock the collections
+	LogicalLockRelease(client, destination_collection);
+	LogicalLockRelease(client, &source_collection);
+	
 	// fire off any events
 	StoreWatcherEvent(client, &original, STORE_WATCH_EVENT_DELETED);
 	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_NEW);
 
-	ccode = ConnWriteStr(client->conn, MSG1000OK);
+	return ConnWriteStr(client->conn, MSG1000OK);
 	
 finish:
-	
+	// unlock the collections
+	LogicalLockRelease(client, destination_collection);
+	LogicalLockRelease(client, &source_collection);
+
 	return ccode;
 }
 
+// [LOCKING] Propget(X) => RoLock(X)
 CCode
 StoreCommandPROPGET(StoreClient *client, 
                     StoreObject *object, 
                     StorePropInfo *props, int propcount)
 {
+	CCode ret;
+	
+	LogicalLockGain(client, object, LLOCK_READONLY);
+	
 	if (propcount == 0) {
-		return StoreObjectIterProperties(client, object);
+		ret = StoreObjectIterProperties(client, object);
 	} else {
 		// output requested props for each document
-		return StoreObjectIterDocinfo(client, object, props, propcount, TRUE);
+		ret = StoreObjectIterDocinfo(client, object, props, propcount, TRUE);
 	}
+	
+	LogicalLockRelease(client, object);
+	
+	return ret;
 }
 
+// [LOCKING] Propset(X) => RwLock(X)
 CCode
 StoreCommandPROPSET(StoreClient *client, 
                     StoreObject *object,
@@ -2389,27 +2524,27 @@ StoreCommandPROPSET(StoreClient *client,
 	
 	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_PROPS);
 	if (ccode) return ccode;
-	switch (prop->type) {
-		case STORE_PROP_EVENT_ALARM:
-			// FIXME: this did cache alarms in a separate DB.
-			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-			break;
-		case STORE_PROP_ACCESS_CONTROL:
-			// FIXME: this is how we used to set ACLs.
-			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-			break;
-		default:
-			// this is a plain external property
-			ccode = StoreObjectSetProperty(client, object, prop);
-			if (ccode < -1) {
-				return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-			} else if (ccode == -1) {
-				// failed, but already returned a notice to the client
-				return -1;
-			} else {
-				return ConnWriteStr(client->conn, MSG1000OK);
-			}
-			break;
+	
+	if (prop->type == STORE_PROP_EVENT_ALARM)
+		// FIXME: this did cache alarms in a separate DB.
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	if (prop->type == STORE_PROP_ACCESS_CONTROL) 
+		// this is how we used to set ACLs, deprecated
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	
+	if (! LogicalLockGain(client, object, LLOCK_READWRITE))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
+	// this is a plain external property
+	ccode = StoreObjectSetProperty(client, object, prop);
+	
+	LogicalLockRelease(client, object);
+	
+	if (ccode < -1) {
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	} else if (ccode == -1) {
+		// failed, but already returned a notice to the client
+		return -1;
 	}
 	
 	++client->stats.updates;
@@ -2430,6 +2565,7 @@ StoreCommandQUIT(StoreClient *client)
 	return -1;
 }
 
+// [LOCKING] Read(X) => RoLock(X)
 CCode
 StoreCommandREAD(StoreClient *client, StoreObject *object,
                  int64_t requestStart, uint64_t requestLength)
@@ -2438,7 +2574,10 @@ StoreCommandREAD(StoreClient *client, StoreObject *object,
 	
 	// check that we're allowed to read
 	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_READ);
-	if (ccode) goto finish;
+	if (ccode) return ccode;
+	
+	if (! LogicalLockGain(client, object, LLOCK_READONLY))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
 	
 	if (STORE_IS_FOLDER(object->type)) {
 		// 2001 <guid> <version>
@@ -2449,8 +2588,9 @@ StoreCommandREAD(StoreClient *client, StoreObject *object,
 	} else {
 		ccode = ShowDocumentBody(client, object, requestStart, requestLength);
 	}
-
-finish:
+	
+	LogicalLockRelease(client, object);
+	
 	return ccode;
 }
 
@@ -2471,19 +2611,25 @@ StoreCommandREINDEX(StoreClient *client, StoreObject *document)
 // MSG4240NOPERMISSION
 // MSG4228CANTWRITEMBOX
 // FIXME: doesn't create collections as needed to create destination tree
+// [LOCKING] Rename(X to Y) => RwLock(Parent(X)) [assumes Parent(X) == Parent(Y)?]
+// This locking ensures that Y doesn't suddenly pop into existance also.
 CCode
 StoreCommandRENAME(StoreClient *client, StoreObject *collection,
                    char *newfilename)
 {
 	int ccode = 0;
+	StoreObject parent_collection;
 	
 	CHECK_NOT_READONLY(client)
 	
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
 	if (ccode) return ccode;
 	
-	// locking: want to acquire first a lock on the source tree, 
-	// then take a lock on the non-existant destination tree
+	ccode = StoreObjectFind(client, collection->collection_guid, &parent_collection);
+	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	
+	if (! LogicalLockGain(client, &parent_collection, LLOCK_READWRITE))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
 	
 	if (StoreObjectRenameSubobjects(client, collection, newfilename))
 		goto dberror;
@@ -2492,12 +2638,15 @@ StoreCommandRENAME(StoreClient *client, StoreObject *collection,
 	if (StoreObjectSave(client, collection)) 
 		goto dberror;
 	
+	LogicalLockRelease(client, &parent_collection);
+	
 	// FIXME - need to fire an event for each collection renamed
 	StoreWatcherEvent(client, collection, STORE_WATCH_EVENT_COLL_RENAMED);
 	
 	return ConnWriteStr(client->conn, MSG1000OK);
 
 dberror:
+	LogicalLockRelease(client, &parent_collection);
 	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 }
 
@@ -2556,6 +2705,7 @@ finish:
 // FIXME: rstart/rend range processing totally broken. 
 // FIXME: range processing needs to unlink and copy-on-write
 // FIXME: we should probably be removing some/all document properties?
+// [LOCKING] Replace(X) => RwLock(X)
 CCode
 StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t rstart, uint64_t rend, uint32_t version)
 {
@@ -2594,6 +2744,13 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 		tmpsize = rend;
 	}
 	
+	// we gain the lock quite late - we have the new file, but haven't updated
+	// anything yet. Potential waste of effort.
+	if (! LogicalLockGain(client, object, LLOCK_READWRITE)) {
+		unlink(tmppath);
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
 	StoreObjectUpdateImapUID(client, object);
 	StoreProcessDocument(client, object, tmppath);
 	
@@ -2622,14 +2779,17 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 		goto finish;
 	}
 	
+	LogicalLockRelease(client, object);
+	
 	// now we're done, do watcher events
 	++client->stats.updates;
 	StoreWatcherEvent(client, object, STORE_WATCH_EVENT_MODIFIED);
 	
-	ccode = ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
+	return ConnWriteF(client->conn, "1000 " GUID_FMT " %d\r\n", 
                        object->guid, object->version);
 
 finish:
+	LogicalLockRelease(client, object);
 	return ccode;
 }
 
@@ -2637,6 +2797,7 @@ finish:
 // FIXME: there is a race condition in here. When we turn on read-only
 // mode, we should wait for any other users to finish up. In reality,
 // this is going to be exceptionally hard to trigger though.
+// [LOCKING]  TODO!
 CCode 
 StoreCommandREPAIR(StoreClient *client)
 {
@@ -2688,27 +2849,38 @@ StoreCommandREPAIR(StoreClient *client)
 	}
 }
 
+// [LOCKING] Remove(X) => RwLock(Parent(X))
 CCode
 StoreCommandREMOVE(StoreClient *client, StoreObject *collection)
 {
 	CCode ccode;
+	StoreObject parent_collection;
 	
 	// FIXME: do we want some kind of 'can delete' state?
 	CHECK_NOT_READONLY(client)
 	
-	if (! STORE_IS_FOLDER(collection->type)) {
+	if (! STORE_IS_FOLDER(collection->type))
 		return ConnWriteStr(client->conn, MSG4231USEPURGE);
+	
+	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
+	if (ccode) return ccode;
+	
+	ccode = StoreObjectFind(client, collection->collection_guid, &parent_collection);
+	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	
+	if (! LogicalLockGain(client, &parent_collection, LLOCK_READWRITE))
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	
+	ccode = StoreObjectRemoveCollection(client, collection);
+	
+	LogicalLockRelease(client, &parent_collection);
+	
+	if (ccode == 0) {
+		// finished with success!
+		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
-		ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
-		if (ccode) return ccode;
-		
-		if (StoreObjectRemoveCollection(client, collection) == 0) {
-			// finished with success!
-			return ConnWriteStr(client->conn, MSG1000OK);
-		} else {
-			// some error
-			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
-		}
+		// some error
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 }
 
@@ -2871,6 +3043,8 @@ StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags)
 }
 
 // FIXME: do something with the link document
+// [LOCKING] Write(X) => RwLock(X)
+// X above is the containing collection the new document will go into
 CCode
 StoreCommandWRITE(StoreClient *client, 
 				  StoreObject *collection, 
@@ -2928,6 +3102,11 @@ StoreCommandWRITE(StoreClient *client,
 		StoreProcessDocument(client, &newdocument, tmppath);
 	}
 	
+	if (! LogicalLockGain(client, collection, LLOCK_READWRITE)) {
+		unlink(tmppath);
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
 	// put content in place
 	FindPathToDocument(client, collection->guid, newdocument.guid, path, sizeof(path));
 	link(tmppath, path);
@@ -2936,8 +3115,10 @@ StoreCommandWRITE(StoreClient *client,
 	// save new object
 	if (StoreObjectSave(client, &newdocument)) {
 		StoreObjectRemove(client, &newdocument);
+		LogicalLockRelease(client, collection);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
+	LogicalLockRelease(client, collection);
 	
 	// announce its creation
 	++client->stats.insertions;

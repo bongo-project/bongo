@@ -18,6 +18,10 @@
 
 #include "stored.h"
 
+/* Acquire the desired logical lock. 
+ * TODO: what if we already hold an equivalent lock? promotion / etc.?
+ * Return 0 on failure
+ */
 int
 LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type)
 {
@@ -28,11 +32,13 @@ LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type)
 	return 0;
 }
 
-int
+/* Free the desired logical lock.
+ * One way or another, this function must succeed!
+ * It's not an error to call this on an object already unlocked?
+ */
+void
 LogicalLockRelease(StoreClient *client, StoreObject *object)
 {
 	UNUSED_PARAMETER_REFACTOR(client);
 	UNUSED_PARAMETER_REFACTOR(object);
-	
-	return 0;
 }

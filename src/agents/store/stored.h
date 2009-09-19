@@ -420,7 +420,7 @@ typedef enum {
 } LogicalLockType;
 
 int LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type);
-int LogicalLockRelease(StoreClient *client, StoreObject *object);
+void LogicalLockRelease(StoreClient *client, StoreObject *object);
 
 /* hardcoded guids: */
 
