@@ -346,7 +346,7 @@ SpamdReadConfiguration(SpamdConfig *spamd)
     for (i=0; i < ASpam.spamd.hostlist->len; i++) {
 	char *hostitem = g_array_index(ASpam.spamd.hostlist, char*, i);
         char *lHost = MemStrdup(hostitem);
-        char *host;
+        char *host = NULL;
         int port=SPAMD_DEFAULT_PORT, weight=SPAMD_DEFAULT_WEIGHT;
         ParseHost(lHost, &host, &port, &weight);
         ConnAddressPoolAddHost(&ASpam.spamd.hosts, host, port, weight);
