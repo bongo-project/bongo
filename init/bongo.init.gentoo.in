@@ -1,0 +1,37 @@
+#!/sbin/runscript
+# Copyright 1999-2009 Gentoo Foundation
+# Distributed under the terms of the GNU General Public License v2
+# $Header: $
+
+BONGO_DIR=@CMAKE_INSTALL_PREFIX@
+BONGO_BIN=@CMAKE_INSTALL_PREFIX@/sbin
+BONGO_NAME=bongo-manager
+BONGO_CONFIG=bongo-config
+BONGO_DATA=@CMAKE_INSTALL_PREFIX@/var/bongo/dbf/userdb.sqlite
+BONGO_WORK=@CMAKE_INSTALL_PREFIX@/var/bongo/work/
+BONGO_MANAGER_PID=${BONGO_WORK}/bongomanager.pid
+
+depend() {
+	need net localmount
+	after bootmisc
+	provide mta
+	use logger
+}
+
+start() {
+	ebegin "Starting bongo"
+	#if [ ! -r $BONGO_DATA ] ; then
+		#HOSTNAME=`/bin/hostname`
+		#einfo "Initializing bongo: @DATA_INSTALL_DIR@"
+		#$BONGO_BIN/$BONGO_CONFIG --hostname "$HOSTNAME" install 2>&1
+	#fi
+
+	start-stop-daemon --start --quiet --pidfile ${BONGO_MANAGER_PID} --exec ${BONGO_BIN}/${BONGO_NAME} -- -d > /dev/null 2>&1
+	eend $?
+}
+
+stop() {
+	ebegin "Stopping bongo"
+	start-stop-daemon --stop --exec ${BONGO_BIN}/bongo-manager -- -s
+	eend 0
+}
