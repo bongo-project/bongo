@@ -191,10 +191,6 @@ BongoThreadPoolAddWork(BongoThreadPool *pool,
         pool->head = item;
     }
 
-    XplMutexUnlock(pool->lock);
-
-    XplSignalLocalSemaphore(pool->todo);
-
     /* Possibly spawn a worker */
     if (spawnThread && (pool->total < pool->maximum)) {
         XplThreadID id;
@@ -203,6 +199,9 @@ BongoThreadPoolAddWork(BongoThreadPool *pool,
     } else {
         ret = 0;
     }
+
+    XplMutexUnlock(pool->lock);
+    XplSignalLocalSemaphore(pool->todo);
 
     return ret;
 }
