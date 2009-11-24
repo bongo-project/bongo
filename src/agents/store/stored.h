@@ -412,6 +412,12 @@ int MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport);
 /** config.c **/
 BOOL StoreAgentReadConfiguration(BOOL *recover);
 
+/** ringlog.c **/
+void RinglogInit();
+void Ringlog(char *message);
+void RinglogDumpConsole();
+void RinglogDumpFilehandle(int fh);
+
 /** locking.c **/
 typedef enum {
 	LLOCK_NONE,

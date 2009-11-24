@@ -188,7 +188,18 @@ int _NonAppCheckUnload(void)
 static void 
 SignalHandler(int sigtype) 
 {
-    BongoAgentHandleSignal(&StoreAgent.agent, sigtype);
+	if (sigtype == SIGSEGV) {
+		char path[XPL_MAX_PATH + 1];
+		int boomfile;
+		
+		snprintf(path, XPL_MAX_PATH, "%s/store-ringlog-%d", XPL_DEFAULT_WORK_DIR, (int)time(NULL));
+		boomfile = open(path, O_CREAT | O_WRONLY);
+		if (boomfile != -1) {
+			RinglogDumpFilehandle(boomfile);
+			close(boomfile);
+		}
+	}
+	BongoAgentHandleSignal(&StoreAgent.agent, sigtype);
 }
 
 
@@ -207,6 +218,8 @@ _XplServiceMain(int argc, char *argv[])
     int startupOpts;
 
     LogStart();
+    RinglogInit();
+    Ringlog("Started store daemon");
 
     if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
         Log(LOG_ERROR, "Could not drop to unprivileged user '%s'", MsgGetUnprivilegedUser());
@@ -229,7 +242,9 @@ _XplServiceMain(int argc, char *argv[])
         Log(LOG_FATAL, "Couldn't initialize Bongo libraries");
         return -1;
     }
- 
+
+    Ringlog("Initialising libraries");
+
     MsgInit();
     cal_success = BongoCalInit(MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
     
@@ -263,7 +278,7 @@ _XplServiceMain(int argc, char *argv[])
     }
 
     /* Create a thread pool for managing connections */
-
+    Ringlog("Initialising threads");
     BongoQueueAgentGetThreadPoolParameters (&StoreAgent.agent, &minThreads, 
                                           &maxThreads, &minSleep);
     
@@ -298,12 +313,15 @@ _XplServiceMain(int argc, char *argv[])
 
     /* Start the server thread */
     MsgSetRecoveryFlag("store");
+    Ringlog("Starting main thread");
     XplStartMainThread(AGENT_NAME, &id, StoreServer, 8192, NULL, ccode);
+    Ringlog("Stopping main thread");
     
     XplUnloadApp(XplGetThreadID());
     MsgClearRecoveryFlag("store");
     
     g_mime_shutdown();
+    Ringlog("Shutdown complete");
     
     return 0;
 }

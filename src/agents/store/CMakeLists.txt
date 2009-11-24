@@ -22,6 +22,7 @@ add_executable(bongostore
 	properties.c
 	query-builder.c
 	query-parser.c
+	ringlog.c
 	search.c
 	store.c
 	stored.c

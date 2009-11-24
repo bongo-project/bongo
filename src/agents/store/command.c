@@ -249,7 +249,10 @@ StoreCommandLoop(StoreClient *client)
         if (-1 == ccode || ccode >= CONN_BUFSIZE) {
             break;
         }
-                        
+        char command_message[256];
+        snprintf(command_message, 255, "-> %s", client->buffer);
+        Ringlog(command_message);
+        
         memset(tokens, 0, sizeof(tokens));
         n = CommandSplit(client->buffer, tokens, TOK_ARR_SZ);
         if (0 == n) {
@@ -1318,7 +1321,12 @@ StoreCommandLoop(StoreClient *client)
         if (ccode >= 0) {
             ccode = ConnFlush(client->conn);
         }
+    
+        command_message[0] = '<';
+        command_message[1] = '-';
+        Ringlog(command_message);
     }
+    
     
     return ccode;
 }
