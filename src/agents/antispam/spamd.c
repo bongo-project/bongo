@@ -262,7 +262,7 @@ this is commented out until we determine how we want to do this sort of thing, o
         return infected;
     }
 
-    Log(LOG_ERROR, "(%s) Failed to connect to the spamd server");
+    Log(LOG_ERROR, "(%s) Failed to connect to the spamd server", queueID);
     return(FALSE);
 }
 
