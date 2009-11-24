@@ -250,7 +250,11 @@ StoreCommandLoop(StoreClient *client)
             break;
         }
         char command_message[256];
-        snprintf(command_message, 255, "-> %s", client->buffer);
+        if (XplStrNCaseCmp("AUTH", client->buffer, 4) == 0) {
+            strcpy(command_message, "-> AUTH .....");
+        } else {
+            snprintf(command_message, 255, "-> %s", client->buffer);
+        }
         Ringlog(command_message);
         
         memset(tokens, 0, sizeof(tokens));

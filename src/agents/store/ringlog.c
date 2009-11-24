@@ -6,6 +6,7 @@
 
 typedef struct {
 	time_t timestamp;
+	int thread_id;
 	char message[256];
 } RingLogItem;
 
@@ -14,6 +15,8 @@ typedef struct {
 static RingLogItem ringlog[RINGLOG_SIZE];
 // ringlog_pos points to the next "free" ringlog entry.
 static int ringlog_pos = 0;
+// thread map used to translate from pthread_t to simple int
+static pthread_t ringlog_threadmap[100];
 static XplMutex ringlog_lock;
 
 void
@@ -22,8 +25,31 @@ RinglogInit()
 	// initialise lock; this must be held to access the ringlog.
 	XplMutexInit(ringlog_lock);
 	
-	// clear the ringlog.
+	// clear the ringlog and thread mapping
 	memset(ringlog, 0, sizeof(ringlog));
+	memset(ringlog_threadmap, 0, sizeof(ringlog_threadmap));
+}
+
+int
+RinglogThreadID()
+{
+	pthread_t self = pthread_self();
+	int thread_id = 99;
+	
+	for (int i = 0; i < 100; i++) {
+		if (ringlog_threadmap[i]) {
+			if (ringlog_threadmap[i] == self) {
+				thread_id = i;
+				break;
+			}
+		} else {
+			ringlog_threadmap[i] = self;
+			thread_id = i;
+			break;
+		}
+	}
+	
+	return thread_id;
 }
 
 void
@@ -33,6 +59,7 @@ Ringlog(char *message)
 	
 	// find the next ring log entry and write into it
 	ringlog[ringlog_pos].timestamp = time(NULL);
+	ringlog[ringlog_pos].thread_id = RinglogThreadID();
 	strncpy(ringlog[ringlog_pos].message, message, 255);
 	
 	// advance the ring pointer, and wrap around if necessary
@@ -50,10 +77,15 @@ RinglogDumpFilehandle(int fh)
 	for (int i = ringlog_pos; i < ringlog_pos + RINGLOG_SIZE; i++) {
 		// print the next ring log entry - wraps by cunning use of modulo
 		char message[300];
-		size_t len = snprintf(message, 299, "%20s %s\n", 
-			ctime(&(ringlog[i % RINGLOG_SIZE].timestamp)),
-			ringlog[i % RINGLOG_SIZE].message);
-		write(fh, message, len);
+		RingLogItem *entry = &(ringlog[i % RINGLOG_SIZE]);
+		
+		if (entry->timestamp) {
+			size_t len = snprintf(message, 299, "%.19s [%d] %s\n", 
+				ctime(&(entry->timestamp)),
+				entry->thread_id,
+				entry->message);
+			write(fh, message, len);
+		}
 	}
 	
 	XplMutexUnlock(ringlog_lock);
