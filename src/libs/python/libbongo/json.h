@@ -7,6 +7,11 @@
 #include <bongojson.h>
 #include <bongocal.h>
 
+// attempt to support python 2.4-2.5
+#ifndef Py_ssize_t
+#define	Py_ssize_t int
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
