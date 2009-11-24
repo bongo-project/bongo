@@ -14,6 +14,12 @@ check_include_file(sys/statvfs.h HAVE_SYS_STATVFS_H)
 check_include_file(time.h HAVE_TIME_H)
 check_include_file(semaphore.h HAVE_SEMAPHORE_H)
 
+# look for zlib
+find_library(HAVE_ZLIB NAMES z zlib)
+if (NOT HAVE_ZLIB)
+	message(FATAL_ERROR "Bongo requires zlib")
+endif (NOT HAVE_ZLIB)
+
 # look for PThreads
 include(FindThreads)
 if (NOT CMAKE_USE_PTHREADS_INIT)
