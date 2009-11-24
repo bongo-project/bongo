@@ -49,6 +49,8 @@ static void XPLSignalProcessor(int signo, siginfo_t *info, void *context)
 		}
 		default: {
 			XplConsolePrintf("SignalDebug: Received %d\n", signo);
+			// can't continue after fatal errors.
+			exit(-1);
 		}
 	}
 	return;
