@@ -1851,7 +1851,7 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
     tmpFile[0] = 0;
 
     if (!filename) {
-	const char *work_dir = (char *)MsgGetDir(MSGAPI_DIR_WORK, NULL, 0);
+        const char *work_dir = (char *)MsgGetDir(MSGAPI_DIR_WORK, NULL, 0);
 
         if (bytes <= 0) {
             return ConnWriteStr(client->conn, MSG3017INTARGRANGE);
@@ -1860,6 +1860,7 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
         if (!msgfile) {
             return ConnWriteStr(client->conn, MSG5202TMPWRITEERR);
         }
+        Ringlog("deliver: Reading stream content to file");
         ccode = ConnReadToFile(client->conn, msgfile, bytes);
         if (-1 == ccode) {
             unlink(tmpFile);
@@ -1898,6 +1899,7 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
         int n;
         int status;
         char buffer[CONN_BUFSIZE];
+        char rlstring[256];
 
         ccode = ConnReadAnswer(client->conn, buffer, sizeof(buffer));
         if (-1 == ccode) {
@@ -1909,6 +1911,8 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
         }
 
         /* <recipient> <mailbox> <flags> */
+        snprintf(rlstring, 255, "deliver: %s", buffer);
+        Ringlog(rlstring);
 
         n = BongoStringSplit(buffer, ' ', args, 3);
         if (TOKEN_OK != (ccode = CheckTokC(client, n, 3, 3)) ||
@@ -1927,6 +1931,8 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
             ccode = ConnWriteStr(client->conn, MSG5201FILEREADERR);
             goto cleanup;
         }
+        snprintf(rlstring, 255, "deliver: selecting store %s", recipient);
+        Ringlog(rlstring);
         SelectStore(client, recipient);
         
         if (! client->readonly) {
@@ -1936,6 +1942,8 @@ StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender,
             status = DELIVER_FAILURE;
         }
         UnselectStore(client);
+        Ringlog("deliver: store unselected");
+        
         switch (status) {
         case DELIVER_SUCCESS:
             ccode = ConnWriteStr(client->conn, MSG1000DELIVERYOK);
