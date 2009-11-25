@@ -3116,15 +3116,16 @@ StoreCommandWRITE(StoreClient *client,
 	if (filename) strncpy(newdocument.filename, filename, MAX_FILE_NAME);
 	
 	StoreObjectFixUpFilename(collection, &newdocument);
-	StoreObjectUpdateImapUID(client, &newdocument);
-	if (no_process == 0) {
-		// update metadata if we haven't been asked not to
-		StoreProcessDocument(client, &newdocument, tmppath);
-	}
 	
 	if (! LogicalLockGain(client, collection, LLOCK_READWRITE)) {
 		unlink(tmppath);
 		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
+	StoreObjectUpdateImapUID(client, &newdocument);
+	if (no_process == 0) {
+		// update metadata if we haven't been asked not to
+		StoreProcessDocument(client, &newdocument, tmppath);
 	}
 	
 	// put content in place

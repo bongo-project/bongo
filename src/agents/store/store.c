@@ -316,13 +316,14 @@ DeliverMessageToMailbox(StoreClient *client,
 	newmail.flags = flags;
 	newmail.time_created = newmail.time_modified = (uint64_t) time(NULL);
 	
-	StoreProcessDocument(client, &newmail, tmppath);
-	
 	// need to acquire lock from this point
 	if (! LogicalLockGain(client, &collection, LLOCK_READWRITE)) {
 		StoreObjectRemove(client, &newmail);
 		goto ioerror;
 	}
+	
+	// possibly need more locking involved in this function
+	StoreProcessDocument(client, &newmail, tmppath);
 	
 	// now we have guid etc., move the mail into the right place
 	if (MaildirDeliverTempDocument(client, collection.guid, tmppath, newmail.guid)) {
