@@ -258,6 +258,7 @@ _XplServiceMain(int argc, char *argv[])
 
     // create lock pool
     StoreInitializeFairLocks();
+    LogicalLockInit();
     
     // initialise watch list
     StoreWatcherInit();

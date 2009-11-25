@@ -425,6 +425,7 @@ typedef enum {
 	LLOCK_READWRITE
 } LogicalLockType;
 
+void LogicalLockInit();
 int LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type);
 void LogicalLockRelease(StoreClient *client, StoreObject *object);
 
