@@ -212,6 +212,8 @@ StoreProcessDocument(StoreClient *client,
 */
 
 // can return: DELIVER_QUOTA_EXCEEDED  DELIVER_FAILURE DELIVER_TRY_LATER
+// [LOCKING] Write(X) => RwLock(X)
+// X above is the containing collection the new document will go into
 NMAPDeliveryCode
 DeliverMessageToMailbox(StoreClient *client,
                         char *sender, char *authSender, char *recipient, char *mbox,
@@ -317,6 +319,10 @@ DeliverMessageToMailbox(StoreClient *client,
 	StoreProcessDocument(client, &newmail, tmppath);
 	
 	// need to acquire lock from this point
+	if (! LogicalLockGain(client, &collection, LLOCK_READWRITE)) {
+		StoreObjectRemove(client, &newmail);
+		goto ioerror;
+	}
 	
 	// now we have guid etc., move the mail into the right place
 	if (MaildirDeliverTempDocument(client, collection.guid, tmppath, newmail.guid)) {
@@ -331,11 +337,11 @@ DeliverMessageToMailbox(StoreClient *client,
 	StoreObjectUpdateImapUID(client, &newmail); // FIXME: racy?
 	
 	// release lock here?
+	LogicalLockRelease(client, &collection);
 	
 	// announce new mail has arrived
 	++client->stats.insertions;
 	StoreWatcherEvent(client, &newmail, STORE_WATCH_EVENT_NEW);
-
 	
 	return DELIVER_SUCCESS;
 
