@@ -18,6 +18,15 @@
 
 #include "stored.h"
 
+static XplMutex logicallock_global;
+
+
+void
+LogicalLockInit()
+{
+	XplMutexInit(logicallock_global);
+}
+
 /* Acquire the desired logical lock. 
  * TODO: what if we already hold an equivalent lock? promotion / etc.?
  * Return 0 on failure
@@ -28,6 +37,8 @@ LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type)
 	UNUSED_PARAMETER_REFACTOR(client);
 	UNUSED_PARAMETER_REFACTOR(object);
 	UNUSED_PARAMETER_REFACTOR(type);
+	
+	XplMutexLock(logicallock_global);
 	
 	return 1;
 }
@@ -41,4 +52,6 @@ LogicalLockRelease(StoreClient *client, StoreObject *object)
 {
 	UNUSED_PARAMETER_REFACTOR(client);
 	UNUSED_PARAMETER_REFACTOR(object);
+	
+	XplMutexUnlock(logicallock_global);
 }
