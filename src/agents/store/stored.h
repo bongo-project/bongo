@@ -426,8 +426,9 @@ typedef enum {
 } LogicalLockType;
 
 void LogicalLockInit();
-int LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type);
-void LogicalLockRelease(StoreClient *client, StoreObject *object);
+int LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type, const char *location);
+void LogicalLockRelease(StoreClient *client, StoreObject *object, LogicalLockType type, const char *location);
+void LogicalLockDestroy();
 
 /* hardcoded guids: */
 

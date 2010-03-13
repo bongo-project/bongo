@@ -318,6 +318,8 @@ _XplServiceMain(int argc, char *argv[])
     XplStartMainThread(AGENT_NAME, &id, StoreServer, 8192, NULL, ccode);
     Ringlog("Stopping main thread");
     
+    LogicalLockDestroy();
+
     XplUnloadApp(XplGetThreadID());
     MsgClearRecoveryFlag("store");
     

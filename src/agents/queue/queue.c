@@ -1186,6 +1186,7 @@ StartOver:
                                 MsgAuthGetUserStore(recipient, &siaddr);
                                 Log(LOG_DEBUG, "Deliver to store entry %s in queue %d for host %s", entry, queue, LOGIP(siaddr));
                                 status = DeliverToStore(&list, &siaddr, NMAP_DOCTYPE_MAIL, sender, authenticatedSender, dataFilename, data, dSize, recipient, mailbox, messageFlags);
+                                Log(LOG_DEBUG, "Delivered %s to store host %s", entry, LOGIP(siaddr));
 
                                 if (Agent.agent.state == BONGO_AGENT_STATE_STOPPING) {
                                     status = DELIVER_TRY_LATER;

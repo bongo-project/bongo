@@ -229,6 +229,7 @@ DeliverMessageToMailbox(StoreClient *client,
 	char mailbox[XPL_MAX_PATH+1];
 	unsigned char timeBuffer[80];
 	char buffer[1024];
+	LogicalLockType lock=LLOCK_NONE;
 
 	if (scmsID || msglen) {
 		// FIXME : SCMS isn't implemented this way any more.
@@ -317,10 +318,11 @@ DeliverMessageToMailbox(StoreClient *client,
 	newmail.time_created = newmail.time_modified = (uint64_t) time(NULL);
 	
 	// need to acquire lock from this point
-	if (! LogicalLockGain(client, &collection, LLOCK_READWRITE)) {
+	if (! LogicalLockGain(client, &collection, LLOCK_READWRITE, "DeliverMessageToMailbox")) {
 		StoreObjectRemove(client, &newmail);
 		goto ioerror;
 	}
+	lock=LLOCK_READWRITE;
 	
 	// possibly need more locking involved in this function
 	StoreProcessDocument(client, &newmail, tmppath);
@@ -338,7 +340,8 @@ DeliverMessageToMailbox(StoreClient *client,
 	StoreObjectUpdateImapUID(client, &newmail); // FIXME: racy?
 	
 	// release lock here?
-	LogicalLockRelease(client, &collection);
+	LogicalLockRelease(client, &collection, lock, "DeliverMessageToMailbox");
+	lock=LLOCK_NONE;
 	
 	// announce new mail has arrived
 	++client->stats.insertions;
@@ -347,6 +350,8 @@ DeliverMessageToMailbox(StoreClient *client,
 	return DELIVER_SUCCESS;
 
 ioerror:
+	if (lock!=LLOCK_NONE)
+		LogicalLockRelease(client, &collection, lock, "DeliverMessageToMailbox");
 	if (tmp) {
 		fclose(tmp);
 		unlink(tmppath);
