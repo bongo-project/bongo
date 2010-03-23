@@ -427,16 +427,11 @@ beginConversation:
      * if the first character of a line is a . insert another */
     MessageLength = atol(&(Queue->line[5]));
     while (MessageLength > 0) {
-        long bytes = ConnReadToAllocatedBuffer(Queue->conn, &MessageLine, &MessageLineLen);
-        if (bytes > 0) {
-            if (*MessageLine == '.') {
-                ConnWriteStr(Remote->conn, ".");
-            }
-            MessageLength -= ConnWrite(Remote->conn, MessageLine, strlen(MessageLine));
-        } else {
-            /* dumb hack here... */
-            MessageLength = 2;
+        ConnReadToAllocatedBuffer(Queue->conn, &MessageLine, &MessageLineLen);
+        if (*MessageLine == '.') {
+            ConnWriteStr(Remote->conn, ".");
         }
+        MessageLength -= ConnWrite(Remote->conn, MessageLine, strlen(MessageLine));
         MessageLength -= ConnWriteStr(Remote->conn, "\r\n");
     }
     if (MessageLine) {
