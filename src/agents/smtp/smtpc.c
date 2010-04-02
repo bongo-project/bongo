@@ -428,11 +428,28 @@ beginConversation:
     MessageLength = atol(&(Queue->line[5]));
     while (MessageLength > 0) {
         ConnReadToAllocatedBuffer(Queue->conn, &MessageLine, &MessageLineLen);
-        if (*MessageLine == '.') {
-            ConnWriteStr(Remote->conn, ".");
+        if (MessageLine) {
+            if (*MessageLine == '.') {
+                ConnWriteStr(Remote->conn, ".");
+            }
+            MessageLength -= ConnWrite(Remote->conn, MessageLine, strlen(MessageLine));
+            MessageLength -= ConnWriteStr(Remote->conn, "\r\n");
+        } else {
+            /* if MessageLine comes back null there must have been a problem either with the allocation
+            * or with the connection.  we need to break out here cleanly */
+            MessageLength = 0;
+            Recip->Result = DELIVER_TRY_LATER;
+            /* read in the 1000 OK */
+            ConnReadAnswer(Queue->conn, Queue->line, CONN_BUFSIZE);
+
+            /* at this point we should be in the data section.  there really isn't a good way to
+             * clean up the remote side. */
+            ConnWriteStr(Remote->conn, "\r\n.\r\n");
+            ConnFlush(Remote->conn);
+            ConnReadAnswer(Remote->conn, Remote->line, CONN_BUFSIZE);
+
+            return FALSE;
         }
-        MessageLength -= ConnWrite(Remote->conn, MessageLine, strlen(MessageLine));
-        MessageLength -= ConnWriteStr(Remote->conn, "\r\n");
     }
     if (MessageLine) {
         MemFree(MessageLine);
