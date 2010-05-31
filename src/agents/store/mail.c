@@ -23,6 +23,7 @@ SetDocProp(StoreClient *client, StoreObject *doc, char *pname, char *value)
 		info.type = STORE_PROP_NONE;
 		info.name = pname;
 		info.value = value;
+		info.table = STORE_PROPTABLE_NONE;
 		StorePropertyFixup(&info);
 		StoreObjectSetProperty(client, doc, &info);
 	}

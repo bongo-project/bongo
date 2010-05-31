@@ -105,6 +105,7 @@ void XplSignalCatcher(XplShutdownFunc XplShutdownFunction)
     ApplicationXplShutdownFunction = XplShutdownFunction;
 
     sigemptyset(&act.sa_mask);
+    sigemptyset(&signalSet);
 
     for (i=0; _XplSignalList[i] != 0; i++) {
         sigaddset(&signalSet, _XplSignalList[i]);
