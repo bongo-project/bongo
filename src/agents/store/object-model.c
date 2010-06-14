@@ -248,6 +248,39 @@ abort:
 int
 StoreObjectRepair(StoreClient *client, StoreObject *object)
 {
+	int ret = 0;
+	
+	// see if the parent object has been set correctly
+	char parent_filename[XPL_MAX_PATH + 1];
+	strncpy(parent_filename, object->filename, XPL_MAX_PATH);
+	
+	char *ptr = parent_filename + strlen(parent_filename);
+	while (ptr > parent_filename) {
+		if (ptr == (parent_filename + 1)) {
+			// parent filename is root - /
+			*ptr = '\0';
+			break;
+		}
+		if (*ptr == '/') {
+			*ptr = '\0';
+			break;
+		}
+		ptr--;
+	}
+	
+	StoreObject parent;
+	if (StoreObjectFindByFilename(client, parent_filename, &parent)) {
+		// not really sure how to deal with this - perhaps a store
+		// equivalent of lost+found? :)
+	} else {
+		if (parent.guid != object->collection_guid) {
+			object->collection_guid = parent.guid;
+			StoreObjectSave(client, object);
+			ret = 1;
+		}
+	}
+	
+	// now look at representation on disk
 	if (STORE_IS_FOLDER(object->type)) {
 		// try to create the maildir again. We don't error
 		// if it's already there. FIXME: can't detect a repair..
@@ -263,7 +296,7 @@ StoreObjectRepair(StoreClient *client, StoreObject *object)
 		
 		if (STORE_IS_DBONLY(object->type)) {
 			// no need to look for anything on the file system here
-			return 0;
+			return ret;
 		}
 		
 		FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
@@ -289,11 +322,11 @@ StoreObjectRepair(StoreClient *client, StoreObject *object)
 		
 		if (need_save) {
 			StoreObjectSave(client, object);
-			return 1;
+			return ret;
 		}
 	}
 	
-	return 0;
+	return ret;
 }
 
 /**
