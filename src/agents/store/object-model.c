@@ -1117,74 +1117,91 @@ abort:
 	return -1;
 }
 
-// FIXME - this should be refactored like LIST was
 int
 StoreObjectRemoveCollection(StoreClient *client, StoreObject *collection)
 {
-	// FIXME: check removing /foo doesn't also remove /foobar
 	MsgSQLStatement stmt;
 	MsgSQLStatement *ret;
-	char *query;
 	char path[MAX_FILE_NAME+1];
-	uint64_t **guid_list = NULL;
-	int guid_alloc, i, j, status;
+	char temp_table[50];
+	char query[200];
+	int status;
 	
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
 	
-	MsgSQLBeginTransaction(client->storedb);
+	snprintf(temp_table, 49, "_remove_" GUID_FMT, collection->guid);
 	
-	query = "SELECT guid FROM storeobject WHERE substr(filename,1,?2) = ?1 ORDER BY length(filename) DESC;";
+	// Step 1: Put list of files / collections to remove in a temporary table,
+	// and remove those from the main store so that they immediately 'disappear'.
+	// This list will not include the collection itself, just the contents.
+	char *clause = "FROM storeobject WHERE substr(filename,1,?2) = ?1";
 	
+	snprintf(query, 199, "CREATE TABLE %s AS SELECT guid, type %s;", temp_table, clause);
 	ret = MsgSQLPrepare(client->storedb, query, &stmt);
 	if (ret == NULL) goto abort;
 	
 	snprintf(path, MAX_FILE_NAME, "%s/", collection->filename);
 	MsgSQLBindString(&stmt, 1, path, FALSE);
 	MsgSQLBindInt(&stmt, 2, strlen(path));
+	MsgSQLExecute(client->storedb, &stmt);
 	
-	// allocate some memory to save the list of collections - we do this 
-	// because an open transaction would conflict with StoreObjectFind
-	// FIXME
-	guid_alloc = 1000;
-	guid_list = MemMalloc(sizeof(uint64_t) * guid_alloc);
-	i = 0;
+	// This 'CREATE TABLE' is done outside of the transaction, because we cannot alter
+	// the database schema within a transaction. Hopefully this isn't a race condition,
+	// because the locking at a higher level should prevent new documents being placed
+	// in collections being removed.
+	MsgSQLFinalize(&stmt);
+	
+	snprintf(query, 199, "DELETE %s;", clause);
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
+	
+	MsgSQLBeginTransaction(client->storedb);
+	
+	MsgSQLBindString(&stmt, 1, path, FALSE);
+	MsgSQLBindInt(&stmt, 2, strlen(path));
+	MsgSQLExecute(client->storedb, &stmt);
+	MsgSQLFinalize(&stmt);
+	
+	if (MsgSQLCommitTransaction(client->storedb))
+		goto abort;
+	
+	// Step 2. Now any potential contents have been moved aside for now,
+	// we can delete the actual collection itself.
+	StoreObjectRemove(client, collection);
+	
+	// Step 3. Go through our list of things to remove, and remove the contents
+	// of the data on-disk for them.
+	snprintf(query, 199, "SELECT guid, type FROM %s;", temp_table);
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
 	
 	while ((status = MsgSQLResults(client->storedb, &stmt)) > 0) {
-		*(guid_list[i++]) = MsgSQLResultInt64(&stmt, 0);
+		// try to remove the file/whatever first
+		int guid = MsgSQLResultInt(&stmt, 0);
+		int type = MsgSQLResultInt(&stmt, 1);
 		
-		if (i >= guid_alloc) {
-			guid_alloc += 1000;
-			guid_list = MemRealloc(guid_list, sizeof(uint64_t) * guid_alloc);
+		if (STORE_IS_FOLDER(type)) {
+			MaildirRemove(client->store, guid);
+		} else {
+			// do we need to bother removing individual files...?
 		}
 	}
 	if (status < 0) goto abort; // SQL failure
 	
 	MsgSQLFinalize(&stmt);
-	if (MsgSQLCommitTransaction(client->storedb))
-		goto abort;
-
-	// remove each document and then collection
-	for (j = 0; j < i; j++) {
-		StoreObject object;
-		
-		if (*(guid_list[j]) > 0) {
-			// don't include the container in the results...
-			StoreObjectFind(client, *(guid_list[j]), &object);
-			StoreObjectRemove(client, &object);
-		}
-	}
-
-	MemFree(guid_list);
 	
-	// finally, remove the collection we were given
-	StoreObjectRemove(client, collection);
-
+	// Step 4. Remove our temporary table in case we want to re-use this connection.
+	snprintf(query, 199, "DROP TABLE %s;", temp_table);
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
+	MsgSQLExecute(client->storedb, &stmt);
+	MsgSQLFinalize(&stmt);
+	
 	return 0;
 
 abort:
 	MsgSQLFinalize(&stmt);
 	MsgSQLAbortTransaction(client->storedb);
-	if (guid_list) MemFree(guid_list);
 	
 	return -1;
 }
