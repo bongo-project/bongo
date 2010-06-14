@@ -14,6 +14,7 @@ add_library(bongoxpl SHARED
 
 target_link_libraries(bongoxpl
 	resolv
+	pthread
 	${GCRYPT_LIBRARIES}
 )
 

@@ -66,7 +66,12 @@ pkg_search_module (GMIME2 REQUIRED gmime-2.6 gmime-2.4 gmime-2.2 gmime-2.0 gmime
 include_directories(AFTER ${GMIME2_INCLUDE_DIRS})
 
 # check for gcrypt
-# pkg_check_module
+check_library_exists(gcrypt gcry_control "" HAVE_GCRYPT)
+if (HAVE_GCRYPT)
+	set(GCRYPT_LIBRARIES "gcrypt")
+else (HAVE_GCRYPT)
+	message(FATAL_ERROR "Bongo couldn't find the libgcrypt runtime library")
+endif (HAVE_GCRYPT)
 
 # check for gnutls
 pkg_check_modules (GNUTLS REQUIRED gnutls)

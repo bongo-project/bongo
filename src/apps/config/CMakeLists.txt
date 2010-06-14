@@ -10,6 +10,7 @@ target_link_libraries(bongo-config
 	bongoutil
 	bongoxpl
 	bongocal
+	${GCRYPT_LIBRARIES}
 )
 
 add_custom_target(default.set
@@ -17,7 +18,7 @@ add_custom_target(default.set
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	VERBATIM
 )
-	
+
 add_dependencies(bongo-config default.set)
 
 install(TARGETS bongo-config DESTINATION ${SBIN_INSTALL_DIR})
