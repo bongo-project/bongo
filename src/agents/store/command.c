@@ -1718,7 +1718,7 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 	// now try to find the parent collection, creating any collections
 	// as needed.
 	if (container_path[1] != '\0') {
-		uint64_t parent_guid = 0;
+		uint64_t parent_guid = 1;
 		
 		ptr = container_path + 1;
 		while (*ptr != '\0') {
@@ -1735,14 +1735,14 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 						StoreObjectRemove(client, &container);
 						return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 					}
-					// save the guid for later.
-					parent_guid = container.guid;
 				} else {
 					if (container.type != 4096) {
 						// this isn't a collection - erk!
 						return ConnWriteStr(client->conn, MSG3019BADCOLLNAME);
 					}
 				}
+				// save the guid for later.
+				parent_guid = container.guid;
 				*ptr = '/';
 			}
 			ptr++;
