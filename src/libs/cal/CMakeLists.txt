@@ -22,6 +22,7 @@ add_library(bongocal SHARED
 target_link_libraries(bongocal
 	bongoxpl
 	bongoutil
+	bongojson
 	${LIBICAL_LIBRARIES}
 )
 

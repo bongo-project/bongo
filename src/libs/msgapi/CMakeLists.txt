@@ -15,6 +15,7 @@ target_link_libraries(bongomsgapi
 	bongoxpl
 	bongonmap
 	bongocal
+	bongojson
 	${SQLITE_LIBRARIES}
 	${LIBICAL_LIBRARIES}
 	${CURL_LIBRARIES}

@@ -9,6 +9,7 @@ add_library(bongonmap SHARED
 target_link_libraries(bongonmap
 	bongoconnio
 	bongoxpl
+	bongojson
 	bongologging
 	bongostreamio
 	${GNUTLS_LIBRARIES}
