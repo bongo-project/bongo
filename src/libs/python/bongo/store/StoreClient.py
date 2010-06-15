@@ -786,6 +786,17 @@ class StoreClient:
         if r.code != 1000:
             raise CommandError(r)
 
+    def Repair(self):
+        self.stream.Write("REPAIR")
+        
+        r = self.stream.GetResponse()
+        while r.code in (2001, 2011, 2012):
+            # TODO : want some kind of iterator in here really
+            r = self.stream.GetResponse()
+        
+        if r.code != 1000:
+            raise CommandError(r)
+
     def Replace(self, doc, data):
         self.stream.Write("REPLACE %s %d" % (doc, len(data)))
 
