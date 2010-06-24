@@ -46,6 +46,7 @@
 /* 3xxx - protocol error */
 
 #define MSG3000UNKNOWN "3000 Unknown command\r\n"
+#define MSG3010BADBQL "3010 Syntax error in query statement\r\n"
 #define MSG3010BADARGC "3010 Wrong number of arguments\r\n"
 #define MSG3011BADGUIDLEN "3011 Incorrect GUID length\r\n"
 #define MSG3011BADGUID "3011 Invalid GUID\r\n"
@@ -164,6 +165,7 @@
 #define MSG5006CORRUPTACL "5006 Internal error: corrupt ACL\r\n"
 #define MSG5007INDEXLIBERR "5007 Index library error\r\n"
 #define MSG5008NOALARMDB "5008 Couldn't open alarm db\r\n"
+#define MSG5009SQLBUILDER "5009 Couldn't process query\r\n"
 
 #define MSG5201FILEREADERR "5201 Error Reading File\r\n"
 #define MSG5220QUOTAERR "5220 User Quota exceeded\r\n"

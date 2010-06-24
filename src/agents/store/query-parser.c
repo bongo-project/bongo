@@ -40,7 +40,7 @@ pull_token(char **query, char **out_token)
 	*out_token = ptr;
 	
 	// look for the next space or end of string, skipping spaces which occur 
-	// within "double quotes" and ignoring escaped quotes.
+	// within 'single quotes' and ignoring escaped quotes of either type.
 	while ((*ptr != '\0') && (in_quote || (*ptr != ' '))) {
 		if (*ptr == '\\') {
 			// look like we're escaping something, unless we're already escaping, 
@@ -49,7 +49,7 @@ pull_token(char **query, char **out_token)
 		} else {
 			in_escape = 0;
 		}
-		if ((*ptr == '"') && (in_escape == 0)) {
+		if ((*ptr == '\'') && (in_escape == 0)) {
 			in_quote = 1 - in_quote;
 		}
 		ptr++;
@@ -125,6 +125,40 @@ QueryParser_IsProperty (const char *token)
 	return 0;
 }
 
+int
+QueryParser_IsNumber (const char *token)
+{
+	const char *ptr;
+	
+	// numbers cannot be empty
+	if (token[0] == '\0') return -1;
+	
+	ptr = token;
+	do {
+		if (!CHAR_IS_NUMBER(*ptr)) {
+			return -1;
+		}
+	} while (*(++ptr) != '\0');
+	
+	return 0;
+}
+
+int
+QueryParser_IsString (const char *token)
+{
+	// strings can only be empty by saying '' - i.e., all must be 
+	// at least two characters.
+	int len = strlen(token);
+	if (len < 2) return -1;
+	
+	if (token[0] != '\'') return -1;
+	if (token[len - 1] != '\'') return -1;
+	
+	// Don't think we need to check the rest of the string; it wouldn't
+	// have parsed if it was incorrectly quoted.
+	return 0;
+}
+
 // when an expression is full, we want to go back up the stack to 
 // find the next empty one
 static int
@@ -147,7 +181,7 @@ rewind_expression(struct expression **e, struct expression *start)
  * \return	0 on success, error codes otherwise.
  */
 int
-QueryParserRun(struct parser_state *state)
+QueryParserRun(struct parser_state *state, BOOL strict_quotes)
 {
 	char *token;
 	struct expression *current_expression = state->start;
@@ -194,12 +228,28 @@ QueryParserRun(struct parser_state *state)
 				DEBUG_MESSAGE("ERR: parameters received before operator\n");
 				return -1;
 			}
+			int type = 0;
+			if (token[0] == '\'') {
+				// could be a string
+				if (QueryParser_IsString(token) == 0) type = 2;
+			} else if (QueryParser_IsNumber(token) == 0) {
+				// is a number
+				type = 3;
+			} else if (QueryParser_IsProperty(token) == 0) {
+				type = 1;
+			}
+			if ((strict_quotes == TRUE) && (type == 0)) {
+				DEBUG_MESSAGE("ERR: Token not correctly quoted\n");
+				return -1;
+			}
 			if (current_expression->exp1 == NULL) {
 				current_expression->exp1 = token;
 				current_expression->exp1_const = 1;
+				current_expression->exp1_type = type;
 			} else if (current_expression->exp2 == NULL) {
 				current_expression->exp2 = token;
 				current_expression->exp2_const = 1;
+				current_expression->exp2_type = type;
 				
 				// ignore errors here, since when we fill the last slot
 				// we pop off top of the stack. That's not an error if 

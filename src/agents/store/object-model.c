@@ -701,17 +701,21 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 	unsigned int i;
 	long int total = 0;
 	int status;
+	const char *error = MSG3010BADBQL;
+	int ccode = 3010;
 	
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
 	
 	if (QueryBuilderRun(builder)) {
-		printf("Couldn't parse the queries?\n");
-		goto abort;
-	} else if (QueryBuilderCreateSQL(builder, &sql)) {
-		printf("Couldn't create the SQL\n");
-		goto abort;
-	} else {
-		// printf("SQL: %s\n", sql);
+		goto presqlabort;
+	}
+	// errors from now on are not syntax, they're fatal
+	error = MSG5005DBLIBERR;
+	ccode = 5005; 
+	
+	if (QueryBuilderCreateSQL(builder, &sql)) {
+		error = MSG5009SQLBUILDER;
+		goto presqlabort;
 	}
 	
 	MsgSQLBeginTransaction(client->storedb);
@@ -800,11 +804,12 @@ abort:
 		MemFree(sql);
 	}
 	MsgSQLAbortTransaction(client->storedb);
+	
+presqlabort:
 	QueryBuilderFinish(builder);
+	ConnWriteStr(client->conn, error);
 	
-	ConnWriteStr(client->conn, MSG5005DBLIBERR);
-	
-	return -1;
+	return ccode;
 }
 
 /**

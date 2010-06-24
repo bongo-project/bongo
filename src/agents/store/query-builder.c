@@ -301,12 +301,12 @@ QueryBuilderRun(QueryBuilder *builder)
 	
 	if (builder->int_query != NULL) {
 		if (QueryParserStart(&builder->internal_parser, builder->int_query, 50)) goto abort;
-		if (QueryParserRun(&builder->internal_parser)) goto abort;
+		if (QueryParserRun(&builder->internal_parser, FALSE)) goto abort;
 		if (QueryBuilderFindExpressionProps(builder, builder->internal_parser.start)) goto abort;
 	}
 	if (builder->ext_query != NULL) {
 		if (QueryParserStart(&builder->external_parser, builder->ext_query, 50)) goto abort;
-		if (QueryParserRun(&builder->external_parser)) goto abort;
+		if (QueryParserRun(&builder->external_parser, TRUE)) goto abort;
 		if (QueryBuilderFindExpressionProps(builder, builder->external_parser.start)) goto abort;
 	}
 	
@@ -423,6 +423,7 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	BongoStringBuilderAppend(&b, ";");
 	
 	*output = MemStrdup(b.value);
+	printf("SQL: '%s'\n", b.value);
 	
 	BongoStringBuilderDestroy(&b);
 	
@@ -434,40 +435,58 @@ abort:
 }
 
 static int
+AddExpValueByProperty(QueryBuilder *b, BongoStringBuilder *sb, void *exp, int constant)
+{
+	StorePropInfo *prop = NULL;
+	
+	if (constant) {
+		char *str = (char *)exp;
+		
+		if (QueryParser_IsProperty(str) == 0) {
+			// FIXME: this is a slow way of finding our
+			// property again.
+			for (unsigned int i=0; i < b->properties->len; i++) {
+				StorePropInfo *p = g_array_index(b->properties, StorePropInfo *, i);
+				
+				if (strcmp(p->name, str) == 0) prop = p;
+			}
+			
+			if (prop == NULL) {
+				Log(LOG_CRIT, "BUG: Unable to find property '%s'", str);
+				return -1;
+			}
+			
+			QueryBuilderPropertyToColumn(b, sb, prop);
+		} else {
+			if (prop && STORE_IS_EXTERNAL_PROPERTY_TYPE(prop->type)) {
+				// string values need to be quoted.
+				// TODO : might be more cases needed here.
+				BongoStringBuilderAppendF(sb, "\"%s\"", str);
+			} else {
+				BongoStringBuilderAppend(sb, str);
+			}
+		}
+	} else {
+		int retcode = QueryExpressionToSQL(b, (struct expression *)exp, sb);
+		if (retcode) return retcode;
+	}
+	
+	return 0;
+}
+
+static int
 QueryExpressionToSQL(QueryBuilder *builder, struct expression *exp, BongoStringBuilder *sb)
 {
 	const char basic_ops[] = "&|<>=!~";
-	unsigned int i = 0;
 	int retcode = 0;
 	
-	for (i=0; i < sizeof(basic_ops); i++) {
+	for (unsigned int i=0; i < sizeof(basic_ops); i++) {
 		if (exp->op[0] == basic_ops[i]) {
 			BongoStringBuilderAppend(sb, "(");
-			if (exp->exp1_const) {
-				if (QueryParser_IsProperty((char *)exp->exp1) == 0) {
-					StorePropInfo *prop = NULL;
-					
-					// FIXME: this is a slow way of finding our
-					// property again.
-					for (i=0; i < builder->properties->len; i++) {
-						StorePropInfo *p = g_array_index(builder->properties, StorePropInfo *, i);
-						
-						if (strcmp(p->name, (char *)exp->exp1) == 0) prop = p;
-					}
-					
-					if (prop == NULL) {
-						Log(LOG_CRIT, "BUG: Unable to find property '%s'", (char *)exp->exp1);
-						return -1;
-					}
-					
-					QueryBuilderPropertyToColumn(builder, sb, prop);
-				} else {
-					BongoStringBuilderAppend(sb, (char *)exp->exp1);
-				}
-			} else {
-				retcode = QueryExpressionToSQL(builder, (struct expression *)exp->exp1, sb);
-				if (retcode) return retcode;
-			}
+			
+			retcode = AddExpValueByProperty(builder, sb, exp->exp1, exp->exp1_const);
+			if (retcode) return retcode;
+			
 			switch (exp->op[0]) {
 				case '&':
 					BongoStringBuilderAppend(sb, " AND ");
@@ -490,31 +509,10 @@ QueryExpressionToSQL(QueryBuilder *builder, struct expression *exp, BongoStringB
 					// return 0;
 					break;
 			}
-			if (exp->exp2_const) {
-				if (QueryParser_IsProperty((char *)exp->exp2) == 0) {
-					StorePropInfo *prop = NULL;
-					
-					// FIXME: this is a slow way of finding our
-					// property again.
-					for (i=0; i < builder->properties->len; i++) {
-						StorePropInfo *p = g_array_index(builder->properties, StorePropInfo *, i);
-						
-						if (strcmp(p->name, (char *)exp->exp2) == 0) prop = p;
-					}
-					
-					if (prop == NULL) {
-						Log(LOG_CRIT, "BUG: Unable to find property '%s'", (char *)exp->exp2);
-						return -1;
-					}
-					
-					QueryBuilderPropertyToColumn(builder, sb, prop);
-				} else {
-					BongoStringBuilderAppend(sb, (char *)exp->exp2);
-				}
-			} else {
-				retcode = QueryExpressionToSQL(builder, (struct expression *)exp->exp2, sb);
-				if (retcode) return retcode;
-			}
+			
+			retcode = AddExpValueByProperty(builder, sb, exp->exp2, exp->exp2_const);
+			if (retcode) return retcode;
+			
 			BongoStringBuilderAppend(sb, ")");
 			
 			return 0;
