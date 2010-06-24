@@ -423,6 +423,7 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	BongoStringBuilderAppend(&b, ";");
 	
 	*output = MemStrdup(b.value);
+	printf("SQL: '%s'\n", b.value);
 	
 	BongoStringBuilderDestroy(&b);
 	
@@ -476,7 +477,7 @@ AddExpValueByProperty(QueryBuilder *b, BongoStringBuilder *sb, void *exp, int co
 static int
 QueryExpressionToSQL(QueryBuilder *builder, struct expression *exp, BongoStringBuilder *sb)
 {
-	const char basic_ops[] = "&|<>=!~";
+	const char basic_ops[] = "&|<>=!~^";
 	int retcode = 0;
 	
 	for (unsigned int i=0; i < sizeof(basic_ops); i++) {
@@ -504,12 +505,31 @@ QueryExpressionToSQL(QueryBuilder *builder, struct expression *exp, BongoStringB
 				case '!':
 					BongoStringBuilderAppend(sb, " != ");
 					break;
+				case '^':
+					BongoStringBuilderAppend(sb, " LIKE ");
+					break;
 				default: 
 					// return 0;
 					break;
 			}
 			
-			retcode = AddExpValueByProperty(builder, sb, exp->exp2, exp->exp2_const);
+			char *val = exp->exp2;
+			if (exp->op[0] == '^') {
+				// special case for LIKE: we need to stick % on the param
+				int len = strlen(exp->exp2);
+				val = malloc(len + 4);
+				val[0] = '\''; val[1] = '%';
+				char *expression = (char*)exp->exp2;
+				for(int i=1; i < len; i++) val[i+1] = expression[i];
+				val[len] = '%';
+				val[len+1] = '\'';
+				val[len+2] = '\0';
+			}
+			
+			retcode = AddExpValueByProperty(builder, sb, val, exp->exp2_const);
+			
+			if (val != exp->exp2) free(val);
+			
 			if (retcode) return retcode;
 			
 			BongoStringBuilderAppend(sb, ")");

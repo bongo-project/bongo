@@ -32,6 +32,7 @@ int	QueryParserRun(struct parser_state *state, BOOL strict_quotes);
 void	QueryParserFinish(struct parser_state *state);
 
 int	QueryParser_IsOp (const char *token);
+int	QueryParser_CanSubExp (const char *token);
 int	QueryParser_IsProperty (const char *token);
 int QueryParser_IsNumber (const char *token);
 int QueryParser_IsString (const char *token);

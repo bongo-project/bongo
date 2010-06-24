@@ -76,7 +76,7 @@ pull_token(char **query, char **out_token)
 int
 QueryParser_IsOp (const char *token)
 {
-	const char *ops = "&|<>=!{l~";
+	const char *ops = "&|<>=!{l~^";
 	
 	// operations must be single characters
 	if (token[1] != '\0') return -1;
@@ -85,6 +85,16 @@ QueryParser_IsOp (const char *token)
 		if (*ops == token[0]) return 0;
 		ops++;
 	}
+	return -1;
+}
+
+int
+QueryParser_CanSubExp (const char *token)
+{
+	// this is true for any operator that can take sub-expressions.
+	// basically just the boolean operators.
+	if (token[0] == '&') return 0;
+	if (token[0] == '|') return 0;
 	return -1;
 }
 
@@ -194,6 +204,13 @@ QueryParserRun(struct parser_state *state, BOOL strict_quotes)
 		}
 		if (QueryParser_IsOp(token) == 0) {
 			if (current_expression->op != NULL) {
+				// check this operator will allow sub-expressions
+				// TODO - this isn't quite right yet.
+				//if (QueryParser_CanSubExp(current_expression->op) == 0) {
+				//	DEBUG_MESSAGE("ERR: Cannot accept subexpression at this point\n");
+				//	return -1;
+				//}
+				
 				// need to find a free expr slot
 				struct expression *next_expression = ++(state->last);
 				
