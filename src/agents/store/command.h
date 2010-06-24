@@ -185,7 +185,7 @@ CCode StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document
 CCode StoreCommandLIST(StoreClient *client, 
                        StoreObject *collection, int start, int end, 
                        uint32_t flagsmask, uint32_t flags,
-                       StorePropInfo *props, int propcount);
+                       StorePropInfo *props, int propcount, const char *query);
 
 CCode StoreCommandMAILINGLISTS(StoreClient *client, char *source);
 

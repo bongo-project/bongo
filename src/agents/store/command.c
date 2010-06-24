@@ -819,7 +819,7 @@ StoreCommandLoop(StoreClient *client)
             break; 
 
         case STORE_COMMAND_LIST:
-            /* LIST <collection> [Rxx-xx] [P<proplist>] [M<flags mask>] [F<flags>] */
+            /* LIST <collection> [Rxx-xx] [P<proplist>] [M<flags mask>] [F<flags>] [Q<query>] */
 
             if (TOKEN_OK != (ccode = RequireStore(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 2, 6)) ||
@@ -832,6 +832,7 @@ StoreCommandLoop(StoreClient *client)
             int3 = 0;   /* proplist len */
             ulong = 0;  /* flags mask */
             ulong2 = 0; /* flags */
+            query = NULL; /* query */
             for (i = 2; TOKEN_OK == ccode && i < n; i++) {
                 if ('R' == *tokens[i] && -1 == int1) {
                     ccode = ParseRange(client, tokens[i] + 1, &int1, &int2);
@@ -842,6 +843,9 @@ StoreCommandLoop(StoreClient *client)
                     ccode = ParseUnsignedLong(client, tokens[i] + 1, &ulong);
                 } else if ('F' == *tokens[i]) {
                     ccode = ParseUnsignedLong(client, tokens[i] + 1, &ulong2);
+                } else if ('Q' == *tokens[i]) {
+                    query = tokens[i] + 1;
+                    ccode = TOKEN_OK;
                 } else {
                     ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
                 }
@@ -853,7 +857,7 @@ StoreCommandLoop(StoreClient *client)
             
             ccode = StoreCommandLIST(client, &object, int1, int2, 
                                      (uint32_t) ulong, (uint32_t) ulong2, 
-                                     props, int3);
+                                     props, int3, query);
             break;            
 
         case STORE_COMMAND_MAILINGLISTS:
@@ -2234,7 +2238,8 @@ StoreCommandLIST(StoreClient *client,
                  StoreObject *collection, 
                  int start, int end, 
                  uint32_t flagsmask, uint32_t flags,
-                 StorePropInfo *props, int propcount)
+                 StorePropInfo *props, int propcount,
+                 const char *query)
 {
 	int ccode;
 	
@@ -2247,7 +2252,7 @@ StoreCommandLIST(StoreClient *client,
 		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
 	
 	ccode = StoreObjectIterCollectionContents(client, collection, start, 
-		end, flagsmask, flags, props, propcount, NULL, NULL, FALSE);
+		end, flagsmask, flags, props, propcount, NULL, query, FALSE);
 	
 	// release the lock
 	LogicalLockRelease(client, collection, LLOCK_READONLY, "StoreCommandLIST");
