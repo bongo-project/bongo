@@ -423,7 +423,6 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	BongoStringBuilderAppend(&b, ";");
 	
 	*output = MemStrdup(b.value);
-	printf("SQL: '%s'\n", b.value);
 	
 	BongoStringBuilderDestroy(&b);
 	
