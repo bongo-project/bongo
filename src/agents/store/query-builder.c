@@ -8,6 +8,7 @@
 
 #include <memmgr.h>
 #include <bongoutil.h>
+#include <logger.h>
 #include "query-builder.h"
 #include "query-parser.h"
 #include "properties.h"
@@ -444,11 +445,22 @@ QueryExpressionToSQL(QueryBuilder *builder, struct expression *exp, BongoStringB
 			BongoStringBuilderAppend(sb, "(");
 			if (exp->exp1_const) {
 				if (QueryParser_IsProperty((char *)exp->exp1) == 0) {
-					StorePropInfo prop;
-					prop.type = 0;
-					prop.name = (char *)exp->exp1;
-					StorePropertyFixup(&prop);
-					QueryBuilderPropertyToColumn(builder, sb, &prop);
+					StorePropInfo *prop = NULL;
+					
+					// FIXME: this is a slow way of finding our
+					// property again.
+					for (i=0; i < builder->properties->len; i++) {
+						StorePropInfo *p = g_array_index(builder->properties, StorePropInfo *, i);
+						
+						if (strcmp(p->name, (char *)exp->exp1) == 0) prop = p;
+					}
+					
+					if (prop == NULL) {
+						Log(LOG_CRIT, "BUG: Unable to find property '%s'", (char *)exp->exp1);
+						return -1;
+					}
+					
+					QueryBuilderPropertyToColumn(builder, sb, prop);
 				} else {
 					BongoStringBuilderAppend(sb, (char *)exp->exp1);
 				}
@@ -480,11 +492,22 @@ QueryExpressionToSQL(QueryBuilder *builder, struct expression *exp, BongoStringB
 			}
 			if (exp->exp2_const) {
 				if (QueryParser_IsProperty((char *)exp->exp2) == 0) {
-					StorePropInfo prop;
-					prop.type = 0;
-					prop.name = (char *)exp->exp2;
-					StorePropertyFixup(&prop);
-					QueryBuilderPropertyToColumn(builder, sb, &prop);
+					StorePropInfo *prop = NULL;
+					
+					// FIXME: this is a slow way of finding our
+					// property again.
+					for (i=0; i < builder->properties->len; i++) {
+						StorePropInfo *p = g_array_index(builder->properties, StorePropInfo *, i);
+						
+						if (strcmp(p->name, (char *)exp->exp2) == 0) prop = p;
+					}
+					
+					if (prop == NULL) {
+						Log(LOG_CRIT, "BUG: Unable to find property '%s'", (char *)exp->exp2);
+						return -1;
+					}
+					
+					QueryBuilderPropertyToColumn(builder, sb, prop);
 				} else {
 					BongoStringBuilderAppend(sb, (char *)exp->exp2);
 				}
