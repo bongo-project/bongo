@@ -508,7 +508,7 @@ EndStoreDelivery(NMAPConnections *list)
 
         if (nmap) {
             if (!nmap->error &&
-                ((ccode = ConnWrite(nmap->conn, "\r\n", 2)) != -1) && 
+                ((ccode = ConnWrite(nmap->conn, "QUIT\r\n", 6)) != -1) && 
                 ((ccode = ConnFlush(nmap->conn)) != -1)) {
                 NMAPReadAnswer(nmap->conn, line, CONN_BUFSIZE, FALSE);
             }
