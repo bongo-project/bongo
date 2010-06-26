@@ -3169,6 +3169,8 @@ StoreCommandWRITE(StoreClient *client,
 	if (ccode) goto finish;
 	
 	// update new object metadata
+	if (timestamp == 0) timestamp = time(NULL);
+	
 	newdocument.collection_guid = 0;
 	newdocument.size = tmpsize;
 	newdocument.time_created = timestamp;
