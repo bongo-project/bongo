@@ -465,51 +465,35 @@ DeliverToStore(NMAPConnections *list,
                char *mailbox,
                unsigned long messageFlags)
 {
-    NMAPConnection *nmap = NULL;
-    int ccode = 0;
-    unsigned char line[CONN_BUFSIZE + 1];
-    BOOL new;
+	NMAPConnection *nmap = NULL;
+	int ccode = 0;
+	unsigned char line[CONN_BUFSIZE + 1];
+	BOOL new;
 
-    if ((ccode = GetNMAPConnection(list, address, &nmap, &new)) < 0) {
-        return DELIVER_TRY_LATER;
-    }
+	if ((ccode = GetNMAPConnection(list, address, &nmap, &new)) < 0) {
+		return DELIVER_TRY_LATER;
+	}
+	if (nmap->error) return DELIVER_TRY_LATER;
 
-    if (nmap->error) {
-        return DELIVER_TRY_LATER;
-    }
+	// select the user's store and ask to send over the email
+	ccode = NMAPSendCommandF(nmap->conn, "STORE %s\r\n", recipient);
+	ccode = NMAPReadAnswer(nmap->conn, line, CONN_BUFSIZE, TRUE);
+	if (ccode != 1000) return DELIVER_TRY_LATER; // TODO: maybe permanent?
 
-    if (new) {
-        /* We've got the connection, now create the entry and get everything set up */
-        if (address->sin_addr.s_addr == MsgGetHostIPAddress()) {
-            if ((ccode = NMAPSendCommandF(nmap->conn, "DELIVER FILE %d %s %s %s\r\n", type, from, authFrom, filename)) == -1) {
-                nmap->error = TRUE;
-            }       
-        } else {
-            if ((ccode = ConnWriteF(nmap->conn, "DELIVER STREAM %d %s %s %d\r\n", type, from, authFrom, (int)count)) == -1 ||
-                (ccode = ConnWriteFile(nmap->conn, fh)) == -1 ||
-                (ccode = ConnFlush(nmap->conn)) == -1) {
-                nmap->error = TRUE;
+	ccode = NMAPSendCommandF(nmap->conn, "WRITE /mail/%s 2 %lu\r\n", mailbox, count);
+	ccode = NMAPReadAnswer(nmap->conn, line, CONN_BUFSIZE, TRUE);
+	if (ccode != 2002) return DELIVER_TRY_LATER; // TODO: again, permanent?
 
-                return DELIVER_TRY_LATER;
-            }
-        }
-
-        ccode = NMAPReadAnswer(nmap->conn, line, CONN_BUFSIZE, TRUE);
-        
-        if (ccode != 2053) {
-            nmap->error = TRUE;
-            return DELIVER_TRY_LATER;
-        }       
-    }
-
-    ccode = NMAPRunCommandF(nmap->conn, line, CONN_BUFSIZE, "%s %s %lu\r\n", 
-                            recipient, mailbox, messageFlags);
-
-    if (ccode == 1000) {
-        return DELIVER_SUCCESS;
-    } else {
-        return atoi(line);
-    }
+	// now send the email
+	ccode = ConnWriteFile(nmap->conn, fh);
+	ccode = ConnFlush(nmap->conn);
+	ccode = NMAPReadAnswer(nmap->conn, line, CONN_BUFSIZE, TRUE);
+	
+	if (ccode == 1000) {
+		return DELIVER_SUCCESS;
+	} else {
+		return atoi(line);
+	}
 }
 
 static void 
