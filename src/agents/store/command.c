@@ -3169,21 +3169,13 @@ StoreCommandWRITE(StoreClient *client,
 	if (ccode) goto finish;
 	
 	// update new object metadata
-	newdocument.collection_guid = collection->guid;
+	newdocument.collection_guid = 0;
 	newdocument.size = tmpsize;
 	newdocument.time_created = timestamp;
 	newdocument.time_modified = timestamp;
 	newdocument.flags = addflags;
 	if (filename) strncpy(newdocument.filename, filename, MAX_FILE_NAME);
 	
-	StoreObjectFixUpFilename(collection, &newdocument);
-	
-	if (! LogicalLockGain(client, collection, LLOCK_READWRITE, "StoreCommandWRITE")) {
-		unlink(tmppath);
-		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-	}
-	
-	StoreObjectUpdateImapUID(client, &newdocument);
 	if (no_process == 0) {
 		// update metadata if we haven't been asked not to
 		StoreProcessDocument(client, &newdocument, tmppath);
@@ -3195,6 +3187,17 @@ StoreCommandWRITE(StoreClient *client,
 	unlink(tmppath);
 	
 	// save new object
+	if (! LogicalLockGain(client, collection, LLOCK_READWRITE, "StoreCommandWRITE")) {
+		unlink(path);
+		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
+	}
+	
+	// place the new document in the right collection
+	// we take the lock on the collection this late, 
+	newdocument.collection_guid = collection->guid;
+	StoreObjectFixUpFilename(collection, &newdocument);
+	StoreObjectUpdateImapUID(client, &newdocument);
+	
 	if (StoreObjectSave(client, &newdocument)) {
 		StoreObjectRemove(client, &newdocument);
 		LogicalLockRelease(client, collection, LLOCK_READWRITE, "StoreCommandWRITE");
