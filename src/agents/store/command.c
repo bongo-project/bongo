@@ -341,7 +341,7 @@ StoreCommandLoop(StoreClient *client)
                 if (ccode != TOKEN_OK) break;
                 
                 if (!XplStrCaseCmp(tokens[1], "list")) {
-                    if ((n == 1) && ParseDocument(client, tokens[2], &object) == TOKEN_OK) {
+                    if ((n == 3) && ParseDocument(client, tokens[2], &object) == TOKEN_OK) {
                         ccode = StoreObjectListACL(client, &object);
                         break;
                     } else {
@@ -349,7 +349,7 @@ StoreCommandLoop(StoreClient *client)
                         break;
                     }
                 } else {
-                     if (n < 1) {
+                     if (n < 3) {
                         ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
                      } else if (ParseDocument(client, tokens[2], &object) != TOKEN_OK) {
                         ccode = ConnWriteStr(client->conn, MSG3022BADSYNTAX);
