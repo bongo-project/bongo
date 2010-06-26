@@ -1473,6 +1473,27 @@ StoreObjectAddACL(StoreClient *client, StoreObject *object, StorePrincipalType p
 	
 	MsgSQLBeginTransaction(client->storedb);
 	
+	// check that this doesn't already exist
+	query = "SELECT count(priv) FROM accesscontrols WHERE guid = ?1 AND priv = ?2 AND principal = ?3 AND deny = ?4 AND who = ?5;";
+	
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
+	
+	MsgSQLBindInt64(&stmt, 1, object->guid);
+	MsgSQLBindInt(&stmt, 2, priv);
+	MsgSQLBindInt(&stmt, 3, principal);
+	MsgSQLBindInt(&stmt, 4, deny? 1 : 0);
+	MsgSQLBindString(&stmt, 5, who, FALSE);
+	
+	status = MsgSQLResults(client->storedb, &stmt);
+	if (status) {
+		int count = MsgSQLResultInt(&stmt, 0);
+		if (count > 0) goto done;
+	}
+	
+	MsgSQLFinalize(&stmt);
+	
+	// now insert the new ACL
 	query = "INSERT INTO accesscontrols (guid, priv, principal, deny, who) VALUES (?1, ?2, ?3, ?4, ?5);";
 	
 	ret = MsgSQLPrepare(client->storedb, query, &stmt);
@@ -1487,7 +1508,8 @@ StoreObjectAddACL(StoreClient *client, StoreObject *object, StorePrincipalType p
 	status = MsgSQLExecute(client->storedb, &stmt);
 	if (status != 0)
 		goto abort;
-	
+
+done:
 	MsgSQLFinalize(&stmt);
 	if (MsgSQLCommitTransaction(client->storedb))
 		goto abort;
