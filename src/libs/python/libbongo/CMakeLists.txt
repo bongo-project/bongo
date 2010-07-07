@@ -39,5 +39,5 @@ target_link_libraries(bootstrap
 	${PYTHON_LIBRARIES}
 )
 
-install(TARGETS libs bootstrap DESTINATION ${PYTHON_SITEPACKAGES_PATH}/libbongo/)
-install(FILES __init__.py DESTINATION ${PYTHON_SITEPACKAGES_PATH}/libbongo/)
+install(TARGETS libs bootstrap DESTINATION ${PYTHON_SITELIB_PATH}/libbongo/)
+install(FILES __init__.py DESTINATION ${PYTHON_SITELIB_PATH}/libbongo/)
