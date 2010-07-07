@@ -309,7 +309,13 @@ LoadAgentConfiguration()
 	GArray *agentlist;
 	unsigned int i;
 
-	if (! NMAPReadConfigFile("manager", &config) || (config == NULL)) {
+	for(i = 0; i < 8; i++) {
+		// give the Store seven seconds to startup
+		// Eventually this should be event-driven.
+		if (NMAPReadConfigFile("manager", &config)) break;
+		XplDelay(1000);
+	}
+	if (config == NULL) {
 		printf(_("bongo-manager: couldn't read config from store\n"));
 		return FALSE;
 	}
@@ -890,9 +896,9 @@ get_lock:
     if (!slapdOnly) {
         SetupAgentList();
         StartStore();
-        XplDelay(1000);	// hack: small delay to let store start up
         if (!LoadAgentConfiguration()) {
             printf(_("bongo-manager: Couldn't load configuration for agents\n"));
+            exit(-1); // no point continuing...
         }
         StartAgents(FALSE, FALSE);
     }
