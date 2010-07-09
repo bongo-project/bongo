@@ -3,7 +3,7 @@ add_executable(bongo-testtool
 )
 
 target_link_libraries(bongo-testtool
-	bongonmap
+	bongoconnio
 	bongomsgapi
 	bongojson
 	bongoutil

@@ -41,7 +41,7 @@ include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR}/include/)
 
 # now build our various libraries, agents, binaries.
 # DO NOT ALTER (SO)VERSION ON LIBRARIES WITHOUT ASKING!
-foreach (LIBRARY xpl streamio msgapi connio util json cal nmap)
+foreach (LIBRARY xpl streamio msgapi connio util json cal)
 	add_subdirectory (src/libs/${LIBRARY})
 	set_target_properties(bongo${LIBRARY} PROPERTIES
 	        SOVERSION 0 

@@ -1,4 +1,4 @@
-StrictCompile()
+#StrictCompile()
 
 add_library(bongoconnio SHARED
 	sockets.c
@@ -6,6 +6,7 @@ add_library(bongoconnio SHARED
 	trace.c
 	addrpool.c
 	unix-ip.c
+	nmap.c
 )
 
 target_link_libraries(bongoconnio

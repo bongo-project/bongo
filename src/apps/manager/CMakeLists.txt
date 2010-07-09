@@ -3,7 +3,7 @@ add_executable(bongo-manager
 )
 
 target_link_libraries(bongo-manager
-	bongonmap
+	bongoconnio
 	bongomsgapi
 	bongojson
 	bongoutil

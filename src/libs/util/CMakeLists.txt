@@ -12,6 +12,7 @@ add_library(bongoutil SHARED
 	quicksort.c
 	utf7mod.c
 	logging.c
+	bongoagent.c
 	bongoutil.c)
 
 target_link_libraries(bongoutil

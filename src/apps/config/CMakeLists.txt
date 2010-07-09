@@ -4,7 +4,7 @@ add_executable(bongo-config
 )
 
 target_link_libraries(bongo-config
-	bongonmap
+	bongoconnio
 	bongomsgapi
 	bongojson
 	bongoutil

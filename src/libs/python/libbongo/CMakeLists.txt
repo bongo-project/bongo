@@ -26,7 +26,6 @@ set_target_properties(libs bootstrap
 )
 
 target_link_libraries(libs
-	bongonmap
 	bongomsgapi
 	bongojson
 	bongoutil
