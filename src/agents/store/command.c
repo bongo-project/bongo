@@ -2648,7 +2648,7 @@ StoreCommandREAD(StoreClient *client, StoreObject *object,
 	
 	// check that we're allowed to read
 	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_READ);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	if (! LogicalLockGain(client, object, LLOCK_READONLY, "StoreCommandREAD"))
 		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
