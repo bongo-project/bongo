@@ -14,7 +14,7 @@ target_link_libraries(bongo-config
 )
 
 add_custom_target(default.set
-	COMMAND tar chof - --exclude .svn config hawkeye > ${CMAKE_CURRENT_BINARY_DIR}/default.set
+	COMMAND tar chof - --exclude .svn config > ${CMAKE_CURRENT_BINARY_DIR}/default.set
 	WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
 	VERBATIM
 )
