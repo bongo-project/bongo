@@ -307,13 +307,6 @@ BOOL XplIsLocalIPAddress(unsigned long Address);
 int XplGetInterfaceList(void);
 int XplDestroyInterfaceList(void);
 
-#if 0
-//TODO:  Do we need these?  They aren't used anywhere but connmgr */
-int XplIPRead(void *sktCtx, unsigned char *Buf, int Len, int socketTimeout);
-int XplIPReadSSL(void *sktCtx, unsigned char *Buf, int Len, int socketTimeout);
-int XplIPWrite(void *sktCtx, unsigned char *Buf, int Len);
-int XplIPWriteSSL(void *sktCtx, unsigned char *Buf, int Len);
-#endif
 int XplIPConnectWithTimeout(IPSOCKET soc, struct sockaddr *addr, long addrSize, long timeout);
 
 #endif /* _BONGO_CONNIO_H */
