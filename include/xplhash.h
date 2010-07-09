@@ -45,7 +45,7 @@ void XplHashWrite(xpl_hash_context *context, const void *buffer, size_t length);
 
 void XplHashFinalBytes(xpl_hash_context *context, unsigned char *buffer, size_t length);
 
-void XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, unsigned char *buffer, size_t length);
+void XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, char *buffer, size_t length);
 
 void XplRandomData(void *buffer, size_t length);
 void XplSaveRandomSeed(void);

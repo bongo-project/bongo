@@ -104,11 +104,11 @@ XplHashFinalBytes(xpl_hash_context *context, unsigned char *buffer, size_t lengt
  * \param	length	Amount of data from buffer to be written
  */
 void 
-XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, unsigned char *buffer, size_t length) 
+XplHashFinal(xpl_hash_context *context, xpl_hash_stringcase strcase, char *buffer, size_t length) 
 {
 	char format[5];
 	unsigned char *digest;
-	unsigned char *p;
+	char *p;
 	unsigned int i;
 	
 	memcpy(format, "%02X\0", 5);

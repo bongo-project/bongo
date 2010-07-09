@@ -1,4 +1,4 @@
-#StrictCompile()
+StrictCompile()
 
 add_library(bongoconnio SHARED
 	sockets.c

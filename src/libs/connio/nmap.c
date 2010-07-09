@@ -35,10 +35,13 @@
 #include <bongostore.h>
 #include <logger.h>
 
+/* prototypes */
+BOOL NMAPAuthenticate(Connection *conn, char *response, int length);
+
 struct {
     RegistrationStates state;
 
-    unsigned char access[NMAP_HASH_SIZE];
+    char access[NMAP_HASH_SIZE];
 
     bongo_ssl_context *context;
 
@@ -89,10 +92,10 @@ NMAPSendCommandF(Connection *conn, const char *format, ...)
     }
 }
 
-__inline static unsigned char *
-FindNewLineChar(unsigned char *Buffer, unsigned char *EndPtr) {
-    register unsigned char *ptr = Buffer;
-    register unsigned char *endPtr = EndPtr;
+__inline static char *
+FindNewLineChar(char *Buffer, char *EndPtr) {
+    register char *ptr = Buffer;
+    register char *endPtr = EndPtr;
 
     do {
         if (ptr < endPtr) {
@@ -110,7 +113,7 @@ FindNewLineChar(unsigned char *Buffer, unsigned char *EndPtr) {
     return(NULL);
 }
 
-__inline static unsigned char *
+__inline static char *
 FindEndOfLine(Connection *conn)
 {
     size_t count;
@@ -164,7 +167,7 @@ FindEndOfLine(Connection *conn)
 }
 
 __inline static int 
-NMAPReadDataAfterResponseCode(Connection *conn, unsigned char *response, size_t length, BOOL RemoveCRLF)
+NMAPReadDataAfterResponseCode(Connection *conn, char *response, size_t length, BOOL RemoveCRLF)
 {
     int ccode;
     int count;
@@ -223,7 +226,7 @@ NMAPReadDataAfterResponseCode(Connection *conn, unsigned char *response, size_t 
 }
 
 __inline static int 
-NMAPReadFullLine(Connection *conn, unsigned char *response, size_t length, BOOL RemoveCRLF)
+NMAPReadFullLine(Connection *conn, char *response, size_t length, BOOL RemoveCRLF)
 {
     int ccode;
     int count;
@@ -357,7 +360,7 @@ NMAPReadJustResponseCode(Connection *conn)
 
  */
 int 
-NMAPReadResponse(Connection *conn, unsigned char *response, size_t length, BOOL check)
+NMAPReadResponse(Connection *conn, char *response, size_t length, BOOL check)
 {
     if (response) {
         if (check) {
@@ -377,7 +380,7 @@ NMAPReadResponse(Connection *conn, unsigned char *response, size_t length, BOOL 
 
  */
 int 
-NMAPReadResponseLine(Connection *conn, unsigned char *response, size_t length, BOOL check)
+NMAPReadResponseLine(Connection *conn, char *response, size_t length, BOOL check)
 {
     if (response) {
         if (check) {
@@ -1310,12 +1313,12 @@ nmapfinish:
 }
                                                                                                                                                                             
 int
-NMAPReadAnswerLine(Connection *conn, unsigned char *response, size_t length, BOOL checkForResult)
+NMAPReadAnswerLine(Connection *conn, char *response, size_t length, BOOL checkForResult)
 {
     int len;
     int result = -1 ; 
     size_t count;
-    unsigned char *cur;
+    char *cur;
 
     len = ConnReadLine(conn, response, length);
     if (len > 0) {
@@ -1337,10 +1340,12 @@ NMAPReadAnswerLine(Connection *conn, unsigned char *response, size_t length, BOO
 }
 
 __inline static Connection *
-NmapConnect(unsigned char *address, struct sockaddr_in *addr, int port, TraceDestination *destination)
+NmapConnect(char *address, struct sockaddr_in *addr, int port, TraceDestination *destination)
 {
     int ccode;
     Connection *conn;
+
+    UNUSED_PARAMETER(destination);
 
     if (address || addr) {
         conn = ConnAlloc(TRUE);
@@ -1388,31 +1393,33 @@ NmapConnect(unsigned char *address, struct sockaddr_in *addr, int port, TraceDes
 }
 
 Connection *
-NMAPConnect(unsigned char *address, struct sockaddr_in *addr)
+NMAPConnect(char *address, struct sockaddr_in *addr)
 {
     return(NmapConnect(address, addr, NMAP_PORT, NULL));
 }
 
 Connection *
-NMAPConnectEx(unsigned char *address, struct sockaddr_in *addr, TraceDestination *destination)
+NMAPConnectEx(char *address, struct sockaddr_in *addr, TraceDestination *destination)
 {
     return(NmapConnect(address, addr, NMAP_PORT, destination));
 }
 
 Connection *
-NMAPConnectQueue(unsigned char *address, struct sockaddr_in *addr)
+NMAPConnectQueue(char *address, struct sockaddr_in *addr)
 {
     return(NmapConnect(address, addr, BONGO_QUEUE_PORT, NULL));    
 }
 
 Connection *
-NMAPConnectQueueEx(unsigned char *address, struct sockaddr_in *addr, TraceDestination *destination)
+NMAPConnectQueueEx(char *address, struct sockaddr_in *addr, TraceDestination *destination)
 {
+    UNUSED_PARAMETER(destination);
+
     return(NmapConnect(address, addr, BONGO_QUEUE_PORT, NULL));    
 }
                                                                           
 BOOL 
-NMAPEncrypt(Connection *conn, unsigned char *response, int length, BOOL force)
+NMAPEncrypt(Connection *conn, char *response, int length, BOOL force)
 {
     int ccode;
     BOOL result;
@@ -1464,7 +1471,7 @@ NMAPEncrypt(Connection *conn, unsigned char *response, int length, BOOL force)
 
 int
 NMAPAuthenticateWithCookie(Connection *conn, const char *user, const char *cookie,
-                           unsigned char *buffer, int length)
+                           char *buffer, int length)
 {
     int ccode;
 
@@ -1511,7 +1518,7 @@ NMAPAuthenticateThenUserAndStore(Connection *conn, unsigned char *user)
  * \return			Whether or not we succeeded
  */
 BOOL
-NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length)
+NMAPAuthenticateToStore(Connection *conn, char *response, int length)
 {
 	return NMAPAuthenticate(conn, response, length);
 }
@@ -1524,13 +1531,13 @@ NMAPAuthenticateToStore(Connection *conn, unsigned char *response, int length)
  * \return			Whether or not we succeeded
  */
 BOOL
-NMAPAuthenticateToQueue(Connection *conn, unsigned char *response, int length)
+NMAPAuthenticateToQueue(Connection *conn, char *response, int length)
 {
 	return NMAPAuthenticate(conn, response, length);
 }
 
 BOOL 
-NMAPAuthenticate(Connection *conn, unsigned char *response, int length)
+NMAPAuthenticate(Connection *conn, char *response, int length)
 {
     int ccode;
 
@@ -1542,9 +1549,9 @@ NMAPAuthenticate(Connection *conn, unsigned char *response, int length)
         }
 
         case 4242: {
-            unsigned char    	*ptr;
-            unsigned char    	*salt;
-            unsigned char    	message[XPLHASH_MD5_LENGTH];
+            char    	*ptr;
+            char    	*salt;
+            char    	message[XPLHASH_MD5_LENGTH];
             xpl_hash_context	ctx;
 
             ptr = strchr(response, '<');
@@ -1601,7 +1608,7 @@ RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPo
 {
     unsigned long j;
     Connection *conn = NULL;
-    unsigned char response[CONN_BUFSIZE + 1];
+    char response[CONN_BUFSIZE + 1];
 
     NMAPLibrary.state = REGISTRATION_CONNECTING;
 
@@ -1639,7 +1646,7 @@ RegisterWithQueueServer(char *queueServerIpAddress, unsigned short queueServerPo
 }
 
 RegistrationStates 
-QueueRegister(const unsigned char *queueAgentCn, unsigned long queueNumber, unsigned short queueAgentPort)
+QueueRegister(const char *queueAgentCn, unsigned long queueNumber, unsigned short queueAgentPort)
 {
     if (!queueAgentCn) {
         NMAPLibrary.state = REGISTRATION_FAILED;
