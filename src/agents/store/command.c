@@ -1469,7 +1469,7 @@ StoreCommandCALENDARS(StoreClient *client, unsigned long mask,
 	
 	StoreObjectFind(client, STORE_CALENDARS_GUID, &calendar_collection);
 	ccode = StoreObjectCheckAuthorization(client, &calendar_collection, STORE_PRIV_LIST);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	return StoreObjectIterCollectionContents(client, &calendar_collection, -1, 
 		-1, 0, 0, props, propcount, "= nmap.type 6", NULL, FALSE);
@@ -1812,7 +1812,7 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	
 	// check we have the required permissions.
 	ccode = StoreObjectCheckAuthorization(client, &collection, STORE_PRIV_UNBIND);
-	if (ccode) return ConnWriteStr(client->conn, MSG5005DBLIBERR); // TODO : less generic errors
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	// grab a read/write lock on the containing collection
 	if (! LogicalLockGain(client, &collection, LLOCK_READWRITE, "StoreCommandDELETE")) {
@@ -2133,7 +2133,8 @@ StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int 
 	
 	if (mode == STORE_FLAG_SHOW) {
 		ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_READ_PROPS);
-		if (ccode) return ccode;
+		if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+		
 		return ConnWriteF(client->conn, "1000 %u %u\r\n", object->flags, object->flags);
 	}
 	
@@ -2144,7 +2145,7 @@ StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int 
 	if (mode == STORE_FLAG_REPLACE)	object->flags = change;
 	
 	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_PROPS);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	// FIXME: need to propogate changes on mail documents to conversations?
 	// if so, this may also change our locking requirements since we'd also
@@ -2310,7 +2311,7 @@ StoreCommandLINKS(StoreClient *client, BOOL reverse, StoreObject *document)
 	
 	// FIXME: does this auth check make sense?
 	ccode = StoreObjectCheckAuthorization(client, document, STORE_PRIV_READ);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	if (! LogicalLockGain(client, document, LLOCK_READONLY, "StoreCommandLINKS"))
 		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
@@ -2389,7 +2390,7 @@ StoreCommandMIME(StoreClient *client, StoreObject *document)
 	MimeReport *report = NULL;
     
 	ccode = StoreObjectCheckAuthorization(client, document, STORE_PRIV_READ);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	if (STORE_IS_FOLDER(document->type)) return ConnWriteStr(client->conn, MSG3015BADDOCTYPE);
 
@@ -2457,9 +2458,15 @@ StoreCommandMOVE(StoreClient *client, StoreObject *object,
 	
 	// check we have the rights to do this move
 	ccode = StoreObjectCheckAuthorization(client, &source_collection, STORE_PRIV_UNBIND);
-	if (ccode) goto finish;
+	if (ccode) {
+		ccode = ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+		goto finish;
+	}
 	ccode = StoreObjectCheckAuthorization(client, destination_collection, STORE_PRIV_BIND);
-	if (ccode) goto finish;
+	if (ccode) {
+		ccode = ConnWriteStr(client->conn, MSG4240NOPERMISSION);
+		goto finish;
+	}
 	
 	// grab the locks that we need to do the move
 	// FIXME: both RW locks, real chance of deadlock here.
@@ -2597,7 +2604,7 @@ StoreCommandPROPSET(StoreClient *client,
 	prop->value[prop->valueLen] = 0;
 	
 	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_PROPS);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	if (prop->type == STORE_PROP_EVENT_ALARM)
 		// FIXME: this did cache alarms in a separate DB.
@@ -2697,7 +2704,7 @@ StoreCommandRENAME(StoreClient *client, StoreObject *collection,
 	CHECK_NOT_READONLY(client)
 	
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	ccode = StoreObjectFind(client, collection->collection_guid, &parent_collection);
 	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
@@ -2804,7 +2811,7 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 	}
 	
 	ccode = StoreObjectCheckAuthorization(client, object, STORE_PRIV_WRITE_CONTENT);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	// write the waiting data to a temporary file
 	MaildirTempDocument(client, object->collection_guid, tmppath, sizeof(tmppath));
@@ -2944,7 +2951,7 @@ StoreCommandREMOVE(StoreClient *client, StoreObject *collection)
 		return ConnWriteStr(client->conn, MSG4231USEPURGE);
 	
 	ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_UNBIND);
-	if (ccode) return ccode;
+	if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 	
 	ccode = StoreObjectFind(client, collection->collection_guid, &parent_collection);
 	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
@@ -3110,9 +3117,7 @@ StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags)
 		flags |= STORE_WATCH_EVENT_COLL_RENAMED;
 		
 		ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_READ);
-		if (ccode) {
-			return ccode;
-		}
+		if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 		
 		if (StoreWatcherAdd(client, collection->guid))
 			return ConnWriteStr(client->conn, MSG5004INTERNALERR);
