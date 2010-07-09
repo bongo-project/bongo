@@ -4,6 +4,7 @@ import logging, os, pwd, sys
 
 # add the development directories or the current prefix to PYTHONPATH
 sys.path.insert(0, "${PYTHON_SITEPACKAGES_PATH}")
+sys.path.insert(0, "${PYTHON_SITELIB_PATH}")
 
 #binpath = os.path.abspath(os.path.dirname(sys.argv[0]))
 #if binpath.endswith("bin"):
