@@ -12,7 +12,6 @@ target_link_libraries(bongoqueue
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 install(TARGETS bongoqueue DESTINATION ${SBIN_INSTALL_DIR})

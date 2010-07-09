@@ -8,7 +8,6 @@ target_link_libraries(bongoavirus
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 install(TARGETS bongoavirus DESTINATION ${SBIN_INSTALL_DIR})

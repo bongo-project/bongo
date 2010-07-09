@@ -10,7 +10,6 @@ target_link_libraries(bongosmtp
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 add_executable(bongosmtpc
@@ -23,7 +22,6 @@ target_link_libraries(bongosmtpc
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 install(TARGETS bongosmtp DESTINATION ${SBIN_INSTALL_DIR})

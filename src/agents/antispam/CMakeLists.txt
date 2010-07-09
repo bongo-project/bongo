@@ -11,7 +11,7 @@ target_link_libraries(bongoantispam
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
+
 
 install(TARGETS bongoantispam DESTINATION ${SBIN_INSTALL_DIR})

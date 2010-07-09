@@ -17,7 +17,6 @@ target_link_libraries(bongoimap
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 install(TARGETS bongoimap DESTINATION ${SBIN_INSTALL_DIR})

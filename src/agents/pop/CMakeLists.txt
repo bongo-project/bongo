@@ -8,7 +8,6 @@ target_link_libraries(bongopop3
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 install(TARGETS bongopop3 DESTINATION ${SBIN_INSTALL_DIR})

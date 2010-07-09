@@ -9,7 +9,6 @@ target_link_libraries(bongorules
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 )
 
 install(TARGETS bongorules DESTINATION ${SBIN_INSTALL_DIR})

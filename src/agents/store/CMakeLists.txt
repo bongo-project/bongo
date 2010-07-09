@@ -34,7 +34,6 @@ target_link_libraries(bongostore
 	bongoutil
 	bongojson
 	bongomsgapi
-	bongologging
 	${SQLITE_LIBRARIES}
 	${GLIB2_LIBRARIES}
 	${GCRYPT_LIBRARIES}

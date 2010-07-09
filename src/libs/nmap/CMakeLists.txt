@@ -10,7 +10,6 @@ target_link_libraries(bongonmap
 	bongoconnio
 	bongoxpl
 	bongojson
-	bongologging
 	bongostreamio
 	${GNUTLS_LIBRARIES}
 	${GCRYPT_LIBRARIES}
