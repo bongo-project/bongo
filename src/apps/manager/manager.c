@@ -21,7 +21,6 @@
 #define _(x) gettext(x)
 
 #define LOCKFILE            XPL_DEFAULT_WORK_DIR "/bongomanager.pid"
-#define SLAPD_LOCKFILE      XPL_DEFAULT_WORK_DIR "/bongo-slapd.pid"
 
 /* Don't restart agents if they crash n times within m seconds of each other */
 #define MAX_CRASHES 3
@@ -501,10 +500,7 @@ ShowHelp(void)
            "\t-k: Keep agents alive, restarting them after crashes.\n"
            "\t-f: Force start, replacing " LOCKFILE ".\n"
            "\t-s: Shut down an already-running bongo-manager.\n"
-           "\t-r: Ask a running bongo-manager to restart stopped agents.\n"
-           "Managed-slapd options:\n"
-           "\t-l: Only start the slapd server.\n"
-           "\t-e: Kill existing slapd server.\n")
+           "\t-r: Ask a running bongo-manager to restart stopped agents.\n")
         );
     
 }
@@ -515,15 +511,13 @@ ParseArgs(int argc, char **argv,
           BOOL *force, 
           BOOL *keepAlive,
           BOOL *shutdown,
-          BOOL *reload,
-          BOOL *slapdOnly,
-          BOOL *killExistingSlapd)
+          BOOL *reload)
 {
     int arg;
     
-    *daemonize = *force = *keepAlive = *shutdown = *reload = *slapdOnly = *killExistingSlapd = FALSE;
+    *daemonize = *force = *keepAlive = *shutdown = *reload = FALSE;
 
-    while ((arg = getopt(argc, argv, "dfksrhle")) != -1) {
+    while ((arg = getopt(argc, argv, "dfksrh")) != -1) {
         switch(arg) {
         case 'd':
             *daemonize = TRUE;
@@ -540,162 +534,23 @@ ParseArgs(int argc, char **argv,
         case 'r' :
             *reload = TRUE;
             break;
-        case 'l' :
-            *slapdOnly = TRUE;
-            break;
-        case 'e' :
-            *killExistingSlapd = TRUE;
-            break;
         case 'h' :
         case '?' :
             return FALSE;
         }    
     }
 
-    if (*shutdown && (*daemonize || *force || *reload || *keepAlive || *slapdOnly || *killExistingSlapd)) {
+    if (*shutdown && (*daemonize || *force || *reload || *keepAlive)) {
         fprintf(stderr, _("%s: -s cannot be supplied with other options.\n"), argv[0]);
         return FALSE;
     }
 
-    if (*reload && (*daemonize || *force || *keepAlive || *slapdOnly || *killExistingSlapd)) {
+    if (*reload && (*daemonize || *force || *keepAlive)) {
         fprintf(stderr, _("%s: -r cannot be supplied with other options.\n"), argv[0]);
-        return FALSE;
-    }   
-
-    if (*slapdOnly && (*keepAlive)) {
-        fprintf(stderr, _("%s: -l cannot be supplied with other options.\n"), argv[0]);
         return FALSE;
     }
 
     return TRUE;
-}
-
-static int
-StartSlapd(BOOL killExisting)
-{
-    int err = 0;
-
-    pid_t pid = 0;
-
-    /* Get rid of an existing managed-slapd processs */
-    pid = ReadPid(SLAPD_LOCKFILE);
-    
-    if (pid > 0) {
-        if (kill(pid, 0) == 0 || errno != ESRCH) {
-            /* Existing process */
-            if (killExisting) {
-                if (kill(pid, SIGKILL) == 0) {
-                    XplDelay(1000);
-                    fprintf(stderr, _("bongo-manager: killed existing managed-slapd process.\n"));
-                } else if (errno != ESRCH) {
-                    fprintf(stderr, _("bongo-manager: could not kill existing managed-slapd process.\n"));
-                    return 1;
-                }
-            } else {
-                fprintf(stderr, _("bongo-manager: managed-slapd appears to be running as pid %ld\n"), (long int)pid);
-                fprintf(stderr, _("bongo-manager: if this is definitely the bongo slapd, you can run with -e to kill it\n"));
-                return 1;
-            }
-        }
-    }
-
-    /* read config */
-#if 0
-    if (!MsgGetConfigProperty((unsigned char *) buf,
-	   (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD_PORT)) {
-        fprintf(stderr, _("bongo-manager: error reading managed slapd port from config file.\n"));
-	return 1;
-    }
-
-    port = atoi(buf);
-
-    if (!MsgGetConfigProperty((unsigned char *) buf,
-	   (unsigned char *) MSGSRV_CONFIG_PROP_MANAGED_SLAPD_PATH)) {
-	fprintf(stderr, _("Error reading managed slapd path from config file.\n"));
-	return 1;
-    }
-
-    snprintf(url, 100, "ldap://%s:%d", host, port);
-
-    printf(_("bongo-manager: starting managed slapd...\n"));
-
-    pid = fork();
-
-    if (!pid) {
-        /* We would pass the -u argument to slapd to set its uid here,
-           but at this point in bongo-manager we've already dropped
-           privs to BONGO_USER. */
-        execl(buf, buf,
-              "-f", XPL_DEFAULT_CONF_DIR "/bongo-slapd.conf",
-              "-h", url,
-              "-n", "bongo-slapd",
-              "-s", "0",
-              NULL);
-
-        exit(1);
-    }
-
-    waitpid(pid, &status, 0);
-
-    if (!WIFEXITED(status)) {
-        /* slapd process didn't exit normally */
-        return 1;
-    } else if (WEXITSTATUS(status)) {
-        /* slapd process exited with an error */
-        return 1;
-    }
-
-    /* wait until the slapd process is reachable */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sockfd == -1) {
-        fprintf(stderr, _("Error creating socket: %s\n"), strerror(errno));
-        return 1;
-    }
-
-    host_info = gethostbyname(host);
-
-    memcpy(&host_addr, host_info->h_addr, host_info->h_length);
-    serv_addr.sin_addr.s_addr = host_addr;
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
-
-    while (1) {
-        err= connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-        if (err == -1) {
-            int error = errno;
-
-            if (error == ECONNREFUSED) {
-                sleep(1);
-                continue;
-            } else {
-                fprintf(stderr, _("bongo-manager: error connecting to slapd: %s\n"), strerror(error));
-                return 1;
-            }
-        }
-
-        SlapdPID = ReadPid(SLAPD_LOCKFILE);
-        printf(_("bongo-manager: slapd started\n"));
-        break;
-    }
-    close(sockfd);
-#endif
-    return err;
-}
-
-static int
-StopSlapd(void)
-{
-    int err = 0;
-
-    if (kill(SlapdPID, SIGTERM) != 0) {
-        unlink(SLAPD_LOCKFILE);
-        err = 0;
-    } else {
-        err = 1;
-    }
-
-    return err;
 }
 
 static void
@@ -766,8 +621,6 @@ main(int argc, char **argv)
     BOOL keepAlive;
     BOOL shutdown;
     BOOL reload;
-    BOOL slapdOnly;
-    BOOL killExistingSlapd;
     BOOL droppedPrivs = FALSE;
     BOOL unlockFile = FALSE;
     BOOL startLdap = FALSE;
@@ -784,7 +637,7 @@ main(int argc, char **argv)
         droppedPrivs = TRUE;
     }
 
-    if (!ParseArgs(argc, argv, &daemonize, &force, &keepAlive, &shutdown, &reload, &slapdOnly, &killExistingSlapd)) {
+    if (!ParseArgs(argc, argv, &daemonize, &force, &keepAlive, &shutdown, &reload)) {
         ShowHelp();
         exit(1);
     }
@@ -866,103 +719,70 @@ get_lock:
 
     ConnStartup(DEFAULT_CONNECTION_TIMEOUT);
 
-    // set startLdap here if we want to start a managed slapd instance
-    // startLdap = atoi(buf);
-
-    if (startLdap) {
-        int err;
-
-        err = StartSlapd(killExistingSlapd);
-
-        if (err != 0) {
-            fprintf(stderr, _("bongo-manager: managed slapd process failed to start.\n"));
-            goto err_handler;
-        }
-    } else if (slapdOnly) {
-        fprintf(stderr, _("bongo-manager: -l only works with a managed-slapd database.\n"));
-        goto err_handler;
-    }
-
-    if (!slapdOnly) {
 	MsgInit();
 	NMAPInitialize();
-    }
 
     signal(SIGTERM, SignalHandler);
     signal(SIGINT, SignalHandler);
     signal(SIGCHLD, SignalHandler);
     signal(SIGUSR1, SignalHandler);
-    
-    if (!slapdOnly) {
-        SetupAgentList();
-        StartStore();
-        if (!LoadAgentConfiguration()) {
-            printf(_("bongo-manager: Couldn't load configuration for agents\n"));
-            exit(-1); // no point continuing...
-        }
-        StartAgents(FALSE, FALSE);
-    }
 
-    if (daemonize) {
-        SignalParent();
-    }
+	SetupAgentList();
+	StartStore();
+	if (!LoadAgentConfiguration()) {
+		printf(_("bongo-manager: Couldn't load configuration for agents\n"));
+		exit(-1); // no point continuing...
+	}
+	StartAgents(FALSE, FALSE);
 
-    while(!Exiting) {
-        XplDelay(10000); // existing hack : startup again?
-        if (!slapdOnly) {
-            Reap();
-            
-            if (ReloadNow) {
-                ResetCrashiness();
-            }
-            
-            if ((ReloadNow || keepAlive) && !Exiting) {
-                StartAgents(!ReloadNow, TRUE);
-            }
-            ReloadNow = FALSE;
-        }
-    }
+	if (daemonize) {
+		SignalParent();
+	}
 
-    printf(_("bongo-manager: Shutting down...\n"));
+	while(!Exiting) {
+		XplDelay(10000); // existing hack : startup again?
+		Reap();
 
-    if (!slapdOnly) {
-        numWaiting = lastNumWaiting = 0;
-        
-        forceShutdownTime = time(NULL) + 10;
-        
-        while ((numWaiting = AgentsStillRunning()) > 0) {
-            lastNumWaiting = numWaiting;
-            
-            if (forceShutdownTime < time(NULL)) {
-                fprintf(stderr, "bongo-manager: '");
-                BlameAgents();
-                fprintf(stderr, _("' stubbornly refusing to die, insisting.\n"));
-                killpg(LeaderPID, SIGKILL);
-                forceShutdownTime = time(NULL) + 5;
-            }
-            
-            XplDelay(500);
-            
-            Reap();
-        }
-    }
-    
-    Unlock(LOCKFILE);
-    
-    if (SlapdPID > 0) {
-        StopSlapd();
-    }    
+		if (ReloadNow) {
+			ResetCrashiness();
+		}
 
-    printf(_("bongo-manager: shutdown complete.\n"));
+		if ((ReloadNow || keepAlive) && !Exiting) {
+			StartAgents(!ReloadNow, TRUE);
+		}
+		ReloadNow = FALSE;
+	}
 
-    return 0;
+	printf(_("bongo-manager: Shutting down...\n"));
+
+	numWaiting = lastNumWaiting = 0;
+	
+	forceShutdownTime = time(NULL) + 10;
+	
+	while ((numWaiting = AgentsStillRunning()) > 0) {
+		lastNumWaiting = numWaiting;
+		
+		if (forceShutdownTime < time(NULL)) {
+			fprintf(stderr, "bongo-manager: '");
+			BlameAgents();
+			fprintf(stderr, _("' stubbornly refusing to die, insisting.\n"));
+			killpg(LeaderPID, SIGKILL);
+			forceShutdownTime = time(NULL) + 5;
+		}
+		
+		XplDelay(500);
+		
+		Reap();
+	}
+
+	Unlock(LOCKFILE);
+
+	printf(_("bongo-manager: shutdown complete.\n"));
+
+	return 0;
 
 err_handler:
-    if (SlapdPID > 0) {
-        StopSlapd();
-    }
-    if (unlockFile) {
-        Unlock(LOCKFILE);
-    }
-    exit(1);
+	if (unlockFile) Unlock(LOCKFILE);
+
+	exit(1);
 }
