@@ -613,119 +613,113 @@ SignalParent()
 int
 main(int argc, char **argv)
 {
-    int numWaiting;
-    int lastNumWaiting;
-    int forceShutdownTime;
-    BOOL daemonize;
-    BOOL force;
-    BOOL keepAlive;
-    BOOL shutdown;
-    BOOL reload;
-    BOOL droppedPrivs = FALSE;
-    BOOL unlockFile = FALSE;
-    BOOL startLdap = FALSE;
+	int numWaiting;
+	int lastNumWaiting;
+	int forceShutdownTime;
+	BOOL daemonize;
+	BOOL force;
+	BOOL keepAlive;
+	BOOL shutdown;
+	BOOL reload;
+	BOOL unlockFile = FALSE;
+	BOOL startLdap = FALSE;
 
-    XplInit();
+	XplInit();
 
-    XplSaveRandomSeed();	/// is this appropriate?
+	XplSaveRandomSeed();	/// is this appropriate?
 
-    if (getuid() == 0) {
-        if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
-            fprintf(stderr, _("bongo-manager: could not drop to unprivileged user '%s'\n"), MsgGetUnprivilegedUser());
-            exit(1);
-        }
-        droppedPrivs = TRUE;
-    }
+	if (getuid() == 0) {
+		if (XplSetEffectiveUser(MsgGetUnprivilegedUser()) < 0) {
+			fprintf(stderr, _("bongo-manager: could not drop to unprivileged user '%s'\n"), MsgGetUnprivilegedUser());
+			exit(1);
+		}
+	} else {
+		fprintf(stderr, _("bongo-manager: must be run by root\n"));
+		exit(1);
+	}
 
-    if (!ParseArgs(argc, argv, &daemonize, &force, &keepAlive, &shutdown, &reload)) {
-        ShowHelp();
-        exit(1);
-    }
+	if (!ParseArgs(argc, argv, &daemonize, &force, &keepAlive, &shutdown, &reload)) {
+		ShowHelp();
+		exit(1);
+	}
 
-    if (!droppedPrivs) {
-        fprintf(stderr, _("bongo-manager: must be run by root\n"));
-        exit(1);
-    }
+	if (reload) {
+		pid_t pid = ReadPid(LOCKFILE);
 
-    if (reload) {
-        pid_t pid = ReadPid(LOCKFILE);
+		if (pid <= 0) {
+			fprintf(stderr, _("bongo-manager: could not open pid file '%s'\n"), LOCKFILE);
+			exit(1);
+		}
 
-        if (pid <= 0) {
-            fprintf(stderr, _("bongo-manager: could not open pid file '%s'\n"), LOCKFILE);
-            exit(1);
-        }
+		if (kill(pid, SIGUSR1) == -1) {
+			if (errno == ESRCH) {
+				fprintf (stderr, _("bongo-manager: bongo-manager does not appear to be running.\n"));
+			} else {
+				fprintf (stderr, _("bongo-manager: unable to reload services: %s\n"), strerror(errno));
+			}
+			exit(1);
+		}
+		exit(0);
+	}
 
-        if (kill(pid, SIGUSR1) == -1) {
-            if (errno == ESRCH) {
-                fprintf (stderr, _("bongo-manager: bongo-manager does not appear to be running.\n"));
-            } else {
-                fprintf (stderr, _("bongo-manager: unable to reload services: %s\n"), strerror(errno));
-            }
-            exit(1);
-        }
-        exit(0);
-    }
+	if (shutdown) {
+		pid_t pid = ReadPid(LOCKFILE);
+		if (pid <= 0) {
+			fprintf(stderr, _("bongo-manager: could not open pid file '%s'\n"), LOCKFILE);
+			exit(1);
+		}
 
-    if (shutdown) {
-        pid_t pid = ReadPid(LOCKFILE);
-        if (pid <= 0) {
-            fprintf(stderr, _("bongo-manager: could not open pid file '%s'\n"), LOCKFILE);
-            exit(1);
-        }
+		if (kill(pid, SIGTERM) == -1) {
+			if (errno == ESRCH) {
+				fprintf (stderr, _("bongo-manager: bongo-manager does not appear to be running.\n"));
+			} else {
+				fprintf (stderr, _("bongo-manager: unable to shut down services: %s\n"), strerror(errno));
+			}
+			exit(1);
+		}
 
-        if (kill(pid, SIGTERM) == -1) {
-            if (errno == ESRCH) {
-                fprintf (stderr, _("bongo-manager: bongo-manager does not appear to be running.\n"));
-            } else {
-                fprintf (stderr, _("bongo-manager: unable to shut down services: %s\n"), strerror(errno));
-            }
-            exit(1);
-        }
+		WaitOnPidFile();
+		exit(0);
+	}
 
-        WaitOnPidFile();
-        exit(0);
-    }
-
-    if (daemonize) {
-        if (Daemonize()) {
-            exit(1);
-        }
-    }
+	if (daemonize && Demonize()) {
+		exit(1);
+	}
 
 get_lock:
-    if (Lock(force) == -1) {
-        if (errno == EEXIST) {
-            pid_t pid = ReadPid(LOCKFILE);
-            if (kill(pid, 0) != -1 || errno != ESRCH) {
-                fprintf(stderr, _("bongo-manager: another bongo-manager process appears to be running.\n"));
-                fprintf(stderr, _("bongo-manager: run with -s to stop an existing process, or -f to ignore the existing pidfile.\n"));
-            } else if (!force) {
-                fprintf(stderr, _("bongo-manager: removing stale lock file in %s.\n"), LOCKFILE);
-                force = TRUE;
-                goto get_lock;
-            } else {
-                fprintf (stderr, _("bongo-manager: could not remove stale lock file in %s.\n"), LOCKFILE);
-            }
-        } else if (errno == EPERM) {
-            fprintf(stderr, _("bongo-manager: %s user does not have permission to create a lock file in %s\n"),
-                   MsgGetUnprivilegedUser(), XPL_DEFAULT_WORK_DIR);
-        } else {
-            fprintf(stderr, _("bongo-manager: could not create lock file in %s : %s\n"), XPL_DEFAULT_WORK_DIR, strerror(errno));
-        }
+	if (Lock(force) == -1) {
+		if (errno == EEXIST) {
+			pid_t pid = ReadPid(LOCKFILE);
+			if (kill(pid, 0) != -1 || errno != ESRCH) {
+				fprintf(stderr, _("bongo-manager: another bongo-manager process appears to be running.\n"));
+				fprintf(stderr, _("bongo-manager: run with -s to stop an existing process, or -f to ignore the existing pidfile.\n"));
+			} else if (!force) {
+				fprintf(stderr, _("bongo-manager: removing stale lock file in %s.\n"), LOCKFILE);
+				force = TRUE;
+				goto get_lock;
+			} else {
+				fprintf (stderr, _("bongo-manager: could not remove stale lock file in %s.\n"), LOCKFILE);
+			}
+		} else if (errno == EPERM) {
+			fprintf(stderr, _("bongo-manager: %s user does not have permission to create a lock file in %s\n"),
+				   MsgGetUnprivilegedUser(), XPL_DEFAULT_WORK_DIR);
+		} else {
+			fprintf(stderr, _("bongo-manager: could not create lock file in %s : %s\n"), XPL_DEFAULT_WORK_DIR, strerror(errno));
+		}
 
-        goto err_handler;
-    }
-    unlockFile = TRUE;
+		goto err_handler;
+	}
+	unlockFile = TRUE;
 
-    ConnStartup(DEFAULT_CONNECTION_TIMEOUT);
+	ConnStartup(DEFAULT_CONNECTION_TIMEOUT);
 
 	MsgInit();
 	NMAPInitialize();
 
-    signal(SIGTERM, SignalHandler);
-    signal(SIGINT, SignalHandler);
-    signal(SIGCHLD, SignalHandler);
-    signal(SIGUSR1, SignalHandler);
+	signal(SIGTERM, SignalHandler);
+	signal(SIGINT, SignalHandler);
+	signal(SIGCHLD, SignalHandler);
+	signal(SIGUSR1, SignalHandler);
 
 	SetupAgentList();
 	StartStore();
