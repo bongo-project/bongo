@@ -1822,6 +1822,8 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	switch(object->type) {
 	case STORE_DOCTYPE_MAIL:
 		// check to see if we can remove this document from a conversation
+		//if (StoreObjectUnlinkFromConversation(client, object))
+		//	return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 		break;
 	case STORE_DOCTYPE_CALENDAR:
 		// do we want to remove its events also?
@@ -1830,7 +1832,8 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 		break;
 	}
 	
-	// TODO: check to see if we can unlink other documents from this document
+	// Unlink other documents from this document
+	StoreObjectUnlinkAll(client, object);
 	
 	// Remove the document from the store
 	StoreObjectRemove(client, object);

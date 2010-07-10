@@ -1882,6 +1882,137 @@ StoreObjectUnlink(StoreClient *client, StoreObject *document, StoreObject *relat
 }
 
 /**
+ * Unlink all relationships to this store document.
+ * 
+ * \param	client	Store client we're operating for
+ * \param	object	Store object we want to remove relationships from
+ * \return	0 if successful, -1 otherwise
+ */
+int
+StoreObjectUnlinkAll(StoreClient *client, StoreObject *object)
+{
+	MsgSQLStatement stmt;
+	MsgSQLStatement *ret;
+	char *query;
+	int status;
+	
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+	
+	MsgSQLBeginTransaction(client->storedb);
+	
+	query = "DELETE FROM links WHERE doc_guid=?1 OR related_guid=?1;";
+	
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
+	
+	MsgSQLBindInt64(&stmt, 1, object->guid);
+	
+	status = MsgSQLExecute(client->storedb, &stmt);
+	if (status != 0)
+		goto abort;
+	
+	MsgSQLFinalize(&stmt);
+	if (MsgSQLCommitTransaction(client->storedb))
+		goto abort;
+	
+	return 0;
+	
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(client->storedb);
+	return -1;
+}
+
+
+/**
+ * Remove an email from a conversation. If the email is the last one
+ * in the conversation, we remove the conversation too.
+ * 
+ * \param	client	Store client we're operating for
+ * \param	mail	Store mail object we're removing information for
+ * \return	0 if successful, -1 otherwise
+ */
+int
+StoreObjectUnlinkFromConversation(StoreClient *client, StoreObject *mail)
+{
+	// only attempt this if it is an email
+	if (mail->type != 2) return 0;
+	
+	MsgSQLStatement stmt;
+	MsgSQLStatement *ret;
+	char *query;
+	int status;
+	uint64_t conversation_guid = 0;
+	
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+	MsgSQLBeginTransaction(client->storedb);
+	
+	// find the mail conversation for this object
+	query = "SELECT so.guid FROM links l LEFT JOIN storeobject so ON l.doc_guid = so.guid WHERE l.related_guid = ?1 AND so.collection_guid = ?2 AND so.type = 5;";
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
+	
+	MsgSQLBindInt64(&stmt, 1, mail->guid);
+	MsgSQLBindInt64(&stmt, 2, STORE_CONVERSATIONS_GUID);
+	
+	// this assumes only one convo per mail. Should be ok..
+	status = MsgSQLResults(client->storedb, &stmt);
+	if (status > 0) {
+		conversation_guid = MsgSQLResultInt64(&stmt, 0);
+	}
+	MsgSQLFinalize(&stmt);
+	
+	// unlink the mail from the conversation
+	// FIXME - refactor this code and StoreObjectUnlinkByGuids()
+	// We can't use the latter directly atm because of transactions.
+	query = "DELETE FROM links WHERE doc_guid=?1 AND related_guid=?2;";
+	
+	ret = MsgSQLPrepare(client->storedb, query, &stmt);
+	if (ret == NULL) goto abort;
+	
+	MsgSQLBindInt64(&stmt, 1, conversation_guid);
+	MsgSQLBindInt64(&stmt, 2, mail->guid);
+	
+	status = MsgSQLExecute(client->storedb, &stmt);
+	if (status != 0)
+		goto abort;
+	
+	// find the number of other mails attached to this conversation
+	if (conversation_guid) {
+		query = "SELECT count(l.related_guid) FROM links l WHERE l.doc_guid = ?1;";
+		ret = MsgSQLPrepare(client->storedb, query, &stmt);
+		if (ret == NULL) goto abort;
+		
+		MsgSQLBindInt64(&stmt, 1, conversation_guid);
+		
+		status = MsgSQLResults(client->storedb, &stmt);
+		int related = 0;
+		if (status > 0) {
+			related = MsgSQLResultInt(&stmt, 0);
+		}
+		MsgSQLFinalize(&stmt);
+		
+		if (related == 0) {
+			// conversation now empty, so we can remove it
+			StoreObject conversation;
+			StoreObjectFind(client, conversation_guid, &conversation);
+			StoreObjectRemove(client, &conversation);
+		}
+	}
+	
+	if (MsgSQLCommitTransaction(client->storedb))
+		goto abort;
+	
+	return 0;
+	
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(client->storedb);
+	return -1;
+}
+
+
+/**
  * Unlink two store objects. See StoreObjectUnlink().
  * 
  * \param	client	Store client we're operating for

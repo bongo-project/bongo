@@ -83,7 +83,10 @@ int StoreObjectRepair(StoreClient *client, StoreObject *object);
 int StoreObjectCheckAuthorization(StoreClient *client, StoreObject *object, int prop);
 int StoreObjectLink(StoreClient *client, StoreObject *document, StoreObject *related);
 int StoreObjectLinkByGuids(StoreClient *client, uint64_t document, uint64_t related);
+
 int StoreObjectUnlink(StoreClient *client, StoreObject *document, StoreObject *related);
+int StoreObjectUnlinkAll(StoreClient *client, StoreObject *object);
+int StoreObjectUnlinkFromConversation(StoreClient *client, StoreObject *mail);
 int StoreObjectUnlinkByGuids(StoreClient *client, uint64_t document, uint64_t related);
 
 int StoreObjectAddACL(StoreClient *client, StoreObject *object, StorePrincipalType principal, StorePrivilege priv,
