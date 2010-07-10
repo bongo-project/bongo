@@ -493,7 +493,7 @@ LoadIDList(POP3Client *client)
     int ccode;
     int result;
     unsigned long allocCount;
-    unsigned int  flags;
+    unsigned int  flags, type;
     unsigned long size;
     uint64_t      guid;
     MessageInformation *tmpList;
@@ -540,13 +540,13 @@ LoadIDList(POP3Client *client)
                     }
                 }
 
-                result = sscanf(client->buffer, "%*u %llx %*u %u %*x %*u %lu %*s", &guid, &flags, &size);
-                if(result != 3)
+                result = sscanf(client->buffer, "%*u %llx %u %u %*x %*u %lu %*s", &guid, &type, &flags, &size);
+                if(result != 4)
                 {   /* sscanf failed - must have been passed a bad LIST string - bail out! */
                     ccode = -1;
                     break;
                 }
-                if (!(flags & STORE_MSG_FLAG_DELETED)) {
+                if (!(flags & STORE_MSG_FLAG_DELETED) && (type == 2)) {
                     client->message[client->messageCount].guid = guid;
                     client->message[client->messageCount].size = size;
                     client->messageCount++;
