@@ -1,3 +1,5 @@
+StrictCompile()
+
 add_executable(bongo-manager
 	manager.c
 )

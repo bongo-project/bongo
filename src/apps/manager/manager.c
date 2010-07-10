@@ -78,7 +78,8 @@ SetupAgentList(void)
 {
     AllAgents = g_array_new(FALSE, FALSE, sizeof(BongoAgent));
     
-    BongoAgent store = {{0,} };
+    BongoAgent store;
+    memset(&store, 0, sizeof(BongoAgent));
     store.spec.program = "bongostore";
     store.spec.priority = 0;
     store.enabled = TRUE;
@@ -330,8 +331,9 @@ LoadAgentConfiguration()
 	}
 
 	for (i = 0; i < agentlist->len; i++) {
-	        BongoJsonNode *anode = BongoJsonArrayGet(agentlist, i);
-		BongoAgent agent = {{0,}};
+		BongoJsonNode *anode = BongoJsonArrayGet(agentlist, i);
+		BongoAgent agent;
+		memset(&agent, 0, sizeof(BongoAgent));
 
 		BongoJsonJPathGetBool(anode, "o:enabled/b", &agent.enabled);
 		BongoJsonJPathGetInt(anode, "o:pri/i", &agent.spec.priority);
@@ -622,7 +624,6 @@ main(int argc, char **argv)
 	BOOL shutdown;
 	BOOL reload;
 	BOOL unlockFile = FALSE;
-	BOOL startLdap = FALSE;
 
 	XplInit();
 
@@ -682,7 +683,7 @@ main(int argc, char **argv)
 		exit(0);
 	}
 
-	if (daemonize && Demonize()) {
+	if (daemonize && Daemonize()) {
 		exit(1);
 	}
 
