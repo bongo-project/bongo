@@ -19,6 +19,7 @@ add_executable(bongostore
 	main.c
 	mime.c
 	object-model.c
+	object-queries.c
 	properties.c
 	query-builder.c
 	query-parser.c

@@ -1,4 +1,15 @@
-/* Create stuff */
+/**
+ * object-model.c : A set of utility functions for manipulating the store DB
+ * 
+ * The StoreObject is designed to be allocated on the stack, and these 
+ * functions allow you to find / modify / work with these objects.
+ * In general, these functions should be relatively safe to call, but 
+ * a higher-level locking mechanism is required to create complete
+ * atomicity.
+ * 
+ * object-queries is used to short-hand common SQL queries, and should
+ * only be used from within this file.
+ */
 
 #include <xpl.h>
 #include <memmgr.h>
@@ -10,6 +21,7 @@
 
 #include "properties.h"
 #include "object-model.h"
+#include "object-queries.h"
 #include "query-builder.h"
 #include "command-parsing.h"
 #include "messages.h"
@@ -585,13 +597,7 @@ abort:
 int
 StoreObjectRemove(StoreClient *client, StoreObject *object)
 {
-	MsgSQLStatement stmt;
-	MsgSQLStatement *ret;
-	char *query;
 	int retcode = -2;
-	int status;
-	
-	memset(&stmt, 0, sizeof(MsgSQLStatement));
 	
 	// try to remove the file/whatever first
 	if (STORE_IS_FOLDER(object->type)) {
@@ -600,32 +606,13 @@ StoreObjectRemove(StoreClient *client, StoreObject *object)
 		// FIXME
 	}
 	
-	// create a stub entry in the database to get our guid
 	MsgSQLBeginTransaction(client->storedb);
 	
-	query = "DELETE FROM storeobject WHERE guid=?1;";
-	
-	ret = MsgSQLPrepare(client->storedb, query, &stmt);
-	if (ret == NULL) goto abort;
-	
-	MsgSQLBindInt64(&stmt, 1, object->guid);
-	
-	status = MsgSQLExecute(client->storedb, &stmt);
-	if (status != 0) {
-		// perhaps the guid doesn't exist...
-		retcode = -1;
-		goto abort;
+	retcode = SOQuery_RemoveSOByGUID(client, object->guid);
+	if (retcode || MsgSQLCommitTransaction(client->storedb)) {
+		MsgSQLAbortTransaction(client->storedb);
 	}
 	
-	MsgSQLFinalize(&stmt);
-	if (MsgSQLCommitTransaction(client->storedb))
-		goto abort;
-
-	return 0;
-
-abort:
-	MsgSQLFinalize(&stmt);
-	MsgSQLAbortTransaction(client->storedb);
 	return retcode;
 }
 
@@ -1994,9 +1981,8 @@ StoreObjectUnlinkFromConversation(StoreClient *client, StoreObject *mail)
 		
 		if (related == 0) {
 			// conversation now empty, so we can remove it
-			StoreObject conversation;
-			StoreObjectFind(client, conversation_guid, &conversation);
-			StoreObjectRemove(client, &conversation);
+			status = SOQuery_RemoveSOByGUID(client, conversation_guid);
+			if (status != 0) goto abort;
 		}
 	}
 	
