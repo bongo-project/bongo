@@ -696,7 +696,7 @@ int
 NMAPGetTextProperty(Connection *conn, uint64_t guid, const char *propertyName, char *propertyBuffer, size_t propertyBufferLen)
 {
     int retval = 0;
-    if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
+    if (NMAPSendCommandF(conn, "PROPGET " STORE_GUID_FMT " %s\r\n", guid, propertyName) != -1) {
         retval = ReadProperty(conn, propertyName, propertyBuffer, propertyBufferLen);
         if (NMAPReadJustResponseCode(conn) == 1000) {
             return retval;
@@ -732,7 +732,7 @@ NMAPSetTextProperty(Connection *conn, uint64_t guid, const char *propertyName, c
 {
     long ccode;
 
-    if (NMAPSendCommandF(conn, "PROPSET %llx %s %lu\r\n", guid, propertyName, propertyValueLen) != -1) {
+    if (NMAPSendCommandF(conn, "PROPSET " STORE_GUID_FMT " %s %lu\r\n", guid, propertyName, propertyValueLen) != -1) {
         ccode = NMAPReadResponse(conn, NULL, 0, 0);
         if (ccode == 2002) {
             ConnWrite(conn, propertyValue, propertyValueLen);
@@ -829,7 +829,7 @@ int
 NMAPGetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName, long *propertyValue)
 {
     int retval;
-    if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
+    if (NMAPSendCommandF(conn, "PROPGET " STORE_GUID_FMT " %s\r\n", guid, propertyName) != -1) {
         retval = NMAPReadDecimalPropertyResponse(conn, propertyName, propertyValue);
         if (NMAPReadJustResponseCode(conn) == 1000) {
             return retval;
@@ -893,7 +893,7 @@ int
 NMAPGetHexadecimalProperty(Connection *conn, uint64_t guid, const char *propertyName, unsigned long *propertyValue)
 {
     int retval;
-    if (NMAPSendCommandF(conn, "PROPGET %llx %s\r\n", guid, propertyName) != -1) {
+    if (NMAPSendCommandF(conn, "PROPGET " STORE_GUID_FMT " %s\r\n", guid, propertyName) != -1) {
         retval = NMAPReadHexadecimalPropertyResponse(conn, propertyName, propertyValue);
         if (NMAPReadJustResponseCode(conn) == 1000) {
             return retval;
@@ -920,7 +920,7 @@ NMAPSetDecimalProperty(Connection *conn, uint64_t guid, const char *propertyName
 
     len = snprintf(propertyBuffer, sizeof(propertyBuffer), "%d", (int)propertyValue); 
    
-    if (NMAPSendCommandF(conn, "PROPSET %llx %s %lu\r\n", guid, propertyName, len) != -1) {
+    if (NMAPSendCommandF(conn, "PROPSET " STORE_GUID_FMT " %s %lu\r\n", guid, propertyName, len) != -1) {
         ccode = NMAPReadResponse(conn, NULL, 0, 0);
         if (ccode == 2002) {
             ConnWrite(conn, propertyBuffer, len);
@@ -952,7 +952,7 @@ NMAPSetHexadecimalProperty(Connection *conn, uint64_t guid, const char *property
 
     len = snprintf(propertyBuffer, sizeof(propertyBuffer), "%x", (unsigned int)propertyValue); 
    
-    if (NMAPSendCommandF(conn, "PROPSET %llx %s %lu\r\n", guid, propertyName, len) != -1) {
+    if (NMAPSendCommandF(conn, "PROPSET " STORE_GUID_FMT " %s %lu\r\n", guid, propertyName, len) != -1) {
         ccode = NMAPReadResponse(conn, NULL, 0, 0);
         if (ccode == 2002) {
             ConnWrite(conn, propertyBuffer, len);
