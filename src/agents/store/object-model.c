@@ -1878,36 +1878,16 @@ StoreObjectUnlink(StoreClient *client, StoreObject *document, StoreObject *relat
 int
 StoreObjectUnlinkAll(StoreClient *client, StoreObject *object)
 {
-	MsgSQLStatement stmt;
-	MsgSQLStatement *ret;
-	char *query;
-	int status;
-	
-	memset(&stmt, 0, sizeof(MsgSQLStatement));
-	
 	MsgSQLBeginTransaction(client->storedb);
 	
-	query = "DELETE FROM links WHERE doc_guid=?1 OR related_guid=?1;";
+	int status = SOQuery_Unlink(client, object->guid, object->guid, TRUE);
 	
-	ret = MsgSQLPrepare(client->storedb, query, &stmt);
-	if (ret == NULL) goto abort;
-	
-	MsgSQLBindInt64(&stmt, 1, object->guid);
-	
-	status = MsgSQLExecute(client->storedb, &stmt);
-	if (status != 0)
-		goto abort;
-	
-	MsgSQLFinalize(&stmt);
-	if (MsgSQLCommitTransaction(client->storedb))
-		goto abort;
+	if (status || MsgSQLCommitTransaction(client->storedb)) {
+		MsgSQLAbortTransaction(client->storedb);
+		return -1;
+	}
 	
 	return 0;
-	
-abort:
-	MsgSQLFinalize(&stmt);
-	MsgSQLAbortTransaction(client->storedb);
-	return -1;
 }
 
 
@@ -1928,43 +1908,20 @@ StoreObjectUnlinkFromConversation(StoreClient *client, StoreObject *mail)
 	MsgSQLStatement stmt;
 	MsgSQLStatement *ret;
 	char *query;
-	int status;
-	uint64_t conversation_guid = 0;
 	
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
 	MsgSQLBeginTransaction(client->storedb);
 	
-	// find the mail conversation for this object
-	query = "SELECT so.guid FROM links l LEFT JOIN storeobject so ON l.doc_guid = so.guid WHERE l.related_guid = ?1 AND so.collection_guid = ?2 AND so.type = 5;";
-	ret = MsgSQLPrepare(client->storedb, query, &stmt);
-	if (ret == NULL) goto abort;
-	
-	MsgSQLBindInt64(&stmt, 1, mail->guid);
-	MsgSQLBindInt64(&stmt, 2, STORE_CONVERSATIONS_GUID);
-	
-	// this assumes only one convo per mail. Should be ok..
-	status = MsgSQLResults(client->storedb, &stmt);
-	if (status > 0) {
-		conversation_guid = MsgSQLResultInt64(&stmt, 0);
-	}
-	MsgSQLFinalize(&stmt);
+	// find the conversation for the email
+	uint64_t conversation_guid = SOQuery_ConversationGUIDForEmail(client, mail->guid);
 	
 	// unlink the mail from the conversation
-	// FIXME - refactor this code and StoreObjectUnlinkByGuids()
-	// We can't use the latter directly atm because of transactions.
-	query = "DELETE FROM links WHERE doc_guid=?1 AND related_guid=?2;";
-	
-	ret = MsgSQLPrepare(client->storedb, query, &stmt);
-	if (ret == NULL) goto abort;
-	
-	MsgSQLBindInt64(&stmt, 1, conversation_guid);
-	MsgSQLBindInt64(&stmt, 2, mail->guid);
-	
-	status = MsgSQLExecute(client->storedb, &stmt);
+	int status = SOQuery_Unlink(client, conversation_guid, mail->guid, FALSE);
 	if (status != 0)
 		goto abort;
 	
-	// find the number of other mails attached to this conversation
+	// find the number of other mails attached to this conversation - if
+	// the conversation is 'empty', we want to now remove it.
 	if (conversation_guid) {
 		query = "SELECT count(l.related_guid) FROM links l WHERE l.doc_guid = ?1;";
 		ret = MsgSQLPrepare(client->storedb, query, &stmt);
@@ -2009,38 +1966,16 @@ abort:
 int
 StoreObjectUnlinkByGuids(StoreClient *client, uint64_t document, uint64_t related)
 {
-	// FIXME: want to check that an existing link isn't in place somehow.
-	MsgSQLStatement stmt;
-	MsgSQLStatement *ret;
-	char *query;
-	int status;
-	
-	memset(&stmt, 0, sizeof(MsgSQLStatement));
-	
 	MsgSQLBeginTransaction(client->storedb);
 	
-	query = "DELETE FROM links  WHERE doc_guid=?1 AND related_guid=?2;";
+	int status = SOQuery_Unlink(client, document, related, FALSE);
 	
-	ret = MsgSQLPrepare(client->storedb, query, &stmt);
-	if (ret == NULL) goto abort;
-	
-	MsgSQLBindInt64(&stmt, 1, document);
-	MsgSQLBindInt64(&stmt, 2, related);
-	
-	status = MsgSQLExecute(client->storedb, &stmt);
-	if (status != 0)
-		goto abort;
-	
-	MsgSQLFinalize(&stmt);
-	if (MsgSQLCommitTransaction(client->storedb))
-		goto abort;
+	if (status || MsgSQLCommitTransaction(client->storedb)) {
+		MsgSQLAbortTransaction(client->storedb);
+		return -1;
+	}
 	
 	return 0;
-	
-abort:
-	MsgSQLFinalize(&stmt);
-	MsgSQLAbortTransaction(client->storedb);
-	return -1;
 }
 
 /**
