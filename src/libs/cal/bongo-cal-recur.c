@@ -1028,7 +1028,7 @@ GenerateInstancesForChunk (BongoCalInstance *inst,
            to store it so we can get it later. (libical seems to set
            second to -1 to denote an unset time. See icalvalue.c)
            FIXME. */
-        if (p->type != BONGO_CAL_PERIOD_DATETIME) {
+        if (p->type != (BongoCalRDateType)BONGO_CAL_PERIOD_DATETIME) {
             CalObjTime *c = MemNew(CalObjTime, 1);
             cotime.flags = TRUE;
 
