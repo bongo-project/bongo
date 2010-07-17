@@ -44,7 +44,7 @@ EXPORT void MsgAuthUserListFree(char **list[]);
 
 // Auth / cookie functions
 
-#define MSGAUTH_COOKIE_LEN	32
+#define MSGAUTH_COOKIE_LEN XPLHASH_MD5_LENGTH + 1
 
 typedef struct {
    	char 	 token[MSGAUTH_COOKIE_LEN];

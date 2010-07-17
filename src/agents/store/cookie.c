@@ -39,7 +39,7 @@ StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout)
 	if (MsgAuthCreateCookie(client->principal.name, &cookie, timeout)) {
 		ccode = ConnWriteF(client->conn, "1000 %.32s\r\n", cookie.token);
 	} else {
-                ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
+		ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
 	}
 	
 	return ccode;
