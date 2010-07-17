@@ -753,7 +753,7 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 			ccode = ConnWriteF(client->conn, 
 				"2001 " GUID_FMT " %d %d %08x %d " FMT_UINT64_DEC " %s\r\n", 
 				object.guid, object.type, object.flags, 
-				object.imap_uid, object.time_created, object.size, buffer);
+				object.imap_uid, object.time_modified, object.size, buffer);
 		}
 		if (builder->output_mode == MODE_COLLECTIONS) {
 			ccode = ConnWriteF(client->conn,
