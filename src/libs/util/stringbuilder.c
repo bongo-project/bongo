@@ -24,6 +24,23 @@
 #include <bongoutil.h>
 #include <assert.h>
 
+#if SB_DEBUG
+/* Examine a buffer, used to generate warnings in valgrind */
+static void sb_Examine(const char *data, int size)
+{
+    int i;
+    printf("examining %d bytes\n", size);
+    for (i = 0; i < size; i++) {
+        if (data[i] == 125) {
+            printf("blah");
+        }
+    }
+}
+#endif
+
+/*
+    initialize an already allocated string buffer to ""
+*/
 int
 BongoStringBuilderInit(BongoStringBuilder *sb)
 {
@@ -33,6 +50,10 @@ BongoStringBuilderInit(BongoStringBuilder *sb)
 int
 BongoStringBuilderInitSized(BongoStringBuilder *sb, int size)
 {
+    /* FIXME: is this too harsh? 
+        it is an error to call this with no sb */
+    assert(sb);
+
     if (size > 0) {
         sb->value = MemMalloc0(size + 1);
         if (!sb->value) {
@@ -52,7 +73,7 @@ BongoStringBuilderNewSized(int size)
 {
     BongoStringBuilder *sb;
 
-    sb = MemNew(BongoStringBuilder, 1);
+    sb = MemNew0(BongoStringBuilder, 1);
     if (sb) {
         if (BongoStringBuilderInitSized(sb, size)) {
             MemFree(sb);
@@ -69,7 +90,7 @@ BongoStringBuilderNew(void)
 {
     BongoStringBuilder *sb;
     
-    sb = MemNew(BongoStringBuilder, 1);
+    sb = MemNew0(BongoStringBuilder, 1);
     if (sb) {
         if (BongoStringBuilderInit(sb)) {
             MemFree(sb);
@@ -84,7 +105,10 @@ BongoStringBuilderNew(void)
 void
 BongoStringBuilderDestroy(BongoStringBuilder *sb)
 {
-    MemFree(sb->value);
+    /* don't try to free the value if it isn't set */
+    if (sb->value) {
+        MemFree(sb->value);
+    }
 }
 
 char * 
@@ -92,7 +116,9 @@ BongoStringBuilderFree(BongoStringBuilder *sb, BOOL freeSegment)
 {
     void *ret;
     if (freeSegment) {
-        MemFree(sb->value);
+        if (sb->value) {
+            MemFree(sb->value);
+        }
         ret = NULL; 
     } else {
         ret = sb->value;
@@ -107,6 +133,9 @@ static void
 BongoStringBuilderExpand(BongoStringBuilder *sb, unsigned int newLen)
 {
     unsigned int newSize;
+
+    /* FIXME: is this too harsh? */
+    assert(sb);
 
     if (sb->size >= newLen) {
         return;
@@ -129,6 +158,13 @@ BongoStringBuilderExpand(BongoStringBuilder *sb, unsigned int newLen)
 void
 BongoStringBuilderAppendN(BongoStringBuilder *sb, const char *str, int len)
 {
+    /* FIXME: is this too harsh? */
+    assert(sb);
+
+    #ifdef SB_DEBUG
+        sb_Examine(str, len);
+    #endif
+
     BongoStringBuilderExpand(sb, sb->len + len + 1);
 
     memcpy(sb->value + sb->len, str, len);

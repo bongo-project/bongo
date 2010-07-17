@@ -575,6 +575,10 @@ ConnShutdown(void)
 
     XplCloseLocalSemaphore(ConnIO.allocated.sem);
 
+    gnutls_dh_params_deinit(dh_params);
+    gnutls_rsa_params_deinit(rsa_params);
+    gnutls_global_deinit();
+
     return;
 }
 

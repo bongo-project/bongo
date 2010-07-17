@@ -1292,7 +1292,7 @@ NMAPReadConfigFile(const char *file, char **output)
              goto nmapfinish;
         }
 
-        *output = MemMalloc(sizeof(unsigned char) * (count+1));
+        *output = MemMalloc0(sizeof(unsigned char) * (count+1));
         written = NMAPReadCount(conn, *output, count);
         NMAPReadCrLf(conn);
         if (written != count) {

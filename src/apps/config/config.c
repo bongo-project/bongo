@@ -76,8 +76,15 @@ GetInstallParameters(void){
 			BongoJsonNode *domain;
 			
 			GetInteractiveData(_("Mail Domains (one per line, blank line to finish):"), &tmp, "");
-			if ((tmp == NULL) || (tmp[0] == '\0')) return;
-			
+			if (tmp == NULL) {
+				return;
+			}
+
+			if (tmp[0] == '\0') {
+				MemFree(tmp);
+				return;
+			}
+
 			BongoJsonArrayAppendString(BongoJsonNodeAsArray(config.domains), tmp);
 			MemFree(tmp);
 			tmp = NULL;
@@ -341,6 +348,8 @@ GenerateCryptoData() {
 		fprintf(params, "%s\n", dhdata);
 		fclose(params);
 	} else {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't write DH params to %s\n"), XPL_DEFAULT_DHPARAMS_PATH);
 		return FALSE;
 	}
@@ -355,6 +364,9 @@ GenerateCryptoData() {
 		fprintf(params, "%s\n", dhdata);
 		fclose(params);
 	} else {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't write RSA params to %s\n"), XPL_DEFAULT_DHPARAMS_PATH);
 		return FALSE;
 	}
@@ -362,17 +374,26 @@ GenerateCryptoData() {
 	// create private key
 	ret = gnutls_x509_privkey_init(&key);
 	if (ret < 0) {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: %s\n"), gnutls_strerror (ret));
 		return FALSE;
 	}
 	ret = gnutls_x509_privkey_generate(key, GNUTLS_PK_RSA, 1024, 0);
 	if (ret < 0) {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't create private key. %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
 	dsize = CERTSIZE;
 	ret = gnutls_x509_privkey_export(key, GNUTLS_X509_FMT_PEM, &private_key, &dsize);
 	if (ret < 0) {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't export private key. %s\n"), gnutls_strerror(ret));
 		XplConsolePrintf(_("       Size: %zd, Ret: %d\n"), dsize, ret);
 		return FALSE;
@@ -383,6 +404,9 @@ GenerateCryptoData() {
 			fprintf(params, "%s\n", private_key);
 			fclose(params);
 		} else {
+			gnutls_dh_params_deinit(dh_params);
+			gnutls_rsa_params_deinit(rsa_params);
+			gnutls_global_deinit();
 			XplConsolePrintf(_("ERROR: Couldn't write private key to %s\n"), XPL_DEFAULT_KEY_PATH);
 			return FALSE;
 		}
@@ -391,6 +415,9 @@ GenerateCryptoData() {
 	// create certificate
 	ret = gnutls_x509_crt_init(&certificate);
 	if (ret < 0) {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
@@ -422,6 +449,9 @@ GenerateCryptoData() {
 
 	ret = GNUTLS_SELF_SIGN(certificate, key);
 	if (ret < 0) {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't self-sign certificate. %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
@@ -429,6 +459,9 @@ GenerateCryptoData() {
 	dsize = CERTSIZE;
 	ret = gnutls_x509_crt_export(certificate, GNUTLS_X509_FMT_PEM, &public_cert, &dsize);
 	if (ret < 0) { 
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't create certificate. %s\n"), gnutls_strerror(ret));
 		return FALSE;
 	}
@@ -437,12 +470,18 @@ GenerateCryptoData() {
 		fprintf(params, "%s\n", public_cert);
 		fclose(params);
 	} else {
+		gnutls_dh_params_deinit(dh_params);
+		gnutls_rsa_params_deinit(rsa_params);
+		gnutls_global_deinit();
 		XplConsolePrintf(_("ERROR: Couldn't write certificate to %s\n"), XPL_DEFAULT_CERT_PATH);
 		return FALSE;
 	}
 	
 	gnutls_x509_crt_deinit(certificate);	
 	gnutls_x509_privkey_deinit(key);
+	gnutls_dh_params_deinit(dh_params);
+	gnutls_rsa_params_deinit(rsa_params);
+	gnutls_global_deinit();
 	
 	return TRUE;
 }
@@ -641,6 +680,7 @@ main(int argc, char *argv[]) {
 			break;
 		case 5:
 			if (MsgAuthInit()) {
+				BongoAgentShutdown(&configtool);
 				XplConsolePrintf(_("Couldn't initialise auth subsystem\n"));
 				return 3;
 			}
@@ -676,6 +716,8 @@ main(int argc, char *argv[]) {
 	if (config.ip) MemFree(config.ip);
 	if (config.dns) MemFree(config.dns);
 	if (config.domains) BongoJsonNodeFree(config.domains);
+
+	BongoAgentShutdown(&configtool);
 
 	exit(0);
 }

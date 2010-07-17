@@ -596,6 +596,12 @@ BongoAgentShutdown(BongoAgent *agent)
         ConnSSLContextFree(agent->sslContext);
     }
 
+    if (agent->name) {
+        /* we made this a const char * in the struct to prevent agents from
+        * changing their name.  that causes problems for the free... */
+        MemFree((char *)agent->name);
+    }
+
     ConnCloseAll(1);
 
     LogClose();
