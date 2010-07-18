@@ -129,6 +129,7 @@
 #define MSG4226MBOXEXISTS "4226 Mailbox already exists\r\n"
 #define MSG4226CALEXISTS "4226 Calendar already exists\r\n"
 #define MSG4226BADEMAIL "4226 Unable to parse email\r\n"
+#define MSG4226BADCONTACT "4226 Unable to parse contact\r\n"
 #define MSG4226BADEVENT "4226 Unable to parse event\r\n"
 #define MSG4226ADBKEXISTS "4226 Calendar already exists\r\n"
 #define MSG4226QUEUEOPEN "4226 Queue entry still open\r\n"

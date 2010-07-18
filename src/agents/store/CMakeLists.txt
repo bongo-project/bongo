@@ -8,6 +8,7 @@ add_executable(bongostore
 	createstore.s
 	command.c
 	command-parsing.c
+	contacts.c
 	config.c
 	cookie.c
 	db.c

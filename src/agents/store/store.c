@@ -33,6 +33,7 @@
 #include "mime.h"
 #include "mail.h"
 #include "calendar.h"
+#include "contacts.h"
 
 int
 IsOwnStoreSelected(StoreClient *client)
@@ -182,26 +183,28 @@ StoreProcessDocument(StoreClient *client,
                      StoreObject *document,
                      const char *path)
 {
-    const char *result = NULL;
-    void *mark = BongoMemStackPeek(&client->memstack);
+	const char *result = NULL;
+	void *mark = BongoMemStackPeek(&client->memstack);
 
-    /* type-dependent processing */
+	/* type-dependent processing */
+	switch (document->type) {
+		case STORE_DOCTYPE_MAIL:
+			result = StoreProcessIncomingMail(client, document, path);
+			break;
+		case STORE_DOCTYPE_EVENT:
+			// FIXME: how do we link this into a calendar automatically?
+			result = StoreProcessIncomingEvent(client, document, 0);
+			break;
+		case STORE_DOCTYPE_CONTACT:
+			result = StoreProcessIncomingContact(client, document, path);
+			break;
+		default:
+			break;
+	}
 
-    switch (document->type) {
-    case STORE_DOCTYPE_MAIL:
-        result = StoreProcessIncomingMail(client, document, path);
-        break;
-    case STORE_DOCTYPE_EVENT:
-        // FIXME: how do we link this into a calendar automatically?
-        result = StoreProcessIncomingEvent(client, document, 0);
-        break;
-    default:
-        break;
-    }
+	BongoMemStackPop(&client->memstack, mark);
 
-    BongoMemStackPop(&client->memstack, mark);
-
-    return result;
+	return result;
 }
 
 /* deliver message to a mailbox 
