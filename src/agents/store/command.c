@@ -2830,6 +2830,7 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 		// writing a range - new size must be maximum of old size and new end of range
 		tmpsize = rend;
 	}
+	object->size = tmpsize;
 	
 	// we gain the lock quite late - we have the new file, but haven't updated
 	// anything yet. Potential waste of effort.
@@ -2861,7 +2862,6 @@ StoreCommandREPLACE(StoreClient *client, StoreObject *object, int size, uint64_t
 	}
 	// update other metadata
 	StoreObjectUpdateModifiedTime(object);
-	object->size = tmpsize;
 	
 	if (StoreObjectSave(client, object)) {
 		ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
