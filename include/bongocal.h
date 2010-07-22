@@ -198,6 +198,7 @@ typedef enum {
 /*** BongoCal ***/
 
 BOOL BongoCalInit(const char *cachedir);
+void BongoCalDeInit();
 
 /*** BongoCalObject ***/
 
