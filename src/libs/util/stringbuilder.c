@@ -24,6 +24,8 @@
 #include <bongoutil.h>
 #include <assert.h>
 
+#define SB_DEBUG 0
+
 #if SB_DEBUG
 /* Examine a buffer, used to generate warnings in valgrind */
 static void sb_Examine(const char *data, int size)
@@ -161,7 +163,7 @@ BongoStringBuilderAppendN(BongoStringBuilder *sb, const char *str, int len)
     /* FIXME: is this too harsh? */
     assert(sb);
 
-    #ifdef SB_DEBUG
+    #if SB_DEBUG
         sb_Examine(str, len);
     #endif
 

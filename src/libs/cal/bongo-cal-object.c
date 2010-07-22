@@ -795,3 +795,8 @@ BongoCalInit(const char *cachedir)
 {
     return BongoCalTimezoneInit(cachedir);
 }
+
+void
+BongoCalDeInit() {
+    BongoCalTimezoneDeInit();
+}

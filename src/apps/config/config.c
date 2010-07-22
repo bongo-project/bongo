@@ -110,7 +110,10 @@ SetStoreConfigurationModifications(StoreClient *client) {
 
     /* first let's read in the queue document and store out the domains and hosted domains */
     if(NMAPReadConfigFile("queue", &aconfig)) {
-        if (aconfig == NULL) return;
+        if (aconfig == NULL) {
+            MemFree(default_config);
+            return;
+        }
         if (BongoJsonParseString(aconfig, &node) == BONGO_JSON_OK) {
             BongoJsonNode *current;
             char *content;
@@ -123,7 +126,7 @@ SetStoreConfigurationModifications(StoreClient *client) {
             oldDomains = BongoJsonNodeAsArray(current);
 
             domains = BongoJsonNodeAsArray(config.domains);
-	    BongoJsonNodeAsArray(current) = domains;
+            BongoJsonNodeAsArray(current) = domains;
 
             content = BongoJsonNodeToString(node);
             PutOrReplaceConfig(client, "/config", "queue", content, strlen(content));
@@ -137,7 +140,9 @@ SetStoreConfigurationModifications(StoreClient *client) {
             /* put back the old domains array so that the free can sanely free it */
             BongoJsonNodeAsArray(current) = oldDomains;
             BongoJsonNodeFree(node);
+            MemFree(content);
         }
+        MemFree(default_config);
         MemFree(aconfig);
         aconfig = NULL;
     }
@@ -165,6 +170,7 @@ SetStoreConfigurationModifications(StoreClient *client) {
             PutOrReplaceConfig(client, "/config", "global", content, strlen(content));
 
             BongoJsonNodeFree(node);
+            MemFree(content);
         }
         MemFree(aconfig);
         aconfig = NULL;
@@ -276,6 +282,7 @@ LoadDefaultStoreConfiguration(void)
 nmapcleanup:
 		NMAPQuit(client->conn);
 		ConnFree(client->conn);
+		MemFree(client);
 storecleanup:
 		if (kill(store_pid, SIGTERM) != 0) {
 			XplConsolePrintf(_("ERROR: Couldn't shut down store\n"));
@@ -310,8 +317,8 @@ GetInteractiveData(char *description, char **data, char *def) {
 
 BOOL
 GenerateCryptoData() {
-	gnutls_dh_params_t dh_params;
-	gnutls_rsa_params_t rsa_params;
+	static gnutls_dh_params_t dh_params;
+	static gnutls_rsa_params_t rsa_params;
 	gnutls_x509_privkey key;
 	gnutls_x509_crt certificate;
 	unsigned char dhdata[CERTSIZE], rsadata[CERTSIZE], private_key[CERTSIZE], public_cert[CERTSIZE];
@@ -717,6 +724,7 @@ main(int argc, char *argv[]) {
 	if (config.dns) MemFree(config.dns);
 	if (config.domains) BongoJsonNodeFree(config.domains);
 
+	BongoCalDeInit();
 	BongoAgentShutdown(&configtool);
 
 	exit(0);

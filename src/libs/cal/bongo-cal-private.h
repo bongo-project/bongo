@@ -121,5 +121,6 @@ BOOL BongoCalRecurEnsureEndDates (BongoCalInstance *inst,
 
 
 BOOL BongoCalTimezoneInit(const char *cachedir);
+void BongoCalTimezoneDeInit();
 
 #endif

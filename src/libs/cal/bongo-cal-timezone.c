@@ -170,8 +170,14 @@ BongoCalTimezoneFree(BongoCalTimezone *tz, BOOL freeJson)
 	if (tz->tzid)
 		MemFree(tz->tzid);
 
-	if (tz->changes)
+	if (tz->changes) {
+		unsigned int i;
+		for(i=0;i<tz->changes->len;i++) {
+			char *t = g_array_index(tz->changes, char *, i);
+			MemFree(t);
+		}
 		g_array_free(tz->changes, TRUE);
+	}
 
 	if (freeJson)
 		BongoJsonObjectFree(tz->json);
@@ -724,8 +730,8 @@ UnpackArray(FILE *from, GArray **array, unsigned int expectedElemSize)
         return FALSE;
     }
     
-    *array = g_array_new(FALSE, FALSE, elemSize);
-    g_array_append_vals(*array, data, len);
+    *array = g_array_new(FALSE, FALSE, sizeof(char *));
+    g_array_append_val(*array, data);
     
     return TRUE;
 }
@@ -842,6 +848,11 @@ LoadSystemTimezones(FILE *f)
     return TRUE;
 }
 
+static void
+UnloadSystemTimezones() {
+    BongoHashtableDelete(systemTimezones);
+}
+
 static BOOL
 LoadCachedTimezones(const char *cachedir)
 {
@@ -861,6 +872,11 @@ LoadCachedTimezones(const char *cachedir)
     } else {
         return FALSE;
     }
+}
+
+static void
+UnloadCachedTimezones() {
+    UnloadSystemTimezones();
 }
 
 static BOOL
@@ -999,3 +1015,7 @@ BongoCalTimezoneInit(const char *cachedir)
     return LoadCachedTimezones(cachedir);
 }
 
+void
+BongoCalTimezoneDeInit() {
+    UnloadCachedTimezones();
+}

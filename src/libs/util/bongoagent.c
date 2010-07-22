@@ -610,6 +610,7 @@ BongoAgentShutdown(BongoAgent *agent)
 
     CONN_TRACE_SHUTDOWN();
     ConnShutdown();
+    IPCleanup();
 }
 
 Connection * 
