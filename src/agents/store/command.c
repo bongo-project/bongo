@@ -1808,7 +1808,10 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	
 	// find the containing collection
 	ccode = StoreObjectFind(client, object->collection_guid, &collection);
-	if (ccode != 0) return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	if (ccode != 0) {
+		Log(LOG_ERROR, "DELETE: Unable to find parent for " GUID_FMT, object->id);
+		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	}
 	
 	// check we have the required permissions.
 	ccode = StoreObjectCheckAuthorization(client, &collection, STORE_PRIV_UNBIND);
@@ -1822,8 +1825,11 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	switch(object->type) {
 	case STORE_DOCTYPE_MAIL:
 		// check to see if we can remove this document from a conversation
-		if (StoreObjectUnlinkFromConversation(client, object))
+		if (StoreObjectUnlinkFromConversation(client, object)) {
+			LogicalLockRelease(client, &collection, LLOCK_READWRITE, "StoreCommandDELETE");
+			Log(LOG_ERROR, "DELETE: Unable to unlink conversations from " GUID_FMT, object->id);
 			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+		}
 		break;
 	case STORE_DOCTYPE_CALENDAR:
 		// do we want to remove its events also?
