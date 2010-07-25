@@ -1598,8 +1598,11 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
 	newobject.guid = 0;
 	newobject.filename[0] = '\0';
 		
-	if (StoreObjectCreate(client, &newobject))
-		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
+	if (StoreObjectCreate(client, &newobject)) {
+		Log(LOG_ERROR, "COPY: Can't create new store object");
+		ccode = ConnWriteStr(client->conn, MSG5005DBLIBERR);
+		goto finish;
+	}
 	
 	StoreObjectCopyInfo(client, object, &newobject);
 	
@@ -1712,6 +1715,7 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 				object.guid);
 			break;
 		default:
+			Log(LOG_ERROR, "CREATE: Can't create new store object");
 			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 			break;
 	}
@@ -1737,6 +1741,7 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 					ret = StoreObjectCreate(client, &container);
 					if (ret != 0) {
 						StoreObjectRemove(client, &container);
+						Log(LOG_ERROR, "CREATE: unable to create parent collections");
 						return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 					}
 				} else {
@@ -1760,6 +1765,7 @@ StoreCommandCREATE(StoreClient *client, char *name, uint64_t guid)
 	// now find the containing collection
 	if (StoreObjectFindByFilename(client, container_path, &container)) {
 		// no such collection - but it should have been created. Must be DB error
+		Log(LOG_ERROR, "CREATE: Unable to find parent collection for new object");
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 	
@@ -1809,7 +1815,7 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	// find the containing collection
 	ccode = StoreObjectFind(client, object->collection_guid, &collection);
 	if (ccode != 0) {
-		Log(LOG_ERROR, "DELETE: Unable to find parent for " GUID_FMT, object->id);
+		Log(LOG_ERROR, "DELETE: Unable to find parent for " GUID_FMT, object->guid);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 	
@@ -1827,7 +1833,7 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 		// check to see if we can remove this document from a conversation
 		if (StoreObjectUnlinkFromConversation(client, object)) {
 			LogicalLockRelease(client, &collection, LLOCK_READWRITE, "StoreCommandDELETE");
-			Log(LOG_ERROR, "DELETE: Unable to unlink conversations from " GUID_FMT, object->id);
+			Log(LOG_ERROR, "DELETE: Unable to unlink conversations from " GUID_FMT, object->guid);
 			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 		}
 		break;
@@ -2167,6 +2173,7 @@ StoreCommandFLAG(StoreClient *client, StoreObject *object, uint32_t change, int 
 	LogicalLockGain(client, object, LLOCK_READWRITE, "StoreCommandFLAG");
 	if (StoreObjectSave(client, object) != 0) {
 		LogicalLockRelease(client, object, LLOCK_READWRITE, "StoreCommandFLAG");
+		Log(LOG_ERROR, "FLAG: Unable to save updated store object");
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 	LogicalLockRelease(client, object, LLOCK_READWRITE, "StoreCommandFLAG");
@@ -2308,6 +2315,8 @@ StoreCommandLINK(StoreClient *client, StoreObject *document, StoreObject *relate
 	if (ret == 0) {
 		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
+		Log(LOG_ERROR, "LINK: Unable to link " GUID_FMT " to " GUID_FMT,
+			document->guid, related->guid);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 }
@@ -2350,6 +2359,8 @@ StoreCommandUNLINK(StoreClient *client, StoreObject *document, StoreObject *rela
 	if (ret == 0) {
 		return ConnWriteStr(client->conn, MSG1000OK);
 	} else {
+		Log(LOG_ERROR, "UNLINK: Unable to unlink " GUID_FMT " from " GUID_FMT,
+			document->guid, related->guid);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	}
 }
@@ -2631,6 +2642,7 @@ StoreCommandPROPSET(StoreClient *client,
 	LogicalLockRelease(client, object, LLOCK_READWRITE, "StoreCommandPROPSET");
 	
 	if (ccode < -1) {
+		Log(LOG_ERROR, "PROPSET: Unable to set propert on " GUID_FMT, object->guid);
 		return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 	} else if (ccode == -1) {
 		// failed, but already returned a notice to the client
