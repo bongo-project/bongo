@@ -82,7 +82,10 @@ BongoCalTimezoneNewJson(BongoCalObject *cal, BongoJsonObject *json, const char *
     tz->type = BONGO_CAL_TIMEZONE_JSON;
     tz->json = json;
     tz->cal = cal;
-    tz->tzid = MemStrdup(tzid);
+    if (tzid != NULL)
+        tz->tzid = MemStrdup(tzid);
+    else
+        tz->tzid = NULL;
 
     ReadChanges(tz);
     
@@ -171,12 +174,7 @@ BongoCalTimezoneFree(BongoCalTimezone *tz, BOOL freeJson)
 		MemFree(tz->tzid);
 
 	if (tz->changes) {
-		unsigned int i;
-		for(i=0;i<tz->changes->len;i++) {
-			char *t = g_array_index(tz->changes, char *, i);
-			MemFree(t);
-		}
-		g_array_free(tz->changes, TRUE);
+		g_array_free(tz->changes, FALSE);
 	}
 
 	if (freeJson)
@@ -351,7 +349,7 @@ ReadChanges(BongoCalTimezone *tz)
     }
 
     if (tz->changes) {
-        g_array_free(tz->changes, TRUE);
+        g_array_free(tz->changes, FALSE);
     }
     
     tz->changes = g_array_sized_new(FALSE, FALSE, sizeof(TimezoneChange), 32);
@@ -426,7 +424,7 @@ BongoCalTimezoneExpand(BongoCalTimezone *tz, BongoCalTime start, BongoCalTime en
     }
     
     if (tz->changes) {
-        g_array_free(tz->changes, TRUE);
+        g_array_free(tz->changes, FALSE);
     }
     
     tz->changes = g_array_sized_new(FALSE, FALSE, sizeof(TimezoneChange), 32);
