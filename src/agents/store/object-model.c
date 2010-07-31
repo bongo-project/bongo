@@ -27,7 +27,6 @@
 #include "messages.h"
 
 extern const char *sql_create_store[];	// defined in sql/create-store.s.cmake
-extern const char *sql_create_store_1[];	// defined in sql/create-store-1.s.cmake
 extern const StorePropValName StorePropTable[]; // defined in properties.c
 
 int	ACLCheckOnGUID(StoreClient *client, uint64_t guid, int prop);
@@ -151,8 +150,8 @@ StoreObjectDBCheckSchema(StoreClient *client, BOOL new_install)
 			// deliberate fall-through to upgrade to next version
 		case 0:
 			// current database schema
-			if (MsgSQLQuickExecute(client->storedb, (const char*)sql_create_store_1))
-				goto abort;
+			//if (MsgSQLQuickExecute(client->storedb, (const char*)sql_create_store_1))
+			//	goto abort;
 			// current version, nothing to do
 			break;
 		default:

@@ -1,150 +1,243 @@
-/****************************************************************************
- * <Novell-copyright>
- * Copyright (c) 2006 Novell, Inc. All Rights Reserved.
- * 
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of version 2 of the GNU General Public License
- * as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- * 
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, contact Novell, Inc.
- * 
- * To contact Novell about this file by physical or electronic mail, you 
- * may find current contact information at www.novell.com.
- * </Novell-copyright>
- ****************************************************************************/
-
 #include <config.h>
 #include <xpl.h>
 #include <nmlib.h>
-#include <msgapi.h>
 #include <assert.h>
 
 #include "stored.h"
 #include "messages.h"
 
+extern const char *sql_create_cookie_1[];	// defined in sql/create-cookie-1.s.cmake
+
+static MsgSQLHandle *
+OpenCookieDB(StoreClient *client)
+{
+	char path[XPL_MAX_PATH + 1];
+	int current_version = 0;
+	
+	snprintf(path, XPL_MAX_PATH, "%s/cookies.db", MsgGetDir(MSGAPI_DIR_DBF, NULL, 0));
+	
+	MsgSQLStatement stmt;
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+	MsgSQLStatement *schema = NULL;
+	
+	MsgSQLHandle *cdb = MsgSQLOpen(path, &client->memstack, 3000);
+	
+	if (MsgSQLBeginTransaction(cdb)) return NULL;
+	
+	schema = MsgSQLPrepare(cdb, "PRAGMA user_version;", &stmt);
+	if (schema == NULL) goto aborttran;
+	
+	if (! MsgSQLResults(cdb, schema)) goto aborttran;
+	
+	current_version = MsgSQLResultInt(&stmt, 0);
+	MsgSQLEndStatement(&stmt);
+	MsgSQLFinalize(&stmt);
+	
+	if (current_version > 1) {
+		Log(LOG_ERROR, "Cookie DB created with newer version of store, cannot open");
+	}
+	
+	if (current_version < 1) {
+		if (MsgSQLQuickExecute(cdb, (const char*)sql_create_cookie_1))
+			goto aborttran;
+		
+		MsgSQLReset(cdb);
+	}
+	
+	if (MsgSQLCommitTransaction(cdb)) goto aborttran;
+	
+	return cdb;
+	
+aborttran:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(cdb);
+	
+	return NULL;
+}
+
 CCode
 StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout)
 {
-	MsgAuthCookie cookie;
-	CCode ccode = 0;
-    
 	assert(STORE_PRINCIPAL_USER == client->principal.type);
-	
-	if (MsgAuthCreateCookie(client->principal.name, &cookie, timeout)) {
-		ccode = ConnWriteF(client->conn, "1000 %.32s\r\n", cookie.token);
-	} else {
-		ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-	}
-	
-	return ccode;
-}
 
+	MsgSQLStatement stmt;
+	MsgSQLStatement *ret;
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+
+	char token[50];
+	xpl_hash_context context;
+	MsgSQLHandle *db = NULL;
+
+	XplHashNew(&context, XPLHASH_MD5);
+	snprintf(token, sizeof(token) - 1, "%x%x", 
+		(unsigned int) XplGetThreadID(), (unsigned int) time(NULL));
+	XplHashWrite(&context, token, strlen(token));
+	XplRandomData(token, 8);
+	XplHashWrite(&context, token, strlen(token));
+	XplHashFinal(&context, XPLHASH_LOWERCASE, token, XPLHASH_MD5_LENGTH);
+
+	uint64_t expiration = time(NULL) + timeout;
+
+	db = OpenCookieDB(client);
+	if (db == NULL) goto abort;
+	if (MsgSQLBeginTransaction(db)) goto abort;
+
+	ret = MsgSQLPrepare(db, "INSERT INTO cookies (user, cookie, expiration) VALUES (?, ?, ?);", &stmt);
+	MsgSQLBindString(&stmt, 1, client->principal.name, FALSE);
+	MsgSQLBindString(&stmt, 2, token, FALSE);
+	MsgSQLBindInt64(&stmt, 3, expiration);
+
+	if (MsgSQLExecute(db, &stmt)) goto abort;
+
+	MsgSQLFinalize(&stmt);
+	if (MsgSQLCommitTransaction(db))
+		goto abort;
+
+	MsgSQLClose(db);
+
+	return ConnWriteF(client->conn, "1000 %.32s\r\n", token);
+
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(db);
+	if (db) MsgSQLClose(db);
+	return ConnWriteStr(client->conn, MSG5004INTERNALERR);
+}
 
 CCode
 StoreCommandCOOKIEDELETE(StoreClient *client, const char *token)
 {
-    CCode ccode = 0;
+	assert(STORE_PRINCIPAL_USER == client->principal.type);
 
-    assert(STORE_PRINCIPAL_USER == client->principal.type);
+	MsgSQLStatement stmt;
+	MsgSQLStatement *ret;
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
 
-    if (MsgAuthDeleteCookie(client->principal.name, token)) {
-        ccode = ConnWriteStr(client->conn, MSG1000OK);
-    } else {
-        ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-    }
-    
-    return ccode;
+	MsgSQLHandle *db = OpenCookieDB(client);
+	if (db == NULL) goto abort;
+	if (MsgSQLBeginTransaction(db)) goto abort;
+
+	if (token != NULL) {
+		ret = MsgSQLPrepare(db, "DELETE FROM cookies WHERE (expiration < ?) OR (user=? AND cookie=?);", &stmt);
+		MsgSQLBindString(&stmt, 3, token, FALSE);
+	} else {
+		ret = MsgSQLPrepare(db, "DELETE FROM cookies WHERE expiration < ? OR user=?;", &stmt);
+	}
+	MsgSQLBindInt64(&stmt, 1, time(NULL));
+	MsgSQLBindString(&stmt, 2, client->principal.name, FALSE);
+
+	if (MsgSQLExecute(db, &stmt)) goto abort;
+
+	MsgSQLFinalize(&stmt);
+	if (MsgSQLCommitTransaction(db))
+		goto abort;
+
+	MsgSQLClose(db);
+
+	return ConnWriteStr(client->conn, MSG1000OK);
+
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(db);
+	if (db) MsgSQLClose(db);
+	return ConnWriteStr(client->conn, MSG5004INTERNALERR);
 }
-
-#if 0
-// this looks like multiple-store code
-CCode
-TunnelAuthCookie(StoreClient *client, 
-                 struct sockaddr_in *serv, char *user, char *token, int nouser)
-{
-    Connection *conn = NULL;
-    char buffer[1024];
-    CCode ccode;
-
-    conn = NMAPConnect(NULL, serv);
-    if (!conn) {
-        return ConnWriteStr(client->conn, MSG3242BADAUTH);
-    }
-
-    ccode = NMAPAuthenticateWithCookie(conn, user, token, buffer, sizeof(buffer));
-    switch (ccode) {
-    case 1000:
-        ccode = SelectUser(client, user, NULL, nouser);
-        break;
-    case -1:
-        break;
-    default:
-        if (ccode >= 1000 && ccode < 6000) {
-            ccode = ConnWriteF(client->conn, "%d %s\r\n", ccode, buffer);
-        } else {
-            XplConsolePrintf("Unexpected response from remote store: %s\r\n",
-                             buffer);
-            ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-        }
-        break;
-    }
-
-    NMAPQuit(conn);
-    ConnFree(conn);
-
-    return ccode;
-}
-#endif
 
 CCode 
 StoreCommandAUTHCOOKIE(StoreClient *client, char *user, char *token, int nouser)
 {
-    CCode ccode;
-//    struct sockaddr_in serv;
+	CCode ccode;
 
-    if (StoreAgent.installMode) {
-        // don't allow cookie logins in installation mode. FIXME: better error message?
-        return ConnWriteStr(client->conn, MSG3242BADAUTH);
-    }
+	if (StoreAgent.installMode)
+		// don't allow cookie logins in installation mode. FIXME: better error message?
+		return ConnWriteStr(client->conn, MSG3242BADAUTH);
 
-    if (0 != MsgAuthFindUser(user)) {
-        XplConsolePrintf("Couldn't find user object for %s\r\n", user);
-        ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
-        XplDelay(2000);
-        goto finish;
-    }
+	if (0 != MsgAuthFindUser(user)) {
+		Log(LOG_INFO, "Couldn't find user object for %s\r\n", user);
+		
+		XplDelay(2000);
+		return ConnWriteStr(client->conn, MSG3242BADAUTH);
+	}
 
-    // FIXME: This checks for a non-local store. For Bongo 1.0, we assume a single store.
-#if 0
-    if (serv.sin_addr.s_addr != MsgGetHostIPAddress()) {
-        /* non-local store, need to verify against user's server */
-        
-        ccode = TunnelAuthCookie(client, &serv, user, token, nouser);
-        goto finish;
-    }
-#endif
+	MsgSQLStatement stmt;
+	MsgSQLStatement *find = NULL;
+	int result;
+	
+	MsgSQLHandle *db = OpenCookieDB(client);
+	
+	if (MsgSQLBeginTransaction(db)) return -2;
+	
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+	find = MsgSQLPrepare(db, "SELECT id FROM cookies WHERE user = ? AND cookie = ? AND expiration > ?;", &stmt);
+	if (find == NULL) goto abort;
+	
+	MsgSQLBindString(find, 1, user, FALSE);
+	MsgSQLBindString(find, 2, token, FALSE);
+	MsgSQLBindInt64(find, 3, time(NULL));
+	
+	result = MsgSQLResults(db, find);
+	if (result < 0) goto abort;
+	
+	MsgSQLFinalize(&stmt);
+	if (MsgSQLCommitTransaction(db))
+		goto abort;
 
-    switch (MsgAuthFindCookie(user, token)) {
-    case 0:
-        XplDelay(2000);        
-        ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
-        break;
-    case 1:
-        ccode = SelectUser(client, user, NULL, nouser);
-        break;
-    default:
-        ccode = ConnWriteStr(client->conn, MSG5004INTERNALERR);
-        break;
-    }
+	MsgSQLClose(db);
 
-finish:
-    return ccode;
+	if (result == 0) {
+		XplDelay(2000);        
+		ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
+	} else {
+		ccode = SelectUser(client, user, NULL, nouser);
+	}
+
+	return ccode;
+
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(db);
+	if (db) MsgSQLClose(db);
+	return ConnWriteStr(client->conn, MSG5004INTERNALERR);
 }
 
+CCode 
+StoreCommandCOOKIELIST(StoreClient *client)
+{
+	MsgSQLStatement stmt;
+	MsgSQLStatement *find = NULL;
+	
+	MsgSQLHandle *db = OpenCookieDB(client);
+	
+	if (MsgSQLBeginTransaction(db)) return -2;
+	
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+	find = MsgSQLPrepare(db, "SELECT cookie, expiration FROM cookies WHERE user = ?", &stmt);
+	if (find == NULL) goto abort;
+	
+	MsgSQLBindString(find, 1, client->principal.name, FALSE);
+	
+	// loop results
+	while (MsgSQLResults(db, &stmt) > 0) {
+		char *token;
+		
+		MsgSQLResultTextPtr(&stmt, 0, &token);
+		uint64_t expiration = MsgSQLResultInt64(&stmt, 1);
+		
+		ConnWriteF(client->conn, "2001 %s " FMT_UINT64_DEC "\r\n", token, expiration);
+	}
+	
+	MsgSQLFinalize(&stmt);
+	if (MsgSQLCommitTransaction(db))
+		goto abort;
+
+	MsgSQLClose(db);
+
+	return ConnWriteStr(client->conn, MSG1000OK);
+
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(db);
+	if (db) MsgSQLClose(db);
+	return ConnWriteStr(client->conn, MSG5004INTERNALERR);
+}
 

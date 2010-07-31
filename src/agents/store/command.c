@@ -571,6 +571,7 @@ StoreCommandLoop(StoreClient *client)
         case STORE_COMMAND_COOKIE:
             /* COOKIE [BAKE | NEW] <timeout> */
             /* COOKIE [CRUMBLE | DELETE] [<token>] */
+            /* COOKIE LIST */
             
             if (TOKEN_OK != (ccode = RequireUser(client)) ||
                 TOKEN_OK != (ccode = CheckTokC(client, n, 2, 3)))
@@ -591,6 +592,8 @@ StoreCommandLoop(StoreClient *client)
                        !XplStrCaseCmp(tokens[1], "DELETE"))
             {
                 ccode = StoreCommandCOOKIEDELETE(client, 3 == n ? tokens[2] : NULL);
+            } else if (!XplStrCaseCmp(tokens[1], "LIST")) {
+                ccode = StoreCommandCOOKIELIST(client);
             } else {
                 ccode = ConnWriteStr(client->conn, MSG3000UNKNOWN);
             }

@@ -34,7 +34,7 @@ include(cmake/Legacy.cmake)
 # output header files etc. specifically configured for this build
 configure_file(config.h.cmake include/config.h @ONLY)
 configure_file(src/agents/store/sql/create-store.s.cmake src/agents/store/sql/createstore.s @ONLY)
-configure_file(src/agents/store/sql/create-store-1.s.cmake src/agents/store/sql/createstore-1.s @ONLY)
+configure_file(src/agents/store/sql/create-cookie-1.s.cmake src/agents/store/sql/createcookie-1.s @ONLY)
 
 # tell compiler where to find Bongo's header files
 include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/include/)

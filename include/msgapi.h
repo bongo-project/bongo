@@ -42,19 +42,6 @@ EXPORT int MsgAuthAddUser(const char *user);
 EXPORT int MsgAuthUserList(char **list[]);
 EXPORT void MsgAuthUserListFree(char **list[]);
 
-// Auth / cookie functions
-
-#define MSGAUTH_COOKIE_LEN XPLHASH_MD5_LENGTH + 1
-
-typedef struct {
-   	char 	 token[MSGAUTH_COOKIE_LEN];
-	uint64_t expiration;
-} MsgAuthCookie;
-
-EXPORT BOOL MsgAuthCreateCookie(const char *username, MsgAuthCookie *cookie, uint64_t timeout);
-EXPORT int  MsgAuthFindCookie(const char *username, const char *token);
-EXPORT BOOL MsgAuthDeleteCookie(const char *username, const char *token);
-
 // SQL Routines
 
 typedef struct _MsgSQLStatement {

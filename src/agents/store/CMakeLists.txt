@@ -6,7 +6,7 @@ add_executable(bongostore
 	auth.c
 	calendar.c
 	sql/createstore.s
-	sql/createstore-1.s
+	sql/createcookie-1.s
 	command.c
 	command-parsing.c
 	contacts.c

@@ -153,6 +153,8 @@ CCode StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout);
 
 CCode StoreCommandCOOKIEDELETE(StoreClient *client, const char *token);
 
+CCode StoreCommandCOOKIELIST(StoreClient *client);
+
 CCode StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collection);
 
 CCode StoreCommandCREATE(StoreClient *client, char *collection, uint64_t guid);
