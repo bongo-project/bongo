@@ -26,7 +26,8 @@
 #include "command-parsing.h"
 #include "messages.h"
 
-extern const char *sql_create_store[];	// defined in create-store.s
+extern const char *sql_create_store[];	// defined in sql/create-store.s.cmake
+extern const char *sql_create_store_1[];	// defined in sql/create-store-1.s.cmake
 extern const StorePropValName StorePropTable[]; // defined in properties.c
 
 int	ACLCheckOnGUID(StoreClient *client, uint64_t guid, int prop);
@@ -42,23 +43,8 @@ StoreObjectDBCreate(StoreClient *client)
 	int result;
 	StoreObject collection; 
 	
-	result = MsgSQLBeginTransaction(client->storedb);
+	result = StoreObjectDBCheckSchema(client, TRUE);
 	if (result != 0) return result;
-	
-	result = MsgSQLQuickExecute(client->storedb, (const char*)sql_create_store);
-	
-	if (result != 0)
-		return MsgSQLAbortTransaction(client->storedb);
-	
-	if (MsgSQLCommitTransaction(client->storedb)) {
-		printf("Can't commit schema\n");
-		MsgSQLAbortTransaction(client->storedb);
-	} else {
-		// we've created the new database. This means the schema has 
-		// changed, and any compiled statements need to be cleared
-		// away - otherwise odd errors (call out of sequence) will occur
-		MsgSQLReset(client->storedb);
-	}
 	
 	// now, create the default layout of the store.
 	memset(&collection, 0, sizeof(StoreObject));
@@ -122,6 +108,75 @@ StoreObjectDBCreate(StoreClient *client)
 	StoreObjectCreate(client, &collection);
 	
 	return 0;
+}
+
+/**
+ * Check the schema on the store we're opening
+ * \param	client		storeclient we're using
+ * \param	new_install	whether this store has any data already
+ * \return	0 on success, error codes otherwise
+ */
+int 
+StoreObjectDBCheckSchema(StoreClient *client, BOOL new_install)
+{
+	int current_version = -1;
+	const int wanted_version = 1;
+	MsgSQLStatement stmt;
+	MsgSQLStatement *schema = NULL;
+	
+	if (MsgSQLBeginTransaction(client->storedb)) return -2;
+	memset(&stmt, 0, sizeof(MsgSQLStatement));
+	
+	if (! new_install) {
+		// attempt to figure out the current version of our schema
+		schema = MsgSQLPrepare(client->storedb, "PRAGMA user_version;", &stmt);
+		if (schema == NULL) goto abort;
+		
+		if (MsgSQLResults(client->storedb, schema)) {
+			current_version = MsgSQLResultInt(&stmt, 0);
+		}
+		
+		MsgSQLEndStatement(&stmt);
+		MsgSQLFinalize(&stmt);
+	}
+	
+	if (current_version != wanted_version) 
+		Log(LOG_INFO, "Upgrading store '%s' to version %d", client->storeName, wanted_version);
+	
+	switch (current_version) {
+		case -1:
+			// no database at all, needs to be created from scratch
+			if (MsgSQLQuickExecute(client->storedb, (const char*)sql_create_store))
+				goto abort;
+			// deliberate fall-through to upgrade to next version
+		case 0:
+			// original database schema, wants cookie support
+			if (MsgSQLQuickExecute(client->storedb, (const char*)sql_create_store_1))
+				goto abort;
+			// deliberate fall-through to upgrade to next version
+		case 1:
+			// current version, nothing to do
+			break;
+		default:
+			// unknown future version!
+			Log(LOG_ERROR, "Cannot access store %s : at future version %d", client->storeName, current_version);
+			goto abort;
+	}
+	
+	if (MsgSQLCommitTransaction(client->storedb)) goto abort;
+	
+	if (current_version != wanted_version) 
+		// we've altered the database. This means the schema has 
+		// changed, and any compiled statements need to be cleared
+		// away - otherwise odd errors (call out of sequence) will occur
+		MsgSQLReset(client->storedb);
+	
+	return 0;
+
+abort:
+	MsgSQLFinalize(&stmt);
+	MsgSQLAbortTransaction(client->storedb);
+	return -1;
 }
 
 void

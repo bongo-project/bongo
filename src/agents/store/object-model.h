@@ -129,6 +129,7 @@ int StoreObjectRemoveCollection(StoreClient *client, StoreObject *collection);
 
 void StorePropFixupNames(StorePropInfo *props, int propcount);
 int  StoreObjectDBCreate(StoreClient *client);
+int  StoreObjectDBCheckSchema(StoreClient *client, BOOL new_install);
 
 XPL_END_C_LINKAGE
 

@@ -5,7 +5,8 @@ enable_language(ASM-ATT)
 add_executable(bongostore
 	auth.c
 	calendar.c
-	createstore.s
+	sql/createstore.s
+	sql/createstore-1.s
 	command.c
 	command-parsing.c
 	contacts.c

@@ -459,6 +459,10 @@ SelectStore(StoreClient *client, char *user)
 			Log(LOG_ERROR, "Couldn't access store database for %s", user);
 			return -4;
 		}
+		if (StoreObjectDBCheckSchema(client, FALSE)) {
+			Log(LOG_ERROR, "Couldn't check schema version of store database for %s", user);
+			return -5;
+		}
 	}
 	
 	return 0;
