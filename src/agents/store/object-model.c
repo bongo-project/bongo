@@ -120,7 +120,7 @@ int
 StoreObjectDBCheckSchema(StoreClient *client, BOOL new_install)
 {
 	int current_version = -1;
-	const int wanted_version = 1;
+	const int wanted_version = 0;
 	MsgSQLStatement stmt;
 	MsgSQLStatement *schema = NULL;
 	
@@ -150,11 +150,9 @@ StoreObjectDBCheckSchema(StoreClient *client, BOOL new_install)
 				goto abort;
 			// deliberate fall-through to upgrade to next version
 		case 0:
-			// original database schema, wants cookie support
+			// current database schema
 			if (MsgSQLQuickExecute(client->storedb, (const char*)sql_create_store_1))
 				goto abort;
-			// deliberate fall-through to upgrade to next version
-		case 1:
 			// current version, nothing to do
 			break;
 		default:

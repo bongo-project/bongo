@@ -91,3 +91,5 @@ CREATE TABLE conversation (
 
 CREATE INDEX conversation_guid ON conversation (guid);
 CREATE INDEX conversation_date ON conversation (date);
+
+PRAGMA user_version = 0;
