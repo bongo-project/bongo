@@ -1967,6 +1967,13 @@ StoreObjectUnlinkFromConversation(StoreClient *client, StoreObject *mail)
 	// find the conversation for the email
 	uint64_t conversation_guid = SOQuery_ConversationGUIDForEmail(client, mail->guid);
 	
+	if (conversation_guid == 0) {
+		// no conversation guid means nothing to unlink
+		Log(LOG_ERROR, "Unable to unlink mail " GUID_FMT " from conversation: no cid", 
+			mail->guid);
+		return -1;
+	}
+	
 	// unlink the mail from the conversation
 	int status = SOQuery_Unlink(client, conversation_guid, mail->guid, FALSE);
 	if (status != 0)
