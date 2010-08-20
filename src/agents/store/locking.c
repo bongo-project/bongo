@@ -62,6 +62,8 @@ LogicalLockGain(StoreClient *client, StoreObject *object, LogicalLockType type, 
 	UNUSED_PARAMETER(location);
 	UNUSED_PARAMETER(object);
 
+	Log(LOG_DEBUG, "%lu asking for lock on %s in %s", XplGetThreadID(), client->storeName, location);
+
 	XplMutexLock(logicallock_global);
 	if (!g_hash_table_lookup_extended(storelocks_global, client->storeName, &orig_key, &sl_tmp)) {
 		/* it must not exist, create it first.  i can lock it too since this is new. */

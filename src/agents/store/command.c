@@ -1644,8 +1644,8 @@ StoreCommandCOPY(StoreClient *client, StoreObject *object, StoreObject *collecti
 	
 	/* release the [xy]locks */
 	//FIXME: Store level lock!!
-	LogicalLockRelease(client, yObject, yLock, "StoreCommandCOPY");
-	//LogicalLockRelease(client, xObject, xLock, "StoreCommandCOPY");
+	//LogicalLockRelease(client, yObject, yLock, "StoreCommandCOPY");
+	LogicalLockRelease(client, xObject, xLock, "StoreCommandCOPY");
 	xLock = yLock = LLOCK_NONE;
 	
 	++client->stats.insertions;
@@ -1835,9 +1835,8 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 	case STORE_DOCTYPE_MAIL:
 		// check to see if we can remove this document from a conversation
 		if (StoreObjectUnlinkFromConversation(client, object)) {
-			LogicalLockRelease(client, &collection, LLOCK_READWRITE, "StoreCommandDELETE");
+			// log the error, but don't fail on it
 			Log(LOG_ERROR, "DELETE: Unable to unlink conversations from " GUID_FMT, object->guid);
-			return ConnWriteStr(client->conn, MSG5005DBLIBERR);
 		}
 		break;
 	case STORE_DOCTYPE_CALENDAR:
