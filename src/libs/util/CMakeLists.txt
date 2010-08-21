@@ -17,6 +17,8 @@ add_library(bongoutil SHARED
 
 target_link_libraries(bongoutil
     ${GLIB2_LIBRARIES}
+	bongoconnio
+	bongostreamio
 )
 
 install(TARGETS bongoutil DESTINATION ${LIB_INSTALL_DIR})
