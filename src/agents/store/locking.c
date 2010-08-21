@@ -120,6 +120,7 @@ LogicalLockRelease(StoreClient *client, StoreObject *object, LogicalLockType typ
 	UNUSED_PARAMETER(object);
 	UNUSED_PARAMETER(type);
 
+	Log(LOG_DEBUG, "%lu asking to unlock %s in %s", XplGetThreadID(), client->storeName, location);
 	XplMutexLock(logicallock_global);
 
 	if (g_hash_table_lookup_extended(storelocks_global, client->storeName, &orig_key, &sl_tmp)) {
