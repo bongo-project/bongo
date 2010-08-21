@@ -1746,7 +1746,7 @@ StoreObjectCheckAuthorization(StoreClient *client, StoreObject *object, int prop
 		
 		if (current_result == 0) {
 			// try to inherit from the containing collection so we can check that instead
-			if (checkobj.collection_guid > 0) {
+			if (checkobj.collection_guid > STORE_ROOT_GUID) {
 				StoreObjectFind(client, checkobj.collection_guid, &checkobj);
 			} else {
 				// default to deny if we have gone all the way up the tree
