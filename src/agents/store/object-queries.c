@@ -118,7 +118,7 @@ SOQuery_Unlink(StoreClient *client, uint64_t document, uint64_t related, BOOL an
 	} else if (document) {
 		query = "DELETE FROM links WHERE doc_guid=?1";
 	} else {
-		query = "DELETE FROM links WHERE related_guid=?2";
+		query = "DELETE FROM links WHERE related_guid=?1";
 	}
 	
 	ret = MsgSQLPrepare(client->storedb, query, &stmt);
