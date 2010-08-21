@@ -672,6 +672,8 @@ main(int argc, char *argv[]) {
 			GenerateCryptoData();
 			RunAsRoot();
 			InitialStoreConfiguration();
+			BongoCalDeInit();
+			BongoAgentShutdown(&configtool);
 			break;
 		case 2:
 			RunAsBongoUser();
@@ -684,6 +686,7 @@ main(int argc, char *argv[]) {
 		case 4:
 			RunAsBongoUser();
 			TzCache();
+			BongoCalDeInit();
 			break;
 		case 5:
 			if (MsgAuthInit()) {
@@ -723,9 +726,6 @@ main(int argc, char *argv[]) {
 	if (config.ip) MemFree(config.ip);
 	if (config.dns) MemFree(config.dns);
 	if (config.domains) BongoJsonNodeFree(config.domains);
-
-	BongoCalDeInit();
-	BongoAgentShutdown(&configtool);
 
 	exit(0);
 }
