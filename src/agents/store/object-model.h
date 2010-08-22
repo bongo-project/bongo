@@ -14,23 +14,6 @@
 
 XPL_BEGIN_C_LINKAGE
 
-#define	MAX_FILE_NAME	255
-
-typedef struct {
-	uint64_t	guid;
-	uint64_t	collection_guid;
-	uint32_t	imap_uid;
-	char		filename[MAX_FILE_NAME + 1];
-	
-	uint32_t	type;
-	uint32_t	flags;
-	uint32_t	version;
-	
-	uint64_t	size;
-	uint32_t	time_created;
-	uint32_t	time_modified;
-} StoreObject;
-
 typedef struct {
 	uint64_t	guid;
 	char *		subject;

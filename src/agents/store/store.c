@@ -325,15 +325,9 @@ UnselectStore(StoreClient *client)
 		// FIXME: did optimise the Index here - could do a vacuum? could be costly tho...
 	}
 
-	if (client->watch.collection) {
-		NLockStruct *lock;
-		
-		StoreGetCollectionLock(client, &lock, client->watch.collection);
-		
-		if (StoreWatcherRemove(client, client->watch.collection))
+	if (client->watch.collection.guid > 0) {
+		if (StoreWatcherRemove(client, &(client->watch.collection)))
 			Log(LOG_ERROR, "Internal error removing client watch");
-		
-		StoreReleaseCollectionLock(client, &lock);
 	}
 
 	StoreDBClose(client);
@@ -488,91 +482,3 @@ finish :
 
     return ret;    
 }
-
-
-/** lock convenience functions **/
-
-/* gets an exclusive lock on the collection. 
- */
-
-CCode 
-StoreGetCollectionLock(StoreClient *client, NLockStruct **lock, uint64_t coll)
-{
-	int result;
-	
-	if (client == NULL) return 0;
-	
-	*lock = MemMalloc0(sizeof(NLockStruct));
-	result = StoreGetExclusiveFairLockQuiet(client, &((*lock)->fairlock), coll, 3000);
-	if (result != 0) {
-		return ConnWriteStr(client->conn, MSG4120BOXLOCKED);
-	} 
-	return 0;
-}
-
-CCode
-StoreReleaseCollectionLock(StoreClient *client, NLockStruct **lock)
-{
-	if (client == NULL) return 0;
-	
-	StoreReleaseFairLockQuiet(&((*lock)->fairlock));
-	MemFree(*lock);
-	*lock = NULL;
-	return 0;
-}
-
-/** Pooled collection locks **/
-
-typedef struct {
-    uint64_t guid;
-    NLockStruct *lock;
-} colldatum;
-
-
-int 
-CollectionLockPoolInit(StoreClient *client, CollectionLockPool *pool)
-{
-    pool->client = client;
-    pool->colls = g_array_sized_new(FALSE, FALSE, sizeof(colldatum), 8);
-    return 0;
-}
-
-
-void
-CollectionLockPoolDestroy(CollectionLockPool *pool)
-{
-    unsigned int i;
-
-    for (i = 0; i < pool->colls->len; i++) {
-        colldatum coll = g_array_index(pool->colls, colldatum, i);
-
-        StoreReleaseCollectionLock(pool->client, &coll.lock);
-    }
-
-    g_array_free(pool->colls, TRUE);
-}
-
-
-NLockStruct *
-CollectionLockPoolGet(CollectionLockPool *pool, uint64_t guid)
-{
-    colldatum coll;
-    unsigned int i;
-    
-    for (i = 0; i < pool->colls->len; i++) {
-        colldatum coll = g_array_index(pool->colls, colldatum, i);
-        
-        if (guid == coll.guid) {
-            return coll.lock;
-        }
-    }
-
-    if (StoreGetCollectionLock(pool->client, &coll.lock, guid)) {
-        return NULL;
-    }
-    coll.guid = guid;
-    g_array_append_val(pool->colls, coll);
-    return coll.lock;
-}
-
-

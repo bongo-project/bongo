@@ -143,6 +143,23 @@ typedef struct _TimedCommand {
 	struct timeval end;
 } TimedCommand;
 
+#define	MAX_FILE_NAME	255
+
+typedef struct {
+	uint64_t	guid;
+	uint64_t	collection_guid;
+	uint32_t	imap_uid;
+	char		filename[MAX_FILE_NAME + 1];
+	
+	uint32_t	type;
+	uint32_t	flags;
+	uint32_t	version;
+	
+	uint64_t	size;
+	uint32_t	time_created;
+	uint32_t	time_modified;
+} StoreObject;
+
 struct _StoreClient {
     Connection *conn;
     unsigned int flags;
@@ -171,7 +188,7 @@ struct _StoreClient {
     char authToken[64];
     
     struct {
-        uint64_t collection;
+        StoreObject collection;
         uint32_t flags;
         
         struct {
@@ -298,8 +315,8 @@ BongoJsonResult GetJson(StoreClient *client, StoreObject *object, BongoJsonNode 
 
 /** watch.c **/
 void StoreWatcherInit(void);
-int StoreWatcherAdd(StoreClient *client, uint64_t collection);
-int StoreWatcherRemove(StoreClient *client, uint64_t collection);
+int StoreWatcherAdd(StoreClient *client, StoreObject *collection);
+int StoreWatcherRemove(StoreClient *client, StoreObject *collection);
 void StoreWatcherEvent(StoreClient *client, StoreObject *object, 
                        StoreWatchEvents event);
 

@@ -262,7 +262,7 @@ StoreCommandLoop(StoreClient *client)
             command = (StoreCommand) BongoHashtableGet(CommandTable, tokens[0]);
         }
                 
-        if (client->watch.collection) {
+        if (client->watch.collection.guid > 0) {
             /* out of band events */
             ccode = StoreShowWatcherEvents(client);
             if (-1 == ccode) {
@@ -1295,11 +1295,6 @@ StoreCommandLoop(StoreClient *client)
 
         default:
             break;
-        }
-
-        if (client->watchLock) {
-            StoreReleaseCollectionLock(client, &(client->watchLock));
-            client->watchLock = NULL;
         }
 
         if (ccode >= 0) {
@@ -2963,11 +2958,11 @@ StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags)
 	CCode ccode;
 	
 	// stop watching whatever we were watching before
-	if (client->watch.collection) {
-		if (StoreWatcherRemove(client, client->watch.collection))
+	if (client->watch.collection.guid > 0) {
+		if (StoreWatcherRemove(client, &(client->watch.collection)))
 			return ConnWriteStr(client->conn, MSG5004INTERNALERR);
 		
-		client->watch.collection = 0;
+		memset(&(client->watch.collection), 0, sizeof(StoreObject));
 		client->watch.flags = 0;
 	}
 	
@@ -2979,10 +2974,10 @@ StoreCommandWATCH(StoreClient *client, StoreObject *collection, int flags)
 		ccode = StoreObjectCheckAuthorization(client, collection, STORE_PRIV_READ);
 		if (ccode) return ConnWriteStr(client->conn, MSG4240NOPERMISSION);
 		
-		if (StoreWatcherAdd(client, collection->guid))
+		if (StoreWatcherAdd(client, collection))
 			return ConnWriteStr(client->conn, MSG5004INTERNALERR);
 		
-		client->watch.collection = collection->guid;
+		memcpy(&(client->watch.collection), collection, sizeof(StoreObject));
 		client->watch.flags = flags;
 	}
 	return ConnWriteStr(client->conn, MSG1000OK);
