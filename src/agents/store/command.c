@@ -143,9 +143,6 @@ StoreSetupCommands()
         BongoHashtablePutNoReplace(CommandTable, "REPLACE", (void *) STORE_COMMAND_REPLACE) ||
         BongoHashtablePutNoReplace(CommandTable, "WRITE", (void *) STORE_COMMAND_WRITE) ||
 
-        /* delivery command */
-        BongoHashtablePutNoReplace(CommandTable, "DELIVER", (void *) STORE_COMMAND_DELIVER) ||
-
         /* conversation commands */
         BongoHashtablePutNoReplace(CommandTable, "CONVERSATION", 
                          (void *) STORE_COMMAND_CONVERSATION) ||
@@ -632,30 +629,6 @@ StoreCommandLoop(StoreClient *client)
                 TOKEN_OK == (ccode = ParseDocument(client, tokens[1], &object)))
             {
                 ccode = StoreCommandDELETE(client, &object);
-            }
-            break;
-
-        case STORE_COMMAND_DELIVER:
-            /* DELIVER FILE <type> <sender> <authsender> <filename> */
-            /* DELIVER STREAM <type> <sender> <authsender> <count> */
-
-            if (TOKEN_OK != (ccode = RequireManager(client)) ||
-                TOKEN_OK != (ccode = RequireNoStore(client)) ||
-                TOKEN_OK != (ccode = CheckTokC(client, n, 6, 6)) ||
-                TOKEN_OK != (ccode = ParseDocType(client, tokens[2], &doctype)))
-            {
-                break;
-            }
-            if (0 == XplStrCaseCmp(tokens[1], "FILE")) {
-                ccode = StoreCommandDELIVER(client, tokens[3], tokens[4], 
-                                            tokens[5], 0);
-            } else if (0 == XplStrCaseCmp(tokens[1], "STREAM")) {
-                if (TOKEN_OK != (ccode = ParseInt(client, tokens[5], &int1))) {
-                    break;
-                }
-                ccode = StoreCommandDELIVER(client, tokens[3], tokens[4], NULL, int1);
-            } else {
-                ccode = ConnWriteStr(client->conn, MSG3000UNKNOWN);
             }
             break;
 
@@ -1875,142 +1848,6 @@ StoreCommandDELETE(StoreClient *client, StoreObject *object)
 finish:
 	
 	return ccode;
-}
-
-
-// one of filename and bytes must be set 
-// if DELIVER FILE - it's filename
-// if DELIVER STREAM - it's bytes on a network socket
-// DEPRECATED
-CCode
-StoreCommandDELIVER(StoreClient *client, char *sender, char *authSender, 
-                    char *filename, size_t bytes)
-{
-    CCode ccode;
-    FILE *msgfile = NULL;
-    char tmpFile[XPL_MAX_PATH+1];
-
-    tmpFile[0] = 0;
-
-    if (!filename) {
-        const char *work_dir = (char *)MsgGetDir(MSGAPI_DIR_WORK, NULL, 0);
-
-        if (bytes <= 0) {
-            return ConnWriteStr(client->conn, MSG3017INTARGRANGE);
-        }
-        msgfile = XplOpenTemp(work_dir, "w+b", tmpFile);
-        if (!msgfile) {
-            return ConnWriteStr(client->conn, MSG5202TMPWRITEERR);
-        }
-        Ringlog("deliver: Reading stream content to file");
-        ccode = ConnReadToFile(client->conn, msgfile, bytes);
-        if (-1 == ccode) {
-            unlink(tmpFile);
-            fclose (msgfile);
-            return ConnWriteStr(client->conn, MSG5202TMPWRITEERR);
-        }
-    } else {
-        struct stat sb;
-        char fullPath[XPL_MAX_PATH + 1];
-
-        snprintf(fullPath, sizeof(fullPath), "%s/%s", StoreAgent.store.spoolDir, filename);
-
-
-        if (stat(fullPath, &sb)) {
-            return ConnWriteStr(client->conn, MSG4201FILENOTFOUND);
-        }
-        bytes = sb.st_size;
-
-        msgfile = fopen(fullPath, "r");
-        if (!msgfile) {
-            return ConnWriteStr(client->conn, MSG5201FILEREADERR);
-        }
-    }
-
-    if (-1 == (ccode = ConnWriteStr(client->conn, MSG2053SENDRECIP)) ||
-        -1 == (ccode = ConnFlush(client->conn))) 
-    {
-        goto cleanup;
-    }
-
-    while (ccode >= 0) {
-        char *args[3];
-        char *recipient;
-        char *mbox;
-        unsigned long flags = 0;
-        int n;
-        int status;
-        char buffer[CONN_BUFSIZE];
-        char rlstring[256];
-
-        ccode = ConnReadAnswer(client->conn, buffer, sizeof(buffer));
-        if (-1 == ccode) {
-            goto cleanup;
-        }
-        if (!buffer[0]) {
-            ccode = ConnWriteStr(client->conn, MSG1000OK);
-            break;
-        }
-
-        /* <recipient> <mailbox> <flags> */
-        snprintf(rlstring, 255, "deliver: %s", buffer);
-        Ringlog(rlstring);
-
-        n = BongoStringSplit(buffer, ' ', args, 3);
-        if (TOKEN_OK != (ccode = CheckTokC(client, n, 3, 3)) ||
-            TOKEN_OK != (ccode = ParseUserName(client, args[0])) ||
-            TOKEN_OK != (ccode = ParseUnsignedLong(client, args[2], &flags)))
-        {
-            if (-1 == (ccode = ConnFlush(client->conn))) {
-                goto cleanup;
-            }
-            continue;
-        }
-        recipient = args[0];
-        mbox = args[1];
-
-        if (fseek (msgfile, 0, SEEK_SET)) {
-            ccode = ConnWriteStr(client->conn, MSG5201FILEREADERR);
-            goto cleanup;
-        }
-        snprintf(rlstring, 255, "deliver: selecting store %s", recipient);
-        Ringlog(rlstring);
-        SelectStore(client, recipient);
-        
-        if (! client->readonly) {
-            status = DeliverMessageToMailbox(client, sender, authSender, recipient, mbox,
-                                         msgfile, 0, bytes, flags);
-        } else {
-            status = DELIVER_FAILURE;
-        }
-        UnselectStore(client);
-        Ringlog("deliver: store unselected");
-        
-        switch (status) {
-        case DELIVER_SUCCESS:
-            ccode = ConnWriteStr(client->conn, MSG1000DELIVERYOK);
-            break;
-        default:
-            ccode = ConnWriteF(client->conn, MSG5260DELIVERYFAILED, status);
-            break;
-        }
-        if (-1 == ccode) {
-            goto cleanup;
-        }
-        if (-1 == (ccode = ConnFlush(client->conn))) {
-            goto cleanup;
-        }
-    }
-
-cleanup:    
-    if (msgfile) {
-        fclose (msgfile);
-    }
-    if (tmpFile[0]) {
-        unlink(tmpFile);
-    }
-
-    return ccode;
 }
 
 CCode 
