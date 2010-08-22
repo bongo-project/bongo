@@ -21,6 +21,14 @@ Log(int level, char *message, ...)
 	va_list args;
 	
 	if ((level>10) || (level<0)) return;
+
+#ifdef DEBUG
+	// don't output TRACE or lower if DEBUG is on.
+	if (level <= LOG_TRACE) return;
+#else
+	// don't output DEBUG or lower messages if DEBUG is not on
+	if (level <= LOG_DEBUG) return;
+#endif
 	
 	va_start(args, message);
 	vsyslog(syslog_mapping[level], message, args);
