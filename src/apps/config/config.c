@@ -340,6 +340,7 @@ GenerateCryptoData() {
 		// TODO: check that the directory doesn't already exist.
 		// XplConsolePrintf(_("Couldn't create data directory!\n"));
 	}
+	XplConsolePrintf(_("Generating crypto data. THIS MAY TAKE SOME TIME.\n"));
 	
 	// save a random seed for faster Xpl startup in future.
 	XplSaveRandomSeed();
@@ -489,6 +490,8 @@ GenerateCryptoData() {
 	gnutls_dh_params_deinit(dh_params);
 	gnutls_rsa_params_deinit(rsa_params);
 	gnutls_global_deinit();
+	
+	XplConsolePrintf(_("Crypto data generated.\n"));
 	
 	return TRUE;
 }
