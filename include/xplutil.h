@@ -172,6 +172,7 @@ typedef struct _XplDir {
 XplDir   *XplOpenDir(const char  *dirname);
 XplDir   *XplReadDir(XplDir *dirp);
 int       XplCloseDir(XplDir *dirp);
+int       XplRemoveDir(const char *dir);
 
 # define XplFlushWrites(fileptr)		      fsync(fileno(fileptr))
 

@@ -38,97 +38,10 @@
 int
 IsOwnStoreSelected(StoreClient *client)
 {
-    return (STORE_PRINCIPAL_USER == client->principal.type && 
-            (!strcmp(client->principal.name, client->storeName)));
+	return (STORE_PRINCIPAL_USER == client->principal.type && 
+		(!strcmp(client->principal.name, client->storeName)));
 }
 
-/* Creates a new collection, including any ancestors required.  Also touches the file
-   for this collection (but doesn't truncate it, since this function is also used by
-   the RENAME command (which is a bit of an abstraction violation))
-
-   returns:  0 success
-            -1 bad collection name
-            -2 db lib err
-            -3 guid exists
-            -4 io error
-            -5 permission denied
-*/
-
-int
-StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
-                      uint64_t *outGuid, int32_t *outVersion)
-{
-    StoreObject new_collection;
-    char *p;
-    int res;
-    int namelen = strlen(name);
-
-    /* validate collection name */
-    if ('/' != *name ||
-        namelen < 2 ||
-        namelen > STORE_MAX_COLLECTION - 1 ||
-        '/' == name[namelen-1])
-    {
-        return -1;
-    }
-
-    memset (&new_collection, 0, sizeof(StoreObject));
-    new_collection.type = STORE_DOCTYPE_FOLDER;
-    new_collection.collection_guid = 1; /* root guid */
-    
-	if (guid)
-		new_collection.guid = guid;	// check at some point?
-
-    p = name;
-    do {
-    	// FIXME: recursively create any collections in our path which don't exist yet
-    	StoreObject collection;
-    	collection.guid = 0;
-
-/*    	
-    	collection.guid = 0;
-        *p++ = '/';
-        p = strchr(p, '/');
-        if (p)
-        	*p = 0;
-        else
-        	collection.guid = guid;
-        
-           
-        dcode = DStoreFindCollectionGuid(client->handle, name, &info.collection);
-        if (-1 == dcode) {
-            return -2;
-        } else if (1 == dcode) {
-            if (!p) {
-                return -3;
-            } else {
-                continue;
-            }
-        }
-
-        if (StoreCheckAuthorizationGuidQuiet(client, info.collection, 
-                                             STORE_PRIV_BIND)) 
-        {
-            return -5;
-        }
-
-        strncpy (info.filename, name, sizeof(info.filename) - 1);
-
-        if (DStoreSetDocInfo(client->handle, &info)) {
-            return -2;
-        }
-        info.collection = info.guid;
-*/
-        res = MaildirNew(client->store, collection.guid);
-        if (res != 0) return res;
-    } while (p);
-
-    if (outGuid) *outGuid = new_collection.guid;
-    if (outVersion) *outVersion = new_collection.version;
-    
-    return 0;
-}
-                 
 /* find the user's store path, creating it if necessary 
    path must be a buffer of size XPL_MAX_PATH + 1 or greater
    returns 0 on success, -1 o/w
@@ -211,49 +124,45 @@ StoreProcessDocument(StoreClient *client,
 CCode
 SelectUser(StoreClient *client, char *user, char *password, int nouser)
 {
-    CCode ccode = -1;
-    char buf[INET_ADDRSTRLEN+1];
+	CCode ccode = -1;
 
-    if (StoreAgent.installMode) {
-        // Don't let users login in install mode.
-        // FIXME: a better error message? 
-        ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
-        goto finish;
-    }
+	if (StoreAgent.installMode) {
+		// Don't let users login in install mode.
+		// FIXME: a better error message? 
+		ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
+		goto finish;
+	}
 
-    if (0 != MsgAuthFindUser(user)) {
-        if (IS_MANAGER(client)) {
-            ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
-        } else {
-            ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
-            XplDelay(2000);
-        }
-        goto finish;
-    }
+	if (0 != MsgAuthFindUser(user)) {
+		if (IS_MANAGER(client)) {
+			ccode = ConnWriteStr(client->conn, MSG4224NOUSER);
+		} else {
+			ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
+			XplDelay(2000);
+		}
+		goto finish;
+	}
 
-    if (password && MsgAuthVerifyPassword(user, password) != 0) {
-        ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
-        XplDelay(2000);
-        goto finish;
-    }
+	if (password && MsgAuthVerifyPassword(user, password) != 0) {
+		ccode = ConnWriteStr(client->conn, MSG3242BADAUTH);
+		XplDelay(2000);
+		goto finish;
+	}
 
-    // FIXME: I think we're supposed to refer to the correct store IP?
-    strncpy(buf, "127.0.0.1", INET_ADDRSTRLEN);
-    ccode = ConnWriteF(client->conn, "1000 %s\r\n", buf);
+	// FIXME: We're supposed to refer to the correct store IP - but that's multistore...
+	ccode = ConnWriteF(client->conn, "1000 127.0.0.1\r\n");
 
-    if (nouser) {
-        goto finish;
-    }
+	if (nouser) goto finish;
 
-    UnselectUser(client);
+	UnselectUser(client);
 
-    client->principal.type = STORE_PRINCIPAL_USER;
-    strncpy(client->principal.name, user, sizeof(client->principal.name));
-    client->principal.name[sizeof(client->principal.name) - 1] = 0;
-    client->flags |= STORE_CLIENT_FLAG_IDENTITY;
+	client->principal.type = STORE_PRINCIPAL_USER;
+	strncpy(client->principal.name, user, sizeof(client->principal.name));
+	client->principal.name[sizeof(client->principal.name) - 1] = 0;
+	client->flags |= STORE_CLIENT_FLAG_IDENTITY;
 
 finish:
-    return ccode;
+	return ccode;
 }
 
 /* opens the store for the given user */
@@ -356,129 +265,72 @@ UnsetStoreReadonly(StoreClient *client)
 void
 UnselectUser(StoreClient *client)
 {
-    StoreToken *tok;
-    StoreToken *next;
+	StoreToken *tok;
+	StoreToken *next;
 
-    for (tok = client->principal.tokens; 
-         tok; 
-         tok = next) 
-    {
-        next = tok->next;
-        MemFree(tok);
-    }
-    client->principal.tokens = NULL;
-    client->principal.type = STORE_PRINCIPAL_NONE;
-    client->flags &= ~STORE_CLIENT_FLAG_IDENTITY;
+	for (tok = client->principal.tokens; tok; tok = next) {
+		next = tok->next;
+		MemFree(tok);
+	}
+
+	client->principal.tokens = NULL;
+	client->principal.type = STORE_PRINCIPAL_NONE;
+	client->flags &= ~STORE_CLIENT_FLAG_IDENTITY;
 }
-
-
-static int
-RemoveCurrentDirectory()
-{
-    DIR *dir;
-    struct dirent *dirent;
-    struct stat sb;
-    int result = -1;
-
-    dir = opendir(".");
-    if (!dir) {
-        return -1;
-    }
-
-    while ((dirent = readdir(dir))) {
-        if (!strcmp(".", dirent->d_name) ||
-            !strcmp("..", dirent->d_name))
-        {
-            continue;
-        }
-
-        if (stat(dirent->d_name, &sb)) {
-            goto finish;
-        }
-        
-        if (S_ISREG(sb.st_mode)) {
-            unlink(dirent->d_name);
-        } else if (S_ISDIR(sb.st_mode)) {
-            if (chdir(dirent->d_name) ||
-                RemoveCurrentDirectory() ||
-                chdir(".."))
-            {
-                goto finish;
-            }                             
-        }
-    }
-    result = 0;
-
-finish:
-    closedir(dir);
-
-    return result;
-}
-
 
 void
 DeleteStore(StoreClient *client)
 {
-    char path[XPL_MAX_PATH];
-    int cwd;
+	char path[XPL_MAX_PATH];
 
-    strncpy(path, client->store, sizeof(path));
-    cwd = open(".", O_RDONLY);
-    if (cwd < 0) {
-        return;
-    }
-    
-    client->flags |= STORE_CLIENT_FLAG_DONT_CACHE;
+	strncpy(path, client->store, sizeof(path));
 
-    UnselectStore(client);
-    
-    if (chdir(path)) {
-        return;
-    }
-    RemoveCurrentDirectory();
-    fchdir(cwd);
+	client->flags |= STORE_CLIENT_FLAG_DONT_CACHE;
+
+	UnselectStore(client);
+
+	XplRemoveDir(path);
 }
 
 BongoJsonResult
 GetJson(StoreClient *client, StoreObject *object, BongoJsonNode **node, char *filepath)
 {
-    BongoJsonResult ret = BONGO_JSON_UNKNOWN_ERROR;
-    char path[XPL_MAX_PATH + 1];
-    FILE *fh = NULL;
-    char *buf = NULL;
-    
-    if (filepath) {
-        strncpy(path, filepath, XPL_MAX_PATH);
-    } else {
-        FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
-    }
+	BongoJsonResult ret = BONGO_JSON_UNKNOWN_ERROR;
+	char path[XPL_MAX_PATH + 1];
+	FILE *fh = NULL;
+	char *buf = NULL;
 
-    fh = fopen(path, "rb");
-    if (!fh) {
-        Log(LOG_ERROR, "Couldn't open file for doc " GUID_FMT, object->guid);
-        goto finish;
-    }
+	if (filepath) {
+		strncpy(path, filepath, XPL_MAX_PATH);
+	} else {
+		FindPathToDocument(client, object->collection_guid, object->guid, path, sizeof(path));
+	}
 
-    /* FIXME: would be nice (and easy) to get a streaming API for
-     * bongojson */ 
-    buf = MemMalloc(object->size + 1);
-    
-    if (fread(buf, 1, object->size, fh) == object->size) {
-        buf[object->size] = '\0';        
-    } else {
-        Log(LOG_ERROR, "Couldn't read doc " GUID_FMT, object->guid);
-        goto finish;
-    }
-    
-    ret = BongoJsonParseString(buf, node);
+	fh = fopen(path, "rb");
+	if (!fh) {
+		Log(LOG_ERROR, "Couldn't open file for doc " GUID_FMT, object->guid);
+		goto finish;
+	}
 
-    if (ret != BONGO_JSON_OK) {
-        Log(LOG_ERROR, "Couldn't parse json object %s", buf);
-    }
+	// FIXME: would be nice (and easy) to get a streaming API for bongojson
+	buf = MemMalloc(object->size + 1);
+
+	if (fread(buf, 1, object->size, fh) == object->size) {
+		buf[object->size] = '\0';        
+	} else {
+		Log(LOG_ERROR, "Couldn't read doc " GUID_FMT, object->guid);
+		goto finish;
+	}
+
+	ret = BongoJsonParseString(buf, node);
+
+	if (ret != BONGO_JSON_OK) {
+		Log(LOG_ERROR, "Couldn't parse json object %s", buf);
+	}
     
 finish :
-    fclose (fh);
-    if (buf) MemFree(buf);
+	fclose (fh);
+	if (buf) MemFree(buf);
 
-    return ret;    
+	return ret;    
 }

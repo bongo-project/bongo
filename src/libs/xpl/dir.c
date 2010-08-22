@@ -90,6 +90,38 @@ XplCloseDir(XplDir *dirp)
 	return(-1);
 }
 
+int
+XplRemoveDir(const char *dir)
+{
+	int result = -1;
+	char path[XPL_MAX_PATH + 5];
+
+	XplDir *dh = XplOpenDir(dir);
+	if (!dh) return -1;
+
+	while ((dh->direntp = readdir(dh->dirp))) {
+		if (!strcmp(".", dh->direntp->d_name) || !strcmp("..", dh->direntp->d_name))
+			continue;
+
+		snprintf(path, XPL_MAX_PATH, "%s/%s", dh->Path, dh->direntp->d_name);
+
+		if (stat(path, &(dh->stats)) != 0)
+			goto finish;
+        
+		if (S_ISREG(dh->stats.st_mode)) {
+			unlink(dh->direntp->d_name);
+		} else if (S_ISDIR(dh->stats.st_mode)) {
+			if (XplRemoveDir(path)) goto finish;
+			if (rmdir(path)) goto finish;
+		}
+	}
+
+finish:
+	XplCloseDir(dh);
+	result = rmdir(dir);
+	return result;
+}
+
 char *XplStrLower(char *str)
 {
 	if (str)

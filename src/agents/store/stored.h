@@ -290,8 +290,6 @@ extern struct StoreGlobals StoreAgent;
 /** store.c **/
 int IsOwnStoreSelected(StoreClient *client);
 
-int StoreCreateCollection(StoreClient *client, char *name, uint64_t guid,
-                          uint64_t *outGuid, int32_t *outVersion);
 int StoreCreateDocument(StoreClient *client, StoreDocumentType type, char *name, 
                         uint64_t *outGuid);
 int SetupStore(const char *user, const char **storeRoot, char *path, size_t len);
