@@ -14,9 +14,7 @@
 #include <xpl.h>
 #include <msgapi.h>
 #include <sqlite3.h>
-
-// #define DEBUG(x,y)	printf("sql3: " x, y);
-#define DEBUG(x,y)		;
+#include <logger.h>
 
 MsgSQLHandle *
 MsgSQLOpen(char *path, BongoMemStack *memstack, int locktimeoutms)
@@ -26,7 +24,7 @@ MsgSQLOpen(char *path, BongoMemStack *memstack, int locktimeoutms)
 
 #if 0
 	if (! sqlite3_threadsafe()) {
-		XplConsolePrintf("msgapi: SQLite needs to be compiled thread-safe. Cannot run.\n");
+		Log(LOG_DEBUG, "msgapi: SQLite needs to be compiled thread-safe. Cannot run.");
 		abort();
 	}
 #endif
@@ -36,15 +34,15 @@ MsgSQLOpen(char *path, BongoMemStack *memstack, int locktimeoutms)
 	if (!(handle = MemMalloc(sizeof(MsgSQLHandle))) ||
 	    memset(handle, 0, sizeof(MsgSQLHandle)), 0 ||
 	    SQLITE_OK != sqlite3_open(path, &handle->db)) {
-		// FIXME Logging
-		XplConsolePrintf("msgapi: Failed to open database \"%s\".\r\n", path);
+		Log(LOG_ERROR, "sql3: Failed to open database \"%s\"", path);
 		goto fail;
 	}
 
-	DEBUG("open handle %ld\n", handle->db)
+	Log(LOG_INFO, "open handle %ld", handle->db);
 
 	handle->memstack = memstack;
 	handle->lockTimeoutMs = locktimeoutms;
+	handle->transactionDepth = 0;
 	XplMutexInit(handle->transactionLock);
 
 	if (create) {
@@ -68,10 +66,9 @@ MsgSQLClose(MsgSQLHandle *handle)
 	MsgSQLReset(handle);
 	XplMutexDestroy(handle->transactionLock);
 	if (SQLITE_BUSY == sqlite3_close(handle->db)) {
-		// FIXME logging
-		XplConsolePrintf ("msgapi: couldn't close database\r\n");
+		Log(LOG_ERROR, "sql3: couldn't close database");
 	}
-	DEBUG("close handle %ld\n\n", handle->db)
+	Log(LOG_INFO, "sql3: close handle %ld\n\n", handle->db);
 
 	MemFree(handle);
 }
@@ -83,8 +80,8 @@ MsgSQLEndStatement(MsgSQLStatement *_stmt)
 	if (_stmt && _stmt->stmt) {
 		result = sqlite3_reset(_stmt->stmt);
 		if (result != SQLITE_OK) 
-			printf("Error ending statement: %d\n", result);
-		DEBUG("reset stmt %ld\n", _stmt->stmt)
+			Log(LOG_ERROR, "sql3: Error ending statement: %d", result);
+		Log(LOG_DEBUG, "sql3: reset stmt %ld", _stmt->stmt);
 	}
 }
 
@@ -95,8 +92,8 @@ MsgSQLFinalize(MsgSQLStatement *stmt)
 	if (stmt->stmt) {
 		result = sqlite3_finalize(stmt->stmt);
 		if (result != SQLITE_OK)
-			printf("Error finalizing statement: %d\n", result);
-		DEBUG("final stmt %ld\n", stmt->stmt)
+			Log(LOG_ERROR, "sql3: Error finalizing statement: %d", result);
+		Log(LOG_DEBUG, "sql3: final stmt %ld", stmt->stmt);
 		stmt->stmt = NULL;
 	}
 }
@@ -143,34 +140,22 @@ MsgSQLBeginTransaction(MsgSQLHandle *handle)
 	BOOL locked = FALSE;
 	
 	// acquire the transaction lock to prevent other people doing stuff 
-	if (handle->transactionDepth) {
-		DEBUG("* Need to acquire lock already taken\n", NULL)
-		locked = TRUE;
-	}
 	XplMutexLock(handle->transactionLock);
 	if (locked) {
-		DEBUG("* Acquired lock successfully\n", NULL)
+		Log(LOG_INFO, "sql3: Acquired lock successfully");
 	}
-/*
-	if (handle->transactionDepth) {
-		// FIXME: ensure it's an exclusive transaction
-		XplConsolePrintf("IMMEDIATE ERROR: transaction started on handler in use\n");
-		abort ();
-		return 0;
-	}
-*/
-	
+
 	stmt = MsgSQLPrepare(handle, "BEGIN TRANSACTION;", &handle->stmts.begin);
 	if (!stmt) {
-		//DStoreStmtError(handle, stmt);
+		Log(LOG_ERROR, "sql3: Unable to begin transaction");
 		return -1;
 	}
 
 	do {
 		result = sqlite3_step(stmt->stmt);
-		DEBUG("BEGIN TRAN stmt %ld\n", stmt->stmt)
+		Log(LOG_INFO, "sql3: BEGIN TRAN stmt %ld", stmt->stmt);
 		reset = sqlite3_reset(stmt->stmt);
-		DEBUG(" - bt reset stmt %ld\n", stmt->stmt)
+		Log(LOG_INFO, "sql: - bt reset stmt %ld", stmt->stmt);
 	} while (SQLITE_BUSY == result && --count && (XplDelay(MSGSQL_STMT_SLEEP_MS), 1));
 
 	switch (result) {
@@ -180,8 +165,7 @@ MsgSQLBeginTransaction(MsgSQLHandle *handle)
 		case SQLITE_BUSY:
 			return -2;
 		default:
-			printf("Database error %d : %s\n", result, sqlite3_errmsg(handle->db));
-			//DStoreStmtError(handle, stmt);
+			Log(LOG_ERROR, "sql3: Database error %d : %s", result, sqlite3_errmsg(handle->db));
 			return -1;
 	}
 }
@@ -196,25 +180,25 @@ MsgSQLCommitTransaction(MsgSQLHandle *handle)
 
 	stmt = MsgSQLPrepare(handle, "END TRANSACTION;", &handle->stmts.end);
 	if (!stmt) {
-		// DStoreStmtError(handle, stmt);
+		Log(LOG_ERROR, "sql3: Unable to prepare end of transaction statement");
 		return -1;
 	}
 
 	do {
 		result = sqlite3_step(stmt->stmt);
-		DEBUG("COMMIT stmt %ld\n", stmt->stmt)
+		Log(LOG_INFO, "sql3: COMMIT stmt %ld", stmt->stmt);
 		sqlite3_reset(stmt->stmt);
-		DEBUG(" - ct reset stmt %ld\n", stmt->stmt)
+		Log(LOG_INFO, "sql3:  - ct reset stmt %ld", stmt->stmt);
 	} while (SQLITE_BUSY == result && --count && (XplDelay(MSGSQL_STMT_SLEEP_MS), 1));
+
+	if (SQLITE_DONE != result) {
+		Log(LOG_ERROR, "sql3: Database commit error %d: %s", result, sqlite3_errmsg(handle->db));
+		return -1;
+	}
 
 	--handle->transactionDepth;
 	XplMutexUnlock(handle->transactionLock);
 
-	if (SQLITE_DONE != result) {
-		// DStoreStmtError(handle, stmt);
-		printf("Database commit error %d: %s\n", result, sqlite3_errmsg(handle->db));
-		return -1;
-	}
 	return 0;
 }
 
@@ -227,17 +211,17 @@ MsgSQLAbortTransaction(MsgSQLHandle *handle)
 
 	stmt = MsgSQLPrepare(handle, "ROLLBACK TRANSACTION;", &handle->stmts.abort);
 	if (!stmt) {
-		// DStoreStmtError(handle, stmt);
+		Log(LOG_ERROR, "sql3: Unable to rollback transaction");
 		return -1;
 	}
 
 	result = sqlite3_step(stmt->stmt);
 	if (SQLITE_DONE != result) {
-		// DStoreStmtError(handle, stmt);
+		Log(LOG_ERROR, "sql3: Transaction rollback failed");
 	}
-	DEBUG("ABORT stmt %ld\n", stmt->stmt)
+	Log(LOG_INFO, "sql3: ABORT stmt %ld\n", stmt->stmt);
 	sqlite3_reset(stmt->stmt);
-	DEBUG(" - at reset stmt %ld\n", stmt->stmt)
+	Log(LOG_INFO, "sql3: - at reset stmt %ld\n", stmt->stmt);
 	--handle->transactionDepth;
 	XplMutexUnlock(handle->transactionLock);
 	
@@ -261,7 +245,7 @@ MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt
 	int ret;
 	int count = 1 + handle->lockTimeoutMs / MSGSQL_STMT_SLEEP_MS;
 
-	DEBUG("PREPARE '%s'\n", statement)
+	Log(LOG_DEBUG, "sql3: PREPARE '%s'", statement);
 	// stmt->filter = NULL;
 	if (stmt == NULL) return NULL; // we need an output
 	
@@ -272,7 +256,7 @@ MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt
 
 	while (count--) {
 		ret = sqlite3_prepare(handle->db, statement, -1, &stmt->stmt, NULL);
-		DEBUG(" - new statement %ld\n", stmt->stmt)
+		Log(LOG_INFO, "sql3: - new statement %ld", stmt->stmt);
 		
 		switch (ret) {
 			case SQLITE_OK:
@@ -281,8 +265,7 @@ MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt
 				XplDelay(MSGSQL_STMT_SLEEP_MS);
 				continue;
 			default:
-				// FIXME: should be logging here.
-				XplConsolePrintf("SQL Prepare statement \"%s\" failed; %s\r\n", 
+				Log(LOG_ERROR, "sql3: Prepare statement \"%s\" failed; %s", 
 					statement, sqlite3_errmsg(handle->db));
 				return NULL;
 		}
@@ -294,14 +277,14 @@ MsgSQLPrepare(MsgSQLHandle *handle, const char *statement, MsgSQLStatement *stmt
 int
 MsgSQLBindNull(MsgSQLStatement *stmt, int var)
 {
-	DEBUG(" - bind null stmt %ld\n", stmt->stmt)
+	Log(LOG_INFO, "sql3: - bind null stmt %ld\n", stmt->stmt);
 	return sqlite3_bind_null(stmt->stmt, var);
 }
 
 int
 MsgSQLBindString(MsgSQLStatement *stmt, int var, const char *str, BOOL nullify)
 {
-	DEBUG(" - bind str stmt %ld\n", stmt->stmt)
+	Log(LOG_INFO, "sql3: - bind str stmt %ld", stmt->stmt);
 	if (str) {
 		return sqlite3_bind_text(stmt->stmt, var, str, strlen(str), SQLITE_STATIC);
 	} else {
@@ -316,14 +299,14 @@ MsgSQLBindString(MsgSQLStatement *stmt, int var, const char *str, BOOL nullify)
 int
 MsgSQLBindInt(MsgSQLStatement *stmt, int var, int value)
 {
-	DEBUG(" - bind int stmt %ld\n", stmt->stmt)
+	Log(LOG_INFO, "sql3: - bind int stmt %ld", stmt->stmt);
 	return sqlite3_bind_int(stmt->stmt, var, value);
 }
 
 int
 MsgSQLBindInt64(MsgSQLStatement *stmt, int var, uint64_t value)
 {
-	DEBUG(" - bind in64 stmt %ld\n", stmt->stmt)
+	Log(LOG_INFO, "sql3: - bind in64 stmt %ld", stmt->stmt);
 	return sqlite3_bind_int64(stmt->stmt, var, value);
 }
 
@@ -335,12 +318,12 @@ MsgSQLExecute(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 	int result;
 
 	result = sqlite3_step(stmt);
-	DEBUG("EXEC stmt %ld\n", stmt)
+	Log(LOG_INFO, "sql3: EXEC stmt %ld", stmt);
 	// FIXME - do I need to reset this??
 	if (SQLITE_DONE == result) {
 		return 0;
 	} else {
-		XplConsolePrintf("Sql (%d): %s. Query: %s\r\n", result, sqlite3_errmsg(handle->db), _stmt->query);
+		Log(LOG_ERROR, "sql3: Execute failed (%d): %s. Query: %s", result, sqlite3_errmsg(handle->db), _stmt->query);
 		return -1;
 	}
 }
@@ -352,10 +335,10 @@ MsgSQLQuickExecute(MsgSQLHandle *handle, const char *query)
 	char *error;
 	
 	result = sqlite3_exec(handle->db, query, NULL, NULL, &error);
-	DEBUG("QUICK EXEC\n", NULL)
+	Log(LOG_INFO, "sql3: QUICK EXEC");
 	if (result == SQLITE_OK) return 0;
 	
-	XplConsolePrintf("Sql QE: %s\r\n", error);
+	Log(LOG_ERROR, "sql3: QE failed: %s", error);
 	sqlite3_free(error);
 	return -1;
 }
@@ -367,7 +350,7 @@ MsgSQLStatementStep(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 	int count = 1 + handle->lockTimeoutMs / MSGSQL_STMT_SLEEP_MS;
 	int dbg;
 	while (count--) {
-		DEBUG(" - f stmt step %ld\n", stmt)
+		Log(LOG_INFO, "sql3: - f stmt step %ld", stmt);
 		switch ((dbg = sqlite3_step(stmt))) {
 			case SQLITE_ROW:
 				return 1;
@@ -377,7 +360,7 @@ MsgSQLStatementStep(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 				XplDelay(MSGSQL_STMT_SLEEP_MS);
 				continue;
 			default:
-				XplConsolePrintf("Sql: %s", sqlite3_errmsg(handle->db));
+				Log(LOG_ERROR, "sql3: Step error: %s", sqlite3_errmsg(handle->db));
 				return -1;
 		}
 	}
@@ -394,7 +377,7 @@ MsgSQLResults(MsgSQLHandle *handle, MsgSQLStatement *_stmt)
 
 	while (count--) {
 		result = sqlite3_step(stmt);
-		DEBUG(" - f stmt results %ld\n", stmt)
+		Log(LOG_INFO, "sql3: - f stmt results %ld", stmt);
 		switch (result) {
 			case SQLITE_DONE:
 				return 0; // no more results
@@ -425,14 +408,14 @@ MsgSQLLastRowID(MsgSQLHandle *handle)
 int
 MsgSQLResultInt(MsgSQLStatement *_stmt, int column)
 {
-	DEBUG(" - result int %ld\n", _stmt->stmt)
+	Log(LOG_INFO, "sql3: - result int %ld", _stmt->stmt);
 	return sqlite3_column_int(_stmt->stmt, column);
 }
 
 uint64_t
 MsgSQLResultInt64(MsgSQLStatement *_stmt, int column)
 {
-	DEBUG(" - result int64 %ld\n", _stmt->stmt)
+	Log(LOG_INFO, "sql3: - result int64 %ld", _stmt->stmt);
 	return (uint64_t) sqlite3_column_int64(_stmt->stmt, column);
 }
 
@@ -441,7 +424,7 @@ int
 MsgSQLResultText(MsgSQLStatement *_stmt, int column, char *result, size_t result_size)
 {
 	const char *out = sqlite3_column_text(_stmt->stmt, column);
-	DEBUG(" - result text %ld\n", _stmt->stmt)
+	Log(LOG_INFO, "sql3: - result text %ld", _stmt->stmt);
 	if (out != NULL)
 		strncpy(result, out, result_size);
 	
@@ -453,7 +436,7 @@ MsgSQLResultTextPtr(MsgSQLStatement *_stmt, int column, char **ptr)
 {
 	*ptr = NULL;
 	
-	char *result = sqlite3_column_text(_stmt->stmt, column);
+	const char *result = sqlite3_column_text(_stmt->stmt, column);
 	if (result != NULL) *ptr = g_strdup(result);
 	
 	return 0;
