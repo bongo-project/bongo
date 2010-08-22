@@ -288,12 +288,6 @@ void UnsetStoreReadonly(StoreClient *client);
 
 CCode WriteDocumentHeaders(StoreClient *client, FILE *fh, const char *folder, time_t tod);
 
-NMAPDeliveryCode DeliverMessageToMailbox(StoreClient *client,
-                                         char *sender, char *authSender, 
-                                         char *recipient, char *mbox,
-                                         FILE *msgfile, unsigned long scmsID, 
-                                         size_t msglen, unsigned long flags);
-
 int ImportIncomingMail(StoreClient *client);
 
 const char *StoreProcessDocument(StoreClient *client, 
