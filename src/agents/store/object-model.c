@@ -1971,7 +1971,7 @@ StoreObjectUnlinkFromConversation(StoreClient *client, StoreObject *mail)
 		// no conversation guid means nothing to unlink
 		Log(LOG_ERROR, "Unable to unlink mail " GUID_FMT " from conversation: no cid", 
 			mail->guid);
-		return -1;
+		goto abort;
 	}
 	
 	// unlink the mail from the conversation
