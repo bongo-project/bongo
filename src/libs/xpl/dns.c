@@ -165,10 +165,11 @@ _XplDnsResult_PrintResults(XplDns_Result *result)
 void
 XplDnsResultFree(XplDns_Result *result)
 {
-	XplDns_RecordList *item = result->list;
+	XplDns_RecordList *item;
 	XplDns_RecordList *last;
 
 	if (result == NULL) return;
+	item = result->list;
 
 	while (item != NULL) {
 		last = item;
@@ -321,6 +322,7 @@ _XplDns_QueryFakeMx(const char *domain)
 	strncpy(list->record.MX.mxname, domain, XPLDNS_NAMELEN);
 	list->record.MX.preference = 0;
 	list->type = XPLDNS_RR_MX;
+	list->next = NULL;
 	
 	result = MemMalloc(sizeof(XplDns_Result));
 	result->list = list;
@@ -399,6 +401,7 @@ _XplDns_ParseQuery(const unsigned char *answer_buffer, int answer_len, XplDns_Re
 		char answer_domain[XPLDNS_NAMELEN + 1];
 
 		item = MemMalloc(sizeof(XplDns_RecordList));
+		item->next = NULL;
 
 		answer_domain[0] = '\0';
 		res = _XplDns_ParseName(answer_buffer, answer_len, 
