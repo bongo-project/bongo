@@ -55,7 +55,7 @@ BongoAgentHandleSignal(BongoAgent *agent,
 			const int buff_size = 50;
 			
 			snprintf(path, XPL_MAX_PATH, "%s/guru-meditation-%d", XPL_DEFAULT_WORK_DIR, (int)time(NULL));
-			boomfile = open(path, O_CREAT | O_WRONLY);
+			boomfile = open(path, O_CREAT | O_WRONLY, (S_IRUSR | S_IWUSR));
 			if (boomfile != -1) {
 				void * buffer[buff_size];
 				int buff_used;
