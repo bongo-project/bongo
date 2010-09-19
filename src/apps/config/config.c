@@ -661,6 +661,7 @@ main(int argc, char *argv[]) {
 	// we don't want to setup libraries unless we need to (e.g., to run an agent)
 	if (command == 1) {
 		startup = BA_STARTUP_CONNIO;
+		XplConsolePrintf(_("Initialising Bongo libraries (may take some time)...\n"));
 		if (-1 == BongoAgentInit(&configtool, "bongoconfig", DEFAULT_CONNECTION_TIMEOUT, startup)) {
 			XplConsolePrintf(_("ERROR : Couldn't initialize Bongo libraries\n"));
 			return 2;
