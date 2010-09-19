@@ -710,8 +710,7 @@ StoreObjectIterQueryBuilderPropResult(StoreClient *client,
 	// start value below "col_id + 9" depends on how many columns
 	// we pull back in our initial query; careful :)
 	for (col_id = 0, result_id = 0; col_id < properties; col_id++) {
-		const StorePropInfo const *prop = g_array_index(builder->properties, 
-			StorePropInfo *, col_id);
+		const StorePropInfo const *prop = g_ptr_array_index(builder->properties, col_id);
 		
 		// ignore properties we don't want output; 
 		if (prop->output == FALSE) continue;
@@ -764,8 +763,7 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 	
 	// bind in any variables we need
 	for (i = 0; i < builder->parameters->len; i++) {
-		QueryBuilder_Param *p = g_array_index((builder->parameters), 
-			QueryBuilder_Param *, i);
+		QueryBuilder_Param *p = g_ptr_array_index(builder->parameters, i);
 		
 		switch (p->type) {
 			case TYPE_INT:

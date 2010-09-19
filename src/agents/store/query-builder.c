@@ -30,9 +30,9 @@ QueryBuilderStart(QueryBuilder *builder)
 	builder->order_direction = ORDER_NONE;
 	builder->output_mode = MODE_COLLECTIONS;
 	
-	builder->properties = g_array_sized_new(FALSE, FALSE, sizeof(StorePropInfo *), 20);
-	builder->links = g_array_sized_new(FALSE, FALSE, sizeof(ExtraLink *), 10);
-	builder->parameters = g_array_sized_new(FALSE, FALSE, sizeof(QueryBuilder_Param *), 10);
+	builder->properties = g_ptr_array_new_with_free_func(g_free);
+	builder->links = g_ptr_array_new_with_free_func(g_free);
+	builder->parameters = g_ptr_array_new_with_free_func(g_free);
 	
 	return 0;
 }
@@ -44,34 +44,13 @@ QueryBuilderStart(QueryBuilder *builder)
 void
 QueryBuilderFinish(QueryBuilder *builder)
 {
-	unsigned int x;
-	StorePropInfo *newprop;
-	ExtraLink *link;
-	QueryBuilder_Param *param;
-
 	QueryParserFinish(&builder->internal_parser);
 	QueryParserFinish(&builder->external_parser);
 	
-	/* free all the properties */
-	for(x=0;x<builder->properties->len;x++) {
-		newprop = g_array_index(builder->properties, StorePropInfo *, x);
-		MemFree(newprop);
-	}
-	g_array_free(builder->properties, TRUE);
-
-	/* free all the links */
-	for(x=0;x<builder->links->len;x++) {
-		link = g_array_index(builder->links, ExtraLink *, x);
-		MemFree(link);
-	}
-	g_array_free(builder->links, TRUE);
-
-	/* free all the parameters */
-	for(x=0;x<builder->parameters->len;x++) {
-		param = g_array_index(builder->parameters, QueryBuilder_Param *, x);
-		MemFree(param);
-	}
-	g_array_free(builder->parameters, TRUE);
+	/* free all the properties, links and parameters */
+	g_ptr_array_free(builder->properties, TRUE);
+	g_ptr_array_free(builder->links, TRUE);
+	g_ptr_array_free(builder->parameters, TRUE);
 }
 
 /**
@@ -168,7 +147,7 @@ QueryBuilderAddParam(QueryBuilder *builder, int position,
 {
 	QueryBuilder_Param *p;
 	
-	p = MemNew0(QueryBuilder_Param, 1);
+	p = g_new0(QueryBuilder_Param, 1);
 	if (p == NULL) return -1;
 	
 	p->position = position;
@@ -187,7 +166,7 @@ QueryBuilderAddParam(QueryBuilder *builder, int position,
 			return -1;
 	}
 	
-	g_array_append_val(builder->parameters, p);
+	g_ptr_array_add(builder->parameters, p);
 	return 0;
 }
 
@@ -211,7 +190,7 @@ QueryBuilderAddProperty(QueryBuilder *builder, char const *property, BOOL output
 	unsigned int i;
 	
 	for (i=0; i < builder->properties->len; i++) {
-		StorePropInfo *prop = g_array_index(builder->properties, StorePropInfo *, i);
+		StorePropInfo *prop = g_ptr_array_index(builder->properties, i);
 		
 		if (strcmp(prop->name, property) == 0) {
 			// we already have this property
@@ -220,7 +199,7 @@ QueryBuilderAddProperty(QueryBuilder *builder, char const *property, BOOL output
 		}
 	}
 	
-	newprop = MemNew0(StorePropInfo, 1);
+	newprop = g_new0(StorePropInfo, 1);
 	newprop->type = 0;
 	newprop->name = (char *)property;
 	newprop->index = builder->properties->len;
@@ -228,7 +207,7 @@ QueryBuilderAddProperty(QueryBuilder *builder, char const *property, BOOL output
 	StorePropertyFixup(newprop);
 	
 	newprop->output = output;
-	g_array_append_val(builder->properties, newprop);
+	g_ptr_array_add(builder->properties, newprop);
 	return 0;
 }
 
@@ -256,7 +235,7 @@ QueryBuilderFindExpressionProps(QueryBuilder *builder, struct expression *exp)
 		ExtraLink *link;
 		// asking for something to be linked. Sneakily, we'll replace the first
 		// argument with the link struct we create. Slightly naughty.
-		link = MemNew0(ExtraLink, 1);
+		link = g_new0(ExtraLink, 1);
 		
 		if (!exp->exp1_const) return -1; // can't have a non-const here..
 		if (strncmp(exp->exp1, "to", 2) == 0) to = TRUE;
@@ -271,7 +250,7 @@ QueryBuilderFindExpressionProps(QueryBuilder *builder, struct expression *exp)
 		link->pos = builder->links->len;
 		
 		// add the new link to our list of links
-		g_array_append_val(builder->links, link);
+		g_ptr_array_add(builder->links, link);
 		exp->exp1 = link;	// FIXME: [linkhack] very hacky :(
 		return 0;
 	}
@@ -344,7 +323,7 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 	
 	// extra columns for additional properties
 	for (i=0; i < builder->properties->len; i++) {
-		StorePropInfo *prop = g_array_index(builder->properties, StorePropInfo *, i);
+		StorePropInfo *prop = g_ptr_array_index(builder->properties, i);
 		// only add those columns which we want returned.
 		BongoStringBuilderAppend(&b, ", ");
 		QueryBuilderPropertyToColumn(builder, &b, prop);
@@ -357,13 +336,13 @@ QueryBuilderCreateSQL(QueryBuilder *builder, char **output)
 		BongoStringBuilderAppend(&b, " INNER JOIN conversation c ON so.guid=c.guid");
 	}
 	for (i=0; i < builder->links->len; i++) {
-		ExtraLink *link = g_array_index(builder->links, ExtraLink *, i);
+		ExtraLink *link = g_ptr_array_index(builder->links, i);
 		BongoStringBuilderAppendF(&b, 
 			" INNER JOIN links link_%d ON so.guid=link_%d.%s",
 			i, i, link->join_column);
 	}
 	for (i=0; i < builder->properties->len; i++) {
-		StorePropInfo *prop = g_array_index(builder->properties, StorePropInfo *, i);
+		StorePropInfo *prop = g_ptr_array_index(builder->properties, i);
 		// only add those columns which we want returned.
 		if ((prop->table_name == NULL) && (prop->column == NULL)) {
 			// FIXME. Both following queries should use bound parameters really.
@@ -445,7 +424,7 @@ AddExpValueByProperty(QueryBuilder *b, BongoStringBuilder *sb, void *exp, int co
 			// FIXME: this is a slow way of finding our
 			// property again.
 			for (unsigned int i=0; i < b->properties->len; i++) {
-				StorePropInfo *p = g_array_index(b->properties, StorePropInfo *, i);
+				StorePropInfo *p = g_ptr_array_index(b->properties, i);
 				
 				if (strcmp(p->name, str) == 0) prop = p;
 			}
