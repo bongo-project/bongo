@@ -30,9 +30,9 @@ QueryBuilderStart(QueryBuilder *builder)
 	builder->order_direction = ORDER_NONE;
 	builder->output_mode = MODE_COLLECTIONS;
 	
-	builder->properties = g_ptr_array_new_with_free_func(g_free);
-	builder->links = g_ptr_array_new_with_free_func(g_free);
-	builder->parameters = g_ptr_array_new_with_free_func(g_free);
+	builder->properties = g_ptr_array_new();
+	builder->links = g_ptr_array_new();
+	builder->parameters = g_ptr_array_new();
 	
 	return 0;
 }
@@ -48,8 +48,13 @@ QueryBuilderFinish(QueryBuilder *builder)
 	QueryParserFinish(&builder->external_parser);
 	
 	/* free all the properties, links and parameters */
+	g_ptr_array_foreach (builder->properties, (GFunc)g_free, NULL);
 	g_ptr_array_free(builder->properties, TRUE);
+	
+	g_ptr_array_foreach (builder->links, (GFunc)g_free, NULL);
 	g_ptr_array_free(builder->links, TRUE);
+	
+	g_ptr_array_foreach (builder->parameters, (GFunc)g_free, NULL);
 	g_ptr_array_free(builder->parameters, TRUE);
 }
 
