@@ -3045,7 +3045,10 @@ StoreCommandWRITE(StoreClient *client,
 	
 	// put content in place
 	FindPathToDocument(client, collection->guid, newdocument.guid, path, sizeof(path));
-	link(tmppath, path);
+	if (link(tmppath, path) != 0) {
+		unlink(tmppath);
+		return ConnWriteStr(client->conn, MSG4224CANTWRITE);
+	}
 	unlink(tmppath);
 	
 	// save new object
