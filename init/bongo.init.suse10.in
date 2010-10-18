@@ -64,7 +64,7 @@ case "$1" in
  	if [ ! -r $BONGO_DATA ] ; then
 		HOSTNAME=`/bin/hostname`
 		echo "Initializing bongo: @DATA_INSTALL_DIR@"
-		$BONGO_BIN/$BONGO_CONFIG --smtp=2525 --domain=$HOSTNAME 2>&1
+		$BONGO_BIN/$BONGO_CONFIG --domain=$HOSTNAME 2>&1
 	fi
 	echo -n "Starting Bongo Daemon:"
 	startproc $BONGO_BIN/$BONGO_NAME $OPTIONS 2>&1
