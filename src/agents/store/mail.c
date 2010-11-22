@@ -137,7 +137,7 @@ StoreProcessIncomingMail(StoreClient *client,
 		}
 		
 		// all done, we can quit now
-		g_object_unref(message);
+		// FIXME: Why does this crash? : g_object_unref(message);
 		close(fd);
 		exit(0);
 	}
@@ -155,13 +155,11 @@ StoreProcessIncomingMail(StoreClient *client,
 	waitpid(childpid, NULL, 0);
 	
 	char *responses[] = {0, 0};
-	int response = 0;
+	int response = 1;
 	char *ptr = responses[0] = readbuffer;
 	while (ptr <= readbuffer + nbytes) {
 		if (*ptr == '\1') {
 			*ptr = '\0';
-			responses[response] = ptr + 1;
-			response++;
 			if (response == 2) {
 				// we have a key/value pair
 				response = 0;
@@ -171,6 +169,8 @@ StoreProcessIncomingMail(StoreClient *client,
 					message_subject = MemStrdup(responses[1]);
 				}
 			}
+			responses[response] = ptr + 1;
+			response++;
 		}
 		ptr++;
 	}
