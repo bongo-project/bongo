@@ -359,7 +359,7 @@ class CalendarACL :
 
 class StoreClient:
     def __init__(self, user, owner, authToken=None, authCookie=None,
-                 authPassword=None, host="localhost", port=689):
+                 authPassword=None, host="localhost", port=689, eventCallback=None):
         #from libbongo.libs import msgapi
         self.owner = self.user = None
         
@@ -380,6 +380,8 @@ class StoreClient:
             self.connection = StoreConnection(host, port)
 
         self.stream = self.connection.stream
+        if eventCallback:
+            self.stream.setEventCallback(callback)
 
         # if we authed with a cookie or password, we don't need to USER
         if not authCookie and not authPassword and user is not None:
@@ -665,7 +667,15 @@ class StoreClient:
         r = self.stream.GetResponse()
         if r.code != 1000:
             raise CommandError(r)
-
+    
+    def NoOp(self):
+        command = "NOOP"
+        
+        self.stream.Write(command)
+        r = self.stream.GetResponse()
+        if r.code != 1000:
+            raise CommandError(r)
+    
     # this function is here to coerce strings in unknown encodings
     # into something approaching utf-8. This is obviously lossy,
     # and we really don't want to have to do this - need to get the

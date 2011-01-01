@@ -92,7 +92,10 @@ class CommandStream:
 
     def __init__(self, socket):
         self.stream = socket.makefile()
-
+    
+    def setEventCallback(self, callback):
+        self.eventCallback = callback
+    
     def close(self):
         self.stream.close()
 
@@ -113,10 +116,23 @@ class CommandStream:
         self.stream.flush()
 
     def GetResponse(self, nolog=False):
-        s = self.readline()
-        if not nolog:
-            self.log.debug("READ: %s", s)
-        return Response(s[0:4], s[5:])
+        rCode = 0
+        s = ''
+        
+        while rCode == 0:
+            s = self.readline()
+            if not nolog:
+                self.log.debug("READ: %s", s)
+            rCode = int(s[0:4])
+            if rCode > 5999:
+                 # this is a store 'event': send the response to the 
+                 # callback if we have one; otherwise it essentially
+                 # gets eaten.
+                 rCode = 0
+                 if self.eventCallback:
+                     self.eventCallback(Response(rCode, s[5:])
+            
+        return Response(rCode, s[5:])
 
     def readline(self):
         s = self.stream.readline()
