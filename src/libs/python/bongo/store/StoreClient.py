@@ -381,7 +381,7 @@ class StoreClient:
 
         self.stream = self.connection.stream
         if eventCallback:
-            self.stream.setEventCallback(callback)
+            self.stream.setEventCallback(eventCallback)
 
         # if we authed with a cookie or password, we don't need to USER
         if not authCookie and not authPassword and user is not None:
@@ -947,5 +947,4 @@ class StoreClient:
     def Reset(self) :
         self.stream.Write("RESET\r\n")
         self.stream.GetResponse()
-        
 

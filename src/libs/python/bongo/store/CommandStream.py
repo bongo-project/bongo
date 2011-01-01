@@ -130,7 +130,7 @@ class CommandStream:
                  # gets eaten.
                  rCode = 0
                  if self.eventCallback:
-                     self.eventCallback(Response(rCode, s[5:])
+                     self.eventCallback(Response(rCode, s[5:]))
             
         return Response(rCode, s[5:])
 
