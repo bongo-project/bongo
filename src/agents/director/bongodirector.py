@@ -20,9 +20,12 @@ class DirectorAgent(Agent):
 
 
 director = DirectorAgent()
+director.daemonize()
+
 try:
     director.connect("admin", "_system")
-    director.waitForEvents()
 except:
-    print "Unable to connect to localhost, cannot run"
     exit(-1)
+
+director.waitForEvents()
+exit(0)

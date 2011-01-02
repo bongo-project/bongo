@@ -1,5 +1,4 @@
-import logging
-import time
+import logging, time, os, sys, resource
 
 from bongo.BongoError import BongoError
 from libbongo.libs import bongojson, msgapi
@@ -30,3 +29,42 @@ class Agent:
             time.sleep(5)
         
         self.store.Quit()
+    
+    def daemonize(self):
+        try:
+            pid = os.fork()
+        except OSError, e:
+            raise Exception, e.strerror
+        if (pid != 0):
+            os._exit(0)
+        
+        os.setsid()
+        
+        try:
+            pid = os.fork()
+        except OSError, e:
+            raise Exception, e.strerror
+        if (pid != 0):
+            os._exit(0)
+        
+        os.chdir("/")
+        os.umask(0)
+        
+        maxFileDescriptor = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+        if (maxFileDescriptor == resource.RLIM_INFINITY):
+            maxFileDescriptor = 1024
+
+        for fd in range(0, maxFileDescriptor):
+            try:
+                os.close(fd)
+            except:
+                pass
+        
+        devnull = "/dev/null"
+        if (hasattr(os, "devnull")):
+            devnull = os.devnull
+        
+        os.open(devnull, os.O_RDWR)
+        os.dup2(0, 1)
+        os.dup2(0, 2)
+
