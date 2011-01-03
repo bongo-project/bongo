@@ -65,8 +65,10 @@ ConnTcpClose(Connection *c)
 	}
 	c->send.read = c->send.write = c->send.buffer;
 	if (c->ssl.enable) {
-		gnutls_bye(c->ssl.context, GNUTLS_SHUT_RDWR);
-		gnutls_deinit(c->ssl.context);
+		if (c->ssl.context) {
+			gnutls_bye(c->ssl.context, GNUTLS_SHUT_RDWR);
+			gnutls_deinit(c->ssl.context);
+		}
 		c->ssl.context = NULL;
 		c->ssl.enable = FALSE;
 	}
