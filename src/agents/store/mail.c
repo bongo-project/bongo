@@ -45,7 +45,7 @@ static struct wanted_header header_list[] = {
 	{ "References", "bongo.references" },
 	{ "X-Auth-OK", "bongo.xauthok" },
 	{ "List-Id", "bongo.listid" },
-	{ "Subject", "bongo.subject" },
+	{ "Subject", "nmap.mail.subject" },
 	{ NULL, NULL }
 };
 
@@ -70,8 +70,9 @@ StoreProcessIncomingMail(StoreClient *client,
 	
 	// Parse the mail in a sub-process, as this way we can avoid being
 	// blown out of the water if we somehow segfault during processing.
-	pipe(commsPipe);
-	
+	//pipe(commsPipe);
+	socketpair(AF_UNIX, SOCK_STREAM, 0, commsPipe);
+
 	if ((childpid = fork()) == -1) {
 		goto finish;
 	}
@@ -85,7 +86,8 @@ StoreProcessIncomingMail(StoreClient *client,
 		int fd, outstr_size;
 		char prop[XPL_MAX_PATH+1];
 
-		close(commsPipe[0]);
+		/* close the parent side as we are the child */
+		//close(commsPipe[0]);
 
 		// open up the mail
 		fd = open(path, O_RDONLY);
@@ -99,17 +101,24 @@ StoreProcessIncomingMail(StoreClient *client,
 		g_object_unref(parser);
 		
 		if (message == NULL) {
+			/* close our side of the pipe */
+			close(commsPipe[1]);
+
 			// message didn't parse. 
 			exit(-1);
 		}
+
+		/* create the wrapper for the child side */
+		Connection *cpipe = ConnAlloc(TRUE);
+		cpipe->socket = commsPipe[1];
 		
 		while (headers->header != NULL) {
 			const char *value = g_mime_object_get_header(GMIME_OBJECT(message), headers->header);
 			
 			if (value != NULL) {
-				outstr_size = snprintf(outstr, sizeof(outstr)-1, "%s\1%s\1", 
+				outstr_size = snprintf(outstr, sizeof(outstr)-1, "%s\1%s\n", 
 					(char *)headers->propname, (char *)value);
-				write(commsPipe[1], outstr, outstr_size);
+				ConnWrite(cpipe, outstr, outstr_size);
 			}
 			
 			headers++;
@@ -123,56 +132,63 @@ StoreProcessIncomingMail(StoreClient *client,
 			prop[XPL_MAX_PATH] = '\0';
 			message->message_id = prop;
 		}
-		outstr_size = snprintf(outstr, sizeof(outstr)-1, "nmap.mail.messageid\1%s\1", 
+		outstr_size = snprintf(outstr, sizeof(outstr)-1, "nmap.mail.messageid\1%s\n", 
 			message->message_id);
-		write(commsPipe[1], outstr, outstr_size);
+		ConnWrite(cpipe, outstr, outstr_size);
 		
 		header_str = g_mime_object_get_headers(GMIME_OBJECT(message));
 		
 		if (header_str != NULL) {
 			snprintf(prop, XPL_MAX_PATH, FMT_UINT64_DEC, (uint64_t)strlen(header_str));
-			outstr_size = snprintf(outstr, sizeof(outstr)-1, "nmap.mail.headersize\1%s\1", prop);
-			write(commsPipe[1], outstr, outstr_size);
+			outstr_size = snprintf(outstr, sizeof(outstr)-1, "nmap.mail.headersize\1%s\n", prop);
+			ConnWrite(cpipe, outstr, outstr_size);
 			g_free(header_str);
 		}
 		
 		// all done, we can quit now
 		// FIXME: Why does this crash? : g_object_unref(message);
 		close(fd);
+
+		/* clean up */
+		ConnClose(cpipe);
+		ConnFree(cpipe);
+
 		exit(0);
 	}
+
+	waitpid(childpid, NULL, 0);
+	
+	int nbytes;
+	Connection *spipe = ConnAlloc(TRUE);
+	spipe->socket = commsPipe[0];
 	
 	// from here, we're the parent - need to get the results from the
 	// child.
-	close(commsPipe[1]);
+	//close(commsPipe[1]);
 	
-	int nbytes = read(commsPipe[0], readbuffer, sizeof(readbuffer));
-	// if we don't get anything back, it all failed.
-	if (nbytes < 1) {
-		goto finish;
-	}
-	
-	waitpid(childpid, NULL, 0);
-	
-	char *responses[] = {0, 0};
-	int response = 1;
-	char *ptr = responses[0] = readbuffer;
-	while (ptr <= readbuffer + nbytes) {
-		if (*ptr == '\1') {
-			*ptr = '\0';
-			if (response == 2) {
-				// we have a key/value pair
-				response = 0;
-				if (strlen(responses[1]) > 0) 
-					SetDocProp(client, document, responses[0], responses[1]);
-				if (strcmp(responses[0], "nmap.mail.subject") == 0) {
-					message_subject = MemStrdup(responses[1]);
+	while ((nbytes = ConnReadLine(spipe, readbuffer, sizeof(readbuffer))) > 0) {
+		char *ptr = readbuffer, *pair, *end = readbuffer+nbytes;
+
+		while (ptr <= end) {
+			if (*ptr == '\1') {
+				*ptr = '\0';
+				pair = ++ptr;
+
+				if (*(end-1) == '\n') {
+					/* shortcut the rest of the searching */
+					*(end-1) = '\0';
+
+					SetDocProp(client, document, readbuffer, pair);
+
+					if (strcmp(readbuffer, "nmap.mail.subject") == 0) {
+						message_subject = MemStrdup(pair);
+					}
 				}
+				break;
 			}
-			responses[response] = ptr + 1;
-			response++;
+
+			ptr++;
 		}
-		ptr++;
 	}
 	
 	// now, see if we can find a matching conversation
@@ -224,6 +240,8 @@ StoreProcessIncomingMail(StoreClient *client,
 	
 finish:
 	if (message_subject) MemFree(message_subject);
+	ConnClose(spipe);
+	ConnFree(spipe);
 	
 	return result;
 }
