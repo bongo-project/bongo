@@ -13,6 +13,7 @@ from bongo.storetool import ContactCommands
 from bongo.storetool import InteractiveCommands
 from bongo.storetool import MailCommands
 from bongo.storetool import TestCommands
+from bongo.storetool import StoreCommands
 
 parser = CommandParser()
 parser.add_option("", "--host", type="string", default="localhost",
@@ -34,6 +35,7 @@ parser.add_commands(ContactCommands, "Contact")
 parser.add_commands(InteractiveCommands)
 parser.add_commands(MailCommands, "Mail")
 parser.add_commands(TestCommands, "Testing")
+parser.add_commands(StoreCommands, "Store")
 
 if __name__ == '__main__':
     (command, options, args) = parser.parse_args()

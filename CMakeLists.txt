@@ -53,7 +53,7 @@ endforeach (LIBRARY)
 add_subdirectory(src/libs/python/libbongo)
 add_subdirectory(src/libs/python/bongo)
 
-foreach (AGENT antispam avirus imap pop queue rules smtp store)
+foreach (AGENT antispam avirus director imap pop queue rules smtp store)
 	add_subdirectory (src/agents/${AGENT})
 endforeach (AGENT)
 
