@@ -74,7 +74,7 @@ class StoreBackupCommand(Command):
             print str(e)
             return
 
-        collection_list = []
+        collection_list = ['/']
         for collection in store.Collections():
             # write out entries for collections
             tar_head = PAXHeader(collection.name)
