@@ -96,7 +96,7 @@ class StoreBackupCommand(Command):
         for collection in collection_list:
             for document in store.List(collection):
                 # write out the documents in the collection
-                if document.filename[0] == '/' or document.type & DocTypes.Folder:
+                if document.type & DocTypes.Folder:
                     # this is a collection
                     continue
                 if document.type == DocTypes.Conversation or document.type == DocTypes.Calendar:
@@ -106,15 +106,15 @@ class StoreBackupCommand(Command):
                     # this is a hack; Bongo 0.3 doesn't seem to mark all conversations
                     # as such correctly :(
                     continue
-                filename = "%s/%s" % (collection, document.filename)
+                
                 try:
-                    content = docstore.Read(filename)
+                    content = docstore.Read(document.filename)
                 except IOError, e:
                     print str(e)
                     continue
                
                 # write out meta data associated with document in a PAX extended header
-                headerx = PAXHeader(filename)
+                headerx = PAXHeader(document.filename)
                 headerx.SetKey("BONGO.uid", document.uid)
                 headerx.SetKey("BONGO.imapuid", document.imapuid)
                 headerx.SetKey("BONGO.type", "%d" % document.type)
@@ -130,7 +130,7 @@ class StoreBackupCommand(Command):
 
                 # tar files have a 512 byte header (tar_info.tobuf()), and then the content
                 # content is padded to a multiple of 512 bytes
-                tar_info = tarfile.TarInfo(filename)
+                tar_info = tarfile.TarInfo(document.filename)
                 tar_info.size = len(content)
                 tar_info.mode = 0644
                 tar_info.mtime = int(document.created)
