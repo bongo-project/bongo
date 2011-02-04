@@ -57,7 +57,7 @@ foreach (AGENT antispam avirus director imap pop queue rules smtp store)
 	add_subdirectory (src/agents/${AGENT})
 endforeach (AGENT)
 
-foreach (EXECUTABLE config manager testtool queuetool storetool sendmail backup)
+foreach (EXECUTABLE config manager testtool queuetool storetool sendmail)
 	add_subdirectory (src/apps/${EXECUTABLE})
 endforeach (EXECUTABLE)
 
