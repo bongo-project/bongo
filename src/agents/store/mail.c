@@ -87,7 +87,7 @@ StoreProcessIncomingMail(StoreClient *client,
 		char prop[XPL_MAX_PATH+1];
 
 		/* close the parent side as we are the child */
-		//close(commsPipe[0]);
+		close(commsPipe[0]);
 
 		// open up the mail
 		fd = open(path, O_RDONLY);
@@ -164,7 +164,7 @@ StoreProcessIncomingMail(StoreClient *client,
 	
 	// from here, we're the parent - need to get the results from the
 	// child.
-	//close(commsPipe[1]);
+	close(commsPipe[1]);
 	
 	while ((nbytes = ConnReadLine(spipe, readbuffer, sizeof(readbuffer))) > 0) {
 		char *ptr = readbuffer, *pair, *end = readbuffer+nbytes;
