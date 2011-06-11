@@ -104,7 +104,6 @@ ConnStartup(unsigned long TimeOut)
     /**
      * Start up the connio library - must be initialised before use
      */
-    int i;
     FILE *genparams;
 
     /* initialize the gnutls library */
@@ -127,7 +126,7 @@ ConnStartup(unsigned long TimeOut)
         dh_parameters.data = tmpdata;
 
         /* import the key */
-        i = gnutls_dh_params_import_pkcs3(dh_params, &dh_parameters, GNUTLS_X509_FMT_PEM);
+        gnutls_dh_params_import_pkcs3(dh_params, &dh_parameters, GNUTLS_X509_FMT_PEM);
     } else {
         /* generate dh stuff */
         gnutls_dh_params_generate2(dh_params, 1024);
@@ -150,7 +149,7 @@ ConnStartup(unsigned long TimeOut)
         rsa_parameters.data = tmpdata;
 
         /* import the key */
-        i = gnutls_rsa_params_import_pkcs1(rsa_params, &rsa_parameters, GNUTLS_X509_FMT_PEM);
+        gnutls_rsa_params_import_pkcs1(rsa_params, &rsa_parameters, GNUTLS_X509_FMT_PEM);
     } else {
         /* generate rsa stuff */
         gnutls_rsa_params_generate2(rsa_params, 512);
@@ -642,7 +641,6 @@ ConnRead(Connection *Conn, char *Dest, int Length)
 {
     size_t read;
     size_t uLength;
-    int err;
 
     Connection *c = Conn;
 
@@ -673,7 +671,7 @@ ConnRead(Connection *Conn, char *Dest, int Length)
             return(uLength);
         }
 
-        err = ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &read);
+        ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &read);
         if (read > 0) {
             c->receive.read = c->receive.buffer;
             c->receive.write = c->receive.buffer + read;
@@ -700,7 +698,6 @@ ConnReadCount(Connection *Conn, char *Dest, int Count)
 {
     size_t buffered;
     size_t remaining = Count;
-    int err;
     char *d = Dest;
     Connection *c = Conn;
 
@@ -733,7 +730,7 @@ ConnReadCount(Connection *Conn, char *Dest, int Count)
         }
 
         if (remaining < CONN_TCP_MTU) {
-            err = ConnTcpRead(c, c->receive.write, c->receive.remaining, &buffered);
+            ConnTcpRead(c, c->receive.write, c->receive.remaining, &buffered);
 
             if (buffered > 0) {
                 c->receive.write += buffered;
@@ -744,7 +741,7 @@ ConnReadCount(Connection *Conn, char *Dest, int Count)
             }
         } else {
             do {
-                err = ConnTcpRead(c, d, remaining, &buffered);
+                ConnTcpRead(c, d, remaining, &buffered);
                 if (buffered > 0) {
                     d += buffered;
                     remaining -= buffered;
@@ -769,7 +766,6 @@ int
 ConnReadLine(Connection *Conn, char *Line, int Length)
 {
     size_t count;
-    int err;
     char *cur;
     char *limit;
     char *dest;
@@ -857,7 +853,7 @@ ConnReadLine(Connection *Conn, char *Line, int Length)
             }
         }
 
-        err = ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
+        ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
         if (count > 0) {
             cur = c->receive.read = c->receive.buffer;
             limit = c->receive.write = cur + count;
@@ -877,7 +873,6 @@ int
 ConnReadAnswer(Connection *Conn, char *Line, int Length)
 {
     size_t count;
-    int err;
     char *cur;
     char *limit;
     char *dest;
@@ -987,7 +982,7 @@ ConnReadAnswer(Connection *Conn, char *Line, int Length)
             }
         }
 
-        err = ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
+        ConnTcpRead(c, c->receive.buffer, CONN_TCP_MTU, &count);
         if (count > 0) {
             cur = c->receive.read = c->receive.buffer;
             limit = c->receive.write = cur + count;
@@ -1142,7 +1137,6 @@ ConnReadToFile(Connection *Conn, FILE *Dest, int Count)
 {
     size_t buffered;
     size_t remaining;
-    int err;
     Connection *c = Conn;
 
     remaining = Count;
@@ -1179,7 +1173,7 @@ ConnReadToFile(Connection *Conn, FILE *Dest, int Count)
             }
         }
 
-        err = ConnTcpRead(c, c->receive.write, c->receive.remaining, &buffered);
+        ConnTcpRead(c, c->receive.write, c->receive.remaining, &buffered);
         if (buffered > 0) {
             c->receive.write += buffered;
             c->receive.remaining -= buffered;
@@ -1199,7 +1193,6 @@ ConnReadToFileUntilEOS(Connection *Src, FILE *Dest)
 {
     int written = 0;
     size_t count;
-    int err;
     char *cur;
     char *limit;
     BOOL finished = FALSE;
@@ -1290,7 +1283,7 @@ ConnReadToFileUntilEOS(Connection *Src, FILE *Dest)
             Src->receive.write[0] = '\0';
         }
 
-        err = ConnTcpRead(Src, Src->receive.write, Src->receive.remaining, &count);
+        ConnTcpRead(Src, Src->receive.write, Src->receive.remaining, &count);
         if (count > 0) {
             Src->receive.read = Src->receive.buffer;
             Src->receive.write += count;
@@ -1487,7 +1480,6 @@ ConnWrite(Connection *Conn, const char *Buffer, int Length)
 {
     const char *b;
     size_t i;
-    int err;
     size_t r;
     Connection *c = Conn;
 
@@ -1511,7 +1503,7 @@ ConnWrite(Connection *Conn, const char *Buffer, int Length)
 
             c->send.write += c->send.remaining;
 
-            err = ConnTcpFlush(c, c->send.read, c->send.write, &i);
+            ConnTcpFlush(c, c->send.read, c->send.write, &i);
             if (i > 0) {
                 c->send.read = c->send.write = c->send.buffer;
                 c->send.remaining = CONN_TCP_MTU;
@@ -1526,7 +1518,7 @@ ConnWrite(Connection *Conn, const char *Buffer, int Length)
         }
 
         do {
-            err = ConnTcpFlush(c, b, b + r, &i);
+            ConnTcpFlush(c, b, b + r, &i);
             if (i > 0) {
                 b += r;
                 r -=  r;
@@ -1547,7 +1539,6 @@ int
 ConnWriteFromFile(Connection *Conn, FILE *Source, int Count)
 {
     size_t i;
-    int err;
     size_t n;
     size_t r;
     Connection *c = Conn;
@@ -1571,7 +1562,7 @@ ConnWriteFromFile(Connection *Conn, FILE *Source, int Count)
             return(-1);
         }
 
-        err = ConnTcpFlush(c, c->send.read, c->send.write, &i);
+        ConnTcpFlush(c, c->send.read, c->send.write, &i);
         if (i > 0) {
             c->send.read = c->send.write = c->send.buffer;
             c->send.remaining = CONN_TCP_MTU;
@@ -1590,7 +1581,6 @@ int
 ConnWriteFile(Connection *Conn, FILE *Source)
 {
     size_t i;
-    int err;
     size_t n;
     size_t r;
     Connection *c = Conn;
@@ -1611,7 +1601,7 @@ ConnWriteFile(Connection *Conn, FILE *Source)
         
         n += c->send.write - c->send.read;
         
-        err = ConnTcpFlush(c, c->send.read, c->send.write, &i);
+        ConnTcpFlush(c, c->send.read, c->send.write, &i);
         if (i > 0) {
             c->send.read = c->send.write = c->send.buffer;
             c->send.remaining = r = CONN_TCP_MTU;
@@ -1631,7 +1621,6 @@ ConnWriteVF(Connection *c, const char *format, va_list ap)
 {
     int i;
     size_t unused;
-    int err;
 
     do {
         if (CONN_BUFSIZE < c->send.remaining) {
@@ -1668,7 +1657,7 @@ ConnWriteVF(Connection *c, const char *format, va_list ap)
             va_end(ap2);
         }
 
-        err = ConnTcpFlush(c, c->send.read, c->send.write, &unused);
+        ConnTcpFlush(c, c->send.read, c->send.write, &unused);
         if (unused > 0) {
             c->send.read = c->send.write = c->send.buffer;
             c->send.remaining = CONN_TCP_MTU;
