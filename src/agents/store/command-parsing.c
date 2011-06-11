@@ -302,7 +302,7 @@ ParseDateTime(StoreClient *client, char *token, BongoCalTime *timeOut)
 	} else if (len == 15 || len == 16) {
 		return ParseIcalDateTime(client, token, timeOut);
 	} else {
-		unsigned long ulong;
+		unsigned long ulong=0;
 		CCode ccode;
 
 		ccode = ParseUnsignedLong(client, token, &ulong);
@@ -334,7 +334,7 @@ ParseDateTimeToUint64(StoreClient *client, char *token, uint64_t *timeOut)
 		return ccode;
 	} else {
 		/* If it's a long arg, just pass it through */
-		unsigned long ulong;
+		unsigned long ulong=0;
 		CCode ccode;
 
 		ccode = ParseUnsignedLong(client, token, &ulong);
@@ -441,7 +441,7 @@ ParseCollection(StoreClient *client, char *token, StoreObject *object)
 
 	// try to find relevant storeobject; if it doesn't exist, say so.
 	if ('/' != token[0]) {
-		uint64_t guid;
+		uint64_t guid=0;
 		ccode = ParseGUID(client, token, &guid);
 		if (TOKEN_OK != ccode) return ccode;
 		
@@ -469,7 +469,7 @@ CCode
 ParseDocumentInfo(StoreClient *client, char *token, StoreObject *object)
 {
 	int ccode  = 0;
-	uint64_t guid;
+	uint64_t guid = 0;
 	
 	if ('/' != token[0]) {
 		ccode = ParseGUID(client, token, &guid);
@@ -496,7 +496,7 @@ ParseDocument(StoreClient *client, char *token, StoreObject *object)
 
 	if ('/' != token[0]) {
 		// find object by guid
-		uint64_t guid;
+		uint64_t guid = 0;
 		
 		ParseGUID(client, token, &guid);
 		ccode = StoreObjectFind(client, guid, object);
