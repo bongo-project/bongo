@@ -83,12 +83,12 @@ ProcessConnection(void *clientp, Connection *conn)
     unsigned long msgFlags = 0;
     int ccode;
 
-    unsigned long source = 0;
+    //unsigned long source = 0;
     char *ptr;
     char *ptr2;
     char *senderUserName = NULL;
-    BOOL copy;
-    BOOL blocked = FALSE;
+    //BOOL copy;
+    //BOOL blocked = FALSE;
 
     client->conn = conn;
     ccode = BongoQueueAgentHandshake(client->conn, client->line, client->qID, &client->envelopeLength, &client->messageLength);
@@ -111,7 +111,7 @@ ProcessConnection(void *clientp, Connection *conn)
             break;
         case QUEUE_FLAGS:
             hasFlags = TRUE;
-            copy = FALSE;
+            //copy = FALSE;
             msgFlags = atol(envelopeLine+1);
             if (msgFlags & MSG_FLAG_SPAM_CHECKED) {
                 /* we've already scanned this.  don't do it again */
@@ -119,13 +119,14 @@ ProcessConnection(void *clientp, Connection *conn)
             }
             break;
         case QUEUE_ADDRESS:
-            source = atol(envelopeLine+1);
+            //source = atol(envelopeLine+1);
             break;
         }
         BONGO_ENVELOPE_NEXT(envelopeLine);
     }
 
-    blocked = SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags);
+    SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags);
+    //blocked = SpamdCheck(&ASpam.spamd, client, client->qID, hasFlags, msgFlags);
 
 done:
 
