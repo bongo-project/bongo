@@ -24,8 +24,6 @@
 #include <memmgr.h>
 #include <bongoutil.h>
 
-#include <gnutls/openssl.h>
-
 const unsigned char *Base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
 BOOL
