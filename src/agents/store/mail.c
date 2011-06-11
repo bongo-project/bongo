@@ -109,7 +109,11 @@ StoreProcessIncomingMail(StoreClient *client,
 		}
 
 		/* create the wrapper for the child side */
-		Connection *cpipe = ConnAlloc(TRUE);
+		Connection *cpipe = NULL;
+		cpipe = ConnAlloc(TRUE);
+		if (!cpipe) {
+			goto threadcleanup;
+		}
 		cpipe->socket = commsPipe[1];
 		
 		while (headers->header != NULL) {
@@ -145,13 +149,19 @@ StoreProcessIncomingMail(StoreClient *client,
 			g_free(header_str);
 		}
 		
+		threadcleanup:
+
 		// all done, we can quit now
 		// FIXME: Why does this crash? : g_object_unref(message);
-		close(fd);
+		if (fd > 0) {
+			close(fd);
+		}
 
 		/* clean up */
-		ConnClose(cpipe);
-		ConnFree(cpipe);
+		if (cpipe) {
+			ConnClose(cpipe);
+			ConnFree(cpipe);
+		}
 
 		exit(0);
 	}
@@ -159,7 +169,11 @@ StoreProcessIncomingMail(StoreClient *client,
 	waitpid(childpid, NULL, 0);
 	
 	int nbytes;
-	Connection *spipe = ConnAlloc(TRUE);
+	Connection *spipe = NULL;
+	spipe = ConnAlloc(TRUE);
+	if (!spipe) {
+		goto finish;
+	}
 	spipe->socket = commsPipe[0];
 	
 	// from here, we're the parent - need to get the results from the
@@ -240,8 +254,10 @@ StoreProcessIncomingMail(StoreClient *client,
 	
 finish:
 	if (message_subject) MemFree(message_subject);
-	ConnClose(spipe);
-	ConnFree(spipe);
+	if (spipe) {
+		ConnClose(spipe);
+		ConnFree(spipe);
+	}
 	
 	return result;
 }
