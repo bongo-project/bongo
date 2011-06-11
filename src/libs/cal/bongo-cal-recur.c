@@ -1695,7 +1695,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
                            CalObjTime *eventStart)
 {
     BongoList *elem;
-    int month, yearday, monthday, weekday, week_num, hour, minute, second;
+    int month, yearday, monthday, weekday, hour, minute, second;
 
     /* Clear the entire RecurData. */
     memset (recurData, 0, sizeof (RecurData));
@@ -1747,7 +1747,7 @@ CalObjInitializeRecurData (RecurData  *recurData,
         weekday = BongoListVoidToInt(elem->data);
         elem = elem->next;
         /* The week number is not used when filtering. */
-        week_num = BongoListVoidToInt(elem->data);
+        //week_num = BongoListVoidToInt(elem->data);
         elem = elem->next;
 
         recurData->weekdays[weekday] = 1;
@@ -2971,7 +2971,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
     GArray *new_occs;
     CalObjTime *occ;
     BongoList *elem;
-    int len, i, weekday, week_num;
+    int len, i, weekday;
     int weekdayOffset, new_weekdayOffset;
 
     /* If BYDAY has not been specified, or the array is empty, just
@@ -2999,7 +2999,7 @@ CalObjByDayExpandWeekly (RecurData  *recurData,
             /* FIXME: Currently we just ignore this, but maybe we
                should skip all elements where week_num != 0.
                The spec isn't clear about this. */
-            week_num = BongoListVoidToInt(elem->data);
+            //week_num = BongoListVoidToInt(elem->data);
             DPRINT("week num is %d\n", week_num);
 
             elem = elem->next;

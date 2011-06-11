@@ -623,9 +623,9 @@ static void
 IcalValueToJsonDateTimePeriod(icalproperty *prop, BongoJsonObject *obj, icalvalue_kind kind)
 {
     struct icaldatetimeperiodtype dtperiod;
-    BongoJsonObject *value;
+    //BongoJsonObject *value;
 
-    value = BongoJsonObjectNew();
+    //value = BongoJsonObjectNew();
 
     dtperiod = icalvalue_get_datetimeperiod(icalproperty_get_value(prop));
 
@@ -696,12 +696,12 @@ static void
 IcalRecurPropertyToJsonKeywordArray(char *key, char *value, BongoJsonObject *obj)
 {
     GArray *array;
-    char *dup;
+    //char *dup;
     char *split[100];
     int n;
     int i;
 
-    dup = MemStrdup(value);    
+    //dup = MemStrdup(value);    
     array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 10);
 
     do {
@@ -750,12 +750,12 @@ static void
 IcalRecurPropertyToJsonIntArray(char *key, char *value, BongoJsonObject *obj)
 {
     GArray *array;
-    char *dup;
+    //char *dup;
     char *split[100];
     int n;
     int i;
 
-    dup = MemStrdup(value);    
+    //dup = MemStrdup(value);    
     array = g_array_sized_new(FALSE, FALSE, sizeof(BongoJsonNode*), 10);
 
     do {

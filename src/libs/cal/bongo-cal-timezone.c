@@ -514,7 +514,6 @@ BongoCalTimezoneGetUtcOffset(BongoCalTimezone *tz,
 {
     TimezoneChange tChange;
     TimezoneChange *zoneChange;
-    TimezoneChange *prevZoneChange;
     int changeNum;
     int changeNumToUse;
     int step;
@@ -621,13 +620,13 @@ BongoCalTimezoneGetUtcOffset(BongoCalTimezone *tz,
         TimezoneChange tmpChange = *zoneChange;
 
         tmpChange = AdjustChange (tmpChange, 0, 0, 0, tmpChange.prevUtcOffset);
-        if (CompareChange (&tChange, &tmpChange) < 0) {
+        //if (CompareChange (&tChange, &tmpChange) < 0) {
             /* The time is in the overlapped region, so we may need to use
                either the current zone_change or the previous one. If the
                time has the is_daylight field set we use the matching change,
                else we use the change with standard time. */
-            prevZoneChange = &g_array_index(tz->changes, TimezoneChange, changeNumToUse - 1);
-        }
+            //prevZoneChange = &g_array_index(tz->changes, TimezoneChange, changeNumToUse - 1);
+        //}
     }
 
     /* Now we know exactly which timezone change applies to the time, so

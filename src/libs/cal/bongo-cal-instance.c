@@ -784,7 +784,6 @@ BongoCalInstanceGetLastEnd(BongoCalInstance *instance)
     BongoSList *rrules;
     BongoCalTime lastRecur;
     BongoCalTime end;
-    BOOL done;
     
     end = BongoCalInstanceGetEnd(instance);
 
@@ -794,7 +793,6 @@ BongoCalInstanceGetLastEnd(BongoCalInstance *instance)
 
     BongoCalRecurEnsureEndDates(instance, FALSE, TimezoneCb, instance);
 
-    done = FALSE;
     lastRecur = BongoCalTimeEmpty();
 
     if (BongoCalInstanceGetRRules(instance, &rrules)) {
@@ -807,7 +805,6 @@ BongoCalInstanceGetLastEnd(BongoCalInstance *instance)
                 /* Infinitely-recurring rule, lastend is MAX_RECUR */
                 lastRecur = BongoCalTimeEmpty();
                 lastRecur.year = MAX_YEAR;
-                done = TRUE;
                 break;
             }
 
