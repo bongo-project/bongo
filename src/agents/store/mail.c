@@ -54,6 +54,7 @@ StoreProcessIncomingMail(StoreClient *client,
                          StoreObject *document,
                          const char *path)
 {
+	Connection *spipe = NULL;
 	StoreObject conversation;
 	StoreConversationData conversation_data;
 	struct wanted_header *headers = header_list;
@@ -169,7 +170,6 @@ StoreProcessIncomingMail(StoreClient *client,
 	waitpid(childpid, NULL, 0);
 	
 	int nbytes;
-	Connection *spipe = NULL;
 	spipe = ConnAlloc(TRUE);
 	if (!spipe) {
 		goto finish;
