@@ -58,7 +58,7 @@ FairLockFind(char *store, uint64_t guid)
 	NFairLockList *search;
 	NFairLock *result;
 	char *name;
-	char *new_lock = "";
+	//char *new_lock = "";
 	
 	name = FairLockName(store, guid);
 	XplWaitOnLocalSemaphore(lockpool->lock);
@@ -76,7 +76,7 @@ FairLockFind(char *store, uint64_t guid)
 	if (result == NULL) {
 		// couldn't find the lock, so add a new one
 		NFairLockList *new_entry;
-		new_lock = "new ";
+		//new_lock = "new ";
 		
 		new_entry = MemMalloc(sizeof(NFairLockList));
 		result = MemMalloc(sizeof(NFairLock));

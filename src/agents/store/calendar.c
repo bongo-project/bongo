@@ -39,8 +39,8 @@ StoreProcessIncomingEvent(StoreClient *client,
 {
     BongoJsonNode *node = NULL;
     BongoCalObject *cal = NULL;
-    BongoCalTime start;
-    BongoCalTime end;
+    //BongoCalTime start;
+    //BongoCalTime end;
 
 	if (linkGuid) {
 		// FIXME: Link this event into a calendar
@@ -59,12 +59,15 @@ StoreProcessIncomingEvent(StoreClient *client,
     /* Don't need the node anymore */
     BongoJsonNodeFreeSteal(node);
 
-    start = BongoCalObjectGetStart(cal);
-    end = BongoCalObjectGetEnd(cal);
+    //start = BongoCalObjectGetStart(cal);
+    //end = BongoCalObjectGetEnd(cal);
+    BongoCalObjectGetStart(cal);
+    BongoCalObjectGetEnd(cal);
 
-    /* Force to real times */
+    /* Force to real times
     start.isDate = FALSE;
     end.isDate = FALSE;
+    */
 
     /*
      * FIXME: need to get these event-specific properties from the object

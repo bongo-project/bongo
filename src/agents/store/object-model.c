@@ -783,7 +783,7 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 	properties = builder->properties->len;
 	
 	while ((status = MsgSQLResults(client->storedb, &stmt)) > 0) {
-		int ccode;
+		//int ccode;
 		char *ptr, *filename;
 		char buffer[2 * sizeof(object.filename) + 1];
 		
@@ -800,13 +800,15 @@ StoreObjectIterQueryBuilder(StoreClient *client, QueryBuilder *builder, BOOL sho
 		
 		// output document info if wanted
 		if (builder->output_mode == MODE_LIST) {
-			ccode = ConnWriteF(client->conn, 
+			//ccode = ConnWriteF(client->conn, 
+			ConnWriteF(client->conn, 
 				"2001 " GUID_FMT " %d %d %08x %d " FMT_UINT64_DEC " %s\r\n", 
 				object.guid, object.type, object.flags, 
 				object.imap_uid, object.time_modified, object.size, buffer);
 		}
 		if (builder->output_mode == MODE_COLLECTIONS) {
-			ccode = ConnWriteF(client->conn,
+			//ccode = ConnWriteF(client->conn,
+			ConnWriteF(client->conn,
 				"2001 " GUID_FMT " %d %d %s\r\n",
 				object.guid, object.type, object.flags, buffer);
 		}
@@ -1654,7 +1656,7 @@ StoreObjectListACL(StoreClient *client, StoreObject *object)
 	MsgSQLStatement stmt;
 	MsgSQLStatement *ret;
 	char *query;
-	int status, ccode;
+	int status; //, ccode;
 	
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
 	
@@ -1698,7 +1700,8 @@ StoreObjectListACL(StoreClient *client, StoreObject *object)
 			deny_str = "DENY";
 		}
 		
-		ccode = ConnWriteF(client->conn, "2001 " GUID_FMT " %s %s %s %s\r\n",
+		//ccode = ConnWriteF(client->conn, "2001 " GUID_FMT " %s %s %s %s\r\n",
+		ConnWriteF(client->conn, "2001 " GUID_FMT " %s %s %s %s\r\n",
 				guid, deny_str, priv_str, principal_str, who);
 	}
 	if (status < 0) goto abort; // SQL failure

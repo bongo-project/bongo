@@ -314,10 +314,10 @@ output_expression(struct expression *e)
  */
 int
 QueryParserStart(struct parser_state *state, const char *query, int max_expr) {
-	size_t q_size;
+	//size_t q_size;
 	
 	state->entries = max_expr;
-	q_size = sizeof(struct expression) * (max_expr + 1);
+	//q_size = sizeof(struct expression) * (max_expr + 1);
 	
 	state->start = MemNew0(struct expression, max_expr);
 	if (state->start == NULL) return -1;

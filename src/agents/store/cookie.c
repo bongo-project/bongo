@@ -61,7 +61,7 @@ StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout)
 	assert(STORE_PRINCIPAL_USER == client->principal.type);
 
 	MsgSQLStatement stmt;
-	MsgSQLStatement *ret;
+	//MsgSQLStatement *ret;
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
 
 	char token[50];
@@ -82,7 +82,8 @@ StoreCommandCOOKIENEW(StoreClient *client, uint64_t timeout)
 	if (db == NULL) goto abort;
 	if (MsgSQLBeginTransaction(db)) goto abort;
 
-	ret = MsgSQLPrepare(db, "INSERT INTO cookies (user, cookie, expiration) VALUES (?, ?, ?);", &stmt);
+	MsgSQLPrepare(db, "INSERT INTO cookies (user, cookie, expiration) VALUES (?, ?, ?);", &stmt);
+	//ret = MsgSQLPrepare(db, "INSERT INTO cookies (user, cookie, expiration) VALUES (?, ?, ?);", &stmt);
 	MsgSQLBindString(&stmt, 1, client->principal.name, FALSE);
 	MsgSQLBindString(&stmt, 2, token, FALSE);
 	MsgSQLBindInt64(&stmt, 3, expiration);
@@ -110,7 +111,7 @@ StoreCommandCOOKIEDELETE(StoreClient *client, const char *token)
 	assert(STORE_PRINCIPAL_USER == client->principal.type);
 
 	MsgSQLStatement stmt;
-	MsgSQLStatement *ret;
+	//MsgSQLStatement *ret;
 	memset(&stmt, 0, sizeof(MsgSQLStatement));
 
 	MsgSQLHandle *db = OpenCookieDB(client);
@@ -118,10 +119,12 @@ StoreCommandCOOKIEDELETE(StoreClient *client, const char *token)
 	if (MsgSQLBeginTransaction(db)) goto abort;
 
 	if (token != NULL) {
-		ret = MsgSQLPrepare(db, "DELETE FROM cookies WHERE (expiration < ?) OR (user=? AND cookie=?);", &stmt);
+		MsgSQLPrepare(db, "DELETE FROM cookies WHERE (expiration < ?) OR (user=? AND cookie=?);", &stmt);
+		//ret = MsgSQLPrepare(db, "DELETE FROM cookies WHERE (expiration < ?) OR (user=? AND cookie=?);", &stmt);
 		MsgSQLBindString(&stmt, 3, token, FALSE);
 	} else {
-		ret = MsgSQLPrepare(db, "DELETE FROM cookies WHERE expiration < ? OR user=?;", &stmt);
+		MsgSQLPrepare(db, "DELETE FROM cookies WHERE expiration < ? OR user=?;", &stmt);
+		//ret = MsgSQLPrepare(db, "DELETE FROM cookies WHERE expiration < ? OR user=?;", &stmt);
 	}
 	MsgSQLBindInt64(&stmt, 1, time(NULL));
 	MsgSQLBindString(&stmt, 2, client->principal.name, FALSE);
