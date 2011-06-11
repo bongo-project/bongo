@@ -128,7 +128,7 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
     XplDnsRecord *answers;
     ResolveMxData *mxData;
     ResolveAData *aData;
-    struct PTRData *ptrData;
+    //struct PTRData *ptrData;
     ResolveRecordInfo *recInfo;
     unsigned long answerOff;
     unsigned long i;
@@ -258,7 +258,7 @@ XplDnsResolve(char *host, XplDnsRecord **list, int type)
                 break;
 
 	    case XPL_RR_PTR: {
-		ptrData = (struct PTRData*)(answer + answerOff);
+		//ptrData = (struct PTRData*)(answer + answerOff);
 		answerOff += DecodeName(answer, answerOff, answers[i].PTR.name);
 		break;
 	    }

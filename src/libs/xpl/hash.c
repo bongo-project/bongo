@@ -37,9 +37,9 @@ XplInit(void)
 void 
 XplHashInit(void) 
 {
-	const char *gcry_version;
+	//const char *gcry_version;
 	gcry_control (GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
-	gcry_version = gcry_check_version(NULL);
+	//gcry_version = gcry_check_version(NULL);
 	gcry_control (GCRYCTL_DISABLE_SECMEM, 0);
 	gcry_control (GCRYCTL_SET_RANDOM_SEED_FILE, XPL_DEFAULT_RANDSEED_PATH);
 	gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
