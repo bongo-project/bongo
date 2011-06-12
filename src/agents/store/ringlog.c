@@ -86,6 +86,7 @@ RinglogDumpFilehandle(int fh)
 				entry->message);
 			if (write(fh, message, len) != len) {
 				/* is there anything really to do here? */
+				continue;
 			}
 		}
 	}
