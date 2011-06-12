@@ -24,7 +24,6 @@
 
 #include "xpl.h"
 #include <time.h>
-#include <gnutls/openssl.h>
 
 #define SHA_DIGEST_LENGTH	20
 

@@ -23,7 +23,6 @@
 #define _BONGO_CONNIO_H
 
 #include <stdarg.h>
-#include <gnutls/openssl.h>
 #include <gnutls/gnutls.h>
 #include <gcrypt.h>
 
