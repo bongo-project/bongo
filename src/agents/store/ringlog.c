@@ -80,11 +80,12 @@ RinglogDumpFilehandle(int fh)
 		RingLogItem *entry = &(ringlog[i % RINGLOG_SIZE]);
 		
 		if (entry->timestamp) {
+			ssize_t dummy;
 			ssize_t len = snprintf(message, 299, "%.19s [%d] %s\n", 
 				ctime(&(entry->timestamp)),
 				entry->thread_id,
 				entry->message);
-			if (write(fh, message, len) != len) {
+			if ((dummy = write(fh, message, len)) != len) {
 				/* is there anything really to do here? */
 				continue;
 			}
