@@ -193,7 +193,7 @@ SignalHandler(int sigtype)
 		int boomfile;
 		
 		snprintf(path, XPL_MAX_PATH, "%s/store-ringlog-%d", XPL_DEFAULT_WORK_DIR, (int)time(NULL));
-		boomfile = open(path, O_CREAT | O_WRONLY);
+		boomfile = open(path, O_CREAT | O_WRONLY, 0x660);
 		if (boomfile != -1) {
 			RinglogDumpFilehandle(boomfile);
 			close(boomfile);
