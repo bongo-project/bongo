@@ -32,6 +32,7 @@ typedef enum {
     STORE_COMMAND_NULL = 0,
 
     /* session commands */
+    STORE_COMMAND_ACCOUNT, /* CREATE, LIST or DELETE */
     STORE_COMMAND_AUTH, /* COOKIE, USER or SYSTEM */
     STORE_COMMAND_COOKIE, /* NEW or DELETE */
     STORE_COMMAND_IDENTITY,

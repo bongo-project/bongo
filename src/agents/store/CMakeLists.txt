@@ -3,6 +3,7 @@ StrictCompile()
 enable_language(ASM-ATT)
 
 add_executable(bongostore
+	accounts.c
 	auth.c
 	calendar.c
 	sql/createstore.s

@@ -103,6 +103,7 @@ StoreSetupCommands()
     if (!CommandTable ||
 
         /* session commands */
+	BongoHashtablePutNoReplace(CommandTable, "ACCOUNT", (void *) STORE_COMMAND_ACCOUNT) ||
         BongoHashtablePutNoReplace(CommandTable, "AUTH", (void *) STORE_COMMAND_AUTH) ||
         BongoHashtablePutNoReplace(CommandTable, "COOKIE", (void *) STORE_COMMAND_COOKIE) ||
         BongoHashtablePutNoReplace(CommandTable, "QUIT", (void *) STORE_COMMAND_QUIT) ||
@@ -216,6 +217,15 @@ RequireManager(StoreClient *client)
                               : ConnWriteStr(client->conn, MSG3243MANAGERONLY);
 }
 
+static CCode
+RequireAdmin(StoreClient *client)
+{
+    if (IS_MANAGER(client)) return TOKEN_OK;
+    if (HAS_IDENTITY(client)) {
+        if (! XplStrCaseCmp(client->principal.name, "admin")) return TOKEN_OK;
+    }
+    return ConnWriteStr(client->conn, MSG3243MANAGERONLY);
+}
 
 static CCode
 RequireIdentity(StoreClient *client)
@@ -301,7 +311,30 @@ StoreCommandLoop(StoreClient *client)
         case STORE_COMMAND_NULL:
             ccode = ConnWriteStr(client->conn, MSG3000UNKNOWN);
             break;
-        
+        case STORE_COMMAND_ACCOUNT:
+            /* ACCOUNT CREATE <account> */
+            /* ACCOUNT DELETE <account> */
+            /* ACCOUNT LIST */
+            
+            query = NULL; // who
+            
+            if (TOKEN_OK == (ccode = RequireAdmin(client)) &&
+                TOKEN_OK == (ccode = RequireNoStore(client)) &&
+                TOKEN_OK == (ccode = CheckTokC(client, n, 0, 6))) 
+            {
+                if (!XplStrCaseCmp(tokens[1], "list")) {
+                    ccode = AccountList(client);
+                }
+                
+                if (!XplStrCaseCmp(tokens[1], "create")) {
+                    ccode = AccountCreate(client, tokens[2], NULL);
+                }
+                
+                if (!XplStrCaseCmp(tokens[1], "delete")) {
+                    ccode = AccountDelete(client, tokens[2]);
+                }
+            }
+            break;
         case STORE_COMMAND_ACL:
             /* ACL GRANT <document> P<priv> T<principal> [W<who>] */
             /* ACL DENY <document> P<priv> T<principal> [W<who>] */

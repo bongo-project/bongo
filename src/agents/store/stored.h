@@ -418,6 +418,12 @@ int MaildirDeliverTempDocument(StoreClient *client, uint64_t collection, const c
 int MimeGetInfo(StoreClient *client, StoreObject *object, MimeReport **outReport);
 int MimeGetGuid(StoreClient *client, uint64_t guid, MimeReport **outReport);
 
+/** account.c **/
+
+CCode AccountCreate(StoreClient *client, char *user, char *password);
+CCode AccountDelete(StoreClient *client, char *user);
+CCode AccountList(StoreClient *client);
+
 /** config.c **/
 BOOL StoreAgentReadConfiguration(BOOL *recover);
 
