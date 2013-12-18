@@ -77,14 +77,11 @@ __gnutls_new(Connection *conn, bongo_ssl_context *context, gnutls_connection_end
         /* store in the credetials loaded earler */
         ccode = gnutls_credentials_set(conn->ssl.context, GNUTLS_CRD_CERTIFICATE, context->cert_cred);
     } else {
-        const int cert_type_priority[4] = { GNUTLS_CRT_X509, GNUTLS_CRT_OPENPGP, 0 };
-
         /* defaults are ok here */
         gnutls_set_default_priority (conn->ssl.context);
 
         /* store the priority for x509 or openpgp out there
          * i doubt that openpgp will be used but perhaps there is a server that supports it */
-        gnutls_certificate_type_set_priority (conn->ssl.context, cert_type_priority);
         gnutls_certificate_allocate_credentials (&conn->ssl.credentials);
         gnutls_certificate_set_x509_trust_file (conn->ssl.credentials, XPL_DEFAULT_CERT_PATH, GNUTLS_X509_FMT_PEM);
 
