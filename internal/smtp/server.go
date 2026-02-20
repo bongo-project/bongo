@@ -1,17 +1,21 @@
 package smtp
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	gosmtp "github.com/emersion/go-smtp"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-go/bongo-go/internal/mail"
 )
 
 // Deliverer processes an inbound email message.
@@ -21,9 +25,10 @@ type Deliverer interface {
 
 // Backend implements gosmtp.Backend.
 type Backend struct {
-	auth      auth.Authenticator
-	deliverer Deliverer
-	logger    *slog.Logger
+	auth       auth.Authenticator
+	deliverer  Deliverer
+	spfChecker *mail.SPFChecker
+	logger     *slog.Logger
 }
 
 // NewBackend creates a new SMTP backend.
@@ -35,11 +40,23 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 	}
 }
 
+// SetSPFChecker sets the SPF checker for inbound SPF verification.
+func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
+	b.spfChecker = checker
+}
+
 // NewSession is called when a new SMTP connection is established.
 func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
+	var remoteIP net.IP
+	if addr := c.Conn().RemoteAddr(); addr != nil {
+		if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+			remoteIP = tcpAddr.IP
+		}
+	}
 	return &Session{
-		backend: b,
-		logger:  b.logger,
+		backend:  b,
+		logger:   b.logger,
+		remoteIP: remoteIP,
 	}, nil
 }
 
@@ -50,6 +67,8 @@ type Session struct {
 	from       string
 	recipients []string
 	authed     bool
+	remoteIP   net.IP
+	spfResult  string
 }
 
 // AuthPlain handles PLAIN authentication.
@@ -68,6 +87,22 @@ func (s *Session) AuthPlain(username, password string) error {
 func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	s.from = from
 	s.logger.Debug("smtp: MAIL FROM", "from", from)
+
+	// SPF check.
+	if s.backend.spfChecker != nil && s.remoteIP != nil {
+		domain := extractDomain(from)
+		if domain != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			result, err := s.backend.spfChecker.Check(ctx, s.remoteIP, domain)
+			if err != nil {
+				s.logger.Debug("smtp: SPF check error", "domain", domain, "error", err)
+			}
+			s.spfResult = result
+			s.logger.Info("smtp: SPF result", "domain", domain, "result", result, "ip", s.remoteIP)
+		}
+	}
+
 	return nil
 }
 
@@ -84,7 +119,23 @@ func (s *Session) Data(r io.Reader) error {
 		return fmt.Errorf("no recipients")
 	}
 
-	if err := s.backend.deliverer.Deliver(s.from, s.recipients, r); err != nil {
+	var reader io.Reader = r
+
+	// Prepend Received-SPF header if SPF was checked.
+	if s.spfResult != "" {
+		domain := extractDomain(s.from)
+		header := fmt.Sprintf("Received-SPF: %s (bongo-go; domain=%s)\r\n", s.spfResult, domain)
+		rawData, err := io.ReadAll(r)
+		if err != nil {
+			return fmt.Errorf("reading message data: %w", err)
+		}
+		var buf bytes.Buffer
+		buf.WriteString(header)
+		buf.Write(rawData)
+		reader = &buf
+	}
+
+	if err := s.backend.deliverer.Deliver(s.from, s.recipients, reader); err != nil {
 		s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
 		return err
 	}
@@ -97,6 +148,16 @@ func (s *Session) Data(r io.Reader) error {
 func (s *Session) Reset() {
 	s.from = ""
 	s.recipients = nil
+	s.spfResult = ""
+}
+
+// extractDomain extracts the domain part from an email address.
+func extractDomain(email string) string {
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.ToLower(parts[1])
 }
 
 // Logout is called when the connection is closed.

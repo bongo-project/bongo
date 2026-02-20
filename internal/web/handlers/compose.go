@@ -15,6 +15,8 @@ import (
 	"github.com/jhillyerd/enmime"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
@@ -23,11 +25,13 @@ import (
 
 // ComposeHandler handles email composition.
 type ComposeHandler struct {
-	pebble    *store.PebbleStore
-	blobs     *store.BlobStore
-	mailboxes *store.MailboxStore
-	search    *store.SearchManager
-	applier   store.RaftApplier
+	pebble      *store.PebbleStore
+	blobs       *store.BlobStore
+	mailboxes   *store.MailboxStore
+	search      *store.SearchManager
+	applier     store.RaftApplier
+	queueStore  *queue.QueueStore
+	rateLimiter *mail.RateLimiter
 }
 
 // NewComposeHandler creates a ComposeHandler.
@@ -39,6 +43,16 @@ func NewComposeHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailbo
 		search:    search,
 		applier:   applier,
 	}
+}
+
+// SetQueueStore sets the queue store for outbound delivery.
+func (h *ComposeHandler) SetQueueStore(qs *queue.QueueStore) {
+	h.queueStore = qs
+}
+
+// SetRateLimiter sets the rate limiter for outbound messages.
+func (h *ComposeHandler) SetRateLimiter(rl *mail.RateLimiter) {
+	h.rateLimiter = rl
 }
 
 // NewMessage renders the compose form.
@@ -168,16 +182,32 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Copy to Sent folder.
 	h.deliverToMailbox(userID, "Sent", guid, meta)
 
-	// Deliver to local recipients.
+	// Split recipients into local and external.
 	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
+	var localRecipients, externalRecipients []string
 	for _, rcpt := range allRecipients {
 		rcpt = strings.TrimSpace(rcpt)
 		if rcpt == "" {
 			continue
 		}
+		if h.resolveLocalUser(rcpt) != "" {
+			localRecipients = append(localRecipients, rcpt)
+		} else {
+			externalRecipients = append(externalRecipients, rcpt)
+		}
+	}
+
+	// Check rate limit for external recipients.
+	if len(externalRecipients) > 0 && h.rateLimiter != nil && !h.rateLimiter.Allow(email) {
+		http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
+	// Deliver to local recipients.
+	for _, rcpt := range localRecipients {
 		recipientID := h.resolveLocalUser(rcpt)
 		if recipientID == "" {
-			continue // skip non-local recipients
+			continue
 		}
 
 		// Store MailMeta for recipient.
@@ -197,6 +227,22 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Enqueue external recipients for outbound delivery.
+	if len(externalRecipients) > 0 && h.queueStore != nil {
+		outMsg := &bongov1.OutboundMessage{
+			Id:          guid,
+			SenderId:    userID,
+			SenderEmail: email,
+			Recipients:  externalRecipients,
+			BlobHash:    hash,
+			MessageGuid: meta.MessageId,
+		}
+		if err := h.queueStore.Enqueue(outMsg); err != nil {
+			http.Error(w, "Failed to queue message for delivery", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// If reply, set Answered flag on original.
 	if mode == "reply" && replyMailbox != "" && replyUIDStr != "" {
 		replyUID, _ := strconv.ParseUint(replyUIDStr, 10, 32)
@@ -210,7 +256,15 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false)
 	}
 
-	http.Redirect(w, r, "/mail/Sent?flash=Message+sent", http.StatusSeeOther)
+	// Build flash message based on delivery type.
+	flash := "Message+sent"
+	if len(localRecipients) > 0 && len(externalRecipients) > 0 {
+		flash = "Message+sent+to+local+recipients%3B+external+delivery+queued"
+	} else if len(externalRecipients) > 0 {
+		flash = "Message+queued+for+delivery"
+	}
+
+	http.Redirect(w, r, "/mail/Sent?flash="+flash, http.StatusSeeOther)
 }
 
 // SaveDraft saves a message as a draft.

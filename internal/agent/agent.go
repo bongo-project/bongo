@@ -19,10 +19,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/hashicorp/raft"
+
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
 	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
+	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/security"
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
@@ -48,12 +52,31 @@ type Agent struct {
 	BlobSync  *cluster.BlobSyncer
 	logger    *slog.Logger
 
-	httpServer     *http.Server
-	ready          atomic.Bool
-	blobSyncCancel context.CancelFunc
+	// Queue subsystem.
+	QueueStore  *queue.QueueStore
+	QueueWorker *queue.Worker
+	DKIMSigner  *mail.DKIMSigner
+	Relay       *bongosmtp.Relay
+	RateLimiter *mail.RateLimiter
+	SPFChecker  *mail.SPFChecker
+	BounceGen   *mail.BounceGenerator
+
+	httpServer        *http.Server
+	ready             atomic.Bool
+	blobSyncCancel    context.CancelFunc
+	queueWorkerCancel context.CancelFunc
 
 	// tmpDir is set in dev mode so we can clean up on shutdown.
 	tmpDir string
+}
+
+// IsLeader returns whether this node is the Raft leader.
+// Implements queue.LeaderChecker.
+func (a *Agent) IsLeader() bool {
+	if a.Raft == nil {
+		return false
+	}
+	return a.Raft.Raft.State() == raft.Leader
 }
 
 // Ready implements handlers.ReadinessChecker.
@@ -204,6 +227,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/internal/cluster/join", joinH.Join)
 	}
 
+	// Queue management endpoints will be registered after queue init below.
+
 	// User management endpoint.
 	if a.Raft != nil {
 		userH := handlers.NewUserHandler(a, a.Metadata)
@@ -249,6 +274,12 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Mailboxes != nil {
 			composeH := handlers.NewComposeHandler(a.Store, a.Blobs, a.Mailboxes, a.Search, a)
+			if a.QueueStore != nil {
+				composeH.SetQueueStore(a.QueueStore)
+			}
+			if a.RateLimiter != nil {
+				composeH.SetRateLimiter(a.RateLimiter)
+			}
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
@@ -330,11 +361,16 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	// Start SMTP server.
+	var smtpPipeline *bongosmtp.DeliveryPipeline
 	if a.Config.SMTP.Enabled && a.Raft != nil {
 		isDev := a.Config.Server.Role == "dev"
 		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
-		pipeline := bongosmtp.NewDeliveryPipeline(a, a.Blobs, resolver, a.logger)
-		backend := bongosmtp.NewBackend(a.Auth, pipeline, a.logger)
+		smtpPipeline = bongosmtp.NewDeliveryPipeline(a, a.Blobs, resolver, a.logger)
+		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
+
+		// SPF checker for inbound mail.
+		a.SPFChecker = mail.NewSPFChecker()
+		backend.SetSPFChecker(a.SPFChecker)
 
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
 		if err := a.SMTP.Listen(); err != nil {
@@ -346,6 +382,41 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}()
 		a.logger.Info("smtp: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
+	}
+
+	// Initialize outbound queue subsystem.
+	if a.Raft != nil {
+		a.QueueStore = queue.NewQueueStore(a.Store, a)
+
+		// DKIM signer (nil if no key configured).
+		signer, err := mail.NewDKIMSigner(&a.Config.SMTP.DKIM, "localhost")
+		if err != nil {
+			a.logger.Warn("dkim: failed to load signer", "error", err)
+		}
+		a.DKIMSigner = signer
+
+		// Outbound relay.
+		a.Relay = bongosmtp.NewRelay(&a.Config.SMTP.Relay, a.logger)
+
+		// Rate limiter.
+		a.RateLimiter = mail.NewRateLimiter(a.Config.SMTP.Limits.FloodThreshold)
+
+		// Bounce generator (uses inbound delivery pipeline).
+		if smtpPipeline != nil {
+			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger)
+		}
+
+		// Queue worker (leader-only processing).
+		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMSigner, a, a.BounceGen, a.Blobs, a.logger)
+		queueCtx, queueCancel := context.WithCancel(ctx)
+		a.queueWorkerCancel = queueCancel
+		go a.QueueWorker.Run(queueCtx)
+
+		// Queue HTTP routes.
+		queueH := handlers.NewQueueHandler(a.QueueStore)
+		r.Get("/internal/queue/stats", queueH.Stats)
+		r.Post("/internal/queue/{id}/retry", queueH.Retry)
+		r.Delete("/internal/queue/{id}", queueH.Drop)
 	}
 
 	// Start IMAP server.
@@ -543,6 +614,12 @@ func (a *Agent) Shutdown() error {
 		} else {
 			a.logger.Info("imap server closed")
 		}
+	}
+
+	// 3.5. Queue worker.
+	if a.queueWorkerCancel != nil {
+		a.queueWorkerCancel()
+		a.logger.Info("queue worker stopped")
 	}
 
 	// 4. Blob sync cancel.

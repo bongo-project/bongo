@@ -3,8 +3,11 @@ module github.com/bongo-go/bongo-go
 go 1.25.7
 
 require (
+	github.com/a-h/templ v0.3.977
 	github.com/blevesearch/bleve/v2 v2.5.7
 	github.com/cockroachdb/pebble v1.1.5
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-smtp v0.24.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/google/uuid v1.6.0
@@ -13,6 +16,7 @@ require (
 	github.com/hashicorp/memberlist v0.5.4
 	github.com/hashicorp/raft v1.7.3
 	github.com/jhillyerd/enmime v1.3.0
+	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	golang.org/x/crypto v0.47.0
@@ -23,7 +27,6 @@ require (
 require (
 	github.com/DataDog/zstd v1.5.2 // indirect
 	github.com/RoaringBitmap/roaring/v2 v2.4.5 // indirect
-	github.com/a-h/templ v0.3.977 // indirect
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
@@ -55,7 +58,6 @@ require (
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/cockroachdb/tokenbucket v0.0.0-20230807174530-cc333fc44b06 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/emersion/go-imap/v2 v2.0.0-beta.8 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/fatih/color v1.16.0 // indirect
@@ -86,7 +88,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect
-	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+enum MessageStatus {
+  MESSAGE_STATUS_UNSPECIFIED = 0;
+  MESSAGE_STATUS_PENDING = 1;
+  MESSAGE_STATUS_FAILED = 2;
+  MESSAGE_STATUS_DELIVERED = 3;
+  MESSAGE_STATUS_BOUNCED = 4;
+}
+
+message OutboundMessage {
+  string id = 1;
+  string sender_id = 2;
+  string sender_email = 3;
+  repeated string recipients = 4;
+  string blob_hash = 5;
+  int32 attempt_count = 6;
+  int64 created_at = 7;
+  int64 next_retry_at = 8;
+  MessageStatus status = 9;
+  string status_reason = 10;
+  repeated string failed_recipients = 11;
+  string message_guid = 12;
+}
+
+message QueueStats {
+  int32 pending_count = 1;
+  int32 failed_count = 2;
+  int64 oldest_pending_seconds = 3;
+}

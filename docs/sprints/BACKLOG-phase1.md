@@ -61,7 +61,7 @@ listing and STATUS. SEARCH command backed by Bleve. UID tracking and sequence nu
 mapping. Wire IMAP into agent lifecycle. Integration test: deliver mail via SMTP, read
 via IMAP client, verify flags and search.
 
-## Sprint 06: HTMX Web UI & Search Polish ← CURRENT
+## Sprint 06: HTMX Web UI & Search Polish ✅ DONE
 **Cleanup from Sprint 05:**
 - Wire IMAP SEARCH to Bleve instead of in-memory string matching
   (`internal/imap/search.go` mapping IMAP criteria → Bleve queries).
@@ -76,3 +76,97 @@ sanitization, compose/reply form with SMTP submission, folder management, search
 backed by Bleve, login page with session cookies, and responsive layout. Wire web
 handlers into agent lifecycle. Integration test: login, browse inbox, read message,
 compose reply.
+
+## Sprint 07: Outbound SMTP Relay & Message Queue ✅ DONE
+Outbound mail delivery to external servers. `internal/queue/` message queue with
+persistent storage in Pebble, retry with exponential backoff, bounce generation on
+permanent failure. MX record lookup and delivery. DKIM signing (ed25519 + rsa-sha256).
+SPF checking on inbound. Rate limiting per sender. Wire into compose "Send" flow so
+external recipients actually receive mail. `bongo-go queue status` CLI. Integration
+test: send to external, verify DKIM header, test bounce on bad domain.
+
+## Sprint 08: Web UI Enhancement — Dragonfly Mail Experience
+Replicate the original Bongo "Dragonfly" mail UI experience with modern tooling.
+Conversation threading: group messages by `In-Reply-To`/`References` headers with
+expand/collapse per message in thread view (HTMX partial swaps). Drag-and-drop
+messages between folders (Sortable.js). Bulk operations toolbar: select all, mark
+read/unread, delete, move, flag — operating on checkbox-selected messages. Inline
+message preview / reading pane (two-pane and three-pane layout toggle stored in
+user preferences). Right-click context menu on messages (Alpine.js). Swipe
+gestures on mobile (archive left, delete right). Unread/starred/flagged virtual
+folders. Folder badge counts live-update via SSE (existing Notifier). Desktop
+browser notifications for new mail (Notification API via Alpine.js). Dark mode
+toggle (Pico CSS `data-theme` attribute). User preferences page: display density,
+default reply mode (reply/reply-all), signature editor, timezone, messages per page.
+Integration test: thread view, bulk operations, drag-and-drop, preferences save.
+
+## Sprint 09: Contacts & Address Book (CardDAV)
+Wire `internal/caldav/` for CardDAV (RFC 6352) via `emersion/go-webdav`. Contact
+storage in Pebble: `/user/{id}/contact/{guid}` with VCard protobuf. Contact CRUD
+in web UI: list, create, edit, delete with inline editing. Contact groups/distribution
+lists. vCard import/export (`.vcf` file upload/download). Contact photo storage in
+blob store. Merge duplicate contacts. Link contacts to mail senders (click sender →
+view/create contact). Integrate address book with compose autocomplete (supplement
+GAL with personal contacts). Contact search via Bleve (name, email, phone, company).
+CardDAV sync so contacts work with macOS Contacts, iOS, DAVx5. Integration test:
+create contact via web UI, sync via CardDAV client, verify in compose autocomplete.
+
+## Sprint 10: Calendar (CalDAV)
+Wire `internal/caldav/` for CalDAV (RFC 4791) via `emersion/go-webdav`. Event
+storage in Pebble: `/user/{id}/event/{guid}` with iCalendar protobuf. Calendar web
+UI: month, week, day views with HTMX navigation. Event CRUD: create with start/end
+time, location, description, all-day toggle. Recurring events (RRULE: daily, weekly,
+monthly, yearly with exceptions). Drag-and-drop event rescheduling in week/day view.
+Multiple calendars with colour coding. Mini calendar navigator in sidebar. Event
+reminders/alarms stored per event, delivered via SSE to browser + future email
+notification. Shared calendar display (read-only view of another user's calendar).
+Free/busy lookup for scheduling. CalDAV sync with Apple Calendar, Thunderbird,
+DAVx5. Integration test: create event via web, sync via CalDAV, verify recurrence
+expansion and reminders.
+
+## Sprint 11: Admin Panel (Hawkeye)
+Replicate the original Bongo "Hawkeye" admin interface. Admin role flag on
+UserProfile protobuf. Admin middleware (require admin flag). Dashboard: system
+health (Raft leader status, node count, uptime), storage usage (Pebble size, blob
+count, total bytes), active connections (SMTP, IMAP, HTTP), message throughput
+graph (messages/hour via Bleve date facet). User management: list all users with
+search/filter, create/disable/delete users, per-user quota management (quota_bytes
+in UserProfile), password reset, force logout. Domain management: add/remove
+domains, MX record verification check. Email alias management: create/edit/delete
+aliases (`/system/alias/{alias}` in Pebble). Queue management: view pending/failed
+messages, retry/drop individual items, flush queue. Cluster management: node list
+with health status, promote/demote voters, decommission node. Log viewer: tail
+structured logs with level/component filters (stream via SSE). All admin pages use
+the same HTMX/Templ/Pico CSS stack as user UI. Integration test: admin login, user
+CRUD, domain management, queue inspection.
+
+## Sprint 12: POP3, Mail Filters & Antispam
+POP3 server via `internal/pop3/` for legacy client support (RFC 1939). Basic
+commands: USER, PASS, STAT, LIST, RETR, DELE, QUIT. Wire into agent lifecycle
+with configurable ports (110/995). Mail filter rules engine (`internal/rules/`):
+Sieve-like DSL stored per user in Pebble, evaluated in delivery pipeline before
+mailbox placement. Rule actions: move to folder, mark read, flag, delete, forward,
+auto-reply. Rule conditions: from, to, subject, header match, size, has attachment.
+Web UI for rule management: list, create, edit, reorder priority, test against
+existing messages. Antispam scoring (`internal/antispam/`): SPF verification
+(already partially done), DKIM verification on inbound, basic header analysis
+(missing Message-ID, suspicious Date, known spam patterns), per-message spam score
+stored in MailMeta, Junk folder auto-filing above threshold, "Mark as spam" /
+"Not spam" buttons in web UI that train a simple Bayesian filter. Integration test:
+POP3 round-trip, filter rule evaluation, spam scoring and junk filing.
+
+## Sprint 13: Web UI Polish & Production Readiness
+Final UI polish pass to reach production quality. Accessibility audit: ARIA labels,
+keyboard navigation for all interactive elements, screen reader testing, focus
+management on HTMX swaps. Internationalisation (i18n): extract all UI strings to
+message catalogue, add locale selector in preferences (start with en, fr, de, es).
+Email template rendering improvements: inline CSS for HTML mail display, remote
+image blocking with click-to-load, print-friendly view. Attachment preview: inline
+image display, PDF viewer (pdf.js), text file syntax highlighting. Import/export:
+mbox import for mailbox migration, EML file download. Login security: rate limiting
+on login attempts, TOTP two-factor auth (totp_secret already in UserProfile proto),
+QR code setup flow in preferences. HTTPS redirect and HSTS header. CSP headers for
+XSS prevention. Performance: lazy-load message list on scroll (infinite scroll
+option), prefetch next page via HTMX `hx-trigger="revealed"`, compress SSE payloads.
+E2E test suite: Playwright or similar headless browser tests covering full user
+journeys (login → compose → send → receive → search → calendar → contacts → logout).

@@ -21,6 +21,17 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// MailboxMeta stores per-mailbox metadata in Pebble.
+//
+// Design decision: message counts (total, recent, unseen) are intentionally
+// NOT stored as proto fields. They are computed on demand via Pebble prefix
+// scans in MailboxStore.CountMessages(). This avoids counter drift under
+// concurrent Raft applies — multiple nodes applying log entries in parallel
+// could cause stored counters to diverge from the actual message set.
+// The prefix scan approach guarantees accuracy at the cost of an O(n) scan.
+//
+// If profiling shows prefix scans are too slow for large mailboxes, counters
+// can be added as cached fields with invalidation on message insert/delete/flag.
 type MailboxMeta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
