@@ -4,6 +4,7 @@ go 1.25.7
 
 require (
 	github.com/cockroachdb/pebble v1.1.5
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0

@@ -16,56 +16,65 @@ import (
 )
 
 var (
-	agentMode       string
-	agentConfig     string
-	agentBind       string
-	agentJoin       string
-	agentLogLevel   string
+	serveRole       string
+	serveConfig     string
+	serveBind       string
+	serveJoin       string
+	serveLogLevel   string
+	serveDev        bool
 	bootstrapExpect int
 )
 
-var agentCmd = &cobra.Command{
-	Use:   "agent",
-	Short: "Start a bongo-go agent",
-	Long:  "Start a bongo-go agent in server, client, or dev mode.",
-	RunE:  runAgent,
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the bongo-go server",
+	Long:  "Start bongo-go in server, edge, or dev role.",
+	RunE:  runServe,
 }
 
 func init() {
-	agentCmd.Flags().StringVarP(&agentMode, "mode", "m", "dev", "Agent mode: server, client, or dev")
-	agentCmd.Flags().StringVarP(&agentConfig, "config", "c", "", "Path to HCL config file")
-	agentCmd.Flags().StringVarP(&agentBind, "bind", "b", "0.0.0.0", "Address to bind listeners to")
-	agentCmd.Flags().StringVarP(&agentJoin, "join", "j", "", "Address of an existing agent to join")
-	agentCmd.Flags().StringVar(&agentLogLevel, "log-level", "", "Log level: debug, info, warn, error")
-	agentCmd.Flags().IntVar(&bootstrapExpect, "bootstrap-expect", 0, "Number of expected servers to bootstrap the cluster")
+	serveCmd.Flags().StringVar(&serveRole, "role", "", "Server role: server, edge, or dev")
+	serveCmd.Flags().BoolVar(&serveDev, "dev", false, "Shorthand for --role=dev")
+	serveCmd.Flags().StringVarP(&serveConfig, "config", "c", "", "Path to HCL config file")
+	serveCmd.Flags().StringVarP(&serveBind, "bind", "b", "0.0.0.0", "Address to bind listeners to")
+	serveCmd.Flags().StringVarP(&serveJoin, "join", "j", "", "Address of an existing node to join")
+	serveCmd.Flags().StringVar(&serveLogLevel, "log-level", "", "Log level: debug, info, warn, error")
+	serveCmd.Flags().IntVar(&bootstrapExpect, "bootstrap-expect", 0, "Number of expected servers to bootstrap the cluster")
 
-	rootCmd.AddCommand(agentCmd)
+	rootCmd.AddCommand(serveCmd)
 }
 
-func runAgent(cmd *cobra.Command, args []string) error {
-	// Validate mode.
-	switch agentMode {
-	case "server", "client", "dev":
+func runServe(cmd *cobra.Command, args []string) error {
+	// Resolve role: --dev flag takes precedence, then --role, then default.
+	role := "dev"
+	if serveRole != "" {
+		role = serveRole
+	}
+	if serveDev {
+		role = "dev"
+	}
+
+	// Validate role.
+	switch role {
+	case "server", "edge", "dev":
 	default:
-		return fmt.Errorf("invalid mode %q: must be server, client, or dev", agentMode)
+		return fmt.Errorf("invalid role %q: must be server, edge, or dev", role)
 	}
 
 	// Load config with precedence: CLI flags > env > file > defaults.
 	v := viper.New()
-	if agentConfig != "" {
-		v.Set("config", agentConfig)
+	if serveConfig != "" {
+		v.Set("config", serveConfig)
 	}
-	if cmd.Flags().Changed("mode") {
-		v.Set("mode", agentMode)
-	}
+	v.Set("role", role)
 	if cmd.Flags().Changed("bind") {
-		v.Set("bind", agentBind)
+		v.Set("bind", serveBind)
 	}
 	if cmd.Flags().Changed("join") {
-		v.Set("join", agentJoin)
+		v.Set("join", serveJoin)
 	}
 	if cmd.Flags().Changed("log-level") {
-		v.Set("log-level", agentLogLevel)
+		v.Set("log-level", serveLogLevel)
 	}
 
 	cfg, err := config.Load(v)
@@ -84,7 +93,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	logger := slog.New(handler)
 
 	logger.Info("config loaded",
-		"mode", cfg.Agent.Mode,
+		"role", cfg.Server.Role,
 		"log_level", cfg.Telemetry.Log.Level,
 		"log_format", cfg.Telemetry.Log.Format,
 	)
@@ -92,7 +101,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Create agent.
 	a, err := agent.NewAgent(cfg, logger)
 	if err != nil {
-		return fmt.Errorf("creating agent: %w", err)
+		return fmt.Errorf("starting server: %w", err)
 	}
 
 	// Set up signal-based cancellation.

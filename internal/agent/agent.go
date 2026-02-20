@@ -47,7 +47,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	}
 
 	dataDir := cfg.Storage.DataDir
-	if cfg.Agent.Mode == "dev" {
+	if cfg.Server.Role == "dev" {
 		tmp, err := os.MkdirTemp("", "bongo-dev-*")
 		if err != nil {
 			return nil, fmt.Errorf("creating temp dir: %w", err)
@@ -100,11 +100,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Get("/health/ready", health.Ready)
 
 	port := a.Config.Web.Port
-	if a.Config.Agent.Mode == "dev" && port == 443 {
+	if a.Config.Server.Role == "dev" && port == 443 {
 		port = 8080
 	}
 
-	addr := net.JoinHostPort(a.Config.Agent.BindAddr, strconv.Itoa(port))
+	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
 	a.httpServer = &http.Server{
 		Addr:    addr,
 		Handler: r,
@@ -112,10 +112,10 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	a.ready = true
 
-	a.logger.Info("agent started",
-		"mode", a.Config.Agent.Mode,
-		"name", a.Config.Agent.Name,
-		"bind", a.Config.Agent.BindAddr,
+	a.logger.Info("bongo-go started",
+		"role", a.Config.Server.Role,
+		"name", a.Config.Server.Name,
+		"bind", a.Config.Server.BindAddr,
 		"http_addr", addr,
 	)
 
@@ -137,7 +137,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}
 
-	a.logger.Info("shutting down agent")
+	a.logger.Info("shutting down")
 	return a.Shutdown()
 }
 
@@ -185,6 +185,6 @@ func (a *Agent) Shutdown() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("shutdown errors: %v", errs)
 	}
-	a.logger.Info("agent stopped")
+	a.logger.Info("bongo-go stopped")
 	return nil
 }

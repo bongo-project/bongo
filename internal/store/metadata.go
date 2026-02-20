@@ -239,11 +239,13 @@ func newSystemIndex(dbPath string) (*SystemIndex, error) {
 
 func (s *SystemIndex) createSchema() error {
 	schema := `
+	-- system.db is a DERIVED INDEX — rebuildable from Pebble.
+	-- Credentials (password_hash, TOTP secrets) live in Pebble at /user/{id}/profile.
+	-- This table is for admin directory queries only (listing users, checking enabled status).
 	CREATE TABLE IF NOT EXISTS users (
 		id TEXT PRIMARY KEY,
 		username TEXT NOT NULL UNIQUE,
 		display_name TEXT,
-		password_hash TEXT,
 		enabled INTEGER DEFAULT 1,
 		created_at INTEGER,
 		modified_at INTEGER

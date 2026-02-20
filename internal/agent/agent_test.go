@@ -32,7 +32,7 @@ func freePort(t *testing.T) int {
 
 func TestNewAgentDev(t *testing.T) {
 	cfg := config.Defaults()
-	cfg.Agent.Mode = "dev"
+	cfg.Server.Role = "dev"
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -67,9 +67,9 @@ func TestNewAgentDev(t *testing.T) {
 
 func TestAgentRunAndCancel(t *testing.T) {
 	cfg := config.Defaults()
-	cfg.Agent.Mode = "dev"
+	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
-	cfg.Agent.BindAddr = "127.0.0.1"
+	cfg.Server.BindAddr = "127.0.0.1"
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -99,10 +99,10 @@ func TestAgentRunAndCancel(t *testing.T) {
 
 func TestHealthEndpoints(t *testing.T) {
 	cfg := config.Defaults()
-	cfg.Agent.Mode = "dev"
+	cfg.Server.Role = "dev"
 	port := freePort(t)
 	cfg.Web.Port = port
-	cfg.Agent.BindAddr = "127.0.0.1"
+	cfg.Server.BindAddr = "127.0.0.1"
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -161,7 +161,7 @@ func TestHealthEndpoints(t *testing.T) {
 
 func TestNewAgentServerMode(t *testing.T) {
 	cfg := config.Defaults()
-	cfg.Agent.Mode = "server"
+	cfg.Server.Role = "server"
 	cfg.Storage.DataDir = t.TempDir()
 
 	a, err := NewAgent(cfg, testLogger())

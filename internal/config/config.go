@@ -11,7 +11,7 @@ import (
 
 // Config is the top-level configuration for bongo-go.
 type Config struct {
-	Agent     AgentConfig     `hcl:"agent,block" mapstructure:"agent"`
+	Server    ServerConfig    `hcl:"server,block" mapstructure:"server"`
 	Cluster   ClusterConfig   `hcl:"cluster,block" mapstructure:"cluster"`
 	Storage   StorageConfig   `hcl:"storage,block" mapstructure:"storage"`
 	SMTP      SMTPConfig      `hcl:"smtp,block" mapstructure:"smtp"`
@@ -24,8 +24,10 @@ type Config struct {
 	Telemetry TelemetryConfig `hcl:"telemetry,block" mapstructure:"telemetry"`
 }
 
-type AgentConfig struct {
-	Mode          string `hcl:"mode,optional" mapstructure:"mode"`
+// ServerConfig defines the server identity and network binding.
+// Roles: "server" (Raft voter, full stack), "edge" (stateless proxy), "dev" (all-in-one ephemeral).
+type ServerConfig struct {
+	Role          string `hcl:"role,optional" mapstructure:"role"`
 	Name          string `hcl:"name,optional" mapstructure:"name"`
 	Datacenter    string `hcl:"datacenter,optional" mapstructure:"datacenter"`
 	BindAddr      string `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
@@ -159,8 +161,8 @@ func Defaults() *Config {
 	}
 
 	return &Config{
-		Agent: AgentConfig{
-			Mode:       "dev",
+		Server: ServerConfig{
+			Role:       "dev",
 			Name:       hostname,
 			Datacenter: "dc1",
 			BindAddr:   "0.0.0.0",
@@ -261,17 +263,17 @@ func Load(v *viper.Viper) (*Config, error) {
 		cfg = fileCfg
 	}
 
-	// Override from env vars (BONGO_AGENT_MODE, etc.)
+	// Override from env vars (BONGO_SERVER_ROLE, etc.)
 	v.SetEnvPrefix("BONGO")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 
 	// Override specific fields from viper (CLI flags and env vars)
-	if v.IsSet("mode") {
-		cfg.Agent.Mode = v.GetString("mode")
+	if v.IsSet("role") {
+		cfg.Server.Role = v.GetString("role")
 	}
 	if v.IsSet("bind") {
-		cfg.Agent.BindAddr = v.GetString("bind")
+		cfg.Server.BindAddr = v.GetString("bind")
 	}
 	if v.IsSet("join") {
 		cfg.Cluster.Join = strings.Split(v.GetString("join"), ",")

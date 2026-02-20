@@ -10,11 +10,11 @@ import (
 func TestDefaults(t *testing.T) {
 	cfg := Defaults()
 
-	if cfg.Agent.Mode != "dev" {
-		t.Errorf("expected default mode 'dev', got %q", cfg.Agent.Mode)
+	if cfg.Server.Role != "dev" {
+		t.Errorf("expected default role 'dev', got %q", cfg.Server.Role)
 	}
-	if cfg.Agent.BindAddr != "0.0.0.0" {
-		t.Errorf("expected default bind_addr '0.0.0.0', got %q", cfg.Agent.BindAddr)
+	if cfg.Server.BindAddr != "0.0.0.0" {
+		t.Errorf("expected default bind_addr '0.0.0.0', got %q", cfg.Server.BindAddr)
 	}
 	if cfg.SMTP.Port != 25 {
 		t.Errorf("expected default SMTP port 25, got %d", cfg.SMTP.Port)
@@ -50,9 +50,9 @@ func TestLoadFromFile(t *testing.T) {
 		got  any
 		want any
 	}{
-		{"agent.mode", cfg.Agent.Mode, "server"},
-		{"agent.name", cfg.Agent.Name, "mail-01"},
-		{"agent.bind_addr", cfg.Agent.BindAddr, "10.0.1.10"},
+		{"server.role", cfg.Server.Role, "server"},
+		{"server.name", cfg.Server.Name, "mail-01"},
+		{"server.bind_addr", cfg.Server.BindAddr, "10.0.1.10"},
 		{"cluster.join length", len(cfg.Cluster.Join), 2},
 		{"cluster.raft.snapshot_threshold", cfg.Cluster.Raft.SnapshotThreshold, 4096},
 		{"storage.data_dir", cfg.Storage.DataDir, "/tmp/bongo-test/data"},
@@ -88,7 +88,7 @@ func TestLoadFromFileMissing(t *testing.T) {
 
 func TestLoadWithViperOverrides(t *testing.T) {
 	v := viper.New()
-	v.Set("mode", "server")
+	v.Set("role", "server")
 	v.Set("bind", "192.168.1.1")
 
 	cfg, err := Load(v)
@@ -96,11 +96,11 @@ func TestLoadWithViperOverrides(t *testing.T) {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if cfg.Agent.Mode != "server" {
-		t.Errorf("expected mode 'server', got %q", cfg.Agent.Mode)
+	if cfg.Server.Role != "server" {
+		t.Errorf("expected role 'server', got %q", cfg.Server.Role)
 	}
-	if cfg.Agent.BindAddr != "192.168.1.1" {
-		t.Errorf("expected bind '192.168.1.1', got %q", cfg.Agent.BindAddr)
+	if cfg.Server.BindAddr != "192.168.1.1" {
+		t.Errorf("expected bind '192.168.1.1', got %q", cfg.Server.BindAddr)
 	}
 }
 
@@ -108,20 +108,20 @@ func TestLoadWithEnvVars(t *testing.T) {
 	v := viper.New()
 	v.SetEnvPrefix("BONGO")
 	v.AutomaticEnv()
-	v.BindEnv("mode", "BONGO_MODE")
+	v.BindEnv("role", "BONGO_ROLE")
 
-	os.Setenv("BONGO_MODE", "client")
-	defer os.Unsetenv("BONGO_MODE")
+	os.Setenv("BONGO_ROLE", "edge")
+	defer os.Unsetenv("BONGO_ROLE")
 
-	v.Set("mode", v.GetString("mode"))
+	v.Set("role", v.GetString("role"))
 
 	cfg, err := Load(v)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	if cfg.Agent.Mode != "client" {
-		t.Errorf("expected mode 'client' from env, got %q", cfg.Agent.Mode)
+	if cfg.Server.Role != "edge" {
+		t.Errorf("expected role 'edge' from env, got %q", cfg.Server.Role)
 	}
 }
 
@@ -129,16 +129,16 @@ func TestLoadWithConfigFile(t *testing.T) {
 	v := viper.New()
 	v.Set("config", "../../test/testdata/config.hcl")
 	// CLI flag overrides file value
-	v.Set("mode", "dev")
+	v.Set("role", "dev")
 
 	cfg, err := Load(v)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
 
-	// mode should be overridden by CLI flag
-	if cfg.Agent.Mode != "dev" {
-		t.Errorf("expected mode 'dev' (CLI override), got %q", cfg.Agent.Mode)
+	// role should be overridden by CLI flag
+	if cfg.Server.Role != "dev" {
+		t.Errorf("expected role 'dev' (CLI override), got %q", cfg.Server.Role)
 	}
 	// file values should be loaded
 	if cfg.SMTP.Port != 2525 {

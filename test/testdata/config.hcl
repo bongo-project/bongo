@@ -1,5 +1,5 @@
-agent {
-  mode       = "server"
+server {
+  role       = "server"
   name       = "mail-01"
   datacenter = "dc1"
   bind_addr  = "10.0.1.10"
