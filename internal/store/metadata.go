@@ -1,8 +1,12 @@
 package store
 
 import (
+	"container/list"
 	"database/sql"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -16,7 +20,7 @@ const (
 	DocTypeFolder  = 4
 )
 
-// StoreObject represents a row in the storeobject table.
+// StoreObject represents a row in a user's storeobject table.
 type StoreObject struct {
 	GUID           string
 	UserID         string
@@ -28,39 +32,42 @@ type StoreObject struct {
 	ModifiedAt     time.Time
 }
 
-// MetadataIndex provides a SQLite-backed metadata index for store objects.
-type MetadataIndex struct {
-	db *sql.DB
+// UserIndex is a per-user SQLite database containing that user's metadata.
+type UserIndex struct {
+	db     *sql.DB
+	userID string
 }
 
-// NewMetadataIndex opens or creates a SQLite database at dbPath and creates
-// the schema tables if they don't exist.
-func NewMetadataIndex(dbPath string) (*MetadataIndex, error) {
-	db, err := sql.Open("sqlite", dbPath)
+func openSQLiteDB(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return nil, fmt.Errorf("opening sqlite: %w", err)
+		return nil, fmt.Errorf("opening sqlite %s: %w", path, err)
 	}
-
-	// Enable WAL mode for better concurrent read performance.
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("setting WAL mode: %w", err)
 	}
+	return db, nil
+}
 
-	idx := &MetadataIndex{db: db}
-	if err := idx.createSchema(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("creating schema: %w", err)
+func newUserIndex(dbPath, userID string) (*UserIndex, error) {
+	db, err := openSQLiteDB(dbPath)
+	if err != nil {
+		return nil, err
 	}
 
+	idx := &UserIndex{db: db, userID: userID}
+	if err := idx.createSchema(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating user schema: %w", err)
+	}
 	return idx, nil
 }
 
-func (m *MetadataIndex) createSchema() error {
+func (u *UserIndex) createSchema() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS storeobject (
 		guid TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
 		collection_guid TEXT,
 		type INTEGER NOT NULL,
 		flags INTEGER DEFAULT 0,
@@ -69,11 +76,11 @@ func (m *MetadataIndex) createSchema() error {
 		modified_at INTEGER
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_storeobject_user_type
-		ON storeobject(user_id, type);
+	CREATE INDEX IF NOT EXISTS idx_storeobject_type
+		ON storeobject(type);
 
-	CREATE INDEX IF NOT EXISTS idx_storeobject_user_created
-		ON storeobject(user_id, type, created_at);
+	CREATE INDEX IF NOT EXISTS idx_storeobject_type_created
+		ON storeobject(type, created_at);
 
 	CREATE TABLE IF NOT EXISTS maildocument (
 		guid TEXT PRIMARY KEY REFERENCES storeobject(guid),
@@ -107,43 +114,25 @@ func (m *MetadataIndex) createSchema() error {
 
 	CREATE TABLE IF NOT EXISTS conversation (
 		guid TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
 		subject TEXT,
 		last_date INTEGER,
 		message_count INTEGER,
 		unread_count INTEGER
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_conversation_user
-		ON conversation(user_id, last_date);
-
-	CREATE TABLE IF NOT EXISTS accesscontrol (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		resource_guid TEXT NOT NULL,
-		principal_type INTEGER,
-		principal_id TEXT,
-		privileges INTEGER,
-		deny INTEGER DEFAULT 0
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_accesscontrol_resource
-		ON accesscontrol(resource_guid);
-
-	CREATE INDEX IF NOT EXISTS idx_accesscontrol_principal
-		ON accesscontrol(principal_id);
+	CREATE INDEX IF NOT EXISTS idx_conversation_last_date
+		ON conversation(last_date);
 	`
-
-	_, err := m.db.Exec(schema)
+	_, err := u.db.Exec(schema)
 	return err
 }
 
-// IndexObject upserts a StoreObject into the metadata index.
-func (m *MetadataIndex) IndexObject(obj StoreObject) error {
-	_, err := m.db.Exec(`
-		INSERT INTO storeobject (guid, user_id, collection_guid, type, flags, size, created_at, modified_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+// IndexObject upserts a StoreObject into this user's index.
+func (u *UserIndex) IndexObject(obj StoreObject) error {
+	_, err := u.db.Exec(`
+		INSERT INTO storeobject (guid, collection_guid, type, flags, size, created_at, modified_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(guid) DO UPDATE SET
-			user_id = excluded.user_id,
 			collection_guid = excluded.collection_guid,
 			type = excluded.type,
 			flags = excluded.flags,
@@ -151,7 +140,6 @@ func (m *MetadataIndex) IndexObject(obj StoreObject) error {
 			modified_at = excluded.modified_at
 	`,
 		obj.GUID,
-		obj.UserID,
 		obj.CollectionGUID,
 		obj.Type,
 		obj.Flags,
@@ -165,47 +153,44 @@ func (m *MetadataIndex) IndexObject(obj StoreObject) error {
 	return nil
 }
 
-// QueryByType returns all store objects for a user with the given document type.
-func (m *MetadataIndex) QueryByType(userID string, docType int) ([]StoreObject, error) {
-	rows, err := m.db.Query(`
-		SELECT guid, user_id, collection_guid, type, flags, size, created_at, modified_at
+// QueryByType returns all store objects with the given document type.
+func (u *UserIndex) QueryByType(docType int) ([]StoreObject, error) {
+	rows, err := u.db.Query(`
+		SELECT guid, collection_guid, type, flags, size, created_at, modified_at
 		FROM storeobject
-		WHERE user_id = ? AND type = ?
+		WHERE type = ?
 		ORDER BY created_at DESC
-	`, userID, docType)
+	`, docType)
 	if err != nil {
 		return nil, fmt.Errorf("querying by type: %w", err)
 	}
 	defer rows.Close()
 
-	return scanStoreObjects(rows)
+	return u.scanStoreObjects(rows)
 }
 
-// QueryByDateRange returns store objects for a user and type within a time range.
-func (m *MetadataIndex) QueryByDateRange(userID string, docType int, start, end time.Time) ([]StoreObject, error) {
-	rows, err := m.db.Query(`
-		SELECT guid, user_id, collection_guid, type, flags, size, created_at, modified_at
+// QueryByDateRange returns objects of a given type within a time range.
+func (u *UserIndex) QueryByDateRange(docType int, start, end time.Time) ([]StoreObject, error) {
+	rows, err := u.db.Query(`
+		SELECT guid, collection_guid, type, flags, size, created_at, modified_at
 		FROM storeobject
-		WHERE user_id = ? AND type = ? AND created_at >= ? AND created_at <= ?
+		WHERE type = ? AND created_at >= ? AND created_at <= ?
 		ORDER BY created_at DESC
-	`, userID, docType, start.Unix(), end.Unix())
+	`, docType, start.Unix(), end.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("querying by date range: %w", err)
 	}
 	defer rows.Close()
 
-	return scanStoreObjects(rows)
+	return u.scanStoreObjects(rows)
 }
 
-// Close closes the SQLite database.
-func (m *MetadataIndex) Close() error {
-	if err := m.db.Close(); err != nil {
-		return fmt.Errorf("closing metadata index: %w", err)
-	}
-	return nil
+// Close closes the user's SQLite database.
+func (u *UserIndex) Close() error {
+	return u.db.Close()
 }
 
-func scanStoreObjects(rows *sql.Rows) ([]StoreObject, error) {
+func (u *UserIndex) scanStoreObjects(rows *sql.Rows) ([]StoreObject, error) {
 	var objects []StoreObject
 	for rows.Next() {
 		var obj StoreObject
@@ -214,7 +199,6 @@ func scanStoreObjects(rows *sql.Rows) ([]StoreObject, error) {
 
 		if err := rows.Scan(
 			&obj.GUID,
-			&obj.UserID,
 			&collGUID,
 			&obj.Type,
 			&obj.Flags,
@@ -225,15 +209,266 @@ func scanStoreObjects(rows *sql.Rows) ([]StoreObject, error) {
 			return nil, fmt.Errorf("scanning store object: %w", err)
 		}
 
+		obj.UserID = u.userID
 		obj.CollectionGUID = collGUID.String
 		obj.CreatedAt = time.Unix(createdAt, 0)
 		obj.ModifiedAt = time.Unix(modifiedAt, 0)
 		objects = append(objects, obj)
 	}
+	return objects, rows.Err()
+}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating rows: %w", err)
+// SystemIndex is a single system-wide SQLite database for users, domains, and aliases.
+type SystemIndex struct {
+	db *sql.DB
+}
+
+func newSystemIndex(dbPath string) (*SystemIndex, error) {
+	db, err := openSQLiteDB(dbPath)
+	if err != nil {
+		return nil, err
 	}
 
-	return objects, nil
+	idx := &SystemIndex{db: db}
+	if err := idx.createSchema(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("creating system schema: %w", err)
+	}
+	return idx, nil
+}
+
+func (s *SystemIndex) createSchema() error {
+	schema := `
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		username TEXT NOT NULL UNIQUE,
+		display_name TEXT,
+		password_hash TEXT,
+		enabled INTEGER DEFAULT 1,
+		created_at INTEGER,
+		modified_at INTEGER
+	);
+
+	CREATE TABLE IF NOT EXISTS domains (
+		name TEXT PRIMARY KEY,
+		enabled INTEGER DEFAULT 1,
+		created_at INTEGER
+	);
+
+	CREATE TABLE IF NOT EXISTS aliases (
+		address TEXT PRIMARY KEY,
+		target_user_id TEXT NOT NULL REFERENCES users(id),
+		enabled INTEGER DEFAULT 1,
+		created_at INTEGER
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_aliases_target
+		ON aliases(target_user_id);
+	`
+	_, err := s.db.Exec(schema)
+	return err
+}
+
+// DB returns the underlying sql.DB for direct queries.
+func (s *SystemIndex) DB() *sql.DB {
+	return s.db
+}
+
+// Close closes the system database.
+func (s *SystemIndex) Close() error {
+	return s.db.Close()
+}
+
+// lruEntry tracks an open user database in the LRU cache.
+type lruEntry struct {
+	userID   string
+	index    *UserIndex
+	lastUsed time.Time
+}
+
+// MetadataManager manages per-user SQLite databases and the system index.
+// It maintains an LRU cache of open user database connections.
+type MetadataManager struct {
+	dataDir  string
+	usersDir string
+
+	System *SystemIndex
+
+	mu       sync.Mutex
+	cache    map[string]*list.Element
+	lruList  *list.List
+	maxOpen  int
+	idleTime time.Duration
+}
+
+// MetadataManagerOption configures a MetadataManager.
+type MetadataManagerOption func(*MetadataManager)
+
+// WithMaxOpen sets the maximum number of open user databases.
+func WithMaxOpen(n int) MetadataManagerOption {
+	return func(m *MetadataManager) { m.maxOpen = n }
+}
+
+// WithIdleTimeout sets the idle timeout for user database connections.
+func WithIdleTimeout(d time.Duration) MetadataManagerOption {
+	return func(m *MetadataManager) { m.idleTime = d }
+}
+
+// NewMetadataManager creates a MetadataManager at the given data directory.
+// It creates {dataDir}/metadata/system.db and {dataDir}/metadata/users/.
+func NewMetadataManager(dataDir string, opts ...MetadataManagerOption) (*MetadataManager, error) {
+	metaDir := filepath.Join(dataDir, "metadata")
+	usersDir := filepath.Join(metaDir, "users")
+
+	if err := os.MkdirAll(usersDir, 0o750); err != nil {
+		return nil, fmt.Errorf("creating metadata dirs: %w", err)
+	}
+
+	systemDB, err := newSystemIndex(filepath.Join(metaDir, "system.db"))
+	if err != nil {
+		return nil, fmt.Errorf("opening system index: %w", err)
+	}
+
+	mgr := &MetadataManager{
+		dataDir:  metaDir,
+		usersDir: usersDir,
+		System:   systemDB,
+		cache:    make(map[string]*list.Element),
+		lruList:  list.New(),
+		maxOpen:  256,
+		idleTime: 5 * time.Minute,
+	}
+
+	for _, opt := range opts {
+		opt(mgr)
+	}
+
+	return mgr, nil
+}
+
+// OpenUser opens or returns a cached UserIndex for the given user ID.
+func (m *MetadataManager) OpenUser(userID string) (*UserIndex, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Check cache.
+	if elem, ok := m.cache[userID]; ok {
+		entry := elem.Value.(*lruEntry)
+		entry.lastUsed = time.Now()
+		m.lruList.MoveToFront(elem)
+		return entry.index, nil
+	}
+
+	// Evict if at capacity.
+	if m.lruList.Len() >= m.maxOpen {
+		if err := m.evictOldestLocked(); err != nil {
+			return nil, fmt.Errorf("evicting oldest: %w", err)
+		}
+	}
+
+	// Open new user database.
+	dbPath := filepath.Join(m.usersDir, userID+".db")
+	idx, err := newUserIndex(dbPath, userID)
+	if err != nil {
+		return nil, fmt.Errorf("opening user index %q: %w", userID, err)
+	}
+
+	entry := &lruEntry{
+		userID:   userID,
+		index:    idx,
+		lastUsed: time.Now(),
+	}
+	elem := m.lruList.PushFront(entry)
+	m.cache[userID] = elem
+
+	return idx, nil
+}
+
+// CloseUser closes a specific user's database and removes it from the cache.
+func (m *MetadataManager) CloseUser(userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	elem, ok := m.cache[userID]
+	if !ok {
+		return nil
+	}
+
+	entry := elem.Value.(*lruEntry)
+	m.lruList.Remove(elem)
+	delete(m.cache, userID)
+	return entry.index.Close()
+}
+
+// IndexObject opens the user's database and indexes the object.
+func (m *MetadataManager) IndexObject(userID string, obj StoreObject) error {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return err
+	}
+	obj.UserID = userID
+	return idx.IndexObject(obj)
+}
+
+// QueryByType opens the user's database and queries by document type.
+func (m *MetadataManager) QueryByType(userID string, docType int) ([]StoreObject, error) {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.QueryByType(docType)
+}
+
+// QueryByDateRange opens the user's database and queries by date range.
+func (m *MetadataManager) QueryByDateRange(userID string, docType int, start, end time.Time) ([]StoreObject, error) {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.QueryByDateRange(docType, start, end)
+}
+
+// OpenCount returns the number of currently open user databases.
+func (m *MetadataManager) OpenCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lruList.Len()
+}
+
+// Close closes all open user databases and the system database.
+func (m *MetadataManager) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var errs []error
+
+	for m.lruList.Len() > 0 {
+		elem := m.lruList.Back()
+		entry := elem.Value.(*lruEntry)
+		if err := entry.index.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing user %q: %w", entry.userID, err))
+		}
+		m.lruList.Remove(elem)
+		delete(m.cache, entry.userID)
+	}
+
+	if err := m.System.Close(); err != nil {
+		errs = append(errs, fmt.Errorf("closing system index: %w", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("metadata manager close errors: %v", errs)
+	}
+	return nil
+}
+
+func (m *MetadataManager) evictOldestLocked() error {
+	elem := m.lruList.Back()
+	if elem == nil {
+		return nil
+	}
+	entry := elem.Value.(*lruEntry)
+	m.lruList.Remove(elem)
+	delete(m.cache, entry.userID)
+	return entry.index.Close()
 }

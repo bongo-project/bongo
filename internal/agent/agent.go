@@ -2,24 +2,39 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-go/bongo-go/internal/web/handlers"
 )
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
 	Config   *config.Config
 	Store    *store.PebbleStore
-	Metadata *store.MetadataIndex
+	Metadata *store.MetadataManager
 	logger   *slog.Logger
+
+	httpServer *http.Server
+	ready      bool
 
 	// tmpDir is set in dev mode so we can clean up on shutdown.
 	tmpDir string
+}
+
+// Ready implements handlers.ReadinessChecker.
+func (a *Agent) Ready() bool {
+	return a.ready
 }
 
 // NewAgent creates and initializes an Agent with the given config.
@@ -54,28 +69,63 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	a.Store = pebbleStore
 	logger.Info("pebble store opened", "dir", pebbleDir)
 
-	// Open SQLite metadata index.
-	sqlitePath := filepath.Join(dataDir, "metadata.db")
-	metaIdx, err := store.NewMetadataIndex(sqlitePath)
+	// Open metadata manager (per-user SQLite + system.db).
+	metaMgr, err := store.NewMetadataManager(dataDir)
 	if err != nil {
 		pebbleStore.Close()
-		return nil, fmt.Errorf("opening metadata index: %w", err)
+		return nil, fmt.Errorf("opening metadata manager: %w", err)
 	}
-	a.Metadata = metaIdx
-	logger.Info("metadata index opened", "path", sqlitePath)
+	a.Metadata = metaMgr
+	logger.Info("metadata manager opened", "dir", filepath.Join(dataDir, "metadata"))
 
 	return a, nil
 }
 
-// Run blocks until the context is cancelled, then shuts down.
+// Run starts the HTTP server and blocks until the context is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
+	// Set up HTTP routes.
+	r := chi.NewRouter()
+	health := handlers.NewHealthHandler(a)
+	r.Get("/health/live", health.Live)
+	r.Get("/health/ready", health.Ready)
+
+	port := a.Config.Web.Port
+	if a.Config.Agent.Mode == "dev" && port == 443 {
+		port = 8080
+	}
+
+	addr := net.JoinHostPort(a.Config.Agent.BindAddr, strconv.Itoa(port))
+	a.httpServer = &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+
+	a.ready = true
+
 	a.logger.Info("agent started",
 		"mode", a.Config.Agent.Mode,
 		"name", a.Config.Agent.Name,
 		"bind", a.Config.Agent.BindAddr,
+		"http_addr", addr,
 	)
 
-	<-ctx.Done()
+	// Start HTTP server in background.
+	httpErrCh := make(chan error, 1)
+	go func() {
+		if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			httpErrCh <- err
+		}
+		close(httpErrCh)
+	}()
+
+	// Wait for context cancellation or HTTP error.
+	select {
+	case <-ctx.Done():
+	case err := <-httpErrCh:
+		if err != nil {
+			return fmt.Errorf("http server: %w", err)
+		}
+	}
 
 	a.logger.Info("shutting down agent")
 	return a.Shutdown()
@@ -84,6 +134,16 @@ func (a *Agent) Run(ctx context.Context) error {
 // Shutdown closes all resources held by the agent.
 func (a *Agent) Shutdown() error {
 	var errs []error
+
+	a.ready = false
+
+	if a.httpServer != nil {
+		if err := a.httpServer.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing http server: %w", err))
+		} else {
+			a.logger.Info("http server closed")
+		}
+	}
 
 	if a.Metadata != nil {
 		if err := a.Metadata.Close(); err != nil {
