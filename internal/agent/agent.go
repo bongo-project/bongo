@@ -10,9 +10,11 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/handlers"
@@ -24,6 +26,7 @@ type Agent struct {
 	Store    *store.PebbleStore
 	Blobs    *store.BlobStore
 	Metadata *store.MetadataManager
+	Raft     *cluster.RaftNode
 	logger   *slog.Logger
 
 	httpServer *http.Server
@@ -88,6 +91,18 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	a.Metadata = metaMgr
 	logger.Info("metadata manager opened", "dir", filepath.Join(dataDir, "metadata"))
 
+	// Start Raft for server and dev roles (edge nodes don't participate in consensus).
+	if cfg.Server.Role == "server" || cfg.Server.Role == "dev" {
+		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger)
+		if err != nil {
+			metaMgr.Close()
+			pebbleStore.Close()
+			return nil, fmt.Errorf("creating raft node: %w", err)
+		}
+		a.Raft = raftNode
+		logger.Info("raft node initialized", "role", cfg.Server.Role)
+	}
+
 	return a, nil
 }
 
@@ -108,6 +123,15 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.httpServer = &http.Server{
 		Addr:    addr,
 		Handler: r,
+	}
+
+	// Wait for Raft leadership in dev mode (single-node, should be immediate).
+	if a.Raft != nil {
+		leaderAddr, err := a.Raft.WaitForLeader(10 * time.Second)
+		if err != nil {
+			return fmt.Errorf("waiting for raft leader: %w", err)
+		}
+		a.logger.Info("raft: leadership acquired", "leader", string(leaderAddr))
 	}
 
 	a.ready = true
@@ -152,6 +176,15 @@ func (a *Agent) Shutdown() error {
 			errs = append(errs, fmt.Errorf("closing http server: %w", err))
 		} else {
 			a.logger.Info("http server closed")
+		}
+	}
+
+	// Shutdown Raft before closing storage.
+	if a.Raft != nil {
+		if err := a.Raft.Shutdown(); err != nil {
+			errs = append(errs, fmt.Errorf("shutting down raft: %w", err))
+		} else {
+			a.logger.Info("raft node shut down")
 		}
 	}
 

@@ -162,6 +162,7 @@ func TestHealthEndpoints(t *testing.T) {
 func TestNewAgentServerMode(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "server"
+	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Storage.DataDir = t.TempDir()
 
 	a, err := NewAgent(cfg, testLogger())
@@ -181,6 +182,9 @@ func TestNewAgentServerMode(t *testing.T) {
 	}
 	if a.Metadata == nil {
 		t.Error("expected Metadata to be non-nil")
+	}
+	if a.Raft == nil {
+		t.Error("expected Raft to be non-nil in server mode")
 	}
 }
 
