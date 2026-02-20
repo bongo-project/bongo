@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -184,6 +186,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Head("/internal/blob/{hash}", blobH.Head)
 	}
 
+	// Cluster join endpoint.
+	if a.Raft != nil {
+		joinH := handlers.NewJoinHandler(a.Raft.Raft)
+		r.Post("/internal/cluster/join", joinH.Join)
+	}
+
 	// User management endpoint.
 	if a.Raft != nil {
 		userH := handlers.NewUserHandler(a, a.Metadata)
@@ -226,6 +234,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if len(a.Config.Cluster.Join) > 0 {
 			if _, err := gossip.Join(a.Config.Cluster.Join); err != nil {
 				a.logger.Warn("failed to join cluster", "error", err)
+			} else if a.Raft != nil && a.Config.Server.Role == "server" {
+				// Auto-join Raft cluster via the leader's join endpoint.
+				a.autoJoinRaft()
 			}
 		}
 	}
@@ -314,18 +325,71 @@ func (a *Agent) createDevUser() error {
 	return nil
 }
 
+// autoJoinRaft finds the Raft leader via gossip metadata and sends a join request.
+func (a *Agent) autoJoinRaft() {
+	if a.Gossip == nil || a.Raft == nil {
+		return
+	}
+
+	// Check if we're already part of the Raft cluster.
+	configFuture := a.Raft.Raft.GetConfiguration()
+	if err := configFuture.Error(); err == nil {
+		for _, srv := range configFuture.Configuration().Servers {
+			if string(srv.ID) == a.Config.Server.Name {
+				a.logger.Info("raft: already a voter, skipping auto-join")
+				return
+			}
+		}
+	}
+
+	// Find the leader's HTTP address from gossip.
+	members := a.Gossip.Members()
+	for _, m := range members {
+		if m.HTTPAddr == "" || m.Name == a.Config.Server.Name {
+			continue
+		}
+
+		raftAddr := string(a.Raft.Transport.LocalAddr())
+		joinReq := map[string]string{
+			"id":   a.Config.Server.Name,
+			"addr": raftAddr,
+		}
+		body, _ := json.Marshal(joinReq)
+
+		url := "http://" + m.HTTPAddr + "/internal/cluster/join"
+		resp, err := http.Post(url, "application/json", bytes.NewReader(body)) //nolint:gosec // internal cluster endpoint
+		if err != nil {
+			a.logger.Debug("raft auto-join: failed to contact peer", "peer", m.Name, "error", err)
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			a.logger.Info("raft: auto-joined cluster via peer", "peer", m.Name)
+			return
+		}
+
+		// If not leader, try the next peer.
+		a.logger.Debug("raft auto-join: peer is not leader", "peer", m.Name, "status", resp.StatusCode)
+	}
+
+	a.logger.Warn("raft auto-join: could not find leader to join")
+}
+
 // Shutdown closes all resources held by the agent.
 func (a *Agent) Shutdown() error {
 	var errs []error
 
 	a.ready.Store(false)
 
-	// 1. HTTP server.
+	// 1. HTTP server (graceful drain).
 	if a.httpServer != nil {
-		if err := a.httpServer.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("closing http server: %w", err))
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer drainCancel()
+		if err := a.httpServer.Shutdown(drainCtx); err != nil {
+			errs = append(errs, fmt.Errorf("shutting down http server: %w", err))
 		} else {
-			a.logger.Info("http server closed")
+			a.logger.Info("http server shut down gracefully")
 		}
 	}
 

@@ -1,17 +1,20 @@
 package cluster
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/raft"
 
 	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -68,10 +71,11 @@ func NewRaftNode(
 
 	case "server":
 		// TCP transport for production clusters.
-		bindAddr := net.JoinHostPort(cfg.Server.BindAddr, "8300")
+		raftPort := strconv.Itoa(cfg.Cluster.Raft.Port)
+		bindAddr := net.JoinHostPort(cfg.Server.BindAddr, raftPort)
 		advertise := bindAddr
 		if cfg.Server.AdvertiseAddr != "" {
-			advertise = net.JoinHostPort(cfg.Server.AdvertiseAddr, "8300")
+			advertise = net.JoinHostPort(cfg.Server.AdvertiseAddr, raftPort)
 		}
 
 		addr, err := net.ResolveTCPAddr("tcp", advertise)
@@ -79,23 +83,41 @@ func NewRaftNode(
 			return nil, fmt.Errorf("resolving raft advertise address: %w", err)
 		}
 
-		tcpTransport, err := raft.NewTCPTransport(bindAddr, addr, 3, 10*time.Second, io.Discard)
-		if err != nil {
-			return nil, fmt.Errorf("creating tcp transport: %w", err)
+		var netTransport *raft.NetworkTransport
+		if cfg.Cluster.TLS.CertFile != "" && cfg.Cluster.TLS.KeyFile != "" {
+			tlsCfg, tlsErr := loadRaftTLS(cfg)
+			if tlsErr != nil {
+				return nil, fmt.Errorf("loading raft TLS: %w", tlsErr)
+			}
+			stream, streamErr := NewTLSStreamLayer(bindAddr, addr, tlsCfg)
+			if streamErr != nil {
+				return nil, fmt.Errorf("creating TLS stream layer: %w", streamErr)
+			}
+			netTransport = raft.NewNetworkTransportWithConfig(&raft.NetworkTransportConfig{
+				Stream:  stream,
+				MaxPool: 3,
+				Timeout: 10 * time.Second,
+			})
+			logger.Info("raft: TLS transport enabled")
+		} else {
+			netTransport, err = raft.NewTCPTransport(bindAddr, addr, 3, 10*time.Second, io.Discard)
+			if err != nil {
+				return nil, fmt.Errorf("creating tcp transport: %w", err)
+			}
 		}
-		transport = tcpTransport
+		transport = netTransport
 		raftAddr = raft.ServerAddress(advertise)
 
 		// File-based snapshot store for server mode.
 		snapDir := filepath.Join(cfg.Storage.DataDir, "raft-snapshots")
 		if err := os.MkdirAll(snapDir, 0o750); err != nil {
-			tcpTransport.Close()
+			netTransport.Close()
 			return nil, fmt.Errorf("creating snapshot dir: %w", err)
 		}
 
 		fileSnaps, err := raft.NewFileSnapshotStore(snapDir, 2, io.Discard)
 		if err != nil {
-			tcpTransport.Close()
+			netTransport.Close()
 			return nil, fmt.Errorf("creating file snapshot store: %w", err)
 		}
 		snaps = fileSnaps
@@ -188,8 +210,94 @@ func (n *RaftNode) WaitForLeader(timeout time.Duration) (raft.ServerAddress, err
 	}
 }
 
-// Shutdown shuts down the Raft node.
+// Shutdown shuts down the Raft node, transferring leadership first if this node is leader.
 func (n *RaftNode) Shutdown() error {
+	if n.Raft.State() == raft.Leader {
+		n.logger.Info("raft: transferring leadership before shutdown")
+		transferFuture := n.Raft.LeadershipTransfer()
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- transferFuture.Error()
+		}()
+		select {
+		case err := <-errCh:
+			if err != nil {
+				n.logger.Warn("raft: leadership transfer failed", "error", err)
+			} else {
+				n.logger.Info("raft: leadership transferred")
+			}
+		case <-time.After(5 * time.Second):
+			n.logger.Warn("raft: leadership transfer timed out")
+		}
+	}
+
 	future := n.Raft.Shutdown()
 	return future.Error()
+}
+
+// loadRaftTLS builds a tls.Config from the cluster TLS configuration.
+func loadRaftTLS(cfg *config.Config) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(cfg.Cluster.TLS.CertFile, cfg.Cluster.TLS.KeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS key pair: %w", err)
+	}
+
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	if cfg.Cluster.TLS.CAFile != "" {
+		caPool, err := security.LoadCAPool(cfg.Cluster.TLS.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("loading CA pool: %w", err)
+		}
+		tlsCfg.ClientCAs = caPool
+		tlsCfg.RootCAs = caPool
+		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return tlsCfg, nil
+}
+
+// TLSStreamLayer implements raft.StreamLayer over TLS.
+type TLSStreamLayer struct {
+	listener  net.Listener
+	advertise net.Addr
+	tlsCfg    *tls.Config
+}
+
+// NewTLSStreamLayer creates a TLS-wrapped stream layer for Raft.
+// If advertise is nil, the listener address is used.
+func NewTLSStreamLayer(bindAddr string, advertise net.Addr, tlsCfg *tls.Config) (*TLSStreamLayer, error) {
+	ln, err := tls.Listen("tcp", bindAddr, tlsCfg)
+	if err != nil {
+		return nil, fmt.Errorf("tls listen: %w", err)
+	}
+	if advertise == nil {
+		advertise = ln.Addr()
+	}
+	return &TLSStreamLayer{
+		listener:  ln,
+		advertise: advertise,
+		tlsCfg:    tlsCfg,
+	}, nil
+}
+
+func (t *TLSStreamLayer) Accept() (net.Conn, error) { return t.listener.Accept() }
+func (t *TLSStreamLayer) Close() error              { return t.listener.Close() }
+func (t *TLSStreamLayer) Addr() net.Addr             { return t.advertise }
+
+func (t *TLSStreamLayer) Dial(address raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
+	dialer := &net.Dialer{Timeout: timeout}
+	conn, err := tls.DialWithDialer(dialer, "tcp", string(address), &tls.Config{
+		Certificates:       t.tlsCfg.Certificates,
+		RootCAs:            t.tlsCfg.RootCAs,
+		InsecureSkipVerify: t.tlsCfg.RootCAs == nil, //nolint:gosec // self-signed without CA
+		MinVersion:         tls.VersionTLS12,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tls dial %s: %w", address, err)
+	}
+	return conn, nil
 }

@@ -38,10 +38,12 @@ type ClusterConfig struct {
 	Join   []string     `hcl:"join,optional" mapstructure:"join"`
 	Raft   RaftConfig   `hcl:"raft,block" mapstructure:"raft"`
 	Gossip GossipConfig `hcl:"gossip,block" mapstructure:"gossip"`
+	TLS    TLSConfig    `hcl:"tls,block" mapstructure:"tls"`
 }
 
 type RaftConfig struct {
 	DataDir           string `hcl:"data_dir,optional" mapstructure:"data_dir"`
+	Port              int    `hcl:"port,optional" mapstructure:"port"`
 	SnapshotThreshold int    `hcl:"snapshot_threshold,optional" mapstructure:"snapshot_threshold"`
 	SnapshotInterval  string `hcl:"snapshot_interval,optional" mapstructure:"snapshot_interval"`
 }
@@ -64,6 +66,7 @@ type PebbleConfig struct {
 type TLSConfig struct {
 	CertFile string `hcl:"cert_file,optional" mapstructure:"cert_file"`
 	KeyFile  string `hcl:"key_file,optional" mapstructure:"key_file"`
+	CAFile   string `hcl:"ca_file,optional" mapstructure:"ca_file"`
 }
 
 type SMTPConfig struct {
@@ -170,6 +173,7 @@ func Defaults() *Config {
 		Cluster: ClusterConfig{
 			Raft: RaftConfig{
 				DataDir:           "/var/lib/bongo-go/raft",
+				Port:              8300,
 				SnapshotThreshold: 8192,
 				SnapshotInterval:  "120s",
 			},

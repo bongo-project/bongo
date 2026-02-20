@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/hashicorp/memberlist"
 
@@ -105,7 +106,7 @@ func (g *GossipNode) Members() []MemberInfo {
 
 // Shutdown gracefully leaves the cluster and shuts down memberlist.
 func (g *GossipNode) Shutdown() error {
-	if err := g.List.Leave(0); err != nil {
+	if err := g.List.Leave(5 * time.Second); err != nil {
 		g.logger.Warn("memberlist leave failed", "error", err)
 	}
 	return g.List.Shutdown()

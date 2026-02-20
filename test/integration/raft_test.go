@@ -3,12 +3,9 @@
 package integration
 
 import (
-	"fmt"
+	"crypto/tls"
 	"io"
-	"log/slog"
-	"net"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -17,234 +14,19 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/cluster"
+	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
-// testNode represents a single node in the test cluster.
-type testNode struct {
-	name      string
-	dir       string
-	pebble    *store.PebbleStore
-	blobs     *store.BlobStore
-	metadata  *store.MetadataManager
-	raftNode  *raft.Raft
-	raftStore *cluster.RaftStore
-	fsm       *cluster.FSM
-	transport *raft.InmemTransport
-	httpAddr  string
-	httpSrv   *http.Server
-}
-
-func testLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-}
-
-func freePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("freePort: %v", err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port
-}
-
-// createTestCluster creates a 3-node Raft cluster using in-memory transport.
-func createTestCluster(t *testing.T) []*testNode {
-	t.Helper()
-	logger := testLogger()
-
-	nodes := make([]*testNode, 3)
-	transports := make([]*raft.InmemTransport, 3)
-
-	for i := 0; i < 3; i++ {
-		name := fmt.Sprintf("node-%d", i+1)
-		dir := t.TempDir()
-
-		ps, err := store.NewPebbleStore(dir + "/pebble")
-		if err != nil {
-			t.Fatalf("NewPebbleStore %s: %v", name, err)
-		}
-
-		bs, err := store.NewBlobStore(dir)
-		if err != nil {
-			ps.Close()
-			t.Fatalf("NewBlobStore %s: %v", name, err)
-		}
-
-		mm, err := store.NewMetadataManager(dir)
-		if err != nil {
-			ps.Close()
-			t.Fatalf("NewMetadataManager %s: %v", name, err)
-		}
-
-		fsm := cluster.NewFSM(ps, bs, mm, logger)
-		raftStore := cluster.NewRaftStore(ps)
-
-		_, transport := raft.NewInmemTransport(raft.ServerAddress(""))
-		transports[i] = transport
-
-		raftCfg := raft.DefaultConfig()
-		raftCfg.LocalID = raft.ServerID(name)
-		raftCfg.HeartbeatTimeout = 500 * time.Millisecond
-		raftCfg.ElectionTimeout = 500 * time.Millisecond
-		raftCfg.LeaderLeaseTimeout = 250 * time.Millisecond
-		raftCfg.CommitTimeout = 200 * time.Millisecond
-		raftCfg.LogOutput = io.Discard
-
-		r, err := raft.NewRaft(raftCfg, fsm, raftStore, raftStore, raft.NewInmemSnapshotStore(), transport)
-		if err != nil {
-			mm.Close()
-			ps.Close()
-			t.Fatalf("NewRaft %s: %v", name, err)
-		}
-
-		nodes[i] = &testNode{
-			name:      name,
-			dir:       dir,
-			pebble:    ps,
-			blobs:     bs,
-			metadata:  mm,
-			raftNode:  r,
-			raftStore: raftStore,
-			fsm:       fsm,
-			transport: transport,
-		}
-	}
-
-	// Connect all transports.
-	for i := 0; i < 3; i++ {
-		for j := 0; j < 3; j++ {
-			if i != j {
-				transports[i].Connect(transports[j].LocalAddr(), transports[j])
-			}
-		}
-	}
-
-	// Bootstrap from node 0.
-	servers := make([]raft.Server, 3)
-	for i, n := range nodes {
-		servers[i] = raft.Server{
-			ID:      raft.ServerID(n.name),
-			Address: transports[i].LocalAddr(),
-		}
-	}
-
-	future := nodes[0].raftNode.BootstrapCluster(raft.Configuration{Servers: servers})
-	if err := future.Error(); err != nil {
-		t.Fatalf("BootstrapCluster: %v", err)
-	}
-
-	t.Cleanup(func() {
-		for _, n := range nodes {
-			if n == nil {
-				continue
-			}
-			if n.httpSrv != nil {
-				n.httpSrv.Close()
-			}
-			n.raftNode.Shutdown()
-			n.metadata.Close()
-			n.pebble.Close()
-		}
-	})
-
-	return nodes
-}
-
-func startHTTP(t *testing.T, n *testNode) {
-	t.Helper()
-	port := freePort(t)
-	n.httpAddr = fmt.Sprintf("127.0.0.1:%d", port)
-
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("PUT /internal/kv/", func(w http.ResponseWriter, r *http.Request) {
-		key := strings.TrimPrefix(r.URL.Path, "/internal/kv")
-		body, _ := io.ReadAll(r.Body)
-
-		cmd := &bongov1.RaftCommand{
-			Op:    bongov1.Op_OP_PUT,
-			Key:   []byte(key),
-			Value: body,
-		}
-		if err := cluster.ApplyCommand(n.raftNode, cmd, 5*time.Second); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
-
-	mux.HandleFunc("GET /internal/kv/", func(w http.ResponseWriter, r *http.Request) {
-		key := strings.TrimPrefix(r.URL.Path, "/internal/kv")
-		val, err := n.pebble.Get([]byte(key))
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		w.Write(val)
-	})
-
-	mux.HandleFunc("GET /internal/blob/", func(w http.ResponseWriter, r *http.Request) {
-		hash := strings.TrimPrefix(r.URL.Path, "/internal/blob/")
-		rc, err := n.blobs.Get(hash)
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-		defer rc.Close()
-		io.Copy(w, rc)
-	})
-
-	mux.HandleFunc("HEAD /internal/blob/", func(w http.ResponseWriter, r *http.Request) {
-		hash := strings.TrimPrefix(r.URL.Path, "/internal/blob/")
-		if !n.blobs.Exists(hash) {
-			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
-
-	n.httpSrv = &http.Server{Addr: n.httpAddr, Handler: mux}
-	go n.httpSrv.ListenAndServe()
-
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get("http://" + n.httpAddr + "/internal/kv/healthcheck")
-		if err == nil {
-			resp.Body.Close()
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("HTTP server %s not ready", n.httpAddr)
-}
-
-func waitForLeader(t *testing.T, nodes []*testNode, timeout time.Duration) int {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		for i, n := range nodes {
-			if n.raftNode.State() == raft.Leader {
-				return i
-			}
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatal("no leader elected within timeout")
-	return -1
-}
-
 func TestRaftClusterLifecycle(t *testing.T) {
-	nodes := createTestCluster(t)
+	nodes := createTestClusterN(t, 3)
 
 	for _, n := range nodes {
-		startHTTP(t, n)
+		sharedStartHTTP(t, n)
 	}
 
-	leaderIdx := waitForLeader(t, nodes, 10*time.Second)
+	leaderIdx := sharedWaitForLeader(t, nodes, 10*time.Second)
 	t.Logf("step 1-2: leader elected: %s (index %d)", nodes[leaderIdx].name, leaderIdx)
 
 	// Write via leader.
@@ -392,4 +174,203 @@ leaderFound:
 		}
 	}
 	t.Log("step 8: protobuf commands replicated correctly")
+}
+
+func TestRaftSnapshotAndJoin(t *testing.T) {
+	logger := sharedTestLogger()
+	nodes := createTestClusterN(t, 3)
+
+	leaderIdx := sharedWaitForLeader(t, nodes, 10*time.Second)
+	t.Logf("leader: %s", nodes[leaderIdx].name)
+
+	// Write some data via the leader.
+	mailMeta := &bongov1.MailMeta{
+		Guid:       "m1",
+		Subject:    "Snapshot Test",
+		From:       "sender@example.com",
+		To:         []string{"recipient@example.com"},
+		ReceivedAt: 1700000000,
+		RawMessage: &bongov1.BlobRef{Hash: "snaptest", Size: 64},
+	}
+	mailBytes, _ := proto.Marshal(mailMeta)
+	applyProtoCommand(t, nodes[leaderIdx].raftNode, &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte("/user/u1/mail/m1"),
+		Value: mailBytes,
+	})
+
+	profile := &bongov1.UserProfile{
+		Email:       "u1@example.com",
+		DisplayName: "User One",
+	}
+	profileBytes, _ := proto.Marshal(profile)
+	applyProtoCommand(t, nodes[leaderIdx].raftNode, &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte("/user/u1/profile"),
+		Value: profileBytes,
+	})
+
+	// Force a snapshot on the leader.
+	snapFuture := nodes[leaderIdx].raftNode.Snapshot()
+	if err := snapFuture.Error(); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	t.Log("snapshot forced on leader")
+
+	time.Sleep(500 * time.Millisecond)
+
+	// Create a 4th node.
+	node4 := createTestNode(t, "node-4", logger)
+	_, transport4 := raft.NewInmemTransport(raft.ServerAddress(""))
+	node4.transport = transport4
+
+	raftCfg4 := raft.DefaultConfig()
+	raftCfg4.LocalID = raft.ServerID("node-4")
+	raftCfg4.HeartbeatTimeout = 500 * time.Millisecond
+	raftCfg4.ElectionTimeout = 500 * time.Millisecond
+	raftCfg4.LeaderLeaseTimeout = 250 * time.Millisecond
+	raftCfg4.CommitTimeout = 200 * time.Millisecond
+	raftCfg4.LogOutput = io.Discard
+
+	r4, err := raft.NewRaft(raftCfg4, node4.fsm, node4.raftStore, node4.raftStore, raft.NewInmemSnapshotStore(), transport4)
+	if err != nil {
+		t.Fatalf("NewRaft node-4: %v", err)
+	}
+	node4.raftNode = r4
+
+	t.Cleanup(func() {
+		r4.Shutdown()
+		if node4.search != nil {
+			node4.search.Close()
+		}
+		node4.metadata.Close()
+		node4.pebble.Close()
+	})
+
+	// Connect transports.
+	for _, n := range nodes {
+		transport4.Connect(n.transport.LocalAddr(), n.transport)
+		n.transport.Connect(transport4.LocalAddr(), transport4)
+	}
+
+	// Add the 4th node as voter.
+	addFuture := nodes[leaderIdx].raftNode.AddVoter(
+		raft.ServerID("node-4"),
+		transport4.LocalAddr(),
+		0, 30*time.Second,
+	)
+	if err := addFuture.Error(); err != nil {
+		t.Fatalf("AddVoter: %v", err)
+	}
+	t.Log("node-4 added as voter")
+
+	// Wait for snapshot to be applied on node-4.
+	time.Sleep(2 * time.Second)
+
+	// Verify data replicated to node-4.
+	val, err := node4.pebble.Get([]byte("/user/u1/mail/m1"))
+	if err != nil {
+		t.Fatalf("node-4 Get mail: %v", err)
+	}
+
+	var restoredMail bongov1.MailMeta
+	if err := proto.Unmarshal(val, &restoredMail); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if restoredMail.Subject != "Snapshot Test" {
+		t.Errorf("subject = %q, want %q", restoredMail.Subject, "Snapshot Test")
+	}
+
+	// Verify profile was replicated.
+	profileVal, err := node4.pebble.Get([]byte("/user/u1/profile"))
+	if err != nil {
+		t.Fatalf("node-4 Get profile: %v", err)
+	}
+
+	var restoredProfile bongov1.UserProfile
+	if err := proto.Unmarshal(profileVal, &restoredProfile); err != nil {
+		t.Fatalf("unmarshal profile: %v", err)
+	}
+	if restoredProfile.Email != "u1@example.com" {
+		t.Errorf("email = %q, want %q", restoredProfile.Email, "u1@example.com")
+	}
+
+	// Verify derived indexes were rebuilt on node-4.
+	objs, err := node4.metadata.QueryByType("u1", store.DocTypeMail)
+	if err != nil {
+		t.Fatalf("QueryByType: %v", err)
+	}
+	if len(objs) == 0 {
+		t.Error("expected mail objects in node-4 SQLite after snapshot restore")
+	} else {
+		t.Logf("node-4 SQLite mail objects: %d", len(objs))
+	}
+
+	t.Log("snapshot + join test passed")
+}
+
+func TestRaftTLSStreamLayer(t *testing.T) {
+	certPEM, keyPEM, err := security.GenerateSelfSigned([]string{"localhost", "127.0.0.1"})
+	if err != nil {
+		t.Fatalf("GenerateSelfSigned: %v", err)
+	}
+
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("X509KeyPair: %v", err)
+	}
+
+	tlsCfg := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true, //nolint:gosec // test only
+		MinVersion:         tls.VersionTLS12,
+	}
+
+	// Create two TLS stream layers and verify they can connect.
+	sl1, err := cluster.NewTLSStreamLayer("127.0.0.1:0", nil, tlsCfg)
+	if err != nil {
+		t.Fatalf("NewTLSStreamLayer 1: %v", err)
+	}
+	defer sl1.Close()
+
+	sl2, err := cluster.NewTLSStreamLayer("127.0.0.1:0", nil, tlsCfg)
+	if err != nil {
+		t.Fatalf("NewTLSStreamLayer 2: %v", err)
+	}
+	defer sl2.Close()
+
+	t.Logf("TLS stream layer 1 on %s", sl1.Addr())
+	t.Logf("TLS stream layer 2 on %s", sl2.Addr())
+
+	// Test dialing from sl1 to sl2.
+	done := make(chan error, 1)
+	go func() {
+		conn, err := sl2.Accept()
+		if err != nil {
+			done <- err
+			return
+		}
+		conn.Write([]byte("hello-tls"))
+		conn.Close()
+		done <- nil
+	}()
+
+	conn, err := sl1.Dial(raft.ServerAddress(sl2.Addr().String()), 5*time.Second)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	buf := make([]byte, 64)
+	n, _ := conn.Read(buf)
+	conn.Close()
+
+	if string(buf[:n]) != "hello-tls" {
+		t.Errorf("received = %q, want %q", buf[:n], "hello-tls")
+	}
+
+	if err := <-done; err != nil {
+		t.Errorf("accept error: %v", err)
+	}
+
+	t.Log("TLS stream layer connectivity test passed")
 }

@@ -10,12 +10,16 @@ cluster {
 
   raft {
     data_dir           = "/tmp/bongo-test/raft"
+    port               = 8300
     snapshot_threshold = 4096
     snapshot_interval  = "60s"
   }
 
   gossip {
     port = 8301
+  }
+
+  tls {
   }
 }
 

@@ -333,6 +333,12 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 	}
 
 	f.logger.Info("fsm: restored from snapshot", "keys", count)
+
+	// Rebuild derived indexes (SQLite + Bleve) from restored data.
+	if err := rebuildDerivedIndexes(f.store, f.metadata, f.search, f.logger); err != nil {
+		f.logger.Warn("fsm: rebuild derived indexes after restore failed", "error", err)
+	}
+
 	return nil
 }
 

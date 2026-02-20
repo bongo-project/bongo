@@ -5,10 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"net"
 	smtplib "net/smtp"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,29 +19,14 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
-func smtpTestLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-}
-
-func smtpFreePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("freePort: %v", err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port
-}
-
 func TestSMTPFullMailFlow(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = smtpFreePort(t)
+	cfg.Web.Port = sharedFreePort(t)
 	cfg.SMTP.Enabled = true
 
-	logger := smtpTestLogger()
+	logger := sharedTestLogger()
 
 	a, err := agent.NewAgent(cfg, logger)
 	if err != nil {
