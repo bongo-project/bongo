@@ -41,6 +41,21 @@ func (a *Agent) Ready() bool {
 	return a.ready
 }
 
+// ApplyCommand applies a command through Raft consensus.
+// Implements handlers.RaftApplier.
+func (a *Agent) ApplyCommand(cmd cluster.Command, timeout time.Duration) error {
+	if a.Raft == nil {
+		return fmt.Errorf("raft not available")
+	}
+	return cluster.ApplyCommand(a.Raft.Raft, cmd, timeout)
+}
+
+// GetKey reads a key directly from local Pebble (no Raft).
+// Implements handlers.RaftApplier.
+func (a *Agent) GetKey(key []byte) ([]byte, error) {
+	return a.Store.Get(key)
+}
+
 // NewAgent creates and initializes an Agent with the given config.
 // In dev mode, storage is opened in a temporary directory.
 func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
@@ -113,6 +128,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	health := handlers.NewHealthHandler(a)
 	r.Get("/health/live", health.Live)
 	r.Get("/health/ready", health.Ready)
+
+	// Internal KV endpoints for testing Raft consensus.
+	if a.Raft != nil {
+		kv := handlers.NewKVHandler(a)
+		r.Put("/internal/kv/*", kv.Put)
+		r.Get("/internal/kv/*", kv.Get)
+		r.Delete("/internal/kv/*", kv.Delete)
+	}
 
 	port := a.Config.Web.Port
 	if a.Config.Server.Role == "dev" && port == 443 {
