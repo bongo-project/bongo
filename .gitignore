@@ -1,0 +1,43 @@
+# Binaries
+/bongo-go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+/bin/
+/dist/
+
+# Coverage
+coverage.html
+coverage.out
+
+# Temp/dev storage
+/data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
