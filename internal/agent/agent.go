@@ -155,6 +155,13 @@ func (a *Agent) Run(ctx context.Context) error {
 	clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
 	r.Get("/internal/cluster/members", clusterH.Members)
 
+	// Internal blob sync endpoints.
+	if a.Blobs != nil {
+		blobH := handlers.NewBlobHandler(a.Blobs)
+		r.Get("/internal/blob/{hash}", blobH.Get)
+		r.Head("/internal/blob/{hash}", blobH.Head)
+	}
+
 	port := a.Config.Web.Port
 	if a.Config.Server.Role == "dev" && port == 443 {
 		port = 8080
