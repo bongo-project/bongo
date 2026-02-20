@@ -279,6 +279,87 @@ func TestExpunge(t *testing.T) {
 	}
 }
 
+func TestAppendMessage(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	userID := "user1"
+	ms.CreateMailbox(userID, "INBOX")
+
+	// Append first message.
+	uid1, err := ms.AppendMessage(userID, "INBOX", "guid-1", FlagSeen, 1000)
+	if err != nil {
+		t.Fatalf("AppendMessage: %v", err)
+	}
+	if uid1 != 1 {
+		t.Errorf("first uid = %d, want 1", uid1)
+	}
+
+	// Append second message.
+	uid2, err := ms.AppendMessage(userID, "INBOX", "guid-2", FlagFlagged, 2000)
+	if err != nil {
+		t.Fatalf("AppendMessage: %v", err)
+	}
+	if uid2 != 2 {
+		t.Errorf("second uid = %d, want 2", uid2)
+	}
+
+	// Verify messages.
+	msgs, err := ms.ListMessages(userID, "INBOX")
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[0].MailGuid != "guid-1" || msgs[0].Flags != FlagSeen {
+		t.Errorf("msg[0] = {guid=%q, flags=%d}, want {guid-1, %d}", msgs[0].MailGuid, msgs[0].Flags, FlagSeen)
+	}
+	if msgs[1].MailGuid != "guid-2" || msgs[1].Flags != FlagFlagged {
+		t.Errorf("msg[1] = {guid=%q, flags=%d}, want {guid-2, %d}", msgs[1].MailGuid, msgs[1].Flags, FlagFlagged)
+	}
+
+	// Verify UidNext was bumped.
+	meta, _ := ms.GetMailbox(userID, "INBOX")
+	if meta.UidNext != 3 {
+		t.Errorf("UidNext = %d, want 3", meta.UidNext)
+	}
+}
+
+func TestAppendMessageToNonExistentMailbox(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	_, err := ms.AppendMessage("user1", "NoSuchMailbox", "guid-1", 0, 1000)
+	if err == nil {
+		t.Error("expected error appending to non-existent mailbox")
+	}
+}
+
+func TestStoreMailMeta(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	userID := "user1"
+
+	meta := &bongov1.MailMeta{
+		Guid:    "test-guid",
+		Subject: "Hello",
+		From:    "sender@example.com",
+	}
+	if err := ms.StoreMailMeta(userID, meta); err != nil {
+		t.Fatalf("StoreMailMeta: %v", err)
+	}
+
+	// Verify it was stored.
+	key := []byte(fmt.Sprintf("/user/%s/mail/%s", userID, "test-guid"))
+	data, err := ms.store.Get(key)
+	if err != nil {
+		t.Fatalf("Get mail meta: %v", err)
+	}
+	var got bongov1.MailMeta
+	if err := proto.Unmarshal(data, &got); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if got.Subject != "Hello" {
+		t.Errorf("subject = %q, want %q", got.Subject, "Hello")
+	}
+}
+
 func TestCountMessages(t *testing.T) {
 	ms := newMailboxTestEnv(t)
 	userID := "user1"

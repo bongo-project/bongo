@@ -417,6 +417,60 @@ func (ms *MailboxStore) Expunge(userID, mailbox string) ([]uint32, error) {
 	return expunged, nil
 }
 
+// StoreMailMeta writes a MailMeta record for a user via Raft.
+func (ms *MailboxStore) StoreMailMeta(userID string, meta *bongov1.MailMeta) error {
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshaling mail meta: %w", err)
+	}
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, meta.Guid)),
+		Value: metaBytes,
+	}
+	return ms.applier.ApplyCommand(cmd, 5*time.Second)
+}
+
+// AppendMessage appends a message to a mailbox, assigning a new UID via Raft.
+// It writes the MailboxMessage and bumps UidNext atomically.
+// Returns the assigned UID.
+func (ms *MailboxStore) AppendMessage(userID, mailbox, mailGuid string, flags uint32, internalDate int64) (uint32, error) {
+	meta, err := ms.GetMailbox(userID, mailbox)
+	if err != nil {
+		return 0, fmt.Errorf("reading mailbox %q: %w", mailbox, err)
+	}
+
+	uid := meta.UidNext
+	meta.UidNext = uid + 1
+
+	// Write updated mailbox meta.
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		return 0, fmt.Errorf("marshaling mailbox meta: %w", err)
+	}
+	metaCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   mailboxMetaKey(userID, mailbox),
+		Value: metaBytes,
+	}
+	if err := ms.applier.ApplyCommand(metaCmd, 5*time.Second); err != nil {
+		return 0, fmt.Errorf("updating mailbox meta: %w", err)
+	}
+
+	// Write the message.
+	msg := &bongov1.MailboxMessage{
+		Uid:          uid,
+		MailGuid:     mailGuid,
+		Flags:        flags,
+		InternalDate: internalDate,
+	}
+	if err := ms.writeMessage(userID, mailbox, uid, msg); err != nil {
+		return 0, fmt.Errorf("writing message: %w", err)
+	}
+
+	return uid, nil
+}
+
 func (ms *MailboxStore) writeMessage(userID, mailbox string, uid uint32, msg *bongov1.MailboxMessage) error {
 	msgBytes, err := proto.Marshal(msg)
 	if err != nil {

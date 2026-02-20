@@ -219,9 +219,121 @@ func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) 
 	return data, nil
 }
 
-// Append stores a message (not implemented in this sprint).
+// Append stores a message in the specified mailbox.
 func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
-	return nil, fmt.Errorf("APPEND not supported")
+	// Store raw message as a blob.
+	hash, size, err := s.blobs.PutReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("storing message blob: %w", err)
+	}
+
+	// Re-open blob and parse headers.
+	rc, err := s.blobs.Get(hash)
+	if err != nil {
+		return nil, fmt.Errorf("reading blob for parsing: %w", err)
+	}
+	rawMsg, err := io.ReadAll(rc)
+	rc.Close()
+	if err != nil {
+		return nil, fmt.Errorf("reading raw message: %w", err)
+	}
+
+	// Parse envelope for metadata.
+	envelope, _ := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+
+	subject := ""
+	messageID := ""
+	headerFrom := ""
+	var toAddrs []string
+	if envelope != nil {
+		subject = envelope.GetHeader("Subject")
+		messageID = envelope.GetHeader("Message-Id")
+		headerFrom = envelope.GetHeader("From")
+		if toHeader := envelope.GetHeader("To"); toHeader != "" {
+			for _, addr := range strings.Split(toHeader, ",") {
+				toAddrs = append(toAddrs, strings.TrimSpace(addr))
+			}
+		}
+	}
+
+	// Determine internal date: from APPEND options, Date header, or now.
+	var internalDate time.Time
+	if options != nil && !options.Time.IsZero() {
+		internalDate = options.Time
+	} else if envelope != nil {
+		if dateStr := envelope.GetHeader("Date"); dateStr != "" {
+			if t, parseErr := time.Parse(time.RFC1123Z, dateStr); parseErr == nil {
+				internalDate = t
+			} else if t, parseErr := time.Parse("Mon, 2 Jan 2006 15:04:05 -0700", dateStr); parseErr == nil {
+				internalDate = t
+			}
+		}
+	}
+	if internalDate.IsZero() {
+		internalDate = time.Now()
+	}
+
+	// Map IMAP flags to store bitfield.
+	var flags uint32
+	if options != nil {
+		flags = imapFlagsToUint32(options.Flags)
+	}
+
+	// Generate GUID and store MailMeta.
+	guid := fmt.Sprintf("%d-%s", time.Now().UnixNano(), hash[:8])
+
+	meta := &bongov1.MailMeta{
+		Guid:      guid,
+		MessageId: messageID,
+		Subject:   subject,
+		From:      headerFrom,
+		To:        toAddrs,
+		ReceivedAt: internalDate.Unix(),
+		RawMessage: &bongov1.BlobRef{
+			Hash:        hash,
+			Size:        size,
+			ContentType: "message/rfc822",
+		},
+	}
+	if err := s.mailboxes.StoreMailMeta(s.userID, meta); err != nil {
+		return nil, fmt.Errorf("storing mail meta: %w", err)
+	}
+
+	// Append to mailbox.
+	uid, err := s.mailboxes.AppendMessage(s.userID, mailbox, guid, flags, internalDate.Unix())
+	if err != nil {
+		return nil, fmt.Errorf("appending to mailbox: %w", err)
+	}
+
+	// Index for search.
+	if s.search != nil {
+		body := ""
+		if envelope != nil {
+			body = envelope.Text
+		}
+		s.search.IndexMail(s.userID, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false)
+	}
+
+	// Notify IDLE watchers.
+	if s.notifier != nil {
+		total, _, _, _ := s.mailboxes.CountMessages(s.userID, mailbox)
+		s.notifier.Notify(s.userID, mailbox, Notification{
+			Type:        NotifNewMail,
+			ExistsCount: total,
+		})
+	}
+
+	// Get mailbox UIDValidity.
+	mbMeta, _ := s.mailboxes.GetMailbox(s.userID, mailbox)
+	validity := uint32(0)
+	if mbMeta != nil {
+		validity = mbMeta.UidValidity
+	}
+
+	return &imap.AppendData{
+		UID:         imap.UID(uid),
+		UIDValidity: validity,
+	}, nil
 }
 
 // Poll checks for updates (no-op, we use IDLE).

@@ -239,12 +239,15 @@ func TestSessionSubscribeUnsubscribe(t *testing.T) {
 	}
 }
 
-func TestSessionAppendNotSupported(t *testing.T) {
+func TestSessionAppendRequiresBlobs(t *testing.T) {
+	// Append without blob store should panic (nil pointer), which we recover from.
 	s := &session{}
-	_, err := s.Append("INBOX", nil, nil)
-	if err == nil {
-		t.Error("expected error from Append")
-	}
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic from Append with nil blobs")
+		}
+	}()
+	s.Append("INBOX", nil, nil)
 }
 
 func TestSessionSearchNoMailbox(t *testing.T) {
