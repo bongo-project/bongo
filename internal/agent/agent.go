@@ -26,8 +26,9 @@ type Agent struct {
 	Store    *store.PebbleStore
 	Blobs    *store.BlobStore
 	Metadata *store.MetadataManager
-	Raft     *cluster.RaftNode
-	logger   *slog.Logger
+	Raft   *cluster.RaftNode
+	Gossip *cluster.GossipNode
+	logger *slog.Logger
 
 	httpServer *http.Server
 	ready      bool
@@ -157,6 +158,26 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("raft: leadership acquired", "leader", string(leaderAddr))
 	}
 
+	// Start memberlist gossip for node discovery.
+	if a.Config.Server.Role == "server" || a.Config.Server.Role == "dev" {
+		raftAddr := ""
+		if a.Raft != nil && a.Raft.Transport != nil {
+			raftAddr = string(a.Raft.Transport.LocalAddr())
+		}
+		gossip, err := cluster.NewGossipNode(a.Config, addr, raftAddr, a.logger)
+		if err != nil {
+			return fmt.Errorf("starting gossip: %w", err)
+		}
+		a.Gossip = gossip
+
+		// Join existing cluster if --join addresses are provided.
+		if len(a.Config.Cluster.Join) > 0 {
+			if _, err := gossip.Join(a.Config.Cluster.Join); err != nil {
+				a.logger.Warn("failed to join cluster", "error", err)
+			}
+		}
+	}
+
 	a.ready = true
 
 	a.logger.Info("bongo-go started",
@@ -199,6 +220,15 @@ func (a *Agent) Shutdown() error {
 			errs = append(errs, fmt.Errorf("closing http server: %w", err))
 		} else {
 			a.logger.Info("http server closed")
+		}
+	}
+
+	// Shutdown gossip before Raft.
+	if a.Gossip != nil {
+		if err := a.Gossip.Shutdown(); err != nil {
+			errs = append(errs, fmt.Errorf("shutting down gossip: %w", err))
+		} else {
+			a.logger.Info("memberlist shut down")
 		}
 	}
 
