@@ -20,6 +20,8 @@ import (
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
+	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
+	"github.com/bongo-go/bongo-go/internal/security"
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/handlers"
@@ -28,17 +30,20 @@ import (
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
-	Config   *config.Config
-	Store    *store.PebbleStore
-	Blobs    *store.BlobStore
-	Metadata *store.MetadataManager
-	Search   *store.SearchManager
-	Auth     *auth.LocalAuth
-	Raft     *cluster.RaftNode
-	Gossip   *cluster.GossipNode
-	SMTP     *bongosmtp.Server
-	BlobSync *cluster.BlobSyncer
-	logger   *slog.Logger
+	Config    *config.Config
+	Store     *store.PebbleStore
+	Blobs     *store.BlobStore
+	Metadata  *store.MetadataManager
+	Search    *store.SearchManager
+	Auth      *auth.LocalAuth
+	Raft      *cluster.RaftNode
+	Gossip    *cluster.GossipNode
+	SMTP      *bongosmtp.Server
+	IMAP      *bongoimap.Server
+	Notifier  *bongoimap.Notifier
+	Mailboxes *store.MailboxStore
+	BlobSync  *cluster.BlobSyncer
+	logger    *slog.Logger
 
 	httpServer     *http.Server
 	ready          atomic.Bool
@@ -254,6 +259,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("blob syncer started")
 	}
 
+	// Create MailboxStore and Notifier (used by IMAP and FSM).
+	if a.Raft != nil {
+		a.Mailboxes = store.NewMailboxStore(a.Store, a)
+		a.Notifier = bongoimap.NewNotifier()
+		a.Raft.FSM.SetNotifier(a)
+	}
+
 	// Start SMTP server.
 	if a.Config.SMTP.Enabled && a.Raft != nil {
 		isDev := a.Config.Server.Role == "dev"
@@ -271,6 +283,46 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}()
 		a.logger.Info("smtp: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
+	}
+
+	// Start IMAP server.
+	if a.Config.IMAP.Enabled && a.Raft != nil {
+		isDev := a.Config.Server.Role == "dev"
+
+		// Load or generate TLS config.
+		tlsCfg, err := security.LoadOrGenerate(
+			a.Config.Cluster.TLS.CertFile,
+			a.Config.Cluster.TLS.KeyFile,
+			[]string{"localhost", "127.0.0.1"},
+		)
+		if err != nil {
+			a.logger.Warn("imap: failed to load TLS, running without TLS", "error", err)
+		}
+
+		a.IMAP = bongoimap.NewServer(
+			a.Auth, a.Store, a.Blobs, a.Mailboxes, a.Notifier,
+			tlsCfg, isDev, a.logger,
+		)
+
+		imapPort := a.Config.IMAP.Port
+		imapTLSPort := a.Config.IMAP.PortTLS
+		if isDev {
+			imapPort = 1143
+			imapTLSPort = 1993
+		}
+
+		plainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapPort))
+		tlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapTLSPort))
+
+		if err := a.IMAP.Listen(plainAddr, tlsAddr, tlsCfg); err != nil {
+			return fmt.Errorf("imap listen: %w", err)
+		}
+		go func() {
+			if err := a.IMAP.Serve(); err != nil {
+				a.logger.Error("imap server error", "error", err)
+			}
+		}()
+		a.logger.Info("imap: started", "plain", plainAddr, "tls", tlsAddr)
 	}
 
 	// Dev mode: auto-create test user.
@@ -322,7 +374,26 @@ func (a *Agent) createDevUser() error {
 		"password", "admin",
 		"user_id", userID,
 	)
+
+	// Create default IMAP mailboxes for the dev user.
+	if a.Mailboxes != nil {
+		if err := a.Mailboxes.EnsureDefaultMailboxes(userID); err != nil {
+			a.logger.Warn("dev mode: failed to create default mailboxes", "error", err)
+		}
+	}
+
 	return nil
+}
+
+// NotifyNewMail implements the MailboxNotifier interface for the FSM.
+func (a *Agent) NotifyNewMail(userID, mailbox string, uid, existsCount uint32) {
+	if a.Notifier != nil {
+		a.Notifier.Notify(userID, mailbox, bongoimap.Notification{
+			Type:        bongoimap.NotifNewMail,
+			UID:         uid,
+			ExistsCount: existsCount,
+		})
+	}
 }
 
 // autoJoinRaft finds the Raft leader via gossip metadata and sends a join request.
@@ -402,7 +473,16 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// 3. Blob sync cancel.
+	// 3. IMAP server.
+	if a.IMAP != nil {
+		if err := a.IMAP.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing imap server: %w", err))
+		} else {
+			a.logger.Info("imap server closed")
+		}
+	}
+
+	// 4. Blob sync cancel.
 	if a.blobSyncCancel != nil {
 		a.blobSyncCancel()
 		a.logger.Info("blob syncer stopped")

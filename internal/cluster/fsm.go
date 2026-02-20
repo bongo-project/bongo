@@ -35,6 +35,11 @@ type BlobEnqueuer interface {
 	Enqueue(hash string)
 }
 
+// MailboxNotifier is the interface for notifying IMAP sessions of new mail.
+type MailboxNotifier interface {
+	NotifyNewMail(userID, mailbox string, uid, existsCount uint32)
+}
+
 // FSM implements raft.FSM, applying committed log entries to Pebble.
 type FSM struct {
 	store    *store.PebbleStore
@@ -44,6 +49,7 @@ type FSM struct {
 
 	search   SearchIndexer
 	blobSync BlobEnqueuer
+	notifier MailboxNotifier
 }
 
 // Compile-time interface check.
@@ -67,6 +73,11 @@ func (f *FSM) SetSearchManager(s SearchIndexer) {
 // SetBlobSyncer sets the blob syncer (initialized after FSM).
 func (f *FSM) SetBlobSyncer(bs BlobEnqueuer) {
 	f.blobSync = bs
+}
+
+// SetNotifier sets the mailbox notifier (initialized after FSM).
+func (f *FSM) SetNotifier(n MailboxNotifier) {
+	f.notifier = n
 }
 
 // Apply applies a committed Raft log entry to the Pebble store.
@@ -137,8 +148,104 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 	}
 
 	f.logger.Debug("fsm: applied", "op", cmd.Op.String(), "key", string(cmd.Key))
+
+	// Place new mail into INBOX mailbox (Raft-consistent).
+	if cmd.Op == bongov1.Op_OP_PUT {
+		f.placeInMailbox(cmd)
+	}
+
 	f.updateDerivedIndexes(cmd)
 	return nil
+}
+
+// placeInMailbox creates a mailbox message entry in INBOX when mail is delivered.
+// This runs inside FSM Apply so it is Raft-consistent.
+func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
+	key := string(cmd.Key)
+
+	// Only handle /user/{id}/mail/{guid} keys.
+	if !strings.HasPrefix(key, "/user/") || !strings.Contains(key, "/mail/") {
+		return
+	}
+
+	parts := strings.SplitN(key, "/", 5) // ["", "user", "{id}", "mail", "{guid}"]
+	if len(parts) < 5 || parts[3] != "mail" {
+		return
+	}
+
+	userID := parts[2]
+	guid := parts[4]
+
+	// Parse MailMeta to get the received timestamp.
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
+		f.logger.Warn("fsm: failed to parse MailMeta for mailbox placement", "error", err)
+		return
+	}
+
+	// Read current INBOX mailbox meta.
+	metaKey := []byte(fmt.Sprintf("/user/%s/mailbox/INBOX/meta", userID))
+	var mbMeta bongov1.MailboxMeta
+
+	existing, err := f.store.Get(metaKey)
+	if err == nil {
+		proto.Unmarshal(existing, &mbMeta)
+	} else {
+		// INBOX doesn't exist yet — initialize it.
+		mbMeta.Name = "INBOX"
+		mbMeta.UidValidity = 1
+		mbMeta.UidNext = 1
+	}
+
+	// Assign UID and bump uid_next.
+	uid := mbMeta.UidNext
+	mbMeta.UidNext = uid + 1
+
+	// Write updated mailbox meta.
+	metaBytes, err := proto.Marshal(&mbMeta)
+	if err != nil {
+		f.logger.Warn("fsm: failed to marshal mailbox meta", "error", err)
+		return
+	}
+	if err := f.store.Set(metaKey, metaBytes); err != nil {
+		f.logger.Warn("fsm: failed to write mailbox meta", "error", err)
+		return
+	}
+
+	// Write mailbox message entry.
+	msgKey := []byte(fmt.Sprintf("/user/%s/mailbox/INBOX/msg/%010d", userID, uid))
+	mbMsg := &bongov1.MailboxMessage{
+		Uid:          uid,
+		MailGuid:     guid,
+		Flags:        0, // no flags initially
+		InternalDate: meta.ReceivedAt,
+	}
+	msgBytes, err := proto.Marshal(mbMsg)
+	if err != nil {
+		f.logger.Warn("fsm: failed to marshal mailbox message", "error", err)
+		return
+	}
+	if err := f.store.Set(msgKey, msgBytes); err != nil {
+		f.logger.Warn("fsm: failed to write mailbox message", "error", err)
+		return
+	}
+
+	f.logger.Debug("fsm: mail placed in INBOX", "user", userID, "guid", guid, "uid", uid)
+
+	// Notify IMAP sessions about the new mail.
+	if f.notifier != nil {
+		// Count total messages for EXISTS response.
+		var totalMsgs uint32
+		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/INBOX/msg/", userID))
+		iter, err := f.store.PrefixScan(prefix)
+		if err == nil {
+			for iter.Next() {
+				totalMsgs++
+			}
+			iter.Close()
+		}
+		f.notifier.NotifyNewMail(userID, "INBOX", uid, totalMsgs)
+	}
 }
 
 // updateDerivedIndexes updates SQLite and Bleve indexes based on the applied key.

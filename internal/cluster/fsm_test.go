@@ -260,6 +260,109 @@ func (s *bufferSink) Close() error                { return nil }
 func (s *bufferSink) Cancel() error               { return nil }
 func (s *bufferSink) ID() string                   { return "test" }
 
+func TestFSMMailboxPlacement(t *testing.T) {
+	env := newFSMTestEnv(t)
+
+	// Deliver a mail — FSM should auto-create INBOX entry.
+	meta := &bongov1.MailMeta{
+		Guid:       "mail-1",
+		Subject:    "Test Mail",
+		From:       "alice@example.com",
+		To:         []string{"bob@example.com"},
+		ReceivedAt: 1700000000,
+		RawMessage: &bongov1.BlobRef{Hash: "abc123", Size: 100},
+	}
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte("/user/u1/mail/mail-1"),
+		Value: metaBytes,
+	}
+	result := env.fsm.Apply(makeProtoLog(1, cmd))
+	if result != nil {
+		t.Fatalf("Apply: %v", result)
+	}
+
+	// Check INBOX meta was created.
+	mbMetaBytes, err := env.pebble.Get([]byte("/user/u1/mailbox/INBOX/meta"))
+	if err != nil {
+		t.Fatalf("INBOX meta not found: %v", err)
+	}
+	var mbMeta bongov1.MailboxMeta
+	if err := proto.Unmarshal(mbMetaBytes, &mbMeta); err != nil {
+		t.Fatalf("unmarshal mailbox meta: %v", err)
+	}
+	if mbMeta.UidNext != 2 {
+		t.Errorf("uid_next = %d, want 2", mbMeta.UidNext)
+	}
+	if mbMeta.UidValidity != 1 {
+		t.Errorf("uid_validity = %d, want 1", mbMeta.UidValidity)
+	}
+
+	// Check mailbox message entry.
+	msgBytes, err := env.pebble.Get([]byte("/user/u1/mailbox/INBOX/msg/0000000001"))
+	if err != nil {
+		t.Fatalf("mailbox msg not found: %v", err)
+	}
+	var mbMsg bongov1.MailboxMessage
+	if err := proto.Unmarshal(msgBytes, &mbMsg); err != nil {
+		t.Fatalf("unmarshal mailbox msg: %v", err)
+	}
+	if mbMsg.Uid != 1 {
+		t.Errorf("uid = %d, want 1", mbMsg.Uid)
+	}
+	if mbMsg.MailGuid != "mail-1" {
+		t.Errorf("mail_guid = %q, want %q", mbMsg.MailGuid, "mail-1")
+	}
+	if mbMsg.InternalDate != 1700000000 {
+		t.Errorf("internal_date = %d, want 1700000000", mbMsg.InternalDate)
+	}
+
+	// Deliver a second mail — UID should increment.
+	meta2 := &bongov1.MailMeta{
+		Guid:       "mail-2",
+		Subject:    "Second Mail",
+		From:       "charlie@example.com",
+		ReceivedAt: 1700000100,
+		RawMessage: &bongov1.BlobRef{Hash: "def456", Size: 200},
+	}
+	meta2Bytes, _ := proto.Marshal(meta2)
+	cmd2 := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte("/user/u1/mail/mail-2"),
+		Value: meta2Bytes,
+	}
+	result2 := env.fsm.Apply(makeProtoLog(2, cmd2))
+	if result2 != nil {
+		t.Fatalf("Apply 2: %v", result2)
+	}
+
+	mbMetaBytes2, _ := env.pebble.Get([]byte("/user/u1/mailbox/INBOX/meta"))
+	var mbMeta2 bongov1.MailboxMeta
+	proto.Unmarshal(mbMetaBytes2, &mbMeta2)
+	if mbMeta2.UidNext != 3 {
+		t.Errorf("uid_next after 2nd mail = %d, want 3", mbMeta2.UidNext)
+	}
+
+	// Verify second message key.
+	msg2Bytes, err := env.pebble.Get([]byte("/user/u1/mailbox/INBOX/msg/0000000002"))
+	if err != nil {
+		t.Fatalf("second mailbox msg not found: %v", err)
+	}
+	var mbMsg2 bongov1.MailboxMessage
+	proto.Unmarshal(msg2Bytes, &mbMsg2)
+	if mbMsg2.Uid != 2 {
+		t.Errorf("second msg uid = %d, want 2", mbMsg2.Uid)
+	}
+	if mbMsg2.MailGuid != "mail-2" {
+		t.Errorf("second msg mail_guid = %q, want %q", mbMsg2.MailGuid, "mail-2")
+	}
+}
+
 func TestFSMMailIndexing(t *testing.T) {
 	env := newFSMTestEnv(t)
 

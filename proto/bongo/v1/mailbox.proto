@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message MailboxMeta {
+  string name = 1;
+  uint32 uid_validity = 2;
+  uint32 uid_next = 3;
+}
+
+message MailboxMessage {
+  uint32 uid = 1;
+  string mail_guid = 2;
+  uint32 flags = 3;
+  int64 internal_date = 4;
+}

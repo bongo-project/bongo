@@ -2,10 +2,7 @@ package cluster
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -123,11 +120,3 @@ func (bs *BlobSyncer) pull(hash string) error {
 	return fmt.Errorf("blob %s not found on any peer", hash[:12])
 }
 
-// verifyHash computes the SHA-256 hash of a reader's contents.
-func verifyHash(r io.Reader) (string, error) {
-	h := sha256.New()
-	if _, err := io.Copy(h, r); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
