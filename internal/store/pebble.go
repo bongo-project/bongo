@@ -98,6 +98,24 @@ func (s *PebbleStore) PrefixScan(prefix []byte) (Iterator, error) {
 	return &pebbleIterator{iter: iter, started: false}, nil
 }
 
+// DeleteRange deletes all keys in the range [start, end] (inclusive).
+func (s *PebbleStore) DeleteRange(start, end []byte) error {
+	// Pebble's DeleteRange is [start, end) exclusive on end,
+	// so we need to compute the successor of end.
+	upper := make([]byte, len(end)+1)
+	copy(upper, end)
+	upper[len(end)] = 0x00
+	if err := s.db.DeleteRange(start, upper, pebble.Sync); err != nil {
+		return fmt.Errorf("pebble delete range: %w", err)
+	}
+	return nil
+}
+
+// DB returns the underlying pebble.DB for advanced operations like checkpoints.
+func (s *PebbleStore) DB() *pebble.DB {
+	return s.db
+}
+
 // Close closes the Pebble database.
 func (s *PebbleStore) Close() error {
 	if err := s.db.Close(); err != nil {
