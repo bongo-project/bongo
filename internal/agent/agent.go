@@ -22,6 +22,7 @@ import (
 type Agent struct {
 	Config   *config.Config
 	Store    *store.PebbleStore
+	Blobs    *store.BlobStore
 	Metadata *store.MetadataManager
 	logger   *slog.Logger
 
@@ -68,6 +69,15 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	}
 	a.Store = pebbleStore
 	logger.Info("pebble store opened", "dir", pebbleDir)
+
+	// Open blob store (shared content-addressable files).
+	blobStore, err := store.NewBlobStore(dataDir)
+	if err != nil {
+		pebbleStore.Close()
+		return nil, fmt.Errorf("opening blob store: %w", err)
+	}
+	a.Blobs = blobStore
+	logger.Info("blob store opened", "dir", filepath.Join(dataDir, "blobs"))
 
 	// Open metadata manager (per-user SQLite + system.db).
 	metaMgr, err := store.NewMetadataManager(dataDir)
@@ -145,13 +155,16 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
+	// Close storage in reverse order: metadata -> blobs -> pebble.
 	if a.Metadata != nil {
 		if err := a.Metadata.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("closing metadata index: %w", err))
+			errs = append(errs, fmt.Errorf("closing metadata manager: %w", err))
 		} else {
-			a.logger.Info("metadata index closed")
+			a.logger.Info("metadata manager closed")
 		}
 	}
+
+	// BlobStore has no Close method (it's just filesystem paths), nothing to close.
 
 	if a.Store != nil {
 		if err := a.Store.Close(); err != nil {
