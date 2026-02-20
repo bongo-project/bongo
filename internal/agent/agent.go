@@ -51,6 +51,18 @@ func (a *Agent) ApplyCommand(cmd cluster.Command, timeout time.Duration) error {
 	return cluster.ApplyCommand(a.Raft.Raft, cmd, timeout)
 }
 
+// lazyMemberLister wraps Agent to provide Members() that works even before Gossip is initialized.
+type lazyMemberLister struct {
+	agent *Agent
+}
+
+func (l *lazyMemberLister) Members() []cluster.MemberInfo {
+	if l.agent.Gossip == nil {
+		return nil
+	}
+	return l.agent.Gossip.Members()
+}
+
 // GetKey reads a key directly from local Pebble (no Raft).
 // Implements handlers.RaftApplier.
 func (a *Agent) GetKey(key []byte) ([]byte, error) {
@@ -137,6 +149,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/internal/kv/*", kv.Get)
 		r.Delete("/internal/kv/*", kv.Delete)
 	}
+
+	// Internal cluster membership endpoint.
+	// Uses a lazy wrapper since Gossip is initialized later in Run.
+	clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
+	r.Get("/internal/cluster/members", clusterH.Members)
 
 	port := a.Config.Web.Port
 	if a.Config.Server.Role == "dev" && port == 443 {
