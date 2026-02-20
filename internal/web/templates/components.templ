@@ -1,0 +1,90 @@
+package templates
+
+import "fmt"
+
+// MailboxInfo holds data needed to render a sidebar mailbox link.
+type MailboxInfo struct {
+	Name     string
+	Unread   int
+	Selected bool
+}
+
+templ Sidebar(mailboxes []MailboxInfo, selected string) {
+	<nav>
+		<ul class="mailbox-list">
+			for _, mb := range mailboxes {
+				<li>
+					<a
+						href={ templ.SafeURL("/mail/" + mb.Name) }
+						if mb.Name == selected {
+							class="active"
+						}
+						hx-get={ "/mail/" + mb.Name }
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span>{ mb.Name }</span>
+						if mb.Unread > 0 {
+							<span class="unread-badge">{ fmt.Sprint(mb.Unread) }</span>
+						}
+					</a>
+				</li>
+			}
+		</ul>
+	</nav>
+}
+
+templ Pagination(page, totalPages int, baseURL string) {
+	if totalPages > 1 {
+		<div class="pagination">
+			if page > 1 {
+				<a
+					href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page-1)) }
+					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page-1) }
+					hx-target="#message-list"
+					hx-push-url="true"
+				>
+					Prev
+				</a>
+			}
+			for i := 1; i <= totalPages; i++ {
+				if i == page {
+					<span class="current">{ fmt.Sprint(i) }</span>
+				} else {
+					<a
+						href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, i)) }
+						hx-get={ fmt.Sprintf("%s?page=%d", baseURL, i) }
+						hx-target="#message-list"
+						hx-push-url="true"
+					>
+						{ fmt.Sprint(i) }
+					</a>
+				}
+			}
+			if page < totalPages {
+				<a
+					href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page+1)) }
+					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page+1) }
+					hx-target="#message-list"
+					hx-push-url="true"
+				>
+					Next
+				</a>
+			}
+		</div>
+	}
+}
+
+templ FlashMessage(msg, level string) {
+	<div class={ "flash", "flash-" + level }>
+		{ msg }
+	</div>
+}
+
+templ EmptyState(title, subtitle string) {
+	<div class="empty-state">
+		<div class="icon">&#9993;</div>
+		<h3>{ title }</h3>
+		<p>{ subtitle }</p>
+	</div>
+}

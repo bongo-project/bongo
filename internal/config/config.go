@@ -109,9 +109,10 @@ type POP3Config struct {
 }
 
 type WebConfig struct {
-	Enabled bool      `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port    int       `hcl:"port,optional" mapstructure:"port"`
-	TLS     TLSConfig `hcl:"tls,block" mapstructure:"tls"`
+	Enabled       bool      `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port          int       `hcl:"port,optional" mapstructure:"port"`
+	SessionSecret string    `hcl:"session_secret,optional" mapstructure:"session_secret"`
+	TLS           TLSConfig `hcl:"tls,block" mapstructure:"tls"`
 }
 
 type CalDAVConfig struct {

@@ -246,6 +246,31 @@ func (ms *MailboxStore) ListMessages(userID, mailbox string) ([]*bongov1.Mailbox
 	return msgs, nil
 }
 
+// ListMessagesPaged returns a page of messages in a mailbox, ordered by UID descending (newest first).
+// offset is 0-based, limit is max messages to return.
+func (ms *MailboxStore) ListMessagesPaged(userID, mailbox string, offset, limit int) ([]*bongov1.MailboxMessage, int, error) {
+	all, err := ms.ListMessages(userID, mailbox)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total := len(all)
+
+	// Reverse to show newest first.
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+
 // CountMessages returns the total, recent, and unseen counts for a mailbox.
 func (ms *MailboxStore) CountMessages(userID, mailbox string) (total, recent, unseen uint32, err error) {
 	msgs, err := ms.ListMessages(userID, mailbox)

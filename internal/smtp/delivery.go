@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -69,14 +70,28 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 
 	subject := ""
 	messageID := ""
+	headerFrom := from
 	var toAddrs []string
 	if envelope != nil {
 		subject = envelope.GetHeader("Subject")
 		messageID = envelope.GetHeader("Message-Id")
+		if fromHeader := envelope.GetHeader("From"); fromHeader != "" {
+			headerFrom = fromHeader
+		}
 		if toHeader := envelope.GetHeader("To"); toHeader != "" {
 			toAddrs = strings.Split(toHeader, ",")
 			for i := range toAddrs {
 				toAddrs[i] = strings.TrimSpace(toAddrs[i])
+			}
+		}
+	}
+
+	// Parse Date header, fall back to now.
+	receivedAt := time.Now()
+	if envelope != nil {
+		if dateHeader := envelope.GetHeader("Date"); dateHeader != "" {
+			if t, err := mail.ParseDate(dateHeader); err == nil {
+				receivedAt = t
 			}
 		}
 	}
@@ -112,9 +127,9 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 			Guid:       guid,
 			MessageId:  messageID,
 			Subject:    subject,
-			From:       from,
+			From:       headerFrom,
 			To:         toAddrs,
-			ReceivedAt: time.Now().Unix(),
+			ReceivedAt: receivedAt.Unix(),
 			RawMessage: &bongov1.BlobRef{
 				Hash:        rawHash,
 				Size:        int64(len(raw)),

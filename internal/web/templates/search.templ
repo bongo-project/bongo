@@ -1,0 +1,38 @@
+package templates
+
+import "fmt"
+
+// SearchResult holds data for a single search hit.
+type SearchResult struct {
+	UID     uint32
+	Mailbox string
+	From    string
+	Subject string
+	Date    string
+	Snippet string
+}
+
+templ SearchPage(query string, results []SearchResult, page, totalPages int) {
+	<h2>Search Results</h2>
+	if query != "" && len(results) == 0 {
+		@EmptyState("No results", "No messages match your search.")
+	}
+	if len(results) > 0 {
+		<div id="search-results">
+			for _, r := range results {
+				<div class="search-result"
+					hx-get={ fmt.Sprintf("/mail/%s/%d", r.Mailbox, r.UID) }
+					hx-target="#main-content"
+					hx-push-url="true"
+				>
+					<div><strong>{ r.Subject }</strong></div>
+					<div style="font-size:0.85rem">{ r.From } - { r.Date }</div>
+					if r.Snippet != "" {
+						<div class="snippet">{ r.Snippet }</div>
+					}
+				</div>
+			}
+		</div>
+		@Pagination(page, totalPages, "/search?q="+query)
+	}
+}

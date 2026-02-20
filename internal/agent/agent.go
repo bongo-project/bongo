@@ -3,6 +3,8 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,6 +27,7 @@ import (
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/handlers"
+	"github.com/bongo-go/bongo-go/internal/web/middleware"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -159,6 +162,10 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		}
 		a.Raft = raftNode
 		logger.Info("raft node initialized", "role", cfg.Server.Role)
+
+		// Create MailboxStore and Notifier (used by IMAP, SMTP, and web UI).
+		a.Mailboxes = store.NewMailboxStore(pebbleStore, a)
+		a.Notifier = bongoimap.NewNotifier()
 	}
 
 	return a, nil
@@ -202,6 +209,64 @@ func (a *Agent) Run(ctx context.Context) error {
 		userH := handlers.NewUserHandler(a, a.Metadata)
 		r.Post("/internal/user/create", userH.Create)
 	}
+
+	// Static assets (public).
+	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
+
+	// Session secret.
+	sessionSecret := []byte(a.Config.Web.SessionSecret)
+	if len(sessionSecret) == 0 {
+		// Auto-generate in dev mode.
+		sessionSecret = make([]byte, 32)
+		rand.Read(sessionSecret)
+		a.logger.Info("web: auto-generated session secret", "hex", hex.EncodeToString(sessionSecret))
+	}
+
+	// Auth routes (public).
+	authH := handlers.NewAuthHandler(a.Auth, sessionSecret)
+	r.Get("/login", authH.LoginPage)
+	r.Post("/login", authH.Login)
+	r.Post("/logout", authH.Logout)
+
+	// Redirect root to inbox.
+	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
+	})
+
+	// Protected routes.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireAuth(sessionSecret))
+
+		if a.Mailboxes != nil {
+			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes)
+			r.Get("/mail/{mailbox}", mailH.ListMessages)
+			r.Get("/mail/{mailbox}/{uid}", mailH.ShowMessage)
+			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
+			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
+			r.Post("/mail/{mailbox}/{uid}/move", mailH.MoveMessage)
+			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
+		}
+
+		if a.Mailboxes != nil {
+			composeH := handlers.NewComposeHandler(a.Store, a.Blobs, a.Mailboxes, a.Search, a)
+			r.Get("/compose", composeH.NewMessage)
+			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
+			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
+			r.Post("/compose/send", composeH.Send)
+			r.Post("/compose/draft", composeH.SaveDraft)
+			r.Get("/api/gal", composeH.GALSearch)
+		}
+
+		if a.Search != nil {
+			searchH := handlers.NewSearchHandler(a.Store, a.Mailboxes, a.Search)
+			r.Get("/search", searchH.Search)
+		}
+
+		if a.Notifier != nil {
+			sseH := handlers.NewSSEHandler(a.Notifier)
+			r.Get("/events", sseH.Events)
+		}
+	})
 
 	port := a.Config.Web.Port
 	if a.Config.Server.Role == "dev" && port == 443 {
@@ -259,10 +324,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("blob syncer started")
 	}
 
-	// Create MailboxStore and Notifier (used by IMAP and FSM).
-	if a.Raft != nil {
-		a.Mailboxes = store.NewMailboxStore(a.Store, a)
-		a.Notifier = bongoimap.NewNotifier()
+	// Wire Notifier to FSM (MailboxStore and Notifier created in NewAgent).
+	if a.Raft != nil && a.Notifier != nil {
 		a.Raft.FSM.SetNotifier(a)
 	}
 
@@ -300,7 +363,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		a.IMAP = bongoimap.NewServer(
-			a.Auth, a.Store, a.Blobs, a.Mailboxes, a.Notifier,
+			a.Auth, a.Store, a.Blobs, a.Mailboxes, a.Search, a.Notifier,
 			tlsCfg, isDev, a.logger,
 		)
 

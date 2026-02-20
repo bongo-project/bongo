@@ -4,6 +4,17 @@ package bongo.v1;
 
 option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
 
+// MailboxMeta stores per-mailbox metadata in Pebble.
+//
+// Design decision: message counts (total, recent, unseen) are intentionally
+// NOT stored as proto fields. They are computed on demand via Pebble prefix
+// scans in MailboxStore.CountMessages(). This avoids counter drift under
+// concurrent Raft applies — multiple nodes applying log entries in parallel
+// could cause stored counters to diverge from the actual message set.
+// The prefix scan approach guarantees accuracy at the cost of an O(n) scan.
+//
+// If profiling shows prefix scans are too slow for large mailboxes, counters
+// can be added as cached fields with invalidation on message insert/delete/flag.
 message MailboxMeta {
   string name = 1;
   uint32 uid_validity = 2;

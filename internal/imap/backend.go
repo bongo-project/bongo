@@ -24,6 +24,7 @@ type session struct {
 	pebble    *store.PebbleStore
 	blobs     *store.BlobStore
 	mailboxes *store.MailboxStore
+	search    *store.SearchManager
 	notifier  *Notifier
 	logger    *slog.Logger
 
@@ -306,11 +307,38 @@ func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria,
 	}
 	s.cachedMsgs = msgs
 
+	// Use Bleve for text/header/body criteria if available.
+	var bleveGUIDs map[string]struct{}
+	usedBleve := false
+	if s.search != nil && hasTextCriteria(criteria) {
+		bleveGUIDs, err = searchBleve(s.search, s.userID, criteria)
+		if err != nil {
+			s.logger.Warn("imap: bleve search failed, falling back to in-memory", "error", err)
+		} else {
+			usedBleve = true
+		}
+	}
+
 	var matchedUIDs []imap.UID
 	for _, msg := range msgs {
-		if s.matchesCriteria(msg, criteria) {
-			matchedUIDs = append(matchedUIDs, imap.UID(msg.Uid))
+		// If Bleve was used, filter by Bleve results first.
+		if usedBleve {
+			if _, ok := bleveGUIDs[msg.MailGuid]; !ok {
+				continue
+			}
+		} else if hasTextCriteria(criteria) {
+			// Fallback: use in-memory matching for text criteria.
+			if !s.matchesCriteria(msg, criteria) {
+				continue
+			}
 		}
+
+		// Always apply flag criteria as post-filter.
+		if !matchesFlagCriteria(msg.Flags, msg.InternalDate, criteria) {
+			continue
+		}
+
+		matchedUIDs = append(matchedUIDs, imap.UID(msg.Uid))
 	}
 
 	if kind == imapserver.NumKindSeq {

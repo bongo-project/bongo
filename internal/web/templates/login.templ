@@ -1,0 +1,23 @@
+package templates
+
+templ LoginPage(errMsg string) {
+	@LoginLayout("Login") {
+		<div class="login-container">
+			<h1 style="text-align:center">Bongo</h1>
+			<form method="post" action="/login">
+				if errMsg != "" {
+					@FlashMessage(errMsg, "error")
+				}
+				<label for="email">Email</label>
+				<input type="email" id="email" name="email" placeholder="admin@localhost" required autofocus/>
+				<label for="password">Password</label>
+				<input type="password" id="password" name="password" required/>
+				<label>
+					<input type="checkbox" name="remember" value="1"/>
+					Remember me
+				</label>
+				<button type="submit">Login</button>
+			</form>
+		</div>
+	}
+}

@@ -1,0 +1,101 @@
+package templates
+
+templ Layout(title string, email string) {
+	<!DOCTYPE html>
+	<html lang="en" data-theme="auto">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } - Bongo</title>
+			<link rel="stylesheet" href="/static/css/pico.min.css"/>
+			<link rel="stylesheet" href="/static/css/bongo.css"/>
+		</head>
+		<body>
+			<div class="top-bar">
+				<a href="/mail/INBOX" class="brand">Bongo</a>
+				<nav>
+					<input
+						type="search"
+						name="q"
+						placeholder="Search mail..."
+						class="search-input"
+						hx-get="/search"
+						hx-trigger="keyup changed delay:300ms"
+						hx-target="#main-content"
+						hx-push-url="true"
+					/>
+					<span>{ email }</span>
+					<form method="post" action="/logout" style="margin:0">
+						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">Logout</button>
+					</form>
+				</nav>
+			</div>
+			<div class="app-layout">
+				<aside class="sidebar" id="sidebar">
+					{ children... }
+				</aside>
+				<main class="main-content" id="main-content">
+				</main>
+			</div>
+			<script src="/static/js/htmx.min.js"></script>
+			<script src="/static/js/alpine.min.js" defer></script>
+			<script src="/static/js/bongo.js"></script>
+		</body>
+	</html>
+}
+
+templ LayoutWithContent(title string, email string) {
+	<!DOCTYPE html>
+	<html lang="en" data-theme="auto">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } - Bongo</title>
+			<link rel="stylesheet" href="/static/css/pico.min.css"/>
+			<link rel="stylesheet" href="/static/css/bongo.css"/>
+		</head>
+		<body>
+			<div class="top-bar">
+				<a href="/mail/INBOX" class="brand">Bongo</a>
+				<nav>
+					<input
+						type="search"
+						name="q"
+						placeholder="Search mail..."
+						class="search-input"
+						hx-get="/search"
+						hx-trigger="keyup changed delay:300ms"
+						hx-target="#main-content"
+						hx-push-url="true"
+					/>
+					<span>{ email }</span>
+					<form method="post" action="/logout" style="margin:0">
+						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">Logout</button>
+					</form>
+				</nav>
+			</div>
+			<div class="app-layout">
+				{ children... }
+			</div>
+			<script src="/static/js/htmx.min.js"></script>
+			<script src="/static/js/alpine.min.js" defer></script>
+			<script src="/static/js/bongo.js"></script>
+		</body>
+	</html>
+}
+
+templ LoginLayout(title string) {
+	<!DOCTYPE html>
+	<html lang="en" data-theme="auto">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } - Bongo</title>
+			<link rel="stylesheet" href="/static/css/pico.min.css"/>
+			<link rel="stylesheet" href="/static/css/bongo.css"/>
+		</head>
+		<body>
+			{ children... }
+		</body>
+	</html>
+}

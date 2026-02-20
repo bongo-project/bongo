@@ -168,6 +168,16 @@ func (sm *SearchManager) SearchGAL(prefix string, limit int) ([]GALEntry, error)
 	return entries, nil
 }
 
+// SearchWithRequest performs a search using a raw Bleve SearchRequest.
+// This allows callers to build complex queries (boolean, date range, etc.).
+func (sm *SearchManager) SearchWithRequest(userID string, req *bleve.SearchRequest) (*bleve.SearchResult, error) {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.Search(req)
+}
+
 // Close closes all open indexes.
 func (sm *SearchManager) Close() error {
 	sm.mu.Lock()

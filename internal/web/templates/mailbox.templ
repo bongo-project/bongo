@@ -1,0 +1,123 @@
+package templates
+
+import (
+	"fmt"
+	"time"
+)
+
+// MessageSummary holds data for a single row in the message list.
+type MessageSummary struct {
+	UID     uint32
+	From    string
+	Subject string
+	Date    time.Time
+	Size    int64
+	Seen    bool
+	Flagged bool
+}
+
+templ MailboxPage(mailbox string, mailboxes []MailboxInfo, messages []MessageSummary, page, totalPages int, email string, flash string) {
+	@LayoutWithContent(mailbox, email) {
+		<aside class="sidebar" id="sidebar">
+			@Sidebar(mailboxes, mailbox)
+		</aside>
+		<main class="main-content" id="main-content" data-selected-mailbox={ mailbox }>
+			@MailboxContent(mailbox, messages, page, totalPages, flash)
+		</main>
+	}
+}
+
+templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages int, flash string) {
+	if flash != "" {
+		@FlashMessage(flash, "success")
+	}
+	<div class="toolbar">
+		<a href="/compose" role="button" class="outline">Compose</a>
+		<button class="outline secondary" hx-get={ "/mail/" + mailbox } hx-target="#main-content">Refresh</button>
+	</div>
+	<div id="message-list">
+		if len(messages) == 0 {
+			@EmptyState("No messages", "This mailbox is empty.")
+		} else {
+			<table class="message-list">
+				<thead>
+					<tr>
+						<th style="width:30px"></th>
+						<th>From</th>
+						<th>Subject</th>
+						<th>Date</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, msg := range messages {
+						<tr
+							if !msg.Seen {
+								class="unread"
+							}
+							data-uid={ fmt.Sprint(msg.UID) }
+						>
+							<td>
+								<span
+									class={ "flag-star", templ.KV("flagged", msg.Flagged) }
+									hx-post={ fmt.Sprintf("/mail/%s/%d/flags", mailbox, msg.UID) }
+									hx-vals={ flagToggleVals(msg.Flagged) }
+									hx-swap="outerHTML"
+								>
+									if msg.Flagged {
+										&#9733;
+									} else {
+										&#9734;
+									}
+								</span>
+							</td>
+							<td class="from-col">
+								<a
+									href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID)) }
+									data-message-link="true"
+									hx-get={ fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID) }
+									hx-target="#main-content"
+									hx-push-url="true"
+									style="text-decoration:none;color:inherit"
+								>
+									{ msg.From }
+								</a>
+							</td>
+							<td class="subject-col">
+								<a
+									href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID)) }
+									data-message-link="true"
+									hx-get={ fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID) }
+									hx-target="#main-content"
+									hx-push-url="true"
+									style="text-decoration:none;color:inherit"
+								>
+									{ msg.Subject }
+								</a>
+							</td>
+							<td>{ formatDate(msg.Date) }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+			@Pagination(page, totalPages, "/mail/"+mailbox)
+		}
+	</div>
+}
+
+func formatDate(t time.Time) string {
+	now := time.Now()
+	if t.Year() == now.Year() && t.YearDay() == now.YearDay() {
+		return t.Format("3:04 PM")
+	}
+	if t.Year() == now.Year() {
+		return t.Format("Jan 2")
+	}
+	return t.Format("Jan 2, 2006")
+}
+
+func flagToggleVals(flagged bool) string {
+	if flagged {
+		return `{"action":"remove","flag":"flagged"}`
+	}
+	return `{"action":"add","flag":"flagged"}`
+}

@@ -1,0 +1,262 @@
+//go:build integration
+
+package integration
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	smtplib "net/smtp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/bongo-go/bongo-go/internal/agent"
+	"github.com/bongo-go/bongo-go/internal/config"
+)
+
+func TestWebUIFullRoundTrip(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.Web.Port = sharedFreePort(t)
+	cfg.SMTP.Enabled = true
+	cfg.IMAP.Enabled = true
+
+	logger := sharedTestLogger()
+
+	a, err := agent.NewAgent(cfg, logger)
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- a.Run(ctx)
+	}()
+
+	deadline := time.Now().Add(15 * time.Second)
+	for !a.Ready() && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !a.Ready() {
+		t.Fatal("agent not ready in time")
+	}
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
+
+	// Create HTTP client with cookie jar.
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Jar: jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+
+	// Step 1: Unauthenticated access should redirect to login.
+	t.Run("unauthenticated redirects to login", func(t *testing.T) {
+		// Use a client that doesn't follow redirects to verify the 303.
+		noRedirectClient := &http.Client{
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		resp, err := noRedirectClient.Get(baseURL + "/mail/INBOX")
+		if err != nil {
+			t.Fatalf("GET /mail/INBOX: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("status = %d, want 303", resp.StatusCode)
+		}
+		loc := resp.Header.Get("Location")
+		if loc != "/login" {
+			t.Errorf("Location = %q, want /login", loc)
+		}
+	})
+
+	// Step 2: Login with admin credentials.
+	t.Run("login", func(t *testing.T) {
+		resp, err := client.PostForm(baseURL+"/login", url.Values{
+			"email":    {"admin@localhost"},
+			"password": {"admin"},
+		})
+		if err != nil {
+			t.Fatalf("POST /login: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should redirect to /mail/INBOX after login.
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Logf("response body: %s", string(body))
+		}
+
+		// Verify we have a session cookie.
+		u, _ := url.Parse(baseURL)
+		cookies := jar.Cookies(u)
+		found := false
+		for _, c := range cookies {
+			if c.Name == "bongo_session" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("no bongo_session cookie set after login")
+		}
+	})
+
+	// Step 3: GET /mail/INBOX should return 200 with mailbox layout.
+	t.Run("view inbox", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/mail/INBOX")
+		if err != nil {
+			t.Fatalf("GET /mail/INBOX: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status = %d, want 200", resp.StatusCode)
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+		if !strings.Contains(bodyStr, "INBOX") {
+			t.Error("response does not contain 'INBOX'")
+		}
+		if !strings.Contains(bodyStr, "Compose") {
+			t.Error("response does not contain 'Compose' button")
+		}
+	})
+
+	// Step 4: Send email via SMTP and verify it appears.
+	t.Run("send via SMTP and view", func(t *testing.T) {
+		smtpAddr := a.SMTP.MXAddr()
+
+		msg := "From: sender@localhost\r\n" +
+			"To: admin@localhost\r\n" +
+			"Subject: Web UI Test Message\r\n" +
+			"Date: Thu, 20 Feb 2026 12:00:00 +0000\r\n" +
+			"\r\n" +
+			"Hello from the integration test.\r\n"
+
+		err := smtplib.SendMail(smtpAddr, nil, "sender@localhost", []string{"admin@localhost"}, []byte(msg))
+		if err != nil {
+			t.Fatalf("SendMail: %v", err)
+		}
+
+		// Wait for delivery.
+		time.Sleep(500 * time.Millisecond)
+
+		// Check that the message appears in the inbox.
+		resp, err := client.Get(baseURL + "/mail/INBOX")
+		if err != nil {
+			t.Fatalf("GET /mail/INBOX: %v", err)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+		if !strings.Contains(bodyStr, "Web UI Test Message") {
+			t.Error("inbox does not contain 'Web UI Test Message'")
+			t.Logf("body length: %d", len(bodyStr))
+		}
+	})
+
+	// Step 5: View message detail.
+	t.Run("view message detail", func(t *testing.T) {
+		// Get the message UID from the inbox.
+		resp, err := client.Get(baseURL + "/mail/INBOX/1")
+		if err != nil {
+			t.Fatalf("GET /mail/INBOX/1: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status = %d, want 200", resp.StatusCode)
+			return
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+		if !strings.Contains(bodyStr, "Web UI Test Message") {
+			t.Error("message detail does not contain subject")
+		}
+		if !strings.Contains(bodyStr, "sender@localhost") {
+			t.Error("message detail does not contain sender")
+		}
+	})
+
+	// Step 6: Compose and send a message.
+	t.Run("compose and send", func(t *testing.T) {
+		resp, err := client.PostForm(baseURL+"/compose/send", url.Values{
+			"to":      {"admin@localhost"},
+			"subject": {"Composed via Web UI"},
+			"body":    {"This message was composed in the web UI."},
+		})
+		if err != nil {
+			t.Fatalf("POST /compose/send: %v", err)
+		}
+		defer resp.Body.Close()
+
+		// Should redirect to Sent.
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Logf("compose response: %d body: %s", resp.StatusCode, body)
+		}
+	})
+
+	// Step 7: Search.
+	t.Run("search", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/search?q=test")
+		if err != nil {
+			t.Fatalf("GET /search: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("status = %d, want 200", resp.StatusCode)
+		}
+	})
+
+	// Step 8: Logout.
+	t.Run("logout", func(t *testing.T) {
+		// Use a no-redirect client to verify the redirect.
+		noRedirectClient := &http.Client{
+			Jar: jar,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		resp, err := noRedirectClient.Post(baseURL+"/logout", "application/x-www-form-urlencoded", nil)
+		if err != nil {
+			t.Fatalf("POST /logout: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("logout status = %d, want 303", resp.StatusCode)
+		}
+		loc := resp.Header.Get("Location")
+		if loc != "/login" {
+			t.Errorf("Location = %q, want /login", loc)
+		}
+
+		// Verify the session cookie is cleared.
+		for _, c := range resp.Cookies() {
+			if c.Name == "bongo_session" && c.MaxAge < 0 {
+				return // Cookie properly cleared.
+			}
+		}
+	})
+}

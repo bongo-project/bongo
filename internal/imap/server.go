@@ -29,6 +29,7 @@ func NewServer(
 	pebble *store.PebbleStore,
 	blobs *store.BlobStore,
 	mailboxes *store.MailboxStore,
+	search *store.SearchManager,
 	notifier *Notifier,
 	tlsCfg *tls.Config,
 	isDev bool,
@@ -47,6 +48,7 @@ func NewServer(
 			pebble:    pebble,
 			blobs:     blobs,
 			mailboxes: mailboxes,
+			search:    search,
 			notifier:  notifier,
 			logger:    logger,
 		}

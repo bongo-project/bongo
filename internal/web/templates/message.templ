@@ -1,0 +1,121 @@
+package templates
+
+import (
+	"fmt"
+	"time"
+)
+
+// Attachment represents a downloadable attachment.
+type Attachment struct {
+	Filename    string
+	ContentType string
+	Size        int64
+	Hash        string
+}
+
+// MessageDetail holds data for the message detail view.
+type MessageDetail struct {
+	UID         uint32
+	Mailbox     string
+	MessageID   string
+	Subject     string
+	From        string
+	To          []string
+	Cc          []string
+	Date        time.Time
+	HTMLBody    string
+	TextBody    string
+	Attachments []Attachment
+	Seen        bool
+	Flagged     bool
+	Answered    bool
+}
+
+templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
+	<div class="toolbar">
+		<a
+			href={ templ.SafeURL("/mail/" + msg.Mailbox) }
+			role="button"
+			class="outline secondary"
+			hx-get={ "/mail/" + msg.Mailbox }
+			hx-target="#main-content"
+			hx-push-url="true"
+		>
+			Back
+		</a>
+		<a href={ templ.SafeURL(fmt.Sprintf("/compose/reply/%s/%d", msg.Mailbox, msg.UID)) } role="button" class="outline">Reply</a>
+		<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", msg.Mailbox, msg.UID)) } role="button" class="outline">Forward</a>
+		<button
+			class="outline secondary"
+			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", msg.Mailbox, msg.UID) }
+			hx-target="#main-content"
+			hx-confirm="Delete this message?"
+		>
+			Delete
+		</button>
+		<select
+			name="destination"
+			hx-post={ fmt.Sprintf("/mail/%s/%d/move", msg.Mailbox, msg.UID) }
+			hx-target="#main-content"
+			hx-trigger="change"
+			style="width:auto;display:inline;padding:0.3rem 0.7rem;font-size:0.85rem"
+		>
+			<option value="">Move to...</option>
+			for _, mb := range mailboxes {
+				if mb.Name != msg.Mailbox {
+					<option value={ mb.Name }>{ mb.Name }</option>
+				}
+			}
+		</select>
+	</div>
+	<div class="message-header">
+		<h2>{ msg.Subject }</h2>
+		<div class="meta">
+			<div><strong>From:</strong> { msg.From }</div>
+			<div><strong>To:</strong> { joinStrings(msg.To) }</div>
+			if len(msg.Cc) > 0 {
+				<div><strong>Cc:</strong> { joinStrings(msg.Cc) }</div>
+			}
+			<div><strong>Date:</strong> { msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</div>
+		</div>
+	</div>
+	<div class="message-body">
+		if msg.HTMLBody != "" {
+			@templ.Raw(msg.HTMLBody)
+		} else {
+			<pre style="white-space:pre-wrap;font-family:inherit">{ msg.TextBody }</pre>
+		}
+	</div>
+	if len(msg.Attachments) > 0 {
+		<div class="attachment-list">
+			<strong>Attachments:</strong>
+			for _, att := range msg.Attachments {
+				<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename }>
+					{ att.Filename }
+					<small>({ formatSize(att.Size) })</small>
+				</a>
+			}
+		</div>
+	}
+}
+
+func joinStrings(ss []string) string {
+	result := ""
+	for i, s := range ss {
+		if i > 0 {
+			result += ", "
+		}
+		result += s
+	}
+	return result
+}
+
+func formatSize(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	}
+	return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+}

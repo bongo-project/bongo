@@ -1,0 +1,331 @@
+/* Bongo-Go custom styles on top of Pico CSS */
+
+:root {
+  --bongo-sidebar-width: 240px;
+  --bongo-toolbar-height: 48px;
+}
+
+/* Layout */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--bongo-sidebar-width);
+  border-right: 1px solid var(--pico-muted-border-color);
+  padding: 1rem;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.main-content {
+  flex: 1;
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+/* Sidebar mailbox list */
+.mailbox-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.mailbox-list li {
+  margin: 0;
+}
+
+.mailbox-list a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--pico-color);
+}
+
+.mailbox-list a:hover {
+  background: var(--pico-secondary-hover-background);
+}
+
+.mailbox-list a.active {
+  background: var(--pico-primary-background);
+  color: var(--pico-primary-inverse);
+}
+
+.unread-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  border-radius: 10px;
+  padding: 0.1rem 0.5rem;
+  min-width: 1.2rem;
+  text-align: center;
+}
+
+/* Message list */
+.message-list {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.message-list th {
+  text-align: left;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  border-bottom: 2px solid var(--pico-muted-border-color);
+}
+
+.message-list td {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
+}
+
+.message-list td.subject-col {
+  max-width: 400px;
+}
+
+.message-list td.from-col {
+  max-width: 200px;
+}
+
+.message-list tr {
+  cursor: pointer;
+}
+
+.message-list tr:hover {
+  background: var(--pico-secondary-hover-background);
+}
+
+.message-list tr.unread td {
+  font-weight: 700;
+}
+
+.message-list .flag-star {
+  cursor: pointer;
+  color: var(--pico-muted-color);
+}
+
+.message-list .flag-star.flagged {
+  color: #f0ad4e;
+}
+
+/* Message detail */
+.message-header {
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.message-header h2 {
+  margin-bottom: 0.5rem;
+}
+
+.message-header .meta {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+}
+
+.message-body {
+  line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.message-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.attachment-list {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.attachment-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  margin: 0.25rem;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 4px;
+  font-size: 0.85rem;
+  text-decoration: none;
+  color: var(--pico-color);
+}
+
+.attachment-item:hover {
+  background: var(--pico-secondary-hover-background);
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.toolbar button,
+.toolbar a[role="button"] {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem;
+}
+
+/* Search */
+.search-input {
+  width: 100%;
+  max-width: 400px;
+}
+
+.search-result {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  cursor: pointer;
+}
+
+.search-result:hover {
+  background: var(--pico-secondary-hover-background);
+}
+
+.search-result .snippet {
+  font-size: 0.85rem;
+  color: var(--pico-muted-color);
+}
+
+.search-result mark {
+  background: var(--pico-primary-background);
+  padding: 0 2px;
+}
+
+/* Compose */
+.compose-form label {
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+
+.compose-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+/* Flash messages */
+.flash {
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.flash-success {
+  background: var(--pico-ins-color);
+  color: var(--pico-color);
+}
+
+.flash-error {
+  background: var(--pico-del-color);
+  color: var(--pico-color);
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--pico-muted-color);
+}
+
+.empty-state .icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+/* Login page */
+.login-container {
+  max-width: 400px;
+  margin: 4rem auto;
+  padding: 2rem;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.pagination a,
+.pagination span {
+  padding: 0.3rem 0.7rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.pagination .current {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+
+/* Top bar */
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+.top-bar .brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--pico-color);
+}
+
+.top-bar nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    padding: 0.5rem;
+  }
+
+  .mailbox-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .mailbox-list li {
+    flex-shrink: 0;
+  }
+
+  .message-list td.subject-col {
+    max-width: 200px;
+  }
+}

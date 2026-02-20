@@ -1,0 +1,52 @@
+package templates
+
+import "fmt"
+
+templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32) {
+	<h2>
+		switch mode {
+			case "reply":
+				Compose: Reply
+			case "forward":
+				Compose: Forward
+			default:
+				Compose: New Message
+		}
+	</h2>
+	<form method="post" action="/compose/send" enctype="multipart/form-data" class="compose-form">
+		if mode == "reply" || mode == "forward" {
+			<input type="hidden" name="reply_mailbox" value={ replyMailbox }/>
+			<input type="hidden" name="reply_uid" value={ uintToStr(replyUID) }/>
+			<input type="hidden" name="mode" value={ mode }/>
+		}
+		<label for="to">To</label>
+		<input type="text" id="to" name="to" value={ to } required placeholder="recipient@example.com"
+			x-data="galAutocomplete"
+			x-model="query"
+			@input.debounce.300ms="search()"
+			@keydown="onKeydown($event)"
+		/>
+		<label for="cc">Cc</label>
+		<input type="text" id="cc" name="cc" value={ cc } placeholder="cc@example.com"/>
+		<label for="bcc">Bcc</label>
+		<input type="text" id="bcc" name="bcc" placeholder="bcc@example.com"/>
+		<label for="subject">Subject</label>
+		<input type="text" id="subject" name="subject" value={ subject } required/>
+		<label for="body">Body</label>
+		<textarea id="body" name="body" rows="15" style="font-family:inherit">{ body }</textarea>
+		<label for="attachments">Attachments</label>
+		<input type="file" id="attachments" name="attachments" multiple/>
+		<div class="compose-toolbar">
+			<button type="submit">Send</button>
+			<button type="submit" formaction="/compose/draft" class="outline secondary">Save Draft</button>
+			<a href="/mail/INBOX" role="button" class="outline secondary">Discard</a>
+		</div>
+	</form>
+}
+
+func uintToStr(v uint32) string {
+	if v == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", v)
+}
