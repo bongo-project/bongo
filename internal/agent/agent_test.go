@@ -70,6 +70,7 @@ func TestAgentRunAndCancel(t *testing.T) {
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
 	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.SMTP.Enabled = false
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -103,6 +104,7 @@ func TestHealthEndpoints(t *testing.T) {
 	port := freePort(t)
 	cfg.Web.Port = port
 	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.SMTP.Enabled = false
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {

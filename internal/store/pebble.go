@@ -101,12 +101,34 @@ func (s *PebbleStore) PrefixScan(prefix []byte) (Iterator, error) {
 // DeleteRange deletes all keys in the range [start, end] (inclusive).
 func (s *PebbleStore) DeleteRange(start, end []byte) error {
 	// Pebble's DeleteRange is [start, end) exclusive on end,
-	// so we need to compute the successor of end.
-	upper := make([]byte, len(end)+1)
-	copy(upper, end)
-	upper[len(end)] = 0x00
-	if err := s.db.DeleteRange(start, upper, pebble.Sync); err != nil {
-		return fmt.Errorf("pebble delete range: %w", err)
+	// so we need the successor of end to make it inclusive.
+	upper := keySuccessor(end)
+	if upper != nil {
+		if err := s.db.DeleteRange(start, upper, pebble.Sync); err != nil {
+			return fmt.Errorf("pebble delete range: %w", err)
+		}
+		return nil
+	}
+
+	// All-0xFF end key: no successor exists. Scan from start with no upper bound.
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: start,
+	})
+	if err != nil {
+		return fmt.Errorf("pebble delete range scan: %w", err)
+	}
+	defer iter.Close()
+
+	var keys [][]byte
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := make([]byte, len(iter.Key()))
+		copy(k, iter.Key())
+		keys = append(keys, k)
+	}
+	for _, k := range keys {
+		if err := s.db.Delete(k, pebble.Sync); err != nil {
+			return fmt.Errorf("pebble delete range key: %w", err)
+		}
 	}
 	return nil
 }
@@ -120,6 +142,24 @@ func (s *PebbleStore) DB() *pebble.DB {
 func (s *PebbleStore) Close() error {
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("closing pebble store: %w", err)
+	}
+	return nil
+}
+
+// keySuccessor returns the lexicographically next key after key by incrementing
+// the last non-0xFF byte and truncating trailing 0xFF bytes.
+// Returns nil if all bytes are 0xFF (no successor exists).
+func keySuccessor(key []byte) []byte {
+	if len(key) == 0 {
+		return nil
+	}
+	succ := make([]byte, len(key))
+	copy(succ, key)
+	for i := len(succ) - 1; i >= 0; i-- {
+		if succ[i] < 0xFF {
+			succ[i]++
+			return succ[:i+1]
+		}
 	}
 	return nil
 }

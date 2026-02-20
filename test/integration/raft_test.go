@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/store"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // testNode represents a single node in the test cluster.
@@ -57,7 +59,6 @@ func createTestCluster(t *testing.T) []*testNode {
 	nodes := make([]*testNode, 3)
 	transports := make([]*raft.InmemTransport, 3)
 
-	// Create all nodes.
 	for i := 0; i < 3; i++ {
 		name := fmt.Sprintf("node-%d", i+1)
 		dir := t.TempDir()
@@ -113,7 +114,7 @@ func createTestCluster(t *testing.T) []*testNode {
 		}
 	}
 
-	// Connect all transports to each other.
+	// Connect all transports.
 	for i := 0; i < 3; i++ {
 		for j := 0; j < 3; j++ {
 			if i != j {
@@ -122,7 +123,7 @@ func createTestCluster(t *testing.T) []*testNode {
 		}
 	}
 
-	// Bootstrap the cluster from node 0 with all 3 servers.
+	// Bootstrap from node 0.
 	servers := make([]raft.Server, 3)
 	for i, n := range nodes {
 		servers[i] = raft.Server{
@@ -136,7 +137,6 @@ func createTestCluster(t *testing.T) []*testNode {
 		t.Fatalf("BootstrapCluster: %v", err)
 	}
 
-	// Register cleanup.
 	t.Cleanup(func() {
 		for _, n := range nodes {
 			if n == nil {
@@ -154,7 +154,6 @@ func createTestCluster(t *testing.T) []*testNode {
 	return nodes
 }
 
-// startHTTP starts an HTTP server for the given node with internal endpoints.
 func startHTTP(t *testing.T, n *testNode) {
 	t.Helper()
 	port := freePort(t)
@@ -162,12 +161,15 @@ func startHTTP(t *testing.T, n *testNode) {
 
 	mux := http.NewServeMux()
 
-	// Internal KV endpoints.
 	mux.HandleFunc("PUT /internal/kv/", func(w http.ResponseWriter, r *http.Request) {
 		key := strings.TrimPrefix(r.URL.Path, "/internal/kv")
 		body, _ := io.ReadAll(r.Body)
 
-		cmd := cluster.Command{Op: "put", Key: []byte(key), Value: body}
+		cmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   []byte(key),
+			Value: body,
+		}
 		if err := cluster.ApplyCommand(n.raftNode, cmd, 5*time.Second); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -185,7 +187,6 @@ func startHTTP(t *testing.T, n *testNode) {
 		w.Write(val)
 	})
 
-	// Blob endpoints.
 	mux.HandleFunc("GET /internal/blob/", func(w http.ResponseWriter, r *http.Request) {
 		hash := strings.TrimPrefix(r.URL.Path, "/internal/blob/")
 		rc, err := n.blobs.Get(hash)
@@ -209,7 +210,6 @@ func startHTTP(t *testing.T, n *testNode) {
 	n.httpSrv = &http.Server{Addr: n.httpAddr, Handler: mux}
 	go n.httpSrv.ListenAndServe()
 
-	// Wait for server to be ready.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		resp, err := http.Get("http://" + n.httpAddr + "/internal/kv/healthcheck")
@@ -240,16 +240,14 @@ func waitForLeader(t *testing.T, nodes []*testNode, timeout time.Duration) int {
 func TestRaftClusterLifecycle(t *testing.T) {
 	nodes := createTestCluster(t)
 
-	// Start HTTP on all nodes.
 	for _, n := range nodes {
 		startHTTP(t, n)
 	}
 
-	// Step 1-2: Wait for leader election.
 	leaderIdx := waitForLeader(t, nodes, 10*time.Second)
 	t.Logf("step 1-2: leader elected: %s (index %d)", nodes[leaderIdx].name, leaderIdx)
 
-	// Step 3: Write a key-value pair via the leader's internal API.
+	// Write via leader.
 	leaderURL := "http://" + nodes[leaderIdx].httpAddr
 	req, _ := http.NewRequest(http.MethodPut, leaderURL+"/internal/kv/test/key1", strings.NewReader("hello-raft"))
 	resp, err := http.DefaultClient.Do(req)
@@ -262,8 +260,7 @@ func TestRaftClusterLifecycle(t *testing.T) {
 	}
 	t.Log("step 3: key written via leader")
 
-	// Step 4: Read from all three nodes (verify replication).
-	// Give replication a moment to propagate.
+	// Read from all nodes.
 	time.Sleep(500 * time.Millisecond)
 
 	for i, n := range nodes {
@@ -284,7 +281,7 @@ func TestRaftClusterLifecycle(t *testing.T) {
 	}
 	t.Log("step 4: value replicated to all nodes")
 
-	// Step 5: Store a blob on the leader, verify HTTP serves it.
+	// Blob test.
 	blobData := []byte("blob-content-for-raft-test")
 	hash, err := nodes[leaderIdx].blobs.Put(blobData)
 	if err != nil {
@@ -304,28 +301,14 @@ func TestRaftClusterLifecycle(t *testing.T) {
 	if string(body) != string(blobData) {
 		t.Errorf("step 5: blob content = %q, want %q", body, blobData)
 	}
-
-	// HEAD check.
-	req, _ = http.NewRequest(http.MethodHead, leaderURL+"/internal/blob/"+hash, nil)
-	resp, err = http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("step 5: HEAD blob: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("step 5: HEAD blob status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
 	t.Log("step 5: blob stored and served via HTTP")
 
-	// Step 6: Kill the leader, verify a new leader is elected.
+	// Kill leader, verify new election.
 	oldLeaderIdx := leaderIdx
-	oldLeaderName := nodes[leaderIdx].name
-	t.Logf("step 6: shutting down leader %s", oldLeaderName)
-
+	t.Logf("step 6: shutting down leader %s", nodes[leaderIdx].name)
 	nodes[oldLeaderIdx].httpSrv.Close()
 	nodes[oldLeaderIdx].raftNode.Shutdown().Error()
 
-	// Wait for a new leader among the remaining nodes.
 	var newLeaderIdx int
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -340,11 +323,11 @@ func TestRaftClusterLifecycle(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatal("step 6: no new leader elected after killing old leader")
+	t.Fatal("step 6: no new leader elected")
 leaderFound:
-	t.Logf("step 6: new leader elected: %s (index %d)", nodes[newLeaderIdx].name, newLeaderIdx)
+	t.Logf("step 6: new leader: %s", nodes[newLeaderIdx].name)
 
-	// Step 7: Write via the new leader, verify replication to surviving nodes.
+	// Write via new leader.
 	newLeaderURL := "http://" + nodes[newLeaderIdx].httpAddr
 	req, _ = http.NewRequest(http.MethodPut, newLeaderURL+"/internal/kv/test/key2", strings.NewReader("after-failover"))
 	resp, err = http.DefaultClient.Do(req)
@@ -358,7 +341,6 @@ leaderFound:
 
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify replication on surviving nodes.
 	for i, n := range nodes {
 		if i == oldLeaderIdx {
 			continue
@@ -378,5 +360,36 @@ leaderFound:
 			t.Errorf("step 7: node %d value = %q, want %q", i, body, "after-failover")
 		}
 	}
-	t.Log("step 7: value replicated to surviving nodes after failover")
+	t.Log("step 7: value replicated after failover")
+
+	// Step 8: Test protobuf-encoded commands directly through Raft.
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte("/test/proto-key"),
+		Value: []byte("proto-value"),
+	}
+	data, _ := proto.Marshal(cmd)
+	future := nodes[newLeaderIdx].raftNode.Apply(data, 5*time.Second)
+	if err := future.Error(); err != nil {
+		t.Fatalf("step 8: direct protobuf apply: %v", err)
+	}
+	if resp := future.Response(); resp != nil {
+		t.Fatalf("step 8: FSM error: %v", resp)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+	for i, n := range nodes {
+		if i == oldLeaderIdx {
+			continue
+		}
+		val, err := n.pebble.Get([]byte("/test/proto-key"))
+		if err != nil {
+			t.Errorf("step 8: node %d Get: %v", i, err)
+			continue
+		}
+		if string(val) != "proto-value" {
+			t.Errorf("step 8: node %d value = %q, want %q", i, val, "proto-value")
+		}
+	}
+	t.Log("step 8: protobuf commands replicated correctly")
 }

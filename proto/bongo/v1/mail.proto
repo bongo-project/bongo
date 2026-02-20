@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+import "proto/bongo/v1/blob.proto";
+
+message MailMeta {
+  string guid = 1;
+  string message_id = 2;
+  string subject = 3;
+  string from = 4;
+  repeated string to = 5;
+  int64 received_at = 6;
+  BlobRef raw_message = 7;
+  repeated BlobRef attachments = 8;
+  string folder_guid = 9;
+  int32 flags = 10;
+}

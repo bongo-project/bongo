@@ -186,6 +186,78 @@ func TestOverwrite(t *testing.T) {
 	}
 }
 
+func TestDeleteRange(t *testing.T) {
+	tests := []struct {
+		name      string
+		keys      []string
+		start     []byte
+		end       []byte
+		wantGone  []string
+		wantAlive []string
+	}{
+		{
+			name:      "basic range",
+			keys:      []string{"/a", "/b", "/c", "/d", "/e"},
+			start:     []byte("/b"),
+			end:       []byte("/d"),
+			wantGone:  []string{"/b", "/c", "/d"},
+			wantAlive: []string{"/a", "/e"},
+		},
+		{
+			name:      "single key",
+			keys:      []string{"/a", "/b", "/c"},
+			start:     []byte("/b"),
+			end:       []byte("/b"),
+			wantGone:  []string{"/b"},
+			wantAlive: []string{"/a", "/c"},
+		},
+		{
+			name:      "key ending in 0x00",
+			keys:      []string{"/x\x00", "/x\x01", "/x\x02"},
+			start:     []byte("/x\x00"),
+			end:       []byte("/x\x01"),
+			wantGone:  []string{"/x\x00", "/x\x01"},
+			wantAlive: []string{"/x\x02"},
+		},
+		{
+			name:      "end key all 0xFF",
+			keys:      []string{"/a", "/b", "\xff\xff"},
+			start:     []byte("/b"),
+			end:       []byte{0xFF, 0xFF},
+			wantGone:  []string{"/b", "\xff\xff"},
+			wantAlive: []string{"/a"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestStore(t)
+			for _, k := range tt.keys {
+				if err := s.Set([]byte(k), []byte("v")); err != nil {
+					t.Fatalf("Set %q: %v", k, err)
+				}
+			}
+
+			if err := s.DeleteRange(tt.start, tt.end); err != nil {
+				t.Fatalf("DeleteRange: %v", err)
+			}
+
+			for _, k := range tt.wantGone {
+				_, err := s.Get([]byte(k))
+				if err == nil {
+					t.Errorf("key %q should be deleted", k)
+				}
+			}
+			for _, k := range tt.wantAlive {
+				_, err := s.Get([]byte(k))
+				if err != nil {
+					t.Errorf("key %q should still exist: %v", k, err)
+				}
+			}
+		})
+	}
+}
+
 func TestWithCacheSize(t *testing.T) {
 	store, err := NewPebbleStore(t.TempDir(), WithCacheSize(8<<20))
 	if err != nil {

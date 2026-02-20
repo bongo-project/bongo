@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message UserProfile {
+  string email = 1;
+  string display_name = 2;
+  bytes password_hash = 3;
+  bytes totp_secret = 4;
+  int64 quota_bytes = 5;
+}

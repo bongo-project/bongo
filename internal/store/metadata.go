@@ -127,6 +127,40 @@ func (u *UserIndex) createSchema() error {
 	return err
 }
 
+// IndexMail transactionally inserts a mail into storeobject and maildocument tables.
+func (u *UserIndex) IndexMail(guid, subject, sender string, receivedAt, size int64) error {
+	tx, err := u.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+		INSERT INTO storeobject (guid, type, flags, size, created_at, modified_at)
+		VALUES (?, ?, 0, ?, ?, ?)
+		ON CONFLICT(guid) DO UPDATE SET
+			size = excluded.size,
+			modified_at = excluded.modified_at
+	`, guid, DocTypeMail, size, receivedAt, receivedAt)
+	if err != nil {
+		return fmt.Errorf("indexing storeobject: %w", err)
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO maildocument (guid, subject, sender, received_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(guid) DO UPDATE SET
+			subject = excluded.subject,
+			sender = excluded.sender,
+			received_at = excluded.received_at
+	`, guid, subject, sender, receivedAt)
+	if err != nil {
+		return fmt.Errorf("indexing maildocument: %w", err)
+	}
+
+	return tx.Commit()
+}
+
 // IndexObject upserts a StoreObject into this user's index.
 func (u *UserIndex) IndexObject(obj StoreObject) error {
 	_, err := u.db.Exec(`
@@ -410,6 +444,15 @@ func (m *MetadataManager) IndexObject(userID string, obj StoreObject) error {
 	}
 	obj.UserID = userID
 	return idx.IndexObject(obj)
+}
+
+// IndexMail opens the user's database and indexes a mail message.
+func (m *MetadataManager) IndexMail(userID, guid, subject, sender string, receivedAt, size int64) error {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.IndexMail(guid, subject, sender, receivedAt, size)
 }
 
 // QueryByType opens the user's database and queries by document type.

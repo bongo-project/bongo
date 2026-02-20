@@ -10,11 +10,12 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/store"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // RaftApplier is the interface needed by KVHandler to apply commands and read state.
 type RaftApplier interface {
-	ApplyCommand(cmd cluster.Command, timeout time.Duration) error
+	ApplyCommand(cmd *bongov1.RaftCommand, timeout time.Duration) error
 	GetKey(key []byte) ([]byte, error)
 }
 
@@ -42,8 +43,8 @@ func (h *KVHandler) Put(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := cluster.Command{
-		Op:    "put",
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
 		Key:   []byte("/" + key),
 		Value: body,
 	}
@@ -92,8 +93,8 @@ func (h *KVHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := cluster.Command{
-		Op:  "delete",
+	cmd := &bongov1.RaftCommand{
+		Op:  bongov1.Op_OP_DELETE,
 		Key: []byte("/" + key),
 	}
 
@@ -110,4 +111,3 @@ func (h *KVHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
-

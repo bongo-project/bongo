@@ -12,6 +12,7 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/store"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // mockApplier implements RaftApplier for testing.
@@ -24,7 +25,7 @@ func newMockApplier() *mockApplier {
 	return &mockApplier{data: make(map[string][]byte)}
 }
 
-func (m *mockApplier) ApplyCommand(cmd cluster.Command, _ time.Duration) error {
+func (m *mockApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
 	if m.notLeader {
 		return &cluster.NotLeaderError{
 			LeaderAddr: "10.0.0.1:8300",
@@ -32,9 +33,9 @@ func (m *mockApplier) ApplyCommand(cmd cluster.Command, _ time.Duration) error {
 		}
 	}
 	switch cmd.Op {
-	case "put":
+	case bongov1.Op_OP_PUT:
 		m.data[string(cmd.Key)] = cmd.Value
-	case "delete":
+	case bongov1.Op_OP_DELETE:
 		delete(m.data, string(cmd.Key))
 	}
 	return nil
@@ -61,7 +62,6 @@ func TestKVPutAndGet(t *testing.T) {
 	m := newMockApplier()
 	router := setupKVRouter(m)
 
-	// PUT a value.
 	req := httptest.NewRequest(http.MethodPut, "/internal/kv/test/key1", strings.NewReader("hello"))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -70,7 +70,6 @@ func TestKVPutAndGet(t *testing.T) {
 		t.Errorf("PUT status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 
-	// GET the value.
 	req = httptest.NewRequest(http.MethodGet, "/internal/kv/test/key1", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -101,7 +100,6 @@ func TestKVDelete(t *testing.T) {
 	m := newMockApplier()
 	router := setupKVRouter(m)
 
-	// PUT then DELETE.
 	req := httptest.NewRequest(http.MethodPut, "/internal/kv/test/key2", strings.NewReader("val"))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -114,7 +112,6 @@ func TestKVDelete(t *testing.T) {
 		t.Errorf("DELETE status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 
-	// GET should return 404.
 	req = httptest.NewRequest(http.MethodGet, "/internal/kv/test/key2", nil)
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)

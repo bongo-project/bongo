@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+enum Op {
+  OP_UNSPECIFIED = 0;
+  OP_PUT = 1;
+  OP_DELETE = 2;
+}
+
+message RaftCommand {
+  Op op = 1;
+  bytes key = 2;
+  bytes value = 3;
+}

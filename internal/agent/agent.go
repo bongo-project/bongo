@@ -10,14 +10,18 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
+	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/handlers"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // Agent manages the bongo-go server lifecycle.
@@ -26,12 +30,17 @@ type Agent struct {
 	Store    *store.PebbleStore
 	Blobs    *store.BlobStore
 	Metadata *store.MetadataManager
-	Raft   *cluster.RaftNode
-	Gossip *cluster.GossipNode
-	logger *slog.Logger
+	Search   *store.SearchManager
+	Auth     *auth.LocalAuth
+	Raft     *cluster.RaftNode
+	Gossip   *cluster.GossipNode
+	SMTP     *bongosmtp.Server
+	BlobSync *cluster.BlobSyncer
+	logger   *slog.Logger
 
-	httpServer *http.Server
-	ready      bool
+	httpServer     *http.Server
+	ready          atomic.Bool
+	blobSyncCancel context.CancelFunc
 
 	// tmpDir is set in dev mode so we can clean up on shutdown.
 	tmpDir string
@@ -39,12 +48,12 @@ type Agent struct {
 
 // Ready implements handlers.ReadinessChecker.
 func (a *Agent) Ready() bool {
-	return a.ready
+	return a.ready.Load()
 }
 
-// ApplyCommand applies a command through Raft consensus.
+// ApplyCommand applies a protobuf command through Raft consensus.
 // Implements handlers.RaftApplier.
-func (a *Agent) ApplyCommand(cmd cluster.Command, timeout time.Duration) error {
+func (a *Agent) ApplyCommand(cmd *bongov1.RaftCommand, timeout time.Duration) error {
 	if a.Raft == nil {
 		return fmt.Errorf("raft not available")
 	}
@@ -119,10 +128,24 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	a.Metadata = metaMgr
 	logger.Info("metadata manager opened", "dir", filepath.Join(dataDir, "metadata"))
 
+	// Open search manager (per-user Bleve + GAL).
+	searchMgr, err := store.NewSearchManager(dataDir)
+	if err != nil {
+		metaMgr.Close()
+		pebbleStore.Close()
+		return nil, fmt.Errorf("opening search manager: %w", err)
+	}
+	a.Search = searchMgr
+	logger.Info("search manager opened")
+
+	// Create local authenticator.
+	a.Auth = auth.NewLocalAuth(pebbleStore, metaMgr)
+
 	// Start Raft for server and dev roles (edge nodes don't participate in consensus).
 	if cfg.Server.Role == "server" || cfg.Server.Role == "dev" {
 		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger)
 		if err != nil {
+			searchMgr.Close()
 			metaMgr.Close()
 			pebbleStore.Close()
 			return nil, fmt.Errorf("creating raft node: %w", err)
@@ -151,7 +174,6 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	// Internal cluster membership endpoint.
-	// Uses a lazy wrapper since Gossip is initialized later in Run.
 	clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
 	r.Get("/internal/cluster/members", clusterH.Members)
 
@@ -160,6 +182,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		blobH := handlers.NewBlobHandler(a.Blobs)
 		r.Get("/internal/blob/{hash}", blobH.Get)
 		r.Head("/internal/blob/{hash}", blobH.Head)
+	}
+
+	// User management endpoint.
+	if a.Raft != nil {
+		userH := handlers.NewUserHandler(a, a.Metadata)
+		r.Post("/internal/user/create", userH.Create)
 	}
 
 	port := a.Config.Web.Port
@@ -202,7 +230,46 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}
 
-	a.ready = true
+	// Set up blob syncer and wire to FSM.
+	if a.Raft != nil {
+		blobSyncCtx, blobSyncCancel := context.WithCancel(ctx)
+		a.blobSyncCancel = blobSyncCancel
+
+		a.BlobSync = cluster.NewBlobSyncer(a.Blobs, &lazyMemberLister{agent: a}, a.logger)
+		a.Raft.FSM.SetBlobSyncer(a.BlobSync)
+		a.Raft.FSM.SetSearchManager(a.Search)
+
+		go a.BlobSync.Run(blobSyncCtx)
+		a.logger.Info("blob syncer started")
+	}
+
+	// Start SMTP server.
+	if a.Config.SMTP.Enabled && a.Raft != nil {
+		isDev := a.Config.Server.Role == "dev"
+		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
+		pipeline := bongosmtp.NewDeliveryPipeline(a, a.Blobs, resolver, a.logger)
+		backend := bongosmtp.NewBackend(a.Auth, pipeline, a.logger)
+
+		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
+		if err := a.SMTP.Listen(); err != nil {
+			return fmt.Errorf("smtp listen: %w", err)
+		}
+		go func() {
+			if err := a.SMTP.Serve(); err != nil {
+				a.logger.Error("smtp server error", "error", err)
+			}
+		}()
+		a.logger.Info("smtp: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
+	}
+
+	// Dev mode: auto-create test user.
+	if a.Config.Server.Role == "dev" && a.Raft != nil {
+		if err := a.createDevUser(); err != nil {
+			a.logger.Warn("dev mode: failed to create test user", "error", err)
+		}
+	}
+
+	a.ready.Store(true)
 
 	a.logger.Info("bongo-go started",
 		"role", a.Config.Server.Role,
@@ -233,12 +300,27 @@ func (a *Agent) Run(ctx context.Context) error {
 	return a.Shutdown()
 }
 
+// createDevUser creates the admin@localhost test user in dev mode.
+func (a *Agent) createDevUser() error {
+	userID, err := auth.CreateUser(a, a.Metadata, "admin@localhost", "Admin", "admin")
+	if err != nil {
+		return err
+	}
+	a.logger.Info("dev mode: test user created",
+		"email", "admin@localhost",
+		"password", "admin",
+		"user_id", userID,
+	)
+	return nil
+}
+
 // Shutdown closes all resources held by the agent.
 func (a *Agent) Shutdown() error {
 	var errs []error
 
-	a.ready = false
+	a.ready.Store(false)
 
+	// 1. HTTP server.
 	if a.httpServer != nil {
 		if err := a.httpServer.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("closing http server: %w", err))
@@ -247,7 +329,22 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// Shutdown gossip before Raft.
+	// 2. SMTP server.
+	if a.SMTP != nil {
+		if err := a.SMTP.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing smtp server: %w", err))
+		} else {
+			a.logger.Info("smtp server closed")
+		}
+	}
+
+	// 3. Blob sync cancel.
+	if a.blobSyncCancel != nil {
+		a.blobSyncCancel()
+		a.logger.Info("blob syncer stopped")
+	}
+
+	// 4. Gossip.
 	if a.Gossip != nil {
 		if err := a.Gossip.Shutdown(); err != nil {
 			errs = append(errs, fmt.Errorf("shutting down gossip: %w", err))
@@ -256,7 +353,7 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// Shutdown Raft before closing storage.
+	// 5. Raft.
 	if a.Raft != nil {
 		if err := a.Raft.Shutdown(); err != nil {
 			errs = append(errs, fmt.Errorf("shutting down raft: %w", err))
@@ -265,7 +362,16 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// Close storage in reverse order: metadata -> blobs -> pebble.
+	// 6. Search manager.
+	if a.Search != nil {
+		if err := a.Search.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing search manager: %w", err))
+		} else {
+			a.logger.Info("search manager closed")
+		}
+	}
+
+	// 7. Metadata (per-user SQLite + system.db).
 	if a.Metadata != nil {
 		if err := a.Metadata.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("closing metadata manager: %w", err))
@@ -274,8 +380,7 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// BlobStore has no Close method (it's just filesystem paths), nothing to close.
-
+	// 8. Pebble store.
 	if a.Store != nil {
 		if err := a.Store.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("closing pebble store: %w", err))
@@ -284,6 +389,7 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
+	// 9. Temp dir cleanup.
 	if a.tmpDir != "" {
 		if err := os.RemoveAll(a.tmpDir); err != nil {
 			errs = append(errs, fmt.Errorf("removing temp dir: %w", err))

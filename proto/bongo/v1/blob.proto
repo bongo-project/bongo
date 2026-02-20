@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message BlobRef {
+  string hash = 1;
+  int64 size = 2;
+  string content_type = 3;
+}

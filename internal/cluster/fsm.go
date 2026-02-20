@@ -10,16 +10,29 @@ import (
 	"strings"
 
 	"github.com/hashicorp/raft"
+	"google.golang.org/protobuf/proto"
+
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
-// Command represents a Raft FSM command.
-// JSON-encoded for now; will switch to protobuf in a later sprint.
+// Command represents a legacy JSON Raft FSM command (kept for backward compat).
 type Command struct {
-	Op    string `json:"op"`    // "put" or "delete"
+	Op    string `json:"op"`
 	Key   []byte `json:"key"`
 	Value []byte `json:"value,omitempty"`
+}
+
+// SearchIndexer is the interface for full-text search indexing.
+type SearchIndexer interface {
+	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool) error
+	IndexProfile(userID, email, displayName string) error
+}
+
+// BlobEnqueuer is the interface for blob sync enqueueing.
+type BlobEnqueuer interface {
+	Enqueue(hash string)
 }
 
 // FSM implements raft.FSM, applying committed log entries to Pebble.
@@ -28,6 +41,9 @@ type FSM struct {
 	blobs    *store.BlobStore
 	metadata *store.MetadataManager
 	logger   *slog.Logger
+
+	search   SearchIndexer
+	blobSync BlobEnqueuer
 }
 
 // Compile-time interface check.
@@ -43,42 +59,92 @@ func NewFSM(s *store.PebbleStore, blobs *store.BlobStore, meta *store.MetadataMa
 	}
 }
 
+// SetSearchManager sets the search indexer (initialized after FSM).
+func (f *FSM) SetSearchManager(s SearchIndexer) {
+	f.search = s
+}
+
+// SetBlobSyncer sets the blob syncer (initialized after FSM).
+func (f *FSM) SetBlobSyncer(bs BlobEnqueuer) {
+	f.blobSync = bs
+}
+
 // Apply applies a committed Raft log entry to the Pebble store.
 func (f *FSM) Apply(log *raft.Log) interface{} {
-	var cmd Command
-	if err := json.Unmarshal(log.Data, &cmd); err != nil {
+	// Try protobuf first.
+	var cmd bongov1.RaftCommand
+	if err := proto.Unmarshal(log.Data, &cmd); err == nil && cmd.Op != bongov1.Op_OP_UNSPECIFIED {
+		return f.applyProto(&cmd)
+	}
+
+	// Fall back to legacy JSON.
+	var legacyCmd Command
+	if err := json.Unmarshal(log.Data, &legacyCmd); err != nil {
 		f.logger.Error("fsm: failed to unmarshal command", "error", err)
 		return fmt.Errorf("unmarshal command: %w", err)
 	}
 
 	var err error
-	switch cmd.Op {
+	switch legacyCmd.Op {
 	case "put":
-		err = f.store.Set(cmd.Key, cmd.Value)
+		err = f.store.Set(legacyCmd.Key, legacyCmd.Value)
 	case "delete":
-		err = f.store.Delete(cmd.Key)
+		err = f.store.Delete(legacyCmd.Key)
 	default:
-		err = fmt.Errorf("unknown op: %q", cmd.Op)
+		err = fmt.Errorf("unknown op: %q", legacyCmd.Op)
 	}
 
 	if err != nil {
-		f.logger.Error("fsm: apply failed", "op", cmd.Op, "key", string(cmd.Key), "error", err)
+		f.logger.Error("fsm: apply failed", "op", legacyCmd.Op, "key", string(legacyCmd.Key), "error", err)
 		return err
 	}
 
-	f.logger.Debug("fsm: applied", "op", cmd.Op, "key", string(cmd.Key))
-
-	// Trigger derived index updates.
-	f.updateDerivedIndexes(cmd)
-
+	f.logger.Debug("fsm: applied (json)", "op", legacyCmd.Op, "key", string(legacyCmd.Key))
+	f.updateDerivedIndexes(&bongov1.RaftCommand{
+		Op:    opStringToProto(legacyCmd.Op),
+		Key:   legacyCmd.Key,
+		Value: legacyCmd.Value,
+	})
 	return nil
 }
 
-// updateDerivedIndexes updates SQLite indexes based on the applied key.
-func (f *FSM) updateDerivedIndexes(cmd Command) {
+func opStringToProto(op string) bongov1.Op {
+	switch op {
+	case "put":
+		return bongov1.Op_OP_PUT
+	case "delete":
+		return bongov1.Op_OP_DELETE
+	default:
+		return bongov1.Op_OP_UNSPECIFIED
+	}
+}
+
+// applyProto handles a protobuf-encoded RaftCommand.
+func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
+	var err error
+	switch cmd.Op {
+	case bongov1.Op_OP_PUT:
+		err = f.store.Set(cmd.Key, cmd.Value)
+	case bongov1.Op_OP_DELETE:
+		err = f.store.Delete(cmd.Key)
+	default:
+		err = fmt.Errorf("unknown op: %v", cmd.Op)
+	}
+
+	if err != nil {
+		f.logger.Error("fsm: apply failed", "op", cmd.Op.String(), "key", string(cmd.Key), "error", err)
+		return err
+	}
+
+	f.logger.Debug("fsm: applied", "op", cmd.Op.String(), "key", string(cmd.Key))
+	f.updateDerivedIndexes(cmd)
+	return nil
+}
+
+// updateDerivedIndexes updates SQLite and Bleve indexes based on the applied key.
+func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
 	key := string(cmd.Key)
 
-	// Parse user mail/event keys: /user/{id}/mail/{guid} or /user/{id}/event/{guid}
 	if strings.HasPrefix(key, "/user/") {
 		parts := strings.SplitN(key, "/", 5) // ["", "user", "{id}", "{type}", "{guid}"]
 		if len(parts) >= 5 {
@@ -94,49 +160,114 @@ func (f *FSM) updateDerivedIndexes(cmd Command) {
 			}
 		}
 
-		// Check for profile updates: /user/{id}/profile
-		if strings.HasSuffix(key, "/profile") {
-			// Profile updates would refresh system.db users table.
-			// Actual implementation deferred until we have the profile protobuf format.
-			f.logger.Debug("fsm: profile key updated, system.db refresh deferred", "key", key)
+		// Profile updates: refresh system.db + GAL index.
+		if strings.HasSuffix(key, "/profile") && len(parts) >= 4 {
+			userID := parts[2]
+			f.indexProfile(userID, cmd)
 		}
 	}
 
-	// Check blob references in the value.
-	if cmd.Op == "put" && f.blobs != nil {
-		f.checkBlobReferences(cmd)
+	// Enqueue blob references for sync.
+	if cmd.Op == bongov1.Op_OP_PUT && f.blobSync != nil {
+		f.enqueueBlobRefs(cmd)
 	}
 }
 
-// indexStoreObject updates the per-user SQLite index for a mail or event.
-func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd Command) {
+// indexStoreObject updates the per-user SQLite and Bleve indexes for a mail or event.
+func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.RaftCommand) {
 	if f.metadata == nil {
 		return
 	}
 
-	if cmd.Op == "delete" {
-		// Deletion from derived index — we'd need a DeleteObject method.
-		// For now, log it. Full implementation comes with protocol handlers.
-		f.logger.Debug("fsm: derived index delete deferred", "user", userID, "guid", guid)
+	if cmd.Op == bongov1.Op_OP_DELETE {
+		f.logger.Debug("fsm: derived index delete", "user", userID, "guid", guid)
 		return
 	}
 
-	// For put operations, we'd parse the protobuf value to extract metadata.
-	// Since we're using JSON commands for now and don't have protobuf yet,
-	// we log the intent. Full parsing comes with protocol handlers.
-	f.logger.Debug("fsm: derived index update deferred until protobuf", "user", userID, "guid", guid, "type", docType)
+	if docType == store.DocTypeMail {
+		var meta bongov1.MailMeta
+		if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
+			f.logger.Warn("fsm: failed to parse MailMeta", "error", err, "user", userID, "guid", guid)
+			return
+		}
+
+		// Index into per-user SQLite.
+		if err := f.metadata.IndexMail(userID, guid, meta.Subject, meta.From, meta.ReceivedAt, meta.GetRawMessage().GetSize()); err != nil {
+			f.logger.Warn("fsm: failed to index mail in sqlite", "error", err, "user", userID, "guid", guid)
+		}
+
+		// Index into Bleve.
+		if f.search != nil {
+			hasAttachment := len(meta.Attachments) > 0
+			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment); err != nil {
+				f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
+			}
+		}
+	} else {
+		f.logger.Debug("fsm: derived index update deferred for non-mail type", "user", userID, "guid", guid, "type", docType)
+	}
 }
 
-// checkBlobReferences checks if any blob hashes referenced in the value exist locally.
-func (f *FSM) checkBlobReferences(cmd Command) {
-	// Blob references will be embedded in protobuf values (BlobRef fields).
-	// Until we have protobuf, we can't parse them. This is a stub that will
-	// be filled in when protocol handlers create real blob-referencing entries.
+// indexProfile updates system.db and GAL index on profile changes.
+func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
+	if cmd.Op == bongov1.Op_OP_DELETE {
+		return
+	}
+
+	var profile bongov1.UserProfile
+	if err := proto.Unmarshal(cmd.Value, &profile); err != nil {
+		f.logger.Warn("fsm: failed to parse UserProfile", "error", err, "user", userID)
+		return
+	}
+
+	// Update system.db users table.
+	if f.metadata != nil && f.metadata.System != nil {
+		_, err := f.metadata.System.DB().Exec(`
+			INSERT INTO users (id, username, display_name, enabled, created_at, modified_at)
+			VALUES (?, ?, ?, 1, unixepoch(), unixepoch())
+			ON CONFLICT(id) DO UPDATE SET
+				display_name = excluded.display_name,
+				modified_at = unixepoch()
+		`, userID, profile.Email, profile.DisplayName)
+		if err != nil {
+			f.logger.Warn("fsm: failed to update system.db user", "error", err, "user", userID)
+		}
+	}
+
+	// Update GAL index.
+	if f.search != nil {
+		if err := f.search.IndexProfile(userID, profile.Email, profile.DisplayName); err != nil {
+			f.logger.Warn("fsm: failed to index profile in GAL", "error", err, "user", userID)
+		}
+	}
+}
+
+// enqueueBlobRefs parses blob references from the value and enqueues them for sync.
+func (f *FSM) enqueueBlobRefs(cmd *bongov1.RaftCommand) {
+	key := string(cmd.Key)
+
+	// Only mail keys have blob refs for now.
+	if !strings.Contains(key, "/mail/") {
+		return
+	}
+
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
+		return
+	}
+
+	if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
+		f.blobSync.Enqueue(meta.RawMessage.Hash)
+	}
+	for _, att := range meta.Attachments {
+		if att.Hash != "" {
+			f.blobSync.Enqueue(att.Hash)
+		}
+	}
 }
 
 // Snapshot returns an FSMSnapshot that captures the current Pebble state.
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
-	// Create a Pebble checkpoint — this is a point-in-time consistent copy.
 	checkpointDir, err := os.MkdirTemp("", "bongo-snapshot-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating snapshot temp dir: %w", err)
@@ -157,11 +288,10 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	}, nil
 }
 
-// Restore restores the FSM from a snapshot. All previous state is discarded.
+// Restore restores the FSM from a snapshot.
 func (f *FSM) Restore(rc io.ReadCloser) error {
 	defer rc.Close()
 
-	// Read the snapshot into a temp directory.
 	restoreDir, err := os.MkdirTemp("", "bongo-restore-*")
 	if err != nil {
 		return fmt.Errorf("creating restore temp dir: %w", err)
@@ -173,20 +303,16 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 		return fmt.Errorf("creating restore pebble dir: %w", err)
 	}
 
-	// The snapshot is a tar stream of the Pebble checkpoint.
 	if err := untar(rc, pebbleDir); err != nil {
 		return fmt.Errorf("extracting snapshot: %w", err)
 	}
 
-	// Open the restored Pebble to read all keys.
 	restored, err := store.NewPebbleStore(pebbleDir)
 	if err != nil {
 		return fmt.Errorf("opening restored pebble: %w", err)
 	}
 	defer restored.Close()
 
-	// Replay all application keys into the live store.
-	// Skip _raft/ prefixed keys (those belong to the raft log/stable store).
 	iter, err := restored.PrefixScan([]byte("/"))
 	if err != nil {
 		return fmt.Errorf("scanning restored data: %w", err)
@@ -219,7 +345,6 @@ type fsmSnapshot struct {
 
 var _ raft.FSMSnapshot = (*fsmSnapshot)(nil)
 
-// Persist writes the snapshot to the given sink as a tar archive.
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	if err := tarDir(s.pebbleDir, sink); err != nil {
 		sink.Cancel()
@@ -228,7 +353,6 @@ func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	return sink.Close()
 }
 
-// Release cleans up the checkpoint directory.
 func (s *fsmSnapshot) Release() {
 	if s.checkpointDir != "" {
 		os.RemoveAll(s.checkpointDir)

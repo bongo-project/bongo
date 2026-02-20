@@ -1,12 +1,14 @@
 package cluster
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/hashicorp/raft"
+	"google.golang.org/protobuf/proto"
+
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // ErrNotLeader is returned when a write is attempted on a non-leader node.
@@ -18,9 +20,8 @@ type LeaderInfo struct {
 	ID      raft.ServerID
 }
 
-// ApplyCommand applies a command through Raft consensus.
-// Returns ErrNotLeader with leader info if this node is not the leader.
-func ApplyCommand(r *raft.Raft, cmd Command, timeout time.Duration) error {
+// ApplyCommand applies a protobuf command through Raft consensus.
+func ApplyCommand(r *raft.Raft, cmd *bongov1.RaftCommand, timeout time.Duration) error {
 	if r.State() != raft.Leader {
 		addr, id := r.LeaderWithID()
 		return &NotLeaderError{
@@ -29,7 +30,7 @@ func ApplyCommand(r *raft.Raft, cmd Command, timeout time.Duration) error {
 		}
 	}
 
-	data, err := json.Marshal(cmd)
+	data, err := proto.Marshal(cmd)
 	if err != nil {
 		return fmt.Errorf("encoding command: %w", err)
 	}

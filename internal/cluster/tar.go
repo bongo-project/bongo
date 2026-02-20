@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // tarDir writes the contents of dir as a tar archive to w.
@@ -67,7 +68,7 @@ func untar(r io.Reader, dir string) error {
 		target := filepath.Join(dir, filepath.Clean(header.Name))
 
 		// Prevent path traversal.
-		if !filepath.HasPrefix(target, dir) {
+		if !strings.HasPrefix(filepath.Clean(target)+string(os.PathSeparator), filepath.Clean(dir)+string(os.PathSeparator)) {
 			return fmt.Errorf("invalid tar path: %s", header.Name)
 		}
 
