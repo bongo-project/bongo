@@ -83,6 +83,12 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 	logger := slog.New(handler)
 
+	logger.Info("config loaded",
+		"mode", cfg.Agent.Mode,
+		"log_level", cfg.Telemetry.Log.Level,
+		"log_format", cfg.Telemetry.Log.Format,
+	)
+
 	// Create agent.
 	a, err := agent.NewAgent(cfg, logger)
 	if err != nil {
