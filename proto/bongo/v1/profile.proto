@@ -10,4 +10,6 @@ message UserProfile {
   bytes password_hash = 3;
   bytes totp_secret = 4;
   int64 quota_bytes = 5;
+  bool is_admin = 6;
+  bool disabled = 7;
 }

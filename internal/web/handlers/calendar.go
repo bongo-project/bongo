@@ -566,6 +566,32 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, "/calendar?flash="+strings.ReplaceAll(flash, " ", "+"), http.StatusSeeOther)
 }
 
+// MiniCalendar returns the mini calendar sidebar as an HTMX partial.
+func (h *CalendarHandler) MiniCalendar(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	year := now.Year()
+	month := int(now.Month())
+	day := now.Day()
+
+	if y := r.URL.Query().Get("year"); y != "" {
+		if v, err := strconv.Atoi(y); err == nil {
+			year = v
+		}
+	}
+	if m := r.URL.Query().Get("month"); m != "" {
+		if v, err := strconv.Atoi(m); err == nil && v >= 1 && v <= 12 {
+			month = v
+		}
+	}
+	if d := r.URL.Query().Get("day"); d != "" {
+		if v, err := strconv.Atoi(d); err == nil && v >= 1 && v <= 31 {
+			day = v
+		}
+	}
+
+	templ.Handler(templates.MiniCalendar(year, month, day)).ServeHTTP(w, r)
+}
+
 // SearchEvents searches events by query string.
 func (h *CalendarHandler) SearchEvents(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())

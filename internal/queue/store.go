@@ -287,6 +287,82 @@ func (qs *QueueStore) RetryNow(id string) error {
 	return qs.applier.ApplyCommand(putCmd, 5*time.Second)
 }
 
+// ListPending returns up to limit pending messages.
+func (qs *QueueStore) ListPending(limit int) ([]*bongov1.OutboundMessage, error) {
+	iter, err := qs.store.PrefixScan([]byte(pendingPrefix))
+	if err != nil {
+		return nil, fmt.Errorf("scanning pending: %w", err)
+	}
+	defer iter.Close()
+
+	var msgs []*bongov1.OutboundMessage
+	for iter.Next() {
+		if len(msgs) >= limit {
+			break
+		}
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var msg bongov1.OutboundMessage
+		if err := proto.Unmarshal(val, &msg); err != nil {
+			continue
+		}
+		msgs = append(msgs, &msg)
+	}
+	return msgs, nil
+}
+
+// ListBounced returns up to limit bounced messages.
+func (qs *QueueStore) ListBounced(limit int) ([]*bongov1.OutboundMessage, error) {
+	iter, err := qs.store.PrefixScan([]byte(bouncedPrefix))
+	if err != nil {
+		return nil, fmt.Errorf("scanning bounced: %w", err)
+	}
+	defer iter.Close()
+
+	var msgs []*bongov1.OutboundMessage
+	for iter.Next() {
+		if len(msgs) >= limit {
+			break
+		}
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var msg bongov1.OutboundMessage
+		if err := proto.Unmarshal(val, &msg); err != nil {
+			continue
+		}
+		msgs = append(msgs, &msg)
+	}
+	return msgs, nil
+}
+
+// FlushQueue resets next_retry_at to now for all pending messages.
+func (qs *QueueStore) FlushQueue() (int, error) {
+	pending, err := qs.ListPending(1000)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, msg := range pending {
+		if err := qs.RetryNow(msg.Id); err == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+
+// DeleteBounced removes a bounced message by ID.
+func (qs *QueueStore) DeleteBounced(id string) error {
+	cmd := &bongov1.RaftCommand{
+		Op:  bongov1.Op_OP_DELETE,
+		Key: bouncedKey(id),
+	}
+	return qs.applier.ApplyCommand(cmd, 5*time.Second)
+}
+
 // findPendingKey scans the pending prefix to find the full key for a message ID.
 func (qs *QueueStore) findPendingKey(id string) ([]byte, error) {
 	iter, err := qs.store.PrefixScan([]byte(pendingPrefix))

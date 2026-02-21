@@ -28,6 +28,8 @@ type UserProfile struct {
 	PasswordHash  []byte                 `protobuf:"bytes,3,opt,name=password_hash,json=passwordHash,proto3" json:"password_hash,omitempty"`
 	TotpSecret    []byte                 `protobuf:"bytes,4,opt,name=totp_secret,json=totpSecret,proto3" json:"totp_secret,omitempty"`
 	QuotaBytes    int64                  `protobuf:"varint,5,opt,name=quota_bytes,json=quotaBytes,proto3" json:"quota_bytes,omitempty"`
+	IsAdmin       bool                   `protobuf:"varint,6,opt,name=is_admin,json=isAdmin,proto3" json:"is_admin,omitempty"`
+	Disabled      bool                   `protobuf:"varint,7,opt,name=disabled,proto3" json:"disabled,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -97,11 +99,25 @@ func (x *UserProfile) GetQuotaBytes() int64 {
 	return 0
 }
 
+func (x *UserProfile) GetIsAdmin() bool {
+	if x != nil {
+		return x.IsAdmin
+	}
+	return false
+}
+
+func (x *UserProfile) GetDisabled() bool {
+	if x != nil {
+		return x.Disabled
+	}
+	return false
+}
+
 var File_proto_bongo_v1_profile_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_profile_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/bongo/v1/profile.proto\x12\bbongo.v1\"\xad\x01\n" +
+	"\x1cproto/bongo/v1/profile.proto\x12\bbongo.v1\"\xe4\x01\n" +
 	"\vUserProfile\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -109,7 +125,9 @@ const file_proto_bongo_v1_profile_proto_rawDesc = "" +
 	"\vtotp_secret\x18\x04 \x01(\fR\n" +
 	"totpSecret\x12\x1f\n" +
 	"\vquota_bytes\x18\x05 \x01(\x03R\n" +
-	"quotaBytesB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"quotaBytes\x12\x19\n" +
+	"\bis_admin\x18\x06 \x01(\bR\aisAdmin\x12\x1a\n" +
+	"\bdisabled\x18\a \x01(\bR\bdisabledB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_profile_proto_rawDescOnce sync.Once

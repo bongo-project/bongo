@@ -138,6 +138,15 @@ func (s *PebbleStore) DB() *pebble.DB {
 	return s.db
 }
 
+// EstimateDiskUsage returns an estimate of the disk usage of the Pebble database.
+func (s *PebbleStore) EstimateDiskUsage() int64 {
+	est, err := s.db.EstimateDiskUsage([]byte{0x00}, []byte{0xFF})
+	if err != nil {
+		return 0
+	}
+	return int64(est)
+}
+
 // Close closes the Pebble database.
 func (s *PebbleStore) Close() error {
 	if err := s.db.Close(); err != nil {

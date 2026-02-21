@@ -169,6 +169,33 @@ func (bs *BlobStore) List() ([]string, error) {
 	return hashes, nil
 }
 
+// Stats returns the total number of blobs and their combined size.
+func (bs *BlobStore) Stats() (count int, totalSize int64) {
+	entries, err := os.ReadDir(bs.blobDir)
+	if err != nil {
+		return 0, 0
+	}
+	for _, prefixEntry := range entries {
+		if !prefixEntry.IsDir() || prefixEntry.Name() == "tmp" {
+			continue
+		}
+		prefixDir := filepath.Join(bs.blobDir, prefixEntry.Name())
+		blobEntries, err := os.ReadDir(prefixDir)
+		if err != nil {
+			continue
+		}
+		for _, blobEntry := range blobEntries {
+			if !blobEntry.IsDir() && len(blobEntry.Name()) == 64 {
+				count++
+				if info, err := blobEntry.Info(); err == nil {
+					totalSize += info.Size()
+				}
+			}
+		}
+	}
+	return
+}
+
 func (bs *BlobStore) blobPath(hash string) string {
 	if len(hash) < 2 {
 		return filepath.Join(bs.blobDir, hash)

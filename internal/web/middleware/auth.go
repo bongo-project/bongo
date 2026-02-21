@@ -15,28 +15,31 @@ type contextKey string
 const (
 	userIDKey contextKey = "userID"
 	emailKey  contextKey = "email"
+	adminKey  contextKey = "isAdmin"
 
 	cookieName = "bongo_session"
 )
 
 // SessionData represents the signed session cookie payload.
 type SessionData struct {
-	UserID string `json:"uid"`
-	Email  string `json:"email"`
-	Exp    int64  `json:"exp"`
+	UserID  string `json:"uid"`
+	Email   string `json:"email"`
+	Exp     int64  `json:"exp"`
+	IsAdmin bool   `json:"adm,omitempty"`
 }
 
 // CreateSessionCookie creates a signed session cookie.
-func CreateSessionCookie(secret []byte, userID, email string, remember bool) *http.Cookie {
+func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin bool) *http.Cookie {
 	expiry := 24 * time.Hour
 	if remember {
 		expiry = 30 * 24 * time.Hour
 	}
 
 	data := SessionData{
-		UserID: userID,
-		Email:  email,
-		Exp:    time.Now().Add(expiry).Unix(),
+		UserID:  userID,
+		Email:   email,
+		Exp:     time.Now().Add(expiry).Unix(),
+		IsAdmin: isAdmin,
 	}
 
 	payload, _ := json.Marshal(data)
@@ -89,9 +92,30 @@ func RequireAuth(secret []byte) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), userIDKey, data.UserID)
 			ctx = context.WithValue(ctx, emailKey, data.Email)
+			ctx = context.WithValue(ctx, adminKey, data.IsAdmin)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// RequireAdmin is middleware that checks the admin flag in the session.
+// Must be used after RequireAuth. Returns 403 for non-admin users.
+func RequireAdmin(secret []byte) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !AdminFromContext(r.Context()) {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// AdminFromContext returns whether the current user is an admin.
+func AdminFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(adminKey).(bool)
+	return v
 }
 
 // UserFromContext returns the userID and email from the request context.

@@ -1,6 +1,10 @@
 package templates
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/bongo-go/bongo-go/internal/web/middleware"
+)
 
 // MailboxInfo holds data needed to render a sidebar mailbox link.
 type MailboxInfo struct {
@@ -87,6 +91,13 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 					<span>Calendar</span>
 				</a>
 			</li>
+			if middleware.AdminFromContext(ctx) {
+				<li>
+					<a href="/admin">
+						<span>Admin</span>
+					</a>
+				</li>
+			}
 		</ul>
 	</nav>
 }

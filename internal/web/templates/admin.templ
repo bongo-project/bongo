@@ -1,0 +1,648 @@
+package templates
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+)
+
+// SystemHealth holds data for the admin dashboard.
+type SystemHealth struct {
+	RaftState   string
+	LeaderAddr  string
+	NodeCount   int
+	Uptime      time.Duration
+	PebbleSize  int64
+	BlobCount   int
+	BlobSize    int64
+	UserCount   int
+	MessageRate int
+}
+
+// AdminUserInfo holds data for the user management list.
+type AdminUserInfo struct {
+	UserID       string
+	Email        string
+	DisplayName  string
+	IsAdmin      bool
+	Disabled     bool
+	QuotaBytes   int64
+	UsedBytes    int64
+	MessageCount int
+}
+
+// DomainInfo holds data for the domain management list.
+type DomainInfo struct {
+	Name    string
+	Enabled bool
+	HasMX   bool
+}
+
+// AliasInfo holds data for the alias management list.
+type AliasInfo struct {
+	Address    string
+	TargetUser string
+}
+
+// NodeStatus holds data for the cluster overview.
+type NodeStatus struct {
+	Name     string
+	Address  string
+	Role     string
+	Status   string
+	RaftAddr string
+	HTTPAddr string
+}
+
+templ AdminLayout(title, email, active string) {
+	@LayoutWithContent(title, email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@AdminSidebar(active)
+		</aside>
+		<main class="main-content" id="main-content">
+			{ children... }
+		</main>
+	}
+}
+
+templ AdminSidebar(active string) {
+	<nav>
+		<ul class="mailbox-list">
+			<li><a href="/mail/INBOX">Back to Mail</a></li>
+		</ul>
+		<hr style="margin:0.5rem 0"/>
+		<ul class="mailbox-list">
+			<li>
+				<a href="/admin" if active == "dashboard" { class="active" }>
+					<span>Dashboard</span>
+				</a>
+			</li>
+			<li>
+				<a href="/admin/users" if active == "users" { class="active" }>
+					<span>Users</span>
+				</a>
+			</li>
+			<li>
+				<a href="/admin/domains" if active == "domains" { class="active" }>
+					<span>Domains</span>
+				</a>
+			</li>
+			<li>
+				<a href="/admin/aliases" if active == "aliases" { class="active" }>
+					<span>Aliases</span>
+				</a>
+			</li>
+			<li>
+				<a href="/admin/queue" if active == "queue" { class="active" }>
+					<span>Queue</span>
+				</a>
+			</li>
+			<li>
+				<a href="/admin/cluster" if active == "cluster" { class="active" }>
+					<span>Cluster</span>
+				</a>
+			</li>
+			<li>
+				<a href="/admin/logs" if active == "logs" { class="active" }>
+					<span>Logs</span>
+				</a>
+			</li>
+		</ul>
+	</nav>
+}
+
+templ AdminDashboard(health SystemHealth, email string) {
+	@AdminLayout("Admin Dashboard", email, "dashboard") {
+		<h2>System Dashboard</h2>
+		<div class="admin-grid">
+			<article>
+				<header>Raft Status</header>
+				<p>
+					<strong>State:</strong>
+					<span class={ "badge", raftBadgeClass(health.RaftState) }>{ health.RaftState }</span>
+				</p>
+				if health.LeaderAddr != "" {
+					<p><strong>Leader:</strong> { health.LeaderAddr }</p>
+				}
+				<p><strong>Nodes:</strong> { fmt.Sprint(health.NodeCount) }</p>
+			</article>
+			<article>
+				<header>Uptime</header>
+				<p class="stat-value">{ formatDuration(health.Uptime) }</p>
+			</article>
+			<article>
+				<header>Storage</header>
+				<p><strong>Pebble:</strong> { formatBytes(health.PebbleSize) }</p>
+				<p><strong>Blobs:</strong> { fmt.Sprint(health.BlobCount) } ({ formatBytes(health.BlobSize) })</p>
+			</article>
+			<article>
+				<header>Users</header>
+				<p class="stat-value">{ fmt.Sprint(health.UserCount) }</p>
+			</article>
+		</div>
+	}
+}
+
+templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
+	@AdminLayout("Users", email, "users") {
+		if flash != "" {
+			@FlashMessage(flash, "success")
+		}
+		<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+			<h2 style="margin:0">Users</h2>
+			<a href="/admin/users/new" role="button" class="outline">Create User</a>
+		</div>
+		<form method="get" action="/admin/users" style="margin-bottom:1rem">
+			<input type="search" name="q" placeholder="Search users..." value={ query }/>
+		</form>
+		<table>
+			<thead>
+				<tr>
+					<th>Email</th>
+					<th>Name</th>
+					<th>Role</th>
+					<th>Quota</th>
+					<th>Status</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, u := range users {
+					<tr>
+						<td><a href={ templ.SafeURL("/admin/users/" + u.UserID) }>{ u.Email }</a></td>
+						<td>{ u.DisplayName }</td>
+						<td>
+							if u.IsAdmin {
+								<span class="badge badge-admin">admin</span>
+							} else {
+								user
+							}
+						</td>
+						<td>
+							{ formatBytes(u.UsedBytes) }
+							if u.QuotaBytes > 0 {
+								/ { formatBytes(u.QuotaBytes) }
+							}
+						</td>
+						<td>
+							if u.Disabled {
+								<span class="badge badge-disabled">disabled</span>
+							} else {
+								<span class="badge badge-active">active</span>
+							}
+						</td>
+						<td>
+							<a href={ templ.SafeURL("/admin/users/" + u.UserID) } class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem" role="button">Edit</a>
+						</td>
+					</tr>
+				}
+				if len(users) == 0 {
+					<tr><td colspan="6">No users found.</td></tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ AdminUserForm(user *AdminUserInfo, isNew bool, email, flash string) {
+	@AdminLayout("User", email, "users") {
+		if flash != "" {
+			@FlashMessage(flash, "success")
+		}
+		if isNew {
+			<h2>Create User</h2>
+		} else {
+			<h2>Edit User: { user.Email }</h2>
+		}
+		<form method="post" action={ templ.SafeURL(userFormAction(user, isNew)) }>
+			if isNew {
+				<label for="user_email">Email</label>
+				<input type="email" name="email" id="user_email" required/>
+			}
+			<label for="display_name">Display Name</label>
+			<input type="text" name="display_name" id="display_name" value={ userDisplayName(user) }/>
+			if isNew {
+				<label for="password">Password</label>
+				<input type="password" name="password" id="password" required minlength="4"/>
+			}
+			<label for="quota_bytes">Quota (bytes, 0 = unlimited)</label>
+			<input type="number" name="quota_bytes" id="quota_bytes" value={ fmt.Sprint(userQuota(user)) } min="0"/>
+			<fieldset>
+				<label>
+					<input type="checkbox" name="is_admin" value="1" checked?={ user != nil && user.IsAdmin }/>
+					Administrator
+				</label>
+			</fieldset>
+			<div>
+				<button type="submit">
+					if isNew {
+						Create
+					} else {
+						Save
+					}
+				</button>
+				<a href="/admin/users" role="button" class="outline secondary">Cancel</a>
+			</div>
+		</form>
+		if !isNew && user != nil {
+			<hr/>
+			<h3>Actions</h3>
+			<div style="display:flex;gap:1rem">
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/toggle-disabled", user.UserID)) }>
+					<button type="submit" class={ disableButtonClass(user.Disabled) }>
+						if user.Disabled {
+							Enable User
+						} else {
+							Disable User
+						}
+					</button>
+				</form>
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
+					<button type="submit" class="outline secondary">Reset Password</button>
+				</form>
+			</div>
+		}
+	}
+}
+
+templ AdminDomainList(domains []DomainInfo, email, flash string) {
+	@AdminLayout("Domains", email, "domains") {
+		if flash != "" {
+			@FlashMessage(flash, "success")
+		}
+		<h2>Domains</h2>
+		<form method="post" action="/admin/domains" style="display:flex;gap:0.5rem;margin-bottom:1rem">
+			<input type="text" name="domain" placeholder="example.com" required style="margin:0"/>
+			<button type="submit">Add Domain</button>
+		</form>
+		<table>
+			<thead>
+				<tr>
+					<th>Domain</th>
+					<th>Enabled</th>
+					<th>MX Records</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, d := range domains {
+					<tr>
+						<td>{ d.Name }</td>
+						<td>
+							if d.Enabled {
+								<span class="badge badge-active">enabled</span>
+							} else {
+								<span class="badge badge-disabled">disabled</span>
+							}
+						</td>
+						<td>
+							if d.HasMX {
+								<span class="badge badge-active">found</span>
+							} else {
+								<span class="badge badge-disabled">none</span>
+							}
+						</td>
+						<td style="display:flex;gap:0.5rem">
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
+								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem">
+									if d.Enabled {
+										Disable
+									} else {
+										Enable
+									}
+								</button>
+							</form>
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/delete", d.Name)) }>
+								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Delete</button>
+							</form>
+						</td>
+					</tr>
+				}
+				if len(domains) == 0 {
+					<tr><td colspan="4">No domains configured.</td></tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
+	@AdminLayout("Aliases", email, "aliases") {
+		if flash != "" {
+			@FlashMessage(flash, "success")
+		}
+		<h2>Aliases</h2>
+		<form method="post" action="/admin/aliases" style="display:flex;gap:0.5rem;margin-bottom:1rem;align-items:end">
+			<div>
+				<label for="alias_address">Alias Address</label>
+				<input type="email" name="address" id="alias_address" placeholder="info@example.com" required style="margin:0"/>
+			</div>
+			<div>
+				<label for="target_user">Target User</label>
+				<select name="target_user" id="target_user" required style="margin:0">
+					for _, u := range users {
+						<option value={ u }>{ u }</option>
+					}
+				</select>
+			</div>
+			<button type="submit" style="margin-bottom:0">Add</button>
+		</form>
+		<table>
+			<thead>
+				<tr>
+					<th>Alias Address</th>
+					<th>Target User</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, a := range aliases {
+					<tr>
+						<td>{ a.Address }</td>
+						<td>{ a.TargetUser }</td>
+						<td>
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/aliases/%s/delete", a.Address)) }>
+								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Delete</button>
+							</form>
+						</td>
+					</tr>
+				}
+				if len(aliases) == 0 {
+					<tr><td colspan="3">No aliases configured.</td></tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1.OutboundMessage, email string) {
+	@AdminLayout("Queue", email, "queue") {
+		<h2>Message Queue</h2>
+		<div class="admin-grid">
+			<article>
+				<header>Pending</header>
+				<p class="stat-value">{ fmt.Sprint(stats.PendingCount) }</p>
+			</article>
+			<article>
+				<header>Failed / Bounced</header>
+				<p class="stat-value">{ fmt.Sprint(stats.FailedCount) }</p>
+			</article>
+			<article>
+				<header>Oldest Pending</header>
+				<p class="stat-value">{ formatSeconds(stats.OldestPendingSeconds) }</p>
+			</article>
+		</div>
+		<div style="margin-bottom:1rem">
+			<form method="post" action="/admin/queue/flush" style="display:inline">
+				<button type="submit" class="outline">Flush Queue (retry all now)</button>
+			</form>
+		</div>
+		if len(pending) > 0 {
+			<h3>Pending Messages</h3>
+			<table>
+				<thead>
+					<tr>
+						<th>Sender</th>
+						<th>Recipients</th>
+						<th>Attempts</th>
+						<th>Created</th>
+						<th>Next Retry</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, msg := range pending {
+						<tr>
+							<td>{ msg.SenderEmail }</td>
+							<td>{ strings.Join(msg.Recipients, ", ") }</td>
+							<td>{ fmt.Sprint(msg.AttemptCount) }</td>
+							<td>{ formatUnix(msg.CreatedAt) }</td>
+							<td>{ formatUnix(msg.NextRetryAt) }</td>
+							<td style="display:flex;gap:0.5rem">
+								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/queue/%s/retry", msg.Id)) }>
+									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem">Retry</button>
+								</form>
+								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/queue/%s/drop", msg.Id)) }>
+									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Drop</button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+		if len(bounced) > 0 {
+			<h3>Bounced Messages</h3>
+			<table>
+				<thead>
+					<tr>
+						<th>Sender</th>
+						<th>Recipients</th>
+						<th>Reason</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, msg := range bounced {
+						<tr>
+							<td>{ msg.SenderEmail }</td>
+							<td>{ strings.Join(msg.Recipients, ", ") }</td>
+							<td>{ msg.StatusReason }</td>
+							<td>
+								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/queue/%s/drop", msg.Id)) }>
+									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Drop</button>
+								</form>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		}
+	}
+}
+
+templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
+	@AdminLayout("Cluster", email, "cluster") {
+		<h2>Cluster Overview</h2>
+		<p><strong>Raft State:</strong> <span class={ "badge", raftBadgeClass(raftState) }>{ raftState }</span></p>
+		<table>
+			<thead>
+				<tr>
+					<th>Name</th>
+					<th>Address</th>
+					<th>Role</th>
+					<th>Status</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, n := range nodes {
+					<tr>
+						<td>{ n.Name }</td>
+						<td>{ n.Address }</td>
+						<td>{ n.Role }</td>
+						<td>
+							<span class={ "badge", statusBadgeClass(n.Status) }>{ n.Status }</span>
+						</td>
+					</tr>
+				}
+				if len(nodes) == 0 {
+					<tr><td colspan="4">No cluster members found.</td></tr>
+				}
+			</tbody>
+		</table>
+	}
+}
+
+templ AdminLogViewer(email string) {
+	@AdminLayout("Logs", email, "logs") {
+		<h2>Log Viewer</h2>
+		<div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+			<select id="log-level" style="width:auto">
+				<option value="">All Levels</option>
+				<option value="debug">Debug</option>
+				<option value="info" selected>Info</option>
+				<option value="warn">Warn</option>
+				<option value="error">Error</option>
+			</select>
+			<select id="log-component" style="width:auto">
+				<option value="">All Components</option>
+				<option value="smtp">SMTP</option>
+				<option value="imap">IMAP</option>
+				<option value="raft">Raft</option>
+				<option value="web">Web</option>
+				<option value="queue">Queue</option>
+			</select>
+			<button type="button" id="log-connect" class="outline" onclick="connectLogs()">Connect</button>
+			<button type="button" id="log-clear" class="outline secondary" onclick="clearLogs()">Clear</button>
+		</div>
+		<div id="log-output" class="log-output" style="height:500px;overflow-y:auto;background:var(--pico-background-color);border:1px solid var(--pico-muted-border-color);border-radius:var(--pico-border-radius);padding:0.5rem;font-family:monospace;font-size:0.85rem;white-space:pre-wrap">
+			Connecting...
+		</div>
+		<script>
+			var logSource = null;
+			function connectLogs() {
+				if (logSource) logSource.close();
+				var level = document.getElementById('log-level').value;
+				var component = document.getElementById('log-component').value;
+				var url = '/admin/logs/stream?level=' + level + '&component=' + component;
+				logSource = new EventSource(url);
+				var output = document.getElementById('log-output');
+				output.textContent = '';
+				logSource.onmessage = function(e) {
+					var el = document.createElement('div');
+					el.textContent = e.data;
+					output.appendChild(el);
+					output.scrollTop = output.scrollHeight;
+				};
+				logSource.onerror = function() {
+					var el = document.createElement('div');
+					el.textContent = '[connection lost]';
+					el.style.color = 'var(--pico-del-color)';
+					output.appendChild(el);
+				};
+			}
+			function clearLogs() {
+				document.getElementById('log-output').textContent = '';
+			}
+			connectLogs();
+		</script>
+	}
+}
+
+// Helper functions
+
+func raftBadgeClass(state string) string {
+	switch strings.ToLower(state) {
+	case "leader":
+		return "badge-active"
+	case "follower":
+		return "badge-admin"
+	default:
+		return "badge-disabled"
+	}
+}
+
+func statusBadgeClass(status string) string {
+	switch strings.ToLower(status) {
+	case "alive":
+		return "badge-active"
+	case "suspect":
+		return "badge-admin"
+	default:
+		return "badge-disabled"
+	}
+}
+
+func formatDuration(d time.Duration) string {
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
+	if hours >= 24 {
+		days := hours / 24
+		hours = hours % 24
+		return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+	}
+	return fmt.Sprintf("%dh %dm", hours, minutes)
+}
+
+func formatBytes(b int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case b >= GB:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(GB))
+	case b >= MB:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(MB))
+	case b >= KB:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", b)
+	}
+}
+
+func formatSeconds(s int64) string {
+	if s <= 0 {
+		return "-"
+	}
+	d := time.Duration(s) * time.Second
+	return formatDuration(d)
+}
+
+func formatUnix(ts int64) string {
+	if ts <= 0 {
+		return "-"
+	}
+	return time.Unix(ts, 0).Format("2006-01-02 15:04")
+}
+
+func userFormAction(u *AdminUserInfo, isNew bool) string {
+	if isNew {
+		return "/admin/users"
+	}
+	return fmt.Sprintf("/admin/users/%s", u.UserID)
+}
+
+func userDisplayName(u *AdminUserInfo) string {
+	if u == nil {
+		return ""
+	}
+	return u.DisplayName
+}
+
+func userQuota(u *AdminUserInfo) int64 {
+	if u == nil {
+		return 0
+	}
+	return u.QuotaBytes
+}
+
+func disableButtonClass(disabled bool) string {
+	if disabled {
+		return "outline"
+	}
+	return "outline secondary"
+}

@@ -133,7 +133,7 @@ browser notifications (configurable 5/10/15/30/60 min before). Shared calendar
 display (read-only). Free/busy lookup for scheduling. Integration tests for views,
 recurrence, drag-drop, sharing.
 
-## Sprint 11: Admin Panel (Hawkeye)
+## Sprint 11: Admin Panel (Hawkeye) ← CURRENT
 Replicate the original Bongo "Hawkeye" admin interface. Admin role flag on
 UserProfile protobuf. Admin middleware (require admin flag). Dashboard: system
 health (Raft leader status, node count, uptime), storage usage (Pebble size, blob

@@ -24,6 +24,8 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/bongo-go/bongo-go/internal/auth"
 	bongocaldav "github.com/bongo-go/bongo-go/internal/caldav"
 	bongocarddav "github.com/bongo-go/bongo-go/internal/carddav"
@@ -271,6 +273,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Auth routes (public).
 	authH := handlers.NewAuthHandler(a.Auth, sessionSecret)
+	authH.SetProfileLoader(a)
 	r.Get("/login", authH.LoginPage)
 	r.Post("/login", authH.Login)
 	r.Post("/logout", authH.Logout)
@@ -304,6 +307,46 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Redirect root to inbox.
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
+	})
+
+	// Admin routes (require auth + admin).
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireAuth(sessionSecret))
+		r.Use(middleware.RequireAdmin(sessionSecret))
+
+		adminH := handlers.NewAdminHandler(a.Store, a.Blobs, a.Metadata, a, a.logger)
+		if a.QueueStore != nil {
+			adminH.SetQueueStore(a.QueueStore)
+		}
+		if a.Gossip != nil {
+			adminH.SetGossip(a.Gossip)
+		}
+		if a.Raft != nil {
+			adminH.SetRaftState(&raftStateAdapter{raft: a.Raft})
+		}
+
+		r.Get("/admin", adminH.Dashboard)
+		r.Get("/admin/users", adminH.ListUsers)
+		r.Get("/admin/users/new", adminH.NewUserForm)
+		r.Post("/admin/users", adminH.CreateUser)
+		r.Get("/admin/users/{userID}", adminH.ShowUser)
+		r.Post("/admin/users/{userID}", adminH.UpdateUser)
+		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
+		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
+		r.Get("/admin/domains", adminH.ListDomains)
+		r.Post("/admin/domains", adminH.CreateDomain)
+		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)
+		r.Post("/admin/domains/{domain}/delete", adminH.DeleteDomain)
+		r.Get("/admin/aliases", adminH.ListAliases)
+		r.Post("/admin/aliases", adminH.CreateAlias)
+		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)
+		r.Get("/admin/queue", adminH.QueueDashboard)
+		r.Post("/admin/queue/{id}/retry", adminH.RetryMessage)
+		r.Post("/admin/queue/{id}/drop", adminH.DropMessage)
+		r.Post("/admin/queue/flush", adminH.FlushQueue)
+		r.Get("/admin/cluster", adminH.ClusterOverview)
+		r.Get("/admin/logs", adminH.LogViewer)
+		r.Get("/admin/logs/stream", adminH.LogStream)
 	})
 
 	// Protected routes.
@@ -376,6 +419,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Events != nil && a.Calendars != nil {
 			calendarH := handlers.NewCalendarHandler(a.Events, a.Calendars, a.Search)
 			r.Get("/calendar", calendarH.CalendarIndex)
+			r.Get("/calendar/mini", calendarH.MiniCalendar)
 			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
 			r.Get("/calendar/event/new", calendarH.NewEvent)
 			r.Post("/calendar/event", calendarH.CreateEvent)
@@ -613,10 +657,17 @@ func (a *Agent) createDevUser() error {
 	if err != nil {
 		return err
 	}
+
+	// Set admin flag on the dev user profile.
+	if err := a.setUserAdmin(userID, true); err != nil {
+		a.logger.Warn("dev mode: failed to set admin flag", "error", err)
+	}
+
 	a.logger.Info("dev mode: test user created",
 		"email", "admin@localhost",
 		"password", "admin",
 		"user_id", userID,
+		"is_admin", true,
 	)
 
 	// Create default IMAP mailboxes for the dev user.
@@ -627,6 +678,33 @@ func (a *Agent) createDevUser() error {
 	}
 
 	return nil
+}
+
+// setUserAdmin updates the is_admin flag on a user's profile.
+func (a *Agent) setUserAdmin(userID string, isAdmin bool) error {
+	key := []byte(fmt.Sprintf("/user/%s/profile", userID))
+	data, err := a.Store.Get(key)
+	if err != nil {
+		return fmt.Errorf("loading profile: %w", err)
+	}
+
+	var profile bongov1.UserProfile
+	if err := proto.Unmarshal(data, &profile); err != nil {
+		return fmt.Errorf("parsing profile: %w", err)
+	}
+
+	profile.IsAdmin = isAdmin
+	profileBytes, err := proto.Marshal(&profile)
+	if err != nil {
+		return fmt.Errorf("marshaling profile: %w", err)
+	}
+
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   key,
+		Value: profileBytes,
+	}
+	return a.ApplyCommand(cmd, 5*time.Second)
 }
 
 // NotifyNewMail implements the MailboxNotifier interface for the FSM.
@@ -803,6 +881,20 @@ func (a *Agent) Shutdown() error {
 	}
 	a.logger.Info("bongo-go stopped")
 	return nil
+}
+
+// raftStateAdapter wraps a RaftNode to implement handlers.RaftStateGetter.
+type raftStateAdapter struct {
+	raft *cluster.RaftNode
+}
+
+func (r *raftStateAdapter) State() string {
+	return r.raft.Raft.State().String()
+}
+
+func (r *raftStateAdapter) LeaderAddr() string {
+	_, id := r.raft.Raft.LeaderWithID()
+	return string(id)
 }
 
 // carddavHTTPHandler wraps a CardDAV backend with HTTP basic auth.
