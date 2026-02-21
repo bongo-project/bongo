@@ -250,6 +250,85 @@ func (sm *SearchManager) SearchContacts(userID, query string, limit int) ([]Cont
 	return results, nil
 }
 
+// EventDocument is the document structure indexed in Bleve for event search.
+type EventDocument struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Location    string `json:"location"`
+	StartTime   int64  `json:"start_time"`
+	EndTime     int64  `json:"end_time"`
+}
+
+// EventSearchResult represents a single event search hit.
+type EventSearchResult struct {
+	GUID  string
+	Title string
+	Score float64
+}
+
+// IndexEvent indexes a calendar event for a user.
+func (sm *SearchManager) IndexEvent(userID, guid, title, description, location string, startTime, endTime int64) error {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return err
+	}
+
+	doc := EventDocument{
+		Title:       title,
+		Description: description,
+		Location:    location,
+		StartTime:   startTime,
+		EndTime:     endTime,
+	}
+	return idx.Index("event:"+guid, doc)
+}
+
+// DeleteEventIndex removes an event from the user's search index.
+func (sm *SearchManager) DeleteEventIndex(userID, guid string) error {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.Delete("event:" + guid)
+}
+
+// SearchEvents searches for events in a user's index.
+func (sm *SearchManager) SearchEvents(userID, query string, limit int) ([]EventSearchResult, error) {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	q := bleve.NewQueryStringQuery(query)
+	searchReq := bleve.NewSearchRequestOptions(q, limit, 0, false)
+	searchReq.Fields = []string{"title"}
+
+	result, err := idx.Search(searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("bleve event search: %w", err)
+	}
+
+	var results []EventSearchResult
+	for _, hit := range result.Hits {
+		if len(hit.ID) < 6 || hit.ID[:6] != "event:" {
+			continue
+		}
+		r := EventSearchResult{
+			GUID:  hit.ID[6:],
+			Score: hit.Score,
+		}
+		if v, ok := hit.Fields["title"].(string); ok {
+			r.Title = v
+		}
+		results = append(results, r)
+	}
+	return results, nil
+}
+
 // SearchWithRequest performs a search using a raw Bleve SearchRequest.
 // This allows callers to build complex queries (boolean, date range, etc.).
 func (sm *SearchManager) SearchWithRequest(userID string, req *bleve.SearchRequest) (*bleve.SearchResult, error) {
@@ -373,6 +452,20 @@ func mailIndexMapping() mapping.IndexMapping {
 	mailMapping.AddFieldMappingsAt("email", contactEmailField)
 	mailMapping.AddFieldMappingsAt("phone", contactPhoneField)
 	mailMapping.AddFieldMappingsAt("company", contactCompanyField)
+
+	// Event fields (shared index, event docs use "event:" prefix for ID).
+	eventTitleField := bleve.NewTextFieldMapping()
+	eventTitleField.Store = true
+	eventDescField := bleve.NewTextFieldMapping()
+	eventLocationField := bleve.NewTextFieldMapping()
+	eventStartField := bleve.NewNumericFieldMapping()
+	eventEndField := bleve.NewNumericFieldMapping()
+
+	mailMapping.AddFieldMappingsAt("title", eventTitleField)
+	mailMapping.AddFieldMappingsAt("description", eventDescField)
+	mailMapping.AddFieldMappingsAt("location", eventLocationField)
+	mailMapping.AddFieldMappingsAt("start_time", eventStartField)
+	mailMapping.AddFieldMappingsAt("end_time", eventEndField)
 
 	m.DefaultMapping = mailMapping
 	return m

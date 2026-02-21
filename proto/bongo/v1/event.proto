@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message Event {
+  string guid = 1;
+  string calendar_id = 2;
+  string title = 3;
+  string description = 4;
+  string location = 5;
+  int64 start_time = 6;
+  int64 end_time = 7;
+  bool all_day = 8;
+  string rrule = 9;
+  string timezone = 10;
+  bytes ical_raw = 11;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+}

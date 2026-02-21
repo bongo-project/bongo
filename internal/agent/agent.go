@@ -21,9 +21,11 @@ import (
 
 	"github.com/hashicorp/raft"
 
+	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	bongocaldav "github.com/bongo-go/bongo-go/internal/caldav"
 	bongocarddav "github.com/bongo-go/bongo-go/internal/carddav"
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
@@ -55,6 +57,8 @@ type Agent struct {
 	Preferences *store.PreferenceStore
 	Threads     *store.ThreadStore
 	Contacts    *store.ContactStore
+	Events      *store.EventStore
+	Calendars   *store.CalendarStore
 	BlobSync    *cluster.BlobSyncer
 	logger      *slog.Logger
 
@@ -201,6 +205,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		if a.Search != nil {
 			a.Contacts.SetSearch(a.Search)
 		}
+		a.Calendars = store.NewCalendarStore(pebbleStore, a)
+		a.Events = store.NewEventStore(pebbleStore, a)
+		if a.Search != nil {
+			a.Events.SetSearch(a.Search)
+		}
 	}
 
 	return a, nil
@@ -278,6 +287,19 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 	}
 
+	// CalDAV endpoint with basic auth.
+	if a.Events != nil && a.Calendars != nil {
+		caldavBackend := bongocaldav.NewBackend(a.Events, a.Calendars)
+		caldavHandler := &caldavHTTPHandler{
+			auth:    a.Auth,
+			backend: caldavBackend,
+		}
+		r.Handle("/caldav/*", caldavHandler)
+		r.Get("/.well-known/caldav", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/caldav/", http.StatusMovedPermanently)
+		})
+	}
+
 	// Redirect root to inbox.
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
@@ -348,6 +370,20 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/contacts/{guid}", contactsH.ShowContact)
 			r.Post("/contacts/{guid}", contactsH.UpdateContact)
 			r.Delete("/contacts/{guid}", contactsH.DeleteContact)
+		}
+
+		if a.Events != nil && a.Calendars != nil {
+			calendarH := handlers.NewCalendarHandler(a.Events, a.Calendars, a.Search)
+			r.Get("/calendar", calendarH.CalendarIndex)
+			r.Get("/calendar/{year}/{month}", calendarH.MonthView)
+			r.Get("/calendar/event/new", calendarH.NewEvent)
+			r.Post("/calendar/event", calendarH.CreateEvent)
+			r.Get("/calendar/event/{guid}", calendarH.ShowEvent)
+			r.Post("/calendar/event/{guid}", calendarH.UpdateEvent)
+			r.Delete("/calendar/event/{guid}", calendarH.DeleteEvent)
+			r.Get("/calendar/export", calendarH.ExportCalendar)
+			r.Post("/calendar/import", calendarH.ImportCalendar)
+			r.Get("/calendar/search", calendarH.SearchEvents)
 		}
 
 		if a.Preferences != nil {
@@ -775,6 +811,37 @@ func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler := carddav.Handler{
 		Backend: h.backend,
 		Prefix:  "/carddav",
+	}
+	handler.ServeHTTP(w, r)
+}
+
+// caldavHTTPHandler wraps a CalDAV backend with HTTP basic auth.
+type caldavHTTPHandler struct {
+	auth    *auth.LocalAuth
+	backend *bongocaldav.Backend
+}
+
+func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CalDAV"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := h.auth.Authenticate(username, password)
+	if err != nil {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CalDAV"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := bongocaldav.WithUserID(r.Context(), userID)
+	r = r.WithContext(ctx)
+
+	handler := caldav.Handler{
+		Backend: h.backend,
+		Prefix:  "/caldav",
 	}
 	handler.ServeHTTP(w, r)
 }

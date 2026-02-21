@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message Calendar {
+  string guid = 1;
+  string name = 2;
+  string description = 3;
+  string color = 4;
+  string timezone = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
