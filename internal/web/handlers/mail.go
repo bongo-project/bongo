@@ -31,6 +31,7 @@ type MailHandler struct {
 	threads   *store.ThreadStore
 	applier   store.RaftApplier
 	prefs     *store.PreferenceStore
+	contacts  *store.ContactStore
 	sanitizer *bluemonday.Policy
 }
 
@@ -59,6 +60,11 @@ func (h *MailHandler) SetApplier(applier store.RaftApplier) {
 // SetPreferences sets the preference store for per-user settings.
 func (h *MailHandler) SetPreferences(prefs *store.PreferenceStore) {
 	h.prefs = prefs
+}
+
+// SetContacts sets the contact store for sender lookup.
+func (h *MailHandler) SetContacts(contacts *store.ContactStore) {
+	h.contacts = contacts
 }
 
 // ListMessages renders the message list for a mailbox.
@@ -202,6 +208,12 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		Date:    time.Unix(meta.ReceivedAt, 0),
 		Seen:    msg.Flags&store.FlagSeen != 0,
 		Flagged: msg.Flags&store.FlagFlagged != 0,
+	}
+
+	// Check if sender is already a contact.
+	if h.contacts != nil && meta.From != "" {
+		existing, _ := h.contacts.FindByEmail(userID, meta.From)
+		detail.IsContact = existing != nil
 	}
 
 	// Load raw message for body and attachments.

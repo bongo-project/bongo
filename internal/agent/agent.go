@@ -21,7 +21,10 @@ import (
 
 	"github.com/hashicorp/raft"
 
+	"github.com/emersion/go-webdav/carddav"
+
 	"github.com/bongo-go/bongo-go/internal/auth"
+	bongocarddav "github.com/bongo-go/bongo-go/internal/carddav"
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
 	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
@@ -51,6 +54,7 @@ type Agent struct {
 	Mailboxes   *store.MailboxStore
 	Preferences *store.PreferenceStore
 	Threads     *store.ThreadStore
+	Contacts    *store.ContactStore
 	BlobSync    *cluster.BlobSyncer
 	logger      *slog.Logger
 
@@ -193,6 +197,10 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.Notifier = bongoimap.NewNotifier()
 		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
+		a.Contacts = store.NewContactStore(pebbleStore, a)
+		if a.Search != nil {
+			a.Contacts.SetSearch(a.Search)
+		}
 	}
 
 	return a, nil
@@ -257,6 +265,19 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Post("/login", authH.Login)
 	r.Post("/logout", authH.Logout)
 
+	// CardDAV endpoint with basic auth.
+	if a.Contacts != nil {
+		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search)
+		carddavHandler := &carddavHTTPHandler{
+			auth:    a.Auth,
+			backend: carddavBackend,
+		}
+		r.Handle("/carddav/*", carddavHandler)
+		r.Get("/.well-known/carddav", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/carddav/", http.StatusMovedPermanently)
+		})
+	}
+
 	// Redirect root to inbox.
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
@@ -274,6 +295,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			if a.Preferences != nil {
 				mailH.SetPreferences(a.Preferences)
+			}
+			if a.Contacts != nil {
+				mailH.SetContacts(a.Contacts)
 			}
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
@@ -312,6 +336,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Notifier != nil {
 			sseH := handlers.NewSSEHandler(a.Notifier, a.Store, a.Mailboxes)
 			r.Get("/events", sseH.Events)
+		}
+
+		if a.Contacts != nil {
+			contactsH := handlers.NewContactsHandler(a.Contacts, a.Search)
+			r.Get("/contacts", contactsH.ListContacts)
+			r.Post("/contacts", contactsH.CreateContact)
+			r.Get("/contacts/export", contactsH.ExportContacts)
+			r.Post("/contacts/import", contactsH.ImportContacts)
+			r.Post("/contacts/quick-add", contactsH.QuickAddContact)
+			r.Get("/contacts/{guid}", contactsH.ShowContact)
+			r.Post("/contacts/{guid}", contactsH.UpdateContact)
+			r.Delete("/contacts/{guid}", contactsH.DeleteContact)
 		}
 
 		if a.Preferences != nil {
@@ -710,4 +746,35 @@ func (a *Agent) Shutdown() error {
 	}
 	a.logger.Info("bongo-go stopped")
 	return nil
+}
+
+// carddavHTTPHandler wraps a CardDAV backend with HTTP basic auth.
+type carddavHTTPHandler struct {
+	auth    *auth.LocalAuth
+	backend *bongocarddav.Backend
+}
+
+func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CardDAV"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID, err := h.auth.Authenticate(username, password)
+	if err != nil {
+		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CardDAV"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	ctx := bongocarddav.WithUserID(r.Context(), userID)
+	r = r.WithContext(ctx)
+
+	handler := carddav.Handler{
+		Backend: h.backend,
+		Prefix:  "/carddav",
+	}
+	handler.ServeHTTP(w, r)
 }

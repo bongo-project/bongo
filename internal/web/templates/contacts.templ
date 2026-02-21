@@ -1,0 +1,176 @@
+package templates
+
+import (
+	"fmt"
+	"time"
+
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+)
+
+templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email string, flash string) {
+	@LayoutWithContent("Contacts", email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@ContactsSidebar()
+		</aside>
+		<main class="main-content" id="main-content">
+			if flash != "" {
+				@FlashMessage(flash, "success")
+			}
+			<div class="toolbar">
+				<button type="button" class="outline" onclick="document.getElementById('create-form').toggleAttribute('hidden')">New Contact</button>
+				<a href="/contacts/export" role="button" class="outline secondary">Export vCard</a>
+				<span class="toolbar-spacer"></span>
+				<form method="post" action="/contacts/import" enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;margin:0">
+					<input type="file" name="vcf" accept=".vcf" style="font-size:0.8rem;padding:0.2rem"/>
+					<button type="submit" class="outline secondary" style="font-size:0.85rem;padding:0.3rem 0.7rem">Import</button>
+				</form>
+			</div>
+			<div id="create-form" hidden>
+				<form method="post" action="/contacts" style="padding:1rem;border:1px solid var(--pico-muted-border-color);border-radius:4px;margin-bottom:1rem">
+					<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+						<label>
+							Name
+							<input type="text" name="display_name" required/>
+						</label>
+						<label>
+							Email
+							<input type="email" name="email"/>
+						</label>
+						<label>
+							Phone
+							<input type="tel" name="phone"/>
+						</label>
+						<label>
+							Company
+							<input type="text" name="company"/>
+						</label>
+					</div>
+					<label>
+						Notes
+						<textarea name="notes" rows="2"></textarea>
+					</label>
+					<div style="display:flex;gap:0.5rem">
+						<button type="submit">Create</button>
+						<button type="button" class="outline secondary" onclick="document.getElementById('create-form').setAttribute('hidden','')">Cancel</button>
+					</div>
+				</form>
+			</div>
+			if len(contacts) == 0 {
+				@EmptyState("No contacts", "Add contacts manually or import a vCard file.")
+			} else {
+				<table class="message-list">
+					<thead>
+						<tr>
+							<th>Name</th>
+							<th>Email</th>
+							<th>Phone</th>
+							<th>Company</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, c := range contacts {
+							@ContactRow(c)
+						}
+					</tbody>
+				</table>
+				@Pagination(page, totalPages, "/contacts")
+			}
+		</main>
+	}
+}
+
+templ ContactRow(c *bongov1.Contact) {
+	<tr id={ "contact-" + c.Guid } data-guid={ c.Guid }>
+		<td>
+			<a href={ templ.SafeURL("/contacts/" + c.Guid) } style="text-decoration:none;color:inherit">
+				{ c.DisplayName }
+			</a>
+		</td>
+		<td>{ c.Email }</td>
+		<td>{ c.Phone }</td>
+		<td>{ c.Company }</td>
+	</tr>
+}
+
+templ ContactDetailPage(c *bongov1.Contact, email string) {
+	@LayoutWithContent("Contact", email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@ContactsSidebar()
+		</aside>
+		<main class="main-content" id="main-content">
+			<div class="toolbar">
+				<a href="/contacts" role="button" class="outline secondary">Back</a>
+			</div>
+			<form method="post" action={ templ.SafeURL("/contacts/" + c.Guid) } style="max-width:600px">
+				<input type="hidden" name="_method" value="PUT"/>
+				<label>
+					Name
+					<input type="text" name="display_name" value={ c.DisplayName } required/>
+				</label>
+				<label>
+					Email
+					<input type="email" name="email" value={ c.Email }/>
+				</label>
+				<label>
+					Phone
+					<input type="tel" name="phone" value={ c.Phone }/>
+				</label>
+				<label>
+					Company
+					<input type="text" name="company" value={ c.Company }/>
+				</label>
+				<label>
+					Notes
+					<textarea name="notes" rows="3">{ c.Notes }</textarea>
+				</label>
+				<div class="meta" style="margin-bottom:1rem;font-size:0.8rem">
+					<span>Created: { formatContactDate(c.CreatedAt) }</span>
+					<span style="margin-left:1rem">Updated: { formatContactDate(c.UpdatedAt) }</span>
+				</div>
+				<div style="display:flex;gap:0.5rem">
+					<button type="submit">Save</button>
+					<a href="/contacts" role="button" class="outline secondary">Cancel</a>
+					<button
+						type="button"
+						class="outline contrast"
+						hx-delete={ "/contacts/" + c.Guid }
+						hx-confirm="Delete this contact?"
+						hx-target="body"
+					>
+						Delete
+					</button>
+				</div>
+			</form>
+		</main>
+	}
+}
+
+templ ContactsSidebar() {
+	<nav>
+		<ul class="mailbox-list">
+			<li>
+				<a href="/contacts" class="active">
+					<span>All Contacts</span>
+				</a>
+			</li>
+		</ul>
+		<hr style="margin:0.5rem 0"/>
+		<ul class="mailbox-list">
+			<li>
+				<a href="/mail/INBOX">
+					<span>Back to Mail</span>
+				</a>
+			</li>
+		</ul>
+	</nav>
+}
+
+func formatContactDate(unix int64) string {
+	if unix == 0 {
+		return "-"
+	}
+	return time.Unix(unix, 0).Format("Jan 2, 2006")
+}
+
+// contactsActiveClass is unused but suppresses lint for the fmt import.
+var _ = fmt.Sprint

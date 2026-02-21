@@ -168,6 +168,88 @@ func (sm *SearchManager) SearchGAL(prefix string, limit int) ([]GALEntry, error)
 	return entries, nil
 }
 
+// ContactDocument is the document structure indexed in Bleve for contact search.
+type ContactDocument struct {
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	Phone       string `json:"phone"`
+	Company     string `json:"company"`
+}
+
+// ContactSearchResult represents a single contact search hit.
+type ContactSearchResult struct {
+	GUID        string
+	DisplayName string
+	Email       string
+	Score       float64
+}
+
+// IndexContact indexes a contact for a user.
+func (sm *SearchManager) IndexContact(userID, guid, displayName, email, phone, company string) error {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return err
+	}
+
+	doc := ContactDocument{
+		DisplayName: displayName,
+		Email:       email,
+		Phone:       phone,
+		Company:     company,
+	}
+	return idx.Index("contact:"+guid, doc)
+}
+
+// DeleteContactIndex removes a contact from the user's search index.
+func (sm *SearchManager) DeleteContactIndex(userID, guid string) error {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.Delete("contact:" + guid)
+}
+
+// SearchContacts searches for contacts in a user's index.
+func (sm *SearchManager) SearchContacts(userID, query string, limit int) ([]ContactSearchResult, error) {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+
+	q := bleve.NewQueryStringQuery(query)
+	searchReq := bleve.NewSearchRequestOptions(q, limit, 0, false)
+	searchReq.Fields = []string{"display_name", "email"}
+
+	result, err := idx.Search(searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("bleve contact search: %w", err)
+	}
+
+	var results []ContactSearchResult
+	for _, hit := range result.Hits {
+		// Only include contact documents (prefixed with "contact:").
+		if len(hit.ID) < 8 || hit.ID[:8] != "contact:" {
+			continue
+		}
+		r := ContactSearchResult{
+			GUID:  hit.ID[8:],
+			Score: hit.Score,
+		}
+		if v, ok := hit.Fields["display_name"].(string); ok {
+			r.DisplayName = v
+		}
+		if v, ok := hit.Fields["email"].(string); ok {
+			r.Email = v
+		}
+		results = append(results, r)
+	}
+	return results, nil
+}
+
 // SearchWithRequest performs a search using a raw Bleve SearchRequest.
 // This allows callers to build complex queries (boolean, date range, etc.).
 func (sm *SearchManager) SearchWithRequest(userID string, req *bleve.SearchRequest) (*bleve.SearchResult, error) {
@@ -278,6 +360,19 @@ func mailIndexMapping() mapping.IndexMapping {
 	mailMapping.AddFieldMappingsAt("body", textField)
 	mailMapping.AddFieldMappingsAt("date", dateField)
 	mailMapping.AddFieldMappingsAt("has_attachment", boolField)
+
+	// Contact fields (shared index, contact docs use "contact:" prefix for ID).
+	contactNameField := bleve.NewTextFieldMapping()
+	contactNameField.Store = true
+	contactEmailField := bleve.NewTextFieldMapping()
+	contactEmailField.Store = true
+	contactPhoneField := bleve.NewTextFieldMapping()
+	contactCompanyField := bleve.NewTextFieldMapping()
+
+	mailMapping.AddFieldMappingsAt("display_name", contactNameField)
+	mailMapping.AddFieldMappingsAt("email", contactEmailField)
+	mailMapping.AddFieldMappingsAt("phone", contactPhoneField)
+	mailMapping.AddFieldMappingsAt("company", contactCompanyField)
 
 	m.DefaultMapping = mailMapping
 	return m

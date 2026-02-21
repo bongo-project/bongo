@@ -29,6 +29,7 @@ type MessageDetail struct {
 	Seen        bool
 	Flagged     bool
 	Answered    bool
+	IsContact   bool
 }
 
 templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
@@ -71,7 +72,17 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 	<div class="message-header">
 		<h2>{ msg.Subject }</h2>
 		<div class="meta">
-			<div><strong>From:</strong> { msg.From }</div>
+			<div>
+				<strong>From:</strong> { msg.From }
+				if !msg.IsContact {
+					<form method="post" action="/contacts/quick-add" style="display:inline;margin:0">
+						<input type="hidden" name="from_email" value={ msg.From }/>
+						<input type="hidden" name="from_name" value={ msg.From }/>
+						<input type="hidden" name="return_to" value={ fmt.Sprintf("/mail/%s/%d", msg.Mailbox, msg.UID) }/>
+						<button type="submit" class="outline secondary" style="font-size:0.75rem;padding:0.1rem 0.4rem;margin-left:0.5rem">Add to Contacts</button>
+					</form>
+				}
+			</div>
 			<div><strong>To:</strong> { joinStrings(msg.To) }</div>
 			if len(msg.Cc) > 0 {
 				<div><strong>Cc:</strong> { joinStrings(msg.Cc) }</div>

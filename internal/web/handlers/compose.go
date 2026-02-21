@@ -386,10 +386,33 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	type galJSON struct {
 		Email       string `json:"email"`
 		DisplayName string `json:"display_name"`
+		Source      string `json:"source"`
 	}
-	result := make([]galJSON, 0, len(entries))
+
+	// Merge personal contacts (first) with GAL entries.
+	seen := make(map[string]bool)
+	var result []galJSON
+
+	userID, _ := middleware.UserFromContext(r.Context())
+	if userID != "" && h.search != nil {
+		contactResults, _ := h.search.SearchContacts(userID, q, 10)
+		for _, c := range contactResults {
+			lower := strings.ToLower(c.Email)
+			if seen[lower] {
+				continue
+			}
+			seen[lower] = true
+			result = append(result, galJSON{Email: c.Email, DisplayName: c.DisplayName, Source: "contacts"})
+		}
+	}
+
 	for _, e := range entries {
-		result = append(result, galJSON{Email: e.Email, DisplayName: e.DisplayName})
+		lower := strings.ToLower(e.Email)
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		result = append(result, galJSON{Email: e.Email, DisplayName: e.DisplayName, Source: "gal"})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
