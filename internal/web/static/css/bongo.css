@@ -309,10 +309,43 @@
   }
 
   .sidebar {
+    display: none;
     width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--pico-muted-border-color);
     padding: 0.5rem;
+  }
+
+  .sidebar.open {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    z-index: 1000;
+    background: var(--pico-background-color);
+    overflow-y: auto;
+    box-shadow: 2px 0 8px rgba(0,0,0,0.2);
+  }
+
+  .sidebar-overlay {
+    display: none;
+  }
+
+  .sidebar-overlay.active {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 999;
+  }
+
+  .hamburger-btn {
+    display: inline-block;
   }
 
   .mailbox-list {
@@ -328,6 +361,39 @@
   .message-list td.subject-col {
     max-width: 200px;
   }
+
+  /* Force list mode on mobile */
+  .layout-two-pane,
+  .layout-three-pane {
+    flex-direction: column !important;
+  }
+
+  .layout-two-pane .reading-pane,
+  .layout-three-pane .reading-pane {
+    display: none !important;
+  }
+
+  .layout-two-pane .message-list-pane,
+  .layout-three-pane .message-list-pane {
+    max-height: none !important;
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: none !important;
+  }
+
+  .layout-toggle {
+    display: none;
+  }
+}
+
+.hamburger-btn {
+  display: none;
+  font-size: 1.4rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: var(--pico-color);
 }
 
 /* Bulk toolbar */
@@ -383,6 +449,158 @@
 .thread-reply-arrow {
   color: var(--pico-muted-color);
   margin-right: 0.3rem;
+}
+
+/* Reading pane layouts */
+.mail-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.message-list-pane {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.reading-pane {
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.layout-list .reading-pane {
+  display: none;
+}
+
+.layout-two-pane {
+  flex-direction: column;
+}
+
+.layout-two-pane .message-list-pane {
+  max-height: 40vh;
+  border-bottom: 2px solid var(--pico-muted-border-color);
+}
+
+.layout-two-pane .reading-pane {
+  flex: 1;
+}
+
+.layout-three-pane {
+  flex-direction: row;
+}
+
+.layout-three-pane .message-list-pane {
+  width: 50%;
+  border-right: 2px solid var(--pico-muted-border-color);
+  overflow-y: auto;
+}
+
+.layout-three-pane .reading-pane {
+  width: 50%;
+  flex: 1;
+}
+
+/* Layout toggle buttons */
+.toolbar-spacer {
+  flex: 1;
+}
+
+.layout-toggle {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.layout-btn {
+  padding: 0.2rem 0.5rem !important;
+  font-size: 0.9rem !important;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.layout-btn.active {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  border-color: var(--pico-primary);
+}
+
+/* Pane toolbar */
+.pane-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+}
+
+/* Density classes */
+.density-compact .message-list td { padding: 0.25rem 0.5rem; }
+.density-comfortable .message-list td { padding: 0.5rem; }
+.density-spacious .message-list td { padding: 0.75rem; }
+
+/* Notification prompt */
+.notification-prompt {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 900;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* Context menu */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--pico-background-color);
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 180px;
+  padding: 0.25rem 0;
+}
+
+.context-menu a {
+  display: block;
+  padding: 0.4rem 1rem;
+  color: var(--pico-color);
+  text-decoration: none;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.context-menu a:hover {
+  background: var(--pico-secondary-hover-background);
+}
+
+.context-menu a.danger {
+  color: var(--pico-del-color);
+}
+
+.context-menu hr {
+  margin: 0.25rem 0;
+  border: none;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+/* Mobile swipe */
+@media (pointer: coarse) {
+  .message-list tr {
+    position: relative;
+    overflow: hidden;
+  }
+}
+
+/* Drag-and-drop */
+.sortable-ghost {
+  opacity: 0.4;
+}
+
+.drag-over {
+  background: var(--pico-primary-focus) !important;
+  border-radius: 4px;
 }
 
 /* Theme toggle */

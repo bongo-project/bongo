@@ -31,7 +31,7 @@ type ThreadChild struct {
 
 templ MailboxPage(mailbox string, mailboxes []MailboxInfo, messages []MessageSummary, page, totalPages int, email string, flash string) {
 	@LayoutWithContent(mailbox, email) {
-		<aside class="sidebar" id="sidebar">
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, mailbox)
 		</aside>
 		<main class="main-content" id="main-content" data-selected-mailbox={ mailbox }>
@@ -47,8 +47,16 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 	<div class="toolbar">
 		<a href="/compose" role="button" class="outline">Compose</a>
 		<button class="outline secondary" hx-get={ "/mail/" + mailbox } hx-target="#main-content">Refresh</button>
+		<span class="toolbar-spacer"></span>
+		<span class="layout-toggle">
+			<button type="button" class="outline secondary layout-btn" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title="List view">&#9776;</button>
+			<button type="button" class="outline secondary layout-btn" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title="Two-pane view">&#9707;</button>
+			<button type="button" class="outline secondary layout-btn" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title="Three-pane view">&#9701;</button>
+		</span>
 	</div>
-	<div id="message-list" x-data="messageSelect()">
+	<div class="mail-layout" x-bind:class="'layout-' + layoutMode">
+	<div class="message-list-pane">
+	<div id="message-list" x-data="{ ...messageSelect(), ...swipeHandler() }">
 		<div class="bulk-toolbar" x-show="count > 0" x-cloak="">
 			<span x-text="count + ' selected'"></span>
 			<button type="button" class="outline secondary" x-on:click="selectAll()">Select All</button>
@@ -79,6 +87,10 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 								class="unread"
 							}
 							data-uid={ fmt.Sprint(msg.UID) }
+							x-on:contextmenu={ fmt.Sprintf("$dispatch('ctx-menu', {event: $event, uid: %d, mailbox: '%s'})", msg.UID, mailbox) }
+							x-on:touchstart={ fmt.Sprintf("start($event, %d)", msg.UID) }
+							x-on:touchmove="move($event)"
+							x-on:touchend={ fmt.Sprintf("end($event, %d, '%s')", msg.UID, mailbox) }
 						>
 							<td>
 								<input
@@ -105,6 +117,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 								<a
 									href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID)) }
 									data-message-link="true"
+									data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", mailbox, msg.UID) }
 									hx-get={ fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID) }
 									hx-target="#main-content"
 									hx-push-url="true"
@@ -117,6 +130,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 								<a
 									href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID)) }
 									data-message-link="true"
+									data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", mailbox, msg.UID) }
 									hx-get={ fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID) }
 									hx-target="#main-content"
 									hx-push-url="true"
@@ -150,6 +164,14 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			@Pagination(page, totalPages, "/mail/"+mailbox)
 		}
 	</div>
+	</div>
+	<div class="reading-pane" id="reading-pane" x-show="layoutMode !== 'list'">
+		<div class="empty-state">
+			<p>Select a message to read</p>
+		</div>
+	</div>
+	</div>
+	@ContextMenu()
 }
 
 templ ThreadChildren(children []ThreadChild, mailbox string) {

@@ -54,7 +54,7 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 			</li>
 		</ul>
 		<hr style="margin:0.5rem 0"/>
-		<ul class="mailbox-list">
+		<ul class="mailbox-list" id="mailbox-drop-targets">
 			for _, mb := range mailboxes {
 				<li>
 					<a
@@ -65,6 +65,7 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 						hx-get={ "/mail/" + mb.Name }
 						hx-target="#main-content"
 						hx-push-url="true"
+						data-folder={ mb.Name }
 					>
 						<span>{ mb.Name }</span>
 						if mb.Unread > 0 {
@@ -121,6 +122,31 @@ templ Pagination(page, totalPages int, baseURL string) {
 templ FlashMessage(msg, level string) {
 	<div class={ "flash", "flash-" + level }>
 		{ msg }
+	</div>
+}
+
+templ ContextMenu() {
+	<div
+		x-data="contextMenu"
+		x-show="visible"
+		x-on:click.away="close()"
+		x-on:keydown.escape.window="close()"
+		x-on:ctx-menu.window="open($event.detail.event, $event.detail.uid, $event.detail.mailbox)"
+		x-bind:style="'left:' + x + 'px;top:' + y + 'px'"
+		class="context-menu"
+		x-cloak=""
+	>
+		<a x-on:click="action('open')">Open</a>
+		<a x-on:click="action('reply')">Reply</a>
+		<a x-on:click="action('reply-all')">Reply All</a>
+		<a x-on:click="action('forward')">Forward</a>
+		<hr/>
+		<a x-on:click="action('mark-read')">Mark Read</a>
+		<a x-on:click="action('mark-unread')">Mark Unread</a>
+		<a x-on:click="action('flag')">Flag</a>
+		<a x-on:click="action('unflag')">Unflag</a>
+		<hr/>
+		<a x-on:click="action('delete')" class="danger">Delete</a>
 	</div>
 }
 

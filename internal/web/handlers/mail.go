@@ -21,7 +21,7 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
-const messagesPerPage = 25
+const defaultMessagesPerPage = 25
 
 // MailHandler handles mail browsing endpoints.
 type MailHandler struct {
@@ -30,6 +30,7 @@ type MailHandler struct {
 	mailboxes *store.MailboxStore
 	threads   *store.ThreadStore
 	applier   store.RaftApplier
+	prefs     *store.PreferenceStore
 	sanitizer *bluemonday.Policy
 }
 
@@ -55,6 +56,11 @@ func (h *MailHandler) SetApplier(applier store.RaftApplier) {
 	h.applier = applier
 }
 
+// SetPreferences sets the preference store for per-user settings.
+func (h *MailHandler) SetPreferences(prefs *store.PreferenceStore) {
+	h.prefs = prefs
+}
+
 // ListMessages renders the message list for a mailbox.
 func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
@@ -68,22 +74,29 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 
-	offset := (page - 1) * messagesPerPage
+	perPage := defaultMessagesPerPage
+	if h.prefs != nil {
+		if up := h.prefs.Get(userID); up.MessagesPerPage > 0 {
+			perPage = int(up.MessagesPerPage)
+		}
+	}
+
+	offset := (page - 1) * perPage
 	var msgs []*bongov1.MailboxMessage
 	var total int
 	var err error
 
 	if store.VirtualMailboxes[mailbox] {
-		msgs, total, err = h.mailboxes.ListVirtualMessages(userID, mailbox, offset, messagesPerPage)
+		msgs, total, err = h.mailboxes.ListVirtualMessages(userID, mailbox, offset, perPage)
 	} else {
-		msgs, total, err = h.mailboxes.ListMessagesPaged(userID, mailbox, offset, messagesPerPage)
+		msgs, total, err = h.mailboxes.ListMessagesPaged(userID, mailbox, offset, perPage)
 	}
 	if err != nil {
 		http.Error(w, "Error loading messages", http.StatusInternalServerError)
 		return
 	}
 
-	totalPages := (total + messagesPerPage - 1) / messagesPerPage
+	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
 	}
@@ -235,6 +248,12 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 				Size:        int64(blobRef.Size),
 			})
 		}
+	}
+
+	// Pane mode: return just the message content without layout wrapper.
+	if r.URL.Query().Get("pane") == "1" {
+		templ.Handler(templates.MessagePaneContent(detail)).ServeHTTP(w, r)
+		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)

@@ -2,7 +2,7 @@ package templates
 
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
-	<html lang="en" data-theme="auto">
+	<html lang="en" x-data="appState()" x-bind:data-theme="resolvedTheme()">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -11,8 +11,9 @@ templ Layout(title string, email string) {
 			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
-		<body x-data="appState()">
+		<body>
 			<div class="top-bar">
+				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()">&#9776;</button>
 				<a href="/mail/INBOX" class="brand">Bongo</a>
 				<nav>
 					<input
@@ -39,14 +40,27 @@ templ Layout(title string, email string) {
 					</form>
 				</nav>
 			</div>
+			<div x-on:click="sidebarOpen = false" class="sidebar-overlay" x-bind:class="{'active': sidebarOpen}"></div>
 			<div class="app-layout">
-				<aside class="sidebar" id="sidebar">
+				<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 					{ children... }
 				</aside>
 				<main class="main-content" id="main-content">
 				</main>
 			</div>
+			<div x-data="notifications" x-init="init()">
+				<button
+					type="button"
+					class="notification-prompt outline secondary"
+					x-show="permission === 'default'"
+					x-on:click="requestPermission()"
+					x-cloak=""
+				>
+					Enable notifications
+				</button>
+			</div>
 			<script src="/static/js/htmx.min.js"></script>
+			<script src="/static/js/sortable.min.js"></script>
 			<script src="/static/js/alpine.min.js" defer></script>
 			<script src="/static/js/bongo.js"></script>
 		</body>
@@ -55,7 +69,7 @@ templ Layout(title string, email string) {
 
 templ LayoutWithContent(title string, email string) {
 	<!DOCTYPE html>
-	<html lang="en" data-theme="auto">
+	<html lang="en" x-data="appState()" x-bind:data-theme="resolvedTheme()">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -64,8 +78,9 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
-		<body x-data="appState()">
+		<body>
 			<div class="top-bar">
+				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()">&#9776;</button>
 				<a href="/mail/INBOX" class="brand">Bongo</a>
 				<nav>
 					<input
@@ -92,10 +107,23 @@ templ LayoutWithContent(title string, email string) {
 					</form>
 				</nav>
 			</div>
+			<div x-on:click="sidebarOpen = false" class="sidebar-overlay" x-bind:class="{'active': sidebarOpen}"></div>
 			<div class="app-layout">
 				{ children... }
 			</div>
+			<div x-data="notifications" x-init="init()">
+				<button
+					type="button"
+					class="notification-prompt outline secondary"
+					x-show="permission === 'default'"
+					x-on:click="requestPermission()"
+					x-cloak=""
+				>
+					Enable notifications
+				</button>
+			</div>
 			<script src="/static/js/htmx.min.js"></script>
+			<script src="/static/js/sortable.min.js"></script>
 			<script src="/static/js/alpine.min.js" defer></script>
 			<script src="/static/js/bongo.js"></script>
 		</body>

@@ -272,6 +272,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			if a.Threads != nil {
 				mailH.SetThreadStore(a.Threads)
 			}
+			if a.Preferences != nil {
+				mailH.SetPreferences(a.Preferences)
+			}
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
@@ -289,6 +292,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			if a.RateLimiter != nil {
 				composeH.SetRateLimiter(a.RateLimiter)
+			}
+			if a.Preferences != nil {
+				composeH.SetPreferences(a.Preferences)
 			}
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)

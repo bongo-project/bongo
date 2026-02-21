@@ -32,6 +32,7 @@ type ComposeHandler struct {
 	applier     store.RaftApplier
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
+	prefs       *store.PreferenceStore
 }
 
 // NewComposeHandler creates a ComposeHandler.
@@ -55,9 +56,16 @@ func (h *ComposeHandler) SetRateLimiter(rl *mail.RateLimiter) {
 	h.rateLimiter = rl
 }
 
+// SetPreferences sets the preference store for per-user settings.
+func (h *ComposeHandler) SetPreferences(prefs *store.PreferenceStore) {
+	h.prefs = prefs
+}
+
 // NewMessage renders the compose form.
 func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
-	templ.Handler(templates.ComposePage("new", "", "", "", "", "", 0)).ServeHTTP(w, r)
+	userID, _ := middleware.UserFromContext(r.Context())
+	body := h.signatureBody(userID)
+	templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0)).ServeHTTP(w, r)
 }
 
 // Reply renders the reply form with pre-filled fields.
@@ -83,9 +91,32 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 		subject = "Re: " + subject
 	}
 
-	body := h.loadQuotedBody(userID, meta)
+	body := h.signatureBody(userID) + h.loadQuotedBody(userID, meta)
 
-	templ.Handler(templates.ComposePage("reply", meta.From, "", subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+	// Determine reply recipients based on default_reply preference.
+	replyTo := meta.From
+	var replyCc string
+	if h.prefs != nil {
+		up := h.prefs.Get(userID)
+		if up.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL {
+			// Cc = original To + original Cc minus the current user.
+			_, currentEmail := middleware.UserFromContext(r.Context())
+			var ccAddrs []string
+			for _, addr := range meta.To {
+				if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
+					ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
+				}
+			}
+			for _, addr := range meta.Cc {
+				if !strings.EqualFold(strings.TrimSpace(addr), currentEmail) {
+					ccAddrs = append(ccAddrs, strings.TrimSpace(addr))
+				}
+			}
+			replyCc = strings.Join(ccAddrs, ", ")
+		}
+	}
+
+	templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
 }
 
 // Forward renders the forward form.
@@ -111,7 +142,7 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 		subject = "Fwd: " + subject
 	}
 
-	body := h.loadQuotedBody(userID, meta)
+	body := h.signatureBody(userID) + h.loadQuotedBody(userID, meta)
 
 	templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
 }
@@ -479,6 +510,17 @@ func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) s
 		quoted.WriteString("> " + line + "\n")
 	}
 	return quoted.String()
+}
+
+func (h *ComposeHandler) signatureBody(userID string) string {
+	if h.prefs == nil {
+		return ""
+	}
+	up := h.prefs.Get(userID)
+	if up.Signature == "" {
+		return ""
+	}
+	return "\n\n-- \n" + up.Signature
 }
 
 func buildRFC5322(from, to, cc, subject, body, inReplyTo, references string) []byte {

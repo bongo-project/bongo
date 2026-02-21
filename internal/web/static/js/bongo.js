@@ -4,9 +4,13 @@ document.addEventListener('alpine:init', () => {
   // App-level state: theme, layout, density
   Alpine.data('appState', () => ({
     theme: localStorage.getItem('bongo-theme') || 'auto',
+    layoutMode: localStorage.getItem('bongo-layout') || 'list',
+    density: localStorage.getItem('bongo-density') || 'comfortable',
+    sidebarOpen: false,
 
     init() {
       this.applyTheme();
+      this.applyDensity();
       this.watchOS();
       // Hydrate from server preferences.
       fetch('/api/user-prefs')
@@ -16,6 +20,13 @@ document.addEventListener('alpine:init', () => {
           if (!localStorage.getItem('bongo-theme')) {
             this.theme = prefs.theme || 'auto';
             this.applyTheme();
+          }
+          if (!localStorage.getItem('bongo-layout')) {
+            this.layoutMode = prefs.layout_mode || 'list';
+          }
+          if (!localStorage.getItem('bongo-density')) {
+            this.density = prefs.density || 'comfortable';
+            this.applyDensity();
           }
         })
         .catch(() => {});
@@ -52,6 +63,32 @@ document.addEventListener('alpine:init', () => {
     get themeIcon() {
       const t = this.resolvedTheme();
       return t === 'dark' ? '\u263E' : '\u2600'; // moon / sun
+    },
+
+    setLayout(mode) {
+      this.layoutMode = mode;
+      localStorage.setItem('bongo-layout', mode);
+      const form = new URLSearchParams();
+      form.set('layout_mode', mode);
+      fetch('/settings', { method: 'POST', body: form }).catch(() => {});
+    },
+
+    applyDensity() {
+      document.body.classList.remove('density-compact', 'density-comfortable', 'density-spacious');
+      document.body.classList.add('density-' + this.density);
+    },
+
+    setDensity(d) {
+      this.density = d;
+      localStorage.setItem('bongo-density', d);
+      this.applyDensity();
+      const form = new URLSearchParams();
+      form.set('density', d);
+      fetch('/settings', { method: 'POST', body: form }).catch(() => {});
+    },
+
+    toggleSidebar() {
+      this.sidebarOpen = !this.sidebarOpen;
     }
   }));
 
@@ -173,6 +210,216 @@ document.addEventListener('alpine:init', () => {
   }));
 });
 
+  // Desktop notifications + SSE
+  Alpine.data('notifications', () => ({
+    permission: typeof Notification !== 'undefined' ? Notification.permission : 'denied',
+    eventSource: null,
+
+    init() {
+      this.connectSSE();
+    },
+
+    requestPermission() {
+      if (typeof Notification === 'undefined') return;
+      Notification.requestPermission().then(p => {
+        this.permission = p;
+      });
+    },
+
+    connectSSE() {
+      if (this.eventSource) return;
+      this.eventSource = new EventSource('/events?mailbox=INBOX');
+
+      this.eventSource.addEventListener('newmail', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (this.permission === 'granted') {
+            const n = new Notification(data.from || 'New mail', {
+              body: data.subject || '',
+              icon: '/static/logo.png'
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+          }
+        } catch (err) { /* ignore parse errors */ }
+      });
+
+      this.eventSource.addEventListener('oob', (e) => {
+        // HTMX OOB swap for unread badge.
+        const tmp = document.createElement('div');
+        tmp.innerHTML = e.data;
+        htmx.process(tmp);
+        const oobEl = tmp.firstElementChild;
+        if (oobEl) {
+          const target = document.getElementById(oobEl.id);
+          if (target) target.outerHTML = oobEl.outerHTML;
+        }
+      });
+
+      this.eventSource.onerror = () => {
+        // Reconnect after 5 seconds.
+        this.eventSource.close();
+        this.eventSource = null;
+        setTimeout(() => this.connectSSE(), 5000);
+      };
+    },
+
+    destroy() {
+      if (this.eventSource) {
+        this.eventSource.close();
+        this.eventSource = null;
+      }
+    }
+  }));
+
+  // Mobile swipe gestures (touch devices only)
+  Alpine.data('swipeHandler', () => ({
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    swiping: false,
+    swipeTarget: null,
+
+    start(event, uid) {
+      if (!window.matchMedia('(pointer: coarse)').matches) return;
+      const touch = event.touches[0];
+      this.startX = touch.clientX;
+      this.startY = touch.clientY;
+      this.currentX = 0;
+      this.swiping = false;
+      this.swipeTarget = event.currentTarget;
+    },
+
+    move(event) {
+      if (!this.swipeTarget) return;
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - this.startX;
+      const deltaY = touch.clientY - this.startY;
+      if (Math.abs(deltaX) > 20 && Math.abs(deltaY) < 30) {
+        this.swiping = true;
+        this.currentX = deltaX;
+        this.swipeTarget.style.transform = 'translateX(' + deltaX + 'px)';
+        this.swipeTarget.style.transition = 'none';
+      }
+    },
+
+    end(event, uid, mailbox) {
+      if (!this.swipeTarget || !this.swiping) {
+        this.reset();
+        return;
+      }
+      const deltaX = this.currentX;
+      if (deltaX < -60) {
+        // Swipe left: archive (move to Trash)
+        this.swipeTarget.style.transform = 'translateX(-100%)';
+        this.swipeTarget.style.transition = 'transform 200ms ease';
+        const params = new URLSearchParams();
+        params.set('destination', 'Trash');
+        fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/move', {
+          method: 'POST', body: params
+        }).then(() => {
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        }).catch(() => {});
+      } else if (deltaX > 60) {
+        // Swipe right: delete
+        this.swipeTarget.style.transform = 'translateX(100%)';
+        this.swipeTarget.style.transition = 'transform 200ms ease';
+        const params = new URLSearchParams();
+        params.set('action', 'delete');
+        params.append('uids', uid.toString());
+        fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+          method: 'POST', body: params
+        }).then(() => {
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        }).catch(() => {});
+      } else {
+        this.reset();
+      }
+    },
+
+    reset() {
+      if (this.swipeTarget) {
+        this.swipeTarget.style.transform = '';
+        this.swipeTarget.style.transition = 'transform 200ms ease';
+      }
+      this.swipeTarget = null;
+      this.swiping = false;
+      this.currentX = 0;
+    }
+  }));
+
+  // Context menu for message rows
+  Alpine.data('contextMenu', () => ({
+    visible: false,
+    x: 0,
+    y: 0,
+    uid: null,
+    mailbox: null,
+
+    open(event, uid, mailbox) {
+      event.preventDefault();
+      this.uid = uid;
+      this.mailbox = mailbox;
+      this.x = event.clientX;
+      this.y = event.clientY;
+      this.visible = true;
+    },
+
+    close() {
+      this.visible = false;
+    },
+
+    action(act) {
+      const uid = this.uid;
+      const mailbox = this.mailbox;
+      this.close();
+      if (!uid || !mailbox) return;
+
+      switch (act) {
+        case 'open':
+          window.location.href = '/mail/' + encodeURIComponent(mailbox) + '/' + uid;
+          break;
+        case 'reply':
+          window.location.href = '/compose/reply/' + encodeURIComponent(mailbox) + '/' + uid;
+          break;
+        case 'reply-all':
+          window.location.href = '/compose/reply/' + encodeURIComponent(mailbox) + '/' + uid;
+          break;
+        case 'forward':
+          window.location.href = '/compose/forward/' + encodeURIComponent(mailbox) + '/' + uid;
+          break;
+        case 'mark-read':
+        case 'mark-unread':
+        case 'flag':
+        case 'unflag':
+        case 'delete': {
+          const params = new URLSearchParams();
+          params.set('action', act);
+          params.append('uids', uid.toString());
+          fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+            method: 'POST',
+            body: params
+          }).then(resp => {
+            if (resp.ok) {
+              htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+            }
+          }).catch(() => {});
+          break;
+        }
+      }
+    }
+  }));
+
+// Reading pane: intercept message link clicks in pane modes.
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('a[data-pane-url]');
+  if (!link) return;
+  const layout = localStorage.getItem('bongo-layout') || 'list';
+  if (layout === 'list') return;
+  e.preventDefault();
+  e.stopPropagation();
+  htmx.ajax('GET', link.dataset.paneUrl, '#reading-pane');
+});
+
 // Keyboard shortcuts (only when not in an input/textarea)
 document.addEventListener('keydown', (e) => {
   const tag = e.target.tagName;
@@ -248,8 +495,66 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Flash message auto-dismiss
+// Drag-and-drop: make message rows draggable to sidebar folders.
+function initDragDrop() {
+  const tbody = document.querySelector('.message-list tbody');
+  if (!tbody || typeof Sortable === 'undefined') return;
+
+  // Make message rows draggable (but not sortable within the list).
+  Sortable.create(tbody, {
+    group: { name: 'messages', pull: 'clone', put: false },
+    sort: false,
+    ghostClass: 'sortable-ghost',
+    filter: 'input[type="checkbox"], .flag-star',
+    onStart(evt) {
+      // Store source mailbox and uid on the dragged element.
+      const row = evt.item;
+      const mailboxEl = document.querySelector('[data-selected-mailbox]');
+      row.dataset.srcMailbox = mailboxEl ? mailboxEl.dataset.selectedMailbox : 'INBOX';
+    }
+  });
+
+  // Make sidebar folder links drop targets.
+  document.querySelectorAll('[data-folder]').forEach(el => {
+    el.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      el.classList.add('drag-over');
+    });
+    el.addEventListener('dragleave', () => {
+      el.classList.remove('drag-over');
+    });
+    el.addEventListener('drop', (e) => {
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      // Find the dragged element.
+      const ghost = document.querySelector('.sortable-ghost');
+      const uid = ghost ? ghost.dataset.uid : null;
+      const srcMailbox = ghost ? ghost.dataset.srcMailbox : null;
+      const destFolder = el.dataset.folder;
+      if (uid && srcMailbox && destFolder && srcMailbox !== destFolder) {
+        const form = new URLSearchParams();
+        form.set('destination', destFolder);
+        fetch('/mail/' + encodeURIComponent(srcMailbox) + '/' + uid + '/move', {
+          method: 'POST',
+          body: form
+        }).then(resp => {
+          if (resp.ok) {
+            // Remove the row from the list.
+            const row = document.querySelector('tr[data-uid="' + uid + '"]');
+            if (row) row.remove();
+          }
+        }).catch(() => {});
+      }
+    });
+  });
+}
+
+// Re-init drag-drop after HTMX swaps.
+document.addEventListener('htmx:afterSettle', initDragDrop);
+
+// Flash message auto-dismiss + init drag-drop
 document.addEventListener('DOMContentLoaded', () => {
+  initDragDrop();
   document.querySelectorAll('.flash').forEach(el => {
     setTimeout(() => {
       el.style.transition = 'opacity 0.3s';
