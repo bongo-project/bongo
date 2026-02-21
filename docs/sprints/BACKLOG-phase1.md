@@ -85,22 +85,26 @@ SPF checking on inbound. Rate limiting per sender. Wire into compose "Send" flow
 external recipients actually receive mail. `bongo-go queue status` CLI. Integration
 test: send to external, verify DKIM header, test bounce on bad domain.
 
-## Sprint 08: Web UI Enhancement — Dragonfly Mail Experience
-Replicate the original Bongo "Dragonfly" mail UI experience with modern tooling.
-Conversation threading: group messages by `In-Reply-To`/`References` headers with
-expand/collapse per message in thread view (HTMX partial swaps). Drag-and-drop
-messages between folders (Sortable.js). Bulk operations toolbar: select all, mark
-read/unread, delete, move, flag — operating on checkbox-selected messages. Inline
-message preview / reading pane (two-pane and three-pane layout toggle stored in
-user preferences). Right-click context menu on messages (Alpine.js). Swipe
-gestures on mobile (archive left, delete right). Unread/starred/flagged virtual
-folders. Folder badge counts live-update via SSE (existing Notifier). Desktop
-browser notifications for new mail (Notification API via Alpine.js). Dark mode
-toggle (Pico CSS `data-theme` attribute). User preferences page: display density,
-default reply mode (reply/reply-all), signature editor, timezone, messages per page.
-Integration test: thread view, bulk operations, drag-and-drop, preferences save.
+## Sprint 08a: Dragonfly Foundation — Threading, Preferences & Core Features ✅ DONE
+Add threading fields to MailMeta proto (`in_reply_to`, `references`, `cc`).
+UserPreferences proto and PreferenceStore (theme, layout, density, signature,
+timezone, messages_per_page, default_reply). Dark mode toggle via `appState()`
+Alpine component. Conversation threading backend (ThreadStore) and UI (thread
+grouping with expand/collapse badges). Bulk operations toolbar (checkboxes,
+mark read/unread, flag, delete, move). Virtual folders (Unread, Starred, All Mail)
+with SSE badge updates. Integration tests for threading, bulk ops, preferences,
+virtual folders.
 
-## Sprint 09: Contacts & Address Book (CardDAV)
+## Sprint 08b: Dragonfly Polish — Layouts, Gestures & Mobile ✅ DONE
+Reading pane layouts (list / two-pane / three-pane toggle persisted in preferences).
+Drag-and-drop messages between folders (Sortable.js). Right-click context menu on
+messages (Alpine.js). Desktop browser notifications for new mail (Notification API).
+Mobile swipe gestures (archive left, delete right). UI polish: density classes,
+signature in compose, messages-per-page from preferences, default reply mode.
+Responsive mobile sidebar with hamburger toggle and slide-in animation. Integration
+tests for reading pane, drag-drop, density, signature, messages-per-page.
+
+## Sprint 09: Contacts & Address Book (CardDAV) ✅ DONE
 Wire `internal/caldav/` for CardDAV (RFC 6352) via `emersion/go-webdav`. Contact
 storage in Pebble: `/user/{id}/contact/{guid}` with VCard protobuf. Contact CRUD
 in web UI: list, create, edit, delete with inline editing. Contact groups/distribution
@@ -111,18 +115,23 @@ GAL with personal contacts). Contact search via Bleve (name, email, phone, compa
 CardDAV sync so contacts work with macOS Contacts, iOS, DAVx5. Integration test:
 create contact via web UI, sync via CardDAV client, verify in compose autocomplete.
 
-## Sprint 10: Calendar (CalDAV)
-Wire `internal/caldav/` for CalDAV (RFC 4791) via `emersion/go-webdav`. Event
-storage in Pebble: `/user/{id}/event/{guid}` with iCalendar protobuf. Calendar web
-UI: month, week, day views with HTMX navigation. Event CRUD: create with start/end
-time, location, description, all-day toggle. Recurring events (RRULE: daily, weekly,
-monthly, yearly with exceptions). Drag-and-drop event rescheduling in week/day view.
-Multiple calendars with colour coding. Mini calendar navigator in sidebar. Event
-reminders/alarms stored per event, delivered via SSE to browser + future email
-notification. Shared calendar display (read-only view of another user's calendar).
-Free/busy lookup for scheduling. CalDAV sync with Apple Calendar, Thunderbird,
-DAVx5. Integration test: create event via web, sync via CalDAV, verify recurrence
-expansion and reminders.
+## Sprint 10a: Calendar Foundation — CalDAV, Event CRUD & Month View ← CURRENT
+Event and Calendar protos + stores in Pebble (`/user/{id}/event/{guid}`,
+`/user/{id}/calendar/{guid}`). CalDAV server (RFC 4791) via `emersion/go-webdav`
+for sync with Apple Calendar, Thunderbird, DAVx5. Month-view web UI with event
+chips on day cells, HTMX prev/next navigation. Event CRUD: create/edit/delete with
+start/end time, location, description, all-day toggle. iCalendar import/export.
+Event search via Bleve. Default calendar auto-created. Integration tests for CRUD,
+CalDAV sync, and iCal round-trip.
+
+## Sprint 10b: Calendar Polish — Views, Recurrence, Reminders & Sharing
+Week and day views with time-positioned event blocks. Recurring events (RRULE:
+daily/weekly/monthly/yearly with exception dates). Drag-and-drop event rescheduling
+in week/day views (snap to 30-min). Mini calendar navigator in sidebar. Multiple
+calendars with colour coding and visibility toggle. Event reminders/alarms via SSE
+browser notifications (configurable 5/10/15/30/60 min before). Shared calendar
+display (read-only). Free/busy lookup for scheduling. Integration tests for views,
+recurrence, drag-drop, sharing.
 
 ## Sprint 11: Admin Panel (Hawkeye)
 Replicate the original Bongo "Hawkeye" admin interface. Admin role flag on

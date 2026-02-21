@@ -20,10 +20,11 @@ var rootCmd = &cobra.Command{
 	Long: `bongo-import migrates email into a bongo-go server via IMAP APPEND.
 
 Supported sources:
-  imap     Import from another IMAP server
-  mbox     Import from mbox files
-  maildir  Import from Maildir directories
-  eml      Import from individual .eml files
+  imap         Import from another IMAP server
+  mbox         Import from mbox files
+  maildir      Import from Maildir directories
+  eml          Import from individual .eml files
+  thunderbird  Auto-discover and import Thunderbird local folders
 
 All messages are written to the destination via IMAP APPEND, preserving
 flags, folders, and internal dates.`,
@@ -43,4 +44,5 @@ func init() {
 	rootCmd.AddCommand(mboxCmd)
 	rootCmd.AddCommand(maildirCmd)
 	rootCmd.AddCommand(emlCmd)
+	rootCmd.AddCommand(thunderbirdCmd)
 }
