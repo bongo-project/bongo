@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+enum Theme {
+  THEME_UNSPECIFIED = 0;
+  THEME_AUTO = 1;
+  THEME_LIGHT = 2;
+  THEME_DARK = 3;
+}
+
+enum LayoutMode {
+  LAYOUT_UNSPECIFIED = 0;
+  LAYOUT_LIST = 1;
+  LAYOUT_TWO_PANE = 2;
+  LAYOUT_THREE_PANE = 3;
+}
+
+enum DisplayDensity {
+  DENSITY_UNSPECIFIED = 0;
+  DENSITY_COMPACT = 1;
+  DENSITY_COMFORTABLE = 2;
+  DENSITY_SPACIOUS = 3;
+}
+
+enum DefaultReplyMode {
+  REPLY_MODE_UNSPECIFIED = 0;
+  REPLY_MODE_SENDER = 1;
+  REPLY_MODE_ALL = 2;
+}
+
+message UserPreferences {
+  Theme theme = 1;
+  LayoutMode layout_mode = 2;
+  DisplayDensity density = 3;
+  int32 messages_per_page = 4;
+  DefaultReplyMode default_reply = 5;
+  string signature = 6;
+  string timezone = 7;
+  int64 updated_at = 8;
+}

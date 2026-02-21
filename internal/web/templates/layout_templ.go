@@ -42,14 +42,14 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body><div class=\"top-bar\"><a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav><input type=\"search\" name=\"q\" placeholder=\"Search mail...\" class=\"search-input\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body x-data=\"appState()\"><div class=\"top-bar\"><a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav><input type=\"search\" name=\"q\" placeholder=\"Search mail...\" class=\"search-input\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <button type=\"button\" class=\"outline secondary theme-toggle\" x-on:click=\"toggleTheme()\" x-text=\"themeIcon\" title=\"Toggle theme\"></button> <a href=\"/settings\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none\" role=\"button\">Settings</a> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 27, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 36, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -99,20 +99,20 @@ func LayoutWithContent(title string, email string) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 53, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 62, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body><div class=\"top-bar\"><a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav><input type=\"search\" name=\"q\" placeholder=\"Search mail...\" class=\"search-input\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body x-data=\"appState()\"><div class=\"top-bar\"><a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav><input type=\"search\" name=\"q\" placeholder=\"Search mail...\" class=\"search-input\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <button type=\"button\" class=\"outline secondary theme-toggle\" x-on:click=\"toggleTheme()\" x-text=\"themeIcon\" title=\"Toggle theme\"></button> <a href=\"/settings\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none\" role=\"button\">Settings</a> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 71, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 89, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -162,13 +162,13 @@ func LoginLayout(title string) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 93, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 111, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

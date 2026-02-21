@@ -48,9 +48,11 @@ type Agent struct {
 	SMTP      *bongosmtp.Server
 	IMAP      *bongoimap.Server
 	Notifier  *bongoimap.Notifier
-	Mailboxes *store.MailboxStore
-	BlobSync  *cluster.BlobSyncer
-	logger    *slog.Logger
+	Mailboxes   *store.MailboxStore
+	Preferences *store.PreferenceStore
+	Threads     *store.ThreadStore
+	BlobSync    *cluster.BlobSyncer
+	logger      *slog.Logger
 
 	// Queue subsystem.
 	QueueStore  *queue.QueueStore
@@ -186,9 +188,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.Raft = raftNode
 		logger.Info("raft node initialized", "role", cfg.Server.Role)
 
-		// Create MailboxStore and Notifier (used by IMAP, SMTP, and web UI).
+		// Create MailboxStore, Notifier, PreferenceStore, and ThreadStore.
 		a.Mailboxes = store.NewMailboxStore(pebbleStore, a)
 		a.Notifier = bongoimap.NewNotifier()
+		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
+		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
 	}
 
 	return a, nil
@@ -264,7 +268,13 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Mailboxes != nil {
 			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes)
+			mailH.SetApplier(a)
+			if a.Threads != nil {
+				mailH.SetThreadStore(a.Threads)
+			}
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
+			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
+			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
 			r.Get("/mail/{mailbox}/{uid}", mailH.ShowMessage)
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
 			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
@@ -294,8 +304,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		if a.Notifier != nil {
-			sseH := handlers.NewSSEHandler(a.Notifier)
+			sseH := handlers.NewSSEHandler(a.Notifier, a.Store, a.Mailboxes)
 			r.Get("/events", sseH.Events)
+		}
+
+		if a.Preferences != nil {
+			prefH := handlers.NewPreferencesHandler(a.Preferences)
+			r.Get("/settings", prefH.ShowSettings)
+			r.Post("/settings", prefH.SaveSettings)
+			r.Get("/api/user-prefs", prefH.UserPrefsJSON)
 		}
 	})
 

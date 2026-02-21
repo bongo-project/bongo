@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/a-h/templ"
@@ -27,7 +28,14 @@ type MailHandler struct {
 	pebble    *store.PebbleStore
 	blobs     *store.BlobStore
 	mailboxes *store.MailboxStore
+	threads   *store.ThreadStore
+	applier   store.RaftApplier
 	sanitizer *bluemonday.Policy
+}
+
+// SetThreadStore sets the thread store for conversation grouping.
+func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) {
+	h.threads = ts
 }
 
 // NewMailHandler creates a MailHandler.
@@ -40,6 +48,11 @@ func NewMailHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes
 		mailboxes: mailboxes,
 		sanitizer: policy,
 	}
+}
+
+// SetApplier sets the Raft applier for lazy backfill operations.
+func (h *MailHandler) SetApplier(applier store.RaftApplier) {
+	h.applier = applier
 }
 
 // ListMessages renders the message list for a mailbox.
@@ -56,7 +69,15 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	offset := (page - 1) * messagesPerPage
-	msgs, total, err := h.mailboxes.ListMessagesPaged(userID, mailbox, offset, messagesPerPage)
+	var msgs []*bongov1.MailboxMessage
+	var total int
+	var err error
+
+	if store.VirtualMailboxes[mailbox] {
+		msgs, total, err = h.mailboxes.ListVirtualMessages(userID, mailbox, offset, messagesPerPage)
+	} else {
+		msgs, total, err = h.mailboxes.ListMessagesPaged(userID, mailbox, offset, messagesPerPage)
+	}
 	if err != nil {
 		http.Error(w, "Error loading messages", http.StatusInternalServerError)
 		return
@@ -67,14 +88,17 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		totalPages = 1
 	}
 
-	// Build summaries.
+	// Build summaries with thread info.
 	summaries := make([]templates.MessageSummary, 0, len(msgs))
+	seenRoots := make(map[string]bool)
+
 	for _, msg := range msgs {
 		summary := templates.MessageSummary{
-			UID:     msg.Uid,
-			Date:    time.Unix(msg.InternalDate, 0),
-			Seen:    msg.Flags&store.FlagSeen != 0,
-			Flagged: msg.Flags&store.FlagFlagged != 0,
+			UID:      msg.Uid,
+			MailGUID: msg.MailGuid,
+			Date:     time.Unix(msg.InternalDate, 0),
+			Seen:     msg.Flags&store.FlagSeen != 0,
+			Flagged:  msg.Flags&store.FlagFlagged != 0,
 		}
 
 		// Load mail meta for subject/from.
@@ -84,6 +108,23 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 			summary.Subject = meta.Subject
 			if meta.RawMessage != nil {
 				summary.Size = meta.RawMessage.Size
+			}
+
+			// Thread grouping: find root and count.
+			if h.threads != nil && meta.MessageId != "" {
+				rootGUID, _ := h.threads.GetThreadRoot(userID, msg.MailGuid)
+				summary.ThreadRoot = rootGUID
+
+				// Skip if we already showed this thread root.
+				if seenRoots[rootGUID] {
+					continue
+				}
+				seenRoots[rootGUID] = true
+
+				count := h.threads.GetThreadCount(userID, meta.MessageId)
+				if count > 1 {
+					summary.ThreadCount = count
+				}
 			}
 		}
 		if summary.Subject == "" {
@@ -132,6 +173,11 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	if meta == nil {
 		http.Error(w, "Message metadata not found", http.StatusInternalServerError)
 		return
+	}
+
+	// Lazy backfill: populate threading fields from raw blob for pre-sprint-08 messages.
+	if meta.InReplyTo == "" && meta.RawMessage != nil && meta.RawMessage.Hash != "" {
+		h.backfillThreadingFields(userID, msg.MailGuid, meta)
 	}
 
 	detail := templates.MessageDetail{
@@ -193,6 +239,84 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
 	templ.Handler(templates.MessagePage(detail, mailboxInfos)).ServeHTTP(w, r)
+}
+
+// BulkAction handles bulk operations on selected messages.
+func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := chi.URLParam(r, "mailbox")
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Invalid form", http.StatusBadRequest)
+		return
+	}
+
+	action := r.FormValue("action")
+	uidStrs := r.Form["uids"]
+
+	for _, uidStr := range uidStrs {
+		uid, err := strconv.ParseUint(uidStr, 10, 32)
+		if err != nil {
+			continue
+		}
+
+		switch action {
+		case "mark-read":
+			_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagSeen)
+		case "mark-unread":
+			_ = h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagSeen)
+		case "flag":
+			_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagFlagged)
+		case "unflag":
+			_ = h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagFlagged)
+		case "delete":
+			_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted)
+			_, _ = h.mailboxes.Expunge(userID, mailbox)
+		case "move":
+			dest := r.FormValue("destination")
+			if dest != "" {
+				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest)
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// ShowThread returns an HTMX partial with child messages for thread expansion.
+func (h *MailHandler) ShowThread(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := chi.URLParam(r, "mailbox")
+	rootGUID := chi.URLParam(r, "rootGUID")
+
+	if h.threads == nil {
+		http.Error(w, "Threading not available", http.StatusInternalServerError)
+		return
+	}
+
+	summary, err := h.threads.BuildThread(userID, rootGUID)
+	if err != nil {
+		http.Error(w, "Thread not found", http.StatusNotFound)
+		return
+	}
+
+	// Build child summaries (skip root).
+	var children []templates.ThreadChild
+	for _, node := range summary.AllNodes {
+		if node.GUID == summary.Root.GUID {
+			continue
+		}
+		children = append(children, templates.ThreadChild{
+			GUID:    node.GUID,
+			From:    node.From,
+			Subject: node.Subject,
+			Date:    time.Unix(node.ReceivedAt, 0),
+			Depth:   node.Depth,
+			Mailbox: mailbox,
+		})
+	}
+
+	templ.Handler(templates.ThreadChildren(children, mailbox)).ServeHTTP(w, r)
 }
 
 // ServeBlob streams a blob with the correct content type.
@@ -333,4 +457,57 @@ func (h *MailHandler) loadMailboxInfos(userID, selected string) []templates.Mail
 		}
 	}
 	return orderedInfos
+}
+
+// backfillThreadingFields parses In-Reply-To, References, and Cc from the raw
+// blob and updates the Pebble key via Raft. This handles pre-sprint-08 messages.
+func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1.MailMeta) {
+	if h.applier == nil {
+		return
+	}
+
+	rc, err := h.blobs.Get(meta.RawMessage.Hash)
+	if err != nil {
+		return
+	}
+	rawMsg, _ := io.ReadAll(rc)
+	rc.Close()
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	if err != nil {
+		return
+	}
+
+	irt := env.GetHeader("In-Reply-To")
+	refs := env.GetHeader("References")
+	if irt == "" && refs == "" {
+		return
+	}
+
+	meta.InReplyTo = irt
+	meta.References = refs
+
+	// Also backfill Cc if missing.
+	if len(meta.Cc) == 0 {
+		if ccHeader := env.GetHeader("Cc"); ccHeader != "" {
+			for _, addr := range strings.Split(ccHeader, ",") {
+				addr = strings.TrimSpace(addr)
+				if addr != "" {
+					meta.Cc = append(meta.Cc, addr)
+				}
+			}
+		}
+	}
+
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		return
+	}
+
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
+		Value: metaBytes,
+	}
+	_ = h.applier.ApplyCommand(cmd, 5*time.Second)
 }

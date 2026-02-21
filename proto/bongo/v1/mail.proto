@@ -17,4 +17,7 @@ message MailMeta {
   repeated BlobRef attachments = 8;
   string folder_guid = 9;
   int32 flags = 10;
+  string in_reply_to = 11;
+  string references = 12;
+  repeated string cc = 13;
 }

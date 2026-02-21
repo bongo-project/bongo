@@ -140,8 +140,27 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build threading headers for replies.
+	var inReplyTo, references string
+	if mode == "reply" && replyMailbox != "" && replyUIDStr != "" {
+		replyUID, _ := strconv.ParseUint(replyUIDStr, 10, 32)
+		if replyUID > 0 {
+			if replyMsg, _ := h.mailboxes.GetMessage(userID, replyMailbox, uint32(replyUID)); replyMsg != nil {
+				origMeta := h.loadMailMeta(userID, replyMsg.MailGuid)
+				if origMeta != nil && origMeta.MessageId != "" {
+					inReplyTo = origMeta.MessageId
+					if origMeta.References != "" {
+						references = origMeta.References + " " + origMeta.MessageId
+					} else {
+						references = origMeta.MessageId
+					}
+				}
+			}
+		}
+	}
+
 	// Build RFC 5322 message.
-	rawMsg := buildRFC5322(email, to, cc, subject, body)
+	rawMsg := buildRFC5322(email, to, cc, subject, body, inReplyTo, references)
 
 	// Store blob.
 	hash, err := h.blobs.Put(rawMsg)
@@ -159,11 +178,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		Subject:    subject,
 		From:       email,
 		To:         splitRecipients(to),
+		Cc:         splitRecipients(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
 			Size: int64(len(rawMsg)),
 		},
+		InReplyTo:  inReplyTo,
+		References: references,
 	}
 
 	metaBytes, _ := proto.Marshal(meta)
@@ -279,7 +301,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	subject := r.FormValue("subject")
 	body := r.FormValue("body")
 
-	rawMsg := buildRFC5322(email, to, "", subject, body)
+	rawMsg := buildRFC5322(email, to, "", subject, body, "", "")
 
 	hash, err := h.blobs.Put(rawMsg)
 	if err != nil {
@@ -459,7 +481,7 @@ func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) s
 	return quoted.String()
 }
 
-func buildRFC5322(from, to, cc, subject, body string) []byte {
+func buildRFC5322(from, to, cc, subject, body, inReplyTo, references string) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	buf.WriteString(fmt.Sprintf("To: %s\r\n", to))
@@ -469,6 +491,12 @@ func buildRFC5322(from, to, cc, subject, body string) []byte {
 	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
 	buf.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	buf.WriteString(fmt.Sprintf("Message-ID: <%d@bongo>\r\n", time.Now().UnixNano()))
+	if inReplyTo != "" {
+		buf.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", inReplyTo))
+	}
+	if references != "" {
+		buf.WriteString(fmt.Sprintf("References: %s\r\n", references))
+	}
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")

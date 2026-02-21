@@ -329,3 +329,69 @@
     max-width: 200px;
   }
 }
+
+/* Bulk toolbar */
+.bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-card-background-color, inherit);
+  border-radius: var(--pico-border-radius);
+}
+
+.bulk-toolbar button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+[x-cloak] {
+  display: none !important;
+}
+
+/* Thread badges and children */
+.thread-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: var(--pico-secondary-background);
+  color: var(--pico-secondary-inverse);
+  border-radius: 10px;
+  padding: 0.1rem 0.5rem;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.thread-badge:hover {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+}
+
+.thread-children {
+  background: var(--pico-card-background-color, inherit);
+}
+
+.thread-child td.from-col {
+  padding-left: 1rem;
+}
+
+.thread-reply-arrow {
+  color: var(--pico-muted-color);
+  margin-right: 0.3rem;
+}
+
+/* Theme toggle */
+.theme-toggle {
+  padding: 0.3rem 0.7rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  min-width: 2rem;
+  text-align: center;
+}

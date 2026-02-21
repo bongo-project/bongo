@@ -12,6 +12,49 @@ type MailboxInfo struct {
 templ Sidebar(mailboxes []MailboxInfo, selected string) {
 	<nav>
 		<ul class="mailbox-list">
+			<li>
+				<a
+					href="/mail/unread"
+					if selected == "unread" {
+						class="active"
+					}
+					hx-get="/mail/unread"
+					hx-target="#main-content"
+					hx-push-url="true"
+				>
+					<span>Unread</span>
+					<span id="unread-badge" class="unread-badge"></span>
+				</a>
+			</li>
+			<li>
+				<a
+					href="/mail/starred"
+					if selected == "starred" {
+						class="active"
+					}
+					hx-get="/mail/starred"
+					hx-target="#main-content"
+					hx-push-url="true"
+				>
+					<span>Starred</span>
+				</a>
+			</li>
+			<li>
+				<a
+					href="/mail/all-mail"
+					if selected == "all-mail" {
+						class="active"
+					}
+					hx-get="/mail/all-mail"
+					hx-target="#main-content"
+					hx-push-url="true"
+				>
+					<span>All Mail</span>
+				</a>
+			</li>
+		</ul>
+		<hr style="margin:0.5rem 0"/>
+		<ul class="mailbox-list">
 			for _, mb := range mailboxes {
 				<li>
 					<a

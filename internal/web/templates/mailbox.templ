@@ -7,13 +7,26 @@ import (
 
 // MessageSummary holds data for a single row in the message list.
 type MessageSummary struct {
-	UID     uint32
+	UID         uint32
+	From        string
+	Subject     string
+	Date        time.Time
+	Size        int64
+	Seen        bool
+	Flagged     bool
+	ThreadCount int
+	ThreadRoot  string
+	MailGUID    string
+}
+
+// ThreadChild holds data for a child message in a thread expansion.
+type ThreadChild struct {
+	GUID    string
 	From    string
 	Subject string
 	Date    time.Time
-	Size    int64
-	Seen    bool
-	Flagged bool
+	Depth   int
+	Mailbox string
 }
 
 templ MailboxPage(mailbox string, mailboxes []MailboxInfo, messages []MessageSummary, page, totalPages int, email string, flash string) {
@@ -35,13 +48,24 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 		<a href="/compose" role="button" class="outline">Compose</a>
 		<button class="outline secondary" hx-get={ "/mail/" + mailbox } hx-target="#main-content">Refresh</button>
 	</div>
-	<div id="message-list">
+	<div id="message-list" x-data="messageSelect()">
+		<div class="bulk-toolbar" x-show="count > 0" x-cloak="">
+			<span x-text="count + ' selected'"></span>
+			<button type="button" class="outline secondary" x-on:click="selectAll()">Select All</button>
+			<button type="button" class="outline secondary" x-on:click="deselectAll()">Deselect</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-read')" }>Mark Read</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-unread')" }>Mark Unread</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'flag')" }>Flag</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'unflag')" }>Unflag</button>
+			<button type="button" class="outline contrast" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>Delete</button>
+		</div>
 		if len(messages) == 0 {
 			@EmptyState("No messages", "This mailbox is empty.")
 		} else {
 			<table class="message-list">
 				<thead>
 					<tr>
+						<th style="width:2rem"><input type="checkbox" x-on:change="$event.target.checked ? selectAll() : deselectAll()"/></th>
 						<th style="width:30px"></th>
 						<th>From</th>
 						<th>Subject</th>
@@ -56,6 +80,13 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 							}
 							data-uid={ fmt.Sprint(msg.UID) }
 						>
+							<td>
+								<input
+									type="checkbox"
+									x-on:change={ fmt.Sprintf("toggle(%d, $event)", msg.UID) }
+									x-bind:checked={ fmt.Sprintf("isSelected(%d)", msg.UID) }
+								/>
+							</td>
 							<td>
 								<span
 									class={ "flag-star", templ.KV("flagged", msg.Flagged) }
@@ -93,15 +124,50 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 								>
 									{ msg.Subject }
 								</a>
+								if msg.ThreadCount > 1 {
+									<span
+										class="thread-badge"
+										hx-get={ fmt.Sprintf("/mail/%s/thread/%s", mailbox, msg.ThreadRoot) }
+										hx-target={ fmt.Sprintf("#thread-%s", msg.ThreadRoot) }
+										hx-swap="innerHTML"
+									>
+										{ fmt.Sprint(msg.ThreadCount) }
+									</span>
+								}
 							</td>
 							<td>{ formatDate(msg.Date) }</td>
 						</tr>
+						if msg.ThreadCount > 1 {
+							<tr>
+								<td colspan="4" style="padding:0">
+									<div id={ fmt.Sprintf("thread-%s", msg.ThreadRoot) } class="thread-children"></div>
+								</td>
+							</tr>
+						}
 					}
 				</tbody>
 			</table>
 			@Pagination(page, totalPages, "/mail/"+mailbox)
 		}
 	</div>
+}
+
+templ ThreadChildren(children []ThreadChild, mailbox string) {
+	<table class="message-list" style="margin:0">
+		<tbody>
+			for _, child := range children {
+				<tr class="thread-child" style={ fmt.Sprintf("padding-left:%drem", child.Depth*2) }>
+					<td style="width:30px"></td>
+					<td class="from-col">
+						<span class="thread-reply-arrow">&#8627;</span>
+						{ child.From }
+					</td>
+					<td class="subject-col">{ child.Subject }</td>
+					<td>{ formatDate(child.Date) }</td>
+				</tr>
+			}
+		</tbody>
+	</table>
 }
 
 func formatDate(t time.Time) string {

@@ -1,0 +1,103 @@
+package templates
+
+import bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+
+templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
+	@LayoutWithContent("Settings", email) {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="mailbox-list">
+					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">Back to Mail</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="main-content" id="main-content">
+			if flash != "" {
+				@FlashMessage(flash, "success")
+			}
+			<h2>Settings</h2>
+			<form method="post" action="/settings">
+				<fieldset>
+					<legend>Appearance</legend>
+					<label for="theme">Theme</label>
+					<select name="theme" id="theme">
+						<option value="auto" selected?={ prefs.Theme == bongov1.Theme_THEME_AUTO || prefs.Theme == bongov1.Theme_THEME_UNSPECIFIED }>Auto (follow OS)</option>
+						<option value="light" selected?={ prefs.Theme == bongov1.Theme_THEME_LIGHT }>Light</option>
+						<option value="dark" selected?={ prefs.Theme == bongov1.Theme_THEME_DARK }>Dark</option>
+					</select>
+					<label for="layout_mode">Layout</label>
+					<select name="layout_mode" id="layout_mode">
+						<option value="list" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_LIST || prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_UNSPECIFIED }>List</option>
+						<option value="two-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_TWO_PANE }>Two Pane</option>
+						<option value="three-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_THREE_PANE }>Three Pane</option>
+					</select>
+					<label for="density">Density</label>
+					<select name="density" id="density">
+						<option value="compact" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMPACT }>Compact</option>
+						<option value="comfortable" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMFORTABLE || prefs.Density == bongov1.DisplayDensity_DENSITY_UNSPECIFIED }>Comfortable</option>
+						<option value="spacious" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_SPACIOUS }>Spacious</option>
+					</select>
+				</fieldset>
+				<fieldset>
+					<legend>Display</legend>
+					<label for="messages_per_page">Messages per page</label>
+					<select name="messages_per_page" id="messages_per_page">
+						<option value="10" selected?={ prefs.MessagesPerPage == 10 }>10</option>
+						<option value="25" selected?={ prefs.MessagesPerPage == 25 || prefs.MessagesPerPage == 0 }>25</option>
+						<option value="50" selected?={ prefs.MessagesPerPage == 50 }>50</option>
+						<option value="100" selected?={ prefs.MessagesPerPage == 100 }>100</option>
+					</select>
+				</fieldset>
+				<fieldset>
+					<legend>Composition</legend>
+					<label for="default_reply">Default reply mode</label>
+					<select name="default_reply" id="default_reply">
+						<option value="sender" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_SENDER || prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_UNSPECIFIED }>Reply to sender</option>
+						<option value="all" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL }>Reply all</option>
+					</select>
+					<label for="signature">Signature</label>
+					<textarea name="signature" id="signature" rows="4">{ prefs.Signature }</textarea>
+				</fieldset>
+				<fieldset>
+					<legend>Localization</legend>
+					<label for="timezone">Timezone</label>
+					<select name="timezone" id="timezone">
+						@timezoneOptions(prefs.Timezone)
+					</select>
+				</fieldset>
+				<div>
+					<button type="submit">Save</button>
+					<a href="/mail/INBOX" role="button" class="outline secondary">Cancel</a>
+				</div>
+			</form>
+		</main>
+	}
+}
+
+templ timezoneOptions(selected string) {
+	for _, tz := range commonTimezones() {
+		<option value={ tz } selected?={ tz == selected }>{ tz }</option>
+	}
+}
+
+func commonTimezones() []string {
+	return []string{
+		"UTC",
+		"America/New_York",
+		"America/Chicago",
+		"America/Denver",
+		"America/Los_Angeles",
+		"America/Sao_Paulo",
+		"Europe/London",
+		"Europe/Paris",
+		"Europe/Berlin",
+		"Europe/Amsterdam",
+		"Europe/Moscow",
+		"Asia/Tokyo",
+		"Asia/Shanghai",
+		"Asia/Kolkata",
+		"Asia/Singapore",
+		"Australia/Sydney",
+		"Pacific/Auckland",
+	}
+}

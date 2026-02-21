@@ -33,6 +33,9 @@ type MailMeta struct {
 	Attachments   []*BlobRef             `protobuf:"bytes,8,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	FolderGuid    string                 `protobuf:"bytes,9,opt,name=folder_guid,json=folderGuid,proto3" json:"folder_guid,omitempty"`
 	Flags         int32                  `protobuf:"varint,10,opt,name=flags,proto3" json:"flags,omitempty"`
+	InReplyTo     string                 `protobuf:"bytes,11,opt,name=in_reply_to,json=inReplyTo,proto3" json:"in_reply_to,omitempty"`
+	References    string                 `protobuf:"bytes,12,opt,name=references,proto3" json:"references,omitempty"`
+	Cc            []string               `protobuf:"bytes,13,rep,name=cc,proto3" json:"cc,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -137,11 +140,32 @@ func (x *MailMeta) GetFlags() int32 {
 	return 0
 }
 
+func (x *MailMeta) GetInReplyTo() string {
+	if x != nil {
+		return x.InReplyTo
+	}
+	return ""
+}
+
+func (x *MailMeta) GetReferences() string {
+	if x != nil {
+		return x.References
+	}
+	return ""
+}
+
+func (x *MailMeta) GetCc() []string {
+	if x != nil {
+		return x.Cc
+	}
+	return nil
+}
+
 var File_proto_bongo_v1_mail_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\n" +
-	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xbc\x02\n" +
+	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\x8c\x03\n" +
 	"\bMailMeta\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1d\n" +
 	"\n" +
@@ -157,7 +181,12 @@ const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\vfolder_guid\x18\t \x01(\tR\n" +
 	"folderGuid\x12\x14\n" +
 	"\x05flags\x18\n" +
-	" \x01(\x05R\x05flagsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	" \x01(\x05R\x05flags\x12\x1e\n" +
+	"\vin_reply_to\x18\v \x01(\tR\tinReplyTo\x12\x1e\n" +
+	"\n" +
+	"references\x18\f \x01(\tR\n" +
+	"references\x12\x0e\n" +
+	"\x02cc\x18\r \x03(\tR\x02ccB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_mail_proto_rawDescOnce sync.Once

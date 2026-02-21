@@ -1,6 +1,60 @@
 // Bongo-Go client-side JavaScript (Alpine.js components + keyboard shortcuts)
 
 document.addEventListener('alpine:init', () => {
+  // App-level state: theme, layout, density
+  Alpine.data('appState', () => ({
+    theme: localStorage.getItem('bongo-theme') || 'auto',
+
+    init() {
+      this.applyTheme();
+      this.watchOS();
+      // Hydrate from server preferences.
+      fetch('/api/user-prefs')
+        .then(r => r.ok ? r.json() : null)
+        .then(prefs => {
+          if (!prefs) return;
+          if (!localStorage.getItem('bongo-theme')) {
+            this.theme = prefs.theme || 'auto';
+            this.applyTheme();
+          }
+        })
+        .catch(() => {});
+    },
+
+    toggleTheme() {
+      const cycle = { auto: 'light', light: 'dark', dark: 'auto' };
+      this.theme = cycle[this.theme] || 'auto';
+      localStorage.setItem('bongo-theme', this.theme);
+      this.applyTheme();
+      // Persist to server (fire-and-forget).
+      const form = new FormData();
+      form.set('theme', this.theme);
+      fetch('/settings', { method: 'POST', body: new URLSearchParams(form) }).catch(() => {});
+    },
+
+    applyTheme() {
+      document.documentElement.setAttribute('data-theme', this.resolvedTheme());
+    },
+
+    resolvedTheme() {
+      if (this.theme === 'auto') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      return this.theme;
+    },
+
+    watchOS() {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (this.theme === 'auto') this.applyTheme();
+      });
+    },
+
+    get themeIcon() {
+      const t = this.resolvedTheme();
+      return t === 'dark' ? '\u263E' : '\u2600'; // moon / sun
+    }
+  }));
+
   // GAL autocomplete for compose form
   Alpine.data('galAutocomplete', () => ({
     query: '',
@@ -92,6 +146,29 @@ document.addEventListener('alpine:init', () => {
 
     get count() {
       return this.selected.size;
+    },
+
+    async bulkAction(mailbox, action) {
+      if (this.selected.size === 0) return;
+      const params = new URLSearchParams();
+      params.set('action', action);
+      for (const uid of this.selected) {
+        params.append('uids', uid.toString());
+      }
+      try {
+        const resp = await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+          method: 'POST',
+          body: params
+        });
+        if (resp.ok) {
+          this.selected.clear();
+          this.lastClicked = null;
+          // Refresh message list via HTMX.
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        }
+      } catch (e) {
+        console.error('Bulk action failed:', e);
+      }
     }
   }));
 });

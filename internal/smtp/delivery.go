@@ -86,6 +86,22 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 		}
 	}
 
+	// Extract threading headers.
+	var inReplyTo, references string
+	var ccAddrs []string
+	if envelope != nil {
+		inReplyTo = envelope.GetHeader("In-Reply-To")
+		references = envelope.GetHeader("References")
+		if ccHeader := envelope.GetHeader("Cc"); ccHeader != "" {
+			for _, addr := range strings.Split(ccHeader, ",") {
+				addr = strings.TrimSpace(addr)
+				if addr != "" {
+					ccAddrs = append(ccAddrs, addr)
+				}
+			}
+		}
+	}
+
 	// Parse Date header, fall back to now.
 	receivedAt := time.Now()
 	if envelope != nil {
@@ -136,6 +152,9 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 				ContentType: "message/rfc822",
 			},
 			Attachments: attachmentRefs,
+			InReplyTo:   inReplyTo,
+			References:  references,
+			Cc:          ccAddrs,
 		}
 
 		metaBytes, err := proto.Marshal(meta)

@@ -289,6 +289,73 @@ func (ms *MailboxStore) CountMessages(userID, mailbox string) (total, recent, un
 	return total, recent, unseen, nil
 }
 
+// VirtualMailboxes are special virtual folder names.
+var VirtualMailboxes = map[string]bool{
+	"unread":   true,
+	"starred":  true,
+	"all-mail": true,
+}
+
+// ListVirtualMessages returns messages matching a virtual folder filter across all mailboxes.
+func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limit int) ([]*bongov1.MailboxMessage, int, error) {
+	mailboxes, err := ms.ListMailboxes(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var all []*bongov1.MailboxMessage
+	for _, mb := range mailboxes {
+		msgs, err := ms.ListMessages(userID, mb.Name)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			switch virtual {
+			case "unread":
+				if msg.Flags&FlagSeen == 0 {
+					all = append(all, msg)
+				}
+			case "starred":
+				if msg.Flags&FlagFlagged != 0 {
+					all = append(all, msg)
+				}
+			case "all-mail":
+				all = append(all, msg)
+			}
+		}
+	}
+
+	total := len(all)
+
+	// Sort newest first by InternalDate.
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+
+// TotalUnreadCount returns the total number of unread messages across all mailboxes for a user.
+func (ms *MailboxStore) TotalUnreadCount(userID string) int {
+	mailboxes, err := ms.ListMailboxes(userID)
+	if err != nil {
+		return 0
+	}
+	var count int
+	for _, mb := range mailboxes {
+		_, _, unseen, _ := ms.CountMessages(userID, mb.Name)
+		count += int(unseen)
+	}
+	return count
+}
+
 // IMAP flag constants (bitfield).
 const (
 	FlagSeen     uint32 = 1
