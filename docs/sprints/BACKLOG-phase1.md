@@ -115,7 +115,7 @@ GAL with personal contacts). Contact search via Bleve (name, email, phone, compa
 CardDAV sync so contacts work with macOS Contacts, iOS, DAVx5. Integration test:
 create contact via web UI, sync via CardDAV client, verify in compose autocomplete.
 
-## Sprint 10a: Calendar Foundation — CalDAV, Event CRUD & Month View ← CURRENT
+## Sprint 10a: Calendar Foundation — CalDAV, Event CRUD & Month View ✅ DONE
 Event and Calendar protos + stores in Pebble (`/user/{id}/event/{guid}`,
 `/user/{id}/calendar/{guid}`). CalDAV server (RFC 4791) via `emersion/go-webdav`
 for sync with Apple Calendar, Thunderbird, DAVx5. Month-view web UI with event
@@ -124,7 +124,7 @@ start/end time, location, description, all-day toggle. iCalendar import/export.
 Event search via Bleve. Default calendar auto-created. Integration tests for CRUD,
 CalDAV sync, and iCal round-trip.
 
-## Sprint 10b: Calendar Polish — Views, Recurrence, Reminders & Sharing
+## Sprint 10b: Calendar Polish — Views, Recurrence, Reminders & Sharing ✅ DONE
 Week and day views with time-positioned event blocks. Recurring events (RRULE:
 daily/weekly/monthly/yearly with exception dates). Drag-and-drop event rescheduling
 in week/day views (snap to 30-min). Mini calendar navigator in sidebar. Multiple
@@ -179,3 +179,20 @@ XSS prevention. Performance: lazy-load message list on scroll (infinite scroll
 option), prefetch next page via HTMX `hx-trigger="revealed"`, compress SSE payloads.
 E2E test suite: Playwright or similar headless browser tests covering full user
 journeys (login → compose → send → receive → search → calendar → contacts → logout).
+
+## Sprint 14: Visual UI Matching — Old Bongo Dragonfly/Hawkeye
+Use browser agent to view the old Bongo UI screenshots from
+https://github.com/bongo-project/bongo-project/tree/gh-pages/images (11 Dragonfly
+screens + 13 Hawkeye screens at various resolutions). Also try running the old UI from
+bongo.original/src/www/ static HTML/JS sources. Compare side-by-side with the new
+bongo-go web UI. Iterate on CSS, layout, spacing, colours, iconography, and interaction
+patterns to match the original look and feel as closely as possible while keeping the
+modern stack (HTMX, Alpine.js, Pico CSS, Open Props). Focus on: mail list density,
+message reading experience, compose flow, calendar views, contact cards, admin dashboard
+layout. This sprint is visual/design-driven rather than feature-driven.
+
+## Future: Migrate Old Bongo Website to GitHub Pages
+The bongo-project/bongo-project repo has a `gh-pages` branch with images and some site
+content. Migrate the full old Bongo project website (docs, screenshots, downloads page)
+to GitHub Pages so it's preserved and publicly accessible. May need to pull content from
+bongo-project.org archives or reconstruct from available sources.

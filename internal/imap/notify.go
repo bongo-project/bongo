@@ -6,9 +6,10 @@ import "sync"
 type NotificationType int
 
 const (
-	NotifNewMail    NotificationType = iota
+	NotifNewMail       NotificationType = iota
 	NotifFlagChange
 	NotifExpunge
+	NotifEventReminder
 )
 
 // Notification represents a mailbox event for IDLE.
@@ -18,6 +19,11 @@ type Notification struct {
 	Flags       uint32
 	SeqNum      uint32
 	ExistsCount uint32
+
+	// Event reminder fields (only set when Type == NotifEventReminder).
+	EventTitle    string
+	EventStart    int64
+	MinutesBefore int32
 }
 
 // Notifier is a fan-out notification hub for IMAP IDLE.

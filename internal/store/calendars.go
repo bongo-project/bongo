@@ -155,3 +155,71 @@ func (s *CalendarStore) List(userID string) ([]*bongov1.Calendar, error) {
 
 	return calendars, nil
 }
+
+// SharedCalendar holds a calendar and its owner's userID.
+type SharedCalendar struct {
+	OwnerID  string
+	Calendar *bongov1.Calendar
+}
+
+// ListSharedCalendars returns calendars shared with the given userID.
+// It scans all users' calendar prefixes to find shared_with matches.
+func (s *CalendarStore) ListSharedCalendars(userID string) ([]SharedCalendar, error) {
+	// Scan all /user/*/calendar/* keys.
+	iter, err := s.pebble.PrefixScan([]byte("/user/"))
+	if err != nil {
+		return nil, fmt.Errorf("scanning for shared calendars: %w", err)
+	}
+	defer iter.Close()
+
+	var results []SharedCalendar
+	for iter.Next() {
+		key := string(iter.Key())
+
+		// Only process calendar keys: /user/{ownerID}/calendar/{calID}
+		if len(key) < 7 {
+			continue
+		}
+		rest := key[6:] // after "/user/"
+		slashIdx := 0
+		for slashIdx < len(rest) && rest[slashIdx] != '/' {
+			slashIdx++
+		}
+		if slashIdx == 0 || slashIdx >= len(rest)-1 {
+			continue
+		}
+		ownerID := rest[:slashIdx]
+		remainder := rest[slashIdx+1:]
+
+		// Only look at calendar keys, skip events/contacts/etc.
+		if len(remainder) < 9 || remainder[:9] != "calendar/" {
+			continue
+		}
+
+		// Skip own calendars.
+		if ownerID == userID {
+			continue
+		}
+
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var cal bongov1.Calendar
+		if err := proto.Unmarshal(val, &cal); err != nil {
+			continue
+		}
+
+		for _, u := range cal.SharedWith {
+			if u == userID {
+				results = append(results, SharedCalendar{
+					OwnerID:  ownerID,
+					Calendar: &cal,
+				})
+				break
+			}
+		}
+	}
+
+	return results, nil
+}

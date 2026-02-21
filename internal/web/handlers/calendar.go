@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +85,241 @@ func (h *CalendarHandler) MonthView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templ.Handler(templates.CalendarPage(year, month, days, calendars, email, flash)).ServeHTTP(w, r)
+}
+
+// WeekView renders the calendar week view.
+func (h *CalendarHandler) WeekView(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+
+	year, err := strconv.Atoi(chi.URLParam(r, "year"))
+	if err != nil {
+		http.Error(w, "invalid year", http.StatusBadRequest)
+		return
+	}
+	week, err := strconv.Atoi(chi.URLParam(r, "week"))
+	if err != nil || week < 1 || week > 53 {
+		http.Error(w, "invalid week", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.calendars.EnsureDefault(userID); err != nil {
+		http.Error(w, "failed to init calendar", http.StatusInternalServerError)
+		return
+	}
+	calendars, _ := h.calendars.List(userID)
+	calColorMap := buildCalColorMap(calendars)
+
+	// Find Monday of the given ISO week.
+	weekStart := isoWeekMonday(year, week)
+	weekEnd := weekStart.AddDate(0, 0, 7)
+
+	events, err := h.events.ListByDateRange(userID, weekStart.Unix(), weekEnd.Unix(), "")
+	if err != nil {
+		http.Error(w, "failed to load events", http.StatusInternalServerError)
+		return
+	}
+
+	days := buildWeekColumns(weekStart, events, calColorMap)
+
+	flash := r.URL.Query().Get("flash")
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.WeekViewGrid(year, week, days, calendars, calColorMap)).ServeHTTP(w, r)
+		return
+	}
+
+	templ.Handler(templates.WeekViewPage(year, week, days, calendars, calColorMap, email, flash)).ServeHTTP(w, r)
+}
+
+// DayView renders the calendar day view.
+func (h *CalendarHandler) DayView(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+
+	year, err := strconv.Atoi(chi.URLParam(r, "year"))
+	if err != nil {
+		http.Error(w, "invalid year", http.StatusBadRequest)
+		return
+	}
+	month, err := strconv.Atoi(chi.URLParam(r, "month"))
+	if err != nil || month < 1 || month > 12 {
+		http.Error(w, "invalid month", http.StatusBadRequest)
+		return
+	}
+	day, err := strconv.Atoi(chi.URLParam(r, "day"))
+	if err != nil || day < 1 || day > 31 {
+		http.Error(w, "invalid day", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := h.calendars.EnsureDefault(userID); err != nil {
+		http.Error(w, "failed to init calendar", http.StatusInternalServerError)
+		return
+	}
+	calendars, _ := h.calendars.List(userID)
+	calColorMap := buildCalColorMap(calendars)
+
+	loc := time.Now().Location()
+	date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, loc)
+	dayEnd := date.AddDate(0, 0, 1)
+
+	events, err := h.events.ListByDateRange(userID, date.Unix(), dayEnd.Unix(), "")
+	if err != nil {
+		http.Error(w, "failed to load events", http.StatusInternalServerError)
+		return
+	}
+
+	col := buildDayColumn(date, events, calColorMap)
+
+	flash := r.URL.Query().Get("flash")
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.DayViewGrid(date, col, calendars, calColorMap)).ServeHTTP(w, r)
+		return
+	}
+
+	templ.Handler(templates.DayViewPage(date, col, calendars, calColorMap, email, flash)).ServeHTTP(w, r)
+}
+
+// RescheduleEvent handles POST to update only start/end times (drag-and-drop).
+func (h *CalendarHandler) RescheduleEvent(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	guid := chi.URLParam(r, "guid")
+
+	event, err := h.events.Get(userID, guid)
+	if err != nil {
+		http.Error(w, "event not found", http.StatusNotFound)
+		return
+	}
+
+	startStr := r.FormValue("start_time")
+	endStr := r.FormValue("end_time")
+
+	newStart, err := strconv.ParseInt(startStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid start_time", http.StatusBadRequest)
+		return
+	}
+	newEnd, err := strconv.ParseInt(endStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid end_time", http.StatusBadRequest)
+		return
+	}
+
+	event.StartTime = newStart
+	event.EndTime = newEnd
+
+	if err := h.events.Update(userID, guid, event); err != nil {
+		http.Error(w, "failed to reschedule event", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("HX-Trigger", "calendarRefresh")
+	w.WriteHeader(http.StatusOK)
+}
+
+// UpdateCalendar handles PUT to update calendar properties (name, colour).
+func (h *CalendarHandler) UpdateCalendar(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	calID := chi.URLParam(r, "calendarID")
+
+	cal, err := h.calendars.Get(userID, calID)
+	if err != nil {
+		http.Error(w, "calendar not found", http.StatusNotFound)
+		return
+	}
+
+	if name := r.FormValue("name"); name != "" {
+		cal.Name = name
+	}
+	if color := r.FormValue("color"); color != "" {
+		cal.Color = color
+	}
+
+	if err := h.calendars.Update(userID, calID, cal); err != nil {
+		http.Error(w, "failed to update calendar", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("HX-Trigger", "calendarRefresh")
+	w.WriteHeader(http.StatusOK)
+}
+
+// ShareCalendar handles POST to share a calendar with another user.
+func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	calID := chi.URLParam(r, "calendarID")
+
+	cal, err := h.calendars.Get(userID, calID)
+	if err != nil {
+		http.Error(w, "calendar not found", http.StatusNotFound)
+		return
+	}
+
+	shareWith := r.FormValue("share_with")
+	if shareWith == "" {
+		http.Error(w, "share_with is required", http.StatusBadRequest)
+		return
+	}
+
+	// Avoid duplicates.
+	for _, u := range cal.SharedWith {
+		if u == shareWith {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+	}
+
+	cal.SharedWith = append(cal.SharedWith, shareWith)
+	if err := h.calendars.Update(userID, calID, cal); err != nil {
+		http.Error(w, "failed to share calendar", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("HX-Trigger", "calendarRefresh")
+	w.WriteHeader(http.StatusOK)
+}
+
+// FreeBusy returns busy time blocks for a user in a date range.
+func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
+	targetUser := r.URL.Query().Get("user")
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	if targetUser == "" || startStr == "" || endStr == "" {
+		http.Error(w, "user, start, and end are required", http.StatusBadRequest)
+		return
+	}
+
+	start, err := strconv.ParseInt(startStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid start", http.StatusBadRequest)
+		return
+	}
+	end, err := strconv.ParseInt(endStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid end", http.StatusBadRequest)
+		return
+	}
+
+	events, err := h.events.ListByDateRange(targetUser, start, end, "")
+	if err != nil {
+		http.Error(w, "failed to load events", http.StatusInternalServerError)
+		return
+	}
+
+	type busyBlock struct {
+		Start int64 `json:"start"`
+		End   int64 `json:"end"`
+	}
+	var blocks []busyBlock
+	for _, e := range events {
+		if !e.AllDay {
+			blocks = append(blocks, busyBlock{Start: e.StartTime, End: e.EndTime})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(blocks)
 }
 
 // NewEvent renders the create event form.
@@ -365,10 +602,18 @@ func parseEventForm(r *http.Request) (*bongov1.Event, error) {
 		CalendarId:  r.FormValue("calendar_id"),
 		Timezone:    r.FormValue("timezone"),
 		AllDay:      r.FormValue("all_day") == "on",
+		Rrule:       r.FormValue("rrule"),
 	}
 
 	if event.CalendarId == "" {
 		event.CalendarId = "default"
+	}
+
+	// Parse reminder minutes.
+	if rm := r.FormValue("reminder_minutes"); rm != "" {
+		if v, err := strconv.ParseInt(rm, 10, 32); err == nil {
+			event.ReminderMinutes = int32(v)
+		}
 	}
 
 	// Parse start date/time.
@@ -468,4 +713,152 @@ func buildMonthGrid(year int, month time.Month, events []*bongov1.Event, loc *ti
 	}
 
 	return days
+}
+
+// buildCalColorMap builds a map of calendar GUID to colour hex string.
+func buildCalColorMap(calendars []*bongov1.Calendar) map[string]string {
+	m := make(map[string]string, len(calendars))
+	for _, c := range calendars {
+		if c.Color != "" {
+			m[c.Guid] = c.Color
+		}
+	}
+	return m
+}
+
+// isoWeekMonday returns the Monday of the given ISO week.
+func isoWeekMonday(year, week int) time.Time {
+	// Jan 4 is always in week 1 of the year.
+	jan4 := time.Date(year, 1, 4, 0, 0, 0, 0, time.Now().Location())
+	// Find Monday of week 1.
+	weekday := int(jan4.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	week1Monday := jan4.AddDate(0, 0, -(weekday - 1))
+	// Add weeks.
+	return week1Monday.AddDate(0, 0, (week-1)*7)
+}
+
+// buildWeekColumns builds 7 DayColumn structs for week view.
+func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap map[string]string) []templates.DayColumn {
+	loc := weekStart.Location()
+	today := time.Now().In(loc)
+	todayDate := today.Format("2006-01-02")
+
+	// Group events by date.
+	eventsByDate := make(map[string][]*bongov1.Event)
+	for _, e := range events {
+		t := time.Unix(e.StartTime, 0).In(loc)
+		key := t.Format("2006-01-02")
+		eventsByDate[key] = append(eventsByDate[key], e)
+	}
+
+	days := make([]templates.DayColumn, 7)
+	for i := 0; i < 7; i++ {
+		d := weekStart.AddDate(0, 0, i)
+		key := d.Format("2006-01-02")
+		dayEvents := eventsByDate[key]
+
+		// Separate all-day vs timed events.
+		var allDay, timed []*bongov1.Event
+		for _, e := range dayEvents {
+			if e.AllDay {
+				allDay = append(allDay, e)
+			} else {
+				timed = append(timed, e)
+			}
+		}
+
+		// Sort timed events by start time.
+		sort.Slice(timed, func(a, b int) bool {
+			return timed[a].StartTime < timed[b].StartTime
+		})
+
+		// Build event blocks with positioning.
+		var blocks []templates.EventBlock
+		for _, e := range timed {
+			st := time.Unix(e.StartTime, 0).In(loc)
+			et := time.Unix(e.EndTime, 0).In(loc)
+			topPct := (float64(st.Hour())*60 + float64(st.Minute())) / (24 * 60) * 100
+			durMin := et.Sub(st).Minutes()
+			if durMin < 30 {
+				durMin = 30
+			}
+			heightPct := durMin / (24 * 60) * 100
+
+			color := calColorMap[e.CalendarId]
+			if color == "" {
+				color = "#4A90D9"
+			}
+
+			blocks = append(blocks, templates.EventBlock{
+				Event:     e,
+				TopPct:    topPct,
+				HeightPct: heightPct,
+				Color:     color,
+			})
+		}
+
+		days[i] = templates.DayColumn{
+			Date:      d,
+			IsToday:   d.Format("2006-01-02") == todayDate,
+			AllDay:    allDay,
+			Blocks:    blocks,
+			DateStr:   d.Format("2006-01-02"),
+		}
+	}
+
+	return days
+}
+
+// buildDayColumn builds a DayColumn for day view.
+func buildDayColumn(date time.Time, events []*bongov1.Event, calColorMap map[string]string) templates.DayColumn {
+	loc := date.Location()
+	today := time.Now().In(loc)
+
+	var allDay, timed []*bongov1.Event
+	for _, e := range events {
+		if e.AllDay {
+			allDay = append(allDay, e)
+		} else {
+			timed = append(timed, e)
+		}
+	}
+
+	sort.Slice(timed, func(a, b int) bool {
+		return timed[a].StartTime < timed[b].StartTime
+	})
+
+	var blocks []templates.EventBlock
+	for _, e := range timed {
+		st := time.Unix(e.StartTime, 0).In(loc)
+		et := time.Unix(e.EndTime, 0).In(loc)
+		topPct := (float64(st.Hour())*60 + float64(st.Minute())) / (24 * 60) * 100
+		durMin := et.Sub(st).Minutes()
+		if durMin < 30 {
+			durMin = 30
+		}
+		heightPct := durMin / (24 * 60) * 100
+
+		color := calColorMap[e.CalendarId]
+		if color == "" {
+			color = "#4A90D9"
+		}
+
+		blocks = append(blocks, templates.EventBlock{
+			Event:     e,
+			TopPct:    topPct,
+			HeightPct: heightPct,
+			Color:     color,
+		})
+	}
+
+	return templates.DayColumn{
+		Date:    date,
+		IsToday: date.Format("2006-01-02") == today.Format("2006-01-02"),
+		AllDay:  allDay,
+		Blocks:  blocks,
+		DateStr: date.Format("2006-01-02"),
+	}
 }

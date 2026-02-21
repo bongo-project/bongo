@@ -73,8 +73,9 @@ type Agent struct {
 
 	httpServer        *http.Server
 	ready             atomic.Bool
-	blobSyncCancel    context.CancelFunc
-	queueWorkerCancel context.CancelFunc
+	blobSyncCancel     context.CancelFunc
+	queueWorkerCancel  context.CancelFunc
+	reminderCancel     context.CancelFunc
 
 	// tmpDir is set in dev mode so we can clean up on shutdown.
 	tmpDir string
@@ -381,6 +382,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/calendar/event/{guid}", calendarH.ShowEvent)
 			r.Post("/calendar/event/{guid}", calendarH.UpdateEvent)
 			r.Delete("/calendar/event/{guid}", calendarH.DeleteEvent)
+			r.Get("/calendar/week/{year}/{week}", calendarH.WeekView)
+			r.Get("/calendar/day/{year}/{month}/{day}", calendarH.DayView)
+			r.Post("/calendar/event/{guid}/reschedule", calendarH.RescheduleEvent)
+			r.Put("/calendar/{calendarID}", calendarH.UpdateCalendar)
+			r.Post("/calendar/{calendarID}/share", calendarH.ShareCalendar)
+			r.Get("/calendar/freebusy", calendarH.FreeBusy)
 			r.Get("/calendar/export", calendarH.ExportCalendar)
 			r.Post("/calendar/import", calendarH.ImportCalendar)
 			r.Get("/calendar/search", calendarH.SearchEvents)
@@ -512,6 +519,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/internal/queue/stats", queueH.Stats)
 		r.Post("/internal/queue/{id}/retry", queueH.Retry)
 		r.Delete("/internal/queue/{id}", queueH.Drop)
+	}
+
+	// Start event reminder checker.
+	if a.Events != nil && a.Notifier != nil {
+		reminderCtx, reminderCancel := context.WithCancel(ctx)
+		a.reminderCancel = reminderCancel
+		go a.runReminderChecker(reminderCtx)
+		a.logger.Info("event reminder checker started")
 	}
 
 	// Start IMAP server.
@@ -715,6 +730,12 @@ func (a *Agent) Shutdown() error {
 	if a.queueWorkerCancel != nil {
 		a.queueWorkerCancel()
 		a.logger.Info("queue worker stopped")
+	}
+
+	// 3.6. Reminder checker.
+	if a.reminderCancel != nil {
+		a.reminderCancel()
+		a.logger.Info("reminder checker stopped")
 	}
 
 	// 4. Blob sync cancel.

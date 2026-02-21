@@ -18,4 +18,6 @@ message Event {
   bytes ical_raw = 11;
   int64 created_at = 12;
   int64 updated_at = 13;
+  int32 reminder_minutes = 14;
+  repeated string exdates = 15;
 }

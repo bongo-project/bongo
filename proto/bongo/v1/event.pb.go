@@ -22,22 +22,24 @@ const (
 )
 
 type Event struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Guid          string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
-	CalendarId    string                 `protobuf:"bytes,2,opt,name=calendar_id,json=calendarId,proto3" json:"calendar_id,omitempty"`
-	Title         string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
-	Description   string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
-	Location      string                 `protobuf:"bytes,5,opt,name=location,proto3" json:"location,omitempty"`
-	StartTime     int64                  `protobuf:"varint,6,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
-	EndTime       int64                  `protobuf:"varint,7,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
-	AllDay        bool                   `protobuf:"varint,8,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"`
-	Rrule         string                 `protobuf:"bytes,9,opt,name=rrule,proto3" json:"rrule,omitempty"`
-	Timezone      string                 `protobuf:"bytes,10,opt,name=timezone,proto3" json:"timezone,omitempty"`
-	IcalRaw       []byte                 `protobuf:"bytes,11,opt,name=ical_raw,json=icalRaw,proto3" json:"ical_raw,omitempty"`
-	CreatedAt     int64                  `protobuf:"varint,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     int64                  `protobuf:"varint,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Guid            string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
+	CalendarId      string                 `protobuf:"bytes,2,opt,name=calendar_id,json=calendarId,proto3" json:"calendar_id,omitempty"`
+	Title           string                 `protobuf:"bytes,3,opt,name=title,proto3" json:"title,omitempty"`
+	Description     string                 `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
+	Location        string                 `protobuf:"bytes,5,opt,name=location,proto3" json:"location,omitempty"`
+	StartTime       int64                  `protobuf:"varint,6,opt,name=start_time,json=startTime,proto3" json:"start_time,omitempty"`
+	EndTime         int64                  `protobuf:"varint,7,opt,name=end_time,json=endTime,proto3" json:"end_time,omitempty"`
+	AllDay          bool                   `protobuf:"varint,8,opt,name=all_day,json=allDay,proto3" json:"all_day,omitempty"`
+	Rrule           string                 `protobuf:"bytes,9,opt,name=rrule,proto3" json:"rrule,omitempty"`
+	Timezone        string                 `protobuf:"bytes,10,opt,name=timezone,proto3" json:"timezone,omitempty"`
+	IcalRaw         []byte                 `protobuf:"bytes,11,opt,name=ical_raw,json=icalRaw,proto3" json:"ical_raw,omitempty"`
+	CreatedAt       int64                  `protobuf:"varint,12,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt       int64                  `protobuf:"varint,13,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	ReminderMinutes int32                  `protobuf:"varint,14,opt,name=reminder_minutes,json=reminderMinutes,proto3" json:"reminder_minutes,omitempty"`
+	Exdates         []string               `protobuf:"bytes,15,rep,name=exdates,proto3" json:"exdates,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Event) Reset() {
@@ -161,11 +163,25 @@ func (x *Event) GetUpdatedAt() int64 {
 	return 0
 }
 
+func (x *Event) GetReminderMinutes() int32 {
+	if x != nil {
+		return x.ReminderMinutes
+	}
+	return 0
+}
+
+func (x *Event) GetExdates() []string {
+	if x != nil {
+		return x.Exdates
+	}
+	return nil
+}
+
 var File_proto_bongo_v1_event_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_event_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/bongo/v1/event.proto\x12\bbongo.v1\"\xee\x02\n" +
+	"\x1aproto/bongo/v1/event.proto\x12\bbongo.v1\"\xb3\x03\n" +
 	"\x05Event\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1f\n" +
 	"\vcalendar_id\x18\x02 \x01(\tR\n" +
@@ -184,7 +200,9 @@ const file_proto_bongo_v1_event_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\f \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\r \x01(\x03R\tupdatedAtB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"updated_at\x18\r \x01(\x03R\tupdatedAt\x12)\n" +
+	"\x10reminder_minutes\x18\x0e \x01(\x05R\x0freminderMinutes\x12\x18\n" +
+	"\aexdates\x18\x0f \x03(\tR\aexdatesB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_event_proto_rawDescOnce sync.Once

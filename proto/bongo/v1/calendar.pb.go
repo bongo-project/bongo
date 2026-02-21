@@ -30,6 +30,7 @@ type Calendar struct {
 	Timezone      string                 `protobuf:"bytes,5,opt,name=timezone,proto3" json:"timezone,omitempty"`
 	CreatedAt     int64                  `protobuf:"varint,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     int64                  `protobuf:"varint,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	SharedWith    []string               `protobuf:"bytes,8,rep,name=shared_with,json=sharedWith,proto3" json:"shared_with,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -113,11 +114,18 @@ func (x *Calendar) GetUpdatedAt() int64 {
 	return 0
 }
 
+func (x *Calendar) GetSharedWith() []string {
+	if x != nil {
+		return x.SharedWith
+	}
+	return nil
+}
+
 var File_proto_bongo_v1_calendar_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_calendar_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/bongo/v1/calendar.proto\x12\bbongo.v1\"\xc4\x01\n" +
+	"\x1dproto/bongo/v1/calendar.proto\x12\bbongo.v1\"\xe5\x01\n" +
 	"\bCalendar\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -127,7 +135,9 @@ const file_proto_bongo_v1_calendar_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\x03R\tupdatedAtB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"updated_at\x18\a \x01(\x03R\tupdatedAt\x12\x1f\n" +
+	"\vshared_with\x18\b \x03(\tR\n" +
+	"sharedWithB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_calendar_proto_rawDescOnce sync.Once

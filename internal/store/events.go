@@ -2,8 +2,10 @@ package store
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
+	"github.com/teambition/rrule-go"
 	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -124,8 +126,78 @@ func (s *EventStore) Delete(userID, guid string) error {
 	return nil
 }
 
+// ExpandRecurrence generates occurrence instances of a recurring event
+// within the given time range. Each occurrence gets a unique GUID suffix
+// based on its date.
+func ExpandRecurrence(event *bongov1.Event, rangeStart, rangeEnd int64) ([]*bongov1.Event, error) {
+	if event.Rrule == "" {
+		return []*bongov1.Event{event}, nil
+	}
+
+	r, err := rrule.StrToROption(event.Rrule)
+	if err != nil {
+		return nil, fmt.Errorf("parsing rrule %q: %w", event.Rrule, err)
+	}
+
+	eventStart := time.Unix(event.StartTime, 0).UTC()
+	r.Dtstart = eventStart
+
+	rule, err := rrule.NewRRule(*r)
+	if err != nil {
+		return nil, fmt.Errorf("creating rrule: %w", err)
+	}
+
+	duration := event.EndTime - event.StartTime
+
+	// Build exdate set for fast lookup.
+	exdateSet := make(map[string]bool, len(event.Exdates))
+	for _, ex := range event.Exdates {
+		exdateSet[ex] = true
+	}
+
+	start := time.Unix(rangeStart, 0).UTC()
+	end := time.Unix(rangeEnd, 0).UTC()
+	occurrences := rule.Between(start.Add(-time.Duration(duration)*time.Second), end, true)
+
+	var events []*bongov1.Event
+	for _, occ := range occurrences {
+		occStart := occ.Unix()
+		occEnd := occStart + duration
+
+		// Skip if outside range.
+		if occStart >= rangeEnd || occEnd <= rangeStart {
+			continue
+		}
+
+		// Skip exception dates.
+		dateKey := occ.Format("2006-01-02")
+		if exdateSet[dateKey] {
+			continue
+		}
+
+		instance := &bongov1.Event{
+			Guid:            fmt.Sprintf("%s_%s", event.Guid, dateKey),
+			CalendarId:      event.CalendarId,
+			Title:           event.Title,
+			Description:     event.Description,
+			Location:        event.Location,
+			StartTime:       occStart,
+			EndTime:         occEnd,
+			AllDay:          event.AllDay,
+			Rrule:           event.Rrule,
+			Timezone:        event.Timezone,
+			ReminderMinutes: event.ReminderMinutes,
+			CreatedAt:       event.CreatedAt,
+			UpdatedAt:       event.UpdatedAt,
+		}
+		events = append(events, instance)
+	}
+
+	return events, nil
+}
+
 // ListByDateRange returns events for a user within a time range,
-// optionally filtered by calendar ID.
+// optionally filtered by calendar ID. Recurring events are expanded.
 func (s *EventStore) ListByDateRange(userID string, start, end int64, calendarID string) ([]*bongov1.Event, error) {
 	iter, err := s.pebble.PrefixScan(eventPrefix(userID))
 	if err != nil {
@@ -149,11 +221,25 @@ func (s *EventStore) ListByDateRange(userID string, start, end int64, calendarID
 			continue
 		}
 
+		// Expand recurring events.
+		if event.Rrule != "" {
+			expanded, err := ExpandRecurrence(&event, start, end)
+			if err != nil {
+				continue
+			}
+			events = append(events, expanded...)
+			continue
+		}
+
 		// Check time range overlap: event overlaps range if event.start < range.end AND event.end > range.start.
 		if event.StartTime < end && event.EndTime > start {
 			events = append(events, &event)
 		}
 	}
+
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].StartTime < events[j].StartTime
+	})
 
 	return events, nil
 }

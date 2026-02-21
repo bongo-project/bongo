@@ -89,6 +89,9 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 			case bongoimap.NotifFlagChange:
 				fmt.Fprintf(w, "event: flagchange\ndata: {\"mailbox\":%q,\"uid\":%d,\"flags\":%d}\n\n",
 					mailbox, notif.UID, notif.Flags)
+			case bongoimap.NotifEventReminder:
+				fmt.Fprintf(w, "event: reminder\ndata: {\"title\":%q,\"start_time\":%d,\"minutes_before\":%d}\n\n",
+					notif.EventTitle, notif.EventStart, notif.MinutesBefore)
 			}
 			flusher.Flush()
 

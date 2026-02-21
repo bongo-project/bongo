@@ -255,6 +255,19 @@ document.addEventListener('alpine:init', () => {
         }
       });
 
+      this.eventSource.addEventListener('reminder', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (this.permission === 'granted') {
+            const n = new Notification('Event in ' + data.minutes_before + ' minutes', {
+              body: data.title || 'Upcoming event',
+              icon: '/static/logo.png'
+            });
+            n.onclick = () => { window.focus(); n.close(); };
+          }
+        } catch (err) { /* ignore parse errors */ }
+      });
+
       this.eventSource.onerror = () => {
         // Reconnect after 5 seconds.
         this.eventSource.close();
@@ -552,9 +565,102 @@ function initDragDrop() {
 // Re-init drag-drop after HTMX swaps.
 document.addEventListener('htmx:afterSettle', initDragDrop);
 
+// Calendar: event drag-and-drop rescheduling in week/day views.
+function initEventDrag() {
+  document.querySelectorAll('.event-block[data-guid]').forEach(block => {
+    if (block._dragInit) return;
+    block._dragInit = true;
+
+    block.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const col = block.closest('.day-column');
+      if (!col) return;
+
+      const guid = block.dataset.guid;
+      const startTs = parseInt(block.dataset.start);
+      const endTs = parseInt(block.dataset.end);
+      const duration = endTs - startTs;
+      const colRect = col.getBoundingClientRect();
+      const hourHeight = colRect.height / 24;
+
+      block.classList.add('dragging');
+
+      // Create ghost element.
+      const ghost = document.createElement('div');
+      ghost.className = 'event-ghost';
+      ghost.style.height = block.style.height;
+      col.appendChild(ghost);
+
+      const onMouseMove = (ev) => {
+        const relY = ev.clientY - colRect.top;
+        // Snap to 30-min increments.
+        const halfHours = Math.round(relY / (hourHeight / 2));
+        const snappedY = halfHours * (hourHeight / 2);
+        const pct = (snappedY / colRect.height) * 100;
+        ghost.style.top = Math.max(0, Math.min(pct, 100 - parseFloat(block.style.height))) + '%';
+      };
+
+      const onMouseUp = (ev) => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        block.classList.remove('dragging');
+        ghost.remove();
+
+        // Calculate new time from drop position.
+        const targetCol = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.day-column');
+        if (!targetCol) return;
+
+        const targetRect = targetCol.getBoundingClientRect();
+        const relY = ev.clientY - targetRect.top;
+        const halfHours = Math.round(relY / (targetRect.height / 24 / 2));
+        const minutes = halfHours * 30;
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+
+        const dateStr = targetCol.dataset.date;
+        if (!dateStr) return;
+
+        // Build new timestamp from date + dropped hour.
+        const dateParts = dateStr.split('-');
+        const newDate = new Date(
+          parseInt(dateParts[0]),
+          parseInt(dateParts[1]) - 1,
+          parseInt(dateParts[2]),
+          hours, mins, 0
+        );
+        const newStart = Math.floor(newDate.getTime() / 1000);
+        const newEnd = newStart + duration;
+
+        const form = new URLSearchParams();
+        form.set('start_time', newStart.toString());
+        form.set('end_time', newEnd.toString());
+
+        fetch('/calendar/event/' + guid + '/reschedule', {
+          method: 'POST',
+          body: form
+        }).then(resp => {
+          if (resp.ok) {
+            // Refresh current view.
+            htmx.ajax('GET', window.location.pathname, '#main-content');
+          }
+        }).catch(() => {});
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  });
+}
+
+document.addEventListener('htmx:afterSettle', initEventDrag);
+
 // Flash message auto-dismiss + init drag-drop
 document.addEventListener('DOMContentLoaded', () => {
   initDragDrop();
+  initEventDrag();
   document.querySelectorAll('.flash').forEach(el => {
     setTimeout(() => {
       el.style.transition = 'opacity 0.3s';

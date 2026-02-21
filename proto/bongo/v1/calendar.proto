@@ -12,4 +12,5 @@ message Calendar {
   string timezone = 5;
   int64 created_at = 6;
   int64 updated_at = 7;
+  repeated string shared_with = 8;
 }

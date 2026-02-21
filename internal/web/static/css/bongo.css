@@ -713,3 +713,233 @@
   font-weight: 600;
   margin-right: 0.2rem;
 }
+
+/* View switcher */
+.view-switcher {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.view-switcher a[role="button"] {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+}
+
+/* Week grid */
+.week-grid, .day-grid {
+  display: grid;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.week-grid {
+  grid-template-columns: 50px repeat(7, 1fr);
+}
+.day-grid {
+  grid-template-columns: 50px 1fr;
+}
+
+.time-gutter {
+  border-right: 1px solid var(--pico-muted-border-color);
+}
+.hour-label {
+  height: 3rem;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.7rem;
+  color: var(--pico-muted-color);
+  text-align: right;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  box-sizing: border-box;
+}
+
+.day-column {
+  position: relative;
+  border-right: 1px solid var(--pico-muted-border-color);
+}
+.day-column:last-child {
+  border-right: none;
+}
+.day-column.today {
+  background: var(--pico-primary-focus);
+}
+
+.hour-row {
+  height: 3rem;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  position: relative;
+}
+.hour-row-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+  text-decoration: none;
+}
+.hour-row-link:hover {
+  background: var(--pico-primary-focus);
+}
+
+.event-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border-radius: 3px;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.7rem;
+  color: #fff;
+  text-decoration: none;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+  min-height: 1.2rem;
+}
+.event-block:hover {
+  opacity: 0.85;
+  z-index: 3;
+}
+
+.event-block-time {
+  font-weight: 600;
+  margin-right: 0.2rem;
+}
+.event-block-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* All-day header */
+.all-day-header {
+  display: grid;
+  border: 1px solid var(--pico-muted-border-color);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  min-height: 1.8rem;
+  margin-bottom: 0;
+}
+.week-grid + .all-day-header,
+.all-day-header + .week-grid {
+  border-top: none;
+}
+.all-day-header {
+  grid-template-columns: 50px repeat(7, 1fr);
+}
+.day-view-allday {
+  grid-template-columns: 50px 1fr;
+}
+.time-gutter-header {
+  border-right: 1px solid var(--pico-muted-border-color);
+  font-size: 0.7rem;
+  padding: 0.2rem;
+  color: var(--pico-muted-color);
+}
+.all-day-cell {
+  padding: 0.15rem 0.25rem;
+  border-right: 1px solid var(--pico-muted-border-color);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+}
+.all-day-cell:last-child {
+  border-right: none;
+}
+.all-day-cell.today {
+  background: var(--pico-primary-focus);
+}
+
+/* Drag-and-drop */
+.event-block.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+.event-ghost {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  border: 2px dashed var(--pico-primary);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 10;
+  background: var(--pico-primary-focus);
+}
+.drop-slot.highlight {
+  background: var(--pico-primary-focus);
+}
+
+/* Mini calendar */
+.mini-calendar {
+  padding: 0.25rem 0.75rem;
+}
+.mini-calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+.mini-cal-btn {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border: none;
+  cursor: pointer;
+  margin: 0;
+}
+.mini-cal-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.mini-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  text-align: center;
+}
+.mini-cal-hdr {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--pico-muted-color);
+  padding: 0.1rem;
+}
+.mini-cal-day {
+  font-size: 0.7rem;
+  padding: 0.15rem;
+  border-radius: 3px;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.4rem;
+}
+.mini-cal-day:hover {
+  background: var(--pico-primary-focus);
+}
+.mini-cal-day.today {
+  background: var(--pico-primary);
+  color: var(--pico-primary-inverse);
+  font-weight: 700;
+}
+.mini-cal-day.selected {
+  outline: 2px solid var(--pico-primary);
+}
+.mini-cal-day.other-month {
+  opacity: 0.4;
+}
+.mini-cal-day.empty {
+  cursor: default;
+}
+
+/* Calendar list panel */
+.calendar-list-panel {
+  padding: 0.25rem 0.75rem;
+}
+.calendar-list-item {
+  padding: 0.15rem 0;
+}
+.cal-color-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

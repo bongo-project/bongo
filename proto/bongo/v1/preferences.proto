@@ -40,4 +40,5 @@ message UserPreferences {
   string signature = 6;
   string timezone = 7;
   int64 updated_at = 8;
+  string calendar_view = 9;
 }
