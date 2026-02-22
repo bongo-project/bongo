@@ -228,6 +228,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 func (a *Agent) Run(ctx context.Context) error {
 	// Set up HTTP routes.
 	r := chi.NewRouter()
+	r.Use(middleware.SecurityHeaders())
 	health := handlers.NewHealthHandler(a)
 	r.Get("/health/live", health.Live)
 	r.Get("/health/ready", health.Ready)
@@ -277,11 +278,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("web: auto-generated session secret", "hex", hex.EncodeToString(sessionSecret))
 	}
 
+	// Login rate limiter (5 attempts per 15-minute window).
+	loginRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
+
 	// Auth routes (public).
 	authH := handlers.NewAuthHandler(a.Auth, sessionSecret)
 	authH.SetProfileLoader(a)
+	authH.SetRateLimiter(loginRL)
 	r.Get("/login", authH.LoginPage)
-	r.Post("/login", authH.Login)
+	r.With(loginRL.LoginRateLimit()).Post("/login", authH.Login)
 	r.Post("/logout", authH.Logout)
 
 	// CardDAV endpoint with basic auth.
