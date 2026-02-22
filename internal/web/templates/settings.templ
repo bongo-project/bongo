@@ -49,6 +49,10 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 						<option value="50" selected?={ prefs.MessagesPerPage == 50 }>50</option>
 						<option value="100" selected?={ prefs.MessagesPerPage == 100 }>100</option>
 					</select>
+					<label for="infinite_scroll">
+						<input type="checkbox" name="infinite_scroll" id="infinite_scroll" value="1" checked?={ prefs.InfiniteScroll }/>
+						Infinite scroll (load more messages automatically when scrolling)
+					</label>
 				</fieldset>
 				<fieldset>
 					<legend>Composition</legend>

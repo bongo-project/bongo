@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/html"
+
 	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"github.com/jhillyerd/enmime"
@@ -162,6 +164,20 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		summaries = append(summaries, summary)
 	}
 
+	// Load user preferences for infinite scroll setting.
+	infiniteScroll := false
+	if h.prefs != nil {
+		if up := h.prefs.Get(userID); up.InfiniteScroll {
+			infiniteScroll = true
+		}
+	}
+
+	// Infinite scroll partial: return only message rows (no layout, no sidebar, no pagination wrapper).
+	if r.URL.Query().Get("partial") == "1" {
+		templ.Handler(templates.MessageRowsPartial(summaries, mailbox, page, totalPages)).ServeHTTP(w, r)
+		return
+	}
+
 	// Load mailbox list for sidebar.
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
 
@@ -169,11 +185,11 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 
 	// HTMX partial vs full page.
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(mailbox, summaries, page, totalPages, flash)).ServeHTTP(w, r)
+		templ.Handler(templates.MailboxContent(mailbox, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, summaries, page, totalPages, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
 // ShowMessage renders a single message detail view.
@@ -235,17 +251,29 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 			if err == nil {
 				if env.HTML != "" {
-					sanitized := h.sanitizer.Sanitize(env.HTML)
+					inlined := inlineStyleBlocks(env.HTML)
+					sanitized := h.sanitizer.Sanitize(inlined)
 					detail.HTMLBody, detail.HasBlockedImages = blockRemoteImages(sanitized)
 				}
 				detail.TextBody = env.Text
 
 				for _, att := range env.Attachments {
-					detail.Attachments = append(detail.Attachments, templates.Attachment{
+					a := templates.Attachment{
 						Filename:    att.FileName,
 						ContentType: att.ContentType,
 						Size:        int64(len(att.Content)),
-					})
+					}
+					// Try to match with proto BlobRef by filename for hash.
+					for _, br := range meta.Attachments {
+						if br.Filename == att.FileName {
+							a.Hash = br.Hash
+							if br.ContentType != "" {
+								a.ContentType = br.ContentType
+							}
+							break
+						}
+					}
+					detail.Attachments = append(detail.Attachments, a)
 				}
 			} else {
 				// Fallback to raw text.
@@ -254,20 +282,21 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Also add attachments from proto.
+	// Also add attachments from proto that weren't matched above.
 	for _, blobRef := range meta.Attachments {
 		found := false
 		for _, existing := range detail.Attachments {
-			if existing.Hash == blobRef.Hash {
+			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
 				found = true
 				break
 			}
 		}
 		if !found {
 			detail.Attachments = append(detail.Attachments, templates.Attachment{
+				Filename:    blobRef.Filename,
 				Hash:        blobRef.Hash,
 				ContentType: blobRef.ContentType,
-				Size:        int64(blobRef.Size),
+				Size:        blobRef.Size,
 			})
 		}
 	}
@@ -374,6 +403,268 @@ func (h *MailHandler) ShowThread(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.ThreadChildren(children, mailbox)).ServeHTTP(w, r)
 }
 
+// ImportPage renders the mbox import form.
+func (h *MailHandler) ImportPage(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailboxInfos := h.loadMailboxInfos(userID, "")
+	var names []string
+	for _, mb := range mailboxInfos {
+		names = append(names, mb.Name)
+	}
+	templ.Handler(templates.ImportPage(names)).ServeHTTP(w, r)
+}
+
+// ImportMbox processes an uploaded mbox file and imports messages.
+func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+
+	if err := r.ParseMultipartForm(500 << 20); err != nil {
+		http.Error(w, "File too large or invalid form", http.StatusBadRequest)
+		return
+	}
+
+	targetMailbox := r.FormValue("mailbox")
+	if newMb := r.FormValue("new_mailbox"); newMb != "" {
+		targetMailbox = newMb
+	}
+	if targetMailbox == "" {
+		targetMailbox = "INBOX"
+	}
+
+	// Ensure target mailbox exists.
+	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil {
+		_ = h.mailboxes.CreateMailbox(userID, targetMailbox)
+	}
+
+	file, _, err := r.FormFile("mbox")
+	if err != nil {
+		http.Error(w, "No file uploaded", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse mbox: split on "\nFrom " lines.
+	messages := splitMbox(data)
+
+	imported := 0
+	failed := 0
+	for _, rawMsg := range messages {
+		if len(rawMsg) == 0 {
+			continue
+		}
+
+		// Store raw blob.
+		hash, err := h.blobs.Put(rawMsg)
+		if err != nil {
+			failed++
+			continue
+		}
+
+		// Parse headers for metadata.
+		env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+		if err != nil {
+			failed++
+			continue
+		}
+
+		guid := fmt.Sprintf("import-%d-%s", time.Now().UnixNano(), hash[:8])
+
+		// Parse date.
+		receivedAt := time.Now().Unix()
+		if dateStr := env.GetHeader("Date"); dateStr != "" {
+			for _, layout := range []string{time.RFC1123Z, time.RFC1123, time.RFC822Z, time.RFC822, "Mon, 2 Jan 2006 15:04:05 -0700"} {
+				if t, err := time.Parse(layout, dateStr); err == nil {
+					receivedAt = t.Unix()
+					break
+				}
+			}
+		}
+
+		var toAddrs []string
+		if toHeader := env.GetHeader("To"); toHeader != "" {
+			for _, addr := range strings.Split(toHeader, ",") {
+				addr = strings.TrimSpace(addr)
+				if addr != "" {
+					toAddrs = append(toAddrs, addr)
+				}
+			}
+		}
+
+		meta := &bongov1.MailMeta{
+			Guid:       guid,
+			MessageId:  env.GetHeader("Message-ID"),
+			Subject:    env.GetHeader("Subject"),
+			From:       env.GetHeader("From"),
+			To:         toAddrs,
+			ReceivedAt: receivedAt,
+			RawMessage: &bongov1.BlobRef{
+				Hash: hash,
+				Size: int64(len(rawMsg)),
+			},
+		}
+
+		metaBytes, err := proto.Marshal(meta)
+		if err != nil {
+			failed++
+			continue
+		}
+
+		cmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
+			Value: metaBytes,
+		}
+		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			failed++
+			continue
+		}
+
+		h.deliverToMailbox(userID, targetMailbox, guid, meta)
+		imported++
+	}
+
+	templ.Handler(templates.ImportResult(imported, failed, targetMailbox)).ServeHTTP(w, r)
+}
+
+// deliverToMailbox is the same pattern used by ComposeHandler; duplicated here for MailHandler.
+func (h *MailHandler) deliverToMailbox(userID, mailbox, guid string, meta *bongov1.MailMeta) {
+	mbMeta, err := h.mailboxes.GetMailbox(userID, mailbox)
+	if err != nil {
+		return
+	}
+	uid := mbMeta.UidNext
+	mbMeta.UidNext = uid + 1
+	metaBytes, _ := proto.Marshal(mbMeta)
+	metaCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox)),
+		Value: metaBytes,
+	}
+	_ = h.applier.ApplyCommand(metaCmd, 5*time.Second)
+
+	msg := &bongov1.MailboxMessage{
+		Uid:          uid,
+		MailGuid:     guid,
+		Flags:        0,
+		InternalDate: meta.ReceivedAt,
+	}
+	msgBytes, _ := proto.Marshal(msg)
+	msgCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid)),
+		Value: msgBytes,
+	}
+	_ = h.applier.ApplyCommand(msgCmd, 5*time.Second)
+}
+
+// splitMbox splits an mbox byte slice into individual RFC 5322 messages.
+// Each message starts with a "From " line at the beginning of a line.
+func splitMbox(data []byte) [][]byte {
+	var messages [][]byte
+	content := string(data)
+
+	// Ensure it starts with "From "
+	if !strings.HasPrefix(content, "From ") {
+		// Try to find the first "From " line.
+		idx := strings.Index(content, "\nFrom ")
+		if idx >= 0 {
+			content = content[idx+1:]
+		}
+	}
+
+	parts := strings.Split("\n"+content, "\nFrom ")
+	for i, part := range parts {
+		if i == 0 {
+			continue // empty before first split
+		}
+		// Find end of "From " line.
+		nlIdx := strings.Index(part, "\n")
+		if nlIdx < 0 {
+			continue
+		}
+		msgBody := part[nlIdx+1:]
+		if len(strings.TrimSpace(msgBody)) == 0 {
+			continue
+		}
+		messages = append(messages, []byte(msgBody))
+	}
+	return messages
+}
+
+// ExportEML downloads a message as a .eml file (raw RFC 5322).
+func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := chi.URLParam(r, "mailbox")
+	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid UID", http.StatusBadRequest)
+		return
+	}
+
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	meta := h.loadMailMeta(userID, msg.MailGuid)
+	if meta == nil || meta.RawMessage == nil || meta.RawMessage.Hash == "" {
+		http.Error(w, "Message data not found", http.StatusNotFound)
+		return
+	}
+
+	rc, err := h.blobs.Get(meta.RawMessage.Hash)
+	if err != nil {
+		http.Error(w, "Message blob not found", http.StatusNotFound)
+		return
+	}
+	defer rc.Close()
+
+	// Sanitize filename from subject.
+	filename := sanitizeFilename(meta.Subject) + ".eml"
+
+	w.Header().Set("Content-Type", "message/rfc822")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	if meta.RawMessage.Size > 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(meta.RawMessage.Size, 10))
+	}
+	io.Copy(w, rc)
+}
+
+// sanitizeFilename removes unsafe characters and limits length for use as a download filename.
+func sanitizeFilename(s string) string {
+	if s == "" {
+		return "message"
+	}
+	// Replace unsafe characters.
+	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", "*", "_", "?", "_", "\"", "_", "<", "_", ">", "_", "|", "_")
+	s = replacer.Replace(s)
+	if len(s) > 100 {
+		s = s[:100]
+	}
+	return strings.TrimSpace(s)
+}
+
+// safeInlineTypes lists content types safe for inline display.
+var safeInlineTypes = map[string]bool{
+	"image/jpeg":       true,
+	"image/png":        true,
+	"image/gif":        true,
+	"image/webp":       true,
+	"application/pdf":  true,
+	"text/plain":       true,
+	"text/csv":         true,
+	"text/html":        true,
+	"application/json": true,
+	"application/xml":  true,
+}
+
 // ServeBlob streams a blob with the correct content type.
 func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 	hash := chi.URLParam(r, "hash")
@@ -384,7 +675,20 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rc.Close()
 
-	w.Header().Set("Content-Disposition", "attachment")
+	// Determine content type from query parameter or detect from content.
+	contentType := r.URL.Query().Get("ct")
+	inline := r.URL.Query().Get("inline") == "1"
+
+	if inline && contentType != "" && safeInlineTypes[contentType] {
+		w.Header().Set("Content-Disposition", "inline")
+		w.Header().Set("Content-Type", contentType)
+		if contentType == "application/pdf" {
+			w.Header().Set("Content-Security-Policy", "sandbox")
+		}
+	} else {
+		w.Header().Set("Content-Disposition", "attachment")
+	}
+
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	io.Copy(w, rc)
 }
@@ -488,6 +792,140 @@ func blockRemoteImages(html string) (string, bool) {
 		)
 	})
 	return result, blocked
+}
+
+// styleBlockRe matches <style>...</style> blocks in HTML.
+var styleBlockRe = regexp.MustCompile(`(?is)<style[^>]*>(.*?)</style>`)
+
+// cssRuleRe matches simple CSS rules: selector { declarations }.
+var cssRuleRe = regexp.MustCompile(`([^{]+)\{([^}]+)\}`)
+
+// inlineStyleBlocks extracts <style> blocks, applies their rules as inline
+// style attributes on matching elements, and removes the <style> blocks.
+func inlineStyleBlocks(htmlStr string) string {
+	// Extract all CSS rules from <style> blocks.
+	type cssRule struct {
+		selector     string
+		declarations string
+	}
+	var rules []cssRule
+
+	matches := styleBlockRe.FindAllStringSubmatch(htmlStr, -1)
+	for _, m := range matches {
+		cssContent := m[1]
+		ruleMatches := cssRuleRe.FindAllStringSubmatch(cssContent, -1)
+		for _, rm := range ruleMatches {
+			sel := strings.TrimSpace(rm[1])
+			decl := strings.TrimSpace(rm[2])
+			// Only handle simple selectors: element, .class, #id.
+			// Skip pseudo-classes, combinators, media queries, etc.
+			if strings.ContainsAny(sel, ":@+~>[]") {
+				continue
+			}
+			rules = append(rules, cssRule{selector: sel, declarations: decl})
+		}
+	}
+
+	// Remove <style> blocks.
+	htmlStr = styleBlockRe.ReplaceAllString(htmlStr, "")
+
+	if len(rules) == 0 {
+		return htmlStr
+	}
+
+	// Parse HTML and apply inline styles.
+	doc, err := html.Parse(strings.NewReader(htmlStr))
+	if err != nil {
+		return htmlStr
+	}
+
+	for _, rule := range rules {
+		// Handle comma-separated selectors.
+		for _, sel := range strings.Split(rule.selector, ",") {
+			sel = strings.TrimSpace(sel)
+			if sel == "" {
+				continue
+			}
+			applyRuleToNodes(doc, sel, rule.declarations)
+		}
+	}
+
+	var buf bytes.Buffer
+	if err := html.Render(&buf, doc); err != nil {
+		return htmlStr
+	}
+
+	// html.Render wraps in <html><head><body>; extract the body content.
+	rendered := buf.String()
+	if idx := strings.Index(rendered, "<body>"); idx >= 0 {
+		rendered = rendered[idx+6:]
+		if end := strings.LastIndex(rendered, "</body>"); end >= 0 {
+			rendered = rendered[:end]
+		}
+	}
+	return rendered
+}
+
+// applyRuleToNodes applies CSS declarations to nodes matching a simple selector.
+func applyRuleToNodes(n *html.Node, selector, declarations string) {
+	if n.Type == html.ElementNode && matchesSelector(n, selector) {
+		// Append to existing style attribute.
+		existingStyle := ""
+		for i, a := range n.Attr {
+			if a.Key == "style" {
+				existingStyle = a.Val
+				n.Attr = append(n.Attr[:i], n.Attr[i+1:]...)
+				break
+			}
+		}
+		newStyle := declarations
+		if existingStyle != "" {
+			// Existing inline styles take precedence (appended last).
+			if !strings.HasSuffix(newStyle, ";") {
+				newStyle += ";"
+			}
+			newStyle += " " + existingStyle
+		}
+		n.Attr = append(n.Attr, html.Attribute{Key: "style", Val: newStyle})
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		applyRuleToNodes(c, selector, declarations)
+	}
+}
+
+// matchesSelector checks if a node matches a simple CSS selector.
+func matchesSelector(n *html.Node, selector string) bool {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return false
+	}
+
+	switch {
+	case strings.HasPrefix(selector, "."):
+		// Class selector.
+		className := selector[1:]
+		for _, a := range n.Attr {
+			if a.Key == "class" {
+				for _, c := range strings.Fields(a.Val) {
+					if c == className {
+						return true
+					}
+				}
+			}
+		}
+	case strings.HasPrefix(selector, "#"):
+		// ID selector.
+		id := selector[1:]
+		for _, a := range n.Attr {
+			if a.Key == "id" && a.Val == id {
+				return true
+			}
+		}
+	default:
+		// Element selector.
+		return strings.EqualFold(n.Data, selector)
+	}
+	return false
 }
 
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {

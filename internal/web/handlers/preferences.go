@@ -97,6 +97,9 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 		prefs.Locale = r.FormValue("locale")
 	}
 
+	// Infinite scroll: checkbox sends "1" when checked, absent when unchecked.
+	prefs.InfiniteScroll = r.FormValue("infinite_scroll") == "1"
+
 	if err := h.prefs.Set(userID, prefs); err != nil {
 		http.Error(w, "Failed to save preferences", http.StatusInternalServerError)
 		return

@@ -42,4 +42,5 @@ message UserPreferences {
   int64 updated_at = 8;
   string calendar_view = 9;
   string locale = 10;
+  bool infinite_scroll = 11;
 }
