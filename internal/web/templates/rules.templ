@@ -71,9 +71,19 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 							</tr>
 						</thead>
 						<tbody id="sortable-rules">
-							for _, rule := range rules {
+							for i, rule := range rules {
 								<tr data-id={ rule.ID }>
-									<td style="cursor:grab" class="drag-handle">&#x2801;</td>
+									<td class="drag-handle" style="cursor:grab;display:flex;align-items:center;gap:0.15rem">
+										&#x2801;
+										<span style="display:flex;flex-direction:column">
+											if i > 0 {
+												<button type="button" class="rule-move-btn" aria-label="Move rule up" data-move-dir="up" data-move-id={ rule.ID }>&#x25B2;</button>
+											}
+											if i < len(rules)-1 {
+												<button type="button" class="rule-move-btn" aria-label="Move rule down" data-move-dir="down" data-move-id={ rule.ID }>&#x25BC;</button>
+											}
+										</span>
+									</td>
 									<td>{ fmt.Sprintf("%d", rule.Priority) }</td>
 									<td><a href={ templ.SafeURL("/settings/rules/" + rule.ID) }>{ rule.Name }</a></td>
 									<td><small>{ rule.ConditionSummary }</small></td>
@@ -299,3 +309,4 @@ func actionTypeData(actionType string) string {
 	}
 	return fmt.Sprintf("{ actionType: '%s' }", actionType)
 }
+

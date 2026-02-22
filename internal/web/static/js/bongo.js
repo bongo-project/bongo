@@ -208,7 +208,6 @@ document.addEventListener('alpine:init', () => {
       }
     }
   }));
-});
 
   // Desktop notifications + SSE
   Alpine.data('notifications', () => ({
@@ -367,6 +366,7 @@ document.addEventListener('alpine:init', () => {
     y: 0,
     uid: null,
     mailbox: null,
+    focusedItem: -1,
 
     open(event, uid, mailbox) {
       event.preventDefault();
@@ -375,10 +375,48 @@ document.addEventListener('alpine:init', () => {
       this.x = event.clientX;
       this.y = event.clientY;
       this.visible = true;
+      this.focusedItem = -1;
+      // Focus first item after render.
+      this.$nextTick(() => {
+        const items = this.$el.querySelectorAll('[role="menuitem"]');
+        if (items.length > 0) {
+          this.focusedItem = 0;
+          items[0].focus();
+        }
+      });
     },
 
     close() {
       this.visible = false;
+      this.focusedItem = -1;
+    },
+
+    onKeydown(event) {
+      const items = Array.from(this.$el.querySelectorAll('[role="menuitem"]'));
+      if (items.length === 0) return;
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        this.focusedItem = Math.min(this.focusedItem + 1, items.length - 1);
+        items[this.focusedItem].focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.focusedItem = Math.max(this.focusedItem - 1, 0);
+        items[this.focusedItem].focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        this.focusedItem = 0;
+        items[0].focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        this.focusedItem = items.length - 1;
+        items[this.focusedItem].focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (this.focusedItem >= 0 && this.focusedItem < items.length) {
+          items[this.focusedItem].click();
+        }
+      }
     },
 
     action(act) {
@@ -439,6 +477,7 @@ document.addEventListener('alpine:init', () => {
       }
     }
   }));
+});
 
 // Reading pane: intercept message link clicks in pane modes.
 document.addEventListener('click', (e) => {
@@ -451,10 +490,99 @@ document.addEventListener('click', (e) => {
   htmx.ajax('GET', link.dataset.paneUrl, '#reading-pane');
 });
 
+// Keyboard shortcut help modal
+var shortcutModalOpen = false;
+
+function toggleShortcutModal() {
+  shortcutModalOpen = !shortcutModalOpen;
+  var overlay = document.getElementById('shortcut-modal-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'shortcut-modal-overlay';
+    overlay.className = 'shortcut-modal-overlay';
+    overlay.setAttribute('role', 'presentation');
+    overlay.innerHTML =
+      '<div class="shortcut-modal" role="dialog" aria-labelledby="shortcut-modal-title" aria-modal="true">' +
+        '<h3 id="shortcut-modal-title">Keyboard Shortcuts</h3>' +
+        '<dl>' +
+          '<dt><kbd>j</kbd></dt><dd>Next message</dd>' +
+          '<dt><kbd>k</kbd></dt><dd>Previous message</dd>' +
+          '<dt><kbd>Enter</kbd></dt><dd>Open message</dd>' +
+          '<dt><kbd>r</kbd></dt><dd>Reply</dd>' +
+          '<dt><kbd>d</kbd></dt><dd>Delete</dd>' +
+          '<dt><kbd>s</kbd></dt><dd>Star / unstar</dd>' +
+          '<dt><kbd>/</kbd></dt><dd>Focus search</dd>' +
+          '<dt><kbd>c</kbd></dt><dd>Compose new message</dd>' +
+          '<dt><kbd>Esc</kbd></dt><dd>Close modal / menu</dd>' +
+          '<dt><kbd>?</kbd></dt><dd>Show this help</dd>' +
+        '</dl>' +
+        '<button type="button" class="outline secondary modal-close" id="shortcut-modal-close">Close</button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', function(ev) {
+      if (ev.target === overlay) toggleShortcutModal();
+    });
+    document.getElementById('shortcut-modal-close').addEventListener('click', function() {
+      toggleShortcutModal();
+    });
+  }
+  if (shortcutModalOpen) {
+    overlay.style.display = 'flex';
+    // Focus trap: focus the close button.
+    document.getElementById('shortcut-modal-close').focus();
+  } else {
+    overlay.style.display = 'none';
+  }
+}
+
+// Focus trap for shortcut modal
+document.addEventListener('keydown', function(e) {
+  if (!shortcutModalOpen) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    toggleShortcutModal();
+    return;
+  }
+  if (e.key === 'Tab') {
+    // Trap focus inside modal.
+    var modal = document.querySelector('.shortcut-modal');
+    if (!modal) return;
+    var focusable = modal.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    if (focusable.length === 0) return;
+    var first = focusable[0];
+    var last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
+});
+
 // Keyboard shortcuts (only when not in an input/textarea)
 document.addEventListener('keydown', (e) => {
+  if (shortcutModalOpen) return;
+
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) {
+    return;
+  }
+
+  if (e.key === '?') {
+    e.preventDefault();
+    toggleShortcutModal();
+    return;
+  }
+
+  if (e.key === 'c') {
+    e.preventDefault();
+    window.location.href = '/compose';
     return;
   }
 
@@ -523,6 +651,24 @@ document.addEventListener('keydown', (e) => {
       const searchInput = document.querySelector('.search-input input, .search-input');
       if (searchInput) searchInput.focus();
       break;
+  }
+});
+
+// Focus management after HTMX content swaps
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+  var target = evt.detail.target;
+  var focusable = target.querySelector('h1, h2, h3, [autofocus], a, button, input:not([type="hidden"])');
+  if (focusable) {
+    focusable.setAttribute('tabindex', '-1');
+    focusable.focus();
+  }
+  // Announce swap to screen readers.
+  var announcer = document.getElementById('aria-announcements');
+  if (announcer) {
+    var heading = target.querySelector('h1, h2, h3');
+    if (heading) {
+      announcer.textContent = heading.textContent + ' loaded';
+    }
   }
 });
 
@@ -674,6 +820,26 @@ function initEventDrag() {
 }
 
 document.addEventListener('htmx:afterSettle', initEventDrag);
+
+// Rule move up/down buttons (keyboard alternative to drag-and-drop)
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-move-dir]');
+  if (!btn) return;
+  var row = btn.closest('tr[data-id]');
+  if (!row) return;
+  var dir = btn.dataset.moveDir;
+  var sibling = dir === 'up' ? row.previousElementSibling : row.nextElementSibling;
+  if (!sibling || !sibling.dataset.id) return;
+  if (dir === 'up') {
+    row.parentNode.insertBefore(row, sibling);
+  } else {
+    row.parentNode.insertBefore(sibling, row);
+  }
+  var ids = Array.from(row.closest('tbody').querySelectorAll('tr[data-id]')).map(function(r) { return r.dataset.id; });
+  fetch('/settings/rules/reorder', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(ids)});
+  // Re-focus the button after DOM move.
+  btn.focus();
+});
 
 // Flash message auto-dismiss + init drag-drop
 document.addEventListener('DOMContentLoaded', () => {
