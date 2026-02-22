@@ -17,6 +17,7 @@ type MessageSummary struct {
 	ThreadCount int
 	ThreadRoot  string
 	MailGUID    string
+	SpamScore   float32
 }
 
 // ThreadChild holds data for a child message in a thread expansion.
@@ -65,6 +66,11 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-unread')" }>Mark Unread</button>
 			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'flag')" }>Flag</button>
 			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'unflag')" }>Unflag</button>
+			if mailbox == "Junk" {
+				<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'not-spam')" }>Not Spam</button>
+			} else {
+				<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>Mark Spam</button>
+			}
 			<button type="button" class="outline contrast" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>Delete</button>
 		</div>
 		if len(messages) == 0 {
@@ -138,6 +144,9 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 								>
 									{ msg.Subject }
 								</a>
+								if mailbox == "Junk" && msg.SpamScore > 0 {
+									<span class="spam-badge" title="Spam score">{ fmt.Sprintf("%.0f%%", msg.SpamScore*100) }</span>
+								}
 								if msg.ThreadCount > 1 {
 									<span
 										class="thread-badge"

@@ -430,7 +430,7 @@ func ContextMenu() templ.Component {
 			templ_7745c5c3_Var20 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div x-data=\"contextMenu\" x-show=\"visible\" x-on:click.away=\"close()\" x-on:keydown.escape.window=\"close()\" x-on:ctx-menu.window=\"open($event.detail.event, $event.detail.uid, $event.detail.mailbox)\" x-bind:style=\"'left:' + x + 'px;top:' + y + 'px'\" class=\"context-menu\" x-cloak=\"\"><a x-on:click=\"action('open')\">Open</a> <a x-on:click=\"action('reply')\">Reply</a> <a x-on:click=\"action('reply-all')\">Reply All</a> <a x-on:click=\"action('forward')\">Forward</a><hr><a x-on:click=\"action('mark-read')\">Mark Read</a> <a x-on:click=\"action('mark-unread')\">Mark Unread</a> <a x-on:click=\"action('flag')\">Flag</a> <a x-on:click=\"action('unflag')\">Unflag</a><hr><a x-on:click=\"action('delete')\" class=\"danger\">Delete</a></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div x-data=\"contextMenu\" x-show=\"visible\" x-on:click.away=\"close()\" x-on:keydown.escape.window=\"close()\" x-on:ctx-menu.window=\"open($event.detail.event, $event.detail.uid, $event.detail.mailbox)\" x-bind:style=\"'left:' + x + 'px;top:' + y + 'px'\" class=\"context-menu\" x-cloak=\"\"><a x-on:click=\"action('open')\">Open</a> <a x-on:click=\"action('reply')\">Reply</a> <a x-on:click=\"action('reply-all')\">Reply All</a> <a x-on:click=\"action('forward')\">Forward</a><hr><a x-on:click=\"action('mark-read')\">Mark Read</a> <a x-on:click=\"action('mark-unread')\">Mark Unread</a> <a x-on:click=\"action('flag')\">Flag</a> <a x-on:click=\"action('unflag')\">Unflag</a><hr><a x-on:click=\"action('spam')\">Mark as Spam</a> <a x-on:click=\"action('not-spam')\">Not Spam</a><hr><a x-on:click=\"action('delete')\" class=\"danger\">Delete</a></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -466,7 +466,7 @@ func EmptyState(title, subtitle string) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 180, Col: 13}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 183, Col: 13}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -479,7 +479,7 @@ func EmptyState(title, subtitle string) templ.Component {
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(subtitle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 181, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 184, Col: 15}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {

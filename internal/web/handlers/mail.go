@@ -15,6 +15,7 @@ import (
 	"github.com/microcosm-cc/bluemonday"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
@@ -32,6 +33,7 @@ type MailHandler struct {
 	applier   store.RaftApplier
 	prefs     *store.PreferenceStore
 	contacts  *store.ContactStore
+	bayes     *antispam.BayesFilter
 	sanitizer *bluemonday.Policy
 }
 
@@ -65,6 +67,11 @@ func (h *MailHandler) SetPreferences(prefs *store.PreferenceStore) {
 // SetContacts sets the contact store for sender lookup.
 func (h *MailHandler) SetContacts(contacts *store.ContactStore) {
 	h.contacts = contacts
+}
+
+// SetBayes sets the Bayesian filter for spam training.
+func (h *MailHandler) SetBayes(bayes *antispam.BayesFilter) {
+	h.bayes = bayes
 }
 
 // ListMessages renders the message list for a mailbox.
@@ -128,6 +135,7 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 			if meta.RawMessage != nil {
 				summary.Size = meta.RawMessage.Size
 			}
+			summary.SpamScore = meta.SpamScore
 
 			// Thread grouping: find root and count.
 			if h.threads != nil && meta.MessageId != "" {
@@ -307,6 +315,20 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			dest := r.FormValue("destination")
 			if dest != "" {
 				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest)
+			}
+		case "spam":
+			if mailbox != "Junk" {
+				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "Junk")
+			}
+			if msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid)); err == nil && h.applier != nil {
+				_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0)
+			}
+		case "not-spam":
+			if mailbox != "INBOX" {
+				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "INBOX")
+			}
+			if msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid)); err == nil && h.applier != nil {
+				_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0)
 			}
 		}
 	}
@@ -541,4 +563,103 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 		Value: metaBytes,
 	}
 	_ = h.applier.ApplyCommand(cmd, 5*time.Second)
+}
+
+// MarkSpam moves a message to Junk, updates spam score to 1.0, and trains Bayes.
+func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := chi.URLParam(r, "mailbox")
+	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+
+	// Get the mail GUID from the mailbox message.
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	// Move to Junk.
+	if mailbox != "Junk" {
+		if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "Junk"); err != nil {
+			http.Error(w, "Move failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Update spam score to 1.0.
+	if h.applier != nil {
+		_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0)
+	}
+
+	// Train Bayes filter.
+	if h.bayes != nil {
+		h.trainBayes(userID, msg.MailGuid, true)
+	}
+
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Marked+as+spam", mailbox))
+	w.WriteHeader(http.StatusOK)
+}
+
+// MarkNotSpam moves a message to INBOX, updates spam score to 0.0, and trains Bayes.
+func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := chi.URLParam(r, "mailbox")
+	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	// Move to INBOX.
+	if mailbox != "INBOX" {
+		if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "INBOX"); err != nil {
+			http.Error(w, "Move failed", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Update spam score to 0.0.
+	if h.applier != nil {
+		_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0)
+	}
+
+	// Train Bayes filter.
+	if h.bayes != nil {
+		h.trainBayes(userID, msg.MailGuid, false)
+	}
+
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Marked+as+not+spam", mailbox))
+	w.WriteHeader(http.StatusOK)
+}
+
+// trainBayes extracts text from a message and trains the Bayes filter.
+func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) {
+	meta := h.loadMailMeta(userID, guid)
+	if meta == nil || meta.RawMessage == nil {
+		return
+	}
+
+	rc, err := h.blobs.Get(meta.RawMessage.Hash)
+	if err != nil {
+		return
+	}
+	rawMsg, _ := io.ReadAll(rc)
+	rc.Close()
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	if err != nil {
+		return
+	}
+
+	subject := env.GetHeader("Subject")
+	bodyText := env.Text
+	if len(bodyText) > 4096 {
+		bodyText = bodyText[:4096]
+	}
+
+	tokens := antispam.Tokenize(subject, bodyText)
+	_ = h.bayes.Train(userID, tokens, isSpam)
+	_ = h.bayes.IncrementTrained(userID)
 }

@@ -135,9 +135,20 @@ func (s *Session) Data(r io.Reader) error {
 		reader = &buf
 	}
 
-	if err := s.backend.deliverer.Deliver(s.from, s.recipients, reader); err != nil {
-		s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
-		return err
+	// Pass SPF result to delivery pipeline if supported.
+	type spfDeliverer interface {
+		DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult string) error
+	}
+	if sd, ok := s.backend.deliverer.(spfDeliverer); ok && s.spfResult != "" {
+		if err := sd.DeliverWithSPF(s.from, s.recipients, reader, s.spfResult); err != nil {
+			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
+			return err
+		}
+	} else {
+		if err := s.backend.deliverer.Deliver(s.from, s.recipients, reader); err != nil {
+			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
+			return err
+		}
 	}
 
 	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.recipients)

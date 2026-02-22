@@ -26,7 +26,7 @@ type Command struct {
 
 // SearchIndexer is the interface for full-text search indexing.
 type SearchIndexer interface {
-	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool) error
+	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, spamScore ...float64) error
 	IndexProfile(userID, email, displayName string) error
 }
 
@@ -176,23 +176,29 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 	userID := parts[2]
 	guid := parts[4]
 
-	// Parse MailMeta to get the received timestamp.
+	// Parse MailMeta to get the received timestamp and spam score.
 	var meta bongov1.MailMeta
 	if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
 		f.logger.Warn("fsm: failed to parse MailMeta for mailbox placement", "error", err)
 		return
 	}
 
-	// Read current INBOX mailbox meta.
-	metaKey := []byte(fmt.Sprintf("/user/%s/mailbox/INBOX/meta", userID))
+	// Route to Junk if spam score exceeds threshold.
+	mailbox := "INBOX"
+	if meta.SpamScore >= 0.5 {
+		mailbox = "Junk"
+	}
+
+	// Read current mailbox meta.
+	metaKey := []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox))
 	var mbMeta bongov1.MailboxMeta
 
 	existing, err := f.store.Get(metaKey)
 	if err == nil {
 		proto.Unmarshal(existing, &mbMeta)
 	} else {
-		// INBOX doesn't exist yet — initialize it.
-		mbMeta.Name = "INBOX"
+		// Mailbox doesn't exist yet — initialize it.
+		mbMeta.Name = mailbox
 		mbMeta.UidValidity = 1
 		mbMeta.UidNext = 1
 	}
@@ -213,7 +219,7 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 	}
 
 	// Write mailbox message entry.
-	msgKey := []byte(fmt.Sprintf("/user/%s/mailbox/INBOX/msg/%010d", userID, uid))
+	msgKey := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid))
 	mbMsg := &bongov1.MailboxMessage{
 		Uid:          uid,
 		MailGuid:     guid,
@@ -230,13 +236,13 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 		return
 	}
 
-	f.logger.Debug("fsm: mail placed in INBOX", "user", userID, "guid", guid, "uid", uid)
+	f.logger.Debug("fsm: mail placed in mailbox", "user", userID, "mailbox", mailbox, "guid", guid, "uid", uid)
 
 	// Notify IMAP sessions about the new mail.
 	if f.notifier != nil {
 		// Count total messages for EXISTS response.
 		var totalMsgs uint32
-		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/INBOX/msg/", userID))
+		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/", userID, mailbox))
 		iter, err := f.store.PrefixScan(prefix)
 		if err == nil {
 			for iter.Next() {
@@ -244,7 +250,7 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 			}
 			iter.Close()
 		}
-		f.notifier.NotifyNewMail(userID, "INBOX", uid, totalMsgs)
+		f.notifier.NotifyNewMail(userID, mailbox, uid, totalMsgs)
 	}
 }
 
@@ -306,7 +312,7 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 		// Index into Bleve.
 		if f.search != nil {
 			hasAttachment := len(meta.Attachments) > 0
-			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment); err != nil {
+			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, float64(meta.SpamScore)); err != nil {
 				f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
 			}
 		}

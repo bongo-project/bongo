@@ -20,6 +20,7 @@ type MailDocument struct {
 	Body          string   `json:"body"`
 	Date          int64    `json:"date"`
 	HasAttachment bool     `json:"has_attachment"`
+	SpamScore     float64  `json:"spam_score"`
 }
 
 // SearchResult represents a single search hit.
@@ -87,7 +88,7 @@ func NewSearchManager(dataDir string) (*SearchManager, error) {
 }
 
 // IndexMail indexes a mail message for a user.
-func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool) error {
+func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, spamScore ...float64) error {
 	idx, err := sm.openUser(userID)
 	if err != nil {
 		return err
@@ -100,6 +101,9 @@ func (sm *SearchManager) IndexMail(userID, guid string, subject, from string, to
 		Body:          body,
 		Date:          receivedAt,
 		HasAttachment: hasAttachment,
+	}
+	if len(spamScore) > 0 {
+		doc.SpamScore = spamScore[0]
 	}
 	return idx.Index(guid, doc)
 }
@@ -439,6 +443,9 @@ func mailIndexMapping() mapping.IndexMapping {
 	mailMapping.AddFieldMappingsAt("body", textField)
 	mailMapping.AddFieldMappingsAt("date", dateField)
 	mailMapping.AddFieldMappingsAt("has_attachment", boolField)
+
+	spamScoreField := bleve.NewNumericFieldMapping()
+	mailMapping.AddFieldMappingsAt("spam_score", spamScoreField)
 
 	// Contact fields (shared index, contact docs use "contact:" prefix for ID).
 	contactNameField := bleve.NewTextFieldMapping()

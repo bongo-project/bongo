@@ -400,6 +400,24 @@ document.addEventListener('alpine:init', () => {
         case 'forward':
           window.location.href = '/compose/forward/' + encodeURIComponent(mailbox) + '/' + uid;
           break;
+        case 'spam':
+          fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/spam', {
+            method: 'POST'
+          }).then(resp => {
+            if (resp.ok) {
+              htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+            }
+          }).catch(() => {});
+          break;
+        case 'not-spam':
+          fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/not-spam', {
+            method: 'POST'
+          }).then(resp => {
+            if (resp.ok) {
+              htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+            }
+          }).catch(() => {});
+          break;
         case 'mark-read':
         case 'mark-unread':
         case 'flag':

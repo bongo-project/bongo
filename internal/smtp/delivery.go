@@ -14,6 +14,7 @@ import (
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
+	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -33,7 +34,13 @@ type DeliveryPipeline struct {
 	applier  RaftApplier
 	blobs    *store.BlobStore
 	resolver RecipientResolver
+	scorer   *antispam.Scorer
 	logger   *slog.Logger
+}
+
+// SetScorer sets the antispam scorer for inbound scoring.
+func (d *DeliveryPipeline) SetScorer(s *antispam.Scorer) {
+	d.scorer = s
 }
 
 // NewDeliveryPipeline creates a new DeliveryPipeline.
@@ -48,6 +55,11 @@ func NewDeliveryPipeline(applier RaftApplier, blobs *store.BlobStore, resolver R
 
 // Deliver processes an inbound message for the given recipients.
 func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader) error {
+	return d.DeliverWithSPF(from, recipients, r, "")
+}
+
+// DeliverWithSPF processes an inbound message with an SPF result from the SMTP session.
+func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult string) error {
 	// Read the entire raw message.
 	raw, err := io.ReadAll(r)
 	if err != nil {
@@ -129,6 +141,46 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 		}
 	}
 
+	// Run antispam scoring.
+	var spamScore float32
+	var dkimResult, dkimDomain string
+
+	dkimResult, dkimDomain, _ = antispam.VerifyDKIM(raw)
+
+	if d.scorer != nil {
+		headers := make(map[string]string)
+		if envelope != nil {
+			for _, key := range []string{"Message-Id", "Message-ID", "Date", "From"} {
+				if v := envelope.GetHeader(key); v != "" {
+					headers[key] = v
+				}
+			}
+		}
+
+		var bodySample string
+		if envelope != nil && len(envelope.Text) > 0 {
+			bodySample = envelope.Text
+			if len(bodySample) > 4096 {
+				bodySample = bodySample[:4096]
+			}
+		}
+
+		input := &antispam.ScoringInput{
+			SPFResult:      spfResult,
+			DKIMResult:     dkimResult,
+			Headers:        headers,
+			Subject:        subject,
+			BodySample:     bodySample,
+			EnvelopeSender: from,
+		}
+
+		result := d.scorer.Score(input)
+		spamScore = result.Score
+		if len(result.Reasons) > 0 {
+			d.logger.Info("antispam: scored", "score", spamScore, "reasons", result.Reasons, "from", from, "subject", subject)
+		}
+	}
+
 	// Deliver to each recipient.
 	for _, rcpt := range recipients {
 		userID, err := d.resolver.ResolveRecipient(rcpt)
@@ -155,6 +207,10 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 			InReplyTo:   inReplyTo,
 			References:  references,
 			Cc:          ccAddrs,
+			SpamScore:   spamScore,
+			SpfResult:   spfResult,
+			DkimResult:  dkimResult,
+			DkimDomain:  dkimDomain,
 		}
 
 		metaBytes, err := proto.Marshal(meta)

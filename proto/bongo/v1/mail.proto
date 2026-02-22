@@ -20,4 +20,8 @@ message MailMeta {
   string in_reply_to = 11;
   string references = 12;
   repeated string cc = 13;
+  float spam_score = 14;       // 0.0 (ham) to 1.0 (spam)
+  string spf_result = 15;      // "pass", "fail", "softfail", "neutral", "none"
+  string dkim_result = 16;     // "pass", "fail", "none"
+  string dkim_domain = 17;     // signing domain from d= tag
 }

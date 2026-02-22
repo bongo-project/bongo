@@ -36,6 +36,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/security"
+	"github.com/bongo-go/bongo-go/internal/antispam"
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/handlers"
@@ -367,6 +368,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			if a.Contacts != nil {
 				mailH.SetContacts(a.Contacts)
 			}
+			bayesFilter := antispam.NewBayesFilter(a.Store, a)
+			mailH.SetBayes(bayesFilter)
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
@@ -374,6 +377,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
 			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
 			r.Post("/mail/{mailbox}/{uid}/move", mailH.MoveMessage)
+			r.Post("/mail/{mailbox}/{uid}/spam", mailH.MarkSpam)
+			r.Post("/mail/{mailbox}/{uid}/not-spam", mailH.MarkNotSpam)
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
 		}
 
@@ -514,6 +519,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		isDev := a.Config.Server.Role == "dev"
 		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
 		smtpPipeline = bongosmtp.NewDeliveryPipeline(a, a.Blobs, resolver, a.logger)
+		smtpPipeline.SetScorer(antispam.NewScorer())
 		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
 
 		// SPF checker for inbound mail.
