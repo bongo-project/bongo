@@ -8,15 +8,15 @@ templ LoginPage(errMsg string) {
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
 				}
-				<label for="email">Email</label>
+				<label for="email">{ t(ctx, "auth.email") }</label>
 				<input type="email" id="email" name="email" placeholder="admin@localhost" required autofocus/>
-				<label for="password">Password</label>
+				<label for="password">{ t(ctx, "auth.password") }</label>
 				<input type="password" id="password" name="password" required/>
 				<label>
 					<input type="checkbox" name="remember" value="1"/>
-					Remember me
+					{ t(ctx, "auth.rememberMe") }
 				</label>
-				<button type="submit">Login</button>
+				<button type="submit">{ t(ctx, "auth.login") }</button>
 			</form>
 		</div>
 	}
@@ -26,7 +26,7 @@ templ TwoFactorPage(errMsg string, recoveryWarning string) {
 	@LoginLayout("Two-Factor Authentication") {
 		<div class="login-container">
 			<h1 style="text-align:center">Bongo</h1>
-			<h2 style="text-align:center;font-size:1.1rem;margin-bottom:1.5rem">Two-Factor Authentication</h2>
+			<h2 style="text-align:center;font-size:1.1rem;margin-bottom:1.5rem">{ t(ctx, "auth.twoFactorAuth") }</h2>
 			<form method="post" action="/login/2fa">
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
@@ -34,7 +34,7 @@ templ TwoFactorPage(errMsg string, recoveryWarning string) {
 				if recoveryWarning != "" {
 					@FlashMessage(recoveryWarning, "warning")
 				}
-				<label for="code">Authentication code</label>
+				<label for="code">{ t(ctx, "auth.authCode") }</label>
 				<input
 					type="text"
 					id="code"
@@ -45,15 +45,15 @@ templ TwoFactorPage(errMsg string, recoveryWarning string) {
 					autocomplete="one-time-code"
 					inputmode="numeric"
 					maxlength="9"
-					aria-label="Two-factor authentication code"
+					aria-label={ t(ctx, "auth.twoFactorCode") }
 				/>
 				<small style="display:block;margin-bottom:1rem;color:var(--pico-muted-color)">
-					Enter your 6-digit authenticator code or a recovery code.
+					{ t(ctx, "auth.enterCodeHint") }
 				</small>
-				<button type="submit">Verify</button>
+				<button type="submit">{ t(ctx, "auth.verify") }</button>
 			</form>
 			<p style="text-align:center;margin-top:1rem">
-				<a href="/login">Back to login</a>
+				<a href="/login">{ t(ctx, "auth.backToLogin") }</a>
 			</p>
 		</div>
 	}

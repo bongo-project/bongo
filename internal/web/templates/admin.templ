@@ -70,43 +70,43 @@ templ AdminLayout(title, email, active string) {
 templ AdminSidebar(active string) {
 	<nav>
 		<ul class="mailbox-list">
-			<li><a href="/mail/INBOX">Back to Mail</a></li>
+			<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
 		</ul>
 		<hr style="margin:0.5rem 0"/>
 		<ul class="mailbox-list">
 			<li>
 				<a href="/admin" if active == "dashboard" { class="active" }>
-					<span>Dashboard</span>
+					<span>{ t(ctx, "admin.dashboard") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/admin/users" if active == "users" { class="active" }>
-					<span>Users</span>
+					<span>{ t(ctx, "admin.users") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/admin/domains" if active == "domains" { class="active" }>
-					<span>Domains</span>
+					<span>{ t(ctx, "admin.domains") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/admin/aliases" if active == "aliases" { class="active" }>
-					<span>Aliases</span>
+					<span>{ t(ctx, "admin.aliases") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/admin/queue" if active == "queue" { class="active" }>
-					<span>Queue</span>
+					<span>{ t(ctx, "admin.queue") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/admin/cluster" if active == "cluster" { class="active" }>
-					<span>Cluster</span>
+					<span>{ t(ctx, "admin.cluster") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/admin/logs" if active == "logs" { class="active" }>
-					<span>Logs</span>
+					<span>{ t(ctx, "admin.logs") }</span>
 				</a>
 			</li>
 		</ul>
@@ -118,7 +118,7 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 		if flash != "" {
 			@FlashMessage(flash, "success")
 		}
-		<h2>System Dashboard</h2>
+		<h2>{ t(ctx, "admin.systemDashboard") }</h2>
 		<div class="admin-grid">
 			<article aria-label="Raft Status">
 				<header>Raft Status</header>
@@ -141,7 +141,7 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 				<p><strong>Blobs:</strong> { fmt.Sprint(health.BlobCount) } ({ formatBytes(health.BlobSize) })</p>
 			</article>
 			<article aria-label="Users">
-				<header>Users</header>
+				<header>{ t(ctx, "admin.users") }</header>
 				<p class="stat-value">{ fmt.Sprint(health.UserCount) }</p>
 			</article>
 		</div>
@@ -154,11 +154,11 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 					} else {
 						<input type="checkbox" name="enabled" value="1"/>
 					}
-					Require two-factor authentication for all users
+					{ t(ctx, "admin.require2FA") }
 				</label>
 				<small>When enabled, users without 2FA will be redirected to the setup page on login.</small>
 				<div style="margin-top:0.5rem">
-					<button type="submit" class="outline">Save Policy</button>
+					<button type="submit" class="outline">{ t(ctx, "admin.savePolicy") }</button>
 				</div>
 			</form>
 		</fieldset>
@@ -171,16 +171,16 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 			@FlashMessage(flash, "success")
 		}
 		<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
-			<h2 style="margin:0">Users</h2>
-			<a href="/admin/users/new" role="button" class="outline">Create User</a>
+			<h2 style="margin:0">{ t(ctx, "admin.users") }</h2>
+			<a href="/admin/users/new" role="button" class="outline">{ t(ctx, "admin.createUser") }</a>
 		</div>
 		<form method="get" action="/admin/users" style="margin-bottom:1rem">
-			<input type="search" name="q" placeholder="Search users..." value={ query }/>
+			<input type="search" name="q" placeholder={ t(ctx, "admin.searchUsers") } value={ query }/>
 		</form>
 		<table>
 			<thead>
 				<tr>
-					<th scope="col">Email</th>
+					<th scope="col">{ t(ctx, "auth.email") }</th>
 					<th scope="col">Name</th>
 					<th scope="col">Role</th>
 					<th scope="col">Quota</th>
@@ -208,13 +208,13 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 						</td>
 						<td>
 							if u.Disabled {
-								<span class="badge badge-disabled">disabled</span>
+								<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
 							} else {
-								<span class="badge badge-active">active</span>
+								<span class="badge badge-active">{ t(ctx, "common.active") }</span>
 							}
 						</td>
 						<td>
-							<a href={ templ.SafeURL("/admin/users/" + u.UserID) } class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem" role="button">Edit</a>
+							<a href={ templ.SafeURL("/admin/users/" + u.UserID) } class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem" role="button">{ t(ctx, "common.edit") }</a>
 						</td>
 					</tr>
 				}
@@ -232,19 +232,19 @@ templ AdminUserForm(user *AdminUserInfo, isNew bool, email, flash string) {
 			@FlashMessage(flash, "success")
 		}
 		if isNew {
-			<h2>Create User</h2>
+			<h2>{ t(ctx, "admin.createUser") }</h2>
 		} else {
-			<h2>Edit User: { user.Email }</h2>
+			<h2>{ t(ctx, "admin.editUser") }: { user.Email }</h2>
 		}
 		<form method="post" action={ templ.SafeURL(userFormAction(user, isNew)) }>
 			if isNew {
-				<label for="user_email">Email</label>
+				<label for="user_email">{ t(ctx, "auth.email") }</label>
 				<input type="email" name="email" id="user_email" required/>
 			}
 			<label for="display_name">Display Name</label>
 			<input type="text" name="display_name" id="display_name" value={ userDisplayName(user) }/>
 			if isNew {
-				<label for="password">Password</label>
+				<label for="password">{ t(ctx, "auth.password") }</label>
 				<input type="password" name="password" id="password" required minlength="4"/>
 			}
 			<label for="quota_bytes">Quota (bytes, 0 = unlimited)</label>
@@ -258,12 +258,12 @@ templ AdminUserForm(user *AdminUserInfo, isNew bool, email, flash string) {
 			<div>
 				<button type="submit">
 					if isNew {
-						Create
+						{ t(ctx, "common.create") }
 					} else {
-						Save
+						{ t(ctx, "common.save") }
 					}
 				</button>
-				<a href="/admin/users" role="button" class="outline secondary">Cancel</a>
+				<a href="/admin/users" role="button" class="outline secondary">{ t(ctx, "common.cancel") }</a>
 			</div>
 		</form>
 		if !isNew && user != nil {
@@ -273,9 +273,9 @@ templ AdminUserForm(user *AdminUserInfo, isNew bool, email, flash string) {
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/toggle-disabled", user.UserID)) }>
 					<button type="submit" class={ disableButtonClass(user.Disabled) }>
 						if user.Disabled {
-							Enable User
+							{ t(ctx, "common.enable") }
 						} else {
-							Disable User
+							{ t(ctx, "common.disable") }
 						}
 					</button>
 				</form>
@@ -292,16 +292,16 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 		if flash != "" {
 			@FlashMessage(flash, "success")
 		}
-		<h2>Domains</h2>
+		<h2>{ t(ctx, "admin.domains") }</h2>
 		<form method="post" action="/admin/domains" style="display:flex;gap:0.5rem;margin-bottom:1rem">
 			<input type="text" name="domain" placeholder="example.com" required style="margin:0"/>
-			<button type="submit">Add Domain</button>
+			<button type="submit">{ t(ctx, "admin.addDomain") }</button>
 		</form>
 		<table>
 			<thead>
 				<tr>
 					<th>Domain</th>
-					<th>Enabled</th>
+					<th>{ t(ctx, "common.enabled") }</th>
 					<th>MX Records</th>
 					<th>Actions</th>
 				</tr>
@@ -312,9 +312,9 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 						<td>{ d.Name }</td>
 						<td>
 							if d.Enabled {
-								<span class="badge badge-active">enabled</span>
+								<span class="badge badge-active">{ t(ctx, "common.enabled") }</span>
 							} else {
-								<span class="badge badge-disabled">disabled</span>
+								<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
 							}
 						</td>
 						<td>
@@ -328,14 +328,14 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
 								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem">
 									if d.Enabled {
-										Disable
+										{ t(ctx, "common.disable") }
 									} else {
-										Enable
+										{ t(ctx, "common.enable") }
 									}
 								</button>
 							</form>
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/delete", d.Name)) }>
-								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Delete</button>
+								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">{ t(ctx, "common.delete") }</button>
 							</form>
 						</td>
 					</tr>
@@ -353,7 +353,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 		if flash != "" {
 			@FlashMessage(flash, "success")
 		}
-		<h2>Aliases</h2>
+		<h2>{ t(ctx, "admin.aliases") }</h2>
 		<form method="post" action="/admin/aliases" style="display:flex;gap:0.5rem;margin-bottom:1rem;align-items:end">
 			<div>
 				<label for="alias_address">Alias Address</label>
@@ -384,7 +384,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 						<td>{ a.TargetUser }</td>
 						<td>
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/aliases/%s/delete", a.Address)) }>
-								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Delete</button>
+								<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">{ t(ctx, "common.delete") }</button>
 							</form>
 						</td>
 					</tr>
@@ -399,7 +399,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 
 templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1.OutboundMessage, email string) {
 	@AdminLayout("Queue", email, "queue") {
-		<h2>Message Queue</h2>
+		<h2>{ t(ctx, "admin.queue") }</h2>
 		<div class="admin-grid">
 			<article aria-label="Pending">
 				<header>Pending</header>
@@ -416,7 +416,7 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 		</div>
 		<div style="margin-bottom:1rem">
 			<form method="post" action="/admin/queue/flush" style="display:inline">
-				<button type="submit" class="outline">Flush Queue (retry all now)</button>
+				<button type="submit" class="outline">{ t(ctx, "admin.flushQueue") }</button>
 			</form>
 		</div>
 		if len(pending) > 0 {
@@ -442,10 +442,10 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 							<td>{ formatUnix(msg.NextRetryAt) }</td>
 							<td style="display:flex;gap:0.5rem">
 								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/queue/%s/retry", msg.Id)) }>
-									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem">Retry</button>
+									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem">{ t(ctx, "admin.retry") }</button>
 								</form>
 								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/queue/%s/drop", msg.Id)) }>
-									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Drop</button>
+									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">{ t(ctx, "admin.drop") }</button>
 								</form>
 							</td>
 						</tr>
@@ -472,7 +472,7 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 							<td>{ msg.StatusReason }</td>
 							<td>
 								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/queue/%s/drop", msg.Id)) }>
-									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">Drop</button>
+									<button type="submit" class="outline secondary" style="padding:0.2rem 0.5rem;font-size:0.8rem;color:var(--pico-del-color)">{ t(ctx, "admin.drop") }</button>
 								</form>
 							</td>
 						</tr>
@@ -485,7 +485,7 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 
 templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 	@AdminLayout("Cluster", email, "cluster") {
-		<h2>Cluster Overview</h2>
+		<h2>{ t(ctx, "admin.cluster") }</h2>
 		<p><strong>Raft State:</strong> <span class={ "badge", raftBadgeClass(raftState) }>{ raftState }</span></p>
 		<table>
 			<thead>
@@ -517,7 +517,7 @@ templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 
 templ AdminLogViewer(email string) {
 	@AdminLayout("Logs", email, "logs") {
-		<h2>Log Viewer</h2>
+		<h2>{ t(ctx, "admin.logs") }</h2>
 		<div style="display:flex;gap:0.5rem;margin-bottom:1rem">
 			<select id="log-level" style="width:auto">
 				<option value="">All Levels</option>

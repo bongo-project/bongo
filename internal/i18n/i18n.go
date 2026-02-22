@@ -34,6 +34,32 @@ type I18n struct {
 	bundle *goi18n.Bundle
 }
 
+// global is the package-level I18n instance, initialised by Init().
+var global *I18n
+
+// Init creates the package-level I18n instance with the given default locale.
+// It must be called once at startup before any call to T().
+func Init(defaultLocale string) {
+	global = NewI18n(defaultLocale)
+}
+
+// Global returns the package-level I18n instance. It panics if Init has not been called.
+func Global() *I18n {
+	if global == nil {
+		panic("i18n: Init() has not been called")
+	}
+	return global
+}
+
+// T translates a message using the global I18n instance.
+// If Init has not been called, the messageID is returned as-is.
+func T(locale, messageID string) string {
+	if global == nil {
+		return messageID
+	}
+	return global.T(locale, messageID)
+}
+
 // NewI18n creates a new I18n instance with the given default locale.
 // It loads all embedded message files. If a file fails to load, it
 // logs a warning and continues so the application can still start.

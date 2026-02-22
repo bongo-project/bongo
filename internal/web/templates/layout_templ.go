@@ -55,20 +55,111 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body><a href=\"#main-content\" class=\"skip-link\">Skip to main content</a><header role=\"banner\" class=\"top-bar\"><button type=\"button\" class=\"hamburger-btn\" x-on:click=\"toggleSidebar()\" aria-label=\"Toggle sidebar\">&#9776;</button> <a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav aria-label=\"Quick actions\"><input type=\"search\" name=\"q\" placeholder=\"Search mail...\" class=\"search-input\" aria-label=\"Search mail\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <button type=\"button\" class=\"outline secondary theme-toggle\" x-on:click=\"toggleTheme()\" x-text=\"themeIcon\" aria-label=\"Toggle theme\" title=\"Toggle theme\"></button> <a href=\"/settings\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none\" role=\"button\">Settings</a> <span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body><a href=\"#main-content\" class=\"skip-link\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 string
-		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(email)
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.skipToContent"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 40, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 15, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</span><form method=\"post\" action=\"/logout\" style=\"margin:0\"><button type=\"submit\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem\">Logout</button></form></nav></header><div x-on:click=\"sidebarOpen = false\" class=\"sidebar-overlay\" x-bind:class=\"{'active': sidebarOpen}\"></div><div class=\"app-layout\"><aside class=\"sidebar\" id=\"sidebar\" aria-label=\"Mailbox navigation\" x-bind:class=\"{'open': sidebarOpen}\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</a><header role=\"banner\" class=\"top-bar\"><button type=\"button\" class=\"hamburger-btn\" x-on:click=\"toggleSidebar()\" aria-label=\"Toggle sidebar\">&#9776;</button> <a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav aria-label=\"Quick actions\"><input type=\"search\" name=\"q\" placeholder=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var5 string
+		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.searchPlaceholder"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 23, Col: 51}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" class=\"search-input\" aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var6 string
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.searchPlaceholder"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 25, Col: 50}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <button type=\"button\" class=\"outline secondary theme-toggle\" x-on:click=\"toggleTheme()\" x-text=\"themeIcon\" aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var7 string
+		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.toggleTheme"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 36, Col: 44}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" title=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var8 string
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.toggleTheme"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 37, Col: 39}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\"></button> <a href=\"/settings\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none\" role=\"button\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var9 string
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.settings"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 39, Col: 158}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</a> <span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var10 string
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(email)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 40, Col: 18}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span><form method=\"post\" action=\"/logout\" style=\"margin:0\"><button type=\"submit\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var11 string
+		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "auth.logout"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 42, Col: 125}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</button></form></nav></header><div x-on:click=\"sidebarOpen = false\" class=\"sidebar-overlay\" x-bind:class=\"{'active': sidebarOpen}\"></div><div class=\"app-layout\"><aside class=\"sidebar\" id=\"sidebar\" aria-label=\"Mailbox navigation\" x-bind:class=\"{'open': sidebarOpen}\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -76,7 +167,20 @@ func Layout(title string, email string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</aside><main class=\"main-content\" id=\"main-content\" role=\"main\"></main></div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-show=\"permission === 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">Enable notifications</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"/static/js/alpine.min.js\" defer></script><script src=\"/static/js/bongo.js\"></script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</aside><main class=\"main-content\" id=\"main-content\" role=\"main\"></main></div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-show=\"permission === 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var12 string
+		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.enableNotifications"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 63, Col: 45}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"/static/js/alpine.min.js\" defer></script><script src=\"/static/js/bongo.js\"></script></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -100,59 +204,163 @@ func LayoutWithContent(title string, email string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var5 == nil {
-			templ_7745c5c3_Var5 = templ.NopComponent
+		templ_7745c5c3_Var13 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var13 == nil {
+			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<!doctype html><html lang=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<!doctype html><html lang=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var6 string
-		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(localeFromCtx(ctx))
+		var templ_7745c5c3_Var14 string
+		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(localeFromCtx(ctx))
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 76, Col: 32}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\" x-data=\"appState()\" x-bind:data-theme=\"resolvedTheme()\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" x-data=\"appState()\" x-bind:data-theme=\"resolvedTheme()\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var7 string
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+		var templ_7745c5c3_Var15 string
+		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 80, Col: 17}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body><a href=\"#main-content\" class=\"skip-link\">Skip to main content</a><header role=\"banner\" class=\"top-bar\"><button type=\"button\" class=\"hamburger-btn\" x-on:click=\"toggleSidebar()\" aria-label=\"Toggle sidebar\">&#9776;</button> <a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav aria-label=\"Quick actions\"><input type=\"search\" name=\"q\" placeholder=\"Search mail...\" class=\"search-input\" aria-label=\"Search mail\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <button type=\"button\" class=\"outline secondary theme-toggle\" x-on:click=\"toggleTheme()\" x-text=\"themeIcon\" aria-label=\"Toggle theme\" title=\"Toggle theme\"></button> <a href=\"/settings\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none\" role=\"button\">Settings</a> <span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body><a href=\"#main-content\" class=\"skip-link\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(email)
+		var templ_7745c5c3_Var16 string
+		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.skipToContent"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 86, Col: 74}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</a><header role=\"banner\" class=\"top-bar\"><button type=\"button\" class=\"hamburger-btn\" x-on:click=\"toggleSidebar()\" aria-label=\"Toggle sidebar\">&#9776;</button> <a href=\"/mail/INBOX\" class=\"brand\">Bongo</a><nav aria-label=\"Quick actions\"><input type=\"search\" name=\"q\" placeholder=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var17 string
+		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.searchPlaceholder"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 94, Col: 51}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"search-input\" aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var18 string
+		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.searchPlaceholder"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 96, Col: 50}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" hx-get=\"/search\" hx-trigger=\"keyup changed delay:300ms\" hx-target=\"#main-content\" hx-push-url=\"true\"> <button type=\"button\" class=\"outline secondary theme-toggle\" x-on:click=\"toggleTheme()\" x-text=\"themeIcon\" aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var19 string
+		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.toggleTheme"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 107, Col: 44}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" title=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var20 string
+		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.toggleTheme"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 108, Col: 39}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"></button> <a href=\"/settings\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none\" role=\"button\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var21 string
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.settings"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 110, Col: 158}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</a> <span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var22 string
+		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(email)
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 111, Col: 18}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</span><form method=\"post\" action=\"/logout\" style=\"margin:0\"><button type=\"submit\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem\">Logout</button></form></nav></header><div x-on:click=\"sidebarOpen = false\" class=\"sidebar-overlay\" x-bind:class=\"{'active': sidebarOpen}\"></div><div class=\"app-layout\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</span><form method=\"post\" action=\"/logout\" style=\"margin:0\"><button type=\"submit\" class=\"outline secondary\" style=\"padding:0.3rem 0.7rem;font-size:0.85rem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templ_7745c5c3_Var5.Render(ctx, templ_7745c5c3_Buffer)
+		var templ_7745c5c3_Var23 string
+		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "auth.logout"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 113, Col: 125}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-show=\"permission === 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">Enable notifications</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"/static/js/alpine.min.js\" defer></script><script src=\"/static/js/bongo.js\"></script></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</button></form></nav></header><div x-on:click=\"sidebarOpen = false\" class=\"sidebar-overlay\" x-bind:class=\"{'active': sidebarOpen}\"></div><div class=\"app-layout\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templ_7745c5c3_Var13.Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div id=\"aria-announcements\" aria-live=\"polite\" class=\"sr-only\"></div><div x-data=\"notifications\" x-init=\"init()\"><button type=\"button\" class=\"notification-prompt outline secondary\" x-show=\"permission === 'default'\" x-on:click=\"requestPermission()\" x-cloak=\"\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var24 string
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.enableNotifications"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 130, Col: 45}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</button></div><script src=\"/static/js/htmx.min.js\"></script><script src=\"/static/js/sortable.min.js\"></script><script src=\"/static/js/alpine.min.js\" defer></script><script src=\"/static/js/bongo.js\"></script></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -176,33 +384,33 @@ func LoginLayout(title string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var9 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var9 == nil {
-			templ_7745c5c3_Var9 = templ.NopComponent
+		templ_7745c5c3_Var25 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var25 == nil {
+			templ_7745c5c3_Var25 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<!doctype html><html lang=\"en\" data-theme=\"auto\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<!doctype html><html lang=\"en\" data-theme=\"auto\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var10 string
-		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+		var templ_7745c5c3_Var26 string
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/layout.templ`, Line: 147, Col: 17}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, " - Bongo</title><link rel=\"stylesheet\" href=\"/static/css/pico.min.css\"><link rel=\"stylesheet\" href=\"/static/css/open-props.min.css\"><link rel=\"stylesheet\" href=\"/static/css/bongo.css\"></head><body>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templ_7745c5c3_Var9.Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = templ_7745c5c3_Var25.Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

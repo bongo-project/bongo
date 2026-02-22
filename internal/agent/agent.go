@@ -29,6 +29,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/i18n"
 	bongocaldav "github.com/bongo-go/bongo-go/internal/caldav"
 	bongocarddav "github.com/bongo-go/bongo-go/internal/carddav"
 	"github.com/bongo-go/bongo-go/internal/cluster"
@@ -134,6 +135,9 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 // NewAgent creates and initializes an Agent with the given config.
 // In dev mode, storage is opened in a temporary directory.
 func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
+	// Initialise global i18n message catalogues.
+	i18n.Init("en")
+
 	a := &Agent{
 		Config: cfg,
 		logger: logger,

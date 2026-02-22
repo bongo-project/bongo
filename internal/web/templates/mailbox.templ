@@ -46,8 +46,8 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 		@FlashMessage(flash, "success")
 	}
 	<div class="toolbar">
-		<a href="/compose" role="button" class="outline">Compose</a>
-		<button class="outline secondary" hx-get={ "/mail/" + mailbox } hx-target="#main-content">Refresh</button>
+		<a href="/compose" role="button" class="outline">{ t(ctx, "mail.compose") }</a>
+		<button class="outline secondary" hx-get={ "/mail/" + mailbox } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
 		<span class="toolbar-spacer"></span>
 		<span class="layout-toggle">
 			<button type="button" class="outline secondary layout-btn" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title="List view">&#9776;</button>
@@ -60,30 +60,30 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 	<div id="message-list" x-data="{ ...messageSelect(), ...swipeHandler() }">
 		<div class="bulk-toolbar" x-show="count > 0" x-cloak="" aria-live="polite">
 			<span x-text="count + ' selected'"></span>
-			<button type="button" class="outline secondary" x-on:click="selectAll()">Select All</button>
-			<button type="button" class="outline secondary" x-on:click="deselectAll()">Deselect</button>
-			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-read')" }>Mark Read</button>
-			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-unread')" }>Mark Unread</button>
-			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'flag')" }>Flag</button>
-			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'unflag')" }>Unflag</button>
+			<button type="button" class="outline secondary" x-on:click="selectAll()">{ t(ctx, "mail.selectAll") }</button>
+			<button type="button" class="outline secondary" x-on:click="deselectAll()">{ t(ctx, "mail.deselect") }</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-read')" }>{ t(ctx, "mail.markRead") }</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'mark-unread')" }>{ t(ctx, "mail.markUnread") }</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'flag')" }>{ t(ctx, "mail.flag") }</button>
+			<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'unflag')" }>{ t(ctx, "mail.unflag") }</button>
 			if mailbox == "Junk" {
-				<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'not-spam')" }>Not Spam</button>
+				<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'not-spam')" }>{ t(ctx, "mail.notSpam") }</button>
 			} else {
-				<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>Mark Spam</button>
+				<button type="button" class="outline" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
 			}
-			<button type="button" class="outline contrast" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>Delete</button>
+			<button type="button" class="outline contrast" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
 		</div>
 		if len(messages) == 0 {
-			@EmptyState("No messages", "This mailbox is empty.")
+			@EmptyState(t(ctx, "mail.noMessages"), t(ctx, "mail.emptyMailbox"))
 		} else {
 			<table class="message-list">
 				<thead>
 					<tr>
 						<th style="width:2rem"><input type="checkbox" x-on:change="$event.target.checked ? selectAll() : deselectAll()"/></th>
 						<th style="width:30px"></th>
-						<th>From</th>
-						<th>Subject</th>
-						<th>Date</th>
+						<th>{ t(ctx, "mail.from") }</th>
+						<th>{ t(ctx, "mail.subject") }</th>
+						<th>{ t(ctx, "mail.date") }</th>
 					</tr>
 				</thead>
 				<tbody id="message-tbody">
@@ -101,7 +101,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 	</div>
 	<div class="reading-pane" id="reading-pane" x-show="layoutMode !== 'list'">
 		<div class="empty-state">
-			<p>Select a message to read</p>
+			<p>{ t(ctx, "mail.selectToRead") }</p>
 		</div>
 	</div>
 	</div>
@@ -208,7 +208,7 @@ templ InfiniteScrollSentinel(mailbox string, nextPage int) {
 		hx-indicator=".load-more-spinner"
 	>
 		<td colspan="5" class="load-more-spinner htmx-indicator" style="text-align:center;padding:1rem">
-			Loading more...
+			{ t(ctx, "common.loading") }...
 		</td>
 	</tr>
 }

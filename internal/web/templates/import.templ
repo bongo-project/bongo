@@ -3,31 +3,31 @@ package templates
 import "fmt"
 
 templ ImportPage(mailboxes []string) {
-	<h2>Import Messages</h2>
-	<p>Upload an mbox file to import messages into a mailbox.</p>
+	<h2>{ t(ctx, "import.importMessages") }</h2>
+	<p>{ t(ctx, "import.uploadDescription") }</p>
 	<form method="post" action="/import" enctype="multipart/form-data">
-		<label for="mbox">Mbox File</label>
+		<label for="mbox">{ t(ctx, "import.mboxFile") }</label>
 		<input type="file" id="mbox" name="mbox" accept=".mbox,.mbx" required/>
-		<label for="mailbox">Target Mailbox</label>
+		<label for="mailbox">{ t(ctx, "import.targetMailbox") }</label>
 		<select id="mailbox" name="mailbox">
 			for _, mb := range mailboxes {
 				<option value={ mb }>{ mb }</option>
 			}
-			<option value="">-- New mailbox (type name below) --</option>
+			<option value="">{ t(ctx, "import.newMailboxOption") }</option>
 		</select>
-		<input type="text" name="new_mailbox" placeholder="New mailbox name (optional)" style="margin-top:0.5rem"/>
-		<button type="submit" style="margin-top:1rem">Import</button>
+		<input type="text" name="new_mailbox" placeholder={ t(ctx, "import.newMailboxPlaceholder") } style="margin-top:0.5rem"/>
+		<button type="submit" style="margin-top:1rem">{ t(ctx, "import.import") }</button>
 	</form>
 }
 
 templ ImportResult(imported int, failed int, mailbox string) {
-	<h2>Import Complete</h2>
+	<h2>{ t(ctx, "import.importComplete") }</h2>
 	<p>
-		{ fmt.Sprintf("%d", imported) } messages imported to { mailbox }.
+		{ fmt.Sprintf("%d", imported) } { t(ctx, "import.messagesImportedTo") } { mailbox }.
 		if failed > 0 {
 			{ fmt.Sprintf("%d messages failed to import.", failed) }
 		}
 	</p>
-	<a href={ templ.SafeURL("/mail/" + mailbox) } role="button">Go to { mailbox }</a>
-	<a href="/import" role="button" class="outline secondary" style="margin-left:0.5rem">Import More</a>
+	<a href={ templ.SafeURL("/mail/" + mailbox) } role="button">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
+	<a href="/import" role="button" class="outline secondary" style="margin-left:0.5rem">{ t(ctx, "import.importMore") }</a>
 }

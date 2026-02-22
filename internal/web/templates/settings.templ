@@ -7,9 +7,9 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="mailbox-list">
-					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">Back to Mail</a></li>
-					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">Filter Rules</a></li>
-					<li><a href="/settings/security" hx-get="/settings/security" hx-target="#main-content" hx-push-url="true">Security</a></li>
+					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.backToMail") }</a></li>
+					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">{ t(ctx, "settings.filterRules") }</a></li>
+					<li><a href="/settings/security" hx-get="/settings/security" hx-target="#main-content" hx-push-url="true">{ t(ctx, "settings.security") }</a></li>
 				</ul>
 			</nav>
 		</aside>
@@ -17,32 +17,32 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h2>Settings</h2>
+			<h2>{ t(ctx, "settings.settings") }</h2>
 			<form method="post" action="/settings">
 				<fieldset>
-					<legend>Appearance</legend>
-					<label for="theme">Theme</label>
+					<legend>{ t(ctx, "settings.appearance") }</legend>
+					<label for="theme">{ t(ctx, "settings.theme") }</label>
 					<select name="theme" id="theme">
-						<option value="auto" selected?={ prefs.Theme == bongov1.Theme_THEME_AUTO || prefs.Theme == bongov1.Theme_THEME_UNSPECIFIED }>Auto (follow OS)</option>
-						<option value="light" selected?={ prefs.Theme == bongov1.Theme_THEME_LIGHT }>Light</option>
-						<option value="dark" selected?={ prefs.Theme == bongov1.Theme_THEME_DARK }>Dark</option>
+						<option value="auto" selected?={ prefs.Theme == bongov1.Theme_THEME_AUTO || prefs.Theme == bongov1.Theme_THEME_UNSPECIFIED }>{ t(ctx, "settings.themeAuto") }</option>
+						<option value="light" selected?={ prefs.Theme == bongov1.Theme_THEME_LIGHT }>{ t(ctx, "settings.themeLight") }</option>
+						<option value="dark" selected?={ prefs.Theme == bongov1.Theme_THEME_DARK }>{ t(ctx, "settings.themeDark") }</option>
 					</select>
-					<label for="layout_mode">Layout</label>
+					<label for="layout_mode">{ t(ctx, "settings.layout") }</label>
 					<select name="layout_mode" id="layout_mode">
-						<option value="list" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_LIST || prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_UNSPECIFIED }>List</option>
-						<option value="two-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_TWO_PANE }>Two Pane</option>
-						<option value="three-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_THREE_PANE }>Three Pane</option>
+						<option value="list" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_LIST || prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_UNSPECIFIED }>{ t(ctx, "settings.layoutList") }</option>
+						<option value="two-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_TWO_PANE }>{ t(ctx, "settings.layoutTwoPane") }</option>
+						<option value="three-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_THREE_PANE }>{ t(ctx, "settings.layoutThreePane") }</option>
 					</select>
-					<label for="density">Density</label>
+					<label for="density">{ t(ctx, "settings.density") }</label>
 					<select name="density" id="density">
-						<option value="compact" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMPACT }>Compact</option>
-						<option value="comfortable" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMFORTABLE || prefs.Density == bongov1.DisplayDensity_DENSITY_UNSPECIFIED }>Comfortable</option>
-						<option value="spacious" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_SPACIOUS }>Spacious</option>
+						<option value="compact" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMPACT }>{ t(ctx, "settings.densityCompact") }</option>
+						<option value="comfortable" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMFORTABLE || prefs.Density == bongov1.DisplayDensity_DENSITY_UNSPECIFIED }>{ t(ctx, "settings.densityComfortable") }</option>
+						<option value="spacious" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_SPACIOUS }>{ t(ctx, "settings.densitySpacious") }</option>
 					</select>
 				</fieldset>
 				<fieldset>
-					<legend>Display</legend>
-					<label for="messages_per_page">Messages per page</label>
+					<legend>{ t(ctx, "settings.display") }</legend>
+					<label for="messages_per_page">{ t(ctx, "settings.messagesPerPage") }</label>
 					<select name="messages_per_page" id="messages_per_page">
 						<option value="10" selected?={ prefs.MessagesPerPage == 10 }>10</option>
 						<option value="25" selected?={ prefs.MessagesPerPage == 25 || prefs.MessagesPerPage == 0 }>25</option>
@@ -51,36 +51,36 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 					</select>
 					<label for="infinite_scroll">
 						<input type="checkbox" name="infinite_scroll" id="infinite_scroll" value="1" checked?={ prefs.InfiniteScroll }/>
-						Infinite scroll (load more messages automatically when scrolling)
+						{ t(ctx, "settings.infiniteScroll") }
 					</label>
 				</fieldset>
 				<fieldset>
-					<legend>Composition</legend>
-					<label for="default_reply">Default reply mode</label>
+					<legend>{ t(ctx, "settings.composition") }</legend>
+					<label for="default_reply">{ t(ctx, "settings.defaultReply") }</label>
 					<select name="default_reply" id="default_reply">
-						<option value="sender" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_SENDER || prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_UNSPECIFIED }>Reply to sender</option>
-						<option value="all" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL }>Reply all</option>
+						<option value="sender" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_SENDER || prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_UNSPECIFIED }>{ t(ctx, "settings.replySender") }</option>
+						<option value="all" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL }>{ t(ctx, "settings.replyAll") }</option>
 					</select>
-					<label for="signature">Signature</label>
+					<label for="signature">{ t(ctx, "settings.signature") }</label>
 					<textarea name="signature" id="signature" rows="4">{ prefs.Signature }</textarea>
 				</fieldset>
 				<fieldset>
-					<legend>Localization</legend>
-					<label for="locale">Language</label>
+					<legend>{ t(ctx, "settings.localization") }</legend>
+					<label for="locale">{ t(ctx, "settings.language") }</label>
 					<select name="locale" id="locale">
-						<option value="en" selected?={ prefs.Locale == "en" || prefs.Locale == "" }>English</option>
-						<option value="fr" selected?={ prefs.Locale == "fr" }>Francais</option>
-						<option value="de" selected?={ prefs.Locale == "de" }>Deutsch</option>
-						<option value="es" selected?={ prefs.Locale == "es" }>Espanol</option>
+						<option value="en" selected?={ prefs.Locale == "en" || prefs.Locale == "" }>{ t(ctx, "settings.langEn") }</option>
+						<option value="fr" selected?={ prefs.Locale == "fr" }>{ t(ctx, "settings.langFr") }</option>
+						<option value="de" selected?={ prefs.Locale == "de" }>{ t(ctx, "settings.langDe") }</option>
+						<option value="es" selected?={ prefs.Locale == "es" }>{ t(ctx, "settings.langEs") }</option>
 					</select>
-					<label for="timezone">Timezone</label>
+					<label for="timezone">{ t(ctx, "settings.timezone") }</label>
 					<select name="timezone" id="timezone">
 						@timezoneOptions(prefs.Timezone)
 					</select>
 				</fieldset>
 				<div>
-					<button type="submit">Save</button>
-					<a href="/mail/INBOX" role="button" class="outline secondary">Cancel</a>
+					<button type="submit">{ t(ctx, "settings.save") }</button>
+					<a href="/mail/INBOX" role="button" class="outline secondary">{ t(ctx, "settings.cancel") }</a>
 				</div>
 			</form>
 		</main>

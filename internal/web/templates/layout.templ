@@ -12,7 +12,7 @@ templ Layout(title string, email string) {
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>
-			<a href="#main-content" class="skip-link">Skip to main content</a>
+			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header role="banner" class="top-bar">
 				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
 				<a href="/mail/INBOX" class="brand">Bongo</a>
@@ -20,9 +20,9 @@ templ Layout(title string, email string) {
 					<input
 						type="search"
 						name="q"
-						placeholder="Search mail..."
+						placeholder={ t(ctx, "nav.searchPlaceholder") }
 						class="search-input"
-						aria-label="Search mail"
+						aria-label={ t(ctx, "nav.searchPlaceholder") }
 						hx-get="/search"
 						hx-trigger="keyup changed delay:300ms"
 						hx-target="#main-content"
@@ -33,13 +33,13 @@ templ Layout(title string, email string) {
 						class="outline secondary theme-toggle"
 						x-on:click="toggleTheme()"
 						x-text="themeIcon"
-						aria-label="Toggle theme"
-						title="Toggle theme"
+						aria-label={ t(ctx, "nav.toggleTheme") }
+						title={ t(ctx, "nav.toggleTheme") }
 					></button>
-					<a href="/settings" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none" role="button">Settings</a>
+					<a href="/settings" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none" role="button">{ t(ctx, "nav.settings") }</a>
 					<span>{ email }</span>
 					<form method="post" action="/logout" style="margin:0">
-						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">Logout</button>
+						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">{ t(ctx, "auth.logout") }</button>
 					</form>
 				</nav>
 			</header>
@@ -60,7 +60,7 @@ templ Layout(title string, email string) {
 					x-on:click="requestPermission()"
 					x-cloak=""
 				>
-					Enable notifications
+					{ t(ctx, "settings.enableNotifications") }
 				</button>
 			</div>
 			<script src="/static/js/htmx.min.js"></script>
@@ -83,7 +83,7 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>
-			<a href="#main-content" class="skip-link">Skip to main content</a>
+			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header role="banner" class="top-bar">
 				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
 				<a href="/mail/INBOX" class="brand">Bongo</a>
@@ -91,9 +91,9 @@ templ LayoutWithContent(title string, email string) {
 					<input
 						type="search"
 						name="q"
-						placeholder="Search mail..."
+						placeholder={ t(ctx, "nav.searchPlaceholder") }
 						class="search-input"
-						aria-label="Search mail"
+						aria-label={ t(ctx, "nav.searchPlaceholder") }
 						hx-get="/search"
 						hx-trigger="keyup changed delay:300ms"
 						hx-target="#main-content"
@@ -104,13 +104,13 @@ templ LayoutWithContent(title string, email string) {
 						class="outline secondary theme-toggle"
 						x-on:click="toggleTheme()"
 						x-text="themeIcon"
-						aria-label="Toggle theme"
-						title="Toggle theme"
+						aria-label={ t(ctx, "nav.toggleTheme") }
+						title={ t(ctx, "nav.toggleTheme") }
 					></button>
-					<a href="/settings" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none" role="button">Settings</a>
+					<a href="/settings" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none" role="button">{ t(ctx, "nav.settings") }</a>
 					<span>{ email }</span>
 					<form method="post" action="/logout" style="margin:0">
-						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">Logout</button>
+						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">{ t(ctx, "auth.logout") }</button>
 					</form>
 				</nav>
 			</header>
@@ -127,7 +127,7 @@ templ LayoutWithContent(title string, email string) {
 					x-on:click="requestPermission()"
 					x-cloak=""
 				>
-					Enable notifications
+					{ t(ctx, "settings.enableNotifications") }
 				</button>
 			</div>
 			<script src="/static/js/htmx.min.js"></script>

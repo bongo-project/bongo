@@ -6,11 +6,11 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 	<h2>
 		switch mode {
 			case "reply":
-				Compose: Reply
+				{ t(ctx, "compose.reply") }
 			case "forward":
-				Compose: Forward
+				{ t(ctx, "compose.forward") }
 			default:
-				Compose: New Message
+				{ t(ctx, "compose.newMessage") }
 		}
 	</h2>
 	<form method="post" action="/compose/send" enctype="multipart/form-data" class="compose-form">
@@ -19,24 +19,24 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 			<input type="hidden" name="reply_uid" value={ uintToStr(replyUID) }/>
 			<input type="hidden" name="mode" value={ mode }/>
 		}
-		<label for="to">To</label>
+		<label for="to">{ t(ctx, "compose.to") }</label>
 		<input type="text" id="to" name="to" value={ to } required placeholder="recipient@example.com"
 			x-data="galAutocomplete"
 			x-model="query"
 			@input.debounce.300ms="search()"
 			@keydown="onKeydown($event)"
 		/>
-		<label for="cc">Cc</label>
+		<label for="cc">{ t(ctx, "compose.cc") }</label>
 		<input type="text" id="cc" name="cc" value={ cc } placeholder="cc@example.com"/>
-		<label for="bcc">Bcc</label>
+		<label for="bcc">{ t(ctx, "compose.bcc") }</label>
 		<input type="text" id="bcc" name="bcc" placeholder="bcc@example.com"/>
-		<label for="subject">Subject</label>
+		<label for="subject">{ t(ctx, "compose.subject") }</label>
 		<input type="text" id="subject" name="subject" value={ subject } required/>
-		<label for="body">Body</label>
+		<label for="body">{ t(ctx, "compose.body") }</label>
 		<textarea id="body" name="body" rows="15" style="font-family:inherit">{ body }</textarea>
-		<label for="attachments">Attachments</label>
+		<label for="attachments">{ t(ctx, "compose.attachments") }</label>
 		<div x-data="{files: [], totalSize: 0, formatBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }}">
-			<input type="file" id="attachments" name="attachments" multiple aria-label="Attach files"
+			<input type="file" id="attachments" name="attachments" multiple aria-label={ t(ctx, "compose.attachments") }
 				@change="
 					files = Array.from($el.files);
 					totalSize = files.reduce((s,f) => s + f.size, 0);
@@ -57,9 +57,9 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 			</template>
 		</div>
 		<div class="compose-toolbar">
-			<button type="submit">Send</button>
-			<button type="submit" formaction="/compose/draft" class="outline secondary">Save Draft</button>
-			<a href="/mail/INBOX" role="button" class="outline secondary">Discard</a>
+			<button type="submit">{ t(ctx, "compose.send") }</button>
+			<button type="submit" formaction="/compose/draft" class="outline secondary">{ t(ctx, "compose.saveDraft") }</button>
+			<a href="/mail/INBOX" role="button" class="outline secondary">{ t(ctx, "compose.discard") }</a>
 		</div>
 	</form>
 }

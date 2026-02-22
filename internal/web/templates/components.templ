@@ -26,7 +26,7 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 					hx-target="#main-content"
 					hx-push-url="true"
 				>
-					<span>Unread</span>
+					<span>{ t(ctx, "nav.unread") }</span>
 					<span id="unread-badge" class="unread-badge"></span>
 				</a>
 			</li>
@@ -40,7 +40,7 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 					hx-target="#main-content"
 					hx-push-url="true"
 				>
-					<span>Starred</span>
+					<span>{ t(ctx, "nav.starred") }</span>
 				</a>
 			</li>
 			<li>
@@ -53,7 +53,7 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 					hx-target="#main-content"
 					hx-push-url="true"
 				>
-					<span>All Mail</span>
+					<span>{ t(ctx, "nav.allMail") }</span>
 				</a>
 			</li>
 		</ul>
@@ -83,18 +83,18 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 		<ul class="mailbox-list" aria-label="Applications">
 			<li>
 				<a href="/contacts">
-					<span>Contacts</span>
+					<span>{ t(ctx, "nav.contacts") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/calendar">
-					<span>Calendar</span>
+					<span>{ t(ctx, "nav.calendar") }</span>
 				</a>
 			</li>
 			if middleware.AdminFromContext(ctx) {
 				<li>
 					<a href="/admin">
-						<span>Admin</span>
+						<span>{ t(ctx, "nav.admin") }</span>
 					</a>
 				</li>
 			}
@@ -112,7 +112,7 @@ templ Pagination(page, totalPages int, baseURL string) {
 					hx-target="#message-list"
 					hx-push-url="true"
 				>
-					Prev
+					{ t(ctx, "common.previous") }
 				</a>
 			}
 			for i := 1; i <= totalPages; i++ {
@@ -136,7 +136,7 @@ templ Pagination(page, totalPages int, baseURL string) {
 					hx-target="#message-list"
 					hx-push-url="true"
 				>
-					Next
+					{ t(ctx, "common.next") }
 				</a>
 			}
 		</div>
@@ -162,20 +162,20 @@ templ ContextMenu() {
 		role="menu"
 		x-cloak=""
 	>
-		<a x-on:click="action('open')" role="menuitem">Open</a>
-		<a x-on:click="action('reply')" role="menuitem">Reply</a>
-		<a x-on:click="action('reply-all')" role="menuitem">Reply All</a>
-		<a x-on:click="action('forward')" role="menuitem">Forward</a>
+		<a x-on:click="action('open')" role="menuitem">{ t(ctx, "mail.open") }</a>
+		<a x-on:click="action('reply')" role="menuitem">{ t(ctx, "mail.reply") }</a>
+		<a x-on:click="action('reply-all')" role="menuitem">{ t(ctx, "mail.replyAll") }</a>
+		<a x-on:click="action('forward')" role="menuitem">{ t(ctx, "mail.forward") }</a>
 		<hr/>
-		<a x-on:click="action('mark-read')" role="menuitem">Mark Read</a>
-		<a x-on:click="action('mark-unread')" role="menuitem">Mark Unread</a>
-		<a x-on:click="action('flag')" role="menuitem">Flag</a>
-		<a x-on:click="action('unflag')" role="menuitem">Unflag</a>
+		<a x-on:click="action('mark-read')" role="menuitem">{ t(ctx, "mail.markRead") }</a>
+		<a x-on:click="action('mark-unread')" role="menuitem">{ t(ctx, "mail.markUnread") }</a>
+		<a x-on:click="action('flag')" role="menuitem">{ t(ctx, "mail.flag") }</a>
+		<a x-on:click="action('unflag')" role="menuitem">{ t(ctx, "mail.unflag") }</a>
 		<hr/>
-		<a x-on:click="action('spam')" role="menuitem">Mark as Spam</a>
-		<a x-on:click="action('not-spam')" role="menuitem">Not Spam</a>
+		<a x-on:click="action('spam')" role="menuitem">{ t(ctx, "mail.markAsSpam") }</a>
+		<a x-on:click="action('not-spam')" role="menuitem">{ t(ctx, "mail.notSpam") }</a>
 		<hr/>
-		<a x-on:click="action('delete')" class="danger" role="menuitem">Delete</a>
+		<a x-on:click="action('delete')" class="danger" role="menuitem">{ t(ctx, "mail.delete") }</a>
 	</div>
 }
 

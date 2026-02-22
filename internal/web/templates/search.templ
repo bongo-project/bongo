@@ -13,9 +13,9 @@ type SearchResult struct {
 }
 
 templ SearchPage(query string, results []SearchResult, page, totalPages int) {
-	<h2>Search Results</h2>
+	<h2>{ t(ctx, "search.results") }</h2>
 	if query != "" && len(results) == 0 {
-		@EmptyState("No results", "No messages match your search.")
+		@EmptyState(t(ctx, "search.noResults"), t(ctx, "search.noMatches"))
 	}
 	if len(results) > 0 {
 		<div id="search-results">

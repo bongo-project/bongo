@@ -41,8 +41,8 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="mailbox-list">
-					<li><a href="/settings" hx-get="/settings" hx-target="#main-content" hx-push-url="true">Back to Settings</a></li>
-					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">Back to Mail</a></li>
+					<li><a href="/settings" hx-get="/settings" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.settings") }</a></li>
+					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.backToMail") }</a></li>
 				</ul>
 			</nav>
 		</aside>
@@ -51,11 +51,11 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 				@FlashMessage(flash, "success")
 			}
 			<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
-				<h2 style="margin:0">Filter Rules</h2>
-				<a href="/settings/rules/new" role="button" class="outline">New Rule</a>
+				<h2 style="margin:0">{ t(ctx, "nav.filterRules") }</h2>
+				<a href="/settings/rules/new" role="button" class="outline">{ t(ctx, "rules.newRule") }</a>
 			</div>
 			if len(rules) == 0 {
-				<p class="secondary-text">No filter rules yet. Create one to automatically organize incoming mail.</p>
+				<p class="secondary-text">{ t(ctx, "rules.noRulesYet") }</p>
 			} else {
 				<div id="rules-list" x-data="{ reorder(evt) { const ids = Array.from(evt.target.closest('tbody').querySelectorAll('tr[data-id]')).map(r => r.dataset.id); fetch('/settings/rules/reorder', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(ids)}); } }">
 					<table role="grid">
@@ -63,11 +63,11 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 							<tr>
 								<th style="width:2rem"></th>
 								<th style="width:2rem">#</th>
-								<th>Name</th>
-								<th>Conditions</th>
-								<th>Action</th>
-								<th style="width:4rem">Active</th>
-								<th style="width:10rem">Actions</th>
+								<th>{ t(ctx, "rules.colName") }</th>
+								<th>{ t(ctx, "rules.colConditions") }</th>
+								<th>{ t(ctx, "rules.colAction") }</th>
+								<th style="width:4rem">{ t(ctx, "rules.colActive") }</th>
+								<th style="width:10rem">{ t(ctx, "rules.colActions") }</th>
 							</tr>
 						</thead>
 						<tbody id="sortable-rules">
@@ -90,19 +90,19 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 									<td><small>{ rule.ActionSummary }</small></td>
 									<td>
 										if rule.Enabled {
-											<span style="color:var(--pico-color-green-500)">Yes</span>
+											<span style="color:var(--pico-color-green-500)">{ t(ctx, "common.yes") }</span>
 										} else {
-											<span class="secondary-text">No</span>
+											<span class="secondary-text">{ t(ctx, "common.no") }</span>
 										}
 									</td>
 									<td>
 										<div style="display:flex; gap:0.25rem">
-											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } role="button" class="outline secondary" style="padding:0.25rem 0.5rem; font-size:0.8rem">Edit</a>
+											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } role="button" class="outline secondary" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "common.edit") }</a>
 											<button
 												hx-post={ "/settings/rules/" + rule.ID + "/test" }
 												hx-target={ "#test-results-" + rule.ID }
 												hx-swap="innerHTML"
-												class="outline" style="padding:0.25rem 0.5rem; font-size:0.8rem">Test</button>
+												class="outline" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "rules.test") }</button>
 											<button
 												hx-delete={ "/settings/rules/" + rule.ID }
 												hx-target="closest tr"
@@ -144,7 +144,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="mailbox-list">
-					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">Back to Rules</a></li>
+					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">{ t(ctx, "rules.backToRules") }</a></li>
 				</ul>
 			</nav>
 		</aside>
@@ -154,20 +154,20 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 			}
 			<h2>
 				if isNew {
-					New Filter Rule
+					{ t(ctx, "rules.newRule") }
 				} else {
-					Edit Filter Rule
+					{ t(ctx, "rules.editRule") }
 				}
 			</h2>
 			<form method="post" action={ ruleFormAction(rule.ID, isNew) }
 				x-data={ conditionsAlpineData(rule.Conditions) }>
 				<fieldset>
-					<legend>Rule Settings</legend>
-					<label for="name">Name</label>
+					<legend>{ t(ctx, "rules.ruleSettings") }</legend>
+					<label for="name">{ t(ctx, "rules.colName") }</label>
 					<input type="text" name="name" id="name" value={ rule.Name } placeholder="e.g. Newsletters to Updates" required/>
 					<label>
 						<input type="checkbox" name="enabled" checked?={ rule.Enabled }/>
-						Enabled
+						{ t(ctx, "common.enabled") }
 					</label>
 					<label>
 						<input type="checkbox" name="stop_processing" checked?={ rule.StopProcessing }/>
@@ -175,17 +175,17 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 					</label>
 				</fieldset>
 				<fieldset>
-					<legend>Conditions (all must match)</legend>
+					<legend>{ t(ctx, "rules.conditionsHeader") }</legend>
 					<template x-for="(cond, i) in conditions" :key="i">
 						<div style="display:grid; grid-template-columns:1fr 1fr 2fr auto; gap:0.5rem; margin-bottom:0.5rem; align-items:start">
 							<select :name="'cond_field'" x-model="cond.field" @change="updateOperators(cond)">
-								<option value="from">From</option>
-								<option value="to">To</option>
-								<option value="cc">CC</option>
-								<option value="subject">Subject</option>
-								<option value="body">Body</option>
-								<option value="has_attachment">Has Attachment</option>
-								<option value="size">Size (bytes)</option>
+								<option value="from">{ t(ctx, "rules.fieldFrom") }</option>
+								<option value="to">{ t(ctx, "rules.fieldTo") }</option>
+								<option value="cc">{ t(ctx, "rules.fieldCc") }</option>
+								<option value="subject">{ t(ctx, "rules.fieldSubject") }</option>
+								<option value="body">{ t(ctx, "rules.fieldBody") }</option>
+								<option value="has_attachment">{ t(ctx, "rules.fieldHasAttachment") }</option>
+								<option value="size">{ t(ctx, "rules.fieldSize") }</option>
 							</select>
 							<select :name="'cond_operator'" x-model="cond.operator">
 								<template x-if="cond.field === 'size'">
@@ -194,7 +194,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									</template>
 								</template>
 								<template x-if="cond.field === 'has_attachment'">
-									<option value="equals" selected>equals</option>
+									<option value="equals" selected>{ t(ctx, "rules.opEquals") }</option>
 								</template>
 								<template x-if="cond.field !== 'size' && cond.field !== 'has_attachment'">
 									<template x-for="op in ['contains', 'not_contains', 'equals', 'matches']">
@@ -204,8 +204,8 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							</select>
 							<template x-if="cond.field === 'has_attachment'">
 								<select :name="'cond_value'" x-model="cond.value">
-									<option value="true">Yes</option>
-									<option value="false">No</option>
+									<option value="true">{ t(ctx, "common.yes") }</option>
+									<option value="false">{ t(ctx, "common.no") }</option>
 								</select>
 							</template>
 							<template x-if="cond.field !== 'has_attachment'">
@@ -214,13 +214,13 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							<button type="button" @click="conditions.splice(i, 1)" class="outline secondary" style="padding:0.5rem" x-show="conditions.length > 1">X</button>
 						</div>
 					</template>
-					<button type="button" @click="conditions.push({field:'from', operator:'contains', value:''})" class="outline" style="font-size:0.85rem">+ Add Condition</button>
+					<button type="button" @click="conditions.push({field:'from', operator:'contains', value:''})" class="outline" style="font-size:0.85rem">{ t(ctx, "rules.addCondition") }</button>
 				</fieldset>
 				<fieldset>
-					<legend>Action</legend>
+					<legend>{ t(ctx, "rules.actionHeader") }</legend>
 					<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
 						<div>
-							<label for="action_type">When matched</label>
+							<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
 							<select name="action_type" id="action_type" x-data={ actionTypeData(rule.Action.Type) } x-model="actionType">
 								<option value="move">Move to folder</option>
 								<option value="copy">Copy to folder</option>
@@ -230,7 +230,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							</select>
 						</div>
 						<div>
-							<label for="action_target">Target folder</label>
+							<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
 							<select name="action_target" id="action_target">
 								for _, mb := range mailboxes {
 									<option value={ mb } selected?={ mb == rule.Action.Target }>{ mb }</option>
@@ -242,12 +242,12 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 				<div>
 					<button type="submit">
 						if isNew {
-							Create Rule
+							{ t(ctx, "rules.createRule") }
 						} else {
-							Save Changes
+							{ t(ctx, "rules.saveChanges") }
 						}
 					</button>
-					<a href="/settings/rules" role="button" class="outline secondary">Cancel</a>
+					<a href="/settings/rules" role="button" class="outline secondary">{ t(ctx, "common.cancel") }</a>
 				</div>
 			</form>
 		</main>
@@ -309,4 +309,3 @@ func actionTypeData(actionType string) string {
 	}
 	return fmt.Sprintf("{ actionType: '%s' }", actionType)
 }
-

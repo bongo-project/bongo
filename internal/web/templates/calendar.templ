@@ -55,9 +55,9 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
-			aria-label="Previous month"
+			aria-label={ t(ctx, "calendar.previous") }
 		>
-			Prev
+			{ t(ctx, "calendar.previous") }
 		</a>
 		<h2 class="calendar-month-title">{ monthName(month) } { fmt.Sprint(year) }</h2>
 		<a
@@ -67,19 +67,19 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
-			aria-label="Next month"
+			aria-label={ t(ctx, "calendar.next") }
 		>
-			Next
+			{ t(ctx, "calendar.next") }
 		</a>
 	</div>
 	<div class="calendar-grid">
-		<div class="calendar-header">Mon</div>
-		<div class="calendar-header">Tue</div>
-		<div class="calendar-header">Wed</div>
-		<div class="calendar-header">Thu</div>
-		<div class="calendar-header">Fri</div>
-		<div class="calendar-header">Sat</div>
-		<div class="calendar-header">Sun</div>
+		<div class="calendar-header">{ t(ctx, "calendar.mon") }</div>
+		<div class="calendar-header">{ t(ctx, "calendar.tue") }</div>
+		<div class="calendar-header">{ t(ctx, "calendar.wed") }</div>
+		<div class="calendar-header">{ t(ctx, "calendar.thu") }</div>
+		<div class="calendar-header">{ t(ctx, "calendar.fri") }</div>
+		<div class="calendar-header">{ t(ctx, "calendar.sat") }</div>
+		<div class="calendar-header">{ t(ctx, "calendar.sun") }</div>
 		for _, day := range days {
 			<div class={ dayCellClass(day) } aria-label={ day.Date.Format("Monday, January 2") }>
 				<a
@@ -110,7 +110,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 		<ul class="mailbox-list">
 			<li>
 				<a href="/calendar" class="active">
-					<span>Calendar</span>
+					<span>{ t(ctx, "nav.calendar") }</span>
 				</a>
 			</li>
 		</ul>
@@ -122,26 +122,26 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			<hr style="margin:0.5rem 0"/>
 		}
 		<div class="toolbar" style="padding:0 0.75rem">
-			<a href="/calendar/export" role="button" class="outline secondary" style="font-size:0.8rem;padding:0.2rem 0.5rem;width:100%;text-align:center">Export .ics</a>
+			<a href="/calendar/export" role="button" class="outline secondary" style="font-size:0.8rem;padding:0.2rem 0.5rem;width:100%;text-align:center">{ t(ctx, "calendar.exportIcs") }</a>
 		</div>
 		<form method="post" action="/calendar/import" enctype="multipart/form-data" style="padding:0.5rem 0.75rem">
 			<input type="file" name="ics" accept=".ics" style="font-size:0.75rem;padding:0.2rem;margin-bottom:0.25rem"/>
-			<button type="submit" class="outline secondary" style="font-size:0.8rem;padding:0.2rem 0.5rem;width:100%">Import .ics</button>
+			<button type="submit" class="outline secondary" style="font-size:0.8rem;padding:0.2rem 0.5rem;width:100%">{ t(ctx, "calendar.importIcs") }</button>
 		</form>
 		<hr style="margin:0.5rem 0"/>
 		<form action="/calendar/search" method="get" style="padding:0 0.75rem">
-			<input type="search" name="q" placeholder="Search events..." style="font-size:0.85rem;padding:0.3rem 0.5rem"/>
+			<input type="search" name="q" placeholder={ t(ctx, "calendar.searchEvents") } style="font-size:0.85rem;padding:0.3rem 0.5rem"/>
 		</form>
 		<hr style="margin:0.5rem 0"/>
 		<ul class="mailbox-list">
 			<li>
 				<a href="/mail/INBOX">
-					<span>Back to Mail</span>
+					<span>{ t(ctx, "nav.backToMail") }</span>
 				</a>
 			</li>
 			<li>
 				<a href="/contacts">
-					<span>Contacts</span>
+					<span>{ t(ctx, "nav.contacts") }</span>
 				</a>
 			</li>
 		</ul>
@@ -155,12 +155,12 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 		</aside>
 		<main class="main-content" id="main-content">
 			<div class="toolbar">
-				<a href="/calendar" role="button" class="outline secondary">Back to Calendar</a>
+				<a href="/calendar" role="button" class="outline secondary">{ t(ctx, "calendar.backToCalendar") }</a>
 			</div>
 			if isNew {
-				<h3>New Event</h3>
+				<h3>{ t(ctx, "calendar.newEvent") }</h3>
 			} else {
-				<h3>Edit Event</h3>
+				<h3>{ t(ctx, "calendar.editEvent") }</h3>
 			}
 			<form
 				if isNew {
@@ -177,15 +177,15 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					<input type="hidden" name="_method" value="PUT"/>
 				}
 				<label>
-					Title
+					{ t(ctx, "calendar.title") }
 					<input type="text" name="title" value={ eventTitle(event) } required/>
 				</label>
 				<label>
-					Description
+					{ t(ctx, "calendar.description") }
 					<textarea name="description" rows="3">{ eventDescription(event) }</textarea>
 				</label>
 				<label>
-					Location
+					{ t(ctx, "calendar.location") }
 					<input type="text" name="location" value={ eventLocation(event) }/>
 				</label>
 				<label>
@@ -213,31 +213,31 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						}
 						style="width:auto"
 					/>
-					All day
+					{ t(ctx, "calendar.allDay") }
 				</label>
 				<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
 					<label>
-						Start Date
+						{ t(ctx, "calendar.startDate") }
 						<input type="date" name="start_date" value={ eventStartDate(event, date) } required/>
 					</label>
 					<label x-show="!allDay">
-						Start Time
+						{ t(ctx, "calendar.startTime") }
 						<input type="time" name="start_time" value={ eventStartTime(event) }/>
 					</label>
 				</div>
 				<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
 					<label>
-						End Date
+						{ t(ctx, "calendar.endDate") }
 						<input type="date" name="end_date" value={ eventEndDate(event, date) }/>
 					</label>
 					<label x-show="!allDay">
-						End Time
+						{ t(ctx, "calendar.endTime") }
 						<input type="time" name="end_time" value={ eventEndTime(event) }/>
 					</label>
 				</div>
 				<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
 					<label>
-						Repeat
+						{ t(ctx, "calendar.repeat") }
 						<select name="rrule">
 							<option value="">None</option>
 							<option value="FREQ=DAILY" if eventRrule(event) == "FREQ=DAILY" { selected }>Daily</option>
@@ -247,7 +247,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 						</select>
 					</label>
 					<label>
-						Reminder
+						{ t(ctx, "calendar.reminder") }
 						<select name="reminder_minutes">
 							<option value="0" if eventReminderMinutes(event) == "0" { selected }>None</option>
 							<option value="5" if eventReminderMinutes(event) == "5" { selected }>5 min before</option>
@@ -267,12 +267,12 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 				<div style="display:flex;gap:0.5rem">
 					<button type="submit">
 						if isNew {
-							Create Event
+							{ t(ctx, "calendar.createEvent") }
 						} else {
-							Save
+							{ t(ctx, "common.save") }
 						}
 					</button>
-					<a href="/calendar" role="button" class="outline secondary">Cancel</a>
+					<a href="/calendar" role="button" class="outline secondary">{ t(ctx, "common.cancel") }</a>
 					if !isNew {
 						<button
 							type="button"
@@ -280,7 +280,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 							hx-delete={ "/calendar/event/" + event.Guid }
 							hx-confirm="Delete this event?"
 						>
-							Delete
+							{ t(ctx, "calendar.deleteEvent") }
 						</button>
 					}
 				</div>
@@ -312,9 +312,9 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
-			aria-label="Previous week"
+			aria-label={ t(ctx, "calendar.previous") }
 		>
-			Prev
+			{ t(ctx, "calendar.previous") }
 		</a>
 		<h2 class="calendar-month-title">Week { fmt.Sprint(week) }, { fmt.Sprint(year) }</h2>
 		<a
@@ -324,9 +324,9 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
-			aria-label="Next week"
+			aria-label={ t(ctx, "calendar.next") }
 		>
-			Next
+			{ t(ctx, "calendar.next") }
 		</a>
 	</div>
 	@ViewSwitcher("week", year, week, days)
@@ -406,9 +406,9 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
-			aria-label="Previous day"
+			aria-label={ t(ctx, "calendar.previous") }
 		>
-			Prev
+			{ t(ctx, "calendar.previous") }
 		</a>
 		<h2 class="calendar-month-title">{ date.Format("Monday, January 2, 2006") }</h2>
 		<a
@@ -418,9 +418,9 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
-			aria-label="Next day"
+			aria-label={ t(ctx, "calendar.next") }
 		>
-			Next
+			{ t(ctx, "calendar.next") }
 		</a>
 	</div>
 	@ViewSwitcherDay("day", date)
@@ -486,7 +486,7 @@ templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
 					aria-current="page"
 				}
 			>
-				Month
+				{ t(ctx, "calendar.month") }
 			</a>
 		}
 		<a
@@ -497,7 +497,7 @@ templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
 				aria-current="page"
 			}
 		>
-			Week
+			{ t(ctx, "calendar.week") }
 		</a>
 		if len(days) > 0 {
 			<a
@@ -508,7 +508,7 @@ templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
 					aria-current="page"
 				}
 			>
-				Day
+				{ t(ctx, "calendar.day") }
 			</a>
 		}
 	</div>
@@ -524,7 +524,7 @@ templ ViewSwitcherDay(activeView string, date time.Time) {
 				aria-current="page"
 			}
 		>
-			Month
+			{ t(ctx, "calendar.month") }
 		</a>
 		<a
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", dateISOYear(date), dateISOWeek(date))) }
@@ -534,7 +534,7 @@ templ ViewSwitcherDay(activeView string, date time.Time) {
 				aria-current="page"
 			}
 		>
-			Week
+			{ t(ctx, "calendar.week") }
 		</a>
 		<a
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/day/%d/%d/%d", date.Year(), int(date.Month()), date.Day())) }
@@ -544,7 +544,7 @@ templ ViewSwitcherDay(activeView string, date time.Time) {
 				aria-current="page"
 			}
 		>
-			Day
+			{ t(ctx, "calendar.day") }
 		</a>
 	</div>
 }
@@ -557,7 +557,7 @@ templ MiniCalendar(year, month, selectedDay int) {
 				hx-get={ fmt.Sprintf("/calendar/mini?year=%d&month=%d", miniPrevYear(year, month), miniPrevMonth(month)) }
 				hx-target="#mini-calendar"
 				hx-swap="outerHTML"
-				aria-label="Previous month"
+				aria-label={ t(ctx, "calendar.previous") }
 			>
 				&lt;
 			</button>
@@ -567,7 +567,7 @@ templ MiniCalendar(year, month, selectedDay int) {
 				hx-get={ fmt.Sprintf("/calendar/mini?year=%d&month=%d", miniNextYear(year, month), miniNextMonth(month)) }
 				hx-target="#mini-calendar"
 				hx-swap="outerHTML"
-				aria-label="Next month"
+				aria-label={ t(ctx, "calendar.next") }
 			>
 				&gt;
 			</button>
@@ -625,18 +625,18 @@ templ CalendarSearchResults(events []*bongov1.Event, query string, email string)
 		</aside>
 		<main class="main-content" id="main-content">
 			<div class="toolbar">
-				<a href="/calendar" role="button" class="outline secondary">Back to Calendar</a>
+				<a href="/calendar" role="button" class="outline secondary">{ t(ctx, "calendar.backToCalendar") }</a>
 			</div>
-			<h3>Search results for "{ query }"</h3>
+			<h3>{ t(ctx, "search.resultsFor") } "{ query }"</h3>
 			if len(events) == 0 {
-				@EmptyState("No results", "No events matched your search.")
+				@EmptyState(t(ctx, "calendar.noResults"), t(ctx, "calendar.noEventsMatched"))
 			} else {
 				<table class="message-list">
 					<thead>
 						<tr>
-							<th>Title</th>
-							<th>Date</th>
-							<th>Location</th>
+							<th>{ t(ctx, "calendar.title") }</th>
+							<th>{ t(ctx, "mail.date") }</th>
+							<th>{ t(ctx, "calendar.location") }</th>
 						</tr>
 					</thead>
 					<tbody>
