@@ -26,6 +26,7 @@ type BlobRef struct {
 	Hash          string                 `protobuf:"bytes,1,opt,name=hash,proto3" json:"hash,omitempty"`
 	Size          int64                  `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
 	ContentType   string                 `protobuf:"bytes,3,opt,name=content_type,json=contentType,proto3" json:"content_type,omitempty"`
+	Filename      string                 `protobuf:"bytes,4,opt,name=filename,proto3" json:"filename,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -81,15 +82,23 @@ func (x *BlobRef) GetContentType() string {
 	return ""
 }
 
+func (x *BlobRef) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
 var File_proto_bongo_v1_blob_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_blob_proto_rawDesc = "" +
 	"\n" +
-	"\x19proto/bongo/v1/blob.proto\x12\bbongo.v1\"T\n" +
+	"\x19proto/bongo/v1/blob.proto\x12\bbongo.v1\"p\n" +
 	"\aBlobRef\x12\x12\n" +
 	"\x04hash\x18\x01 \x01(\tR\x04hash\x12\x12\n" +
 	"\x04size\x18\x02 \x01(\x03R\x04size\x12!\n" +
-	"\fcontent_type\x18\x03 \x01(\tR\vcontentTypeB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\fcontent_type\x18\x03 \x01(\tR\vcontentType\x12\x1a\n" +
+	"\bfilename\x18\x04 \x01(\tR\bfilenameB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_blob_proto_rawDescOnce sync.Once

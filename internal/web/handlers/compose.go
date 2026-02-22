@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -190,8 +193,48 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Process file attachments.
+	var attachments []*bongov1.BlobRef
+	var attachmentFiles []attachmentData
+	if r.MultipartForm != nil && r.MultipartForm.File["attachments"] != nil {
+		for _, fh := range r.MultipartForm.File["attachments"] {
+			if fh.Size > 25<<20 {
+				http.Error(w, "Individual attachment must be under 25MB", http.StatusBadRequest)
+				return
+			}
+			f, err := fh.Open()
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(f)
+			f.Close()
+			if err != nil {
+				continue
+			}
+			contentType := fh.Header.Get("Content-Type")
+			if contentType == "" || contentType == "application/octet-stream" {
+				contentType = http.DetectContentType(data)
+			}
+			hash, err := h.blobs.Put(data)
+			if err != nil {
+				continue
+			}
+			attachments = append(attachments, &bongov1.BlobRef{
+				Hash:        hash,
+				Size:        fh.Size,
+				ContentType: contentType,
+				Filename:    fh.Filename,
+			})
+			attachmentFiles = append(attachmentFiles, attachmentData{
+				Filename:    fh.Filename,
+				ContentType: contentType,
+				Data:        data,
+			})
+		}
+	}
+
 	// Build RFC 5322 message.
-	rawMsg := buildRFC5322(email, to, cc, subject, body, inReplyTo, references)
+	rawMsg := buildRFC5322WithAttachments(email, to, cc, subject, body, inReplyTo, references, attachmentFiles)
 
 	// Store blob.
 	hash, err := h.blobs.Put(rawMsg)
@@ -204,19 +247,20 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Create MailMeta.
 	meta := &bongov1.MailMeta{
-		Guid:       guid,
-		MessageId:  fmt.Sprintf("<%s@bongo>", guid),
-		Subject:    subject,
-		From:       email,
-		To:         splitRecipients(to),
-		Cc:         splitRecipients(cc),
-		ReceivedAt: time.Now().Unix(),
+		Guid:        guid,
+		MessageId:   fmt.Sprintf("<%s@bongo>", guid),
+		Subject:     subject,
+		From:        email,
+		To:          splitRecipients(to),
+		Cc:          splitRecipients(cc),
+		ReceivedAt:  time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
 			Size: int64(len(rawMsg)),
 		},
-		InReplyTo:  inReplyTo,
-		References: references,
+		Attachments: attachments,
+		InReplyTo:   inReplyTo,
+		References:  references,
 	}
 
 	metaBytes, _ := proto.Marshal(meta)
@@ -332,7 +376,43 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	subject := r.FormValue("subject")
 	body := r.FormValue("body")
 
-	rawMsg := buildRFC5322(email, to, "", subject, body, "", "")
+	// Process file attachments for draft.
+	var attachments []*bongov1.BlobRef
+	var attachmentFiles []attachmentData
+	if r.MultipartForm != nil && r.MultipartForm.File["attachments"] != nil {
+		for _, fh := range r.MultipartForm.File["attachments"] {
+			f, err := fh.Open()
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(f)
+			f.Close()
+			if err != nil {
+				continue
+			}
+			contentType := fh.Header.Get("Content-Type")
+			if contentType == "" || contentType == "application/octet-stream" {
+				contentType = http.DetectContentType(data)
+			}
+			hash, err := h.blobs.Put(data)
+			if err != nil {
+				continue
+			}
+			attachments = append(attachments, &bongov1.BlobRef{
+				Hash:        hash,
+				Size:        fh.Size,
+				ContentType: contentType,
+				Filename:    fh.Filename,
+			})
+			attachmentFiles = append(attachmentFiles, attachmentData{
+				Filename:    fh.Filename,
+				ContentType: contentType,
+				Data:        data,
+			})
+		}
+	}
+
+	rawMsg := buildRFC5322WithAttachments(email, to, "", subject, body, "", "", attachmentFiles)
 
 	hash, err := h.blobs.Put(rawMsg)
 	if err != nil {
@@ -343,15 +423,16 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	guid := fmt.Sprintf("draft-%d-%s", time.Now().UnixNano(), hash[:8])
 
 	meta := &bongov1.MailMeta{
-		Guid:       guid,
-		Subject:    subject,
-		From:       email,
-		To:         splitRecipients(to),
-		ReceivedAt: time.Now().Unix(),
+		Guid:        guid,
+		Subject:     subject,
+		From:        email,
+		To:          splitRecipients(to),
+		ReceivedAt:  time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
 			Size: int64(len(rawMsg)),
 		},
+		Attachments: attachments,
 	}
 	metaBytes, _ := proto.Marshal(meta)
 
@@ -546,7 +627,14 @@ func (h *ComposeHandler) signatureBody(userID string) string {
 	return "\n\n-- \n" + up.Signature
 }
 
-func buildRFC5322(from, to, cc, subject, body, inReplyTo, references string) []byte {
+// attachmentData holds file data for building MIME messages.
+type attachmentData struct {
+	Filename    string
+	ContentType string
+	Data        []byte
+}
+
+func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, references string, attachments []attachmentData) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	buf.WriteString(fmt.Sprintf("To: %s\r\n", to))
@@ -563,9 +651,49 @@ func buildRFC5322(from, to, cc, subject, body, inReplyTo, references string) []b
 		buf.WriteString(fmt.Sprintf("References: %s\r\n", references))
 	}
 	buf.WriteString("MIME-Version: 1.0\r\n")
+
+	if len(attachments) == 0 {
+		buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString(body)
+		return buf.Bytes()
+	}
+
+	// Build multipart/mixed message.
+	var randBytes [16]byte
+	_, _ = rand.Read(randBytes[:])
+	boundary := "bongo-" + hex.EncodeToString(randBytes[:])
+	buf.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
+	buf.WriteString("\r\n")
+
+	// Text body part.
+	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
 	buf.WriteString(body)
+	buf.WriteString("\r\n")
+
+	// Attachment parts.
+	for _, att := range attachments {
+		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+		buf.WriteString(fmt.Sprintf("Content-Type: %s; name=\"%s\"\r\n", att.ContentType, att.Filename))
+		buf.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", att.Filename))
+		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
+		buf.WriteString("\r\n")
+
+		encoded := base64.StdEncoding.EncodeToString(att.Data)
+		// Wrap at 76 characters per RFC 2045.
+		for i := 0; i < len(encoded); i += 76 {
+			end := i + 76
+			if end > len(encoded) {
+				end = len(encoded)
+			}
+			buf.WriteString(encoded[i:end])
+			buf.WriteString("\r\n")
+		}
+	}
+
+	buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 	return buf.Bytes()
 }
 

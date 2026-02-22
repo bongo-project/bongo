@@ -2,6 +2,8 @@ package templates
 
 import (
 	"fmt"
+	"html"
+	"strings"
 	"time"
 )
 
@@ -55,6 +57,8 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 		>
 			Delete
 		</button>
+		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", msg.Mailbox, msg.UID)) } role="button" class="outline secondary">Export</a>
+		<button type="button" class="outline secondary print-btn" onclick="window.print()">Print</button>
 		<select
 			name="destination"
 			hx-post={ fmt.Sprintf("/mail/%s/%d/move", msg.Mailbox, msg.UID) }
@@ -108,27 +112,24 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 						});
 						$el.closest('.blocked-images-banner').remove();
 					"
+					aria-label="Load blocked remote images"
 				>
 					Load remote images
 				</button>
 			</div>
 		}
 		if msg.HTMLBody != "" {
-			@templ.Raw(msg.HTMLBody)
+			<div class="email-body">
+				@templ.Raw(msg.HTMLBody)
+			</div>
 		} else {
-			<pre style="white-space:pre-wrap;font-family:inherit">{ msg.TextBody }</pre>
+			<pre class="text-body" style="white-space:pre-wrap;font-family:inherit">
+				@templ.Raw(formatQuotedText(msg.TextBody))
+			</pre>
 		}
 	</div>
 	if len(msg.Attachments) > 0 {
-		<div class="attachment-list">
-			<strong>Attachments:</strong>
-			for _, att := range msg.Attachments {
-				<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename }>
-					{ att.Filename }
-					<small>({ formatSize(att.Size) })</small>
-				</a>
-			}
-		</div>
+		@attachmentList(msg.Attachments)
 	}
 }
 
@@ -174,28 +175,87 @@ templ MessagePaneContent(msg MessageDetail) {
 						});
 						$el.closest('.blocked-images-banner').remove();
 					"
+					aria-label="Load blocked remote images"
 				>
 					Load remote images
 				</button>
 			</div>
 		}
 		if msg.HTMLBody != "" {
-			@templ.Raw(msg.HTMLBody)
+			<div class="email-body">
+				@templ.Raw(msg.HTMLBody)
+			</div>
 		} else {
-			<pre style="white-space:pre-wrap;font-family:inherit">{ msg.TextBody }</pre>
+			<pre class="text-body" style="white-space:pre-wrap;font-family:inherit">
+				@templ.Raw(formatQuotedText(msg.TextBody))
+			</pre>
 		}
 	</div>
 	if len(msg.Attachments) > 0 {
-		<div class="attachment-list">
-			<strong>Attachments:</strong>
-			for _, att := range msg.Attachments {
-				<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename }>
+		@attachmentList(msg.Attachments)
+	}
+}
+
+templ attachmentList(attachments []Attachment) {
+	<div class="attachment-list">
+		<strong>Attachments:</strong>
+		for _, att := range attachments {
+			if isImageType(att.ContentType) && att.Hash != "" {
+				<div class="attachment-preview" x-data="{expanded: false}">
+					<img
+						class="attachment-thumbnail"
+						src={ inlineBlobURL(att.Hash, att.ContentType) }
+						alt={ att.Filename }
+						loading="lazy"
+						@click="expanded = true"
+					/>
+					<div x-show="expanded" x-cloak class="lightbox" @click.self="expanded = false" @keydown.escape.window="expanded = false">
+						<div class="lightbox-content">
+							<img src={ inlineBlobURL(att.Hash, att.ContentType) } alt={ att.Filename }/>
+							<button class="lightbox-close" @click="expanded = false" type="button">X</button>
+						</div>
+					</div>
+					<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+						{ att.Filename }
+						<small>({ formatSize(att.Size) })</small>
+					</a>
+				</div>
+			} else if att.ContentType == "application/pdf" && att.Hash != "" {
+				<div class="attachment-preview">
+					<iframe
+						src={ inlineBlobURL(att.Hash, att.ContentType) }
+						class="pdf-preview"
+						sandbox=""
+						title={ att.Filename }
+					></iframe>
+					<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+						{ att.Filename }
+						<small>({ formatSize(att.Size) })</small>
+					</a>
+				</div>
+			} else if isTextType(att.ContentType) && att.Hash != "" {
+				<div class="attachment-preview">
+					<div
+						class="text-preview"
+						hx-get={ fmt.Sprintf("/mail/blob/%s?inline=1&ct=%s", att.Hash, att.ContentType) }
+						hx-trigger="load"
+						hx-swap="innerHTML"
+					>
+						Loading preview...
+					</div>
+					<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+						{ att.Filename }
+						<small>({ formatSize(att.Size) })</small>
+					</a>
+				</div>
+			} else {
+				<a class="attachment-item" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
 					{ att.Filename }
 					<small>({ formatSize(att.Size) })</small>
 				</a>
 			}
-		</div>
-	}
+		}
+	</div>
 }
 
 func joinStrings(ss []string) string {
@@ -207,6 +267,34 @@ func joinStrings(ss []string) string {
 		result += s
 	}
 	return result
+}
+
+func formatQuotedText(text string) string {
+	lines := strings.Split(html.EscapeString(text), "\n")
+	var buf strings.Builder
+	for _, line := range lines {
+		if strings.HasPrefix(line, "&gt;") {
+			buf.WriteString(`<span class="quoted">`)
+			buf.WriteString(line)
+			buf.WriteString("</span>\n")
+		} else {
+			buf.WriteString(line)
+			buf.WriteByte('\n')
+		}
+	}
+	return buf.String()
+}
+
+func isImageType(ct string) bool {
+	return ct == "image/jpeg" || ct == "image/png" || ct == "image/gif" || ct == "image/webp"
+}
+
+func isTextType(ct string) bool {
+	return ct == "text/plain" || ct == "text/csv" || ct == "text/html" || ct == "application/json" || ct == "application/xml"
+}
+
+func inlineBlobURL(hash, contentType string) string {
+	return fmt.Sprintf("/mail/blob/%s?inline=1&ct=%s", hash, contentType)
 }
 
 func formatSize(bytes int64) string {

@@ -1,0 +1,33 @@
+package templates
+
+import "fmt"
+
+templ ImportPage(mailboxes []string) {
+	<h2>Import Messages</h2>
+	<p>Upload an mbox file to import messages into a mailbox.</p>
+	<form method="post" action="/import" enctype="multipart/form-data">
+		<label for="mbox">Mbox File</label>
+		<input type="file" id="mbox" name="mbox" accept=".mbox,.mbx" required/>
+		<label for="mailbox">Target Mailbox</label>
+		<select id="mailbox" name="mailbox">
+			for _, mb := range mailboxes {
+				<option value={ mb }>{ mb }</option>
+			}
+			<option value="">-- New mailbox (type name below) --</option>
+		</select>
+		<input type="text" name="new_mailbox" placeholder="New mailbox name (optional)" style="margin-top:0.5rem"/>
+		<button type="submit" style="margin-top:1rem">Import</button>
+	</form>
+}
+
+templ ImportResult(imported int, failed int, mailbox string) {
+	<h2>Import Complete</h2>
+	<p>
+		{ fmt.Sprintf("%d", imported) } messages imported to { mailbox }.
+		if failed > 0 {
+			{ fmt.Sprintf("%d messages failed to import.", failed) }
+		}
+	</p>
+	<a href={ templ.SafeURL("/mail/" + mailbox) } role="button">Go to { mailbox }</a>
+	<a href="/import" role="button" class="outline secondary" style="margin-left:0.5rem">Import More</a>
+}
