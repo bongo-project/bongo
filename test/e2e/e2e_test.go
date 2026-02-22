@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -58,8 +59,14 @@ func TestE2EDevMode(t *testing.T) {
 	}
 
 	// 1. Health endpoint returns 200.
-	httpAddr := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
-	resp, err := http.Get(httpAddr + "/health/ready")
+	// Dev mode uses self-signed HTTPS, so skip certificate verification.
+	httpsAddr := fmt.Sprintf("https://127.0.0.1:%d", cfg.Web.Port)
+	insecureClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
+		},
+	}
+	resp, err := insecureClient.Get(httpsAddr + "/health/ready")
 	if err != nil {
 		t.Fatalf("health check: %v", err)
 	}
