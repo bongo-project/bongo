@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -119,12 +120,17 @@ func TestHealthEndpoints(t *testing.T) {
 		done <- a.Run(ctx)
 	}()
 
-	// Wait for HTTP server to be ready.
-	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
-	waitForHTTP(t, baseURL+"/health/live", 2*time.Second)
+	// Wait for HTTPS server to be ready (dev mode uses self-signed TLS).
+	baseURL := fmt.Sprintf("https://127.0.0.1:%d", port)
+	tlsClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
+		},
+	}
+	waitForHTTPS(t, tlsClient, baseURL+"/health/live", 5*time.Second)
 
 	// Test /health/live
-	resp, err := http.Get(baseURL + "/health/live")
+	resp, err := tlsClient.Get(baseURL + "/health/live")
 	if err != nil {
 		t.Fatalf("GET /health/live: %v", err)
 	}
@@ -140,7 +146,7 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 
 	// Test /health/ready
-	resp2, err := http.Get(baseURL + "/health/ready")
+	resp2, err := tlsClient.Get(baseURL + "/health/ready")
 	if err != nil {
 		t.Fatalf("GET /health/ready: %v", err)
 	}
@@ -190,16 +196,16 @@ func TestNewAgentServerMode(t *testing.T) {
 	}
 }
 
-func waitForHTTP(t *testing.T, url string, timeout time.Duration) {
+func waitForHTTPS(t *testing.T, client *http.Client, url string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
+		resp, err := client.Get(url)
 		if err == nil {
 			resp.Body.Close()
 			return
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("HTTP server not ready at %s after %v", url, timeout)
+	t.Fatalf("HTTPS server not ready at %s after %v", url, timeout)
 }
