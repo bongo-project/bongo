@@ -15,6 +15,7 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
 	"github.com/bongo-go/bongo-go/internal/antispam"
+	"github.com/bongo-go/bongo-go/internal/rules"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -31,16 +32,30 @@ type RecipientResolver interface {
 // DeliveryPipeline processes inbound messages: parses, stores blobs,
 // and applies mail metadata via Raft.
 type DeliveryPipeline struct {
-	applier  RaftApplier
-	blobs    *store.BlobStore
-	resolver RecipientResolver
-	scorer   *antispam.Scorer
-	logger   *slog.Logger
+	applier    RaftApplier
+	blobs      *store.BlobStore
+	resolver   RecipientResolver
+	scorer     *antispam.Scorer
+	bayes      *antispam.BayesFilter
+	ruleStore  *rules.RuleStore
+	ruleEngine *rules.Engine
+	logger     *slog.Logger
 }
 
 // SetScorer sets the antispam scorer for inbound scoring.
 func (d *DeliveryPipeline) SetScorer(s *antispam.Scorer) {
 	d.scorer = s
+}
+
+// SetBayes sets the Bayesian filter for blended spam scoring.
+func (d *DeliveryPipeline) SetBayes(b *antispam.BayesFilter) {
+	d.bayes = b
+}
+
+// SetRuleStore sets the filter rules store and engine for rule-based routing.
+func (d *DeliveryPipeline) SetRuleStore(rs *rules.RuleStore) {
+	d.ruleStore = rs
+	d.ruleEngine = rules.NewEngine()
 }
 
 // NewDeliveryPipeline creates a new DeliveryPipeline.
@@ -189,6 +204,74 @@ func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io
 			continue
 		}
 
+		// Blend Bayesian score with heuristic score (per-user training data).
+		recipientSpamScore := spamScore
+		if d.bayes != nil {
+			trained := d.bayes.TrainedCount(userID)
+			if trained >= 20 {
+				var bodySample string
+				if envelope != nil && len(envelope.Text) > 0 {
+					bodySample = envelope.Text
+					if len(bodySample) > 4096 {
+						bodySample = bodySample[:4096]
+					}
+				}
+				tokens := antispam.Tokenize(subject, bodySample)
+				bayesScore := d.bayes.Classify(userID, tokens)
+				recipientSpamScore = 0.6*spamScore + 0.4*float32(bayesScore)
+				d.logger.Debug("antispam: blended score", "user", userID, "heuristic", spamScore, "bayes", bayesScore, "blended", recipientSpamScore)
+			}
+		}
+
+		// Evaluate user-defined filter rules.
+		var targetMailbox string
+		var extraFlags int32
+		if d.ruleStore != nil && d.ruleEngine != nil {
+			userRules, err := d.ruleStore.List(userID)
+			if err == nil && len(userRules) > 0 {
+				// Collect all headers for rule matching.
+				ruleHeaders := make(map[string]string)
+				if envelope != nil {
+					for _, key := range envelope.GetHeaderKeys() {
+						if v := envelope.GetHeader(key); v != "" {
+							ruleHeaders[key] = v
+						}
+					}
+				}
+				var bodyForRules string
+				if envelope != nil {
+					bodyForRules = envelope.Text
+				}
+
+				action := d.ruleEngine.Evaluate(userRules, &bongov1.MailMeta{
+					From:        headerFrom,
+					To:          toAddrs,
+					Cc:          ccAddrs,
+					Subject:     subject,
+					Attachments: attachmentRefs,
+					RawMessage:  &bongov1.BlobRef{Size: int64(len(raw))},
+				}, ruleHeaders, bodyForRules)
+
+				if action != nil {
+					switch action.Type {
+					case "move":
+						targetMailbox = action.Target
+					case "copy":
+						targetMailbox = action.Target
+					case "flag":
+						// Set starred flag (bit 2).
+						extraFlags |= 0x04
+					case "mark_read":
+						// Set seen flag (bit 0).
+						extraFlags |= 0x01
+					case "delete":
+						targetMailbox = "Trash"
+					}
+					d.logger.Info("filter: rule matched", "user", userID, "action", action.Type, "target", action.Target)
+				}
+			}
+		}
+
 		guid := uuid.New().String()
 
 		meta := &bongov1.MailMeta{
@@ -207,10 +290,12 @@ func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io
 			InReplyTo:   inReplyTo,
 			References:  references,
 			Cc:          ccAddrs,
-			SpamScore:   spamScore,
+			SpamScore:   recipientSpamScore,
 			SpfResult:   spfResult,
-			DkimResult:  dkimResult,
-			DkimDomain:  dkimDomain,
+			DkimResult:     dkimResult,
+			DkimDomain:     dkimDomain,
+			TargetMailbox:  targetMailbox,
+			Flags:          extraFlags,
 		}
 
 		metaBytes, err := proto.Marshal(meta)

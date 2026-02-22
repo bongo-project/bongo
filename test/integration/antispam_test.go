@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/agent"
+	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/config"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -286,6 +287,97 @@ func TestDKIMVerification(t *testing.T) {
 	}
 	if foundMeta.DkimDomain != "evil.com" {
 		t.Errorf("dkim_domain = %q, want %q", foundMeta.DkimDomain, "evil.com")
+	}
+}
+
+func TestBayesianTraining(t *testing.T) {
+	a, cancel := startAntispamAgent(t)
+	defer cancel()
+
+	smtpAddr := a.SMTP.MXAddr()
+	email := "bayestest@localhost"
+	userID := createAntispamUser(t, a, email, "testpass")
+
+	// Create a BayesFilter.
+	bayesFilter := antispam.NewBayesFilter(a.Store, a)
+
+	// Train with 25+ spam messages.
+	for i := 0; i < 30; i++ {
+		tokens := antispam.Tokenize(
+			fmt.Sprintf("free viagra cheap pills offer %d", i),
+			"buy now discount limited time offer free money winner prize claim reward bonus cash gift",
+		)
+		if err := bayesFilter.Train(userID, tokens, true); err != nil {
+			t.Fatalf("Train spam %d: %v", i, err)
+		}
+		if err := bayesFilter.IncrementTrained(userID); err != nil {
+			t.Fatalf("IncrementTrained spam %d: %v", i, err)
+		}
+	}
+
+	// Train with 25+ ham messages.
+	for i := 0; i < 30; i++ {
+		tokens := antispam.Tokenize(
+			fmt.Sprintf("meeting notes project update %d", i),
+			"please review the attached document and provide feedback on the quarterly report deadline",
+		)
+		if err := bayesFilter.Train(userID, tokens, false); err != nil {
+			t.Fatalf("Train ham %d: %v", i, err)
+		}
+		if err := bayesFilter.IncrementTrained(userID); err != nil {
+			t.Fatalf("IncrementTrained ham %d: %v", i, err)
+		}
+	}
+
+	// Verify trained count.
+	trainedCount := bayesFilter.TrainedCount(userID)
+	if trainedCount < 20 {
+		t.Fatalf("trained count = %d, want >= 20", trainedCount)
+	}
+
+	// Deliver a spam-like message. With Bayesian blending, the score should be higher.
+	msg := fmt.Sprintf("From: spammer@evil.com\r\n"+
+		"To: %s\r\n"+
+		"Subject: Free Viagra cheap pills\r\n"+
+		"Message-Id: <bayes-%d@evil.com>\r\n"+
+		"Date: %s\r\n"+
+		"\r\n"+
+		"Buy now free money winner prize claim reward bonus cash.\r\n",
+		email,
+		time.Now().UnixNano(),
+		time.Now().Format("Mon, 02 Jan 2006 15:04:05 -0700"))
+
+	err := smtplib.SendMail(smtpAddr, nil, "spammer@evil.com", []string{email}, []byte(msg))
+	if err != nil {
+		t.Fatalf("SendMail: %v", err)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	// Find the message in Junk or INBOX.
+	var foundMeta *bongov1.MailMeta
+	for _, mailbox := range []string{"Junk", "INBOX"} {
+		msgs, _, _ := a.Mailboxes.ListMessagesPaged(userID, mailbox, 0, 10)
+		for _, msg := range msgs {
+			meta := loadMailMeta(t, a, userID, msg.MailGuid)
+			if meta != nil && strings.Contains(meta.Subject, "Free Viagra") {
+				foundMeta = meta
+				break
+			}
+		}
+		if foundMeta != nil {
+			break
+		}
+	}
+
+	if foundMeta == nil {
+		t.Fatal("could not find Bayesian test message")
+	}
+
+	// The blended score should reflect Bayesian contribution.
+	t.Logf("bayesian test: spam_score=%.4f", foundMeta.SpamScore)
+	if foundMeta.SpamScore <= 0 {
+		t.Errorf("expected positive spam score with Bayesian blending, got %.4f", foundMeta.SpamScore)
 	}
 }
 

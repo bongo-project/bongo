@@ -183,10 +183,14 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 		return
 	}
 
-	// Route to Junk if spam score exceeds threshold.
-	mailbox := "INBOX"
-	if meta.SpamScore >= 0.5 {
-		mailbox = "Junk"
+	// Use target mailbox from filter rules if set, otherwise route based on spam score.
+	mailbox := meta.TargetMailbox
+	if mailbox == "" {
+		mailbox = "INBOX"
+		if meta.SpamScore >= 0.5 {
+			mailbox = "Junk"
+			f.logger.Info("auto-junk", "score", meta.SpamScore, "from", meta.From, "subject", meta.Subject)
+		}
 	}
 
 	// Read current mailbox meta.
@@ -223,7 +227,7 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 	mbMsg := &bongov1.MailboxMessage{
 		Uid:          uid,
 		MailGuid:     guid,
-		Flags:        0, // no flags initially
+		Flags:        uint32(meta.Flags),
 		InternalDate: meta.ReceivedAt,
 	}
 	msgBytes, err := proto.Marshal(mbMsg)

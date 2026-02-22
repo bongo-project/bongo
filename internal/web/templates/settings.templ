@@ -8,6 +8,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 			<nav>
 				<ul class="mailbox-list">
 					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">Back to Mail</a></li>
+					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">Filter Rules</a></li>
 				</ul>
 			</nav>
 		</aside>

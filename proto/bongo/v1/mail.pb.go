@@ -36,10 +36,11 @@ type MailMeta struct {
 	InReplyTo     string                 `protobuf:"bytes,11,opt,name=in_reply_to,json=inReplyTo,proto3" json:"in_reply_to,omitempty"`
 	References    string                 `protobuf:"bytes,12,opt,name=references,proto3" json:"references,omitempty"`
 	Cc            []string               `protobuf:"bytes,13,rep,name=cc,proto3" json:"cc,omitempty"`
-	SpamScore     float32                `protobuf:"fixed32,14,opt,name=spam_score,json=spamScore,proto3" json:"spam_score,omitempty"`  // 0.0 (ham) to 1.0 (spam)
-	SpfResult     string                 `protobuf:"bytes,15,opt,name=spf_result,json=spfResult,proto3" json:"spf_result,omitempty"`    // "pass", "fail", "softfail", "neutral", "none"
-	DkimResult    string                 `protobuf:"bytes,16,opt,name=dkim_result,json=dkimResult,proto3" json:"dkim_result,omitempty"` // "pass", "fail", "none"
-	DkimDomain    string                 `protobuf:"bytes,17,opt,name=dkim_domain,json=dkimDomain,proto3" json:"dkim_domain,omitempty"` // signing domain from d= tag
+	SpamScore     float32                `protobuf:"fixed32,14,opt,name=spam_score,json=spamScore,proto3" json:"spam_score,omitempty"`           // 0.0 (ham) to 1.0 (spam)
+	SpfResult     string                 `protobuf:"bytes,15,opt,name=spf_result,json=spfResult,proto3" json:"spf_result,omitempty"`             // "pass", "fail", "softfail", "neutral", "none"
+	DkimResult    string                 `protobuf:"bytes,16,opt,name=dkim_result,json=dkimResult,proto3" json:"dkim_result,omitempty"`          // "pass", "fail", "none"
+	DkimDomain    string                 `protobuf:"bytes,17,opt,name=dkim_domain,json=dkimDomain,proto3" json:"dkim_domain,omitempty"`          // signing domain from d= tag
+	TargetMailbox string                 `protobuf:"bytes,18,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"` // set by filter rules, empty = default routing
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -193,11 +194,18 @@ func (x *MailMeta) GetDkimDomain() string {
 	return ""
 }
 
+func (x *MailMeta) GetTargetMailbox() string {
+	if x != nil {
+		return x.TargetMailbox
+	}
+	return ""
+}
+
 var File_proto_bongo_v1_mail_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\n" +
-	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\x8c\x04\n" +
+	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xb3\x04\n" +
 	"\bMailMeta\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1d\n" +
 	"\n" +
@@ -226,7 +234,8 @@ const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\vdkim_result\x18\x10 \x01(\tR\n" +
 	"dkimResult\x12\x1f\n" +
 	"\vdkim_domain\x18\x11 \x01(\tR\n" +
-	"dkimDomainB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"dkimDomain\x12%\n" +
+	"\x0etarget_mailbox\x18\x12 \x01(\tR\rtargetMailboxB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_mail_proto_rawDescOnce sync.Once

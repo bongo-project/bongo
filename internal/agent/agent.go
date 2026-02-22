@@ -34,6 +34,7 @@ import (
 	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
 	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/rules"
 	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/antispam"
@@ -61,6 +62,7 @@ type Agent struct {
 	Mailboxes   *store.MailboxStore
 	Preferences *store.PreferenceStore
 	Threads     *store.ThreadStore
+	Rules       *rules.RuleStore
 	Contacts    *store.ContactStore
 	Events      *store.EventStore
 	Calendars   *store.CalendarStore
@@ -206,6 +208,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.Mailboxes = store.NewMailboxStore(pebbleStore, a)
 		a.Notifier = bongoimap.NewNotifier()
 		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
+		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
 		a.Contacts = store.NewContactStore(pebbleStore, a)
 		if a.Search != nil {
@@ -450,6 +453,18 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/settings", prefH.SaveSettings)
 			r.Get("/api/user-prefs", prefH.UserPrefsJSON)
 		}
+
+		if a.Rules != nil && a.Mailboxes != nil {
+			rulesH := handlers.NewRulesHandler(a.Rules, a.Mailboxes, a.Store, a.Blobs)
+			r.Get("/settings/rules", rulesH.ListRules)
+			r.Get("/settings/rules/new", rulesH.NewRule)
+			r.Post("/settings/rules", rulesH.CreateRule)
+			r.Post("/settings/rules/reorder", rulesH.ReorderRules)
+			r.Get("/settings/rules/{id}", rulesH.EditRule)
+			r.Post("/settings/rules/{id}", rulesH.UpdateRule)
+			r.Delete("/settings/rules/{id}", rulesH.DeleteRule)
+			r.Post("/settings/rules/{id}/test", rulesH.TestRule)
+		}
 	})
 
 	port := a.Config.Web.Port
@@ -520,6 +535,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
 		smtpPipeline = bongosmtp.NewDeliveryPipeline(a, a.Blobs, resolver, a.logger)
 		smtpPipeline.SetScorer(antispam.NewScorer())
+		smtpPipeline.SetBayes(antispam.NewBayesFilter(a.Store, a))
+		if a.Rules != nil {
+			smtpPipeline.SetRuleStore(a.Rules)
+		}
 		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
 
 		// SPF checker for inbound mail.

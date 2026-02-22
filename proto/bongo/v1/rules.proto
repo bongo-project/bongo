@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message FilterRule {
+  string id = 1;
+  string name = 2;
+  int32 priority = 3;            // lower = runs first
+  bool enabled = 4;
+  repeated Condition conditions = 5;
+  FilterAction action = 6;
+  bool stop_processing = 7;      // skip remaining rules if matched
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message Condition {
+  string field = 1;              // "from", "to", "subject", "body", "header:X-List-Id", "size", "has_attachment"
+  string operator = 2;           // "contains", "equals", "matches", "not_contains", "greater_than", "less_than"
+  string value = 3;
+}
+
+message FilterAction {
+  string type = 1;               // "move", "copy", "flag", "mark_read", "delete"
+  string target = 2;             // folder name for move/copy, flag name for flag
+}

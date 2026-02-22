@@ -24,4 +24,5 @@ message MailMeta {
   string spf_result = 15;      // "pass", "fail", "softfail", "neutral", "none"
   string dkim_result = 16;     // "pass", "fail", "none"
   string dkim_domain = 17;     // signing domain from d= tag
+  string target_mailbox = 18;  // set by filter rules, empty = default routing
 }
