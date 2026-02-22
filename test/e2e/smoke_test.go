@@ -465,6 +465,74 @@ func TestAccessibilityBasics(t *testing.T) {
 	})
 }
 
+// TestVisualRegressionBaseline verifies CSS, static assets, and visual markers.
+func TestVisualRegressionBaseline(t *testing.T) {
+	sc := setupSmokeAgent(t)
+
+	t.Run("css_serves_200", func(t *testing.T) {
+		resp, err := sc.client.Get(sc.baseURL + "/static/css/bongo.css")
+		if err != nil {
+			t.Fatalf("GET bongo.css: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("bongo.css status = %d, want 200", resp.StatusCode)
+		}
+		ct := resp.Header.Get("Content-Type")
+		if !strings.Contains(ct, "css") {
+			t.Errorf("bongo.css Content-Type = %q, want text/css", ct)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		// Verify Bongo colour palette variables exist.
+		if !strings.Contains(string(body), "--bongo-orange") {
+			t.Error("bongo.css does not contain --bongo-orange variable")
+		}
+		if !strings.Contains(string(body), "--bongo-blue") {
+			t.Error("bongo.css does not contain --bongo-blue variable")
+		}
+		if !strings.Contains(string(body), "--msg-unread-border") {
+			t.Error("bongo.css does not contain --msg-unread-border variable")
+		}
+	})
+
+	t.Run("favicon_serves_200", func(t *testing.T) {
+		resp, err := sc.client.Get(sc.baseURL + "/static/img/bongo-favicon.png")
+		if err != nil {
+			t.Fatalf("GET favicon: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("favicon status = %d, want 200", resp.StatusCode)
+		}
+	})
+
+	t.Run("contact_avatar_serves_200", func(t *testing.T) {
+		resp, err := sc.client.Get(sc.baseURL + "/static/img/contact-unknown.png")
+		if err != nil {
+			t.Fatalf("GET contact-unknown.png: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("contact-unknown.png status = %d, want 200", resp.StatusCode)
+		}
+	})
+
+	t.Run("favicon_link_in_html", func(t *testing.T) {
+		sc.login(t, "admin@localhost", "admin")
+		_, body := sc.get(t, "/mail/INBOX")
+		if !strings.Contains(body, "bongo-favicon.png") {
+			t.Error("inbox HTML does not contain bongo-favicon.png link")
+		}
+	})
+
+	t.Run("theme_toggle_works", func(t *testing.T) {
+		_, body := sc.get(t, "/mail/INBOX")
+		if !strings.Contains(body, "data-theme") {
+			t.Error("inbox page does not contain data-theme attribute")
+		}
+	})
+}
+
 // TestI18nLocaleSwitch verifies that the locale preference persists and affects the html lang attribute.
 func TestI18nLocaleSwitch(t *testing.T) {
 	sc := setupSmokeAgent(t)

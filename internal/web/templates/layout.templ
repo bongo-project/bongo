@@ -7,6 +7,7 @@ templ Layout(title string, email string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
+			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/pico.min.css"/>
 			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
@@ -78,6 +79,7 @@ templ LayoutWithContent(title string, email string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
+			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/pico.min.css"/>
 			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
@@ -145,11 +147,12 @@ templ LoginLayout(title string) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
+			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/pico.min.css"/>
 			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
-		<body>
+		<body class="login-page">
 			{ children... }
 		</body>
 	</html>

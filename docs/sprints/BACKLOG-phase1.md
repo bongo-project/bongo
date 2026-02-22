@@ -189,7 +189,7 @@ import for mailbox migration (parse mbox → deliver each message), EML file
 download for individual messages. Integration tests for HTML rendering, attachment
 preview, mbox import round-trip.
 
-## Sprint 13c: Accessibility, i18n & Performance ← CURRENT
+## Sprint 13c: Accessibility, i18n & Performance ✅ DONE
 Accessibility audit: ARIA labels, keyboard navigation for all interactive elements,
 focus management on HTMX swaps, skip-to-content links, screen reader landmarks.
 Internationalisation (i18n): extract all UI strings to message catalogue, add locale
@@ -199,7 +199,15 @@ next page via HTMX `hx-trigger="revealed"`, compress SSE payloads, HTTP response
 compression (gzip). E2E smoke test covering full user journey (login → compose →
 send → receive → search → calendar → contacts → admin → logout).
 
-## Sprint 14: Visual UI Matching — Old Bongo Dragonfly/Hawkeye
+## Sprint 13d: i18n Template Wiring ✅ DONE
+Wire all 14 `.templ` files to use `i18n.T()` instead of hardcoded English strings.
+Add `t(ctx, messageID)` template helper. Replace ~175 hardcoded strings across
+layout, mailbox, message, compose, contacts, calendar, admin, settings, security,
+login, rules, search, and import templates. Verify message catalogue completeness
+with coverage test. Integration tests for French rendering, fallback, and context
+propagation.
+
+## Sprint 14: Visual UI Matching — Old Bongo Dragonfly/Hawkeye ✅ DONE (CSS infrastructure)
 Use browser agent to view the old Bongo UI screenshots from
 https://github.com/bongo-project/bongo-project/tree/gh-pages/images (11 Dragonfly
 screens + 13 Hawkeye screens at various resolutions). Also try running the old UI from
@@ -209,6 +217,19 @@ patterns to match the original look and feel as closely as possible while keepin
 modern stack (HTMX, Alpine.js, Pico CSS, Open Props). Focus on: mail list density,
 message reading experience, compose flow, calendar views, contact cards, admin dashboard
 layout. This sprint is visual/design-driven rather than feature-driven.
+
+## Sprint 15a: Polished Mail UI — Static Prototype & Port ← CURRENT
+Build static HTML prototypes for every mail-facing page (login, inbox, message thread,
+compose, search, contacts, calendar, settings, security, import). Use old Dragonfly
+CSS as the direct starting point — modernise it rather than rebuilding from scratch.
+Get each page looking beautiful in standalone HTML, then port the final CSS and any
+template structure changes back into the Go codebase. Focus: warmth, depth, visual
+rhythm, not just "correct colour variables."
+
+## Sprint 15b: Polished Admin UI — Static Prototype & Port
+Same prototype-first approach for the Hawkeye admin panel. Dark sidebar with colourful
+icons, status dashboard with blue status table, agent config forms, user/domain
+management. Port polished CSS back into admin.templ and bongo.css.
 
 ## Future (Phase 2): Easy Mail Migration — "Bring Your Inbox"
 Non-technical users need a dead-simple way to import their old email. Two modes:
