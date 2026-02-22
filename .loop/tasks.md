@@ -11,8 +11,8 @@ Source: docs/sprints/sprint-13a-security-hardening.md
 ## Tasks
 
 ### Phase 1: Foundation
-- [ ] 1. Login rate limiting middleware - Create `internal/web/middleware/ratelimit.go` with IP-based rate limiting (5 attempts/15min window, sync.RWMutex, background cleanup goroutine). Modify `internal/web/handlers/auth.go` Login() to record failures/resets. Wire LoginRateLimit middleware to POST /login in agent.go. Done when 6th failed login returns 429.
-- [ ] 2. Security headers middleware - Create `internal/web/middleware/security.go` with CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, X-XSS-Protection 0, Permissions-Policy, Cache-Control no-store for HTML. Wire as first middleware on router in agent.go. Static assets get long-lived cache override.
+- [x] 1. Login rate limiting middleware - Create `internal/web/middleware/ratelimit.go` with IP-based rate limiting (5 attempts/15min window, sync.RWMutex, background cleanup goroutine). Modify `internal/web/handlers/auth.go` Login() to record failures/resets. Wire LoginRateLimit middleware to POST /login in agent.go. Done when 6th failed login returns 429.
+- [x] 2. Security headers middleware - Create `internal/web/middleware/security.go` with CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, X-XSS-Protection 0, Permissions-Policy, Cache-Control no-store for HTML. Wire as first middleware on router in agent.go. Static assets get long-lived cache override.
 
 ### Phase 2: TOTP Core
 - [ ] 3. TOTP auth library and proto updates - Add `github.com/pquerna/otp` dependency. Add `recovery_codes` (repeated string, field 8), `totp_enabled` (bool, field 9) to UserProfile proto. Create `internal/auth/totp.go` with GenerateTOTP, ValidateTOTP, GenerateRecoveryCodes, ValidateRecoveryCode functions. Unit tests for all functions. (needs: 1)

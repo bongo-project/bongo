@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -234,7 +235,8 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 			if err == nil {
 				if env.HTML != "" {
-					detail.HTMLBody = h.sanitizer.Sanitize(env.HTML)
+					sanitized := h.sanitizer.Sanitize(env.HTML)
+					detail.HTMLBody, detail.HasBlockedImages = blockRemoteImages(sanitized)
 				}
 				detail.TextBody = env.Text
 
@@ -461,6 +463,31 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Message+deleted", mailbox))
 	w.WriteHeader(http.StatusOK)
+}
+
+// remoteImgRe matches <img ...> tags whose src attribute begins with http:// or https://.
+// It deliberately does not match src="cid:..." or src="data:..." values.
+var remoteImgRe = regexp.MustCompile(`(?i)<img([^>]*?)src\s*=\s*["'](https?://[^"'>\s]*)["']([^>]*)>`)
+
+// blockRemoteImages replaces remote <img> tags with placeholder divs and
+// returns the modified HTML together with a bool indicating whether any
+// remote images were found. Images whose src begins with "cid:" or "data:"
+// are left untouched.
+func blockRemoteImages(html string) (string, bool) {
+	blocked := false
+	result := remoteImgRe.ReplaceAllStringFunc(html, func(match string) string {
+		sub := remoteImgRe.FindStringSubmatch(match)
+		if len(sub) < 3 {
+			return match
+		}
+		originalURL := sub[2]
+		blocked = true
+		return fmt.Sprintf(
+			`<div class="blocked-image" data-src="%s">[Remote image blocked]</div>`,
+			strings.ReplaceAll(originalURL, `"`, `&quot;`),
+		)
+	})
+	return result, blocked
 }
 
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {

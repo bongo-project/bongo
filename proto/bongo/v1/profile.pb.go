@@ -30,6 +30,8 @@ type UserProfile struct {
 	QuotaBytes    int64                  `protobuf:"varint,5,opt,name=quota_bytes,json=quotaBytes,proto3" json:"quota_bytes,omitempty"`
 	IsAdmin       bool                   `protobuf:"varint,6,opt,name=is_admin,json=isAdmin,proto3" json:"is_admin,omitempty"`
 	Disabled      bool                   `protobuf:"varint,7,opt,name=disabled,proto3" json:"disabled,omitempty"`
+	RecoveryCodes []string               `protobuf:"bytes,8,rep,name=recovery_codes,json=recoveryCodes,proto3" json:"recovery_codes,omitempty"` // bcrypt hashed recovery codes
+	TotpEnabled   bool                   `protobuf:"varint,9,opt,name=totp_enabled,json=totpEnabled,proto3" json:"totp_enabled,omitempty"`      // whether 2FA is active
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -113,11 +115,25 @@ func (x *UserProfile) GetDisabled() bool {
 	return false
 }
 
+func (x *UserProfile) GetRecoveryCodes() []string {
+	if x != nil {
+		return x.RecoveryCodes
+	}
+	return nil
+}
+
+func (x *UserProfile) GetTotpEnabled() bool {
+	if x != nil {
+		return x.TotpEnabled
+	}
+	return false
+}
+
 var File_proto_bongo_v1_profile_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_profile_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/bongo/v1/profile.proto\x12\bbongo.v1\"\xe4\x01\n" +
+	"\x1cproto/bongo/v1/profile.proto\x12\bbongo.v1\"\xae\x02\n" +
 	"\vUserProfile\x12\x14\n" +
 	"\x05email\x18\x01 \x01(\tR\x05email\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12#\n" +
@@ -127,7 +143,9 @@ const file_proto_bongo_v1_profile_proto_rawDesc = "" +
 	"\vquota_bytes\x18\x05 \x01(\x03R\n" +
 	"quotaBytes\x12\x19\n" +
 	"\bis_admin\x18\x06 \x01(\bR\aisAdmin\x12\x1a\n" +
-	"\bdisabled\x18\a \x01(\bR\bdisabledB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\bdisabled\x18\a \x01(\bR\bdisabled\x12%\n" +
+	"\x0erecovery_codes\x18\b \x03(\tR\rrecoveryCodes\x12!\n" +
+	"\ftotp_enabled\x18\t \x01(\bR\vtotpEnabledB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_profile_proto_rawDescOnce sync.Once

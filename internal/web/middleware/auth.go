@@ -29,7 +29,8 @@ type SessionData struct {
 }
 
 // CreateSessionCookie creates a signed session cookie.
-func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin bool) *http.Cookie {
+// Set secure to true when the server is running over HTTPS to enable the Secure flag.
+func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin, secure bool) *http.Cookie {
 	expiry := 24 * time.Hour
 	if remember {
 		expiry = 30 * 24 * time.Hour
@@ -51,6 +52,7 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin 
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(expiry.Seconds()),
 	}

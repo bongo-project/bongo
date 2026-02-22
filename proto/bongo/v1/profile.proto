@@ -12,4 +12,6 @@ message UserProfile {
   int64 quota_bytes = 5;
   bool is_admin = 6;
   bool disabled = 7;
+  repeated string recovery_codes = 8;  // bcrypt hashed recovery codes
+  bool totp_enabled = 9;               // whether 2FA is active
 }

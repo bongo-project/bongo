@@ -15,21 +15,22 @@ type Attachment struct {
 
 // MessageDetail holds data for the message detail view.
 type MessageDetail struct {
-	UID         uint32
-	Mailbox     string
-	MessageID   string
-	Subject     string
-	From        string
-	To          []string
-	Cc          []string
-	Date        time.Time
-	HTMLBody    string
-	TextBody    string
-	Attachments []Attachment
-	Seen        bool
-	Flagged     bool
-	Answered    bool
-	IsContact   bool
+	UID              uint32
+	Mailbox          string
+	MessageID        string
+	Subject          string
+	From             string
+	To               []string
+	Cc               []string
+	Date             time.Time
+	HTMLBody         string
+	TextBody         string
+	Attachments      []Attachment
+	Seen             bool
+	Flagged          bool
+	Answered         bool
+	IsContact        bool
+	HasBlockedImages bool
 }
 
 templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
@@ -91,6 +92,27 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 		</div>
 	</div>
 	<div class="message-body">
+		if msg.HasBlockedImages {
+			<div class="blocked-images-banner">
+				<span>Remote images have been blocked for your privacy.</span>
+				<button
+					type="button"
+					class="outline secondary"
+					style="font-size:0.8rem;padding:0.2rem 0.5rem"
+					@click="
+						document.querySelectorAll('.blocked-image').forEach(el => {
+							const img = document.createElement('img');
+							img.src = el.dataset.src;
+							img.style.maxWidth = '100%';
+							el.replaceWith(img);
+						});
+						$el.closest('.blocked-images-banner').remove();
+					"
+				>
+					Load remote images
+				</button>
+			</div>
+		}
 		if msg.HTMLBody != "" {
 			@templ.Raw(msg.HTMLBody)
 		} else {
@@ -136,6 +158,27 @@ templ MessagePaneContent(msg MessageDetail) {
 		</div>
 	</div>
 	<div class="message-body">
+		if msg.HasBlockedImages {
+			<div class="blocked-images-banner">
+				<span>Remote images have been blocked for your privacy.</span>
+				<button
+					type="button"
+					class="outline secondary"
+					style="font-size:0.8rem;padding:0.2rem 0.5rem"
+					@click="
+						document.querySelectorAll('.blocked-image').forEach(el => {
+							const img = document.createElement('img');
+							img.src = el.dataset.src;
+							img.style.maxWidth = '100%';
+							el.replaceWith(img);
+						});
+						$el.closest('.blocked-images-banner').remove();
+					"
+				>
+					Load remote images
+				</button>
+			</div>
+		}
 		if msg.HTMLBody != "" {
 			@templ.Raw(msg.HTMLBody)
 		} else {

@@ -32,6 +32,7 @@ type AuthHandler struct {
 	sessionSecret []byte
 	profiles      ProfileLoader
 	limiter       LoginLimiter
+	tlsEnabled    bool
 }
 
 // NewAuthHandler creates an AuthHandler.
@@ -51,6 +52,11 @@ func (h *AuthHandler) SetProfileLoader(p ProfileLoader) {
 // failures and resets directly (complementing the middleware check).
 func (h *AuthHandler) SetRateLimiter(l LoginLimiter) {
 	h.limiter = l
+}
+
+// SetTLSEnabled configures whether the session cookie should have the Secure flag set.
+func (h *AuthHandler) SetTLSEnabled(enabled bool) {
+	h.tlsEnabled = enabled
 }
 
 // LoginPage renders the login form.
@@ -102,7 +108,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.limiter.Reset(ip)
 	}
 
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, email, remember, isAdmin)
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, email, remember, isAdmin, h.tlsEnabled)
 	http.SetCookie(w, cookie)
 	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
 }

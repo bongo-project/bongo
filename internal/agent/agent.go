@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -281,10 +282,17 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Login rate limiter (5 attempts per 15-minute window).
 	loginRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
 
+	// Determine whether HTTPS will be used so we can set the Secure cookie flag.
+	tlsEnabled := a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != ""
+	if a.Config.Server.Role == "dev" {
+		tlsEnabled = true
+	}
+
 	// Auth routes (public).
 	authH := handlers.NewAuthHandler(a.Auth, sessionSecret)
 	authH.SetProfileLoader(a)
 	authH.SetRateLimiter(loginRL)
+	authH.SetTLSEnabled(tlsEnabled)
 	r.Get("/login", authH.LoginPage)
 	r.With(loginRL.LoginRateLimit()).Post("/login", authH.Login)
 	r.Post("/logout", authH.Logout)
@@ -481,6 +489,29 @@ func (a *Agent) Run(ctx context.Context) error {
 	a.httpServer = &http.Server{
 		Addr:    addr,
 		Handler: r,
+	}
+
+	// Configure TLS for the web server.
+	var webTLSCfg *tls.Config
+	if a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(a.Config.Web.TLS.CertFile, a.Config.Web.TLS.KeyFile)
+		if err != nil {
+			return fmt.Errorf("loading web TLS key pair: %w", err)
+		}
+		webTLSCfg = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		}
+	} else if a.Config.Server.Role == "dev" {
+		generatedTLS, err := security.LoadOrGenerate("", "", []string{"localhost", "127.0.0.1"})
+		if err != nil {
+			return fmt.Errorf("generating web self-signed cert: %w", err)
+		}
+		webTLSCfg = generatedTLS
+	}
+
+	if webTLSCfg != nil {
+		a.httpServer.TLSConfig = webTLSCfg
 	}
 
 	// Wait for Raft leadership in dev mode (single-node, should be immediate).
@@ -697,14 +728,45 @@ func (a *Agent) Run(ctx context.Context) error {
 		"http_addr", addr,
 	)
 
+	// Start HTTPS redirect server when configured (not in dev mode).
+	if a.Config.Web.HTTPSRedirect && webTLSCfg != nil && a.Config.Server.Role != "dev" {
+		redirectPort := a.Config.Web.HTTPRedirectPort
+		if redirectPort == 0 {
+			redirectPort = 80
+		}
+		redirectAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(redirectPort))
+		httpsHost := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
+		redirectHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			target := "https://" + httpsHost + r.RequestURI
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+		})
+		go http.ListenAndServe(redirectAddr, redirectHandler) //nolint:errcheck // background redirect server
+		a.logger.Info("web: HTTP->HTTPS redirect started", "addr", redirectAddr)
+	}
+
 	// Start HTTP server in background.
 	httpErrCh := make(chan error, 1)
-	go func() {
-		if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			httpErrCh <- err
+	if webTLSCfg != nil {
+		if a.Config.Server.Role == "dev" {
+			a.logger.Info("web: started (HTTPS, self-signed)", "addr", addr)
+		} else {
+			a.logger.Info("web: started (HTTPS)", "addr", addr)
 		}
-		close(httpErrCh)
-	}()
+		go func() {
+			if err := a.httpServer.ListenAndServeTLS("", ""); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				httpErrCh <- err
+			}
+			close(httpErrCh)
+		}()
+	} else {
+		a.logger.Info("web: started (HTTP)", "addr", addr)
+		go func() {
+			if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				httpErrCh <- err
+			}
+			close(httpErrCh)
+		}()
+	}
 
 	// Wait for context cancellation or HTTP error.
 	select {

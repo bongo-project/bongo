@@ -149,14 +149,14 @@ structured logs with level/component filters (stream via SSE). All admin pages u
 the same HTMX/Templ/Pico CSS stack as user UI. Integration test: admin login, user
 CRUD, domain management, queue inspection.
 
-## Sprint 12a: POP3 Server ← CURRENT
+## Sprint 12a: POP3 Server ✅ DONE
 POP3 server via `internal/pop3/` for legacy client support (RFC 1939). Commands:
 USER, PASS, STAT, LIST, RETR, DELE, QUIT, UIDL, TOP, CAPA, STLS, NOOP, RSET.
 Wire into agent lifecycle with configurable ports (110/995, dev 1110/1995). INBOX
 snapshot model, byte-stuffing, STLS upgrade. Integration tests for auth, retrieval,
 delete, TLS.
 
-## Sprint 12b: Antispam Scoring
+## Sprint 12b: Antispam Scoring ✅ DONE
 Add spam_score/spf_result/dkim_result/dkim_domain fields to MailMeta proto. Inbound
 DKIM verification via DNS. Heuristic spam scorer (SPF, DKIM, header analysis,
 phrase patterns) producing 0.0–1.0 score. Hook into delivery pipeline — auto-route
@@ -164,7 +164,7 @@ to Junk above threshold. Per-user Bayesian filter trained by "Mark as Spam" / "N
 Spam" web UI actions. Bleve indexes spam_score. Integration tests for auto-junk,
 clean mail routing, mark spam, Bayesian training.
 
-## Sprint 12c: Mail Filter Rules
+## Sprint 12c: Mail Filter Rules ✅ DONE
 Per-user server-side filter rules. FilterRule proto with conditions (from, to,
 subject, body, header, size, has_attachment), operators (contains, equals, matches,
 not_contains, greater/less_than), actions (move, copy, flag, mark_read, delete).
@@ -173,7 +173,7 @@ after spam scoring. Web UI: list with drag reorder, create/edit/delete forms wit
 dynamic Alpine.js condition rows, rule testing against recent mail. Integration
 tests for routing, priority, disabled rules, CRUD, spam override.
 
-## Sprint 13a: Security & Login Hardening
+## Sprint 13a: Security & Login Hardening ← CURRENT
 Login security: rate limiting on login attempts, TOTP two-factor auth (totp_secret
 already in UserProfile proto), QR code setup flow in preferences, recovery codes.
 HTTPS redirect and HSTS header. CSP headers for XSS prevention. Security headers

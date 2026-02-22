@@ -1002,3 +1002,25 @@
   padding: 0.1rem 0;
   border-bottom: 1px solid var(--pico-muted-border-color);
 }
+
+/* Remote image blocking */
+.blocked-image {
+  display: inline-block;
+  background: var(--pico-muted-border-color);
+  color: var(--pico-muted-color);
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}
+
+.blocked-images-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--pico-muted-border-color);
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+}

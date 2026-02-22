@@ -10,7 +10,7 @@ import (
 var testSecret = []byte("test-secret-key-32-bytes-long!!")
 
 func TestCreateSessionCookie(t *testing.T) {
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
 
 	if cookie.Name != "bongo_session" {
 		t.Errorf("cookie name = %q, want bongo_session", cookie.Name)
@@ -42,8 +42,8 @@ func TestCreateSessionCookie(t *testing.T) {
 }
 
 func TestCreateSessionCookie_Remember(t *testing.T) {
-	normal := CreateSessionCookie(testSecret, "u", "e", false, false)
-	remember := CreateSessionCookie(testSecret, "u", "e", true, false)
+	normal := CreateSessionCookie(testSecret, "u", "e", false, false, false)
+	remember := CreateSessionCookie(testSecret, "u", "e", true, false, false)
 
 	if remember.MaxAge <= normal.MaxAge {
 		t.Error("remember cookie should have longer MaxAge")
@@ -58,7 +58,7 @@ func TestClearSessionCookie(t *testing.T) {
 }
 
 func TestValidateCookie_InvalidSignature(t *testing.T) {
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
 
 	// Tamper with cookie.
 	_, err := validateCookie([]byte("wrong-secret"), cookie.Value)
@@ -103,7 +103,7 @@ func TestRequireAuth_ValidCookie(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
 	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
