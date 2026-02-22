@@ -371,11 +371,22 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/cluster", adminH.ClusterOverview)
 		r.Get("/admin/logs", adminH.LogViewer)
 		r.Get("/admin/logs/stream", adminH.LogStream)
+		r.Post("/admin/settings/require-2fa", adminH.ToggleRequire2FA)
 	})
 
 	// Protected routes.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionSecret))
+		r.Use(middleware.Require2FA(a))
+
+		// Security settings (TOTP, password change).
+		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
+		securityH.SetTLSEnabled(tlsEnabled)
+		r.Get("/settings/security", securityH.SecuritySettings)
+		r.Post("/settings/security/totp/setup", securityH.SetupTOTP)
+		r.Post("/settings/security/totp/confirm", securityH.ConfirmTOTP)
+		r.Post("/settings/security/totp/disable", securityH.DisableTOTP)
+		r.Post("/settings/security/password", securityH.ChangePassword)
 
 		if a.Mailboxes != nil {
 			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes)

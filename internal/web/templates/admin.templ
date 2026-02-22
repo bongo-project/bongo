@@ -113,8 +113,11 @@ templ AdminSidebar(active string) {
 	</nav>
 }
 
-templ AdminDashboard(health SystemHealth, email string) {
+templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash string) {
 	@AdminLayout("Admin Dashboard", email, "dashboard") {
+		if flash != "" {
+			@FlashMessage(flash, "success")
+		}
 		<h2>System Dashboard</h2>
 		<div class="admin-grid">
 			<article>
@@ -142,6 +145,23 @@ templ AdminDashboard(health SystemHealth, email string) {
 				<p class="stat-value">{ fmt.Sprint(health.UserCount) }</p>
 			</article>
 		</div>
+		<fieldset style="margin-top:2rem">
+			<legend>Security Policy</legend>
+			<form method="post" action="/admin/settings/require-2fa">
+				<label>
+					if require2FA {
+						<input type="checkbox" name="enabled" value="1" checked/>
+					} else {
+						<input type="checkbox" name="enabled" value="1"/>
+					}
+					Require two-factor authentication for all users
+				</label>
+				<small>When enabled, users without 2FA will be redirected to the setup page on login.</small>
+				<div style="margin-top:0.5rem">
+					<button type="submit" class="outline">Save Policy</button>
+				</div>
+			</form>
+		</fieldset>
 	}
 }
 

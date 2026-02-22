@@ -16,7 +16,7 @@ Source: docs/sprints/sprint-13a-security-hardening.md
 
 ### Phase 2: TOTP Core
 - [x] 3. TOTP auth library and proto updates - Add `github.com/pquerna/otp` dependency. Add `recovery_codes` (repeated string, field 8), `totp_enabled` (bool, field 9) to UserProfile proto. Create `internal/auth/totp.go` with GenerateTOTP, ValidateTOTP, GenerateRecoveryCodes, ValidateRecoveryCode functions. Unit tests for all functions. (needs: 1)
-- [ ] 4. TOTP login flow - Modify Login() handler: after password verification, if totp_enabled, store pending auth in signed cookie (5min TTL), redirect to /login/2fa. Add TwoFactorPage (GET /login/2fa) and TwoFactorVerify (POST /login/2fa) handlers. Try TOTP first, then recovery code fallback (single-use). Wire routes in agent.go. (needs: 3)
+- [x] 4. TOTP login flow - Modify Login() handler: after password verification, if totp_enabled, store pending auth in signed cookie (5min TTL), redirect to /login/2fa. Add TwoFactorPage (GET /login/2fa) and TwoFactorVerify (POST /login/2fa) handlers. Try TOTP first, then recovery code fallback (single-use). Wire routes in agent.go. (needs: 3)
 
 ### Phase 3: UI & Configuration
 - [ ] 5. TOTP setup flow in preferences - Add SecuritySettings, SetupTOTP, ConfirmTOTP, DisableTOTP, ChangePassword handlers to preferences.go. Create security.templ with password change form, TOTP setup/disable, QR code display, recovery codes display. Add "Security" tab to settings navigation. Add admin 2FA policy toggle (Require2FA middleware, admin route, Pebble storage). Wire all routes in agent.go. (needs: 4)

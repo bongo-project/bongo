@@ -1,0 +1,123 @@
+package templates
+
+templ SecuritySettings(totpEnabled bool, email string, flash string) {
+	@LayoutWithContent("Security", email) {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="mailbox-list">
+					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">Back to Mail</a></li>
+					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">Filter Rules</a></li>
+					<li><a href="/settings" hx-get="/settings" hx-target="#main-content" hx-push-url="true">Settings</a></li>
+					<li><a href="/settings/security" class="active">Security</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="main-content" id="main-content">
+			if flash != "" {
+				@FlashMessage(flash, "success")
+			}
+			<h2>Security</h2>
+			<fieldset>
+				<legend>Change Password</legend>
+				<form method="post" action="/settings/security/password">
+					<label for="current_password">Current Password</label>
+					<input type="password" name="current_password" id="current_password" required/>
+					<label for="new_password">New Password</label>
+					<input type="password" name="new_password" id="new_password" required minlength="8"/>
+					<small>Minimum 8 characters</small>
+					<label for="confirm_password">Confirm New Password</label>
+					<input type="password" name="confirm_password" id="confirm_password" required minlength="8"/>
+					<div>
+						<button type="submit">Change Password</button>
+					</div>
+				</form>
+			</fieldset>
+			<fieldset>
+				<legend>Two-Factor Authentication</legend>
+				if totpEnabled {
+					<p>
+						<strong>Status:</strong>
+						<span class="badge badge-active">Enabled</span>
+					</p>
+					<p>Two-factor authentication is currently enabled for your account.</p>
+					<details>
+						<summary>Disable Two-Factor Authentication</summary>
+						<form method="post" action="/settings/security/totp/disable" style="margin-top:1rem">
+							<label for="disable_password">Enter your password to disable 2FA</label>
+							<input type="password" name="password" id="disable_password" required/>
+							<button type="submit" class="secondary">Disable 2FA</button>
+						</form>
+					</details>
+				} else {
+					<p>
+						<strong>Status:</strong>
+						<span class="badge badge-disabled">Disabled</span>
+					</p>
+					<p>Add an extra layer of security to your account by enabling two-factor authentication.</p>
+					<form method="post" action="/settings/security/totp/setup">
+						<button type="submit">Set Up Two-Factor Authentication</button>
+					</form>
+				}
+			</fieldset>
+		</main>
+	}
+}
+
+templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
+	@LayoutWithContent("Setup 2FA", "") {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="mailbox-list">
+					<li><a href="/settings/security">Back to Security</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="main-content" id="main-content">
+			if errMsg != "" {
+				@FlashMessage(errMsg, "error")
+			}
+			<h2>Set Up Two-Factor Authentication</h2>
+			<p>Scan the QR code below with your authenticator app (such as Google Authenticator, Authy, or 1Password).</p>
+			<div style="text-align:center;margin:2rem 0">
+				<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
+			</div>
+			<p>If you cannot scan the QR code, enter this key manually:</p>
+			<pre style="user-select:all;font-size:1rem;padding:1rem;background:var(--pico-muted-border-color);border-radius:4px;text-align:center;letter-spacing:0.1em">{ manualKey }</pre>
+			<form method="post" action="/settings/security/totp/confirm" style="margin-top:2rem">
+				<label for="code">Verification Code</label>
+				<input type="text" name="code" id="code" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6"/>
+				<div>
+					<button type="submit">Verify and Enable</button>
+					<a href="/settings/security" role="button" class="outline secondary">Cancel</a>
+				</div>
+			</form>
+		</main>
+	}
+}
+
+templ TOTPRecoveryCodes(codes []string) {
+	@LayoutWithContent("Recovery Codes", "") {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="mailbox-list">
+					<li><a href="/settings/security">Back to Security</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="main-content" id="main-content">
+			<h2>Recovery Codes</h2>
+			<div class="flash flash-warning" style="margin-bottom:1.5rem">
+				<strong>Save these codes in a safe place.</strong> They will not be shown again.
+				Each code can only be used once. Use these codes to sign in if you lose access to your authenticator app.
+			</div>
+			<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 2rem;max-width:24rem;margin:1.5rem auto;font-family:monospace;font-size:1.1rem">
+				for _, code := range codes {
+					<div style="padding:0.4rem 0.8rem;background:var(--pico-muted-border-color);border-radius:4px;text-align:center">{ code }</div>
+				}
+			</div>
+			<div style="text-align:center;margin-top:2rem">
+				<a href="/settings/security" role="button">I have saved my codes</a>
+			</div>
+		</main>
+	}
+}

@@ -129,7 +129,17 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	templ.Handler(templates.AdminDashboard(health, email)).ServeHTTP(w, r)
+	// Check if 2FA is required.
+	var require2FA bool
+	if h.store != nil {
+		data, err := h.store.Get([]byte("/system/settings/require_2fa"))
+		if err == nil && string(data) == "1" {
+			require2FA = true
+		}
+	}
+
+	flash := r.URL.Query().Get("flash")
+	templ.Handler(templates.AdminDashboard(health, email, require2FA, flash)).ServeHTTP(w, r)
 }
 
 // --- User Management ---
@@ -614,6 +624,38 @@ func (h *AdminHandler) LogStream(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// --- Security Policy ---
+
+// ToggleRequire2FA toggles the system-wide 2FA requirement.
+func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) {
+	enabled := r.FormValue("enabled") == "1"
+
+	key := []byte("/system/settings/require_2fa")
+	if enabled {
+		cmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   key,
+			Value: []byte("1"),
+		}
+		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			http.Error(w, "failed to update 2FA policy", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		cmd := &bongov1.RaftCommand{
+			Op:  bongov1.Op_OP_DELETE,
+			Key: key,
+		}
+		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			http.Error(w, "failed to update 2FA policy", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	flash := "2FA+policy+updated"
+	http.Redirect(w, r, "/admin?flash="+flash, http.StatusSeeOther)
 }
 
 // --- Internal helpers ---
