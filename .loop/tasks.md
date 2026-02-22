@@ -3,7 +3,7 @@
 > Harden authentication with rate limiting, TOTP 2FA, security headers, HTTPS support, remote image blocking, and secure cookies.
 
 Started: 2026-02-22
-Status: in-progress
+Status: complete
 Source: docs/sprints/sprint-13a-security-hardening.md
 
 ---
@@ -19,12 +19,12 @@ Source: docs/sprints/sprint-13a-security-hardening.md
 - [x] 4. TOTP login flow - Modify Login() handler: after password verification, if totp_enabled, store pending auth in signed cookie (5min TTL), redirect to /login/2fa. Add TwoFactorPage (GET /login/2fa) and TwoFactorVerify (POST /login/2fa) handlers. Try TOTP first, then recovery code fallback (single-use). Wire routes in agent.go. (needs: 3)
 
 ### Phase 3: UI & Configuration
-- [ ] 5. TOTP setup flow in preferences - Add SecuritySettings, SetupTOTP, ConfirmTOTP, DisableTOTP, ChangePassword handlers to preferences.go. Create security.templ with password change form, TOTP setup/disable, QR code display, recovery codes display. Add "Security" tab to settings navigation. Add admin 2FA policy toggle (Require2FA middleware, admin route, Pebble storage). Wire all routes in agent.go. (needs: 4)
+- [x] 5. TOTP setup flow in preferences - Add SecuritySettings, SetupTOTP, ConfirmTOTP, DisableTOTP, ChangePassword handlers to preferences.go. Create security.templ with password change form, TOTP setup/disable, QR code display, recovery codes display. Add "Security" tab to settings navigation. Add admin 2FA policy toggle (Require2FA middleware, admin route, Pebble storage). Wire all routes in agent.go. (needs: 4)
 - [x] 6. HTTPS support and secure cookies - Modify agent.go to use ListenAndServeTLS when TLS configured, self-signed in dev mode. Add HSTS header in security middleware when TLS active. Add Secure flag to session cookies when HTTPS. Add HTTPSRedirect option with separate HTTP listener. Update WebConfig with HTTPSRedirect and HTTPRedirectPort fields. (needs: 2)
 - [x] 7. Remote image blocking in HTML emails - Modify mail.go to neutralize remote images after bluemonday sanitization (replace http(s) img src with blocked-image placeholder, preserve cid: and data:). Add "Load remote images" button with Alpine.js. Update message.templ with blocked images banner and CSS. (needs: 2)
 
 ### Phase 4: Verification
-- [ ] 8. Integration tests - Create test/integration/security_test.go (build tag integration) with TestLoginRateLimit, TestTOTPSetup, TestTOTPLogin, TestRecoveryCode, TestSecurityHeaders, TestRemoteImageBlocking, TestPasswordChange, TestRequire2FAPolicy. All tests use dev agent. (needs: 5, 6, 7)
+- [x] 8. Integration tests - Create test/integration/security_test.go (build tag integration) with TestLoginRateLimit, TestTOTPSetup, TestTOTPLogin, TestRecoveryCode, TestSecurityHeaders, TestRemoteImageBlocking, TestPasswordChange, TestRequire2FAPolicy. All tests use dev agent. (needs: 5, 6, 7)
 
 ---
 
