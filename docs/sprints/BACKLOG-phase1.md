@@ -133,7 +133,7 @@ browser notifications (configurable 5/10/15/30/60 min before). Shared calendar
 display (read-only). Free/busy lookup for scheduling. Integration tests for views,
 recurrence, drag-drop, sharing.
 
-## Sprint 11: Admin Panel (Hawkeye) ← CURRENT
+## Sprint 11: Admin Panel (Hawkeye) ✅ DONE
 Replicate the original Bongo "Hawkeye" admin interface. Admin role flag on
 UserProfile protobuf. Admin middleware (require admin flag). Dashboard: system
 health (Raft leader status, node count, uptime), storage usage (Pebble size, blob
@@ -149,36 +149,55 @@ structured logs with level/component filters (stream via SSE). All admin pages u
 the same HTMX/Templ/Pico CSS stack as user UI. Integration test: admin login, user
 CRUD, domain management, queue inspection.
 
-## Sprint 12: POP3, Mail Filters & Antispam
-POP3 server via `internal/pop3/` for legacy client support (RFC 1939). Basic
-commands: USER, PASS, STAT, LIST, RETR, DELE, QUIT. Wire into agent lifecycle
-with configurable ports (110/995). Mail filter rules engine (`internal/rules/`):
-Sieve-like DSL stored per user in Pebble, evaluated in delivery pipeline before
-mailbox placement. Rule actions: move to folder, mark read, flag, delete, forward,
-auto-reply. Rule conditions: from, to, subject, header match, size, has attachment.
-Web UI for rule management: list, create, edit, reorder priority, test against
-existing messages. Antispam scoring (`internal/antispam/`): SPF verification
-(already partially done), DKIM verification on inbound, basic header analysis
-(missing Message-ID, suspicious Date, known spam patterns), per-message spam score
-stored in MailMeta, Junk folder auto-filing above threshold, "Mark as spam" /
-"Not spam" buttons in web UI that train a simple Bayesian filter. Integration test:
-POP3 round-trip, filter rule evaluation, spam scoring and junk filing.
+## Sprint 12a: POP3 Server ← CURRENT
+POP3 server via `internal/pop3/` for legacy client support (RFC 1939). Commands:
+USER, PASS, STAT, LIST, RETR, DELE, QUIT, UIDL, TOP, CAPA, STLS, NOOP, RSET.
+Wire into agent lifecycle with configurable ports (110/995, dev 1110/1995). INBOX
+snapshot model, byte-stuffing, STLS upgrade. Integration tests for auth, retrieval,
+delete, TLS.
 
-## Sprint 13: Web UI Polish & Production Readiness
-Final UI polish pass to reach production quality. Accessibility audit: ARIA labels,
-keyboard navigation for all interactive elements, screen reader testing, focus
-management on HTMX swaps. Internationalisation (i18n): extract all UI strings to
-message catalogue, add locale selector in preferences (start with en, fr, de, es).
-Email template rendering improvements: inline CSS for HTML mail display, remote
-image blocking with click-to-load, print-friendly view. Attachment preview: inline
-image display, PDF viewer (pdf.js), text file syntax highlighting. Import/export:
-mbox import for mailbox migration, EML file download. Login security: rate limiting
-on login attempts, TOTP two-factor auth (totp_secret already in UserProfile proto),
-QR code setup flow in preferences. HTTPS redirect and HSTS header. CSP headers for
-XSS prevention. Performance: lazy-load message list on scroll (infinite scroll
-option), prefetch next page via HTMX `hx-trigger="revealed"`, compress SSE payloads.
-E2E test suite: Playwright or similar headless browser tests covering full user
-journeys (login → compose → send → receive → search → calendar → contacts → logout).
+## Sprint 12b: Antispam Scoring
+Add spam_score/spf_result/dkim_result/dkim_domain fields to MailMeta proto. Inbound
+DKIM verification via DNS. Heuristic spam scorer (SPF, DKIM, header analysis,
+phrase patterns) producing 0.0–1.0 score. Hook into delivery pipeline — auto-route
+to Junk above threshold. Per-user Bayesian filter trained by "Mark as Spam" / "Not
+Spam" web UI actions. Bleve indexes spam_score. Integration tests for auto-junk,
+clean mail routing, mark spam, Bayesian training.
+
+## Sprint 12c: Mail Filter Rules
+Per-user server-side filter rules. FilterRule proto with conditions (from, to,
+subject, body, header, size, has_attachment), operators (contains, equals, matches,
+not_contains, greater/less_than), actions (move, copy, flag, mark_read, delete).
+Rule engine evaluates in priority order (AND logic). Hooks into delivery pipeline
+after spam scoring. Web UI: list with drag reorder, create/edit/delete forms with
+dynamic Alpine.js condition rows, rule testing against recent mail. Integration
+tests for routing, priority, disabled rules, CRUD, spam override.
+
+## Sprint 13a: Security & Login Hardening
+Login security: rate limiting on login attempts, TOTP two-factor auth (totp_secret
+already in UserProfile proto), QR code setup flow in preferences, recovery codes.
+HTTPS redirect and HSTS header. CSP headers for XSS prevention. Security headers
+(X-Frame-Options, X-Content-Type-Options, Referrer-Policy). Remote image blocking
+in HTML mail display with click-to-load. Integration tests for rate limiting, TOTP
+flow, security headers.
+
+## Sprint 13b: Email Rendering, Attachments & Import/Export
+Email template rendering improvements: inline CSS for HTML mail display, safe HTML
+sanitization, print-friendly view. Attachment preview: inline image display, PDF
+viewer (pdf.js embed), text/code file syntax highlighting. Import/export: mbox
+import for mailbox migration (parse mbox → deliver each message), EML file
+download for individual messages. Integration tests for HTML rendering, attachment
+preview, mbox import round-trip.
+
+## Sprint 13c: Accessibility, i18n & Performance
+Accessibility audit: ARIA labels, keyboard navigation for all interactive elements,
+focus management on HTMX swaps, skip-to-content links, screen reader landmarks.
+Internationalisation (i18n): extract all UI strings to message catalogue, add locale
+selector in preferences (start with en, fr, de, es), templ helper for translations.
+Performance: lazy-load message list on scroll (infinite scroll option), prefetch
+next page via HTMX `hx-trigger="revealed"`, compress SSE payloads, HTTP response
+compression (gzip). E2E smoke test covering full user journey (login → compose →
+send → receive → search → calendar → contacts → admin → logout).
 
 ## Sprint 14: Visual UI Matching — Old Bongo Dragonfly/Hawkeye
 Use browser agent to view the old Bongo UI screenshots from

@@ -32,6 +32,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
 	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
+	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/security"
@@ -54,6 +55,7 @@ type Agent struct {
 	Gossip    *cluster.GossipNode
 	SMTP      *bongosmtp.Server
 	IMAP      *bongoimap.Server
+	POP3      *bongopop3.Server
 	Notifier  *bongoimap.Notifier
 	Mailboxes   *store.MailboxStore
 	Preferences *store.PreferenceStore
@@ -613,6 +615,42 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("imap: started", "plain", plainAddr, "tls", tlsAddr)
 	}
 
+	// Start POP3 server.
+	if a.Config.POP3.Enabled && a.Raft != nil {
+		isDev := a.Config.Server.Role == "dev"
+
+		pop3TLSCfg, err := security.LoadOrGenerate(
+			a.Config.Cluster.TLS.CertFile,
+			a.Config.Cluster.TLS.KeyFile,
+			[]string{"localhost", "127.0.0.1"},
+		)
+		if err != nil {
+			a.logger.Warn("pop3: failed to load TLS, running without TLS", "error", err)
+		}
+
+		a.POP3 = bongopop3.NewServer(a.Auth, a.Mailboxes, a.Store, a.Blobs, pop3TLSCfg, isDev, a.logger)
+
+		pop3Port := a.Config.POP3.Port
+		pop3TLSPort := a.Config.POP3.PortTLS
+		if isDev {
+			pop3Port = 1110
+			pop3TLSPort = 1995
+		}
+
+		pop3PlainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3Port))
+		pop3TlsAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3TLSPort))
+
+		if err := a.POP3.Listen(pop3PlainAddr, pop3TlsAddr); err != nil {
+			return fmt.Errorf("pop3 listen: %w", err)
+		}
+		go func() {
+			if err := a.POP3.Serve(); err != nil {
+				a.logger.Error("pop3 server error", "error", err)
+			}
+		}()
+		a.logger.Info("pop3: started", "plain", pop3PlainAddr, "tls", pop3TlsAddr)
+	}
+
 	// Dev mode: auto-create test user.
 	if a.Config.Server.Role == "dev" && a.Raft != nil {
 		if err := a.createDevUser(); err != nil {
@@ -801,6 +839,15 @@ func (a *Agent) Shutdown() error {
 			errs = append(errs, fmt.Errorf("closing imap server: %w", err))
 		} else {
 			a.logger.Info("imap server closed")
+		}
+	}
+
+	// 3.1. POP3 server.
+	if a.POP3 != nil {
+		if err := a.POP3.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing pop3 server: %w", err))
+		} else {
+			a.logger.Info("pop3 server closed")
 		}
 	}
 
