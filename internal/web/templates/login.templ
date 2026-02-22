@@ -21,3 +21,39 @@ templ LoginPage(errMsg string) {
 		</div>
 	}
 }
+
+templ TwoFactorPage(errMsg string, recoveryWarning string) {
+	@LoginLayout("Two-Factor Authentication") {
+		<div class="login-container">
+			<h1 style="text-align:center">Bongo</h1>
+			<h2 style="text-align:center;font-size:1.1rem;margin-bottom:1.5rem">Two-Factor Authentication</h2>
+			<form method="post" action="/login/2fa">
+				if errMsg != "" {
+					@FlashMessage(errMsg, "error")
+				}
+				if recoveryWarning != "" {
+					@FlashMessage(recoveryWarning, "warning")
+				}
+				<label for="code">Authentication code</label>
+				<input
+					type="text"
+					id="code"
+					name="code"
+					placeholder="000000"
+					required
+					autofocus
+					autocomplete="one-time-code"
+					inputmode="numeric"
+					maxlength="9"
+				/>
+				<small style="display:block;margin-bottom:1rem;color:var(--pico-muted-color)">
+					Enter your 6-digit authenticator code or a recovery code.
+				</small>
+				<button type="submit">Verify</button>
+			</form>
+			<p style="text-align:center;margin-top:1rem">
+				<a href="/login">Back to login</a>
+			</p>
+		</div>
+	}
+}

@@ -17,8 +17,19 @@ const (
 	emailKey  contextKey = "email"
 	adminKey  contextKey = "isAdmin"
 
-	cookieName = "bongo_session"
+	cookieName        = "bongo_session"
+	pendingCookieName = "bongo_2fa_pending"
+	pendingCookieTTL  = 5 * time.Minute
 )
+
+// PendingData represents the signed 2FA-pending cookie payload.
+type PendingData struct {
+	UserID   string `json:"uid"`
+	Email    string `json:"email"`
+	Remember bool   `json:"rem,omitempty"`
+	IsAdmin  bool   `json:"adm,omitempty"`
+	Exp      int64  `json:"exp"`
+}
 
 // SessionData represents the signed session cookie payload.
 type SessionData struct {
@@ -165,6 +176,90 @@ func validateCookie(secret []byte, value string) (*SessionData, error) {
 	}
 
 	return &data, nil
+}
+
+// CreatePendingCookie creates a short-lived signed cookie indicating that 2FA is required.
+func CreatePendingCookie(secret []byte, userID, email string, remember, isAdmin, secure bool) *http.Cookie {
+	data := PendingData{
+		UserID:   userID,
+		Email:    email,
+		Remember: remember,
+		IsAdmin:  isAdmin,
+		Exp:      time.Now().Add(pendingCookieTTL).Unix(),
+	}
+
+	payload, _ := json.Marshal(data)
+	sig := sign(secret, payload)
+	value := base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig)
+
+	return &http.Cookie{
+		Name:     pendingCookieName,
+		Value:    value,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(pendingCookieTTL.Seconds()),
+	}
+}
+
+// ValidatePendingCookie validates the 2FA-pending cookie and returns its payload.
+// Returns an error if the cookie is missing, tampered with, or expired.
+func ValidatePendingCookie(secret []byte, r *http.Request) (*PendingData, error) {
+	cookie, err := r.Cookie(pendingCookieName)
+	if err != nil {
+		return nil, http.ErrNoCookie
+	}
+
+	value := cookie.Value
+	var payloadB64, sigB64 string
+	for i := len(value) - 1; i >= 0; i-- {
+		if value[i] == '.' {
+			payloadB64 = value[:i]
+			sigB64 = value[i+1:]
+			break
+		}
+	}
+	if payloadB64 == "" || sigB64 == "" {
+		return nil, http.ErrNoCookie
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(payloadB64)
+	if err != nil {
+		return nil, err
+	}
+
+	sig, err := base64.RawURLEncoding.DecodeString(sigB64)
+	if err != nil {
+		return nil, err
+	}
+
+	if !hmac.Equal(sig, sign(secret, payload)) {
+		return nil, http.ErrNoCookie
+	}
+
+	var data PendingData
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return nil, err
+	}
+
+	if time.Now().Unix() > data.Exp {
+		return nil, http.ErrNoCookie
+	}
+
+	return &data, nil
+}
+
+// ClearPendingCookie returns a cookie that clears the 2FA-pending cookie.
+func ClearPendingCookie() *http.Cookie {
+	return &http.Cookie{
+		Name:     pendingCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   -1,
+	}
 }
 
 func sign(secret, payload []byte) []byte {

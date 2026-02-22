@@ -293,8 +293,13 @@ func (a *Agent) Run(ctx context.Context) error {
 	authH.SetProfileLoader(a)
 	authH.SetRateLimiter(loginRL)
 	authH.SetTLSEnabled(tlsEnabled)
+	if a.Raft != nil {
+		authH.SetRaftApplier(a)
+	}
 	r.Get("/login", authH.LoginPage)
 	r.With(loginRL.LoginRateLimit()).Post("/login", authH.Login)
+	r.Get("/login/2fa", authH.TwoFactorPage)
+	r.Post("/login/2fa", authH.TwoFactorVerify)
 	r.Post("/logout", authH.Logout)
 
 	// CardDAV endpoint with basic auth.
