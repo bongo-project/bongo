@@ -114,7 +114,7 @@ func TwoFactorPage(errMsg string, recoveryWarning string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<label for=\"code\">Authentication code</label> <input type=\"text\" id=\"code\" name=\"code\" placeholder=\"000000\" required autofocus autocomplete=\"one-time-code\" inputmode=\"numeric\" maxlength=\"9\"> <small style=\"display:block;margin-bottom:1rem;color:var(--pico-muted-color)\">Enter your 6-digit authenticator code or a recovery code.</small> <button type=\"submit\">Verify</button></form><p style=\"text-align:center;margin-top:1rem\"><a href=\"/login\">Back to login</a></p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<label for=\"code\">Authentication code</label> <input type=\"text\" id=\"code\" name=\"code\" placeholder=\"000000\" required autofocus autocomplete=\"one-time-code\" inputmode=\"numeric\" maxlength=\"9\" aria-label=\"Two-factor authentication code\"> <small style=\"display:block;margin-bottom:1rem;color:var(--pico-muted-color)\">Enter your 6-digit authenticator code or a recovery code.</small> <button type=\"submit\">Verify</button></form><p style=\"text-align:center;margin-top:1rem\"><a href=\"/login\">Back to login</a></p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

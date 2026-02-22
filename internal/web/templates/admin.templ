@@ -120,7 +120,7 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 		}
 		<h2>System Dashboard</h2>
 		<div class="admin-grid">
-			<article>
+			<article aria-label="Raft Status">
 				<header>Raft Status</header>
 				<p>
 					<strong>State:</strong>
@@ -131,16 +131,16 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 				}
 				<p><strong>Nodes:</strong> { fmt.Sprint(health.NodeCount) }</p>
 			</article>
-			<article>
+			<article aria-label="Uptime">
 				<header>Uptime</header>
 				<p class="stat-value">{ formatDuration(health.Uptime) }</p>
 			</article>
-			<article>
+			<article aria-label="Storage">
 				<header>Storage</header>
 				<p><strong>Pebble:</strong> { formatBytes(health.PebbleSize) }</p>
 				<p><strong>Blobs:</strong> { fmt.Sprint(health.BlobCount) } ({ formatBytes(health.BlobSize) })</p>
 			</article>
-			<article>
+			<article aria-label="Users">
 				<header>Users</header>
 				<p class="stat-value">{ fmt.Sprint(health.UserCount) }</p>
 			</article>
@@ -180,12 +180,12 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 		<table>
 			<thead>
 				<tr>
-					<th>Email</th>
-					<th>Name</th>
-					<th>Role</th>
-					<th>Quota</th>
-					<th>Status</th>
-					<th>Actions</th>
+					<th scope="col">Email</th>
+					<th scope="col">Name</th>
+					<th scope="col">Role</th>
+					<th scope="col">Quota</th>
+					<th scope="col">Status</th>
+					<th scope="col">Actions</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -401,15 +401,15 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 	@AdminLayout("Queue", email, "queue") {
 		<h2>Message Queue</h2>
 		<div class="admin-grid">
-			<article>
+			<article aria-label="Pending">
 				<header>Pending</header>
 				<p class="stat-value">{ fmt.Sprint(stats.PendingCount) }</p>
 			</article>
-			<article>
+			<article aria-label="Failed / Bounced">
 				<header>Failed / Bounced</header>
 				<p class="stat-value">{ fmt.Sprint(stats.FailedCount) }</p>
 			</article>
-			<article>
+			<article aria-label="Oldest Pending">
 				<header>Oldest Pending</header>
 				<p class="stat-value">{ formatSeconds(stats.OldestPendingSeconds) }</p>
 			</article>

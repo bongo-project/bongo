@@ -173,7 +173,7 @@ after spam scoring. Web UI: list with drag reorder, create/edit/delete forms wit
 dynamic Alpine.js condition rows, rule testing against recent mail. Integration
 tests for routing, priority, disabled rules, CRUD, spam override.
 
-## Sprint 13a: Security & Login Hardening ← CURRENT
+## Sprint 13a: Security & Login Hardening ✅ DONE
 Login security: rate limiting on login attempts, TOTP two-factor auth (totp_secret
 already in UserProfile proto), QR code setup flow in preferences, recovery codes.
 HTTPS redirect and HSTS header. CSP headers for XSS prevention. Security headers
@@ -181,7 +181,7 @@ HTTPS redirect and HSTS header. CSP headers for XSS prevention. Security headers
 in HTML mail display with click-to-load. Integration tests for rate limiting, TOTP
 flow, security headers.
 
-## Sprint 13b: Email Rendering, Attachments & Import/Export
+## Sprint 13b: Email Rendering, Attachments & Import/Export ✅ DONE
 Email template rendering improvements: inline CSS for HTML mail display, safe HTML
 sanitization, print-friendly view. Attachment preview: inline image display, PDF
 viewer (pdf.js embed), text/code file syntax highlighting. Import/export: mbox
@@ -189,7 +189,7 @@ import for mailbox migration (parse mbox → deliver each message), EML file
 download for individual messages. Integration tests for HTML rendering, attachment
 preview, mbox import round-trip.
 
-## Sprint 13c: Accessibility, i18n & Performance
+## Sprint 13c: Accessibility, i18n & Performance ← CURRENT
 Accessibility audit: ARIA labels, keyboard navigation for all interactive elements,
 focus management on HTMX swaps, skip-to-content links, screen reader landmarks.
 Internationalisation (i18n): extract all UI strings to message catalogue, add locale
@@ -209,6 +209,26 @@ patterns to match the original look and feel as closely as possible while keepin
 modern stack (HTMX, Alpine.js, Pico CSS, Open Props). Focus on: mail list density,
 message reading experience, compose flow, calendar views, contact cards, admin dashboard
 layout. This sprint is visual/design-driven rather than feature-driven.
+
+## Future (Phase 2): Easy Mail Migration — "Bring Your Inbox"
+Non-technical users need a dead-simple way to import their old email. Two modes:
+
+**Self-service (user-facing):** Settings → Import → pick provider (Gmail, Outlook,
+Yahoo, iCloud, Other IMAP). For Gmail/Microsoft: OAuth2 flow (user clicks "Sign in
+with Google" → grants read-only access → Bongo pulls all mail via IMAP with XOAUTH2).
+For others: enter IMAP host + email + app password. Wizard-style UI: connect → pick
+folders to import → go. Background worker with progress bar + SSE updates ("Importing
+Sent Mail... 342 of 1,203"). Resume on failure. Folder mapping suggestions (Gmail
+labels → Bongo folders). Preserve dates, flags, read/unread status, threading.
+
+**Admin bulk migration:** Admin panel → Migration tool. Upload CSV (user email, source
+IMAP host, credentials) or connect to source server. Run imports for all users in
+parallel with per-user progress dashboard. Useful for org cutover from Google Workspace
+or Exchange/365. Could also support Google Takeout mbox files (users export from Google
+and upload the .mbox to Bongo).
+
+Key requirement: must work for non-technical users. No CLI, no config files. Just
+"click here to bring your Gmail over."
 
 ## Future: Migrate Old Bongo Website to GitHub Pages
 The bongo-project/bongo-project repo has a `gh-pages` branch with images and some site

@@ -55,6 +55,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
+			aria-label="Previous month"
 		>
 			Prev
 		</a>
@@ -66,6 +67,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
+			aria-label="Next month"
 		>
 			Next
 		</a>
@@ -79,7 +81,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 		<div class="calendar-header">Sat</div>
 		<div class="calendar-header">Sun</div>
 		for _, day := range days {
-			<div class={ dayCellClass(day) }>
+			<div class={ dayCellClass(day) } aria-label={ day.Date.Format("Monday, January 2") }>
 				<a
 					href={ templ.SafeURL("/calendar/event/new?date=" + day.Date.Format("2006-01-02")) }
 					class="day-number"
@@ -310,6 +312,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
+			aria-label="Previous week"
 		>
 			Prev
 		</a>
@@ -321,6 +324,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
+			aria-label="Next week"
 		>
 			Next
 		</a>
@@ -402,6 +406,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
+			aria-label="Previous day"
 		>
 			Prev
 		</a>
@@ -413,6 +418,7 @@ templ DayViewGrid(date time.Time, col DayColumn, calendars []*bongov1.Calendar, 
 			hx-push-url="true"
 			role="button"
 			class="outline secondary calendar-nav-btn"
+			aria-label="Next day"
 		>
 			Next
 		</a>
@@ -476,6 +482,9 @@ templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
 				href={ templ.SafeURL(fmt.Sprintf("/calendar/%d/%d", days[0].Date.Year(), int(days[0].Date.Month()))) }
 				role="button"
 				class={ "outline", templ.KV("secondary", activeView != "month") }
+				if activeView == "month" {
+					aria-current="page"
+				}
 			>
 				Month
 			</a>
@@ -484,6 +493,9 @@ templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", year, week)) }
 			role="button"
 			class={ templ.KV("outline", true), templ.KV("secondary", activeView != "week") }
+			if activeView == "week" {
+				aria-current="page"
+			}
 		>
 			Week
 		</a>
@@ -492,6 +504,9 @@ templ ViewSwitcher(activeView string, year, week int, days []DayColumn) {
 				href={ templ.SafeURL(fmt.Sprintf("/calendar/day/%d/%d/%d", days[0].Date.Year(), int(days[0].Date.Month()), days[0].Date.Day())) }
 				role="button"
 				class={ "outline", templ.KV("secondary", activeView != "day") }
+				if activeView == "day" {
+					aria-current="page"
+				}
 			>
 				Day
 			</a>
@@ -505,6 +520,9 @@ templ ViewSwitcherDay(activeView string, date time.Time) {
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/%d/%d", date.Year(), int(date.Month()))) }
 			role="button"
 			class={ "outline", templ.KV("secondary", activeView != "month") }
+			if activeView == "month" {
+				aria-current="page"
+			}
 		>
 			Month
 		</a>
@@ -512,6 +530,9 @@ templ ViewSwitcherDay(activeView string, date time.Time) {
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", dateISOYear(date), dateISOWeek(date))) }
 			role="button"
 			class={ "outline", templ.KV("secondary", activeView != "week") }
+			if activeView == "week" {
+				aria-current="page"
+			}
 		>
 			Week
 		</a>
@@ -519,6 +540,9 @@ templ ViewSwitcherDay(activeView string, date time.Time) {
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/day/%d/%d/%d", date.Year(), int(date.Month()), date.Day())) }
 			role="button"
 			class={ templ.KV("outline", true), templ.KV("secondary", activeView != "day") }
+			if activeView == "day" {
+				aria-current="page"
+			}
 		>
 			Day
 		</a>
@@ -533,6 +557,7 @@ templ MiniCalendar(year, month, selectedDay int) {
 				hx-get={ fmt.Sprintf("/calendar/mini?year=%d&month=%d", miniPrevYear(year, month), miniPrevMonth(month)) }
 				hx-target="#mini-calendar"
 				hx-swap="outerHTML"
+				aria-label="Previous month"
 			>
 				&lt;
 			</button>
@@ -542,6 +567,7 @@ templ MiniCalendar(year, month, selectedDay int) {
 				hx-get={ fmt.Sprintf("/calendar/mini?year=%d&month=%d", miniNextYear(year, month), miniNextMonth(month)) }
 				hx-target="#mini-calendar"
 				hx-swap="outerHTML"
+				aria-label="Next month"
 			>
 				&gt;
 			</button>
