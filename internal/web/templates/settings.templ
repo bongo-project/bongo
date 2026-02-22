@@ -62,6 +62,13 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 				</fieldset>
 				<fieldset>
 					<legend>Localization</legend>
+					<label for="locale">Language</label>
+					<select name="locale" id="locale">
+						<option value="en" selected?={ prefs.Locale == "en" || prefs.Locale == "" }>English</option>
+						<option value="fr" selected?={ prefs.Locale == "fr" }>Francais</option>
+						<option value="de" selected?={ prefs.Locale == "de" }>Deutsch</option>
+						<option value="es" selected?={ prefs.Locale == "es" }>Espanol</option>
+					</select>
 					<label for="timezone">Timezone</label>
 					<select name="timezone" id="timezone">
 						@timezoneOptions(prefs.Timezone)

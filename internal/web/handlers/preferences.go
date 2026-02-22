@@ -91,6 +91,12 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 	prefs.Signature = r.FormValue("signature")
 	prefs.Timezone = r.FormValue("timezone")
 
+	// Locale.
+	switch r.FormValue("locale") {
+	case "en", "fr", "de", "es":
+		prefs.Locale = r.FormValue("locale")
+	}
+
 	if err := h.prefs.Set(userID, prefs); err != nil {
 		http.Error(w, "Failed to save preferences", http.StatusInternalServerError)
 		return

@@ -378,6 +378,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionSecret))
 		r.Use(middleware.Require2FA(a))
+		r.Use(middleware.InjectLocale(a))
 
 		// Security settings (TOTP, password change).
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
@@ -405,6 +406,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
+			r.Get("/mail/{mailbox}/{uid}/export", mailH.ExportEML)
 			r.Get("/mail/{mailbox}/{uid}", mailH.ShowMessage)
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
 			r.Post("/mail/{mailbox}/{uid}/flags", mailH.ToggleFlags)
@@ -412,6 +414,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/mail/{mailbox}/{uid}/spam", mailH.MarkSpam)
 			r.Post("/mail/{mailbox}/{uid}/not-spam", mailH.MarkNotSpam)
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
+			r.Get("/import", mailH.ImportPage)
+			r.Post("/import", mailH.ImportMbox)
 		}
 
 		if a.Mailboxes != nil {

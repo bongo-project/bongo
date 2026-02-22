@@ -2,7 +2,7 @@ package templates
 
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
-	<html lang="en" x-data="appState()" x-bind:data-theme="resolvedTheme()">
+	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -12,15 +12,17 @@ templ Layout(title string, email string) {
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>
-			<div class="top-bar">
-				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()">&#9776;</button>
+			<a href="#main-content" class="skip-link">Skip to main content</a>
+			<header role="banner" class="top-bar">
+				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
 				<a href="/mail/INBOX" class="brand">Bongo</a>
-				<nav>
+				<nav aria-label="Quick actions">
 					<input
 						type="search"
 						name="q"
 						placeholder="Search mail..."
 						class="search-input"
+						aria-label="Search mail"
 						hx-get="/search"
 						hx-trigger="keyup changed delay:300ms"
 						hx-target="#main-content"
@@ -31,6 +33,7 @@ templ Layout(title string, email string) {
 						class="outline secondary theme-toggle"
 						x-on:click="toggleTheme()"
 						x-text="themeIcon"
+						aria-label="Toggle theme"
 						title="Toggle theme"
 					></button>
 					<a href="/settings" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none" role="button">Settings</a>
@@ -39,15 +42,16 @@ templ Layout(title string, email string) {
 						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">Logout</button>
 					</form>
 				</nav>
-			</div>
+			</header>
 			<div x-on:click="sidebarOpen = false" class="sidebar-overlay" x-bind:class="{'active': sidebarOpen}"></div>
 			<div class="app-layout">
-				<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+				<aside class="sidebar" id="sidebar" aria-label="Mailbox navigation" x-bind:class="{'open': sidebarOpen}">
 					{ children... }
 				</aside>
-				<main class="main-content" id="main-content">
+				<main class="main-content" id="main-content" role="main">
 				</main>
 			</div>
+			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
 			<div x-data="notifications" x-init="init()">
 				<button
 					type="button"
@@ -69,7 +73,7 @@ templ Layout(title string, email string) {
 
 templ LayoutWithContent(title string, email string) {
 	<!DOCTYPE html>
-	<html lang="en" x-data="appState()" x-bind:data-theme="resolvedTheme()">
+	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -79,15 +83,17 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>
-			<div class="top-bar">
-				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()">&#9776;</button>
+			<a href="#main-content" class="skip-link">Skip to main content</a>
+			<header role="banner" class="top-bar">
+				<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
 				<a href="/mail/INBOX" class="brand">Bongo</a>
-				<nav>
+				<nav aria-label="Quick actions">
 					<input
 						type="search"
 						name="q"
 						placeholder="Search mail..."
 						class="search-input"
+						aria-label="Search mail"
 						hx-get="/search"
 						hx-trigger="keyup changed delay:300ms"
 						hx-target="#main-content"
@@ -98,6 +104,7 @@ templ LayoutWithContent(title string, email string) {
 						class="outline secondary theme-toggle"
 						x-on:click="toggleTheme()"
 						x-text="themeIcon"
+						aria-label="Toggle theme"
 						title="Toggle theme"
 					></button>
 					<a href="/settings" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem;text-decoration:none" role="button">Settings</a>
@@ -106,11 +113,12 @@ templ LayoutWithContent(title string, email string) {
 						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">Logout</button>
 					</form>
 				</nav>
-			</div>
+			</header>
 			<div x-on:click="sidebarOpen = false" class="sidebar-overlay" x-bind:class="{'active': sidebarOpen}"></div>
 			<div class="app-layout">
 				{ children... }
 			</div>
+			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
 			<div x-data="notifications" x-init="init()">
 				<button
 					type="button"

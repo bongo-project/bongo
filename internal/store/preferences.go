@@ -34,6 +34,7 @@ func DefaultPreferences() *bongov1.UserPreferences {
 		MessagesPerPage: 25,
 		DefaultReply:    bongov1.DefaultReplyMode_REPLY_MODE_SENDER,
 		Timezone:        "UTC",
+		Locale:          "en",
 	}
 }
 
