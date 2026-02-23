@@ -1,4 +1,7 @@
 {
+  "nav.mailboxes": "Boites",
+  "nav.folders": "Dossiers",
+  "nav.quickLinks": "Acces rapide",
   "nav.unread": "Non lu",
   "nav.starred": "Suivis",
   "nav.allMail": "Tous les messages",
@@ -140,6 +143,7 @@
   "settings.confirmPassword": "Confirmer le nouveau mot de passe",
   "settings.enableNotifications": "Activer les notifications",
 
+  "auth.tagline": "Votre courrier, votre choix",
   "auth.login": "Connexion",
   "auth.email": "E-mail",
   "auth.password": "Mot de passe",

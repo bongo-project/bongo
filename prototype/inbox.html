@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Inbox</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <link rel="stylesheet" href="shared.css">
+  <script src="alpine.min.js" defer></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top Bar -->
+  <div class="top-bar" role="banner">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button class="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+      <a href="index.html" class="brand">Bongo<span class="brand-accent">Mail</span></a>
+    </div>
+    <nav>
+      <input type="search" class="search-input" placeholder="Search mail..." aria-label="Search mail">
+      <button class="theme-toggle" aria-label="Toggle theme" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">&#9789;</button>
+      <a href="#">admin</a>
+    </nav>
+  </div>
+
+  <div class="app-layout" style="height: calc(100vh - 48px);">
+    <!-- Sidebar -->
+    <aside class="sidebar" role="navigation" aria-label="Mail navigation">
+      <a href="compose.html" class="compose-btn">+ Compose</a>
+
+      <div class="sidebar-section">
+        <h4>Mailboxes</h4>
+        <ul class="mailbox-list">
+          <li><a href="#" class="active">&#9993; Inbox <span class="unread-badge">12</span></a></li>
+          <li><a href="#">&#9733; Starred</a></li>
+          <li><a href="#">&#10148; Sent</a></li>
+          <li><a href="#">&#9998; Drafts <span class="unread-badge">2</span></a></li>
+          <li><a href="#">&#128465; Trash</a></li>
+          <li><a href="#">&#9940; Spam</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-section">
+        <h4>Folders</h4>
+        <ul class="mailbox-list">
+          <li><a href="#">&#128193; Work</a></li>
+          <li><a href="#">&#128193; Personal</a></li>
+          <li><a href="#">&#128193; Receipts</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-section">
+        <h4>Quick links</h4>
+        <ul class="mailbox-list">
+          <li><a href="calendar.html">&#128197; Calendar</a></li>
+          <li><a href="contacts.html">&#128101; Contacts</a></li>
+          <li><a href="settings.html">&#9881; Settings</a></li>
+        </ul>
+      </div>
+
+      <!-- Mini Calendar -->
+      <div class="mini-calendar">
+        <div class="mini-calendar-nav">
+          <button class="mini-cal-btn">&lt;</button>
+          <span class="mini-cal-title">February 2026</span>
+          <button class="mini-cal-btn">&gt;</button>
+        </div>
+        <div class="mini-cal-grid">
+          <span class="mini-cal-hdr">Mo</span>
+          <span class="mini-cal-hdr">Tu</span>
+          <span class="mini-cal-hdr">We</span>
+          <span class="mini-cal-hdr">Th</span>
+          <span class="mini-cal-hdr">Fr</span>
+          <span class="mini-cal-hdr">Sa</span>
+          <span class="mini-cal-hdr">Su</span>
+          <a class="mini-cal-day other-month">26</a>
+          <a class="mini-cal-day other-month">27</a>
+          <a class="mini-cal-day other-month">28</a>
+          <a class="mini-cal-day other-month">29</a>
+          <a class="mini-cal-day other-month">30</a>
+          <a class="mini-cal-day other-month">31</a>
+          <a class="mini-cal-day">1</a>
+          <a class="mini-cal-day">2</a>
+          <a class="mini-cal-day">3</a>
+          <a class="mini-cal-day">4</a>
+          <a class="mini-cal-day">5</a>
+          <a class="mini-cal-day">6</a>
+          <a class="mini-cal-day">7</a>
+          <a class="mini-cal-day">8</a>
+          <a class="mini-cal-day">9</a>
+          <a class="mini-cal-day">10</a>
+          <a class="mini-cal-day">11</a>
+          <a class="mini-cal-day">12</a>
+          <a class="mini-cal-day">13</a>
+          <a class="mini-cal-day">14</a>
+          <a class="mini-cal-day">15</a>
+          <a class="mini-cal-day">16</a>
+          <a class="mini-cal-day">17</a>
+          <a class="mini-cal-day">18</a>
+          <a class="mini-cal-day">19</a>
+          <a class="mini-cal-day">20</a>
+          <a class="mini-cal-day">21</a>
+          <a class="mini-cal-day today">22</a>
+          <a class="mini-cal-day">23</a>
+          <a class="mini-cal-day">24</a>
+          <a class="mini-cal-day">25</a>
+          <a class="mini-cal-day">26</a>
+          <a class="mini-cal-day">27</a>
+          <a class="mini-cal-day">28</a>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content" role="main">
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <label style="display: flex; align-items: center; margin: 0;">
+          <input type="checkbox" style="width: auto; margin: 0;" aria-label="Select all">
+        </label>
+        <button>Archive</button>
+        <button>Delete</button>
+        <button>Move to...</button>
+        <button>Mark as...</button>
+        <span class="toolbar-spacer"></span>
+        <div class="layout-toggle">
+          <button class="layout-btn active" title="List view">&#9776;</button>
+          <button class="layout-btn" title="Split horizontal">&#9778;</button>
+          <button class="layout-btn" title="Split vertical">&#9783;</button>
+        </div>
+      </div>
+
+      <!-- Mail Layout -->
+      <div class="mail-layout layout-list" style="flex: 1; display: flex; overflow: hidden;">
+        <div class="message-list-pane">
+          <table class="message-list" role="grid" aria-label="Message list">
+            <thead>
+              <tr>
+                <th style="width: 36px;"></th>
+                <th style="width: 32px;"></th>
+                <th>From</th>
+                <th>Subject</th>
+                <th style="text-align: right;">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Unread messages -->
+              <tr class="unread">
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Sarah Chen</a></td>
+                <td class="subject-col"><a href="thread.html">Re: Q1 Budget Review <span class="snippet">— I've updated the spreadsheet with the latest numbers from finance...</span></a> <span class="thread-badge">3</span></td>
+                <td class="date-col">3m ago</td>
+              </tr>
+              <tr class="unread">
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star flagged">&#9733;</span></td>
+                <td class="from-col"><a href="thread.html">GitHub</a></td>
+                <td class="subject-col"><a href="thread.html">[bongo-go] PR #142: Add CalDAV sync support <span class="snippet">— emersion requested changes on your pull request...</span></a></td>
+                <td class="date-col">17m ago</td>
+              </tr>
+              <tr class="unread">
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Tom Alvarez</a></td>
+                <td class="subject-col"><a href="thread.html">Lunch tomorrow? <span class="snippet">— Hey, are you free for lunch tomorrow? Thinking of trying that new Thai place on Main St...</span></a></td>
+                <td class="date-col">42m ago</td>
+              </tr>
+              <tr class="unread">
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Jira</a></td>
+                <td class="subject-col"><a href="thread.html">MAIL-2847 assigned to you: IMAP IDLE timeout <span class="snippet">— Priority: High. The IMAP IDLE connection drops after 15 minutes...</span></a></td>
+                <td class="date-col">1h ago</td>
+              </tr>
+
+              <!-- Read messages -->
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star flagged">&#9733;</span></td>
+                <td class="from-col"><a href="thread.html">Maria Gonzalez</a></td>
+                <td class="subject-col"><a href="thread.html">Re: Conference talk proposal <span class="snippet">— Looks great! I think the demo section could be a bit shorter though...</span></a> <span class="thread-badge">7</span></td>
+                <td class="date-col">2h ago</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">AWS</a></td>
+                <td class="subject-col"><a href="thread.html">Your February invoice is ready <span class="snippet">— Your AWS billing statement for the period ending Feb 28, 2026 is now available...</span></a></td>
+                <td class="date-col">3h ago</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">David Kim</a></td>
+                <td class="subject-col"><a href="thread.html">Updated design mockups <span class="snippet">— Hey, I've attached the latest mockups for the settings page redesign...</span></a></td>
+                <td class="date-col">5h ago</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Stripe</a></td>
+                <td class="subject-col"><a href="thread.html">Payment received: $49.00 <span class="snippet">— You've received a payment of $49.00 from Acme Corp for invoice #INV-2026-018...</span></a></td>
+                <td class="date-col">Yesterday</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Lisa Park</a></td>
+                <td class="subject-col"><a href="thread.html">Re: Team offsite planning <span class="snippet">— I think April 15-17 works best for everyone. The venue in Boulder looks perfect...</span></a> <span class="thread-badge">5</span></td>
+                <td class="date-col">Yesterday</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star flagged">&#9733;</span></td>
+                <td class="from-col"><a href="thread.html">Alex Wright</a></td>
+                <td class="subject-col"><a href="thread.html">Bongo v2 architecture doc <span class="snippet">— Here's the updated architecture document covering the Raft consensus changes...</span></a></td>
+                <td class="date-col">Yesterday</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Slack</a></td>
+                <td class="subject-col"><a href="thread.html">3 new messages in #engineering <span class="snippet">— @channel: Reminder about the deployment freeze starting Friday at 5pm...</span></a></td>
+                <td class="date-col">Feb 20</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Priya Sharma</a></td>
+                <td class="subject-col"><a href="thread.html">Code review: auth refactor <span class="snippet">— Left a few comments on the OIDC integration. Overall looks solid but...</span></a></td>
+                <td class="date-col">Feb 20</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">Newsletter</a> <span class="spam-badge">Spam</span></td>
+                <td class="subject-col"><a href="thread.html">This week in Go: What's new in Go 1.24 <span class="snippet">— Highlights include improved generics, faster builds, and new standard library additions...</span></a></td>
+                <td class="date-col">Feb 19</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">James Cooper</a></td>
+                <td class="subject-col"><a href="thread.html">Re: Monitoring setup <span class="snippet">— Prometheus is pulling metrics correctly now. Grafana dashboards look good...</span></a> <span class="thread-badge">4</span></td>
+                <td class="date-col">Feb 18</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">HR Team</a></td>
+                <td class="subject-col"><a href="thread.html">Benefits enrollment deadline reminder <span class="snippet">— This is a friendly reminder that the benefits enrollment period closes on March 1st...</span></a></td>
+                <td class="date-col">Feb 17</td>
+              </tr>
+              <tr>
+                <td class="checkbox-col"><input type="checkbox" style="width: auto; margin: 0;" aria-label="Select"></td>
+                <td class="star-col"><span class="flag-star">&#9734;</span></td>
+                <td class="from-col"><a href="thread.html">DigitalOcean</a></td>
+                <td class="subject-col"><a href="thread.html">Droplet CPU alert: bongo-prod-01 <span class="snippet">— CPU usage on your droplet bongo-prod-01 exceeded 90% for the past 15 minutes...</span></a></td>
+                <td class="date-col">Feb 15</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Pagination -->
+          <div class="pagination">
+            <span class="current">1</span>
+            <a href="#">2</a>
+            <a href="#">3</a>
+            <a href="#">4</a>
+            <a href="#">Next</a>
+          </div>
+        </div>
+
+        <!-- Reading Pane (hidden in list mode, visible in split modes) -->
+        <div class="reading-pane">
+          <div class="empty-state">
+            <div class="icon">&#9993;</div>
+            <h3>Select a message</h3>
+            <p>Choose a message from the list to read it here</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

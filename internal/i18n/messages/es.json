@@ -1,4 +1,7 @@
 {
+  "nav.mailboxes": "Buzones",
+  "nav.folders": "Carpetas",
+  "nav.quickLinks": "Acceso rapido",
   "nav.unread": "Sin leer",
   "nav.starred": "Destacados",
   "nav.allMail": "Todo el correo",
@@ -140,6 +143,7 @@
   "settings.confirmPassword": "Confirmar nueva contraseña",
   "settings.enableNotifications": "Activar notificaciones",
 
+  "auth.tagline": "Tu correo, a tu manera",
   "auth.login": "Iniciar sesión",
   "auth.email": "Correo electrónico",
   "auth.password": "Contraseña",

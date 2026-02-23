@@ -218,7 +218,7 @@ modern stack (HTMX, Alpine.js, Pico CSS, Open Props). Focus on: mail list densit
 message reading experience, compose flow, calendar views, contact cards, admin dashboard
 layout. This sprint is visual/design-driven rather than feature-driven.
 
-## Sprint 15a: Polished Mail UI — Static Prototype & Port ← CURRENT
+## Sprint 15a: Polished Mail UI — Static Prototype & Port ✅ DONE
 Build static HTML prototypes for every mail-facing page (login, inbox, message thread,
 compose, search, contacts, calendar, settings, security, import). Use old Dragonfly
 CSS as the direct starting point — modernise it rather than rebuilding from scratch.
@@ -226,7 +226,7 @@ Get each page looking beautiful in standalone HTML, then port the final CSS and 
 template structure changes back into the Go codebase. Focus: warmth, depth, visual
 rhythm, not just "correct colour variables."
 
-## Sprint 15b: Polished Admin UI — Static Prototype & Port
+## Sprint 15b: Polished Admin UI — Static Prototype & Port ← CURRENT
 Same prototype-first approach for the Hawkeye admin panel. Dark sidebar with colourful
 icons, status dashboard with blue status table, agent config forms, user/domain
 management. Port polished CSS back into admin.templ and bongo.css.

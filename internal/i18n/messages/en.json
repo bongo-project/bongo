@@ -1,4 +1,7 @@
 {
+  "nav.mailboxes": "Mailboxes",
+  "nav.folders": "Folders",
+  "nav.quickLinks": "Quick links",
   "nav.unread": "Unread",
   "nav.starred": "Starred",
   "nav.allMail": "All Mail",
@@ -140,6 +143,7 @@
   "settings.confirmPassword": "Confirm New Password",
   "settings.enableNotifications": "Enable notifications",
 
+  "auth.tagline": "Your mail, your way",
   "auth.login": "Login",
   "auth.email": "Email",
   "auth.password": "Password",

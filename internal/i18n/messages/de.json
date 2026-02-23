@@ -1,4 +1,7 @@
 {
+  "nav.mailboxes": "Postfacher",
+  "nav.folders": "Ordner",
+  "nav.quickLinks": "Schnellzugriff",
   "nav.unread": "Ungelesen",
   "nav.starred": "Markiert",
   "nav.allMail": "Alle Nachrichten",
@@ -140,6 +143,7 @@
   "settings.confirmPassword": "Neues Passwort bestätigen",
   "settings.enableNotifications": "Benachrichtigungen aktivieren",
 
+  "auth.tagline": "Ihre Mail, Ihr Weg",
   "auth.login": "Anmelden",
   "auth.email": "E-Mail",
   "auth.password": "Passwort",

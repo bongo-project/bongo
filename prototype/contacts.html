@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Contacts</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <link rel="stylesheet" href="shared.css">
+  <script src="alpine.min.js" defer></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    .contacts-layout {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .contact-list-pane {
+      width: 380px;
+      border-right: 1px solid var(--border-light);
+      overflow-y: auto;
+      background: var(--surface-0);
+      flex-shrink: 0;
+    }
+    .contact-list-header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-light);
+      background: var(--surface-1);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    .contact-list-header input {
+      flex: 1;
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-full);
+      padding: 6px 14px;
+      font-size: 0.85rem;
+    }
+    .contact-detail-pane {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2rem;
+      background: var(--surface-1);
+    }
+    .detail-card {
+      max-width: 600px;
+      margin: 0 auto;
+      background: var(--surface-0);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--surface-card);
+      overflow: hidden;
+    }
+    .detail-header {
+      padding: 2rem;
+      text-align: center;
+      background: linear-gradient(135deg, var(--bongo-blue-lightest), var(--surface-1));
+      border-bottom: 1px solid var(--border-light);
+    }
+    .detail-avatar {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.8rem;
+      color: #fff;
+      margin: 0 auto 1rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .detail-name { font-size: 1.3rem; font-weight: 700; margin: 0; color: var(--text-primary); }
+    .detail-title { font-size: 0.9rem; color: var(--text-muted); margin: 0.25rem 0 0; }
+    .detail-fields {
+      padding: 1.5rem 2rem;
+    }
+    .detail-field {
+      display: flex;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid var(--border-light);
+    }
+    .detail-field:last-child { border-bottom: none; }
+    .detail-field-label {
+      width: 6rem;
+      flex-shrink: 0;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-top: 2px;
+    }
+    .detail-field-value {
+      flex: 1;
+      color: var(--text-primary);
+    }
+    .detail-field-value a {
+      color: var(--bongo-blue);
+      text-decoration: none;
+    }
+    .detail-field-value a:hover { text-decoration: underline; }
+    .detail-actions {
+      padding: 1rem 2rem;
+      border-top: 1px solid var(--border-light);
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .contact-card .contact-avatar {
+      font-size: 0.9rem;
+      width: 40px;
+      height: 40px;
+    }
+
+    .letter-divider {
+      padding: 4px 1rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border-light);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      position: sticky;
+      top: 49px;
+      z-index: 4;
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top Bar -->
+  <div class="top-bar" role="banner">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button class="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+      <a href="index.html" class="brand">Bongo<span class="brand-accent">Mail</span></a>
+    </div>
+    <nav>
+      <button class="theme-toggle" aria-label="Toggle theme" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">&#9789;</button>
+      <a href="#">admin</a>
+    </nav>
+  </div>
+
+  <div class="app-layout" style="height: calc(100vh - 48px);">
+    <!-- Sidebar -->
+    <aside class="sidebar" role="navigation" aria-label="Navigation">
+      <div class="sidebar-section">
+        <h4>Navigation</h4>
+        <ul class="mailbox-list">
+          <li><a href="inbox.html">&#9993; Mail <span class="unread-badge">12</span></a></li>
+          <li><a href="calendar.html">&#128197; Calendar</a></li>
+          <li><a href="contacts.html" class="active">&#128101; Contacts</a></li>
+          <li><a href="settings.html">&#9881; Settings</a></li>
+        </ul>
+      </div>
+      <div class="sidebar-section">
+        <h4>Groups</h4>
+        <ul class="mailbox-list">
+          <li><a href="#">&#128101; All Contacts</a></li>
+          <li><a href="#">&#128188; Work</a></li>
+          <li><a href="#">&#127968; Personal</a></li>
+          <li><a href="#">&#9733; Favourites</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content" role="main">
+      <div class="contacts-layout">
+        <!-- Contact List -->
+        <div class="contact-list-pane">
+          <div class="contact-list-header">
+            <input type="search" placeholder="Search contacts..." aria-label="Search contacts">
+            <button style="background: var(--bongo-blue); color: #fff; border: none; padding: 6px 14px; border-radius: var(--radius-md); font-size: 0.85rem; cursor: pointer; white-space: nowrap;">+ New</button>
+          </div>
+
+          <!-- A -->
+          <div class="letter-divider">A</div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #e15e50;">TA</div>
+            <div class="contact-info">
+              <div class="contact-name">Tom Alvarez</div>
+              <div class="contact-email">tom.alvarez@example.com</div>
+            </div>
+          </div>
+
+          <!-- C -->
+          <div class="letter-divider">C</div>
+          <div class="contact-card" style="border-color: var(--bongo-blue-light); background: var(--bongo-blue-lightest);">
+            <div class="contact-avatar" style="background: #ec4899;">SC</div>
+            <div class="contact-info">
+              <div class="contact-name">Sarah Chen</div>
+              <div class="contact-email">sarah.chen@example.com</div>
+            </div>
+          </div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #8b5cf6;">JC</div>
+            <div class="contact-info">
+              <div class="contact-name">James Cooper</div>
+              <div class="contact-email">james.cooper@example.com</div>
+            </div>
+          </div>
+
+          <!-- G -->
+          <div class="letter-divider">G</div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #f59e0b;">MG</div>
+            <div class="contact-info">
+              <div class="contact-name">Maria Gonzalez</div>
+              <div class="contact-email">maria@example.com</div>
+            </div>
+          </div>
+
+          <!-- K -->
+          <div class="letter-divider">K</div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #6366f1;">DK</div>
+            <div class="contact-info">
+              <div class="contact-name">David Kim</div>
+              <div class="contact-email">david.kim@example.com</div>
+            </div>
+          </div>
+
+          <!-- P -->
+          <div class="letter-divider">P</div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #14b8a6;">LP</div>
+            <div class="contact-info">
+              <div class="contact-name">Lisa Park</div>
+              <div class="contact-email">lisa.park@example.com</div>
+            </div>
+          </div>
+
+          <!-- S -->
+          <div class="letter-divider">S</div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #10b981;">PS</div>
+            <div class="contact-info">
+              <div class="contact-name">Priya Sharma</div>
+              <div class="contact-email">priya.sharma@example.com</div>
+            </div>
+          </div>
+
+          <!-- W -->
+          <div class="letter-divider">W</div>
+          <div class="contact-card">
+            <div class="contact-avatar" style="background: #3b82f6;">AW</div>
+            <div class="contact-info">
+              <div class="contact-name">Alex Wright</div>
+              <div class="contact-email">alex.wright@example.com</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact Detail -->
+        <div class="contact-detail-pane">
+          <div class="detail-card">
+            <div class="detail-header">
+              <div class="detail-avatar" style="background: #ec4899;">SC</div>
+              <h2 class="detail-name">Sarah Chen</h2>
+              <p class="detail-title">VP of Engineering at Acme Corp</p>
+            </div>
+            <div class="detail-fields">
+              <div class="detail-field">
+                <div class="detail-field-label">Email</div>
+                <div class="detail-field-value"><a href="mailto:sarah.chen@example.com">sarah.chen@example.com</a></div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Phone</div>
+                <div class="detail-field-value"><a href="tel:+15551234567">+1 (555) 123-4567</a></div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Mobile</div>
+                <div class="detail-field-value"><a href="tel:+15559876543">+1 (555) 987-6543</a></div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Company</div>
+                <div class="detail-field-value">Acme Corp</div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Title</div>
+                <div class="detail-field-value">VP of Engineering</div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Address</div>
+                <div class="detail-field-value">
+                  123 Market Street, Suite 400<br>
+                  San Francisco, CA 94105
+                </div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Notes</div>
+                <div class="detail-field-value" style="color: var(--text-secondary);">
+                  Met at GopherCon 2025. Working on similar distributed systems problems. Good contact for Raft consensus questions.
+                </div>
+              </div>
+            </div>
+            <div class="detail-actions">
+              <button style="background: var(--bongo-blue); color: #fff; border: none; padding: 8px 20px; border-radius: var(--radius-md); font-size: 0.88rem; cursor: pointer;">Edit</button>
+              <button style="background: transparent; border: 1px solid var(--border-medium); padding: 8px 20px; border-radius: var(--radius-md); font-size: 0.88rem; cursor: pointer; color: var(--text-secondary);">Send Email</button>
+              <span style="flex: 1;"></span>
+              <button style="background: transparent; border: 1px solid #f1aeb5; padding: 8px 20px; border-radius: var(--radius-md); font-size: 0.88rem; cursor: pointer; color: #e15e50;">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

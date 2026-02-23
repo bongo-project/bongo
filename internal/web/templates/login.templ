@@ -3,7 +3,10 @@ package templates
 templ LoginPage(errMsg string) {
 	@LoginLayout("Login") {
 		<div class="login-container">
-			<h1 style="text-align:center">Bongo</h1>
+			<div class="login-brand">
+				<h1>Bongo<span class="brand-accent">Mail</span></h1>
+				<p>{ t(ctx, "auth.tagline") }</p>
+			</div>
 			<form method="post" action="/login">
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
@@ -25,7 +28,9 @@ templ LoginPage(errMsg string) {
 templ TwoFactorPage(errMsg string, recoveryWarning string) {
 	@LoginLayout("Two-Factor Authentication") {
 		<div class="login-container">
-			<h1 style="text-align:center">Bongo</h1>
+			<div class="login-brand">
+				<h1>Bongo<span class="brand-accent">Mail</span></h1>
+			</div>
 			<h2 style="text-align:center;font-size:1.1rem;margin-bottom:1.5rem">{ t(ctx, "auth.twoFactorAuth") }</h2>
 			<form method="post" action="/login/2fa">
 				if errMsg != "" {

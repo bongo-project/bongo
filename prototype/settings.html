@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Settings</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <link rel="stylesheet" href="shared.css">
+  <script src="alpine.min.js" defer></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem 2rem;
+    }
+    .settings-container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .settings-nav {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 1.5rem;
+      background: var(--surface-2);
+      border-radius: var(--radius-md);
+      padding: 2px;
+      width: fit-content;
+    }
+    .settings-nav a {
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      text-decoration: none;
+      color: var(--text-muted);
+      font-weight: 500;
+      transition: all var(--transition-fast);
+    }
+    .settings-nav a.active {
+      background: var(--surface-0);
+      color: var(--bongo-blue);
+      box-shadow: var(--surface-raised);
+      font-weight: 600;
+    }
+    .settings-nav a:hover:not(.active) { color: var(--text-secondary); }
+
+    .recovery-codes {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 4px;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      padding: 0.75rem;
+      background: var(--surface-2);
+      border-radius: var(--radius-md);
+      margin-top: 0.5rem;
+    }
+    .recovery-code {
+      padding: 4px 8px;
+      border-radius: var(--radius-sm);
+    }
+
+    .qr-placeholder {
+      width: 160px;
+      height: 160px;
+      background: var(--surface-2);
+      border: 2px dashed var(--border-medium);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top Bar -->
+  <div class="top-bar" role="banner">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button class="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+      <a href="index.html" class="brand">Bongo<span class="brand-accent">Mail</span></a>
+    </div>
+    <nav>
+      <button class="theme-toggle" aria-label="Toggle theme" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">&#9789;</button>
+      <a href="#">admin</a>
+    </nav>
+  </div>
+
+  <div class="app-layout" style="height: calc(100vh - 48px);">
+    <!-- Sidebar -->
+    <aside class="sidebar" role="navigation" aria-label="Navigation">
+      <div class="sidebar-section">
+        <h4>Navigation</h4>
+        <ul class="mailbox-list">
+          <li><a href="inbox.html">&#9993; Mail <span class="unread-badge">12</span></a></li>
+          <li><a href="calendar.html">&#128197; Calendar</a></li>
+          <li><a href="contacts.html">&#128101; Contacts</a></li>
+          <li><a href="settings.html" class="active">&#9881; Settings</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content" role="main">
+      <div class="settings-content">
+        <div class="settings-container">
+          <h1 style="font-family: var(--font-heading); margin-bottom: 0.5rem;">Settings</h1>
+
+          <!-- Settings tabs -->
+          <nav class="settings-nav">
+            <a href="#" class="active">Appearance</a>
+            <a href="#">Mail</a>
+            <a href="#">Security</a>
+            <a href="#">Import/Export</a>
+          </nav>
+
+          <!-- Appearance Settings -->
+          <div class="settings-group">
+            <h3>Appearance</h3>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Theme</div>
+                <div class="setting-desc">Choose light or dark mode</div>
+              </div>
+              <select style="width: auto; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 6px 12px; font-size: 0.88rem;">
+                <option selected>Light</option>
+                <option>Dark</option>
+                <option>System</option>
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Display density</div>
+                <div class="setting-desc">Adjust spacing in message lists</div>
+              </div>
+              <select style="width: auto; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 6px 12px; font-size: 0.88rem;">
+                <option>Compact</option>
+                <option selected>Comfortable</option>
+                <option>Spacious</option>
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Language</div>
+                <div class="setting-desc">Interface language</div>
+              </div>
+              <select style="width: auto; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 6px 12px; font-size: 0.88rem;">
+                <option selected>English</option>
+                <option>Nederlands</option>
+                <option>Deutsch</option>
+                <option>Francais</option>
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Conversation view</div>
+                <div class="setting-desc">Group messages by thread</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Desktop notifications</div>
+                <div class="setting-desc">Show browser notifications for new mail</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" checked>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Mail Settings -->
+          <div class="settings-group">
+            <h3>Mail</h3>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Messages per page</div>
+                <div class="setting-desc">Number of messages shown in list view</div>
+              </div>
+              <select style="width: auto; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 6px 12px; font-size: 0.88rem;">
+                <option>25</option>
+                <option selected>50</option>
+                <option>100</option>
+              </select>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Load remote images</div>
+                <div class="setting-desc">Automatically load images in emails (may reveal your IP)</div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox">
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="setting-row">
+              <div>
+                <div class="setting-label">Default reply action</div>
+                <div class="setting-desc">What happens when you click Reply</div>
+              </div>
+              <select style="width: auto; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 6px 12px; font-size: 0.88rem;">
+                <option selected>Reply</option>
+                <option>Reply All</option>
+              </select>
+            </div>
+
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+              <div>
+                <div class="setting-label">Email signature</div>
+                <div class="setting-desc">Appended to outgoing messages</div>
+              </div>
+              <textarea style="width: 100%; min-height: 6rem; border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 0.75rem; font-size: 0.88rem; font-family: var(--font-body); resize: vertical;">Best regards,
+
+Admin
+Bongo Mail Server</textarea>
+            </div>
+          </div>
+
+          <!-- Security Settings -->
+          <div class="settings-group">
+            <h3>Security</h3>
+
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 1rem;">
+              <div>
+                <div class="setting-label">Change password</div>
+                <div class="setting-desc">Update your account password</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 360px;">
+                <input type="password" placeholder="Current password" style="border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 8px 12px; font-size: 0.88rem;">
+                <input type="password" placeholder="New password" style="border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 8px 12px; font-size: 0.88rem;">
+                <input type="password" placeholder="Confirm new password" style="border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 8px 12px; font-size: 0.88rem;">
+                <button style="background: var(--bongo-blue); color: #fff; border: none; padding: 8px 20px; border-radius: var(--radius-md); font-size: 0.88rem; cursor: pointer; width: fit-content; margin-top: 0.25rem;">Update Password</button>
+              </div>
+            </div>
+
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 1rem; padding-top: 1.5rem;">
+              <div>
+                <div class="setting-label">Two-factor authentication</div>
+                <div class="setting-desc">Add an extra layer of security with TOTP</div>
+              </div>
+              <div style="display: flex; gap: 1.5rem; align-items: flex-start;">
+                <div class="qr-placeholder">QR Code</div>
+                <div style="flex: 1;">
+                  <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0 0 0.75rem;">Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code below.</p>
+                  <input type="text" placeholder="Enter 6-digit code" maxlength="6" style="border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 8px 12px; font-size: 1rem; font-family: var(--font-mono); letter-spacing: 4px; max-width: 200px;">
+                  <div style="margin-top: 0.75rem;">
+                    <button style="background: var(--bongo-blue); color: #fff; border: none; padding: 8px 20px; border-radius: var(--radius-md); font-size: 0.88rem; cursor: pointer;">Enable 2FA</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 0.75rem; padding-top: 1.5rem;">
+              <div>
+                <div class="setting-label">Recovery codes</div>
+                <div class="setting-desc">Save these codes in a safe place. Each can be used once if you lose access to your authenticator.</div>
+              </div>
+              <div class="recovery-codes">
+                <span class="recovery-code">a8f2-k9m3-p4n7</span>
+                <span class="recovery-code">b3e6-j8l2-q5r1</span>
+                <span class="recovery-code">c7d4-h1g9-s6t8</span>
+                <span class="recovery-code">d9c5-f3e7-u2v4</span>
+                <span class="recovery-code">e1b8-g6f2-w7x3</span>
+                <span class="recovery-code">f4a9-i5h1-y8z6</span>
+                <span class="recovery-code">g2d7-k3j4-a9b5</span>
+                <span class="recovery-code">h6c1-l8m2-c4d3</span>
+              </div>
+              <button style="background: transparent; border: 1px solid var(--border-medium); padding: 6px 14px; border-radius: var(--radius-md); font-size: 0.82rem; cursor: pointer; color: var(--text-secondary);">Regenerate Codes</button>
+            </div>
+
+            <div class="setting-row" style="padding-top: 1.5rem;">
+              <div>
+                <div class="setting-label">Active sessions</div>
+                <div class="setting-desc">You are currently signed in from 2 devices</div>
+              </div>
+              <button style="background: transparent; border: 1px solid #f1aeb5; padding: 6px 14px; border-radius: var(--radius-md); font-size: 0.82rem; cursor: pointer; color: #e15e50;">Sign Out All</button>
+            </div>
+          </div>
+
+          <!-- Import/Export -->
+          <div class="settings-group">
+            <h3>Import / Export</h3>
+
+            <div class="setting-row" style="flex-direction: column; align-items: flex-start; gap: 0.75rem;">
+              <div>
+                <div class="setting-label">Import mail</div>
+                <div class="setting-desc">Upload an mbox or EML file to import messages</div>
+              </div>
+              <div class="drop-zone" style="width: 100%;">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">&#128206;</div>
+                Drop mbox/EML files here or <a href="#" style="color: var(--bongo-blue);">browse</a>
+              </div>
+            </div>
+
+            <div class="setting-row" style="padding-top: 1rem;">
+              <div>
+                <div class="setting-label">Export mail</div>
+                <div class="setting-desc">Download all your mail as an mbox archive</div>
+              </div>
+              <button style="background: transparent; border: 1px solid var(--border-medium); padding: 8px 20px; border-radius: var(--radius-md); font-size: 0.88rem; cursor: pointer; color: var(--text-secondary);">Export All</button>
+            </div>
+          </div>
+
+          <div style="height: 2rem;"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

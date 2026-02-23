@@ -14,91 +14,99 @@ type MailboxInfo struct {
 }
 
 templ Sidebar(mailboxes []MailboxInfo, selected string) {
+	<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">+ { t(ctx, "mail.compose") }</a>
 	<nav aria-label="Mailboxes">
-		<ul class="mailbox-list">
-			<li>
-				<a
-					href="/mail/unread"
-					if selected == "unread" {
-						class="active"
-					}
-					hx-get="/mail/unread"
-					hx-target="#main-content"
-					hx-push-url="true"
-				>
-					<span>{ t(ctx, "nav.unread") }</span>
-					<span id="unread-badge" class="unread-badge"></span>
-				</a>
-			</li>
-			<li>
-				<a
-					href="/mail/starred"
-					if selected == "starred" {
-						class="active"
-					}
-					hx-get="/mail/starred"
-					hx-target="#main-content"
-					hx-push-url="true"
-				>
-					<span>{ t(ctx, "nav.starred") }</span>
-				</a>
-			</li>
-			<li>
-				<a
-					href="/mail/all-mail"
-					if selected == "all-mail" {
-						class="active"
-					}
-					hx-get="/mail/all-mail"
-					hx-target="#main-content"
-					hx-push-url="true"
-				>
-					<span>{ t(ctx, "nav.allMail") }</span>
-				</a>
-			</li>
-		</ul>
-		<hr style="margin:0.5rem 0"/>
-		<ul class="mailbox-list" id="mailbox-drop-targets">
-			for _, mb := range mailboxes {
+		<div class="sidebar-section">
+			<h4>{ t(ctx, "nav.mailboxes") }</h4>
+			<ul class="mailbox-list">
 				<li>
 					<a
-						href={ templ.SafeURL("/mail/" + mb.Name) }
-						if mb.Name == selected {
+						href="/mail/unread"
+						if selected == "unread" {
 							class="active"
 						}
-						hx-get={ "/mail/" + mb.Name }
+						hx-get="/mail/unread"
 						hx-target="#main-content"
 						hx-push-url="true"
-						data-folder={ mb.Name }
 					>
-						<span>{ mb.Name }</span>
-						if mb.Unread > 0 {
-							<span class="unread-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
-						}
+						<span>{ t(ctx, "nav.unread") }</span>
+						<span id="unread-badge" class="unread-badge"></span>
 					</a>
 				</li>
-			}
-		</ul>
-		<hr style="margin:0.5rem 0"/>
-		<ul class="mailbox-list" aria-label="Applications">
-			<li>
-				<a href="/contacts">
-					<span>{ t(ctx, "nav.contacts") }</span>
-				</a>
-			</li>
-			<li>
-				<a href="/calendar">
-					<span>{ t(ctx, "nav.calendar") }</span>
-				</a>
-			</li>
-			if middleware.AdminFromContext(ctx) {
 				<li>
-					<a href="/admin">
-						<span>{ t(ctx, "nav.admin") }</span>
+					<a
+						href="/mail/starred"
+						if selected == "starred" {
+							class="active"
+						}
+						hx-get="/mail/starred"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span>{ t(ctx, "nav.starred") }</span>
 					</a>
 				</li>
-			}
-		</ul>
+				<li>
+					<a
+						href="/mail/all-mail"
+						if selected == "all-mail" {
+							class="active"
+						}
+						hx-get="/mail/all-mail"
+						hx-target="#main-content"
+						hx-push-url="true"
+					>
+						<span>{ t(ctx, "nav.allMail") }</span>
+					</a>
+				</li>
+			</ul>
+		</div>
+		<div class="sidebar-section">
+			<h4>{ t(ctx, "nav.folders") }</h4>
+			<ul class="mailbox-list" id="mailbox-drop-targets">
+				for _, mb := range mailboxes {
+					<li>
+						<a
+							href={ templ.SafeURL("/mail/" + mb.Name) }
+							if mb.Name == selected {
+								class="active"
+							}
+							hx-get={ "/mail/" + mb.Name }
+							hx-target="#main-content"
+							hx-push-url="true"
+							data-folder={ mb.Name }
+						>
+							<span>{ mb.Name }</span>
+							if mb.Unread > 0 {
+								<span class="unread-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+							}
+						</a>
+					</li>
+				}
+			</ul>
+		</div>
+		<div class="sidebar-section">
+			<h4>{ t(ctx, "nav.quickLinks") }</h4>
+			<ul class="mailbox-list" aria-label="Applications">
+				<li>
+					<a href="/contacts">
+						<span>{ t(ctx, "nav.contacts") }</span>
+					</a>
+				</li>
+				<li>
+					<a href="/calendar">
+						<span>{ t(ctx, "nav.calendar") }</span>
+					</a>
+				</li>
+				if middleware.AdminFromContext(ctx) {
+					<li>
+						<a href="/admin">
+							<span>{ t(ctx, "nav.admin") }</span>
+						</a>
+					</li>
+				}
+			</ul>
+		</div>
 	</nav>
 }
 
