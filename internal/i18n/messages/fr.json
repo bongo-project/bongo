@@ -118,6 +118,8 @@
   "admin.addDomain": "Ajouter un domaine",
   "admin.require2FA": "Exiger l'authentification à deux facteurs pour tous les utilisateurs",
   "admin.savePolicy": "Enregistrer la politique",
+  "admin.welcome": "Bienvenue sur Bongo",
+  "admin.navigation": "Navigation admin",
 
   "settings.settings": "Paramètres",
   "settings.theme": "Thème",

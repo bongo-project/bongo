@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Admin — Logs</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <link rel="stylesheet" href="shared.css">
+  <link rel="stylesheet" href="admin.css">
+  <script src="alpine.min.js" defer></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top Bar -->
+  <div class="admin-top-bar" role="banner">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button class="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+      <a href="admin-dashboard.html" class="brand">Bongo<span class="brand-accent">Admin</span></a>
+    </div>
+    <nav>
+      <button class="theme-toggle" aria-label="Toggle theme" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">&#9789;</button>
+      <span class="admin-user">admin</span>
+      <a href="login.html" class="admin-logout">Log out</a>
+    </nav>
+  </div>
+
+  <div class="admin-layout" style="height: calc(100vh - 48px);">
+    <!-- Admin Sidebar -->
+    <aside class="admin-sidebar" role="navigation" aria-label="Admin navigation">
+      <ul class="admin-nav">
+        <li><a href="admin-dashboard.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Dashboard</a></li>
+        <li><a href="admin-users.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Users</a></li>
+        <li><a href="admin-domains.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Domains</a></li>
+        <li><a href="#"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> Aliases</a></li>
+        <li><a href="admin-queue.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Queue</a></li>
+        <li><a href="admin-cluster.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> Cluster</a></li>
+        <li><a href="admin-logs.html" class="active" aria-current="page"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Logs</a></li>
+      </ul>
+      <div class="admin-sidebar-footer">
+        <a href="inbox.html" class="admin-back-link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back to Mail
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-main" id="main-content" role="main">
+      <div class="admin-content" style="max-width: none;">
+        <div class="admin-page-header">
+          <h1>Logs</h1>
+          <p class="admin-subtitle">Real-time server log stream</p>
+        </div>
+
+        <!-- Log Viewer -->
+        <div class="admin-log-viewer" x-data="{ paused: false }">
+          <div class="admin-log-toolbar">
+            <label style="color: #8a94a8; font-size: 0.78rem; margin: 0;">Level:</label>
+            <select aria-label="Log level filter">
+              <option>All</option>
+              <option>DEBUG</option>
+              <option selected>INFO</option>
+              <option>WARN</option>
+              <option>ERROR</option>
+            </select>
+
+            <label style="color: #8a94a8; font-size: 0.78rem; margin: 0 0 0 0.5rem;">Component:</label>
+            <select aria-label="Component filter">
+              <option selected>All</option>
+              <option>smtp</option>
+              <option>imap</option>
+              <option>pop3</option>
+              <option>caldav</option>
+              <option>raft</option>
+              <option>queue</option>
+              <option>web</option>
+              <option>auth</option>
+              <option>store</option>
+            </select>
+
+            <input type="search" placeholder="Search logs..." aria-label="Search logs" style="margin-left: auto; max-width: 200px; font-size: 0.78rem; padding: 4px 10px; border-radius: var(--radius-sm); border: 1px solid #3e4358; background: #1a1e2e; color: #c0c8d8;">
+
+            <button
+              class="admin-btn"
+              style="border-color: #3e4358; color: #8a94a8; background: #252a3a;"
+              @click="paused = !paused"
+              x-text="paused ? 'Resume' : 'Pause'"
+              aria-label="Pause or resume log stream"
+            ></button>
+          </div>
+
+          <div class="admin-log-output" id="log-output">
+            <div class="admin-log-line">
+              <span class="log-time">14:22:01.342</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">smtp</span>
+              <span class="log-message">Accepted connection from 10.0.1.50:43821</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:01.344</span>
+              <span class="log-level log-level--debug">DEBUG</span>
+              <span class="log-source">smtp</span>
+              <span class="log-message">EHLO client.example.com</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:01.348</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">smtp</span>
+              <span class="log-message">Message accepted: from=jane@example.com to=client@external.com size=4218</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:01.350</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">queue</span>
+              <span class="log-message">Enqueued message id=a8f3c2e1 from=jane@example.com to=client@external.com</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:02.115</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">raft</span>
+              <span class="log-message">Applied log entry index=18847 term=42</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:03.001</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">imap</span>
+              <span class="log-message">Login successful: user=bob@example.com ip=10.0.1.55</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:03.450</span>
+              <span class="log-level log-level--debug">DEBUG</span>
+              <span class="log-source">imap</span>
+              <span class="log-message">SELECT INBOX: 42 messages, 3 recent</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:04.882</span>
+              <span class="log-level log-level--warn">WARN</span>
+              <span class="log-source">raft</span>
+              <span class="log-message">Heartbeat timeout from peer bongo-03 (10.0.1.12:8300), last contact 4.2s ago</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:05.100</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">queue</span>
+              <span class="log-message">Delivery attempt: id=b7d2e4f0 to=vendor@slow-server.net attempt=4</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:05.842</span>
+              <span class="log-level log-level--warn">WARN</span>
+              <span class="log-source">queue</span>
+              <span class="log-message">Delivery deferred: id=b7d2e4f0 error="connection timeout after 30s"</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:06.001</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">caldav</span>
+              <span class="log-message">PROPFIND /caldav/alice@acme.org/calendar/ depth=1</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:06.220</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">web</span>
+              <span class="log-message">GET /admin/dashboard 200 12ms</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:07.005</span>
+              <span class="log-level log-level--error">ERROR</span>
+              <span class="log-source">queue</span>
+              <span class="log-message">Delivery failed: id=c9a1b3d2 to=nobody@invalid.test error="550 5.1.1 Mailbox not found" attempts=10 (max reached)</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:07.450</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">auth</span>
+              <span class="log-message">Failed login attempt: user=unknown@example.com ip=203.0.113.42 reason="user not found"</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:08.112</span>
+              <span class="log-level log-level--debug">DEBUG</span>
+              <span class="log-source">store</span>
+              <span class="log-message">Pebble compaction: L0->L1 in=2.1MB out=1.8MB</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:08.500</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">smtp</span>
+              <span class="log-message">Connection closed from 10.0.1.50:43821 (1 message, 4.2KB)</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:09.001</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">pop3</span>
+              <span class="log-message">Login: user=tom@example.com ip=10.0.1.60</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:09.340</span>
+              <span class="log-level log-level--debug">DEBUG</span>
+              <span class="log-source">pop3</span>
+              <span class="log-message">STAT: 7 messages, 42KB</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:10.001</span>
+              <span class="log-level log-level--warn">WARN</span>
+              <span class="log-source">raft</span>
+              <span class="log-message">Peer bongo-03 marked as suspect, missed 2 consecutive heartbeats</span>
+            </div>
+            <div class="admin-log-line">
+              <span class="log-time">14:22:10.500</span>
+              <span class="log-level log-level--info">INFO</span>
+              <span class="log-source">queue</span>
+              <span class="log-message">Delivery success: id=a8f3c2e1 to=client@external.com duration=9.15s</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="admin-footer">
+        Bongo &mdash; Mail and Calendar Server &middot; v0.1.0-dev
+      </footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Admin — Queue</title>
+  <link rel="stylesheet" href="pico.min.css">
+  <link rel="stylesheet" href="shared.css">
+  <link rel="stylesheet" href="admin.css">
+  <script src="alpine.min.js" defer></script>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to content</a>
+
+  <!-- Top Bar -->
+  <div class="admin-top-bar" role="banner">
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <button class="hamburger-btn" aria-label="Toggle menu">&#9776;</button>
+      <a href="admin-dashboard.html" class="brand">Bongo<span class="brand-accent">Admin</span></a>
+    </div>
+    <nav>
+      <button class="theme-toggle" aria-label="Toggle theme" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'">&#9789;</button>
+      <span class="admin-user">admin</span>
+      <a href="login.html" class="admin-logout">Log out</a>
+    </nav>
+  </div>
+
+  <div class="admin-layout" style="height: calc(100vh - 48px);">
+    <!-- Admin Sidebar -->
+    <aside class="admin-sidebar" role="navigation" aria-label="Admin navigation">
+      <ul class="admin-nav">
+        <li><a href="admin-dashboard.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> Dashboard</a></li>
+        <li><a href="admin-users.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> Users</a></li>
+        <li><a href="admin-domains.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Domains</a></li>
+        <li><a href="#"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg> Aliases</a></li>
+        <li><a href="admin-queue.html" class="active" aria-current="page"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> Queue</a></li>
+        <li><a href="admin-cluster.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> Cluster</a></li>
+        <li><a href="admin-logs.html"><svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> Logs</a></li>
+      </ul>
+      <div class="admin-sidebar-footer">
+        <a href="inbox.html" class="admin-back-link">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          Back to Mail
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="admin-main" id="main-content" role="main">
+      <div class="admin-content">
+        <div class="admin-page-header">
+          <h1>Message Queue</h1>
+          <p class="admin-subtitle">Monitor and manage outgoing message delivery</p>
+        </div>
+
+        <!-- Stats -->
+        <div class="admin-stat-cards">
+          <div class="admin-stat-card">
+            <div class="stat-number stat-number--blue">12</div>
+            <div class="stat-label">Pending</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="stat-number stat-number--orange">3</div>
+            <div class="stat-label">Retrying</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="stat-number stat-number--red">1</div>
+            <div class="stat-label">Failed</div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="stat-number stat-number--green">847</div>
+            <div class="stat-label">Delivered (24h)</div>
+          </div>
+        </div>
+
+        <!-- Bulk Actions -->
+        <div class="admin-bulk-bar">
+          <span class="bulk-label">Bulk actions:</span>
+          <button class="admin-btn admin-btn--primary">Retry All Failed</button>
+          <button class="admin-btn admin-btn--danger">Flush Queue</button>
+        </div>
+
+        <!-- Pending Messages -->
+        <h2 class="admin-section-title">Pending Messages</h2>
+        <div class="admin-table-wrap">
+          <table class="admin-table" aria-label="Pending messages">
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>To</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Retries</th>
+                <th>Next Retry</th>
+                <th style="width: 130px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>jane@example.com</td>
+                <td>client@external.com</td>
+                <td>Re: Project update</td>
+                <td><span class="admin-badge admin-badge--pending">pending</span></td>
+                <td>0</td>
+                <td>Queued</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn">Retry</button>
+                    <button class="admin-btn admin-btn--danger">Drop</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>bob@example.com</td>
+                <td>vendor@slow-server.net</td>
+                <td>Invoice #2026-042</td>
+                <td><span class="admin-badge admin-badge--retrying">retrying</span></td>
+                <td>3</td>
+                <td>in 12 minutes</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn">Retry</button>
+                    <button class="admin-btn admin-btn--danger">Drop</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>admin@example.com</td>
+                <td>team@partner.co</td>
+                <td>Weekly report</td>
+                <td><span class="admin-badge admin-badge--pending">pending</span></td>
+                <td>0</td>
+                <td>Queued</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn">Retry</button>
+                    <button class="admin-btn admin-btn--danger">Drop</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>alice@acme.org</td>
+                <td>support@bigcorp.com</td>
+                <td>Ticket #8847</td>
+                <td><span class="admin-badge admin-badge--retrying">retrying</span></td>
+                <td>2</td>
+                <td>in 8 minutes</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn">Retry</button>
+                    <button class="admin-btn admin-btn--danger">Drop</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td>maria@acme.org</td>
+                <td>newsletter@lists.dev</td>
+                <td>Subscription confirmation</td>
+                <td><span class="admin-badge admin-badge--retrying">retrying</span></td>
+                <td>5</td>
+                <td>in 42 minutes</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn">Retry</button>
+                    <button class="admin-btn admin-btn--danger">Drop</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Failed Messages -->
+        <h2 class="admin-section-title">Failed Messages</h2>
+        <div class="admin-table-wrap">
+          <table class="admin-table" aria-label="Failed messages">
+            <thead>
+              <tr>
+                <th>From</th>
+                <th>To</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Retries</th>
+                <th>Error</th>
+                <th style="width: 130px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>bob@example.com</td>
+                <td>nobody@invalid.test</td>
+                <td>Hello there</td>
+                <td><span class="admin-badge admin-badge--failed">failed</span></td>
+                <td>10</td>
+                <td style="color: var(--status-red); font-size: 0.82rem;">550 5.1.1 Mailbox not found</td>
+                <td>
+                  <div class="admin-actions">
+                    <button class="admin-btn">Retry</button>
+                    <button class="admin-btn admin-btn--danger">Drop</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <footer class="admin-footer">
+        Bongo &mdash; Mail and Calendar Server &middot; v0.1.0-dev
+      </footer>
+    </main>
+  </div>
+</body>
+</html>
