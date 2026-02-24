@@ -144,53 +144,56 @@ document.addEventListener('alpine:init', () => {
 
   // Bulk message selection
   Alpine.data('messageSelect', () => ({
-    selected: new Set(),
+    selected: {},
+    count: 0,
     lastClicked: null,
+
+    _updateCount() {
+      this.count = Object.keys(this.selected).length;
+    },
 
     toggle(uid, event) {
       if (event && event.shiftKey && this.lastClicked !== null) {
-        // Shift-click range select
         const rows = Array.from(document.querySelectorAll('.message-list tbody tr'));
         const uids = rows.map(r => parseInt(r.dataset.uid));
         const start = uids.indexOf(this.lastClicked);
         const end = uids.indexOf(uid);
         const [lo, hi] = start < end ? [start, end] : [end, start];
         for (let i = lo; i <= hi; i++) {
-          this.selected.add(uids[i]);
+          this.selected[uids[i]] = true;
         }
       } else {
-        if (this.selected.has(uid)) {
-          this.selected.delete(uid);
+        if (this.selected[uid]) {
+          delete this.selected[uid];
         } else {
-          this.selected.add(uid);
+          this.selected[uid] = true;
         }
       }
       this.lastClicked = uid;
+      this._updateCount();
     },
 
     selectAll() {
       const rows = document.querySelectorAll('.message-list tbody tr');
-      rows.forEach(r => this.selected.add(parseInt(r.dataset.uid)));
+      rows.forEach(r => { this.selected[parseInt(r.dataset.uid)] = true; });
+      this._updateCount();
     },
 
     deselectAll() {
-      this.selected.clear();
+      this.selected = {};
+      this.count = 0;
     },
 
     isSelected(uid) {
-      return this.selected.has(uid);
-    },
-
-    get count() {
-      return this.selected.size;
+      return !!this.selected[uid];
     },
 
     async bulkAction(mailbox, action) {
-      if (this.selected.size === 0) return;
+      if (this.count === 0) return;
       const params = new URLSearchParams();
       params.set('action', action);
-      for (const uid of this.selected) {
-        params.append('uids', uid.toString());
+      for (const uid of Object.keys(this.selected)) {
+        params.append('uids', uid);
       }
       try {
         const resp = await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
@@ -198,7 +201,8 @@ document.addEventListener('alpine:init', () => {
           body: params
         });
         if (resp.ok) {
-          this.selected.clear();
+          this.selected = {};
+          this.count = 0;
           this.lastClicked = null;
           // Refresh message list via HTMX.
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
@@ -728,6 +732,13 @@ function initDragDrop() {
 
 // Re-init drag-drop after HTMX swaps.
 document.addEventListener('htmx:afterSettle', initDragDrop);
+
+// Re-init Alpine components after HTMX swaps so x-data/x-show works on new content.
+document.addEventListener('htmx:afterSettle', function(evt) {
+  if (window.Alpine && evt.detail && evt.detail.target) {
+    Alpine.initTree(evt.detail.target);
+  }
+});
 
 // Calendar: event drag-and-drop rescheduling in week/day views.
 function initEventDrag() {
