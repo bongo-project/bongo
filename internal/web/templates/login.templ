@@ -2,64 +2,76 @@ package templates
 
 templ LoginPage(errMsg string) {
 	@LoginLayout("Login") {
-		<div class="login-container">
+		<div class="login-wrapper">
 			<div class="login-brand">
-				<h1>Bongo<span class="brand-accent">Mail</span></h1>
+				<h1>Bongo<span>Mail</span></h1>
 				<p>{ t(ctx, "auth.tagline") }</p>
 			</div>
-			<form method="post" action="/login">
+			<div class="login-card">
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
 				}
-				<label for="email">{ t(ctx, "auth.email") }</label>
-				<input type="email" id="email" name="email" placeholder="admin@localhost" required autofocus/>
-				<label for="password">{ t(ctx, "auth.password") }</label>
-				<input type="password" id="password" name="password" required/>
-				<label>
-					<input type="checkbox" name="remember" value="1"/>
-					{ t(ctx, "auth.rememberMe") }
-				</label>
-				<button type="submit">{ t(ctx, "auth.login") }</button>
-			</form>
+				<form method="post" action="/login" aria-label="Sign in">
+					<div class="form-group">
+						<label class="form-label" for="email">{ t(ctx, "auth.email") }</label>
+						<input type="email" id="email" name="email" class="form-input" placeholder="admin@localhost" required autofocus autocomplete="email"/>
+					</div>
+					<div class="form-group">
+						<label class="form-label" for="password">{ t(ctx, "auth.password") }</label>
+						<input type="password" id="password" name="password" class="form-input" required autocomplete="current-password"/>
+					</div>
+					<label class="form-check">
+						<input type="checkbox" name="remember" value="1"/>
+						{ t(ctx, "auth.rememberMe") }
+					</label>
+					<button type="submit" class="btn-login">{ t(ctx, "auth.login") }</button>
+				</form>
+			</div>
 		</div>
 	}
 }
 
 templ TwoFactorPage(errMsg string, recoveryWarning string) {
 	@LoginLayout("Two-Factor Authentication") {
-		<div class="login-container">
+		<div class="login-wrapper">
 			<div class="login-brand">
-				<h1>Bongo<span class="brand-accent">Mail</span></h1>
+				<h1>Bongo<span>Mail</span></h1>
 			</div>
-			<h2 style="text-align:center;font-size:1.1rem;margin-bottom:1.5rem">{ t(ctx, "auth.twoFactorAuth") }</h2>
-			<form method="post" action="/login/2fa">
+			<div class="login-card">
+				<div class="twofa-header">
+					<h2>{ t(ctx, "auth.twoFactorAuth") }</h2>
+					<p>{ t(ctx, "auth.enterCodeHint") }</p>
+				</div>
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
 				}
 				if recoveryWarning != "" {
 					@FlashMessage(recoveryWarning, "warning")
 				}
-				<label for="code">{ t(ctx, "auth.authCode") }</label>
-				<input
-					type="text"
-					id="code"
-					name="code"
-					placeholder="000000"
-					required
-					autofocus
-					autocomplete="one-time-code"
-					inputmode="numeric"
-					maxlength="9"
-					aria-label={ t(ctx, "auth.twoFactorCode") }
-				/>
-				<small style="display:block;margin-bottom:1rem;color:var(--pico-muted-color)">
-					{ t(ctx, "auth.enterCodeHint") }
-				</small>
-				<button type="submit">{ t(ctx, "auth.verify") }</button>
-			</form>
-			<p style="text-align:center;margin-top:1rem">
-				<a href="/login">{ t(ctx, "auth.backToLogin") }</a>
-			</p>
+				<form method="post" action="/login/2fa" aria-label="Two-factor authentication">
+					<div class="form-group">
+						<label class="form-label" for="code">{ t(ctx, "auth.authCode") }</label>
+						<input
+							type="text"
+							id="code"
+							name="code"
+							class="form-input code-input"
+							placeholder="000000"
+							required
+							autofocus
+							autocomplete="one-time-code"
+							inputmode="numeric"
+							maxlength="9"
+							aria-label={ t(ctx, "auth.twoFactorCode") }
+						/>
+					</div>
+					<p class="code-hint">
+						{ t(ctx, "auth.enterCodeHint") }
+					</p>
+					<button type="submit" class="btn-login">{ t(ctx, "auth.verify") }</button>
+				</form>
+				<a href="/login" class="back-link">{ t(ctx, "auth.backToLogin") }</a>
+			</div>
 		</div>
 	}
 }

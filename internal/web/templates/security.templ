@@ -4,7 +4,7 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 	@LayoutWithContent("Security", email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
-				<ul class="mailbox-list">
+				<ul class="nav-list">
 					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.backToMail") }</a></li>
 					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">{ t(ctx, "settings.filterRules") }</a></li>
 					<li><a href="/settings" hx-get="/settings" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.settings") }</a></li>
@@ -12,53 +12,73 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 				</ul>
 			</nav>
 		</aside>
-		<main class="main-content" id="main-content">
-			if flash != "" {
-				@FlashMessage(flash, "success")
-			}
-			<h2>{ t(ctx, "settings.security") }</h2>
-			<fieldset>
-				<legend>{ t(ctx, "settings.changePassword") }</legend>
-				<form method="post" action="/settings/security/password">
-					<label for="current_password">{ t(ctx, "settings.currentPassword") }</label>
-					<input type="password" name="current_password" id="current_password" required/>
-					<label for="new_password">{ t(ctx, "settings.newPassword") }</label>
-					<input type="password" name="new_password" id="new_password" required minlength="8"/>
-					<small>{ t(ctx, "security.minPassword") }</small>
-					<label for="confirm_password">{ t(ctx, "settings.confirmPassword") }</label>
-					<input type="password" name="confirm_password" id="confirm_password" required minlength="8"/>
-					<div>
-						<button type="submit">{ t(ctx, "settings.changePassword") }</button>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if flash != "" {
+						@FlashMessage(flash, "success")
+					}
+					<h2 class="settings-section-title" style="font-size:1.2rem; margin-bottom:20px">{ t(ctx, "settings.security") }</h2>
+					<div class="settings-card" style="margin-bottom:24px">
+						<div style="padding:20px">
+							<h3 class="settings-section-title">{ t(ctx, "settings.changePassword") }</h3>
+							<form method="post" action="/settings/security/password">
+								<div class="form-group" style="margin-bottom:12px">
+									<label class="form-label" for="current_password">{ t(ctx, "settings.currentPassword") }</label>
+									<input type="password" name="current_password" id="current_password" class="form-input" required/>
+								</div>
+								<div class="form-group" style="margin-bottom:12px">
+									<label class="form-label" for="new_password">{ t(ctx, "settings.newPassword") }</label>
+									<input type="password" name="new_password" id="new_password" class="form-input" required minlength="8"/>
+									<small style="color:var(--text-muted); font-size:0.78rem">{ t(ctx, "security.minPassword") }</small>
+								</div>
+								<div class="form-group" style="margin-bottom:16px">
+									<label class="form-label" for="confirm_password">{ t(ctx, "settings.confirmPassword") }</label>
+									<input type="password" name="confirm_password" id="confirm_password" class="form-input" required minlength="8"/>
+								</div>
+								<button type="submit" class="btn-primary">{ t(ctx, "settings.changePassword") }</button>
+							</form>
+						</div>
 					</div>
-				</form>
-			</fieldset>
-			<fieldset>
-				<legend>{ t(ctx, "settings.twoFactorAuth") }</legend>
-				if totpEnabled {
-					<p>
-						<strong>{ t(ctx, "security.status") }</strong>
-						<span class="badge badge-active">{ t(ctx, "common.enabled") }</span>
-					</p>
-					<p>{ t(ctx, "security.twoFactorEnabled") }</p>
-					<details>
-						<summary>{ t(ctx, "security.disableTwoFactor") }</summary>
-						<form method="post" action="/settings/security/totp/disable" style="margin-top:1rem">
-							<label for="disable_password">{ t(ctx, "security.enterPasswordToDisable") }</label>
-							<input type="password" name="password" id="disable_password" required/>
-							<button type="submit" class="secondary">{ t(ctx, "security.disableTwoFactor") }</button>
-						</form>
-					</details>
-				} else {
-					<p>
-						<strong>{ t(ctx, "security.status") }</strong>
-						<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
-					</p>
-					<p>{ t(ctx, "security.twoFactorDescription") }</p>
-					<form method="post" action="/settings/security/totp/setup">
-						<button type="submit">{ t(ctx, "security.setupTwoFactor") }</button>
-					</form>
-				}
-			</fieldset>
+					<div class="settings-card">
+						<div style="padding:20px">
+							<h3 class="settings-section-title">{ t(ctx, "settings.twoFactorAuth") }</h3>
+							if totpEnabled {
+								<div class="tfa-status">
+									<div class="tfa-status-text">
+										<div style="margin-bottom:8px">
+											<span class="badge badge-active">{ t(ctx, "common.enabled") }</span>
+										</div>
+										<p>{ t(ctx, "security.twoFactorEnabled") }</p>
+									</div>
+								</div>
+								<details>
+									<summary>{ t(ctx, "security.disableTwoFactor") }</summary>
+									<form method="post" action="/settings/security/totp/disable" style="margin-top:1rem">
+										<div class="form-group" style="margin-bottom:12px">
+											<label class="form-label" for="disable_password">{ t(ctx, "security.enterPasswordToDisable") }</label>
+											<input type="password" name="password" id="disable_password" class="form-input" required/>
+										</div>
+										<button type="submit" class="btn-secondary">{ t(ctx, "security.disableTwoFactor") }</button>
+									</form>
+								</details>
+							} else {
+								<div class="tfa-status">
+									<div class="tfa-status-text">
+										<div style="margin-bottom:8px">
+											<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
+										</div>
+										<p>{ t(ctx, "security.twoFactorDescription") }</p>
+									</div>
+								</div>
+								<form method="post" action="/settings/security/totp/setup">
+									<button type="submit" class="btn-primary">{ t(ctx, "security.setupTwoFactor") }</button>
+								</form>
+							}
+						</div>
+					</div>
+				</div>
+			</div>
 		</main>
 	}
 }
@@ -67,30 +87,36 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 	@LayoutWithContent("Setup 2FA", "") {
 		<aside class="sidebar" id="sidebar">
 			<nav>
-				<ul class="mailbox-list">
+				<ul class="nav-list">
 					<li><a href="/settings/security">{ t(ctx, "nav.security") }</a></li>
 				</ul>
 			</nav>
 		</aside>
-		<main class="main-content" id="main-content">
+		<main class="content" id="main-content">
 			if errMsg != "" {
 				@FlashMessage(errMsg, "error")
 			}
 			<h2>{ t(ctx, "security.setupTwoFactor") }</h2>
-			<p>{ t(ctx, "security.scanQrCode") }</p>
-			<div style="text-align:center;margin:2rem 0">
-				<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
-			</div>
-			<p>{ t(ctx, "security.manualKeyPrompt") }</p>
-			<pre style="user-select:all;font-size:1rem;padding:1rem;background:var(--pico-muted-border-color);border-radius:4px;text-align:center;letter-spacing:0.1em">{ manualKey }</pre>
-			<form method="post" action="/settings/security/totp/confirm" style="margin-top:2rem">
-				<label for="code">{ t(ctx, "security.verificationCode") }</label>
-				<input type="text" name="code" id="code" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code"/>
-				<div>
-					<button type="submit">{ t(ctx, "auth.verifyAndEnable") }</button>
-					<a href="/settings/security" role="button" class="outline secondary">{ t(ctx, "common.cancel") }</a>
+			<fieldset>
+				<legend>{ t(ctx, "security.setupTwoFactor") }</legend>
+				<p class="description">{ t(ctx, "security.scanQrCode") }</p>
+				<div style="text-align:center;margin:2rem 0">
+					<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
 				</div>
-			</form>
+				<p class="description" style="text-align:center;margin-top:12px">{ t(ctx, "security.manualKeyPrompt") }</p>
+				<div class="manual-key">{ manualKey }</div>
+				<p class="description" style="text-align:center">{ t(ctx, "security.verificationCode") }</p>
+				<form method="post" action="/settings/security/totp/confirm" style="margin-top:2rem">
+					<div class="form-group">
+						<label for="code">{ t(ctx, "security.verificationCode") }</label>
+						<input type="text" name="code" id="code" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code" style="font-size:18px;letter-spacing:4px;text-align:center;font-weight:600"/>
+					</div>
+					<div class="button-group">
+						<button type="submit" class="btn-primary">{ t(ctx, "auth.verifyAndEnable") }</button>
+						<a href="/settings/security" class="form-link">{ t(ctx, "common.cancel") }</a>
+					</div>
+				</form>
+			</fieldset>
 		</main>
 	}
 }
@@ -99,24 +125,29 @@ templ TOTPRecoveryCodes(codes []string) {
 	@LayoutWithContent("Recovery Codes", "") {
 		<aside class="sidebar" id="sidebar">
 			<nav>
-				<ul class="mailbox-list">
+				<ul class="nav-list">
 					<li><a href="/settings/security">{ t(ctx, "nav.security") }</a></li>
 				</ul>
 			</nav>
 		</aside>
-		<main class="main-content" id="main-content">
+		<main class="content" id="main-content">
 			<h2>{ t(ctx, "security.recoveryCodes") }</h2>
 			<div class="flash flash-warning" style="margin-bottom:1.5rem">
-				<strong>{ t(ctx, "security.saveCodesWarning") }</strong> { t(ctx, "security.saveCodesDescription") }
+				<div class="flash-icon">&#9888;</div>
+				<div class="flash-content">
+					<strong>{ t(ctx, "security.saveCodesWarning") }</strong> { t(ctx, "security.saveCodesDescription") }
+				</div>
 			</div>
-			<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 2rem;max-width:24rem;margin:1.5rem auto;font-family:monospace;font-size:1.1rem">
-				for _, code := range codes {
-					<div style="padding:0.4rem 0.8rem;background:var(--pico-muted-border-color);border-radius:4px;text-align:center">{ code }</div>
-				}
-			</div>
-			<div style="text-align:center;margin-top:2rem">
-				<a href="/settings/security" role="button">{ t(ctx, "security.savedCodes") }</a>
-			</div>
+			<fieldset>
+				<legend>{ t(ctx, "security.recoveryCodes") }</legend>
+				<p class="description">{ t(ctx, "security.saveCodesDescription") }</p>
+				<div class="recovery-codes">
+					for _, code := range codes {
+						<div class="recovery-code">{ code }</div>
+					}
+				</div>
+				<a href="/settings/security" class="btn-primary" style="display:inline-block;text-align:center;text-decoration:none">{ t(ctx, "security.savedCodes") }</a>
+			</fieldset>
 		</main>
 	}
 }

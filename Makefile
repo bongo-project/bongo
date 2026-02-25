@@ -14,6 +14,7 @@ build: generate
 	go build -o $(BUILD_DIR)/$(IMPORT_BIN) ./cmd/bongo-import
 
 generate:
+	@touch internal/web/templates/*.templ
 	templ generate
 
 ## Test targets

@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Compose (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 COMPOSE — FULLY SELF-CONTAINED
+       No external CSS dependencies
+       ============================================ */
+
+    /* Reset */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Brand */
+      --bongo-orange: #ffac35;
+      --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf;
+      --bongo-blue-dark: #3d6a9e;
+      --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+
+      /* Surfaces */
+      --bg: #ffffff;
+      --bg-subtle: #f7f8fa;
+      --bg-muted: #f0f2f5;
+      --bg-hover: #edf0f4;
+
+      /* Sidebar */
+      --sidebar-bg: #2c4a72;
+      --sidebar-hover: rgba(255,255,255,0.08);
+      --sidebar-active: rgba(255,255,255,0.15);
+      --sidebar-text: #b8cadf;
+      --sidebar-bright: #ffffff;
+      --sidebar-width: 240px;
+
+      /* Text */
+      --text: #1a1a2e;
+      --text-secondary: #5f6368;
+      --text-muted: #9aa0a8;
+      --text-inverse: #ffffff;
+
+      /* Borders */
+      --border: #e4e7ec;
+      --border-strong: #d0d3d8;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+
+      /* Sizing */
+      --topbar-h: 52px;
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    /* === Dark Theme === */
+    [data-theme="dark"] {
+      --bongo-orange: #e09530;
+      --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc;
+      --bongo-blue-dark: #4a6e96;
+      --bongo-blue-light: #1e3350;
+
+      --bg: #1a1a2e;
+      --bg-subtle: #20203a;
+      --bg-muted: #282842;
+      --bg-hover: #2e2e48;
+
+      --sidebar-bg: #1a2744;
+      --sidebar-text: #8aa4c8;
+      --sidebar-bright: #d0ddef;
+
+      --text: #e0e0e8;
+      --text-secondary: #a0a4ac;
+      --text-muted: #6b7080;
+
+      --border: #2e3040;
+      --border-strong: #3e4050;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.3);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+
+    /* Skip to content (accessibility) */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      background: var(--bongo-blue);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      z-index: 200;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .skip-link:focus { top: 8px; }
+
+    /* Focus indicators (accessibility) */
+    *:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    /* ============================================
+       TOP BAR
+       ============================================ */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hamburger {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px; height: 36px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 1.3rem;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: background 0.12s;
+    }
+    .hamburger:hover { background: var(--bg-muted); }
+
+    .brand {
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--bongo-blue-dark);
+      letter-spacing: -0.5px;
+    }
+    .brand span { color: var(--bongo-orange); }
+
+    .topbar-center {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      padding: 0 20px;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--bg-muted);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      width: 100%;
+      max-width: 480px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-box:focus-within {
+      border-color: var(--bongo-blue);
+      box-shadow: 0 0 0 3px rgba(81,127,175,0.12);
+    }
+    .search-box input {
+      border: none;
+      background: none;
+      outline: none;
+      font-size: 0.9rem;
+      color: var(--text);
+      width: 100%;
+      margin-left: 6px;
+    }
+    .search-box input::placeholder { color: var(--text-muted); }
+    .search-box input:focus-visible { outline: none; }
+    .search-icon { color: var(--text-muted); font-size: 0.9rem; flex-shrink: 0; }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .topbar-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1.05rem;
+      transition: background 0.12s;
+    }
+    .topbar-btn:hover { background: var(--bg-muted); }
+
+    .user-email {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      padding: 0 8px;
+    }
+
+    .topbar-link {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      transition: background 0.12s, color 0.12s;
+    }
+    .topbar-link:hover {
+      background: var(--bg-muted);
+      color: var(--bongo-blue-dark);
+    }
+
+    /* ============================================
+       LAYOUT
+       ============================================ */
+    .layout {
+      display: flex;
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0; right: 0; bottom: 0;
+    }
+
+    /* ============================================
+       SIDEBAR
+       ============================================ */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--sidebar-bg);
+      color: var(--sidebar-text);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      transition: transform 0.25s ease;
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 149;
+    }
+
+    .sidebar-compose-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin: 14px 12px 6px;
+      padding: 10px 0;
+      background: var(--bongo-orange);
+      color: #1a1a2e;
+      border: none;
+      border-radius: var(--radius-lg);
+      font-weight: 700;
+      font-size: 0.92rem;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(255,172,53,0.3);
+      transition: all 0.15s;
+      opacity: 0.6;
+    }
+    .sidebar-compose-btn.current {
+      opacity: 1;
+      background: var(--bongo-orange-hover);
+      color: #fff;
+      cursor: default;
+    }
+
+    .sidebar-group { padding: 4px 8px; }
+    .sidebar-group + .sidebar-group {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      margin-top: 4px;
+      padding-top: 8px;
+    }
+
+    .sidebar-label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: rgba(255,255,255,0.35);
+      padding: 8px 12px 4px;
+      font-weight: 600;
+    }
+
+    .nav-list { list-style: none; }
+
+    .nav-item a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 12px;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--sidebar-text);
+      transition: background 0.12s, color 0.12s;
+      border-left: 3px solid transparent;
+      margin: 1px 0;
+    }
+    .nav-item a:hover {
+      background: var(--sidebar-hover);
+      color: var(--sidebar-bright);
+    }
+    .nav-item a.active {
+      background: var(--sidebar-active);
+      color: var(--sidebar-bright);
+      border-left-color: var(--bongo-orange);
+      font-weight: 600;
+    }
+
+    .nav-icon { width: 18px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+
+    .nav-badge {
+      margin-left: auto;
+      font-size: 0.68rem;
+      font-weight: 700;
+      background: var(--bongo-orange);
+      color: #1a1a2e;
+      border-radius: 10px;
+      padding: 1px 7px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    /* ============================================
+       MAIN CONTENT — COMPOSE
+       ============================================ */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg);
+      overflow-y: auto;
+    }
+
+    .compose-area {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .compose-card {
+      max-width: 820px;
+      margin: 0 auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+
+    .compose-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg-subtle);
+      border-bottom: 1px solid var(--border);
+    }
+    .compose-header-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: var(--text);
+    }
+    .compose-close {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px; height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1.3rem;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: background 0.12s, color 0.12s;
+    }
+    .compose-close:hover {
+      background: var(--bg-muted);
+      color: var(--text);
+    }
+
+    /* Address & subject fields */
+    .compose-body { padding: 0 20px; }
+
+    .field-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+      padding: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .field-label {
+      width: 56px;
+      text-align: right;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 10px 12px 10px 0;
+      flex-shrink: 0;
+    }
+
+    .field-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .field-content input[type="text"],
+    .field-content input[type="email"] {
+      width: 100%;
+      border: none;
+      padding: 9px 0;
+      font-size: 0.92rem;
+      background: transparent;
+      color: var(--text);
+      outline: none;
+    }
+    .field-content input::placeholder { color: var(--text-muted); }
+    .field-content input:focus-visible { outline: none; }
+
+    .field-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px 0;
+      flex-shrink: 0;
+    }
+
+    .cc-toggle {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 5px 8px;
+      border: none;
+      background: transparent;
+      border-radius: var(--radius);
+      transition: background 0.12s, color 0.12s;
+    }
+    .cc-toggle:hover {
+      background: var(--bg-muted);
+      color: var(--bongo-blue);
+    }
+    .cc-toggle.active {
+      color: var(--bongo-blue);
+      font-weight: 600;
+    }
+
+    /* Recipient chips */
+    .chip-area {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+      min-height: 38px;
+      padding: 4px 0;
+    }
+    .chip-area input[type="text"] {
+      flex: 1;
+      min-width: 120px;
+      padding: 5px 0;
+    }
+
+    .recipient-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--bongo-blue-light);
+      color: var(--bongo-blue-dark);
+      padding: 3px 8px 3px 10px;
+      border-radius: 14px;
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+    .chip-remove {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px; height: 16px;
+      border: none;
+      background: transparent;
+      color: var(--bongo-blue);
+      cursor: pointer;
+      border-radius: 50%;
+      font-size: 0.85rem;
+      line-height: 1;
+      transition: background 0.12s;
+    }
+    .chip-remove:hover {
+      background: rgba(81,127,175,0.2);
+    }
+
+    /* Format toolbar */
+    .format-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 6px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-subtle);
+    }
+
+    .format-btn {
+      padding: 4px 10px;
+      border: none;
+      background: transparent;
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      transition: background 0.12s, color 0.12s;
+    }
+    .format-btn:hover {
+      background: var(--bg-muted);
+      color: var(--text);
+    }
+    .format-btn.active {
+      background: var(--bongo-blue-light);
+      color: var(--bongo-blue-dark);
+    }
+
+    .format-sep {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+      margin: 0 4px;
+    }
+
+    /* Compose textarea */
+    .compose-textarea {
+      width: 100%;
+      min-height: 320px;
+      border: none;
+      padding: 16px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 0.92rem;
+      line-height: 1.65;
+      resize: vertical;
+      background: transparent;
+      color: var(--text);
+      outline: none;
+    }
+    .compose-textarea::placeholder { color: var(--text-muted); }
+    .compose-textarea:focus-visible { outline: none; }
+
+    /* Attachment area */
+    .attachment-area {
+      padding: 0 20px 12px;
+    }
+
+    .drop-zone {
+      border: 2px dashed var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      transition: border-color 0.15s, background 0.15s;
+      cursor: pointer;
+    }
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--bongo-blue);
+      background: var(--bongo-blue-light);
+      color: var(--bongo-blue-dark);
+    }
+    .drop-zone-icon { font-size: 1.4rem; margin-bottom: 4px; }
+    .drop-zone-link {
+      color: var(--bongo-blue);
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .attached-files {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .attached-file {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.82rem;
+    }
+    .attached-file-icon { font-size: 1rem; flex-shrink: 0; }
+    .attached-file-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .attached-file-size { color: var(--text-muted); flex-shrink: 0; }
+    .attached-file-remove {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      transition: color 0.12s;
+    }
+    .attached-file-remove:hover { color: #e74c3c; }
+
+    /* Compose footer */
+    .compose-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 20px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border);
+    }
+    .compose-spacer { flex: 1; }
+
+    .btn-send {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 24px;
+      background: var(--bongo-blue);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.12s, transform 0.1s;
+    }
+    .btn-send:hover {
+      background: var(--bongo-blue-dark);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-secondary:hover {
+      background: var(--bg-muted);
+      border-color: var(--border-strong);
+      color: var(--text);
+    }
+
+    .btn-discard {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-discard:hover {
+      background: #fdf2f2;
+      border-color: #e74c3c;
+      color: #e74c3c;
+    }
+    [data-theme="dark"] .btn-discard:hover {
+      background: #3a1a1a;
+    }
+
+    /* ============================================
+       RESPONSIVE — TABLET (≤1024px)
+       ============================================ */
+    @media (max-width: 1024px) {
+      :root { --sidebar-width: 200px; }
+    }
+
+    /* ============================================
+       RESPONSIVE — MOBILE (≤768px)
+       ============================================ */
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+
+      .sidebar {
+        position: fixed;
+        top: var(--topbar-h);
+        left: 0; bottom: 0;
+        width: 260px;
+        z-index: 150;
+        transform: translateX(-100%);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.open { display: block; }
+
+      .topbar-center { display: none; }
+      .user-email { display: none; }
+      .hide-mobile { display: none !important; }
+
+      .compose-area { padding: 12px; }
+      .compose-card { border-radius: var(--radius); }
+      .compose-header { padding: 10px 14px; }
+      .compose-body { padding: 0 14px; }
+      .format-toolbar { padding: 6px 14px; }
+      .compose-textarea { padding: 12px 14px; min-height: 200px; }
+      .attachment-area { padding: 0 14px 10px; }
+      .compose-footer { padding: 10px 14px; }
+
+      .field-label { width: 42px; font-size: 0.78rem; padding: 10px 8px 10px 0; }
+    }
+
+    /* ============================================
+       RESPONSIVE — SMALL PHONE (≤480px)
+       ============================================ */
+    @media (max-width: 480px) {
+      .compose-area { padding: 8px; }
+      .compose-card { box-shadow: none; border: none; }
+
+      .field-row { flex-wrap: wrap; }
+      .field-label { width: 100%; text-align: left; padding: 8px 0 0 0; }
+      .field-content { width: 100%; }
+      .field-actions { width: 100%; padding: 0 0 4px 0; }
+
+      .format-toolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+      .compose-footer {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .btn-send { flex: 1; justify-content: center; }
+      .btn-secondary { flex: 1; justify-content: center; }
+      .compose-spacer { display: none; }
+      .btn-discard { width: 100%; justify-content: center; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- TOP BAR -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+      <a href="v2-inbox.html" class="brand" aria-label="BongoMail — Go to home page">Bongo<span>Mail</span></a>
+    </div>
+    <div class="topbar-center">
+      <div class="search-box" role="search">
+        <span class="search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" placeholder="Search mail..." aria-label="Search mail">
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="topbar-btn" title="Toggle dark/light theme" aria-label="Toggle dark/light theme" onclick="toggleTheme()">&#9789;</button>
+      <a href="settings.html" class="topbar-link">Settings</a>
+      <span class="user-email" aria-label="Logged in as admin@localhost">admin@localhost</span>
+      <a href="login.html" class="topbar-link hide-mobile">Logout</a>
+    </div>
+  </header>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" onclick="toggleSidebar()" aria-hidden="true"></div>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Mail navigation">
+      <button class="sidebar-compose-btn current" aria-label="Composing new message" aria-current="page">&#9998; Compose</button>
+
+      <nav aria-label="Mailbox navigation">
+        <div class="sidebar-group">
+          <div class="sidebar-label">Mailboxes</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="v2-inbox.html"><span class="nav-icon" aria-hidden="true">&#9993;</span> Inbox <span class="nav-badge">12</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9733;</span> Starred</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#10148;</span> Sent</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9998;</span> Drafts <span class="nav-badge">2</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128465;</span> Trash</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9940;</span> Junk</a></li>
+          </ul>
+        </div>
+
+        <div class="sidebar-group">
+          <div class="sidebar-label">Folders</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Work</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Personal</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Receipts</a></li>
+          </ul>
+        </div>
+
+        <div class="sidebar-group">
+          <div class="sidebar-label">Quick Links</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128197;</span> Calendar</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128101;</span> Contacts</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9881;</span> Admin</a></li>
+          </ul>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content" id="main-content" role="main" aria-label="Compose message">
+      <div class="compose-area">
+        <div class="compose-card">
+          <!-- Header -->
+          <div class="compose-header">
+            <span class="compose-header-title">New Message</span>
+            <a href="v2-inbox.html" class="compose-close" title="Discard and return to Inbox" aria-label="Discard and return to Inbox">&times;</a>
+          </div>
+
+          <!-- Address fields -->
+          <div class="compose-body">
+            <!-- To -->
+            <div class="field-row">
+              <label class="field-label" for="compose-to">To</label>
+              <div class="field-content">
+                <div class="chip-area">
+                  <span class="recipient-chip">
+                    sarah@example.com
+                    <button class="chip-remove" aria-label="Remove sarah@example.com">&times;</button>
+                  </span>
+                  <input type="text" id="compose-to" placeholder="Add recipients..." aria-label="To recipients">
+                </div>
+              </div>
+              <div class="field-actions">
+                <button class="cc-toggle" onclick="toggleField('cc')" aria-expanded="false" aria-controls="cc-row">Cc</button>
+                <button class="cc-toggle" onclick="toggleField('bcc')" aria-expanded="false" aria-controls="bcc-row">Bcc</button>
+              </div>
+            </div>
+
+            <!-- Cc (hidden by default) -->
+            <div class="field-row" id="cc-row" style="display: none;">
+              <label class="field-label" for="compose-cc">Cc</label>
+              <div class="field-content">
+                <input type="text" id="compose-cc" placeholder="Add Cc..." aria-label="Cc recipients">
+              </div>
+            </div>
+
+            <!-- Bcc (hidden by default) -->
+            <div class="field-row" id="bcc-row" style="display: none;">
+              <label class="field-label" for="compose-bcc">Bcc</label>
+              <div class="field-content">
+                <input type="text" id="compose-bcc" placeholder="Add Bcc..." aria-label="Bcc recipients">
+              </div>
+            </div>
+
+            <!-- Subject -->
+            <div class="field-row">
+              <label class="field-label" for="compose-subject">Subject</label>
+              <div class="field-content">
+                <input type="text" id="compose-subject" value="Re: Q1 Budget Review" aria-label="Subject">
+              </div>
+            </div>
+          </div>
+
+          <!-- Format toolbar -->
+          <div class="format-toolbar" role="toolbar" aria-label="Text formatting">
+            <button class="format-btn" title="Bold" aria-label="Bold"><b>B</b></button>
+            <button class="format-btn" title="Italic" aria-label="Italic"><i>I</i></button>
+            <button class="format-btn" title="Underline" aria-label="Underline"><u>U</u></button>
+            <button class="format-btn" title="Strikethrough" aria-label="Strikethrough"><s>S</s></button>
+            <span class="format-sep" aria-hidden="true"></span>
+            <button class="format-btn" title="Bullet list" aria-label="Bullet list">&#8226; List</button>
+            <button class="format-btn" title="Numbered list" aria-label="Numbered list">1. List</button>
+            <span class="format-sep" aria-hidden="true"></span>
+            <button class="format-btn" title="Insert link" aria-label="Insert link">&#128279;</button>
+            <button class="format-btn" title="Insert image" aria-label="Insert image">&#128247;</button>
+          </div>
+
+          <!-- Message body -->
+          <textarea class="compose-textarea" placeholder="Write your message..." aria-label="Message body">Hi Sarah,
+
+Thanks for the updated numbers. The 8% ongoing increase is much better than the original 15% — great catch on splitting those out.
+
+Thursday at 3pm works for me. I'll bring the comparison slides I've been working on.
+
+One more thing — should we include the open-source tooling savings? We switched from Splunk to Loki which saves us roughly $8K/quarter.
+
+Best regards</textarea>
+
+          <!-- Attachments -->
+          <div class="attachment-area">
+            <div class="drop-zone" id="drop-zone">
+              <div class="drop-zone-icon" aria-hidden="true">&#128206;</div>
+              Drop files here or <span class="drop-zone-link">browse</span>
+              <input type="file" id="file-input" multiple style="display: none;" aria-label="Attach files">
+            </div>
+
+            <!-- Example attached files -->
+            <div class="attached-files">
+              <div class="attached-file">
+                <span class="attached-file-icon" aria-hidden="true">&#128196;</span>
+                <span class="attached-file-name">Q1-Budget-Comparison.xlsx</span>
+                <span class="attached-file-size">24 KB</span>
+                <button class="attached-file-remove" aria-label="Remove Q1-Budget-Comparison.xlsx">&times;</button>
+              </div>
+              <div class="attached-file">
+                <span class="attached-file-icon" aria-hidden="true">&#128196;</span>
+                <span class="attached-file-name">loki-vs-splunk-cost-analysis.pdf</span>
+                <span class="attached-file-size">142 KB</span>
+                <button class="attached-file-remove" aria-label="Remove loki-vs-splunk-cost-analysis.pdf">&times;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer with actions -->
+          <div class="compose-footer">
+            <button class="btn-send" aria-label="Send message">&#9993; Send</button>
+            <button class="btn-secondary" aria-label="Save as draft">Save Draft</button>
+            <span class="compose-spacer"></span>
+            <a href="v2-inbox.html" class="btn-discard" aria-label="Discard message">Discard</a>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.querySelector('.hamburger');
+      const overlay = document.querySelector('.sidebar-overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+      const isOpen = sidebar.classList.contains('open');
+      hamburger.setAttribute('aria-expanded', isOpen);
+      overlay.setAttribute('aria-hidden', !isOpen ? 'true' : 'false');
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.dataset.theme === 'dark';
+      html.dataset.theme = isDark ? 'light' : 'dark';
+      const btn = document.querySelector('.topbar-btn[aria-label*="theme"]');
+      btn.textContent = isDark ? '\u263D' : '\u2600';
+    }
+
+    function toggleField(field) {
+      const row = document.getElementById(field + '-row');
+      const btn = document.querySelector(`[aria-controls="${field}-row"]`);
+      const isHidden = row.style.display === 'none';
+      row.style.display = isHidden ? 'flex' : 'none';
+      btn.setAttribute('aria-expanded', isHidden);
+      btn.classList.toggle('active', isHidden);
+      if (isHidden) {
+        row.querySelector('input').focus();
+      }
+    }
+
+    // Drop zone interaction
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+    });
+
+    // Keyboard: Ctrl+Enter to send
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        document.querySelector('.btn-send').click();
+      }
+    });
+  </script>
+</body>
+</html>

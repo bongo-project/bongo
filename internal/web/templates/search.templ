@@ -13,24 +13,39 @@ type SearchResult struct {
 }
 
 templ SearchPage(query string, results []SearchResult, page, totalPages int) {
-	<h2>{ t(ctx, "search.results") }</h2>
+	<div class="results-header">
+		<div class="results-title">{ t(ctx, "search.results") }</div>
+		if query != "" {
+			<div class="results-count">
+				{ fmt.Sprintf("%d", len(results)) } results for <span class="results-query">"{ query }"</span>
+			</div>
+		}
+	</div>
 	if query != "" && len(results) == 0 {
 		@EmptyState(t(ctx, "search.noResults"), t(ctx, "search.noMatches"))
 	}
 	if len(results) > 0 {
-		<div id="search-results">
+		<div class="results-list" id="search-results">
 			for _, r := range results {
-				<div class="search-result"
+				<a
+					class="search-result"
+					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", r.Mailbox, r.UID)) }
 					hx-get={ fmt.Sprintf("/mail/%s/%d", r.Mailbox, r.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
+					tabindex="0"
 				>
-					<div><strong>{ r.Subject }</strong></div>
-					<div style="font-size:0.85rem">{ r.From } - { r.Date }</div>
+					<div class="result-subject">{ r.Subject }</div>
+					<div class="result-meta">
+						<span class="result-from">{ r.From }</span>
+						<span>&middot;</span>
+						<span>{ r.Date }</span>
+						<span class="result-mailbox">{ r.Mailbox }</span>
+					</div>
 					if r.Snippet != "" {
-						<div class="snippet">{ r.Snippet }</div>
+						<div class="result-snippet">{ r.Snippet }</div>
 					}
-				</div>
+				</a>
 			}
 		</div>
 		@Pagination(page, totalPages, "/search?q="+query)

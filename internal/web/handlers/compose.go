@@ -66,9 +66,16 @@ func (h *ComposeHandler) SetPreferences(prefs *store.PreferenceStore) {
 
 // NewMessage renders the compose form.
 func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	body := h.signatureBody(userID)
-	templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0)).ServeHTTP(w, r)
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0)).ServeHTTP(w, r)
+		return
+	}
+
+	mailboxInfos := h.loadMailboxInfos(userID)
+	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, email)).ServeHTTP(w, r)
 }
 
 // Reply renders the reply form with pre-filled fields.
@@ -119,7 +126,14 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+		return
+	}
+
+	_, replyEmail := middleware.UserFromContext(r.Context())
+	mailboxInfos := h.loadMailboxInfos(userID)
+	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, replyEmail)).ServeHTTP(w, r)
 }
 
 // Forward renders the forward form.
@@ -147,7 +161,14 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 
 	body := h.signatureBody(userID) + h.loadQuotedBody(userID, meta)
 
-	templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+		return
+	}
+
+	_, fwdEmail := middleware.UserFromContext(r.Context())
+	mailboxInfos := h.loadMailboxInfos(userID)
+	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, fwdEmail)).ServeHTTP(w, r)
 }
 
 // Send processes the compose form and delivers the message.
@@ -569,6 +590,40 @@ func (h *ComposeHandler) resolveLocalUser(email string) string {
 		}
 	}
 	return ""
+}
+
+func (h *ComposeHandler) loadMailboxInfos(userID string) []templates.MailboxInfo {
+	mbs, _ := h.mailboxes.ListMailboxes(userID)
+	infos := make([]templates.MailboxInfo, 0, len(mbs))
+	for _, mb := range mbs {
+		_, _, unseen, _ := h.mailboxes.CountMessages(userID, mb.Name)
+		infos = append(infos, templates.MailboxInfo{
+			Name:   mb.Name,
+			Unread: int(unseen),
+		})
+	}
+	orderedInfos := make([]templates.MailboxInfo, 0, len(infos))
+	for _, name := range store.DefaultMailboxes {
+		for _, info := range infos {
+			if info.Name == name {
+				orderedInfos = append(orderedInfos, info)
+				break
+			}
+		}
+	}
+	for _, info := range infos {
+		found := false
+		for _, name := range store.DefaultMailboxes {
+			if info.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			orderedInfos = append(orderedInfos, info)
+		}
+	}
+	return orderedInfos
 }
 
 func (h *ComposeHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {

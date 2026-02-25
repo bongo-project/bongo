@@ -40,19 +40,21 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 	@LayoutWithContent("Filter Rules", email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
-				<ul class="mailbox-list">
+				<ul class="nav-list">
 					<li><a href="/settings" hx-get="/settings" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.settings") }</a></li>
 					<li><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true">{ t(ctx, "nav.backToMail") }</a></li>
 				</ul>
 			</nav>
 		</aside>
-		<main class="main-content" id="main-content">
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container" style="max-width:960px">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
+			<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
 				<h2 style="margin:0">{ t(ctx, "nav.filterRules") }</h2>
-				<a href="/settings/rules/new" role="button" class="outline">{ t(ctx, "rules.newRule") }</a>
+				<a href="/settings/rules/new" class="btn-outline">{ t(ctx, "rules.newRule") }</a>
 			</div>
 			if len(rules) == 0 {
 				<p class="secondary-text">{ t(ctx, "rules.noRulesYet") }</p>
@@ -85,30 +87,30 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 										</span>
 									</td>
 									<td>{ fmt.Sprintf("%d", rule.Priority) }</td>
-									<td><a href={ templ.SafeURL("/settings/rules/" + rule.ID) }>{ rule.Name }</a></td>
-									<td><small>{ rule.ConditionSummary }</small></td>
-									<td><small>{ rule.ActionSummary }</small></td>
+									<td><a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="rule-name">{ rule.Name }</a></td>
+									<td><div class="rule-summary">{ rule.ConditionSummary }</div></td>
+									<td><div class="rule-summary">{ rule.ActionSummary }</div></td>
 									<td>
 										if rule.Enabled {
-											<span style="color:var(--pico-color-green-500)">{ t(ctx, "common.yes") }</span>
+											<span class="rule-status active">&#10003; { t(ctx, "common.yes") }</span>
 										} else {
-											<span class="secondary-text">{ t(ctx, "common.no") }</span>
+											<span class="rule-status inactive">&#9675; { t(ctx, "common.no") }</span>
 										}
 									</td>
 									<td>
-										<div style="display:flex; gap:0.25rem">
-											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } role="button" class="outline secondary" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "common.edit") }</a>
+										<div class="rule-actions">
+											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="btn-outline btn-sm" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "common.edit") }</a>
 											<button
 												hx-post={ "/settings/rules/" + rule.ID + "/test" }
 												hx-target={ "#test-results-" + rule.ID }
 												hx-swap="innerHTML"
-												class="outline" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "rules.test") }</button>
+												class="btn-outline btn-sm" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "rules.test") }</button>
 											<button
 												hx-delete={ "/settings/rules/" + rule.ID }
 												hx-target="closest tr"
 												hx-swap="outerHTML"
 												hx-confirm="Delete this rule?"
-												class="outline secondary" style="padding:0.25rem 0.5rem; font-size:0.8rem; color:var(--pico-color-red-500)">Del</button>
+												class="btn-flush btn-sm" style="padding:0.25rem 0.5rem; font-size:0.8rem">Del</button>
 										</div>
 									</td>
 								</tr>
@@ -135,6 +137,8 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 					}
 				</script>
 			}
+				</div>
+			</div>
 		</main>
 	}
 }
@@ -143,12 +147,14 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 	@LayoutWithContent(ruleFormTitle(isNew), email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
-				<ul class="mailbox-list">
+				<ul class="nav-list">
 					<li><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true">{ t(ctx, "rules.backToRules") }</a></li>
 				</ul>
 			</nav>
 		</aside>
-		<main class="main-content" id="main-content">
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container" style="max-width:720px">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
@@ -161,23 +167,25 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 			</h2>
 			<form method="post" action={ ruleFormAction(rule.ID, isNew) }
 				x-data={ conditionsAlpineData(rule.Conditions) }>
-				<fieldset>
-					<legend>{ t(ctx, "rules.ruleSettings") }</legend>
-					<label for="name">{ t(ctx, "rules.colName") }</label>
-					<input type="text" name="name" id="name" value={ rule.Name } placeholder="e.g. Newsletters to Updates" required/>
-					<label>
-						<input type="checkbox" name="enabled" checked?={ rule.Enabled }/>
-						{ t(ctx, "common.enabled") }
-					</label>
-					<label>
-						<input type="checkbox" name="stop_processing" checked?={ rule.StopProcessing }/>
-						Stop processing further rules when matched
-					</label>
-				</fieldset>
-				<fieldset>
-					<legend>{ t(ctx, "rules.conditionsHeader") }</legend>
+				<div class="form-section">
+					<div class="form-section-title">{ t(ctx, "rules.ruleSettings") }</div>
+					<div class="form-group">
+						<label for="name">{ t(ctx, "rules.colName") }</label>
+						<input type="text" name="name" id="name" class="form-input" value={ rule.Name } placeholder="e.g. Newsletters to Updates" required/>
+					</div>
+					<div class="checkbox-wrapper">
+						<input type="checkbox" name="enabled" id="rule_enabled" checked?={ rule.Enabled }/>
+						<label for="rule_enabled">{ t(ctx, "common.enabled") }</label>
+					</div>
+					<div class="checkbox-wrapper">
+						<input type="checkbox" name="stop_processing" id="rule_stop" checked?={ rule.StopProcessing }/>
+						<label for="rule_stop">Stop processing further rules when matched</label>
+					</div>
+				</div>
+				<div class="form-section">
+					<div class="form-section-title">{ t(ctx, "rules.conditionsHeader") }</div>
 					<template x-for="(cond, i) in conditions" :key="i">
-						<div style="display:grid; grid-template-columns:1fr 1fr 2fr auto; gap:0.5rem; margin-bottom:0.5rem; align-items:start">
+						<div class="condition-row">
 							<select :name="'cond_field'" x-model="cond.field" @change="updateOperators(cond)">
 								<option value="from">{ t(ctx, "rules.fieldFrom") }</option>
 								<option value="to">{ t(ctx, "rules.fieldTo") }</option>
@@ -211,15 +219,15 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							<template x-if="cond.field !== 'has_attachment'">
 								<input type="text" :name="'cond_value'" x-model="cond.value" placeholder="Value"/>
 							</template>
-							<button type="button" @click="conditions.splice(i, 1)" class="outline secondary" style="padding:0.5rem" x-show="conditions.length > 1">X</button>
+							<button type="button" @click="conditions.splice(i, 1)" class="condition-row-remove" x-show="conditions.length > 1">&#10005;</button>
 						</div>
 					</template>
-					<button type="button" @click="conditions.push({field:'from', operator:'contains', value:''})" class="outline" style="font-size:0.85rem">{ t(ctx, "rules.addCondition") }</button>
-				</fieldset>
-				<fieldset>
-					<legend>{ t(ctx, "rules.actionHeader") }</legend>
-					<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
-						<div>
+					<button type="button" @click="conditions.push({field:'from', operator:'contains', value:''})" class="btn-outline btn-sm">{ t(ctx, "rules.addCondition") }</button>
+				</div>
+				<div class="form-section">
+					<div class="form-section-title">{ t(ctx, "rules.actionHeader") }</div>
+					<div class="form-row two-col">
+						<div class="form-group">
 							<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
 							<select name="action_type" id="action_type" x-data={ actionTypeData(rule.Action.Type) } x-model="actionType">
 								<option value="move">Move to folder</option>
@@ -229,7 +237,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								<option value="delete">Delete (move to Trash)</option>
 							</select>
 						</div>
-						<div>
+						<div class="form-group">
 							<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
 							<select name="action_target" id="action_target">
 								for _, mb := range mailboxes {
@@ -238,24 +246,26 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							</select>
 						</div>
 					</div>
-				</fieldset>
-				<div>
-					<button type="submit">
+				</div>
+				<div class="form-actions">
+					<button type="submit" class="btn-primary">
 						if isNew {
 							{ t(ctx, "rules.createRule") }
 						} else {
 							{ t(ctx, "rules.saveChanges") }
 						}
 					</button>
-					<a href="/settings/rules" role="button" class="outline secondary">{ t(ctx, "common.cancel") }</a>
+					<a href="/settings/rules" class="form-link">{ t(ctx, "common.cancel") }</a>
 				</div>
 			</form>
+				</div>
+			</div>
 		</main>
 	}
 }
 
 templ RuleTestResults(matches int, total int, samples []MailSample) {
-	<td colspan="7" style="background:var(--pico-card-background-color); padding:0.75rem">
+	<td colspan="7" style="background:var(--bg-subtle); padding:0.75rem">
 		<p style="margin-bottom:0.5rem">
 			<strong>{ fmt.Sprintf("Matched %d of %d", matches, total) }</strong> recent messages
 		</p>

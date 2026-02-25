@@ -81,6 +81,9 @@ type Agent struct {
 	SPFChecker  *mail.SPFChecker
 	BounceGen   *mail.BounceGenerator
 
+	// Log streaming for admin UI.
+	LogSink *handlers.LogSink
+
 	httpServer        *http.Server
 	ready             atomic.Bool
 	blobSyncCancel     context.CancelFunc
@@ -290,8 +293,11 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Determine whether HTTPS will be used so we can set the Secure cookie flag.
 	tlsEnabled := a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != ""
-	if a.Config.Server.Role == "dev" {
+	if a.Config.Server.Role == "dev" && !a.Config.Web.PlainHTTP {
 		tlsEnabled = true
+	}
+	if a.Config.Web.PlainHTTP {
+		tlsEnabled = false
 	}
 
 	// Auth routes (public).
@@ -353,6 +359,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		if a.Raft != nil {
 			adminH.SetRaftState(&raftStateAdapter{raft: a.Raft})
+		}
+		if a.LogSink != nil {
+			adminH.SetLogSink(a.LogSink)
+		}
+		if a.Mailboxes != nil {
+			adminH.SetMailboxStore(a.Mailboxes)
 		}
 
 		r.Get("/admin", adminH.Dashboard)
@@ -461,6 +473,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/contacts/import", contactsH.ImportContacts)
 			r.Post("/contacts/quick-add", contactsH.QuickAddContact)
 			r.Get("/contacts/{guid}", contactsH.ShowContact)
+			r.Get("/contacts/{guid}/detail", contactsH.ShowContactDetail)
 			r.Post("/contacts/{guid}", contactsH.UpdateContact)
 			r.Delete("/contacts/{guid}", contactsH.DeleteContact)
 		}
@@ -517,9 +530,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		Handler: r,
 	}
 
-	// Configure TLS for the web server.
+	// Configure TLS for the web server (skip when plain_http is enabled).
 	var webTLSCfg *tls.Config
-	if a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" {
+	if a.Config.Web.PlainHTTP {
+		a.logger.Warn("web: running in plain HTTP mode (no TLS) -- use only behind a TLS-terminating reverse proxy")
+	} else if a.Config.Web.TLS.CertFile != "" && a.Config.Web.TLS.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(a.Config.Web.TLS.CertFile, a.Config.Web.TLS.KeyFile)
 		if err != nil {
 			return fmt.Errorf("loading web TLS key pair: %w", err)

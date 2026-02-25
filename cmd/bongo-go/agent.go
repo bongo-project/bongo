@@ -13,6 +13,7 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/agent"
 	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-go/bongo-go/internal/web/handlers"
 )
 
 var (
@@ -22,6 +23,7 @@ var (
 	serveJoin       string
 	serveLogLevel   string
 	serveDev        bool
+	servePlainHTTP  bool
 	bootstrapExpect int
 )
 
@@ -39,6 +41,7 @@ func init() {
 	serveCmd.Flags().StringVarP(&serveBind, "bind", "b", "0.0.0.0", "Address to bind listeners to")
 	serveCmd.Flags().StringVarP(&serveJoin, "join", "j", "", "Address of an existing node to join")
 	serveCmd.Flags().StringVar(&serveLogLevel, "log-level", "", "Log level: debug, info, warn, error")
+	serveCmd.Flags().BoolVar(&servePlainHTTP, "plain-http", false, "Disable TLS for the web server (use behind a reverse proxy)")
 	serveCmd.Flags().IntVar(&bootstrapExpect, "bootstrap-expect", 0, "Number of expected servers to bootstrap the cluster")
 
 	rootCmd.AddCommand(serveCmd)
@@ -82,14 +85,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Set up structured logger.
-	logLevel := parseLogLevel(cfg.Telemetry.Log.Level)
-	var handler slog.Handler
-	if cfg.Telemetry.Log.Format == "text" {
-		handler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
-	} else {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	if servePlainHTTP {
+		cfg.Web.PlainHTTP = true
 	}
+
+	// Set up structured logger with LogSink for admin UI streaming.
+	logLevel := parseLogLevel(cfg.Telemetry.Log.Level)
+	logSink := handlers.NewLogSink()
+
+	var baseHandler slog.Handler
+	if cfg.Telemetry.Log.Format == "text" {
+		baseHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	} else {
+		baseHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	}
+	// Wrap base handler so log entries are also sent to the admin log viewer.
+	handler := logSink.SlogHandler(baseHandler)
 	logger := slog.New(handler)
 
 	logger.Info("config loaded",
@@ -103,6 +114,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("starting server: %w", err)
 	}
+	a.LogSink = logSink
 
 	// Set up signal-based cancellation.
 	ctx, cancel := context.WithCancel(context.Background())

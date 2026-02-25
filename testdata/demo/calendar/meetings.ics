@@ -1,0 +1,65 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Bongo Project//Bongo Calendar//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:evt-001@bongoproject.org
+DTSTART:20260227T140000Z
+DTEND:20260227T153000Z
+SUMMARY:Architecture Review: Multi-Tenant Support
+LOCATION:https://meet.bongoproject.org/arch-review
+DESCRIPTION:Review multi-tenant architecture options.\n\nAgenda:\n1. Current per-user storage model\n2. Namespace prefix vs separate Pebble instances\n3. Quota enforcement\n4. Migration path
+ORGANIZER;CN=Alice Chen:mailto:alice@example.com
+ATTENDEE;CN=Bob Martinez;RSVP=TRUE:mailto:bob@example.com
+ATTENDEE;CN=Charlie Wu;RSVP=TRUE:mailto:charlie@example.com
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:evt-002@bongoproject.org
+DTSTART;VALUE=DATE:20260302
+DTEND;VALUE=DATE:20260303
+SUMMARY:v0.9.1 Release Day
+DESCRIPTION:Final release of v0.9.1. Includes compose refactor\, dark mode fixes\, CalDAV improvements\, and go-imap update.
+ORGANIZER;CN=Alice Chen:mailto:alice@example.com
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:evt-003@bongoproject.org
+DTSTART:20260228T150000Z
+DTEND:20260228T160000Z
+SUMMARY:Community Call
+LOCATION:https://meet.bongoproject.org/community
+DESCRIPTION:Monthly community call.\n\nAgenda:\n1. v0.9.0 retrospective\n2. Multi-tenant proposal\n3. CalDAV update\n4. Open floor
+ORGANIZER;CN=Henrik Larsson:mailto:henrik@example.com
+ATTENDEE;CN=Alice Chen;RSVP=TRUE:mailto:alice@example.com
+ATTENDEE;CN=Bob Martinez;RSVP=TRUE:mailto:bob@example.com
+ATTENDEE;CN=Charlie Wu;RSVP=TRUE:mailto:charlie@example.com
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:evt-004@bongoproject.org
+DTSTART:20260224T160000Z
+DTEND:20260224T161500Z
+SUMMARY:Daily Standup
+LOCATION:https://meet.bongoproject.org/standup
+DESCRIPTION:Daily sync. Quick round of yesterday/today/blockers.
+ORGANIZER;CN=Alice Chen:mailto:alice@example.com
+ATTENDEE;CN=Bob Martinez;RSVP=TRUE:mailto:bob@example.com
+ATTENDEE;CN=Charlie Wu;RSVP=TRUE:mailto:charlie@example.com
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR
+STATUS:CONFIRMED
+END:VEVENT
+BEGIN:VEVENT
+UID:evt-005@bongoproject.org
+DTSTART:20260226T100000Z
+DTEND:20260226T110000Z
+SUMMARY:Security Review: IMAP IDLE Fix
+LOCATION:https://meet.bongoproject.org/security
+DESCRIPTION:Review the IMAP IDLE timeout fix (CVE-2026-1234) and discuss additional hardening measures for long-lived connections.
+ORGANIZER;CN=Dara Okonkwo:mailto:dara@securitylab.example.com
+ATTENDEE;CN=Alice Chen;RSVP=TRUE:mailto:alice@example.com
+ATTENDEE;CN=Bob Martinez;RSVP=TRUE:mailto:bob@example.com
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR

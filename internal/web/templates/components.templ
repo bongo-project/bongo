@@ -16,10 +16,10 @@ type MailboxInfo struct {
 templ Sidebar(mailboxes []MailboxInfo, selected string) {
 	<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">+ { t(ctx, "mail.compose") }</a>
 	<nav aria-label="Mailboxes">
-		<div class="sidebar-section">
-			<h4>{ t(ctx, "nav.mailboxes") }</h4>
-			<ul class="mailbox-list">
-				<li>
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "nav.mailboxes") }</div>
+			<ul class="nav-list">
+				<li class="nav-item">
 					<a
 						href="/mail/unread"
 						if selected == "unread" {
@@ -29,11 +29,12 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 						hx-target="#main-content"
 						hx-push-url="true"
 					>
+						<span class="nav-icon" aria-hidden="true">&#9993;</span>
 						<span>{ t(ctx, "nav.unread") }</span>
-						<span id="unread-badge" class="unread-badge"></span>
+						<span id="unread-badge" class="nav-badge"></span>
 					</a>
 				</li>
-				<li>
+				<li class="nav-item">
 					<a
 						href="/mail/starred"
 						if selected == "starred" {
@@ -43,10 +44,11 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 						hx-target="#main-content"
 						hx-push-url="true"
 					>
+						<span class="nav-icon" aria-hidden="true">&#9733;</span>
 						<span>{ t(ctx, "nav.starred") }</span>
 					</a>
 				</li>
-				<li>
+				<li class="nav-item">
 					<a
 						href="/mail/all-mail"
 						if selected == "all-mail" {
@@ -56,16 +58,17 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 						hx-target="#main-content"
 						hx-push-url="true"
 					>
+						<span class="nav-icon" aria-hidden="true">&#128229;</span>
 						<span>{ t(ctx, "nav.allMail") }</span>
 					</a>
 				</li>
 			</ul>
 		</div>
-		<div class="sidebar-section">
-			<h4>{ t(ctx, "nav.folders") }</h4>
-			<ul class="mailbox-list" id="mailbox-drop-targets">
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "nav.folders") }</div>
+			<ul class="nav-list" id="mailbox-drop-targets">
 				for _, mb := range mailboxes {
-					<li>
+					<li class="nav-item">
 						<a
 							href={ templ.SafeURL("/mail/" + mb.Name) }
 							if mb.Name == selected {
@@ -76,31 +79,35 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 							hx-push-url="true"
 							data-folder={ mb.Name }
 						>
+							<span class="nav-icon" aria-hidden="true">&#128193;</span>
 							<span>{ mb.Name }</span>
 							if mb.Unread > 0 {
-								<span class="unread-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+								<span class="nav-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
 							}
 						</a>
 					</li>
 				}
 			</ul>
 		</div>
-		<div class="sidebar-section">
-			<h4>{ t(ctx, "nav.quickLinks") }</h4>
-			<ul class="mailbox-list" aria-label="Applications">
-				<li>
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "nav.quickLinks") }</div>
+			<ul class="nav-list" aria-label="Applications">
+				<li class="nav-item">
 					<a href="/contacts">
+						<span class="nav-icon" aria-hidden="true">&#128101;</span>
 						<span>{ t(ctx, "nav.contacts") }</span>
 					</a>
 				</li>
-				<li>
+				<li class="nav-item">
 					<a href="/calendar">
+						<span class="nav-icon" aria-hidden="true">&#128197;</span>
 						<span>{ t(ctx, "nav.calendar") }</span>
 					</a>
 				</li>
 				if middleware.AdminFromContext(ctx) {
-					<li>
+					<li class="nav-item">
 						<a href="/admin">
+							<span class="nav-icon" aria-hidden="true">&#9881;</span>
 							<span>{ t(ctx, "nav.admin") }</span>
 						</a>
 					</li>
@@ -112,26 +119,30 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 
 templ Pagination(page, totalPages int, baseURL string) {
 	if totalPages > 1 {
-		<div class="pagination">
+		<nav class="pagination" aria-label="Pagination">
 			if page > 1 {
 				<a
+					class="page-btn"
 					href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page-1)) }
 					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page-1) }
 					hx-target="#message-list"
 					hx-push-url="true"
+					aria-label="Previous page"
 				>
 					{ t(ctx, "common.previous") }
 				</a>
 			}
 			for i := 1; i <= totalPages; i++ {
 				if i == page {
-					<span class="current">{ fmt.Sprint(i) }</span>
+					<span class="page-btn active" aria-current="page">{ fmt.Sprint(i) }</span>
 				} else {
 					<a
+						class="page-btn"
 						href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, i)) }
 						hx-get={ fmt.Sprintf("%s?page=%d", baseURL, i) }
 						hx-target="#message-list"
 						hx-push-url="true"
+						aria-label={ fmt.Sprintf("Page %d", i) }
 					>
 						{ fmt.Sprint(i) }
 					</a>
@@ -139,15 +150,17 @@ templ Pagination(page, totalPages int, baseURL string) {
 			}
 			if page < totalPages {
 				<a
+					class="page-btn"
 					href={ templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page+1)) }
 					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page+1) }
 					hx-target="#message-list"
 					hx-push-url="true"
+					aria-label="Next page"
 				>
 					{ t(ctx, "common.next") }
 				</a>
 			}
-		</div>
+		</nav>
 	}
 }
 
@@ -164,7 +177,7 @@ templ ContextMenu() {
 		x-on:click.away="close()"
 		x-on:keydown.escape.window="close()"
 		x-on:keydown="onKeydown($event)"
-		x-on:ctx-menu.window="open($event.detail.event, $event.detail.uid, $event.detail.mailbox)"
+		x-on:ctx-menu.window="openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox)"
 		x-bind:style="'left:' + x + 'px;top:' + y + 'px'"
 		class="context-menu"
 		role="menu"
@@ -189,8 +202,8 @@ templ ContextMenu() {
 
 templ EmptyState(title, subtitle string) {
 	<div class="empty-state">
-		<div class="icon">&#9993;</div>
-		<h3>{ title }</h3>
-		<p>{ subtitle }</p>
+		<div class="empty-icon">&#9993;</div>
+		<h3 class="empty-title">{ title }</h3>
+		<p class="empty-text">{ subtitle }</p>
 	</div>
 }

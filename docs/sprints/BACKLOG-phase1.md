@@ -226,10 +226,19 @@ Get each page looking beautiful in standalone HTML, then port the final CSS and 
 template structure changes back into the Go codebase. Focus: warmth, depth, visual
 rhythm, not just "correct colour variables."
 
-## Sprint 15b: Polished Admin UI — Static Prototype & Port ← CURRENT
+## Sprint 15b: Polished Admin UI — Static Prototype & Port ✅ DONE
 Same prototype-first approach for the Hawkeye admin panel. Dark sidebar with colourful
 icons, status dashboard with blue status table, agent config forms, user/domain
 management. Port polished CSS back into admin.templ and bongo.css.
+
+## Sprint 16: UI Fixes, Bulk Import & Server Validation — 🔄 CURRENT
+Fix broken layout (overlapping top bar/sidebar, oversized sidebar, broken compose
+page, unreadable form inputs, broken links), fix VCF contact import bug, add
+HTTP-only mode for load balancer deployments, add `bongo-import directory` bulk
+scanner command, ship curated demo dataset in `testdata/demo/`, and create a
+comprehensive server validation script that exercises every subsystem (multi-user
+SMTP, IMAP, POP3, antispam, outbound bounce, contacts, calendar, search, auth).
+12 tasks, 30 exit criteria.
 
 ## Future (Phase 2): Easy Mail Migration — "Bring Your Inbox"
 Non-technical users need a dead-simple way to import their old email. Two modes:

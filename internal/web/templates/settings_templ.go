@@ -43,46 +43,46 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<aside class=\"sidebar\" id=\"sidebar\"><nav><ul class=\"mailbox-list\"><li><a href=\"/mail/INBOX\" hx-get=\"/mail/INBOX\" hx-target=\"#main-content\" hx-push-url=\"true\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<aside class=\"sidebar\" id=\"sidebar\" x-bind:class=\"{'open': sidebarOpen}\"><nav aria-label=\"Settings navigation\"><div class=\"sidebar-group\"><div class=\"sidebar-label\">Navigation</div><ul class=\"nav-list\"><li class=\"nav-item\"><a href=\"/mail/INBOX\" hx-get=\"/mail/INBOX\" hx-target=\"#main-content\" hx-push-url=\"true\"><span class=\"nav-icon\" aria-hidden=\"true\">&#9993;</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.backToMail"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 10, Col: 123}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 12, Col: 198}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</a></li><li><a href=\"/settings/rules\" hx-get=\"/settings/rules\" hx-target=\"#main-content\" hx-push-url=\"true\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</a></li><li class=\"nav-item\"><a href=\"/settings/rules\" hx-get=\"/settings/rules\" hx-target=\"#main-content\" hx-push-url=\"true\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128295;</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.filterRules"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 11, Col: 137}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 13, Col: 214}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</a></li><li><a href=\"/settings/security\" hx-get=\"/settings/security\" hx-target=\"#main-content\" hx-push-url=\"true\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</a></li><li class=\"nav-item\"><a href=\"/settings/security\" hx-get=\"/settings/security\" hx-target=\"#main-content\" hx-push-url=\"true\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128274;</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.security"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 12, Col: 140}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 14, Col: 217}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</a></li></ul></nav></aside><main class=\"main-content\" id=\"main-content\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</a></li></ul></div></nav></aside><main class=\"content\" id=\"main-content\"><div class=\"settings-scroll\"><div class=\"settings-container\" x-data=\"{ activeTab: 0 }\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -92,73 +92,89 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"settings-tabs\" role=\"tablist\" aria-label=\"Settings sections\"><button type=\"button\" class=\"settings-tab\" role=\"tab\" x-bind:class=\"{ 'active': activeTab === 0 }\" x-bind:aria-selected=\"activeTab === 0\" x-on:click=\"activeTab = 0\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
-			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.settings"))
+			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.appearance"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 20, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 28, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</h2><form method=\"post\" action=\"/settings\"><fieldset><legend>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</button> <button type=\"button\" class=\"settings-tab\" role=\"tab\" x-bind:class=\"{ 'active': activeTab === 1 }\" x-bind:aria-selected=\"activeTab === 1\" x-on:click=\"activeTab = 1\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.appearance"))
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.display"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 23, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 31, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</legend> <label for=\"theme\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</button> <button type=\"button\" class=\"settings-tab\" role=\"tab\" x-bind:class=\"{ 'active': activeTab === 2 }\" x-bind:aria-selected=\"activeTab === 2\" x-on:click=\"activeTab = 2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 string
-			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.theme"))
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.composition"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 24, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 34, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</label> <select name=\"theme\" id=\"theme\"><option value=\"auto\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.Theme == bongov1.Theme_THEME_AUTO || prefs.Theme == bongov1.Theme_THEME_UNSPECIFIED {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</button> <button type=\"button\" class=\"settings-tab\" role=\"tab\" x-bind:class=\"{ 'active': activeTab === 3 }\" x-bind:aria-selected=\"activeTab === 3\" x-on:click=\"activeTab = 3\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.themeAuto"))
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.localization"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 26, Col: 161}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 37, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</option> <option value=\"light\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</button></div><form method=\"post\" action=\"/settings\"><!-- Appearance --><div class=\"settings-section\" x-show=\"activeTab === 0\"><h2 class=\"settings-section-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Theme == bongov1.Theme_THEME_LIGHT {
+			var templ_7745c5c3_Var10 string
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.appearance"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 42, Col: 73}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</h2><p class=\"settings-section-desc\">Theme, layout, and density preferences.</p><div class=\"settings-card\"><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var11 string
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.theme"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 47, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</div></div><select name=\"theme\" id=\"theme\" class=\"settings-select\"><option value=\"auto\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Theme == bongov1.Theme_THEME_AUTO || prefs.Theme == bongov1.Theme_THEME_UNSPECIFIED {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -168,20 +184,20 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.themeLight"))
+			var templ_7745c5c3_Var12 string
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.themeAuto"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 27, Col: 114}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 50, Col: 165}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</option> <option value=\"dark\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Theme == bongov1.Theme_THEME_DARK {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</option> <option value=\"light\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Theme == bongov1.Theme_THEME_LIGHT {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -191,56 +207,56 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var11 string
-			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.themeDark"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 28, Col: 111}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</option></select> <label for=\"layout_mode\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var12 string
-			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layout"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 30, Col: 57}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</label> <select name=\"layout_mode\" id=\"layout_mode\"><option value=\"list\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_LIST || prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_UNSPECIFIED {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, ">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 			var templ_7745c5c3_Var13 string
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layoutList"))
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.themeLight"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 32, Col: 184}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 51, Col: 118}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</option> <option value=\"two-pane\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</option> <option value=\"dark\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_TWO_PANE {
+			if prefs.Theme == bongov1.Theme_THEME_DARK {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.themeDark"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 52, Col: 115}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</option></select></div><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var15 string
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layout"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 57, Col: 69}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div><select name=\"layout_mode\" id=\"layout_mode\" class=\"settings-select\"><option value=\"list\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_LIST || prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_UNSPECIFIED {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -250,20 +266,20 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var14 string
-			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layoutTwoPane"))
+			var templ_7745c5c3_Var16 string
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layoutList"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 33, Col: 134}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 60, Col: 188}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</option> <option value=\"three-pane\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_THREE_PANE {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</option> <option value=\"two-pane\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_TWO_PANE {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -273,56 +289,56 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layoutThreePane"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 34, Col: 140}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</option></select> <label for=\"density\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.density"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 36, Col: 54}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</label> <select name=\"density\" id=\"density\"><option value=\"compact\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.Density == bongov1.DisplayDensity_DENSITY_COMPACT {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, ">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 			var templ_7745c5c3_Var17 string
-			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.densityCompact"))
+			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layoutTwoPane"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 38, Col: 135}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 61, Col: 138}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</option> <option value=\"comfortable\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</option> <option value=\"three-pane\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Density == bongov1.DisplayDensity_DENSITY_COMFORTABLE || prefs.Density == bongov1.DisplayDensity_DENSITY_UNSPECIFIED {
+			if prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_THREE_PANE {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, ">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var18 string
+			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.layoutThreePane"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 62, Col: 144}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</option></select></div><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var19 string
+			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.density"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 67, Col: 70}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</div></div><select name=\"density\" id=\"density\" class=\"settings-select\"><option value=\"compact\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Density == bongov1.DisplayDensity_DENSITY_COMPACT {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -332,20 +348,20 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.densityComfortable"))
+			var templ_7745c5c3_Var20 string
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.densityCompact"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 39, Col: 210}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 70, Col: 139}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</option> <option value=\"spacious\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Density == bongov1.DisplayDensity_DENSITY_SPACIOUS {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</option> <option value=\"comfortable\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Density == bongov1.DisplayDensity_DENSITY_COMFORTABLE || prefs.Density == bongov1.DisplayDensity_DENSITY_UNSPECIFIED {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -355,158 +371,158 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.densitySpacious"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 40, Col: 138}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</option></select></fieldset><fieldset><legend>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.display"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 44, Col: 41}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</legend> <label for=\"messages_per_page\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 			var templ_7745c5c3_Var21 string
-			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.messagesPerPage"))
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.densityComfortable"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 45, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 71, Col: 214}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</label> <select name=\"messages_per_page\" id=\"messages_per_page\"><option value=\"10\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</option> <option value=\"spacious\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.MessagesPerPage == 10 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " selected")
+			if prefs.Density == bongov1.DisplayDensity_DENSITY_SPACIOUS {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, ">10</option> <option value=\"25\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.MessagesPerPage == 25 || prefs.MessagesPerPage == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, ">25</option> <option value=\"50\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.MessagesPerPage == 50 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, ">50</option> <option value=\"100\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.MessagesPerPage == 100 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, ">100</option></select> <label for=\"infinite_scroll\"><input type=\"checkbox\" name=\"infinite_scroll\" id=\"infinite_scroll\" value=\"1\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.InfiniteScroll {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, " checked")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
-			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.infiniteScroll"))
+			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.densitySpacious"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 54, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 72, Col: 142}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</label></fieldset><fieldset><legend>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</option></select></div></div></div><!-- Display --><div class=\"settings-section\" x-show=\"activeTab === 1\"><h2 class=\"settings-section-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var23 string
-			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.composition"))
+			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.display"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 58, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 79, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</legend> <label for=\"default_reply\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</h2><p class=\"settings-section-desc\">How messages are displayed.</p><div class=\"settings-card\"><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var24 string
-			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.defaultReply"))
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.messagesPerPage"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 59, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 84, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</label> <select name=\"default_reply\" id=\"default_reply\"><option value=\"sender\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div></div><select name=\"messages_per_page\" id=\"messages_per_page\" class=\"settings-select\"><option value=\"10\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_SENDER || prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_UNSPECIFIED {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, " selected")
+			if prefs.MessagesPerPage == 10 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, ">10</option> <option value=\"25\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.MessagesPerPage == 25 || prefs.MessagesPerPage == 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, ">25</option> <option value=\"50\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.MessagesPerPage == 50 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, ">50</option> <option value=\"100\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.MessagesPerPage == 100 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, ">100</option></select></div><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var25 string
-			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.replySender"))
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.infiniteScroll"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 61, Col: 213}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 95, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</option> <option value=\"all\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</div><div class=\"settings-row-desc\">Load more messages as you scroll down.</div></div><label class=\"toggle\"><input type=\"checkbox\" name=\"infinite_scroll\" value=\"1\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL {
+			if prefs.InfiniteScroll {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, " checked")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "> <span class=\"toggle-slider\"></span></label></div></div></div><!-- Composition --><div class=\"settings-section\" x-show=\"activeTab === 2\"><h2 class=\"settings-section-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var26 string
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.composition"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 107, Col: 74}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</h2><p class=\"settings-section-desc\">Compose and reply preferences.</p><div class=\"settings-card\"><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var27 string
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.defaultReply"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 112, Col: 75}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</div></div><select name=\"default_reply\" id=\"default_reply\" class=\"settings-select\"><option value=\"sender\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_SENDER || prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_UNSPECIFIED {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -516,95 +532,95 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var26 string
-			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.replyAll"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 62, Col: 131}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</option></select> <label for=\"signature\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.signature"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 64, Col: 58}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</label> <textarea name=\"signature\" id=\"signature\" rows=\"4\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
 			var templ_7745c5c3_Var28 string
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(prefs.Signature)
+			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.replySender"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 65, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 115, Col: 217}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</textarea></fieldset><fieldset><legend>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</option> <option value=\"all\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
-			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.localization"))
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.replyAll"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 68, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 116, Col: 135}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</legend> <label for=\"locale\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</option></select></div><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
-			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.language"))
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.signature"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 69, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 121, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</label> <select name=\"locale\" id=\"locale\"><option value=\"en\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if prefs.Locale == "en" || prefs.Locale == "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, " selected")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</div></div><textarea name=\"signature\" id=\"signature\" rows=\"4\" class=\"settings-input\" style=\"width:100%\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langEn"))
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(prefs.Signature)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 71, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 123, Col: 119}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</option> <option value=\"fr\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</textarea></div></div></div><!-- Localization --><div class=\"settings-section\" x-show=\"activeTab === 3\"><h2 class=\"settings-section-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Locale == "fr" {
+			var templ_7745c5c3_Var32 string
+			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.localization"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 129, Col: 75}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</h2><p class=\"settings-section-desc\">Language and timezone.</p><div class=\"settings-card\"><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var33 string
+			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.language"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 134, Col: 71}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</div></div><select name=\"locale\" id=\"locale\" class=\"settings-select\"><option value=\"en\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Locale == "en" || prefs.Locale == "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -614,20 +630,20 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var32 string
-			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langFr"))
+			var templ_7745c5c3_Var34 string
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langEn"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 72, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 137, Col: 113}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</option> <option value=\"de\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Locale == "de" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</option> <option value=\"fr\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Locale == "fr" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -637,20 +653,20 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var33 string
-			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langDe"))
+			var templ_7745c5c3_Var35 string
+			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langFr"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 73, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 138, Col: 91}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</option> <option value=\"es\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if prefs.Locale == "es" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</option> <option value=\"de\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if prefs.Locale == "de" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -660,29 +676,52 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var34 string
-			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langEs"))
+			var templ_7745c5c3_Var36 string
+			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langDe"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 74, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 139, Col: 91}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</option></select> <label for=\"timezone\">")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var35 string
-			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.timezone"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 76, Col: 56}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</option> <option value=\"es\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "</label> <select name=\"timezone\" id=\"timezone\">")
+			if prefs.Locale == "es" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, ">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var37 string
+			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.langEs"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 140, Col: 91}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</option></select></div><div class=\"settings-row\"><div class=\"settings-row-label\"><div class=\"settings-row-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var38 string
+			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.timezone"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 145, Col: 71}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</div></div><select name=\"timezone\" id=\"timezone\" class=\"settings-select\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -690,33 +729,33 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</select></fieldset><div><button type=\"submit\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "</select></div></div></div><div class=\"settings-save\"><button type=\"submit\" class=\"btn-save\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var36 string
-			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.save"))
+			var templ_7745c5c3_Var39 string
+			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.save"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 82, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 154, Col: 71}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</button> <a href=\"/mail/INBOX\" role=\"button\" class=\"outline secondary\">")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var37 string
-			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.cancel"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 83, Col: 94}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</button> <a href=\"/mail/INBOX\" class=\"btn-cancel\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</a></div></form></main>")
+			var templ_7745c5c3_Var40 string
+			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.cancel"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 155, Col: 75}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "</a></div></form></div></div></main>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -746,49 +785,49 @@ func timezoneOptions(selected string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var38 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var38 == nil {
-			templ_7745c5c3_Var38 = templ.NopComponent
+		templ_7745c5c3_Var41 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var41 == nil {
+			templ_7745c5c3_Var41 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, tz := range commonTimezones() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var39 string
-			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(tz)
+			var templ_7745c5c3_Var42 string
+			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(tz)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 92, Col: 20}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 166, Col: 20}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if tz == selected {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, ">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, ">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var40 string
-			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(tz)
+			var templ_7745c5c3_Var43 string
+			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(tz)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 92, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings.templ`, Line: 166, Col: 56}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</option>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</option>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

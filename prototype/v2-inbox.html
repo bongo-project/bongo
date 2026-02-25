@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Inbox (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 PROTOTYPE — FULLY SELF-CONTAINED
+       No external CSS dependencies
+       ============================================ */
+
+    /* Reset */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Brand */
+      --bongo-orange: #ffac35;
+      --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf;
+      --bongo-blue-dark: #3d6a9e;
+      --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+
+      /* Surfaces */
+      --bg: #ffffff;
+      --bg-subtle: #f7f8fa;
+      --bg-muted: #f0f2f5;
+      --bg-hover: #edf0f4;
+
+      /* Sidebar */
+      --sidebar-bg: #2c4a72;
+      --sidebar-hover: rgba(255,255,255,0.08);
+      --sidebar-active: rgba(255,255,255,0.15);
+      --sidebar-text: #b8cadf;
+      --sidebar-bright: #ffffff;
+      --sidebar-width: 240px;
+
+      /* Text */
+      --text: #1a1a2e;
+      --text-secondary: #5f6368;
+      --text-muted: #9aa0a8;
+      --text-inverse: #ffffff;
+
+      /* Borders */
+      --border: #e4e7ec;
+      --border-strong: #d0d3d8;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+
+      /* Sizing */
+      --topbar-h: 52px;
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    /* === Dark Theme === */
+    [data-theme="dark"] {
+      --bongo-orange: #e09530;
+      --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc;
+      --bongo-blue-dark: #4a6e96;
+      --bongo-blue-light: #1e3350;
+
+      --bg: #1a1a2e;
+      --bg-subtle: #20203a;
+      --bg-muted: #282842;
+      --bg-hover: #2e2e48;
+
+      --sidebar-bg: #1a2744;
+      --sidebar-text: #8aa4c8;
+      --sidebar-bright: #d0ddef;
+
+      --text: #e0e0e8;
+      --text-secondary: #a0a4ac;
+      --text-muted: #6b7080;
+
+      --border: #2e3040;
+      --border-strong: #3e4050;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.3);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+
+    /* Skip to content (accessibility) */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      background: var(--bongo-blue);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      z-index: 200;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .skip-link:focus {
+      top: 8px;
+    }
+
+    /* Focus indicators (accessibility) */
+    *:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+    /* Remove double-outline on search box */
+    .search-box input:focus-visible { outline: none; }
+
+    /* ============================================
+       TOP BAR
+       ============================================ */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hamburger {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px; height: 36px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 1.3rem;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: background 0.12s;
+    }
+    .hamburger:hover { background: var(--bg-muted); }
+
+    .brand {
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--bongo-blue-dark);
+      letter-spacing: -0.5px;
+    }
+    .brand span { color: var(--bongo-orange); }
+
+    .topbar-center {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      padding: 0 20px;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--bg-muted);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      width: 100%;
+      max-width: 480px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-box:focus-within {
+      border-color: var(--bongo-blue);
+      box-shadow: 0 0 0 3px rgba(81,127,175,0.12);
+    }
+    .search-box input {
+      border: none;
+      background: none;
+      outline: none;
+      font-size: 0.9rem;
+      color: var(--text);
+      width: 100%;
+      margin-left: 6px;
+    }
+    .search-box input::placeholder { color: var(--text-muted); }
+    .search-icon { color: var(--text-muted); font-size: 0.9rem; flex-shrink: 0; }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .topbar-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1.05rem;
+      transition: background 0.12s;
+    }
+    .topbar-btn:hover { background: var(--bg-muted); }
+
+    .user-email {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      padding: 0 8px;
+    }
+
+    .topbar-link {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      transition: background 0.12s, color 0.12s;
+    }
+    .topbar-link:hover {
+      background: var(--bg-muted);
+      color: var(--bongo-blue-dark);
+    }
+
+    /* ============================================
+       LAYOUT
+       ============================================ */
+    .layout {
+      display: flex;
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0; right: 0; bottom: 0;
+    }
+
+    /* ============================================
+       SIDEBAR
+       ============================================ */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--sidebar-bg);
+      color: var(--sidebar-text);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      transition: transform 0.25s ease;
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 149;
+    }
+
+    .compose-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      margin: 14px 12px 6px;
+      padding: 10px 0;
+      background: var(--bongo-orange);
+      color: #1a1a2e;
+      border: none;
+      border-radius: var(--radius-lg);
+      font-weight: 700;
+      font-size: 0.92rem;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(255,172,53,0.3);
+      transition: all 0.15s;
+    }
+    .compose-btn:hover {
+      background: var(--bongo-orange-hover);
+      color: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(255,172,53,0.4);
+    }
+
+    .sidebar-group { padding: 4px 8px; }
+    .sidebar-group + .sidebar-group {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      margin-top: 4px;
+      padding-top: 8px;
+    }
+
+    .sidebar-label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: rgba(255,255,255,0.35);
+      padding: 8px 12px 4px;
+      font-weight: 600;
+    }
+
+    .nav-list { list-style: none; }
+
+    .nav-item a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 12px;
+      border-radius: var(--radius);
+      font-size: 0.88rem;
+      font-weight: 500;
+      color: var(--sidebar-text);
+      transition: background 0.12s, color 0.12s;
+      border-left: 3px solid transparent;
+      margin: 1px 0;
+    }
+    .nav-item a:hover {
+      background: var(--sidebar-hover);
+      color: var(--sidebar-bright);
+    }
+    .nav-item a.active {
+      background: var(--sidebar-active);
+      color: var(--sidebar-bright);
+      border-left-color: var(--bongo-orange);
+      font-weight: 600;
+    }
+
+    .nav-icon { width: 18px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+
+    .nav-badge {
+      margin-left: auto;
+      font-size: 0.68rem;
+      font-weight: 700;
+      background: var(--bongo-orange);
+      color: #1a1a2e;
+      border-radius: 10px;
+      padding: 1px 7px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    /* Mini calendar */
+    .mini-cal {
+      margin: 8px 12px 16px;
+      padding: 10px;
+      background: rgba(255,255,255,0.05);
+      border-radius: var(--radius-lg);
+    }
+    .mini-cal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .mini-cal-title { font-size: 0.78rem; font-weight: 600; color: var(--sidebar-bright); }
+    .mini-cal-nav {
+      background: none; border: none; color: var(--sidebar-text);
+      cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;
+    }
+    .mini-cal-nav:hover { background: rgba(255,255,255,0.1); }
+    .mini-cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      text-align: center;
+    }
+    .mini-cal-dow { font-size: 0.6rem; color: rgba(255,255,255,0.3); padding: 2px 0; font-weight: 600; }
+    .mini-cal-day { font-size: 0.72rem; padding: 3px 0; border-radius: 4px; color: var(--sidebar-text); cursor: pointer; }
+    .mini-cal-day:hover { background: rgba(255,255,255,0.1); }
+    .mini-cal-day.other { color: rgba(255,255,255,0.2); }
+    .mini-cal-day.today { background: var(--bongo-orange); color: #1a1a2e; font-weight: 700; }
+
+    /* ============================================
+       MAIN CONTENT
+       ============================================ */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: var(--bg);
+    }
+
+    /* Toolbar */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-subtle);
+      min-height: 44px;
+      flex-shrink: 0;
+    }
+
+    .tool-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.12s;
+      white-space: nowrap;
+    }
+    .tool-btn:hover {
+      background: var(--bongo-blue-light);
+      border-color: var(--bongo-blue);
+      color: var(--bongo-blue-dark);
+    }
+
+    .tool-check {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 16px; height: 16px;
+      border: 2px solid var(--border-strong);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.12s;
+      flex-shrink: 0;
+    }
+    .tool-check:checked { background: var(--bongo-blue); border-color: var(--bongo-blue); }
+
+    .tool-separator { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+    .tool-spacer { flex: 1; }
+
+    /* Layout toggles */
+    .layout-toggle {
+      display: flex;
+      background: var(--bg-muted);
+      border-radius: var(--radius);
+      padding: 2px;
+      gap: 2px;
+    }
+    .layout-opt {
+      padding: 4px 10px; border: none; background: transparent;
+      color: var(--text-muted); font-size: 0.85rem; cursor: pointer;
+      border-radius: 4px; transition: all 0.12s;
+    }
+    .layout-opt.active { background: var(--bg); color: var(--bongo-blue); box-shadow: var(--shadow-sm); }
+
+    .page-info { font-size: 0.78rem; color: var(--text-muted); padding: 0 8px; white-space: nowrap; }
+
+    /* ============================================
+       MESSAGE LIST — DESKTOP (flexbox rows)
+       ============================================ */
+    .msg-list { flex: 1; overflow-y: auto; }
+
+    .msg-row {
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      height: 44px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .msg-row:hover { background: var(--bg-hover); }
+
+    .msg-row.unread { background: var(--bg-subtle); }
+    .msg-row.unread .msg-from,
+    .msg-row.unread .msg-subject { color: var(--text); font-weight: 600; }
+    .msg-row.unread .msg-date { font-weight: 600; color: var(--bongo-blue-dark); }
+
+    .msg-check {
+      appearance: none; -webkit-appearance: none;
+      width: 15px; height: 15px;
+      border: 2px solid var(--border-strong);
+      border-radius: 3px; cursor: pointer;
+      flex-shrink: 0; margin-right: 10px;
+      transition: all 0.12s;
+    }
+    .msg-check:checked { background: var(--bongo-blue); border-color: var(--bongo-blue); }
+
+    .msg-star {
+      width: 28px; text-align: center; cursor: pointer;
+      font-size: 1rem; color: var(--text-muted);
+      flex-shrink: 0; transition: color 0.12s; user-select: none;
+      background: none; border: none; padding: 0;
+      font-family: inherit; line-height: 1;
+    }
+    .msg-star:hover { color: #f0ad4e; }
+    .msg-star.flagged { color: #f0ad4e; }
+
+    .msg-from {
+      width: 180px; flex-shrink: 0;
+      font-size: 0.88rem; color: var(--text-secondary);
+      overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; padding-right: 12px;
+    }
+
+    .msg-subject {
+      flex: 1; font-size: 0.88rem; color: var(--text);
+      overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; min-width: 0;
+    }
+
+    .msg-snippet { color: var(--text-muted); font-weight: 400; }
+
+    .msg-thread-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--bg-muted); color: var(--text-secondary);
+      font-size: 0.7rem; font-weight: 600;
+      border-radius: 10px; padding: 1px 6px;
+      margin-left: 6px; flex-shrink: 0;
+    }
+
+    .msg-attach { color: var(--text-muted); font-size: 0.85rem; margin-left: 6px; flex-shrink: 0; }
+
+    .msg-date {
+      width: 80px; text-align: right;
+      font-size: 0.78rem; color: var(--text-muted);
+      flex-shrink: 0; padding-left: 12px;
+    }
+
+    /* Mobile message layout elements — hidden on desktop */
+    .msg-mobile-row2 { display: none; }
+
+    /* Context Menu */
+    .context-menu {
+      position: fixed;
+      z-index: 200;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      min-width: 180px;
+      padding: 4px 0;
+      display: none;
+    }
+    .context-menu.visible { display: block; }
+    .context-menu-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px;
+      font-size: 0.85rem; color: var(--text);
+      cursor: pointer; border: none; background: none;
+      width: 100%; text-align: left; font-family: inherit;
+      transition: background 0.1s;
+    }
+    .context-menu-item:hover { background: var(--bg-hover); }
+    .context-menu-item .ctx-icon { width: 16px; text-align: center; color: var(--text-muted); font-size: 0.9rem; }
+    .context-menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
+    .context-menu-item.danger { color: #d93025; }
+    .context-menu-item.danger:hover { background: #fce8e6; }
+    [data-theme="dark"] .context-menu-item.danger:hover { background: rgba(217,48,37,0.15); }
+
+    /* Pagination */
+    .pagination {
+      display: flex; align-items: center; justify-content: center;
+      gap: 4px; padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-subtle);
+    }
+    .page-btn {
+      padding: 5px 10px; border: 1px solid var(--border);
+      border-radius: var(--radius); background: var(--bg);
+      color: var(--text-secondary); font-size: 0.82rem;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .page-btn:hover { background: var(--bongo-blue-light); border-color: var(--bongo-blue); color: var(--bongo-blue-dark); }
+    .page-btn.active { background: var(--bongo-blue); border-color: var(--bongo-blue); color: white; }
+
+    /* ============================================
+       RESPONSIVE — Tablet (1024px)
+       ============================================ */
+    @media (max-width: 1024px) {
+      .sidebar { width: 200px; }
+      .msg-from { width: 140px; }
+      .user-email { display: none; }
+      .mini-cal { display: none; }
+    }
+
+    /* ============================================
+       RESPONSIVE — Mobile (768px)
+       ============================================ */
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+
+      /* Sidebar becomes overlay */
+      .sidebar {
+        position: fixed;
+        top: 0; left: 0; bottom: 0;
+        width: 280px;
+        z-index: 150;
+        transform: translateX(-100%);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.open { display: block; z-index: 149; }
+
+      /* Topbar simplify */
+      .topbar-center { padding: 0 8px; }
+      .search-box { padding: 5px 10px; }
+      .user-email { display: none; }
+      .topbar-link.hide-mobile { display: none; }
+
+      /* Toolbar simplify */
+      .layout-toggle { display: none; }
+      .page-info { display: none; }
+      .tool-btn.hide-mobile { display: none; }
+
+      /* Message list — two-line mobile layout */
+      .msg-row {
+        flex-wrap: wrap;
+        height: auto;
+        padding: 10px 12px;
+        gap: 0;
+        align-items: flex-start;
+      }
+
+      /* First line: checkbox, star, from, date */
+      .msg-check { margin-right: 8px; margin-top: 3px; }
+      .msg-star { width: 24px; margin-top: 1px; }
+      .msg-from {
+        flex: 1; width: auto;
+        font-size: 0.9rem; font-weight: 600;
+        padding-right: 0;
+      }
+      .msg-date {
+        width: auto; padding-left: 8px;
+        font-size: 0.75rem;
+      }
+
+      /* Second line: subject + snippet */
+      .msg-subject { display: none; }
+      .msg-attach { display: none; }
+      .msg-mobile-row2 {
+        display: block;
+        width: 100%;
+        padding-left: 47px; /* checkbox + star width */
+        margin-top: 2px;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .msg-row.unread .msg-mobile-row2 {
+        color: var(--text);
+        font-weight: 500;
+      }
+      .msg-mobile-snippet {
+        color: var(--text-muted);
+        font-weight: 400;
+      }
+    }
+
+    /* ============================================
+       RESPONSIVE — Small phone (480px)
+       ============================================ */
+    @media (max-width: 480px) {
+      .topbar { padding: 0 8px; }
+      .brand { font-size: 1rem; }
+      .search-box { max-width: 180px; }
+      .toolbar { padding: 4px 8px; gap: 4px; }
+      .tool-btn { padding: 4px 8px; font-size: 0.78rem; }
+      .msg-row { padding: 8px 8px; }
+      .msg-mobile-row2 { padding-left: 40px; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- TOP BAR -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+      <a href="index.html" class="brand" aria-label="BongoMail — Go to home page">Bongo<span>Mail</span></a>
+    </div>
+    <div class="topbar-center">
+      <div class="search-box" role="search">
+        <span class="search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" placeholder="Search mail..." aria-label="Search mail">
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="topbar-btn" title="Toggle dark/light theme" aria-label="Toggle dark/light theme" onclick="toggleTheme()">&#9789;</button>
+      <a href="settings.html" class="topbar-link">Settings</a>
+      <span class="user-email" aria-label="Logged in as admin@localhost">admin@localhost</span>
+      <a href="login.html" class="topbar-link hide-mobile">Logout</a>
+    </div>
+  </header>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+    <!-- Sidebar overlay (mobile) -->
+    <div class="sidebar-overlay" onclick="toggleSidebar()" aria-hidden="true"></div>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Mail navigation">
+      <button class="compose-btn" aria-label="Compose new message">&#9998; Compose</button>
+
+      <nav aria-label="Mailbox navigation">
+        <div class="sidebar-group">
+          <div class="sidebar-label">Mailboxes</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#" class="active"><span class="nav-icon" aria-hidden="true">&#9993;</span> Inbox <span class="nav-badge">12</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9733;</span> Starred</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#10148;</span> Sent</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9998;</span> Drafts <span class="nav-badge">2</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128465;</span> Trash</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9940;</span> Junk</a></li>
+          </ul>
+        </div>
+
+        <div class="sidebar-group">
+          <div class="sidebar-label">Folders</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Work</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Personal</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Receipts</a></li>
+          </ul>
+        </div>
+
+        <div class="sidebar-group">
+          <div class="sidebar-label">Quick Links</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128197;</span> Calendar</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128101;</span> Contacts</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9881;</span> Admin</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <!-- Mini Calendar -->
+      <div class="mini-cal">
+        <div class="mini-cal-header">
+          <button class="mini-cal-nav" aria-label="Previous month">&lsaquo;</button>
+          <span class="mini-cal-title">February 2026</span>
+          <button class="mini-cal-nav" aria-label="Next month">&rsaquo;</button>
+        </div>
+        <div class="mini-cal-grid">
+          <span class="mini-cal-dow">Mo</span><span class="mini-cal-dow">Tu</span><span class="mini-cal-dow">We</span><span class="mini-cal-dow">Th</span><span class="mini-cal-dow">Fr</span><span class="mini-cal-dow">Sa</span><span class="mini-cal-dow">Su</span>
+          <span class="mini-cal-day other">26</span><span class="mini-cal-day other">27</span><span class="mini-cal-day other">28</span><span class="mini-cal-day other">29</span><span class="mini-cal-day other">30</span><span class="mini-cal-day other">31</span><span class="mini-cal-day">1</span>
+          <span class="mini-cal-day">2</span><span class="mini-cal-day">3</span><span class="mini-cal-day">4</span><span class="mini-cal-day">5</span><span class="mini-cal-day">6</span><span class="mini-cal-day">7</span><span class="mini-cal-day">8</span>
+          <span class="mini-cal-day">9</span><span class="mini-cal-day">10</span><span class="mini-cal-day">11</span><span class="mini-cal-day">12</span><span class="mini-cal-day">13</span><span class="mini-cal-day">14</span><span class="mini-cal-day">15</span>
+          <span class="mini-cal-day">16</span><span class="mini-cal-day">17</span><span class="mini-cal-day">18</span><span class="mini-cal-day">19</span><span class="mini-cal-day">20</span><span class="mini-cal-day">21</span><span class="mini-cal-day">22</span>
+          <span class="mini-cal-day today">23</span><span class="mini-cal-day">24</span><span class="mini-cal-day">25</span><span class="mini-cal-day">26</span><span class="mini-cal-day">27</span><span class="mini-cal-day">28</span><span class="mini-cal-day other">1</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content" id="main-content" role="main" aria-label="Inbox messages">
+      <!-- Toolbar -->
+      <div class="toolbar" role="toolbar" aria-label="Message actions">
+        <input type="checkbox" class="tool-check" title="Select all" aria-label="Select all messages">
+        <button class="tool-btn">Archive</button>
+        <button class="tool-btn">Delete</button>
+        <button class="tool-btn hide-mobile">Move to...</button>
+        <button class="tool-btn hide-mobile">Mark as...</button>
+        <div class="tool-separator"></div>
+        <button class="tool-btn">Refresh</button>
+        <div class="tool-spacer"></div>
+        <span class="page-info">1–16 of 248</span>
+        <div class="layout-toggle">
+          <button class="layout-opt active" title="List">&#9776;</button>
+          <button class="layout-opt" title="Split horizontal">&#9778;</button>
+          <button class="layout-opt" title="Split vertical">&#9783;</button>
+        </div>
+      </div>
+
+      <!-- Message List -->
+      <div class="msg-list" role="list" aria-label="Messages">
+        <div class="msg-row unread" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Sarah Chen</span>
+          <span class="msg-subject">Re: Q1 Budget Review <span class="msg-snippet">— I've updated the spreadsheet with the latest numbers from finance...</span> <span class="msg-thread-count">3</span></span>
+          <span class="msg-date">3m ago</span>
+          <div class="msg-mobile-row2">Re: Q1 Budget Review <span class="msg-mobile-snippet">— Updated spreadsheet with latest numbers...</span></div>
+        </div>
+        <div class="msg-row unread" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star flagged" aria-label="Unstar message" aria-pressed="true">&#9733;</button>
+          <span class="msg-from">GitHub</span>
+          <span class="msg-subject">[bongo-go] PR #142: Add CalDAV sync <span class="msg-snippet">— emersion requested changes on your pull request...</span></span>
+          <span class="msg-date">17m ago</span>
+          <div class="msg-mobile-row2">[bongo-go] PR #142: Add CalDAV sync <span class="msg-mobile-snippet">— emersion requested changes...</span></div>
+        </div>
+        <div class="msg-row unread" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Tom Alvarez</span>
+          <span class="msg-subject">Lunch tomorrow? <span class="msg-snippet">— Hey, are you free for lunch tomorrow? Thinking of trying that new Thai place...</span></span>
+          <span class="msg-date">42m ago</span>
+          <div class="msg-mobile-row2">Lunch tomorrow? <span class="msg-mobile-snippet">— Are you free? Thinking of trying that new Thai place...</span></div>
+        </div>
+        <div class="msg-row unread" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Jira</span>
+          <span class="msg-subject">MAIL-2847 assigned to you <span class="msg-snippet">— Priority: High. IMAP IDLE drops after 15 min...</span></span>
+          <span class="msg-attach" aria-label="Has attachment">&#128206;</span>
+          <span class="msg-date">1h ago</span>
+          <div class="msg-mobile-row2">MAIL-2847 assigned to you <span class="msg-mobile-snippet">— Priority: High. IMAP IDLE drops...</span></div>
+        </div>
+
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star flagged" aria-label="Unstar message" aria-pressed="true">&#9733;</button>
+          <span class="msg-from">Maria Gonzalez</span>
+          <span class="msg-subject">Re: Conference talk proposal <span class="msg-snippet">— Looks great! Demo section could be a bit shorter though...</span> <span class="msg-thread-count">7</span></span>
+          <span class="msg-date">2h ago</span>
+          <div class="msg-mobile-row2">Re: Conference talk proposal <span class="msg-mobile-snippet">— Looks great! Demo could be shorter...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">AWS</span>
+          <span class="msg-subject">Your February invoice is ready <span class="msg-snippet">— Billing statement for the period ending Feb 28 is now available...</span></span>
+          <span class="msg-date">3h ago</span>
+          <div class="msg-mobile-row2">Your February invoice is ready <span class="msg-mobile-snippet">— Billing for period ending Feb 28...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">David Kim</span>
+          <span class="msg-subject">Updated design mockups <span class="msg-snippet">— Latest mockups for the settings page redesign...</span></span>
+          <span class="msg-attach" aria-label="Has attachment">&#128206;</span>
+          <span class="msg-date">5h ago</span>
+          <div class="msg-mobile-row2">Updated design mockups <span class="msg-mobile-snippet">— Latest mockups for settings page redesign...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Stripe</span>
+          <span class="msg-subject">Payment received: $49.00 <span class="msg-snippet">— Payment from Acme Corp for invoice #INV-2026-018...</span></span>
+          <span class="msg-date">Yesterday</span>
+          <div class="msg-mobile-row2">Payment received: $49.00 <span class="msg-mobile-snippet">— From Acme Corp for invoice #INV-2026-018...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Lisa Park</span>
+          <span class="msg-subject">Re: Team offsite planning <span class="msg-snippet">— April 15-17 works best. The venue in Boulder looks perfect...</span> <span class="msg-thread-count">5</span></span>
+          <span class="msg-date">Yesterday</span>
+          <div class="msg-mobile-row2">Re: Team offsite planning <span class="msg-mobile-snippet">— April 15-17 works best. Boulder venue looks perfect...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star flagged" aria-label="Unstar message" aria-pressed="true">&#9733;</button>
+          <span class="msg-from">Alex Wright</span>
+          <span class="msg-subject">Bongo v2 architecture doc <span class="msg-snippet">— Updated architecture document covering the Raft consensus changes...</span></span>
+          <span class="msg-attach" aria-label="Has attachment">&#128206;</span>
+          <span class="msg-date">Yesterday</span>
+          <div class="msg-mobile-row2">Bongo v2 architecture doc <span class="msg-mobile-snippet">— Architecture doc covering Raft changes...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Slack</span>
+          <span class="msg-subject">3 new messages in #engineering <span class="msg-snippet">— Reminder about the deployment freeze starting Friday...</span></span>
+          <span class="msg-date">Feb 20</span>
+          <div class="msg-mobile-row2">3 new messages in #engineering <span class="msg-mobile-snippet">— Deployment freeze starting Friday...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Priya Sharma</span>
+          <span class="msg-subject">Code review: auth refactor <span class="msg-snippet">— Comments on the OIDC integration. Overall looks solid but...</span></span>
+          <span class="msg-date">Feb 20</span>
+          <div class="msg-mobile-row2">Code review: auth refactor <span class="msg-mobile-snippet">— Comments on OIDC integration, looks solid but...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">Newsletter</span>
+          <span class="msg-subject">This week in Go: What's new in Go 1.24 <span class="msg-snippet">— Improved generics, faster builds, new stdlib...</span></span>
+          <span class="msg-date">Feb 19</span>
+          <div class="msg-mobile-row2">This week in Go: What's new in Go 1.24 <span class="msg-mobile-snippet">— Improved generics, faster builds...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">James Cooper</span>
+          <span class="msg-subject">Re: Monitoring setup <span class="msg-snippet">— Prometheus pulling metrics correctly. Grafana dashboards look good...</span> <span class="msg-thread-count">4</span></span>
+          <span class="msg-date">Feb 18</span>
+          <div class="msg-mobile-row2">Re: Monitoring setup <span class="msg-mobile-snippet">— Prometheus pulling metrics correctly...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">HR Team</span>
+          <span class="msg-subject">Benefits enrollment deadline <span class="msg-snippet">— Enrollment period closes on March 1st...</span></span>
+          <span class="msg-date">Feb 17</span>
+          <div class="msg-mobile-row2">Benefits enrollment deadline <span class="msg-mobile-snippet">— Enrollment period closes March 1st...</span></div>
+        </div>
+        <div class="msg-row" role="listitem" tabindex="0">
+          <input type="checkbox" class="msg-check" aria-label="Select message">
+          <button class="msg-star" aria-label="Star message">&#9734;</button>
+          <span class="msg-from">DigitalOcean</span>
+          <span class="msg-subject">Droplet CPU alert: bongo-prod-01 <span class="msg-snippet">— CPU usage exceeded 90% for 15 minutes...</span></span>
+          <span class="msg-date">Feb 15</span>
+          <div class="msg-mobile-row2">Droplet CPU alert: bongo-prod-01 <span class="msg-mobile-snippet">— CPU exceeded 90% for 15 minutes...</span></div>
+        </div>
+      </div>
+
+      <!-- Pagination -->
+      <nav class="pagination" aria-label="Pagination">
+        <button class="page-btn active" aria-current="page" aria-label="Page 1">1</button>
+        <button class="page-btn" aria-label="Page 2">2</button>
+        <button class="page-btn" aria-label="Page 3">3</button>
+        <button class="page-btn" aria-label="Page 4">4</button>
+        <button class="page-btn" aria-label="Next page">Next &rsaquo;</button>
+      </nav>
+    </main>
+  </div>
+
+  <!-- Context Menu (right-click on message rows) -->
+  <div class="context-menu" id="context-menu" role="menu" aria-label="Message actions">
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#9993;</span> Open</button>
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#8617;</span> Reply</button>
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#8617;&#8617;</span> Reply All</button>
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#10148;</span> Forward</button>
+    <div class="context-menu-sep"></div>
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#9733;</span> Star</button>
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#9745;</span> Mark as Read</button>
+    <button class="context-menu-item" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#128193;</span> Move to...</button>
+    <div class="context-menu-sep"></div>
+    <button class="context-menu-item danger" role="menuitem"><span class="ctx-icon" aria-hidden="true">&#128465;</span> Delete</button>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.querySelector('.hamburger');
+      const overlay = document.querySelector('.sidebar-overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+      const isOpen = sidebar.classList.contains('open');
+      hamburger.setAttribute('aria-expanded', isOpen);
+      overlay.setAttribute('aria-hidden', !isOpen ? 'true' : 'false');
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.dataset.theme === 'dark';
+      html.dataset.theme = isDark ? 'light' : 'dark';
+      const btn = document.querySelector('.topbar-btn[aria-label*="theme"]');
+      btn.textContent = isDark ? '\u263D' : '\u2600';
+    }
+
+    // Keyboard nav: Enter/Space on message rows opens them
+    document.addEventListener('keydown', function(e) {
+      if (e.target.classList.contains('msg-row') && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        e.target.style.background = 'var(--bg-hover)';
+      }
+    });
+
+    // Context menu — right-click on message rows
+    // NOTE: In production, Alpine.js $dispatch loses MouseEvent coords.
+    // Fix: pass {x: $event.clientX, y: $event.clientY} instead of $event.
+    (function() {
+      var menu = document.getElementById('context-menu');
+      document.querySelectorAll('.msg-row').forEach(function(row) {
+        row.addEventListener('contextmenu', function(e) {
+          e.preventDefault();
+          // Position at cursor using clientX/clientY directly
+          var x = e.clientX;
+          var y = e.clientY;
+          // Keep menu within viewport
+          var menuW = 180, menuH = 300;
+          if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
+          if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 8;
+          menu.style.left = x + 'px';
+          menu.style.top = y + 'px';
+          menu.classList.add('visible');
+          row.style.background = 'var(--bg-hover)';
+        });
+      });
+      // Close on click outside
+      document.addEventListener('click', function() {
+        menu.classList.remove('visible');
+      });
+      document.addEventListener('contextmenu', function(e) {
+        if (!e.target.closest('.msg-row')) {
+          menu.classList.remove('visible');
+        }
+      });
+      // Close on Escape
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') menu.classList.remove('visible');
+      });
+    })();
+  </script>
+</body>
+</html>

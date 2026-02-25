@@ -55,20 +55,20 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</a><nav aria-label=\"Mailboxes\"><div class=\"sidebar-section\"><h4>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</a><nav aria-label=\"Mailboxes\"><div class=\"sidebar-group\"><div class=\"sidebar-label\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.mailboxes"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 20, Col: 32}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 20, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</h4><ul class=\"mailbox-list\"><li><a href=\"/mail/unread\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</div><ul class=\"nav-list\"><li class=\"nav-item\"><a href=\"/mail/unread\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -78,20 +78,20 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " hx-get=\"/mail/unread\" hx-target=\"#main-content\" hx-push-url=\"true\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " hx-get=\"/mail/unread\" hx-target=\"#main-content\" hx-push-url=\"true\"><span class=\"nav-icon\" aria-hidden=\"true\">&#9993;</span> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.unread"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 32, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 33, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span id=\"unread-badge\" class=\"unread-badge\"></span></a></li><li><a href=\"/mail/starred\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span id=\"unread-badge\" class=\"nav-badge\"></span></a></li><li class=\"nav-item\"><a href=\"/mail/starred\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -101,20 +101,20 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " hx-get=\"/mail/starred\" hx-target=\"#main-content\" hx-push-url=\"true\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " hx-get=\"/mail/starred\" hx-target=\"#main-content\" hx-push-url=\"true\"><span class=\"nav-icon\" aria-hidden=\"true\">&#9733;</span> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.starred"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 46, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 48, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</span></a></li><li><a href=\"/mail/all-mail\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</span></a></li><li class=\"nav-item\"><a href=\"/mail/all-mail\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -124,45 +124,45 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " hx-get=\"/mail/all-mail\" hx-target=\"#main-content\" hx-push-url=\"true\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " hx-get=\"/mail/all-mail\" hx-target=\"#main-content\" hx-push-url=\"true\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128229;</span> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.allMail"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 59, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 62, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></a></li></ul></div><div class=\"sidebar-section\"><h4>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></a></li></ul></div><div class=\"sidebar-group\"><div class=\"sidebar-label\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.folders"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 65, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 68, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</h4><ul class=\"mailbox-list\" id=\"mailbox-drop-targets\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div><ul class=\"nav-list\" id=\"mailbox-drop-targets\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, mb := range mailboxes {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<li><a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<li class=\"nav-item\"><a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 templ.SafeURL
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/mail/" + mb.Name))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 70, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 73, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -185,7 +185,7 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs("/mail/" + mb.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 74, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 77, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -198,20 +198,20 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(mb.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 77, Col: 28}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 80, Col: 28}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"><span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128193;</span> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(mb.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 79, Col: 22}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 83, Col: 22}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -222,14 +222,14 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if mb.Unread > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<span class=\"unread-badge\" aria-label=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<span class=\"nav-badge\" aria-label=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d unread messages", mb.Unread))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 81, Col: 92}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 85, Col: 89}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -242,7 +242,7 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 				var templ_7745c5c3_Var13 string
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(mb.Unread))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 81, Col: 118}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 85, Col: 115}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -258,40 +258,40 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</ul></div><div class=\"sidebar-section\"><h4>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</ul></div><div class=\"sidebar-group\"><div class=\"sidebar-label\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.quickLinks"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 89, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 93, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</h4><ul class=\"mailbox-list\" aria-label=\"Applications\"><li><a href=\"/contacts\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div><ul class=\"nav-list\" aria-label=\"Applications\"><li class=\"nav-item\"><a href=\"/contacts\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128101;</span> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.contacts"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 93, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 98, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</span></a></li><li><a href=\"/calendar\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</span></a></li><li class=\"nav-item\"><a href=\"/calendar\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128197;</span> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.calendar"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 98, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 104, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -302,14 +302,14 @@ func Sidebar(mailboxes []MailboxInfo, selected string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if middleware.AdminFromContext(ctx) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<li><a href=\"/admin\"><span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<li class=\"nav-item\"><a href=\"/admin\"><span class=\"nav-icon\" aria-hidden=\"true\">&#9881;</span> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.admin"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 104, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 111, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -350,19 +350,19 @@ func Pagination(page, totalPages int, baseURL string) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if totalPages > 1 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<div class=\"pagination\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<nav class=\"pagination\" aria-label=\"Pagination\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if page > 1 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<a class=\"page-btn\" href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var19 templ.SafeURL
 				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page-1)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 118, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 126, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 				if templ_7745c5c3_Err != nil {
@@ -375,20 +375,20 @@ func Pagination(page, totalPages int, baseURL string) templ.Component {
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s?page=%d", baseURL, page-1))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 119, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 127, Col: 56}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" hx-target=\"#message-list\" hx-push-url=\"true\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" hx-target=\"#message-list\" hx-push-url=\"true\" aria-label=\"Previous page\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.previous"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 123, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 132, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 				if templ_7745c5c3_Err != nil {
@@ -401,14 +401,14 @@ func Pagination(page, totalPages int, baseURL string) templ.Component {
 			}
 			for i := 1; i <= totalPages; i++ {
 				if i == page {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span class=\"current\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span class=\"page-btn active\" aria-current=\"page\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var22 string
 					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(i))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 128, Col: 42}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 137, Col: 70}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 					if templ_7745c5c3_Err != nil {
@@ -419,14 +419,14 @@ func Pagination(page, totalPages int, baseURL string) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<a class=\"page-btn\" href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var23 templ.SafeURL
 					templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, i)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 131, Col: 65}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 141, Col: 65}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 					if templ_7745c5c3_Err != nil {
@@ -439,77 +439,90 @@ func Pagination(page, totalPages int, baseURL string) templ.Component {
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s?page=%d", baseURL, i))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 132, Col: 52}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 142, Col: 52}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" hx-target=\"#message-list\" hx-push-url=\"true\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" hx-target=\"#message-list\" hx-push-url=\"true\" aria-label=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var25 string
-					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(i))
+					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Page %d", i))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 136, Col: 21}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 145, Col: 44}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</a> ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var26 string
+					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprint(i))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 147, Col: 21}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</a> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 			}
 			if page < totalPages {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<a class=\"page-btn\" href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var26 templ.SafeURL
-				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page+1)))
+				var templ_7745c5c3_Var27 templ.SafeURL
+				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("%s?page=%d", baseURL, page+1)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 142, Col: 69}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\" hx-get=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var27 string
-				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s?page=%d", baseURL, page+1))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 143, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 154, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\" hx-target=\"#message-list\" hx-push-url=\"true\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\" hx-get=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var28 string
-				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.next"))
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s?page=%d", baseURL, page+1))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 147, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 155, Col: 56}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" hx-target=\"#message-list\" hx-push-url=\"true\" aria-label=\"Next page\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var29 string
+				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.next"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 160, Col: 28}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</nav>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -534,43 +547,43 @@ func FlashMessage(msg, level string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var29 == nil {
-			templ_7745c5c3_Var29 = templ.NopComponent
+		templ_7745c5c3_Var30 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var30 == nil {
+			templ_7745c5c3_Var30 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var30 = []any{"flash", "flash-" + level}
-		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var30...)
+		var templ_7745c5c3_Var31 = []any{"flash", "flash-" + level}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var31...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var31 string
-		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var30).String())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 1, Col: 0}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" role=\"alert\" aria-live=\"assertive\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var32 string
-		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
+		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var31).String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 156, Col: 7}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 1, Col: 0}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" role=\"alert\" aria-live=\"assertive\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var33 string
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(msg)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 169, Col: 7}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -594,155 +607,155 @@ func ContextMenu() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var33 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var33 == nil {
-			templ_7745c5c3_Var33 = templ.NopComponent
+		templ_7745c5c3_Var34 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var34 == nil {
+			templ_7745c5c3_Var34 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<div x-data=\"contextMenu\" x-show=\"visible\" x-on:click.away=\"close()\" x-on:keydown.escape.window=\"close()\" x-on:keydown=\"onKeydown($event)\" x-on:ctx-menu.window=\"open($event.detail.event, $event.detail.uid, $event.detail.mailbox)\" x-bind:style=\"'left:' + x + 'px;top:' + y + 'px'\" class=\"context-menu\" role=\"menu\" x-cloak=\"\"><a x-on:click=\"action('open')\" role=\"menuitem\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var34 string
-		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.open"))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 173, Col: 70}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</a> <a x-on:click=\"action('reply')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<div x-data=\"contextMenu\" x-show=\"visible\" x-on:click.away=\"close()\" x-on:keydown.escape.window=\"close()\" x-on:keydown=\"onKeydown($event)\" x-on:ctx-menu.window=\"openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox)\" x-bind:style=\"'left:' + x + 'px;top:' + y + 'px'\" class=\"context-menu\" role=\"menu\" x-cloak=\"\"><a x-on:click=\"action('open')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var35 string
-		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.reply"))
+		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.open"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 174, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 186, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</a> <a x-on:click=\"action('reply-all')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</a> <a x-on:click=\"action('reply')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var36 string
-		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.replyAll"))
+		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.reply"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 175, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 187, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</a> <a x-on:click=\"action('forward')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</a> <a x-on:click=\"action('reply-all')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var37 string
-		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.forward"))
+		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.replyAll"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 176, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 188, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</a><hr><a x-on:click=\"action('mark-read')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</a> <a x-on:click=\"action('forward')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var38 string
-		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.markRead"))
+		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.forward"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 178, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 189, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</a> <a x-on:click=\"action('mark-unread')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</a><hr><a x-on:click=\"action('mark-read')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var39 string
-		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.markUnread"))
+		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.markRead"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 179, Col: 83}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 191, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</a> <a x-on:click=\"action('flag')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</a> <a x-on:click=\"action('mark-unread')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var40 string
-		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.flag"))
+		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.markUnread"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 180, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 192, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</a> <a x-on:click=\"action('unflag')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</a> <a x-on:click=\"action('flag')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var41 string
-		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.unflag"))
+		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.flag"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 181, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 193, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</a><hr><a x-on:click=\"action('spam')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</a> <a x-on:click=\"action('unflag')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var42 string
-		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.markAsSpam"))
+		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.unflag"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 183, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 194, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</a> <a x-on:click=\"action('not-spam')\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</a><hr><a x-on:click=\"action('spam')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var43 string
-		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.notSpam"))
+		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.markAsSpam"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 184, Col: 77}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 196, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</a><hr><a x-on:click=\"action('delete')\" class=\"danger\" role=\"menuitem\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</a> <a x-on:click=\"action('not-spam')\" role=\"menuitem\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var44 string
-		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.delete"))
+		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.notSpam"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 186, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 197, Col: 77}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</a></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</a><hr><a x-on:click=\"action('delete')\" class=\"danger\" role=\"menuitem\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var45 string
+		templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "mail.delete"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 199, Col: 89}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</a></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -766,38 +779,38 @@ func EmptyState(title, subtitle string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var45 == nil {
-			templ_7745c5c3_Var45 = templ.NopComponent
+		templ_7745c5c3_Var46 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var46 == nil {
+			templ_7745c5c3_Var46 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<div class=\"empty-state\"><div class=\"icon\">&#9993;</div><h3>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var46 string
-		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(title)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 193, Col: 13}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</h3><p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div class=\"empty-state\"><div class=\"empty-icon\">&#9993;</div><h3 class=\"empty-title\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var47 string
-		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(subtitle)
+		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 194, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 206, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</p></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</h3><p class=\"empty-text\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var48 string
+		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(subtitle)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/components.templ`, Line: 207, Col: 34}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</p></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

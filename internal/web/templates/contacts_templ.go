@@ -10,6 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -56,7 +57,7 @@ func ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email strin
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</aside><main class=\"main-content\" id=\"main-content\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</aside><main class=\"content\" id=\"main-content\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -66,137 +67,137 @@ func ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email strin
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"toolbar\"><button type=\"button\" class=\"outline\" onclick=\"document.getElementById('create-form').toggleAttribute('hidden')\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"toolbar\" role=\"toolbar\" aria-label=\"Contact actions\"><button type=\"button\" class=\"tool-btn primary\" onclick=\"document.getElementById('create-form').toggleAttribute('hidden')\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.newContact"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 20, Col: 148}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 21, Col: 157}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</button> <a href=\"/contacts/export\" role=\"button\" class=\"outline secondary\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</button> <a href=\"/contacts/export\" class=\"tool-btn\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.exportVcard"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 21, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 22, Col: 80}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</a> <span class=\"toolbar-spacer\"></span><form method=\"post\" action=\"/contacts/import\" enctype=\"multipart/form-data\" style=\"display:flex;gap:0.5rem;align-items:center;margin:0\"><input type=\"file\" name=\"vcf\" accept=\".vcf\" style=\"font-size:0.8rem;padding:0.2rem\"> <button type=\"submit\" class=\"outline secondary\" style=\"font-size:0.85rem;padding:0.3rem 0.7rem\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</a><div class=\"tool-spacer\"></div><form class=\"import-form\" method=\"post\" action=\"/contacts/import\" enctype=\"multipart/form-data\" aria-label=\"Import contacts\"><input type=\"file\" name=\"vcf\" accept=\".vcf\" aria-label=\"Select VCF file to import\"> <button type=\"submit\" class=\"tool-btn\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.import"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 25, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 26, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</button></form></div><div id=\"create-form\" hidden><form method=\"post\" action=\"/contacts\" style=\"padding:1rem;border:1px solid var(--pico-muted-border-color);border-radius:4px;margin-bottom:1rem\"><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:0.5rem\"><label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</button></form></div><div id=\"create-form\" hidden><div class=\"settings-card\" style=\"margin:16px 24px\"><form method=\"post\" action=\"/contacts\" style=\"padding:18px\"><div style=\"display:grid;grid-template-columns:1fr 1fr;gap:0.75rem\"><label><span class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.name"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 32, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 34, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, " <input type=\"text\" name=\"display_name\" required></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span> <input type=\"text\" name=\"display_name\" class=\"settings-input\" style=\"width:100%\" required></label> <label><span class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.email"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 36, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 38, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " <input type=\"email\" name=\"email\"></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</span> <input type=\"email\" name=\"email\" class=\"settings-input\" style=\"width:100%\"></label> <label><span class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.phone"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 40, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 42, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, " <input type=\"tel\" name=\"phone\"></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</span> <input type=\"tel\" name=\"phone\" class=\"settings-input\" style=\"width:100%\"></label> <label><span class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.company"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 44, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 46, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " <input type=\"text\" name=\"company\"></label></div><label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span> <input type=\"text\" name=\"company\" class=\"settings-input\" style=\"width:100%\"></label></div><label style=\"margin-top:0.75rem;display:block\"><span class=\"settings-row-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.notes"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 49, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 51, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, " <textarea name=\"notes\" rows=\"2\"></textarea></label><div style=\"display:flex;gap:0.5rem\"><button type=\"submit\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</span> <textarea name=\"notes\" rows=\"2\" class=\"settings-input\" style=\"width:100%\"></textarea></label><div style=\"display:flex;gap:0.5rem;margin-top:0.75rem\"><button type=\"submit\" class=\"btn-send\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.create"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 53, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 55, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</button> <button type=\"button\" class=\"outline secondary\" onclick=\"document.getElementById('create-form').setAttribute('hidden','')\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</button> <button type=\"button\" class=\"btn-secondary\" onclick=\"document.getElementById('create-form').setAttribute('hidden','')\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.cancel"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 54, Col: 156}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 56, Col: 153}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</button></div></form></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</button></div></form></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -206,59 +207,7 @@ func ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email strin
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<table class=\"message-list\"><thead><tr><th>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var13 string
-				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.name"))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 64, Col: 36}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</th><th>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var14 string
-				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.email"))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 65, Col: 37}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</th><th>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var15 string
-				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.phone"))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 66, Col: 37}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</th><th>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var16 string
-				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.company"))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 67, Col: 39}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</th></tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"contacts-panes\" id=\"contacts-panes\"><div class=\"contact-list-pane\"><div class=\"contact-scroll\" role=\"list\" aria-label=\"Contact list\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -268,7 +217,7 @@ func ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email strin
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</tbody></table>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -276,8 +225,12 @@ func ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email strin
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div><div class=\"contact-detail-pane\" id=\"contact-detail\"><div class=\"detail-placeholder\" style=\"display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem\">Select a contact to view details</div></div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</main>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</main>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -307,103 +260,116 @@ func ContactRow(c *bongov1.Contact) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var17 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var17 == nil {
-			templ_7745c5c3_Var17 = templ.NopComponent
+		templ_7745c5c3_Var13 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var13 == nil {
+			templ_7745c5c3_Var13 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<tr id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<a href=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var14 templ.SafeURL
+		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/contacts/" + c.Guid))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 86, Col: 45}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" hx-get=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var15 string
+		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs("/contacts/" + c.Guid + "/detail")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 87, Col: 44}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" hx-target=\"#contact-detail\" hx-swap=\"innerHTML\" class=\"contact-card\" id=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var16 string
+		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs("contact-" + c.Guid)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 91, Col: 26}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" data-guid=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var17 string
+		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(c.Guid)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 92, Col: 20}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" role=\"listitem\" tabindex=\"0\" onclick=\"document.querySelectorAll('.contact-card').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.getElementById('contacts-panes')?.classList.add('showing-detail')\"><div class=\"contact-avatar\" style=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var18 string
-		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs("contact-" + c.Guid)
+		templ_7745c5c3_Var18, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(avatarStyleContact(c.DisplayName, c.Email))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 83, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 97, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" data-guid=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" aria-hidden=\"true\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var19 string
-		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(c.Guid)
+		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(avatarInitialsContact(c.DisplayName, c.Email))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 83, Col: 50}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 98, Col: 50}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"><td><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><div class=\"contact-info\"><div class=\"contact-name\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var20 templ.SafeURL
-		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/contacts/" + c.Guid))
+		var templ_7745c5c3_Var20 string
+		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 85, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 101, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" style=\"text-decoration:none;color:inherit\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div><div class=\"contact-email\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var21 string
-		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(c.Email)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 86, Col: 19}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 102, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</a></td><td>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var22 string
-		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(c.Email)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 89, Col: 15}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</td><td>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var23 string
-		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(c.Phone)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 90, Col: 15}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</td><td>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var24 string
-		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(c.Company)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 91, Col: 17}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</td></tr>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div></div></a>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -427,12 +393,12 @@ func ContactDetailPage(c *bongov1.Contact, email string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var25 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var25 == nil {
-			templ_7745c5c3_Var25 = templ.NopComponent
+		templ_7745c5c3_Var22 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var22 == nil {
+			templ_7745c5c3_Var22 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var26 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var23 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -444,7 +410,7 @@ func ContactDetailPage(c *bongov1.Contact, email string) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<aside class=\"sidebar\" id=\"sidebar\" x-bind:class=\"{'open': sidebarOpen}\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<aside class=\"sidebar\" id=\"sidebar\" x-bind:class=\"{'open': sidebarOpen}\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -452,247 +418,479 @@ func ContactDetailPage(c *bongov1.Contact, email string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</aside><main class=\"main-content\" id=\"main-content\"><div class=\"toolbar\"><a href=\"/contacts\" role=\"button\" class=\"outline secondary\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</aside><main class=\"content\" id=\"main-content\"><div class=\"toolbar\"><a href=\"/contacts\" class=\"tool-btn\">&larr; ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var24 string
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.back"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 114, Col: 71}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</a></div><div class=\"contact-detail-pane\"><div class=\"detail-card\"><div class=\"detail-header\"><div class=\"detail-avatar\" style=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var25 string
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(avatarStyleContact(c.DisplayName, c.Email))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 119, Col: 83}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" aria-hidden=\"true\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var26 string
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(avatarInitialsContact(c.DisplayName, c.Email))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 120, Col: 54}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</div><h2 class=\"detail-name\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.back"))
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 102, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 122, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</a></div><form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</h2>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var28 templ.SafeURL
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/contacts/" + c.Guid))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 104, Col: 68}
+			if c.Company != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<p class=\"detail-title\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var28 string
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(c.Company)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 124, Col: 42}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</div><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" style=\"max-width:600px\"><input type=\"hidden\" name=\"_method\" value=\"PUT\"> <label>")
+			var templ_7745c5c3_Var29 templ.SafeURL
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/contacts/" + c.Guid))
 			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var29 string
-			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.name"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 107, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 127, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, " <input type=\"text\" name=\"display_name\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\"><input type=\"hidden\" name=\"_method\" value=\"PUT\"><div class=\"detail-fields\"><div class=\"detail-field\"><div class=\"detail-field-label\">Name</div><div class=\"detail-field-value\"><input type=\"text\" name=\"display_name\" class=\"settings-input\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 108, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 133, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" required></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" required></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Email</div><div class=\"detail-field-value\"><input type=\"email\" name=\"email\" class=\"settings-input\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.email"))
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(c.Email)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 111, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 139, Col: 80}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, " <input type=\"email\" name=\"email\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\"></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Phone</div><div class=\"detail-field-value\"><input type=\"tel\" name=\"phone\" class=\"settings-input\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var32 string
-			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(c.Email)
+			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(c.Phone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 112, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 145, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\"></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\"></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Company</div><div class=\"detail-field-value\"><input type=\"text\" name=\"company\" class=\"settings-input\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var33 string
-			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.phone"))
+			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(c.Company)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 115, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 151, Col: 83}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, " <input type=\"tel\" name=\"phone\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\"></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Notes</div><div class=\"detail-field-value\"><textarea name=\"notes\" rows=\"3\" class=\"settings-input\" style=\"width:100%\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var34 string
-			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(c.Phone)
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(c.Notes)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 116, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 157, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\"></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</textarea></div></div></div><div class=\"detail-actions\"><button type=\"submit\" class=\"btn-edit\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var35 string
-			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.company"))
+			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.save"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 119, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 162, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, " <input type=\"text\" name=\"company\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</button> <a href=\"/contacts\" class=\"btn-action\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var36 string
-			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(c.Company)
+			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.cancel"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 120, Col: 56}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 163, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\"></label> <label>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</a> <span class=\"detail-spacer\"></span> <button type=\"button\" class=\"btn-danger\" hx-delete=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var37 string
-			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.notes"))
+			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs("/contacts/" + c.Guid)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 123, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 168, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, " <textarea name=\"notes\" rows=\"3\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\" hx-confirm=\"Delete this contact?\" hx-target=\"body\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var38 string
-			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(c.Notes)
+			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.delete"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 124, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 172, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</textarea></label><div class=\"meta\" style=\"margin-bottom:1rem;font-size:0.8rem\"><span>Created: ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</button></div></form><div class=\"detail-section-title\" style=\"font-size:0.75rem\"><span>Created: ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(formatContactDate(c.CreatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 127, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 177, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</span> <span style=\"margin-left:1rem\">Updated: ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</span> <span style=\"margin-left:1rem\">Updated: ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(formatContactDate(c.UpdatedAt))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 128, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 178, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</span></div><div style=\"display:flex;gap:0.5rem\"><button type=\"submit\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var41 string
-			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.save"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 131, Col: 52}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</button> <a href=\"/contacts\" role=\"button\" class=\"outline secondary\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var42 string
-			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.cancel"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 132, Col: 92}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</a> <button type=\"button\" class=\"outline contrast\" hx-delete=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var43 string
-			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs("/contacts/" + c.Guid)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 136, Col: 39}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" hx-confirm=\"Delete this contact?\" hx-target=\"body\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var44 string
-			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.delete"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 140, Col: 33}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</button></div></form></main>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</span></div></div></div></main>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = LayoutWithContent("Contact", email).Render(templ.WithChildren(ctx, templ_7745c5c3_Var26), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = LayoutWithContent("Contact", email).Render(templ.WithChildren(ctx, templ_7745c5c3_Var23), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// ContactDetailPartial renders the detail card for the HTMX reading pane.
+func ContactDetailPartial(c *bongov1.Contact) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var41 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var41 == nil {
+			templ_7745c5c3_Var41 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"detail-card\"><div class=\"detail-header\"><div class=\"detail-avatar\" style=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var42 string
+		templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(avatarStyleContact(c.DisplayName, c.Email))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 190, Col: 80}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" aria-hidden=\"true\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var43 string
+		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(avatarInitialsContact(c.DisplayName, c.Email))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 191, Col: 51}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</div><h2 class=\"detail-name\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var44 string
+		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 193, Col: 42}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</h2>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if c.Company != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<p class=\"detail-title\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var45 string
+			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(c.Company)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 195, Col: 39}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</p>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div><form method=\"post\" action=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var46 templ.SafeURL
+		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/contacts/" + c.Guid))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 198, Col: 67}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\"><input type=\"hidden\" name=\"_method\" value=\"PUT\"><div class=\"detail-fields\"><div class=\"detail-field\"><div class=\"detail-field-label\">Name</div><div class=\"detail-field-value\"><input type=\"text\" name=\"display_name\" class=\"form-input\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var47 string
+		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(c.DisplayName)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 204, Col: 85}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" required></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Email</div><div class=\"detail-field-value\"><input type=\"email\" name=\"email\" class=\"form-input\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var48 string
+		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(c.Email)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 210, Col: 73}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\"></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Phone</div><div class=\"detail-field-value\"><input type=\"tel\" name=\"phone\" class=\"form-input\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var49 string
+		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(c.Phone)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 216, Col: 71}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\"></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Company</div><div class=\"detail-field-value\"><input type=\"text\" name=\"company\" class=\"form-input\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var50 string
+		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(c.Company)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 222, Col: 76}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\"></div></div><div class=\"detail-field\"><div class=\"detail-field-label\">Notes</div><div class=\"detail-field-value\"><textarea name=\"notes\" rows=\"3\" class=\"form-input\" style=\"width:100%\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var51 string
+		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(c.Notes)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 228, Col: 85}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</textarea></div></div></div><div class=\"detail-actions\"><button type=\"submit\" class=\"btn-primary\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var52 string
+		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.save"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 233, Col: 71}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</button> <span class=\"detail-spacer\" style=\"flex:1\"></span> <button type=\"button\" class=\"btn-flush\" style=\"color:var(--bongo-red)\" hx-delete=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var53 string
+		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs("/contacts/" + c.Guid)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 239, Col: 38}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" hx-confirm=\"Delete this contact?\" hx-target=\"#contacts-panes\" hx-swap=\"outerHTML\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var54 string
+		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "contacts.delete"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 244, Col: 32}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</button></div></form><div class=\"detail-section-title\" style=\"font-size:0.75rem; padding:12px 24px; color:var(--text-muted)\"><span>Created: ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var55 string
+		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(formatContactDate(c.CreatedAt))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 249, Col: 50}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</span> <span style=\"margin-left:1rem\">Updated: ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var56 string
+		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(formatContactDate(c.UpdatedAt))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 250, Col: 75}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</span></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -716,38 +914,51 @@ func ContactsSidebar() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var45 == nil {
-			templ_7745c5c3_Var45 = templ.NopComponent
+		templ_7745c5c3_Var57 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var57 == nil {
+			templ_7745c5c3_Var57 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<nav><ul class=\"mailbox-list\"><li><a href=\"/contacts\" class=\"active\"><span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<nav aria-label=\"Contacts navigation\"><div class=\"sidebar-group\"><div class=\"sidebar-label\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var46 string
-		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.allContacts"))
+		var templ_7745c5c3_Var58 string
+		templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.contacts"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 153, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 258, Col: 54}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</span></a></li></ul><hr style=\"margin:0.5rem 0\"><ul class=\"mailbox-list\"><li><a href=\"/mail/INBOX\"><span>")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var47 string
-		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.backToMail"))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 161, Col: 37}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</div><ul class=\"nav-list\"><li class=\"nav-item\"><a href=\"/contacts\" class=\"active\"><span class=\"nav-icon\" aria-hidden=\"true\">&#128101;</span> <span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</span></a></li></ul></nav>")
+		var templ_7745c5c3_Var59 string
+		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.allContacts"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 263, Col: 39}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</span></a></li></ul></div><div class=\"sidebar-group\"><div class=\"sidebar-label\">Navigation</div><ul class=\"nav-list\"><li class=\"nav-item\"><a href=\"/mail/INBOX\"><span class=\"nav-icon\" aria-hidden=\"true\">&#9993;</span> <span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var60 string
+		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "nav.backToMail"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/contacts.templ`, Line: 274, Col: 38}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</span></a></li></ul></div></nav>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -760,6 +971,32 @@ func formatContactDate(unix int64) string {
 		return "-"
 	}
 	return time.Unix(unix, 0).Format("Jan 2, 2006")
+}
+
+func avatarInitialsContact(name, email string) string {
+	if name != "" {
+		parts := strings.Fields(name)
+		if len(parts) >= 2 {
+			return strings.ToUpper(string([]rune(parts[0])[0:1]) + string([]rune(parts[len(parts)-1])[0:1]))
+		}
+		if len(parts) == 1 && len(parts[0]) >= 2 {
+			return strings.ToUpper(parts[0][0:2])
+		}
+	}
+	if len(email) >= 2 {
+		return strings.ToUpper(email[0:2])
+	}
+	return "??"
+}
+
+func avatarStyleContact(name, email string) string {
+	s := name + email
+	var hash uint32
+	for _, c := range s {
+		hash = hash*31 + uint32(c)
+	}
+	colours := []string{"#517faf", "#5aad4a", "#ee8d03", "#8a6fb8", "#e15e50", "#d4a60a", "#729fcf"}
+	return fmt.Sprintf("background:%s", colours[hash%uint32(len(colours))])
 }
 
 // contactsActiveClass is unused but suppresses lint for the fmt import.
