@@ -1,0 +1,191 @@
+From jdub@waugh.id.au  Mon May 22 06:40:39 2006
+Return-Path: <jdub@waugh.id.au>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 698A03B1BA6
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 06:40:39 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 08957-09 for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 06:40:37 -0400 (EDT)
+Received: from node.waugh.id.au (node.waugh.id.au [70.85.31.216])
+	by menubar.gnome.org (Postfix) with ESMTP id 077543B0131
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 06:40:36 -0400 (EDT)
+Received: from home.waugh.id.au (ppp121-112.static.internode.on.net
+	[150.101.121.112])
+	(using TLSv1 with cipher DHE-RSA-AES256-SHA (256/256 bits))
+	(No client certificate requested)
+	by node.waugh.id.au (Postfix) with ESMTP id 5C0413C215
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 20:40:33 +1000 (EST)
+Received: by home.waugh.id.au (Postfix, from userid 1000)
+	id 8FC6F3F5E; Mon, 22 May 2006 12:40:28 +0200 (SAST)
+Date: Mon, 22 May 2006 20:40:28 +1000
+From: Jeff Waugh <jdub@perkypants.org>
+To: desktop-devel-list@gnome.org
+Message-ID: <20060522104028.GI25414@waugh.id.au>
+Mail-Followup-To: desktop-devel-list@gnome.org
+References: <1147956373.28786.7.camel@plantain.jesacco.com>
+	<a7e835d40605180610t5e2fb932g21ed28393cdc6a66@mail.gmail.com>
+	<1148292498.2626.139.camel@otto.amantes>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=iso-8859-1
+Content-Disposition: inline
+Content-Transfer-Encoding: 8bit
+In-Reply-To: <1148292498.2626.139.camel@otto.amantes>
+Reply-By: Thu May 25 20:35:32 EST 2006
+X-Operating-System: Linux 2.6.15-22-686 i686
+X-Message-Flag: Cranky? Try Free Software instead!
+X-Uptime: 20:35:32 up 2 days, 3:19, 6 users, load average: 0.26, 0.13, 0.04
+User-Agent: Mutt/1.5.11
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.443 tagged_above=-999 required=2 tests=[AWL=0.021, 
+	BAYES_00=-2.599, FORGED_RCVD_HELO=0.135]
+X-Spam-Score: -2.443
+X-Spam-Level: 
+Subject: Re: gstreamer-0.10.x tarballs on f.g.o: checksums differ from those
+	on freedesktop.org
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 22 May 2006 10:40:39 -0000
+
+<quote who="Thomas Vander Stichele">
+
+> > The "install-module" script used to add things to ftp.gnome.org takes a
+> > .tar.gz archive, puts it in the right place, and creates a matching
+> > bzip2 archive.
+> 
+> It'd be nice if the install-module script would prefer using an already
+> uploaded bz2 instead of recreating.  Would a patch for that be accepted ?
+
+Every now and then, I've been tempted to allow multiple file uploads - for
+this purpose, but also for maintainers uploading a number of tarballs. I'd
+accept something simpler though, as long as it didn't get in the way of
+doing this.
+
+- Jeff
+
+-- 
+GUADEC 2006: Vilanova i la Geltrú, Spain            http://2006.guadec.org/
+ 
+   "The beanbag is a triumph of modern day eclectic colourism..." - Catie
+                                   Flick
+From federico@ximian.com  Mon May 22 13:21:47 2006
+Return-Path: <federico@ximian.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 695153B106D
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 13:21:47 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 02135-07 for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 13:21:44 -0400 (EDT)
+Received: from peabody.ximian.com (peabody.ximian.com [130.57.169.10])
+	by menubar.gnome.org (Postfix) with ESMTP id EF2D63B1058
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 13:21:43 -0400 (EDT)
+Received: (qmail 3472 invoked from network); 22 May 2006 17:21:42 -0000
+Received: from localhost (HELO 164-99-120-78.boston.ximian.com) (127.0.0.1)
+	by localhost with SMTP; 22 May 2006 17:21:42 -0000
+From: Federico Mena Quintero <federico@ximian.com>
+To: Yang Hong <yanghong@ccoss.com.cn>
+In-Reply-To: <1148277983.21110.27.camel@localhost>
+References: <1148277983.21110.27.camel@localhost>
+Content-Type: text/plain
+Date: Mon, 22 May 2006 12:17:52 -0500
+Message-Id: <1148318272.3494.31.camel@champignon.xalalinux.org>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.0 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.574 tagged_above=-999 required=2 tests=[AWL=0.025, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.574
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org
+Subject: Re: I18n in plugin
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 22 May 2006 17:21:47 -0000
+
+On Mon, 2006-05-22 at 14:06 +0800, Yang Hong wrote:
+
+> There are many applications use plugin based architecture to expand it's
+> function, such as Evolution (EPlugin), Anjuta 2.x, Gedit, Gaim,
+> Xchat-gnome, etc. The problem is that if the plugins was released
+> outside of the main app, the user interface of the plugin is NOT I18n
+> able. even I added bindtextdomain(...) and bind_textdomain_codeset (...)
+> in the initialize code of the plugin.
+
+Plugins which are loaded in the same address space as the main process
+need to use bindtextdomain() and dgettext() instead of the plain
+textdomain() and gettext().
+
+bindtextdomain("my_plugin", "/usr/share/locale/myplugin/")
+
+dgettext ("my_plugin", "string to translate")
+
+This is so that the gettext machinery will know that your strings don't
+come from the domain of the main program, but from your plugin's own
+domain.
+
+If you #include <glib/gi18n-lib.h>, you'll get
+
+	#define _(x) dgettext(GETTEXT_PACKAGE, x)
+
+which makes it easy to use dgettext() automatically.  Note that you of
+course have to define GETTEXT_PACKAGE elsewhere, probably in your
+Makefile:
+
+	CFLAGS="-DGETTEXT_PACKAGE=my_plugin"
+
+> Yestoday, I got a remove-duplicates plugin for evolution 2.4 from
+> #342378 [2], after some hack it for evolution 2.6, added LINGUAS suport,
+> added zh_CN translate [3], intalled it and got a untranslate menu item
+> "Remove duplicates". and then I found that there is even not point to
+> add the bindtextdomain for it, there's only one entrance for this
+> plugin's functional. how can it could be i18ned?
+
+I don't know about that bug, but keep the following in mind.
+
+Some plug-in APIs let you pass strings to the main program, and then the
+main program will call gettext() on them.  *This is wrong*, because
+gettext() will assume the domain of the program, while you almost
+certainly want the domain of your own plugin.
+
+In this case, the API needs to be changed to let you pass a domain along
+with the strings, or something like that:
+
+  plugin_handle = plugin_register (plugin_name, domain_for_plugin);
+
+  /* Uses domain_for_plugin (stored in plugin_handle)
+   * when calling dgettext() */
+  plugin_add_menu_item (plugin_handle, "Interesting command");
+
+Good luck,
+
+  Federico
+

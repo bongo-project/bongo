@@ -25,6 +25,7 @@ Supported sources:
   maildir      Import from Maildir directories
   eml          Import from individual .eml files
   thunderbird  Auto-discover and import Thunderbird local folders
+  directory    Recursively scan a directory for mail, contacts, and calendar files
 
 All messages are written to the destination via IMAP APPEND, preserving
 flags, folders, and internal dates.`,
@@ -45,4 +46,5 @@ func init() {
 	rootCmd.AddCommand(maildirCmd)
 	rootCmd.AddCommand(emlCmd)
 	rootCmd.AddCommand(thunderbirdCmd)
+	rootCmd.AddCommand(directoryCmd)
 }

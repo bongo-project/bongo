@@ -1,0 +1,83 @@
+From dneary@free.fr  Wed May 17 03:53:27 2006
+Return-Path: <dneary@free.fr>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 28EFD3B2288; Wed, 17 May 2006 03:53:27 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 13609-10; Wed, 17 May 2006 03:53:26 -0400 (EDT)
+Received: from smtp6-g19.free.fr (smtp6-g19.free.fr [212.27.42.36])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id CB81A3B2280; Wed, 17 May 2006 03:53:25 -0400 (EDT)
+Received: from imp2-g19.free.fr (imp2-g19.free.fr [212.27.42.2])
+	by smtp6-g19.free.fr (Postfix) with ESMTP id DDF13225F2;
+	Wed, 17 May 2006 09:53:24 +0200 (CEST)
+Received: by imp2-g19.free.fr (Postfix, from userid 33)
+	id D1C9E5D3E; Wed, 17 May 2006 09:53:24 +0200 (CEST)
+Received: from LSt-Amand-152-31-34-216.w82-127.abo.wanadoo.fr
+	(LSt-Amand-152-31-34-216.w82-127.abo.wanadoo.fr [82.127.89.216]) 
+	by imp2-g19.free.fr (IMP) with HTTP 
+	for <dneary@127.0.0.1>; Wed, 17 May 2006 09:53:24 +0200
+Message-ID: <1147852404.446ad674b7453@imp2-g19.free.fr>
+Date: Wed, 17 May 2006 09:53:24 +0200
+From: Dave Neary <dneary@free.fr>
+To: Glynn Foster <Glynn.Foster@Sun.COM>
+References: <1147791173.6903.39.camel@localhost.localdomain>
+	<446A5032.2040906@sun.com>
+In-Reply-To: <446A5032.2040906@sun.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 8bit
+User-Agent: Internet Messaging Program (IMP) 3.2.5
+X-Originating-IP: 82.127.89.216
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.57 tagged_above=-999 required=2 tests=[AWL=0.029, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.57
+X-Spam-Level: 
+Cc: foundation-announce@gnome.org, foundation-list@gnome.org,
+	desktop-devel-list@gnome.org, gnome-hackers@gnome.org
+Subject: Re: Call for comments on where to have GUADEC in 2007
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Wed, 17 May 2006 07:53:27 -0000
+
+
+Hi,
+
+Selon Glynn Foster <Glynn.Foster@Sun.COM>:
+> > The board (minus Dave Neary and Vincent Untz who are behind the French
+> > invitation) will make the final decision.
+> >
+> > We have got two very fine invitations to choose among: Birmingham in the
+> > UK or Lyon in France. The bids are attached in this mail.
+>
+> Neither of the bids have any details about financials and budgets - I
+> think the decisions can't possibly made until we know the details of
+> what the costs involved of hosting in each of the bids.
+
+CPE Lyon has agreed to host the event for costs - essentially the security
+guard. We have been working with them on hosting GUADEC for several months, and
+we will have all of the university's facilities available to us for the
+conference, and will likely have someone from the university working part-time
+on the conference organisation. This is the same place where we help the Libre
+Graphics Meeting in March, and the total costs for the site for that event were
+€475 for one security guard for two days.
+
+Cheers,
+Dave.
+--
+Dave Neary
+Lyon, France
+

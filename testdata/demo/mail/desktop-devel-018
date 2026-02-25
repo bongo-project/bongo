@@ -1,0 +1,65 @@
+From murrayc@murrayc.com  Tue May 16 11:33:41 2006
+Return-Path: <murrayc@murrayc.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 531803B020B
+	for <desktop-devel-list@gnome.org>;
+	Tue, 16 May 2006 11:33:41 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 27614-02 for <desktop-devel-list@gnome.org>;
+	Tue, 16 May 2006 11:33:38 -0400 (EDT)
+Received: from webmail2.sd.dreamhost.com (webmail2.sd.dreamhost.com
+	[66.33.201.157])
+	by menubar.gnome.org (Postfix) with ESMTP id 580853B0C4A
+	for <desktop-devel-list@gnome.org>;
+	Tue, 16 May 2006 11:33:38 -0400 (EDT)
+Received: from webmail.murrayc.com (localhost [127.0.0.1])
+	by webmail2.sd.dreamhost.com (Postfix) with ESMTP id 30727DC711
+	for <desktop-devel-list@gnome.org>;
+	Tue, 16 May 2006 08:33:37 -0700 (PDT)
+Received: from 194.138.18.131 (proxying for unknown)
+	(SquirrelMail authenticated user murrayc@murrayc.com)
+	by webmail.murrayc.com with HTTP;
+	Tue, 16 May 2006 17:33:37 +0200 (CEST)
+Message-ID: <19860.194.138.18.131.1147793617.squirrel@webmail.murrayc.com>
+Date: Tue, 16 May 2006 17:33:37 +0200 (CEST)
+From: "Murray Cumming" <murrayc@murrayc.com>
+To: desktop-devel-list@gnome.org
+User-Agent: SquirrelMail/1.4.6
+MIME-Version: 1.0
+Content-Type: text/plain;charset=iso-8859-1
+Content-Transfer-Encoding: 8bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.559 tagged_above=-999 required=2 tests=[AWL=0.040, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.559
+X-Spam-Level: 
+Subject: Google SoC application pruning
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Tue, 16 May 2006 15:33:41 -0000
+
+I don't think all the GNOME mentors know about this URL. It is quite hard
+to find:
+http://code.google.com/soc/mentor_home.html
+
+It has a list of all the Summer Of Code applications. Many of them have no
+comments or ranking points yet.
+
+
+Murray Cumming
+murrayc@murrayc.com
+www.murrayc.com
+www.openismus.com
+

@@ -3,7 +3,10 @@ package handlers
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"mime/quotedprintable"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,6 +19,9 @@ import (
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// qpHexPattern matches sequences like =4A=6F=68=6E (3+ consecutive QP-encoded bytes).
+var qpHexPattern = regexp.MustCompile(`(?:=[0-9A-Fa-f]{2}){3,}`)
 
 const contactsPerPage = 25
 
@@ -90,6 +96,20 @@ func (h *ContactsHandler) ShowContact(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.ContactDetailPage(contact, email)).ServeHTTP(w, r)
 }
 
+// ShowContactDetail renders the contact detail partial for the HTMX reading pane.
+func (h *ContactsHandler) ShowContactDetail(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	guid := chi.URLParam(r, "guid")
+
+	contact, err := h.contacts.Get(userID, guid)
+	if err != nil {
+		http.Error(w, "contact not found", http.StatusNotFound)
+		return
+	}
+
+	templ.Handler(templates.ContactDetailPartial(contact)).ServeHTTP(w, r)
+}
+
 // UpdateContact handles PUT to update a contact.
 func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
@@ -125,8 +145,9 @@ func (h *ContactsHandler) DeleteContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// HTMX request: return empty for swap.
+	// HTMX request: redirect to reload the contacts list.
 	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/contacts?flash=Contact+deleted")
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -226,51 +247,269 @@ func (h *ContactsHandler) ImportContacts(w http.ResponseWriter, r *http.Request)
 	}
 	defer file.Close()
 
-	dec := vcard.NewDecoder(file)
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		http.Redirect(w, r, "/contacts?flash=Failed+to+read+file", http.StatusSeeOther)
+		return
+	}
+
+	// Split into individual vCard blocks for resilient parsing.
+	// Each block that fails to parse is skipped instead of aborting the whole import.
+	blocks := splitVCardBlocks(raw)
+
 	imported := 0
-	errCount := 0
+	withEmail := 0
+	withPhone := 0
+	skipped := 0
 
-	for {
-		card, err := dec.Decode()
+	for _, block := range blocks {
+		contact, err := parseVCardBlock(block)
 		if err != nil {
-			break
-		}
-
-		displayName := card.PreferredValue(vcard.FieldFormattedName)
-		email := card.PreferredValue(vcard.FieldEmail)
-		phone := card.PreferredValue(vcard.FieldTelephone)
-		company := card.PreferredValue(vcard.FieldOrganization)
-		notes := card.PreferredValue(vcard.FieldNote)
-
-		if displayName == "" && email == "" {
-			errCount++
+			skipped++
 			continue
 		}
 
-		// Store raw vCard for round-trip fidelity.
-		var rawBuf bytes.Buffer
-		vcard.NewEncoder(&rawBuf).Encode(card)
-
-		contact := &bongov1.Contact{
-			DisplayName: displayName,
-			Email:       email,
-			Phone:       phone,
-			Company:     company,
-			Notes:       notes,
-			VcardRaw:    rawBuf.Bytes(),
+		if contact.DisplayName == "" && contact.Email == "" {
+			skipped++
+			continue
 		}
 
 		if _, err := h.contacts.Create(userID, contact); err != nil {
-			errCount++
+			skipped++
 			continue
 		}
 		imported++
+		if contact.Email != "" {
+			withEmail++
+		}
+		if contact.Phone != "" {
+			withPhone++
+		}
 	}
 
-	flash := fmt.Sprintf("Imported+%d+contacts", imported)
-	if errCount > 0 {
-		flash = fmt.Sprintf("Imported+%d+contacts,+%d+errors", imported, errCount)
+	flash := fmt.Sprintf("Imported %d contacts (%d with email, %d with phone)", imported, withEmail, withPhone)
+	if skipped > 0 {
+		flash = fmt.Sprintf("%s, %d skipped", flash, skipped)
 	}
 
 	http.Redirect(w, r, "/contacts?flash="+strings.ReplaceAll(flash, " ", "+"), http.StatusSeeOther)
+}
+
+// splitVCardBlocks splits raw VCF data into individual BEGIN:VCARD...END:VCARD blocks.
+func splitVCardBlocks(data []byte) [][]byte {
+	var blocks [][]byte
+	text := string(data)
+
+	for {
+		beginIdx := strings.Index(strings.ToUpper(text), "BEGIN:VCARD")
+		if beginIdx < 0 {
+			break
+		}
+		endIdx := strings.Index(strings.ToUpper(text[beginIdx:]), "END:VCARD")
+		if endIdx < 0 {
+			break
+		}
+		// endIdx is relative to beginIdx; add length of "END:VCARD"
+		blockEnd := beginIdx + endIdx + len("END:VCARD")
+		blocks = append(blocks, []byte(text[beginIdx:blockEnd]))
+		text = text[blockEnd:]
+	}
+	return blocks
+}
+
+// parseVCardBlock parses a single vCard block into a Contact protobuf.
+func parseVCardBlock(block []byte) (*bongov1.Contact, error) {
+	dec := vcard.NewDecoder(bytes.NewReader(block))
+	card, err := dec.Decode()
+	if err != nil {
+		return nil, fmt.Errorf("decode vcard: %w", err)
+	}
+
+	displayName := decodeVCardField(card, vcard.FieldFormattedName)
+	if displayName == "" {
+		displayName = buildNameFromN(card)
+	}
+
+	email := extractFirstEmail(card)
+	phone := extractFirstPhone(card)
+	company := decodeVCardField(card, vcard.FieldOrganization)
+	notes := decodeVCardField(card, vcard.FieldNote)
+
+	// Store raw vCard for round-trip fidelity.
+	var rawBuf bytes.Buffer
+	vcard.NewEncoder(&rawBuf).Encode(card)
+
+	return &bongov1.Contact{
+		DisplayName: displayName,
+		Email:       email,
+		Phone:       phone,
+		Company:     company,
+		Notes:       notes,
+		VcardRaw:    rawBuf.Bytes(),
+	}, nil
+}
+
+// buildNameFromN constructs a display name from the structured N field.
+// N format: Family;Given;Additional;Prefix;Suffix
+func buildNameFromN(card vcard.Card) string {
+	n := decodeVCardField(card, vcard.FieldName)
+	if n == "" {
+		return ""
+	}
+	parts := strings.Split(n, ";")
+	var nameParts []string
+	// Given name first, then family name.
+	if len(parts) > 1 && parts[1] != "" {
+		nameParts = append(nameParts, strings.TrimSpace(parts[1]))
+	}
+	if len(parts) > 0 && parts[0] != "" {
+		nameParts = append(nameParts, strings.TrimSpace(parts[0]))
+	}
+	return strings.Join(nameParts, " ")
+}
+
+// decodeVCardField extracts a field value, decoding QP if needed.
+// Handles exact key match, case-insensitive match, and vCard 2.1
+// bare-parameter keys like "FN;ENCODING=QUOTED-PRINTABLE".
+func decodeVCardField(card vcard.Card, field string) string {
+	// Try standard library lookup first (exact key match).
+	if fields, ok := card[field]; ok && len(fields) > 0 {
+		val := fields[0].Value
+		if val != "" {
+			return decodeQPIfNeeded(val, fields)
+		}
+	}
+	// Scan all keys: case-insensitive exact match or prefix match for
+	// vCard 2.1 keys with bare params (e.g., "FN;ENCODING=QUOTED-PRINTABLE").
+	upperField := strings.ToUpper(field)
+	for k, fields := range card {
+		upper := strings.ToUpper(k)
+		if (upper == upperField || strings.HasPrefix(upper, upperField+";")) && len(fields) > 0 {
+			val := fields[0].Value
+			if val != "" {
+				return decodeQPIfNeeded(val, fields)
+			}
+		}
+	}
+	return ""
+}
+
+// extractFirstEmail extracts the first email from a vCard.
+// Handles standard EMAIL, EMAIL;TYPE=WORK, and vCard 2.1 EMAIL;INTERNET keys.
+func extractFirstEmail(card vcard.Card) string {
+	// Try standard field name first (exact match).
+	if fields, ok := card[vcard.FieldEmail]; ok && len(fields) > 0 {
+		for _, f := range fields {
+			val := decodeQPIfNeeded(f.Value, []*vcard.Field{f})
+			val = strings.TrimSpace(val)
+			if val != "" {
+				return val
+			}
+		}
+	}
+	// Scan all keys: case-insensitive exact match or prefix match for
+	// vCard 2.1 bare-parameter keys like "EMAIL;INTERNET", "EMAIL;INTERNET;WORK".
+	for k, fields := range card {
+		upper := strings.ToUpper(k)
+		if (upper == "EMAIL" || strings.HasPrefix(upper, "EMAIL;")) && len(fields) > 0 {
+			for _, f := range fields {
+				val := decodeQPIfNeeded(f.Value, []*vcard.Field{f})
+				val = strings.TrimSpace(val)
+				if val != "" {
+					return val
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// extractFirstPhone extracts the first phone from a vCard.
+// Handles standard TEL, TEL;TYPE=CELL, and vCard 2.1 TEL;HOME, TEL;CELL keys.
+func extractFirstPhone(card vcard.Card) string {
+	// Try standard field name first (exact match).
+	if fields, ok := card[vcard.FieldTelephone]; ok && len(fields) > 0 {
+		for _, f := range fields {
+			val := decodeQPIfNeeded(f.Value, []*vcard.Field{f})
+			val = strings.TrimSpace(val)
+			if val != "" {
+				return val
+			}
+		}
+	}
+	// Scan all keys: case-insensitive exact match or prefix match for
+	// vCard 2.1 bare-parameter keys like "TEL;HOME", "TEL;CELL;VOICE".
+	for k, fields := range card {
+		upper := strings.ToUpper(k)
+		if (upper == "TEL" || strings.HasPrefix(upper, "TEL;")) && len(fields) > 0 {
+			for _, f := range fields {
+				val := decodeQPIfNeeded(f.Value, []*vcard.Field{f})
+				val = strings.TrimSpace(val)
+				if val != "" {
+					return val
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// decodeQPIfNeeded decodes quoted-printable encoding if the field has
+// ENCODING=QUOTED-PRINTABLE parameter (common in vCard 2.1).
+// vCard 2.1 uses bare params like "N;ENCODING=QUOTED-PRINTABLE:" or even
+// "N;QUOTED-PRINTABLE:" while 3.0/4.0 should not use QP at all.
+func decodeQPIfNeeded(val string, fields []*vcard.Field) string {
+	if val == "" {
+		return val
+	}
+
+	isQP := fieldHasQPEncoding(fields)
+
+	// Heuristic fallback: detect QP by looking for 3+ consecutive =XX hex sequences.
+	// This catches cases where the go-vcard library strips the ENCODING param
+	// but leaves the value un-decoded.
+	if !isQP {
+		isQP = qpHexPattern.MatchString(val)
+	}
+
+	if !isQP {
+		return val
+	}
+
+	decoded, err := io.ReadAll(quotedprintable.NewReader(strings.NewReader(val)))
+	if err != nil {
+		// Partial decode is better than raw hex. Try to return what we got.
+		return val
+	}
+	return string(decoded)
+}
+
+// fieldHasQPEncoding checks whether any of the given fields have a
+// QUOTED-PRINTABLE encoding parameter. Handles both vCard 2.1 style
+// (bare "QUOTED-PRINTABLE" param or "ENCODING=QUOTED-PRINTABLE") and
+// vCard 3.0 style ("ENCODING" key with "QUOTED-PRINTABLE" value).
+func fieldHasQPEncoding(fields []*vcard.Field) bool {
+	for _, f := range fields {
+		if f == nil {
+			continue
+		}
+		// Check ENCODING param explicitly (vCard 3.0+).
+		if enc := f.Params.Get("ENCODING"); strings.EqualFold(enc, "QUOTED-PRINTABLE") {
+			return true
+		}
+		// Scan all param values for bare "QUOTED-PRINTABLE" (vCard 2.1).
+		for paramKey, paramValues := range f.Params {
+			// vCard 2.1 bare params: the library may store "QUOTED-PRINTABLE"
+			// as a param key with empty values, or as a value under "ENCODING".
+			if strings.EqualFold(paramKey, "QUOTED-PRINTABLE") {
+				return true
+			}
+			for _, v := range paramValues {
+				if strings.EqualFold(v, "QUOTED-PRINTABLE") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

@@ -1,0 +1,64 @@
+From davyd@madeley.id.au  Sun May 21 06:28:26 2006
+Return-Path: <davyd@madeley.id.au>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 419033B0BA8; Sun, 21 May 2006 06:28:26 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 01577-07; Sun, 21 May 2006 06:28:24 -0400 (EDT)
+Received: from oracle.bridgewayconsulting.com.au
+	(oracle.bridgewayconsulting.com.au [203.56.14.38])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 445253B0B9C; Sun, 21 May 2006 06:28:23 -0400 (EDT)
+Received: from frobisher.local (cugglephone.madeley.id.au [203.56.15.217])
+	(using TLSv1 with cipher RC4-MD5 (128/128 bits))
+	(No client certificate requested)
+	by oracle.bridgewayconsulting.com.au (Postfix) with ESMTP id
+	6CC712E8004; Sun, 21 May 2006 18:28:12 +0800 (WST)
+From: Davyd Madeley <davyd@madeley.id.au>
+To: Damien Sandras <dsandras@seconix.com>
+In-Reply-To: <1147894199.7225.2.camel@golgoth01>
+References: <1147894199.7225.2.camel@golgoth01>
+Content-Type: text/plain
+Date: Sun, 21 May 2006 18:27:56 +0800
+Message-Id: <1148207277.6654.0.camel@frobisher.madeley.id.au>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.478 tagged_above=-999 required=2
+	tests=[AWL=-0.014, BAYES_00=-2.599, FORGED_RCVD_HELO=0.135]
+X-Spam-Score: -2.478
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org, gnomemeeting-devel-list@gnome.org
+Subject: Re: Ekiga branched
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 21 May 2006 10:28:26 -0000
+
+On Wed, 2006-05-17 at 21:29 +0200, Damien Sandras wrote:
+
+> I have created a new branch named "gnome-2-14" for Ekiga from the
+> current CVS HEAD.
+
+What are your exciting plans for the next Ekiga?
+
+--d
+
+-- 
+Davyd Madeley
+
+http://www.davyd.id.au/
+08B0 341A 0B9B 08BB 2118  C060 2EDD BB4F 5191 6CDA
+

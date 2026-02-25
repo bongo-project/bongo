@@ -1,0 +1,85 @@
+From dneary@free.fr  Thu May 18 05:18:43 2006
+Return-Path: <dneary@free.fr>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id F2A143B0E7D
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 05:18:42 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 30821-10 for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 05:18:39 -0400 (EDT)
+Received: from smtp18.wanadoo.fr (smtp18.wanadoo.fr [193.252.22.126])
+	by menubar.gnome.org (Postfix) with ESMTP id 834443B0C3A
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 05:18:39 -0400 (EDT)
+Received: from me-wanadoo.net (localhost [127.0.0.1])
+	by mwinf1809.wanadoo.fr (SMTP Server) with ESMTP id CE88F70000B7
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 11:18:37 +0200 (CEST)
+Received: from [192.168.79.150] (LSt-Amand-152-32-18-62.w82-127.abo.wanadoo.fr
+	[82.127.57.62])
+	by mwinf1809.wanadoo.fr (SMTP Server) with ESMTP id 24961700009F;
+	Thu, 18 May 2006 11:18:37 +0200 (CEST)
+X-ME-UUID: 20060518091837149.24961700009F@mwinf1809.wanadoo.fr
+Message-ID: <446C3BD7.50203@free.fr>
+Date: Thu, 18 May 2006 11:18:15 +0200
+From: Dave Neary <dneary@free.fr>
+User-Agent: Thunderbird 1.5.0.2 (Windows/20060308)
+MIME-Version: 1.0
+To: Glynn Foster <Glynn.Foster@Sun.COM>
+References: <1147791173.6903.39.camel@localhost.localdomain>
+	<446A5032.2040906@sun.com>
+In-Reply-To: <446A5032.2040906@sun.com>
+X-Enigmail-Version: 0.94.0.0
+Content-Type: text/plain; charset=ISO-8859-15
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.572 tagged_above=-999 required=2 tests=[AWL=0.027, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.572
+X-Spam-Level: 
+Cc: foundation-announce@gnome.org, foundation-list@gnome.org,
+	desktop-devel-list@gnome.org, gnome-hackers@gnome.org
+Subject: Re: Call for comments on where to have GUADEC in 2007
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Thu, 18 May 2006 09:18:43 -0000
+
+
+Hi,
+
+Glynn Foster wrote:
+> Neither of the bids have any details about financials and budgets - I
+> think the decisions can't possibly made until we know the details of
+> what the costs involved of hosting in each of the bids.
+
+Aside from the cost of the venue, which we have never paid (at least not
+since I've been involved), the conference is actually pretty cheap to
+organise. This year, the majority of our budget is being spent getting
+people to the conference - this was also the case in previous years.
+Even in Stuttgart, where the cost of extras like the sandwiches,
+projectors and so on was more than expected, this represented a small
+portion of the budget.
+
+I certainly agree that we need to consider the financial risk of a
+conference, but GUADEC is cheap, and could even be cheaper.
+
+Cheers,
+Dave.
+
+-- 
+David Neary
+bolsh@gimp.org
+
+

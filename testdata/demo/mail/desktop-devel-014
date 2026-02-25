@@ -1,0 +1,80 @@
+From gnome-desktop-devel-list@m.gmane.org  Mon May 15 07:05:32 2006
+Return-Path: <gnome-desktop-devel-list@m.gmane.org>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 660473B1A0B
+	for <desktop-devel-list@gnome.org>;
+	Mon, 15 May 2006 07:05:32 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 20440-03 for <desktop-devel-list@gnome.org>;
+	Mon, 15 May 2006 07:05:29 -0400 (EDT)
+Received: from ciao.gmane.org (main.gmane.org [80.91.229.2])
+	by menubar.gnome.org (Postfix) with ESMTP id 98D893B1970
+	for <desktop-devel-list@gnome.org>;
+	Mon, 15 May 2006 07:05:07 -0400 (EDT)
+Received: from root by ciao.gmane.org with local (Exim 4.43)
+	id 1Ffaso-00073Y-44
+	for desktop-devel-list@gnome.org; Mon, 15 May 2006 13:05:02 +0200
+Received: from 85.19.74.66 ([85.19.74.66])
+	by main.gmane.org with esmtp (Gmexim 0.1 (Debian))
+	id 1AlnuQ-0007hv-00
+	for <desktop-devel-list@gnome.org>; Mon, 15 May 2006 13:05:02 +0200
+Received: from sb by 85.19.74.66 with local (Gmexim 0.1 (Debian))
+	id 1AlnuQ-0007hv-00
+	for <desktop-devel-list@gnome.org>; Mon, 15 May 2006 13:05:02 +0200
+X-Injected-Via-Gmane: http://gmane.org/
+To: desktop-devel-list@gnome.org
+From: Sebastian Bergmann <sb@sebastian-bergmann.de>
+Date: Mon, 15 May 2006 12:59:30 +0200
+Lines: 17
+Message-ID: <e49mui$lv0$1@sea.gmane.org>
+References: <51419b2c0604201319o52e81d5bu3e3ec3f08e69496f@mail.gmail.com>
+Mime-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 7bit
+X-Complaints-To: usenet@sea.gmane.org
+X-Gmane-NNTP-Posting-Host: 85.19.74.66
+User-Agent: Thunderbird 1.5.0.2 (X11/20060506)
+In-Reply-To: <51419b2c0604201319o52e81d5bu3e3ec3f08e69496f@mail.gmail.com>
+X-Enigmail-Version: 0.94.0.0
+Sender: news <news@sea.gmane.org>
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-1.101 tagged_above=-999 required=2
+	tests=[BAYES_00=-2.599, RCVD_NUMERIC_HELO=1.5, SPF_HELO_PASS=-0.001,
+	SPF_PASS=-0.001]
+X-Spam-Score: -1.101
+X-Spam-Level: 
+Subject: Re: Mono bindings a blessed dependency? [Was: Tomboy in 2.16]
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 15 May 2006 11:05:34 -0000
+
+Elijah Newren wrote:
+> Should Mono be a valid dependency and C# a blessed language?
+
+ Talking from a user side here: the most exciting new applications for
+ the GNOME desktop that I saw (and came to love) over the last two years
+ or so are not (at least not solely) implemented in C. To name a few:
+ Banshee, Muine, Tomboy, Beagle, deskbar-applet.
+
+ As a user I do not care about which programming language is implemented
+ in, and I think that we (the users) would benefit from C# being a
+ "blessed" language within GNOME as it apparently improves the
+ development of GNOME application development (or why were the above
+ mentioned applications not implemented in C?).
+
+-- 
+Sebastian Bergmann                      http://www.sebastian-bergmann.de/
+GnuPG Key: 0xB85B5D69 / 27A7 2B14 09E4 98CD 6277 0E5B 6867 C514 B85B 5D69
+

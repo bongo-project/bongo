@@ -1,0 +1,177 @@
+From uws@uwsworld.xs4all.nl  Thu May  4 04:51:53 2006
+Return-Path: <uws@uwsworld.xs4all.nl>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id C5D1F3B13BF
+	for <desktop-devel-list@gnome.org>;
+	Thu,  4 May 2006 04:51:53 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 12749-10 for <desktop-devel-list@gnome.org>;
+	Thu,  4 May 2006 04:51:52 -0400 (EDT)
+Received: from uwsworld.xs4all.nl (uwsworld.xs4all.nl [194.109.237.238])
+	by menubar.gnome.org (Postfix) with ESMTP id A65E73B1450
+	for <desktop-devel-list@gnome.org>;
+	Thu,  4 May 2006 04:51:51 -0400 (EDT)
+Received: from uws by uwsworld.xs4all.nl with local (Exim 3.35 #1)
+	id 1FbZYr-00045a-00
+	for <desktop-devel-list@gnome.org>; Thu, 04 May 2006 10:51:49 +0200
+Date: Thu, 4 May 2006 10:51:49 +0200
+From: Wouter Bolsterlee <uws+gnome@xs4all.nl>
+To: desktop-devel-list@gnome.org
+Message-ID: <20060504085149.GA15127@uwsworld.xs4all.nl>
+Mail-Followup-To: desktop-devel-list@gnome.org
+References: <51419b2c0604271410p3c04422ehe07885658395409b@mail.gmail.com>
+	<1146175895.29114.2.camel@nuitari.cam.novell.com>
+Mime-Version: 1.0
+Content-Type: multipart/signed; micalg=pgp-sha1;
+	protocol="application/pgp-signature"; boundary="VS++wcV0S1rZb1Fb"
+Content-Disposition: inline
+In-Reply-To: <1146175895.29114.2.camel@nuitari.cam.novell.com>
+X-PGP: key 0x250A63EB,
+	fingerprint 83C5 C205 47AD 539D A4F0  60BF 3FB4 134E 250A 63EB
+X-Base: All your base are belong to uws
+X-message-flag: Guvf zrffntr qbrf abg pbagnva rapelcgrq zrffntrf.
+User-Agent: Mutt/1.5.6+20040907i
+Sender: Wouter Bolsterlee <uws@uwsworld.xs4all.nl>
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.59 tagged_above=-999 required=2 tests=[AWL=0.009, 
+	BAYES_00=-2.599]
+X-Spam-Score: -2.59
+X-Spam-Level: 
+Subject: Re: Please review po/LINGUAS patches so that people can build Gnome
+	from CVS
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Thu, 04 May 2006 08:51:54 -0000
+
+
+--VS++wcV0S1rZb1Fb
+Content-Type: text/plain; charset=utf-8
+Content-Disposition: inline
+Content-Transfer-Encoding: quoted-printable
+
+P=C3=A5 Thu, Apr 27, 2006 at 06:11:35PM -0400, Rodney Dawes skrev:
+> On Thu, 2006-04-27 at 15:10 -0600, Elijah Newren wrote:
+> > Retitling slightly to make it clear that it's a bit more urgent...
+> >=20
+> > On 4/27/06, Claudio Saavedra <csaavedr@wh8.tu-dresden.de> wrote:
+> > > Dear GNOME modules maintainers,
+> > >
+> > > With recent version of intltool, it is not possible to build the modu=
+les
+> > > that are still not using po/LINGUAS.
+>=20
+> Please explain the problem? It is most certainly possible to build the
+> modules not using po/LINGUAS. The new intltool does not require
+> po/LINGUAS to be used. It simply prefers it over ALL_LINGUAS. If there
+> are issues with ALL_LINGUAS, please file bugs appropriately. If there
+> are newlines in the ALL_LINGUAS variable causing the "sed command"
+> failure error at configure time, please fix the variables in the affect
+> modules to not include newlines, or to use po/LINGUAS instead.
+
+JFYI, I've commited patches to several modules a few days ago to fix these
+sed problems (at least for me they did).
+
+  mvrgr, Wouter
+
+--=20
+:wq                                                       mail uws@xs4all.nl
+                                                      web http://uwstopia.nl
+
+i wondered what went wrong      -- and you will know us by the trail of dead
+
+--VS++wcV0S1rZb1Fb
+Content-Type: application/pgp-signature; name="signature.asc"
+Content-Description: Digital signature
+Content-Disposition: inline
+
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.2.5 (GNU/Linux)
+
+iD8DBQFEWcCkP7QTTiUKY+sRAtVJAKCVCutDXJOV44uJiivVpAGNsCiWuwCeP/ia
+4a5k1mphIvmRAf3vqJDJgKU=
+=Nonw
+-----END PGP SIGNATURE-----
+
+--VS++wcV0S1rZb1Fb--
+From newren@gmail.com  Thu May  4 10:57:16 2006
+Return-Path: <newren@gmail.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 10BC73B1F0E
+	for <desktop-devel-list@gnome.org>;
+	Thu,  4 May 2006 10:57:16 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 02203-04 for <desktop-devel-list@gnome.org>;
+	Thu,  4 May 2006 10:57:14 -0400 (EDT)
+Received: from nz-out-0102.google.com (nz-out-0102.google.com [64.233.162.200])
+	by menubar.gnome.org (Postfix) with ESMTP id C53A93B1F08
+	for <desktop-devel-list@gnome.org>;
+	Thu,  4 May 2006 10:57:13 -0400 (EDT)
+Received: by nz-out-0102.google.com with SMTP id 40so635657nzk
+	for <desktop-devel-list@gnome.org>;
+	Thu, 04 May 2006 07:57:09 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:to:subject:in-reply-to:mime-version:content-type:content-transfer-encoding:content-disposition:references;
+	b=djenkc7APsgMx4xQRE35rJcxEUJbNALbxJfNRyFtUrnFNlfi2zmPsl/lO5Dy/Iowj9C6RS2PXIM61FxXoLQnAJz8lAr5/uzCgBRbvIhL7NmZz8/uC8C+uYdD05ynJdy/HZ8mBpssCLUQJFoE+w/u3Rp7D+EUiPYXRv7q3HSf27g=
+Received: by 10.36.148.1 with SMTP id v1mr1087180nzd;
+	Thu, 04 May 2006 07:57:09 -0700 (PDT)
+Received: by 10.36.80.11 with HTTP; Thu, 4 May 2006 07:57:09 -0700 (PDT)
+Message-ID: <51419b2c0605040757t4ca31944yd7023dedc4a28adc@mail.gmail.com>
+Date: Thu, 4 May 2006 08:57:09 -0600
+From: "Elijah Newren" <newren@gmail.com>
+To: desktop-devel-list@gnome.org
+In-Reply-To: <20060504085149.GA15127@uwsworld.xs4all.nl>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Content-Transfer-Encoding: quoted-printable
+Content-Disposition: inline
+References: <51419b2c0604271410p3c04422ehe07885658395409b@mail.gmail.com>
+	<1146175895.29114.2.camel@nuitari.cam.novell.com>
+	<20060504085149.GA15127@uwsworld.xs4all.nl>
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.576 tagged_above=-999 required=2 tests=[AWL=0.024, 
+	BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.576
+X-Spam-Level: 
+Subject: Re: Please review po/LINGUAS patches so that people can build Gnome
+	from CVS
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Thu, 04 May 2006 14:57:16 -0000
+
+On 5/4/06, Wouter Bolsterlee <uws+gnome@xs4all.nl> wrote:
+> JFYI, I've commited patches to several modules a few days ago to fix thes=
+e
+> sed problems (at least for me they did).
+
+If you did so by modifying po/LINGUAS, please revert.  Someone pointed
+out to me that we _want_ one language listed per line so that diffs
+are much easier to read.  In that case, the correct fix is to get rid
+of the buggy AC_SUBST in configure.(in|ac) as specified at
+http://live.gnome.org/GnomeGoals/PoLinguas.  (If you just fixed the
+mess in the direct listing of ALL_LINGUAS in configure.(in|ac) created
+by certain translators, then I see no problem...)
+

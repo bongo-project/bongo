@@ -1,0 +1,74 @@
+From hadess@hadess.net  Sun May 14 17:13:53 2006
+Return-Path: <hadess@hadess.net>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 014C43B0D82
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:13:53 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 14740-02 for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:13:51 -0400 (EDT)
+Received: from lucifer.nerdfest.org (lucifer.nerdfest.org [216.243.209.218])
+	by menubar.gnome.org (Postfix) with ESMTP id 301AE3B01A8
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:13:51 -0400 (EDT)
+Received: from [192.168.1.5] (cpc4-glfd1-0-0-cust751.glfd.cable.ntl.com
+	[86.16.126.240]) (authenticated bits=0)
+	by lucifer.nerdfest.org (8.13.1/8.13.1) with ESMTP id k4ELDe74007307
+	(version=TLSv1/SSLv3 cipher=RC4-MD5 bits=128 verify=NO);
+	Sun, 14 May 2006 16:13:44 -0500
+From: Bastien Nocera <hadess@hadess.net>
+To: Joe Marcus Clarke <marcus@FreeBSD.org>
+In-Reply-To: <1147637845.51775.21.camel@shumai.marcuscom.com>
+References: <1147637845.51775.21.camel@shumai.marcuscom.com>
+Content-Type: text/plain
+Date: Sun, 14 May 2006 22:16:24 +0100
+Message-Id: <1147641385.2375.98.camel@wyatt.hadess.net>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.5.90 (2.5.90-2.1) 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: ClamAV 0.85.1/1461/Fri May 12 16:19:37 2006 on
+	lucifer.nerdfest.org
+X-Virus-Status: Clean
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.594 tagged_above=-999 required=2 tests=[AWL=0.006, 
+	BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.594
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org
+Subject: Re: po/LINGUAS fallout
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 14 May 2006 21:13:53 -0000
+
+On Sun, 2006-05-14 at 16:17 -0400, Joe Marcus Clarke wrote:
+> Since the move to po/LINGUAS, many GNOME 2.15 distfiles do not install
+> translation files.  Some don't even include the files in the dist
+> tarball.  The problem seems to stem from use of intltool-0.34.2 instead
+> of 0.34.90.  The three most recent offenders are totem-1.5.0,
+> sound-juicer-2.15.2, and gnome-terminal-2.15.0.  Is there anything that
+> can be done to automatically check these distfiles, and send email to
+> the maintainers?
+
+I'll blame intltool. I have this line in my configure.in:
+IT_PROG_INTLTOOL([0.34.90])
+
+And I have this version of intltool installed:
+intltool-0.34.1-1.1
+
+I guess its auto-fu macros suck.
+
+-- 
+Bastien Nocera <hadess@hadess.net> 
+

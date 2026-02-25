@@ -1,0 +1,81 @@
+From dsandras@seconix.com  Sun May 21 07:12:48 2006
+Return-Path: <dsandras@seconix.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id EC6FB3B19E9; Sun, 21 May 2006 07:12:47 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 03278-08; Sun, 21 May 2006 07:12:44 -0400 (EDT)
+Received: from ns20085.ovh.net (ekiga.net [213.186.62.145])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 91C4A3B0C2C; Sun, 21 May 2006 07:12:44 -0400 (EDT)
+Received: from localhost (localhost.localdomain [127.0.0.1])
+	by ns20085.ovh.net (Postfix) with ESMTP id CBA804977F;
+	Sun, 21 May 2006 12:58:47 +0200 (CEST)
+Received: from ns20085.ovh.net ([127.0.0.1])
+	by localhost (ns20085.ovh.net [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 04838-04; Sun, 21 May 2006 12:58:44 +0200 (CEST)
+Received: from [192.168.123.100] (38-69.244.81.adsl.skynet.be [81.244.69.38])
+	(using SSLv3 with cipher RC4-MD5 (128/128 bits))
+	(No client certificate requested)
+	by ns20085.ovh.net (Postfix) with ESMTP id 86C394977E;
+	Sun, 21 May 2006 12:58:44 +0200 (CEST)
+From: Damien Sandras <dsandras@seconix.com>
+To: Davyd Madeley <davyd@madeley.id.au>
+In-Reply-To: <1148207277.6654.0.camel@frobisher.madeley.id.au>
+References: <1147894199.7225.2.camel@golgoth01>
+	<1148207277.6654.0.camel@frobisher.madeley.id.au>
+Content-Type: text/plain; charset=ISO-8859-15
+Date: Sun, 21 May 2006 13:13:04 +0200
+Message-Id: <1148209984.2488.26.camel@golgoth01>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+Content-Transfer-Encoding: 8bit
+X-Virus-Scanned: by amavisd-new-20030616-p10 (Debian) at gnomemeeting.net
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.461 tagged_above=-999 required=2 tests=[AWL=0.003, 
+	BAYES_00=-2.599, FORGED_RCVD_HELO=0.135]
+X-Spam-Score: -2.461
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org, gnomemeeting-devel-list@gnome.org
+Subject: Re: Ekiga branched
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 21 May 2006 11:12:48 -0000
+
+Le dimanche 21 mai 2006 à 18:27 +0800, Davyd Madeley a écrit :
+> On Wed, 2006-05-17 at 21:29 +0200, Damien Sandras wrote:
+> 
+> > I have created a new branch named "gnome-2-14" for Ekiga from the
+> > current CVS HEAD.
+> 
+> What are your exciting plans for the next Ekiga?
+> 
+
+Most of the plans are on http://wiki.ekiga.org, but I would summarize it
+by those big features :
+- New user interface
+- SIP Presence support
+- Audio and Video codecs as plugins (allowing for example GStreamer
+plugins if somebody contributes some code to help us)
+- Most probably a functional WIN32 port
+
+-- 
+ _      Damien Sandras
+(o-     
+//\     Ekiga Softphone: http://www.ekiga.org/
+v_/_    FOSDEM 2006    : http://www.fosdem.org/
+        SIP Phone      : sip:dsandras@ekiga.net
+                         sip:600000@ekiga.net
+

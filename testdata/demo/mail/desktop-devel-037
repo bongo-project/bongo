@@ -1,0 +1,102 @@
+From scott@netsplit.com  Mon May 22 04:03:14 2006
+Return-Path: <scott@netsplit.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id B9DC93B1A64
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 04:03:14 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 32579-05 for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 04:03:10 -0400 (EDT)
+Received: from paperboy.netsplit.com (paperboy.netsplit.com [82.108.80.242])
+	by menubar.gnome.org (Postfix) with ESMTP id 02A9F3B091A
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 04:03:09 -0400 (EDT)
+Received: (qmail 1874 invoked from network); 22 May 2006 09:04:10 +0100
+Received: from unknown (HELO quest.netsplit.com) (scott@82.108.80.245)
+	by paperboy.netsplit.com with ESMTPA; 22 May 2006 09:04:10 +0100
+From: Scott James Remnant <scott@netsplit.com>
+To: Thomas Vander Stichele <thomas@apestaart.org>
+In-Reply-To: <1147953228.2630.228.camel@otto.amantes>
+References: <1147710220.18634.1.camel@nuitari.cam.novell.com>
+	<1147710763.5931.4.camel@localhost.localdomain>
+	<1147712392.18634.4.camel@nuitari.cam.novell.com>
+	<1147953228.2630.228.camel@otto.amantes>
+Content-Type: multipart/signed; micalg=pgp-sha1;
+	protocol="application/pgp-signature";
+	boundary="=-E7YiD7/mrFe8F7N0h4Ct"
+Date: Mon, 22 May 2006 09:03:21 +0100
+Message-Id: <1148285001.10104.27.camel@quest.netsplit.com>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.561 tagged_above=-999 required=2 tests=[AWL=0.039, 
+	BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.561
+X-Spam-Level: 
+Cc: Murray Cumming <murrayc@murrayc.com>, desktop-devel-list@gnome.org
+Subject: Re: intltool 0.35.0
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 22 May 2006 08:03:14 -0000
+
+
+--=-E7YiD7/mrFe8F7N0h4Ct
+Content-Type: text/plain
+Content-Transfer-Encoding: quoted-printable
+
+On Thu, 2006-05-18 at 13:53 +0200, Thomas Vander Stichele wrote:
+
+> On Mon, 2006-05-15 at 12:59 -0400, Rodney Dawes wrote:
+> > On Mon, 2006-05-15 at 18:32 +0200, Murray Cumming wrote:
+> > > On Mon, 2006-05-15 at 12:23 -0400, Rodney Dawes wrote:
+> > > > I just released intltool 0.35.0 to the world. It includes a number =
+of
+> > > > bug fixes, as well as the famed LINGUAS support.
+> > > >=20
+> > > > If your project uses the po/LINGUAS file, please specify at least 0=
+.35.0
+> > > > as the required version in your configure.{in,ac} file.
+> > >=20
+> > > How?
+> >=20
+> > IT_PROG_INTLTOOL([0.35.0]). The projects should already be requriing
+> > 0.34.90 anyway, and just need to bump this number.
+>=20
+> Projects that have their own autogen.sh and don't hook into
+> gnome-autogen.sh, but copied previous code, that scans for
+> AC_PROG_INTLTOOL to decide whether to run intltoolize, should also fix
+> their autogen to grep for IT_PROG_INTLTOOL.
+>=20
+A patch for autoreconf would probably be welcomed upstream also.
+
+Scott
+--=20
+Have you ever, ever felt like this?
+Had strange things happen?  Are you going round the twist?
+
+--=-E7YiD7/mrFe8F7N0h4Ct
+Content-Type: application/pgp-signature; name=signature.asc
+Content-Description: This is a digitally signed message part
+
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.2.2 (GNU/Linux)
+
+iD8DBQBEcXBJIexP3IStZ2wRAmA4AKCr26cAFlImXassSMzgA52ekIMZ7wCeMlU2
+iGkpKv/a3asIjQn0ylrrKEM=
+=uZyn
+-----END PGP SIGNATURE-----
+
+--=-E7YiD7/mrFe8F7N0h4Ct--
+

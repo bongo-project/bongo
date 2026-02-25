@@ -1,0 +1,85 @@
+From behdad@cs.toronto.edu  Sun May 14 17:20:27 2006
+Return-Path: <behdad@cs.toronto.edu>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id AF6EF3B182C
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:20:24 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 14929-06 for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:20:23 -0400 (EDT)
+Received: from cliff.cs.toronto.edu (cliff.cs.toronto.edu [128.100.3.120])
+	by menubar.gnome.org (Postfix) with ESMTP id 27A2A3B181E
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:18:42 -0400 (EDT)
+Received: from epoch.cs (epoch.cs.toronto.edu [128.100.5.203])
+	by cliff.cs.toronto.edu (Postfix) with ESMTP id EAEF45FD0A;
+	Sun, 14 May 2006 17:18:12 -0400 (EDT)
+Received: by epoch.cs (Postfix, from userid 1680)
+	id 0E4BA7874D; Sun, 14 May 2006 17:18:13 -0400 (EDT)
+Received: from localhost (localhost [127.0.0.1])
+	by epoch.cs (Postfix) with ESMTP
+	id 0428B783C6; Sun, 14 May 2006 17:18:13 -0400 (EDT)
+Date: Sun, 14 May 2006 17:18:12 -0400 (EDT)
+From: Behdad Esfahbod <behdad@cs.toronto.edu>
+X-X-Sender: behdad@epoch.cs
+To: Bastien Nocera <hadess@hadess.net>
+In-Reply-To: <1147641385.2375.98.camel@wyatt.hadess.net>
+Message-ID: <Pine.LNX.4.58.0605141717250.3367@epoch.cs>
+References: <1147637845.51775.21.camel@shumai.marcuscom.com>
+	<1147641385.2375.98.camel@wyatt.hadess.net>
+MIME-Version: 1.0
+Content-Type: TEXT/PLAIN; charset=US-ASCII
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.332 tagged_above=-999 required=2
+	tests=[AWL=-0.068, BAYES_00=-2.599, DNS_FROM_RFC_ABUSE=0.2,
+	FORGED_RCVD_HELO=0.135]
+X-Spam-Score: -2.332
+X-Spam-Level: 
+Cc: Joe Marcus Clarke <marcus@FreeBSD.org>, desktop-devel-list@gnome.org
+Subject: Re: po/LINGUAS fallout
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 14 May 2006 21:20:27 -0000
+
+On Sun, 14 May 2006, Bastien Nocera wrote:
+
+> On Sun, 2006-05-14 at 16:17 -0400, Joe Marcus Clarke wrote:
+> > Since the move to po/LINGUAS, many GNOME 2.15 distfiles do not install
+> > translation files.  Some don't even include the files in the dist
+> > tarball.  The problem seems to stem from use of intltool-0.34.2 instead
+> > of 0.34.90.  The three most recent offenders are totem-1.5.0,
+> > sound-juicer-2.15.2, and gnome-terminal-2.15.0.  Is there anything that
+> > can be done to automatically check these distfiles, and send email to
+> > the maintainers?
+>
+> I'll blame intltool. I have this line in my configure.in:
+> IT_PROG_INTLTOOL([0.34.90])
+>
+> And I have this version of intltool installed:
+> intltool-0.34.1-1.1
+>
+> I guess its auto-fu macros suck.
+
+The intltool.m4 shipped with those versions of intltool only
+checks the two first components of the version number :(.  This
+has already been fixed in HEAD.
+
+
+--behdad
+http://behdad.org/
+
+"Commandment Three says Do Not Kill, Amendment Two says Blood Will Spill"
+	-- Dan Bern, "New American Language"
+

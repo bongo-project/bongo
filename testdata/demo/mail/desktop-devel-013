@@ -1,0 +1,82 @@
+From dobey@lunatari.brk.elysium-project.sourceforge.net  Sun May 14 17:30:07 2006
+Return-Path: <dobey@lunatari.brk.elysium-project.sourceforge.net>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id EAD213B1842
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:30:06 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 15598-01 for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:30:04 -0400 (EDT)
+Received: from lunatari.brk.elysium-project.sourceforge.net
+	(c-24-61-60-233.hsd1.ma.comcast.net [24.61.60.233])
+	by menubar.gnome.org (Postfix) with ESMTP id E7C5A3B02E4
+	for <desktop-devel-list@gnome.org>;
+	Sun, 14 May 2006 17:30:03 -0400 (EDT)
+Received: from dobey by lunatari.brk.elysium-project.sourceforge.net with
+	local (Exim 4.43)
+	id 1FfOML-0006z7-1q; Sun, 14 May 2006 17:42:41 -0400
+From: Rodney Dawes <dobey@novell.com>
+To: Adam Schreiber <sadam@CLEMSON.EDU>
+In-Reply-To: <44679810.9000809@clemson.edu>
+References: <1147637845.51775.21.camel@shumai.marcuscom.com>
+	<44679810.9000809@clemson.edu>
+Content-Type: text/plain
+Content-Transfer-Encoding: 7bit
+Date: Sun, 14 May 2006 17:42:40 -0400
+Message-Id: <1147642960.26805.5.camel@localhost>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.2.3 
+Sender: "Rodney Dawes, , ,
+	" <dobey@lunatari.brk.elysium-project.sourceforge.net>
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-0.439 tagged_above=-999 required=2
+	tests=[AWL=-0.021, BAYES_00=-2.599, FORGED_RCVD_HELO=0.135,
+	RCVD_IN_SORBS_DUL=2.046]
+X-Spam-Score: -0.439
+X-Spam-Level: 
+Cc: Joe Marcus Clarke <marcus@FreeBSD.org>, desktop-devel-list@gnome.org
+Subject: Re: po/LINGUAS fallout
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sun, 14 May 2006 21:30:07 -0000
+
+On Sun, 2006-05-14 at 16:50 -0400, Adam Schreiber wrote:
+> -----BEGIN PGP SIGNED MESSAGE-----
+> Hash: SHA1
+> 
+> Joe Marcus Clarke wrote:
+> > The problem seems to stem from use of intltool-0.34.2 instead
+> > of 0.34.90.
+> 
+> Making a release of 0.34.90 would help no doubt.  Grabbing the latest
+> cvs of course works, but the latest source tarball available is 0.34.2.
+
+It wouldn't help unless people used it. It's like gnome-common. You
+really should be using CVS to dist the tarballs regardless of what's
+released. There was a problem with version checking until very recently
+in CVS. Recently as in it was fixed after an 0.34.90 tarball would have
+gotten rolled, had one been rolled. So given the existence of the
+tarball, it wouldn't really help. It still wouldn't help unless we
+actually force people to use it, which can't be done reliably with the
+version requirement in configure.ac, because the bug was that the micro
+version was not being included in the comparison. Thus, 0.34.2 would
+satisfy the requirement of 0.34.90, as 0.34 was the only part being
+compared. Whoever originally wrote the version check presumably did it
+with the goal of never using the micro version number. :-/ However,
+there will be an 0.35 release soon, and people will be able to require
+it instead.
+
+-- dobey
+

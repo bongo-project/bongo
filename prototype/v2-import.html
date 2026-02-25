@@ -1,0 +1,1193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Import Messages - BongoMail</title>
+  <style>
+    /* ====================================== */
+    /* ROOT VARIABLES & THEME                */
+    /* ====================================== */
+    :root {
+      --bongo-orange: #ffac35;
+      --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf;
+      --bongo-blue-dark: #3d6a9e;
+      --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+      --bg: #ffffff;
+      --bg-subtle: #f7f8fa;
+      --bg-muted: #f0f2f5;
+      --bg-hover: #edf0f4;
+      --sidebar-bg: #2c4a72;
+      --sidebar-hover: rgba(255, 255, 255, 0.08);
+      --sidebar-active: rgba(255, 255, 255, 0.15);
+      --sidebar-text: #b8cadf;
+      --sidebar-bright: #ffffff;
+      --sidebar-width: 240px;
+      --text: #1a1a2e;
+      --text-secondary: #5f6368;
+      --text-muted: #9aa0a8;
+      --text-inverse: #ffffff;
+      --border: #e4e7ec;
+      --border-strong: #d0d3d8;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+      --topbar-h: 52px;
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    [data-theme="dark"] {
+      --bongo-orange: #e09530;
+      --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc;
+      --bongo-blue-dark: #4a6e96;
+      --bongo-blue-light: #1e3350;
+      --bg: #1a1a2e;
+      --bg-subtle: #20203a;
+      --bg-muted: #282842;
+      --bg-hover: #2e2e48;
+      --sidebar-bg: #1a2744;
+      --sidebar-text: #8aa4c8;
+      --sidebar-bright: #d0ddef;
+      --text: #e0e0e8;
+      --text-secondary: #a0a4ac;
+      --text-muted: #6b7080;
+      --border: #2e3040;
+      --border-strong: #3e4050;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    /* ====================================== */
+    /* GLOBAL STYLES                         */
+    /* ====================================== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue',
+        sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      transition: background-color 0.2s ease, color 0.2s ease;
+    }
+
+    /* ====================================== */
+    /* SKIP LINK (A11Y)                      */
+    /* ====================================== */
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background-color: var(--bongo-orange);
+      color: var(--text-inverse);
+      padding: 8px 16px;
+      text-decoration: none;
+      border-radius: var(--radius);
+      z-index: 10000;
+    }
+
+    .skip-link:focus {
+      top: 10px;
+    }
+
+    /* ====================================== */
+    /* TOPBAR                                */
+    /* ====================================== */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--topbar-h);
+      background-color: var(--bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 16px;
+      z-index: 100;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .topbar-logo {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .topbar-logo::before {
+      content: '';
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, var(--bongo-orange) 0%, var(--bongo-blue) 100%);
+      border-radius: var(--radius);
+    }
+
+    .topbar-title {
+      margin-left: auto;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    .theme-toggle {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--radius);
+      color: var(--text-secondary);
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background-color: var(--bg-hover);
+      color: var(--text);
+    }
+
+    .theme-toggle:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    .hamburger {
+      display: none;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      color: var(--text);
+      font-size: 20px;
+    }
+
+    .hamburger:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    /* ====================================== */
+    /* SIDEBAR                               */
+    /* ====================================== */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: var(--topbar-h);
+      width: var(--sidebar-width);
+      height: calc(100vh - var(--topbar-h));
+      background-color: var(--sidebar-bg);
+      color: var(--sidebar-text);
+      padding: 16px 0;
+      overflow-y: auto;
+      z-index: 99;
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar.mobile-hidden {
+      transform: translateX(-100%);
+    }
+
+    .sidebar-section {
+      margin-bottom: 24px;
+    }
+
+    .sidebar-heading {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--sidebar-text);
+      padding: 8px 16px;
+      letter-spacing: 0.5px;
+    }
+
+    .sidebar-nav {
+      list-style: none;
+    }
+
+    .sidebar-nav li {
+      margin: 0;
+    }
+
+    .sidebar-nav a {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      color: var(--sidebar-text);
+      text-decoration: none;
+      font-size: 14px;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    .sidebar-nav a:hover {
+      background-color: var(--sidebar-hover);
+      color: var(--sidebar-bright);
+    }
+
+    .sidebar-nav a.active {
+      background-color: var(--sidebar-active);
+      color: var(--sidebar-bright);
+      border-left: 3px solid var(--bongo-orange);
+      padding-left: 13px;
+    }
+
+    .sidebar-nav a:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: -2px;
+    }
+
+    .sidebar-nav a::before {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      background-size: contain;
+      flex-shrink: 0;
+    }
+
+    .sidebar-nav a[href*="settings"]::before {
+      content: '⚙️';
+      font-size: 16px;
+    }
+
+    .sidebar-nav a[href*="mail"]::before {
+      content: '←';
+      font-size: 16px;
+    }
+
+    /* ====================================== */
+    /* MAIN LAYOUT                           */
+    /* ====================================== */
+    .main-container {
+      margin-left: var(--sidebar-width);
+      margin-top: var(--topbar-h);
+      min-height: calc(100vh - var(--topbar-h));
+      padding: 32px 24px;
+      background-color: var(--bg);
+    }
+
+    .main-content {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    /* ====================================== */
+    /* HEADINGS                              */
+    /* ====================================== */
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    h2 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .page-subtitle {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+
+    /* ====================================== */
+    /* FORM SECTION                          */
+    /* ====================================== */
+    .import-form-section {
+      margin-bottom: 48px;
+      padding-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .import-form-section:last-child {
+      border-bottom: none;
+    }
+
+    .form-group {
+      margin-bottom: 24px;
+    }
+
+    .form-label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    /* ====================================== */
+    /* FILE UPLOAD AREA                      */
+    /* ====================================== */
+    .file-upload-zone {
+      border: 2px dashed var(--border-strong);
+      border-radius: var(--radius-lg);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background-color: var(--bg-subtle);
+    }
+
+    .file-upload-zone:hover {
+      border-color: var(--bongo-blue);
+      background-color: var(--bongo-blue-light);
+    }
+
+    .file-upload-zone.dragover {
+      border-color: var(--bongo-blue);
+      background-color: var(--bongo-blue-light);
+      box-shadow: var(--shadow-md);
+    }
+
+    .file-upload-zone input {
+      display: none;
+    }
+
+    .file-upload-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      display: block;
+    }
+
+    .file-upload-text {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .file-upload-hint {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    /* ====================================== */
+    /* SELECT & INPUT STYLES                 */
+    /* ====================================== */
+    select,
+    input[type="text"],
+    input[type="email"],
+    input[type="number"] {
+      width: 100%;
+      padding: 12px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background-color: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      font-family: inherit;
+    }
+
+    select:hover,
+    input:hover {
+      border-color: var(--border-strong);
+    }
+
+    select:focus,
+    input:focus {
+      outline: none;
+      border-color: var(--bongo-blue);
+      box-shadow: 0 0 0 3px var(--bongo-blue-light);
+    }
+
+    select:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    /* ====================================== */
+    /* CHECKBOX & RADIO                      */
+    /* ====================================== */
+    .form-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .form-check input[type="radio"],
+    .form-check input[type="checkbox"] {
+      width: auto;
+      margin-top: 2px;
+      cursor: pointer;
+    }
+
+    .form-check label {
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    /* ====================================== */
+    /* TOGGLE SECTION (NEW MAILBOX)          */
+    /* ====================================== */
+    .toggle-section {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .toggle-input ~ .toggle-content {
+      display: none;
+    }
+
+    .toggle-input:checked ~ .toggle-content {
+      display: block;
+      animation: slideDown 0.3s ease;
+    }
+
+    @keyframes slideDown {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ====================================== */
+    /* BUTTONS                               */
+    /* ====================================== */
+    button {
+      font-family: inherit;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      padding: 12px 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background-color: var(--bongo-orange);
+      color: var(--text-inverse);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--bongo-orange-hover);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-muted);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
+
+    .btn-secondary:active {
+      transform: scale(0.98);
+    }
+
+    .btn-secondary:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+      flex-wrap: wrap;
+    }
+
+    .button-group .btn-primary {
+      flex: 1;
+      min-width: 150px;
+      justify-content: center;
+    }
+
+    .button-group .btn-secondary {
+      flex: 1;
+      min-width: 150px;
+      justify-content: center;
+    }
+
+    /* ====================================== */
+    /* RESULT VIEW                           */
+    /* ====================================== */
+    .result-card {
+      background-color: var(--bg-subtle);
+      border-radius: var(--radius-lg);
+      padding: 40px 32px;
+      text-align: center;
+    }
+
+    .result-icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+      display: block;
+      animation: bounce 0.6s ease;
+    }
+
+    @keyframes bounce {
+      0%, 100% {
+        transform: translateY(0);
+      }
+      50% {
+        transform: translateY(-10px);
+      }
+    }
+
+    .result-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .result-message {
+      font-size: 16px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+
+    .result-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      background-color: var(--bg);
+      border-radius: var(--radius);
+      margin-bottom: 24px;
+      font-size: 15px;
+      color: var(--text);
+    }
+
+    .result-status-success {
+      color: var(--bongo-green);
+    }
+
+    .result-status-error {
+      color: #e74c3c;
+    }
+
+    /* ====================================== */
+    /* PROGRESS BAR                          */
+    /* ====================================== */
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background-color: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--bongo-orange), var(--bongo-blue));
+      width: 100%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+
+    .progress-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    /* ====================================== */
+    /* SEPARATOR                             */
+    /* ====================================== */
+    .section-separator {
+      height: 1px;
+      background-color: var(--border);
+      margin: 48px 0;
+      opacity: 0.5;
+    }
+
+    /* ====================================== */
+    /* RESPONSIVE DESIGN                     */
+    /* ====================================== */
+    @media (max-width: 1024px) {
+      .main-container {
+        margin-left: var(--sidebar-width);
+        padding: 24px 16px;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .file-upload-zone {
+        padding: 36px 20px;
+      }
+
+      .button-group {
+        flex-direction: column;
+      }
+
+      .button-group .btn-primary,
+      .button-group .btn-secondary {
+        width: 100%;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 100%;
+        height: 100%;
+        top: 0;
+        transform: translateX(-100%);
+        z-index: 98;
+      }
+
+      .sidebar.mobile-hidden {
+        transform: translateX(-100%);
+      }
+
+      .sidebar.mobile-visible {
+        transform: translateX(0);
+      }
+
+      .hamburger {
+        display: flex;
+      }
+
+      .main-container {
+        margin-left: 0;
+        margin-top: var(--topbar-h);
+        padding: 20px 16px;
+      }
+
+      .main-content {
+        max-width: 100%;
+      }
+
+      h1 {
+        font-size: 24px;
+      }
+
+      .topbar-title {
+        display: none;
+      }
+
+      .file-upload-zone {
+        padding: 32px 16px;
+      }
+
+      .file-upload-icon {
+        font-size: 40px;
+      }
+
+      .page-subtitle {
+        font-size: 15px;
+        margin-bottom: 24px;
+      }
+
+      select,
+      input[type="text"],
+      input[type="email"],
+      input[type="number"] {
+        padding: 11px 12px;
+        font-size: 16px;
+      }
+
+      button {
+        padding: 11px 20px;
+        font-size: 14px;
+      }
+
+      .result-card {
+        padding: 32px 20px;
+      }
+
+      .result-icon {
+        font-size: 56px;
+      }
+
+      .result-title {
+        font-size: 24px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .topbar {
+        padding: 0 12px;
+        gap: 8px;
+      }
+
+      .topbar-logo {
+        font-size: 16px;
+      }
+
+      .topbar-logo::before {
+        width: 20px;
+        height: 20px;
+      }
+
+      .main-container {
+        padding: 16px 12px;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin-bottom: 10px;
+      }
+
+      h2 {
+        font-size: 20px;
+      }
+
+      .page-subtitle {
+        font-size: 14px;
+        margin-bottom: 20px;
+      }
+
+      .form-group {
+        margin-bottom: 18px;
+      }
+
+      .form-label {
+        font-size: 13px;
+        margin-bottom: 6px;
+      }
+
+      .file-upload-zone {
+        padding: 28px 12px;
+      }
+
+      .file-upload-icon {
+        font-size: 36px;
+        margin-bottom: 12px;
+      }
+
+      .file-upload-text {
+        font-size: 15px;
+        margin-bottom: 6px;
+      }
+
+      .file-upload-hint {
+        font-size: 13px;
+      }
+
+      select,
+      input[type="text"],
+      input[type="email"],
+      input[type="number"] {
+        padding: 10px 10px;
+        font-size: 16px;
+      }
+
+      button {
+        padding: 10px 16px;
+        font-size: 13px;
+      }
+
+      .button-group {
+        gap: 8px;
+        margin-top: 24px;
+      }
+
+      .result-card {
+        padding: 24px 16px;
+      }
+
+      .result-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+
+      .result-title {
+        font-size: 20px;
+        margin-bottom: 12px;
+      }
+
+      .result-message {
+        font-size: 14px;
+      }
+
+      .section-separator {
+        margin: 32px 0;
+      }
+
+      .import-form-section {
+        margin-bottom: 32px;
+        padding-bottom: 24px;
+      }
+    }
+
+    /* ====================================== */
+    /* DARK MODE ADJUSTMENTS                 */
+    /* ====================================== */
+    [data-theme="dark"] .topbar {
+      background-color: var(--bg);
+    }
+
+    [data-theme="dark"] button {
+      color: inherit;
+    }
+
+    /* ====================================== */
+    /* PRINT STYLES                          */
+    /* ====================================== */
+    @media print {
+      .topbar,
+      .sidebar,
+      .hamburger,
+      .theme-toggle,
+      .button-group {
+        display: none;
+      }
+
+      .main-container {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background-color: white;
+        color: black;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Skip Link for A11Y -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Topbar -->
+  <header class="topbar" role="banner">
+    <button class="hamburger" id="hamburger-toggle" aria-label="Toggle sidebar menu" aria-expanded="false">
+      ☰
+    </button>
+    <a href="#" class="topbar-logo">BongoMail</a>
+    <span class="topbar-title">Import Messages</span>
+    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
+      🌙
+    </button>
+  </header>
+
+  <!-- Sidebar -->
+  <aside class="sidebar mobile-hidden" id="sidebar" role="navigation" aria-label="Main navigation">
+    <div class="sidebar-section">
+      <h2 class="sidebar-heading">Actions</h2>
+      <nav class="sidebar-nav">
+        <li>
+          <a href="#settings" title="Go to Settings">Settings</a>
+        </li>
+        <li>
+          <a href="#mail" class="active" title="Return to Mail">Back to Mail</a>
+        </li>
+      </nav>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-container" id="main-content" role="main">
+    <div class="main-content">
+      <!-- ========== VIEW 1: IMPORT FORM ========== -->
+      <section class="import-form-section">
+        <h1>Import Messages</h1>
+        <p class="page-subtitle">
+          Upload an mbox file to import messages into a mailbox.
+        </p>
+
+        <form id="import-form">
+          <!-- File Upload Area -->
+          <div class="form-group">
+            <label for="file-input" class="form-label">Select File</label>
+            <label for="file-input" class="file-upload-zone" id="drop-zone">
+              <span class="file-upload-icon">📤</span>
+              <div class="file-upload-text">Drop .mbox file here or click to browse</div>
+              <div class="file-upload-hint">Accepted formats: .mbox, .mbx</div>
+              <input
+                type="file"
+                id="file-input"
+                name="mbox-file"
+                accept=".mbox,.mbx"
+                aria-label="Upload mbox file"
+              >
+            </label>
+          </div>
+
+          <!-- Target Mailbox Select -->
+          <div class="form-group">
+            <label for="target-mailbox" class="form-label">Target Mailbox</label>
+            <select id="target-mailbox" name="mailbox" required aria-label="Select target mailbox">
+              <option value="">-- Select a mailbox --</option>
+              <option value="inbox">INBOX</option>
+              <option value="sent">Sent</option>
+              <option value="drafts">Drafts</option>
+              <option value="work">Work</option>
+              <option value="personal">Personal</option>
+              <option value="archive">Archive</option>
+            </select>
+          </div>
+
+          <!-- Create New Mailbox Option -->
+          <div class="form-group toggle-section">
+            <div class="form-check">
+              <input
+                type="checkbox"
+                id="create-new-mailbox"
+                class="toggle-input"
+                name="create-new"
+                aria-label="Create a new mailbox instead"
+              >
+              <label for="create-new-mailbox">Or create new mailbox</label>
+            </div>
+
+            <div class="toggle-content" style="margin-top: 12px;">
+              <input
+                type="text"
+                name="new-mailbox-name"
+                placeholder="Enter new mailbox name (e.g., 'Backup 2024')"
+                aria-label="New mailbox name"
+              >
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="button-group">
+            <button type="submit" class="btn-primary">Import</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Separator -->
+      <div class="section-separator"></div>
+
+      <!-- ========== VIEW 2: IMPORT RESULT ========== -->
+      <section class="import-form-section">
+        <div class="result-card">
+          <span class="result-icon">✅</span>
+          <h2 class="result-title">Import Complete</h2>
+
+          <!-- Progress Bar -->
+          <div class="progress-bar">
+            <div class="progress-bar-fill"></div>
+          </div>
+          <div class="progress-label">100% complete</div>
+
+          <!-- Result Status -->
+          <div class="result-status">
+            <span class="result-status-success">142 messages</span> imported to Work
+          </div>
+          <div class="result-message">
+            3 messages failed to import.
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="button-group">
+            <button type="button" class="btn-primary" onclick="alert('Navigate to Work mailbox')">
+              Go to Work
+            </button>
+            <button type="button" class="btn-secondary" onclick="location.reload()">
+              Import More
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script>
+    /* ========== THEME TOGGLE ========== */
+    const themeToggle = document.getElementById('theme-toggle');
+    const htmlElement = document.documentElement;
+    const THEME_KEY = 'bongo-theme';
+
+    // Load saved theme or use system preference
+    function loadTheme() {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved) {
+        htmlElement.setAttribute('data-theme', saved);
+      } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        htmlElement.setAttribute('data-theme', 'dark');
+      }
+      updateThemeIcon();
+    }
+
+    function updateThemeIcon() {
+      const isDark = htmlElement.getAttribute('data-theme') === 'dark';
+      themeToggle.textContent = isDark ? '☀️' : '🌙';
+    }
+
+    themeToggle.addEventListener('click', () => {
+      const currentTheme = htmlElement.getAttribute('data-theme') || 'light';
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      htmlElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem(THEME_KEY, newTheme);
+      updateThemeIcon();
+    });
+
+    loadTheme();
+
+    /* ========== HAMBURGER MENU ========== */
+    const hamburger = document.getElementById('hamburger-toggle');
+    const sidebar = document.getElementById('sidebar');
+
+    hamburger.addEventListener('click', () => {
+      const isVisible = sidebar.classList.contains('mobile-visible');
+      sidebar.classList.toggle('mobile-visible');
+      sidebar.classList.toggle('mobile-hidden');
+      hamburger.setAttribute('aria-expanded', !isVisible);
+    });
+
+    // Close sidebar on link click (mobile)
+    document.querySelectorAll('.sidebar-nav a').forEach(link => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          sidebar.classList.remove('mobile-visible');
+          sidebar.classList.add('mobile-hidden');
+          hamburger.setAttribute('aria-expanded', false);
+        }
+      });
+    });
+
+    // Close sidebar on outside click
+    document.addEventListener('click', (e) => {
+      if (window.innerWidth <= 768) {
+        const isClickInsideSidebar = sidebar.contains(e.target);
+        const isClickOnHamburger = hamburger.contains(e.target);
+        if (!isClickInsideSidebar && !isClickOnHamburger) {
+          sidebar.classList.remove('mobile-visible');
+          sidebar.classList.add('mobile-hidden');
+          hamburger.setAttribute('aria-expanded', false);
+        }
+      }
+    });
+
+    /* ========== FILE UPLOAD HANDLING ========== */
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        fileInput.files = files;
+      }
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      if (fileInput.files.length > 0) {
+        console.log('File selected:', fileInput.files[0].name);
+      }
+    });
+
+    /* ========== FORM SUBMISSION ========== */
+    const importForm = document.getElementById('import-form');
+    importForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const file = fileInput.files[0];
+      const mailbox = document.getElementById('target-mailbox').value;
+      const createNew = document.getElementById('create-new-mailbox').checked;
+      const newMailboxName =
+        document.querySelector('input[name="new-mailbox-name"]').value;
+
+      if (!file) {
+        alert('Please select a file');
+        return;
+      }
+
+      if (!createNew && !mailbox) {
+        alert('Please select a mailbox or create a new one');
+        return;
+      }
+
+      if (createNew && !newMailboxName) {
+        alert('Please enter a name for the new mailbox');
+        return;
+      }
+
+      console.log('Form submitted:', {
+        file: file.name,
+        mailbox: createNew ? newMailboxName : mailbox,
+        isNewMailbox: createNew,
+      });
+
+      alert(
+        'Import started! In a real application, this would upload the file and process it.'
+      );
+    });
+
+    /* ========== CREATE NEW MAILBOX TOGGLE ========== */
+    const createNewCheckbox = document.getElementById('create-new-mailbox');
+    const targetMailboxSelect = document.getElementById('target-mailbox');
+
+    createNewCheckbox.addEventListener('change', () => {
+      targetMailboxSelect.disabled = createNewCheckbox.checked;
+    });
+
+    /* ========== ACCESSIBILITY: KEYBOARD SUPPORT ========== */
+    document.addEventListener('keydown', (e) => {
+      // Close sidebar on Escape
+      if (e.key === 'Escape' && window.innerWidth <= 768) {
+        sidebar.classList.remove('mobile-visible');
+        sidebar.classList.add('mobile-hidden');
+        hamburger.setAttribute('aria-expanded', false);
+      }
+    });
+  </script>
+</body>
+</html>

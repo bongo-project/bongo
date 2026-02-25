@@ -1,0 +1,111 @@
+From jean.brefort@normalesup.org  Mon May 22 02:37:34 2006
+Return-Path: <jean.brefort@normalesup.org>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 426F13B0882
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 02:37:34 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 26880-06 for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 02:37:33 -0400 (EDT)
+Received: from smtp6-g19.free.fr (smtp6-g19.free.fr [212.27.42.36])
+	by menubar.gnome.org (Postfix) with ESMTP id E4C053B0B48
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 02:37:32 -0400 (EDT)
+Received: from che21-1-82-239-125-56.fbx.proxad.net
+	(che21-1-82-239-125-56.fbx.proxad.net [82.239.125.56])
+	by smtp6-g19.free.fr (Postfix) with ESMTP id 54B8A2251F;
+	Mon, 22 May 2006 08:37:30 +0200 (CEST)
+From: Jean =?ISO-8859-1?Q?Br=E9fort?= <jean.brefort@normalesup.org>
+To: Yang Hong <yanghong@ccoss.com.cn>
+In-Reply-To: <1148277983.21110.27.camel@localhost>
+References: <1148277983.21110.27.camel@localhost>
+Content-Type: text/plain; charset=utf-8
+Date: Mon, 22 May 2006 08:40:17 +0200
+Message-Id: <1148280018.9019.3.camel@athlon.brefort.fr>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+Content-Transfer-Encoding: 8bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-1.883 tagged_above=-999 required=2
+	tests=[AWL=-0.353, BAYES_00=-2.599, SPF_NEUTRAL=1.069]
+X-Spam-Score: -1.883
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org
+Subject: Re: I18n in plugin
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 22 May 2006 06:37:34 -0000
+
+Le lundi 22 mai 2006 à 14:06 +0800, Yang Hong a écrit :
+> Hi all,
+> 
+> There are many applications use plugin based architecture to expand it's
+> function, such as Evolution (EPlugin), Anjuta 2.x, Gedit, Gaim,
+> Xchat-gnome, etc. The problem is that if the plugins was released
+> outside of the main app, the user interface of the plugin is NOT I18n
+> able. even I added bindtextdomain(...) and bind_textdomain_codeset (...)
+> in the initialize code of the plugin.
+> 
+> In my anjuta-foobar-plugin [1]:
+> 
+> static void
+> anjuta_plugin_foobar_instance_init (GObject *obj)
+> {
+> 	AnjutaFoobarPlugin *plugin = (AnjutaFoobarPlugin*)obj;
+> 
+> 	bindtextdomain (GETTEXT_PACKAGE,  PACKAGE_LOCALE_DIR);
+> 	bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+> 	/* textdomain (GETTEXT_PACKAGE); */
+> 	
+> 	plugin->uiid = 0;
+> 	plugin->widget = NULL;
+> 
+> }
+> 
+> You cann't use textdomain (...) in a plugin, or you'll get all NEW
+> interface in english (un i18ned).
+
+I don't see why. I do that quite often and it work. The trick is to
+include gi18n-lib.h instead of gi18n.h
+
+> Yestoday, I got a remove-duplicates plugin for evolution 2.4 from
+> #342378 [2], after some hack it for evolution 2.6, added LINGUAS suport,
+> added zh_CN translate [3], intalled it and got a untranslate menu item
+> "Remove duplicates". and then I found that there is even not point to
+> add the bindtextdomain for it, there's only one entrance for this
+> plugin's functional. how can it could be i18ned?
+> 
+> void
+> org_gnome_duplicates_remove (EPlugin *ep, EMPopupTargetSelect *target)
+> {
+>   handle_messages (target->folder, target->uids);
+> }
+> 
+> [1]
+> http://www.gnome-cn.org/software/anjuta-plugin-foobar/releases/0.1/anjuta-plugin-foobar-0-1-tar.gz
+> [2] http://bugzilla.gnome.org/show_bug.cgi?id=342378
+> [3]
+> http://www.gnome-cn.org/software/remove-duplicates-plugin/releases/0.0.3/remove-duplicates-plugin-0-0-3-tar.gz
+> 
+> any comments?
+> 
+> Yang Hong
+> 
+> _______________________________________________
+> desktop-devel-list mailing list
+> desktop-devel-list@gnome.org
+> http://mail.gnome.org/mailman/listinfo/desktop-devel-list
+> 
+

@@ -8,50 +8,52 @@ templ Layout(title string, email string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
-			<link rel="stylesheet" href="/static/css/pico.min.css"/>
-			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
-			<header role="banner" class="top-bar">
-				<div style="display:flex;align-items:center;gap:0.75rem">
-					<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
-					<a href="/mail/INBOX" class="brand">Bongo<span class="brand-accent">Mail</span></a>
+			<header class="topbar" role="banner">
+				<div class="topbar-left">
+					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+					<a href="/mail/INBOX" class="brand" aria-label="BongoMail">Bongo<span>Mail</span></a>
 				</div>
-				<nav aria-label="Quick actions">
-					<input
-						type="search"
-						name="q"
-						placeholder={ t(ctx, "nav.searchPlaceholder") }
-						class="search-input"
-						aria-label={ t(ctx, "nav.searchPlaceholder") }
-						hx-get="/search"
-						hx-trigger="keyup changed delay:300ms"
-						hx-target="#main-content"
-						hx-push-url="true"
-					/>
+				<div class="topbar-center">
+					<div class="search-box" role="search">
+						<span class="search-icon" aria-hidden="true">&#128269;</span>
+						<input
+							type="search"
+							name="q"
+							placeholder={ t(ctx, "nav.searchPlaceholder") }
+							aria-label={ t(ctx, "nav.searchPlaceholder") }
+							hx-get="/search"
+							hx-trigger="keyup changed delay:300ms"
+							hx-target="#main-content"
+							hx-push-url="true"
+						/>
+					</div>
+				</div>
+				<div class="topbar-right">
 					<button
 						type="button"
-						class="theme-toggle"
+						class="topbar-btn"
 						x-on:click="toggleTheme()"
 						x-text="themeIcon"
 						aria-label={ t(ctx, "nav.toggleTheme") }
 						title={ t(ctx, "nav.toggleTheme") }
 					></button>
-					<a href="/settings" style="font-size:0.88rem;text-decoration:none">{ t(ctx, "nav.settings") }</a>
-					<span style="font-size:0.88rem;color:var(--text-secondary)">{ email }</span>
+					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
+					<span class="user-email" aria-label={ "Logged in as " + email }>{ email }</span>
 					<form method="post" action="/logout" style="margin:0">
-						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">{ t(ctx, "auth.logout") }</button>
+						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
 					</form>
-				</nav>
+				</div>
 			</header>
-			<div x-on:click="sidebarOpen = false" class="sidebar-overlay" x-bind:class="{'active': sidebarOpen}"></div>
-			<div class="app-layout">
+			<div class="layout">
+				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				<aside class="sidebar" id="sidebar" aria-label="Mailbox navigation" x-bind:class="{'open': sidebarOpen}">
 					{ children... }
 				</aside>
-				<main class="main-content" id="main-content" role="main">
+				<main class="content" id="main-content" role="main">
 				</main>
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
@@ -82,46 +84,48 @@ templ LayoutWithContent(title string, email string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
-			<link rel="stylesheet" href="/static/css/pico.min.css"/>
-			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
-			<header role="banner" class="top-bar">
-				<div style="display:flex;align-items:center;gap:0.75rem">
-					<button type="button" class="hamburger-btn" x-on:click="toggleSidebar()" aria-label="Toggle sidebar">&#9776;</button>
-					<a href="/mail/INBOX" class="brand">Bongo<span class="brand-accent">Mail</span></a>
+			<header class="topbar" role="banner">
+				<div class="topbar-left">
+					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+					<a href="/mail/INBOX" class="brand" aria-label="BongoMail">Bongo<span>Mail</span></a>
 				</div>
-				<nav aria-label="Quick actions">
-					<input
-						type="search"
-						name="q"
-						placeholder={ t(ctx, "nav.searchPlaceholder") }
-						class="search-input"
-						aria-label={ t(ctx, "nav.searchPlaceholder") }
-						hx-get="/search"
-						hx-trigger="keyup changed delay:300ms"
-						hx-target="#main-content"
-						hx-push-url="true"
-					/>
+				<div class="topbar-center">
+					<div class="search-box" role="search">
+						<span class="search-icon" aria-hidden="true">&#128269;</span>
+						<input
+							type="search"
+							name="q"
+							placeholder={ t(ctx, "nav.searchPlaceholder") }
+							aria-label={ t(ctx, "nav.searchPlaceholder") }
+							hx-get="/search"
+							hx-trigger="keyup changed delay:300ms"
+							hx-target="#main-content"
+							hx-push-url="true"
+						/>
+					</div>
+				</div>
+				<div class="topbar-right">
 					<button
 						type="button"
-						class="theme-toggle"
+						class="topbar-btn"
 						x-on:click="toggleTheme()"
 						x-text="themeIcon"
 						aria-label={ t(ctx, "nav.toggleTheme") }
 						title={ t(ctx, "nav.toggleTheme") }
 					></button>
-					<a href="/settings" style="font-size:0.88rem;text-decoration:none">{ t(ctx, "nav.settings") }</a>
-					<span style="font-size:0.88rem;color:var(--text-secondary)">{ email }</span>
+					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
+					<span class="user-email" aria-label={ "Logged in as " + email }>{ email }</span>
 					<form method="post" action="/logout" style="margin:0">
-						<button type="submit" class="outline secondary" style="padding:0.3rem 0.7rem;font-size:0.85rem">{ t(ctx, "auth.logout") }</button>
+						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
 					</form>
-				</nav>
+				</div>
 			</header>
-			<div x-on:click="sidebarOpen = false" class="sidebar-overlay" x-bind:class="{'active': sidebarOpen}"></div>
-			<div class="app-layout">
+			<div class="layout">
+				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				{ children... }
 			</div>
 			<div id="aria-announcements" aria-live="polite" class="sr-only"></div>
@@ -152,8 +156,6 @@ templ LoginLayout(title string) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
-			<link rel="stylesheet" href="/static/css/pico.min.css"/>
-			<link rel="stylesheet" href="/static/css/open-props.min.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body class="login-page">

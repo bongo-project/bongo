@@ -1,0 +1,385 @@
+From alice@example.com Mon Feb 23 13:00:00 2026
+From: Alice Chen <alice@example.com>
+To: bob@example.com, charlie@example.com
+Subject: RFC: message queue retry policy
+Message-ID: <thread1-01@example.com>
+Date: Mon, 23 Feb 2026 13:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Team,
+
+Our current retry policy for failed SMTP deliveries is:
+
+  Retry 1: immediate
+  Retry 2: 5 minutes
+  Retry 3: 30 minutes
+  Retry 4: 2 hours
+  Retry 5: give up, bounce
+
+I think we should extend this. Most major MTAs retry for 4-5 days
+before bouncing. Proposed new policy:
+
+  Retry 1: immediate
+  Retry 2: 5 minutes
+  Retry 3: 30 minutes
+  Retry 4: 2 hours
+  Retry 5: 8 hours
+  Retry 6: 24 hours
+  Retry 7: 48 hours
+  Retry 8: 72 hours
+  Retry 9: give up, bounce (total: ~5 days)
+
+The queue worker already supports configurable backoff. We just
+need to update the defaults and add a config option.
+
+Thoughts?
+
+- Alice
+
+From bob@example.com Mon Feb 23 14:15:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com, charlie@example.com
+Subject: Re: RFC: message queue retry policy
+Message-ID: <thread1-02@example.com>
+In-Reply-To: <thread1-01@example.com>
+References: <thread1-01@example.com>
+Date: Mon, 23 Feb 2026 14:15:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+The extended retry policy makes sense. Two concerns:
+
+1. Storage: each queued message holds a blob reference. With 5-day
+   retries, we could accumulate a lot of queue entries during an
+   outage. Should we add a max queue size per user?
+
+2. Notifications: should we send the sender a "delayed delivery"
+   notification after retry 4 or 5? Postfix does this and it's
+   helpful for users who don't realize the recipient's server is
+   down.
+
+Otherwise +1 on the proposal.
+
+- Bob
+
+From charlie@example.com Mon Feb 23 15:30:00 2026
+From: Charlie Wu <charlie@example.com>
+To: alice@example.com, bob@example.com
+Subject: Re: RFC: message queue retry policy
+Message-ID: <thread1-03@example.com>
+In-Reply-To: <thread1-02@example.com>
+References: <thread1-01@example.com> <thread1-02@example.com>
+Date: Mon, 23 Feb 2026 15:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Both good points. On Bob's items:
+
+1. Max queue size: yes, but per-domain rather than per-user. If
+   gmail.com is down, all users sending to Gmail will queue up.
+   Per-domain cap of 10,000 messages seems reasonable.
+
+2. Delayed delivery notification: +1. RFC 3461 (DSN) defines the
+   "delayed" action value for this exact purpose. We should
+   implement it properly rather than rolling our own format.
+
+One more thing: we should also implement the SMTP ENHANCEDSTATUSCODES
+extension (RFC 2034) so receiving servers know we understand DSN.
+
+- Charlie
+
+From alice@example.com Tue Feb 24 09:00:00 2026
+From: Alice Chen <alice@example.com>
+To: bob@example.com, charlie@example.com
+Subject: Re: RFC: message queue retry policy
+Message-ID: <thread1-04@example.com>
+In-Reply-To: <thread1-03@example.com>
+References: <thread1-01@example.com> <thread1-02@example.com> <thread1-03@example.com>
+Date: Tue, 24 Feb 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Great feedback. Updated proposal:
+
+- Extended retry with 5-day window (as proposed)
+- Per-domain queue cap: 10,000 messages
+- Delayed delivery DSN after retry 4 (2 hours)
+- Implement ENHANCEDSTATUSCODES extension
+
+I'll create the issues and we can split the work. Charlie, want to
+take the DSN and ENHANCEDSTATUSCODES parts since you know the RFCs?
+Bob can handle the per-domain queue cap since he's already in the
+queue code.
+
+- Alice
+
+From bob@example.com Wed Feb 25 08:00:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com, charlie@example.com
+Subject: SSE event format proposal
+Message-ID: <thread2-01@example.com>
+Date: Wed, 25 Feb 2026 08:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary-t2"
+
+--boundary-t2
+Content-Type: text/plain; charset="UTF-8"
+
+I'm working on the SSE (Server-Sent Events) implementation for
+real-time mail notifications. Need to decide on event format.
+
+Option A (simple):
+  event: new-mail
+  data: {"folder":"inbox","count":3}
+
+Option B (HTMX-native):
+  event: new-mail
+  data: <div id="inbox-badge" hx-swap-oob="true">3</div>
+
+Option C (hybrid):
+  event: new-mail
+  data: {"folder":"inbox","count":3,"html":"<div...>"}
+
+I'm leaning toward B since we're all-in on HTMX. The server can
+render the partial HTML and the client just swaps it in. No JS
+needed to update the UI.
+
+Downside: if we ever want a non-HTMX client (mobile app, CLI),
+option B is useless. But that's a bridge we can cross later.
+
+- Bob
+
+--boundary-t2
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>I'm working on the SSE (Server-Sent Events) implementation for
+real-time mail notifications. Need to decide on event format.</p>
+<p><strong>Option A (simple):</strong></p>
+<pre>event: new-mail
+data: {"folder":"inbox","count":3}</pre>
+<p><strong>Option B (HTMX-native):</strong></p>
+<pre>event: new-mail
+data: &lt;div id="inbox-badge" hx-swap-oob="true"&gt;3&lt;/div&gt;</pre>
+<p><strong>Option C (hybrid):</strong></p>
+<pre>event: new-mail
+data: {"folder":"inbox","count":3,"html":"&lt;div...&gt;"}</pre>
+<p>I'm leaning toward <strong>B</strong> since we're all-in on HTMX. The server can
+render the partial HTML and the client just swaps it in. No JS
+needed to update the UI.</p>
+<p>Downside: if we ever want a non-HTMX client (mobile app, CLI),
+option B is useless. But that's a bridge we can cross later.</p>
+<p>- Bob</p>
+</body></html>
+
+--boundary-t2--
+
+From alice@example.com Wed Feb 25 09:30:00 2026
+From: Alice Chen <alice@example.com>
+To: bob@example.com, charlie@example.com
+Subject: Re: SSE event format proposal
+Message-ID: <thread2-02@example.com>
+In-Reply-To: <thread2-01@example.com>
+References: <thread2-01@example.com>
+Date: Wed, 25 Feb 2026 09:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Bob,
+
+Option B is elegant but I'd go with C for pragmatism. Here's why:
+
+1. The JSON payload gives us structured data for logging and metrics
+2. The html field can be optional -- omit it for events that don't
+   need a UI update (like sync-complete or quota-warning)
+3. Mobile apps will need the JSON data eventually
+4. HTMX can still use the html field directly with a tiny event
+   handler (5 lines of JS)
+
+The 5 lines of JS to extract the html field and swap it is a small
+price for future flexibility.
+
+- Alice
+
+From charlie@example.com Wed Feb 25 10:45:00 2026
+From: Charlie Wu <charlie@example.com>
+To: alice@example.com, bob@example.com
+Subject: Re: SSE event format proposal
+Message-ID: <thread2-03@example.com>
+In-Reply-To: <thread2-02@example.com>
+References: <thread2-01@example.com> <thread2-02@example.com>
+Date: Wed, 25 Feb 2026 10:45:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
++1 on option C.
+
+One addition: include a "version" field in the JSON so we can
+evolve the format without breaking existing clients:
+
+  event: new-mail
+  data: {"v":1,"folder":"inbox","count":3,"html":"<div...>"}
+
+Also, we should use the SSE "id" field with a monotonic counter
+so clients can resume after disconnects:
+
+  id: 42
+  event: new-mail
+  data: {"v":1,...}
+
+The EventSource API handles reconnection and Last-Event-ID
+automatically, which is nice.
+
+- Charlie
+
+From bob@example.com Wed Feb 25 11:00:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com, charlie@example.com
+Subject: Re: SSE event format proposal
+Message-ID: <thread2-04@example.com>
+In-Reply-To: <thread2-03@example.com>
+References: <thread2-01@example.com> <thread2-02@example.com> <thread2-03@example.com>
+Date: Wed, 25 Feb 2026 11:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alright, consensus on option C with version field and SSE id.
+
+I'll implement it with these event types to start:
+
+  new-mail       - new message in any folder
+  mail-deleted   - message deleted or moved to trash
+  mail-read      - message read status changed
+  folder-update  - folder metadata changed (count, unread)
+  quota-warning  - approaching storage quota
+
+Calendar and contact events can come later.
+
+PR incoming today.
+
+- Bob
+
+From charlie@example.com Thu Feb 26 10:00:00 2026
+From: Charlie Wu <charlie@example.com>
+To: alice@example.com, bob@example.com
+Subject: Raft snapshot size investigation
+Message-ID: <thread3-01@example.com>
+Date: Thu, 26 Feb 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Team,
+
+I've been investigating why Raft snapshots are growing so large.
+Current snapshot for a test cluster with 1,000 users:
+
+  Pebble data: 2.1 GB
+  Raft snapshot: 3.4 GB (62% overhead!)
+
+The problem: we're serializing the entire Pebble state as-is into
+the snapshot. Pebble's internal format includes tombstones, bloom
+filters, and multiple SSTable levels that are redundant in a
+snapshot context.
+
+Proposed fix: instead of dumping raw Pebble data, iterate all
+live key-value pairs and write them as a flat protobuf stream.
+This should bring snapshot size close to actual data size.
+
+- Charlie
+
+From alice@example.com Thu Feb 26 11:00:00 2026
+From: Alice Chen <alice@example.com>
+To: charlie@example.com, bob@example.com
+Subject: Re: Raft snapshot size investigation
+Message-ID: <thread3-02@example.com>
+In-Reply-To: <thread3-01@example.com>
+References: <thread3-01@example.com>
+Date: Thu, 26 Feb 2026 11:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Charlie,
+
+Good catch. 62% overhead is too much, especially for clusters
+with large mailboxes.
+
+The flat protobuf stream approach should work. A few things:
+
+1. Compress the stream with zstd -- Pebble data compresses well
+   (typically 3-4x ratio for email metadata)
+2. Add a header with version and key count so the receiver can
+   pre-allocate and show progress
+3. Stream the snapshot rather than buffering in memory -- we don't
+   want to OOM on large datasets
+
+With zstd compression, I'd expect the 2.1 GB of live data to
+compress to ~600 MB. That's a 5.6x improvement over current.
+
+- Alice
+
+From bob@example.com Thu Feb 26 14:30:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com, charlie@example.com
+Subject: Re: Raft snapshot size investigation
+Message-ID: <thread3-03@example.com>
+In-Reply-To: <thread3-02@example.com>
+References: <thread3-01@example.com> <thread3-02@example.com>
+Date: Thu, 26 Feb 2026 14:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice's estimates match my experience with zstd on similar data.
+
+One concern: during snapshot streaming, Pebble needs to maintain
+a consistent view. We should use a Pebble snapshot (the database
+kind, not Raft kind) to get a point-in-time read view without
+blocking writes.
+
+The HashiCorp Raft library's FSM interface has a Snapshot() method
+that returns an FSMSnapshot. We control the Persist() method on
+that, so we can iterate using a Pebble snapshot and stream+compress
+there.
+
+I'll sketch out the FSMSnapshot implementation if Charlie wants
+to handle the protobuf stream format.
+
+- Bob
+
+From charlie@example.com Fri Feb 27 09:00:00 2026
+From: Charlie Wu <charlie@example.com>
+To: alice@example.com, bob@example.com
+Subject: Re: Raft snapshot size investigation
+Message-ID: <thread3-04@example.com>
+In-Reply-To: <thread3-03@example.com>
+References: <thread3-01@example.com> <thread3-02@example.com> <thread3-03@example.com>
+Date: Fri, 27 Feb 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Sounds like a plan. I'll define the protobuf message:
+
+message SnapshotHeader {
+  uint32 version = 1;
+  uint64 key_count = 2;
+  uint64 term = 3;
+  uint64 index = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message SnapshotEntry {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+The stream format will be:
+  [header length varint][SnapshotHeader]
+  [entry length varint][SnapshotEntry] (repeated)
+
+Bob, I'll have the proto file ready today so you can start on
+the FSMSnapshot implementation.
+
+- Charlie
+

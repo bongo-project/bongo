@@ -154,7 +154,7 @@ document.addEventListener('alpine:init', () => {
 
     toggle(uid, event) {
       if (event && event.shiftKey && this.lastClicked !== null) {
-        const rows = Array.from(document.querySelectorAll('.message-list tbody tr'));
+        const rows = Array.from(document.querySelectorAll('.msg-list .msg-row'));
         const uids = rows.map(r => parseInt(r.dataset.uid));
         const start = uids.indexOf(this.lastClicked);
         const end = uids.indexOf(uid);
@@ -174,7 +174,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     selectAll() {
-      const rows = document.querySelectorAll('.message-list tbody tr');
+      const rows = document.querySelectorAll('.msg-list .msg-row');
       rows.forEach(r => { this.selected[parseInt(r.dataset.uid)] = true; });
       this._updateCount();
     },
@@ -372,12 +372,17 @@ document.addEventListener('alpine:init', () => {
     mailbox: null,
     focusedItem: -1,
 
-    open(event, uid, mailbox) {
-      event.preventDefault();
+    openAt(x, y, uid, mailbox) {
       this.uid = uid;
       this.mailbox = mailbox;
-      this.x = event.clientX;
-      this.y = event.clientY;
+      // Viewport clamping: keep menu within the visible window.
+      const menuW = 200, menuH = 320;
+      if (x + menuW > window.innerWidth) x = window.innerWidth - menuW - 8;
+      if (y + menuH > window.innerHeight) y = window.innerHeight - menuH - 8;
+      if (x < 0) x = 8;
+      if (y < 0) y = 8;
+      this.x = x;
+      this.y = y;
       this.visible = true;
       this.focusedItem = -1;
       // Focus first item after render.
@@ -590,10 +595,10 @@ document.addEventListener('keydown', (e) => {
     return;
   }
 
-  const messageRows = document.querySelectorAll('.message-list tbody tr');
+  const messageRows = document.querySelectorAll('.msg-list .msg-row');
   if (messageRows.length === 0) return;
 
-  const current = document.querySelector('.message-list tbody tr.keyboard-focus');
+  const current = document.querySelector('.msg-list .msg-row.keyboard-focus');
   let idx = current ? Array.from(messageRows).indexOf(current) : -1;
 
   switch (e.key) {
@@ -645,7 +650,7 @@ document.addEventListener('keydown', (e) => {
     case 's': // Star/flag toggle
       if (current) {
         e.preventDefault();
-        const starBtn = current.querySelector('.flag-star');
+        const starBtn = current.querySelector('.msg-star');
         if (starBtn) starBtn.click();
       }
       break;
@@ -678,15 +683,15 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
 
 // Drag-and-drop: make message rows draggable to sidebar folders.
 function initDragDrop() {
-  const tbody = document.querySelector('.message-list tbody');
-  if (!tbody || typeof Sortable === 'undefined') return;
+  const msgList = document.querySelector('.msg-list');
+  if (!msgList || typeof Sortable === 'undefined') return;
 
   // Make message rows draggable (but not sortable within the list).
-  Sortable.create(tbody, {
+  Sortable.create(msgList, {
     group: { name: 'messages', pull: 'clone', put: false },
     sort: false,
     ghostClass: 'sortable-ghost',
-    filter: 'input[type="checkbox"], .flag-star',
+    filter: 'input[type="checkbox"], .msg-star',
     onStart(evt) {
       // Store source mailbox and uid on the dragged element.
       const row = evt.item;
@@ -852,10 +857,45 @@ document.addEventListener('click', function(e) {
   btn.focus();
 });
 
-// Flash message auto-dismiss + init drag-drop
+// Sidebar active state: highlight the nav link matching the current URL.
+function updateSidebarActive() {
+  var path = window.location.pathname;
+  document.querySelectorAll('.nav-list a, .nav-item a, a.admin-nav-item').forEach(function(a) {
+    var href = a.getAttribute('href');
+    if (!href) return;
+    // Exact match or prefix match for mail folders (e.g. /mail/INBOX matches /mail/INBOX/123)
+    var isActive = (path === href) || (href.length > 1 && path.startsWith(href + '/'));
+    a.classList.toggle('active', isActive);
+  });
+}
+
+// Settings tab switching (vanilla JS fallback for Alpine.js).
+function initSettingsTabs() {
+  var container = document.querySelector('.settings-container');
+  if (!container) return;
+  var tabs = container.querySelectorAll('.settings-tab');
+  var sections = container.querySelectorAll('form > .settings-section');
+  if (tabs.length === 0 || sections.length === 0) return;
+  // Show only the first section by default.
+  sections.forEach(function(s, i) { s.style.display = i === 0 ? '' : 'none'; });
+  tabs.forEach(function(tab, i) {
+    tab.addEventListener('click', function() {
+      tabs.forEach(function(t) { t.classList.remove('active'); });
+      tab.classList.add('active');
+      sections.forEach(function(s, j) { s.style.display = j === i ? '' : 'none'; });
+    });
+    // Set first tab as active.
+    if (i === 0) tab.classList.add('active');
+    else tab.classList.remove('active');
+  });
+}
+
+// Flash message auto-dismiss + init drag-drop + init settings tabs
 document.addEventListener('DOMContentLoaded', () => {
   initDragDrop();
   initEventDrag();
+  updateSidebarActive();
+  initSettingsTabs();
   document.querySelectorAll('.flash').forEach(el => {
     setTimeout(() => {
       el.style.transition = 'opacity 0.3s';
@@ -863,4 +903,11 @@ document.addEventListener('DOMContentLoaded', () => {
       setTimeout(() => el.remove(), 300);
     }, 5000);
   });
+});
+
+// Update sidebar active state + settings tabs after HTMX navigation.
+document.addEventListener('htmx:pushedIntoHistory', updateSidebarActive);
+document.addEventListener('htmx:afterSettle', function() {
+  updateSidebarActive();
+  initSettingsTabs();
 });

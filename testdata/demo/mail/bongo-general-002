@@ -1,0 +1,84 @@
+From bongo-general-bounces@forge.novell.com Mon May 22 10:40:27 2006
+Return-Path: <zeploum@gmail.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 31D8C63084 for
+	<Dave@ximian.com>; Mon, 22 May 2006 10:40:27 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 2D75E70069;
+	Mon, 22 May 2006 10:40:27 -0400 (EDT)
+Received: from victor.provo.novell.com (victor.provo.novell.com
+	[137.65.250.26]) by herald.ximian.com (Postfix) with ESMTP id A2F1070069
+	for <Dave@ximian.com>; Mon, 22 May 2006 10:40:22 -0400 (EDT)
+Received: from INET-PRV3-MTA by victor.provo.novell.com with
+	Novell_GroupWise; Mon, 22 May 2006 08:40:22 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Mon, 22 May 2006 08:39:47 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id 7C05B1B013E; Mon, 22 May
+	2006 08:32:59 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from nf-out-0910.google.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	519251B0148 for <bongo-general@forge.novell.com>; Mon, 22 May 2006 07:53:07
+	-0600 (MDT)
+Received: by nf-out-0910.google.com with SMTP id k26so473526nfc for
+	<bongo-general@forge.novell.com>; Mon, 22 May 2006 06:53:06 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:to:subject:mime-version:content-type:content-transfer-encoding:content-disposition;
+	b=r0UIYhMNbCZFn+tzbQDegYGXJfO9I8Zto/WTUkrZjwP+zU3Qes14R4P72ayS5rv7nHdkCjZz/lxfRxid9gMWKOdB/OY+WvwDN3I3XlMrFYmlSa2wk+W+/oga8hF52nk64KU+fUgwoL6EVBBGpYLa16wptR9aGZWlm/ww5P3ywW4=
+Received: by 10.49.12.2 with SMTP id p2mr2618641nfi; Mon, 22 May 2006
+	06:53:06 -0700 (PDT)
+Received: by 10.48.108.10 with HTTP; Mon, 22 May 2006 06:53:06 -0700 (PDT)
+Message-ID: <16a711710605220653s1687ad4an6e9163a2302af10f@mail.gmail.com>
+Date: Mon, 22 May 2006 15:53:06 +0200
+From: "Lionel Dricot" <zeploum@gmail.com>
+To: bongo-general@forge.novell.com
+MIME-Version: 1.0
+Subject: [Bongo-general] RBL in Bongo ?
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Content-Type: multipart/mixed; boundary="===============2119823884=="
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.5 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+
+
+--===============2119823884==
+Content-Type: text/plain; charset=UTF-8; format=flowed
+Content-Disposition: inline
+Content-Transfer-Encoding: 8bit
+
+Hello,
+
+I wanted to configure RBL in Bongo and I found this :
+http://www.bongo-project.org/SMTP_Agent
+
+but the described options are not available in the smtp configuration.
+Any idea about this?
+
+--===============2119823884==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Disposition: inline
+Content-Transfer-Encoding: 8bit
+
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+
+--===============2119823884==--
+

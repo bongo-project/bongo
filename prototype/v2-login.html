@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Login (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 LOGIN — FULLY SELF-CONTAINED
+       Uses the mail UI colour palette (not admin)
+       ============================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bongo-orange: #ffac35; --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf; --bongo-blue-dark: #3d6a9e; --bongo-blue-light: #e8f0fa;
+      --bg: #f0f2f5; --bg-card: #ffffff;
+      --text: #1a1a2e; --text-secondary: #5f6368; --text-muted: #9aa0a8;
+      --border: #e4e7ec; --border-strong: #d0d3d8;
+      --bongo-green: #22c55e; --bongo-red: #ef4444;
+      --radius: 6px; --radius-lg: 12px;
+      --shadow-card: 0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    [data-theme="dark"] {
+      --bongo-orange: #e09530; --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc; --bongo-blue-dark: #4a6e96; --bongo-blue-light: #1e3350;
+      --bg: #0f172a; --bg-card: #1e293b;
+      --text: #e2e8f0; --text-secondary: #94a3b8; --text-muted: #64748b;
+      --border: #334155; --border-strong: #475569;
+      --bongo-green: #4ade80; --bongo-red: #f87171;
+      --shadow-card: 0 4px 24px rgba(0,0,0,0.3);
+    }
+
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+    a { color: var(--bongo-blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    *:focus-visible { outline: 2px solid var(--bongo-blue); outline-offset: 2px; }
+
+    /* CENTERED LAYOUT */
+    .login-wrapper { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+
+    /* BRAND */
+    .login-brand { text-align: center; margin-bottom: 32px; }
+    .login-brand h1 { font-size: 2rem; font-weight: 700; color: var(--text); letter-spacing: -1px; }
+    .login-brand h1 span { color: var(--bongo-orange); }
+    .login-brand p { font-size: 0.92rem; color: var(--text-muted); margin-top: 4px; }
+
+    /* LOGIN CARD */
+    .login-card { width: 100%; max-width: 400px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: 32px; }
+
+    /* FORM */
+    .form-group { margin-bottom: 18px; }
+    .form-label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .form-input { width: 100%; border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 10px 14px; font-size: 0.95rem; background: var(--bg-card); color: var(--text); transition: border-color 0.15s; }
+    .form-input:focus { border-color: var(--bongo-blue); outline: none; box-shadow: 0 0 0 3px rgba(81,127,175,0.15); }
+    .form-input::placeholder { color: var(--text-muted); }
+
+    .form-check { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; color: var(--text-secondary); cursor: pointer; margin-bottom: 20px; }
+    .form-check input[type="checkbox"] { width: auto; accent-color: var(--bongo-blue); }
+
+    .btn-login { width: 100%; background: var(--bongo-blue); color: #fff; border: none; padding: 12px; border-radius: var(--radius); font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+    .btn-login:hover { background: var(--bongo-blue-dark); }
+
+    /* FLASH MESSAGE */
+    .flash { padding: 10px 14px; border-radius: var(--radius); margin-bottom: 18px; font-size: 0.88rem; }
+    .flash-error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); color: var(--bongo-red); }
+    .flash-warning { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); color: #b45309; }
+
+    /* 2FA SECTION */
+    .twofa-header { text-align: center; margin-bottom: 20px; }
+    .twofa-header h2 { font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    .twofa-header p { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+
+    .code-input { text-align: center; font-size: 1.8rem; letter-spacing: 8px; font-weight: 700; padding: 12px; }
+
+    .code-hint { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 18px; }
+
+    .back-link { display: block; text-align: center; margin-top: 16px; font-size: 0.88rem; color: var(--bongo-blue); }
+
+    /* TAB TOGGLE (Login vs 2FA demo) */
+    .view-toggle { display: flex; gap: 8px; margin-bottom: 24px; }
+    .view-toggle button { flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: var(--text-muted); font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+    .view-toggle button.active { background: var(--bongo-blue); color: #fff; border-color: var(--bongo-blue); }
+
+    /* THEME TOGGLE */
+    .theme-float { position: fixed; bottom: 20px; right: 20px; width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-muted); font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-card); }
+    .theme-float:hover { color: var(--text); }
+
+    /* RESPONSIVE */
+    @media (max-width: 480px) {
+      .login-card { padding: 24px 20px; }
+      .login-brand h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-wrapper">
+    <div class="login-brand">
+      <h1>Bongo<span>Mail</span></h1>
+      <p>Your personal mail server</p>
+    </div>
+
+    <!-- Demo Toggle (not part of production — shows both views in prototype) -->
+    <div class="view-toggle" style="max-width: 400px; width: 100%;">
+      <button class="active" onclick="showView('login', this)">Login</button>
+      <button onclick="showView('2fa', this)">Two-Factor Auth</button>
+    </div>
+
+    <!-- Login View -->
+    <div class="login-card" id="view-login">
+      <!-- Error flash (hidden by default, shown for demo) -->
+      <!-- <div class="flash flash-error">Invalid email or password.</div> -->
+
+      <form onsubmit="return false" aria-label="Sign in">
+        <div class="form-group">
+          <label class="form-label" for="email">Email</label>
+          <input type="email" id="email" class="form-input" placeholder="admin@localhost" required autofocus autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input type="password" id="password" class="form-input" required autocomplete="current-password">
+        </div>
+        <label class="form-check">
+          <input type="checkbox" name="remember" value="1">
+          Remember me
+        </label>
+        <button type="submit" class="btn-login">Sign In</button>
+      </form>
+    </div>
+
+    <!-- 2FA View -->
+    <div class="login-card" id="view-2fa" style="display: none;">
+      <div class="twofa-header">
+        <h2>Two-Factor Authentication</h2>
+        <p>Enter the code from your authenticator app</p>
+      </div>
+
+      <!-- Warning flash for recovery codes -->
+      <!-- <div class="flash flash-warning">You have only 2 recovery codes remaining. Please generate new ones.</div> -->
+
+      <form onsubmit="return false" aria-label="Two-factor authentication">
+        <div class="form-group">
+          <label class="form-label" for="code">Authentication Code</label>
+          <input type="text" id="code" class="form-input code-input" placeholder="000000" required autocomplete="one-time-code" inputmode="numeric" maxlength="9" aria-label="Enter 6-digit authentication code">
+        </div>
+        <p class="code-hint">Enter the 6-digit code from your authenticator app, or a recovery code.</p>
+        <button type="submit" class="btn-login">Verify</button>
+      </form>
+      <a href="#" class="back-link" onclick="showView('login', document.querySelector('.view-toggle button'))">Back to login</a>
+    </div>
+  </div>
+
+  <!-- Floating theme toggle -->
+  <button class="theme-float" onclick="toggleTheme()" title="Toggle dark/light theme" aria-label="Toggle dark/light theme">&#9789;</button>
+
+  <script>
+    function showView(view, btn) {
+      document.getElementById('view-login').style.display = view === 'login' ? 'block' : 'none';
+      document.getElementById('view-2fa').style.display = view === '2fa' ? 'block' : 'none';
+      document.querySelectorAll('.view-toggle button').forEach(b => b.classList.remove('active'));
+      if (view === 'login') {
+        document.querySelector('.view-toggle button:first-child').classList.add('active');
+      } else {
+        document.querySelector('.view-toggle button:last-child').classList.add('active');
+      }
+    }
+    function toggleTheme() {
+      const html = document.documentElement;
+      html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.querySelector('.theme-float').textContent = html.dataset.theme === 'dark' ? '\u2600' : '\u263D';
+    }
+  </script>
+</body>
+</html>

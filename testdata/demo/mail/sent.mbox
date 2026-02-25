@@ -1,0 +1,138 @@
+From dev@bongoproject.org Mon Feb 23 09:20:00 2026
+From: Dev User <dev@bongoproject.org>
+To: alice@example.com
+Subject: Re: Sprint 16 planning notes
+Message-ID: <sent001@bongoproject.org>
+In-Reply-To: <msg001@example.com>
+References: <msg001@example.com>
+Date: Mon, 23 Feb 2026 09:20:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+Thanks for putting this together. I'd also like to add search
+performance testing to the sprint if there's bandwidth. The Bleve
+integration is new and we should validate it under load.
+
+Best,
+Dev
+
+From dev@bongoproject.org Tue Feb 24 10:00:00 2026
+From: Dev User <dev@bongoproject.org>
+To: bob@example.com
+Subject: Logging RFC feedback
+Message-ID: <sent002@bongoproject.org>
+Date: Tue, 24 Feb 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Bob,
+
+Your logging conventions RFC looks great. One addition I'd suggest:
+
+Include request_id as a standard attribute for any log emitted
+during HTTP request handling. We can use middleware to inject it
+into the context and pull it out via slog.Handler.
+
+This makes it much easier to correlate logs across the SMTP, IMAP,
+and web layers when a single user action touches multiple components.
+
+- Dev
+
+From dev@bongoproject.org Wed Feb 25 08:00:00 2026
+From: Dev User <dev@bongoproject.org>
+To: charlie@example.com
+Subject: Re: Accessibility audit results
+Message-ID: <sent003@bongoproject.org>
+In-Reply-To: <msg007@example.com>
+References: <msg007@example.com>
+Date: Wed, 25 Feb 2026 08:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Charlie,
+
+Great work on the audit. The focus trap issue in modals is the one
+I'd prioritize -- it's a real usability problem for keyboard-only
+users.
+
+For the compose toolbar buttons, I think we should use <button>
+elements with visually-hidden text instead of aria-label. That way
+the text is also available to browser translation tools.
+
+- Dev
+
+From dev@bongoproject.org Thu Feb 26 09:30:00 2026
+From: Dev User <dev@bongoproject.org>
+To: alice@example.com, bob@example.com, charlie@example.com
+Subject: Architecture review prep
+Message-ID: <sent004@bongoproject.org>
+Date: Thu, 26 Feb 2026 09:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Team,
+
+For tomorrow's multi-tenant architecture review, I've been thinking
+about the namespace prefix approach (option 2A from Alice's email).
+
+The current Pebble key space already has /user/{user_id}/ prefixes.
+If we add a /tenant/{tenant_id}/ prefix above that, we get natural
+isolation with Pebble's prefix iteration. The tenant prefix would
+also scope the /system/ keys naturally.
+
+Downsides: longer keys, slightly more complex key parsing, and we
+need to decide if blob storage is per-tenant or shared.
+
+I'll bring a diagram to the meeting.
+
+- Dev
+
+From dev@bongoproject.org Fri Feb 27 14:00:00 2026
+From: Dev User <dev@bongoproject.org>
+To: bob@example.com
+Subject: Re: Quick question about blob GC
+Message-ID: <sent005@bongoproject.org>
+In-Reply-To: <msg009@example.com>
+References: <msg009@example.com>
+Date: Fri, 27 Feb 2026 14:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Bob,
+
+Good catch on the blob GC race condition. I think the right fix is
+a combination:
+
+1. Bump grace period to 4 hours (simple, low risk)
+2. Add a "replication watermark" -- GC only considers blobs older
+   than the oldest un-replicated Raft log entry
+
+Option 2 is more correct but more complex. Let's do option 1 now
+and add option 2 to the backlog.
+
+- Dev
+
+From dev@bongoproject.org Sat Feb 28 16:00:00 2026
+From: Dev User <dev@bongoproject.org>
+To: alice@example.com
+Subject: Re: Weekend deploy: v0.9.1-rc1
+Message-ID: <sent006@bongoproject.org>
+In-Reply-To: <msg019@example.com>
+References: <msg019@example.com>
+Date: Sat, 28 Feb 2026 16:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+Beta promotion looks good to me. The staging metrics are clean and
+I've verified CalDAV sync with both Apple Calendar and Thunderbird
+on the staging cluster.
+
+One thing: can we add a changelog entry before tagging? The v0.9.0
+release notes were a bit sparse and people noticed.
+
+- Dev
+

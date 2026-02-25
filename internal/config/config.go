@@ -115,6 +115,9 @@ type WebConfig struct {
 	TLS              TLSConfig `hcl:"tls,block" mapstructure:"tls"`
 	HTTPSRedirect    bool      `hcl:"https_redirect,optional" mapstructure:"https_redirect"`
 	HTTPRedirectPort int       `hcl:"http_redirect_port,optional" mapstructure:"http_redirect_port"`
+	// PlainHTTP disables TLS for the web server. Use when running behind a
+	// TLS-terminating reverse proxy on a trusted network.
+	PlainHTTP bool `hcl:"plain_http,optional" mapstructure:"plain_http"`
 }
 
 type CalDAVConfig struct {

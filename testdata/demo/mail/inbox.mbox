@@ -1,0 +1,853 @@
+From alice@example.com Mon Feb 23 09:15:00 2026
+From: Alice Chen <alice@example.com>
+To: dev@bongoproject.org
+Subject: Sprint 16 planning notes
+Message-ID: <msg001@example.com>
+Date: Mon, 23 Feb 2026 09:15:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary001"
+
+--boundary001
+Content-Type: text/plain; charset="UTF-8"
+
+Hi team,
+
+Here are the planning notes from this morning's sprint kickoff:
+
+1. UI polish pass on compose and contacts views
+2. Fix thread rendering in conversation mode
+3. Accessibility audit for screen readers
+4. Performance benchmarks for mailbox listing (target: <200ms for 10k messages)
+
+Let me know if I missed anything.
+
+-- Alice
+
+--boundary001
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>Hi team,</p>
+<p>Here are the planning notes from this morning's sprint kickoff:</p>
+<ol>
+<li>UI polish pass on compose and contacts views</li>
+<li>Fix thread rendering in conversation mode</li>
+<li>Accessibility audit for screen readers</li>
+<li>Performance benchmarks for mailbox listing (target: &lt;200ms for 10k messages)</li>
+</ol>
+<p>Let me know if I missed anything.</p>
+<p>-- Alice</p>
+</body></html>
+
+--boundary001--
+
+From bob@example.com Mon Feb 23 10:42:00 2026
+From: Bob Martinez <bob@example.com>
+To: dev@bongoproject.org
+Subject: Re: Sprint 16 planning notes
+Message-ID: <msg002@example.com>
+In-Reply-To: <msg001@example.com>
+References: <msg001@example.com>
+Date: Mon, 23 Feb 2026 10:42:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+Good list. I'd add one more item:
+
+5. Dark mode CSS variables need fixing -- some contrast ratios fail WCAG AA.
+
+I can take items 2 and 5 if nobody else has started.
+
+- Bob
+
+From charlie@example.com Mon Feb 23 11:05:00 2026
+From: Charlie Wu <charlie@example.com>
+To: dev@bongoproject.org
+Subject: Re: Sprint 16 planning notes
+Message-ID: <msg003@example.com>
+In-Reply-To: <msg002@example.com>
+References: <msg001@example.com> <msg002@example.com>
+Date: Mon, 23 Feb 2026 11:05:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+I'll pick up the accessibility audit (item 3). Already have axe-core
+set up from last sprint.
+
+Bob -- good catch on the dark mode contrast. The --text-muted variable
+is particularly bad on dark backgrounds.
+
+- Charlie
+
+From newsletter@bongoproject.org Mon Feb 23 06:00:00 2026
+From: Bongo Project <newsletter@bongoproject.org>
+To: users@bongoproject.org
+Subject: Bongo Weekly Digest -- February 23, 2026
+Message-ID: <digest-20260223@bongoproject.org>
+Date: Mon, 23 Feb 2026 06:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary004"
+
+--boundary004
+Content-Type: text/plain; charset="UTF-8"
+
+BONGO WEEKLY DIGEST
+===================
+
+What's New in Bongo v0.9.0
+--------------------------
+
+* Raft-based clustering now supports rolling upgrades
+* CalDAV sync performance improved 3x for large calendars
+* New HTMX compose view with TipTap rich text editor
+* POP3 server passes all RFC 1939 compliance tests
+
+Community Spotlight
+-------------------
+Thanks to all 47 contributors who participated in the February bug bash.
+We closed 89 issues and merged 62 pull requests.
+
+Upcoming Events
+---------------
+* Feb 28 -- Community call (15:00 UTC)
+* Mar 5 -- v0.9.1 release candidate
+
+Visit https://bongoproject.org for more.
+
+--boundary004
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<h1>Bongo Weekly Digest</h1>
+<h2>What's New in Bongo v0.9.0</h2>
+<ul>
+<li>Raft-based clustering now supports rolling upgrades</li>
+<li>CalDAV sync performance improved 3x for large calendars</li>
+<li>New HTMX compose view with TipTap rich text editor</li>
+<li>POP3 server passes all RFC 1939 compliance tests</li>
+</ul>
+<h2>Community Spotlight</h2>
+<p>Thanks to all 47 contributors who participated in the February bug bash.
+We closed 89 issues and merged 62 pull requests.</p>
+<h2>Upcoming Events</h2>
+<ul>
+<li>Feb 28 &mdash; Community call (15:00 UTC)</li>
+<li>Mar 5 &mdash; v0.9.1 release candidate</li>
+</ul>
+<p>Visit <a href="https://bongoproject.org">bongoproject.org</a> for more.</p>
+</body></html>
+
+--boundary004--
+
+From alice@example.com Tue Feb 24 08:30:00 2026
+From: Alice Chen <alice@example.com>
+To: bob@example.com, charlie@example.com
+Subject: Code review request: compose handler refactor
+Message-ID: <msg005@example.com>
+Date: Tue, 24 Feb 2026 08:30:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="boundary005"
+
+--boundary005
+Content-Type: text/plain; charset="UTF-8"
+
+Hi Bob and Charlie,
+
+I've refactored the compose handler to separate concerns better.
+The main changes:
+
+- Extracted address parsing into its own function
+- Added proper error wrapping for template rendering failures
+- Moved draft auto-save to a background goroutine with a ticker
+
+PR is up at #247. Diff summary attached.
+
+Thanks,
+Alice
+
+--boundary005
+Content-Type: text/plain; charset="UTF-8"; name="diff-summary.txt"
+Content-Disposition: attachment; filename="diff-summary.txt"
+
+compose.go | 87 +++++++++++++++++++++++++-----------
+compose_test.go | 45 +++++++++++++++++++
+draft.go | 32 +++++++++++++
+3 files changed, 138 insertions(+), 26 deletions(-)
+
+--boundary005--
+
+From bob@example.com Tue Feb 24 09:15:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com, charlie@example.com
+Subject: Re: Code review request: compose handler refactor
+Message-ID: <msg006@example.com>
+In-Reply-To: <msg005@example.com>
+References: <msg005@example.com>
+Date: Tue, 24 Feb 2026 09:15:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+Looks solid. A few notes:
+
+1. The ticker in the draft goroutine should be configurable -- 30s
+   default seems right but power users will want to change it.
+
+2. Consider using errgroup instead of bare goroutines so we get
+   proper error propagation.
+
+3. The address parser doesn't handle RFC 5322 group syntax yet.
+   Not blocking but worth a TODO.
+
+I'll approve once #1 is addressed.
+
+- Bob
+
+From charlie@example.com Tue Feb 24 14:00:00 2026
+From: Charlie Wu <charlie@example.com>
+To: dev@bongoproject.org
+Subject: Accessibility audit results
+Message-ID: <msg007@example.com>
+Date: Tue, 24 Feb 2026 14:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="boundary007"
+
+--boundary007
+Content-Type: multipart/alternative; boundary="boundary007a"
+
+--boundary007a
+Content-Type: text/plain; charset="UTF-8"
+
+Team,
+
+Finished the first pass of the accessibility audit. Summary:
+
+PASS: 84 checks
+FAIL: 12 checks
+WARN: 7 checks
+
+Critical failures:
+- Missing aria-labels on icon-only buttons (compose toolbar)
+- Focus trap not working in modal dialogs
+- Calendar grid missing role="grid" and aria-colheader
+
+Full report attached. I'll file individual issues for each failure.
+
+- Charlie
+
+--boundary007a
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>Team,</p>
+<p>Finished the first pass of the accessibility audit. Summary:</p>
+<table border="1" cellpadding="4">
+<tr><td><strong>PASS</strong></td><td>84 checks</td></tr>
+<tr><td><strong>FAIL</strong></td><td>12 checks</td></tr>
+<tr><td><strong>WARN</strong></td><td>7 checks</td></tr>
+</table>
+<p><strong>Critical failures:</strong></p>
+<ul>
+<li>Missing aria-labels on icon-only buttons (compose toolbar)</li>
+<li>Focus trap not working in modal dialogs</li>
+<li>Calendar grid missing <code>role="grid"</code> and <code>aria-colheader</code></li>
+</ul>
+<p>Full report attached. I'll file individual issues for each failure.</p>
+<p>- Charlie</p>
+</body></html>
+
+--boundary007a--
+
+--boundary007
+Content-Type: text/plain; charset="UTF-8"; name="a11y-report.txt"
+Content-Disposition: attachment; filename="a11y-report.txt"
+
+Accessibility Audit Report -- Bongo Web UI
+Date: 2026-02-24
+Tool: axe-core 4.9
+
+Page: /mail
+  FAIL: button-name (3 instances)
+  FAIL: color-contrast (2 instances)
+  WARN: link-name (1 instance)
+
+Page: /compose
+  FAIL: aria-required-attr (2 instances)
+  WARN: tabindex (3 instances)
+
+Page: /calendar
+  FAIL: aria-roles (2 instances)
+  FAIL: focus-management (3 instances)
+  WARN: landmark-no-duplicate-banner (1 instance)
+
+Page: /contacts
+  PASS: all checks passed
+
+Page: /settings
+  WARN: color-contrast (2 instances)
+
+--boundary007--
+
+From alice@example.com Wed Feb 25 07:45:00 2026
+From: Alice Chen <alice@example.com>
+To: dev@bongoproject.org
+Subject: Pebble compaction benchmark results
+Message-ID: <msg008@example.com>
+Date: Wed, 18 Feb 2026 07:45:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Quick benchmark results for the Pebble compaction settings we discussed:
+
+Default L0 compaction threshold (4):
+  BenchmarkMailboxList/1k-8      1.2ms
+  BenchmarkMailboxList/10k-8     8.7ms
+  BenchmarkMailboxList/100k-8    94ms
+
+Tuned L0 compaction threshold (2):
+  BenchmarkMailboxList/1k-8      0.9ms
+  BenchmarkMailboxList/10k-8     5.1ms
+  BenchmarkMailboxList/100k-8    52ms
+
+The tuned settings give us ~40% improvement at the cost of more
+background I/O. I think this is worth it for the 10k+ mailbox case.
+
+Thoughts?
+
+- Alice
+
+From bob@example.com Wed Feb 25 11:20:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com
+Subject: Quick question about blob GC
+Message-ID: <msg009@example.com>
+Date: Wed, 18 Feb 2026 11:20:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+The blob GC grace period is set to 1 hour. Is that enough for a
+large cluster where replication might be slow? I'm thinking about
+the case where:
+
+1. User uploads attachment
+2. Blob is written to node A
+3. Before replication to node B, node A runs GC
+4. Blob has zero Pebble references on node A (not yet replicated)
+5. GC deletes the blob
+
+Should we bump the grace period to 4 hours, or add a "pending
+replication" flag?
+
+- Bob
+
+From charlie@example.com Wed Feb 25 13:30:00 2026
+From: Charlie Wu <charlie@example.com>
+To: dev@bongoproject.org
+Subject: Dark mode contrast fixes ready for review
+Message-ID: <msg010@example.com>
+Date: Wed, 19 Feb 2026 13:30:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary010"
+
+--boundary010
+Content-Type: text/plain; charset="UTF-8"
+
+Bob's dark mode issue is fixed in PR #251.
+
+Changes:
+- --text-muted: hsl(0, 0%, 45%) -> hsl(0, 0%, 65%)
+- --border-color: hsl(0, 0%, 20%) -> hsl(0, 0%, 30%)
+- --bg-surface: hsl(0, 0%, 10%) -> hsl(0, 0%, 12%)
+- Added prefers-contrast media query for high-contrast mode
+
+All WCAG AA contrast ratios now pass. Screenshots in the PR.
+
+- Charlie
+
+--boundary010
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>Bob's dark mode issue is fixed in PR #251.</p>
+<p><strong>Changes:</strong></p>
+<ul>
+<li><code>--text-muted</code>: hsl(0, 0%, 45%) &rarr; hsl(0, 0%, 65%)</li>
+<li><code>--border-color</code>: hsl(0, 0%, 20%) &rarr; hsl(0, 0%, 30%)</li>
+<li><code>--bg-surface</code>: hsl(0, 0%, 10%) &rarr; hsl(0, 0%, 12%)</li>
+<li>Added <code>prefers-contrast</code> media query for high-contrast mode</li>
+</ul>
+<p>All WCAG AA contrast ratios now pass. Screenshots in the PR.</p>
+<p>- Charlie</p>
+</body></html>
+
+--boundary010--
+
+From newsletter@bongoproject.org Thu Feb 26 06:00:00 2026
+From: Bongo Project <newsletter@bongoproject.org>
+To: users@bongoproject.org
+Subject: Security Advisory: CVE-2026-1234
+Message-ID: <security-20260219@bongoproject.org>
+Date: Thu, 19 Feb 2026 06:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary011"
+
+--boundary011
+Content-Type: text/plain; charset="UTF-8"
+
+SECURITY ADVISORY
+=================
+
+CVE-2026-1234: IMAP IDLE command denial of service
+Severity: Medium (CVSS 5.3)
+Affected versions: Bongo 0.8.0 through 0.8.5
+Fixed in: Bongo 0.8.6, 0.9.0
+
+Description:
+A malformed IDLE continuation could cause the IMAP server to consume
+excessive memory by not enforcing a timeout on idle connections.
+
+Mitigation:
+Update to Bongo 0.8.6 or later. If unable to update immediately,
+set imap.idle_timeout = "5m" in your configuration.
+
+Timeline:
+- Feb 10: Reported by security researcher
+- Feb 12: Fix developed and tested
+- Feb 14: Patch released in 0.8.6
+- Feb 19: Public disclosure
+
+Thank you to Dara Okonkwo for responsible disclosure.
+
+--boundary011
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<h1>Security Advisory</h1>
+<p><strong>CVE-2026-1234: IMAP IDLE command denial of service</strong><br>
+Severity: Medium (CVSS 5.3)<br>
+Affected versions: Bongo 0.8.0 through 0.8.5<br>
+Fixed in: Bongo 0.8.6, 0.9.0</p>
+<h2>Description</h2>
+<p>A malformed IDLE continuation could cause the IMAP server to consume
+excessive memory by not enforcing a timeout on idle connections.</p>
+<h2>Mitigation</h2>
+<p>Update to Bongo 0.8.6 or later. If unable to update immediately,
+set <code>imap.idle_timeout = "5m"</code> in your configuration.</p>
+<h2>Timeline</h2>
+<ul>
+<li>Feb 10: Reported by security researcher</li>
+<li>Feb 12: Fix developed and tested</li>
+<li>Feb 14: Patch released in 0.8.6</li>
+<li>Feb 19: Public disclosure</li>
+</ul>
+<p>Thank you to Dara Okonkwo for responsible disclosure.</p>
+</body></html>
+
+--boundary011--
+
+From alice@example.com Thu Feb 26 09:00:00 2026
+From: Alice Chen <alice@example.com>
+To: bob@example.com, charlie@example.com
+Subject: Meeting: architecture review for multi-tenant support
+Message-ID: <msg012@example.com>
+Date: Thu, 20 Feb 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Hi both,
+
+I've scheduled an architecture review for multi-tenant support.
+
+When: Friday Feb 27, 14:00-15:30 UTC
+Where: Video call (link in calendar invite)
+Agenda:
+  1. Current per-user storage model review
+  2. Tenant isolation options (namespace prefix vs separate Pebble instances)
+  3. Quota enforcement at tenant level
+  4. Migration path from single-tenant deployments
+
+Please come prepared with your thoughts on option 2 especially.
+
+Calendar invite sent separately.
+
+- Alice
+
+From bob@example.com Thu Feb 26 15:30:00 2026
+From: Bob Martinez <bob@example.com>
+To: dev@bongoproject.org
+Subject: RFC: structured logging conventions
+Message-ID: <msg013@example.com>
+Date: Thu, 20 Feb 2026 15:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Team,
+
+We're inconsistent with our slog usage. Proposing these conventions:
+
+1. Always include "component" attribute:
+   slog.Info("message", "component", "smtp", ...)
+
+2. Use consistent key names:
+   - "user_id" (not "user", "uid", "userId")
+   - "message_id" (not "msg_id", "msgId")
+   - "duration_ms" (not "elapsed", "took")
+   - "error" (not "err", "failure")
+
+3. Log levels:
+   - Debug: per-message protocol traces
+   - Info: lifecycle events (start, stop, config reload)
+   - Warn: recoverable errors, deprecation notices
+   - Error: unrecoverable errors that affect a request
+
+4. Never log PII at Info level or above. User emails only at Debug.
+
+Thoughts? I'll write this up as a contributing guide section if
+we agree on the approach.
+
+- Bob
+
+From charlie@example.com Fri Feb 27 08:15:00 2026
+From: Charlie Wu <charlie@example.com>
+To: dev@bongoproject.org
+Subject: CalDAV sync issue with Apple Calendar
+Message-ID: <msg014@example.com>
+Date: Fri, 20 Feb 2026 08:15:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Found a compatibility issue: Apple Calendar sends PROPFIND requests
+with Depth: infinity on the calendar-home-set, but we only support
+Depth: 0 and Depth: 1.
+
+The WebDAV spec (RFC 4918) says servers MAY reject Depth: infinity
+with 403, but Apple Calendar treats that as a fatal sync error
+instead of falling back.
+
+Fix options:
+A) Implement Depth: infinity (more work, spec-complete)
+B) Return partial results with Depth: 1 when infinity requested
+C) Contact Apple about their client behavior
+
+I'm leaning toward (A) since Google Calendar also sends infinity
+in some cases. Going to prototype it today.
+
+- Charlie
+
+From alice@example.com Fri Feb 27 10:00:00 2026
+From: Alice Chen <alice@example.com>
+To: charlie@example.com
+Subject: Re: CalDAV sync issue with Apple Calendar
+Message-ID: <msg015@example.com>
+In-Reply-To: <msg014@example.com>
+References: <msg014@example.com>
+Date: Fri, 21 Feb 2026 10:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Charlie,
+
+Agree on option A. A few things to watch for:
+
+- Depth: infinity can be expensive. Add a max-depth limit (say 5)
+  and return 507 Insufficient Storage if exceeded.
+- Make sure we don't recurse into other users' calendars if they
+  share a collection root.
+- Add integration tests using caldav-tester (Apple's test suite).
+
+Also, check if Thunderbird has the same issue -- they've had WebDAV
+quirks in the past.
+
+- Alice
+
+From bob@example.com Fri Feb 27 11:30:00 2026
+From: Bob Martinez <bob@example.com>
+To: dev@bongoproject.org
+Subject: Dependency update: go-imap v2.0.3
+Message-ID: <msg016@example.com>
+Date: Fri, 21 Feb 2026 11:30:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Heads up: emersion/go-imap released v2.0.3 with fixes for:
+
+- SEARCH command with UTF-8 subjects
+- APPEND with literal+ extension
+- Memory leak in IDLE handler (related to our CVE fix)
+
+I'll update go.mod and run the compliance tests. Should be a
+drop-in replacement but I'll flag if anything breaks.
+
+- Bob
+
+From newsletter@bongoproject.org Sat Feb 28 06:00:00 2026
+From: Bongo Project <newsletter@bongoproject.org>
+To: users@bongoproject.org
+Subject: Community Call Reminder -- Today at 15:00 UTC
+Message-ID: <reminder-20260221@bongoproject.org>
+Date: Sat, 21 Feb 2026 06:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary017"
+
+--boundary017
+Content-Type: text/plain; charset="UTF-8"
+
+COMMUNITY CALL REMINDER
+========================
+
+Today, Saturday February 28 at 15:00 UTC
+
+Agenda:
+1. v0.9.0 release retrospective
+2. Multi-tenant architecture proposal (Alice Chen)
+3. CalDAV compatibility update (Charlie Wu)
+4. Open floor
+
+Join: https://meet.bongoproject.org/community
+
+Recording will be posted to the wiki afterwards.
+
+--boundary017
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<h1>Community Call Reminder</h1>
+<p><strong>Today, Saturday February 28 at 15:00 UTC</strong></p>
+<h2>Agenda</h2>
+<ol>
+<li>v0.9.0 release retrospective</li>
+<li>Multi-tenant architecture proposal (Alice Chen)</li>
+<li>CalDAV compatibility update (Charlie Wu)</li>
+<li>Open floor</li>
+</ol>
+<p>Join: <a href="https://meet.bongoproject.org/community">meet.bongoproject.org/community</a></p>
+<p>Recording will be posted to the wiki afterwards.</p>
+</body></html>
+
+--boundary017--
+
+From charlie@example.com Sat Feb 28 09:45:00 2026
+From: Charlie Wu <charlie@example.com>
+To: alice@example.com, bob@example.com
+Subject: Depth: infinity prototype working
+Message-ID: <msg018@example.com>
+In-Reply-To: <msg015@example.com>
+References: <msg014@example.com> <msg015@example.com>
+Date: Sat, 22 Feb 2026 09:45:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice, Bob,
+
+Got the Depth: infinity prototype working. Results:
+
+- Apple Calendar syncs correctly now
+- Google Calendar also happy
+- Thunderbird works (it was already using Depth: 1, so no change)
+- Added max-depth of 5 per Alice's suggestion
+- caldav-tester passes 94/96 tests (2 failures are pre-existing
+  and unrelated to this change)
+
+Performance impact is minimal since most calendar hierarchies are
+only 2-3 levels deep. Added a benchmark:
+
+  BenchmarkPROPFIND/depth-1-8    0.4ms
+  BenchmarkPROPFIND/depth-inf-8  0.6ms
+
+PR #253 is up. Tests are green.
+
+- Charlie
+
+From alice@example.com Sat Feb 28 14:20:00 2026
+From: Alice Chen <alice@example.com>
+To: dev@bongoproject.org
+Subject: Weekend deploy: v0.9.1-rc1
+Message-ID: <msg019@example.com>
+Date: Sat, 22 Feb 2026 14:20:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Team,
+
+I'm cutting v0.9.1-rc1 with the following changes:
+
+- PR #247: compose handler refactor (Alice)
+- PR #251: dark mode contrast fixes (Charlie)
+- PR #253: CalDAV Depth: infinity support (Charlie)
+- PR #254: go-imap v2.0.3 update (Bob)
+- PR #256: structured logging conventions (Bob)
+
+Deploy plan:
+1. Build and smoke test locally
+2. Deploy to staging cluster (3 nodes)
+3. Run integration test suite
+4. If green, promote to beta channel Sunday morning
+
+I'll post updates in the ops channel.
+
+- Alice
+
+From bob@example.com Sun Feb 29 08:00:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com
+Subject: Re: Weekend deploy: v0.9.1-rc1
+Message-ID: <msg020@example.com>
+In-Reply-To: <msg019@example.com>
+References: <msg019@example.com>
+Date: Sun, 23 Feb 2026 08:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+Staging deploy looks clean. All integration tests pass.
+
+One observation: memory usage on the staging cluster dropped ~15%
+compared to v0.9.0. I think the go-imap IDLE fix accounts for most
+of that -- the leaked goroutines were each holding a connection
+buffer.
+
+Ready for beta promotion whenever you give the word.
+
+- Bob
+
+From charlie@example.com Sun Feb 29 10:30:00 2026
+From: Charlie Wu <charlie@example.com>
+To: dev@bongoproject.org
+Subject: IMAP SEARCH benchmarks
+Message-ID: <msg021@example.com>
+Date: Sun, 23 Feb 2026 10:30:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="boundary021"
+
+--boundary021
+Content-Type: text/plain; charset="UTF-8"
+
+Ran some benchmarks on IMAP SEARCH with the new Bleve indexing:
+
+Query: "FROM alice AND SUBJECT sprint"
+Mailbox size: 50,000 messages
+
+Before (sequential scan):
+  p50: 340ms
+  p99: 1.2s
+
+After (Bleve index):
+  p50: 4ms
+  p99: 12ms
+
+That's roughly 80x improvement at p50. Index rebuild from Pebble
+takes about 45 seconds for 50k messages, which is acceptable for
+the "derived index" model.
+
+Full benchmark data in the wiki.
+
+- Charlie
+
+--boundary021
+Content-Type: text/html; charset="UTF-8"
+
+<html><body>
+<p>Ran some benchmarks on IMAP SEARCH with the new Bleve indexing:</p>
+<p><strong>Query:</strong> <code>FROM alice AND SUBJECT sprint</code><br>
+<strong>Mailbox size:</strong> 50,000 messages</p>
+<table border="1" cellpadding="4">
+<tr><th></th><th>p50</th><th>p99</th></tr>
+<tr><td>Before (sequential scan)</td><td>340ms</td><td>1.2s</td></tr>
+<tr><td>After (Bleve index)</td><td>4ms</td><td>12ms</td></tr>
+</table>
+<p>That's roughly <strong>80x improvement</strong> at p50. Index rebuild from Pebble
+takes about 45 seconds for 50k messages, which is acceptable for
+the "derived index" model.</p>
+<p>Full benchmark data in the wiki.</p>
+<p>- Charlie</p>
+</body></html>
+
+--boundary021--
+
+From alice@example.com Mon Feb 23 16:00:00 2026
+From: Alice Chen <alice@example.com>
+To: bob@example.com, charlie@example.com
+Subject: Standup notes 2026-02-23
+Message-ID: <msg022@example.com>
+Date: Mon, 23 Feb 2026 16:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Daily standup notes:
+
+Alice:
+  Yesterday: finalized sprint 15b UI polish
+  Today: sprint 16 planning, compose handler refactor
+  Blockers: none
+
+Bob:
+  Yesterday: thread rendering bug investigation
+  Today: dark mode CSS review, logging RFC draft
+  Blockers: waiting on design feedback for thread view
+
+Charlie:
+  Yesterday: set up axe-core test harness
+  Today: accessibility audit first pass
+  Blockers: none
+
+Next standup: tomorrow 16:00 UTC.
+
+From bob@example.com Tue Feb 24 16:45:00 2026
+From: Bob Martinez <bob@example.com>
+To: alice@example.com
+Subject: Thread view mockup feedback
+Message-ID: <msg023@example.com>
+Date: Tue, 24 Feb 2026 16:45:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Alice,
+
+I looked at the thread view mockup. Couple of thoughts:
+
+The indentation approach works well for 2-3 levels but gets
+cramped beyond that. Gmail and Fastmail both cap at a certain
+depth and then flatten. I'd suggest we cap at 4 levels of
+visual indent and use a subtle line connector for deeper replies.
+
+Also, the "collapse all" toggle should remember state per-thread
+using the user config Pebble key. I don't think we need a
+separate UI preference page -- just persist it silently.
+
+Want to discuss on tomorrow's call?
+
+- Bob
+
+From newsletter@bongoproject.org Tue Feb 24 12:00:00 2026
+From: Bongo Project <newsletter@bongoproject.org>
+To: contributors@bongoproject.org
+Subject: Contributor Update: new CI pipeline
+Message-ID: <contrib-20260224@bongoproject.org>
+Date: Tue, 24 Feb 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+
+Hi contributors,
+
+We've migrated the CI pipeline from GitHub Actions to Woodpecker CI.
+Key changes:
+
+- Build matrix: Go 1.22, 1.23 on Linux amd64 and arm64
+- Lint step now runs golangci-lint with the config in .golangci.yml
+- Race detector enabled for all test runs
+- Coverage reports uploaded to the wiki automatically
+- Build artifacts (Linux, macOS, Windows) published as release assets
+
+The old GitHub Actions workflows have been removed. If your fork
+still references them, delete .github/workflows/ and pull the new
+.woodpecker/ directory.
+
+Thanks,
+The Bongo Infrastructure Team
+

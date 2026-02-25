@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Contacts (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 CONTACTS — FULLY SELF-CONTAINED
+       ============================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bongo-orange: #ffac35; --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf; --bongo-blue-dark: #3d6a9e; --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+      --bg: #ffffff; --bg-subtle: #f7f8fa; --bg-muted: #f0f2f5; --bg-hover: #edf0f4;
+      --sidebar-bg: #2c4a72; --sidebar-hover: rgba(255,255,255,0.08); --sidebar-active: rgba(255,255,255,0.15);
+      --sidebar-text: #b8cadf; --sidebar-bright: #ffffff; --sidebar-width: 240px;
+      --text: #1a1a2e; --text-secondary: #5f6368; --text-muted: #9aa0a8; --text-inverse: #ffffff;
+      --border: #e4e7ec; --border-strong: #d0d3d8;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05); --shadow-md: 0 2px 8px rgba(0,0,0,0.08); --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+      --topbar-h: 52px; --radius: 6px; --radius-lg: 10px;
+    }
+
+    [data-theme="dark"] {
+      --bongo-orange: #e09530; --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc; --bongo-blue-dark: #4a6e96; --bongo-blue-light: #1e3350;
+      --bg: #1a1a2e; --bg-subtle: #20203a; --bg-muted: #282842; --bg-hover: #2e2e48;
+      --sidebar-bg: #1a2744; --sidebar-text: #8aa4c8; --sidebar-bright: #d0ddef;
+      --text: #e0e0e8; --text-secondary: #a0a4ac; --text-muted: #6b7080;
+      --border: #2e3040; --border-strong: #3e4050;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 2px 8px rgba(0,0,0,0.3); --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px; color: var(--text); background: var(--bg); overflow: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+
+    .skip-link { position: absolute; top: -100%; left: 16px; background: var(--bongo-blue); color: #fff; padding: 8px 16px; border-radius: var(--radius); z-index: 200; font-weight: 600; font-size: 0.9rem; }
+    .skip-link:focus { top: 8px; }
+    *:focus-visible { outline: 2px solid var(--bongo-blue); outline-offset: 2px; }
+
+    /* TOP BAR */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--bg); border-bottom: 1px solid var(--border); z-index: 100; }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .hamburger { display: none; align-items: center; justify-content: center; width: 36px; height: 36px; border: none; background: transparent; color: var(--text-secondary); font-size: 1.3rem; cursor: pointer; border-radius: var(--radius); transition: background 0.12s; }
+    .hamburger:hover { background: var(--bg-muted); }
+    .brand { font-weight: 700; font-size: 1.15rem; color: var(--bongo-blue-dark); letter-spacing: -0.5px; }
+    .brand span { color: var(--bongo-orange); }
+    .topbar-center { flex: 1; display: flex; justify-content: center; padding: 0 20px; }
+    .search-box { display: flex; align-items: center; background: var(--bg-muted); border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; width: 100%; max-width: 480px; transition: border-color 0.15s, box-shadow 0.15s; }
+    .search-box:focus-within { border-color: var(--bongo-blue); box-shadow: 0 0 0 3px rgba(81,127,175,0.12); }
+    .search-box input { border: none; background: none; outline: none; font-size: 0.9rem; color: var(--text); width: 100%; margin-left: 6px; }
+    .search-box input::placeholder { color: var(--text-muted); }
+    .search-box input:focus-visible { outline: none; }
+    .search-icon { color: var(--text-muted); font-size: 0.9rem; flex-shrink: 0; }
+    .topbar-right { display: flex; align-items: center; gap: 4px; }
+    .topbar-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 1.05rem; transition: background 0.12s; }
+    .topbar-btn:hover { background: var(--bg-muted); }
+    .user-email { font-size: 0.82rem; color: var(--text-muted); padding: 0 8px; }
+    .topbar-link { font-size: 0.85rem; color: var(--text-secondary); padding: 6px 10px; border-radius: var(--radius); transition: background 0.12s, color 0.12s; }
+    .topbar-link:hover { background: var(--bg-muted); color: var(--bongo-blue-dark); }
+
+    /* LAYOUT */
+    .layout { display: flex; position: fixed; top: var(--topbar-h); left: 0; right: 0; bottom: 0; }
+
+    /* SIDEBAR */
+    .sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; overflow-x: hidden; transition: transform 0.25s ease; }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 149; }
+    .compose-btn { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 14px 12px 6px; padding: 10px 0; background: var(--bongo-orange); color: #1a1a2e; border: none; border-radius: var(--radius-lg); font-weight: 700; font-size: 0.92rem; cursor: pointer; box-shadow: 0 2px 8px rgba(255,172,53,0.3); transition: all 0.15s; }
+    .compose-btn:hover { background: var(--bongo-orange-hover); color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255,172,53,0.4); }
+    .sidebar-group { padding: 4px 8px; }
+    .sidebar-group + .sidebar-group { border-top: 1px solid rgba(255,255,255,0.08); margin-top: 4px; padding-top: 8px; }
+    .sidebar-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.35); padding: 8px 12px 4px; font-weight: 600; }
+    .nav-list { list-style: none; }
+    .nav-item a { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: var(--radius); font-size: 0.88rem; font-weight: 500; color: var(--sidebar-text); transition: background 0.12s, color 0.12s; border-left: 3px solid transparent; margin: 1px 0; }
+    .nav-item a:hover { background: var(--sidebar-hover); color: var(--sidebar-bright); }
+    .nav-item a.active { background: var(--sidebar-active); color: var(--sidebar-bright); border-left-color: var(--bongo-orange); font-weight: 600; }
+    .nav-icon { width: 18px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+    .nav-badge { margin-left: auto; font-size: 0.68rem; font-weight: 700; background: var(--bongo-orange); color: #1a1a2e; border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center; }
+
+    /* ============================================
+       MAIN CONTENT — CONTACTS TWO-PANE
+       ============================================ */
+    .content {
+      flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg);
+    }
+
+    /* Contacts toolbar */
+    .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 16px; border-bottom: 1px solid var(--border);
+      background: var(--bg-subtle); min-height: 44px; flex-shrink: 0;
+    }
+    .tool-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 5px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius); background: var(--bg);
+      color: var(--text-secondary); font-size: 0.82rem;
+      cursor: pointer; transition: all 0.12s; white-space: nowrap;
+    }
+    .tool-btn:hover { background: var(--bongo-blue-light); border-color: var(--bongo-blue); color: var(--bongo-blue-dark); }
+    .tool-btn.primary { background: var(--bongo-blue); color: #fff; border-color: var(--bongo-blue); }
+    .tool-btn.primary:hover { background: var(--bongo-blue-dark); }
+    .tool-spacer { flex: 1; }
+
+    .import-form {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .import-form input[type="file"] {
+      font-size: 0.78rem; color: var(--text-secondary);
+      max-width: 180px;
+    }
+
+    /* Two-pane layout */
+    .contacts-panes {
+      flex: 1; display: flex; overflow: hidden;
+    }
+
+    /* Left pane: contact list */
+    .contact-list-pane {
+      width: 360px; flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    .contact-search {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-subtle);
+    }
+    .contact-search input {
+      flex: 1; border: 1px solid var(--border);
+      border-radius: 16px; padding: 6px 12px;
+      font-size: 0.85rem; background: var(--bg);
+      color: var(--text); outline: none;
+    }
+    .contact-search input:focus { border-color: var(--bongo-blue); }
+    .contact-search input:focus-visible { outline: none; }
+    .contact-count {
+      font-size: 0.75rem; color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .contact-scroll {
+      flex: 1; overflow-y: auto;
+    }
+
+    .letter-divider {
+      padding: 4px 14px;
+      font-size: 0.68rem; font-weight: 700;
+      color: var(--text-muted); background: var(--bg-muted);
+      text-transform: uppercase; letter-spacing: 1.5px;
+      position: sticky; top: 0; z-index: 4;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .contact-card {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer; transition: background 0.1s;
+    }
+    .contact-card:hover { background: var(--bg-hover); }
+    .contact-card.selected {
+      background: var(--bongo-blue-light);
+      border-left: 3px solid var(--bongo-blue);
+      padding-left: 11px;
+    }
+
+    .contact-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .contact-info { flex: 1; min-width: 0; }
+    .contact-name { font-size: 0.88rem; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .contact-email { font-size: 0.78rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Right pane: contact detail */
+    .contact-detail-pane {
+      flex: 1; overflow-y: auto; padding: 24px;
+      background: var(--bg-subtle);
+    }
+
+    .detail-card {
+      max-width: 600px; margin: 0 auto;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+
+    .detail-header {
+      padding: 28px 24px 20px;
+      text-align: center;
+      background: linear-gradient(135deg, var(--bongo-blue-light), var(--bg-subtle));
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-avatar {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 1.6rem; color: #fff;
+      margin: 0 auto 12px;
+      box-shadow: var(--shadow-md);
+    }
+    .detail-name {
+      font-size: 1.25rem; font-weight: 700; color: var(--text);
+    }
+    .detail-title {
+      font-size: 0.88rem; color: var(--text-secondary); margin-top: 4px;
+    }
+
+    .detail-fields { padding: 20px 24px; }
+
+    .detail-field {
+      display: flex; padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .detail-field:last-child { border-bottom: none; }
+
+    .detail-field-label {
+      width: 80px; flex-shrink: 0;
+      font-size: 0.75rem; font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding-top: 2px;
+    }
+    .detail-field-value {
+      flex: 1; color: var(--text); font-size: 0.9rem;
+    }
+    .detail-field-value a {
+      color: var(--bongo-blue); text-decoration: none;
+    }
+    .detail-field-value a:hover { text-decoration: underline; }
+
+    .detail-actions {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 24px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-subtle);
+    }
+    .detail-spacer { flex: 1; }
+
+    .btn-edit {
+      padding: 7px 20px; background: var(--bongo-blue); color: #fff;
+      border: none; border-radius: var(--radius); font-weight: 600;
+      font-size: 0.85rem; cursor: pointer; transition: background 0.12s;
+    }
+    .btn-edit:hover { background: var(--bongo-blue-dark); }
+
+    .btn-action {
+      padding: 7px 14px; background: transparent; border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-secondary); font-size: 0.82rem;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .btn-action:hover { background: var(--bg-muted); }
+
+    .btn-danger {
+      padding: 7px 14px; background: transparent;
+      border: 1px solid #f1aeb5; border-radius: var(--radius);
+      color: #e15e50; font-size: 0.82rem; cursor: pointer;
+      transition: all 0.12s;
+    }
+    .btn-danger:hover { background: #fdf2f2; border-color: #e74c3c; }
+    [data-theme="dark"] .btn-danger { border-color: #5a2020; }
+    [data-theme="dark"] .btn-danger:hover { background: #3a1a1a; border-color: #e74c3c; }
+
+    /* Recent emails section */
+    .detail-section-title {
+      font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--text-muted);
+      padding: 14px 24px 6px;
+      border-top: 1px solid var(--border);
+    }
+    .recent-emails { padding: 0 24px 14px; }
+    .recent-email {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.82rem;
+    }
+    .recent-email:last-child { border-bottom: none; }
+    .recent-email-subject { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .recent-email-date { color: var(--text-muted); white-space: nowrap; font-size: 0.75rem; }
+    .recent-email-icon { color: var(--text-muted); flex-shrink: 0; }
+
+    /* Empty detail state */
+    .detail-empty {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; height: 100%;
+      color: var(--text-muted); text-align: center;
+    }
+    .detail-empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+    .detail-empty-text { font-size: 0.9rem; }
+
+    /* ============================================
+       RESPONSIVE — TABLET (≤1024px)
+       ============================================ */
+    @media (max-width: 1024px) {
+      :root { --sidebar-width: 200px; }
+      .contact-list-pane { width: 300px; }
+    }
+
+    /* ============================================
+       RESPONSIVE — MOBILE (≤768px)
+       ============================================ */
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+      .sidebar { position: fixed; top: var(--topbar-h); left: 0; bottom: 0; width: 260px; z-index: 150; transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.open { display: block; }
+      .topbar-center { display: none; }
+      .user-email { display: none; }
+      .hide-mobile { display: none !important; }
+
+      /* On mobile: list takes full width, detail is hidden until selected */
+      .contact-list-pane { width: 100%; border-right: none; }
+      .contact-detail-pane { display: none; }
+      .contacts-panes.showing-detail .contact-list-pane { display: none; }
+      .contacts-panes.showing-detail .contact-detail-pane { display: block; }
+
+      .detail-back-btn { display: inline-flex !important; }
+
+      .import-form { display: none; }
+    }
+
+    /* ============================================
+       RESPONSIVE — SMALL PHONE (≤480px)
+       ============================================ */
+    @media (max-width: 480px) {
+      .contact-detail-pane { padding: 12px; }
+      .detail-header { padding: 20px 16px 14px; }
+      .detail-fields { padding: 14px 16px; }
+      .detail-actions { padding: 10px 16px; flex-wrap: wrap; }
+      .detail-actions .btn-edit,
+      .detail-actions .btn-action { flex: 1; text-align: center; }
+      .detail-spacer { display: none; }
+      .detail-actions .btn-danger { width: 100%; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- TOP BAR -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+      <a href="v2-inbox.html" class="brand" aria-label="BongoMail — Go to home page">Bongo<span>Mail</span></a>
+    </div>
+    <div class="topbar-center">
+      <div class="search-box" role="search">
+        <span class="search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" placeholder="Search mail..." aria-label="Search mail">
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="topbar-btn" title="Toggle dark/light theme" aria-label="Toggle dark/light theme" onclick="toggleTheme()">&#9789;</button>
+      <a href="settings.html" class="topbar-link">Settings</a>
+      <span class="user-email" aria-label="Logged in as admin@localhost">admin@localhost</span>
+      <a href="login.html" class="topbar-link hide-mobile">Logout</a>
+    </div>
+  </header>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+    <div class="sidebar-overlay" onclick="toggleSidebar()" aria-hidden="true"></div>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Navigation">
+      <a href="v2-compose.html" class="compose-btn" aria-label="Compose new message">&#9998; Compose</a>
+      <nav aria-label="App navigation">
+        <div class="sidebar-group">
+          <div class="sidebar-label">Navigation</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="v2-inbox.html"><span class="nav-icon" aria-hidden="true">&#9993;</span> Mail <span class="nav-badge">12</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128197;</span> Calendar</a></li>
+            <li class="nav-item"><a href="#" class="active"><span class="nav-icon" aria-hidden="true">&#128101;</span> Contacts</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9881;</span> Settings</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-label">Groups</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128101;</span> All Contacts</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128188;</span> Work</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#127968;</span> Personal</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9733;</span> Favourites</a></li>
+          </ul>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content" id="main-content" role="main" aria-label="Contacts">
+      <!-- Toolbar -->
+      <div class="toolbar" role="toolbar" aria-label="Contact actions">
+        <button class="tool-btn primary" aria-label="Create new contact" onclick="document.getElementById('create-form').toggleAttribute('hidden')">+ New Contact</button>
+        <button class="tool-btn" aria-label="Export contacts as vCard">Export VCF</button>
+        <div class="tool-spacer"></div>
+        <form class="import-form" aria-label="Import contacts">
+          <input type="file" accept=".vcf" aria-label="Select VCF file to import">
+          <button class="tool-btn" type="submit">Import</button>
+        </form>
+      </div>
+
+      <!-- Two-pane layout -->
+      <div class="contacts-panes" id="contacts-panes">
+        <!-- Contact List -->
+        <div class="contact-list-pane">
+          <div class="contact-search">
+            <input type="search" placeholder="Search contacts..." aria-label="Filter contacts">
+            <span class="contact-count">8 contacts</span>
+          </div>
+          <div class="contact-scroll" role="list" aria-label="Contact list">
+            <!-- A -->
+            <div class="letter-divider" aria-hidden="true">A</div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="Tom Alvarez">
+              <div class="contact-avatar" style="background: #e15e50;" aria-hidden="true">TA</div>
+              <div class="contact-info">
+                <div class="contact-name">Tom Alvarez</div>
+                <div class="contact-email">tom.alvarez@example.com</div>
+              </div>
+            </div>
+
+            <!-- C -->
+            <div class="letter-divider" aria-hidden="true">C</div>
+            <div class="contact-card selected" role="listitem" tabindex="0" onclick="selectContact(this)" aria-current="true" data-name="Sarah Chen">
+              <div class="contact-avatar" style="background: #ec4899;" aria-hidden="true">SC</div>
+              <div class="contact-info">
+                <div class="contact-name">Sarah Chen</div>
+                <div class="contact-email">sarah.chen@example.com</div>
+              </div>
+            </div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="James Cooper">
+              <div class="contact-avatar" style="background: #8b5cf6;" aria-hidden="true">JC</div>
+              <div class="contact-info">
+                <div class="contact-name">James Cooper</div>
+                <div class="contact-email">james.cooper@example.com</div>
+              </div>
+            </div>
+
+            <!-- G -->
+            <div class="letter-divider" aria-hidden="true">G</div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="Maria Gonzalez">
+              <div class="contact-avatar" style="background: #f59e0b;" aria-hidden="true">MG</div>
+              <div class="contact-info">
+                <div class="contact-name">Maria Gonzalez</div>
+                <div class="contact-email">maria@example.com</div>
+              </div>
+            </div>
+
+            <!-- K -->
+            <div class="letter-divider" aria-hidden="true">K</div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="David Kim">
+              <div class="contact-avatar" style="background: #6366f1;" aria-hidden="true">DK</div>
+              <div class="contact-info">
+                <div class="contact-name">David Kim</div>
+                <div class="contact-email">david.kim@example.com</div>
+              </div>
+            </div>
+
+            <!-- P -->
+            <div class="letter-divider" aria-hidden="true">P</div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="Lisa Park">
+              <div class="contact-avatar" style="background: #14b8a6;" aria-hidden="true">LP</div>
+              <div class="contact-info">
+                <div class="contact-name">Lisa Park</div>
+                <div class="contact-email">lisa.park@example.com</div>
+              </div>
+            </div>
+
+            <!-- S -->
+            <div class="letter-divider" aria-hidden="true">S</div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="Priya Sharma">
+              <div class="contact-avatar" style="background: #10b981;" aria-hidden="true">PS</div>
+              <div class="contact-info">
+                <div class="contact-name">Priya Sharma</div>
+                <div class="contact-email">priya.sharma@example.com</div>
+              </div>
+            </div>
+
+            <!-- W -->
+            <div class="letter-divider" aria-hidden="true">W</div>
+            <div class="contact-card" role="listitem" tabindex="0" onclick="selectContact(this)" data-name="Alex Wright">
+              <div class="contact-avatar" style="background: #3b82f6;" aria-hidden="true">AW</div>
+              <div class="contact-info">
+                <div class="contact-name">Alex Wright</div>
+                <div class="contact-email">alex.wright@example.com</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contact Detail -->
+        <div class="contact-detail-pane" id="detail-pane">
+          <div class="detail-card">
+            <div class="detail-header">
+              <div class="detail-avatar" style="background: #ec4899;" aria-hidden="true">SC</div>
+              <h2 class="detail-name">Sarah Chen</h2>
+              <p class="detail-title">VP of Engineering at Acme Corp</p>
+            </div>
+
+            <div class="detail-fields">
+              <div class="detail-field">
+                <div class="detail-field-label">Email</div>
+                <div class="detail-field-value"><a href="mailto:sarah.chen@example.com">sarah.chen@example.com</a></div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Phone</div>
+                <div class="detail-field-value"><a href="tel:+15551234567">+1 (555) 123-4567</a></div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Mobile</div>
+                <div class="detail-field-value"><a href="tel:+15559876543">+1 (555) 987-6543</a></div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Company</div>
+                <div class="detail-field-value">Acme Corp</div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Title</div>
+                <div class="detail-field-value">VP of Engineering</div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Address</div>
+                <div class="detail-field-value">123 Market Street, Suite 400<br>San Francisco, CA 94105</div>
+              </div>
+              <div class="detail-field">
+                <div class="detail-field-label">Notes</div>
+                <div class="detail-field-value" style="color: var(--text-secondary);">Met at GopherCon 2025. Working on similar distributed systems problems. Good contact for Raft consensus questions.</div>
+              </div>
+            </div>
+
+            <!-- Recent emails with this contact -->
+            <div class="detail-section-title">Recent Emails</div>
+            <div class="recent-emails">
+              <a href="v2-thread.html" class="recent-email">
+                <span class="recent-email-icon" aria-hidden="true">&#9993;</span>
+                <span class="recent-email-subject">Re: Q1 Budget Review</span>
+                <span class="recent-email-date">Today</span>
+              </a>
+              <a href="#" class="recent-email">
+                <span class="recent-email-icon" aria-hidden="true">&#9993;</span>
+                <span class="recent-email-subject">Conference talk proposal</span>
+                <span class="recent-email-date">Feb 20</span>
+              </a>
+              <a href="#" class="recent-email">
+                <span class="recent-email-icon" aria-hidden="true">&#10148;</span>
+                <span class="recent-email-subject">IMAP performance benchmarks</span>
+                <span class="recent-email-date">Feb 14</span>
+              </a>
+            </div>
+
+            <div class="detail-actions">
+              <button class="btn-edit" aria-label="Edit contact">Edit</button>
+              <button class="btn-action" aria-label="Send email to Sarah Chen">Send Email</button>
+              <span class="detail-spacer"></span>
+              <button class="btn-danger" aria-label="Delete contact">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.querySelector('.hamburger');
+      const overlay = document.querySelector('.sidebar-overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+      const isOpen = sidebar.classList.contains('open');
+      hamburger.setAttribute('aria-expanded', isOpen);
+      overlay.setAttribute('aria-hidden', !isOpen ? 'true' : 'false');
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.dataset.theme === 'dark';
+      html.dataset.theme = isDark ? 'light' : 'dark';
+      const btn = document.querySelector('.topbar-btn[aria-label*="theme"]');
+      btn.textContent = isDark ? '\u263D' : '\u2600';
+    }
+
+    function selectContact(el) {
+      document.querySelectorAll('.contact-card').forEach(c => {
+        c.classList.remove('selected');
+        c.removeAttribute('aria-current');
+      });
+      el.classList.add('selected');
+      el.setAttribute('aria-current', 'true');
+
+      // On mobile, show the detail pane
+      document.getElementById('contacts-panes').classList.add('showing-detail');
+    }
+
+    // Keyboard support for contact cards
+    document.addEventListener('keydown', function(e) {
+      if (e.target.classList.contains('contact-card') && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        selectContact(e.target);
+      }
+    });
+  </script>
+</body>
+</html>

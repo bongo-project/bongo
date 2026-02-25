@@ -1,0 +1,85 @@
+From dobey@novell.com  Mon May  1 13:19:53 2006
+Return-Path: <dobey@novell.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id CDCBB3B1190
+	for <desktop-devel-list@gnome.org>;
+	Mon,  1 May 2006 13:19:53 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 17094-04 for <desktop-devel-list@gnome.org>;
+	Mon,  1 May 2006 13:19:51 -0400 (EDT)
+Received: from peabody.ximian.com (peabody.ximian.com [130.57.169.10])
+	by menubar.gnome.org (Postfix) with ESMTP id 57F533B090E
+	for <desktop-devel-list@gnome.org>;
+	Mon,  1 May 2006 13:19:51 -0400 (EDT)
+Received: (qmail 20288 invoked from network); 1 May 2006 17:19:50 -0000
+Received: from localhost (HELO nuitari.boston.ximian.com) (dobey@127.0.0.1)
+	by localhost with SMTP; 1 May 2006 17:19:50 -0000
+From: Rodney Dawes <dobey@novell.com>
+To: Behdad Esfahbod <behdad@cs.toronto.edu>
+In-Reply-To: <Pine.LNX.4.58.0604281725530.18262@epoch.cs>
+References: <51419b2c0604271410p3c04422ehe07885658395409b@mail.gmail.com>
+	<1146175895.29114.2.camel@nuitari.cam.novell.com>
+	<51419b2c0604271521i12c9deb6sc20f609c50450256@mail.gmail.com>
+	<1146256459.609.3.camel@nuitari.cam.novell.com>
+	<Pine.LNX.4.58.0604281658140.18262@epoch.cs>
+	<1146258961.609.8.camel@nuitari.cam.novell.com>
+	<Pine.LNX.4.58.0604281725530.18262@epoch.cs>
+Content-Type: text/plain
+Date: Mon, 01 May 2006 13:17:19 -0400
+Message-Id: <1146503839.12063.9.camel@nuitari.cam.novell.com>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.0 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.475 tagged_above=-999 required=2
+	tests=[AWL=-0.076, BAYES_00=-2.599, DNS_FROM_RFC_ABUSE=0.2]
+X-Spam-Score: -2.475
+X-Spam-Level: 
+Cc: desktop-devel-list@gnome.org
+Subject: Re: Please review po/LINGUAS patches so that people can build
+	Gnome from CVS
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 01 May 2006 17:19:54 -0000
+
+On Fri, 2006-04-28 at 17:28 -0400, Behdad Esfahbod wrote:
+> Is there an unwritten invariant that every variable defined in a
+> configure.in file should survive AC_SUBST?  I don't know why you
+> keep blaming autotools.  As a user I don't care what autotools
+> does or doesn't.  What I care is that the new version of intltool
+> breaks my app.
+
+Your app was already broken. The new version of intltool exposes a bug
+in your app, which you should fix in your app. And yes, every variable
+written in a configure.in file should survive being passed to sed. You
+are not a user who shouldn't care what autotools does or does not do.
+You are a developer who is using autotools as one of the tools for
+maintaining a piece of software. If you don't care to know what the tool
+you are using does or does not do, you shouldn't use it. Would you build
+a house without knowing how a hammer works?
+
+> What you are saying is like we change g_unichar_isalpha in glib
+> to call libc's isalpha and when people complain that it doesn't
+> work as expected on some systems, we point them to libc...
+
+A bug in libc is a bug in libc, regardless of how your code exposes it.
+If a change in glib to fix a bug, breaks the code you had to work
+around the bug, because the data you are passing is bad, doesn't mean
+glib should let you pass bad data. The bug is in glibc, and I wouldn't
+call it a regression. Not supporting broken code is not a regresssion.
+
+-- dobey
+
+

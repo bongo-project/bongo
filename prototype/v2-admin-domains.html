@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Admin — Domains (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 ADMIN DOMAINS — FULLY SELF-CONTAINED
+       ============================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bongo-orange: #ffac35; --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf; --bongo-blue-dark: #3d6a9e; --bongo-blue-light: #e8f0fa;
+      --bongo-green: #22c55e; --bongo-red: #ef4444; --bongo-yellow: #f59e0b;
+      --bg: #ffffff; --bg-subtle: #f7f8fa; --bg-muted: #f0f2f5; --bg-hover: #edf0f4;
+      --sidebar-bg: #1e293b; --sidebar-hover: rgba(255,255,255,0.06); --sidebar-active: rgba(255,255,255,0.12);
+      --sidebar-text: #94a3b8; --sidebar-bright: #e2e8f0; --sidebar-width: 220px;
+      --text: #1a1a2e; --text-secondary: #5f6368; --text-muted: #9aa0a8;
+      --border: #e4e7ec; --border-strong: #d0d3d8;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05); --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+      --topbar-h: 52px; --radius: 6px; --radius-lg: 10px;
+    }
+
+    [data-theme="dark"] {
+      --bongo-orange: #e09530; --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc; --bongo-blue-dark: #4a6e96; --bongo-blue-light: #1e3350;
+      --bongo-green: #4ade80; --bongo-red: #f87171; --bongo-yellow: #fbbf24;
+      --bg: #0f172a; --bg-subtle: #1e293b; --bg-muted: #334155; --bg-hover: #1e293b;
+      --sidebar-bg: #0f172a; --sidebar-text: #64748b; --sidebar-bright: #cbd5e1;
+      --text: #e2e8f0; --text-secondary: #94a3b8; --text-muted: #64748b;
+      --border: #1e293b; --border-strong: #334155;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.3); --shadow-md: 0 2px 8px rgba(0,0,0,0.4);
+    }
+
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); overflow: hidden; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+    input, select { font-family: inherit; font-size: 0.9rem; }
+    .skip-link { position: absolute; top: -100%; left: 16px; background: var(--bongo-blue); color: #fff; padding: 8px 16px; border-radius: var(--radius); z-index: 200; font-weight: 600; font-size: 0.9rem; }
+    .skip-link:focus { top: 8px; }
+    *:focus-visible { outline: 2px solid var(--bongo-blue); outline-offset: 2px; }
+
+    /* TOPBAR */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: #1e293b; border-bottom: 1px solid #334155; z-index: 100; }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .hamburger { display: none; align-items: center; justify-content: center; width: 36px; height: 36px; border: none; background: transparent; color: #94a3b8; font-size: 1.3rem; cursor: pointer; border-radius: var(--radius); }
+    .hamburger:hover { background: rgba(255,255,255,0.06); }
+    .brand { font-weight: 700; font-size: 1.15rem; color: #e2e8f0; letter-spacing: -0.5px; }
+    .brand span { color: var(--bongo-orange); }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+    .topbar-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: #94a3b8; cursor: pointer; font-size: 1.05rem; }
+    .topbar-btn:hover { background: rgba(255,255,255,0.06); }
+    .admin-user { font-size: 0.82rem; color: #94a3b8; }
+    .topbar-link { font-size: 0.82rem; color: #64748b; padding: 6px 10px; border-radius: var(--radius); }
+    .topbar-link:hover { background: rgba(255,255,255,0.06); color: #cbd5e1; }
+    .back-to-mail { font-size: 0.82rem; color: var(--bongo-blue); padding: 6px 10px; border-radius: var(--radius); }
+    .back-to-mail:hover { background: rgba(81,127,175,0.1); }
+
+    /* LAYOUT */
+    .layout { display: flex; position: fixed; top: var(--topbar-h); left: 0; right: 0; bottom: 0; }
+    .sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; overflow-x: hidden; transition: transform 0.25s ease; border-right: 1px solid #334155; }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 149; }
+    .admin-nav { list-style: none; padding: 12px 8px; }
+    .admin-nav-item a { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius); font-size: 0.88rem; font-weight: 500; color: var(--sidebar-text); transition: background 0.12s, color 0.12s; margin: 1px 0; }
+    .admin-nav-item a:hover { background: var(--sidebar-hover); color: var(--sidebar-bright); }
+    .admin-nav-item a.active { background: var(--sidebar-active); color: var(--sidebar-bright); font-weight: 600; }
+    .admin-nav-icon { width: 18px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+    .admin-nav-section { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.25); padding: 16px 12px 6px; font-weight: 600; }
+
+    /* CONTENT */
+    .content { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow-y: auto; }
+    .admin-scroll { flex: 1; overflow-y: auto; padding: 24px; }
+    .admin-title { font-size: 1.3rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .admin-subtitle { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 20px; }
+
+    /* ADD DOMAIN FORM */
+    .add-form-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 24px; max-width: 640px; }
+    .add-form-card h3 { font-size: 0.95rem; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+    .add-form-row { display: flex; align-items: end; gap: 12px; }
+    .add-form-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+    .form-label { font-size: 0.78rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
+    .form-input { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 8px 12px; font-size: 0.9rem; background: var(--bg); color: var(--text); }
+    .form-input:focus { border-color: var(--bongo-blue); outline: none; box-shadow: 0 0 0 3px rgba(81,127,175,0.15); }
+
+    /* BUTTONS */
+    .btn-primary { display: inline-flex; align-items: center; gap: 6px; background: var(--bongo-blue); color: #fff; border: none; padding: 8px 18px; border-radius: var(--radius); font-size: 0.88rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .btn-primary:hover { background: var(--bongo-blue-dark); }
+    .btn-outline { display: inline-flex; align-items: center; background: transparent; color: var(--text-secondary); border: 1px solid var(--border-strong); padding: 6px 12px; border-radius: var(--radius); font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+    .btn-outline:hover { background: var(--bg-hover); color: var(--text); }
+    .btn-danger { display: inline-flex; align-items: center; background: transparent; color: var(--bongo-red); border: 1px solid rgba(239,68,68,0.3); padding: 6px 12px; border-radius: var(--radius); font-size: 0.82rem; cursor: pointer; }
+    .btn-danger:hover { background: rgba(239,68,68,0.08); }
+
+    /* TABLE */
+    .table-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+    .admin-table { width: 100%; border-collapse: collapse; }
+    .admin-table th { text-align: left; padding: 10px 18px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); background: var(--bg-subtle); border-bottom: 1px solid var(--border); }
+    .admin-table td { padding: 12px 18px; font-size: 0.88rem; color: var(--text); border-bottom: 1px solid var(--border); vertical-align: middle; }
+    .admin-table tr:last-child td { border-bottom: none; }
+    .admin-table tr:hover td { background: var(--bg-hover); }
+
+    /* DNS STATUS */
+    .dns-check { color: var(--bongo-green); font-weight: 600; font-size: 0.85rem; }
+    .dns-fail { color: var(--bongo-red); font-weight: 600; font-size: 0.85rem; }
+
+    /* BADGES */
+    .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+    .badge-active { background: rgba(34,197,94,0.12); color: var(--bongo-green); }
+    .badge-disabled { background: rgba(239,68,68,0.12); color: var(--bongo-red); }
+    .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+    .status-dot.green { background: var(--bongo-green); }
+
+    /* DNS SETUP HINT */
+    .dns-hint { background: var(--bongo-blue-light); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-top: 20px; font-size: 0.85rem; color: var(--text-secondary); max-width: 640px; }
+    .dns-hint code { background: var(--bg-muted); padding: 2px 6px; border-radius: 3px; font-size: 0.82rem; }
+
+    .row-actions { display: flex; gap: 6px; }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+      .sidebar { position: fixed; top: var(--topbar-h); left: 0; bottom: 0; width: 260px; z-index: 150; transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.open { display: block; }
+      .admin-scroll { padding: 16px; }
+      .add-form-row { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+      <a href="v2-admin.html" class="brand" aria-label="BongoAdmin — Dashboard">Bongo<span>Admin</span></a>
+    </div>
+    <div class="topbar-right">
+      <a href="v2-inbox.html" class="back-to-mail">&larr; Back to Mail</a>
+      <button class="topbar-btn" title="Toggle dark/light theme" aria-label="Toggle dark/light theme" onclick="toggleTheme()">&#9789;</button>
+      <span class="admin-user">admin</span>
+      <a href="v2-login.html" class="topbar-link">Log out</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="sidebar-overlay" onclick="toggleSidebar()" aria-hidden="true"></div>
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Admin navigation">
+      <ul class="admin-nav">
+        <li class="admin-nav-item"><div class="admin-nav-section">Overview</div></li>
+        <li class="admin-nav-item"><a href="v2-admin.html"><span class="admin-nav-icon" aria-hidden="true">&#9633;</span> Dashboard</a></li>
+        <li class="admin-nav-item"><div class="admin-nav-section">Management</div></li>
+        <li class="admin-nav-item"><a href="v2-admin-users.html"><span class="admin-nav-icon" aria-hidden="true">&#128100;</span> Users</a></li>
+        <li class="admin-nav-item"><a href="v2-admin-domains.html" class="active" aria-current="page"><span class="admin-nav-icon" aria-hidden="true">&#127760;</span> Domains</a></li>
+        <li class="admin-nav-item"><a href="v2-admin-aliases.html"><span class="admin-nav-icon" aria-hidden="true">&#128231;</span> Aliases</a></li>
+        <li class="admin-nav-item"><div class="admin-nav-section">Mail System</div></li>
+        <li class="admin-nav-item"><a href="v2-admin-queue.html"><span class="admin-nav-icon" aria-hidden="true">&#128230;</span> Queue</a></li>
+        <li class="admin-nav-item"><div class="admin-nav-section">Infrastructure</div></li>
+        <li class="admin-nav-item"><a href="v2-admin-cluster.html"><span class="admin-nav-icon" aria-hidden="true">&#9881;</span> Cluster</a></li>
+        <li class="admin-nav-item"><a href="v2-admin-logs.html"><span class="admin-nav-icon" aria-hidden="true">&#128196;</span> Logs</a></li>
+      </ul>
+    </aside>
+
+    <main class="content" id="main-content" role="main" aria-label="Domain Management">
+      <div class="admin-scroll">
+        <h1 class="admin-title">Domains</h1>
+        <p class="admin-subtitle">Manage mail domains and DNS configuration</p>
+
+        <!-- Add Domain -->
+        <div class="add-form-card">
+          <h3>Add Domain</h3>
+          <form onsubmit="return false">
+            <div class="add-form-row">
+              <div class="add-form-field">
+                <label class="form-label" for="domain-name">Domain name</label>
+                <input type="text" id="domain-name" class="form-input" placeholder="example.com" required>
+              </div>
+              <button type="submit" class="btn-primary" style="height: 38px;">Add Domain</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Domain Table -->
+        <div class="table-card">
+          <table class="admin-table" aria-label="Domain list">
+            <thead>
+              <tr>
+                <th scope="col">Domain</th>
+                <th scope="col">MX Record</th>
+                <th scope="col">Status</th>
+                <th scope="col" style="width: 180px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>localhost</strong></td>
+                <td><span class="dns-check">&#10003; Valid</span></td>
+                <td><span class="badge badge-active"><span class="status-dot green"></span> Enabled</span></td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-outline">Disable</button>
+                    <button class="btn-danger">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>acme.example</strong></td>
+                <td><span class="dns-check">&#10003; Valid</span></td>
+                <td><span class="badge badge-active"><span class="status-dot green"></span> Enabled</span></td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-outline">Disable</button>
+                    <button class="btn-danger">Delete</button>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>staging.example</strong></td>
+                <td><span class="dns-fail">&#10007; Missing</span></td>
+                <td><span class="badge badge-disabled">Disabled</span></td>
+                <td>
+                  <div class="row-actions">
+                    <button class="btn-outline">Enable</button>
+                    <button class="btn-danger">Delete</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- DNS Hint -->
+        <div class="dns-hint">
+          <strong>DNS Setup:</strong> Point your domain's MX record to this server.
+          For example: <code>MX 10 mail.example.com</code>. Changes may take up to 48 hours to propagate.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.querySelector('.hamburger');
+      const overlay = document.querySelector('.sidebar-overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+      hamburger.setAttribute('aria-expanded', sidebar.classList.contains('open'));
+    }
+    function toggleTheme() {
+      const html = document.documentElement;
+      html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.querySelector('.topbar-btn[aria-label*="theme"]').textContent = html.dataset.theme === 'dark' ? '\u2600' : '\u263D';
+    }
+  </script>
+</body>
+</html>

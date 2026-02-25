@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BongoMail Filter Rules</title>
+  <style>
+    /* ================================================================
+       CSS VARIABLES & BASE STYLES
+       ================================================================ */
+    :root {
+      --bongo-orange: #ffac35;
+      --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf;
+      --bongo-blue-dark: #3d6a9e;
+      --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+
+      --bg: #ffffff;
+      --bg-subtle: #f7f8fa;
+      --bg-muted: #f0f2f5;
+      --bg-hover: #edf0f4;
+
+      --sidebar-bg: #2c4a72;
+      --sidebar-hover: rgba(255, 255, 255, 0.08);
+      --sidebar-active: rgba(255, 255, 255, 0.15);
+      --sidebar-text: #b8cadf;
+      --sidebar-bright: #ffffff;
+      --sidebar-width: 240px;
+
+      --text: #1a1a2e;
+      --text-secondary: #5f6368;
+      --text-muted: #9aa0a8;
+      --text-inverse: #ffffff;
+
+      --border: #e4e7ec;
+      --border-strong: #d0d3d8;
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+      --topbar-h: 52px;
+      --radius: 6px;
+      --radius-lg: 10px;
+
+      --color-danger: #d32f2f;
+      --color-danger-hover: #b71c1c;
+      --color-success: #388e3c;
+    }
+
+    [data-theme="dark"] {
+      --bongo-orange: #e09530;
+      --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc;
+      --bongo-blue-dark: #4a6e96;
+      --bongo-blue-light: #1e3350;
+
+      --bg: #1a1a2e;
+      --bg-subtle: #20203a;
+      --bg-muted: #282842;
+      --bg-hover: #2e2e48;
+
+      --sidebar-bg: #1a2744;
+      --sidebar-text: #8aa4c8;
+      --sidebar-bright: #d0ddef;
+
+      --text: #e0e0e8;
+      --text-secondary: #a0a4ac;
+      --text-muted: #6b7080;
+
+      --border: #2e3040;
+      --border-strong: #3e4050;
+
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+      --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+      --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    /* ================================================================
+       ACCESSIBILITY
+       ================================================================ */
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: var(--bongo-blue);
+      color: var(--text-inverse);
+      padding: 8px;
+      z-index: 100;
+      text-decoration: none;
+      border-radius: 0 0 var(--radius) 0;
+    }
+
+    .skip-link:focus {
+      top: 0;
+    }
+
+    *:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    /* ================================================================
+       TOPBAR
+       ================================================================ */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--topbar-h);
+      background-color: var(--bg);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 50;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .topbar-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .theme-toggle {
+      background: none;
+      border: none;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius);
+      transition: background-color 0.2s;
+    }
+
+    .theme-toggle:hover {
+      background-color: var(--bg-hover);
+    }
+
+    .hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+
+    .hamburger span {
+      width: 24px;
+      height: 3px;
+      background-color: var(--text);
+      border-radius: 2px;
+      transition: 0.3s;
+    }
+
+    .hamburger.active span:nth-child(1) {
+      transform: rotate(45deg) translate(10px, 10px);
+    }
+
+    .hamburger.active span:nth-child(2) {
+      opacity: 0;
+    }
+
+    .hamburger.active span:nth-child(3) {
+      transform: rotate(-45deg) translate(7px, -7px);
+    }
+
+    /* ================================================================
+       SIDEBAR
+       ================================================================ */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: var(--topbar-h);
+      bottom: 0;
+      width: var(--sidebar-width);
+      background-color: var(--sidebar-bg);
+      padding: 24px 0;
+      overflow-y: auto;
+      z-index: 40;
+      box-shadow: var(--shadow-md);
+      transition: transform 0.3s ease;
+    }
+
+    .sidebar.mobile-hidden {
+      transform: translateX(-100%);
+    }
+
+    .sidebar-section {
+      margin-bottom: 32px;
+    }
+
+    .sidebar-section:first-child {
+      margin-top: 0;
+    }
+
+    .sidebar-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--sidebar-text);
+      padding: 0 16px;
+      margin-bottom: 8px;
+    }
+
+    .sidebar-link {
+      display: block;
+      padding: 10px 16px;
+      color: var(--sidebar-text);
+      text-decoration: none;
+      font-size: 14px;
+      border-left: 3px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .sidebar-link:hover {
+      background-color: var(--sidebar-hover);
+      color: var(--sidebar-bright);
+    }
+
+    .sidebar-link.active {
+      background-color: var(--sidebar-active);
+      border-left-color: var(--bongo-orange);
+      color: var(--sidebar-bright);
+      font-weight: 500;
+    }
+
+    /* ================================================================
+       MAIN LAYOUT
+       ================================================================ */
+    .main-wrapper {
+      margin-left: var(--sidebar-width);
+      margin-top: var(--topbar-h);
+      min-height: calc(100vh - var(--topbar-h));
+      padding: 32px;
+      background-color: var(--bg);
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    /* ================================================================
+       PAGE HEADER
+       ================================================================ */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 32px;
+      gap: 16px;
+    }
+
+    .page-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    /* ================================================================
+       BUTTONS
+       ================================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 500;
+      border: 1px solid;
+      border-radius: var(--radius);
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-primary {
+      background-color: var(--bongo-blue);
+      color: var(--text-inverse);
+      border-color: var(--bongo-blue);
+    }
+
+    .btn-primary:hover {
+      background-color: var(--bongo-blue-dark);
+      border-color: var(--bongo-blue-dark);
+    }
+
+    .btn-outline {
+      background-color: transparent;
+      color: var(--bongo-blue);
+      border-color: var(--bongo-blue);
+    }
+
+    .btn-outline:hover {
+      background-color: var(--bongo-blue-light);
+      border-color: var(--bongo-blue-dark);
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-muted);
+      color: var(--text);
+      border-color: var(--border);
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--bg-hover);
+      border-color: var(--border-strong);
+    }
+
+    .btn-danger {
+      background-color: transparent;
+      color: var(--color-danger);
+      border-color: var(--color-danger);
+    }
+
+    .btn-danger:hover {
+      background-color: var(--color-danger);
+      color: var(--text-inverse);
+      border-color: var(--color-danger);
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    .rule-move-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+      font-size: 12px;
+    }
+
+    .rule-move-btn:hover {
+      color: var(--text);
+    }
+
+    /* ================================================================
+       TABLE STYLES
+       ================================================================ */
+    [role="grid"] {
+      width: 100%;
+      border-collapse: collapse;
+      border-spacing: 0;
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+
+    [role="grid"] thead {
+      background-color: var(--bg-muted);
+      border-bottom: 1px solid var(--border-strong);
+    }
+
+    [role="grid"] th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+    }
+
+    [role="grid"] tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background-color 0.2s;
+    }
+
+    [role="grid"] tbody tr:hover {
+      background-color: var(--bg-subtle);
+    }
+
+    [role="grid"] tbody tr:last-child {
+      border-bottom: none;
+    }
+
+    [role="grid"] td {
+      padding: 16px;
+      vertical-align: middle;
+      font-size: 14px;
+    }
+
+    .rule-name {
+      font-weight: 600;
+      color: var(--bongo-blue);
+      text-decoration: none;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .rule-name:hover {
+      color: var(--bongo-blue-dark);
+      text-decoration: underline;
+    }
+
+    .rule-summary {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      max-width: 300px;
+    }
+
+    .rule-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .rule-status.active {
+      color: var(--color-success);
+    }
+
+    .rule-status.inactive {
+      color: var(--text-muted);
+    }
+
+    .rule-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .drag-handle {
+      cursor: grab;
+      color: var(--text-muted);
+      font-size: 12px;
+      user-select: none;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    /* ================================================================
+       FORM STYLES
+       ================================================================ */
+    .form-section {
+      margin-bottom: 32px;
+      padding: 24px;
+      background-color: var(--bg-subtle);
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+    }
+
+    .form-section-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .form-row.two-col {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .form-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group label {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      padding: 10px 12px;
+      font-size: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background-color: var(--bg);
+      color: var(--text);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: var(--bongo-blue);
+      box-shadow: 0 0 0 3px var(--bongo-blue-light);
+    }
+
+    .form-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 2px;
+      cursor: pointer;
+    }
+
+    .checkbox-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .checkbox-wrapper label {
+      margin-bottom: 0;
+      cursor: pointer;
+      font-weight: 400;
+    }
+
+    /* ================================================================
+       CONDITION GRID
+       ================================================================ */
+    .condition-row {
+      display: grid;
+      grid-template-columns: 150px 150px 1fr 40px;
+      gap: 12px;
+      align-items: end;
+      margin-bottom: 12px;
+      padding: 12px;
+      background-color: var(--bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .condition-row-remove {
+      background: none;
+      border: none;
+      color: var(--color-danger);
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+    }
+
+    .condition-row-remove:hover {
+      color: var(--color-danger-hover);
+    }
+
+    /* ================================================================
+       FORM ACTIONS
+       ================================================================ */
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 32px;
+    }
+
+    .form-actions .btn {
+      flex: 0 0 auto;
+    }
+
+    .form-link {
+      color: var(--bongo-blue);
+      text-decoration: none;
+      transition: color 0.2s;
+      cursor: pointer;
+      padding: 10px 16px;
+      align-self: center;
+    }
+
+    .form-link:hover {
+      color: var(--bongo-blue-dark);
+      text-decoration: underline;
+    }
+
+    /* ================================================================
+       TEST RESULTS
+       ================================================================ */
+    .test-results {
+      display: none;
+      margin-top: 16px;
+      padding: 16px;
+      background-color: var(--bongo-blue-light);
+      border-radius: var(--radius);
+      border-left: 4px solid var(--bongo-blue);
+      color: var(--text);
+    }
+
+    .test-results.visible {
+      display: block;
+    }
+
+    .test-results strong {
+      font-weight: 600;
+    }
+
+    /* ================================================================
+       VIEW SEPARATOR
+       ================================================================ */
+    .view-separator {
+      height: 1px;
+      background: linear-gradient(to right, transparent, var(--border) 20%, var(--border) 80%, transparent);
+      margin: 64px 0;
+    }
+
+    /* ================================================================
+       MOBILE RESPONSIVE
+       ================================================================ */
+    @media (max-width: 1024px) {
+      .main-wrapper {
+        padding: 24px;
+      }
+
+      .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .condition-row {
+        grid-template-columns: 1fr;
+      }
+
+      .form-row.two-col {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      :root {
+        --sidebar-width: 0;
+      }
+
+      .topbar {
+        padding: 0 16px;
+      }
+
+      .hamburger {
+        display: flex;
+      }
+
+      .sidebar {
+        width: 240px;
+        z-index: 45;
+      }
+
+      .sidebar.mobile-hidden {
+        transform: translateX(-100%);
+      }
+
+      .main-wrapper {
+        margin-left: 0;
+        padding: 16px;
+      }
+
+      /* Card layout for mobile */
+      [role="grid"] {
+        border: none;
+        box-shadow: none;
+        display: block;
+      }
+
+      [role="grid"] thead {
+        display: none;
+      }
+
+      [role="grid"] tbody {
+        display: grid;
+        gap: 16px;
+      }
+
+      [role="grid"] tbody tr {
+        display: grid;
+        gap: 12px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        background-color: var(--bg);
+        box-shadow: var(--shadow-sm);
+      }
+
+      [role="grid"] tbody tr:hover {
+        background-color: var(--bg);
+        box-shadow: var(--shadow-md);
+      }
+
+      [role="grid"] tbody tr:last-child {
+        border-bottom: 1px solid var(--border);
+      }
+
+      [role="grid"] td {
+        padding: 0;
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 12px;
+        align-items: start;
+      }
+
+      [role="grid"] td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .rule-actions {
+        grid-column: 1 / -1;
+      }
+
+      .page-title {
+        font-size: 24px;
+      }
+
+      .form-section {
+        padding: 16px;
+      }
+
+      .view-separator {
+        margin: 40px 0;
+      }
+    }
+
+    @media (max-width: 480px) {
+      :root {
+        --topbar-h: 48px;
+      }
+
+      .topbar {
+        padding: 0 12px;
+      }
+
+      .main-wrapper {
+        padding: 12px;
+      }
+
+      .page-title {
+        font-size: 20px;
+      }
+
+      .page-header {
+        margin-bottom: 24px;
+      }
+
+      .btn {
+        padding: 8px 12px;
+        font-size: 13px;
+      }
+
+      .form-group input,
+      .form-group select,
+      .form-group textarea {
+        font-size: 16px;
+      }
+
+      .condition-row {
+        grid-template-columns: 1fr 30px;
+      }
+
+      [role="grid"] td {
+        grid-template-columns: 80px 1fr;
+        gap: 8px;
+        font-size: 13px;
+      }
+
+      .rule-summary {
+        font-size: 11px;
+      }
+
+      .form-actions {
+        flex-direction: column;
+      }
+
+      .form-actions .btn,
+      .form-link {
+        width: 100%;
+      }
+
+      .form-link {
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburgerBtn" aria-label="Toggle sidebar">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <div class="topbar-title">BongoMail</div>
+    </div>
+    <div class="topbar-right">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+        <span id="themeIcon">🌙</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar mobile-hidden" id="sidebar">
+    <nav>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Navigation</div>
+        <a href="#" class="sidebar-link active">Filter Rules</a>
+        <a href="#" class="sidebar-link">Labels</a>
+        <a href="#" class="sidebar-link">Signatures</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">Settings</div>
+        <a href="#" class="sidebar-link">Account</a>
+        <a href="#" class="sidebar-link">Preferences</a>
+        <a href="#" class="sidebar-link">Security</a>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-title">App</div>
+        <a href="#" class="sidebar-link">← Back to Mail</a>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-wrapper" id="main-content">
+    <div class="container">
+
+      <!-- ================================================================
+           VIEW 1: RULES LIST PAGE
+           ================================================================ -->
+      <section id="rulesListView">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h1 class="page-title">Filter Rules</h1>
+          <button class="btn btn-outline" onclick="switchToForm('new')">+ New Rule</button>
+        </div>
+
+        <!-- Rules Table -->
+        <div role="grid" aria-label="Filter rules list">
+          <thead>
+            <tr>
+              <th style="width: 30px;">⠁</th>
+              <th style="width: 50px;">#</th>
+              <th style="width: 200px;">Name</th>
+              <th style="width: 300px;">Conditions</th>
+              <th style="width: 200px;">Action</th>
+              <th style="width: 80px;">Status</th>
+              <th style="width: 120px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Rule 1 -->
+            <tr data-id="rule-1">
+              <td data-label="Handle" class="drag-handle">⠁</td>
+              <td data-label="#">1</td>
+              <td data-label="Name">
+                <a class="rule-name" onclick="switchToForm('rule-1')">Newsletters to Updates</a>
+              </td>
+              <td data-label="Conditions">
+                <div class="rule-summary">From contains "newsletter" OR "digest"</div>
+              </td>
+              <td data-label="Action">
+                <div class="rule-summary">Move to Updates folder</div>
+              </td>
+              <td data-label="Status">
+                <span class="rule-status active">✓ Active</span>
+              </td>
+              <td data-label="Actions" class="rule-actions">
+                <button class="btn btn-sm btn-secondary" onclick="switchToForm('rule-1')">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="testRule(1)">Test</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRule(1)">Delete</button>
+              </td>
+            </tr>
+
+            <!-- Test results row (Rule 1) -->
+            <tr class="test-results-row" id="test-results-1" style="display: none;">
+              <td colspan="7">
+                <div class="test-results">
+                  <strong>Test Results:</strong> Matched 3 of 50 recent messages
+                  <ul style="margin-top: 8px; margin-left: 20px; font-size: 13px;">
+                    <li>Newsletter: July 2025 digest</li>
+                    <li>Weekly roundup - Issue #42</li>
+                    <li>Monthly newsletter archive</li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Rule 2 -->
+            <tr data-id="rule-2">
+              <td data-label="Handle" class="drag-handle">⠁</td>
+              <td data-label="#">2</td>
+              <td data-label="Name">
+                <a class="rule-name" onclick="switchToForm('rule-2')">Large Attachments</a>
+              </td>
+              <td data-label="Conditions">
+                <div class="rule-summary">Size greater than 10 MB</div>
+              </td>
+              <td data-label="Action">
+                <div class="rule-summary">Flag for review</div>
+              </td>
+              <td data-label="Status">
+                <span class="rule-status active">✓ Active</span>
+              </td>
+              <td data-label="Actions" class="rule-actions">
+                <button class="btn btn-sm btn-secondary" onclick="switchToForm('rule-2')">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="testRule(2)">Test</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRule(2)">Delete</button>
+              </td>
+            </tr>
+
+            <!-- Test results row (Rule 2) -->
+            <tr class="test-results-row" id="test-results-2" style="display: none;">
+              <td colspan="7">
+                <div class="test-results">
+                  <strong>Test Results:</strong> Matched 7 of 50 recent messages
+                  <ul style="margin-top: 8px; margin-left: 20px; font-size: 13px;">
+                    <li>Design_presentation_final_v3.pptx (28 MB)</li>
+                    <li>Recording_meeting_2025-02-15.mp4 (1.2 GB)</li>
+                    <li>Project_archive.zip (580 MB)</li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Rule 3 -->
+            <tr data-id="rule-3">
+              <td data-label="Handle" class="drag-handle">⠁</td>
+              <td data-label="#">3</td>
+              <td data-label="Name">
+                <a class="rule-name" onclick="switchToForm('rule-3')">Jira Notifications</a>
+              </td>
+              <td data-label="Conditions">
+                <div class="rule-summary">From contains "jira@company.com" AND Subject contains "assigned"</div>
+              </td>
+              <td data-label="Action">
+                <div class="rule-summary">Move to Work folder</div>
+              </td>
+              <td data-label="Status">
+                <span class="rule-status active">✓ Active</span>
+              </td>
+              <td data-label="Actions" class="rule-actions">
+                <button class="btn btn-sm btn-secondary" onclick="switchToForm('rule-3')">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="testRule(3)">Test</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRule(3)">Delete</button>
+              </td>
+            </tr>
+
+            <!-- Test results row (Rule 3) -->
+            <tr class="test-results-row" id="test-results-3" style="display: none;">
+              <td colspan="7">
+                <div class="test-results">
+                  <strong>Test Results:</strong> Matched 12 of 50 recent messages
+                  <ul style="margin-top: 8px; margin-left: 20px; font-size: 13px;">
+                    <li>[JIRA] PROJ-1234 has been assigned to you</li>
+                    <li>[JIRA] PROJ-5678 issue updated</li>
+                    <li>[JIRA] You are watching PROJ-9999</li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Rule 4 -->
+            <tr data-id="rule-4">
+              <td data-label="Handle" class="drag-handle">⠁</td>
+              <td data-label="#">4</td>
+              <td data-label="Name">
+                <a class="rule-name" onclick="switchToForm('rule-4')">Mailing Lists</a>
+              </td>
+              <td data-label="Conditions">
+                <div class="rule-summary">To contains "list@" OR Subject contains "-request"</div>
+              </td>
+              <td data-label="Action">
+                <div class="rule-summary">Move to Lists folder & Mark as read</div>
+              </td>
+              <td data-label="Status">
+                <span class="rule-status inactive">○ Inactive</span>
+              </td>
+              <td data-label="Actions" class="rule-actions">
+                <button class="btn btn-sm btn-secondary" onclick="switchToForm('rule-4')">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="testRule(4)">Test</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRule(4)">Delete</button>
+              </td>
+            </tr>
+
+            <!-- Test results row (Rule 4) -->
+            <tr class="test-results-row" id="test-results-4" style="display: none;">
+              <td colspan="7">
+                <div class="test-results">
+                  <strong>Test Results:</strong> Matched 8 of 50 recent messages
+                  <ul style="margin-top: 8px; margin-left: 20px; font-size: 13px;">
+                    <li>nodejs-users@list.example.com</li>
+                    <li>React-dev mailing list post</li>
+                    <li>Python-request digest</li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+
+            <!-- Rule 5 -->
+            <tr data-id="rule-5">
+              <td data-label="Handle" class="drag-handle">⠁</td>
+              <td data-label="#">5</td>
+              <td data-label="Name">
+                <a class="rule-name" onclick="switchToForm('rule-5')">Old Receipts</a>
+              </td>
+              <td data-label="Conditions">
+                <div class="rule-summary">From contains "receipt" OR "confirmation" AND older than 90 days</div>
+              </td>
+              <td data-label="Action">
+                <div class="rule-summary">Delete permanently</div>
+              </td>
+              <td data-label="Status">
+                <span class="rule-status inactive">○ Inactive</span>
+              </td>
+              <td data-label="Actions" class="rule-actions">
+                <button class="btn btn-sm btn-secondary" onclick="switchToForm('rule-5')">Edit</button>
+                <button class="btn btn-sm btn-secondary" onclick="testRule(5)">Test</button>
+                <button class="btn btn-sm btn-danger" onclick="deleteRule(5)">Delete</button>
+              </td>
+            </tr>
+
+            <!-- Test results row (Rule 5) -->
+            <tr class="test-results-row" id="test-results-5" style="display: none;">
+              <td colspan="7">
+                <div class="test-results">
+                  <strong>Test Results:</strong> Matched 24 of 50 recent messages
+                  <ul style="margin-top: 8px; margin-left: 20px; font-size: 13px;">
+                    <li>Order receipt #98765432</li>
+                    <li>Purchase confirmation - January 2024</li>
+                    <li>Subscription renewal confirmation</li>
+                  </ul>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </div>
+      </section>
+
+      <!-- VIEW SEPARATOR -->
+      <div class="view-separator"></div>
+
+      <!-- ================================================================
+           VIEW 2: RULE FORM PAGE
+           ================================================================ -->
+      <section id="ruleFormView" style="display: none;">
+        <!-- Page Header -->
+        <div class="page-header">
+          <h1 class="page-title" id="formPageTitle">New Rule</h1>
+          <a href="#" class="form-link" onclick="switchToList(); return false;">← Back to Rules</a>
+        </div>
+
+        <!-- Rule Settings Section -->
+        <div class="form-section">
+          <div class="form-section-title">Rule Settings</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="ruleName">Rule Name *</label>
+              <input type="text" id="ruleName" placeholder="e.g., Newsletters to Updates" value="Newsletters to Updates">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="ruleEnabled" checked>
+              <label for="ruleEnabled">Enable this rule</label>
+            </div>
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="ruleStop">
+              <label for="ruleStop">Stop processing other rules when this rule matches</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Conditions Section -->
+        <div class="form-section">
+          <div class="form-section-title">Conditions</div>
+          <div style="margin-bottom: 16px;">
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">Match ALL of these conditions:</p>
+
+            <!-- Condition 1 -->
+            <div class="condition-row">
+              <select class="form-group" style="margin: 0;">
+                <option>From</option>
+                <option>To</option>
+                <option>CC</option>
+                <option>Subject</option>
+                <option>Body</option>
+                <option>Has Attachment</option>
+                <option>Size</option>
+              </select>
+              <select class="form-group" style="margin: 0;">
+                <option>contains</option>
+                <option>does not contain</option>
+                <option>is</option>
+                <option>is not</option>
+                <option>starts with</option>
+                <option>ends with</option>
+              </select>
+              <input type="text" placeholder='e.g., "newsletter"' value="newsletter" style="padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--bg); color: var(--text);">
+              <button class="condition-row-remove" onclick="removeCondition(this)">✕</button>
+            </div>
+
+            <!-- Condition 2 -->
+            <div class="condition-row">
+              <select class="form-group" style="margin: 0;">
+                <option>From</option>
+                <option>To</option>
+                <option>CC</option>
+                <option>Subject</option>
+                <option>Body</option>
+                <option>Has Attachment</option>
+                <option>Size</option>
+              </select>
+              <select class="form-group" style="margin: 0;">
+                <option>contains</option>
+                <option>does not contain</option>
+                <option>is</option>
+                <option>is not</option>
+                <option>starts with</option>
+                <option>ends with</option>
+              </select>
+              <input type="text" placeholder='e.g., "digest"' value="digest" style="padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--bg); color: var(--text);">
+              <button class="condition-row-remove" onclick="removeCondition(this)">✕</button>
+            </div>
+          </div>
+
+          <button class="btn btn-secondary btn-sm" onclick="addCondition()">+ Add Condition</button>
+        </div>
+
+        <!-- Action Section -->
+        <div class="form-section">
+          <div class="form-section-title">Action</div>
+          <div class="form-row two-col">
+            <div class="form-group">
+              <label for="actionType">Action Type *</label>
+              <select id="actionType" onchange="updateActionOptions()">
+                <option value="move">Move to Folder</option>
+                <option value="copy">Copy to Folder</option>
+                <option value="flag">Flag</option>
+                <option value="mark-read">Mark as Read</option>
+                <option value="delete">Delete</option>
+              </select>
+            </div>
+            <div class="form-group" id="actionTargetGroup">
+              <label for="actionTarget">Target Folder *</label>
+              <select id="actionTarget">
+                <option value="">Select a folder...</option>
+                <option value="inbox">INBOX</option>
+                <option value="sent">Sent</option>
+                <option value="drafts">Drafts</option>
+                <option value="work">Work</option>
+                <option value="personal">Personal</option>
+                <option value="updates" selected>Updates</option>
+                <option value="lists">Lists</option>
+                <option value="trash">Trash</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form Actions -->
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+          <a href="#" class="form-link" onclick="switchToList(); return false;">Cancel</a>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- SCRIPTS -->
+  <script>
+    // ================================================================
+    // THEME TOGGLE
+    // ================================================================
+    const themeToggle = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+    const htmlElement = document.documentElement;
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    // Initialize theme
+    const savedTheme = localStorage.getItem('bongo-theme') || (prefersDark ? 'dark' : 'light');
+    if (savedTheme === 'dark') {
+      htmlElement.setAttribute('data-theme', 'dark');
+      themeIcon.textContent = '☀️';
+    }
+
+    themeToggle.addEventListener('click', () => {
+      const currentTheme = htmlElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      htmlElement.setAttribute('data-theme', newTheme);
+      themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+      localStorage.setItem('bongo-theme', newTheme);
+    });
+
+    // ================================================================
+    // MOBILE HAMBURGER MENU
+    // ================================================================
+    const hamburger = document.getElementById('hamburgerBtn');
+    const sidebar = document.getElementById('sidebar');
+
+    hamburger.addEventListener('click', () => {
+      hamburger.classList.toggle('active');
+      sidebar.classList.toggle('mobile-hidden');
+    });
+
+    // Close sidebar on navigation click (mobile)
+    const sidebarLinks = sidebar.querySelectorAll('.sidebar-link');
+    sidebarLinks.forEach(link => {
+      link.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+          hamburger.classList.remove('active');
+          sidebar.classList.add('mobile-hidden');
+        }
+      });
+    });
+
+    // ================================================================
+    // VIEW SWITCHING
+    // ================================================================
+    const rulesListView = document.getElementById('rulesListView');
+    const ruleFormView = document.getElementById('ruleFormView');
+    const formPageTitle = document.getElementById('formPageTitle');
+
+    function switchToList() {
+      rulesListView.style.display = 'block';
+      ruleFormView.style.display = 'none';
+      window.scrollTo(0, 0);
+    }
+
+    function switchToForm(ruleId) {
+      if (ruleId === 'new') {
+        formPageTitle.textContent = 'New Rule';
+        document.getElementById('ruleName').value = '';
+        document.getElementById('ruleEnabled').checked = true;
+        document.getElementById('ruleStop').checked = false;
+      } else {
+        formPageTitle.textContent = 'Edit Rule';
+        // In a real app, this would load the rule data
+        document.getElementById('ruleName').value = 'Newsletters to Updates';
+      }
+      rulesListView.style.display = 'none';
+      ruleFormView.style.display = 'block';
+      window.scrollTo(0, 0);
+    }
+
+    // ================================================================
+    // TEST RULE
+    // ================================================================
+    function testRule(ruleId) {
+      const resultRow = document.getElementById('test-results-' + ruleId);
+      if (resultRow.style.display === 'none') {
+        resultRow.style.display = 'table-row';
+      } else {
+        resultRow.style.display = 'none';
+      }
+    }
+
+    // ================================================================
+    // DELETE RULE
+    // ================================================================
+    function deleteRule(ruleId) {
+      if (confirm('Are you sure you want to delete this rule? This action cannot be undone.')) {
+        const ruleRow = document.querySelector(`[data-id="rule-${ruleId}"]`);
+        const testResultRow = document.getElementById('test-results-' + ruleId);
+        ruleRow.remove();
+        testResultRow.remove();
+      }
+    }
+
+    // ================================================================
+    // FORM ACTIONS
+    // ================================================================
+    function addCondition() {
+      const conditionsContainer = document.querySelector('.form-section:has(.condition-row)');
+      const newCondition = document.createElement('div');
+      newCondition.className = 'condition-row';
+      newCondition.innerHTML = `
+        <select class="form-group" style="margin: 0;">
+          <option>From</option>
+          <option>To</option>
+          <option>CC</option>
+          <option>Subject</option>
+          <option>Body</option>
+          <option>Has Attachment</option>
+          <option>Size</option>
+        </select>
+        <select class="form-group" style="margin: 0;">
+          <option>contains</option>
+          <option>does not contain</option>
+          <option>is</option>
+          <option>is not</option>
+          <option>starts with</option>
+          <option>ends with</option>
+        </select>
+        <input type="text" placeholder="Enter value" style="padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--bg); color: var(--text);">
+        <button class="condition-row-remove" onclick="removeCondition(this)">✕</button>
+      `;
+      const addButton = conditionsContainer.querySelector('.btn');
+      addButton.parentNode.insertBefore(newCondition, addButton);
+    }
+
+    function removeCondition(button) {
+      button.parentElement.remove();
+    }
+
+    function updateActionOptions() {
+      const actionType = document.getElementById('actionType').value;
+      const targetGroup = document.getElementById('actionTargetGroup');
+
+      if (actionType === 'flag' || actionType === 'mark-read' || actionType === 'delete') {
+        targetGroup.style.display = 'none';
+      } else {
+        targetGroup.style.display = 'block';
+      }
+    }
+
+    function saveRule() {
+      const ruleName = document.getElementById('ruleName').value;
+      if (!ruleName.trim()) {
+        alert('Please enter a rule name');
+        return;
+      }
+      alert(`Rule "${ruleName}" saved successfully!`);
+      switchToList();
+    }
+
+    // Initialize on page load
+    updateActionOptions();
+  </script>
+</body>
+</html>

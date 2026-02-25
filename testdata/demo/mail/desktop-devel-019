@@ -1,0 +1,82 @@
+From Glynn.Foster@Sun.COM  Tue May 16 18:17:34 2006
+Return-Path: <Glynn.Foster@Sun.COM>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id BAA3A3B21E2; Tue, 16 May 2006 18:17:34 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 18046-09; Tue, 16 May 2006 18:17:28 -0400 (EDT)
+Received: from gmpea-pix-1.sun.com (gmpea-pix-1.sun.com [192.18.1.36])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 34B733B21BC; Tue, 16 May 2006 18:17:28 -0400 (EDT)
+Received: from d1-emea-05.sun.com ([192.18.2.115])
+	by gmpea-pix-1.sun.com (8.12.9/8.12.9) with ESMTP id k4GMHR2L024387;
+	Tue, 16 May 2006 23:17:27 +0100 (BST)
+Received: from conversion-daemon.d1-emea-05.sun.com by d1-emea-05.sun.com
+	(Sun Java System Messaging Server 6.2-4.02 (built Sep  9 2005))
+	id <0IZD00301KR72V00@d1-emea-05.sun.com>
+	(original mail from Glynn.Foster@Sun.COM); Tue,
+	16 May 2006 23:17:27 +0100 (BST)
+Received: from [192.18.42.16] by d1-emea-05.sun.com
+	(Sun Java System Messaging Server 6.2-4.02 (built Sep  9 2005))
+	with ESMTPSA id <0IZD0034QPWXQA40@d1-emea-05.sun.com>; Tue,
+	16 May 2006 23:17:27 +0100 (BST)
+Date: Wed, 17 May 2006 10:20:34 +1200
+From: Glynn Foster <Glynn.Foster@Sun.COM>
+In-reply-to: <1147791173.6903.39.camel@localhost.localdomain>
+Sender: Glynn.Foster@Sun.COM
+To: foundation-list@gnome.org
+Message-id: <446A5032.2040906@sun.com>
+Organization: Sun Microsystems
+MIME-version: 1.0
+Content-type: text/plain; format=flowed; charset=UTF-8
+Content-transfer-encoding: 8BIT
+References: <1147791173.6903.39.camel@localhost.localdomain>
+User-Agent: Mail/News 1.5 (X11/20060104)
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.593 tagged_above=-999 required=2 tests=[AWL=0.005, 
+	BAYES_00=-2.599, UNPARSEABLE_RELAY=0.001]
+X-Spam-Score: -2.593
+X-Spam-Level: 
+Cc: foundation-announce@gnome.org, gnome-hackers@gnome.org,
+	desktop-devel-list@gnome.org
+Subject: Re: Call for comments on where to have GUADEC in 2007
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Tue, 16 May 2006 22:17:35 -0000
+
+Hi,
+
+Anne Østergaard wrote:
+> Dear GNOME Foundation Member,
+> 
+> You are invited to comment on where you would prefer to have at GUADEC
+> in 2007.
+> 
+> The period for comments stops on June 15th 2006.
+> 
+> The board (minus Dave Neary and Vincent Untz who are behind the French
+> invitation) will make the final decision.
+> 
+> We have got two very fine invitations to choose among: Birmingham in the
+> UK or Lyon in France. The bids are attached in this mail.
+
+Neither of the bids have any details about financials and budgets - I 
+think the decisions can't possibly made until we know the details of 
+what the costs involved of hosting in each of the bids.
+
+
+
+Glynn
+

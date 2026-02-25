@@ -2,66 +2,142 @@ package templates
 
 import "fmt"
 
+templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, email string) {
+	@LayoutWithContent("Compose", email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, "")
+		</aside>
+		<main class="content" id="main-content">
+			@ComposePage(mode, to, cc, subject, body, replyMailbox, replyUID)
+		</main>
+	}
+}
+
 templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32) {
-	<h2>
-		switch mode {
-			case "reply":
-				{ t(ctx, "compose.reply") }
-			case "forward":
-				{ t(ctx, "compose.forward") }
-			default:
-				{ t(ctx, "compose.newMessage") }
-		}
-	</h2>
-	<form method="post" action="/compose/send" enctype="multipart/form-data" class="compose-form">
-		if mode == "reply" || mode == "forward" {
-			<input type="hidden" name="reply_mailbox" value={ replyMailbox }/>
-			<input type="hidden" name="reply_uid" value={ uintToStr(replyUID) }/>
-			<input type="hidden" name="mode" value={ mode }/>
-		}
-		<label for="to">{ t(ctx, "compose.to") }</label>
-		<input type="text" id="to" name="to" value={ to } required placeholder="recipient@example.com"
-			x-data="galAutocomplete"
-			x-model="query"
-			@input.debounce.300ms="search()"
-			@keydown="onKeydown($event)"
-		/>
-		<label for="cc">{ t(ctx, "compose.cc") }</label>
-		<input type="text" id="cc" name="cc" value={ cc } placeholder="cc@example.com"/>
-		<label for="bcc">{ t(ctx, "compose.bcc") }</label>
-		<input type="text" id="bcc" name="bcc" placeholder="bcc@example.com"/>
-		<label for="subject">{ t(ctx, "compose.subject") }</label>
-		<input type="text" id="subject" name="subject" value={ subject } required/>
-		<label for="body">{ t(ctx, "compose.body") }</label>
-		<textarea id="body" name="body" rows="15" style="font-family:inherit">{ body }</textarea>
-		<label for="attachments">{ t(ctx, "compose.attachments") }</label>
-		<div x-data="{files: [], totalSize: 0, formatBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }}">
-			<input type="file" id="attachments" name="attachments" multiple aria-label={ t(ctx, "compose.attachments") }
-				@change="
-					files = Array.from($el.files);
-					totalSize = files.reduce((s,f) => s + f.size, 0);
-				"
-			/>
-			<template x-if="files.length > 0">
-				<div style="margin-top:0.5rem;font-size:0.85rem" aria-live="polite">
-					<template x-for="(f, i) in files" :key="i">
-						<div style="padding:0.2rem 0">
-							<span x-text="f.name"></span>
-							<small x-text="'(' + formatBytes(f.size) + ')'"></small>
+	<div class="compose-area">
+		<div class="compose-card">
+			<div class="compose-header">
+				<span>
+					switch mode {
+						case "reply":
+							{ t(ctx, "compose.reply") }
+						case "forward":
+							{ t(ctx, "compose.forward") }
+						default:
+							{ t(ctx, "compose.newMessage") }
+					}
+				</span>
+				<a href="/mail/INBOX" class="compose-close" title={ t(ctx, "compose.discard") }>&times;</a>
+			</div>
+			<form method="post" action="/compose/send" enctype="multipart/form-data" class="compose-form">
+				if mode == "reply" || mode == "forward" {
+					<input type="hidden" name="reply_mailbox" value={ replyMailbox }/>
+					<input type="hidden" name="reply_uid" value={ uintToStr(replyUID) }/>
+					<input type="hidden" name="mode" value={ mode }/>
+				}
+				<div class="compose-body">
+					<div class="field-row">
+						<span class="field-label">{ t(ctx, "compose.to") }</span>
+						<div class="field-content">
+							<input
+								type="text"
+								id="to"
+								name="to"
+								value={ to }
+								required
+								placeholder="recipient@example.com"
+								x-data="galAutocomplete"
+								x-model="query"
+								@input.debounce.300ms="search()"
+								@keydown="onKeydown($event)"
+								aria-label={ t(ctx, "compose.to") }
+							/>
 						</div>
-					</template>
-					<div style="margin-top:0.25rem;color:var(--pico-muted-color)">
-						<span x-text="files.length + ' file(s), total: ' + formatBytes(totalSize)"></span>
+					</div>
+					<div class="field-row" x-data="{ showCc: false, showBcc: false }">
+						<span class="field-label">{ t(ctx, "compose.cc") }</span>
+						<div class="field-content">
+							<input
+								type="text"
+								id="cc"
+								name="cc"
+								value={ cc }
+								placeholder="cc@example.com"
+								aria-label={ t(ctx, "compose.cc") }
+							/>
+						</div>
+					</div>
+					<div class="field-row">
+						<span class="field-label">{ t(ctx, "compose.bcc") }</span>
+						<div class="field-content">
+							<input
+								type="text"
+								id="bcc"
+								name="bcc"
+								placeholder="bcc@example.com"
+								aria-label={ t(ctx, "compose.bcc") }
+							/>
+						</div>
+					</div>
+					<div class="field-row">
+						<span class="field-label">{ t(ctx, "compose.subject") }</span>
+						<div class="field-content">
+							<input
+								type="text"
+								id="subject"
+								name="subject"
+								value={ subject }
+								required
+								aria-label={ t(ctx, "compose.subject") }
+							/>
+						</div>
+					</div>
+					<textarea
+						id="body"
+						name="body"
+						class="compose-textarea"
+						placeholder={ t(ctx, "compose.body") }
+						aria-label={ t(ctx, "compose.body") }
+					>{ body }</textarea>
+					<div
+						class="drop-zone"
+						x-data="{files: [], totalSize: 0, formatBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }}"
+					>
+						<input
+							type="file"
+							id="attachments"
+							name="attachments"
+							multiple
+							aria-label={ t(ctx, "compose.attachments") }
+							@change="
+								files = Array.from($el.files);
+								totalSize = files.reduce((s,f) => s + f.size, 0);
+							"
+						/>
+						<template x-if="files.length > 0">
+							<div style="margin-top:0.5rem;font-size:0.85rem" aria-live="polite">
+								<template x-for="(f, i) in files" :key="i">
+									<div style="padding:0.2rem 0">
+										<span x-text="f.name"></span>
+										<small x-text="'(' + formatBytes(f.size) + ')'"></small>
+									</div>
+								</template>
+								<div style="margin-top:0.25rem;color:var(--text-muted)">
+									<span x-text="files.length + ' file(s), total: ' + formatBytes(totalSize)"></span>
+								</div>
+							</div>
+						</template>
 					</div>
 				</div>
-			</template>
+				<div class="compose-footer">
+					<button type="submit" class="btn-send">{ t(ctx, "compose.send") }</button>
+					<button type="submit" formaction="/compose/draft" class="btn-secondary">{ t(ctx, "compose.saveDraft") }</button>
+					<span class="reply-spacer"></span>
+					<a href="/mail/INBOX" class="btn-secondary">{ t(ctx, "compose.discard") }</a>
+				</div>
+			</form>
 		</div>
-		<div class="compose-toolbar">
-			<button type="submit">{ t(ctx, "compose.send") }</button>
-			<button type="submit" formaction="/compose/draft" class="outline secondary">{ t(ctx, "compose.saveDraft") }</button>
-			<a href="/mail/INBOX" role="button" class="outline secondary">{ t(ctx, "compose.discard") }</a>
-		</div>
-	</form>
+	</div>
 }
 
 func uintToStr(v uint32) string {

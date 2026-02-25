@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Thread: Q1 Budget Review (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 THREAD VIEW — FULLY SELF-CONTAINED
+       No external CSS dependencies
+       ============================================ */
+
+    /* Reset */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Brand */
+      --bongo-orange: #ffac35;
+      --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf;
+      --bongo-blue-dark: #3d6a9e;
+      --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+
+      /* Surfaces */
+      --bg: #ffffff;
+      --bg-subtle: #f7f8fa;
+      --bg-muted: #f0f2f5;
+      --bg-hover: #edf0f4;
+
+      /* Sidebar */
+      --sidebar-bg: #2c4a72;
+      --sidebar-hover: rgba(255,255,255,0.08);
+      --sidebar-active: rgba(255,255,255,0.15);
+      --sidebar-text: #b8cadf;
+      --sidebar-bright: #ffffff;
+      --sidebar-width: 240px;
+
+      /* Text */
+      --text: #1a1a2e;
+      --text-secondary: #5f6368;
+      --text-muted: #9aa0a8;
+      --text-inverse: #ffffff;
+
+      /* Borders */
+      --border: #e4e7ec;
+      --border-strong: #d0d3d8;
+
+      /* Shadows */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+
+      /* Sizing */
+      --topbar-h: 52px;
+      --radius: 6px;
+      --radius-lg: 10px;
+    }
+
+    /* === Dark Theme === */
+    [data-theme="dark"] {
+      --bongo-orange: #e09530;
+      --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc;
+      --bongo-blue-dark: #4a6e96;
+      --bongo-blue-light: #1e3350;
+
+      --bg: #1a1a2e;
+      --bg-subtle: #20203a;
+      --bg-muted: #282842;
+      --bg-hover: #2e2e48;
+
+      --sidebar-bg: #1a2744;
+      --sidebar-text: #8aa4c8;
+      --sidebar-bright: #d0ddef;
+
+      --text: #e0e0e8;
+      --text-secondary: #a0a4ac;
+      --text-muted: #6b7080;
+
+      --border: #2e3040;
+      --border-strong: #3e4050;
+
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+      --shadow-md: 0 2px 8px rgba(0,0,0,0.3);
+      --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      color: var(--text);
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; }
+
+    /* Skip to content */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 16px;
+      background: var(--bongo-blue);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      z-index: 200;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .skip-link:focus { top: 8px; }
+
+    /* Focus indicators */
+    *:focus-visible {
+      outline: 2px solid var(--bongo-blue);
+      outline-offset: 2px;
+    }
+
+    /* ============================================
+       TOP BAR (shared with inbox/compose)
+       ============================================ */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+
+    .hamburger {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      width: 36px; height: 36px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 1.3rem;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: background 0.12s;
+    }
+    .hamburger:hover { background: var(--bg-muted); }
+
+    .brand { font-weight: 700; font-size: 1.15rem; color: var(--bongo-blue-dark); letter-spacing: -0.5px; }
+    .brand span { color: var(--bongo-orange); }
+
+    .topbar-center { flex: 1; display: flex; justify-content: center; padding: 0 20px; }
+
+    .search-box {
+      display: flex; align-items: center;
+      background: var(--bg-muted); border: 1px solid var(--border);
+      border-radius: 20px; padding: 6px 14px;
+      width: 100%; max-width: 480px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .search-box:focus-within { border-color: var(--bongo-blue); box-shadow: 0 0 0 3px rgba(81,127,175,0.12); }
+    .search-box input { border: none; background: none; outline: none; font-size: 0.9rem; color: var(--text); width: 100%; margin-left: 6px; }
+    .search-box input::placeholder { color: var(--text-muted); }
+    .search-box input:focus-visible { outline: none; }
+    .search-icon { color: var(--text-muted); font-size: 0.9rem; flex-shrink: 0; }
+
+    .topbar-right { display: flex; align-items: center; gap: 4px; }
+    .topbar-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px; border-radius: 50%; border: none;
+      background: transparent; color: var(--text-secondary);
+      cursor: pointer; font-size: 1.05rem; transition: background 0.12s;
+    }
+    .topbar-btn:hover { background: var(--bg-muted); }
+    .user-email { font-size: 0.82rem; color: var(--text-muted); padding: 0 8px; }
+    .topbar-link { font-size: 0.85rem; color: var(--text-secondary); padding: 6px 10px; border-radius: var(--radius); transition: background 0.12s, color 0.12s; }
+    .topbar-link:hover { background: var(--bg-muted); color: var(--bongo-blue-dark); }
+
+    /* ============================================
+       LAYOUT
+       ============================================ */
+    .layout { display: flex; position: fixed; top: var(--topbar-h); left: 0; right: 0; bottom: 0; }
+
+    /* ============================================
+       SIDEBAR (shared)
+       ============================================ */
+    .sidebar {
+      width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--sidebar-text);
+      display: flex; flex-direction: column; flex-shrink: 0;
+      overflow-y: auto; overflow-x: hidden; transition: transform 0.25s ease;
+    }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 149; }
+
+    .compose-btn {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin: 14px 12px 6px; padding: 10px 0;
+      background: var(--bongo-orange); color: #1a1a2e; border: none;
+      border-radius: var(--radius-lg); font-weight: 700; font-size: 0.92rem;
+      cursor: pointer; box-shadow: 0 2px 8px rgba(255,172,53,0.3); transition: all 0.15s;
+    }
+    .compose-btn:hover { background: var(--bongo-orange-hover); color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(255,172,53,0.4); }
+
+    .sidebar-group { padding: 4px 8px; }
+    .sidebar-group + .sidebar-group { border-top: 1px solid rgba(255,255,255,0.08); margin-top: 4px; padding-top: 8px; }
+    .sidebar-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.35); padding: 8px 12px 4px; font-weight: 600; }
+    .nav-list { list-style: none; }
+    .nav-item a {
+      display: flex; align-items: center; gap: 10px; padding: 7px 12px;
+      border-radius: var(--radius); font-size: 0.88rem; font-weight: 500;
+      color: var(--sidebar-text); transition: background 0.12s, color 0.12s;
+      border-left: 3px solid transparent; margin: 1px 0;
+    }
+    .nav-item a:hover { background: var(--sidebar-hover); color: var(--sidebar-bright); }
+    .nav-item a.active { background: var(--sidebar-active); color: var(--sidebar-bright); border-left-color: var(--bongo-orange); font-weight: 600; }
+    .nav-icon { width: 18px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+    .nav-badge { margin-left: auto; font-size: 0.68rem; font-weight: 700; background: var(--bongo-orange); color: #1a1a2e; border-radius: 10px; padding: 1px 7px; min-width: 20px; text-align: center; }
+
+    /* ============================================
+       MAIN CONTENT — THREAD VIEW
+       ============================================ */
+    .content {
+      flex: 1; display: flex; flex-direction: column;
+      min-width: 0; background: var(--bg);
+    }
+
+    /* Thread toolbar */
+    .toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 16px; border-bottom: 1px solid var(--border);
+      background: var(--bg-subtle); min-height: 44px; flex-shrink: 0;
+    }
+
+    .tool-btn {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 5px 12px; border: 1px solid var(--border);
+      border-radius: var(--radius); background: var(--bg);
+      color: var(--text-secondary); font-size: 0.82rem;
+      cursor: pointer; transition: all 0.12s; white-space: nowrap;
+    }
+    .tool-btn:hover { background: var(--bongo-blue-light); border-color: var(--bongo-blue); color: var(--bongo-blue-dark); }
+    .tool-btn.primary { background: var(--bongo-blue); color: #fff; border-color: var(--bongo-blue); }
+    .tool-btn.primary:hover { background: var(--bongo-blue-dark); }
+    .tool-btn.danger:hover { background: #fdf2f2; border-color: #e74c3c; color: #e74c3c; }
+    [data-theme="dark"] .tool-btn.danger:hover { background: #3a1a1a; }
+
+    .tool-separator { width: 1px; height: 24px; background: var(--border); margin: 0 4px; }
+    .tool-spacer { flex: 1; }
+
+    .move-select {
+      padding: 5px 8px; border: 1px solid var(--border);
+      border-radius: var(--radius); background: var(--bg);
+      color: var(--text-secondary); font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    /* Thread header (subject) */
+    .thread-header {
+      padding: 16px 24px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .thread-subject {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .thread-labels {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .thread-label {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--bg-muted);
+      color: var(--text-secondary);
+    }
+    .thread-label.inbox { background: var(--bongo-blue-light); color: var(--bongo-blue-dark); }
+
+    /* Message list (scrollable) */
+    .thread-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 24px 24px;
+    }
+
+    /* Individual message bubble */
+    .message {
+      position: relative;
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    /* Avatar */
+    .msg-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+      margin-top: 4px;
+    }
+
+    /* Message card */
+    .msg-card {
+      flex: 1;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      transition: box-shadow 0.15s;
+    }
+    .msg-card:hover { box-shadow: var(--shadow-sm); }
+
+    .message.unread .msg-card {
+      border-color: var(--bongo-blue);
+      box-shadow: 0 0 0 1px var(--bongo-blue);
+    }
+
+    .message.sent .msg-card {
+      background: var(--bg-subtle);
+    }
+
+    /* Message header row */
+    .msg-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--bg-subtle);
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+
+    .msg-sender {
+      font-weight: 600;
+      font-size: 0.88rem;
+      color: var(--text);
+    }
+    .msg-recipients {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+    .msg-head-spacer { flex: 1; }
+    .msg-date {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .msg-head-actions {
+      display: flex;
+      gap: 2px;
+    }
+    .msg-action-btn {
+      padding: 3px 8px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      cursor: pointer;
+      border-radius: var(--radius);
+      transition: background 0.12s, color 0.12s;
+    }
+    .msg-action-btn:hover {
+      background: var(--bg-muted);
+      color: var(--bongo-blue-dark);
+    }
+
+    /* Collapse indicator */
+    .msg-collapse-icon {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .message.collapsed .msg-collapse-icon { transform: rotate(-90deg); }
+
+    /* Message body */
+    .msg-body {
+      padding: 14px;
+      font-size: 0.9rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+    .msg-body p { margin-bottom: 0.8em; }
+    .msg-body p:last-child { margin-bottom: 0; }
+    .msg-body ul, .msg-body ol { margin: 0.5em 0 0.8em 1.5em; }
+    .msg-body li { margin-bottom: 0.3em; }
+    .msg-body blockquote {
+      margin: 0.5em 0;
+      padding: 8px 14px;
+      border-left: 3px solid var(--border-strong);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+      border-radius: 0 var(--radius) var(--radius) 0;
+    }
+
+    /* Collapsed state: hide body, show snippet */
+    .message.collapsed .msg-body { display: none; }
+    .message.collapsed .msg-attachments { display: none; }
+
+    .msg-snippet {
+      display: none;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      padding: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 500px;
+    }
+    .message.collapsed .msg-snippet { display: block; }
+    .message.collapsed .msg-head { border-bottom: none; }
+
+    /* Attachments */
+    .msg-attachments {
+      padding: 10px 14px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .attachment-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.82rem;
+      color: var(--text);
+      text-decoration: none;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .attachment-chip:hover {
+      background: var(--bongo-blue-light);
+      border-color: var(--bongo-blue);
+      color: var(--bongo-blue-dark);
+    }
+    .attachment-icon { font-size: 1rem; }
+    .attachment-size { color: var(--text-muted); font-size: 0.75rem; }
+
+    /* Blocked images banner */
+    .blocked-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #fef3cd;
+      color: #856404;
+      font-size: 0.82rem;
+      border-bottom: 1px solid #ffc107;
+    }
+    [data-theme="dark"] .blocked-banner {
+      background: #3a3520;
+      color: #ffc107;
+      border-color: #665d1e;
+    }
+    .blocked-banner button {
+      padding: 3px 10px;
+      border: 1px solid currentColor;
+      background: transparent;
+      color: inherit;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+
+    /* Quick reply area */
+    .quick-reply {
+      margin: 0 0 24px 52px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .quick-reply-textarea {
+      width: 100%;
+      min-height: 100px;
+      border: none;
+      padding: 12px 14px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      resize: vertical;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+    }
+    .quick-reply-textarea::placeholder { color: var(--text-muted); }
+    .quick-reply-textarea:focus-visible { outline: none; }
+    .quick-reply-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--bg-subtle);
+      border-top: 1px solid var(--border);
+    }
+    .btn-send {
+      padding: 7px 20px; background: var(--bongo-blue); color: #fff;
+      border: none; border-radius: var(--radius); font-weight: 600;
+      font-size: 0.85rem; cursor: pointer; transition: background 0.12s;
+    }
+    .btn-send:hover { background: var(--bongo-blue-dark); }
+    .btn-secondary {
+      padding: 7px 14px; background: transparent; border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text-secondary); font-size: 0.82rem;
+      cursor: pointer; transition: all 0.12s;
+    }
+    .btn-secondary:hover { background: var(--bg-muted); }
+    .reply-spacer { flex: 1; }
+    .reply-attach-btn {
+      border: none; background: transparent; color: var(--text-muted);
+      font-size: 1.1rem; cursor: pointer; padding: 4px;
+      border-radius: var(--radius); transition: color 0.12s;
+    }
+    .reply-attach-btn:hover { color: var(--bongo-blue); }
+
+    /* ============================================
+       RESPONSIVE — TABLET (≤1024px)
+       ============================================ */
+    @media (max-width: 1024px) {
+      :root { --sidebar-width: 200px; }
+      .thread-header { padding: 14px 16px 10px; }
+      .thread-messages { padding: 12px 16px 20px; }
+    }
+
+    /* ============================================
+       RESPONSIVE — MOBILE (≤768px)
+       ============================================ */
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+
+      .sidebar {
+        position: fixed; top: var(--topbar-h); left: 0; bottom: 0;
+        width: 260px; z-index: 150; transform: translateX(-100%);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.open { display: block; }
+
+      .topbar-center { display: none; }
+      .user-email { display: none; }
+      .hide-mobile { display: none !important; }
+
+      .thread-header { padding: 12px; }
+      .thread-subject { font-size: 1.1rem; }
+      .thread-messages { padding: 10px 12px 20px; }
+
+      .msg-avatar { width: 32px; height: 32px; font-size: 0.68rem; }
+      .msg-head { flex-wrap: wrap; padding: 8px 10px; }
+      .msg-head-actions { width: 100%; margin-top: 4px; }
+      .msg-snippet { max-width: 250px; }
+      .msg-body { padding: 10px; }
+      .msg-attachments { padding: 8px 10px; }
+
+      .quick-reply { margin-left: 0; }
+
+      .toolbar { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    }
+
+    /* ============================================
+       RESPONSIVE — SMALL PHONE (≤480px)
+       ============================================ */
+    @media (max-width: 480px) {
+      .message { gap: 8px; }
+      .msg-avatar { width: 28px; height: 28px; font-size: 0.6rem; }
+      .msg-head { padding: 6px 8px; }
+      .msg-body { padding: 8px; font-size: 0.85rem; }
+      .toolbar .tool-btn { padding: 5px 8px; font-size: 0.78rem; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- TOP BAR -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+      <a href="v2-inbox.html" class="brand" aria-label="BongoMail — Go to home page">Bongo<span>Mail</span></a>
+    </div>
+    <div class="topbar-center">
+      <div class="search-box" role="search">
+        <span class="search-icon" aria-hidden="true">&#128269;</span>
+        <input type="search" placeholder="Search mail..." aria-label="Search mail">
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="topbar-btn" title="Toggle dark/light theme" aria-label="Toggle dark/light theme" onclick="toggleTheme()">&#9789;</button>
+      <a href="settings.html" class="topbar-link">Settings</a>
+      <span class="user-email" aria-label="Logged in as admin@localhost">admin@localhost</span>
+      <a href="login.html" class="topbar-link hide-mobile">Logout</a>
+    </div>
+  </header>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+    <div class="sidebar-overlay" onclick="toggleSidebar()" aria-hidden="true"></div>
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Mail navigation">
+      <a href="v2-compose.html" class="compose-btn" aria-label="Compose new message">&#9998; Compose</a>
+      <nav aria-label="Mailbox navigation">
+        <div class="sidebar-group">
+          <div class="sidebar-label">Mailboxes</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="v2-inbox.html" class="active"><span class="nav-icon" aria-hidden="true">&#9993;</span> Inbox <span class="nav-badge">12</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9733;</span> Starred</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#10148;</span> Sent</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9998;</span> Drafts <span class="nav-badge">2</span></a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128465;</span> Trash</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9940;</span> Junk</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-label">Folders</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Work</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Personal</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128193;</span> Receipts</a></li>
+          </ul>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-label">Quick Links</div>
+          <ul class="nav-list">
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128197;</span> Calendar</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#128101;</span> Contacts</a></li>
+            <li class="nav-item"><a href="#"><span class="nav-icon" aria-hidden="true">&#9881;</span> Admin</a></li>
+          </ul>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content" id="main-content" role="main" aria-label="Message thread">
+      <!-- Toolbar -->
+      <div class="toolbar" role="toolbar" aria-label="Thread actions">
+        <a href="v2-inbox.html" class="tool-btn" aria-label="Back to Inbox">&larr; Back</a>
+        <div class="tool-separator" aria-hidden="true"></div>
+        <button class="tool-btn primary">Reply</button>
+        <button class="tool-btn">Reply All</button>
+        <button class="tool-btn">Forward</button>
+        <div class="tool-separator" aria-hidden="true"></div>
+        <button class="tool-btn">Archive</button>
+        <button class="tool-btn danger">Delete</button>
+        <select class="move-select" aria-label="Move to folder">
+          <option value="">Move to...</option>
+          <option value="work">Work</option>
+          <option value="personal">Personal</option>
+          <option value="receipts">Receipts</option>
+          <option value="trash">Trash</option>
+        </select>
+        <div class="tool-spacer"></div>
+        <button class="tool-btn" aria-label="Print message" onclick="window.print()">Print</button>
+        <button class="tool-btn" aria-label="Export message">Export</button>
+      </div>
+
+      <!-- Thread subject -->
+      <div class="thread-header">
+        <h1 class="thread-subject">Re: Q1 Budget Review</h1>
+        <div class="thread-labels">
+          <span class="thread-label inbox">Inbox</span>
+          <span class="thread-label">4 messages</span>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="thread-messages">
+
+        <!-- Message 1: Read, collapsed -->
+        <article class="message collapsed" aria-label="Message from David Kim" data-msg="1">
+          <div class="msg-avatar" style="background: #6366f1;" title="David Kim" aria-hidden="true">DK</div>
+          <div class="msg-card">
+            <div class="msg-head" onclick="toggleMessage(this)" role="button" tabindex="0" aria-expanded="false">
+              <span class="msg-collapse-icon" aria-hidden="true">&#9660;</span>
+              <span class="msg-sender">David Kim</span>
+              <span class="msg-recipients">to Sarah, me</span>
+              <span class="msg-snippet">I've put together the initial Q1 budget numbers. Please review when you get a chance...</span>
+              <span class="msg-head-spacer"></span>
+              <span class="msg-date">Feb 18, 10:24 AM</span>
+              <div class="msg-head-actions">
+                <button class="msg-action-btn" aria-label="Reply to David Kim">Reply</button>
+                <button class="msg-action-btn" aria-label="Forward this message">Fwd</button>
+              </div>
+            </div>
+            <div class="msg-body">
+              <p>Hi team,</p>
+              <p>I've put together the initial Q1 budget numbers based on our planning sessions last month. Please review when you get a chance and let me know if anything looks off.</p>
+              <p>Key highlights:</p>
+              <ul>
+                <li>Engineering headcount: +2 (backend, SRE)</li>
+                <li>Infrastructure costs: up 15% (new cluster rollout)</li>
+                <li>Marketing: flat vs Q4</li>
+                <li>Travel: reduced 20% (more remote events)</li>
+              </ul>
+              <p>I'd like to finalize by Friday so we can present to the board next week.</p>
+              <p>Best,<br>David</p>
+            </div>
+            <div class="msg-attachments">
+              <a href="#" class="attachment-chip" aria-label="Download Q1-Budget-Draft.xlsx, 245 KB">
+                <span class="attachment-icon" aria-hidden="true">&#128196;</span>
+                Q1-Budget-Draft.xlsx
+                <span class="attachment-size">245 KB</span>
+              </a>
+            </div>
+          </div>
+        </article>
+
+        <!-- Message 2: Read, expanded -->
+        <article class="message" aria-label="Message from Sarah Chen" data-msg="2">
+          <div class="msg-avatar" style="background: #ec4899;" title="Sarah Chen" aria-hidden="true">SC</div>
+          <div class="msg-card">
+            <div class="msg-head" onclick="toggleMessage(this)" role="button" tabindex="0" aria-expanded="true">
+              <span class="msg-collapse-icon" aria-hidden="true">&#9660;</span>
+              <span class="msg-sender">Sarah Chen</span>
+              <span class="msg-recipients">to David, me</span>
+              <span class="msg-snippet">Thanks David. A few comments on the infrastructure line items...</span>
+              <span class="msg-head-spacer"></span>
+              <span class="msg-date">Feb 19, 2:15 PM</span>
+              <div class="msg-head-actions">
+                <button class="msg-action-btn" aria-label="Reply to Sarah Chen">Reply</button>
+                <button class="msg-action-btn" aria-label="Forward this message">Fwd</button>
+              </div>
+            </div>
+            <div class="msg-body">
+              <p>Thanks David. A few comments:</p>
+              <p>The infrastructure increase looks reasonable given the cluster migration. However, I think we should break out the one-time migration costs from the ongoing operational costs. The board will want to see that distinction.</p>
+              <p>Also, regarding the SRE hire — can we push that to Q2? We're still onboarding Jamie and I want to give the team time to absorb.</p>
+              <blockquote>Engineering headcount: +2 (backend, SRE)</blockquote>
+              <p>Let's discuss the backend hire timeline in our 1:1 on Thursday.</p>
+              <p>Sarah</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- Message 3: Sent by you -->
+        <article class="message sent" aria-label="Message from you" data-msg="3">
+          <div class="msg-avatar" style="background: #f59e0b;" title="You" aria-hidden="true">ME</div>
+          <div class="msg-card">
+            <div class="msg-head" onclick="toggleMessage(this)" role="button" tabindex="0" aria-expanded="true">
+              <span class="msg-collapse-icon" aria-hidden="true">&#9660;</span>
+              <span class="msg-sender">Me</span>
+              <span class="msg-recipients">to David, Sarah</span>
+              <span class="msg-snippet">Good points Sarah. I agree on splitting the infra costs...</span>
+              <span class="msg-head-spacer"></span>
+              <span class="msg-date">Feb 20, 9:30 AM</span>
+              <div class="msg-head-actions">
+                <button class="msg-action-btn" aria-label="Reply">Reply</button>
+                <button class="msg-action-btn" aria-label="Forward this message">Fwd</button>
+              </div>
+            </div>
+            <div class="msg-body">
+              <p>Good points Sarah. I agree on splitting the infra costs — that will make the presentation much cleaner.</p>
+              <p>Re: the SRE hire, I'm fine pushing to Q2. Let's keep the backend role for Q1 though — we really need someone on the IMAP rewrite.</p>
+              <p>David — can you update the spreadsheet with:</p>
+              <ol>
+                <li>Split infra into migration (one-time) and operational (recurring)</li>
+                <li>Move SRE to Q2 budget</li>
+                <li>Add a row for the Pebble license renewal ($12K)</li>
+              </ol>
+              <p>Thanks!</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- Message 4: Unread (newest) -->
+        <article class="message unread" aria-label="New message from Sarah Chen" data-msg="4">
+          <div class="msg-avatar" style="background: #ec4899;" title="Sarah Chen" aria-hidden="true">SC</div>
+          <div class="msg-card">
+            <div class="msg-head" onclick="toggleMessage(this)" role="button" tabindex="0" aria-expanded="true">
+              <span class="msg-collapse-icon" aria-hidden="true">&#9660;</span>
+              <span class="msg-sender">Sarah Chen</span>
+              <span class="msg-recipients">to David, me</span>
+              <span class="msg-snippet">I've updated the spreadsheet with the latest numbers from finance...</span>
+              <span class="msg-head-spacer"></span>
+              <span class="msg-date">Today, 9:47 AM</span>
+              <div class="msg-head-actions">
+                <button class="msg-action-btn" aria-label="Reply to Sarah Chen">Reply</button>
+                <button class="msg-action-btn" aria-label="Reply all">Reply All</button>
+                <button class="msg-action-btn" aria-label="Forward this message">Fwd</button>
+              </div>
+            </div>
+            <div class="blocked-banner" role="alert">
+              <span>&#9888; Remote images blocked for privacy.</span>
+              <button aria-label="Load remote images">Load images</button>
+            </div>
+            <div class="msg-body">
+              <p>I've updated the spreadsheet with the latest numbers from finance. The infrastructure split is done and it actually reveals something interesting — our ongoing costs are only up 8%, which is much more palatable for the board.</p>
+              <p>The one-time migration costs come to $34K, which we can frame as a strategic investment.</p>
+              <p>Updated spreadsheet attached. I also added a comparison table vs Q4 actuals.</p>
+              <p>Can we review this together before the board meeting? I have a slot open Thursday at 3pm.</p>
+              <p>Sarah</p>
+            </div>
+            <div class="msg-attachments">
+              <a href="#" class="attachment-chip" aria-label="Download Q1-Budget-v2.xlsx, 312 KB">
+                <span class="attachment-icon" aria-hidden="true">&#128196;</span>
+                Q1-Budget-v2.xlsx
+                <span class="attachment-size">312 KB</span>
+              </a>
+              <a href="#" class="attachment-chip" aria-label="Download Q4-vs-Q1-Comparison.pdf, 89 KB">
+                <span class="attachment-icon" aria-hidden="true">&#128196;</span>
+                Q4-vs-Q1-Comparison.pdf
+                <span class="attachment-size">89 KB</span>
+              </a>
+            </div>
+          </div>
+        </article>
+
+        <!-- Quick Reply -->
+        <div class="quick-reply">
+          <textarea class="quick-reply-textarea" placeholder="Write a reply..." aria-label="Quick reply"></textarea>
+          <div class="quick-reply-footer">
+            <button class="btn-send" aria-label="Send reply">Send</button>
+            <button class="btn-secondary" aria-label="Discard reply">Discard</button>
+            <span class="reply-spacer"></span>
+            <button class="reply-attach-btn" aria-label="Attach file" title="Attach file">&#128206;</button>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.querySelector('.hamburger');
+      const overlay = document.querySelector('.sidebar-overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+      const isOpen = sidebar.classList.contains('open');
+      hamburger.setAttribute('aria-expanded', isOpen);
+      overlay.setAttribute('aria-hidden', !isOpen ? 'true' : 'false');
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.dataset.theme === 'dark';
+      html.dataset.theme = isDark ? 'light' : 'dark';
+      const btn = document.querySelector('.topbar-btn[aria-label*="theme"]');
+      btn.textContent = isDark ? '\u263D' : '\u2600';
+    }
+
+    function toggleMessage(headerEl) {
+      const message = headerEl.closest('.message');
+      const isCollapsed = message.classList.toggle('collapsed');
+      headerEl.setAttribute('aria-expanded', !isCollapsed);
+    }
+
+    // Keyboard support for message headers
+    document.addEventListener('keydown', function(e) {
+      if (e.target.classList.contains('msg-head') && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        toggleMessage(e.target);
+      }
+    });
+
+    // Ctrl+Enter to send quick reply
+    document.querySelector('.quick-reply-textarea').addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        document.querySelector('.quick-reply .btn-send').click();
+      }
+    });
+  </script>
+</body>
+</html>

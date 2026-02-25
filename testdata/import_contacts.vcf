@@ -1,0 +1,57 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Alice Smith
+N:Smith;Alice;;;
+EMAIL;TYPE=WORK:alice@example.com
+TEL;TYPE=CELL:+1-555-0101
+ORG:Acme Corp
+NOTE:Friend from work
+END:VCARD
+
+BEGIN:VCARD
+VERSION:3.0
+FN:Bob Jones
+N:Jones;Bob;;;
+EMAIL;TYPE=HOME;X-EVOLUTION-UI-SLOT=1:bob@home.example.com
+EMAIL;TYPE=WORK;X-EVOLUTION-UI-SLOT=2:bob@work.example.com
+TEL;TYPE=WORK;TYPE=VOICE:+1-555-0202
+TEL;TYPE=CELL:+1-555-0203
+END:VCARD
+
+BEGIN:VCARD
+VERSION:3.0
+FN:Charlie No-Email
+N:No-Email;Charlie;;;
+TEL;TYPE=HOME:+1-555-0303
+END:VCARD
+
+BEGIN:VCARD
+VERSION:3.0
+FN:Diana Email-Only
+N:Email-Only;Diana;;;
+EMAIL:diana@plain.example.com
+END:VCARD
+
+BEGIN:VCARD
+VERSION:4.0
+FN:Eve Modern
+N:Modern;Eve;;;
+EMAIL;TYPE=work:eve@modern.example.com
+TEL;TYPE=cell:+1-555-0505
+END:VCARD
+
+BEGIN:VCARD
+VERSION:3.0
+N:Nameless;;;;
+END:VCARD
+
+BEGIN:VCARD
+VERSION:3.0
+FN:Grace Multi
+N:Multi;Grace;;;
+EMAIL;TYPE=INTERNET;TYPE=WORK:grace@work.example.com
+EMAIL;TYPE=INTERNET;TYPE=HOME:grace@home.example.com
+TEL;TYPE=WORK;TYPE=VOICE;X-EVOLUTION-UI-SLOT=1:617-555-1234
+TEL;TYPE=CELL;X-EVOLUTION-UI-SLOT=3:617-555-2345
+ORG:Multi Corp
+END:VCARD

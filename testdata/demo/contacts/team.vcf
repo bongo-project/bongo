@@ -1,0 +1,104 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Alice Chen
+N:Chen;Alice;;;
+EMAIL;TYPE=WORK:alice@example.com
+TEL;TYPE=WORK:+1-555-0101
+TEL;TYPE=CELL:+1-555-0102
+ORG:Bongo Project;Core Team
+TITLE:Lead Engineer
+NOTE:Sprint planning lead. Timezone: UTC-8 (Pacific).
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Bob Martinez
+N:Martinez;Bob;;;
+EMAIL;TYPE=WORK:bob@example.com
+TEL;TYPE=WORK:+1-555-0201
+ORG:Bongo Project;Core Team
+TITLE:Backend Engineer
+NOTE:Specializes in storage and queue systems. Timezone: UTC-5 (Eastern).
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Charlie Wu
+N:Wu;Charlie;;;
+EMAIL;TYPE=WORK:charlie@example.com
+TEL;TYPE=WORK:+44-20-5550-0301
+TEL;TYPE=CELL:+44-7700-900301
+ORG:Bongo Project;Core Team
+TITLE:Frontend and Accessibility Engineer
+NOTE:Handles CalDAV, a11y audits, and frontend work. Timezone: UTC+0 (London).
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Dara Okonkwo
+N:Okonkwo;Dara;;;
+EMAIL;TYPE=WORK:dara@securitylab.example.com
+TEL;TYPE=WORK:+1-555-0401
+ORG:SecurityLab Research
+TITLE:Security Researcher
+NOTE:Responsible disclosure contact. Reported CVE-2026-1234.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Elena Vasquez
+N:Vasquez;Elena;;;
+EMAIL;TYPE=WORK:elena@infrateam.example.com
+TEL;TYPE=WORK:+1-555-0501
+TEL;TYPE=CELL:+1-555-0502
+ORG:Bongo Project;Infrastructure
+TITLE:DevOps Engineer
+NOTE:Manages CI/CD pipeline and staging clusters.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Faisal Rahman
+N:Rahman;Faisal;;;
+EMAIL;TYPE=WORK:faisal@example.com
+EMAIL;TYPE=HOME:faisal.rahman@personal.example.com
+TEL;TYPE=CELL:+49-170-5550601
+ORG:CloudMail GmbH
+TITLE:Product Manager
+NOTE:External collaborator. Interested in multi-tenant features.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Grace Kim
+N:Kim;Grace;;;
+EMAIL;TYPE=WORK:grace@example.com
+TEL;TYPE=WORK:+82-2-555-0701
+ORG:Bongo Project;Documentation
+TITLE:Technical Writer
+NOTE:Maintains API docs and user guides. Timezone: UTC+9 (Seoul).
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Henrik Larsson
+N:Larsson;Henrik;;;
+EMAIL;TYPE=WORK:henrik@example.com
+TEL;TYPE=WORK:+46-8-555-0801
+ORG:Bongo Project;Community
+TITLE:Community Manager
+NOTE:Organizes community calls and contributor events.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Ines Dubois
+N:Dubois;Ines;;;
+EMAIL;TYPE=WORK:ines@example.com
+TEL;TYPE=WORK:+33-1-55-50-0901
+ORG:MailStack SAS
+TITLE:Solutions Architect
+NOTE:Enterprise deployment consultant. Works with large Bongo installations.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:James Okafor
+N:Okafor;James;;;
+EMAIL;TYPE=WORK:james@example.com
+TEL;TYPE=CELL:+234-801-555-1001
+ORG:Bongo Project;Testing
+TITLE:QA Engineer
+NOTE:Runs integration and compliance test suites. Timezone: UTC+1 (Lagos).
+END:VCARD

@@ -2,6 +2,7 @@ package templates
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -12,84 +13,95 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@ContactsSidebar()
 		</aside>
-		<main class="main-content" id="main-content">
+		<main class="content" id="main-content">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<div class="toolbar">
-				<button type="button" class="outline" onclick="document.getElementById('create-form').toggleAttribute('hidden')">{ t(ctx, "contacts.newContact") }</button>
-				<a href="/contacts/export" role="button" class="outline secondary">{ t(ctx, "contacts.exportVcard") }</a>
-				<span class="toolbar-spacer"></span>
-				<form method="post" action="/contacts/import" enctype="multipart/form-data" style="display:flex;gap:0.5rem;align-items:center;margin:0">
-					<input type="file" name="vcf" accept=".vcf" style="font-size:0.8rem;padding:0.2rem"/>
-					<button type="submit" class="outline secondary" style="font-size:0.85rem;padding:0.3rem 0.7rem">{ t(ctx, "contacts.import") }</button>
+			<div class="toolbar" role="toolbar" aria-label="Contact actions">
+				<button type="button" class="tool-btn primary" onclick="document.getElementById('create-form').toggleAttribute('hidden')">{ t(ctx, "contacts.newContact") }</button>
+				<a href="/contacts/export" class="tool-btn">{ t(ctx, "contacts.exportVcard") }</a>
+				<div class="tool-spacer"></div>
+				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label="Import contacts">
+					<input type="file" name="vcf" accept=".vcf" aria-label="Select VCF file to import"/>
+					<button type="submit" class="tool-btn">{ t(ctx, "contacts.import") }</button>
 				</form>
 			</div>
 			<div id="create-form" hidden>
-				<form method="post" action="/contacts" style="padding:1rem;border:1px solid var(--pico-muted-border-color);border-radius:4px;margin-bottom:1rem">
-					<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
-						<label>
-							{ t(ctx, "contacts.name") }
-							<input type="text" name="display_name" required/>
+				<div class="settings-card" style="margin:16px 24px">
+					<form method="post" action="/contacts" style="padding:18px">
+						<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+							<label>
+								<span class="settings-row-title">{ t(ctx, "contacts.name") }</span>
+								<input type="text" name="display_name" class="settings-input" style="width:100%" required/>
+							</label>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "contacts.email") }</span>
+								<input type="email" name="email" class="settings-input" style="width:100%"/>
+							</label>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "contacts.phone") }</span>
+								<input type="tel" name="phone" class="settings-input" style="width:100%"/>
+							</label>
+							<label>
+								<span class="settings-row-title">{ t(ctx, "contacts.company") }</span>
+								<input type="text" name="company" class="settings-input" style="width:100%"/>
+							</label>
+						</div>
+						<label style="margin-top:0.75rem;display:block">
+							<span class="settings-row-title">{ t(ctx, "contacts.notes") }</span>
+							<textarea name="notes" rows="2" class="settings-input" style="width:100%"></textarea>
 						</label>
-						<label>
-							{ t(ctx, "contacts.email") }
-							<input type="email" name="email"/>
-						</label>
-						<label>
-							{ t(ctx, "contacts.phone") }
-							<input type="tel" name="phone"/>
-						</label>
-						<label>
-							{ t(ctx, "contacts.company") }
-							<input type="text" name="company"/>
-						</label>
-					</div>
-					<label>
-						{ t(ctx, "contacts.notes") }
-						<textarea name="notes" rows="2"></textarea>
-					</label>
-					<div style="display:flex;gap:0.5rem">
-						<button type="submit">{ t(ctx, "contacts.create") }</button>
-						<button type="button" class="outline secondary" onclick="document.getElementById('create-form').setAttribute('hidden','')">{ t(ctx, "contacts.cancel") }</button>
-					</div>
-				</form>
+						<div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+							<button type="submit" class="btn-send">{ t(ctx, "contacts.create") }</button>
+							<button type="button" class="btn-secondary" onclick="document.getElementById('create-form').setAttribute('hidden','')">{ t(ctx, "contacts.cancel") }</button>
+						</div>
+					</form>
+				</div>
 			</div>
 			if len(contacts) == 0 {
 				@EmptyState(t(ctx, "contacts.noContacts"), t(ctx, "contacts.addContacts"))
 			} else {
-				<table class="message-list">
-					<thead>
-						<tr>
-							<th>{ t(ctx, "contacts.name") }</th>
-							<th>{ t(ctx, "contacts.email") }</th>
-							<th>{ t(ctx, "contacts.phone") }</th>
-							<th>{ t(ctx, "contacts.company") }</th>
-						</tr>
-					</thead>
-					<tbody>
-						for _, c := range contacts {
-							@ContactRow(c)
-						}
-					</tbody>
-				</table>
-				@Pagination(page, totalPages, "/contacts")
+				<div class="contacts-panes" id="contacts-panes">
+					<div class="contact-list-pane">
+						<div class="contact-scroll" role="list" aria-label="Contact list">
+							for _, c := range contacts {
+								@ContactRow(c)
+							}
+						</div>
+						@Pagination(page, totalPages, "/contacts")
+					</div>
+					<div class="contact-detail-pane" id="contact-detail">
+						<div class="detail-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem">
+							Select a contact to view details
+						</div>
+					</div>
+				</div>
 			}
 		</main>
 	}
 }
 
 templ ContactRow(c *bongov1.Contact) {
-	<tr id={ "contact-" + c.Guid } data-guid={ c.Guid }>
-		<td>
-			<a href={ templ.SafeURL("/contacts/" + c.Guid) } style="text-decoration:none;color:inherit">
-				{ c.DisplayName }
-			</a>
-		</td>
-		<td>{ c.Email }</td>
-		<td>{ c.Phone }</td>
-		<td>{ c.Company }</td>
-	</tr>
+	<a
+		href={ templ.SafeURL("/contacts/" + c.Guid) }
+		hx-get={ "/contacts/" + c.Guid + "/detail" }
+		hx-target="#contact-detail"
+		hx-swap="innerHTML"
+		class="contact-card"
+		id={ "contact-" + c.Guid }
+		data-guid={ c.Guid }
+		role="listitem"
+		tabindex="0"
+		onclick="document.querySelectorAll('.contact-card').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.getElementById('contacts-panes')?.classList.add('showing-detail')"
+	>
+		<div class="contact-avatar" style={ avatarStyleContact(c.DisplayName, c.Email) } aria-hidden="true">
+			{ avatarInitialsContact(c.DisplayName, c.Email) }
+		</div>
+		<div class="contact-info">
+			<div class="contact-name">{ c.DisplayName }</div>
+			<div class="contact-email">{ c.Email }</div>
+		</div>
+	</a>
 }
 
 templ ContactDetailPage(c *bongov1.Contact, email string) {
@@ -97,71 +109,173 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@ContactsSidebar()
 		</aside>
-		<main class="main-content" id="main-content">
+		<main class="content" id="main-content">
 			<div class="toolbar">
-				<a href="/contacts" role="button" class="outline secondary">{ t(ctx, "common.back") }</a>
+				<a href="/contacts" class="tool-btn">&larr; { t(ctx, "common.back") }</a>
 			</div>
-			<form method="post" action={ templ.SafeURL("/contacts/" + c.Guid) } style="max-width:600px">
-				<input type="hidden" name="_method" value="PUT"/>
-				<label>
-					{ t(ctx, "contacts.name") }
-					<input type="text" name="display_name" value={ c.DisplayName } required/>
-				</label>
-				<label>
-					{ t(ctx, "contacts.email") }
-					<input type="email" name="email" value={ c.Email }/>
-				</label>
-				<label>
-					{ t(ctx, "contacts.phone") }
-					<input type="tel" name="phone" value={ c.Phone }/>
-				</label>
-				<label>
-					{ t(ctx, "contacts.company") }
-					<input type="text" name="company" value={ c.Company }/>
-				</label>
-				<label>
-					{ t(ctx, "contacts.notes") }
-					<textarea name="notes" rows="3">{ c.Notes }</textarea>
-				</label>
-				<div class="meta" style="margin-bottom:1rem;font-size:0.8rem">
-					<span>Created: { formatContactDate(c.CreatedAt) }</span>
-					<span style="margin-left:1rem">Updated: { formatContactDate(c.UpdatedAt) }</span>
+			<div class="contact-detail-pane">
+				<div class="detail-card">
+					<div class="detail-header">
+						<div class="detail-avatar" style={ avatarStyleContact(c.DisplayName, c.Email) } aria-hidden="true">
+							{ avatarInitialsContact(c.DisplayName, c.Email) }
+						</div>
+						<h2 class="detail-name">{ c.DisplayName }</h2>
+						if c.Company != "" {
+							<p class="detail-title">{ c.Company }</p>
+						}
+					</div>
+					<form method="post" action={ templ.SafeURL("/contacts/" + c.Guid) }>
+						<input type="hidden" name="_method" value="PUT"/>
+						<div class="detail-fields">
+							<div class="detail-field">
+								<div class="detail-field-label">Name</div>
+								<div class="detail-field-value">
+									<input type="text" name="display_name" class="settings-input" value={ c.DisplayName } required/>
+								</div>
+							</div>
+							<div class="detail-field">
+								<div class="detail-field-label">Email</div>
+								<div class="detail-field-value">
+									<input type="email" name="email" class="settings-input" value={ c.Email }/>
+								</div>
+							</div>
+							<div class="detail-field">
+								<div class="detail-field-label">Phone</div>
+								<div class="detail-field-value">
+									<input type="tel" name="phone" class="settings-input" value={ c.Phone }/>
+								</div>
+							</div>
+							<div class="detail-field">
+								<div class="detail-field-label">Company</div>
+								<div class="detail-field-value">
+									<input type="text" name="company" class="settings-input" value={ c.Company }/>
+								</div>
+							</div>
+							<div class="detail-field">
+								<div class="detail-field-label">Notes</div>
+								<div class="detail-field-value">
+									<textarea name="notes" rows="3" class="settings-input" style="width:100%">{ c.Notes }</textarea>
+								</div>
+							</div>
+						</div>
+						<div class="detail-actions">
+							<button type="submit" class="btn-edit">{ t(ctx, "contacts.save") }</button>
+							<a href="/contacts" class="btn-action">{ t(ctx, "contacts.cancel") }</a>
+							<span class="detail-spacer"></span>
+							<button
+								type="button"
+								class="btn-danger"
+								hx-delete={ "/contacts/" + c.Guid }
+								hx-confirm="Delete this contact?"
+								hx-target="body"
+							>
+								{ t(ctx, "contacts.delete") }
+							</button>
+						</div>
+					</form>
+					<div class="detail-section-title" style="font-size:0.75rem">
+						<span>Created: { formatContactDate(c.CreatedAt) }</span>
+						<span style="margin-left:1rem">Updated: { formatContactDate(c.UpdatedAt) }</span>
+					</div>
 				</div>
-				<div style="display:flex;gap:0.5rem">
-					<button type="submit">{ t(ctx, "contacts.save") }</button>
-					<a href="/contacts" role="button" class="outline secondary">{ t(ctx, "contacts.cancel") }</a>
-					<button
-						type="button"
-						class="outline contrast"
-						hx-delete={ "/contacts/" + c.Guid }
-						hx-confirm="Delete this contact?"
-						hx-target="body"
-					>
-						{ t(ctx, "contacts.delete") }
-					</button>
-				</div>
-			</form>
+			</div>
 		</main>
 	}
 }
 
+// ContactDetailPartial renders the detail card for the HTMX reading pane.
+templ ContactDetailPartial(c *bongov1.Contact) {
+	<div class="detail-card">
+		<div class="detail-header">
+			<div class="detail-avatar" style={ avatarStyleContact(c.DisplayName, c.Email) } aria-hidden="true">
+				{ avatarInitialsContact(c.DisplayName, c.Email) }
+			</div>
+			<h2 class="detail-name">{ c.DisplayName }</h2>
+			if c.Company != "" {
+				<p class="detail-title">{ c.Company }</p>
+			}
+		</div>
+		<form method="post" action={ templ.SafeURL("/contacts/" + c.Guid) }>
+			<input type="hidden" name="_method" value="PUT"/>
+			<div class="detail-fields">
+				<div class="detail-field">
+					<div class="detail-field-label">Name</div>
+					<div class="detail-field-value">
+						<input type="text" name="display_name" class="form-input" value={ c.DisplayName } required/>
+					</div>
+				</div>
+				<div class="detail-field">
+					<div class="detail-field-label">Email</div>
+					<div class="detail-field-value">
+						<input type="email" name="email" class="form-input" value={ c.Email }/>
+					</div>
+				</div>
+				<div class="detail-field">
+					<div class="detail-field-label">Phone</div>
+					<div class="detail-field-value">
+						<input type="tel" name="phone" class="form-input" value={ c.Phone }/>
+					</div>
+				</div>
+				<div class="detail-field">
+					<div class="detail-field-label">Company</div>
+					<div class="detail-field-value">
+						<input type="text" name="company" class="form-input" value={ c.Company }/>
+					</div>
+				</div>
+				<div class="detail-field">
+					<div class="detail-field-label">Notes</div>
+					<div class="detail-field-value">
+						<textarea name="notes" rows="3" class="form-input" style="width:100%">{ c.Notes }</textarea>
+					</div>
+				</div>
+			</div>
+			<div class="detail-actions">
+				<button type="submit" class="btn-primary">{ t(ctx, "contacts.save") }</button>
+				<span class="detail-spacer" style="flex:1"></span>
+				<button
+					type="button"
+					class="btn-flush"
+					style="color:var(--bongo-red)"
+					hx-delete={ "/contacts/" + c.Guid }
+					hx-confirm="Delete this contact?"
+					hx-target="#contacts-panes"
+					hx-swap="outerHTML"
+				>
+					{ t(ctx, "contacts.delete") }
+				</button>
+			</div>
+		</form>
+		<div class="detail-section-title" style="font-size:0.75rem; padding:12px 24px; color:var(--text-muted)">
+			<span>Created: { formatContactDate(c.CreatedAt) }</span>
+			<span style="margin-left:1rem">Updated: { formatContactDate(c.UpdatedAt) }</span>
+		</div>
+	</div>
+}
+
 templ ContactsSidebar() {
-	<nav>
-		<ul class="mailbox-list">
-			<li>
-				<a href="/contacts" class="active">
-					<span>{ t(ctx, "nav.allContacts") }</span>
-				</a>
-			</li>
-		</ul>
-		<hr style="margin:0.5rem 0"/>
-		<ul class="mailbox-list">
-			<li>
-				<a href="/mail/INBOX">
-					<span>{ t(ctx, "nav.backToMail") }</span>
-				</a>
-			</li>
-		</ul>
+	<nav aria-label="Contacts navigation">
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "nav.contacts") }</div>
+			<ul class="nav-list">
+				<li class="nav-item">
+					<a href="/contacts" class="active">
+						<span class="nav-icon" aria-hidden="true">&#128101;</span>
+						<span>{ t(ctx, "nav.allContacts") }</span>
+					</a>
+				</li>
+			</ul>
+		</div>
+		<div class="sidebar-group">
+			<div class="sidebar-label">Navigation</div>
+			<ul class="nav-list">
+				<li class="nav-item">
+					<a href="/mail/INBOX">
+						<span class="nav-icon" aria-hidden="true">&#9993;</span>
+						<span>{ t(ctx, "nav.backToMail") }</span>
+					</a>
+				</li>
+			</ul>
+		</div>
 	</nav>
 }
 
@@ -170,6 +284,32 @@ func formatContactDate(unix int64) string {
 		return "-"
 	}
 	return time.Unix(unix, 0).Format("Jan 2, 2006")
+}
+
+func avatarInitialsContact(name, email string) string {
+	if name != "" {
+		parts := strings.Fields(name)
+		if len(parts) >= 2 {
+			return strings.ToUpper(string([]rune(parts[0])[0:1]) + string([]rune(parts[len(parts)-1])[0:1]))
+		}
+		if len(parts) == 1 && len(parts[0]) >= 2 {
+			return strings.ToUpper(parts[0][0:2])
+		}
+	}
+	if len(email) >= 2 {
+		return strings.ToUpper(email[0:2])
+	}
+	return "??"
+}
+
+func avatarStyleContact(name, email string) string {
+	s := name + email
+	var hash uint32
+	for _, c := range s {
+		hash = hash*31 + uint32(c)
+	}
+	colours := []string{"#517faf", "#5aad4a", "#ee8d03", "#8a6fb8", "#e15e50", "#d4a60a", "#729fcf"}
+	return fmt.Sprintf("background:%s", colours[hash%uint32(len(colours))])
 }
 
 // contactsActiveClass is unused but suppresses lint for the fmt import.

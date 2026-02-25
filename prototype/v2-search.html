@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bongo Mail — Search Results (v2 Prototype)</title>
+  <style>
+    /* ============================================
+       BONGO v2 SEARCH RESULTS — FULLY SELF-CONTAINED
+       Uses the mail UI colour palette (same as v2-inbox)
+       ============================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bongo-orange: #ffac35; --bongo-orange-hover: #f59300;
+      --bongo-blue: #517faf; --bongo-blue-dark: #3d6a9e; --bongo-blue-light: #e8f0fa;
+      --bongo-green: #7ed12d;
+      --bg: #ffffff; --bg-subtle: #f7f8fa; --bg-muted: #f0f2f5; --bg-hover: #edf0f4;
+      --sidebar-bg: #2c4a72; --sidebar-hover: rgba(255,255,255,0.08); --sidebar-active: rgba(255,255,255,0.15);
+      --sidebar-text: #b8cadf; --sidebar-bright: #ffffff; --sidebar-width: 240px;
+      --text: #1a1a2e; --text-secondary: #5f6368; --text-muted: #9aa0a8; --text-inverse: #ffffff;
+      --border: #e4e7ec; --border-strong: #d0d3d8;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05); --shadow-md: 0 2px 8px rgba(0,0,0,0.08); --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
+      --topbar-h: 52px; --radius: 6px; --radius-lg: 10px;
+    }
+
+    [data-theme="dark"] {
+      --bongo-orange: #e09530; --bongo-orange-hover: #d06d00;
+      --bongo-blue: #7ba4cc; --bongo-blue-dark: #4a6e96; --bongo-blue-light: #1e3350;
+      --bongo-green: #7ed12d;
+      --bg: #1a1a2e; --bg-subtle: #20203a; --bg-muted: #282842; --bg-hover: #2e2e48;
+      --sidebar-bg: #1a2744; --sidebar-text: #8aa4c8; --sidebar-bright: #d0ddef;
+      --text: #e0e0e8; --text-secondary: #a0a4ac; --text-muted: #6b7080;
+      --border: #2e3040; --border-strong: #3e4050;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.2); --shadow-md: 0 2px 8px rgba(0,0,0,0.3); --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 14px; color: var(--text); background: var(--bg); overflow: hidden; }
+    a { color: inherit; text-decoration: none; }
+    button { font-family: inherit; cursor: pointer; }
+    .skip-link { position: absolute; top: -100%; left: 16px; background: var(--bongo-blue); color: #fff; padding: 8px 16px; border-radius: var(--radius); z-index: 200; font-weight: 600; font-size: 0.9rem; }
+    .skip-link:focus { top: 8px; }
+    *:focus-visible { outline: 2px solid var(--bongo-blue); outline-offset: 2px; }
+
+    /* TOPBAR */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; height: var(--topbar-h); display: flex; align-items: center; justify-content: space-between; padding: 0 16px; background: var(--sidebar-bg); border-bottom: 1px solid rgba(255,255,255,0.1); z-index: 100; }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .hamburger { display: none; align-items: center; justify-content: center; width: 36px; height: 36px; border: none; background: transparent; color: var(--sidebar-text); font-size: 1.3rem; cursor: pointer; border-radius: var(--radius); }
+    .hamburger:hover { background: var(--sidebar-hover); }
+    .brand { font-weight: 700; font-size: 1.15rem; color: #fff; letter-spacing: -0.5px; }
+    .brand span { color: var(--bongo-orange); }
+    .topbar-right { display: flex; align-items: center; gap: 8px; }
+    .search-input { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; padding: 6px 16px; font-size: 0.85rem; color: #fff; width: 300px; }
+    .search-input::placeholder { color: rgba(255,255,255,0.5); }
+    .search-input:focus { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); outline: none; }
+    .topbar-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--sidebar-text); cursor: pointer; font-size: 1.05rem; }
+    .topbar-btn:hover { background: var(--sidebar-hover); }
+    .user-link { font-size: 0.82rem; color: var(--sidebar-text); padding: 6px 10px; border-radius: var(--radius); }
+    .user-link:hover { background: var(--sidebar-hover); color: #fff; }
+
+    /* LAYOUT */
+    .layout { display: flex; position: fixed; top: var(--topbar-h); left: 0; right: 0; bottom: 0; }
+
+    /* SIDEBAR */
+    .sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); color: var(--sidebar-text); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; overflow-x: hidden; transition: transform 0.25s ease; }
+    .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 149; }
+
+    .compose-btn { display: block; margin: 12px; padding: 10px; border-radius: var(--radius); text-align: center; font-weight: 600; font-size: 0.92rem; background: var(--bongo-orange); color: #1a1a2e; }
+    .compose-btn:hover { background: var(--bongo-orange-hover); }
+
+    .sidebar-section { padding: 0 8px; }
+    .sidebar-section h4 { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.25); padding: 14px 8px 6px; font-weight: 600; }
+    .nav-list { list-style: none; }
+    .nav-list li a { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: var(--radius); font-size: 0.88rem; font-weight: 500; color: var(--sidebar-text); margin: 1px 0; }
+    .nav-list li a:hover { background: var(--sidebar-hover); color: var(--sidebar-bright); }
+    .nav-list li a.active { background: var(--sidebar-active); color: var(--sidebar-bright); font-weight: 600; }
+    .nav-icon { width: 18px; text-align: center; font-size: 0.95rem; flex-shrink: 0; }
+    .unread-badge { background: var(--bongo-orange); color: #1a1a2e; font-size: 0.68rem; font-weight: 700; padding: 1px 6px; border-radius: 8px; margin-left: auto; }
+
+    /* CONTENT */
+    .content { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow-y: auto; }
+
+    /* SEARCH RESULTS */
+    .results-header { padding: 16px 24px; border-bottom: 1px solid var(--border); background: var(--bg-subtle); }
+    .results-title { font-size: 1rem; font-weight: 700; color: var(--text); }
+    .results-count { font-size: 0.85rem; color: var(--text-muted); margin-top: 2px; }
+    .results-query { color: var(--bongo-blue); font-weight: 600; }
+
+    .results-list { flex: 1; overflow-y: auto; }
+
+    .search-result { display: block; padding: 14px 24px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+    .search-result:hover { background: var(--bg-hover); }
+    .search-result:focus-visible { outline-offset: -2px; }
+
+    .result-subject { font-weight: 600; color: var(--text); font-size: 0.92rem; margin-bottom: 3px; }
+    .result-meta { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 4px; }
+    .result-from { color: var(--text-secondary); font-weight: 500; }
+    .result-mailbox { display: inline-flex; padding: 1px 6px; background: var(--bg-muted); border-radius: 4px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+    .result-snippet { font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; }
+    .result-snippet mark { background: rgba(255,172,53,0.25); color: var(--text); border-radius: 2px; padding: 0 2px; }
+
+    /* PAGINATION */
+    .pagination { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 16px; border-top: 1px solid var(--border); }
+    .page-btn { display: flex; align-items: center; justify-content: center; min-width: 34px; height: 34px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--text-secondary); font-size: 0.85rem; cursor: pointer; padding: 0 8px; }
+    .page-btn:hover { background: var(--bg-hover); }
+    .page-btn.active { background: var(--bongo-blue); color: #fff; border-color: var(--bongo-blue); }
+    .page-btn:disabled { opacity: 0.4; cursor: default; }
+
+    /* EMPTY STATE */
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; text-align: center; }
+    .empty-icon { font-size: 3rem; margin-bottom: 16px; opacity: 0.3; }
+    .empty-title { font-size: 1.1rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .empty-text { font-size: 0.88rem; color: var(--text-muted); }
+
+    /* RESPONSIVE */
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+      .sidebar { position: fixed; top: var(--topbar-h); left: 0; bottom: 0; width: 260px; z-index: 150; transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay.open { display: block; }
+      .search-input { width: 180px; }
+      .search-result { padding: 12px 16px; }
+    }
+    @media (max-width: 480px) {
+      .search-input { width: 140px; }
+      .result-meta { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+      <a href="v2-inbox.html" class="brand" aria-label="BongoMail — Go to inbox">Bongo<span>Mail</span></a>
+    </div>
+    <div class="topbar-right">
+      <input type="search" class="search-input" placeholder="Search mail..." aria-label="Search mail" value="quarterly report">
+      <button class="topbar-btn" title="Toggle dark/light theme" aria-label="Toggle dark/light theme" onclick="toggleTheme()">&#9789;</button>
+      <a href="#" class="user-link">admin</a>
+    </div>
+  </header>
+
+  <div class="layout">
+    <div class="sidebar-overlay" onclick="toggleSidebar()" aria-hidden="true"></div>
+
+    <aside class="sidebar" id="sidebar" role="complementary" aria-label="Mail navigation">
+      <a href="v2-compose.html" class="compose-btn">Compose</a>
+      <div class="sidebar-section">
+        <h4>Mailboxes</h4>
+        <ul class="nav-list">
+          <li><a href="v2-inbox.html"><span class="nav-icon" aria-hidden="true">&#128229;</span> Inbox <span class="unread-badge">12</span></a></li>
+          <li><a href="#"><span class="nav-icon" aria-hidden="true">&#9733;</span> Starred</a></li>
+          <li><a href="#"><span class="nav-icon" aria-hidden="true">&#128228;</span> Sent</a></li>
+          <li><a href="#"><span class="nav-icon" aria-hidden="true">&#128221;</span> Drafts</a></li>
+          <li><a href="#"><span class="nav-icon" aria-hidden="true">&#128465;</span> Trash</a></li>
+        </ul>
+      </div>
+      <div class="sidebar-section">
+        <h4>Navigation</h4>
+        <ul class="nav-list">
+          <li><a href="v2-calendar.html"><span class="nav-icon" aria-hidden="true">&#128197;</span> Calendar</a></li>
+          <li><a href="v2-contacts.html"><span class="nav-icon" aria-hidden="true">&#128101;</span> Contacts</a></li>
+          <li><a href="v2-settings.html"><span class="nav-icon" aria-hidden="true">&#9881;</span> Settings</a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="content" id="main-content" role="main" aria-label="Search results">
+      <div class="results-header">
+        <div class="results-title">Search Results</div>
+        <div class="results-count">8 results for <span class="results-query">"quarterly report"</span></div>
+      </div>
+
+      <div class="results-list">
+        <a class="search-result" href="v2-thread.html" tabindex="0">
+          <div class="result-subject">Q4 2025 Quarterly Report - Final Draft</div>
+          <div class="result-meta">
+            <span class="result-from">Sarah Chen</span>
+            <span>&middot;</span>
+            <span>Feb 20, 2026</span>
+            <span class="result-mailbox">Inbox</span>
+          </div>
+          <div class="result-snippet">Hi team, please find attached the final draft of the <mark>quarterly report</mark>. I've incorporated all the feedback from last week's review...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Re: Quarterly Report Review Meeting</div>
+          <div class="result-meta">
+            <span class="result-from">David Kim</span>
+            <span>&middot;</span>
+            <span>Feb 18, 2026</span>
+            <span class="result-mailbox">Inbox</span>
+          </div>
+          <div class="result-snippet">Thanks for scheduling this. I've reviewed the <mark>quarterly report</mark> and have a few suggestions for the revenue section...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Quarterly Report Template Updates</div>
+          <div class="result-meta">
+            <span class="result-from">Maria Gonzalez</span>
+            <span>&middot;</span>
+            <span>Feb 15, 2026</span>
+            <span class="result-mailbox">Inbox</span>
+          </div>
+          <div class="result-snippet">I've updated the <mark>quarterly report</mark> template with the new brand guidelines. The main changes are in the header...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Q3 2025 Quarterly Report</div>
+          <div class="result-meta">
+            <span class="result-from">Sarah Chen</span>
+            <span>&middot;</span>
+            <span>Oct 12, 2025</span>
+            <span class="result-mailbox">Archive</span>
+          </div>
+          <div class="result-snippet">Here's the final version of the Q3 <mark>quarterly report</mark>. All metrics are up from last quarter. Revenue grew by 15%...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Action Items from Quarterly Report Discussion</div>
+          <div class="result-meta">
+            <span class="result-from">You</span>
+            <span>&middot;</span>
+            <span>Oct 8, 2025</span>
+            <span class="result-mailbox">Sent</span>
+          </div>
+          <div class="result-snippet">Following up on our discussion about the <mark>quarterly report</mark>. Here are the action items we agreed on: 1. Update the forecast...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Re: Q2 Quarterly Report - Feedback</div>
+          <div class="result-meta">
+            <span class="result-from">Alex Wright</span>
+            <span>&middot;</span>
+            <span>Jul 20, 2025</span>
+            <span class="result-mailbox">Archive</span>
+          </div>
+          <div class="result-snippet">The <mark>quarterly report</mark> looks good overall. One thing I noticed is the customer churn numbers don't match what's in the dashboard...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Quarterly Report Deadline Reminder</div>
+          <div class="result-meta">
+            <span class="result-from">Lisa Park</span>
+            <span>&middot;</span>
+            <span>Jul 5, 2025</span>
+            <span class="result-mailbox">Archive</span>
+          </div>
+          <div class="result-snippet">Friendly reminder that the <mark>quarterly report</mark> is due by end of next week. Please submit your department summaries by...</div>
+        </a>
+
+        <a class="search-result" href="#" tabindex="0">
+          <div class="result-subject">Q1 2025 Quarterly Report - Board Presentation</div>
+          <div class="result-meta">
+            <span class="result-from">Priya Sharma</span>
+            <span>&middot;</span>
+            <span>Apr 3, 2025</span>
+            <span class="result-mailbox">Archive</span>
+          </div>
+          <div class="result-snippet">Attached is the board presentation version of the Q1 <mark>quarterly report</mark>. I've condensed the key metrics into 12 slides...</div>
+        </a>
+      </div>
+
+      <!-- Pagination -->
+      <nav class="pagination" aria-label="Search results pagination">
+        <button class="page-btn" disabled aria-label="Previous page">&laquo;</button>
+        <button class="page-btn active" aria-current="page">1</button>
+        <button class="page-btn">2</button>
+        <button class="page-btn" aria-label="Next page">&raquo;</button>
+      </nav>
+    </main>
+  </div>
+
+  <script>
+    function toggleSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.querySelector('.hamburger');
+      const overlay = document.querySelector('.sidebar-overlay');
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('open');
+      hamburger.setAttribute('aria-expanded', sidebar.classList.contains('open'));
+    }
+    function toggleTheme() {
+      const html = document.documentElement;
+      html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.querySelector('.topbar-btn[aria-label*="theme"]').textContent = html.dataset.theme === 'dark' ? '\u2600' : '\u263D';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+From yanghong@ccoss.com.cn  Mon May 22 02:06:40 2006
+Return-Path: <yanghong@ccoss.com.cn>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id D481E3B0184
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 02:06:40 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 25312-05 for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 02:06:37 -0400 (EDT)
+Received: from ccoss.com.cn (unknown [210.76.114.181])
+	by menubar.gnome.org (Postfix) with ESMTP id 7333F3B0C45
+	for <desktop-devel-list@gnome.org>;
+	Mon, 22 May 2006 02:06:36 -0400 (EDT)
+Received: (qmail 13483 invoked by uid 0); 22 May 2006 05:38:01 -0000
+Received: from unknown (HELO walte) (yanghong@210.76.114.170)
+	by 0 with SMTP; 22 May 2006 05:38:01 -0000
+From: Yang Hong <yanghong@ccoss.com.cn>
+To: desktop-devel-list@gnome.org
+Content-Type: text/plain
+Date: Mon, 22 May 2006 14:06:23 +0800
+Message-Id: <1148277983.21110.27.camel@localhost>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-1.706 tagged_above=-999 required=2 tests=[AWL=0.893, 
+	BAYES_00=-2.599]
+X-Spam-Score: -1.706
+X-Spam-Level: 
+Subject: I18n in plugin
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Mon, 22 May 2006 06:06:41 -0000
+
+Hi all,
+
+There are many applications use plugin based architecture to expand it's
+function, such as Evolution (EPlugin), Anjuta 2.x, Gedit, Gaim,
+Xchat-gnome, etc. The problem is that if the plugins was released
+outside of the main app, the user interface of the plugin is NOT I18n
+able. even I added bindtextdomain(...) and bind_textdomain_codeset (...)
+in the initialize code of the plugin.
+
+In my anjuta-foobar-plugin [1]:
+
+static void
+anjuta_plugin_foobar_instance_init (GObject *obj)
+{
+	AnjutaFoobarPlugin *plugin = (AnjutaFoobarPlugin*)obj;
+
+	bindtextdomain (GETTEXT_PACKAGE,  PACKAGE_LOCALE_DIR);
+	bind_textdomain_codeset (GETTEXT_PACKAGE, "UTF-8");
+	/* textdomain (GETTEXT_PACKAGE); */
+	
+	plugin->uiid = 0;
+	plugin->widget = NULL;
+
+}
+
+You cann't use textdomain (...) in a plugin, or you'll get all NEW
+interface in english (un i18ned).
+
+Yestoday, I got a remove-duplicates plugin for evolution 2.4 from
+#342378 [2], after some hack it for evolution 2.6, added LINGUAS suport,
+added zh_CN translate [3], intalled it and got a untranslate menu item
+"Remove duplicates". and then I found that there is even not point to
+add the bindtextdomain for it, there's only one entrance for this
+plugin's functional. how can it could be i18ned?
+
+void
+org_gnome_duplicates_remove (EPlugin *ep, EMPopupTargetSelect *target)
+{
+  handle_messages (target->folder, target->uids);
+}
+
+[1]
+http://www.gnome-cn.org/software/anjuta-plugin-foobar/releases/0.1/anjuta-plugin-foobar-0-1-tar.gz
+[2] http://bugzilla.gnome.org/show_bug.cgi?id=342378
+[3]
+http://www.gnome-cn.org/software/remove-duplicates-plugin/releases/0.0.3/remove-duplicates-plugin-0-0-3-tar.gz
+
+any comments?
+
+Yang Hong
+

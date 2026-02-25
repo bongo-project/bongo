@@ -1,0 +1,96 @@
+From bongo-general-bounces@forge.novell.com Mon May 22 08:37:03 2006
+Return-Path: <zeploum@gmail.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 6D81E63094 for
+	<Dave@ximian.com>; Mon, 22 May 2006 08:37:03 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 67B777004C;
+	Mon, 22 May 2006 08:37:03 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 8C5BB7006B
+	for <Dave@ximian.com>; Mon, 22 May 2006 08:36:59 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Mon, 22 May 2006 06:36:54 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Mon, 22 May 2006 06:36:15 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id 9A66F1B013E; Mon, 22 May
+	2006 06:28:52 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from nf-out-0910.google.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	811181B0148 for <bongo-general@forge.novell.com>; Mon, 22 May 2006 05:42:01
+	-0600 (MDT)
+Received: by nf-out-0910.google.com with SMTP id k26so453679nfc for
+	<bongo-general@forge.novell.com>; Mon, 22 May 2006 04:42:00 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:to:subject:cc:in-reply-to:mime-version:content-type:content-transfer-encoding:content-disposition:references;
+	b=DCFFkpCkZXUkRjBDIu5adFNOutYTvEaEOyEEHP8bqgVnHpa2zYcGgaHN17p6Areq1GgaFzXZ2xNg8bdtN2CQLpXLzs2W3m9Llih4qu6G2xyH2C2JMp4ckeJgE3QArBtMPVlFF5z3wK0//Do5u1busnhXbofvA+Xx6/dRihYe/x8=
+Received: by 10.48.48.16 with SMTP id v16mr3688693nfv; Mon, 22 May 2006
+	04:41:59 -0700 (PDT)
+Received: by 10.48.108.10 with HTTP; Mon, 22 May 2006 04:41:59 -0700 (PDT)
+Message-ID: <16a711710605220441t7e2eaafcm738d8dd36ee4f175@mail.gmail.com>
+Date: Mon, 22 May 2006 13:41:59 +0200
+From: "Lionel Dricot" <zeploum@gmail.com>
+To: "Benjamin Confiino" <bconfino@talk21.com>
+Subject: Re: [Bongo-general] Dose bongo greylist?
+In-Reply-To: <20060430201839.6132.qmail@web86205.mail.ukl.yahoo.com>
+MIME-Version: 1.0
+References: <20060430180120.1080A1B014A@dejar.provo.novell.com>
+	 <20060430201839.6132.qmail@web86205.mail.ukl.yahoo.com>
+Cc: bongo-general@forge.novell.com
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Content-Type: multipart/mixed; boundary="===============1209458975=="
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.5 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+
+
+--===============1209458975==
+Content-Type: text/plain; charset=UTF-8; format=flowed
+Content-Disposition: inline
+Content-Transfer-Encoding: 8bit
+
+I think it would make sense. There are already postfix and exim
+greylist plugin and greylisting becomes more and more common every
+day.
+
+ATM, SA filters only 50% of my spam...
+
+On 4/30/06, Benjamin Confiino <bconfino@talk21.com> wrote:
+> I recently discovered the existance of greylisting you
+> can read about it here.
+>
+> http://projects.puremagic.com/greylisting/whitepaper.html
+>
+> I was wandering if it would be at all possible to
+> impliment this in bongo? Prefrably before it even
+> reached traditonal filters like spamassasin.
+
+--===============1209458975==
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+Content-Disposition: inline
+Content-Transfer-Encoding: 8bit
+
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+
+--===============1209458975==--
+

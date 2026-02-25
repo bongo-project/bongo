@@ -1,0 +1,91 @@
+From bongo-general-bounces@forge.novell.com Mon May 22 09:52:10 2006
+Return-Path: <bernhard@janetzki.eu>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id CD32A6308A for
+	<Dave@ximian.com>; Mon, 22 May 2006 09:52:10 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id C882670047;
+	Mon, 22 May 2006 09:52:10 -0400 (EDT)
+Received: from victor.provo.novell.com (victor.provo.novell.com
+	[137.65.250.26]) by herald.ximian.com (Postfix) with ESMTP id C26C470067
+	for <Dave@ximian.com>; Mon, 22 May 2006 09:52:05 -0400 (EDT)
+Received: from INET-PRV3-MTA by victor.provo.novell.com with
+	Novell_GroupWise; Mon, 22 May 2006 07:52:04 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Mon, 22 May 2006 07:51:37 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id 05F4E1B013E; Mon, 22 May
+	2006 07:44:51 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from mail.pagepool.de (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	9975D1B013E for <bongo-general@forge.novell.com>; Mon, 22 May 2006 06:55:56
+	-0600 (MDT)
+Received: from localhost (localhost [127.0.0.1]) by mail.pagepool.de
+	(Postfix) with ESMTP id 65E7E8DC07F for <bongo-general@forge.novell.com>;
+	Mon, 22 May 2006 14:55:47 +0200 (CEST)
+Received: from mail.pagepool.de ([127.0.0.1]) by localhost (www
+	[127.0.0.1]) (amavisd-new, port 10024) with ESMTP id 26634-09 for
+	<bongo-general@forge.novell.com>; Mon, 22 May 2006 14:55:46 +0200 (CEST)
+Received: from [172.22.140.177] (host-82-135-115-243.customer.m-online.net
+	[82.135.115.243]) (using TLSv1 with cipher DHE-RSA-AES256-SHA (256/256
+	bits)) (No client certificate requested) by mail.pagepool.de (Postfix) with
+	ESMTP id 2A9B68DC079 for <bongo-general@forge.novell.com>; Mon, 22 May 2006
+	14:55:46 +0200 (CEST)
+Message-ID: <4471B4D8.1070406@janetzki.eu>
+Date: Mon, 22 May 2006 14:55:52 +0200
+From: Bernhard Janetzki <bernhard@janetzki.eu>
+User-Agent: Thunderbird 1.5.0.2 (X11/20060522)
+MIME-Version: 1.0
+To: bongo-general@forge.novell.com
+X-Enigmail-Version: 0.94.0.0
+Content-Type: text/plain; charset=ISO-8859-1
+X-Virus-Scanned: by amavisd-new-20030616-p10 (Debian) at pagepool.de
+Subject: [Bongo-general] Hostingdomain
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA384
+
+Hi,
+I'd like to add multiple domain hosting. I've added a hosting-domain.
+How its possible to create an email for an user with this hosting-domain?
+Thanks,
+
+Greets Boerni
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.2.2 (GNU/Linux)
+Comment: Using GnuPG with Mozilla - http://enigmail.mozdev.org
+
+iQEVAwUBRHG02MUi5c2CMD9/AQkdnggAsK6qtaxf2GDFqKWTAYlZlc4e0eaD3O4+
+45uzoL66CIfF2tCfY7EXjw+8A/lvjeHiigy6+JL/+akpFUk93n/oW0h7Gh6g2u8A
+ZetsnD3BD2oUiL6id0y3ci0nPpQcnsRsTBweKe5mdSCQK68o+lmqn6fQgZLLngxU
+LeWZXUd3N/wSnNc7F4hfrDqy0GqWqn19L3Dv2BShqYTMhgQfubpP4Yd3w0tNJFAh
+7dEKVdD/UNt214xivZGDGe9YqBXzvFl93Midmz0cGNsicU/V6ZLxqd/6tr8hOKw8
+yXVvjk0j6Feo12/pJPoVGxEMZPk9NwOZ6I0lQFZkDxZ6IAcD4SH4Gg==
+=z82N
+-----END PGP SIGNATURE-----
+
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

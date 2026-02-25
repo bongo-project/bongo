@@ -1,0 +1,71 @@
+From sergey.udaltsov@gmail.com  Fri May 19 21:33:39 2006
+Return-Path: <sergey.udaltsov@gmail.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id 764DC3B02B7
+	for <desktop-devel-list@gnome.org>;
+	Fri, 19 May 2006 21:33:39 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 30452-04 for <desktop-devel-list@gnome.org>;
+	Fri, 19 May 2006 21:33:37 -0400 (EDT)
+Received: from wr-out-0506.google.com (wr-out-0506.google.com [64.233.184.224])
+	by menubar.gnome.org (Postfix) with ESMTP id EA2E53B030F
+	for <desktop-devel-list@gnome.org>;
+	Fri, 19 May 2006 21:33:36 -0400 (EDT)
+Received: by wr-out-0506.google.com with SMTP id i24so794367wra
+	for <desktop-devel-list@gnome.org>;
+	Fri, 19 May 2006 18:33:35 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:to:subject:mime-version:content-type:content-transfer-encoding:content-disposition;
+	b=KdA81OuW7byRvN3WAe5E42TDG3NhKWHog+pfajvzS6xAroR6H2Z6AoImTtffvhD7FuUazX8YXnzWOv92Ohnt8c/HoxVu6dGEYJv58JXaOpVwEE5jeO7CyhQGoZPPvcB++A5vB5jy4UDcT1Q0gombZfA301IWH6xT7MoazoUTA20=
+Received: by 10.65.147.16 with SMTP id z16mr1928229qbn;
+	Fri, 19 May 2006 18:33:35 -0700 (PDT)
+Received: by 10.64.148.18 with HTTP; Fri, 19 May 2006 18:33:35 -0700 (PDT)
+Message-ID: <48890e640605191833w53e8fd38xbceeffe73001ae8d@mail.gmail.com>
+Date: Sat, 20 May 2006 02:33:35 +0100
+From: "Sergey Udaltsov" <sergey.udaltsov@gmail.com>
+To: gnome-devel-list@gnome.org,
+	"GNOME Desktop Hackers" <desktop-devel-list@gnome.org>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Content-Transfer-Encoding: quoted-printable
+Content-Disposition: inline
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.555 tagged_above=-999 required=2 tests=[AWL=0.045, 
+	BAYES_00=-2.599, SPF_PASS=-0.001]
+X-Spam-Score: -2.555
+X-Spam-Level: 
+Cc: 
+Subject: Export layout tree to various apps
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Sat, 20 May 2006 01:33:39 -0000
+
+Hi people
+
+There is a bug #329897 which asks to add the current layout indication
+to the gnome-screensaver. This requires some information (localized
+layout names) from huge xorg.xml file which is usually (but not always
+- applets are not mandatory) already loaded by the keyboard indicator
+panel applet. Doing the same job twice in two apps (and using two
+times more memory) does not look nice. So, here are the questions:
+1. Which process would be a proper place for keeping loaded layout's
+tree? Should it be g-s-d or something else?
+2. Is DBUS the best protocol nowadays for providing access to such informat=
+ion?
+
+Any comments, architectural ideas are very welcome.
+
+Sergey
+

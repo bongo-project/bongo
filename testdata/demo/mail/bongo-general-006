@@ -1,0 +1,86 @@
+From bongo-general-bounces@forge.novell.com Fri May 19 06:37:28 2006
+Return-Path: <darren@apollolighting.co.uk>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id 562A063075; Fri, 19 May
+	2006 06:37:28 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id 505C570045;
+	Fri, 19 May 2006 06:37:28 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 2917070027;
+	Fri, 19 May 2006 06:37:22 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Fri, 19 May 2006 04:37:22 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Fri, 19 May 2006 04:36:53 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id C58791B013E; Fri, 19 May
+	2006 04:28:20 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from apollolighting.co.uk (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	EFE901B013E for <bongo-general@forge.novell.com>; Fri, 19 May 2006 03:29:36
+	-0600 (MDT)
+Received: from [192.168.100.164] darren [192.168.100.164] by
+	apollolighting.co.uk with NetMail SMTP Agent $Revision: 1.7 $; Fri, 19 May
+	2006 10:29:34 +0100
+Message-ID: <446D8FFE.30802@apollolighting.co.uk>
+Date: Fri, 19 May 2006 10:29:34 +0100
+From: Darren Hawkshaw <darren@apollolighting.co.uk>
+User-Agent: Thunderbird 1.5.0.2 (Windows/20060308)
+MIME-Version: 1.0
+To: "bongo-general@forge.novell.com" <bongo-general@forge.novell.com>
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Subject: [Bongo-general] How to set Bongo's hostname smtp greeting ?
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+Hi List,
+
+I'm struggling to figure out where I need to set bongo's hostname so that 
+it can correctly respond to helo/elho with the hostname to match my mx 
+records.
+
+What seems to be happening in the 2 different setups that I'm running, 
+is that the greeting is only showing the domain name, rather than 
+hostname.domain name.
+
+in mails that I send, the received from headers similarly only shows the 
+domain name. eg.
+
+X-Auth-No:
+Return-Path: <darren@apollolighting.co.uk>
+Received: from apollolighting.co.uk not authenticated [82.70.215.213]
+
+what I'd really like it to report is 'mail.apollolighting.co.uk' which 
+is what the MX record for the domain is pointing at.
+
+where do I add the 'mail' part :)
+
+this is on bongo r691, if that helps
+
+many thanks
+
+Darren
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+

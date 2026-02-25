@@ -1,0 +1,77 @@
+From dsandras@seconix.com  Wed May 17 15:28:30 2006
+Return-Path: <dsandras@seconix.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id 3C0A13B07F1; Wed, 17 May 2006 15:28:30 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 23726-04; Wed, 17 May 2006 15:28:28 -0400 (EDT)
+Received: from ns20085.ovh.net (ekiga.net [213.186.62.145])
+	by menubar.gnome.org (Postfix) with ESMTP
+	id A94313B0358; Wed, 17 May 2006 15:28:28 -0400 (EDT)
+Received: from localhost (localhost.localdomain [127.0.0.1])
+	by ns20085.ovh.net (Postfix) with ESMTP id 4D67849674;
+	Wed, 17 May 2006 21:15:17 +0200 (CEST)
+Received: from ns20085.ovh.net ([127.0.0.1])
+	by localhost (ns20085.ovh.net [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 32588-01; Wed, 17 May 2006 21:15:12 +0200 (CEST)
+Received: from [192.168.0.161] (238-150.242.81.adsl.skynet.be [81.242.150.238])
+	(using SSLv3 with cipher RC4-MD5 (128/128 bits))
+	(No client certificate requested)
+	by ns20085.ovh.net (Postfix) with ESMTP id 386D949670;
+	Wed, 17 May 2006 21:15:12 +0200 (CEST)
+From: Damien Sandras <dsandras@seconix.com>
+To: gnomemeeting-devel-list@gnome.org, gnome-i18n@gnome.org,
+	desktop-devel-list@gnome.org
+Content-Type: text/plain
+Date: Wed, 17 May 2006 21:29:59 +0200
+Message-Id: <1147894199.7225.2.camel@golgoth01>
+Mime-Version: 1.0
+X-Mailer: Evolution 2.6.1 
+Content-Transfer-Encoding: 7bit
+X-Virus-Scanned: by amavisd-new-20030616-p10 (Debian) at gnomemeeting.net
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.221 tagged_above=-999 required=2 tests=[AWL=0.243, 
+	BAYES_00=-2.599, FORGED_RCVD_HELO=0.135]
+X-Spam-Score: -2.221
+X-Spam-Level: 
+Cc: 
+Subject: Ekiga branched
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Wed, 17 May 2006 19:28:30 -0000
+
+Hello,
+
+
+I have created a new branch named "gnome-2-14" for Ekiga from the
+current CVS HEAD.
+
+New code and string changes will be committed to "HEAD".
+Bugfixes to Ekiga 2.0.1 will be committed to "gnome-2-14" and "HEAD".
+
+We will not change any string in "gnome-2-14".
+
+Ekiga 2.0.2 should be released shortly from the "gnome-2-14" branch.
+
+
+Thank you,
+-- 
+ _      Damien Sandras
+(o-     
+//\     Ekiga Softphone: http://www.ekiga.org/
+v_/_    FOSDEM 2006    : http://www.fosdem.org/
+        SIP Phone      : sip:dsandras@ekiga.net
+                         sip:600000@ekiga.net
+

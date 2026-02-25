@@ -1,0 +1,71 @@
+From matthias.clasen@gmail.com  Thu May 18 08:58:35 2006
+Return-Path: <matthias.clasen@gmail.com>
+X-Original-To: desktop-devel-list@gnome.org
+Delivered-To: desktop-devel-list@gnome.org
+Received: from localhost (unknown [127.0.0.1])
+	by menubar.gnome.org (Postfix) with ESMTP id E4A283B252F
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 08:58:34 -0400 (EDT)
+Received: from menubar.gnome.org ([127.0.0.1])
+	by localhost (menubar.gnome.org [127.0.0.1]) (amavisd-new, port 10024)
+	with ESMTP id 10938-05 for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 08:58:31 -0400 (EDT)
+Received: from nz-out-0102.google.com (nz-out-0102.google.com [64.233.162.202])
+	by menubar.gnome.org (Postfix) with ESMTP id 7B2E63B252C
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 08:58:31 -0400 (EDT)
+Received: by nz-out-0102.google.com with SMTP id n1so324521nzf
+	for <desktop-devel-list@gnome.org>;
+	Thu, 18 May 2006 05:58:30 -0700 (PDT)
+DomainKey-Signature: a=rsa-sha1; q=dns; c=nofws; s=beta; d=gmail.com;
+	h=received:message-id:date:from:to:subject:cc:in-reply-to:mime-version:content-type:content-transfer-encoding:content-disposition:references;
+	b=FCxnAAtQJ+nC2Ogq+DzyfeKE+K+02tfnmx6ebcHrStsmTJn2Xd+8iO4W47s0vr94BnjpVJC+y39KV8jEKNuvHPqnQyvmM7y4Nd8/CBRLFMw8qfHOD6X+vPqZ4MnQ9Ufrm76VPWvJQtpMwemC41YVuG0m8ALHVvgtPveISMbR9bI=
+Received: by 10.37.21.57 with SMTP id y57mr485696nzi;
+	Thu, 18 May 2006 05:58:29 -0700 (PDT)
+Received: by 10.36.48.13 with HTTP; Thu, 18 May 2006 05:58:29 -0700 (PDT)
+Message-ID: <cbccc63c0605180558l6a74fd99n290650f29992b48f@mail.gmail.com>
+Date: Thu, 18 May 2006 08:58:29 -0400
+From: "Matthias Clasen" <matthias.clasen@gmail.com>
+To: "Joseph E. Sacco, Ph.D." <joseph_sacco@comcast.net>
+In-Reply-To: <1147956373.28786.7.camel@plantain.jesacco.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1; format=flowed
+Content-Transfer-Encoding: quoted-printable
+Content-Disposition: inline
+References: <1147956373.28786.7.camel@plantain.jesacco.com>
+X-Virus-Scanned: by amavisd-new at gnome.org
+X-Spam-Status: No, score=-2.48 tagged_above=-999 required=2 tests=[AWL=0.043, 
+	BAYES_00=-2.599, SPF_PASS=-0.001, TW_GT=0.077]
+X-Spam-Score: -2.48
+X-Spam-Level: 
+Cc: Gnome Desktop Development List <desktop-devel-list@gnome.org>
+Subject: Re: gstreamer-0.10.x tarballs on f.g.o: checksums differ from those
+	on freedesktop.org
+X-BeenThere: desktop-devel-list@gnome.org
+X-Mailman-Version: 2.1.5
+Precedence: list
+List-Id: GNOME Desktop Development List <desktop-devel-list.gnome.org>
+List-Unsubscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>, 
+	<mailto:desktop-devel-list-request@gnome.org?subject=unsubscribe>
+List-Archive: <http://mail.gnome.org/archives/desktop-devel-list>
+List-Post: <mailto:desktop-devel-list@gnome.org>
+List-Help: <mailto:desktop-devel-list-request@gnome.org?subject=help>
+List-Subscribe: <http://mail.gnome.org/mailman/listinfo/desktop-devel-list>,
+	<mailto:desktop-devel-list-request@gnome.org?subject=subscribe>
+X-List-Received-Date: Thu, 18 May 2006 12:58:35 -0000
+
+On 5/18/06, Joseph E. Sacco, Ph.D. <joseph_sacco@comcast.net> wrote:
+> The checksums for the gstreamer-0.10.x tarballs on ftp.gnome.org differ
+> from those on http://gstreamer.freedesktop.org/src/gstreamer/
+>
+> How can that be?
+
+It can easily happen because install-module generates the .bz2 files;
+if gstreamer.fd.o has .bz2 tarball generated somewhere else, the timestamps
+will be different (and maybe bzip was run with different options). What I
+do for gtk nowadays is to upload the .gz to master.gnome.org, install-modul=
+e
+it, then transfer the .bz2 from master.gnome.org to ftp.gtk.org.
+
+Matthias
+

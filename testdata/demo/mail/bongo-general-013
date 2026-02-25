@@ -1,0 +1,83 @@
+From bongo-general-bounces@forge.novell.com Thu May 11 13:21:26 2006
+Return-Path: <typeterson@novell.com>
+Delivered-To: dave@ximian.com
+Received: from herald.ximian.com (frontgate.ximian.com [130.57.169.19]) by
+	skeptopotamus.ximian.com (Postfix) with ESMTP id F2D446306D for
+	<Dave@ximian.com>; Thu, 11 May 2006 13:21:26 -0400 (EDT)
+Received: by herald.ximian.com (Postfix, from userid 2601) id ED0B670011;
+	Thu, 11 May 2006 13:21:26 -0400 (EDT)
+Received: from sinclair.provo.novell.com (sinclair.provo.novell.com
+	[137.65.81.169]) by herald.ximian.com (Postfix) with ESMTP id 314A570011
+	for <Dave@ximian.com>; Thu, 11 May 2006 13:21:22 -0400 (EDT)
+Received: from INET-PRV-MTA by sinclair.provo.novell.com with
+	Novell_GroupWise; Thu, 11 May 2006 11:21:21 -0600
+Received: from dejar.provo.novell.com ([137.65.248.45]) by
+	monroe.provo.novell.com with ESMTP; Thu, 11 May 2006 11:20:40 -0600
+Received: from dejar.provo.novell.com (localhost [127.0.0.1]) by
+	dejar.provo.novell.com (Postfix) with ESMTP id 6624D1B013E; Thu, 11 May
+	2006 11:13:51 -0600 (MDT)
+X-Original-To: bongo-general@forge.novell.com
+Delivered-To: bongo-general@forge.novell.com
+Received: from victor.provo.novell.com (prv-dmz-foundry1.gns.novell.com
+	[137.65.249.211]) by dejar.provo.novell.com (Postfix) with ESMTP id
+	93FF01B013E for <bongo-general@forge.novell.com>; Thu, 11 May 2006 11:03:11
+	-0600 (MDT)
+Received: from INET-PRV3-MTA by victor.provo.novell.com with
+	Novell_GroupWise; Thu, 11 May 2006 11:03:11 -0600
+Message-Id: <446319E60200008E000196EC@victor.provo.novell.com>
+X-Mailer: Novell GroupWise Internet Agent 7.0.1 Beta 
+Date: Thu, 11 May 2006 11:03:02 -0600
+From: "Tyler Peterson" <typeterson@novell.com>
+To: <bongo-general@forge.novell.com>, <andras@gelanyi.hu>
+Subject: Re: [Bongo-general] bongo store branch status
+Mime-Version: 1.0
+Content-Type: text/plain; charset=US-ASCII
+Content-Disposition: inline
+Cc: 
+X-BeenThere: bongo-general@forge.novell.com
+X-Mailman-Version: 2.1.4
+Precedence: list
+List-Id: bongo-general.forge.novell.com
+List-Unsubscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=unsubscribe>
+List-Archive: <http://forge.novell.com/pipermail/bongo-general>
+List-Post: <mailto:bongo-general@forge.novell.com>
+List-Help: <mailto:bongo-general-request@forge.novell.com?subject=help>
+List-Subscribe: <http://forge.novell.com/mailman/listinfo/bongo-general>,
+	<mailto:bongo-general-request@forge.novell.com?subject=subscribe>
+Sender: bongo-general-bounces@forge.novell.com
+Errors-To: bongo-general-bounces@forge.novell.com
+X-Spam-Checker-Version: SpamAssassin 3.0.3 (2005-04-27)\
+X-Spam-Level: 
+X-Spam-Status: No, score=-2.6 \
+X-Evolution-Source: imap://dave@mail.cam.novell.com/
+Content-Transfer-Encoding: 8bit
+
+Andras,
+
+  We are focused on getting all of our branch work stable and complete
+enough to merge into the trunk.  Of course, it is difficult to say
+exactly when the merge will happen. We are currently working toward an
+early August merge date.
+
+  Thank you for your continued interest.
+
+~Ty
+
+>>> "Andras GELANYI" <andras@gelanyi.hu> 05/11/06 5:49 AM >>>
+hi,
+are there any roadmaps for the bongo store branch development? do you
+know
+when will be any version available for testing purposes?
+regards,
+andras
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+
+_______________________________________________
+Bongo-general mailing list
+Bongo-general@forge.novell.com
+http://forge.novell.com/mailman/listinfo/bongo-general
+
