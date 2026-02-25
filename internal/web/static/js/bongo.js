@@ -93,12 +93,23 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // GAL autocomplete for compose form
-  Alpine.data('galAutocomplete', () => ({
-    query: '',
+  Alpine.data('galAutocomplete', (config = {}) => ({
+    query: config.initialValue || '',
     results: [],
     show: false,
     loading: false,
     selected: -1,
+
+    init() {
+      // Sync Alpine model value to the DOM input for HTMX partial swaps
+      // (e.g. reply/forward forms loaded via HTMX where x-model may not
+      // automatically push the initial value to the input's .value).
+      this.$nextTick(() => {
+        if (this.query && this.$el) {
+          this.$el.value = this.query;
+        }
+      });
+    },
 
     async search() {
       if (this.query.length < 2) {

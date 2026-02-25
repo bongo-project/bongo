@@ -1,4 +1,4 @@
-.PHONY: all build generate test test-race lint sec clean run
+.PHONY: all build generate test test-race lint sec clean run ui-test ui-test-headed ui-test-setup validate seed
 
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
@@ -40,6 +40,26 @@ sec:
 
 run: build
 	$(BUILD_DIR)/$(BINARY) serve --dev
+
+## UI test targets
+
+ui-test:
+	go run ./scripts/ui-test/...
+
+ui-test-headed:
+	go run ./scripts/ui-test/... --headed --slow 300
+
+ui-test-setup: build
+	$(BUILD_DIR)/$(BINARY) serve --dev &
+	sleep 3
+	go run ./scripts/validate-server/...
+	go run ./scripts/seed-data/...
+
+validate:
+	go run ./scripts/validate-server/...
+
+seed:
+	go run ./scripts/seed-data/...
 
 ## Clean
 
