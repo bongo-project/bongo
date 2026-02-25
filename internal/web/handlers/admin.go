@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
@@ -36,6 +37,7 @@ type AdminHandler struct {
 	raftState  RaftStateGetter
 	logger     *slog.Logger
 	logSink    *LogSink
+	mailboxes  *store.MailboxStore
 	startTime  time.Time
 }
 
@@ -86,6 +88,11 @@ func (h *AdminHandler) SetRaftState(r RaftStateGetter) {
 // SetLogSink sets the log sink for log streaming.
 func (h *AdminHandler) SetLogSink(ls *LogSink) {
 	h.logSink = ls
+}
+
+// SetMailboxStore sets the mailbox store for creating default mailboxes.
+func (h *AdminHandler) SetMailboxStore(ms *store.MailboxStore) {
+	h.mailboxes = ms
 }
 
 // --- Dashboard ---
@@ -179,6 +186,16 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Create default IMAP mailboxes (INBOX, Sent, Drafts, Trash, Junk).
+	if h.mailboxes != nil {
+		if err := h.mailboxes.EnsureDefaultMailboxes(userID); err != nil {
+			h.logger.Warn("admin: failed to create default mailboxes", "user", newEmail, "error", err)
+		}
+	}
+
+	// Send a welcome email to the new user's INBOX.
+	h.sendWelcomeEmail(userID, newEmail, displayName)
 
 	// Update additional fields if needed.
 	if isAdmin || quotaStr != "" {
@@ -656,6 +673,126 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 
 	flash := "2FA+policy+updated"
 	http.Redirect(w, r, "/admin?flash="+flash, http.StatusSeeOther)
+}
+
+// --- Welcome Email ---
+
+// sendWelcomeEmail delivers a welcome message to the new user's INBOX.
+func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
+	if h.mailboxes == nil || h.blobs == nil {
+		return
+	}
+
+	greeting := displayName
+	if greeting == "" {
+		greeting = email
+	}
+
+	// Build a simple RFC 5322 welcome message.
+	now := time.Now()
+	var buf bytes.Buffer
+	buf.WriteString(fmt.Sprintf("From: Bongo Mail <postmaster@%s>\r\n", domainFromEmail(email)))
+	buf.WriteString(fmt.Sprintf("To: %s\r\n", email))
+	buf.WriteString("Subject: Welcome to Bongo Mail!\r\n")
+	buf.WriteString(fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z)))
+	buf.WriteString(fmt.Sprintf("Message-ID: <welcome-%s@bongo>\r\n", userID[:8]))
+	buf.WriteString("MIME-Version: 1.0\r\n")
+	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	buf.WriteString("\r\n")
+	buf.WriteString(fmt.Sprintf("Hi %s,\r\n\r\n", greeting))
+	buf.WriteString("Welcome to Bongo Mail! Your account is all set up and ready to go.\r\n\r\n")
+	buf.WriteString("Here are a few things to get you started:\r\n\r\n")
+	buf.WriteString("  - Your email address: " + email + "\r\n")
+	buf.WriteString("  - You can access webmail at /mail\r\n")
+	buf.WriteString("  - IMAP and SMTP are available for desktop/mobile clients\r\n")
+	buf.WriteString("  - Check your calendar at /calendar and contacts at /contacts\r\n")
+	buf.WriteString("\r\nHappy mailing!\r\n")
+	buf.WriteString("-- The Bongo Mail Team\r\n")
+	rawMsg := buf.Bytes()
+
+	// Store raw message as blob.
+	hash, err := h.blobs.Put(rawMsg)
+	if err != nil {
+		h.logger.Warn("admin: failed to store welcome email blob", "user", email, "error", err)
+		return
+	}
+
+	guid := fmt.Sprintf("welcome-%d-%s", now.UnixNano(), hash[:8])
+
+	// Create MailMeta.
+	meta := &bongov1.MailMeta{
+		Guid:      guid,
+		MessageId: fmt.Sprintf("<welcome-%s@bongo>", userID[:8]),
+		Subject:   "Welcome to Bongo Mail!",
+		From:      fmt.Sprintf("postmaster@%s", domainFromEmail(email)),
+		To:        []string{email},
+		ReceivedAt: now.Unix(),
+		RawMessage: &bongov1.BlobRef{
+			Hash: hash,
+			Size: int64(len(rawMsg)),
+		},
+	}
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		h.logger.Warn("admin: failed to marshal welcome email meta", "user", email, "error", err)
+		return
+	}
+
+	// Store MailMeta.
+	mailMetaCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
+		Value: metaBytes,
+	}
+	if err := h.applier.ApplyCommand(mailMetaCmd, 5*time.Second); err != nil {
+		h.logger.Warn("admin: failed to store welcome email meta", "user", email, "error", err)
+		return
+	}
+
+	// Deliver to INBOX.
+	h.adminDeliverToMailbox(userID, "INBOX", guid, meta)
+	h.logger.Info("admin: welcome email delivered", "user", email)
+}
+
+// adminDeliverToMailbox puts a message into the specified mailbox (mirrors ComposeHandler.deliverToMailbox).
+func (h *AdminHandler) adminDeliverToMailbox(userID, mailbox, guid string, meta *bongov1.MailMeta) {
+	mbMeta, err := h.mailboxes.GetMailbox(userID, mailbox)
+	if err != nil {
+		h.logger.Warn("admin: mailbox not found for delivery", "user", userID, "mailbox", mailbox, "error", err)
+		return
+	}
+
+	uid := mbMeta.UidNext
+	mbMeta.UidNext = uid + 1
+	metaBytes, _ := proto.Marshal(mbMeta)
+	metaCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox)),
+		Value: metaBytes,
+	}
+	_ = h.applier.ApplyCommand(metaCmd, 5*time.Second)
+
+	msg := &bongov1.MailboxMessage{
+		Uid:          uid,
+		MailGuid:     guid,
+		Flags:        0,
+		InternalDate: meta.ReceivedAt,
+	}
+	msgBytes, _ := proto.Marshal(msg)
+	msgCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid)),
+		Value: msgBytes,
+	}
+	_ = h.applier.ApplyCommand(msgCmd, 5*time.Second)
+}
+
+// domainFromEmail extracts the domain part from an email address.
+func domainFromEmail(email string) string {
+	if idx := strings.LastIndex(email, "@"); idx >= 0 {
+		return email[idx+1:]
+	}
+	return "localhost"
 }
 
 // --- Internal helpers ---
