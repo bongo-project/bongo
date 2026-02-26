@@ -49,34 +49,38 @@ func main() {
 	}
 	fmt.Printf("  sent %d emails via SMTP\n", sent)
 
-	// Create contacts via web API.
-	client := loginAndGetClient(*httpAddr, *user, *pass)
-	contactsCreated := 0
-	for _, c := range seedContacts {
-		if err := createContact(client, *httpAddr, c); err != nil {
-			fmt.Fprintf(os.Stderr, "  failed to create contact %q: %v\n", c.Name, err)
-			continue
-		}
-		contactsCreated++
-	}
-	fmt.Printf("  created %d contacts\n", contactsCreated)
+	// Create contacts and calendar events for each user.
+	totalContacts := 0
+	totalEvents := 0
+	for _, u := range seedUsers {
+		client := loginAndGetClient(*httpAddr, u.email, u.password)
+		contacts := userContacts[u.email]
+		events := userEvents[u.email]
 
-	// Create calendar events via web API.
-	eventsCreated := 0
-	for _, e := range seedEvents {
-		if err := createEvent(client, *httpAddr, e); err != nil {
-			fmt.Fprintf(os.Stderr, "  failed to create event %q: %v\n", e.Title, err)
-			continue
+		for _, c := range contacts {
+			if err := createContact(client, *httpAddr, c); err != nil {
+				fmt.Fprintf(os.Stderr, "  failed to create contact %q for %s: %v\n", c.Name, u.email, err)
+				continue
+			}
+			totalContacts++
 		}
-		eventsCreated++
+		fmt.Printf("  created %d contacts for %s\n", len(contacts), u.email)
+
+		for _, e := range events {
+			if err := createEvent(client, *httpAddr, e); err != nil {
+				fmt.Fprintf(os.Stderr, "  failed to create event %q for %s: %v\n", e.Title, u.email, err)
+				continue
+			}
+			totalEvents++
+		}
+		fmt.Printf("  created %d calendar events for %s\n", len(events), u.email)
 	}
-	fmt.Printf("  created %d calendar events\n", eventsCreated)
 
 	fmt.Println()
 	fmt.Printf("Seed complete:\n")
 	fmt.Printf("  - %d emails sent\n", sent)
-	fmt.Printf("  - %d contacts created\n", contactsCreated)
-	fmt.Printf("  - %d calendar events created\n", eventsCreated)
+	fmt.Printf("  - %d contacts created across %d users\n", totalContacts, len(seedUsers))
+	fmt.Printf("  - %d calendar events created across %d users\n", totalEvents, len(seedUsers))
 }
 
 type seedEmail struct {
@@ -228,51 +232,184 @@ var seedEmails = []seedEmail{
 	},
 }
 
-var seedContacts = []seedContact{
-	{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
-	{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
-	{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
-	{Name: "Sarah Chen", Email: "sarah.chen@bongo.dev", Phone: "+1-555-0104", Company: "Bongo Labs"},
-	{Name: "David Kim", Email: "david.kim@example.com", Phone: "+44-20-7946-0958", Company: "DevOps Weekly"},
-	{Name: "Maria Garcia", Email: "maria@vendor.example.com", Phone: "+1-555-0201", Company: "Vendor Inc"},
-	{Name: "James O'Brien", Email: "james@consulting.example.com", Phone: "+353-1-234-5678", Company: "Tech Consulting Ltd"},
-	{Name: "Yuki Tanaka", Email: "yuki@partner.example.jp", Phone: "+81-3-1234-5678", Company: "Partner Corp"},
+type seedUser struct {
+	email    string
+	password string
 }
 
-var seedEvents = func() []seedEvent {
+var seedUsers = []seedUser{
+	{email: "admin@localhost", password: "admin"},
+	{email: "alice@localhost", password: "alice123"},
+	{email: "bob@localhost", password: "bob123"},
+	{email: "charlie@localhost", password: "charlie123"},
+}
+
+var userContacts = func() map[string][]seedContact {
+	return map[string][]seedContact{
+		"admin@localhost": {
+			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
+			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
+			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
+			{Name: "Sarah Chen", Email: "sarah.chen@bongo.dev", Phone: "+1-555-0104", Company: "Bongo Labs"},
+			{Name: "David Kim", Email: "david.kim@example.com", Phone: "+44-20-7946-0958", Company: "DevOps Weekly"},
+			{Name: "Maria Garcia", Email: "maria@vendor.example.com", Phone: "+1-555-0201", Company: "Vendor Inc"},
+			{Name: "James O'Brien", Email: "james@consulting.example.com", Phone: "+353-1-234-5678", Company: "Tech Consulting Ltd"},
+			{Name: "Yuki Tanaka", Email: "yuki@partner.example.jp", Phone: "+81-3-1234-5678", Company: "Partner Corp"},
+		},
+		"alice@localhost": {
+			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Bongo Labs"},
+			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
+			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
+			{Name: "Sarah Chen", Email: "sarah.chen@bongo.dev", Phone: "+1-555-0104", Company: "Bongo Labs"},
+			{Name: "Liam Foster", Email: "liam@design.example.com", Phone: "+1-555-0301", Company: "DesignCo"},
+			{Name: "Priya Sharma", Email: "priya@analytics.example.com", Phone: "+91-22-5555-1234", Company: "DataPulse"},
+		},
+		"bob@localhost": {
+			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Bongo Labs"},
+			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
+			{Name: "Charlie Wong", Email: "charlie@localhost", Phone: "+1-555-0103", Company: "Bongo Labs"},
+			{Name: "Nina Rossi", Email: "nina@finance.example.com", Phone: "+39-06-5555-7890", Company: "FinanceHub"},
+			{Name: "Tom Baker", Email: "tom@devtools.example.com", Phone: "+44-20-5555-4321", Company: "DevToolsCo"},
+		},
+		"charlie@localhost": {
+			{Name: "Admin", Email: "admin@localhost", Phone: "+1-555-0100", Company: "Bongo Labs"},
+			{Name: "Alice Johnson", Email: "alice@localhost", Phone: "+1-555-0101", Company: "Bongo Labs"},
+			{Name: "Bob Martinez", Email: "bob@localhost", Phone: "+1-555-0102", Company: "Bongo Labs"},
+			{Name: "Kenji Nakamura", Email: "kenji@infra.example.jp", Phone: "+81-3-5555-6789", Company: "InfraOps"},
+			{Name: "Sophie Muller", Email: "sophie@security.example.de", Phone: "+49-30-5555-2468", Company: "SecureNet"},
+			{Name: "Rachel Green", Email: "rachel@hr.example.com", Phone: "+1-555-0401", Company: "Bongo Labs"},
+		},
+	}
+}()
+
+var userEvents = func() map[string][]seedEvent {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	return []seedEvent{
-		{
-			Title:       "Budget Review Meeting",
-			Description: "Q1 actuals vs forecast review with Bob",
-			StartTime:   today.Add(14 * time.Hour),
-			EndTime:     today.Add(15 * time.Hour),
+	return map[string][]seedEvent{
+		"admin@localhost": {
+			{
+				Title:       "Budget Review Meeting",
+				Description: "Q1 actuals vs forecast review with Bob",
+				StartTime:   today.Add(14 * time.Hour),
+				EndTime:     today.Add(15 * time.Hour),
+			},
+			{
+				Title:       "Team Standup",
+				Description: "Daily sync with the engineering team",
+				StartTime:   today.Add(24*time.Hour + 10*time.Hour),
+				EndTime:     today.Add(24*time.Hour + 10*time.Hour + 30*time.Minute),
+			},
+			{
+				Title:       "Lunch with Alice",
+				Description: "Thai place on Market Street",
+				StartTime:   today.Add(2*24*time.Hour + 12*time.Hour),
+				EndTime:     today.Add(2*24*time.Hour + 13*time.Hour),
+			},
+			{
+				Title:       "Q2 Planning Offsite",
+				Description: "Architecture roadmap and team building",
+				StartTime:   today.Add(7 * 24 * time.Hour),
+				EndTime:     today.Add(8 * 24 * time.Hour),
+				AllDay:      true,
+			},
+			{
+				Title:       "SSL Certificate Renewal Deadline",
+				Description: "Wildcard cert for *.bongo.dev expires",
+				StartTime:   today.Add(14 * 24 * time.Hour),
+				EndTime:     today.Add(14 * 24 * time.Hour),
+				AllDay:      true,
+			},
 		},
-		{
-			Title:       "Team Standup",
-			Description: "Daily sync with the engineering team",
-			StartTime:   today.Add(24*time.Hour + 10*time.Hour),
-			EndTime:     today.Add(24*time.Hour + 10*time.Hour + 30*time.Minute),
+		"alice@localhost": {
+			{
+				Title:       "Infrastructure Migration Review",
+				Description: "Review progress on Q1 database and CDN migration",
+				StartTime:   today.Add(9 * time.Hour),
+				EndTime:     today.Add(10 * time.Hour),
+			},
+			{
+				Title:       "1:1 with Admin",
+				Description: "Weekly sync with team lead",
+				StartTime:   today.Add(24*time.Hour + 14*time.Hour),
+				EndTime:     today.Add(24*time.Hour + 14*time.Hour + 30*time.Minute),
+			},
+			{
+				Title:       "DNS Cutover Window",
+				Description: "Production DNS migration - rollback plan ready",
+				StartTime:   today.Add(4*24*time.Hour + 22*time.Hour),
+				EndTime:     today.Add(5*24*time.Hour + 2*time.Hour),
+			},
+			{
+				Title:       "Monitoring Dashboard Setup",
+				Description: "Configure Grafana dashboards for new cluster",
+				StartTime:   today.Add(3*24*time.Hour + 10*time.Hour),
+				EndTime:     today.Add(3*24*time.Hour + 12*time.Hour),
+			},
+			{
+				Title:       "On-call Rotation Starts",
+				Description: "Primary on-call for production systems",
+				StartTime:   today.Add(5 * 24 * time.Hour),
+				EndTime:     today.Add(12 * 24 * time.Hour),
+				AllDay:      true,
+			},
 		},
-		{
-			Title:       "Lunch with Alice",
-			Description: "Thai place on Market Street",
-			StartTime:   today.Add(2*24*time.Hour + 12*time.Hour),
-			EndTime:     today.Add(2*24*time.Hour + 13*time.Hour),
+		"bob@localhost": {
+			{
+				Title:       "Budget Presentation Prep",
+				Description: "Finalise Q1 actuals vs forecast slides",
+				StartTime:   today.Add(8 * time.Hour),
+				EndTime:     today.Add(9*time.Hour + 30*time.Minute),
+			},
+			{
+				Title:       "PR Review: Auth Refactor",
+				Description: "Review PR #847 - middleware and rate limiting changes",
+				StartTime:   today.Add(24*time.Hour + 11*time.Hour),
+				EndTime:     today.Add(24*time.Hour + 12*time.Hour),
+			},
+			{
+				Title:       "Team Offsite Planning Call",
+				Description: "Discuss venue and agenda for Q2 offsite",
+				StartTime:   today.Add(2*24*time.Hour + 15*time.Hour),
+				EndTime:     today.Add(2*24*time.Hour + 16*time.Hour),
+			},
+			{
+				Title:       "Q2 Offsite",
+				Description: "Architecture roadmap and team building - Mountain View",
+				StartTime:   today.Add(7 * 24 * time.Hour),
+				EndTime:     today.Add(8 * 24 * time.Hour),
+				AllDay:      true,
+			},
 		},
-		{
-			Title:       "Q2 Planning Offsite",
-			Description: "Architecture roadmap and team building",
-			StartTime:   today.Add(7 * 24 * time.Hour),
-			EndTime:     today.Add(8 * 24 * time.Hour),
-			AllDay:      true,
-		},
-		{
-			Title:       "SSL Certificate Renewal Deadline",
-			Description: "Wildcard cert for *.bongo.dev expires",
-			StartTime:   today.Add(14 * 24 * time.Hour),
-			EndTime:     today.Add(14 * 24 * time.Hour),
-			AllDay:      true,
+		"charlie@localhost": {
+			{
+				Title:       "Deploy Pipeline Optimisation",
+				Description: "Investigate gosec/trivy caching for faster builds",
+				StartTime:   today.Add(10 * time.Hour),
+				EndTime:     today.Add(12 * time.Hour),
+			},
+			{
+				Title:       "Sarah Chen Onboarding",
+				Description: "Set up accounts, access, and intro meeting for new SRE",
+				StartTime:   today.Add(24*time.Hour + 9*time.Hour),
+				EndTime:     today.Add(24*time.Hour + 10*time.Hour),
+			},
+			{
+				Title:       "SSL Certificate Follow-up",
+				Description: "Verify cert-manager auto-deployed the renewed wildcard cert",
+				StartTime:   today.Add(3*24*time.Hour + 11*time.Hour),
+				EndTime:     today.Add(3*24*time.Hour + 11*time.Hour + 30*time.Minute),
+			},
+			{
+				Title:       "Security Patch Window",
+				Description: "Apply OpenSSL 3.2.1 update to all production nodes",
+				StartTime:   today.Add(2*24*time.Hour + 6*time.Hour),
+				EndTime:     today.Add(2*24*time.Hour + 8*time.Hour),
+			},
+			{
+				Title:       "SRE Team Retro",
+				Description: "Review incidents and process improvements",
+				StartTime:   today.Add(4*24*time.Hour + 16*time.Hour),
+				EndTime:     today.Add(4*24*time.Hour + 17*time.Hour),
+			},
 		},
 	}
 }()

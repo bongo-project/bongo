@@ -566,6 +566,46 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   margin-left: auto;
 }
 
+/* Folder tree hierarchy */
+.nav-folder-row {
+  display: flex;
+  align-items: center;
+}
+.nav-folder-row > a {
+  flex: 1;
+  min-width: 0;
+}
+.folder-toggle {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.55rem;
+  padding: 0;
+  margin-left: 4px;
+  border-radius: var(--radius);
+  transition: color 0.12s;
+}
+.folder-toggle:hover {
+  color: rgba(255,255,255,0.7);
+}
+.toggle-icon {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+.toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+.nav-children {
+  padding-left: 16px;
+}
+
 /* Admin sidebar */
 .admin-layout .sidebar {
   border-right: 1px solid #334155;
@@ -2452,11 +2492,18 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .tfa-status-text { flex: 1; }
 .tfa-status-text p { margin: 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
 .manual-key {
-  background-color: var(--bg-muted); padding: 16px 12px; border-radius: var(--radius);
-  margin: 16px auto; font-family: 'Monaco', 'Menlo', monospace; font-size: 14px;
-  text-align: center; color: var(--text); word-break: break-all; user-select: all;
-  cursor: text; max-width: 400px; letter-spacing: 2px;
+  position: relative; background-color: var(--bg-muted); padding: 16px 40px 16px 12px;
+  border-radius: var(--radius); margin: 16px auto; font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 14px; text-align: center; color: var(--text); word-break: break-all;
+  user-select: all; cursor: text; max-width: 400px; letter-spacing: 2px;
 }
+.btn-copy {
+  position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 4px 6px; cursor: pointer; color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center; opacity: 0.5; transition: opacity 0.15s;
+}
+.btn-copy:hover { opacity: 1; }
 .recovery-codes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 24px 0; }
 .recovery-code {
   background-color: var(--bg-muted); padding: 12px; border-radius: var(--radius);

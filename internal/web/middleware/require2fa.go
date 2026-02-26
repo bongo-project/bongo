@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -9,13 +10,24 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
+const require2FAKey contextKey = "require2FA"
+
 // ProfileLookup reads keys from the store to check system settings and user profiles.
 type ProfileLookup interface {
 	GetKey(key []byte) ([]byte, error)
 }
 
+// Require2FAFromContext returns true when the system requires 2FA and the
+// current user has not yet enabled it. Templates use this to show a
+// persistent warning banner.
+func Require2FAFromContext(ctx context.Context) bool {
+	v, _ := ctx.Value(require2FAKey).(bool)
+	return v
+}
+
 // Require2FA returns middleware that redirects users without 2FA enabled to
 // the setup page when the system-wide require_2fa policy is active.
+// It also injects a context flag so templates can show a persistent banner.
 func Require2FA(profiles ProfileLookup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +66,11 @@ func Require2FA(profiles ProfileLookup) func(http.Handler) http.Handler {
 				return
 			}
 
-			// User does not have 2FA enabled. Check if current path is exempt.
+			// User needs 2FA. Inject context flag for persistent banner.
+			ctx := context.WithValue(r.Context(), require2FAKey, true)
+			r = r.WithContext(ctx)
+
+			// Allow exempt paths (security settings, logout, login, static).
 			path := r.URL.Path
 			if strings.HasPrefix(path, "/settings/security") ||
 				strings.HasPrefix(path, "/logout") ||
@@ -64,8 +80,8 @@ func Require2FA(profiles ProfileLookup) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Redirect to security settings with a flash message.
-			http.Redirect(w, r, "/settings/security?flash=Your+administrator+requires+two-factor+authentication.+Please+set+it+up+to+continue.", http.StatusSeeOther)
+			// Redirect to security settings.
+			http.Redirect(w, r, "/settings/security", http.StatusSeeOther)
 		})
 	}
 }

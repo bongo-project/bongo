@@ -942,39 +942,7 @@ func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {
 }
 
 func (h *MailHandler) loadMailboxInfos(userID, selected string) []templates.MailboxInfo {
-	mbs, _ := h.mailboxes.ListMailboxes(userID)
-	infos := make([]templates.MailboxInfo, 0, len(mbs))
-	for _, mb := range mbs {
-		_, _, unseen, _ := h.mailboxes.CountMessages(userID, mb.Name)
-		infos = append(infos, templates.MailboxInfo{
-			Name:     mb.Name,
-			Unread:   int(unseen),
-			Selected: mb.Name == selected,
-		})
-	}
-	// Sort: put standard mailboxes first in order.
-	orderedInfos := make([]templates.MailboxInfo, 0, len(infos))
-	for _, name := range store.DefaultMailboxes {
-		for _, info := range infos {
-			if info.Name == name {
-				orderedInfos = append(orderedInfos, info)
-				break
-			}
-		}
-	}
-	for _, info := range infos {
-		isDefault := false
-		for _, name := range store.DefaultMailboxes {
-			if info.Name == name {
-				isDefault = true
-				break
-			}
-		}
-		if !isDefault {
-			orderedInfos = append(orderedInfos, info)
-		}
-	}
-	return orderedInfos
+	return LoadMailboxInfos(h.mailboxes, userID, selected)
 }
 
 // backfillThreadingFields parses In-Reply-To, References, and Cc from the raw

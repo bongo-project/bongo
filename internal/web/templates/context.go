@@ -18,3 +18,9 @@ func localeFromCtx(ctx context.Context) string {
 func t(ctx context.Context, messageID string) string {
 	return i18n.T(localeFromCtx(ctx), messageID)
 }
+
+// require2FAFromCtx returns true when the system requires 2FA and the
+// current user has not yet enabled it.
+func require2FAFromCtx(ctx context.Context) bool {
+	return middleware.Require2FAFromContext(ctx)
+}

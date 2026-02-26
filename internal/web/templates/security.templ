@@ -15,7 +15,9 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
 				<div class="settings-container">
-					if flash != "" {
+					if require2FAFromCtx(ctx) {
+						@FlashMessage(t(ctx, "security.require2FABanner"), "warning")
+					} else if flash != "" {
 						@FlashMessage(flash, "success")
 					}
 					<h2 class="settings-section-title" style="font-size:1.2rem; margin-bottom:20px">{ t(ctx, "settings.security") }</h2>
@@ -47,7 +49,7 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 								<div class="tfa-status">
 									<div class="tfa-status-text">
 										<div style="margin-bottom:8px">
-											<span class="badge badge-active">{ t(ctx, "common.enabled") }</span>
+											<span class="badge badge-active">{ t(ctx, "common.active") }</span>
 										</div>
 										<p>{ t(ctx, "security.twoFactorEnabled") }</p>
 									</div>
@@ -66,7 +68,7 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 								<div class="tfa-status">
 									<div class="tfa-status-text">
 										<div style="margin-bottom:8px">
-											<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
+											<span class="badge badge-disabled">{ t(ctx, "common.inactive") }</span>
 										</div>
 										<p>{ t(ctx, "security.twoFactorDescription") }</p>
 									</div>
@@ -93,30 +95,39 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 			</nav>
 		</aside>
 		<main class="content" id="main-content">
-			if errMsg != "" {
-				@FlashMessage(errMsg, "error")
-			}
-			<h2>{ t(ctx, "security.setupTwoFactor") }</h2>
-			<fieldset>
-				<legend>{ t(ctx, "security.setupTwoFactor") }</legend>
-				<p class="description">{ t(ctx, "security.scanQrCode") }</p>
-				<div style="text-align:center;margin:2rem 0">
-					<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if errMsg != "" {
+						@FlashMessage(errMsg, "error")
+					}
+					<h2 class="settings-section-title" style="font-size:1.2rem;margin-bottom:20px">{ t(ctx, "security.setupTwoFactor") }</h2>
+					<div class="settings-card">
+						<div style="padding:20px">
+							<p>{ t(ctx, "security.scanQrCode") }</p>
+							<div style="text-align:center;margin:2rem 0">
+								<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
+							</div>
+							<p style="text-align:center;margin-top:12px;color:var(--text-muted)">{ t(ctx, "security.manualKeyPrompt") }</p>
+							<div class="manual-key" id="totp-key">
+								<span>{ manualKey }</span>
+								<button type="button" class="btn-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim())" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+								</button>
+							</div>
+							<form method="post" action="/settings/security/totp/confirm" style="margin-top:2rem;max-width:320px;margin-left:auto;margin-right:auto">
+								<div class="form-group" style="margin-bottom:16px">
+									<label class="form-label" for="code">{ t(ctx, "security.verificationCode") }</label>
+									<input type="text" name="code" id="code" class="form-input" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code" style="font-size:18px;letter-spacing:4px;text-align:center;font-weight:600"/>
+								</div>
+								<div style="display:flex;gap:0.75rem;align-items:center">
+									<button type="submit" class="btn-primary">{ t(ctx, "auth.verifyAndEnable") }</button>
+									<a href="/settings/security">{ t(ctx, "common.cancel") }</a>
+								</div>
+							</form>
+						</div>
+					</div>
 				</div>
-				<p class="description" style="text-align:center;margin-top:12px">{ t(ctx, "security.manualKeyPrompt") }</p>
-				<div class="manual-key">{ manualKey }</div>
-				<p class="description" style="text-align:center">{ t(ctx, "security.verificationCode") }</p>
-				<form method="post" action="/settings/security/totp/confirm" style="margin-top:2rem">
-					<div class="form-group">
-						<label for="code">{ t(ctx, "security.verificationCode") }</label>
-						<input type="text" name="code" id="code" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code" style="font-size:18px;letter-spacing:4px;text-align:center;font-weight:600"/>
-					</div>
-					<div class="button-group">
-						<button type="submit" class="btn-primary">{ t(ctx, "auth.verifyAndEnable") }</button>
-						<a href="/settings/security" class="form-link">{ t(ctx, "common.cancel") }</a>
-					</div>
-				</form>
-			</fieldset>
+			</div>
 		</main>
 	}
 }

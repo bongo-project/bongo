@@ -593,37 +593,7 @@ func (h *ComposeHandler) resolveLocalUser(email string) string {
 }
 
 func (h *ComposeHandler) loadMailboxInfos(userID string) []templates.MailboxInfo {
-	mbs, _ := h.mailboxes.ListMailboxes(userID)
-	infos := make([]templates.MailboxInfo, 0, len(mbs))
-	for _, mb := range mbs {
-		_, _, unseen, _ := h.mailboxes.CountMessages(userID, mb.Name)
-		infos = append(infos, templates.MailboxInfo{
-			Name:   mb.Name,
-			Unread: int(unseen),
-		})
-	}
-	orderedInfos := make([]templates.MailboxInfo, 0, len(infos))
-	for _, name := range store.DefaultMailboxes {
-		for _, info := range infos {
-			if info.Name == name {
-				orderedInfos = append(orderedInfos, info)
-				break
-			}
-		}
-	}
-	for _, info := range infos {
-		found := false
-		for _, name := range store.DefaultMailboxes {
-			if info.Name == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			orderedInfos = append(orderedInfos, info)
-		}
-	}
-	return orderedInfos
+	return LoadMailboxInfos(h.mailboxes, userID, "")
 }
 
 func (h *ComposeHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {

@@ -48,6 +48,15 @@ templ Layout(title string, email string) {
 					</form>
 				</div>
 			</header>
+			if require2FAFromCtx(ctx) {
+				<div class="flash flash-warning banner-2fa" role="alert">
+					<div class="flash-icon">&#9888;</div>
+					<div class="flash-content">
+						{ t(ctx, "security.require2FABanner") }
+						<a href="/settings/security" style="margin-left:0.5rem;font-weight:600">{ t(ctx, "security.setupTwoFactor") }</a>
+					</div>
+				</div>
+			}
 			<div class="layout">
 				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				<aside class="sidebar" id="sidebar" aria-label="Mailbox navigation" x-bind:class="{'open': sidebarOpen}">
@@ -124,6 +133,15 @@ templ LayoutWithContent(title string, email string) {
 					</form>
 				</div>
 			</header>
+			if require2FAFromCtx(ctx) {
+				<div class="flash flash-warning banner-2fa" role="alert">
+					<div class="flash-icon">&#9888;</div>
+					<div class="flash-content">
+						{ t(ctx, "security.require2FABanner") }
+						<a href="/settings/security" style="margin-left:0.5rem;font-weight:600">{ t(ctx, "security.setupTwoFactor") }</a>
+					</div>
+				</div>
+			}
 			<div class="layout">
 				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
 				{ children... }

@@ -49,8 +49,8 @@ dev: build
 	sleep 3; \
 	echo "Running validate-server..."; \
 	go run ./scripts/validate-server/... --plain-http; \
-	echo "Running seed-data..."; \
-	go run ./scripts/seed-data/...; \
+	echo "Seeding test data..."; \
+	go run ./scripts/validate-server/... --plain-http --seed-only; \
 	echo "Dev server ready at http://localhost:8080 (PID $$SERVER_PID)"; \
 	wait $$SERVER_PID
 
@@ -66,13 +66,13 @@ ui-test-setup: build
 	$(BUILD_DIR)/$(BINARY) serve --dev &
 	sleep 3
 	go run ./scripts/validate-server/...
-	go run ./scripts/seed-data/...
+	go run ./scripts/validate-server/... --seed-only
 
 validate:
 	go run ./scripts/validate-server/...
 
 seed:
-	go run ./scripts/seed-data/...
+	go run ./scripts/validate-server/... --seed-only
 
 ## Clean
 

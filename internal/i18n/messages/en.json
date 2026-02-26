@@ -1,6 +1,6 @@
 {
   "nav.mailboxes": "Mailboxes",
-  "nav.folders": "Folders",
+  "nav.views": "Views",
   "nav.quickLinks": "Quick links",
   "nav.unread": "Unread",
   "nav.starred": "Starred",
@@ -161,6 +161,7 @@
 
   "common.save": "Save",
   "common.cancel": "Cancel",
+  "common.copy": "Copy",
   "common.delete": "Delete",
   "common.loading": "Loading",
   "common.error": "Error",
@@ -177,6 +178,7 @@
   "common.enabled": "Enabled",
   "common.disabled": "Disabled",
   "common.active": "Active",
+  "common.inactive": "Inactive",
   "common.enable": "Enable",
   "common.disable": "Disable",
 
@@ -197,6 +199,7 @@
   "rules.test": "Test",
   "rules.noRulesYet": "No filter rules yet. Create one to automatically organize incoming mail.",
 
+  "security.require2FABanner": "Your administrator requires two-factor authentication. Please set it up to continue.",
   "security.setupTwoFactor": "Set Up Two-Factor Authentication",
   "security.disableTwoFactor": "Disable Two-Factor Authentication",
   "security.twoFactorEnabled": "Two-factor authentication is currently enabled for your account.",

@@ -1,5 +1,6 @@
 // validate-server exercises a running Bongo server end-to-end.
-// Usage: go run scripts/validate-server.go [flags]
+// With --seed-only, it populates realistic test data without running assertions.
+// Usage: go run scripts/validate-server/... [flags]
 package main
 
 import (
@@ -33,6 +34,8 @@ var (
 	adminUser = flag.String("admin-user", "admin@localhost", "Admin email")
 	adminPass = flag.String("admin-pass", "admin", "Admin password")
 	plainHTTP = flag.Bool("plain-http", false, "Use HTTP instead of HTTPS")
+	seedOnly  = flag.Bool("seed-only", false, "Populate test data without running validation assertions")
+	seedTimeout = flag.Duration("timeout", 30*time.Second, "Health check timeout (seed-only mode)")
 )
 
 // checker tracks pass/fail counts for the validation report.
@@ -74,6 +77,11 @@ func main() {
 	imapAddr := fmt.Sprintf("%s:%d", *host, *imapPort)
 	pop3Addr := fmt.Sprintf("%s:%d", *host, *pop3Port)
 
+	if *seedOnly {
+		runSeedOnly(baseURL, smtpAddr, imapAddr)
+		return
+	}
+
 	fmt.Println("Bongo Server Validation")
 	fmt.Printf("  Web:  %s\n", baseURL)
 	fmt.Printf("  SMTP: %s\n", smtpAddr)
@@ -94,6 +102,10 @@ func main() {
 	// Phase 3: IMAP operations.
 	fmt.Println("\n--- Phase 3: IMAP Operations ---")
 	phase3IMAPOperations(c, imapAddr)
+
+	// Phase 3b: IMAP hierarchy.
+	fmt.Println("\n--- Phase 3b: IMAP Folder Hierarchy ---")
+	phase3bIMAPHierarchy(c, imapAddr)
 
 	// Phase 4: POP3 retrieval.
 	fmt.Println("\n--- Phase 4: POP3 Retrieval ---")
@@ -711,6 +723,44 @@ func errOrMsg(err error, resp string) error {
 // Phase 5: Contacts
 // ---------------------------------------------------------------------------
 
+type contactTestUser struct {
+	email    string
+	password string
+	contacts []struct {
+		name, email, phone, company string
+	}
+}
+
+var contactTestUsers = []contactTestUser{
+	{
+		email: "alice@localhost", password: "alice123",
+		contacts: []struct{ name, email, phone, company string }{
+			{"Dana Lee", "dana@example.com", "+1-555-1001", "Acme Corp"},
+			{"Evan Park", "evan@example.com", "+1-555-1002", "Widgets Inc"},
+			{"Fiona Chen", "fiona@example.com", "+1-555-1003", "TechStart"},
+			{"George Wu", "george@example.com", "+1-555-1004", "DataFlow"},
+			{"Hannah Patel", "hannah@example.com", "+1-555-1005", "CloudBase"},
+		},
+	},
+	{
+		email: "bob@localhost", password: "bob123",
+		contacts: []struct{ name, email, phone, company string }{
+			{"Ines Moreau", "ines@design.example.fr", "+33-1-5555-1001", "DesignStudio"},
+			{"Karl Weber", "karl@ops.example.de", "+49-30-5555-2001", "OpsGroup"},
+			{"Lucia Rossi", "lucia@pm.example.it", "+39-02-5555-3001", "PMHub"},
+		},
+	},
+	{
+		email: "charlie@localhost", password: "charlie123",
+		contacts: []struct{ name, email, phone, company string }{
+			{"Aiko Sato", "aiko@infra.example.jp", "+81-3-5555-4001", "InfraTeam"},
+			{"Miguel Santos", "miguel@sec.example.br", "+55-11-5555-5001", "SecOps"},
+			{"Nadia Khan", "nadia@sre.example.pk", "+92-42-5555-6001", "SRECorp"},
+			{"Oliver Smith", "oliver@devrel.example.uk", "+44-20-5555-7001", "DevRelCo"},
+		},
+	},
+}
+
 func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -718,112 +768,160 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 		}
 	}()
 
-	// Login as alice for contacts.
-	aliceClient := loginWebClient(baseURL, "alice@localhost", "alice123")
+	for _, tu := range contactTestUsers {
+		userClient := loginWebClient(baseURL, tu.email, tu.password)
+		label := shortUser(tu.email)
+		want := len(tu.contacts)
 
-	contacts := []struct {
-		name, email, phone, company string
-	}{
-		{"Dana Lee", "dana@example.com", "+1-555-1001", "Acme Corp"},
-		{"Evan Park", "evan@example.com", "+1-555-1002", "Widgets Inc"},
-		{"Fiona Chen", "fiona@example.com", "+1-555-1003", "TechStart"},
-		{"George Wu", "george@example.com", "+1-555-1004", "DataFlow"},
-		{"Hannah Patel", "hannah@example.com", "+1-555-1005", "CloudBase"},
-	}
+		// Create contacts.
+		created := 0
+		for _, ct := range tu.contacts {
+			resp, err := userClient.PostForm(baseURL+"/contacts", url.Values{
+				"display_name": {ct.name},
+				"email":        {ct.email},
+				"phone":        {ct.phone},
+				"company":      {ct.company},
+			})
+			if err != nil {
+				c.check("Contacts", label+": Create "+ct.name, err)
+				continue
+			}
+			resp.Body.Close()
+			created++
+		}
+		c.check("Contacts", fmt.Sprintf("%s: Created %d/%d contacts", label, created, want), boolErr(created == want))
 
-	// Create 5 contacts.
-	created := 0
-	for _, ct := range contacts {
-		resp, err := aliceClient.PostForm(baseURL+"/contacts", url.Values{
-			"display_name": {ct.name},
-			"email":        {ct.email},
-			"phone":        {ct.phone},
-			"company":      {ct.company},
-		})
+		// Export as VCF.
+		resp, err := userClient.Get(baseURL + "/contacts/export")
 		if err != nil {
-			c.check("Contacts", "Create "+ct.name, err)
+			c.check("Contacts", label+": Export VCF", err)
+			continue
+		}
+		vcfData, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if len(vcfData) == 0 {
+			c.check("Contacts", label+": Export VCF", fmt.Errorf("empty response"))
+			continue
+		}
+		c.check("Contacts", label+": Export VCF", nil)
+
+		// Delete all contacts.
+		resp, err = userClient.Get(baseURL + "/contacts")
+		if err != nil {
+			c.check("Contacts", label+": List contacts for deletion", err)
+			continue
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		guids := extractGUIDs(string(body), "/contacts/")
+		for _, guid := range guids {
+			req, _ := http.NewRequest(http.MethodDelete, baseURL+"/contacts/"+guid, nil)
+			dresp, _ := userClient.Do(req)
+			if dresp != nil {
+				dresp.Body.Close()
+			}
+		}
+		c.check("Contacts", fmt.Sprintf("%s: Deleted %d contacts", label, len(guids)), nil)
+
+		// Re-import VCF.
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		part, err := mw.CreateFormFile("vcf", "contacts.vcf")
+		if err != nil {
+			c.check("Contacts", label+": Import VCF", fmt.Errorf("multipart: %w", err))
+			continue
+		}
+		part.Write(vcfData)
+		mw.Close()
+
+		req, _ := http.NewRequest(http.MethodPost, baseURL+"/contacts/import", &buf)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		resp, err = userClient.Do(req)
+		if err != nil {
+			c.check("Contacts", label+": Import VCF", err)
 			continue
 		}
 		resp.Body.Close()
-		created++
-	}
-	c.check("Contacts", fmt.Sprintf("Created %d/5 contacts", created), boolErr(created == 5))
+		c.check("Contacts", label+": Import VCF", nil)
 
-	// Export as VCF.
-	resp, err := aliceClient.Get(baseURL + "/contacts/export")
-	if err != nil {
-		c.check("Contacts", "Export VCF", err)
-		return
-	}
-	vcfData, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if len(vcfData) == 0 {
-		c.check("Contacts", "Export VCF", fmt.Errorf("empty response"))
-		return
-	}
-	c.check("Contacts", "Export VCF", nil)
-
-	// Delete all contacts.
-	resp, err = aliceClient.Get(baseURL + "/contacts")
-	if err != nil {
-		c.check("Contacts", "List contacts for deletion", err)
-		return
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	guids := extractGUIDs(string(body), "/contacts/")
-	for _, guid := range guids {
-		req, _ := http.NewRequest(http.MethodDelete, baseURL+"/contacts/"+guid, nil)
-		dresp, _ := aliceClient.Do(req)
-		if dresp != nil {
-			dresp.Body.Close()
+		// Verify all restored.
+		resp, err = userClient.Get(baseURL + "/contacts")
+		if err != nil {
+			c.check("Contacts", label+": Verify import", err)
+			continue
 		}
-	}
-	c.check("Contacts", fmt.Sprintf("Deleted %d contacts", len(guids)), nil)
+		body, _ = io.ReadAll(resp.Body)
+		resp.Body.Close()
 
-	// Re-import VCF.
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	part, err := mw.CreateFormFile("vcf", "contacts.vcf")
-	if err != nil {
-		c.check("Contacts", "Import VCF", fmt.Errorf("multipart: %w", err))
-		return
-	}
-	part.Write(vcfData)
-	mw.Close()
-
-	req, _ := http.NewRequest(http.MethodPost, baseURL+"/contacts/import", &buf)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err = aliceClient.Do(req)
-	if err != nil {
-		c.check("Contacts", "Import VCF", err)
-		return
-	}
-	resp.Body.Close()
-	c.check("Contacts", "Import VCF", nil)
-
-	// Verify all 5 restored.
-	resp, err = aliceClient.Get(baseURL + "/contacts")
-	if err != nil {
-		c.check("Contacts", "Verify import", err)
-		return
-	}
-	body, _ = io.ReadAll(resp.Body)
-	resp.Body.Close()
-
-	restored := 0
-	for _, ct := range contacts {
-		if strings.Contains(string(body), ct.name) {
-			restored++
+		restored := 0
+		for _, ct := range tu.contacts {
+			if strings.Contains(string(body), ct.name) {
+				restored++
+			}
 		}
+		c.check("Contacts", fmt.Sprintf("%s: Verified %d/%d restored", label, restored, want), boolErr(restored == want))
 	}
-	c.check("Contacts", fmt.Sprintf("Verified %d/5 restored", restored), boolErr(restored == 5))
+}
+
+// shortUser returns a short label like "alice" from "alice@localhost".
+func shortUser(email string) string {
+	return strings.Split(email, "@")[0]
 }
 
 // ---------------------------------------------------------------------------
 // Phase 6: Calendar
 // ---------------------------------------------------------------------------
+
+type calendarTestUser struct {
+	email    string
+	password string
+	events   []struct {
+		title, desc, startDate, startTime, endDate, endTime string
+		allDay                                              bool
+	}
+}
+
+func calendarTestData() []calendarTestUser {
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	d := func(days int) string { return today.Add(time.Duration(days) * 24 * time.Hour).Format("2006-01-02") }
+
+	type ev = struct {
+		title, desc, startDate, startTime, endDate, endTime string
+		allDay                                              bool
+	}
+
+	return []calendarTestUser{
+		{
+			email: "alice@localhost", password: "alice123",
+			events: []ev{
+				{title: "Sprint Planning", desc: "Plan sprint 17", startDate: d(1), startTime: "09:00", endDate: d(1), endTime: "10:00"},
+				{title: "Lunch with Team", desc: "Weekly team lunch", startDate: d(2), startTime: "12:00", endDate: d(2), endTime: "13:00"},
+				{title: "Company Holiday", desc: "All-day event", startDate: d(3), startTime: "00:00", endDate: d(3), endTime: "23:59", allDay: true},
+				{title: "Weekly Standup", desc: "Recurring standup", startDate: d(1), startTime: "10:30", endDate: d(1), endTime: "10:45"},
+			},
+		},
+		{
+			email: "bob@localhost", password: "bob123",
+			events: []ev{
+				{title: "Budget Review", desc: "Q1 actuals vs forecast", startDate: d(1), startTime: "14:00", endDate: d(1), endTime: "15:00"},
+				{title: "PR Review Session", desc: "Review auth refactor PR", startDate: d(2), startTime: "11:00", endDate: d(2), endTime: "12:00"},
+				{title: "Offsite Planning", desc: "Discuss Q2 offsite details", startDate: d(3), startTime: "15:00", endDate: d(3), endTime: "16:00"},
+			},
+		},
+		{
+			email: "charlie@localhost", password: "charlie123",
+			events: []ev{
+				{title: "Deploy Pipeline Fix", desc: "Optimise gosec caching", startDate: d(1), startTime: "10:00", endDate: d(1), endTime: "12:00"},
+				{title: "Onboarding: Sarah Chen", desc: "New SRE setup and intro", startDate: d(2), startTime: "09:00", endDate: d(2), endTime: "10:00"},
+				{title: "Security Patch Window", desc: "OpenSSL update on prod nodes", startDate: d(3), startTime: "06:00", endDate: d(3), endTime: "08:00"},
+				{title: "Cert Renewal Check", desc: "Verify wildcard cert deployed", startDate: d(4), startTime: "11:00", endDate: d(4), endTime: "11:30"},
+				{title: "SRE Retro", desc: "Incident review and process improvements", startDate: d(5), startTime: "16:00", endDate: d(5), endTime: "17:00"},
+			},
+		},
+	}
+}
 
 func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 	defer func() {
@@ -832,146 +930,121 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 		}
 	}()
 
-	// Login as bob for calendar.
-	bobClient := loginWebClient(baseURL, "bob@localhost", "bob123")
-
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
-	events := []struct {
-		title, desc, startDate, startTime, endDate, endTime string
-		allDay                                              bool
-	}{
-		{
-			title: "Sprint Planning", desc: "Plan sprint 17",
-			startDate: today.Add(24 * time.Hour).Format("2006-01-02"), startTime: "09:00",
-			endDate: today.Add(24 * time.Hour).Format("2006-01-02"), endTime: "10:00",
-		},
-		{
-			title: "Lunch with Team", desc: "Weekly team lunch",
-			startDate: today.Add(48 * time.Hour).Format("2006-01-02"), startTime: "12:00",
-			endDate: today.Add(48 * time.Hour).Format("2006-01-02"), endTime: "13:00",
-		},
-		{
-			title: "Company Holiday", desc: "All-day event",
-			startDate: today.Add(72 * time.Hour).Format("2006-01-02"), startTime: "00:00",
-			endDate: today.Add(72 * time.Hour).Format("2006-01-02"), endTime: "23:59",
-			allDay: true,
-		},
-		{
-			title: "Weekly Standup", desc: "Recurring weekly standup (conceptual RRULE)",
-			startDate: today.Add(24 * time.Hour).Format("2006-01-02"), startTime: "10:30",
-			endDate: today.Add(24 * time.Hour).Format("2006-01-02"), endTime: "10:45",
-		},
-	}
+	for _, tu := range calendarTestData() {
+		userClient := loginWebClient(baseURL, tu.email, tu.password)
+		label := shortUser(tu.email)
+		want := len(tu.events)
 
-	// Create 4 events.
-	created := 0
-	for _, e := range events {
-		form := url.Values{
-			"title":       {e.title},
-			"description": {e.desc},
-			"start_date":  {e.startDate},
-			"start_time":  {e.startTime},
-			"end_date":    {e.endDate},
-			"end_time":    {e.endTime},
-		}
-		if e.allDay {
-			form.Set("all_day", "on")
-		}
-		resp, err := bobClient.PostForm(baseURL+"/calendar/event", form)
-		if err != nil {
-			c.check("Calendar", "Create "+e.title, err)
-			continue
-		}
-		resp.Body.Close()
-		created++
-	}
-	c.check("Calendar", fmt.Sprintf("Created %d/4 events", created), boolErr(created == 4))
-
-	// Export as ICS.
-	resp, err := bobClient.Get(baseURL + "/calendar/export")
-	if err != nil {
-		c.check("Calendar", "Export ICS", err)
-		return
-	}
-	icsData, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if len(icsData) == 0 {
-		c.check("Calendar", "Export ICS", fmt.Errorf("empty response"))
-		return
-	}
-	c.check("Calendar", "Export ICS", nil)
-
-	// Delete all events (scan calendar page for event GUIDs).
-	// Check multiple months in case events span.
-	for _, offset := range []int{0, 1, 2, 3} {
-		t := today.AddDate(0, 0, offset*30)
-		calURL := fmt.Sprintf("%s/calendar/%d/%d", baseURL, t.Year(), int(t.Month()))
-		resp, err = bobClient.Get(calURL)
-		if err != nil {
-			continue
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		guids := extractGUIDs(string(body), "/calendar/event/")
-		for _, guid := range guids {
-			if guid == "new" || strings.HasPrefix(guid, "new?") {
+		// Create events.
+		created := 0
+		for _, e := range tu.events {
+			form := url.Values{
+				"title":       {e.title},
+				"description": {e.desc},
+				"start_date":  {e.startDate},
+				"start_time":  {e.startTime},
+				"end_date":    {e.endDate},
+				"end_time":    {e.endTime},
+			}
+			if e.allDay {
+				form.Set("all_day", "on")
+			}
+			resp, err := userClient.PostForm(baseURL+"/calendar/event", form)
+			if err != nil {
+				c.check("Calendar", label+": Create "+e.title, err)
 				continue
 			}
-			req, _ := http.NewRequest(http.MethodDelete, baseURL+"/calendar/event/"+guid, nil)
-			dresp, _ := bobClient.Do(req)
-			if dresp != nil {
-				dresp.Body.Close()
-			}
+			resp.Body.Close()
+			created++
 		}
-	}
-	c.check("Calendar", "Deleted events", nil)
+		c.check("Calendar", fmt.Sprintf("%s: Created %d/%d events", label, created, want), boolErr(created == want))
 
-	// Re-import ICS.
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	part, err := mw.CreateFormFile("ics", "calendar.ics")
-	if err != nil {
-		c.check("Calendar", "Import ICS", fmt.Errorf("multipart: %w", err))
-		return
-	}
-	part.Write(icsData)
-	mw.Close()
+		// Export as ICS.
+		resp, err := userClient.Get(baseURL + "/calendar/export")
+		if err != nil {
+			c.check("Calendar", label+": Export ICS", err)
+			continue
+		}
+		icsData, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if len(icsData) == 0 {
+			c.check("Calendar", label+": Export ICS", fmt.Errorf("empty response"))
+			continue
+		}
+		c.check("Calendar", label+": Export ICS", nil)
 
-	req, _ := http.NewRequest(http.MethodPost, baseURL+"/calendar/import", &buf)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err = bobClient.Do(req)
-	if err != nil {
-		c.check("Calendar", "Import ICS", err)
-		return
-	}
-	resp.Body.Close()
-	c.check("Calendar", "Import ICS", nil)
-
-	// Verify events restored (check the calendar pages).
-	restored := 0
-	for _, e := range events {
-		found := false
+		// Delete all events (scan calendar pages for event GUIDs).
 		for _, offset := range []int{0, 1, 2, 3} {
 			t := today.AddDate(0, 0, offset*30)
 			calURL := fmt.Sprintf("%s/calendar/%d/%d", baseURL, t.Year(), int(t.Month()))
-			resp, err := bobClient.Get(calURL)
+			resp, err = userClient.Get(calURL)
 			if err != nil {
 				continue
 			}
 			body, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			if strings.Contains(string(body), e.title) {
-				found = true
-				break
+			guids := extractGUIDs(string(body), "/calendar/event/")
+			for _, guid := range guids {
+				if guid == "new" || strings.HasPrefix(guid, "new?") {
+					continue
+				}
+				req, _ := http.NewRequest(http.MethodDelete, baseURL+"/calendar/event/"+guid, nil)
+				dresp, _ := userClient.Do(req)
+				if dresp != nil {
+					dresp.Body.Close()
+				}
 			}
 		}
-		if found {
-			restored++
+		c.check("Calendar", label+": Deleted events", nil)
+
+		// Re-import ICS.
+		var buf bytes.Buffer
+		mw := multipart.NewWriter(&buf)
+		part, err := mw.CreateFormFile("ics", "calendar.ics")
+		if err != nil {
+			c.check("Calendar", label+": Import ICS", fmt.Errorf("multipart: %w", err))
+			continue
 		}
+		part.Write(icsData)
+		mw.Close()
+
+		req, _ := http.NewRequest(http.MethodPost, baseURL+"/calendar/import", &buf)
+		req.Header.Set("Content-Type", mw.FormDataContentType())
+		resp, err = userClient.Do(req)
+		if err != nil {
+			c.check("Calendar", label+": Import ICS", err)
+			continue
+		}
+		resp.Body.Close()
+		c.check("Calendar", label+": Import ICS", nil)
+
+		// Verify events restored.
+		restored := 0
+		for _, e := range tu.events {
+			found := false
+			for _, offset := range []int{0, 1, 2, 3} {
+				t := today.AddDate(0, 0, offset*30)
+				calURL := fmt.Sprintf("%s/calendar/%d/%d", baseURL, t.Year(), int(t.Month()))
+				resp, err := userClient.Get(calURL)
+				if err != nil {
+					continue
+				}
+				body, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if strings.Contains(string(body), e.title) {
+					found = true
+					break
+				}
+			}
+			if found {
+				restored++
+			}
+		}
+		c.check("Calendar", fmt.Sprintf("%s: Verified %d/%d events restored", label, restored, want), boolErr(restored == want))
 	}
-	c.check("Calendar", fmt.Sprintf("Verified %d/4 events restored", restored), boolErr(restored == 4))
 }
 
 // ---------------------------------------------------------------------------
@@ -1379,4 +1452,521 @@ func boolErr(ok bool) error {
 		return nil
 	}
 	return fmt.Errorf("count mismatch")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3b: IMAP Folder Hierarchy
+// ---------------------------------------------------------------------------
+
+func phase3bIMAPHierarchy(c *checker, imapAddr string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.check("Hierarchy", "panic recovery", fmt.Errorf("panic: %v", r))
+		}
+	}()
+
+	ic, err := imapclient.DialInsecure(imapAddr, nil)
+	if err != nil {
+		c.check("Hierarchy", "Connect", fmt.Errorf("dial: %w", err))
+		return
+	}
+	defer ic.Close()
+
+	if err := ic.Login("alice@localhost", "alice123").Wait(); err != nil {
+		c.check("Hierarchy", "Login alice", fmt.Errorf("LOGIN: %w", err))
+		return
+	}
+	c.check("Hierarchy", "Login alice", nil)
+
+	// Create nested folders.
+	hierFolders := []string{
+		"Projects",
+		"Projects/ClientA",
+		"Projects/ClientA/Active",
+		"Projects/ClientB",
+	}
+	for _, folder := range hierFolders {
+		err := ic.Create(folder, nil).Wait()
+		if err != nil {
+			c.check("Hierarchy", "CREATE "+folder, fmt.Errorf("CREATE: %w", err))
+		} else {
+			c.check("Hierarchy", "CREATE "+folder, nil)
+		}
+	}
+
+	// LIST and verify HasChildren/HasNoChildren attributes.
+	listCmd := ic.List("", "*", nil)
+	boxes, err := listCmd.Collect()
+	if err != nil {
+		c.check("Hierarchy", "LIST all", fmt.Errorf("LIST: %w", err))
+		return
+	}
+
+	// Build a lookup.
+	attrs := make(map[string][]imap.MailboxAttr)
+	for _, mb := range boxes {
+		attrs[mb.Mailbox] = mb.Attrs
+	}
+
+	// Projects should have HasChildren.
+	if hasAttr(attrs["Projects"], imap.MailboxAttrHasChildren) {
+		c.check("Hierarchy", "Projects has \\HasChildren", nil)
+	} else {
+		c.check("Hierarchy", "Projects has \\HasChildren", fmt.Errorf("attrs: %v", attrs["Projects"]))
+	}
+
+	// Projects/ClientA should have HasChildren (has Active child).
+	if hasAttr(attrs["Projects/ClientA"], imap.MailboxAttrHasChildren) {
+		c.check("Hierarchy", "Projects/ClientA has \\HasChildren", nil)
+	} else {
+		c.check("Hierarchy", "Projects/ClientA has \\HasChildren", fmt.Errorf("attrs: %v", attrs["Projects/ClientA"]))
+	}
+
+	// Projects/ClientA/Active should have HasNoChildren.
+	if hasAttr(attrs["Projects/ClientA/Active"], imap.MailboxAttrHasNoChildren) {
+		c.check("Hierarchy", "Projects/ClientA/Active has \\HasNoChildren", nil)
+	} else {
+		c.check("Hierarchy", "Projects/ClientA/Active has \\HasNoChildren", fmt.Errorf("attrs: %v", attrs["Projects/ClientA/Active"]))
+	}
+
+	// Projects/ClientB should have HasNoChildren.
+	if hasAttr(attrs["Projects/ClientB"], imap.MailboxAttrHasNoChildren) {
+		c.check("Hierarchy", "Projects/ClientB has \\HasNoChildren", nil)
+	} else {
+		c.check("Hierarchy", "Projects/ClientB has \\HasNoChildren", fmt.Errorf("attrs: %v", attrs["Projects/ClientB"]))
+	}
+
+	// Copy a message into a nested folder.
+	_, err = ic.Select("INBOX", nil).Wait()
+	if err != nil {
+		c.check("Hierarchy", "SELECT INBOX for copy", fmt.Errorf("SELECT: %w", err))
+		return
+	}
+
+	copyCmd := ic.Copy(imap.SeqSet{{Start: 1, Stop: 1}}, "Projects/ClientA/Active")
+	if _, err := copyCmd.Wait(); err != nil {
+		c.check("Hierarchy", "COPY to Projects/ClientA/Active", fmt.Errorf("COPY: %w", err))
+	} else {
+		// Verify.
+		data, err := ic.Select("Projects/ClientA/Active", nil).Wait()
+		if err != nil {
+			c.check("Hierarchy", "COPY verified", fmt.Errorf("SELECT: %w", err))
+		} else if data.NumMessages < 1 {
+			c.check("Hierarchy", "COPY verified", fmt.Errorf("folder has %d messages", data.NumMessages))
+		} else {
+			c.check("Hierarchy", "COPY to nested folder verified", nil)
+		}
+	}
+
+	ic.Logout().Wait()
+}
+
+func hasAttr(attrs []imap.MailboxAttr, want imap.MailboxAttr) bool {
+	for _, a := range attrs {
+		if a == want {
+			return true
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// Seed-only mode
+// ---------------------------------------------------------------------------
+
+func runSeedOnly(baseURL, smtpAddr, imapAddr string) {
+	fmt.Println("Bongo seed: populating test data...")
+
+	// Wait for server health.
+	if err := waitForSeedHealth(baseURL, *seedTimeout); err != nil {
+		fmt.Fprintf(os.Stderr, "server not ready: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println("  server is healthy")
+
+	// Create test users via admin HTTP.
+	adminClient := loginWebClient(baseURL, *adminUser, *adminPass)
+	for _, u := range testUsers {
+		resp, err := adminClient.PostForm(baseURL+"/admin/users", url.Values{
+			"email":        {u.email},
+			"display_name": {u.name},
+			"password":     {u.password},
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  failed to create %s: %v\n", u.email, err)
+			continue
+		}
+		resp.Body.Close()
+	}
+	fmt.Printf("  created %d test users\n", len(testUsers))
+
+	// Send realistic emails via SMTP.
+	sent := 0
+	for _, email := range seedEmails {
+		if err := sendSeedEmail(smtpAddr, email); err != nil {
+			fmt.Fprintf(os.Stderr, "  failed to send %q: %v\n", email.subject, err)
+			continue
+		}
+		sent++
+	}
+	fmt.Printf("  sent %d emails via SMTP\n", sent)
+
+	// Wait for delivery.
+	time.Sleep(2 * time.Second)
+
+	// Create subfolders via IMAP and move messages.
+	seedSubfolders(imapAddr)
+
+	// Create contacts and calendar events.
+	seedContactsAndEvents(baseURL)
+
+	fmt.Println()
+	fmt.Println("Seed complete.")
+}
+
+func waitForSeedHealth(baseURL string, timeout time.Duration) error {
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // dev tool
+		},
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		resp, err := client.Get(baseURL + "/health/live")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+		}
+		time.Sleep(time.Second)
+	}
+	return fmt.Errorf("server did not become healthy within %v", timeout)
+}
+
+// seedSubfolders creates hierarchical folders via IMAP for the admin user.
+func seedSubfolders(imapAddr string) {
+	type userFolders struct {
+		email, pass string
+		folders     []string
+	}
+
+	users := []userFolders{
+		{
+			email: *adminUser, pass: *adminPass,
+			folders: []string{
+				"INBOX/Receipts",
+				"INBOX/Important",
+				"Projects",
+				"Projects/Bongo-Go",
+				"Projects/Infrastructure",
+				"Archive",
+			},
+		},
+		{
+			email: "alice@localhost", pass: "alice123",
+			folders: []string{
+				"INBOX/Urgent",
+				"Projects",
+				"Projects/Migration",
+			},
+		},
+	}
+
+	for _, u := range users {
+		ic, err := imapclient.DialInsecure(imapAddr, nil)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  IMAP dial failed for %s: %v\n", u.email, err)
+			continue
+		}
+
+		if err := ic.Login(u.email, u.pass).Wait(); err != nil {
+			fmt.Fprintf(os.Stderr, "  IMAP login failed for %s: %v\n", u.email, err)
+			ic.Close()
+			continue
+		}
+
+		created := 0
+		for _, folder := range u.folders {
+			if err := ic.Create(folder, nil).Wait(); err != nil {
+				// Folder may already exist — not an error.
+				continue
+			}
+			created++
+		}
+		fmt.Printf("  created %d subfolders for %s\n", created, u.email)
+
+		// Move first message from INBOX into a subfolder for visual interest.
+		data, err := ic.Select("INBOX", nil).Wait()
+		if err == nil && data.NumMessages >= 2 {
+			ic.Copy(imap.SeqSet{{Start: 1, Stop: 1}}, u.folders[0])
+			if len(u.folders) > 1 {
+				ic.Copy(imap.SeqSet{{Start: 2, Stop: 2}}, u.folders[1])
+			}
+		}
+
+		ic.Logout().Wait()
+		ic.Close()
+	}
+}
+
+type seedEmail struct {
+	from, fromPass string
+	to             string
+	subject        string
+	body           string
+	date           time.Time
+}
+
+var seedNow = time.Now()
+
+var seedEmails = []seedEmail{
+	{
+		from: "alice@localhost", fromPass: "alice123", to: "admin@localhost",
+		subject: "Project Update: Q1 Infrastructure Migration",
+		body:    "Hi,\n\nJust wanted to give you a quick update on the infrastructure migration. We've completed the database move to the new cluster and initial benchmarks show a 40% improvement in query latency.\n\nThe remaining items are:\n- CDN configuration (expected Thursday)\n- DNS cutover (Friday maintenance window)\n- Monitoring dashboard setup\n\nLet me know if you have any concerns.\n\nBest,\nAlice",
+		date:    seedNow.Add(-2 * time.Hour),
+	},
+	{
+		from: "admin@localhost", fromPass: "admin", to: "alice@localhost",
+		subject: "Re: Project Update: Q1 Infrastructure Migration",
+		body:    "Great progress, Alice. The latency improvement is impressive.\n\nOne question: do we have a rollback plan for the DNS cutover? I want to make sure we can revert within 15 minutes if something goes wrong.\n\nThanks",
+		date:    seedNow.Add(-1 * time.Hour),
+	},
+	{
+		from: "bob@localhost", fromPass: "bob123", to: "admin@localhost",
+		subject: "Meeting Tomorrow: Budget Review",
+		body:    "Hi,\n\nJust a reminder about our budget review meeting tomorrow at 2pm. I've prepared the Q1 actuals vs forecast spreadsheet.\n\nKey highlights:\n- We're 8% under budget on cloud infrastructure\n- Developer tooling spend is up 12% (new IDE licenses)\n- We saved $8K/quarter by switching from Splunk to Loki\n\nSee you tomorrow.\n\nBob",
+		date:    seedNow.Add(-24 * time.Hour),
+	},
+	{
+		from: "charlie@localhost", fromPass: "charlie123", to: "admin@localhost",
+		subject: "Quick question about the deploy",
+		body:    "Hey,\n\nI noticed the staging deploy pipeline is taking longer than usual. Is this related to the new security scanning step we added last week?\n\nIt's gone from ~4 minutes to ~12 minutes. Not blocking but would be nice to optimise.\n\nCharlie",
+		date:    seedNow.Add(-3 * time.Hour),
+	},
+	{
+		from: "alice@localhost", fromPass: "alice123", to: "admin@localhost",
+		subject: "Lunch next week?",
+		body:    "Hey! Want to grab lunch on Tuesday? There's a new Thai place that opened on Market Street. I heard their pad see ew is amazing.\n\nAlice",
+		date:    seedNow.Add(-5 * time.Hour),
+	},
+	{
+		from: "bob@localhost", fromPass: "bob123", to: "admin@localhost",
+		subject: "Code review: PR #847 - Auth refactor",
+		body:    "Hi,\n\nCould you take a look at PR #847 when you get a chance? It's the auth middleware refactor we discussed.\n\nMain changes:\n- Moved session validation to middleware (was duplicated in 6 handlers)\n- Added rate limiting on login attempts\n- TOTP flow now uses signed cookies instead of server-side sessions\n\nAll tests passing, including the new edge cases for expired tokens.\n\nBob",
+		date:    seedNow.Add(-6 * time.Hour),
+	},
+	{
+		from: "charlie@localhost", fromPass: "charlie123", to: "admin@localhost",
+		subject: "SSL certificate renewal reminder",
+		body:    "Hi,\n\nJust a heads up: the wildcard cert for *.bongo.dev expires in 14 days. I've submitted the renewal request through our CA portal.\n\nShould be auto-deployed via cert-manager but wanted to flag it just in case.\n\nCharlie",
+		date:    seedNow.Add(-4 * time.Hour),
+	},
+	{
+		from: "alice@localhost", fromPass: "alice123", to: "admin@localhost",
+		subject: "Monitoring alert: High disk usage on node-3",
+		body:    "Alert: Disk usage on node-3 reached 85%.\n\nI've identified the cause - the Pebble compaction wasn't running due to a configuration issue. Running manual compaction now, should be back to ~60% within an hour.\n\nNo action needed from your side.\n\nAlice",
+		date:    seedNow.Add(-1*time.Hour - 15*time.Minute),
+	},
+	{
+		from: "bob@localhost", fromPass: "bob123", to: "admin@localhost",
+		subject: "Team offsite planning",
+		body:    "Hi team,\n\nI'm starting to plan our Q2 offsite. Current thinking:\n\n- Date: March 15-16\n- Location: Mountain View or Half Moon Bay\n- Focus: Architecture roadmap for H2 + team building\n\nPlease fill out the preference survey by Friday.\n\nBob",
+		date:    seedNow.Add(-96 * time.Hour),
+	},
+	{
+		from: "charlie@localhost", fromPass: "charlie123", to: "admin@localhost",
+		subject: "New hire onboarding - Sarah Chen starts Monday",
+		body:    "Hi,\n\nSarah Chen joins us as a Senior SRE on Monday. Here's what I need from you:\n\n- Create her Bongo email account\n- Add to the engineering Slack channels\n- Grant access to the staging cluster\n- Schedule a 1:1 intro meeting\n\nHer GitHub handle is @sarahchen-sre.\n\nThanks,\nCharlie",
+		date:    seedNow.Add(-7 * time.Hour),
+	},
+	{
+		from: "bob@localhost", fromPass: "bob123", to: "admin@localhost",
+		subject: "Happy birthday!",
+		body:    "Hey! Just wanted to wish you a happy birthday. Hope you have a great day!\n\nLet's celebrate with cake at the next standup.\n\nBob",
+		date:    seedNow.Add(-10 * time.Hour),
+	},
+	{
+		from: "alice@localhost", fromPass: "alice123", to: "admin@localhost",
+		subject: "Database backup verification complete",
+		body:    "Weekly backup verification report:\n\n- Full backup: OK (247 GB, completed in 45 min)\n- Incremental: OK (12 GB delta)\n- Restore test: OK (verified on standby node)\n- Point-in-time recovery: OK (tested to 15 min granularity)\n- Offsite replication: OK (S3 + GCS)\n\nAll green.\n\nAlice",
+		date:    seedNow.Add(-168 * time.Hour),
+	},
+}
+
+func sendSeedEmail(addr string, e seedEmail) error {
+	date := e.date
+	if date.IsZero() {
+		date = seedNow
+	}
+
+	var msg bytes.Buffer
+	msg.WriteString(fmt.Sprintf("From: %s\r\n", e.from))
+	msg.WriteString(fmt.Sprintf("To: %s\r\n", e.to))
+	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", e.subject))
+	msg.WriteString(fmt.Sprintf("Date: %s\r\n", date.Format(time.RFC1123Z)))
+	msg.WriteString(fmt.Sprintf("Message-ID: <seed-%d@bongo-seed>\r\n", date.UnixNano()))
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	msg.WriteString("\r\n")
+	msg.WriteString(e.body)
+
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("dial: %w", err)
+	}
+	defer c.Close()
+
+	if err := c.Hello("localhost"); err != nil {
+		return fmt.Errorf("hello: %w", err)
+	}
+
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		tlsCfg := &tls.Config{
+			ServerName:         strings.Split(addr, ":")[0],
+			InsecureSkipVerify: true, //nolint:gosec // dev tool
+		}
+		_ = c.StartTLS(tlsCfg)
+	}
+
+	if ok, _ := c.Extension("AUTH"); ok && e.fromPass != "" {
+		auth := smtp.PlainAuth("", e.from, e.fromPass, strings.Split(addr, ":")[0])
+		if err := c.Auth(auth); err != nil {
+			if err2 := smtpPlainAuthInsecure(c, e.from, e.fromPass); err2 != nil {
+				return fmt.Errorf("auth: %w (insecure: %v)", err, err2)
+			}
+		}
+	}
+
+	if err := c.Mail(e.from); err != nil {
+		return fmt.Errorf("mail from: %w", err)
+	}
+	if err := c.Rcpt(e.to); err != nil {
+		return fmt.Errorf("rcpt to: %w", err)
+	}
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	if _, err := w.Write(msg.Bytes()); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("close: %w", err)
+	}
+	return c.Quit()
+}
+
+type seedContact struct {
+	name, email, phone, company string
+}
+
+type seedEvent struct {
+	title, desc string
+	startTime   time.Time
+	endTime     time.Time
+	allDay      bool
+}
+
+func seedContactsAndEvents(baseURL string) {
+	today := time.Date(seedNow.Year(), seedNow.Month(), seedNow.Day(), 0, 0, 0, 0, seedNow.Location())
+
+	type userData struct {
+		email, password string
+		contacts        []seedContact
+		events          []seedEvent
+	}
+
+	users := []userData{
+		{
+			email: "admin@localhost", password: "admin",
+			contacts: []seedContact{
+				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Bongo Labs"},
+				{"Bob Martinez", "bob@localhost", "+1-555-0102", "Bongo Labs"},
+				{"Charlie Wong", "charlie@localhost", "+1-555-0103", "Bongo Labs"},
+				{"Sarah Chen", "sarah.chen@bongo.dev", "+1-555-0104", "Bongo Labs"},
+				{"David Kim", "david.kim@example.com", "+44-20-7946-0958", "DevOps Weekly"},
+			},
+			events: []seedEvent{
+				{"Budget Review Meeting", "Q1 actuals vs forecast review with Bob", today.Add(14 * time.Hour), today.Add(15 * time.Hour), false},
+				{"Team Standup", "Daily sync with the engineering team", today.Add(24*time.Hour + 10*time.Hour), today.Add(24*time.Hour + 10*time.Hour + 30*time.Minute), false},
+				{"Lunch with Alice", "Thai place on Market Street", today.Add(2*24*time.Hour + 12*time.Hour), today.Add(2*24*time.Hour + 13*time.Hour), false},
+				{"Q2 Planning Offsite", "Architecture roadmap and team building", today.Add(7 * 24 * time.Hour), today.Add(8 * 24 * time.Hour), true},
+			},
+		},
+		{
+			email: "alice@localhost", password: "alice123",
+			contacts: []seedContact{
+				{"Admin", "admin@localhost", "+1-555-0100", "Bongo Labs"},
+				{"Bob Martinez", "bob@localhost", "+1-555-0102", "Bongo Labs"},
+				{"Charlie Wong", "charlie@localhost", "+1-555-0103", "Bongo Labs"},
+			},
+			events: []seedEvent{
+				{"Infrastructure Migration Review", "Review progress on Q1 migration", today.Add(9 * time.Hour), today.Add(10 * time.Hour), false},
+				{"DNS Cutover Window", "Production DNS migration - rollback plan ready", today.Add(4*24*time.Hour + 22*time.Hour), today.Add(5*24*time.Hour + 2*time.Hour), false},
+			},
+		},
+		{
+			email: "bob@localhost", password: "bob123",
+			contacts: []seedContact{
+				{"Admin", "admin@localhost", "+1-555-0100", "Bongo Labs"},
+				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Bongo Labs"},
+			},
+			events: []seedEvent{
+				{"Budget Presentation Prep", "Finalise Q1 actuals vs forecast slides", today.Add(8 * time.Hour), today.Add(9*time.Hour + 30*time.Minute), false},
+				{"PR Review Session", "Review auth refactor PR", today.Add(24*time.Hour + 11*time.Hour), today.Add(24*time.Hour + 12*time.Hour), false},
+			},
+		},
+		{
+			email: "charlie@localhost", password: "charlie123",
+			contacts: []seedContact{
+				{"Admin", "admin@localhost", "+1-555-0100", "Bongo Labs"},
+				{"Alice Johnson", "alice@localhost", "+1-555-0101", "Bongo Labs"},
+			},
+			events: []seedEvent{
+				{"Deploy Pipeline Fix", "Optimise gosec caching", today.Add(10 * time.Hour), today.Add(12 * time.Hour), false},
+				{"Security Patch Window", "OpenSSL update on prod nodes", today.Add(2*24*time.Hour + 6*time.Hour), today.Add(2*24*time.Hour + 8*time.Hour), false},
+			},
+		},
+	}
+
+	totalContacts := 0
+	totalEvents := 0
+
+	for _, u := range users {
+		client := loginWebClient(baseURL, u.email, u.password)
+
+		for _, c := range u.contacts {
+			form := fmt.Sprintf("display_name=%s&email=%s&phone=%s&company=%s",
+				url.QueryEscape(c.name), url.QueryEscape(c.email), url.QueryEscape(c.phone), url.QueryEscape(c.company))
+			resp, err := client.Post(baseURL+"/contacts", "application/x-www-form-urlencoded", strings.NewReader(form))
+			if err != nil {
+				continue
+			}
+			resp.Body.Close()
+			totalContacts++
+		}
+
+		for _, e := range u.events {
+			form := fmt.Sprintf("title=%s&description=%s&start_date=%s&start_time=%s&end_date=%s&end_time=%s",
+				url.QueryEscape(e.title), url.QueryEscape(e.desc),
+				e.startTime.Format("2006-01-02"), e.startTime.Format("15:04"),
+				e.endTime.Format("2006-01-02"), e.endTime.Format("15:04"))
+			if e.allDay {
+				form += "&all_day=on"
+			}
+			resp, err := client.Post(baseURL+"/calendar/event", "application/x-www-form-urlencoded", strings.NewReader(form))
+			if err != nil {
+				continue
+			}
+			resp.Body.Close()
+			totalEvents++
+		}
+
+		fmt.Printf("  %s: %d contacts, %d events\n", u.email, len(u.contacts), len(u.events))
+	}
+
+	fmt.Printf("  total: %d contacts, %d events\n", totalContacts, totalEvents)
 }
