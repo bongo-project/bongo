@@ -305,7 +305,6 @@ func (h *SecurityHandler) setTOTPPendingCookie(w http.ResponseWriter, secret str
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   h.tlsEnabled,
-		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(totpPendingCookieTTL.Seconds()),
 	})
 }
@@ -361,7 +360,6 @@ func (h *SecurityHandler) clearTOTPPendingCookie(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	})
 }

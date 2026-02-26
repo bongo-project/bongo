@@ -18,8 +18,8 @@ func TestCreateSessionCookie(t *testing.T) {
 	if !cookie.HttpOnly {
 		t.Error("cookie should be HttpOnly")
 	}
-	if cookie.SameSite != http.SameSiteLaxMode {
-		t.Error("cookie should have SameSite=Lax")
+	if cookie.SameSite != 0 {
+		t.Error("cookie should omit SameSite (browser defaults to Lax)")
 	}
 	if cookie.Value == "" {
 		t.Error("cookie value should not be empty")

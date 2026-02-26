@@ -142,7 +142,20 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 			continue
 		}
 
-		attrs := []imap.MailboxAttr{imap.MailboxAttrHasNoChildren}
+		// Determine hierarchy attribute.
+		hasChildren := false
+		for _, other := range mailboxes {
+			if strings.HasPrefix(other.Name, mb.Name+"/") {
+				hasChildren = true
+				break
+			}
+		}
+		var attrs []imap.MailboxAttr
+		if hasChildren {
+			attrs = append(attrs, imap.MailboxAttrHasChildren)
+		} else {
+			attrs = append(attrs, imap.MailboxAttrHasNoChildren)
+		}
 
 		// Add special-use attributes.
 		switch mb.Name {

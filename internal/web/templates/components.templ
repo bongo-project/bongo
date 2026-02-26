@@ -7,10 +7,15 @@ import (
 )
 
 // MailboxInfo holds data needed to render a sidebar mailbox link.
+// Supports hierarchy via Children for nested folder trees.
 type MailboxInfo struct {
-	Name     string
-	Unread   int
-	Selected bool
+	Name        string         // Full path, e.g. "Projects/Client-A"
+	Label       string         // Display name (last segment), e.g. "Client-A"
+	Unread      int
+	Selected    bool
+	Children    []MailboxInfo
+	HasChildren bool
+	Icon        string // HTML entity for folder-specific icon
 }
 
 templ Sidebar(mailboxes []MailboxInfo, selected string) {
@@ -18,6 +23,14 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 	<nav aria-label="Mailboxes">
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.mailboxes") }</div>
+			<ul class="nav-list" id="mailbox-drop-targets">
+				for _, mb := range mailboxes {
+					@MailboxTreeNode(mb, selected)
+				}
+			</ul>
+		</div>
+		<div class="sidebar-group">
+			<div class="sidebar-label">{ t(ctx, "nav.views") }</div>
 			<ul class="nav-list">
 				<li class="nav-item">
 					<a
@@ -65,31 +78,6 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 			</ul>
 		</div>
 		<div class="sidebar-group">
-			<div class="sidebar-label">{ t(ctx, "nav.folders") }</div>
-			<ul class="nav-list" id="mailbox-drop-targets">
-				for _, mb := range mailboxes {
-					<li class="nav-item">
-						<a
-							href={ templ.SafeURL("/mail/" + mb.Name) }
-							if mb.Name == selected {
-								class="active"
-							}
-							hx-get={ "/mail/" + mb.Name }
-							hx-target="#main-content"
-							hx-push-url="true"
-							data-folder={ mb.Name }
-						>
-							<span class="nav-icon" aria-hidden="true">&#128193;</span>
-							<span>{ mb.Name }</span>
-							if mb.Unread > 0 {
-								<span class="nav-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
-							}
-						</a>
-					</li>
-				}
-			</ul>
-		</div>
-		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.quickLinks") }</div>
 			<ul class="nav-list" aria-label="Applications">
 				<li class="nav-item">
@@ -115,6 +103,64 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 			</ul>
 		</div>
 	</nav>
+}
+
+templ MailboxTreeNode(mb MailboxInfo, selected string) {
+	if mb.HasChildren {
+		<li class="nav-item" x-data="{ expanded: true }">
+			<div class="nav-folder-row">
+				<button
+					type="button"
+					class="folder-toggle"
+					x-on:click.stop="expanded = !expanded"
+					x-bind:aria-expanded="expanded.toString()"
+					aria-label="Toggle subfolder"
+				>
+					<span class="toggle-icon" x-bind:class="expanded ? 'expanded' : ''">&#9654;</span>
+				</button>
+				<a
+					href={ templ.SafeURL("/mail/" + mb.Name) }
+					if mb.Name == selected {
+						class="active"
+					}
+					hx-get={ "/mail/" + mb.Name }
+					hx-target="#main-content"
+					hx-push-url="true"
+					data-folder={ mb.Name }
+				>
+					<span class="nav-icon" aria-hidden="true">@templ.Raw(mb.Icon)</span>
+					<span>{ mb.Label }</span>
+					if mb.Unread > 0 {
+						<span class="nav-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+					}
+				</a>
+			</div>
+			<ul class="nav-list nav-children" x-show="expanded" x-transition>
+				for _, child := range mb.Children {
+					@MailboxTreeNode(child, selected)
+				}
+			</ul>
+		</li>
+	} else {
+		<li class="nav-item">
+			<a
+				href={ templ.SafeURL("/mail/" + mb.Name) }
+				if mb.Name == selected {
+					class="active"
+				}
+				hx-get={ "/mail/" + mb.Name }
+				hx-target="#main-content"
+				hx-push-url="true"
+				data-folder={ mb.Name }
+			>
+				<span class="nav-icon" aria-hidden="true">@templ.Raw(mb.Icon)</span>
+				<span>{ mb.Label }</span>
+				if mb.Unread > 0 {
+					<span class="nav-badge" aria-label={ fmt.Sprintf("%d unread messages", mb.Unread) }>{ fmt.Sprint(mb.Unread) }</span>
+				}
+			</a>
+		</li>
+	}
 }
 
 templ Pagination(page, totalPages int, baseURL string) {

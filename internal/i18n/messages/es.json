@@ -1,6 +1,6 @@
 {
   "nav.mailboxes": "Buzones",
-  "nav.folders": "Carpetas",
+  "nav.views": "Vistas",
   "nav.quickLinks": "Acceso rapido",
   "nav.unread": "Sin leer",
   "nav.starred": "Destacados",
@@ -161,6 +161,7 @@
 
   "common.save": "Guardar",
   "common.cancel": "Cancelar",
+  "common.copy": "Copiar",
   "common.delete": "Eliminar",
   "common.loading": "Cargando",
   "common.error": "Error",
@@ -177,6 +178,7 @@
   "common.enabled": "Activado",
   "common.disabled": "Desactivado",
   "common.active": "Activo",
+  "common.inactive": "Inactivo",
   "common.enable": "Activar",
   "common.disable": "Desactivar",
 
@@ -197,6 +199,7 @@
   "rules.test": "Probar",
   "rules.noRulesYet": "Aún no hay reglas de filtro. Cree una para organizar automáticamente el correo entrante.",
 
+  "security.require2FABanner": "Su administrador requiere autenticación de dos factores. Por favor configúrela para continuar.",
   "security.setupTwoFactor": "Configurar autenticación de dos factores",
   "security.disableTwoFactor": "Desactivar autenticación de dos factores",
   "security.twoFactorEnabled": "La autenticación de dos factores está actualmente habilitada para su cuenta.",

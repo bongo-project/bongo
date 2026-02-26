@@ -1,6 +1,6 @@
 {
   "nav.mailboxes": "Boites",
-  "nav.folders": "Dossiers",
+  "nav.views": "Vues",
   "nav.quickLinks": "Acces rapide",
   "nav.unread": "Non lu",
   "nav.starred": "Suivis",
@@ -161,6 +161,7 @@
 
   "common.save": "Enregistrer",
   "common.cancel": "Annuler",
+  "common.copy": "Copier",
   "common.delete": "Supprimer",
   "common.loading": "Chargement",
   "common.error": "Erreur",
@@ -177,6 +178,7 @@
   "common.enabled": "Activé",
   "common.disabled": "Désactivé",
   "common.active": "Actif",
+  "common.inactive": "Inactif",
   "common.enable": "Activer",
   "common.disable": "Désactiver",
 
@@ -197,6 +199,7 @@
   "rules.test": "Tester",
   "rules.noRulesYet": "Aucune règle de filtrage. Créez-en une pour organiser automatiquement le courrier entrant.",
 
+  "security.require2FABanner": "Votre administrateur exige l'authentification à deux facteurs. Veuillez la configurer pour continuer.",
   "security.setupTwoFactor": "Configurer l'authentification à deux facteurs",
   "security.disableTwoFactor": "Désactiver l'authentification à deux facteurs",
   "security.twoFactorEnabled": "L'authentification à deux facteurs est actuellement activée pour votre compte.",

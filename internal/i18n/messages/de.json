@@ -1,6 +1,6 @@
 {
   "nav.mailboxes": "Postfacher",
-  "nav.folders": "Ordner",
+  "nav.views": "Ansichten",
   "nav.quickLinks": "Schnellzugriff",
   "nav.unread": "Ungelesen",
   "nav.starred": "Markiert",
@@ -161,6 +161,7 @@
 
   "common.save": "Speichern",
   "common.cancel": "Abbrechen",
+  "common.copy": "Kopieren",
   "common.delete": "Löschen",
   "common.loading": "Laden",
   "common.error": "Fehler",
@@ -177,6 +178,7 @@
   "common.enabled": "Aktiviert",
   "common.disabled": "Deaktiviert",
   "common.active": "Aktiv",
+  "common.inactive": "Inaktiv",
   "common.enable": "Aktivieren",
   "common.disable": "Deaktivieren",
 
@@ -197,6 +199,7 @@
   "rules.test": "Testen",
   "rules.noRulesYet": "Noch keine Filterregeln. Erstellen Sie eine, um eingehende E-Mails automatisch zu organisieren.",
 
+  "security.require2FABanner": "Ihr Administrator erfordert Zwei-Faktor-Authentifizierung. Bitte richten Sie diese ein, um fortzufahren.",
   "security.setupTwoFactor": "Zwei-Faktor-Authentifizierung einrichten",
   "security.disableTwoFactor": "Zwei-Faktor-Authentifizierung deaktivieren",
   "security.twoFactorEnabled": "Die Zwei-Faktor-Authentifizierung ist derzeit für Ihr Konto aktiviert.",
