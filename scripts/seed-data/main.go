@@ -20,7 +20,7 @@ import (
 
 var (
 	smtpAddr = flag.String("smtp-addr", "localhost:2587", "SMTP submission address (dev mode default: 2587)")
-	httpAddr = flag.String("http-addr", "https://localhost:8080", "Web UI base URL")
+	httpAddr = flag.String("http-addr", "http://localhost:8080", "Web UI base URL")
 	user     = flag.String("user", "admin@localhost", "Login email")
 	pass     = flag.String("pass", "admin", "Login password")
 	timeout  = flag.Duration("timeout", 30*time.Second, "Health check timeout")

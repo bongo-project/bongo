@@ -32,6 +32,7 @@ var (
 	pop3Port  = flag.Int("pop3-port", 1110, "POP3 port")
 	adminUser = flag.String("admin-user", "admin@localhost", "Admin email")
 	adminPass = flag.String("admin-pass", "admin", "Admin password")
+	plainHTTP = flag.Bool("plain-http", false, "Use HTTP instead of HTTPS")
 )
 
 // checker tracks pass/fail counts for the validation report.
@@ -64,7 +65,11 @@ func (c *checker) total() int { return c.passed + c.failed }
 func main() {
 	flag.Parse()
 
-	baseURL := fmt.Sprintf("https://%s:%d", *host, *webPort)
+	scheme := "https"
+	if *plainHTTP {
+		scheme = "http"
+	}
+	baseURL := fmt.Sprintf("%s://%s:%d", scheme, *host, *webPort)
 	smtpAddr := fmt.Sprintf("%s:%d", *host, *smtpPort)
 	imapAddr := fmt.Sprintf("%s:%d", *host, *imapPort)
 	pop3Addr := fmt.Sprintf("%s:%d", *host, *pop3Port)
