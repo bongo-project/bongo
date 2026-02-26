@@ -93,22 +93,21 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // GAL autocomplete for compose form
-  Alpine.data('galAutocomplete', (config = {}) => ({
-    query: config.initialValue || '',
+  Alpine.data('galAutocomplete', () => ({
+    query: '',
     results: [],
     show: false,
     loading: false,
     selected: -1,
 
     init() {
-      // Sync Alpine model value to the DOM input for HTMX partial swaps
-      // (e.g. reply/forward forms loaded via HTMX where x-model may not
-      // automatically push the initial value to the input's .value).
-      this.$nextTick(() => {
-        if (this.query && this.$el) {
-          this.$el.value = this.query;
-        }
-      });
+      // Read the server-rendered value attribute to seed the query.
+      // We use getAttribute('value') because it reads the HTML attribute
+      // directly, not the DOM property which Alpine may have already cleared.
+      const initial = this.$el.getAttribute('value');
+      if (initial) {
+        this.query = initial;
+      }
     },
 
     async search() {

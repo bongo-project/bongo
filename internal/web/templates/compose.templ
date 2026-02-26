@@ -1,9 +1,6 @@
 package templates
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, email string) {
 	@LayoutWithContent("Compose", email) {
@@ -49,9 +46,9 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								value={ to }
 								required
 								placeholder="recipient@example.com"
-								x-data={ galAutocompleteCfg(to) }
-								x-model="query"
-								@input.debounce.300ms="search()"
+								x-data="galAutocomplete"
+								:value="query"
+								@input.debounce.300ms="query = $el.value; search()"
 								@keydown="onKeydown($event)"
 								aria-label={ t(ctx, "compose.to") }
 							/>
@@ -150,8 +147,3 @@ func uintToStr(v uint32) string {
 	return fmt.Sprintf("%d", v)
 }
 
-func galAutocompleteCfg(value string) string {
-	escaped := strings.ReplaceAll(value, `\`, `\\`)
-	escaped = strings.ReplaceAll(escaped, `'`, `\'`)
-	return fmt.Sprintf("galAutocomplete({ initialValue: '%s' })", escaped)
-}
