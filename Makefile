@@ -1,4 +1,4 @@
-.PHONY: all build generate test test-race lint sec clean run ui-test ui-test-headed ui-test-setup validate seed
+.PHONY: all build generate test test-race lint sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
 
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
@@ -40,6 +40,19 @@ sec:
 
 run: build
 	$(BUILD_DIR)/$(BINARY) serve --dev
+
+dev: build
+	@echo "Starting dev server..."
+	@$(BUILD_DIR)/$(BINARY) serve --dev --plain-http & \
+	SERVER_PID=$$!; \
+	trap "kill $$SERVER_PID 2>/dev/null; exit" INT TERM EXIT; \
+	sleep 3; \
+	echo "Running validate-server..."; \
+	go run ./scripts/validate-server/... --plain-http; \
+	echo "Running seed-data..."; \
+	go run ./scripts/seed-data/...; \
+	echo "Dev server ready at http://localhost:8080 (PID $$SERVER_PID)"; \
+	wait $$SERVER_PID
 
 ## UI test targets
 
