@@ -5,24 +5,23 @@ max_tasks_per_session: 15
 warn_at_tasks: 12
 
 ## Project
-name: Sprint 13a - Security & Login Hardening
+name: Message Processing Pipeline
 repo: /Users/user/dev/ai/oss/bongo-go/bongo-go
-created: 2026-02-22
+created: 2026-02-27
 
 ## Commands
-build: go build -o bongo-go ./cmd/bongo-go
+build: make build
 typecheck: go vet ./...
 lint: golangci-lint run
 test: go test -race ./...
 generate: templ generate
+sec: gosec ./...
 
 ## Source
-prd_path: docs/sprints/sprint-13a-security-hardening.md
+prd_path: tasks/prd-message-processing-pipeline.md
 
 ## Subagent Defaults
 default_subagent: general-purpose
-# Security tasks benefit from opus
-# phase_2_subagent: security-auditor
 
 ## Model Strategy
 default_model: sonnet
