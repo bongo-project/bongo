@@ -80,7 +80,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		v.Set("log-level", serveLogLevel)
 	}
 
-	cfg, err := config.Load(v)
+	cfg, configFile, err := config.LoadWithDiscovery(v)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -103,11 +103,20 @@ func runServe(cmd *cobra.Command, args []string) error {
 	handler := logSink.SlogHandler(baseHandler)
 	logger := slog.New(handler)
 
-	logger.Info("config loaded",
-		"role", cfg.Server.Role,
-		"log_level", cfg.Telemetry.Log.Level,
-		"log_format", cfg.Telemetry.Log.Format,
-	)
+	if configFile != "" {
+		logger.Info("config loaded",
+			"file", configFile,
+			"role", cfg.Server.Role,
+			"log_level", cfg.Telemetry.Log.Level,
+			"log_format", cfg.Telemetry.Log.Format,
+		)
+	} else {
+		logger.Info("no config file found, using defaults",
+			"role", cfg.Server.Role,
+			"log_level", cfg.Telemetry.Log.Level,
+			"log_format", cfg.Telemetry.Log.Format,
+		)
+	}
 
 	// Create agent.
 	a, err := agent.NewAgent(cfg, logger)
