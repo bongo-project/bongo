@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/hcl/v2/hclsimple"
 	"github.com/spf13/viper"
@@ -21,6 +22,7 @@ type Config struct {
 	CalDAV    CalDAVConfig    `hcl:"caldav,block" mapstructure:"caldav"`
 	Antispam  AntispamConfig  `hcl:"antispam,block" mapstructure:"antispam"`
 	Antivirus AntivirusConfig `hcl:"antivirus,block" mapstructure:"antivirus"`
+	Pipeline  PipelineConfig  `hcl:"pipeline,block" mapstructure:"pipeline"`
 	Telemetry TelemetryConfig `hcl:"telemetry,block" mapstructure:"telemetry"`
 }
 
@@ -147,6 +149,84 @@ type ClamAVConfig struct {
 	Socket  string `hcl:"socket,optional" mapstructure:"socket"`
 }
 
+// knownStageNames is the set of valid inbound pipeline stage names.
+var knownStageNames = map[string]bool{
+	"antispam":  true,
+	"antivirus": true,
+	"rules":     true,
+}
+
+// knownBackends is the set of valid backend identifiers for pipeline stages.
+var knownBackends = map[string]bool{
+	"builtin": true,
+	"rspamd":  true,
+	"clamav":  true,
+}
+
+// PipelineConfig controls the inbound mail processing pipeline.
+type PipelineConfig struct {
+	Workers             int           `hcl:"workers,optional" mapstructure:"workers"`
+	PollInterval        string        `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
+	ErrorRetention      string        `hcl:"error_retention,optional" mapstructure:"error_retention"`
+	QuarantineRetention string        `hcl:"quarantine_retention,optional" mapstructure:"quarantine_retention"`
+	Stages              []StageConfig `hcl:"stage,block" mapstructure:"stage"`
+}
+
+// StageConfig defines a single processing stage in the inbound pipeline.
+// In HCL: stage "antispam" { enabled = true; backend = "builtin" }
+type StageConfig struct {
+	Name    string `hcl:"name,label" mapstructure:"name"`
+	Enabled bool   `hcl:"enabled,optional" mapstructure:"enabled"`
+	Backend string `hcl:"backend,optional" mapstructure:"backend"`
+}
+
+// PipelinePollInterval parses PollInterval string into a time.Duration.
+// Returns 1s if the value is empty or unparseable.
+func (c *PipelineConfig) PipelinePollInterval() time.Duration {
+	if c.PollInterval == "" {
+		return time.Second
+	}
+	d, err := time.ParseDuration(c.PollInterval)
+	if err != nil {
+		return time.Second
+	}
+	return d
+}
+
+// Validate checks PipelineConfig for invalid values.
+func (c *PipelineConfig) Validate() error {
+	if c.Workers < 1 {
+		return fmt.Errorf("pipeline.workers must be >= 1, got %d", c.Workers)
+	}
+	for _, stage := range c.Stages {
+		if !knownStageNames[stage.Name] {
+			return fmt.Errorf("pipeline: unknown stage %q (valid: antispam, antivirus, rules)", stage.Name)
+		}
+		if stage.Backend != "" && !knownBackends[stage.Backend] {
+			return fmt.Errorf("pipeline: stage %q has unknown backend %q", stage.Name, stage.Backend)
+		}
+	}
+	return nil
+}
+
+// defaultPipelineStages returns the standard ordered stage list.
+func defaultPipelineStages() []StageConfig {
+	return []StageConfig{
+		{Name: "antispam", Enabled: true, Backend: "builtin"},
+		{Name: "antivirus", Enabled: false, Backend: ""},
+		{Name: "rules", Enabled: true, Backend: ""},
+	}
+}
+
+// devPipelineStages returns stage list for dev mode: builtin antispam only.
+func devPipelineStages() []StageConfig {
+	return []StageConfig{
+		{Name: "antispam", Enabled: true, Backend: "builtin"},
+		{Name: "antivirus", Enabled: false, Backend: ""},
+		{Name: "rules", Enabled: false, Backend: ""},
+	}
+}
+
 type TelemetryConfig struct {
 	Prometheus PrometheusConfig `hcl:"prometheus,block" mapstructure:"prometheus"`
 	Log        LogConfig        `hcl:"log,block" mapstructure:"log"`
@@ -236,6 +316,13 @@ func Defaults() *Config {
 			ClamAV: ClamAVConfig{
 				Socket: "/var/run/clamav/clamd.ctl",
 			},
+		},
+		Pipeline: PipelineConfig{
+			Workers:             5,
+			PollInterval:        "1s",
+			ErrorRetention:      "30d",
+			QuarantineRetention: "30d",
+			Stages:              defaultPipelineStages(),
 		},
 		Telemetry: TelemetryConfig{
 			Prometheus: PrometheusConfig{

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -122,6 +123,169 @@ func TestLoadWithEnvVars(t *testing.T) {
 
 	if cfg.Server.Role != "edge" {
 		t.Errorf("expected role 'edge' from env, got %q", cfg.Server.Role)
+	}
+}
+
+func TestPipelineConfigDefaults(t *testing.T) {
+	cfg := Defaults()
+
+	if cfg.Pipeline.Workers != 5 {
+		t.Errorf("expected default workers 5, got %d", cfg.Pipeline.Workers)
+	}
+	if cfg.Pipeline.PollInterval != "1s" {
+		t.Errorf("expected default poll_interval '1s', got %q", cfg.Pipeline.PollInterval)
+	}
+	if cfg.Pipeline.ErrorRetention != "30d" {
+		t.Errorf("expected default error_retention '30d', got %q", cfg.Pipeline.ErrorRetention)
+	}
+	if cfg.Pipeline.QuarantineRetention != "30d" {
+		t.Errorf("expected default quarantine_retention '30d', got %q", cfg.Pipeline.QuarantineRetention)
+	}
+
+	if len(cfg.Pipeline.Stages) != 3 {
+		t.Fatalf("expected 3 default stages, got %d", len(cfg.Pipeline.Stages))
+	}
+
+	stages := map[string]StageConfig{}
+	for _, s := range cfg.Pipeline.Stages {
+		stages[s.Name] = s
+	}
+
+	antispam, ok := stages["antispam"]
+	if !ok {
+		t.Fatal("expected antispam stage in defaults")
+	}
+	if !antispam.Enabled {
+		t.Error("expected antispam stage to be enabled by default")
+	}
+	if antispam.Backend != "builtin" {
+		t.Errorf("expected antispam backend 'builtin', got %q", antispam.Backend)
+	}
+
+	antivirus, ok := stages["antivirus"]
+	if !ok {
+		t.Fatal("expected antivirus stage in defaults")
+	}
+	if antivirus.Enabled {
+		t.Error("expected antivirus stage to be disabled by default")
+	}
+
+	rules, ok := stages["rules"]
+	if !ok {
+		t.Fatal("expected rules stage in defaults")
+	}
+	if !rules.Enabled {
+		t.Error("expected rules stage to be enabled by default")
+	}
+}
+
+func TestPipelinePollInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  time.Duration
+	}{
+		{"empty string falls back to 1s", "", time.Second},
+		{"valid 1s", "1s", time.Second},
+		{"valid 500ms", "500ms", 500 * time.Millisecond},
+		{"valid 2m", "2m", 2 * time.Minute},
+		{"invalid string falls back to 1s", "garbage", time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &PipelineConfig{PollInterval: tt.input}
+			got := pc.PipelinePollInterval()
+			if got != tt.want {
+				t.Errorf("PipelinePollInterval(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPipelineConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     PipelineConfig
+		wantErr bool
+	}{
+		{
+			name: "valid defaults",
+			cfg: PipelineConfig{
+				Workers:      5,
+				PollInterval: "1s",
+				Stages: []StageConfig{
+					{Name: "antispam", Enabled: true, Backend: "builtin"},
+					{Name: "antivirus", Enabled: false, Backend: ""},
+					{Name: "rules", Enabled: true, Backend: ""},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "workers zero is invalid",
+			cfg: PipelineConfig{
+				Workers: 0,
+				Stages:  []StageConfig{{Name: "antispam", Enabled: true}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "workers negative is invalid",
+			cfg: PipelineConfig{
+				Workers: -1,
+				Stages:  []StageConfig{{Name: "antispam", Enabled: true}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "unknown stage name",
+			cfg: PipelineConfig{
+				Workers: 5,
+				Stages:  []StageConfig{{Name: "bogus", Enabled: true}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "unknown backend",
+			cfg: PipelineConfig{
+				Workers: 5,
+				Stages:  []StageConfig{{Name: "antispam", Enabled: true, Backend: "unknown-backend"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty backend is allowed",
+			cfg: PipelineConfig{
+				Workers: 1,
+				Stages:  []StageConfig{{Name: "rules", Enabled: true, Backend: ""}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "no stages is valid",
+			cfg: PipelineConfig{
+				Workers: 1,
+				Stages:  []StageConfig{},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDefaultPipelineValidates(t *testing.T) {
+	cfg := Defaults()
+	if err := cfg.Pipeline.Validate(); err != nil {
+		t.Errorf("default PipelineConfig failed validation: %v", err)
 	}
 }
 

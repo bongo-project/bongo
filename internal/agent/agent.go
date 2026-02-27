@@ -629,32 +629,44 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		a.Spool = spool
 
-		// Build pipeline processors: antispam -> rules -> deliver.
+		// Build pipeline processors from PipelineConfig stage list.
 		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
 		var stages []pipeline.Processor
 
-		// Antispam processor (built-in heuristic + optional Bayesian).
-		scorer := antispam.NewScorer()
-		bayesFilter := antispam.NewBayesFilter(a.Store, a)
-		antispamProc := pipelineantispam.NewBuiltinProcessor(scorer,
-			pipelineantispam.WithBayes(bayesFilter),
-			pipelineantispam.WithLogger(a.logger),
-		)
-		stages = append(stages, antispamProc)
-
-		// Rules processor (per-user filter rules).
-		if a.Rules != nil {
-			rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
-			stages = append(stages, rulesProc)
+		for _, stageCfg := range a.Config.Pipeline.Stages {
+			if !stageCfg.Enabled {
+				continue
+			}
+			switch stageCfg.Name {
+			case "antispam":
+				scorer := antispam.NewScorer()
+				bayesFilter := antispam.NewBayesFilter(a.Store, a)
+				antispamProc := pipelineantispam.NewBuiltinProcessor(scorer,
+					pipelineantispam.WithBayes(bayesFilter),
+					pipelineantispam.WithLogger(a.logger),
+				)
+				stages = append(stages, antispamProc)
+			case "rules":
+				if a.Rules != nil {
+					rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
+					stages = append(stages, rulesProc)
+				}
+			case "antivirus":
+				// Antivirus processor not yet implemented; log and skip.
+				a.logger.Warn("pipeline: antivirus stage enabled but not yet implemented, skipping")
+			}
 		}
 
-		// Deliver processor (final stage: store to Pebble via Raft).
+		// Deliver processor is always the final stage.
 		deliverProc := pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
 		stages = append(stages, deliverProc)
 
-		// Create blob reader adapter and start the Runner.
+		// Create blob reader adapter and start the Runner with config-driven options.
 		blobReader := &bongosmtp.BlobStoreAdapter{Blobs: a.Blobs}
-		a.PipelineRunner = pipeline.NewRunner(spool, blobReader, stages, a.logger)
+		a.PipelineRunner = pipeline.NewRunner(spool, blobReader, stages, a.logger,
+			pipeline.WithWorkers(a.Config.Pipeline.Workers),
+			pipeline.WithPollInterval(a.Config.Pipeline.PipelinePollInterval()),
+		)
 
 		pipelineCtx, pipelineCancel := context.WithCancel(ctx)
 		a.pipelineCancel = pipelineCancel
@@ -663,7 +675,11 @@ func (a *Agent) Run(ctx context.Context) error {
 				a.logger.Error("pipeline runner error", "error", err)
 			}
 		}()
-		a.logger.Info("pipeline: runner started", "spool_dir", spoolDir)
+		a.logger.Info("pipeline: runner started",
+			"spool_dir", spoolDir,
+			"workers", a.Config.Pipeline.Workers,
+			"poll_interval", a.Config.Pipeline.PollInterval,
+		)
 
 		// Create inbound delivery pipeline (stores blob + enqueues to spool).
 		smtpPipeline = bongosmtp.NewDeliveryPipeline(a.Blobs, spool, a.logger)
