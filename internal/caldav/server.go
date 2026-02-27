@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -25,11 +26,12 @@ import (
 type Backend struct {
 	events    *store.EventStore
 	calendars *store.CalendarStore
+	logger    *slog.Logger
 }
 
 // NewBackend creates a CalDAV backend.
-func NewBackend(events *store.EventStore, calendars *store.CalendarStore) *Backend {
-	return &Backend{events: events, calendars: calendars}
+func NewBackend(events *store.EventStore, calendars *store.CalendarStore, logger *slog.Logger) *Backend {
+	return &Backend{events: events, calendars: calendars, logger: logger}
 }
 
 type ctxKey string
@@ -148,7 +150,12 @@ func (b *Backend) CreateCalendar(ctx context.Context, calendar *caldav.Calendar)
 		Description: calendar.Description,
 	}
 	_, err := b.calendars.Create(userID, cal)
-	return err
+	if err != nil {
+		b.logger.Warn("caldav: create calendar failed", "user", userID, "name", calendar.Name, "error", err)
+		return err
+	}
+	b.logger.Info("caldav: calendar created", "user", userID, "name", calendar.Name)
+	return nil
 }
 
 // GetCalendarObject returns a single event as a CalDAV calendar object.
@@ -253,10 +260,12 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 		if err := b.events.Update(userID, guid, event); err != nil {
 			return nil, fmt.Errorf("updating event: %w", err)
 		}
+		b.logger.Info("caldav: event updated", "user", userID, "calendar", calID, "guid", guid)
 	} else {
 		if _, err := b.events.Create(userID, event); err != nil {
 			return nil, fmt.Errorf("creating event: %w", err)
 		}
+		b.logger.Info("caldav: event created", "user", userID, "calendar", calID, "guid", guid)
 	}
 
 	return eventToCalendarObject(userID, calID, event)
@@ -274,7 +283,12 @@ func (b *Backend) DeleteCalendarObject(ctx context.Context, path string) error {
 		return fmt.Errorf("invalid object path")
 	}
 
-	return b.events.Delete(userID, guid)
+	if err := b.events.Delete(userID, guid); err != nil {
+		b.logger.Warn("caldav: delete event failed", "user", userID, "guid", guid, "error", err)
+		return err
+	}
+	b.logger.Info("caldav: event deleted", "user", userID, "guid", guid)
+	return nil
 }
 
 // icalToEvent extracts fields from an iCal calendar into an Event proto.

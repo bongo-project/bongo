@@ -2,6 +2,7 @@ package caldav
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -44,7 +45,7 @@ func newTestBackend(t *testing.T) (*Backend, string) {
 		t.Fatalf("EnsureDefault: %v", err)
 	}
 
-	return NewBackend(events, calendars), userID
+	return NewBackend(events, calendars, slog.Default()), userID
 }
 
 func TestListCalendarObjects(t *testing.T) {

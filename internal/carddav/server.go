@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/emersion/go-vcard"
@@ -24,11 +25,12 @@ import (
 type Backend struct {
 	contacts *store.ContactStore
 	search   *store.SearchManager
+	logger   *slog.Logger
 }
 
 // NewBackend creates a CardDAV backend.
-func NewBackend(contacts *store.ContactStore, search *store.SearchManager) *Backend {
-	return &Backend{contacts: contacts, search: search}
+func NewBackend(contacts *store.ContactStore, search *store.SearchManager, logger *slog.Logger) *Backend {
+	return &Backend{contacts: contacts, search: search, logger: logger}
 }
 
 type ctxKey string
@@ -206,10 +208,12 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 		if err := b.contacts.Update(userID, guid, contact); err != nil {
 			return nil, fmt.Errorf("updating contact: %w", err)
 		}
+		b.logger.Info("carddav: contact updated", "user", userID, "guid", guid)
 	} else {
 		if _, err := b.contacts.Create(userID, contact); err != nil {
 			return nil, fmt.Errorf("creating contact: %w", err)
 		}
+		b.logger.Info("carddav: contact created", "user", userID, "guid", guid)
 	}
 
 	return contactToAddressObject(userID, contact)
@@ -227,7 +231,12 @@ func (b *Backend) DeleteAddressObject(ctx context.Context, path string) error {
 		return fmt.Errorf("invalid path")
 	}
 
-	return b.contacts.Delete(userID, guid)
+	if err := b.contacts.Delete(userID, guid); err != nil {
+		b.logger.Warn("carddav: delete contact failed", "user", userID, "guid", guid, "error", err)
+		return err
+	}
+	b.logger.Info("carddav: contact deleted", "user", userID, "guid", guid)
+	return nil
 }
 
 // contactToAddressObject converts a Contact proto to a CardDAV AddressObject.

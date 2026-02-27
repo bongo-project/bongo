@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -39,6 +40,7 @@ type MailHandler struct {
 	contacts  *store.ContactStore
 	bayes     *antispam.BayesFilter
 	sanitizer *bluemonday.Policy
+	logger    *slog.Logger
 }
 
 // SetThreadStore sets the thread store for conversation grouping.
@@ -47,7 +49,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) {
 }
 
 // NewMailHandler creates a MailHandler.
-func NewMailHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes *store.MailboxStore) *MailHandler {
+func NewMailHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes *store.MailboxStore, logger *slog.Logger) *MailHandler {
 	policy := bluemonday.UGCPolicy()
 	policy.AllowAttrs("style").OnElements("div", "span", "p", "td", "th", "table", "tr")
 	return &MailHandler{
@@ -55,6 +57,7 @@ func NewMailHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes
 		blobs:     blobs,
 		mailboxes: mailboxes,
 		sanitizer: policy,
+		logger:    logger,
 	}
 }
 
@@ -365,6 +368,7 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.logger.Info("web: bulk action", "action", action, "mailbox", mailbox, "user", userID, "count", len(uidStrs))
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -529,6 +533,8 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 		h.deliverToMailbox(userID, targetMailbox, guid, meta)
 		imported++
 	}
+
+	h.logger.Info("web: mbox imported", "mailbox", targetMailbox, "user", userID, "imported", imported, "failed", failed)
 
 	templ.Handler(templates.ImportResult(imported, failed, targetMailbox)).ServeHTTP(w, r)
 }
@@ -725,6 +731,8 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 		_ = h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), flagBit)
 	}
 
+	h.logger.Info("web: flag toggled", "flag", flag, "action", action, "mailbox", mailbox, "uid", uid, "user", userID)
+
 	// Return updated star icon.
 	msg, _ := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
 	flagged := msg != nil && msg.Flags&store.FlagFlagged != 0
@@ -748,9 +756,12 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest); err != nil {
+		h.logger.Warn("web: move failed", "mailbox", mailbox, "uid", uid, "dest", dest, "user", userID, "error", err)
 		http.Error(w, "Move failed", http.StatusInternalServerError)
 		return
 	}
+
+	h.logger.Info("web: message moved", "src", mailbox, "dest", dest, "uid", uid, "user", userID)
 
 	// Redirect back to mailbox with flash.
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Moved+to+%s", mailbox, dest))
@@ -765,6 +776,8 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted)
 	_, _ = h.mailboxes.Expunge(userID, mailbox)
+
+	h.logger.Info("web: message deleted", "mailbox", mailbox, "uid", uid, "user", userID)
 
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Message+deleted", mailbox))
 	w.WriteHeader(http.StatusOK)
@@ -1040,6 +1053,8 @@ func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
 		h.trainBayes(userID, msg.MailGuid, true)
 	}
 
+	h.logger.Info("web: marked as spam", "mailbox", mailbox, "uid", uid, "user", userID)
+
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Marked+as+spam", mailbox))
 	w.WriteHeader(http.StatusOK)
 }
@@ -1073,6 +1088,8 @@ func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
 	if h.bayes != nil {
 		h.trainBayes(userID, msg.MailGuid, false)
 	}
+
+	h.logger.Info("web: marked as not spam", "mailbox", mailbox, "uid", uid, "user", userID)
 
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Marked+as+not+spam", mailbox))
 	w.WriteHeader(http.StatusOK)
