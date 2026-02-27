@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"google.golang.org/protobuf/proto"
 
@@ -484,8 +485,35 @@ func (ms *MailboxStore) Expunge(userID, mailbox string) ([]uint32, error) {
 	return expunged, nil
 }
 
+// sanitizeUTF8 replaces invalid UTF-8 bytes with the Unicode replacement
+// character so protobuf marshaling never fails on email header data.
+func sanitizeUTF8(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, "\uFFFD")
+}
+
+// SanitizeMailMeta ensures all string fields in a MailMeta contain valid UTF-8.
+// Email headers may contain non-UTF-8 bytes (e.g. Latin-1, raw 8-bit data)
+// which cause proto.Marshal to fail.
+func SanitizeMailMeta(meta *bongov1.MailMeta) {
+	meta.Subject = sanitizeUTF8(meta.Subject)
+	meta.From = sanitizeUTF8(meta.From)
+	meta.MessageId = sanitizeUTF8(meta.MessageId)
+	meta.InReplyTo = sanitizeUTF8(meta.InReplyTo)
+	meta.References = sanitizeUTF8(meta.References)
+	for i, addr := range meta.To {
+		meta.To[i] = sanitizeUTF8(addr)
+	}
+	for i, addr := range meta.Cc {
+		meta.Cc[i] = sanitizeUTF8(addr)
+	}
+}
+
 // StoreMailMeta writes a MailMeta record for a user via Raft.
 func (ms *MailboxStore) StoreMailMeta(userID string, meta *bongov1.MailMeta) error {
+	SanitizeMailMeta(meta)
 	metaBytes, err := proto.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("marshaling mail meta: %w", err)

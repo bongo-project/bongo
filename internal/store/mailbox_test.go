@@ -385,3 +385,57 @@ func TestCountMessages(t *testing.T) {
 		t.Errorf("unseen = %d, want 1", unseen)
 	}
 }
+
+func TestSanitizeMailMeta(t *testing.T) {
+	// \xff is invalid UTF-8
+	meta := &bongov1.MailMeta{
+		Subject:    "Hello \xff world",
+		From:       "user\xff@example.com",
+		MessageId:  "<msg\xff@example.com>",
+		InReplyTo:  "<reply\xff@example.com>",
+		References: "<ref\xff@example.com>",
+		To:         []string{"to\xff@example.com", "valid@example.com"},
+		Cc:         []string{"cc\xff@example.com"},
+	}
+
+	SanitizeMailMeta(meta)
+
+	if meta.Subject != "Hello \uFFFD world" {
+		t.Errorf("Subject = %q, want invalid bytes replaced", meta.Subject)
+	}
+	if meta.From != "user\uFFFD@example.com" {
+		t.Errorf("From = %q, want invalid bytes replaced", meta.From)
+	}
+	if meta.To[0] != "to\uFFFD@example.com" {
+		t.Errorf("To[0] = %q, want invalid bytes replaced", meta.To[0])
+	}
+	if meta.To[1] != "valid@example.com" {
+		t.Errorf("To[1] = %q, want valid string unchanged", meta.To[1])
+	}
+	if meta.Cc[0] != "cc\uFFFD@example.com" {
+		t.Errorf("Cc[0] = %q, want invalid bytes replaced", meta.Cc[0])
+	}
+
+	// Verify proto.Marshal succeeds after sanitization
+	if _, err := proto.Marshal(meta); err != nil {
+		t.Errorf("proto.Marshal failed after sanitization: %v", err)
+	}
+}
+
+func TestSanitizeMailMeta_ValidUTF8Unchanged(t *testing.T) {
+	meta := &bongov1.MailMeta{
+		Subject:   "Valid UTF-8 subject",
+		From:      "user@example.com",
+		MessageId: "<msg@example.com>",
+		To:        []string{"to@example.com"},
+	}
+
+	SanitizeMailMeta(meta)
+
+	if meta.Subject != "Valid UTF-8 subject" {
+		t.Errorf("Subject changed unexpectedly: %q", meta.Subject)
+	}
+	if meta.From != "user@example.com" {
+		t.Errorf("From changed unexpectedly: %q", meta.From)
+	}
+}

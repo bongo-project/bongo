@@ -298,6 +298,7 @@ func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io
 			Flags:          extraFlags,
 		}
 
+		store.SanitizeMailMeta(meta)
 		metaBytes, err := proto.Marshal(meta)
 		if err != nil {
 			return fmt.Errorf("marshaling mail meta: %w", err)

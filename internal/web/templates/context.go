@@ -2,6 +2,7 @@ package templates
 
 import (
 	"context"
+	"strings"
 
 	"github.com/bongo-go/bongo-go/internal/i18n"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
@@ -17,6 +18,17 @@ func localeFromCtx(ctx context.Context) string {
 // It is the primary helper used in .templ files: { t(ctx, "nav.inbox") }
 func t(ctx context.Context, messageID string) string {
 	return i18n.T(localeFromCtx(ctx), messageID)
+}
+
+// encMailbox encodes a mailbox name for use in URL paths by replacing
+// '/' with %2F so chi routes it as a single path segment.
+func encMailbox(name string) string {
+	return strings.ReplaceAll(name, "/", "%2F")
+}
+
+// mailboxURL returns a URL path for a mailbox with the name properly encoded.
+func mailboxURL(name string) string {
+	return "/mail/" + encMailbox(name)
 }
 
 // require2FAFromCtx returns true when the system requires 2FA and the

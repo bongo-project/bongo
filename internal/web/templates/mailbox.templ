@@ -45,60 +45,62 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 	if flash != "" {
 		@FlashMessage(flash, "success")
 	}
-	<div class="toolbar" role="toolbar" aria-label="Message actions">
-		<input type="checkbox" class="tool-check" title="Select all" aria-label="Select all messages" x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
-		<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
-		<button class="tool-btn" hx-get={ "/mail/" + mailbox } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
-		<div class="tool-spacer"></div>
-		<span class="page-info">
-			if page > 0 && totalPages > 0 {
-				{ fmt.Sprintf("%d of %d", page, totalPages) }
-			}
-		</span>
-		<span class="layout-toggle">
-			<button type="button" class="layout-opt" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title="List view">&#9776;</button>
-			<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title="Two-pane view">&#9707;</button>
-			<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title="Three-pane view">&#9701;</button>
-		</span>
-	</div>
-	<div class="mail-layout" x-bind:class="'layout-' + layoutMode">
-	<div class="message-list-pane">
-	<div id="message-list" x-data="{ ...messageSelect(), ...swipeHandler() }">
-		<div class="bulk-toolbar" x-show="count > 0" x-cloak="" aria-live="polite">
-			<span x-text="count + ' selected'"></span>
-			<button type="button" class="tool-btn" x-on:click="selectAll()">{ t(ctx, "mail.selectAll") }</button>
-			<button type="button" class="tool-btn" x-on:click="deselectAll()">{ t(ctx, "mail.deselect") }</button>
-			<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'mark-read')" }>{ t(ctx, "mail.markRead") }</button>
-			<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'mark-unread')" }>{ t(ctx, "mail.markUnread") }</button>
-			<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'flag')" }>{ t(ctx, "mail.flag") }</button>
-			<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'unflag')" }>{ t(ctx, "mail.unflag") }</button>
-			if mailbox == "Junk" {
-				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'not-spam')" }>{ t(ctx, "mail.notSpam") }</button>
-			} else {
-				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
-			}
-			<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
-		</div>
-		if len(messages) == 0 {
-			@EmptyState(t(ctx, "mail.noMessages"), t(ctx, "mail.emptyMailbox"))
-		} else {
-			<div class="msg-list" role="list" aria-label="Messages">
-				@MessageRows(messages, mailbox)
-				if infiniteScroll && page < totalPages {
-					@InfiniteScrollSentinel(mailbox, page+1)
+	<div x-data="messageList">
+		<div class="toolbar" role="toolbar" aria-label="Message actions">
+			<input type="checkbox" class="tool-check" title="Select all" aria-label="Select all messages" x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
+			<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
+			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
+			<div class="tool-spacer"></div>
+			<span class="page-info">
+				if page > 0 && totalPages > 0 {
+					{ fmt.Sprintf("%d of %d", page, totalPages) }
 				}
-			</div>
-			if !infiniteScroll {
-				@Pagination(page, totalPages, "/mail/"+mailbox)
-			}
-		}
-	</div>
-	</div>
-	<div class="reading-pane" id="reading-pane" x-show="layoutMode !== 'list'">
-		<div class="empty-state">
-			<p>{ t(ctx, "mail.selectToRead") }</p>
+			</span>
+			<span class="layout-toggle">
+				<button type="button" class="layout-opt" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title="List view">&#9776;</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title="Two-pane view">&#9707;</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title="Three-pane view">&#9701;</button>
+			</span>
 		</div>
-	</div>
+		<div class="mail-layout" x-bind:class="'layout-' + layoutMode">
+		<div class="message-list-pane">
+		<div id="message-list">
+			<div class="bulk-toolbar" x-show="count > 0" x-cloak="" aria-live="polite">
+				<span x-text="count + ' selected'"></span>
+				<button type="button" class="tool-btn" x-on:click="selectAll()">{ t(ctx, "mail.selectAll") }</button>
+				<button type="button" class="tool-btn" x-on:click="deselectAll()">{ t(ctx, "mail.deselect") }</button>
+				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'mark-read')" }>{ t(ctx, "mail.markRead") }</button>
+				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'mark-unread')" }>{ t(ctx, "mail.markUnread") }</button>
+				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'flag')" }>{ t(ctx, "mail.flag") }</button>
+				<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'unflag')" }>{ t(ctx, "mail.unflag") }</button>
+				if mailbox == "Junk" {
+					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'not-spam')" }>{ t(ctx, "mail.notSpam") }</button>
+				} else {
+					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
+				}
+				<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
+			</div>
+			if len(messages) == 0 {
+				@EmptyState(t(ctx, "mail.noMessages"), t(ctx, "mail.emptyMailbox"))
+			} else {
+				<div class="msg-list" role="list" aria-label="Messages">
+					@MessageRows(messages, mailbox)
+					if infiniteScroll && page < totalPages {
+						@InfiniteScrollSentinel(mailbox, page+1)
+					}
+				</div>
+				if !infiniteScroll {
+					@Pagination(page, totalPages, mailboxURL(mailbox))
+				}
+			}
+		</div>
+		</div>
+		<div class="reading-pane" id="reading-pane" x-show="layoutMode !== 'list'">
+			<div class="empty-state">
+				<p>{ t(ctx, "mail.selectToRead") }</p>
+			</div>
+		</div>
+		</div>
 	</div>
 	@ContextMenu()
 }
@@ -126,7 +128,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			<button
 				type="button"
 				class={ "msg-star", templ.KV("flagged", msg.Flagged) }
-				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", mailbox, msg.UID) }
+				hx-post={ fmt.Sprintf("/mail/%s/%d/flags", encMailbox(mailbox), msg.UID) }
 				hx-vals={ flagToggleVals(msg.Flagged) }
 				hx-swap="outerHTML"
 				if msg.Flagged {
@@ -143,10 +145,10 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			</button>
 			<span class="msg-from">
 				<a
-					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID)) }
+					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID)) }
 					data-message-link="true"
-					data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", mailbox, msg.UID) }
-					hx-get={ fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID) }
+					data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", encMailbox(mailbox), msg.UID) }
+					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
 					style="text-decoration:none;color:inherit"
@@ -156,10 +158,10 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			</span>
 			<span class="msg-subject">
 				<a
-					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID)) }
+					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID)) }
 					data-message-link="true"
-					data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", mailbox, msg.UID) }
-					hx-get={ fmt.Sprintf("/mail/%s/%d", mailbox, msg.UID) }
+					data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", encMailbox(mailbox), msg.UID) }
+					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
 					style="text-decoration:none;color:inherit"
@@ -172,7 +174,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				if msg.ThreadCount > 1 {
 					<span
 						class="msg-thread-count"
-						hx-get={ fmt.Sprintf("/mail/%s/thread/%s", mailbox, msg.ThreadRoot) }
+						hx-get={ fmt.Sprintf("/mail/%s/thread/%s", encMailbox(mailbox), msg.ThreadRoot) }
 						hx-target={ fmt.Sprintf("#thread-%s", msg.ThreadRoot) }
 						hx-swap="innerHTML"
 					>
@@ -195,7 +197,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 templ InfiniteScrollSentinel(mailbox string, nextPage int) {
 	<div
 		class="msg-row"
-		hx-get={ fmt.Sprintf("/mail/%s?page=%d&partial=1", mailbox, nextPage) }
+		hx-get={ fmt.Sprintf("/mail/%s?page=%d&partial=1", encMailbox(mailbox), nextPage) }
 		hx-trigger="revealed"
 		hx-swap="outerHTML"
 		hx-indicator=".load-more-spinner"
