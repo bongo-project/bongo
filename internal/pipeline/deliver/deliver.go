@@ -1,0 +1,223 @@
+// Package deliver implements the final pipeline stage that stores an inbound
+// message into Pebble via Raft after all scoring and filtering stages are done.
+package deliver
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/mail"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jhillyerd/enmime"
+	"google.golang.org/protobuf/proto"
+
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+
+	"github.com/bongo-go/bongo-go/internal/store"
+)
+
+// RaftApplier applies commands through Raft consensus.
+type RaftApplier interface {
+	ApplyCommand(cmd *bongov1.RaftCommand, timeout time.Duration) error
+}
+
+// RecipientResolver resolves an email address to a local user ID.
+type RecipientResolver interface {
+	ResolveRecipient(email string) (string, error)
+}
+
+// DeliverProcessor is the final pipeline stage. It receives a fully-scored
+// QueueEnvelope (with blob already written to the blob store), parses the raw
+// message from the io.Reader, constructs a MailMeta protobuf for each
+// recipient, and applies it to Pebble via Raft.
+type DeliverProcessor struct {
+	applier  RaftApplier
+	resolver RecipientResolver
+	logger   *slog.Logger
+}
+
+// NewDeliverProcessor constructs a DeliverProcessor with the required dependencies.
+func NewDeliverProcessor(applier RaftApplier, resolver RecipientResolver, logger *slog.Logger) *DeliverProcessor {
+	return &DeliverProcessor{
+		applier:  applier,
+		resolver: resolver,
+		logger:   logger,
+	}
+}
+
+// Name returns the stage identifier used by the pipeline runner.
+func (p *DeliverProcessor) Name() string {
+	return "deliver"
+}
+
+// Process stores the message into Pebble for each envelope recipient.
+// The blob is already written; this stage creates the MailMeta and applies it
+// via Raft. It returns a StageResult with action "pass" on success.
+func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope, msg io.Reader) (*bongov1.StageResult, error) {
+	started := time.Now()
+
+	raw, err := io.ReadAll(msg)
+	if err != nil {
+		return nil, fmt.Errorf("deliver: read message: %w", err)
+	}
+
+	// Parse the RFC 5322 message with enmime.
+	parsed, err := enmime.ReadEnvelope(strings.NewReader(string(raw)))
+	if err != nil {
+		p.logger.Warn("deliver: failed to parse message envelope, using minimal metadata", "error", err, "id", env.Id)
+		parsed = nil
+	}
+
+	// Extract headers.
+	subject := ""
+	messageID := ""
+	headerFrom := env.Sender
+	inReplyTo := ""
+	references := ""
+	var toAddrs []string
+	var ccAddrs []string
+
+	if parsed != nil {
+		subject = parsed.GetHeader("Subject")
+		messageID = parsed.GetHeader("Message-Id")
+		inReplyTo = parsed.GetHeader("In-Reply-To")
+		references = parsed.GetHeader("References")
+
+		if fromHeader := parsed.GetHeader("From"); fromHeader != "" {
+			headerFrom = fromHeader
+		}
+		if toHeader := parsed.GetHeader("To"); toHeader != "" {
+			for _, addr := range strings.Split(toHeader, ",") {
+				addr = strings.TrimSpace(addr)
+				if addr != "" {
+					toAddrs = append(toAddrs, addr)
+				}
+			}
+		}
+		if ccHeader := parsed.GetHeader("Cc"); ccHeader != "" {
+			for _, addr := range strings.Split(ccHeader, ",") {
+				addr = strings.TrimSpace(addr)
+				if addr != "" {
+					ccAddrs = append(ccAddrs, addr)
+				}
+			}
+		}
+	}
+
+	// Parse Date header; fall back to envelope received_at, then now.
+	receivedAt := time.Unix(env.ReceivedAt, 0)
+	if env.ReceivedAt == 0 {
+		receivedAt = time.Now()
+	}
+	if parsed != nil {
+		if dateHeader := parsed.GetHeader("Date"); dateHeader != "" {
+			if t, err2 := mail.ParseDate(dateHeader); err2 == nil {
+				receivedAt = t
+			}
+		}
+	}
+
+	// Collect attachment BlobRefs from inline parts.
+	var attachmentRefs []*bongov1.BlobRef
+	if parsed != nil {
+		for _, att := range parsed.Attachments {
+			// We do not re-store blobs here: the SMTP handler already stored
+			// the raw message. Attachment content is accessible via the raw
+			// message blob. We record metadata only (no hash available without
+			// re-storing). Future work can extract attachment hashes during
+			// ingest and carry them in the envelope.
+			attachmentRefs = append(attachmentRefs, &bongov1.BlobRef{
+				Size:        int64(len(att.Content)),
+				ContentType: att.ContentType,
+				Filename:    att.FileName,
+			})
+		}
+	}
+
+	// Determine spam score from envelope stage results.
+	spamScore := spamScoreFromStages(env.Stages)
+
+	// Deliver to each recipient.
+	for _, rcpt := range env.Recipients {
+		userID, err := p.resolver.ResolveRecipient(rcpt)
+		if err != nil {
+			p.logger.Warn("deliver: unknown recipient, skipping", "recipient", rcpt, "error", err, "id", env.Id)
+			continue
+		}
+
+		// Determine target mailbox: envelope override takes precedence.
+		targetMailbox := env.TargetMailbox
+
+		guid := uuid.New().String()
+
+		meta := &bongov1.MailMeta{
+			Guid:      guid,
+			MessageId: messageID,
+			Subject:   subject,
+			From:      headerFrom,
+			To:        toAddrs,
+			Cc:        ccAddrs,
+			ReceivedAt: receivedAt.Unix(),
+			RawMessage: &bongov1.BlobRef{
+				Hash:        env.BlobHash,
+				Size:        int64(len(raw)),
+				ContentType: "message/rfc822",
+			},
+			Attachments:   attachmentRefs,
+			InReplyTo:     inReplyTo,
+			References:    references,
+			SpamScore:     spamScore,
+			SpfResult:     env.SpfResult,
+			TargetMailbox: targetMailbox,
+		}
+
+		store.SanitizeMailMeta(meta)
+
+		metaBytes, err := proto.Marshal(meta)
+		if err != nil {
+			return nil, fmt.Errorf("deliver: marshal mail meta for %s: %w", rcpt, err)
+		}
+
+		cmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
+			Value: metaBytes,
+		}
+
+		if err := p.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			return nil, fmt.Errorf("deliver: apply raft command for %s: %w", rcpt, err)
+		}
+
+		p.logger.Info("deliver: mail stored",
+			"user", userID,
+			"guid", guid,
+			"subject", subject,
+			"id", env.Id,
+			"target_mailbox", targetMailbox,
+		)
+	}
+
+	durationMs := int32(time.Since(started).Milliseconds())
+	return &bongov1.StageResult{
+		Stage:       "deliver",
+		Backend:     "builtin",
+		Action:      "pass",
+		ProcessedAt: time.Now().Unix(),
+		DurationMs:  durationMs,
+	}, nil
+}
+
+// spamScoreFromStages extracts the spam score from the antispam stage result,
+// returning 0.0 if no antispam stage was found.
+func spamScoreFromStages(stages []*bongov1.StageResult) float32 {
+	for _, s := range stages {
+		if s.Stage == "antispam" {
+			return s.Score
+		}
+	}
+	return 0.0
+}
