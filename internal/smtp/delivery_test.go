@@ -3,14 +3,11 @@ package smtp
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
-
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -18,175 +15,142 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 }
 
-type mockApplier struct {
-	commands []*bongov1.RaftCommand
-}
-
-func (m *mockApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
-	m.commands = append(m.commands, cmd)
-	return nil
-}
-
-type mockResolver struct {
-	users map[string]string
-}
-
-func (m *mockResolver) ResolveRecipient(email string) (string, error) {
-	email = strings.TrimPrefix(email, "<")
-	email = strings.TrimSuffix(email, ">")
-	email = strings.TrimSpace(email)
-	if id, ok := m.users[email]; ok {
-		return id, nil
-	}
-	return "", &recipientNotFoundError{email}
-}
-
-type recipientNotFoundError struct {
-	email string
-}
-
-func (e *recipientNotFoundError) Error() string {
-	return "recipient not found: " + e.email
-}
-
-func TestDeliveryPipeline(t *testing.T) {
+func setupTestPipeline(t *testing.T) (*DeliveryPipeline, *store.BlobStore, *pipeline.SpoolStore) {
+	t.Helper()
 	dir := t.TempDir()
+
 	blobs, err := store.NewBlobStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	applier := &mockApplier{}
-	resolver := &mockResolver{
-		users: map[string]string{
-			"alice@example.com": "user-1",
-		},
+	spoolDir := filepath.Join(dir, "spool")
+	spool, err := pipeline.NewSpoolStore(spoolDir, testLogger())
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	pipeline := NewDeliveryPipeline(applier, blobs, resolver, testLogger())
+	dp := NewDeliveryPipeline(blobs, spool, testLogger())
+	return dp, blobs, spool
+}
+
+func TestDeliveryPipeline(t *testing.T) {
+	dp, blobs, spool := setupTestPipeline(t)
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: Hello\r\nMessage-Id: <test@example.com>\r\n\r\nHello Alice!\r\n"
 
-	err = pipeline.Deliver("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg))
+	err := dp.Deliver("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg))
 	if err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 
-	// Verify a command was applied.
-	if len(applier.commands) != 1 {
-		t.Fatalf("expected 1 command, got %d", len(applier.commands))
+	// Verify an envelope was enqueued in the spool incoming/ directory.
+	envs, err := spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 envelope in spool, got %d", len(envs))
 	}
 
-	cmd := applier.commands[0]
-	if cmd.Op != bongov1.Op_OP_PUT {
-		t.Errorf("op = %v, want OP_PUT", cmd.Op)
+	env := envs[0]
+	if env.Sender != "bob@example.com" {
+		t.Errorf("sender = %q, want %q", env.Sender, "bob@example.com")
 	}
-
-	// Parse the key.
-	key := string(cmd.Key)
-	if !strings.HasPrefix(key, "/user/user-1/mail/") {
-		t.Errorf("key = %q, want prefix /user/user-1/mail/", key)
+	if len(env.Recipients) != 1 || env.Recipients[0] != "alice@example.com" {
+		t.Errorf("recipients = %v, want [alice@example.com]", env.Recipients)
 	}
-
-	// Parse the protobuf value.
-	var meta bongov1.MailMeta
-	if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
-		t.Fatalf("unmarshal MailMeta: %v", err)
+	if env.BlobHash == "" {
+		t.Error("expected non-empty blob hash")
 	}
-
-	if meta.Subject != "Hello" {
-		t.Errorf("subject = %q, want %q", meta.Subject, "Hello")
-	}
-	if meta.From != "bob@example.com" {
-		t.Errorf("from = %q, want %q", meta.From, "bob@example.com")
-	}
-	if meta.RawMessage == nil || meta.RawMessage.Hash == "" {
-		t.Error("expected raw message blob ref")
+	if env.Id == "" {
+		t.Error("expected non-empty envelope ID")
 	}
 
 	// Verify blob was stored.
-	if !blobs.Exists(meta.RawMessage.Hash) {
+	if !blobs.Exists(env.BlobHash) {
 		t.Error("raw message blob not found in store")
 	}
 }
 
-func TestDeliveryWithAttachment(t *testing.T) {
-	dir := t.TempDir()
-	blobs, err := store.NewBlobStore(dir)
+func TestDeliveryWithSPF(t *testing.T) {
+	dp, _, spool := setupTestPipeline(t)
+
+	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SPF Test\r\n\r\nBody\r\n"
+
+	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("DeliverWithSPF: %v", err)
 	}
 
-	applier := &mockApplier{}
-	resolver := &mockResolver{
-		users: map[string]string{
-			"alice@example.com": "user-1",
-		},
+	envs, err := spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 envelope, got %d", len(envs))
 	}
 
-	pipeline := NewDeliveryPipeline(applier, blobs, resolver, testLogger())
+	env := envs[0]
+	if env.SpfResult != "pass" {
+		t.Errorf("spf_result = %q, want %q", env.SpfResult, "pass")
+	}
+}
 
-	// MIME message with attachment.
-	msg := "From: bob@example.com\r\n" +
-		"To: alice@example.com\r\n" +
-		"Subject: With Attachment\r\n" +
-		"MIME-Version: 1.0\r\n" +
-		"Content-Type: multipart/mixed; boundary=\"boundary\"\r\n" +
-		"\r\n" +
-		"--boundary\r\n" +
-		"Content-Type: text/plain\r\n" +
-		"\r\n" +
-		"See attached.\r\n" +
-		"--boundary\r\n" +
-		"Content-Type: application/pdf\r\n" +
-		"Content-Disposition: attachment; filename=\"doc.pdf\"\r\n" +
-		"Content-Transfer-Encoding: base64\r\n" +
-		"\r\n" +
-		"JVBER\r\n" +
-		"--boundary--\r\n"
+func TestDeliveryMultipleRecipients(t *testing.T) {
+	dp, _, spool := setupTestPipeline(t)
 
-	err = pipeline.Deliver("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg))
+	msg := "From: bob@example.com\r\nTo: alice@example.com, carol@example.com\r\nSubject: Multi\r\n\r\nBody\r\n"
+
+	err := dp.Deliver("bob@example.com", []string{"alice@example.com", "carol@example.com"}, strings.NewReader(msg))
 	if err != nil {
 		t.Fatalf("Deliver: %v", err)
 	}
 
-	if len(applier.commands) != 1 {
-		t.Fatalf("expected 1 command, got %d", len(applier.commands))
+	envs, err := spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 envelope (single message with multiple recipients), got %d", len(envs))
 	}
 
-	var meta bongov1.MailMeta
-	if err := proto.Unmarshal(applier.commands[0].Value, &meta); err != nil {
-		t.Fatal(err)
-	}
-
-	if len(meta.Attachments) != 1 {
-		t.Fatalf("expected 1 attachment, got %d", len(meta.Attachments))
-	}
-	if meta.Attachments[0].ContentType != "application/pdf" {
-		t.Errorf("attachment content type = %q, want %q", meta.Attachments[0].ContentType, "application/pdf")
+	env := envs[0]
+	if len(env.Recipients) != 2 {
+		t.Errorf("expected 2 recipients, got %d", len(env.Recipients))
 	}
 }
 
-func TestDeliveryUnknownRecipient(t *testing.T) {
+func TestDeliveryBlobStoreAdapter(t *testing.T) {
 	dir := t.TempDir()
 	blobs, err := store.NewBlobStore(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	applier := &mockApplier{}
-	resolver := &mockResolver{users: map[string]string{}}
-
-	pipeline := NewDeliveryPipeline(applier, blobs, resolver, testLogger())
-
-	msg := "From: bob@example.com\r\nTo: nobody@example.com\r\nSubject: Test\r\n\r\nBody\r\n"
-	err = pipeline.Deliver("bob@example.com", []string{"nobody@example.com"}, strings.NewReader(msg))
+	data := []byte("test blob content")
+	hash, err := blobs.Put(data)
 	if err != nil {
-		t.Fatalf("expected no error for unknown recipient, got: %v", err)
+		t.Fatal(err)
 	}
 
-	// No commands should be applied for unknown recipients.
-	if len(applier.commands) != 0 {
-		t.Errorf("expected 0 commands for unknown recipient, got %d", len(applier.commands))
+	adapter := &BlobStoreAdapter{Blobs: blobs}
+	rc, err := adapter.ReadBlob(hash)
+	if err != nil {
+		t.Fatalf("ReadBlob: %v", err)
+	}
+	defer rc.Close()
+
+	// Verify we can read the content back.
+	buf := make([]byte, len(data))
+	n, err := rc.Read(buf)
+	if err != nil && err.Error() != "EOF" {
+		t.Fatalf("reading blob: %v", err)
+	}
+	if n != len(data) {
+		t.Errorf("read %d bytes, want %d", n, len(data))
+	}
+	if string(buf[:n]) != string(data) {
+		t.Errorf("blob content = %q, want %q", string(buf[:n]), string(data))
 	}
 }
