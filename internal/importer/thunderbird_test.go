@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
@@ -75,7 +76,7 @@ func TestThunderbirdSourceMessages(t *testing.T) {
 		t.Fatalf("NewThunderbirdSource: %v", err)
 	}
 
-	msgCh, errCh := src.Messages("INBOX")
+	msgCh, errCh := src.Messages(context.Background(), "INBOX")
 	var count int
 	for range msgCh {
 		count++

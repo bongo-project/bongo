@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -170,7 +171,7 @@ func (s *ThunderbirdSource) Folders() ([]string, error) {
 	return names, nil
 }
 
-func (s *ThunderbirdSource) Messages(folder string) (<-chan Message, <-chan error) {
+func (s *ThunderbirdSource) Messages(ctx context.Context, folder string) (<-chan Message, <-chan error) {
 	path, ok := s.folders[folder]
 	if !ok {
 		msgCh := make(chan Message)
@@ -183,7 +184,7 @@ func (s *ThunderbirdSource) Messages(folder string) (<-chan Message, <-chan erro
 
 	// Delegate to MboxSource for actual parsing
 	mbox := NewMboxSource([]string{path}, folder)
-	return mbox.Messages(folder)
+	return mbox.Messages(ctx, folder)
 }
 
 func (s *ThunderbirdSource) Close() error { return nil }

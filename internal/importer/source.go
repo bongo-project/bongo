@@ -2,8 +2,12 @@ package importer
 
 import (
 	"bufio"
+	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,42 +33,66 @@ type MessageSource interface {
 	Folders() ([]string, error)
 	// Messages returns a channel of messages for a given folder.
 	// The channel is closed when all messages have been sent or ctx is cancelled.
-	Messages(folder string) (<-chan Message, <-chan error)
+	Messages(ctx context.Context, folder string) (<-chan Message, <-chan error)
 	// Close releases any resources.
 	Close() error
 }
 
 // IMAPSource reads messages from a remote IMAP server.
 type IMAPSource struct {
-	client *imapclient.Client
+	conn          net.Conn // retained for force-close
+	client        *imapclient.Client
+	logger        *slog.Logger
+	folderAttrs   map[string][]imap.MailboxAttr
+	cachedFolders []string // cached result from first Folders() call
 }
 
 // NewIMAPSource connects to an IMAP server and logs in.
-func NewIMAPSource(host string, port int, useTLS bool, user, pass string) (*IMAPSource, error) {
+func NewIMAPSource(host string, port int, useTLS bool, user, pass string, logger *slog.Logger) (*IMAPSource, error) {
 	addr := fmt.Sprintf("%s:%d", host, port)
-	var c *imapclient.Client
+
+	var conn net.Conn
 	var err error
 
 	if useTLS {
-		c, err = imapclient.DialTLS(addr, nil)
+		conn, err = tls.Dial("tcp", addr, &tls.Config{
+			NextProtos: []string{"imap"},
+		})
 	} else {
-		c, err = imapclient.DialInsecure(addr, nil)
+		conn, err = net.Dial("tcp", addr)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("connecting to %s: %w", addr, err)
 	}
 
+	c := imapclient.New(conn, nil)
+
 	loginCmd := c.Login(user, pass)
 	if err := loginCmd.Wait(); err != nil {
-		c.Close()
+		conn.Close()
 		return nil, fmt.Errorf("login failed: %w", err)
 	}
 
-	return &IMAPSource{client: c}, nil
+	return &IMAPSource{
+		conn:        conn,
+		client:      c,
+		logger:      logger,
+		folderAttrs: make(map[string][]imap.MailboxAttr),
+	}, nil
 }
 
 func (s *IMAPSource) Folders() ([]string, error) {
-	listCmd := s.client.List("", "*", nil)
+	// Return cached result if Folders() was already called (avoids issuing
+	// a second LIST command which can deadlock the go-imap client if a
+	// mailbox is selected).
+	if s.cachedFolders != nil {
+		return s.cachedFolders, nil
+	}
+
+	listOpts := &imap.ListOptions{
+		ReturnSpecialUse: true,
+	}
+	listCmd := s.client.List("", "*", listOpts)
 	var folders []string
 	for {
 		mbox := listCmd.Next()
@@ -72,14 +100,23 @@ func (s *IMAPSource) Folders() ([]string, error) {
 			break
 		}
 		folders = append(folders, mbox.Mailbox)
+		if len(mbox.Attrs) > 0 {
+			s.folderAttrs[mbox.Mailbox] = mbox.Attrs
+		}
 	}
 	if err := listCmd.Close(); err != nil {
 		return nil, fmt.Errorf("listing folders: %w", err)
 	}
+	s.cachedFolders = folders
 	return folders, nil
 }
 
-func (s *IMAPSource) Messages(folder string) (<-chan Message, <-chan error) {
+// FolderAttrs returns the special-use attributes collected during Folders().
+func (s *IMAPSource) FolderAttrs() map[string][]imap.MailboxAttr {
+	return s.folderAttrs
+}
+
+func (s *IMAPSource) Messages(ctx context.Context, folder string) (<-chan Message, <-chan error) {
 	msgCh := make(chan Message, 16)
 	errCh := make(chan error, 1)
 
@@ -93,6 +130,8 @@ func (s *IMAPSource) Messages(folder string) (<-chan Message, <-chan error) {
 			errCh <- fmt.Errorf("selecting %q: %w", folder, err)
 			return
 		}
+
+		s.logger.Info("folder selected", "folder", folder, "messages", selData.NumMessages)
 
 		if selData.NumMessages == 0 {
 			return
@@ -109,6 +148,30 @@ func (s *IMAPSource) Messages(folder string) (<-chan Message, <-chan error) {
 			BodySection:  []*imap.FetchItemBodySection{{Peek: true}},
 		}
 		fetchCmd := s.client.Fetch(seqSet, fetchOpts)
+
+		// drainFetch consumes remaining fetch data so the imap client's
+		// read goroutine doesn't block. Must be called before Close().
+		drainFetch := func() {
+			for {
+				msgData := fetchCmd.Next()
+				if msgData == nil {
+					break
+				}
+				// Consume all items to unblock the wire reader.
+				for {
+					item := msgData.Next()
+					if item == nil {
+						break
+					}
+					// Drain body literals to avoid blocking.
+					if bs, ok := item.(imapclient.FetchItemDataBodySection); ok {
+						io.Copy(io.Discard, bs.Literal)
+					}
+				}
+			}
+		}
+
+		cancelled := false
 		for {
 			msgData := fetchCmd.Next()
 			if msgData == nil {
@@ -134,6 +197,8 @@ func (s *IMAPSource) Messages(folder string) (<-chan Message, <-chan error) {
 					raw, readErr := io.ReadAll(data.Literal)
 					if readErr != nil {
 						errCh <- fmt.Errorf("reading message body: %w", readErr)
+						drainFetch()
+						fetchCmd.Close()
 						return
 					}
 					msg.Raw = raw
@@ -141,11 +206,23 @@ func (s *IMAPSource) Messages(folder string) (<-chan Message, <-chan error) {
 			}
 
 			if len(msg.Raw) > 0 {
-				msgCh <- msg
+				select {
+				case msgCh <- msg:
+				case <-ctx.Done():
+					cancelled = true
+				}
+			}
+
+			if cancelled {
+				break
 			}
 		}
 
-		if err := fetchCmd.Close(); err != nil {
+		if cancelled {
+			drainFetch()
+		}
+
+		if err := fetchCmd.Close(); err != nil && !cancelled {
 			errCh <- fmt.Errorf("fetching messages: %w", err)
 		}
 	}()
@@ -154,10 +231,24 @@ func (s *IMAPSource) Messages(folder string) (<-chan Message, <-chan error) {
 }
 
 func (s *IMAPSource) Close() error {
-	if s.client != nil {
-		return s.client.Close()
+	if s.client == nil {
+		return nil
 	}
-	return nil
+
+	// client.Close() can deadlock if the go-imap read goroutine is stuck
+	// mid-FETCH (blocked on an internal channel send). Use a timeout and
+	// force-close the TCP connection to unblock it.
+	done := make(chan error, 1)
+	go func() { done <- s.client.Close() }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		s.logger.Warn("imap client.Close() timed out, force-closing connection")
+		s.conn.Close()
+		return nil
+	}
 }
 
 // MboxSource reads messages from mbox files.
@@ -175,7 +266,7 @@ func (s *MboxSource) Folders() ([]string, error) {
 	return []string{s.folder}, nil
 }
 
-func (s *MboxSource) Messages(folder string) (<-chan Message, <-chan error) {
+func (s *MboxSource) Messages(ctx context.Context, folder string) (<-chan Message, <-chan error) {
 	msgCh := make(chan Message, 16)
 	errCh := make(chan error, 1)
 
@@ -196,8 +287,9 @@ func (s *MboxSource) Messages(folder string) (<-chan Message, <-chan error) {
 			var lines []string
 			msgIdx := 0
 
+			cancelled := false
 			flush := func() {
-				if len(lines) == 0 {
+				if len(lines) == 0 || cancelled {
 					return
 				}
 				raw := strings.Join(lines, "\r\n")
@@ -211,12 +303,20 @@ func (s *MboxSource) Messages(folder string) (<-chan Message, <-chan error) {
 				if t := parseDateHeader(raw); !t.IsZero() {
 					msg.InternalDate = t
 				}
-				msgCh <- msg
+				select {
+				case msgCh <- msg:
+				case <-ctx.Done():
+					cancelled = true
+					return
+				}
 				msgIdx++
 				lines = nil
 			}
 
 			for scanner.Scan() {
+				if cancelled {
+					break
+				}
 				line := scanner.Text()
 				if strings.HasPrefix(line, "From ") && !strings.HasPrefix(line, "From:") {
 					flush()
@@ -224,7 +324,9 @@ func (s *MboxSource) Messages(folder string) (<-chan Message, <-chan error) {
 				}
 				lines = append(lines, line)
 			}
-			flush()
+			if !cancelled {
+				flush()
+			}
 
 			f.Close()
 
@@ -270,7 +372,7 @@ func (s *MaildirSource) Folders() ([]string, error) {
 	return folders, nil
 }
 
-func (s *MaildirSource) Messages(folder string) (<-chan Message, <-chan error) {
+func (s *MaildirSource) Messages(ctx context.Context, folder string) (<-chan Message, <-chan error) {
 	msgCh := make(chan Message, 16)
 	errCh := make(chan error, 1)
 
@@ -333,7 +435,11 @@ func (s *MaildirSource) Messages(folder string) (<-chan Message, <-chan error) {
 					msg.InternalDate = t
 				}
 
-				msgCh <- msg
+				select {
+				case msgCh <- msg:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}
 	}()
@@ -384,7 +490,7 @@ func (s *EMLSource) Folders() ([]string, error) {
 	return []string{s.folder}, nil
 }
 
-func (s *EMLSource) Messages(folder string) (<-chan Message, <-chan error) {
+func (s *EMLSource) Messages(ctx context.Context, folder string) (<-chan Message, <-chan error) {
 	msgCh := make(chan Message, 16)
 	errCh := make(chan error, 1)
 
@@ -410,7 +516,11 @@ func (s *EMLSource) Messages(folder string) (<-chan Message, <-chan error) {
 				msg.InternalDate = t
 			}
 
-			msgCh <- msg
+			select {
+			case msgCh <- msg:
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 

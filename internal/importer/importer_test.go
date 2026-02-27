@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -107,7 +108,7 @@ This is the second message.
 		t.Errorf("Folders = %v, want [INBOX]", folders)
 	}
 
-	msgCh, errCh := src.Messages("INBOX")
+	msgCh, errCh := src.Messages(context.Background(), "INBOX")
 	var msgs []Message
 	for msg := range msgCh {
 		msgs = append(msgs, msg)
@@ -174,7 +175,7 @@ func TestMaildirSource(t *testing.T) {
 	}
 
 	// Read INBOX messages.
-	msgCh, errCh := src.Messages("INBOX")
+	msgCh, errCh := src.Messages(context.Background(), "INBOX")
 	var inboxMsgs []Message
 	for msg := range msgCh {
 		inboxMsgs = append(inboxMsgs, msg)
@@ -206,7 +207,7 @@ func TestEMLSource(t *testing.T) {
 		t.Errorf("Folders = %v, want [INBOX]", folders)
 	}
 
-	msgCh, errCh := src.Messages("INBOX")
+	msgCh, errCh := src.Messages(context.Background(), "INBOX")
 	var msgs []Message
 	for msg := range msgCh {
 		msgs = append(msgs, msg)

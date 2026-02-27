@@ -21,22 +21,25 @@ type Config struct {
 
 // Importer manages the import process from a MessageSource to a destination IMAP server.
 type Importer struct {
-	cfg       Config
-	state     *State
-	folderMap map[string]string
-	exclude   map[string]bool
-	dryRun    bool
-	logger    *slog.Logger
+	cfg              Config
+	state            *State
+	folderMap        map[string]string
+	exclude          map[string]bool
+	dryRun           bool
+	logger           *slog.Logger
+	lastFolders      map[string]bool // folders to import last (e.g. Gmail All Mail)
+	dedupByMessageID bool            // deduplicate by Message-ID (for Gmail All Mail)
 }
 
 // NewImporter creates a new Importer.
 func NewImporter(cfg Config, state *State, logger *slog.Logger) *Importer {
 	return &Importer{
-		cfg:       cfg,
-		state:     state,
-		folderMap: make(map[string]string),
-		exclude:   make(map[string]bool),
-		logger:    logger,
+		cfg:         cfg,
+		state:       state,
+		folderMap:   make(map[string]string),
+		exclude:     make(map[string]bool),
+		lastFolders: make(map[string]bool),
+		logger:      logger,
 	}
 }
 
@@ -57,11 +60,58 @@ func (im *Importer) SetDryRun(v bool) {
 	im.dryRun = v
 }
 
+// SetGmailAutoMap configures Gmail folder mappings from IMAP special-use
+// attributes. User-provided --folder-map and --exclude take precedence.
+func (im *Importer) SetGmailAutoMap(attrs map[string][]imap.MailboxAttr) {
+	autoMap, autoExclude, lastFolders := GmailFolderMap(attrs)
+
+	// Merge auto-mappings (user overrides take precedence).
+	for src, dst := range autoMap {
+		if _, userSet := im.folderMap[src]; !userSet {
+			im.folderMap[src] = dst
+			im.logger.Info("gmail auto-map", "source", src, "dest", dst)
+		}
+	}
+
+	// Merge auto-exclusions (user overrides take precedence).
+	for _, folder := range autoExclude {
+		if !im.exclude[folder] {
+			im.exclude[folder] = true
+			im.logger.Info("gmail auto-exclude", "folder", folder)
+		}
+	}
+
+	// Mark folders to import last.
+	for _, folder := range lastFolders {
+		im.lastFolders[folder] = true
+	}
+
+	im.dedupByMessageID = true
+}
+
 // Import runs the import process.
 func (im *Importer) Import(ctx context.Context, src MessageSource) error {
+	importStart := time.Now()
+
 	folders, err := src.Folders()
 	if err != nil {
 		return fmt.Errorf("listing source folders: %w", err)
+	}
+
+	im.logger.Info("source folders", "count", len(folders), "folders", folders)
+
+	// Reorder: move lastFolders to the end for dedup.
+	if len(im.lastFolders) > 0 {
+		var normal, last []string
+		for _, f := range folders {
+			if im.lastFolders[f] {
+				last = append(last, f)
+			} else {
+				normal = append(normal, f)
+			}
+		}
+		folders = append(normal, last...)
+		im.logger.Info("reordered folders for dedup", "last", last)
 	}
 
 	// Connect to destination.
@@ -74,7 +124,13 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 		defer dst.Close()
 	}
 
-	var totalImported, totalSkipped int
+	// Track Message-IDs for dedup when Gmail auto-map is active.
+	var messageIDs map[string]bool
+	if im.dedupByMessageID {
+		messageIDs = make(map[string]bool)
+	}
+
+	var totalImported, totalSkipped, totalDeduped int
 	folderCount := 0
 
 	for i, folder := range folders {
@@ -85,6 +141,11 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 		folderCount++
 
 		dstFolder := im.mapFolderName(folder)
+		isLastFolder := im.lastFolders[folder]
+
+		if folder != dstFolder {
+			im.logger.Info("folder mapping applied", "source", folder, "dest", dstFolder)
+		}
 
 		im.logger.Info("importing folder",
 			"num", fmt.Sprintf("%d/%d", i+1, len(folders)),
@@ -99,21 +160,42 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 			createCmd.Wait()
 		}
 
-		msgCh, errCh := src.Messages(folder)
+		folderStart := time.Now()
+		fetchCtx, fetchCancel := context.WithCancel(ctx)
+		msgCh, errCh := src.Messages(fetchCtx, folder)
 
-		imported, skipped := 0, 0
+		imported, skipped, deduped := 0, 0, 0
 		checkpoint := 0
 
+		var loopErr error
 		for msg := range msgCh {
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				loopErr = ctx.Err()
+				break
 			default:
+			}
+			if loopErr != nil {
+				break
 			}
 
 			if im.state.IsImported(folder, msg.SourceID) {
 				skipped++
 				continue
+			}
+
+			// Message-ID dedup: record for normal folders, check for lastFolders.
+			if messageIDs != nil {
+				msgID := extractMessageID(msg.Raw)
+				if msgID != "" {
+					if isLastFolder {
+						if messageIDs[msgID] {
+							deduped++
+							continue
+						}
+					}
+					messageIDs[msgID] = true
+				}
 			}
 
 			if im.dryRun {
@@ -134,14 +216,17 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 
 			appendCmd := dst.Append(dstFolder, int64(len(msg.Raw)), appendOpts)
 			if _, err := appendCmd.Write(msg.Raw); err != nil {
-				return fmt.Errorf("writing message to %s: %w", dstFolder, err)
+				loopErr = fmt.Errorf("writing message to %s: %w", dstFolder, err)
+				break
 			}
 			if err := appendCmd.Close(); err != nil {
-				return fmt.Errorf("closing append to %s: %w", dstFolder, err)
+				loopErr = fmt.Errorf("closing append to %s: %w", dstFolder, err)
+				break
 			}
 
 			if _, err := appendCmd.Wait(); err != nil {
-				return fmt.Errorf("appending to %s: %w", dstFolder, err)
+				loopErr = fmt.Errorf("appending to %s: %w", dstFolder, err)
+				break
 			}
 
 			im.state.MarkImported(folder, msg.SourceID)
@@ -160,8 +245,18 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 				im.logger.Info("progress",
 					"folder", dstFolder,
 					"imported", imported,
+					"size", len(msg.Raw),
 				)
 			}
+		}
+
+		// Cancel the fetch goroutine and drain remaining messages to avoid deadlock.
+		fetchCancel()
+		for range msgCh {
+		}
+
+		if loopErr != nil {
+			return loopErr
 		}
 
 		// Check for source errors.
@@ -178,21 +273,32 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 			im.logger.Warn("failed to save state", "error", err)
 		}
 
-		im.logger.Info("folder complete",
+		logAttrs := []any{
 			"folder", dstFolder,
 			"imported", imported,
 			"skipped", skipped,
-		)
+			"elapsed", FormatDuration(time.Since(folderStart)),
+		}
+		if deduped > 0 {
+			logAttrs = append(logAttrs, "deduped", deduped)
+		}
+		im.logger.Info("folder complete", logAttrs...)
 
 		totalImported += imported
 		totalSkipped += skipped
+		totalDeduped += deduped
 	}
 
-	im.logger.Info("import complete",
+	logAttrs := []any{
 		"folders", folderCount,
 		"imported", totalImported,
 		"skipped", totalSkipped,
-	)
+		"elapsed", FormatDuration(time.Since(importStart)),
+	}
+	if totalDeduped > 0 {
+		logAttrs = append(logAttrs, "deduped", totalDeduped)
+	}
+	im.logger.Info("import complete", logAttrs...)
 
 	return nil
 }
