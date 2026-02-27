@@ -348,14 +348,28 @@ func LoadFromFile(path string) (*Config, error) {
 
 // Load returns a fully-merged config using the precedence: CLI flags > env vars > file > defaults.
 // The viper instance should have CLI flags and file path already bound before calling this.
+// Deprecated: prefer LoadWithDiscovery which also returns the resolved config file path.
 func Load(v *viper.Viper) (*Config, error) {
+	cfg, _, err := LoadWithDiscovery(v)
+	return cfg, err
+}
+
+// LoadWithDiscovery runs config file discovery, loads the file if found, applies viper overrides,
+// and returns the config together with the resolved config file path (empty string means defaults only).
+func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 	cfg := Defaults()
 
-	// Read config file if set
-	if configFile := v.GetString("config"); configFile != "" {
+	// Run discovery: explicit flag > BONGO_CONFIG env > ./bongo.hcl > /etc/bongo/bongo.hcl
+	flagPath := v.GetString("config")
+	configFile, err := DiscoverConfigFile(flagPath)
+	if err != nil {
+		return nil, "", fmt.Errorf("discovering config file: %w", err)
+	}
+
+	if configFile != "" {
 		fileCfg, err := LoadFromFile(configFile)
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		cfg = fileCfg
 	}
@@ -382,5 +396,5 @@ func Load(v *viper.Viper) (*Config, error) {
 		cfg.Telemetry.Log.Level = v.GetString("log-level")
 	}
 
-	return cfg, nil
+	return cfg, configFile, nil
 }
