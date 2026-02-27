@@ -28,19 +28,23 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/auth"
-	"github.com/bongo-go/bongo-go/internal/i18n"
 	bongocaldav "github.com/bongo-go/bongo-go/internal/caldav"
 	bongocarddav "github.com/bongo-go/bongo-go/internal/carddav"
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-go/bongo-go/internal/i18n"
 	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
-	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
 	"github.com/bongo-go/bongo-go/internal/mail"
-	"github.com/bongo-go/bongo-go/internal/rules"
+	"github.com/bongo-go/bongo-go/internal/pipeline"
+	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
+	pipelinedeliver "github.com/bongo-go/bongo-go/internal/pipeline/deliver"
+	pipelinerules "github.com/bongo-go/bongo-go/internal/pipeline/rules"
+	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
 	"github.com/bongo-go/bongo-go/internal/queue"
+	"github.com/bongo-go/bongo-go/internal/rules"
 	"github.com/bongo-go/bongo-go/internal/security"
-	"github.com/bongo-go/bongo-go/internal/antispam"
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/handlers"
@@ -72,6 +76,10 @@ type Agent struct {
 	BlobSync    *cluster.BlobSyncer
 	logger      *slog.Logger
 
+	// Inbound pipeline subsystem.
+	Spool          *pipeline.SpoolStore
+	PipelineRunner *pipeline.Runner
+
 	// Queue subsystem.
 	QueueStore  *queue.QueueStore
 	QueueWorker *queue.Worker
@@ -84,12 +92,15 @@ type Agent struct {
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
 
-	httpServer        *http.Server
-	ready             atomic.Bool
+	httpServer         *http.Server
+	ready              atomic.Bool
 	blobSyncCancel     context.CancelFunc
 	queueWorkerCancel  context.CancelFunc
 	reminderCancel     context.CancelFunc
+	pipelineCancel     context.CancelFunc
 
+	// dataDir is the resolved data directory (tmp dir in dev mode).
+	dataDir string
 	// tmpDir is set in dev mode so we can clean up on shutdown.
 	tmpDir string
 }
@@ -156,6 +167,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		dataDir = tmp
 		logger.Info("dev mode: using temporary storage", "dir", tmp)
 	}
+
+	a.dataDir = dataDir
 
 	// Open Pebble store.
 	pebbleDir := filepath.Join(dataDir, "pebble")
@@ -605,17 +618,60 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Raft.FSM.SetNotifier(a)
 	}
 
-	// Start SMTP server.
+	// Set up inbound pipeline spool and Runner (before SMTP server so
+	// enqueued messages can be processed immediately).
 	var smtpPipeline *bongosmtp.DeliveryPipeline
-	if a.Config.SMTP.Enabled && a.Raft != nil {
-		isDev := a.Config.Server.Role == "dev"
-		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
-		smtpPipeline = bongosmtp.NewDeliveryPipeline(a, a.Blobs, resolver, a.logger)
-		smtpPipeline.SetScorer(antispam.NewScorer())
-		smtpPipeline.SetBayes(antispam.NewBayesFilter(a.Store, a))
-		if a.Rules != nil {
-			smtpPipeline.SetRuleStore(a.Rules)
+	if a.Raft != nil {
+		spoolDir := filepath.Join(a.dataDir, "spool")
+		spool, err := pipeline.NewSpoolStore(spoolDir, a.logger)
+		if err != nil {
+			return fmt.Errorf("creating spool store: %w", err)
 		}
+		a.Spool = spool
+
+		// Build pipeline processors: antispam -> rules -> deliver.
+		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
+		var stages []pipeline.Processor
+
+		// Antispam processor (built-in heuristic + optional Bayesian).
+		scorer := antispam.NewScorer()
+		bayesFilter := antispam.NewBayesFilter(a.Store, a)
+		antispamProc := pipelineantispam.NewBuiltinProcessor(scorer,
+			pipelineantispam.WithBayes(bayesFilter),
+			pipelineantispam.WithLogger(a.logger),
+		)
+		stages = append(stages, antispamProc)
+
+		// Rules processor (per-user filter rules).
+		if a.Rules != nil {
+			rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
+			stages = append(stages, rulesProc)
+		}
+
+		// Deliver processor (final stage: store to Pebble via Raft).
+		deliverProc := pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
+		stages = append(stages, deliverProc)
+
+		// Create blob reader adapter and start the Runner.
+		blobReader := &bongosmtp.BlobStoreAdapter{Blobs: a.Blobs}
+		a.PipelineRunner = pipeline.NewRunner(spool, blobReader, stages, a.logger)
+
+		pipelineCtx, pipelineCancel := context.WithCancel(ctx)
+		a.pipelineCancel = pipelineCancel
+		go func() {
+			if err := a.PipelineRunner.Run(pipelineCtx); err != nil {
+				a.logger.Error("pipeline runner error", "error", err)
+			}
+		}()
+		a.logger.Info("pipeline: runner started", "spool_dir", spoolDir)
+
+		// Create inbound delivery pipeline (stores blob + enqueues to spool).
+		smtpPipeline = bongosmtp.NewDeliveryPipeline(a.Blobs, spool, a.logger)
+	}
+
+	// Start SMTP server.
+	if a.Config.SMTP.Enabled && a.Raft != nil && smtpPipeline != nil {
+		isDev := a.Config.Server.Role == "dev"
 		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
 
 		// SPF checker for inbound mail.
@@ -651,7 +707,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Rate limiter.
 		a.RateLimiter = mail.NewRateLimiter(a.Config.SMTP.Limits.FloodThreshold)
 
-		// Bounce generator (uses inbound delivery pipeline).
+		// Bounce generator (uses inbound delivery pipeline for bounce messages).
 		if smtpPipeline != nil {
 			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger)
 		}
@@ -984,13 +1040,19 @@ func (a *Agent) Shutdown() error {
 		}
 	}
 
-	// 3.5. Queue worker.
+	// 3.5. Pipeline runner.
+	if a.pipelineCancel != nil {
+		a.pipelineCancel()
+		a.logger.Info("pipeline runner stopped")
+	}
+
+	// 3.6. Queue worker.
 	if a.queueWorkerCancel != nil {
 		a.queueWorkerCancel()
 		a.logger.Info("queue worker stopped")
 	}
 
-	// 3.6. Reminder checker.
+	// 3.7. Reminder checker.
 	if a.reminderCancel != nil {
 		a.reminderCancel()
 		a.logger.Info("reminder checker stopped")
