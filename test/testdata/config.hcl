@@ -102,6 +102,26 @@ antivirus {
   }
 }
 
+pipeline {
+  workers              = 5
+  poll_interval        = "1s"
+  error_retention      = "30d"
+  quarantine_retention = "30d"
+
+  stage "antispam" {
+    enabled = true
+    backend = "builtin"
+  }
+
+  stage "antivirus" {
+    enabled = false
+  }
+
+  stage "rules" {
+    enabled = true
+  }
+}
+
 telemetry {
   prometheus {
     enabled = true
