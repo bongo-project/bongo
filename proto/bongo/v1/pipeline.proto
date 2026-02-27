@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+message QueueEnvelope {
+  string id = 1;                         // Unique message ID (UUID)
+  string sender = 2;                     // Envelope sender
+  repeated string recipients = 3;        // Envelope recipients
+  int64 received_at = 4;                 // Unix timestamp
+  string source_ip = 5;                  // Connecting IP
+  string blob_hash = 6;                  // Reference to blob store content
+  uint32 flags = 7;                      // Processing flags (bitfield)
+  string spf_result = 8;                 // From SMTP session
+  repeated StageResult stages = 9;       // Results from completed stages
+  string current_stage = 10;             // Stage currently processing
+  string target_mailbox = 11;            // Override destination (set by rules/spam)
+}
+
+message StageResult {
+  string stage = 1;                      // "antispam", "antivirus", "rules"
+  string backend = 2;                    // "builtin", "rspamd", "clamav"
+  string action = 3;                     // "pass", "tag", "reject", "quarantine"
+  float score = 4;                       // 0.0-1.0 for spam, 0/1 for virus
+  repeated string reasons = 5;           // Human-readable reasons
+  int64 processed_at = 6;               // Unix timestamp
+  int32 duration_ms = 7;                // Processing time
+}
