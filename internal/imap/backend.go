@@ -99,12 +99,22 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 // Create creates a new mailbox.
 func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
-	return s.mailboxes.CreateMailbox(s.userID, mailbox)
+	if err := s.mailboxes.CreateMailbox(s.userID, mailbox); err != nil {
+		s.logger.Warn("imap: create mailbox failed", "mailbox", mailbox, "user", s.userID, "error", err)
+		return err
+	}
+	s.logger.Info("imap: mailbox created", "mailbox", mailbox, "user", s.userID)
+	return nil
 }
 
 // Delete deletes a mailbox.
 func (s *session) Delete(mailbox string) error {
-	return s.mailboxes.DeleteMailbox(s.userID, mailbox)
+	if err := s.mailboxes.DeleteMailbox(s.userID, mailbox); err != nil {
+		s.logger.Warn("imap: delete mailbox failed", "mailbox", mailbox, "user", s.userID, "error", err)
+		return err
+	}
+	s.logger.Info("imap: mailbox deleted", "mailbox", mailbox, "user", s.userID)
+	return nil
 }
 
 // Rename renames a mailbox.
@@ -237,6 +247,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	// Store raw message as a blob.
 	hash, size, err := s.blobs.PutReader(r)
 	if err != nil {
+		s.logger.Warn("imap: append blob store failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return nil, fmt.Errorf("storing message blob: %w", err)
 	}
 
@@ -295,28 +306,55 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	// Generate GUID and store MailMeta.
 	guid := fmt.Sprintf("%d-%s", time.Now().UnixNano(), hash[:8])
 
+	// Extract attachment blobs so the web UI can serve them individually.
+	var attachmentRefs []*bongov1.BlobRef
+	if envelope != nil {
+		for _, att := range envelope.Attachments {
+			if len(att.Content) == 0 {
+				continue
+			}
+			attHash, attErr := s.blobs.Put(att.Content)
+			if attErr != nil {
+				s.logger.Warn("imap: append attachment blob failed",
+					"mailbox", mailbox, "filename", att.FileName, "error", attErr)
+				continue
+			}
+			attachmentRefs = append(attachmentRefs, &bongov1.BlobRef{
+				Hash:        attHash,
+				Size:        int64(len(att.Content)),
+				ContentType: att.ContentType,
+				Filename:    att.FileName,
+			})
+		}
+	}
+
 	meta := &bongov1.MailMeta{
-		Guid:      guid,
-		MessageId: messageID,
-		Subject:   subject,
-		From:      headerFrom,
-		To:        toAddrs,
+		Guid:       guid,
+		MessageId:  messageID,
+		Subject:    subject,
+		From:       headerFrom,
+		To:         toAddrs,
 		ReceivedAt: internalDate.Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash:        hash,
 			Size:        size,
 			ContentType: "message/rfc822",
 		},
+		Attachments: attachmentRefs,
 	}
 	if err := s.mailboxes.StoreMailMeta(s.userID, meta); err != nil {
+		s.logger.Warn("imap: append store meta failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return nil, fmt.Errorf("storing mail meta: %w", err)
 	}
 
 	// Append to mailbox.
 	uid, err := s.mailboxes.AppendMessage(s.userID, mailbox, guid, flags, internalDate.Unix())
 	if err != nil {
+		s.logger.Warn("imap: append failed", "mailbox", mailbox, "user", s.userID, "guid", guid, "error", err)
 		return nil, fmt.Errorf("appending to mailbox: %w", err)
 	}
+
+	s.logger.Info("imap: mail stored", "mailbox", mailbox, "user", s.userID, "guid", guid, "subject", subject, "size", size)
 
 	// Index for search.
 	if s.search != nil {
