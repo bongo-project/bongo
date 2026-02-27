@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -36,16 +37,18 @@ type ComposeHandler struct {
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
 	prefs       *store.PreferenceStore
+	logger      *slog.Logger
 }
 
 // NewComposeHandler creates a ComposeHandler.
-func NewComposeHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes *store.MailboxStore, search *store.SearchManager, applier store.RaftApplier) *ComposeHandler {
+func NewComposeHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes *store.MailboxStore, search *store.SearchManager, applier store.RaftApplier, logger *slog.Logger) *ComposeHandler {
 	return &ComposeHandler{
 		pebble:    pebble,
 		blobs:     blobs,
 		mailboxes: mailboxes,
 		search:    search,
 		applier:   applier,
+		logger:    logger,
 	}
 }
 
@@ -374,6 +377,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false)
 	}
 
+	h.logger.Info("web: message sent", "from", email, "to_count", len(allRecipients), "subject", subject, "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
+
 	// Build flash message based on delivery type.
 	flash := "Message+sent"
 	if len(localRecipients) > 0 && len(externalRecipients) > 0 {
@@ -465,6 +470,8 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	_ = h.applier.ApplyCommand(mailMetaCmd, 5*time.Second)
 
 	h.deliverToMailbox(userID, "Drafts", guid, meta)
+
+	h.logger.Info("web: draft saved", "user", userID, "subject", subject)
 
 	http.Redirect(w, r, "/mail/Drafts?flash=Draft+saved", http.StatusSeeOther)
 }

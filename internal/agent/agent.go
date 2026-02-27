@@ -316,7 +316,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// CardDAV endpoint with basic auth.
 	if a.Contacts != nil {
-		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search)
+		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
 		carddavHandler := &carddavHTTPHandler{
 			auth:    a.Auth,
 			backend: carddavBackend,
@@ -329,7 +329,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// CalDAV endpoint with basic auth.
 	if a.Events != nil && a.Calendars != nil {
-		caldavBackend := bongocaldav.NewBackend(a.Events, a.Calendars)
+		caldavBackend := bongocaldav.NewBackend(a.Events, a.Calendars, a.logger)
 		caldavHandler := &caldavHTTPHandler{
 			auth:    a.Auth,
 			backend: caldavBackend,
@@ -408,7 +408,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/settings/security/password", securityH.ChangePassword)
 
 		if a.Mailboxes != nil {
-			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes)
+			mailH := handlers.NewMailHandler(a.Store, a.Blobs, a.Mailboxes, a.logger)
 			mailH.SetApplier(a)
 			if a.Threads != nil {
 				mailH.SetThreadStore(a.Threads)
@@ -437,7 +437,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		if a.Mailboxes != nil {
-			composeH := handlers.NewComposeHandler(a.Store, a.Blobs, a.Mailboxes, a.Search, a)
+			composeH := handlers.NewComposeHandler(a.Store, a.Blobs, a.Mailboxes, a.Search, a, a.logger)
 			if a.QueueStore != nil {
 				composeH.SetQueueStore(a.QueueStore)
 			}

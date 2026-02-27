@@ -119,7 +119,12 @@ func (s *session) Delete(mailbox string) error {
 
 // Rename renames a mailbox.
 func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) error {
-	return s.mailboxes.RenameMailbox(s.userID, mailbox, newName)
+	if err := s.mailboxes.RenameMailbox(s.userID, mailbox, newName); err != nil {
+		s.logger.Warn("imap: rename mailbox failed", "old_name", mailbox, "new_name", newName, "user", s.userID, "error", err)
+		return err
+	}
+	s.logger.Info("imap: mailbox renamed", "old_name", mailbox, "new_name", newName, "user", s.userID)
+	return nil
 }
 
 // Subscribe is a no-op (we don't track subscriptions).
@@ -440,6 +445,10 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 	expunged, err := s.mailboxes.Expunge(s.userID, s.selectedMailbox)
 	if err != nil {
 		return err
+	}
+
+	if len(expunged) > 0 {
+		s.logger.Info("imap: expunged", "mailbox", s.selectedMailbox, "user", s.userID, "count", len(expunged))
 	}
 
 	// Write expunge notifications (sequence numbers, from highest to lowest).
@@ -896,6 +905,7 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 
 	flagBits := imapFlagsToUint32(flags.Flags)
 
+	var updatedUIDs []uint32
 	for seqNum, msg := range msgs {
 		seqNum := uint32(seqNum + 1)
 		uid := imap.UID(msg.Uid)
@@ -916,6 +926,8 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 			return err
 		}
 
+		updatedUIDs = append(updatedUIDs, msg.Uid)
+
 		// Send updated flags back (unless SILENT).
 		if !flags.Silent {
 			updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, msg.Uid)
@@ -926,6 +938,10 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 				respW.Close()
 			}
 		}
+	}
+
+	if len(updatedUIDs) > 0 {
+		s.logger.Info("imap: flags updated", "mailbox", s.selectedMailbox, "user", s.userID, "op", flags.Op, "count", len(updatedUIDs))
 	}
 
 	return nil
@@ -944,6 +960,7 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	s.cachedMsgs = msgs
 
 	var srcUIDs, dstUIDs imap.UIDSet
+	var copyCount int
 
 	for seqNum, msg := range msgs {
 		seqNum := uint32(seqNum + 1)
@@ -958,6 +975,7 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 		}
 
 		srcUIDs.AddNum(uid)
+		copyCount++
 
 		// Get the UID assigned in the dest mailbox.
 		dstMeta, _ := s.mailboxes.GetMailbox(s.userID, dest)
@@ -970,6 +988,10 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	validity := uint32(0)
 	if dstMeta != nil {
 		validity = dstMeta.UidValidity
+	}
+
+	if copyCount > 0 {
+		s.logger.Info("imap: messages copied", "src", s.selectedMailbox, "dest", dest, "user", s.userID, "count", copyCount)
 	}
 
 	return &imap.CopyData{
@@ -1018,6 +1040,10 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 	validity := uint32(0)
 	if dstMeta != nil {
 		validity = dstMeta.UidValidity
+	}
+
+	if len(expungeSeqNums) > 0 {
+		s.logger.Info("imap: messages moved", "src", s.selectedMailbox, "dest", dest, "user", s.userID, "count", len(expungeSeqNums))
 	}
 
 	w.WriteCopyData(&imap.CopyData{

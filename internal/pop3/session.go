@@ -403,6 +403,7 @@ func (s *session) handleDele(args string) {
 	}
 
 	s.deleted[num] = true
+	s.logger.Debug("pop3: message marked for deletion", "user", s.userID, "msg_num", num)
 	s.respond("+OK message %d deleted", num)
 }
 
@@ -521,11 +522,17 @@ func (s *session) writeByteStuffed(data []byte, bodyLines int) {
 
 // applyDeletions moves deleted messages to Trash.
 func (s *session) applyDeletions() {
+	moved := 0
 	for num := range s.deleted {
 		msg := &s.messages[num-1]
 		if err := s.mailboxes.MoveMessage(s.userID, "INBOX", msg.uid, "Trash"); err != nil {
 			s.logger.Error("pop3: failed to move message to trash",
-				"uid", msg.uid, "guid", msg.guid, "error", err)
+				"uid", msg.uid, "guid", msg.guid, "user", s.userID, "error", err)
+		} else {
+			moved++
 		}
+	}
+	if moved > 0 {
+		s.logger.Info("pop3: messages moved to trash", "user", s.userID, "count", moved)
 	}
 }

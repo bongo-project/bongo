@@ -202,6 +202,8 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		h.updateProfileFields(userID, isAdmin, false, quotaStr, displayName)
 	}
 
+	h.logger.Info("admin: user created", "email", newEmail, "is_admin", isAdmin)
+
 	http.Redirect(w, r, "/admin/users?flash=User+created", http.StatusSeeOther)
 }
 
@@ -255,6 +257,8 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.logger.Info("admin: user updated", "user_id", userID, "display_name", displayName, "is_admin", isAdmin)
+
 	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+updated", userID), http.StatusSeeOther)
 }
 
@@ -287,6 +291,9 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 	if profile.Disabled {
 		action = "disabled"
 	}
+
+	h.logger.Info("admin: user toggled", "user_id", userID, "state", action)
+
 	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+%s", userID, action), http.StatusSeeOther)
 }
 
@@ -316,6 +323,8 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to update password", http.StatusInternalServerError)
 		return
 	}
+
+	h.logger.Info("admin: password reset", "user_id", userID, "email", profile.Email)
 
 	flash := fmt.Sprintf("Password+reset.+Temporary+password:+%s", tempPassword)
 	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther)
@@ -366,6 +375,8 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 			domain, time.Now().Unix(),
 		)
 	}
+
+	h.logger.Info("admin: domain created", "domain", domain, "has_mx", hasMX)
 
 	flash := fmt.Sprintf("Domain+%s+added", domain)
 	if hasMX {
@@ -432,6 +443,8 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 		h.metadata.System.DB().Exec("DELETE FROM domains WHERE name = ?", domain)
 	}
 
+	h.logger.Info("admin: domain deleted", "domain", domain)
+
 	http.Redirect(w, r, "/admin/domains?flash=Domain+deleted", http.StatusSeeOther)
 }
 
@@ -482,6 +495,8 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	h.logger.Info("admin: alias created", "alias", address, "target", targetUser)
+
 	http.Redirect(w, r, "/admin/aliases?flash=Alias+created", http.StatusSeeOther)
 }
 
@@ -502,6 +517,8 @@ func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 	if h.metadata != nil && h.metadata.System != nil {
 		h.metadata.System.DB().Exec("DELETE FROM aliases WHERE address = ?", address)
 	}
+
+	h.logger.Info("admin: alias deleted", "alias", address)
 
 	http.Redirect(w, r, "/admin/aliases?flash=Alias+deleted", http.StatusSeeOther)
 }
@@ -670,6 +687,8 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
+
+	h.logger.Info("admin: 2FA policy updated", "enabled", enabled)
 
 	flash := "2FA+policy+updated"
 	http.Redirect(w, r, "/admin?flash="+flash, http.StatusSeeOther)
