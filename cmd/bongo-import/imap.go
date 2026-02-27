@@ -20,6 +20,7 @@ var (
 	srcPass    string
 	folderMaps []string
 	excludes   []string
+	gmailMode  bool
 )
 
 var imapCmd = &cobra.Command{
@@ -37,7 +38,7 @@ var imapCmd = &cobra.Command{
 		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 		logger.Info("connecting to source", "host", srcHost, "port", srcPort)
-		src, err := importer.NewIMAPSource(srcHost, srcPort, srcTLS, srcUser, srcPass)
+		src, err := importer.NewIMAPSource(srcHost, srcPort, srcTLS, srcUser, srcPass, logger)
 		if err != nil {
 			return fmt.Errorf("connecting to source: %w", err)
 		}
@@ -58,7 +59,7 @@ var imapCmd = &cobra.Command{
 
 		im.SetDryRun(dryRun)
 
-		// Parse folder mappings.
+		// Parse folder mappings (user-provided take precedence over auto-map).
 		if len(folderMaps) > 0 {
 			m := make(map[string]string)
 			for _, mapping := range folderMaps {
@@ -71,6 +72,21 @@ var imapCmd = &cobra.Command{
 		}
 
 		im.SetExclude(excludes)
+
+		// Auto-detect Gmail or use --gmail flag.
+		isGmail := gmailMode ||
+			strings.Contains(strings.ToLower(srcHost), "gmail.com") ||
+			strings.Contains(strings.ToLower(srcHost), "googlemail.com")
+
+		if isGmail {
+			logger.Info("gmail mode enabled", "host", srcHost, "auto_detected", !gmailMode)
+
+			// Folders() must be called first to populate special-use attrs.
+			if _, err := src.Folders(); err != nil {
+				return fmt.Errorf("listing folders for gmail detection: %w", err)
+			}
+			im.SetGmailAutoMap(src.FolderAttrs())
+		}
 
 		return im.Import(context.Background(), src)
 	},
@@ -85,4 +101,5 @@ func init() {
 	f.StringVar(&srcPass, "src-pass", "", "Source password (required)")
 	f.StringArrayVar(&folderMaps, "folder-map", nil, `Folder name mapping (e.g. "Gmail/Sent Mail=Sent")`)
 	f.StringArrayVar(&excludes, "exclude", nil, `Folders to exclude (e.g. "[Gmail]/All Mail")`)
+	f.BoolVar(&gmailMode, "gmail", false, "Force Gmail mode (auto-detected for gmail.com/googlemail.com hosts)")
 }
