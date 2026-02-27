@@ -38,9 +38,9 @@ type MessageDetail struct {
 templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 	<div class="toolbar" role="toolbar" aria-label="Thread actions">
 		<a
-			href={ templ.SafeURL("/mail/" + msg.Mailbox) }
+			href={ templ.SafeURL(mailboxURL(msg.Mailbox)) }
 			class="tool-btn"
-			hx-get={ "/mail/" + msg.Mailbox }
+			hx-get={ mailboxURL(msg.Mailbox) }
 			hx-target="#main-content"
 			hx-push-url="true"
 			aria-label="Back to Inbox"
@@ -53,18 +53,18 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 		<div class="tool-separator" aria-hidden="true"></div>
 		<button
 			class="tool-btn danger"
-			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", msg.Mailbox, msg.UID) }
+			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
 			hx-target="#main-content"
 			hx-confirm="Delete this message?"
 		>
 			{ t(ctx, "mail.delete") }
 		</button>
-		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.export") }</a>
+		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(msg.Mailbox), msg.UID)) } class="tool-btn">{ t(ctx, "mail.export") }</a>
 		<button type="button" class="tool-btn" onclick="window.print()">{ t(ctx, "mail.print") }</button>
 		<select
 			class="move-select"
 			name="destination"
-			hx-post={ fmt.Sprintf("/mail/%s/%d/move", msg.Mailbox, msg.UID) }
+			hx-post={ fmt.Sprintf("/mail/%s/%d/move", encMailbox(msg.Mailbox), msg.UID) }
 			hx-target="#main-content"
 			hx-trigger="change"
 			aria-label="Move to folder"
@@ -89,7 +89,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 						<form method="post" action="/contacts/quick-add" style="display:inline;margin:0">
 							<input type="hidden" name="from_email" value={ msg.From }/>
 							<input type="hidden" name="from_name" value={ msg.From }/>
-							<input type="hidden" name="return_to" value={ fmt.Sprintf("/mail/%s/%d", msg.Mailbox, msg.UID) }/>
+							<input type="hidden" name="return_to" value={ fmt.Sprintf("/mail/%s/%d", encMailbox(msg.Mailbox), msg.UID) }/>
 							<button type="submit" class="msg-action-btn">{ t(ctx, "mail.addToContacts") }</button>
 						</form>
 					}
@@ -145,7 +145,7 @@ templ MessagePaneContent(msg MessageDetail) {
 		<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.forward") }</a>
 		<button
 			class="tool-btn danger"
-			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", msg.Mailbox, msg.UID) }
+			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
 			hx-target="#main-content"
 			hx-confirm="Delete this message?"
 		>

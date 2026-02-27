@@ -107,23 +107,23 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 
 templ MailboxTreeNode(mb MailboxInfo, selected string) {
 	if mb.HasChildren {
-		<li class="nav-item" x-data="{ expanded: true }">
+		<li class="nav-item nav-has-children">
 			<div class="nav-folder-row">
 				<button
 					type="button"
 					class="folder-toggle"
-					x-on:click.stop="expanded = !expanded"
-					x-bind:aria-expanded="expanded.toString()"
+					onclick="event.stopPropagation(); var li = this.closest('.nav-has-children'); li.classList.toggle('collapsed'); this.setAttribute('aria-expanded', !li.classList.contains('collapsed'));"
+					aria-expanded="true"
 					aria-label="Toggle subfolder"
 				>
-					<span class="toggle-icon" x-bind:class="expanded ? 'expanded' : ''">&#9654;</span>
+					<span class="toggle-icon expanded">&#9654;</span>
 				</button>
 				<a
-					href={ templ.SafeURL("/mail/" + mb.Name) }
+					href={ templ.SafeURL(mailboxURL(mb.Name)) }
 					if mb.Name == selected {
 						class="active"
 					}
-					hx-get={ "/mail/" + mb.Name }
+					hx-get={ mailboxURL(mb.Name) }
 					hx-target="#main-content"
 					hx-push-url="true"
 					data-folder={ mb.Name }
@@ -135,7 +135,7 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 					}
 				</a>
 			</div>
-			<ul class="nav-list nav-children" x-show="expanded" x-transition>
+			<ul class="nav-list nav-children">
 				for _, child := range mb.Children {
 					@MailboxTreeNode(child, selected)
 				}
@@ -144,11 +144,11 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 	} else {
 		<li class="nav-item">
 			<a
-				href={ templ.SafeURL("/mail/" + mb.Name) }
+				href={ templ.SafeURL(mailboxURL(mb.Name)) }
 				if mb.Name == selected {
 					class="active"
 				}
-				hx-get={ "/mail/" + mb.Name }
+				hx-get={ mailboxURL(mb.Name) }
 				hx-target="#main-content"
 				hx-push-url="true"
 				data-folder={ mb.Name }

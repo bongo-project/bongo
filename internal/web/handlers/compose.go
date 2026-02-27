@@ -81,7 +81,7 @@ func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 // Reply renders the reply form with pre-filled fields.
 func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	msg, _ := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
@@ -139,7 +139,7 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 // Forward renders the forward form.
 func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	msg, _ := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))

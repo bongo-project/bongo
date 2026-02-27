@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -80,7 +81,7 @@ func (h *MailHandler) SetBayes(bayes *antispam.BayesFilter) {
 // ListMessages renders the message list for a mailbox.
 func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	if mailbox == "" {
 		mailbox = "INBOX"
 	}
@@ -195,7 +196,7 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 // ShowMessage renders a single message detail view.
 func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 	if err != nil {
 		http.Error(w, "Invalid UID", http.StatusBadRequest)
@@ -314,7 +315,7 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 // BulkAction handles bulk operations on selected messages.
 func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Invalid form", http.StatusBadRequest)
@@ -370,7 +371,7 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 // ShowThread returns an HTMX partial with child messages for thread expansion.
 func (h *MailHandler) ShowThread(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	rootGUID := chi.URLParam(r, "rootGUID")
 
 	if h.threads == nil {
@@ -600,7 +601,7 @@ func splitMbox(data []byte) [][]byte {
 // ExportEML downloads a message as a .eml file (raw RFC 5322).
 func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 	if err != nil {
 		http.Error(w, "Invalid UID", http.StatusBadRequest)
@@ -696,7 +697,7 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 // ToggleFlags handles flag toggling via HTMX.
 func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	action := r.FormValue("action")
@@ -738,7 +739,7 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 // MoveMessage moves a message to another mailbox.
 func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 	dest := r.FormValue("destination")
 	if dest == "" {
@@ -759,7 +760,7 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 // DeleteMessage marks a message as deleted and expunges.
 func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted)
@@ -928,6 +929,16 @@ func matchesSelector(n *html.Node, selector string) bool {
 	return false
 }
 
+// decodeMailbox URL-decodes a mailbox name from a chi URL parameter.
+// Sidebar links encode '/' as %2F so nested mailboxes like INBOX/Important
+// are routed as a single path segment.
+func decodeMailbox(encoded string) string {
+	if decoded, err := url.PathUnescape(encoded); err == nil {
+		return decoded
+	}
+	return encoded
+}
+
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {
 	key := fmt.Sprintf("/user/%s/mail/%s", userID, guid)
 	data, err := h.pebble.Get([]byte(key))
@@ -1001,7 +1012,7 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 // MarkSpam moves a message to Junk, updates spam score to 1.0, and trains Bayes.
 func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	// Get the mail GUID from the mailbox message.
@@ -1036,7 +1047,7 @@ func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
 // MarkNotSpam moves a message to INBOX, updates spam score to 0.0, and trains Bayes.
 func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := chi.URLParam(r, "mailbox")
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))

@@ -602,8 +602,15 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 .toggle-icon.expanded {
   transform: rotate(90deg);
 }
+.nav-has-children.collapsed > .nav-children {
+  display: none;
+}
+.nav-has-children.collapsed .toggle-icon {
+  transform: rotate(0deg);
+}
 .nav-children {
   padding-left: 16px;
+  transition: opacity 0.15s ease;
 }
 
 /* Admin sidebar */

@@ -29,8 +29,8 @@ templ SearchPage(query string, results []SearchResult, page, totalPages int) {
 			for _, r := range results {
 				<a
 					class="search-result"
-					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", r.Mailbox, r.UID)) }
-					hx-get={ fmt.Sprintf("/mail/%s/%d", r.Mailbox, r.UID) }
+					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(r.Mailbox), r.UID)) }
+					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(r.Mailbox), r.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
 					tabindex="0"

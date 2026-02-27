@@ -223,6 +223,151 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Combined component for message list: merges messageSelect + swipeHandler.
+  // Used as x-data="messageList" (Alpine.data registered names cannot be
+  // called as functions inside inline x-data expressions).
+  Alpine.data('messageList', () => ({
+    // messageSelect state
+    selected: {},
+    count: 0,
+    lastClicked: null,
+
+    _updateCount() {
+      this.count = Object.keys(this.selected).length;
+    },
+
+    toggle(uid, event) {
+      if (event && event.shiftKey && this.lastClicked !== null) {
+        const rows = Array.from(document.querySelectorAll('.msg-list .msg-row'));
+        const uids = rows.map(r => parseInt(r.dataset.uid));
+        const start = uids.indexOf(this.lastClicked);
+        const end = uids.indexOf(uid);
+        const [lo, hi] = start < end ? [start, end] : [end, start];
+        for (let i = lo; i <= hi; i++) {
+          this.selected[uids[i]] = true;
+        }
+      } else {
+        if (this.selected[uid]) {
+          delete this.selected[uid];
+        } else {
+          this.selected[uid] = true;
+        }
+      }
+      this.lastClicked = uid;
+      this._updateCount();
+    },
+
+    selectAll() {
+      const rows = document.querySelectorAll('.msg-list .msg-row');
+      rows.forEach(r => { this.selected[parseInt(r.dataset.uid)] = true; });
+      this._updateCount();
+    },
+
+    deselectAll() {
+      this.selected = {};
+      this.count = 0;
+    },
+
+    isSelected(uid) {
+      return !!this.selected[uid];
+    },
+
+    async bulkAction(mailbox, action) {
+      if (this.count === 0) return;
+      const params = new URLSearchParams();
+      params.set('action', action);
+      for (const uid of Object.keys(this.selected)) {
+        params.append('uids', uid);
+      }
+      try {
+        const resp = await fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+          method: 'POST',
+          body: params
+        });
+        if (resp.ok) {
+          this.selected = {};
+          this.count = 0;
+          this.lastClicked = null;
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        }
+      } catch (e) {
+        console.error('Bulk action failed:', e);
+      }
+    },
+
+    // swipeHandler state
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    swiping: false,
+    swipeTarget: null,
+
+    start(event, uid) {
+      if (!window.matchMedia('(pointer: coarse)').matches) return;
+      var touch = event.touches[0];
+      this.startX = touch.clientX;
+      this.startY = touch.clientY;
+      this.currentX = 0;
+      this.swiping = false;
+      this.swipeTarget = event.currentTarget;
+    },
+
+    move(event) {
+      if (!this.swipeTarget) return;
+      var touch = event.touches[0];
+      var deltaX = touch.clientX - this.startX;
+      var deltaY = touch.clientY - this.startY;
+      if (Math.abs(deltaX) > 20 && Math.abs(deltaY) < 30) {
+        this.swiping = true;
+        this.currentX = deltaX;
+        this.swipeTarget.style.transform = 'translateX(' + deltaX + 'px)';
+        this.swipeTarget.style.transition = 'none';
+      }
+    },
+
+    end(event, uid, mailbox) {
+      if (!this.swipeTarget || !this.swiping) {
+        this._resetSwipe();
+        return;
+      }
+      var deltaX = this.currentX;
+      if (deltaX < -60) {
+        this.swipeTarget.style.transform = 'translateX(-100%)';
+        this.swipeTarget.style.transition = 'transform 200ms ease';
+        var params = new URLSearchParams();
+        params.set('destination', 'Trash');
+        fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/move', {
+          method: 'POST', body: params
+        }).then(function() {
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        }).catch(function() {});
+      } else if (deltaX > 60) {
+        this.swipeTarget.style.transform = 'translateX(100%)';
+        this.swipeTarget.style.transition = 'transform 200ms ease';
+        var params2 = new URLSearchParams();
+        params2.set('action', 'delete');
+        params2.append('uids', uid.toString());
+        fetch('/mail/' + encodeURIComponent(mailbox) + '/bulk', {
+          method: 'POST', body: params2
+        }).then(function() {
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        }).catch(function() {});
+      } else {
+        this._resetSwipe();
+      }
+    },
+
+    _resetSwipe() {
+      if (this.swipeTarget) {
+        this.swipeTarget.style.transform = '';
+        this.swipeTarget.style.transition = 'transform 200ms ease';
+      }
+      this.swipeTarget = null;
+      this.swiping = false;
+      this.currentX = 0;
+    }
+  }));
+
   // Desktop notifications + SSE
   Alpine.data('notifications', () => ({
     permission: typeof Notification !== 'undefined' ? Notification.permission : 'denied',
@@ -869,10 +1014,11 @@ document.addEventListener('click', function(e) {
 
 // Sidebar active state: highlight the nav link matching the current URL.
 function updateSidebarActive() {
-  var path = window.location.pathname;
+  var path = decodeURIComponent(window.location.pathname);
   document.querySelectorAll('.nav-list a, .nav-item a, a.admin-nav-item').forEach(function(a) {
     var href = a.getAttribute('href');
     if (!href) return;
+    try { href = decodeURIComponent(href); } catch(e) {}
     // Exact match or prefix match for mail folders (e.g. /mail/INBOX matches /mail/INBOX/123)
     var isActive = (path === href) || (href.length > 1 && path.startsWith(href + '/'));
     a.classList.toggle('active', isActive);

@@ -28,6 +28,6 @@ templ ImportResult(imported int, failed int, mailbox string) {
 			{ fmt.Sprintf("%d messages failed to import.", failed) }
 		}
 	</p>
-	<a href={ templ.SafeURL("/mail/" + mailbox) } role="button">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
+	<a href={ templ.SafeURL(mailboxURL(mailbox)) } role="button">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
 	<a href="/import" role="button" class="outline secondary" style="margin-left:0.5rem">{ t(ctx, "import.importMore") }</a>
 }
