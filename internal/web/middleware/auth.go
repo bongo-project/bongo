@@ -140,6 +140,14 @@ func UserFromContext(ctx context.Context) (userID, email string) {
 	return
 }
 
+// WithUserContext injects userID and email into a context for use in tests.
+// Production code should use the RequireAuth middleware instead.
+func WithUserContext(ctx context.Context, userID, email string) context.Context {
+	ctx = context.WithValue(ctx, userIDKey, userID)
+	ctx = context.WithValue(ctx, emailKey, email)
+	return ctx
+}
+
 func validateCookie(secret []byte, value string) (*SessionData, error) {
 	// Split "payload.signature"
 	var payloadB64, sigB64 string

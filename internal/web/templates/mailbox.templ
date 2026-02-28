@@ -50,6 +50,29 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			<input type="checkbox" class="tool-check" title="Select all" aria-label="Select all messages" x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
 			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
+			<div
+				x-data={ fmt.Sprintf("spamScan(%q)", mailbox) }
+				style="display:inline-flex;align-items:center;gap:0.5rem"
+			>
+				<button
+					type="button"
+					class="tool-btn"
+					x-on:click="startScan()"
+					x-bind:disabled="scanning"
+					x-text="scanning ? 'Scanning...' : 'Scan for spam'"
+					title="Scan mailbox for spam"
+				></button>
+				<span x-show="scanning" x-cloak style="font-size:0.82rem;color:var(--text-muted)">
+					<span x-text="progress.total > 0 ? progress.scanned + '/' + progress.total : ''"></span>
+					<span x-show="progress.spam > 0" x-text="' (' + progress.spam + ' spam)'"></span>
+				</span>
+				<span
+					x-show="result !== null && !scanning"
+					x-cloak
+					x-text="result"
+					style="font-size:0.82rem;color:var(--text-muted)"
+				></span>
+			</div>
 			<div class="tool-spacer"></div>
 			<span class="page-info">
 				if page > 0 && totalPages > 0 {

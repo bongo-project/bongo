@@ -518,6 +518,77 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Spam scan progress component: starts a background scan and streams progress via SSE.
+  Alpine.data('spamScan', (mailbox) => ({
+    scanning: false,
+    progress: { scanned: 0, spam: 0, total: 0, done: false },
+    result: null,
+    evtSource: null,
+
+    async startScan() {
+      if (this.scanning) return;
+      this.scanning = true;
+      this.result = null;
+      this.progress = { scanned: 0, spam: 0, total: 0, done: false };
+
+      try {
+        const resp = await fetch('/api/mailbox/' + encodeURIComponent(mailbox) + '/scan', {
+          method: 'POST'
+        });
+        if (resp.status === 409) {
+          // Scan already running — just connect to the progress stream.
+        } else if (!resp.ok) {
+          this.scanning = false;
+          this.result = 'Scan failed: ' + resp.status;
+          return;
+        }
+      } catch (e) {
+        this.scanning = false;
+        this.result = 'Scan error: ' + e.message;
+        return;
+      }
+
+      this.evtSource = new EventSource('/api/mailbox/' + encodeURIComponent(mailbox) + '/scan/progress');
+      this.evtSource.onmessage = (e) => {
+        try {
+          const p = JSON.parse(e.data);
+          this.progress = p;
+          if (p.done) {
+            this.scanning = false;
+            this.result = p.scanned + ' scanned, ' + p.spam + ' moved to Junk';
+            this.evtSource.close();
+            this.evtSource = null;
+          }
+        } catch (err) { /* ignore */ }
+      };
+      this.evtSource.onerror = () => {
+        this.scanning = false;
+        if (this.evtSource) {
+          this.evtSource.close();
+          this.evtSource = null;
+        }
+      };
+    },
+
+    cancelScan() {
+      if (!this.scanning) return;
+      fetch('/api/mailbox/' + encodeURIComponent(mailbox) + '/scan', { method: 'DELETE' }).catch(() => {});
+      if (this.evtSource) {
+        this.evtSource.close();
+        this.evtSource = null;
+      }
+      this.scanning = false;
+      this.result = 'Scan cancelled';
+    },
+
+    destroy() {
+      if (this.evtSource) {
+        this.evtSource.close();
+        this.evtSource = null;
+      }
+    }
+  }));
+
   // Context menu for message rows
   Alpine.data('contextMenu', () => ({
     visible: false,
