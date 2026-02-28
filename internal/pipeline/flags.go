@@ -15,6 +15,9 @@ const (
 	MsgFlagVirus uint32 = 1 << 4
 	// MsgFlagQuarantined indicates the message has been quarantined.
 	MsgFlagQuarantined uint32 = 1 << 5
+	// MsgFlagDelivered indicates the message has been successfully delivered.
+	// Used to prevent duplicate delivery on crash recovery.
+	MsgFlagDelivered uint32 = 1 << 6
 )
 
 // HasFlag reports whether flags contains the given flag bit.

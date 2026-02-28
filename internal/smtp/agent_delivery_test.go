@@ -126,7 +126,7 @@ func TestAgentDeliveryWithSPF(t *testing.T) {
 	pipeline := NewAgentDeliveryPipeline(client, testLogger())
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SPF Test\r\n\r\nBody\r\n"
-	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass")
+	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass", "203.0.113.5")
 	if err != nil {
 		t.Fatalf("DeliverWithSPF: %v", err)
 	}
@@ -142,6 +142,36 @@ func TestAgentDeliveryWithSPF(t *testing.T) {
 
 	if env.SpfResult != "pass" {
 		t.Errorf("spf_result = %q, want %q", env.SpfResult, "pass")
+	}
+	if env.SourceIp != "203.0.113.5" {
+		t.Errorf("source_ip = %q, want %q", env.SourceIp, "203.0.113.5")
+	}
+}
+
+func TestAgentDeliveryWithSourceIP(t *testing.T) {
+	mock := &mockAgentServer{}
+	client, cleanup := startMockServer(t, mock)
+	defer cleanup()
+
+	pipeline := NewAgentDeliveryPipeline(client, testLogger())
+
+	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SourceIP Test\r\n\r\nBody\r\n"
+	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "", "198.51.100.10")
+	if err != nil {
+		t.Fatalf("DeliverWithSPF: %v", err)
+	}
+
+	if mock.lastRequest == nil {
+		t.Fatal("DepositMessage was not called")
+	}
+
+	env := mock.lastRequest.GetEnvelope()
+	if env == nil {
+		t.Fatal("envelope is nil")
+	}
+
+	if env.SourceIp != "198.51.100.10" {
+		t.Errorf("source_ip = %q, want %q", env.SourceIp, "198.51.100.10")
 	}
 }
 

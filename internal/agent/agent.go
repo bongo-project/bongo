@@ -40,6 +40,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
+	pipelineantivirus "github.com/bongo-go/bongo-go/internal/pipeline/antivirus"
 	pipelinedeliver "github.com/bongo-go/bongo-go/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-go/bongo-go/internal/pipeline/rules"
 	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
@@ -93,8 +94,21 @@ type Agent struct {
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
 
-	// AgentGRPC is the gRPC client for agent-role nodes connecting to a server.
+	// AgentGRPC is the gRPC client used to register with and heartbeat the server.
+	// In agent mode this is the primary registration client. For processor roles
+	// (antispam, antivirus) each role gets its own client; AgentGRPC holds the
+	// first one (or the only non-processor client).
 	AgentGRPC *agentgrpc.AgentClient
+
+	// agentClients holds all gRPC clients for this agent node (one per role that
+	// requires a separate registration, e.g. antispam and antivirus each get their
+	// own client so they can advertise distinct listen addresses to the server).
+	agentClients []*agentgrpc.AgentClient
+
+	// agentProcessors holds the local gRPC processor servers started for antispam
+	// and antivirus agent roles. Each server receives ProcessMessage RPCs from the
+	// bongo-go server and delegates to a pipeline.Processor.
+	agentProcessors []*agentgrpc.AgentProcessorServer
 
 	httpServer           *http.Server
 	ready                atomic.Bool
@@ -1072,25 +1086,46 @@ func (a *Agent) runAgent(ctx context.Context) error {
 		Handler: r,
 	}
 
-	// Connect to the server via gRPC.
-	grpcCfg := agentgrpc.DefaultAgentClientConfig()
-	grpcCfg.ServerAddr = a.Config.AgentServer.ServerAddress
-	grpcCfg.AgentID = a.Config.Server.Name
-	grpcCfg.Roles = a.Config.Server.Agents
-	grpcCfg.ListenAddr = addr
-
-	a.AgentGRPC = agentgrpc.NewAgentClient(grpcCfg, a.logger)
-	if err := a.AgentGRPC.Start(ctx); err != nil {
-		return fmt.Errorf("agent grpc client: %w", err)
-	}
-
-	// Start agent-type services.
+	// Separate processor roles (antispam, antivirus) from other agent roles.
+	// Processor roles each start their own local gRPC server and register
+	// separately so the bongo-go server can dial them for ProcessMessage RPCs.
+	var nonProcessorRoles []string
 	for _, agentType := range a.Config.Server.Agents {
 		switch agentType {
-		case "antispam":
-			a.logger.Info("agent: antispam processor registered (receives ProcessMessage RPCs)")
-		case "antivirus":
-			a.logger.Info("agent: antivirus processor registered (receives ProcessMessage RPCs)")
+		case "antispam", "antivirus":
+			if err := a.startProcessorAgent(ctx, agentType); err != nil {
+				return fmt.Errorf("agent: %s startup: %w", agentType, err)
+			}
+		default:
+			nonProcessorRoles = append(nonProcessorRoles, agentType)
+		}
+	}
+
+	// Register non-processor roles (smtp, imap, etc.) with the server using
+	// the HTTP health-check address as the listen address.
+	if len(nonProcessorRoles) > 0 {
+		grpcCfg := agentgrpc.DefaultAgentClientConfig()
+		grpcCfg.ServerAddr = a.Config.AgentServer.ServerAddress
+		grpcCfg.AgentID = a.Config.Server.Name
+		grpcCfg.Roles = nonProcessorRoles
+		grpcCfg.ListenAddr = addr
+
+		client := agentgrpc.NewAgentClient(grpcCfg, a.logger)
+		if err := client.Start(ctx); err != nil {
+			return fmt.Errorf("agent grpc client: %w", err)
+		}
+		a.agentClients = append(a.agentClients, client)
+
+		// AgentGRPC holds the primary client for backward compatibility.
+		a.AgentGRPC = client
+	} else if len(a.agentClients) > 0 {
+		// All roles are processor roles; expose the first client as AgentGRPC.
+		a.AgentGRPC = a.agentClients[0]
+	}
+
+	// Start non-processor agent services.
+	for _, agentType := range nonProcessorRoles {
+		switch agentType {
 		case "smtp":
 			if err := a.startSMTPAgent(); err != nil {
 				return fmt.Errorf("agent: smtp startup: %w", err)
@@ -1168,16 +1203,83 @@ func (a *Agent) startSMTPAgent() error {
 	return nil
 }
 
+// startProcessorAgent builds a pipeline.Processor for the given role (antispam
+// or antivirus), starts a local gRPC server to receive ProcessMessage RPCs, and
+// registers with the bongo-go server advertising that gRPC address.
+func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
+	var proc pipeline.Processor
+
+	switch role {
+	case "antispam":
+		scorer := antispam.NewScorer()
+		// In agent mode there is no local Pebble store or Raft, so the Bayes
+		// filter (which needs per-user trained data) is not available. The
+		// heuristic scorer runs standalone without blending.
+		proc = pipelineantispam.NewBuiltinProcessor(scorer,
+			pipelineantispam.WithLogger(a.logger),
+		)
+	case "antivirus":
+		cfg := a.Config.Antivirus.ClamAV
+		var opts []pipelineantivirus.Option
+		if cfg.Socket != "" {
+			opts = append(opts, pipelineantivirus.WithSocket(cfg.Socket))
+		}
+		opts = append(opts, pipelineantivirus.WithLogger(a.logger))
+		proc = pipelineantivirus.NewClamAVProcessor(opts...)
+	default:
+		return fmt.Errorf("unknown processor role: %s", role)
+	}
+
+	// Start a local gRPC server on a random port.
+	procSrv := agentgrpc.NewAgentProcessorServer(proc, a.logger)
+	if err := procSrv.Start(net.JoinHostPort(a.Config.Server.BindAddr, "0")); err != nil {
+		return fmt.Errorf("start processor server: %w", err)
+	}
+	a.agentProcessors = append(a.agentProcessors, procSrv)
+
+	// Register with the bongo-go server. Each processor role gets its own
+	// registration so the server can maintain per-role agent lists.
+	grpcCfg := agentgrpc.DefaultAgentClientConfig()
+	grpcCfg.ServerAddr = a.Config.AgentServer.ServerAddress
+	grpcCfg.AgentID = fmt.Sprintf("%s-%s", a.Config.Server.Name, role)
+	grpcCfg.Roles = []string{role}
+	grpcCfg.ListenAddr = procSrv.ListenAddr()
+
+	client := agentgrpc.NewAgentClient(grpcCfg, a.logger)
+	if err := client.Start(ctx); err != nil {
+		procSrv.Stop()
+		return fmt.Errorf("register %s agent: %w", role, err)
+	}
+	a.agentClients = append(a.agentClients, client)
+
+	a.logger.Info("agent: processor started",
+		"role", role,
+		"grpc_addr", procSrv.ListenAddr(),
+		"agent_id", grpcCfg.AgentID,
+	)
+	return nil
+}
+
 // shutdownAgent performs graceful shutdown for agent-role nodes.
 func (a *Agent) shutdownAgent() error {
 	var errs []error
 
 	a.ready.Store(false)
 
-	// Deregister from server and stop heartbeat.
-	if a.AgentGRPC != nil {
-		a.AgentGRPC.Stop()
-		a.logger.Info("agent grpc client stopped")
+	// Stop all gRPC registration clients (deregister heartbeats).
+	for _, client := range a.agentClients {
+		client.Stop()
+	}
+	if len(a.agentClients) > 0 {
+		a.logger.Info("agent grpc clients stopped", "count", len(a.agentClients))
+	}
+
+	// Stop all processor gRPC servers.
+	for _, srv := range a.agentProcessors {
+		srv.Stop()
+	}
+	if len(a.agentProcessors) > 0 {
+		a.logger.Info("agent processor servers stopped", "count", len(a.agentProcessors))
 	}
 
 	// SMTP server (agent mode).

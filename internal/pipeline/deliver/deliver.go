@@ -17,6 +17,7 @@ import (
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -58,6 +59,18 @@ func (p *DeliverProcessor) Name() string {
 // The blob is already written; this stage creates the MailMeta and applies it
 // via Raft. It returns a StageResult with action "pass" on success.
 func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope, msg io.Reader) (*bongov1.StageResult, error) {
+	// Idempotency guard: if the envelope was already delivered (e.g. crash
+	// recovery replaying a completed envelope), skip the Raft writes entirely.
+	if pipeline.HasFlag(env.Flags, pipeline.MsgFlagDelivered) {
+		p.logger.Info("deliver: skipping already-delivered envelope", "id", env.Id)
+		return &bongov1.StageResult{
+			Stage:       "deliver",
+			Backend:     "builtin",
+			Action:      "pass",
+			ProcessedAt: time.Now().Unix(),
+		}, nil
+	}
+
 	started := time.Now()
 
 	raw, err := io.ReadAll(msg)
@@ -200,6 +213,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			"target_mailbox", targetMailbox,
 		)
 	}
+
+	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
+	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)
 
 	durationMs := int32(time.Since(started).Milliseconds())
 	return &bongov1.StageResult{

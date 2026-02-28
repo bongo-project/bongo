@@ -78,7 +78,7 @@ func TestDeliveryWithSPF(t *testing.T) {
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SPF Test\r\n\r\nBody\r\n"
 
-	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass")
+	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass", "203.0.113.1")
 	if err != nil {
 		t.Fatalf("DeliverWithSPF: %v", err)
 	}
@@ -94,6 +94,36 @@ func TestDeliveryWithSPF(t *testing.T) {
 	env := envs[0]
 	if env.SpfResult != "pass" {
 		t.Errorf("spf_result = %q, want %q", env.SpfResult, "pass")
+	}
+	if env.SourceIp != "203.0.113.1" {
+		t.Errorf("source_ip = %q, want %q", env.SourceIp, "203.0.113.1")
+	}
+}
+
+func TestDeliveryWithSourceIP(t *testing.T) {
+	dp, _, spool := setupTestPipeline(t)
+
+	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SourceIP Test\r\n\r\nBody\r\n"
+
+	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "", "198.51.100.42")
+	if err != nil {
+		t.Fatalf("DeliverWithSPF: %v", err)
+	}
+
+	envs, err := spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 envelope, got %d", len(envs))
+	}
+
+	env := envs[0]
+	if env.SourceIp != "198.51.100.42" {
+		t.Errorf("source_ip = %q, want %q", env.SourceIp, "198.51.100.42")
+	}
+	if env.SpfResult != "" {
+		t.Errorf("spf_result = %q, want empty", env.SpfResult)
 	}
 }
 

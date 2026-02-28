@@ -31,12 +31,12 @@ func NewAgentDeliveryPipeline(client bongov1.AgentServiceClient, logger *slog.Lo
 
 // Deliver reads the message and forwards it to the server via DepositMessage RPC.
 func (p *AgentDeliveryPipeline) Deliver(from string, recipients []string, r io.Reader) error {
-	return p.DeliverWithSPF(from, recipients, r, "")
+	return p.DeliverWithSPF(from, recipients, r, "", "")
 }
 
-// DeliverWithSPF reads the message and forwards it with SPF metadata to the
-// server via DepositMessage RPC.
-func (p *AgentDeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult string) error {
+// DeliverWithSPF reads the message and forwards it with SPF metadata and source
+// IP to the server via DepositMessage RPC.
+func (p *AgentDeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("agent delivery: reading message: %w", err)
@@ -48,6 +48,7 @@ func (p *AgentDeliveryPipeline) DeliverWithSPF(from string, recipients []string,
 		Recipients: recipients,
 		ReceivedAt: time.Now().Unix(),
 		SpfResult:  spfResult,
+		SourceIp:   sourceIP,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -67,6 +68,7 @@ func (p *AgentDeliveryPipeline) DeliverWithSPF(from string, recipients []string,
 		"recipients", recipients,
 		"blob_hash", resp.BlobHash,
 		"spf_result", spfResult,
+		"source_ip", sourceIP,
 	)
 
 	return nil
