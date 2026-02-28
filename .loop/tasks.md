@@ -3,7 +3,7 @@
 > Hybrid folder + tag model: messages stay in one mailbox, tags are additive metadata with IMAP keyword mapping.
 
 Started: 2026-02-28
-Status: in-progress
+Status: complete
 
 ---
 
@@ -29,15 +29,15 @@ Status: in-progress
 
 ### Phase 4: IMAP Keywords
 - [x] 13. IMAP PERMANENTFLAGS + FETCH: advertise \* in SELECT, return tags as $keyword in FLAGS response (needs: 4)
-- [ ] 14. IMAP STORE keywords: handle +FLAGS/-FLAGS for custom $keywords, sync to tag store (needs: 13)
+- [x] 14. IMAP STORE keywords: handle +FLAGS/-FLAGS for custom $keywords, sync to tag store (needs: 13)
 
 ### Phase 5: Filter Rules
 - [x] 15. Add TAG action type to FilterRule protobuf and rule engine apply logic (needs: 4)
-- [ ] 16. Filter rule UI: add tag action option to rule editor template (needs: 15)
+- [x] 16. Filter rule UI: add tag action option to rule editor template (needs: 15)
 
 ### Phase 6: Import
 - [x] 17. Gmail/IMAP/Thunderbird import: extract X-Gmail-Labels, IMAP keywords, X-Mozilla-Keys as tags (needs: 4)
-- [ ] 18. Import dedup tag merging: when All Mail message already exists, merge tags instead of duplicating (needs: 17)
+- [x] 18. Import dedup tag merging: when All Mail message already exists, merge tags instead of duplicating (needs: 17)
 
 ### Phase 7: Settings & Polish
 - [x] 19. Tag management settings page: list tags with colour/count, rename, recolour, delete with confirmation (needs: 5, 6)
