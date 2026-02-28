@@ -64,3 +64,16 @@
 - Task 19: Settings page at /settings/tags. Inline edit, colour picker, delete confirmation, create form. Alpine.js component uses /api/tags endpoints.
 - Tests: PASS (all packages)
 ---
+
+### 2026-02-28 - Tasks 14,16,18: Final tasks [sonnet, parallel]
+- Task 14: IMAP STORE keywords. separateFlags + applyKeywords in backend.go. WriteMessageTags for denorm. Auto-creates tag defs.
+- Task 16: Filter rule UI. "Add tag" action option with multi-tag chip input. parseRuleForm reads action_tag form values.
+- Task 18: Import dedup tag merge. msgIDEntry tracks pending tags, applyPendingTagMerges via IMAP STORE after import.
+- Tests: PASS (all packages)
+---
+
+### 2026-02-28 - PROJECT COMPLETE
+- All 19 tasks completed in a single session
+- 7 phases: Storage Foundation, Tag CRUD API, Tag Views & UI, IMAP Keywords, Filter Rules, Import, Settings & Polish
+- All tests passing across all packages
+---
