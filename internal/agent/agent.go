@@ -1092,7 +1092,9 @@ func (a *Agent) runAgent(ctx context.Context) error {
 		case "antivirus":
 			a.logger.Info("agent: antivirus processor registered (receives ProcessMessage RPCs)")
 		case "smtp":
-			a.logger.Info("agent: SMTP agent type registered (implementation pending)")
+			if err := a.startSMTPAgent(); err != nil {
+				return fmt.Errorf("agent: smtp startup: %w", err)
+			}
 		case "imap":
 			a.logger.Info("agent: agent type imap not yet implemented")
 		case "pop3":
@@ -1133,6 +1135,39 @@ func (a *Agent) runAgent(ctx context.Context) error {
 	return a.shutdownAgent()
 }
 
+// startSMTPAgent creates an AgentDeliveryPipeline backed by the gRPC client and
+// starts the SMTP MX and submission listeners. The SMTP server accepts inbound
+// mail and forwards each message to the server via DepositMessage RPC.
+func (a *Agent) startSMTPAgent() error {
+	grpcClient := a.AgentGRPC.Client()
+	if grpcClient == nil {
+		return fmt.Errorf("grpc client not connected")
+	}
+
+	pipeline := bongosmtp.NewAgentDeliveryPipeline(grpcClient, a.logger)
+
+	// Agent mode: no local auth required for inbound MX; use nil authenticator.
+	// Submission port authentication is handled by the server after deposit.
+	backend := bongosmtp.NewBackend(nil, pipeline, a.logger)
+
+	spfChecker := mail.NewSPFChecker()
+	backend.SetSPFChecker(spfChecker)
+	a.SPFChecker = spfChecker
+
+	isDev := false // agents are never in dev mode
+	a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
+	if err := a.SMTP.Listen(); err != nil {
+		return fmt.Errorf("smtp listen: %w", err)
+	}
+	go func() {
+		if err := a.SMTP.Serve(); err != nil {
+			a.logger.Error("smtp agent server error", "error", err)
+		}
+	}()
+	a.logger.Info("smtp agent: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
+	return nil
+}
+
 // shutdownAgent performs graceful shutdown for agent-role nodes.
 func (a *Agent) shutdownAgent() error {
 	var errs []error
@@ -1143,6 +1178,15 @@ func (a *Agent) shutdownAgent() error {
 	if a.AgentGRPC != nil {
 		a.AgentGRPC.Stop()
 		a.logger.Info("agent grpc client stopped")
+	}
+
+	// SMTP server (agent mode).
+	if a.SMTP != nil {
+		if err := a.SMTP.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing smtp server: %w", err))
+		} else {
+			a.logger.Info("smtp server closed")
+		}
 	}
 
 	// HTTP server (graceful drain).
