@@ -75,7 +75,7 @@ func runQueueStatus(cmd *cobra.Command, args []string) error {
 	if queueJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(stats)
+		return enc.Encode(&stats)
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
