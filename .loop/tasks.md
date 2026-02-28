@@ -21,11 +21,11 @@ Status: in-progress
 - [x] 7. Single message tag handler: POST /mail/{mailbox}/{uid}/tags with add/remove actions, updates Pebble + SQLite + Bleve (needs: 4, 5)
 
 ### Phase 3: Tag Views & UI
-- [ ] 8. Tag virtual view handler: GET /mail/tag/{name} with pagination, reusing ListVirtualMessages pattern (needs: 4, 5)
+- [x] 8. Tag virtual view handler: GET /mail/tag/{name} with pagination, reusing ListVirtualMessages pattern (needs: 4, 5)
 - [ ] 9. Sidebar tags section: collapsible, colour dots, unread counts, between Mailboxes and Views (needs: 8)
-- [ ] 10. Message detail tag chips: coloured chips with text, add dropdown, remove X button, HTMX updates (needs: 7)
-- [ ] 11. Message list tag dots: small coloured dots next to subject (max 3), tooltip on hover (needs: 4)
-- [ ] 12. Bulk tagging: toolbar Tag button with dropdown, context menu Tag submenu, POST /mail/bulk/tags (needs: 7)
+- [x] 10. Message detail tag chips: coloured chips with text, add dropdown, remove X button, HTMX updates (needs: 7)
+- [x] 11. Message list tag dots: small coloured dots next to subject (max 3), tooltip on hover (needs: 4)
+- [x] 12. Bulk tagging: toolbar Tag button with dropdown, context menu Tag submenu, POST /mail/bulk/tags (needs: 7)
 
 ### Phase 4: IMAP Keywords
 - [ ] 13. IMAP PERMANENTFLAGS + FETCH: advertise \* in SELECT, return tags as $keyword in FLAGS response (needs: 4)

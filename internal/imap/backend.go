@@ -426,8 +426,15 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 			case NotifExpunge:
 				w.WriteExpunge(notif.SeqNum)
 			case NotifFlagChange:
-				flags := flagsToIMAP(notif.Flags)
-				w.WriteMessageFlags(notif.SeqNum, imap.UID(notif.UID), flags)
+				// Fetch the message to include tag-derived keywords in the flags response.
+				updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, notif.UID)
+				var imapFlags []imap.Flag
+				if updated != nil {
+					imapFlags = messageToIMAPFlags(updated.Flags, updated.Tags)
+				} else {
+					imapFlags = flagsToIMAP(notif.Flags)
+				}
+				w.WriteMessageFlags(notif.SeqNum, imap.UID(notif.UID), imapFlags)
 			}
 		}
 	}
@@ -570,7 +577,7 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 	}
 
 	if options.Flags {
-		respW.WriteFlags(flagsToIMAP(msg.Flags))
+		respW.WriteFlags(messageToIMAPFlags(msg.Flags, msg.Tags))
 	}
 
 	if options.InternalDate {
@@ -934,7 +941,7 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 			if updated != nil {
 				respW := w.CreateMessage(seqNum)
 				respW.WriteUID(uid)
-				respW.WriteFlags(flagsToIMAP(updated.Flags))
+				respW.WriteFlags(messageToIMAPFlags(updated.Flags, updated.Tags))
 				respW.Close()
 			}
 		}
@@ -1179,6 +1186,35 @@ func flagsToIMAP(flags uint32) []imap.Flag {
 	if flags&store.FlagDraft != 0 {
 		result = append(result, imap.FlagDraft)
 	}
+	return result
+}
+
+// tagsToIMAPKeywords converts tag names to IMAP keyword flags with a $ prefix.
+// Tag "work" becomes keyword "$work". Tags that already start with $ or \ are
+// passed through unchanged to handle pre-existing standard keywords.
+func tagsToIMAPKeywords(tags []string) []imap.Flag {
+	if len(tags) == 0 {
+		return nil
+	}
+	result := make([]imap.Flag, 0, len(tags))
+	for _, tag := range tags {
+		if tag == "" {
+			continue
+		}
+		if strings.HasPrefix(tag, "$") || strings.HasPrefix(tag, "\\") {
+			result = append(result, imap.Flag(tag))
+		} else {
+			result = append(result, imap.Flag("$"+tag))
+		}
+	}
+	return result
+}
+
+// messageToIMAPFlags combines system flag bits and tag-derived keywords into
+// a single IMAP flag list suitable for FETCH FLAGS responses.
+func messageToIMAPFlags(flags uint32, tags []string) []imap.Flag {
+	result := flagsToIMAP(flags)
+	result = append(result, tagsToIMAPKeywords(tags)...)
 	return result
 }
 

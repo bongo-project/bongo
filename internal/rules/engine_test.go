@@ -247,3 +247,55 @@ func TestEvaluate_EmptyConditions(t *testing.T) {
 		t.Fatal("rule with empty conditions should not match")
 	}
 }
+
+func TestEvaluate_TagAction(t *testing.T) {
+	engine := NewEngine()
+	rules := []*bongov1.FilterRule{
+		{
+			Id: "r1", Enabled: true,
+			Conditions: []*bongov1.Condition{
+				{Field: "subject", Operator: "contains", Value: "newsletter"},
+			},
+			Action: &bongov1.FilterAction{
+				Type: "tag",
+				Tags: []string{"newsletter", "bulk"},
+			},
+		},
+	}
+	meta := &bongov1.MailMeta{Subject: "Your newsletter is here"}
+
+	action := engine.Evaluate(rules, meta, nil, "")
+	if action == nil {
+		t.Fatal("expected tag action, got nil")
+	}
+	if action.Type != "tag" {
+		t.Errorf("expected type=tag, got %q", action.Type)
+	}
+	if len(action.Tags) != 2 {
+		t.Fatalf("expected 2 tags, got %v", action.Tags)
+	}
+	if action.Tags[0] != "newsletter" || action.Tags[1] != "bulk" {
+		t.Errorf("unexpected tags: %v", action.Tags)
+	}
+}
+
+func TestEvaluate_TagActionNoMatch(t *testing.T) {
+	engine := NewEngine()
+	rules := []*bongov1.FilterRule{
+		{
+			Id: "r1", Enabled: true,
+			Conditions: []*bongov1.Condition{
+				{Field: "subject", Operator: "contains", Value: "newsletter"},
+			},
+			Action: &bongov1.FilterAction{
+				Type: "tag",
+				Tags: []string{"newsletter"},
+			},
+		},
+	}
+	meta := &bongov1.MailMeta{Subject: "Hello from a friend"}
+
+	if action := engine.Evaluate(rules, meta, nil, ""); action != nil {
+		t.Fatal("expected nil when subject does not match")
+	}
+}

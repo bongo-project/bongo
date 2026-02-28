@@ -222,6 +222,88 @@ func TestSessionRemoveFromCache(t *testing.T) {
 	}
 }
 
+func TestTagsToIMAPKeywords(t *testing.T) {
+	tests := []struct {
+		name string
+		tags []string
+		want []imap.Flag
+	}{
+		{"nil tags", nil, nil},
+		{"empty slice", []string{}, nil},
+		{"empty string tag is skipped", []string{""}, nil},
+		{"single tag gets $ prefix", []string{"work"}, []imap.Flag{"$work"}},
+		{"multiple tags", []string{"work", "urgent"}, []imap.Flag{"$work", "$urgent"}},
+		{"tag already has $ prefix", []string{"$Forwarded"}, []imap.Flag{"$Forwarded"}},
+		{"tag already has backslash prefix", []string{`\Seen`}, []imap.Flag{`\Seen`}},
+		{"mixed tags", []string{"personal", "$MDNSent"}, []imap.Flag{"$personal", "$MDNSent"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tagsToIMAPKeywords(tt.tags)
+			if len(got) != len(tt.want) {
+				t.Errorf("tagsToIMAPKeywords(%v) = %v, want %v", tt.tags, got, tt.want)
+				return
+			}
+			for i, f := range got {
+				if f != tt.want[i] {
+					t.Errorf("tagsToIMAPKeywords(%v)[%d] = %q, want %q", tt.tags, i, f, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestMessageToIMAPFlags(t *testing.T) {
+	tests := []struct {
+		name  string
+		flags uint32
+		tags  []string
+		want  []imap.Flag
+	}{
+		{"no flags no tags", 0, nil, nil},
+		{"seen flag only", store.FlagSeen, nil, []imap.Flag{imap.FlagSeen}},
+		{"tags only no system flags", 0, []string{"work"}, []imap.Flag{"$work"}},
+		{
+			"seen flag with tag",
+			store.FlagSeen,
+			[]string{"work"},
+			[]imap.Flag{imap.FlagSeen, "$work"},
+		},
+		{
+			"multiple flags and tags",
+			store.FlagSeen | store.FlagFlagged,
+			[]string{"urgent", "project-x"},
+			[]imap.Flag{imap.FlagSeen, imap.FlagFlagged, "$urgent", "$project-x"},
+		},
+		{
+			"tag with existing $ prefix",
+			store.FlagAnswered,
+			[]string{"$Forwarded"},
+			[]imap.Flag{imap.FlagAnswered, "$Forwarded"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := messageToIMAPFlags(tt.flags, tt.tags)
+			if len(got) != len(tt.want) {
+				t.Errorf("messageToIMAPFlags(%d, %v) = %v, want %v", tt.flags, tt.tags, got, tt.want)
+				return
+			}
+			gotSet := make(map[imap.Flag]bool, len(got))
+			for _, f := range got {
+				gotSet[f] = true
+			}
+			for _, f := range tt.want {
+				if !gotSet[f] {
+					t.Errorf("messageToIMAPFlags(%d, %v) missing flag %q", tt.flags, tt.tags, f)
+				}
+			}
+		})
+	}
+}
+
 func TestSessionClose(t *testing.T) {
 	s := &session{}
 	if err := s.Close(); err != nil {

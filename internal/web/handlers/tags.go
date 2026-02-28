@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -213,6 +215,34 @@ func (h *TagsHandler) DeleteTag(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ShowTagSettings renders the tag management settings page (GET /settings/tags).
+func (h *TagsHandler) ShowTagSettings(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+
+	tagsWithCount, err := h.tags.ListTags(userID)
+	if err != nil {
+		http.Error(w, "failed to load tags", http.StatusInternalServerError)
+		return
+	}
+
+	items := make([]templates.TagSettingItem, len(tagsWithCount))
+	for i, twc := range tagsWithCount {
+		items[i] = templates.TagSettingItem{
+			Name:        twc.Tag.Name,
+			ColourIndex: twc.Tag.ColourIndex,
+			Count:       twc.Count,
+		}
+	}
+
+	flash := r.URL.Query().Get("flash")
+	data := templates.TagSettingsData{
+		Tags:  items,
+		Email: email,
+		Flash: flash,
+	}
+	templ.Handler(templates.TagSettingsPage(data)).ServeHTTP(w, r)
 }
 
 // removeTagFromAllMessages scans all MailMeta records for the user and removes

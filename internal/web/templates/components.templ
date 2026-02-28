@@ -18,7 +18,15 @@ type MailboxInfo struct {
 	Icon        string // HTML entity for folder-specific icon
 }
 
-templ Sidebar(mailboxes []MailboxInfo, selected string) {
+// SidebarTagInfo holds display data for a single tag in the sidebar.
+type SidebarTagInfo struct {
+	Name     string // Tag name
+	Colour   string // CSS colour value from the tag palette
+	Count    int    // Number of messages bearing this tag
+	Selected bool   // True when the current view is this tag
+}
+
+templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 	<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">+ { t(ctx, "mail.compose") }</a>
 	<nav aria-label="Mailboxes">
 		<div class="sidebar-group">
@@ -29,6 +37,45 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 				}
 			</ul>
 		</div>
+		if len(tags) > 0 {
+			<div class="sidebar-group" x-data="sidebarSection('tags')">
+				<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
+					<span>{ t(ctx, "nav.tags") }</span>
+					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
+				</div>
+				<ul class="nav-list" x-show="open" aria-label="Tags">
+					for i, tag := range tags {
+						if i < 20 {
+							<li class="nav-item">
+								<a
+									href={ templ.SafeURL("/mail/tag/" + tag.Name) }
+									if tag.Selected {
+										class="active"
+									}
+									hx-get={ "/mail/tag/" + tag.Name }
+									hx-target="#main-content"
+									hx-push-url="true"
+								>
+									<span class="nav-tag-dot" style={ "background:" + tag.Colour } aria-hidden="true"></span>
+									<span>{ tag.Name }</span>
+									if tag.Count > 0 {
+										<span class="nav-badge" aria-label={ fmt.Sprintf("%d messages", tag.Count) }>{ fmt.Sprint(tag.Count) }</span>
+									}
+								</a>
+							</li>
+						}
+					}
+					if len(tags) > 20 {
+						<li class="nav-item">
+							<a href="/settings/tags">
+								<span class="nav-icon" aria-hidden="true">&#8230;</span>
+								<span>{ t(ctx, "nav.showAllTags") }</span>
+							</a>
+						</li>
+					}
+				</ul>
+			</div>
+		}
 		<div class="sidebar-group" x-data="sidebarSection('views')">
 			<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
 				<span>{ t(ctx, "nav.views") }</span>

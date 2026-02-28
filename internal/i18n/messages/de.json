@@ -1,5 +1,7 @@
 {
   "nav.mailboxes": "Postfacher",
+  "nav.tags": "Etiketten",
+  "nav.showAllTags": "Alle Etiketten anzeigen",
   "nav.views": "Ansichten",
   "nav.quickLinks": "Schnellzugriff",
   "nav.unread": "Ungelesen",

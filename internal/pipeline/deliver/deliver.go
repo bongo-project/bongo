@@ -190,6 +190,17 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 		store.SanitizeMailMeta(meta)
 
+		// Apply tags accumulated by the rules stage.
+		if len(env.PendingTags) > 0 {
+			if err := store.AddTags(meta, env.PendingTags); err != nil {
+				p.logger.Warn("deliver: could not apply pending tags, skipping",
+					"user", userID,
+					"guid", guid,
+					"error", err,
+				)
+			}
+		}
+
 		metaBytes, err := proto.Marshal(meta)
 		if err != nil {
 			return nil, fmt.Errorf("deliver: marshal mail meta for %s: %w", rcpt, err)

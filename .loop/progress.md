@@ -46,3 +46,12 @@
 - Files: tags.go, tags_test.go, mail.go, mail_tags_test.go, agent.go
 - Tests: PASS (26 new tests across both handlers)
 ---
+
+### 2026-02-28 - Tasks 8,10,11,12: Tag views and UI [sonnet, parallel]
+- Task 8: Tag virtual view at GET /mail/tag/{name}. Added ListMessagesByGUIDs to MailboxStore, ListTagMessages handler. Route before {mailbox} wildcard.
+- Task 10: Message detail tag chips with Alpine.js messageTags component. Coloured chips, add dropdown with search/filter, remove X. Uses fetch() to POST tags endpoint.
+- Task 11: Message list tag dots (max 3, +N overflow). 8x8px circles with native tooltip. Colour from TagStore palette lookup.
+- Task 12: POST /mail/bulk/tags endpoint. Toolbar Tag dropdown button, context menu Tag submenu. 8 new tests.
+- Files: mailbox.go, mail.go, mail_tags_test.go, mailbox.templ, message.templ, components.templ, bongo.js, bongo.css, agent.go, i18n (en/fr/de/es)
+- Tests: PASS (all packages)
+---

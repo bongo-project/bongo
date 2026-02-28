@@ -51,7 +51,8 @@ func (p *RulesProcessor) Name() string {
 // Process reads the message, evaluates each recipient's filter rules, and
 // returns a StageResult. It mutates env.TargetMailbox when a move/copy/delete
 // rule matches. Actions "flag" and "mark_read" are recorded in StageResult.Reasons.
-// A "delete" rule results in StageResult.Action "reject".
+// A "delete" rule results in StageResult.Action "reject". A "tag" rule appends
+// tag names to env.PendingTags, which the deliver stage applies to MailMeta.
 //
 // When multiple recipients have conflicting rules, the most significant action
 // wins: reject > pass (target mailbox is set from the first move/copy match).
@@ -109,6 +110,11 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 		case "delete":
 			finalAction = "reject"
 			reasons = append(reasons, "delete")
+		case "tag":
+			env.PendingTags = appendUnique(env.PendingTags, action.Tags)
+			for _, t := range action.Tags {
+				reasons = append(reasons, "tag:"+t)
+			}
 		}
 	}
 
@@ -230,4 +236,19 @@ func extractBasicHeaders(raw []byte) (subject string, headers map[string]string)
 	}
 	flush()
 	return subject, headers
+}
+
+// appendUnique appends items from src to dst, skipping duplicates already in dst.
+func appendUnique(dst, src []string) []string {
+	existing := make(map[string]bool, len(dst))
+	for _, v := range dst {
+		existing[v] = true
+	}
+	for _, v := range src {
+		if !existing[v] {
+			dst = append(dst, v)
+			existing[v] = true
+		}
+	}
+	return dst
 }

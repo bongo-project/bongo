@@ -1,5 +1,7 @@
 {
   "nav.mailboxes": "Mailboxes",
+  "nav.tags": "Tags",
+  "nav.showAllTags": "Show all tags",
   "nav.views": "Views",
   "nav.quickLinks": "Quick links",
   "nav.unread": "Unread",

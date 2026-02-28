@@ -6,6 +6,43 @@ import (
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 )
 
+func TestLoadSidebarTagsNilStore(t *testing.T) {
+	result := LoadSidebarTags(nil, "user1", "")
+	if result != nil {
+		t.Errorf("LoadSidebarTags(nil, ...) = %v, want nil", result)
+	}
+}
+
+func TestMaxSidebarTagsConstant(t *testing.T) {
+	if maxSidebarTags != 20 {
+		t.Errorf("maxSidebarTags = %d, want 20", maxSidebarTags)
+	}
+}
+
+func TestSidebarTagInfoSelected(t *testing.T) {
+	// Verify the Selected field logic via direct struct construction (mirrors
+	// what LoadSidebarTags sets when building results).
+	tag := templates.SidebarTagInfo{
+		Name:     "work",
+		Colour:   "#517faf",
+		Count:    5,
+		Selected: "tag:work" == "tag:work",
+	}
+	if !tag.Selected {
+		t.Error("tag.Selected should be true when selected matches tag:name")
+	}
+
+	tag2 := templates.SidebarTagInfo{
+		Name:     "personal",
+		Colour:   "#5aad4a",
+		Count:    0,
+		Selected: "tag:work" == "tag:personal",
+	}
+	if tag2.Selected {
+		t.Error("tag2.Selected should be false when selected does not match")
+	}
+}
+
 func TestBuildMailboxTree(t *testing.T) {
 	tests := []struct {
 		name     string

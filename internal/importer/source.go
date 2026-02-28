@@ -21,6 +21,7 @@ import (
 type Message struct {
 	Raw          []byte
 	Flags        []imap.Flag
+	Tags         []string // normalised tag names extracted from headers/flags
 	InternalDate time.Time
 	Folder       string
 	// SourceID is an opaque identifier for resume tracking (e.g. UID, filename).
@@ -206,6 +207,13 @@ func (s *IMAPSource) Messages(ctx context.Context, folder string) (<-chan Messag
 			}
 
 			if len(msg.Raw) > 0 {
+				// Extract tags from IMAP keywords, X-Gmail-Labels, and X-Mozilla-Keys.
+				var tags []string
+				tags = append(tags, ExtractIMAPKeywords(msg.Flags)...)
+				tags = append(tags, ExtractGmailLabels(msg.Raw)...)
+				tags = append(tags, ExtractThunderbirdTags(msg.Raw)...)
+				msg.Tags = deduplicateStrings(tags)
+
 				select {
 				case msgCh <- msg:
 				case <-ctx.Done():
@@ -293,8 +301,9 @@ func (s *MboxSource) Messages(ctx context.Context, folder string) (<-chan Messag
 					return
 				}
 				raw := strings.Join(lines, "\r\n")
+				rawBytes := []byte(raw)
 				msg := Message{
-					Raw:          []byte(raw),
+					Raw:          rawBytes,
 					Folder:       folder,
 					InternalDate: time.Now(),
 					SourceID:     fmt.Sprintf("%s:%d", filepath.Base(path), msgIdx),
@@ -303,6 +312,11 @@ func (s *MboxSource) Messages(ctx context.Context, folder string) (<-chan Messag
 				if t := parseDateHeader(raw); !t.IsZero() {
 					msg.InternalDate = t
 				}
+				// Extract tags from X-Gmail-Labels and X-Mozilla-Keys headers.
+				var tags []string
+				tags = append(tags, ExtractGmailLabels(rawBytes)...)
+				tags = append(tags, ExtractThunderbirdTags(rawBytes)...)
+				msg.Tags = deduplicateStrings(tags)
 				select {
 				case msgCh <- msg:
 				case <-ctx.Done():
@@ -435,6 +449,13 @@ func (s *MaildirSource) Messages(ctx context.Context, folder string) (<-chan Mes
 					msg.InternalDate = t
 				}
 
+				// Extract tags from IMAP keywords, X-Gmail-Labels, and X-Mozilla-Keys.
+				var tags []string
+				tags = append(tags, ExtractIMAPKeywords(msg.Flags)...)
+				tags = append(tags, ExtractGmailLabels(raw)...)
+				tags = append(tags, ExtractThunderbirdTags(raw)...)
+				msg.Tags = deduplicateStrings(tags)
+
 				select {
 				case msgCh <- msg:
 				case <-ctx.Done():
@@ -515,6 +536,12 @@ func (s *EMLSource) Messages(ctx context.Context, folder string) (<-chan Message
 			if t := parseDateHeader(string(raw)); !t.IsZero() {
 				msg.InternalDate = t
 			}
+
+			// Extract tags from X-Gmail-Labels and X-Mozilla-Keys headers.
+			var tags []string
+			tags = append(tags, ExtractGmailLabels(raw)...)
+			tags = append(tags, ExtractThunderbirdTags(raw)...)
+			msg.Tags = deduplicateStrings(tags)
 
 			select {
 			case msgCh <- msg:

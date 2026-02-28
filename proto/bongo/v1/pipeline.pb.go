@@ -34,6 +34,7 @@ type QueueEnvelope struct {
 	Stages        []*StageResult         `protobuf:"bytes,9,rep,name=stages,proto3" json:"stages,omitempty"`                                     // Results from completed stages
 	CurrentStage  string                 `protobuf:"bytes,10,opt,name=current_stage,json=currentStage,proto3" json:"current_stage,omitempty"`    // Stage currently processing
 	TargetMailbox string                 `protobuf:"bytes,11,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"` // Override destination (set by rules/spam)
+	PendingTags   []string               `protobuf:"bytes,12,rep,name=pending_tags,json=pendingTags,proto3" json:"pending_tags,omitempty"`       // Tags to apply at delivery (accumulated by rules stage)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -145,6 +146,13 @@ func (x *QueueEnvelope) GetTargetMailbox() string {
 	return ""
 }
 
+func (x *QueueEnvelope) GetPendingTags() []string {
+	if x != nil {
+		return x.PendingTags
+	}
+	return nil
+}
+
 type StageResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Stage         string                 `protobuf:"bytes,1,opt,name=stage,proto3" json:"stage,omitempty"`                                 // "antispam", "antivirus", "rules"
@@ -241,7 +249,7 @@ var File_proto_bongo_v1_pipeline_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\xe2\x02\n" +
+	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\x85\x03\n" +
 	"\rQueueEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06sender\x18\x02 \x01(\tR\x06sender\x12\x1e\n" +
@@ -258,7 +266,8 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\x06stages\x18\t \x03(\v2\x15.bongo.v1.StageResultR\x06stages\x12#\n" +
 	"\rcurrent_stage\x18\n" +
 	" \x01(\tR\fcurrentStage\x12%\n" +
-	"\x0etarget_mailbox\x18\v \x01(\tR\rtargetMailbox\"\xc9\x01\n" +
+	"\x0etarget_mailbox\x18\v \x01(\tR\rtargetMailbox\x12!\n" +
+	"\fpending_tags\x18\f \x03(\tR\vpendingTags\"\xc9\x01\n" +
 	"\vStageResult\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12\x16\n" +
