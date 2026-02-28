@@ -178,8 +178,10 @@ templ Pagination(page, totalPages int, baseURL string) {
 					{ t(ctx, "common.previous") }
 				</a>
 			}
-			for i := 1; i <= totalPages; i++ {
-				if i == page {
+			for _, i := range pageWindow(page, totalPages) {
+				if i == 0 {
+					<span class="page-ellipsis">...</span>
+				} else if i == page {
 					<span class="page-btn active" aria-current="page">{ fmt.Sprint(i) }</span>
 				} else {
 					<a

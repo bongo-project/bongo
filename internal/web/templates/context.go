@@ -36,3 +36,38 @@ func mailboxURL(name string) string {
 func require2FAFromCtx(ctx context.Context) bool {
 	return middleware.Require2FAFromContext(ctx)
 }
+
+// pageWindow returns the page numbers to display in a truncated pagination
+// control. It always includes page 1 and totalPages, the current page, and
+// up to 2 pages on each side. Gaps are represented by 0 (rendered as "...").
+func pageWindow(page, totalPages int) []int {
+	if totalPages <= 9 {
+		pages := make([]int, totalPages)
+		for i := range pages {
+			pages[i] = i + 1
+		}
+		return pages
+	}
+
+	// Collect the set of pages to show.
+	show := map[int]bool{1: true, totalPages: true}
+	for i := page - 2; i <= page+2; i++ {
+		if i >= 1 && i <= totalPages {
+			show[i] = true
+		}
+	}
+
+	// Build sorted list with 0 for gaps.
+	var pages []int
+	prev := 0
+	for i := 1; i <= totalPages; i++ {
+		if show[i] {
+			if prev != 0 && i-prev > 1 {
+				pages = append(pages, 0)
+			}
+			pages = append(pages, i)
+			prev = i
+		}
+	}
+	return pages
+}
