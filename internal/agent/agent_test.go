@@ -196,6 +196,67 @@ func TestNewAgentServerMode(t *testing.T) {
 	}
 }
 
+func TestNewAgentAgentModeSkipsStorage(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "agent"
+	cfg.Server.Agents = []string{"antispam"}
+	cfg.AgentServer = &config.AgentConfig{ServerAddress: "127.0.0.1:8400"}
+
+	a, err := NewAgent(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	// Agent role must NOT initialize local storage.
+	if a.Store != nil {
+		t.Error("expected Store to be nil in agent mode")
+	}
+	if a.Blobs != nil {
+		t.Error("expected Blobs to be nil in agent mode")
+	}
+	if a.Metadata != nil {
+		t.Error("expected Metadata to be nil in agent mode")
+	}
+	if a.Search != nil {
+		t.Error("expected Search to be nil in agent mode")
+	}
+	if a.Raft != nil {
+		t.Error("expected Raft to be nil in agent mode")
+	}
+	if a.Auth != nil {
+		t.Error("expected Auth to be nil in agent mode")
+	}
+	if a.tmpDir != "" {
+		t.Error("expected tmpDir to be empty in agent mode")
+	}
+	if a.dataDir != "" {
+		t.Error("expected dataDir to be empty in agent mode")
+	}
+
+	// Shutdown should work without error even with nil stores.
+	if err := a.Shutdown(); err != nil {
+		t.Fatalf("Shutdown: %v", err)
+	}
+}
+
+func TestAgentRoleConfigValidation(t *testing.T) {
+	// Agent role requires non-empty agents list.
+	cfg := config.Defaults()
+	cfg.Server.Role = "agent"
+	cfg.Server.Agents = nil
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected validation error for agent role without agents list")
+	}
+
+	// With valid agents and server address, should pass.
+	cfg.Server.Agents = []string{"antispam"}
+	cfg.AgentServer = &config.AgentConfig{ServerAddress: "127.0.0.1:8400"}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("unexpected validation error: %v", err)
+	}
+}
+
 func waitForHTTPS(t *testing.T, client *http.Client, url string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)

@@ -282,6 +282,135 @@ func TestPipelineConfigValidate(t *testing.T) {
 	}
 }
 
+func TestConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		modify  func(*Config)
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "dev role is valid",
+			modify:  func(c *Config) { c.Server.Role = "dev" },
+			wantErr: false,
+		},
+		{
+			name:    "server role is valid",
+			modify:  func(c *Config) { c.Server.Role = "server" },
+			wantErr: false,
+		},
+		{
+			name:    "edge role is valid",
+			modify:  func(c *Config) { c.Server.Role = "edge" },
+			wantErr: false,
+		},
+		{
+			name: "agent role with valid agents",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"antispam", "antivirus"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400"}
+			},
+			wantErr: false,
+		},
+		{
+			name: "agent role with all valid agent types",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"smtp", "imap", "pop3", "antispam", "antivirus", "caldav"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400"}
+			},
+			wantErr: false,
+		},
+		{
+			name:    "unknown role is invalid",
+			modify:  func(c *Config) { c.Server.Role = "bogus" },
+			wantErr: true,
+			errMsg:  "unknown role",
+		},
+		{
+			name: "agent role without agents list",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = nil
+			},
+			wantErr: true,
+			errMsg:  "non-empty agents list",
+		},
+		{
+			name: "agent role with empty agents list",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{}
+			},
+			wantErr: true,
+			errMsg:  "non-empty agents list",
+		},
+		{
+			name: "agent role with invalid agent name",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"antispam", "bogus"}
+				c.AgentServer = &AgentConfig{ServerAddress: "127.0.0.1:8400"}
+			},
+			wantErr: true,
+			errMsg:  "unknown agent type",
+		},
+		{
+			name: "agent role without server address",
+			modify: func(c *Config) {
+				c.Server.Role = "agent"
+				c.Server.Agents = []string{"antispam"}
+				c.AgentServer = &AgentConfig{ServerAddress: ""}
+			},
+			wantErr: true,
+			errMsg:  "agent_server.address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := Defaults()
+			tt.modify(cfg)
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.errMsg != "" {
+				if !contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %q, want substring %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestValidAgentNames(t *testing.T) {
+	names := ValidAgentNames()
+	expected := []string{"antispam", "antivirus", "caldav", "imap", "pop3", "smtp"}
+	if len(names) != len(expected) {
+		t.Fatalf("expected %d agent names, got %d", len(expected), len(names))
+	}
+	for i, name := range names {
+		if name != expected[i] {
+			t.Errorf("ValidAgentNames()[%d] = %q, want %q", i, name, expected[i])
+		}
+	}
+}
+
 func TestDefaultPipelineValidates(t *testing.T) {
 	cfg := Defaults()
 	if err := cfg.Pipeline.Validate(); err != nil {
