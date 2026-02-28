@@ -470,6 +470,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 			bayesFilter := antispam.NewBayesFilter(a.Store, a)
 			mailH.SetBayes(bayesFilter)
+			if a.Metadata != nil {
+				mailH.SetMetadata(a.Metadata)
+			}
+			if a.Search != nil {
+				mailH.SetSearch(a.Search)
+			}
+			mailH.SetTagStore(store.NewTagStore(a.Store, a))
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
@@ -481,6 +488,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/mail/{mailbox}/{uid}/spam", mailH.MarkSpam)
 			r.Post("/mail/{mailbox}/{uid}/not-spam", mailH.MarkNotSpam)
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
+			r.Post("/mail/{mailbox}/{uid}/tags", mailH.UpdateMessageTags)
 			r.Get("/import", mailH.ImportPage)
 			r.Post("/import", mailH.ImportMbox)
 
@@ -570,6 +578,14 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/settings/rules/{id}", rulesH.UpdateRule)
 			r.Delete("/settings/rules/{id}", rulesH.DeleteRule)
 			r.Post("/settings/rules/{id}/test", rulesH.TestRule)
+		}
+
+		if a.Store != nil {
+			tagsH := handlers.NewTagsHandler(store.NewTagStore(a.Store, a), a.Store, a)
+			r.Get("/api/tags", tagsH.ListTags)
+			r.Post("/api/tags", tagsH.CreateTag)
+			r.Put("/api/tags/{name}", tagsH.UpdateTag)
+			r.Delete("/api/tags/{name}", tagsH.DeleteTag)
 		}
 	})
 

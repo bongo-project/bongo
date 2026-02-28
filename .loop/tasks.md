@@ -11,12 +11,12 @@ Status: in-progress
 
 ### Phase 1: Storage Foundation
 - [x] 1. Add tags to protobuf schemas (MailMeta, MailboxMessage, new TagMeta), compile .pb.go files
-- [ ] 2. Add message_tags junction table to SQLite metadata with IndexMailTags and QueryByTag methods (needs: 1)
-- [ ] 3. Add tags keyword field to Bleve MailDocument, update IndexMail to include tags (needs: 1)
-- [ ] 4. Add tag methods to MailboxStore: GetTags, SetTags, AddTags, RemoveTags with validation (max 20/msg, 100/user, name rules) + unit tests (needs: 1)
+- [x] 2. Add message_tags junction table to SQLite metadata with IndexMailTags and QueryByTag methods (needs: 1)
+- [x] 3. Add tags keyword field to Bleve MailDocument, update IndexMail to include tags (needs: 1)
+- [x] 4. Add tag methods to MailboxStore: GetTags, SetTags, AddTags, RemoveTags with validation (max 20/msg, 100/user, name rules) + unit tests (needs: 1)
 
 ### Phase 2: Tag CRUD API
-- [ ] 5. Tag management store: CreateTag, ListTags, RenameTag, DeleteTag, UpdateTagColour in Pebble with cached counts (needs: 1)
+- [x] 5. Tag management store: CreateTag, ListTags, RenameTag, DeleteTag, UpdateTagColour in Pebble with cached counts (needs: 1)
 - [ ] 6. Tag management HTTP handlers: GET/POST/PUT/DELETE /api/tags with JSON responses (needs: 5)
 - [ ] 7. Single message tag handler: POST /mail/{mailbox}/{uid}/tags with add/remove actions, updates Pebble + SQLite + Bleve (needs: 4, 5)
 
