@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -41,6 +42,9 @@ type MailHandler struct {
 	bayes     *antispam.BayesFilter
 	sanitizer *bluemonday.Policy
 	logger    *slog.Logger
+	metadata  *store.MetadataManager
+	search    *store.SearchManager
+	tags      *store.TagStore
 }
 
 // SetThreadStore sets the thread store for conversation grouping.
@@ -79,6 +83,21 @@ func (h *MailHandler) SetContacts(contacts *store.ContactStore) {
 // SetBayes sets the Bayesian filter for spam training.
 func (h *MailHandler) SetBayes(bayes *antispam.BayesFilter) {
 	h.bayes = bayes
+}
+
+// SetMetadata sets the metadata manager for SQLite tag index updates.
+func (h *MailHandler) SetMetadata(metadata *store.MetadataManager) {
+	h.metadata = metadata
+}
+
+// SetSearch sets the search manager for Bleve index updates.
+func (h *MailHandler) SetSearch(search *store.SearchManager) {
+	h.search = search
+}
+
+// SetTagStore sets the tag store for auto-creating tag definitions.
+func (h *MailHandler) SetTagStore(tags *store.TagStore) {
+	h.tags = tags
 }
 
 // ListMessages renders the message list for a mailbox.
@@ -766,6 +785,186 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 	// Redirect back to mailbox with flash.
 	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Moved+to+%s", mailbox, dest))
 	w.WriteHeader(http.StatusOK)
+}
+
+// messageTagRequest is the JSON body for the UpdateMessageTags endpoint.
+type messageTagRequest struct {
+	Action string   `json:"action"`
+	Tags   []string `json:"tags"`
+}
+
+// messageTagListResponse is the JSON body returned by the UpdateMessageTags endpoint.
+type messageTagListResponse struct {
+	Tags []string `json:"tags"`
+}
+
+// UpdateMessageTags handles POST /mail/{mailbox}/{uid}/tags.
+// It adds or removes tags on a single message and updates Pebble, SQLite,
+// and Bleve. New tag names are auto-created in the TagStore on "add".
+func (h *MailHandler) UpdateMessageTags(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid UID", http.StatusBadRequest)
+		return
+	}
+
+	var req messageTagRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Action != "add" && req.Action != "remove" {
+		http.Error(w, `action must be "add" or "remove"`, http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Tags) == 0 {
+		http.Error(w, "tags must not be empty", http.StatusBadRequest)
+		return
+	}
+
+	// Validate all tag names up-front.
+	for _, name := range req.Tags {
+		if err := store.ValidateTagName(name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Resolve mailbox message to get the mail GUID.
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+	mailGUID := msg.MailGuid
+
+	// Load the MailMeta from Pebble.
+	meta := h.loadMailMeta(userID, mailGUID)
+	if meta == nil {
+		http.Error(w, "Message metadata not found", http.StatusInternalServerError)
+		return
+	}
+
+	switch req.Action {
+	case "add":
+		// Enforce per-user distinct tag limit for new tag names.
+		if h.mailboxes != nil {
+			currentDistinct, err := h.mailboxes.CountUserDistinctTags(userID)
+			if err != nil {
+				h.logger.Warn("web: counting user tags failed", "user", userID, "error", err)
+			} else {
+				// Count how many of the requested tags are new (not yet used by this user).
+				newTagCount := 0
+				for _, name := range req.Tags {
+					found := false
+					for _, existing := range meta.Tags {
+						if existing == name {
+							found = true
+							break
+						}
+					}
+					if !found {
+						newTagCount++
+					}
+				}
+				if currentDistinct+newTagCount > store.MaxTagsPerUser {
+					http.Error(w, fmt.Sprintf("adding these tags would exceed the per-user limit of %d distinct tags", store.MaxTagsPerUser), http.StatusUnprocessableEntity)
+					return
+				}
+			}
+		}
+
+		if err := store.AddTags(meta, req.Tags); err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+
+		// Auto-create tag definitions for any new names.
+		if h.tags != nil {
+			for _, name := range req.Tags {
+				if _, err := h.tags.GetTag(userID, name); err != nil {
+					// Tag does not exist yet — create it. Ignore error if it was
+					// created concurrently between the check and the create.
+					if _, cerr := h.tags.CreateTag(userID, name); cerr != nil {
+						h.logger.Warn("web: auto-creating tag", "tag", name, "user", userID, "error", cerr)
+					}
+				}
+			}
+		}
+
+	case "remove":
+		if err := store.RemoveTags(meta, req.Tags); err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+	}
+
+	// Persist updated MailMeta via Raft.
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		http.Error(w, "Failed to marshal metadata", http.StatusInternalServerError)
+		return
+	}
+	metaCmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, mailGUID)),
+		Value: metaBytes,
+	}
+	if err := h.applier.ApplyCommand(metaCmd, 5*time.Second); err != nil {
+		h.logger.Error("web: applying mail meta tag update", "error", err)
+		http.Error(w, "Failed to update message", http.StatusInternalServerError)
+		return
+	}
+
+	// Persist updated MailboxMessage tags via Raft.
+	msg.Tags = meta.Tags
+	msgBytes, err := proto.Marshal(msg)
+	if err != nil {
+		h.logger.Error("web: marshaling mailbox message", "error", err)
+		// Non-fatal: MailMeta is the source of truth; MailboxMessage tags are a cache.
+	} else {
+		msgCmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uint32(uid))),
+			Value: msgBytes,
+		}
+		if err := h.applier.ApplyCommand(msgCmd, 5*time.Second); err != nil {
+			h.logger.Warn("web: updating mailbox message tags", "error", err)
+		}
+	}
+
+	// Update SQLite derived index.
+	if h.metadata != nil {
+		if err := h.metadata.IndexMailTags(userID, mailGUID, meta.Tags); err != nil {
+			h.logger.Warn("web: indexing mail tags in SQLite", "error", err)
+		}
+	}
+
+	// Update Bleve search index.
+	if h.search != nil {
+		if err := h.search.IndexMail(
+			userID, mailGUID,
+			meta.Subject, meta.From, meta.To,
+			"", // body re-index not needed for tag-only update
+			meta.ReceivedAt,
+			len(meta.Attachments) > 0,
+			meta.Tags,
+			float64(meta.SpamScore),
+		); err != nil {
+			h.logger.Warn("web: re-indexing mail in bleve after tag update", "error", err)
+		}
+	}
+
+	h.logger.Info("web: message tags updated", "action", req.Action, "mailbox", mailbox, "uid", uid, "user", userID, "tags", req.Tags)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(messageTagListResponse{Tags: meta.Tags}); err != nil {
+		h.logger.Warn("web: encoding tag response", "error", err)
+	}
 }
 
 // DeleteMessage marks a message as deleted and expunges.
