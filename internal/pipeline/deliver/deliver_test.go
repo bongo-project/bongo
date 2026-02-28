@@ -12,6 +12,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -342,6 +343,47 @@ func TestDeliverRaftError(t *testing.T) {
 	_, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
 	if err == nil {
 		t.Fatal("expected error from Process when Raft fails, got nil")
+	}
+}
+
+// TestDeliverIdempotent verifies that an envelope with MsgFlagDelivered already
+// set is returned as "pass" without any Raft commands being applied. This
+// protects against duplicate delivery during crash recovery.
+func TestDeliverIdempotent(t *testing.T) {
+	applier := &mockApplier{}
+	resolver := &mockResolver{
+		mapping: map[string]string{
+			"alice@example.com": "user-alice",
+		},
+	}
+
+	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
+
+	rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Already delivered", "body\r\n")
+	env := &bongov1.QueueEnvelope{
+		Id:         "env-idempotent",
+		Sender:     "bob@example.com",
+		Recipients: []string{"alice@example.com"},
+		ReceivedAt: time.Now().Unix(),
+		BlobHash:   "idemhash",
+		Flags:      pipeline.MsgFlagDelivered,
+	}
+
+	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	if result.Action != "pass" {
+		t.Errorf("result.Action = %q, want %q", result.Action, "pass")
+	}
+	if result.Stage != "deliver" {
+		t.Errorf("result.Stage = %q, want %q", result.Stage, "deliver")
+	}
+
+	// No Raft commands must have been issued: delivery was skipped entirely.
+	if len(applier.commands) != 0 {
+		t.Errorf("expected 0 Raft commands for already-delivered envelope, got %d", len(applier.commands))
 	}
 }
 

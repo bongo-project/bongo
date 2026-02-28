@@ -35,9 +35,21 @@ func TestHasFlag(t *testing.T) {
 		},
 		{
 			name:  "all flags set",
-			flags: MsgFlagSpamChecked | MsgFlagVirusChecked | MsgFlagRulesChecked | MsgFlagSpam | MsgFlagVirus | MsgFlagQuarantined,
+			flags: MsgFlagSpamChecked | MsgFlagVirusChecked | MsgFlagRulesChecked | MsgFlagSpam | MsgFlagVirus | MsgFlagQuarantined | MsgFlagDelivered,
 			flag:  MsgFlagRulesChecked,
 			want:  true,
+		},
+		{
+			name:  "delivered flag set",
+			flags: MsgFlagDelivered,
+			flag:  MsgFlagDelivered,
+			want:  true,
+		},
+		{
+			name:  "delivered flag not set",
+			flags: MsgFlagSpamChecked | MsgFlagVirus,
+			flag:  MsgFlagDelivered,
+			want:  false,
 		},
 	}
 
@@ -146,6 +158,7 @@ func TestFlagConstants(t *testing.T) {
 		MsgFlagSpam,
 		MsgFlagVirus,
 		MsgFlagQuarantined,
+		MsgFlagDelivered,
 	}
 
 	for i, a := range allFlags {

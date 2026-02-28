@@ -30,12 +30,12 @@ var (
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the bongo-go server",
-	Long:  "Start bongo-go in server, edge, or dev role.",
+	Long:  "Start bongo-go in server, edge, dev, or agent role.",
 	RunE:  runServe,
 }
 
 func init() {
-	serveCmd.Flags().StringVar(&serveRole, "role", "", "Server role: server, edge, or dev")
+	serveCmd.Flags().StringVar(&serveRole, "role", "", "Server role: server, edge, dev, or agent")
 	serveCmd.Flags().BoolVar(&serveDev, "dev", false, "Shorthand for --role=dev")
 	serveCmd.Flags().StringVarP(&serveConfig, "config", "c", "", "Path to HCL config file")
 	serveCmd.Flags().StringVarP(&serveBind, "bind", "b", "0.0.0.0", "Address to bind listeners to")
@@ -59,9 +59,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Validate role.
 	switch role {
-	case "server", "edge", "dev":
+	case "server", "edge", "dev", "agent":
 	default:
-		return fmt.Errorf("invalid role %q: must be server, edge, or dev", role)
+		return fmt.Errorf("invalid role %q: must be server, edge, dev, or agent", role)
 	}
 
 	// Load config with precedence: CLI flags > env > file > defaults.

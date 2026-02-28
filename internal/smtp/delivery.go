@@ -47,12 +47,13 @@ func NewDeliveryPipeline(blobs *store.BlobStore, spool *pipeline.SpoolStore, log
 // Deliver processes an inbound message for the given recipients by storing the
 // raw message blob and enqueuing a QueueEnvelope into the spool.
 func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader) error {
-	return d.DeliverWithSPF(from, recipients, r, "")
+	return d.DeliverWithSPF(from, recipients, r, "", "")
 }
 
 // DeliverWithSPF stores the raw message as a blob and enqueues a QueueEnvelope
-// with SPF result metadata into the spool for asynchronous pipeline processing.
-func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult string) error {
+// with SPF result and source IP metadata into the spool for asynchronous
+// pipeline processing.
+func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("reading message: %w", err)
@@ -70,6 +71,7 @@ func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io
 		ReceivedAt: time.Now().Unix(),
 		BlobHash:   blobHash,
 		SpfResult:  spfResult,
+		SourceIp:   sourceIP,
 	}
 
 	if err := d.spool.Enqueue(env); err != nil {
@@ -81,6 +83,7 @@ func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io
 		"from", from,
 		"recipients", recipients,
 		"blob_hash", blobHash,
+		"source_ip", sourceIP,
 	)
 
 	return nil
