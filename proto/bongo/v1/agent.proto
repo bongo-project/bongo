@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+import "proto/bongo/v1/pipeline.proto";
+
+service AgentService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc ProcessMessage(ProcessRequest) returns (ProcessResponse);
+  rpc DepositMessage(DepositRequest) returns (DepositResponse);
+  rpc FetchBlob(FetchBlobRequest) returns (stream FetchBlobResponse);
+}
+
+message RegisterRequest {
+  string agent_id = 1;
+  repeated string roles = 2;
+  string address = 3;
+  map<string, string> meta = 4;
+}
+
+message RegisterResponse {
+  bool accepted = 1;
+  string message = 2;
+}
+
+message HeartbeatRequest {
+  string agent_id = 1;
+}
+
+message HeartbeatResponse {
+  bool ok = 1;
+}
+
+message ProcessRequest {
+  QueueEnvelope envelope = 1;
+  bytes message = 2;
+}
+
+message ProcessResponse {
+  StageResult result = 1;
+}
+
+message DepositRequest {
+  QueueEnvelope envelope = 1;
+  bytes message = 2;
+}
+
+message DepositResponse {
+  string blob_hash = 1;
+}
+
+message FetchBlobRequest {
+  string blob_hash = 1;
+}
+
+message FetchBlobResponse {
+  bytes chunk = 1;
+}
