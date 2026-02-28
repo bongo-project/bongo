@@ -97,6 +97,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/folder/{guid}        → folder metadata
 /user/{user_id}/config/{key}         → user preferences
 /user/{user_id}/rule/{guid}          → mail filter rule
+/user/{user_id}/tag/{name}           → TagMeta protobuf (colour, sort_order)
 /system/config/{key}                 → system config
 /system/domain/{domain}              → domain config
 /system/alias/{alias}                → alias → target user
@@ -136,3 +137,27 @@ Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs ol
 - **Imports:** stdlib, then third-party, then internal (separated by blank lines).
 - **Protobuf:** Definitions in `proto/bongo/v1/`, compiled `.pb.go` files in same directory.
 - **Static assets:** Always local minified files in `internal/web/static/` — never CDN links.
+
+## Learnings
+
+### Store Patterns
+- New store structs follow the TagStore/MailboxStore/PreferenceStore pattern: pebble field for reads, applier field for Raft writes, 5s timeout on all ApplyCommand calls.
+- SQLite schema uses `CREATE TABLE IF NOT EXISTS` + `CREATE INDEX IF NOT EXISTS` — idempotent, no migration system.
+- Junction table "replace all" semantics: DELETE-then-INSERT in a single transaction.
+- Per-user aggregate limits (e.g. 100 tags/user) enforced via prefix scan helper at handler layer, not inside mutation functions.
+- `directApplier` (in `mailbox_test.go`) is reused across all store package tests.
+
+### Search Patterns
+- Bleve keyword field (`NewKeywordFieldMapping()`) for exact-match filtering — prevents "news" matching "newsletter". Standard text field would tokenise.
+
+### Validation Patterns
+- Regex `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` handles single-char names correctly (inner group optional). Alternative `^[a-z0-9][a-z0-9-]*[a-z0-9]$` would reject single-char.
+
+### Architecture Patterns
+- Three-tier update for metadata changes: Pebble (via Raft, source of truth), SQLite (derived index), Bleve (search index). Secondary indexes are best-effort (non-fatal on error).
+- Pipeline tag flow: rules stage accumulates in `QueueEnvelope.PendingTags`, deliver stage applies via `store.AddTags` before Raft write.
+- IMAP keyword convention: `$` prefix for custom keywords. `separateFlags()` splits system flags from keywords, `tagsToIMAPKeywords()` adds prefix.
+
+### UI Patterns
+- Alpine.js `fetch()` for JSON API endpoints; HTMX for HTML fragment swaps. Don't use HTMX for JSON-returning endpoints.
+- Chi route ordering: static segments (`/mail/tag/{name}`) must be registered before wildcard segments (`/mail/{mailbox}`).
