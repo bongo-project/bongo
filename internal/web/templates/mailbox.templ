@@ -51,7 +51,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
 			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
 			<div
-				x-data={ fmt.Sprintf("spamScan(%q)", mailbox) }
+				x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
 				style="display:inline-flex;align-items:center;gap:0.5rem"
 			>
 				<button
@@ -61,7 +61,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					x-bind:disabled="scanning"
 					x-text="scanning ? 'Scanning...' : 'Scan for spam'"
 					title="Scan mailbox for spam"
-				></button>
+				>Scan for spam</button>
 				<span x-show="scanning" x-cloak style="font-size:0.82rem;color:var(--text-muted)">
 					<span x-text="progress.total > 0 ? progress.scanned + '/' + progress.total : ''"></span>
 					<span x-show="progress.spam > 0" x-text="' (' + progress.spam + ' spam)'"></span>

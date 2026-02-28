@@ -56,7 +56,7 @@ func SecurityHeaders() func(http.Handler) http.Handler {
 			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 			h.Set("Content-Security-Policy",
 				"default-src 'self'; "+
-					"script-src 'self' 'unsafe-inline'; "+
+					"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
 					"style-src 'self' 'unsafe-inline'; "+
 					"img-src 'self' data: cid:; "+
 					"font-src 'self'; "+

@@ -318,6 +318,8 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   transition: background 0.12s;
 }
 .topbar-btn:hover { background: var(--bg-muted); }
+.topbar-btn:focus-visible { outline: 2px solid var(--bongo-blue); outline-offset: 2px; }
+.topbar-btn:focus:not(:focus-visible) { outline: none; }
 
 .user-email { font-size: 0.82rem; color: var(--text-muted); padding: 0 8px; }
 
