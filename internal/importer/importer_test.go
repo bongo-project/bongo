@@ -294,6 +294,97 @@ func TestStateInMemory(t *testing.T) {
 	}
 }
 
+// TestMsgIDTrackDedup verifies that the in-memory message-ID tracking
+// accumulates pending tags correctly when dedup occurs.
+func TestMsgIDTrackDedup(t *testing.T) {
+	// Simulate what Import() does with msgIDTrack.
+	track := make(map[string]*msgIDEntry)
+
+	// First occurrence (normal folder): record entry.
+	msgID := "<abc@example.com>"
+	firstTags := []string{"work", "finance"}
+	track[msgID] = &msgIDEntry{
+		dstFolder: "Work",
+		tags:      deduplicateStrings(firstTags),
+	}
+
+	// Second occurrence (All Mail / lastFolder): merge additional tags.
+	secondTags := []string{"work", "receipts", "important-client"}
+	if entry, seen := track[msgID]; seen {
+		newTags := diffTags(secondTags, entry.tags, entry.pendingTags)
+		if len(newTags) > 0 {
+			entry.pendingTags = append(entry.pendingTags, newTags...)
+		}
+	}
+
+	entry := track[msgID]
+	if entry == nil {
+		t.Fatal("entry should exist")
+	}
+	// "work" was already in tags; "receipts" and "important-client" are new.
+	if len(entry.pendingTags) != 2 {
+		t.Fatalf("pendingTags = %v, want [receipts important-client]", entry.pendingTags)
+	}
+	if entry.pendingTags[0] != "receipts" || entry.pendingTags[1] != "important-client" {
+		t.Errorf("pendingTags = %v, want [receipts important-client]", entry.pendingTags)
+	}
+}
+
+// TestMsgIDTrackDedupNoNewTags verifies that no pending tags are recorded
+// when a deduped message has no new tags beyond those already tracked.
+func TestMsgIDTrackDedupNoNewTags(t *testing.T) {
+	track := make(map[string]*msgIDEntry)
+
+	msgID := "<xyz@example.com>"
+	track[msgID] = &msgIDEntry{
+		dstFolder: "INBOX",
+		tags:      []string{"work"},
+	}
+
+	// Dedup occurrence with same tags.
+	if entry, seen := track[msgID]; seen {
+		newTags := diffTags([]string{"work"}, entry.tags, entry.pendingTags)
+		entry.pendingTags = append(entry.pendingTags, newTags...)
+	}
+
+	entry := track[msgID]
+	if len(entry.pendingTags) != 0 {
+		t.Errorf("expected no pending tags, got %v", entry.pendingTags)
+	}
+}
+
+// TestMsgIDTrackDedupMultipleOccurrences verifies that successive dedup
+// occurrences accumulate tags without introducing duplicates.
+func TestMsgIDTrackDedupMultipleOccurrences(t *testing.T) {
+	track := make(map[string]*msgIDEntry)
+
+	msgID := "<multi@example.com>"
+	track[msgID] = &msgIDEntry{
+		dstFolder: "INBOX",
+		tags:      []string{"work"},
+	}
+
+	// First dedup: adds "finance".
+	if entry, seen := track[msgID]; seen {
+		newTags := diffTags([]string{"work", "finance"}, entry.tags, entry.pendingTags)
+		entry.pendingTags = append(entry.pendingTags, newTags...)
+	}
+
+	// Second dedup: adds "receipts", "finance" already pending so not added again.
+	if entry, seen := track[msgID]; seen {
+		newTags := diffTags([]string{"finance", "receipts"}, entry.tags, entry.pendingTags)
+		entry.pendingTags = append(entry.pendingTags, newTags...)
+	}
+
+	entry := track[msgID]
+	if len(entry.pendingTags) != 2 {
+		t.Fatalf("pendingTags = %v, want [finance receipts]", entry.pendingTags)
+	}
+	if entry.pendingTags[0] != "finance" || entry.pendingTags[1] != "receipts" {
+		t.Errorf("pendingTags = %v, want [finance receipts]", entry.pendingTags)
+	}
+}
+
 func TestFormatDuration(t *testing.T) {
 	tests := []struct {
 		d    time.Duration

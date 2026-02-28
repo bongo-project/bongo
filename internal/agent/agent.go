@@ -842,7 +842,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		a.IMAP = bongoimap.NewServer(
-			a.Auth, a.Store, a.Blobs, a.Mailboxes, a.Search, a.Notifier,
+			a.Auth, a.Store, a.Blobs, a.Mailboxes,
+			store.NewTagStore(a.Store, a), a.Metadata,
+			a.Search, a.Notifier,
 			tlsCfg, isDev, a.logger,
 		)
 

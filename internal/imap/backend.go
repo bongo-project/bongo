@@ -24,6 +24,8 @@ type session struct {
 	pebble    *store.PebbleStore
 	blobs     *store.BlobStore
 	mailboxes *store.MailboxStore
+	tags      *store.TagStore
+	metadata  *store.MetadataManager
 	search    *store.SearchManager
 	notifier  *Notifier
 	logger    *slog.Logger
@@ -910,7 +912,9 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 	}
 	s.cachedMsgs = msgs
 
-	flagBits := imapFlagsToUint32(flags.Flags)
+	// Separate standard system flags from custom $keyword flags.
+	stdFlags, keywords := separateFlags(flags.Flags)
+	flagBits := imapFlagsToUint32(stdFlags)
 
 	var updatedUIDs []uint32
 	for seqNum, msg := range msgs {
@@ -921,16 +925,27 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 			continue
 		}
 
-		switch flags.Op {
-		case imap.StoreFlagsSet:
-			err = s.mailboxes.SetFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
-		case imap.StoreFlagsAdd:
-			err = s.mailboxes.AddFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
-		case imap.StoreFlagsDel:
-			err = s.mailboxes.RemoveFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+		// Apply standard flag changes.
+		if flagBits != 0 || flags.Op == imap.StoreFlagsSet {
+			switch flags.Op {
+			case imap.StoreFlagsSet:
+				err = s.mailboxes.SetFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+			case imap.StoreFlagsAdd:
+				err = s.mailboxes.AddFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+			case imap.StoreFlagsDel:
+				err = s.mailboxes.RemoveFlags(s.userID, s.selectedMailbox, msg.Uid, flagBits)
+			}
+			if err != nil {
+				return err
+			}
 		}
-		if err != nil {
-			return err
+
+		// Apply keyword (tag) changes.
+		if len(keywords) > 0 || flags.Op == imap.StoreFlagsSet {
+			if err := s.applyKeywords(msg.MailGuid, msg.Uid, flags.Op, keywords); err != nil {
+				s.logger.Warn("imap: keyword update failed", "guid", msg.MailGuid, "error", err)
+				// Non-fatal: continue with other messages and standard flags.
+			}
 		}
 
 		updatedUIDs = append(updatedUIDs, msg.Uid)
@@ -949,6 +964,85 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 
 	if len(updatedUIDs) > 0 {
 		s.logger.Info("imap: flags updated", "mailbox", s.selectedMailbox, "user", s.userID, "op", flags.Op, "count", len(updatedUIDs))
+	}
+
+	return nil
+}
+
+// applyKeywords applies keyword (tag) changes to MailMeta and syncs the
+// denormalised MailboxMessage.Tags field plus search indexes.
+func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsOp, keywords []string) error {
+	// Load MailMeta from Pebble.
+	key := fmt.Sprintf("/user/%s/mail/%s", s.userID, mailGUID)
+	data, err := s.pebble.Get([]byte(key))
+	if err != nil {
+		return fmt.Errorf("reading mail meta: %w", err)
+	}
+
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(data, &meta); err != nil {
+		return fmt.Errorf("parsing mail meta: %w", err)
+	}
+
+	switch op {
+	case imap.StoreFlagsAdd:
+		// Auto-create tag definitions for any new keywords (best-effort).
+		if s.tags != nil {
+			for _, kw := range keywords {
+				if _, err := s.tags.GetTag(s.userID, kw); err != nil {
+					// Tag does not exist yet — create it.
+					if _, createErr := s.tags.CreateTag(s.userID, kw); createErr != nil {
+						s.logger.Warn("imap: auto-create tag failed", "tag", kw, "error", createErr)
+					}
+				}
+			}
+		}
+		if err := store.AddTags(&meta, keywords); err != nil {
+			return fmt.Errorf("adding tags: %w", err)
+		}
+
+	case imap.StoreFlagsDel:
+		if err := store.RemoveTags(&meta, keywords); err != nil {
+			return fmt.Errorf("removing tags: %w", err)
+		}
+
+	case imap.StoreFlagsSet:
+		// Replace all tags with the new keyword set.
+		// Auto-create definitions for new keywords first (best-effort).
+		if s.tags != nil {
+			for _, kw := range keywords {
+				if _, err := s.tags.GetTag(s.userID, kw); err != nil {
+					if _, createErr := s.tags.CreateTag(s.userID, kw); createErr != nil {
+						s.logger.Warn("imap: auto-create tag failed", "tag", kw, "error", createErr)
+					}
+				}
+			}
+		}
+		if err := store.SetTags(&meta, keywords); err != nil {
+			return fmt.Errorf("setting tags: %w", err)
+		}
+	}
+
+	// Persist updated MailMeta via Raft.
+	if err := s.mailboxes.StoreMailMeta(s.userID, &meta); err != nil {
+		return fmt.Errorf("persisting mail meta: %w", err)
+	}
+
+	// Update the denormalised Tags field on the MailboxMessage.
+	if writeErr := s.mailboxes.WriteMessageTags(s.userID, s.selectedMailbox, uid, meta.Tags); writeErr != nil {
+		s.logger.Warn("imap: updating mailbox message tags failed", "uid", uid, "error", writeErr)
+	}
+
+	// Update SQLite index (best-effort).
+	if s.metadata != nil {
+		if err := s.metadata.IndexMailTags(s.userID, mailGUID, meta.Tags); err != nil {
+			s.logger.Warn("imap: sqlite tag index update failed", "guid", mailGUID, "error", err)
+		}
+	}
+
+	// Update Bleve index (best-effort).
+	if s.search != nil {
+		s.search.IndexMail(s.userID, mailGUID, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, false, meta.Tags)
 	}
 
 	return nil
@@ -1216,6 +1310,26 @@ func messageToIMAPFlags(flags uint32, tags []string) []imap.Flag {
 	result := flagsToIMAP(flags)
 	result = append(result, tagsToIMAPKeywords(tags)...)
 	return result
+}
+
+// separateFlags splits a list of IMAP flags into standard system flags
+// (prefixed with \) and custom keyword tags (prefixed with $, or no prefix).
+// Keywords are returned as bare tag names (the $ prefix is stripped).
+func separateFlags(flags []imap.Flag) (stdFlags []imap.Flag, keywords []string) {
+	for _, f := range flags {
+		s := string(f)
+		switch {
+		case strings.HasPrefix(s, "\\"):
+			stdFlags = append(stdFlags, f)
+		case strings.HasPrefix(s, "$"):
+			name := strings.ToLower(s[1:])
+			if name != "" {
+				keywords = append(keywords, name)
+			}
+		}
+		// Flags with no prefix and no $ are ignored (non-standard).
+	}
+	return stdFlags, keywords
 }
 
 func imapFlagsToUint32(flags []imap.Flag) uint32 {

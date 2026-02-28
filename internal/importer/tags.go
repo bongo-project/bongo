@@ -199,6 +199,25 @@ func normaliseTagName(s string) string {
 	return result
 }
 
+// diffTags returns tags from candidate that are not present in any of the
+// existing sets. This is used to find genuinely new tags during dedup merging.
+func diffTags(candidate []string, existing ...[]string) []string {
+	seen := make(map[string]bool)
+	for _, set := range existing {
+		for _, t := range set {
+			seen[t] = true
+		}
+	}
+	var out []string
+	for _, t := range candidate {
+		if !seen[t] {
+			seen[t] = true // avoid adding the same new tag twice
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // deduplicateStrings returns a new slice with duplicates removed, preserving
 // order of first occurrence.
 func deduplicateStrings(in []string) []string {

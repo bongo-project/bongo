@@ -290,6 +290,7 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) *bongov1.FilterRule {
 	rule.Action = &bongov1.FilterAction{
 		Type:   r.FormValue("action_type"),
 		Target: r.FormValue("action_target"),
+		Tags:   r.Form["action_tag"],
 	}
 
 	return rule
@@ -328,6 +329,7 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 		info.Action = templates.ActionInfo{
 			Type:   rule.Action.Type,
 			Target: rule.Action.Target,
+			Tags:   rule.Action.Tags,
 		}
 	}
 
@@ -338,7 +340,9 @@ func ruleToInfo(rule *bongov1.FilterRule) templates.RuleInfo {
 	}
 	info.ConditionSummary = strings.Join(condParts, " AND ")
 
-	if info.Action.Type != "" {
+	if info.Action.Type == "tag" {
+		info.ActionSummary = fmt.Sprintf("tag: %s", strings.Join(info.Action.Tags, ", "))
+	} else if info.Action.Type != "" {
 		info.ActionSummary = fmt.Sprintf("%s: %s", info.Action.Type, info.Action.Target)
 	}
 

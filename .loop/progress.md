@@ -55,3 +55,12 @@
 - Files: mailbox.go, mail.go, mail_tags_test.go, mailbox.templ, message.templ, components.templ, bongo.js, bongo.css, agent.go, i18n (en/fr/de/es)
 - Tests: PASS (all packages)
 ---
+
+### 2026-02-28 - Tasks 9,13,15,17,19: Sidebar, IMAP, rules, import, settings [sonnet, parallel]
+- Task 9: Sidebar Tags section (collapsible, colour dots, counts). SidebarTagInfo struct, LoadSidebarTags helper. Updated MailboxPage/ComposePageFull signatures.
+- Task 13: IMAP keywords in FETCH FLAGS. tagsToIMAPKeywords converts tags to $keyword. Updated fetchMessage, Store, Idle handlers.
+- Task 15: TAG action in FilterRule proto. Added tags field to FilterAction, pending_tags to QueueEnvelope. Rule engine applies tags, deliver stage writes them.
+- Task 17: Import tag extraction. ExtractGmailLabels, ExtractIMAPKeywords, ExtractThunderbirdTags. Normalises names, excludes system labels. Wired into all 4 sources.
+- Task 19: Settings page at /settings/tags. Inline edit, colour picker, delete confirmation, create form. Alpine.js component uses /api/tags endpoints.
+- Tests: PASS (all packages)
+---
