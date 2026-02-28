@@ -29,9 +29,12 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 				}
 			</ul>
 		</div>
-		<div class="sidebar-group">
-			<div class="sidebar-label">{ t(ctx, "nav.views") }</div>
-			<ul class="nav-list">
+		<div class="sidebar-group" x-data="sidebarSection('views')">
+			<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
+				<span>{ t(ctx, "nav.views") }</span>
+				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
+			</div>
+			<ul class="nav-list" x-show="open">
 				<li class="nav-item">
 					<a
 						href="/mail/unread"
@@ -77,9 +80,12 @@ templ Sidebar(mailboxes []MailboxInfo, selected string) {
 				</li>
 			</ul>
 		</div>
-		<div class="sidebar-group">
-			<div class="sidebar-label">{ t(ctx, "nav.quickLinks") }</div>
-			<ul class="nav-list" aria-label="Applications">
+		<div class="sidebar-group" x-data="sidebarSection('quicklinks')">
+			<div class="sidebar-label sidebar-label-toggle" x-on:click="toggle()">
+				<span>{ t(ctx, "nav.quickLinks") }</span>
+				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
+			</div>
+			<ul class="nav-list" x-show="open" aria-label="Applications">
 				<li class="nav-item">
 					<a href="/contacts">
 						<span class="nav-icon" aria-hidden="true">&#128101;</span>

@@ -92,6 +92,15 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Collapsible sidebar sections with localStorage persistence
+  Alpine.data('sidebarSection', (key) => ({
+    open: localStorage.getItem('bongo-sidebar-' + key) !== 'closed',
+    toggle() {
+      this.open = !this.open;
+      localStorage.setItem('bongo-sidebar-' + key, this.open ? 'open' : 'closed');
+    }
+  }));
+
   // GAL autocomplete for compose form
   Alpine.data('galAutocomplete', () => ({
     query: '',
