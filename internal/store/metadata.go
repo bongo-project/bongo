@@ -122,6 +122,15 @@ func (u *UserIndex) createSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_conversation_last_date
 		ON conversation(last_date);
+
+	CREATE TABLE IF NOT EXISTS message_tags (
+		mail_guid TEXT NOT NULL,
+		tag TEXT NOT NULL,
+		PRIMARY KEY (mail_guid, tag)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_message_tags_tag
+		ON message_tags(tag);
 	`
 	_, err := u.db.Exec(schema)
 	return err
@@ -159,6 +168,51 @@ func (u *UserIndex) IndexMail(guid, subject, sender string, receivedAt, size int
 	}
 
 	return tx.Commit()
+}
+
+// IndexMailTags replaces all tags for the given mail GUID with the provided set.
+// Passing an empty or nil tags slice removes all tags for the message.
+func (u *UserIndex) IndexMailTags(mailGUID string, tags []string) error {
+	tx, err := u.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM message_tags WHERE mail_guid = ?`, mailGUID); err != nil {
+		return fmt.Errorf("deleting old tags: %w", err)
+	}
+
+	for _, tag := range tags {
+		if _, err := tx.Exec(`INSERT INTO message_tags (mail_guid, tag) VALUES (?, ?)`, mailGUID, tag); err != nil {
+			return fmt.Errorf("inserting tag %q: %w", tag, err)
+		}
+	}
+
+	return tx.Commit()
+}
+
+// QueryByTag returns all mail GUIDs that have the given tag, ordered by mail_guid.
+func (u *UserIndex) QueryByTag(tag string) ([]string, error) {
+	rows, err := u.db.Query(`
+		SELECT mail_guid FROM message_tags
+		WHERE tag = ?
+		ORDER BY mail_guid
+	`, tag)
+	if err != nil {
+		return nil, fmt.Errorf("querying by tag: %w", err)
+	}
+	defer rows.Close()
+
+	var guids []string
+	for rows.Next() {
+		var guid string
+		if err := rows.Scan(&guid); err != nil {
+			return nil, fmt.Errorf("scanning mail_guid: %w", err)
+		}
+		guids = append(guids, guid)
+	}
+	return guids, rows.Err()
 }
 
 // IndexObject upserts a StoreObject into this user's index.
@@ -453,6 +507,24 @@ func (m *MetadataManager) IndexMail(userID, guid, subject, sender string, receiv
 		return err
 	}
 	return idx.IndexMail(guid, subject, sender, receivedAt, size)
+}
+
+// IndexMailTags opens the user's database and replaces all tags for a mail message.
+func (m *MetadataManager) IndexMailTags(userID, mailGUID string, tags []string) error {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.IndexMailTags(mailGUID, tags)
+}
+
+// QueryByTag opens the user's database and returns all mail GUIDs with the given tag.
+func (m *MetadataManager) QueryByTag(userID, tag string) ([]string, error) {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return nil, err
+	}
+	return idx.QueryByTag(tag)
 }
 
 // QueryByType opens the user's database and queries by document type.

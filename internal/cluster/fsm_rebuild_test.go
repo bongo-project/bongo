@@ -17,7 +17,7 @@ type mockSearchIndexer struct {
 	mails    []string
 }
 
-func (m *mockSearchIndexer) IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, spamScore ...float64) error {
+func (m *mockSearchIndexer) IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore ...float64) error {
 	m.mails = append(m.mails, userID+"/"+guid)
 	return nil
 }

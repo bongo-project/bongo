@@ -367,7 +367,7 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		if envelope != nil {
 			body = envelope.Text
 		}
-		s.search.IndexMail(s.userID, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false)
+		s.search.IndexMail(s.userID, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false, nil)
 	}
 
 	// Notify IDLE watchers.

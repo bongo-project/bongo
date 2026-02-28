@@ -26,7 +26,7 @@ type Command struct {
 
 // SearchIndexer is the interface for full-text search indexing.
 type SearchIndexer interface {
-	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, spamScore ...float64) error
+	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore ...float64) error
 	IndexProfile(userID, email, displayName string) error
 }
 
@@ -316,7 +316,7 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 		// Index into Bleve.
 		if f.search != nil {
 			hasAttachment := len(meta.Attachments) > 0
-			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, float64(meta.SpamScore)); err != nil {
+			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
 				f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
 			}
 		}
