@@ -308,3 +308,164 @@ func TestRulesName(t *testing.T) {
 		t.Errorf("expected Name()=rules, got %q", p.Name())
 	}
 }
+
+func TestRulesTagAction(t *testing.T) {
+	// A "tag" rule should accumulate tag names in env.PendingTags and record
+	// each tag in StageResult.Reasons as "tag:<name>".
+	provider := &mockRuleProvider{
+		rules: map[string][]*bongov1.FilterRule{
+			"alice@example.com": {
+				{
+					Id:      "r1",
+					Name:    "tag newsletters",
+					Enabled: true,
+					Conditions: []*bongov1.Condition{
+						{Field: "subject", Operator: "contains", Value: "Newsletter"},
+					},
+					Action: &bongov1.FilterAction{
+						Type: "tag",
+						Tags: []string{"newsletter", "bulk"},
+					},
+				},
+			},
+		},
+	}
+
+	p := rulesprocessor.NewRulesProcessor(provider, nil)
+	env := &bongov1.QueueEnvelope{
+		Recipients: []string{"alice@example.com"},
+	}
+	msg := strings.NewReader(minimalMessage(
+		"news@example.com",
+		"alice@example.com",
+		"Weekly Newsletter",
+		"Your digest.",
+	))
+
+	result, err := p.Process(context.Background(), env, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("expected action=pass, got %q", result.Action)
+	}
+	// PendingTags should contain both tags.
+	if len(env.PendingTags) != 2 {
+		t.Fatalf("expected 2 pending tags, got %v", env.PendingTags)
+	}
+	if env.PendingTags[0] != "newsletter" || env.PendingTags[1] != "bulk" {
+		t.Errorf("unexpected pending tags: %v", env.PendingTags)
+	}
+	// Reasons should include "tag:newsletter" and "tag:bulk".
+	wantReasons := map[string]bool{"tag:newsletter": false, "tag:bulk": false}
+	for _, r := range result.Reasons {
+		if _, ok := wantReasons[r]; ok {
+			wantReasons[r] = true
+		}
+	}
+	for reason, found := range wantReasons {
+		if !found {
+			t.Errorf("expected reason %q in %v", reason, result.Reasons)
+		}
+	}
+}
+
+func TestRulesTagDeduplication(t *testing.T) {
+	// When two recipients both have matching tag rules, PendingTags should
+	// deduplicate across both rule results.
+	provider := &mockRuleProvider{
+		rules: map[string][]*bongov1.FilterRule{
+			"alice@example.com": {
+				{
+					Id:      "r1",
+					Enabled: true,
+					Conditions: []*bongov1.Condition{
+						{Field: "subject", Operator: "contains", Value: "Update"},
+					},
+					Action: &bongov1.FilterAction{Type: "tag", Tags: []string{"updates", "shared"}},
+				},
+			},
+			"bob@example.com": {
+				{
+					Id:      "r2",
+					Enabled: true,
+					Conditions: []*bongov1.Condition{
+						{Field: "subject", Operator: "contains", Value: "Update"},
+					},
+					// "shared" is a duplicate; "extra" is new.
+					Action: &bongov1.FilterAction{Type: "tag", Tags: []string{"shared", "extra"}},
+				},
+			},
+		},
+	}
+
+	p := rulesprocessor.NewRulesProcessor(provider, nil)
+	env := &bongov1.QueueEnvelope{
+		Recipients: []string{"alice@example.com", "bob@example.com"},
+	}
+	msg := strings.NewReader(minimalMessage(
+		"sender@example.com",
+		"alice@example.com, bob@example.com",
+		"Software Update",
+		"Details inside.",
+	))
+
+	_, err := p.Process(context.Background(), env, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Expect ["updates", "shared", "extra"] — no duplicate "shared".
+	want := []string{"updates", "shared", "extra"}
+	if len(env.PendingTags) != len(want) {
+		t.Fatalf("expected pending tags %v, got %v", want, env.PendingTags)
+	}
+	for i, v := range want {
+		if env.PendingTags[i] != v {
+			t.Errorf("pending tags[%d]: want %q, got %q", i, v, env.PendingTags[i])
+		}
+	}
+}
+
+func TestRulesTagNoMailboxChange(t *testing.T) {
+	// A "tag" action must not change env.TargetMailbox.
+	provider := &mockRuleProvider{
+		rules: map[string][]*bongov1.FilterRule{
+			"alice@example.com": {
+				{
+					Id:      "r1",
+					Enabled: true,
+					Conditions: []*bongov1.Condition{
+						{Field: "from", Operator: "contains", Value: "promo@"},
+					},
+					Action: &bongov1.FilterAction{Type: "tag", Tags: []string{"promo"}},
+				},
+			},
+		},
+	}
+
+	p := rulesprocessor.NewRulesProcessor(provider, nil)
+	env := &bongov1.QueueEnvelope{
+		Recipients: []string{"alice@example.com"},
+	}
+	msg := strings.NewReader(minimalMessage(
+		"promo@store.example",
+		"alice@example.com",
+		"Big sale",
+		"Check it out.",
+	))
+
+	result, err := p.Process(context.Background(), env, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("expected action=pass, got %q", result.Action)
+	}
+	if env.TargetMailbox != "" {
+		t.Errorf("tag action must not set TargetMailbox, got %q", env.TargetMailbox)
+	}
+	if len(env.PendingTags) != 1 || env.PendingTags[0] != "promo" {
+		t.Errorf("expected pending tags [promo], got %v", env.PendingTags)
+	}
+}

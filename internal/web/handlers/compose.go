@@ -78,7 +78,7 @@ func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, email)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email)).ServeHTTP(w, r)
 }
 
 // Reply renders the reply form with pre-filled fields.
@@ -136,7 +136,7 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 
 	_, replyEmail := middleware.UserFromContext(r.Context())
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, replyEmail)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail)).ServeHTTP(w, r)
 }
 
 // Forward renders the forward form.
@@ -171,7 +171,7 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 
 	_, fwdEmail := middleware.UserFromContext(r.Context())
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, fwdEmail)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail)).ServeHTTP(w, r)
 }
 
 // Send processes the compose form and delivers the message.

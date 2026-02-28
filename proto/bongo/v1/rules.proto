@@ -23,6 +23,7 @@ message Condition {
 }
 
 message FilterAction {
-  string type = 1;               // "move", "copy", "flag", "mark_read", "delete"
+  string type = 1;               // "move", "copy", "flag", "mark_read", "delete", "tag"
   string target = 2;             // folder name for move/copy, flag name for flag
+  repeated string tags = 3;      // tag names to apply (used when type = "tag")
 }

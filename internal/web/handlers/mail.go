@@ -224,6 +224,7 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 
 	// Load mailbox list for sidebar.
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
+	sidebarTags := h.loadSidebarTags(userID, mailbox)
 
 	flash := r.URL.Query().Get("flash")
 
@@ -233,7 +234,7 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, sidebarTags, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
 // ListTagMessages renders the message list for a tag virtual view.
@@ -352,6 +353,7 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID, virtualMailbox)
+	sidebarTags := h.loadSidebarTags(userID, virtualMailbox)
 	flash := r.URL.Query().Get("flash")
 
 	if r.Header.Get("HX-Request") == "true" {
@@ -359,7 +361,7 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
 // ShowMessage renders a single message detail view.
@@ -1504,6 +1506,10 @@ func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {
 
 func (h *MailHandler) loadMailboxInfos(userID, selected string) []templates.MailboxInfo {
 	return LoadMailboxInfos(h.mailboxes, userID, selected)
+}
+
+func (h *MailHandler) loadSidebarTags(userID, selected string) []templates.SidebarTagInfo {
+	return LoadSidebarTags(h.tags, userID, selected)
 }
 
 // backfillThreadingFields parses In-Reply-To, References, and Cc from the raw

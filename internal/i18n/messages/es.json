@@ -1,5 +1,7 @@
 {
   "nav.mailboxes": "Buzones",
+  "nav.tags": "Etiquetas",
+  "nav.showAllTags": "Ver todas las etiquetas",
   "nav.views": "Vistas",
   "nav.quickLinks": "Acceso rapido",
   "nav.unread": "Sin leer",

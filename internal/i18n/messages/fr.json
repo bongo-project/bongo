@@ -1,5 +1,7 @@
 {
   "nav.mailboxes": "Boites",
+  "nav.tags": "Etiquettes",
+  "nav.showAllTags": "Voir toutes les etiquettes",
   "nav.views": "Vues",
   "nav.quickLinks": "Acces rapide",
   "nav.unread": "Non lu",

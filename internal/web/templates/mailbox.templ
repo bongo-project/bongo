@@ -68,10 +68,10 @@ type ThreadChild struct {
 	Mailbox string
 }
 
-templ MailboxPage(mailbox string, mailboxes []MailboxInfo, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool) {
+templ MailboxPage(mailbox string, mailboxes []MailboxInfo, tags []SidebarTagInfo, messages []MessageSummary, page, totalPages int, email string, flash string, infiniteScroll bool) {
 	@LayoutWithContent(mailbox, email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			@Sidebar(mailboxes, mailbox)
+			@Sidebar(mailboxes, tags, mailbox)
 		</aside>
 		<main class="content" id="main-content" data-selected-mailbox={ mailbox }>
 			@MailboxContent(mailbox, messages, page, totalPages, flash, infiniteScroll)

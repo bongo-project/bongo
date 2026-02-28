@@ -584,6 +584,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Store != nil {
 			tagsH := handlers.NewTagsHandler(store.NewTagStore(a.Store, a), a.Store, a)
+			r.Get("/settings/tags", tagsH.ShowTagSettings)
 			r.Get("/api/tags", tagsH.ListTags)
 			r.Post("/api/tags", tagsH.CreateTag)
 			r.Put("/api/tags/{name}", tagsH.UpdateTag)

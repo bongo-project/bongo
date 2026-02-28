@@ -8,6 +8,40 @@ import (
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 )
 
+// maxSidebarTags is the maximum number of tags shown in the sidebar.
+// Tags beyond this limit are reachable via the "Show all" link.
+const maxSidebarTags = 20
+
+// LoadSidebarTags converts store.TagWithCount entries into SidebarTagInfo
+// slices suitable for rendering. selected is the currently active view key
+// (e.g. "tag:work"). At most maxSidebarTags entries are returned.
+func LoadSidebarTags(ts *store.TagStore, userID, selected string) []templates.SidebarTagInfo {
+	if ts == nil {
+		return nil
+	}
+	twcs, err := ts.ListTags(userID)
+	if err != nil || len(twcs) == 0 {
+		return nil
+	}
+
+	limit := len(twcs)
+	if limit > maxSidebarTags {
+		limit = maxSidebarTags
+	}
+
+	result := make([]templates.SidebarTagInfo, 0, limit)
+	for i := 0; i < limit; i++ {
+		twc := twcs[i]
+		result = append(result, templates.SidebarTagInfo{
+			Name:     twc.Tag.Name,
+			Colour:   templates.TagDotColour(twc.Tag.ColourIndex),
+			Count:    twc.Count,
+			Selected: selected == "tag:"+twc.Tag.Name,
+		})
+	}
+	return result
+}
+
 // MailboxIcon returns a Unicode HTML entity for the given mailbox name.
 func MailboxIcon(name string) string {
 	switch name {

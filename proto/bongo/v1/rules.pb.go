@@ -191,8 +191,9 @@ func (x *Condition) GetValue() string {
 
 type FilterAction struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // "move", "copy", "flag", "mark_read", "delete"
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`     // "move", "copy", "flag", "mark_read", "delete", "tag"
 	Target        string                 `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"` // folder name for move/copy, flag name for flag
+	Tags          []string               `protobuf:"bytes,3,rep,name=tags,proto3" json:"tags,omitempty"`     // tag names to apply (used when type = "tag")
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -241,6 +242,13 @@ func (x *FilterAction) GetTarget() string {
 	return ""
 }
 
+func (x *FilterAction) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
 var File_proto_bongo_v1_rules_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_rules_proto_rawDesc = "" +
@@ -264,10 +272,11 @@ const file_proto_bongo_v1_rules_proto_rawDesc = "" +
 	"\tCondition\x12\x14\n" +
 	"\x05field\x18\x01 \x01(\tR\x05field\x12\x1a\n" +
 	"\boperator\x18\x02 \x01(\tR\boperator\x12\x14\n" +
-	"\x05value\x18\x03 \x01(\tR\x05value\":\n" +
+	"\x05value\x18\x03 \x01(\tR\x05value\"N\n" +
 	"\fFilterAction\x12\x12\n" +
 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
-	"\x06target\x18\x02 \x01(\tR\x06targetB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\x06target\x18\x02 \x01(\tR\x06target\x12\x12\n" +
+	"\x04tags\x18\x03 \x03(\tR\x04tagsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_rules_proto_rawDescOnce sync.Once
