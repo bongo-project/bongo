@@ -41,6 +41,7 @@ type MailMeta struct {
 	DkimResult    string                 `protobuf:"bytes,16,opt,name=dkim_result,json=dkimResult,proto3" json:"dkim_result,omitempty"`          // "pass", "fail", "none"
 	DkimDomain    string                 `protobuf:"bytes,17,opt,name=dkim_domain,json=dkimDomain,proto3" json:"dkim_domain,omitempty"`          // signing domain from d= tag
 	TargetMailbox string                 `protobuf:"bytes,18,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"` // set by filter rules, empty = default routing
+	Tags          []string               `protobuf:"bytes,19,rep,name=tags,proto3" json:"tags,omitempty"`                                        // tag names, lowercase, alphanumeric + hyphens
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -201,11 +202,18 @@ func (x *MailMeta) GetTargetMailbox() string {
 	return ""
 }
 
+func (x *MailMeta) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
 var File_proto_bongo_v1_mail_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\n" +
-	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xb3\x04\n" +
+	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xc7\x04\n" +
 	"\bMailMeta\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1d\n" +
 	"\n" +
@@ -235,7 +243,8 @@ const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"dkimResult\x12\x1f\n" +
 	"\vdkim_domain\x18\x11 \x01(\tR\n" +
 	"dkimDomain\x12%\n" +
-	"\x0etarget_mailbox\x18\x12 \x01(\tR\rtargetMailboxB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\x0etarget_mailbox\x18\x12 \x01(\tR\rtargetMailbox\x12\x12\n" +
+	"\x04tags\x18\x13 \x03(\tR\x04tagsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_mail_proto_rawDescOnce sync.Once

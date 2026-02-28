@@ -25,4 +25,5 @@ message MailMeta {
   string dkim_result = 16;     // "pass", "fail", "none"
   string dkim_domain = 17;     // signing domain from d= tag
   string target_mailbox = 18;  // set by filter rules, empty = default routing
+  repeated string tags = 19;   // tag names, lowercase, alphanumeric + hyphens
 }
