@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+// TagMeta stores per-user tag metadata in Pebble.
+// Key: /user/{user_id}/tag/{name}
+// Tag names are lowercase, alphanumeric + hyphens, max 50 chars.
+message TagMeta {
+  string name = 1;
+  int32 colour_index = 2;  // palette index (0-15), not hex value
+  int64 created_at = 3;
+  int32 sort_order = 4;
+}

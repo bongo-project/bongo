@@ -98,6 +98,7 @@ type MailboxMessage struct {
 	MailGuid      string                 `protobuf:"bytes,2,opt,name=mail_guid,json=mailGuid,proto3" json:"mail_guid,omitempty"`
 	Flags         uint32                 `protobuf:"varint,3,opt,name=flags,proto3" json:"flags,omitempty"`
 	InternalDate  int64                  `protobuf:"varint,4,opt,name=internal_date,json=internalDate,proto3" json:"internal_date,omitempty"`
+	Tags          []string               `protobuf:"bytes,5,rep,name=tags,proto3" json:"tags,omitempty"` // denormalised from MailMeta for query speed
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -160,6 +161,13 @@ func (x *MailboxMessage) GetInternalDate() int64 {
 	return 0
 }
 
+func (x *MailboxMessage) GetTags() []string {
+	if x != nil {
+		return x.Tags
+	}
+	return nil
+}
+
 var File_proto_bongo_v1_mailbox_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mailbox_proto_rawDesc = "" +
@@ -168,12 +176,13 @@ const file_proto_bongo_v1_mailbox_proto_rawDesc = "" +
 	"\vMailboxMeta\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fuid_validity\x18\x02 \x01(\rR\vuidValidity\x12\x19\n" +
-	"\buid_next\x18\x03 \x01(\rR\auidNext\"z\n" +
+	"\buid_next\x18\x03 \x01(\rR\auidNext\"\x8e\x01\n" +
 	"\x0eMailboxMessage\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x1b\n" +
 	"\tmail_guid\x18\x02 \x01(\tR\bmailGuid\x12\x14\n" +
 	"\x05flags\x18\x03 \x01(\rR\x05flags\x12#\n" +
-	"\rinternal_date\x18\x04 \x01(\x03R\finternalDateB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\rinternal_date\x18\x04 \x01(\x03R\finternalDate\x12\x12\n" +
+	"\x04tags\x18\x05 \x03(\tR\x04tagsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_mailbox_proto_rawDescOnce sync.Once
