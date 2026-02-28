@@ -1,78 +1,56 @@
-# Project: Message Processing Pipeline
+# Project: Message Tags
 
-> Replace synchronous SMTP delivery with a staged pipeline supporting pluggable processors, external scanner backends, distributed agents via gRPC, and retroactive mailbox scanning.
+> Hybrid folder + tag model: messages stay in one mailbox, tags are additive metadata with IMAP keyword mapping.
 
-Started: 2026-02-27
-Status: verified
-Source: tasks/prd-message-processing-pipeline.md
+Started: 2026-02-28
+Status: in-progress
 
 ---
 
 ## Tasks
 
-### Phase 1: Pipeline Core + In-Process
+### Phase 1: Storage Foundation
+- [ ] 1. Add tags to protobuf schemas (MailMeta, MailboxMessage, new TagMeta), compile .pb.go files
+- [ ] 2. Add message_tags junction table to SQLite metadata with IndexMailTags and QueryByTag methods (needs: 1)
+- [ ] 3. Add tags keyword field to Bleve MailDocument, update IndexMail to include tags (needs: 1)
+- [ ] 4. Add tag methods to MailboxStore: GetTags, SetTags, AddTags, RemoveTags with validation (max 20/msg, 100/user, name rules) + unit tests (needs: 1)
 
-- [x] 1. Proto definitions for pipeline (US-001 partial) - Create `proto/bongo/v1/pipeline.proto` with QueueEnvelope and StageResult messages as specified in PRD. Add processing flag constants in Go. Compile proto to `.pb.go`. Unit tests for marshal/unmarshal round-trip.
+### Phase 2: Tag CRUD API
+- [ ] 5. Tag management store: CreateTag, ListTags, RenameTag, DeleteTag, UpdateTagColour in Pebble with cached counts (needs: 1)
+- [ ] 6. Tag management HTTP handlers: GET/POST/PUT/DELETE /api/tags with JSON responses (needs: 5)
+- [ ] 7. Single message tag handler: POST /mail/{mailbox}/{uid}/tags with add/remove actions, updates Pebble + SQLite + Bleve (needs: 4, 5)
 
-- [x] 2. Filesystem spool queue (US-001) - Create `internal/pipeline/spool.go` with SpoolStore struct. Methods: Enqueue() writes .env to incoming/, Dequeue() moves to processing/ (atomic rename), Move() between directories, List() per directory, RecoverCrashed() moves processing/ back to incoming/ on startup. Create spool directories on init: incoming, processing, deliver, quarantine, error. Unit tests with t.TempDir(). (needs: 1)
+### Phase 3: Tag Views & UI
+- [ ] 8. Tag virtual view handler: GET /mail/tag/{name} with pagination, reusing ListVirtualMessages pattern (needs: 4, 5)
+- [ ] 9. Sidebar tags section: collapsible, colour dots, unread counts, between Mailboxes and Views (needs: 8)
+- [ ] 10. Message detail tag chips: coloured chips with text, add dropdown, remove X button, HTMX updates (needs: 7)
+- [ ] 11. Message list tag dots: small coloured dots next to subject (max 3), tooltip on hover (needs: 4)
+- [ ] 12. Bulk tagging: toolbar Tag button with dropdown, context menu Tag submenu, POST /mail/bulk/tags (needs: 7)
 
-- [x] 3. Processor interface and pipeline runner (US-002) - Create `internal/pipeline/processor.go` with Processor interface (Name(), Process()). Create `internal/pipeline/runner.go` with Runner struct: configurable worker count, poll interval, ordered stage list. Processing loop: dequeue from incoming, run each stage, update envelope flags, move to quarantine/error/deliver based on results. Idempotent via flag checks. Graceful shutdown drains in-flight. Unit tests with mock processors. (needs: 2)
+### Phase 4: IMAP Keywords
+- [ ] 13. IMAP PERMANENTFLAGS + FETCH: advertise \* in SELECT, return tags as $keyword in FLAGS response (needs: 4)
+- [ ] 14. IMAP STORE keywords: handle +FLAGS/-FLAGS for custom $keywords, sync to tag store (needs: 13)
 
-- [x] 4. Built-in antispam processor (US-004) - Create `internal/pipeline/antispam/builtin.go` wrapping existing antispam.Scorer + BayesFilter as a Processor. Returns StageResult with score and reasons. Score >= threshold (0.5): action "tag" sets target_mailbox to Junk. Score >= high threshold (0.9): action "quarantine". Configurable thresholds. Unit tests. (needs: 3)
+### Phase 5: Filter Rules
+- [ ] 15. Add TAG action type to FilterRule protobuf and rule engine apply logic (needs: 4)
+- [ ] 16. Filter rule UI: add tag action option to rule editor template (needs: 15)
 
-- [x] 5. Deliver processor - Extract final delivery logic from `internal/smtp/delivery.go` into `internal/pipeline/deliver/deliver.go` as a Processor. Handles Pebble/BlobStore write via Raft, creates MailboxMessage with spam_score from envelope. Respects target_mailbox from prior stages. Unit tests with mock applier. (needs: 3)
+### Phase 6: Import
+- [ ] 17. Gmail/IMAP/Thunderbird import: extract X-Gmail-Labels, IMAP keywords, X-Mozilla-Keys as tags (needs: 4)
+- [ ] 18. Import dedup tag merging: when All Mail message already exists, merge tags instead of duplicating (needs: 17)
 
-- [x] 6. Filter rules processor - Create `internal/pipeline/rules/rules.go` wrapping existing rules.Engine as a Processor. Evaluates user filter rules against message, sets target_mailbox/flags in envelope. Unit tests. (needs: 3)
-
-- [x] 7. Refactor SMTP delivery to use pipeline (US-003) - Modify `internal/smtp/delivery.go`: instead of synchronous scoring+storing, write blob then create QueueEnvelope in spool/incoming/. Remove inline antispam scoring from delivery.go. Wire pipeline Runner into agent.go startup (after stores, before SMTP). Dev mode: pipeline runs in-process with zero config. Ensure end-to-end: SMTP receipt -> spool -> pipeline -> Pebble. Update existing delivery tests. (needs: 4, 5, 6)
-
-- [x] 8. Pipeline configuration (US-008) - Add PipelineConfig to `internal/config/config.go`: workers, poll_interval, error_retention, quarantine_retention, ordered stage list with enabled/backend per stage. Wire into Runner construction in agent.go. Dev mode defaults: builtin antispam only. Validate config on startup (unknown stages, missing backends). (needs: 7)
-
-- [x] 9. Config file auto-discovery (US-009) - Modify config loading: search order `-c` flag > `BONGO_CONFIG` env > `./bongo.hcl` > `/etc/bongo/bongo.hcl` > defaults (dev mode). Log which config file was loaded. Unit tests for discovery order with t.TempDir(). (needs: 8)
-
-### Phase 2: External Backends
-
-- [x] 10. SpamAssassin backend (US-005) - Create `internal/pipeline/antispam/spamassassin.go` implementing Processor. Connect to spamd via TCP, send message using SPAMC/1.5 SYMBOLS command, parse score and matched rules, normalise to 0.0-1.0. Graceful fallback if unreachable. Config: antispam.spamassassin.enabled, .host, .port, .threshold. Unit tests with mock spamd server. (needs: 4)
-
-- [x] 11. Rspamd backend (US-006) - Create `internal/pipeline/antispam/rspamd.go` implementing Processor. POST raw message to /checkv2, parse JSON response (score, action, symbols), map Rspamd actions to pipeline actions. Configurable URL, timeout, custom headers. Graceful fallback if unreachable. Unit tests with httptest mock. (needs: 4)
-
-- [x] 12. ClamAV antivirus processor (US-007) - Create `internal/pipeline/antivirus/clamav.go` implementing Processor. Connect to clamd via Unix socket or TCP, send via INSTREAM (chunked), parse OK/FOUND response. Virus = always quarantine. Graceful fallback if unreachable. Config: antivirus.clamav.enabled, .socket, .host, .port, .timeout. Unit tests with mock clamd. (needs: 3)
-
-### Phase 3: Distribution
-
-- [x] 13. Agent proto and gRPC service (US-011) - Create `proto/bongo/v1/agent.proto` with AgentService: Register, Heartbeat, ProcessMessage, DepositMessage, FetchBlob RPCs. Generate Go code. Create `internal/agent/grpc/server.go` (server-side: gRPC listener on port 8400, agent registry, dispatch to registered agents, fallback to in-process). Create `internal/agent/grpc/client.go` (agent-side: register, heartbeat, receive ProcessMessage calls). mTLS config. Unit tests. (needs: 8)
-
-- [x] 14. Config-driven agent role (US-010) - Extend ServerConfig with role "agent" and `Agents []string` field. Agent role skips Raft/Pebble/BlobStore init. Reads agents list, starts only specified services. Connects to server(s) via gRPC. Multiple agent types per process. Startup logs active agents. Graceful shutdown deregisters. Invalid agent name = startup error. (needs: 13)
-
-- [x] 15. SMTP agent type (US-012) - When `agents = ["smtp"]`, start SMTP/submission listeners that deposit mail via DepositMessage gRPC to server. Server stores blob and creates spool envelope. SPF result, source IP passed through. Config reuses existing smtp section. (needs: 14)
-
-### Phase 4: UI + Management
-
-- [x] 16. Retroactive mailbox scan (US-013) - Add "Scan for spam" button to mailbox toolbar. POST /api/mailbox/{name}/scan starts background scan job. Iterates messages, sends each to antispam processor. Messages above threshold moved to Junk. Progress via SSE. Cancellable. One scan per mailbox. Skip already-scanned unless force=true. Templ template + handler + routes. (needs: 7)
-
-- [x] 17. Quarantine management UI (US-014) - Admin page listing quarantined messages (date, sender, subject, reason). Release action: move back to pipeline at deliver stage. Delete action: remove message + blob. Bulk actions: select multiple, release all, delete all. Auto-purge after configurable retention (default 30 days). Templ template + handler + routes. (needs: 7)
+### Phase 7: Settings & Polish
+- [ ] 19. Tag management settings page: list tags with colour/count, rename, recolour, delete with confirmation (needs: 5, 6)
 
 ---
 
 ## Notes
 
-- MailMeta proto already has spam_score, spf_result, dkim_result, dkim_domain, target_mailbox fields
-- antispam.Scorer + BayesFilter already implemented, just need Processor wrapper
-- rules.Engine already implemented, just need Processor wrapper
-- delivery.go is synchronous today: parse -> score -> store. Must be refactored to: write blob -> enqueue -> return
-- Config uses hashicorp/hcl + spf13/viper, existing AntispamConfig/AntivirusConfig structs exist
-- Proto compilation: .pb.go files are pre-compiled in repo, no protoc step in Makefile currently
-- HTTP router is chi v5 (NOT fiber for web routes)
-- All writes go through Raft via ApplyCommand pattern
-
-### Phase 5: Verification Fixes
-
-- [x] 18. Wire source_ip into QueueEnvelope - Modify SMTP delivery interface to accept and propagate RemoteAddr as source_ip in QueueEnvelope. Update DeliverWithSPF signature or add a new method. Wire from SMTP session RemoteAddr through to envelope. Update tests. (needs: 7)
-
-- [x] 19. Enable agent role in CLI - Add "agent" to the role switch in cmd/bongo-go/agent.go so the CLI accepts --role=agent. Currently rejected at line 61-65. One-line fix plus test. (needs: 14)
-
-- [x] 20. Add deliver stage idempotency flag - Add MsgFlagDelivered constant to flags.go. Check flag in deliver processor before applying Raft command to prevent duplicate deliveries on crash recovery. Set flag after successful delivery. Update tests. (needs: 5)
-
-- [x] 21. Implement antispam/antivirus agent processing - In runAgent(), wire antispam/antivirus agent types to start a local gRPC server that handles ProcessMessage RPCs by invoking the configured antispam/antivirus Processor. Currently these are stubs that only log. (needs: 14)
-
-- [x] 22. Backend fallback chain for antispam - Create a CompositeAntispamProcessor that tries Rspamd first, then SpamAssassin, then builtin, falling through when a backend is unreachable. Wire into pipeline when multiple backends are configured. (needs: 4, 10, 11)
+- Tags are per-user, flat namespace, lowercase alphanumeric + hyphens, max 50 chars
+- Max 20 tags per message, 100 tags per user
+- Built-in views (Unread, Starred, All Mail) stay separate from tags
+- Message list shows coloured dots (not chips) for tags; detail view shows full chips
+- No system auto-tags in v1
+- SQLite uses junction table (message_tags) not JSON column for performance
+- IMAP keywords use $ prefix: tag "work" = keyword $work
+- Tag colours stored as palette index (12-16 predefined colours), not hex

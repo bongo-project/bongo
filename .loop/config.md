@@ -5,20 +5,18 @@ max_tasks_per_session: 15
 warn_at_tasks: 12
 
 ## Project
-name: Message Processing Pipeline
+name: Message Tags
 repo: /Users/user/dev/ai/oss/bongo-go/bongo-go
-created: 2026-02-27
+created: 2026-02-28
 
 ## Commands
 build: make build
-typecheck: go vet ./...
-lint: golangci-lint run
-test: go test -race ./...
+test: go test ./...
+lint: go vet ./...
 generate: templ generate
-sec: gosec ./...
 
 ## Source
-prd_path: tasks/prd-message-processing-pipeline.md
+prd_path: tasks/prd-message-tags.md
 
 ## Subagent Defaults
 default_subagent: general-purpose
@@ -29,3 +27,8 @@ complex_model: opus
 quick_model: haiku
 auto_escalate: true
 progress_compress_after: 10
+
+## Security
+security_scan: gosec -quiet ./... 2>&1 | grep -E "HIGH|MEDIUM" | head -10
+block_on: HIGH
+warn_on: MEDIUM
