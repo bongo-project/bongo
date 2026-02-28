@@ -1097,6 +1097,100 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .thread-children { background: var(--bg-subtle); }
 .thread-child td.from-col { padding-left: 24px; }
 
+/* ============================================
+   TAG CHIPS (message detail view)
+   ============================================ */
+.msg-tags-row {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 6px 16px 4px;
+}
+
+.msg-tags-chips {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+}
+
+/* Individual tag chip */
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: color-mix(in srgb, var(--tag-colour, #517faf) 15%, transparent);
+  color: var(--tag-colour, #517faf);
+  border: 1px solid color-mix(in srgb, var(--tag-colour, #517faf) 35%, transparent);
+  padding: 2px 6px 2px 9px; border-radius: 12px;
+  font-size: 0.78rem; font-weight: 500; line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tag-chip-name {
+  color: inherit; text-decoration: none;
+}
+.tag-chip-name:hover { text-decoration: underline; }
+
+.tag-chip-remove {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border: none; background: transparent;
+  color: inherit; opacity: 0.65; cursor: pointer; border-radius: 50%;
+  font-size: 0.9rem; line-height: 1; transition: opacity 0.12s, background 0.12s;
+  padding: 0;
+}
+.tag-chip-remove:hover { opacity: 1; background: color-mix(in srgb, var(--tag-colour, #517faf) 20%, transparent); }
+
+/* Add-tag button */
+.tag-add-wrapper { position: relative; }
+
+.tag-add-btn {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: 12px;
+  border: 1px dashed var(--border-strong);
+  background: transparent; color: var(--text-muted);
+  font-size: 0.78rem; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.tag-add-btn:hover { color: var(--bongo-blue); border-color: var(--bongo-blue); background: var(--bongo-blue-lightest); }
+
+/* Dropdown panel */
+.tag-dropdown {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 200;
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow-md);
+  min-width: 200px; max-width: 280px;
+  display: flex; flex-direction: column;
+}
+
+.tag-search-input {
+  width: 100%; box-sizing: border-box;
+  padding: 7px 10px; border: none; border-bottom: 1px solid var(--border);
+  background: transparent; color: var(--text); font-size: 0.85rem;
+  outline: none; border-radius: var(--radius) var(--radius) 0 0;
+}
+.tag-search-input::placeholder { color: var(--text-muted); }
+
+.tag-dropdown-list {
+  list-style: none; margin: 0; padding: 4px 0;
+  max-height: 220px; overflow-y: auto;
+}
+
+.tag-dropdown-item {
+  display: flex; align-items: center; gap: 7px;
+  width: 100%; padding: 6px 10px;
+  border: none; background: transparent;
+  color: var(--text); font-size: 0.85rem;
+  cursor: pointer; text-align: left;
+  transition: background 0.1s;
+}
+.tag-dropdown-item:hover { background: var(--bg-subtle); }
+.tag-dropdown-item--active { font-weight: 600; }
+
+.tag-swatch {
+  display: inline-block; width: 10px; height: 10px;
+  border-radius: 50%; flex-shrink: 0;
+}
+
+.tag-check { margin-left: auto; color: var(--bongo-green); font-size: 0.85rem; }
+
+.tag-dropdown-create {
+  border-top: 1px solid var(--border); padding: 4px 0;
+}
+.tag-dropdown-item--create { color: var(--bongo-blue); font-style: italic; }
 
 /* ============================================
    14. COMPOSE
@@ -2268,6 +2362,32 @@ a.admin-nav-item.active, .admin-nav-item.active {
   border-radius: 10px;
   padding: 1px 6px;
   margin-left: 4px;
+}
+
+/* Tag dots — small coloured circles shown next to message subject */
+.tag-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+.tag-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: default;
+}
+.tag-dot-overflow {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  cursor: default;
+  line-height: 1;
+  margin-left: 1px;
 }
 
 /* Context menu — hidden by default, shown by Alpine x-show */

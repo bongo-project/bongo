@@ -44,6 +44,9 @@
   "mail.loadRemoteImages": "Load remote images",
   "mail.remoteImagesBlocked": "Remote images have been blocked for your privacy.",
   "mail.attachments": "Attachments",
+  "mail.addTag": "Add tag",
+  "mail.createTag": "Create tag",
+  "mail.tagNamePlaceholder": "Tag name",
 
   "compose.to": "To",
   "compose.cc": "Cc",

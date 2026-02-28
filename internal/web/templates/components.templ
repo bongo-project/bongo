@@ -247,6 +247,22 @@ templ ContextMenu() {
 		<a x-on:click="action('flag')" role="menuitem">{ t(ctx, "mail.flag") }</a>
 		<a x-on:click="action('unflag')" role="menuitem">{ t(ctx, "mail.unflag") }</a>
 		<hr/>
+		<div class="ctx-tag-submenu" x-data="{ tagOpen: false, tagInput: '' }">
+			<a role="menuitem" class="ctx-tag-toggle" x-on:click.stop="tagOpen = !tagOpen">Tag...</a>
+			<div x-show="tagOpen" x-cloak="" class="ctx-tag-input-row">
+				<input
+					type="text"
+					x-model="tagInput"
+					placeholder="Tag name"
+					aria-label="Tag name"
+					x-on:keydown.enter.prevent="action('tag-add:' + tagInput); tagInput = ''; tagOpen = false"
+					x-on:click.stop=""
+				/>
+				<button type="button" class="tool-btn" x-on:click.stop="action('tag-add:' + tagInput); tagInput = ''; tagOpen = false" x-bind:disabled="tagInput.trim() === ''">Add</button>
+				<button type="button" class="tool-btn" x-on:click.stop="action('tag-remove:' + tagInput); tagInput = ''; tagOpen = false" x-bind:disabled="tagInput.trim() === ''">Remove</button>
+			</div>
+		</div>
+		<hr/>
 		<a x-on:click="action('spam')" role="menuitem">{ t(ctx, "mail.markAsSpam") }</a>
 		<a x-on:click="action('not-spam')" role="menuitem">{ t(ctx, "mail.notSpam") }</a>
 		<hr/>

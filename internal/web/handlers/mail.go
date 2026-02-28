@@ -184,6 +184,27 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 			summary.Subject = "(no subject)"
 		}
 
+		// Resolve tag dots from the denormalised tags on the message.
+		// Show at most 3 dots; any excess is recorded as OverflowTags.
+		if h.tags != nil && len(msg.Tags) > 0 {
+			const maxDots = 3
+			visible := msg.Tags
+			if len(visible) > maxDots {
+				summary.OverflowTags = len(visible) - maxDots
+				visible = visible[:maxDots]
+			}
+			for _, tagName := range visible {
+				var colourIdx int32
+				if tm, err := h.tags.GetTag(userID, tagName); err == nil {
+					colourIdx = tm.ColourIndex
+				}
+				summary.Tags = append(summary.Tags, templates.TagDot{
+					Name:   tagName,
+					Colour: templates.TagDotColour(colourIdx),
+				})
+			}
+		}
+
 		summaries = append(summaries, summary)
 	}
 
@@ -213,6 +234,132 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templ.Handler(templates.MailboxPage(mailbox, mailboxInfos, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+}
+
+// ListTagMessages renders the message list for a tag virtual view.
+// GET /mail/tag/{name}
+func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+	tagName := chi.URLParam(r, "name")
+
+	if err := store.ValidateTagName(tagName); err != nil {
+		http.Error(w, "Invalid tag name", http.StatusBadRequest)
+		return
+	}
+
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	if page < 1 {
+		page = 1
+	}
+
+	perPage := defaultMessagesPerPage
+	if h.prefs != nil {
+		if up := h.prefs.Get(userID); up.MessagesPerPage > 0 {
+			perPage = int(up.MessagesPerPage)
+		}
+	}
+
+	offset := (page - 1) * perPage
+
+	// Build virtual mailbox name used in template URLs (e.g. /mail/tag:work/uid).
+	virtualMailbox := "tag:" + tagName
+
+	// Query GUIDs from SQLite tag index.
+	var guidSet map[string]bool
+	if h.metadata != nil {
+		guids, err := h.metadata.QueryByTag(userID, tagName)
+		if err != nil {
+			h.logger.Warn("web: querying tag index", "tag", tagName, "user", userID, "error", err)
+		} else {
+			guidSet = make(map[string]bool, len(guids))
+			for _, g := range guids {
+				guidSet[g] = true
+			}
+		}
+	}
+
+	var msgs []*bongov1.MailboxMessage
+	var total int
+	var err error
+
+	if len(guidSet) > 0 {
+		msgs, total, err = h.mailboxes.ListMessagesByGUIDs(userID, guidSet, offset, perPage)
+		if err != nil {
+			http.Error(w, "Error loading messages", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	totalPages := (total + perPage - 1) / perPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+
+	// Build summaries with thread info.
+	summaries := make([]templates.MessageSummary, 0, len(msgs))
+	seenRoots := make(map[string]bool)
+
+	for _, msg := range msgs {
+		summary := templates.MessageSummary{
+			UID:      msg.Uid,
+			MailGUID: msg.MailGuid,
+			Date:     time.Unix(msg.InternalDate, 0),
+			Seen:     msg.Flags&store.FlagSeen != 0,
+			Flagged:  msg.Flags&store.FlagFlagged != 0,
+		}
+
+		meta := h.loadMailMeta(userID, msg.MailGuid)
+		if meta != nil {
+			summary.From = meta.From
+			summary.Subject = meta.Subject
+			if meta.RawMessage != nil {
+				summary.Size = meta.RawMessage.Size
+			}
+			summary.SpamScore = meta.SpamScore
+
+			if h.threads != nil && meta.MessageId != "" {
+				rootGUID, _ := h.threads.GetThreadRoot(userID, msg.MailGuid)
+				summary.ThreadRoot = rootGUID
+
+				if seenRoots[rootGUID] {
+					continue
+				}
+				seenRoots[rootGUID] = true
+
+				count := h.threads.GetThreadCount(userID, meta.MessageId)
+				if count > 1 {
+					summary.ThreadCount = count
+				}
+			}
+		}
+		if summary.Subject == "" {
+			summary.Subject = "(no subject)"
+		}
+
+		summaries = append(summaries, summary)
+	}
+
+	infiniteScroll := false
+	if h.prefs != nil {
+		if up := h.prefs.Get(userID); up.InfiniteScroll {
+			infiniteScroll = true
+		}
+	}
+
+	if r.URL.Query().Get("partial") == "1" {
+		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, page, totalPages)).ServeHTTP(w, r)
+		return
+	}
+
+	mailboxInfos := h.loadMailboxInfos(userID, virtualMailbox)
+	flash := r.URL.Query().Get("flash")
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.MailboxContent(virtualMailbox, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
+		return
+	}
+
+	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
 }
 
 // ShowMessage renders a single message detail view.
@@ -256,6 +403,29 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		Date:    time.Unix(meta.ReceivedAt, 0),
 		Seen:    msg.Flags&store.FlagSeen != 0,
 		Flagged: msg.Flags&store.FlagFlagged != 0,
+	}
+
+	// Populate current message tags with colour info.
+	if len(meta.Tags) > 0 && h.tags != nil {
+		for _, name := range meta.Tags {
+			ti := templates.TagInfo{Name: name}
+			if tm, err := h.tags.GetTag(userID, name); err == nil {
+				ti.ColourIndex = tm.ColourIndex
+			}
+			detail.Tags = append(detail.Tags, ti)
+		}
+	}
+
+	// Populate all user tags for the add-tag dropdown.
+	if h.tags != nil {
+		if allTags, err := h.tags.ListTags(userID); err == nil {
+			for _, twc := range allTags {
+				detail.AllTags = append(detail.AllTags, templates.TagInfo{
+					Name:        twc.Tag.Name,
+					ColourIndex: twc.Tag.ColourIndex,
+				})
+			}
+		}
 	}
 
 	// Check if sender is already a contact.
@@ -964,6 +1134,174 @@ func (h *MailHandler) UpdateMessageTags(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(messageTagListResponse{Tags: meta.Tags}); err != nil {
 		h.logger.Warn("web: encoding tag response", "error", err)
+	}
+}
+
+// bulkTagMessageID identifies a single message in a bulk tag request.
+type bulkTagMessageID struct {
+	Mailbox string `json:"mailbox"`
+	UID     uint32 `json:"uid"`
+}
+
+// bulkTagRequest is the JSON body for the BulkTagAction endpoint.
+type bulkTagRequest struct {
+	Action     string             `json:"action"`
+	Tags       []string           `json:"tags"`
+	MessageIDs []bulkTagMessageID `json:"message_ids"`
+}
+
+// bulkTagResponse is the JSON body returned by BulkTagAction.
+type bulkTagResponse struct {
+	Updated int      `json:"updated"`
+	Failed  int      `json:"failed"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+// BulkTagAction handles POST /mail/bulk/tags.
+// It adds or removes tags on a set of messages identified by mailbox+uid pairs.
+// New tag names are auto-created in the TagStore on "add".
+func (h *MailHandler) BulkTagAction(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+
+	var req bulkTagRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Action != "add" && req.Action != "remove" {
+		http.Error(w, `action must be "add" or "remove"`, http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Tags) == 0 {
+		http.Error(w, "tags must not be empty", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.MessageIDs) == 0 {
+		http.Error(w, "message_ids must not be empty", http.StatusBadRequest)
+		return
+	}
+
+	// Validate all tag names up-front.
+	for _, name := range req.Tags {
+		if err := store.ValidateTagName(name); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Auto-create tag definitions once before the loop (add only).
+	if req.Action == "add" && h.tags != nil {
+		for _, name := range req.Tags {
+			if _, err := h.tags.GetTag(userID, name); err != nil {
+				if _, cerr := h.tags.CreateTag(userID, name); cerr != nil {
+					h.logger.Warn("web: auto-creating tag in bulk", "tag", name, "user", userID, "error", cerr)
+				}
+			}
+		}
+	}
+
+	var updated, failed int
+	var errs []string
+
+	for _, msgID := range req.MessageIDs {
+		mailbox := msgID.Mailbox
+		uid := msgID.UID
+
+		msg, err := h.mailboxes.GetMessage(userID, mailbox, uid)
+		if err != nil {
+			failed++
+			errs = append(errs, fmt.Sprintf("%s/%d: message not found", mailbox, uid))
+			continue
+		}
+		mailGUID := msg.MailGuid
+
+		meta := h.loadMailMeta(userID, mailGUID)
+		if meta == nil {
+			failed++
+			errs = append(errs, fmt.Sprintf("%s/%d: metadata not found", mailbox, uid))
+			continue
+		}
+
+		switch req.Action {
+		case "add":
+			if err := store.AddTags(meta, req.Tags); err != nil {
+				failed++
+				errs = append(errs, fmt.Sprintf("%s/%d: %s", mailbox, uid, err.Error()))
+				continue
+			}
+		case "remove":
+			if err := store.RemoveTags(meta, req.Tags); err != nil {
+				failed++
+				errs = append(errs, fmt.Sprintf("%s/%d: %s", mailbox, uid, err.Error()))
+				continue
+			}
+		}
+
+		// Persist updated MailMeta via Raft.
+		metaBytes, err := proto.Marshal(meta)
+		if err != nil {
+			failed++
+			errs = append(errs, fmt.Sprintf("%s/%d: marshal error", mailbox, uid))
+			continue
+		}
+		metaCmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, mailGUID)),
+			Value: metaBytes,
+		}
+		if err := h.applier.ApplyCommand(metaCmd, 5*time.Second); err != nil {
+			h.logger.Error("web: applying bulk tag mail meta", "error", err, "mailbox", mailbox, "uid", uid)
+			failed++
+			errs = append(errs, fmt.Sprintf("%s/%d: store error", mailbox, uid))
+			continue
+		}
+
+		// Persist updated MailboxMessage tags via Raft.
+		msg.Tags = meta.Tags
+		if msgBytes, merr := proto.Marshal(msg); merr == nil {
+			msgCmd := &bongov1.RaftCommand{
+				Op:    bongov1.Op_OP_PUT,
+				Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid)),
+				Value: msgBytes,
+			}
+			if err := h.applier.ApplyCommand(msgCmd, 5*time.Second); err != nil {
+				h.logger.Warn("web: bulk tag updating mailbox message", "error", err)
+			}
+		}
+
+		// Update SQLite derived index.
+		if h.metadata != nil {
+			if err := h.metadata.IndexMailTags(userID, mailGUID, meta.Tags); err != nil {
+				h.logger.Warn("web: bulk tag indexing mail tags in SQLite", "error", err)
+			}
+		}
+
+		// Update Bleve search index.
+		if h.search != nil {
+			if err := h.search.IndexMail(
+				userID, mailGUID,
+				meta.Subject, meta.From, meta.To,
+				"",
+				meta.ReceivedAt,
+				len(meta.Attachments) > 0,
+				meta.Tags,
+				float64(meta.SpamScore),
+			); err != nil {
+				h.logger.Warn("web: bulk tag re-indexing mail in bleve", "error", err)
+			}
+		}
+
+		updated++
+	}
+
+	h.logger.Info("web: bulk tag action", "action", req.Action, "tags", req.Tags, "user", userID, "updated", updated, "failed", failed)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(bulkTagResponse{Updated: updated, Failed: failed, Errors: errs}); err != nil {
+		h.logger.Warn("web: encoding bulk tag response", "error", err)
 	}
 }
 

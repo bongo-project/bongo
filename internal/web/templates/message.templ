@@ -15,6 +15,12 @@ type Attachment struct {
 	Hash        string
 }
 
+// TagInfo holds display data for a single tag.
+type TagInfo struct {
+	Name        string
+	ColourIndex int32
+}
+
 // MessageDetail holds data for the message detail view.
 type MessageDetail struct {
 	UID              uint32
@@ -33,6 +39,37 @@ type MessageDetail struct {
 	Answered         bool
 	IsContact        bool
 	HasBlockedImages bool
+	Tags             []TagInfo
+	AllTags          []TagInfo
+}
+
+// tagPaletteColours maps colour_index (0-15) to a CSS hex colour.
+// These are used for the tag chip background and text colouring.
+var tagPaletteColours = [16]string{
+	"#3b82f6", // 0  blue
+	"#22c55e", // 1  green
+	"#ef4444", // 2  red
+	"#f59e0b", // 3  amber
+	"#8b5cf6", // 4  violet
+	"#06b6d4", // 5  cyan
+	"#f97316", // 6  orange
+	"#ec4899", // 7  pink
+	"#14b8a6", // 8  teal
+	"#6366f1", // 9  indigo
+	"#84cc16", // 10 lime
+	"#eab308", // 11 yellow
+	"#64748b", // 12 slate
+	"#a855f7", // 13 purple
+	"#10b981", // 14 emerald
+	"#f43f5e", // 15 rose
+}
+
+// tagColourCSS returns the CSS colour hex for a given palette index.
+func tagColourCSS(index int32) string {
+	if index < 0 || int(index) >= len(tagPaletteColours) {
+		return tagPaletteColours[0]
+	}
+	return tagPaletteColours[index]
 }
 
 templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
@@ -79,6 +116,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 	</div>
 	<div class="thread-header">
 		<h1 class="thread-subject">{ msg.Subject }</h1>
+		@messageTags(msg)
 	</div>
 	<div class="thread-messages">
 		<article class="message">
@@ -154,6 +192,7 @@ templ MessagePaneContent(msg MessageDetail) {
 	</div>
 	<div class="thread-header" style="padding:12px 16px 8px">
 		<h3 class="thread-subject" style="font-size:1.1rem">{ msg.Subject }</h3>
+		@messageTags(msg)
 	</div>
 	<div class="thread-messages" style="padding:10px 16px">
 		<article class="message">
@@ -204,6 +243,127 @@ templ MessagePaneContent(msg MessageDetail) {
 			</div>
 		</article>
 	</div>
+}
+
+// messageTags renders the tag chips row with add/remove controls.
+// The Alpine.js component "messageTags" (registered in bongo.js) manages state.
+templ messageTags(msg MessageDetail) {
+	<div
+		class="msg-tags-row"
+		x-data={ fmt.Sprintf(`messageTags(%s, %s, %q, %d)`,
+			tagsToJSON(msg.Tags),
+			tagsToJSON(msg.AllTags),
+			encMailbox(msg.Mailbox),
+			msg.UID,
+		) }
+	>
+		<div class="msg-tags-chips" role="list" aria-label="Message tags">
+			<template x-for="tag in tags" :key="tag.name">
+				<span
+					class="tag-chip"
+					:style="`--tag-colour: ${tag.colour}`"
+					role="listitem"
+				>
+					<a
+						:href="`/mail/tag/${encodeURIComponent(tag.name)}`"
+						class="tag-chip-name"
+						:aria-label="`View tag ${tag.name}`"
+						x-text="tag.name"
+					></a>
+					<button
+						type="button"
+						class="tag-chip-remove"
+						@click="removeTag(tag.name)"
+						:aria-label="`Remove tag ${tag.name}`"
+					>&#215;</button>
+				</span>
+			</template>
+		</div>
+		<div class="tag-add-wrapper" x-ref="addWrapper">
+			<button
+				type="button"
+				class="tag-add-btn"
+				@click="openDropdown = !openDropdown"
+				aria-haspopup="listbox"
+				:aria-expanded="openDropdown"
+				aria-label="Add tag"
+			>+ { t(ctx, "mail.addTag") }</button>
+			<div
+				x-show="openDropdown"
+				x-cloak
+				class="tag-dropdown"
+				role="listbox"
+				aria-label="Available tags"
+				@click.outside="openDropdown = false"
+				@keydown.escape.window="openDropdown = false"
+			>
+				<input
+					type="text"
+					class="tag-search-input"
+					x-model="newTagName"
+					@keydown.enter.prevent="addTagByInput()"
+					placeholder={ t(ctx, "mail.tagNamePlaceholder") }
+					aria-label={ t(ctx, "mail.tagNamePlaceholder") }
+					x-ref="tagInput"
+					@focus="openDropdown = true"
+				/>
+				<template x-if="filteredAllTags.length > 0">
+					<ul class="tag-dropdown-list">
+						<template x-for="opt in filteredAllTags" :key="opt.name">
+							<li>
+								<button
+									type="button"
+									class="tag-dropdown-item"
+									:class="{'tag-dropdown-item--active': isTagged(opt.name)}"
+									@click="toggleTag(opt.name)"
+									:aria-selected="isTagged(opt.name)"
+									role="option"
+								>
+									<span class="tag-swatch" :style="`background:${opt.colour}`"></span>
+									<span x-text="opt.name"></span>
+									<span x-show="isTagged(opt.name)" class="tag-check" aria-hidden="true">&#10003;</span>
+								</button>
+							</li>
+						</template>
+					</ul>
+				</template>
+				<template x-if="newTagName.trim() && !exactMatch">
+					<div class="tag-dropdown-create">
+						<button
+							type="button"
+							class="tag-dropdown-item tag-dropdown-item--create"
+							@click="addTagByInput()"
+						>
+							{ t(ctx, "mail.createTag") } &ldquo;<span x-text="newTagName.trim()"></span>&rdquo;
+						</button>
+					</div>
+				</template>
+			</div>
+		</div>
+	</div>
+}
+
+// tagsToJSON serialises []TagInfo into a JSON array literal for Alpine.js x-data initialisation.
+func tagsToJSON(tags []TagInfo) string {
+	if len(tags) == 0 {
+		return "[]"
+	}
+	var b strings.Builder
+	b.WriteString("[")
+	for i, tag := range tags {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(`{"name":`)
+		b.WriteString(`"`)
+		b.WriteString(strings.ReplaceAll(tag.Name, `"`, `\"`))
+		b.WriteString(`"`)
+		b.WriteString(`,"colour":"`)
+		b.WriteString(tagColourCSS(tag.ColourIndex))
+		b.WriteString(`"}`)
+	}
+	b.WriteString("]")
+	return b.String()
 }
 
 templ attachmentList(attachments []Attachment) {

@@ -477,9 +477,11 @@ func (a *Agent) Run(ctx context.Context) error {
 				mailH.SetSearch(a.Search)
 			}
 			mailH.SetTagStore(store.NewTagStore(a.Store, a))
+			r.Get("/mail/tag/{name}", mailH.ListTagMessages)
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
+			r.Post("/mail/bulk/tags", mailH.BulkTagAction)
 			r.Get("/mail/{mailbox}/{uid}/export", mailH.ExportEML)
 			r.Get("/mail/{mailbox}/{uid}", mailH.ShowMessage)
 			r.Get("/mail/blob/{hash}", mailH.ServeBlob)
