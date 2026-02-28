@@ -281,6 +281,237 @@ func TestConcurrentUserDBs(t *testing.T) {
 	}
 }
 
+func TestIndexMailTags(t *testing.T) {
+	cases := []struct {
+		name     string
+		guid     string
+		tags     []string
+		wantTags []string
+	}{
+		{
+			name:     "single tag",
+			guid:     "mail-1",
+			tags:     []string{"inbox"},
+			wantTags: []string{"inbox"},
+		},
+		{
+			name:     "multiple tags",
+			guid:     "mail-2",
+			tags:     []string{"work", "urgent", "inbox"},
+			wantTags: []string{"inbox", "urgent", "work"}, // QueryByTag not used here; checked via direct query
+		},
+		{
+			name:     "empty tags removes all",
+			guid:     "mail-3",
+			tags:     nil,
+			wantTags: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mgr := newTestManager(t)
+
+			if err := mgr.IndexMailTags("u1", tc.guid, tc.tags); err != nil {
+				t.Fatalf("IndexMailTags: %v", err)
+			}
+
+			idx, err := mgr.OpenUser("u1")
+			if err != nil {
+				t.Fatalf("OpenUser: %v", err)
+			}
+
+			rows, err := idx.db.Query(
+				`SELECT tag FROM message_tags WHERE mail_guid = ? ORDER BY tag`,
+				tc.guid,
+			)
+			if err != nil {
+				t.Fatalf("querying tags: %v", err)
+			}
+			defer rows.Close()
+
+			var got []string
+			for rows.Next() {
+				var tag string
+				if err := rows.Scan(&tag); err != nil {
+					t.Fatalf("scan: %v", err)
+				}
+				got = append(got, tag)
+			}
+			if err := rows.Err(); err != nil {
+				t.Fatalf("rows: %v", err)
+			}
+
+			if len(got) != len(tc.wantTags) {
+				t.Fatalf("got %d tags, want %d: %v", len(got), len(tc.wantTags), got)
+			}
+			for i, want := range tc.wantTags {
+				if got[i] != want {
+					t.Errorf("tag[%d] = %q, want %q", i, got[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestIndexMailTagsReplace(t *testing.T) {
+	mgr := newTestManager(t)
+
+	// Set initial tags.
+	if err := mgr.IndexMailTags("u1", "mail-1", []string{"inbox", "work"}); err != nil {
+		t.Fatalf("first IndexMailTags: %v", err)
+	}
+
+	// Replace with different tags.
+	if err := mgr.IndexMailTags("u1", "mail-1", []string{"archive"}); err != nil {
+		t.Fatalf("second IndexMailTags: %v", err)
+	}
+
+	idx, err := mgr.OpenUser("u1")
+	if err != nil {
+		t.Fatalf("OpenUser: %v", err)
+	}
+
+	var count int
+	if err := idx.db.QueryRow(`SELECT COUNT(*) FROM message_tags WHERE mail_guid = 'mail-1'`).Scan(&count); err != nil {
+		t.Fatalf("count query: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 tag after replace, got %d", count)
+	}
+
+	var tag string
+	if err := idx.db.QueryRow(`SELECT tag FROM message_tags WHERE mail_guid = 'mail-1'`).Scan(&tag); err != nil {
+		t.Fatalf("tag query: %v", err)
+	}
+	if tag != "archive" {
+		t.Errorf("tag = %q, want %q", tag, "archive")
+	}
+}
+
+func TestQueryByTag(t *testing.T) {
+	cases := []struct {
+		name      string
+		messages  map[string][]string // guid -> tags
+		queryTag  string
+		wantGUIDs []string
+	}{
+		{
+			name: "single match",
+			messages: map[string][]string{
+				"mail-1": {"inbox"},
+				"mail-2": {"archive"},
+			},
+			queryTag:  "inbox",
+			wantGUIDs: []string{"mail-1"},
+		},
+		{
+			name: "multiple matches ordered",
+			messages: map[string][]string{
+				"mail-a": {"work", "urgent"},
+				"mail-b": {"work"},
+				"mail-c": {"inbox"},
+			},
+			queryTag:  "work",
+			wantGUIDs: []string{"mail-a", "mail-b"},
+		},
+		{
+			name: "no matches returns empty",
+			messages: map[string][]string{
+				"mail-1": {"inbox"},
+			},
+			queryTag:  "nonexistent",
+			wantGUIDs: nil,
+		},
+		{
+			name:      "empty index returns empty",
+			messages:  map[string][]string{},
+			queryTag:  "inbox",
+			wantGUIDs: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mgr := newTestManager(t)
+
+			for guid, tags := range tc.messages {
+				if err := mgr.IndexMailTags("u1", guid, tags); err != nil {
+					t.Fatalf("IndexMailTags %q: %v", guid, err)
+				}
+			}
+
+			got, err := mgr.QueryByTag("u1", tc.queryTag)
+			if err != nil {
+				t.Fatalf("QueryByTag: %v", err)
+			}
+
+			if len(got) != len(tc.wantGUIDs) {
+				t.Fatalf("got %d GUIDs, want %d: %v", len(got), len(tc.wantGUIDs), got)
+			}
+			for i, want := range tc.wantGUIDs {
+				if got[i] != want {
+					t.Errorf("guid[%d] = %q, want %q", i, got[i], want)
+				}
+			}
+		})
+	}
+}
+
+func TestQueryByTagUserIsolation(t *testing.T) {
+	mgr := newTestManager(t)
+
+	// Both users tag the same GUID with "inbox".
+	if err := mgr.IndexMailTags("u1", "mail-1", []string{"inbox"}); err != nil {
+		t.Fatalf("IndexMailTags u1: %v", err)
+	}
+	if err := mgr.IndexMailTags("u2", "mail-2", []string{"inbox"}); err != nil {
+		t.Fatalf("IndexMailTags u2: %v", err)
+	}
+
+	got1, err := mgr.QueryByTag("u1", "inbox")
+	if err != nil {
+		t.Fatalf("QueryByTag u1: %v", err)
+	}
+	if len(got1) != 1 || got1[0] != "mail-1" {
+		t.Errorf("u1 inbox = %v, want [mail-1]", got1)
+	}
+
+	got2, err := mgr.QueryByTag("u2", "inbox")
+	if err != nil {
+		t.Fatalf("QueryByTag u2: %v", err)
+	}
+	if len(got2) != 1 || got2[0] != "mail-2" {
+		t.Errorf("u2 inbox = %v, want [mail-2]", got2)
+	}
+}
+
+func TestMessageTagsTableExists(t *testing.T) {
+	mgr := newTestManager(t)
+
+	idx, err := mgr.OpenUser("u1")
+	if err != nil {
+		t.Fatalf("OpenUser: %v", err)
+	}
+
+	var name string
+	err = idx.db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name='message_tags'",
+	).Scan(&name)
+	if err != nil {
+		t.Errorf("message_tags table not found: %v", err)
+	}
+
+	// Verify the index on tag column also exists.
+	var indexName string
+	err = idx.db.QueryRow(
+		"SELECT name FROM sqlite_master WHERE type='index' AND name='idx_message_tags_tag'",
+	).Scan(&indexName)
+	if err != nil {
+		t.Errorf("idx_message_tags_tag index not found: %v", err)
+	}
+}
+
 func TestEmptyQueries(t *testing.T) {
 	mgr := newTestManager(t)
 

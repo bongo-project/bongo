@@ -129,7 +129,7 @@ func rebuildMail(ps *store.PebbleStore, metadata *store.MetadataManager, search 
 		// Index into Bleve.
 		if search != nil {
 			hasAttachment := len(meta.Attachments) > 0
-			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment); err != nil {
+			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, meta.Tags); err != nil {
 				logger.Warn("fsm rebuild: failed to index mail in bleve", "user", userID, "guid", guid, "error", err)
 			}
 		}

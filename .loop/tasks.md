@@ -10,7 +10,7 @@ Status: in-progress
 ## Tasks
 
 ### Phase 1: Storage Foundation
-- [ ] 1. Add tags to protobuf schemas (MailMeta, MailboxMessage, new TagMeta), compile .pb.go files
+- [x] 1. Add tags to protobuf schemas (MailMeta, MailboxMessage, new TagMeta), compile .pb.go files
 - [ ] 2. Add message_tags junction table to SQLite metadata with IndexMailTags and QueryByTag methods (needs: 1)
 - [ ] 3. Add tags keyword field to Bleve MailDocument, update IndexMail to include tags (needs: 1)
 - [ ] 4. Add tag methods to MailboxStore: GetTags, SetTags, AddTags, RemoveTags with validation (max 20/msg, 100/user, name rules) + unit tests (needs: 1)

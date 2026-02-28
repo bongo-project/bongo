@@ -344,7 +344,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 		// Index for search.
 		if h.search != nil {
-			h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false)
+			h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil)
 		}
 	}
 
@@ -374,7 +374,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Index sender's copy.
 	if h.search != nil {
-		h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false)
+		h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil)
 	}
 
 	h.logger.Info("web: message sent", "from", email, "to_count", len(allRecipients), "subject", subject, "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
