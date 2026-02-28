@@ -142,6 +142,28 @@ func TestRequireAuth_ExpiredCookie(t *testing.T) {
 	// The middleware checks data.Exp > now.
 }
 
+func TestRequireAuth_HTMXRedirect(t *testing.T) {
+	handler := RequireAuth(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("handler should not be called without auth")
+	}))
+
+	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
+	req.Header.Set("HX-Request", "true")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	// HTMX requests get HX-Redirect header instead of a 303.
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 for HTMX redirect", rr.Code)
+	}
+	if loc := rr.Header().Get("HX-Redirect"); loc != "/login" {
+		t.Errorf("HX-Redirect = %q, want /login", loc)
+	}
+	if loc := rr.Header().Get("Location"); loc != "" {
+		t.Errorf("Location header should be empty for HTMX, got %q", loc)
+	}
+}
+
 func TestUserFromContext_Empty(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	userID, email := UserFromContext(req.Context())

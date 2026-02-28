@@ -81,23 +81,25 @@ func ClearSessionCookie() *http.Cookie {
 
 // RequireAuth is middleware that validates the session cookie and injects
 // userID and email into the request context. Redirects to /login on failure.
+// For HTMX requests it uses HX-Redirect so the browser does a full-page
+// navigation instead of swapping the login page into a partial target.
 func RequireAuth(secret []byte) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(cookieName)
 			if err != nil {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				redirectToLogin(w, r)
 				return
 			}
 
 			data, err := validateCookie(secret, cookie.Value)
 			if err != nil {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				redirectToLogin(w, r)
 				return
 			}
 
 			if time.Now().Unix() > data.Exp {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				redirectToLogin(w, r)
 				return
 			}
 
@@ -107,6 +109,18 @@ func RequireAuth(secret []byte) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// redirectToLogin sends the client to /login. For HTMX requests it uses the
+// HX-Redirect header so the browser performs a full-page navigation rather
+// than swapping the login form into a partial target element.
+func redirectToLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Redirect", "/login")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 // RequireAdmin is middleware that checks the admin flag in the session.

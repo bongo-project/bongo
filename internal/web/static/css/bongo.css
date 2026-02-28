@@ -861,6 +861,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
    ============================================ */
 .pagination {
   display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap;
   gap: 4px; padding: 12px 16px;
   border-top: 1px solid var(--border);
   background: var(--bg-subtle);
@@ -876,6 +877,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .page-btn:hover { background: var(--bongo-blue-light); border-color: var(--bongo-blue); color: var(--bongo-blue-dark); }
 .page-btn.active { background: var(--bongo-blue); border-color: var(--bongo-blue); color: white; }
 .page-btn:disabled { opacity: 0.4; cursor: default; }
+.page-ellipsis { display: flex; align-items: center; padding: 0 4px; color: var(--text-muted); font-size: 0.85rem; }
 
 
 /* ============================================
@@ -2337,6 +2339,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
     position: fixed;
     top: 0; left: 0; bottom: 0;
     width: 280px;
+    max-width: 85vw;
     z-index: 150;
     transform: translateX(-100%);
   }
