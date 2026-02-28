@@ -28,6 +28,7 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	agentgrpc "github.com/bongo-go/bongo-go/internal/agent/grpc"
 	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/auth"
 	bongocaldav "github.com/bongo-go/bongo-go/internal/caldav"
@@ -92,6 +93,9 @@ type Agent struct {
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
 
+	// AgentGRPC is the gRPC client for agent-role nodes connecting to a server.
+	AgentGRPC *agentgrpc.AgentClient
+
 	httpServer           *http.Server
 	ready                atomic.Bool
 	blobSyncCancel       context.CancelFunc
@@ -149,6 +153,7 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 
 // NewAgent creates and initializes an Agent with the given config.
 // In dev mode, storage is opened in a temporary directory.
+// In agent mode, no local storage is initialized.
 func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	// Initialise global i18n message catalogues.
 	i18n.Init("en")
@@ -156,6 +161,14 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	a := &Agent{
 		Config: cfg,
 		logger: logger,
+	}
+
+	// Agent role does not use local storage -- return early.
+	if cfg.Server.Role == "agent" {
+		logger.Info("agent mode: skipping local storage initialization",
+			"agents", cfg.Server.Agents,
+		)
+		return a, nil
 	}
 
 	dataDir := cfg.Storage.DataDir
@@ -249,6 +262,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
+	// Agent role has a fundamentally different startup path.
+	if a.Config.Server.Role == "agent" {
+		return a.runAgent(ctx)
+	}
+
 	// Set up HTTP routes.
 	r := chi.NewRouter()
 	r.Use(middleware.SecurityHeaders())
@@ -1030,6 +1048,119 @@ func (a *Agent) autoJoinRaft() {
 	}
 
 	a.logger.Warn("raft auto-join: could not find leader to join")
+}
+
+// runAgent handles the "agent" role startup: connects to a server via gRPC,
+// registers, starts a health HTTP endpoint, and blocks until cancelled.
+func (a *Agent) runAgent(ctx context.Context) error {
+	a.logger.Info("starting in agent mode",
+		"agents", a.Config.Server.Agents,
+		"server", a.Config.AgentServer.ServerAddress,
+	)
+
+	// Set up minimal HTTP router with health endpoints only.
+	r := chi.NewRouter()
+	r.Use(middleware.SecurityHeaders())
+	health := handlers.NewHealthHandler(a)
+	r.Get("/health/live", health.Live)
+	r.Get("/health/ready", health.Ready)
+
+	port := a.Config.Web.Port
+	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
+	a.httpServer = &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+
+	// Connect to the server via gRPC.
+	grpcCfg := agentgrpc.DefaultAgentClientConfig()
+	grpcCfg.ServerAddr = a.Config.AgentServer.ServerAddress
+	grpcCfg.AgentID = a.Config.Server.Name
+	grpcCfg.Roles = a.Config.Server.Agents
+	grpcCfg.ListenAddr = addr
+
+	a.AgentGRPC = agentgrpc.NewAgentClient(grpcCfg, a.logger)
+	if err := a.AgentGRPC.Start(ctx); err != nil {
+		return fmt.Errorf("agent grpc client: %w", err)
+	}
+
+	// Start agent-type services.
+	for _, agentType := range a.Config.Server.Agents {
+		switch agentType {
+		case "antispam":
+			a.logger.Info("agent: antispam processor registered (receives ProcessMessage RPCs)")
+		case "antivirus":
+			a.logger.Info("agent: antivirus processor registered (receives ProcessMessage RPCs)")
+		case "smtp":
+			a.logger.Info("agent: SMTP agent type registered (implementation pending)")
+		case "imap":
+			a.logger.Info("agent: agent type imap not yet implemented")
+		case "pop3":
+			a.logger.Info("agent: agent type pop3 not yet implemented")
+		case "caldav":
+			a.logger.Info("agent: agent type caldav not yet implemented")
+		}
+	}
+
+	a.ready.Store(true)
+
+	a.logger.Info("bongo-go agent started",
+		"name", a.Config.Server.Name,
+		"bind", a.Config.Server.BindAddr,
+		"http_addr", addr,
+		"agents", a.Config.Server.Agents,
+	)
+
+	// Start HTTP server in background.
+	httpErrCh := make(chan error, 1)
+	go func() {
+		if err := a.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			httpErrCh <- err
+		}
+		close(httpErrCh)
+	}()
+
+	// Wait for context cancellation or HTTP error.
+	select {
+	case <-ctx.Done():
+	case err := <-httpErrCh:
+		if err != nil {
+			return fmt.Errorf("http server: %w", err)
+		}
+	}
+
+	a.logger.Info("agent shutting down")
+	return a.shutdownAgent()
+}
+
+// shutdownAgent performs graceful shutdown for agent-role nodes.
+func (a *Agent) shutdownAgent() error {
+	var errs []error
+
+	a.ready.Store(false)
+
+	// Deregister from server and stop heartbeat.
+	if a.AgentGRPC != nil {
+		a.AgentGRPC.Stop()
+		a.logger.Info("agent grpc client stopped")
+	}
+
+	// HTTP server (graceful drain).
+	if a.httpServer != nil {
+		drainCtx, drainCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer drainCancel()
+		if err := a.httpServer.Shutdown(drainCtx); err != nil {
+			errs = append(errs, fmt.Errorf("shutting down http server: %w", err))
+		} else {
+			a.logger.Info("http server shut down gracefully")
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("agent shutdown errors: %v", errs)
+	}
+	a.logger.Info("bongo-go agent stopped")
+	return nil
 }
 
 // Shutdown closes all resources held by the agent.

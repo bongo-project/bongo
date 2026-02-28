@@ -12,28 +12,37 @@ import (
 
 // Config is the top-level configuration for bongo-go.
 type Config struct {
-	Server    ServerConfig    `hcl:"server,block" mapstructure:"server"`
-	Cluster   ClusterConfig   `hcl:"cluster,block" mapstructure:"cluster"`
-	Storage   StorageConfig   `hcl:"storage,block" mapstructure:"storage"`
-	SMTP      SMTPConfig      `hcl:"smtp,block" mapstructure:"smtp"`
-	IMAP      IMAPConfig      `hcl:"imap,block" mapstructure:"imap"`
-	POP3      POP3Config      `hcl:"pop3,block" mapstructure:"pop3"`
-	Web       WebConfig       `hcl:"web,block" mapstructure:"web"`
-	CalDAV    CalDAVConfig    `hcl:"caldav,block" mapstructure:"caldav"`
-	Antispam  AntispamConfig  `hcl:"antispam,block" mapstructure:"antispam"`
-	Antivirus AntivirusConfig `hcl:"antivirus,block" mapstructure:"antivirus"`
-	Pipeline  PipelineConfig  `hcl:"pipeline,block" mapstructure:"pipeline"`
-	Telemetry TelemetryConfig `hcl:"telemetry,block" mapstructure:"telemetry"`
+	Server      ServerConfig    `hcl:"server,block" mapstructure:"server"`
+	Cluster     ClusterConfig   `hcl:"cluster,block" mapstructure:"cluster"`
+	Storage     StorageConfig   `hcl:"storage,block" mapstructure:"storage"`
+	SMTP        SMTPConfig      `hcl:"smtp,block" mapstructure:"smtp"`
+	IMAP        IMAPConfig      `hcl:"imap,block" mapstructure:"imap"`
+	POP3        POP3Config      `hcl:"pop3,block" mapstructure:"pop3"`
+	Web         WebConfig       `hcl:"web,block" mapstructure:"web"`
+	CalDAV      CalDAVConfig    `hcl:"caldav,block" mapstructure:"caldav"`
+	Antispam    AntispamConfig  `hcl:"antispam,block" mapstructure:"antispam"`
+	Antivirus   AntivirusConfig `hcl:"antivirus,block" mapstructure:"antivirus"`
+	Pipeline    PipelineConfig  `hcl:"pipeline,block" mapstructure:"pipeline"`
+	Telemetry   TelemetryConfig `hcl:"telemetry,block" mapstructure:"telemetry"`
+	AgentServer *AgentConfig    `hcl:"agent_server,block" mapstructure:"agent_server"`
 }
 
 // ServerConfig defines the server identity and network binding.
-// Roles: "server" (Raft voter, full stack), "edge" (stateless proxy), "dev" (all-in-one ephemeral).
+// Roles: "server" (Raft voter, full stack), "edge" (stateless proxy), "dev" (all-in-one ephemeral),
+// "agent" (remote processor, requires agents list).
 type ServerConfig struct {
-	Role          string `hcl:"role,optional" mapstructure:"role"`
-	Name          string `hcl:"name,optional" mapstructure:"name"`
-	Datacenter    string `hcl:"datacenter,optional" mapstructure:"datacenter"`
-	BindAddr      string `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
-	AdvertiseAddr string `hcl:"advertise_addr,optional" mapstructure:"advertise_addr"`
+	Role          string   `hcl:"role,optional" mapstructure:"role"`
+	Name          string   `hcl:"name,optional" mapstructure:"name"`
+	Datacenter    string   `hcl:"datacenter,optional" mapstructure:"datacenter"`
+	BindAddr      string   `hcl:"bind_addr,optional" mapstructure:"bind_addr"`
+	AdvertiseAddr string   `hcl:"advertise_addr,optional" mapstructure:"advertise_addr"`
+	Agents        []string `hcl:"agents,optional" mapstructure:"agents"`
+}
+
+// AgentConfig holds connection settings for an agent-role node to reach its server.
+type AgentConfig struct {
+	ServerAddress string    `hcl:"address,optional" mapstructure:"address"`
+	TLS           TLSConfig `hcl:"tls,block" mapstructure:"tls"`
 }
 
 type ClusterConfig struct {
@@ -147,6 +156,53 @@ type AntivirusConfig struct {
 type ClamAVConfig struct {
 	Enabled bool   `hcl:"enabled,optional" mapstructure:"enabled"`
 	Socket  string `hcl:"socket,optional" mapstructure:"socket"`
+}
+
+// validAgentNames is the set of valid agent type names for the "agent" role.
+var validAgentNames = map[string]bool{
+	"smtp":      true,
+	"imap":      true,
+	"pop3":      true,
+	"antispam":  true,
+	"antivirus": true,
+	"caldav":    true,
+}
+
+// ValidAgentNames returns a sorted list of valid agent type names.
+func ValidAgentNames() []string {
+	return []string{"antispam", "antivirus", "caldav", "imap", "pop3", "smtp"}
+}
+
+// validRoles is the set of valid server roles.
+var validRoles = map[string]bool{
+	"dev":    true,
+	"server": true,
+	"edge":   true,
+	"agent":  true,
+}
+
+// Validate checks the top-level config for invalid values.
+func (c *Config) Validate() error {
+	if !validRoles[c.Server.Role] {
+		return fmt.Errorf("server.role: unknown role %q (valid: dev, server, edge, agent)", c.Server.Role)
+	}
+
+	if c.Server.Role == "agent" {
+		if len(c.Server.Agents) == 0 {
+			return fmt.Errorf("server.agents: role \"agent\" requires a non-empty agents list")
+		}
+		for _, name := range c.Server.Agents {
+			if !validAgentNames[name] {
+				return fmt.Errorf("server.agents: unknown agent type %q (valid: %s)",
+					name, strings.Join(ValidAgentNames(), ", "))
+			}
+		}
+		if c.AgentServer == nil || c.AgentServer.ServerAddress == "" {
+			return fmt.Errorf("agent_server.address: required when role is \"agent\"")
+		}
+	}
+
+	return nil
 }
 
 // knownStageNames is the set of valid inbound pipeline stage names.
