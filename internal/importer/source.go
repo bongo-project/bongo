@@ -49,7 +49,7 @@ type IMAPSource struct {
 
 // NewIMAPSource connects to an IMAP server and logs in.
 func NewIMAPSource(host string, port int, useTLS bool, user, pass string, logger *slog.Logger) (*IMAPSource, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprint(port))
 
 	var conn net.Conn
 	var err error
