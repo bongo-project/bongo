@@ -3,7 +3,7 @@
 > Replace synchronous SMTP delivery with a staged pipeline supporting pluggable processors, external scanner backends, distributed agents via gRPC, and retroactive mailbox scanning.
 
 Started: 2026-02-27
-Status: complete
+Status: verified
 Source: tasks/prd-message-processing-pipeline.md
 
 ---
@@ -64,3 +64,15 @@ Source: tasks/prd-message-processing-pipeline.md
 - Proto compilation: .pb.go files are pre-compiled in repo, no protoc step in Makefile currently
 - HTTP router is chi v5 (NOT fiber for web routes)
 - All writes go through Raft via ApplyCommand pattern
+
+### Phase 5: Verification Fixes
+
+- [x] 18. Wire source_ip into QueueEnvelope - Modify SMTP delivery interface to accept and propagate RemoteAddr as source_ip in QueueEnvelope. Update DeliverWithSPF signature or add a new method. Wire from SMTP session RemoteAddr through to envelope. Update tests. (needs: 7)
+
+- [x] 19. Enable agent role in CLI - Add "agent" to the role switch in cmd/bongo-go/agent.go so the CLI accepts --role=agent. Currently rejected at line 61-65. One-line fix plus test. (needs: 14)
+
+- [x] 20. Add deliver stage idempotency flag - Add MsgFlagDelivered constant to flags.go. Check flag in deliver processor before applying Raft command to prevent duplicate deliveries on crash recovery. Set flag after successful delivery. Update tests. (needs: 5)
+
+- [x] 21. Implement antispam/antivirus agent processing - In runAgent(), wire antispam/antivirus agent types to start a local gRPC server that handles ProcessMessage RPCs by invoking the configured antispam/antivirus Processor. Currently these are stubs that only log. (needs: 14)
+
+- [x] 22. Backend fallback chain for antispam - Create a CompositeAntispamProcessor that tries Rspamd first, then SpamAssassin, then builtin, falling through when a backend is unreachable. Wire into pipeline when multiple backends are configured. (needs: 4, 10, 11)

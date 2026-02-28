@@ -85,3 +85,18 @@
 - Task 15: AgentDeliveryPipeline deposits via gRPC DepositMessage, startSMTPAgent() in agent mode
 - All 17 tasks complete
 ---
+
+### 2026-02-28 - Verification: 15/20 PASS, 4 PARTIAL, 1 FAIL
+- Extracted 65 requirements from PRD, verified against codebase
+- 5 gaps identified, fix tasks 18-22 created
+---
+
+### 2026-02-28 - Tasks 18-22: Verification fixes (parallel) [sonnet]
+- Task 18: Wired source_ip from SMTP RemoteAddr into QueueEnvelope via DeliverWithSPF sourceIP param
+- Task 19: Added "agent" to valid roles in cmd/bongo-go/agent.go CLI switch
+- Task 20: Added MsgFlagDelivered constant + idempotency check in deliver processor
+- Task 21: Created AgentProcessorServer in grpc/agent_processor.go for antispam/antivirus agent processing
+- Task 22: Created CompositeAntispamProcessor with Rspamd -> SpamAssassin -> builtin fallback chain
+- All 5 ran in parallel, all tests pass, build clean
+- All 22 tasks complete. Project verified.
+---
