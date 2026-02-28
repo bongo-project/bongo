@@ -90,6 +90,10 @@ templ AdminSidebar(active string) {
 			<span>{ t(ctx, "admin.aliases") }</span>
 		</a>
 		<div class="admin-nav-section">System</div>
+		<a href="/admin/quarantine" class={ "admin-nav-item", templ.KV("active", active == "quarantine") } aria-current?={ active == "quarantine" }>
+			<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+			<span>Quarantine</span>
+		</a>
 		<a href="/admin/queue" class={ "admin-nav-item", templ.KV("active", active == "queue") } aria-current?={ active == "queue" }>
 			<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
 			<span>{ t(ctx, "admin.queue") }</span>
