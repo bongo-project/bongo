@@ -436,15 +436,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/logs", adminH.LogViewer)
 		r.Get("/admin/logs/stream", adminH.LogStream)
 		r.Post("/admin/settings/require-2fa", adminH.ToggleRequire2FA)
-
-		if a.Spool != nil {
-			quarantineH := handlers.NewQuarantineHandler(a.Spool, a.Blobs, a.logger)
-			r.Get("/admin/quarantine", quarantineH.ListQuarantine)
-			r.Post("/admin/quarantine/{id}/release", quarantineH.ReleaseMessage)
-			r.Post("/admin/quarantine/{id}/delete", quarantineH.DeleteMessage)
-			r.Post("/admin/quarantine/bulk", quarantineH.BulkAction)
-		}
 	})
+
+	// Quarantine admin routes are registered later (after spool init) via
+	// registerQuarantineRoutes, because a.Spool is not available yet here.
 
 	// Protected routes.
 	r.Group(func(r chi.Router) {
@@ -732,6 +727,18 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.quarantinePurgeCancel = purgeCancel
 		go handlers.RunAutoPurge(purgeCtx, spool, a.Blobs, 30*24*time.Hour, time.Hour, a.logger)
 		a.logger.Info("quarantine: auto-purge started")
+
+		// Register quarantine admin routes (spool is now available).
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth(sessionSecret))
+			r.Use(middleware.RequireAdmin(sessionSecret))
+
+			quarantineH := handlers.NewQuarantineHandler(a.Spool, a.Blobs, a.logger)
+			r.Get("/admin/quarantine", quarantineH.ListQuarantine)
+			r.Post("/admin/quarantine/{id}/release", quarantineH.ReleaseMessage)
+			r.Post("/admin/quarantine/{id}/delete", quarantineH.DeleteMessage)
+			r.Post("/admin/quarantine/bulk", quarantineH.BulkAction)
+		})
 
 		// Create inbound delivery pipeline (stores blob + enqueues to spool).
 		smtpPipeline = bongosmtp.NewDeliveryPipeline(a.Blobs, spool, a.logger)

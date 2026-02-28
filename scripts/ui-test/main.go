@@ -105,6 +105,12 @@ func main() {
 	// Phase 10: CSS & layout checks
 	phase10CSS(c, alicePage)
 
+	// Phase 11: Quarantine admin page
+	phase11Quarantine(c, browser)
+
+	// Phase 12: Mailbox spam scan UI
+	phase12Scan(c, browser)
+
 	c.report()
 
 	if c.failed > 0 {

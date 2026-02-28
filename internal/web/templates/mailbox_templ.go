@@ -185,15 +185,15 @@ func MailboxContent(mailbox string, messages []MessageSummary, page, totalPages 
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("spamScan(%q)", mailbox))
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("spamScan('%s')", mailbox))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/mailbox.templ`, Line: 54, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/mailbox.templ`, Line: 54, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" style=\"display:inline-flex;align-items:center;gap:0.5rem\"><button type=\"button\" class=\"tool-btn\" x-on:click=\"startScan()\" x-bind:disabled=\"scanning\" x-text=\"scanning ? 'Scanning...' : 'Scan for spam'\" title=\"Scan mailbox for spam\"></button> <span x-show=\"scanning\" x-cloak style=\"font-size:0.82rem;color:var(--text-muted)\"><span x-text=\"progress.total > 0 ? progress.scanned + '/' + progress.total : ''\"></span> <span x-show=\"progress.spam > 0\" x-text=\"' (' + progress.spam + ' spam)'\"></span></span> <span x-show=\"result !== null && !scanning\" x-cloak x-text=\"result\" style=\"font-size:0.82rem;color:var(--text-muted)\"></span></div><div class=\"tool-spacer\"></div><span class=\"page-info\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\" style=\"display:inline-flex;align-items:center;gap:0.5rem\"><button type=\"button\" class=\"tool-btn\" x-on:click=\"startScan()\" x-bind:disabled=\"scanning\" x-text=\"scanning ? 'Scanning...' : 'Scan for spam'\" title=\"Scan mailbox for spam\">Scan for spam</button> <span x-show=\"scanning\" x-cloak style=\"font-size:0.82rem;color:var(--text-muted)\"><span x-text=\"progress.total > 0 ? progress.scanned + '/' + progress.total : ''\"></span> <span x-show=\"progress.spam > 0\" x-text=\"' (' + progress.spam + ' spam)'\"></span></span> <span x-show=\"result !== null && !scanning\" x-cloak x-text=\"result\" style=\"font-size:0.82rem;color:var(--text-muted)\"></span></div><div class=\"tool-spacer\"></div><span class=\"page-info\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
