@@ -304,6 +304,29 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
+    async bulkTagAction(mailbox, action, tagName) {
+      tagName = (tagName || '').trim();
+      if (!tagName || this.count === 0) return;
+      const messageIds = Object.keys(this.selected).map(uid => ({ mailbox: mailbox, uid: parseInt(uid) }));
+      try {
+        const resp = await fetch('/mail/bulk/tags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action, tags: [tagName], message_ids: messageIds })
+        });
+        if (resp.ok) {
+          this.selected = {};
+          this.count = 0;
+          this.lastClicked = null;
+          htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+        } else {
+          console.error('Bulk tag action failed:', resp.status);
+        }
+      } catch (e) {
+        console.error('Bulk tag action error:', e);
+      }
+    },
+
     // swipeHandler state
     startX: 0,
     startY: 0,
@@ -718,7 +741,124 @@ document.addEventListener('alpine:init', () => {
           }).catch(() => {});
           break;
         }
+        default: {
+          if (act.startsWith('tag-add:') || act.startsWith('tag-remove:')) {
+            const colonIdx = act.indexOf(':');
+            const tagAction = act.startsWith('tag-add:') ? 'add' : 'remove';
+            const tagName = act.slice(colonIdx + 1).trim();
+            if (tagName) {
+              fetch('/mail/bulk/tags', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: tagAction, tags: [tagName], message_ids: [{ mailbox: mailbox, uid: uid }] })
+              }).then(resp => {
+                if (resp.ok) {
+                  htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
+                }
+              }).catch(() => {});
+            }
+          }
+          break;
+        }
       }
+    }
+  }));
+
+  // Message detail tag chips: add/remove tags on a single message.
+  // Initialised via x-data="messageTags(tags, allTags, mailbox, uid)".
+  Alpine.data('messageTags', (initialTags, allTags, mailbox, uid) => ({
+    tags: initialTags,          // [{name, colour}, ...]  current tags on this message
+    allTags: allTags,           // [{name, colour}, ...]  all user-defined tags
+    openDropdown: false,
+    newTagName: '',
+
+    get filteredAllTags() {
+      const q = this.newTagName.trim().toLowerCase();
+      if (!q) return this.allTags;
+      return this.allTags.filter(t => t.name.toLowerCase().includes(q));
+    },
+
+    get exactMatch() {
+      const q = this.newTagName.trim().toLowerCase();
+      return this.allTags.some(t => t.name.toLowerCase() === q) ||
+             this.tags.some(t => t.name.toLowerCase() === q);
+    },
+
+    isTagged(name) {
+      return this.tags.some(t => t.name === name);
+    },
+
+    async addTag(name) {
+      if (this.isTagged(name)) { this.closeDropdown(); return; }
+      const existing = this.allTags.find(t => t.name === name);
+      const colour = existing ? existing.colour : '#517faf';
+      const resp = await fetch(
+        '/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/tags',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'add', tags: [name] })
+        }
+      ).catch(() => null);
+      if (resp && resp.ok) {
+        const data = await resp.json().catch(() => null);
+        if (data && Array.isArray(data.tags)) {
+          this.tags = data.tags.map(n => {
+            const t = this.tags.find(x => x.name === n) || this.allTags.find(x => x.name === n);
+            return { name: n, colour: t ? t.colour : colour };
+          });
+          if (!this.allTags.some(t => t.name === name)) {
+            this.allTags.push({ name, colour });
+          }
+        }
+      }
+      this.closeDropdown();
+    },
+
+    async removeTag(name) {
+      const resp = await fetch(
+        '/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/tags',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'remove', tags: [name] })
+        }
+      ).catch(() => null);
+      if (resp && resp.ok) {
+        const data = await resp.json().catch(() => null);
+        if (data && Array.isArray(data.tags)) {
+          this.tags = data.tags.map(n => {
+            const t = this.tags.find(x => x.name === n) || this.allTags.find(x => x.name === n);
+            return { name: n, colour: t ? t.colour : '#517faf' };
+          });
+        }
+      }
+    },
+
+    async toggleTag(name) {
+      if (this.isTagged(name)) {
+        await this.removeTag(name);
+      } else {
+        await this.addTag(name);
+      }
+    },
+
+    async addTagByInput() {
+      const name = this.newTagName.trim();
+      if (!name) return;
+      await this.addTag(name);
+      this.newTagName = '';
+    },
+
+    closeDropdown() {
+      this.openDropdown = false;
+      this.newTagName = '';
+    },
+
+    init() {
+      this.$watch('openDropdown', (val) => {
+        if (val) this.$nextTick(() => this.$refs.tagInput && this.$refs.tagInput.focus());
+      });
     }
   }));
 });

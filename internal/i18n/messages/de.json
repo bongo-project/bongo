@@ -44,6 +44,9 @@
   "mail.loadRemoteImages": "Externe Bilder laden",
   "mail.remoteImagesBlocked": "Externe Bilder wurden aus Datenschutzgründen blockiert.",
   "mail.attachments": "Anhänge",
+  "mail.addTag": "Tag hinzufügen",
+  "mail.createTag": "Tag erstellen",
+  "mail.tagNamePlaceholder": "Tag-Name",
 
   "compose.to": "An",
   "compose.cc": "Cc",

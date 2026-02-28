@@ -44,6 +44,9 @@
   "mail.loadRemoteImages": "Charger les images distantes",
   "mail.remoteImagesBlocked": "Les images distantes ont été bloquées pour votre confidentialité.",
   "mail.attachments": "Pièces jointes",
+  "mail.addTag": "Ajouter un tag",
+  "mail.createTag": "Créer un tag",
+  "mail.tagNamePlaceholder": "Nom du tag",
 
   "compose.to": "À",
   "compose.cc": "Cc",

@@ -343,6 +343,45 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 	return all[offset:end], total, nil
 }
 
+// ListMessagesByGUIDs returns paged MailboxMessage records whose MailGuid is in the
+// provided set. It scans all mailboxes for the user and filters by GUID membership.
+// Results are sorted newest first by InternalDate.
+func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bool, offset, limit int) ([]*bongov1.MailboxMessage, int, error) {
+	mailboxes, err := ms.ListMailboxes(userID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var all []*bongov1.MailboxMessage
+	for _, mb := range mailboxes {
+		msgs, err := ms.ListMessages(userID, mb.Name)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			if guidSet[msg.MailGuid] {
+				all = append(all, msg)
+			}
+		}
+	}
+
+	total := len(all)
+
+	// Sort newest first by InternalDate.
+	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
+		all[i], all[j] = all[j], all[i]
+	}
+
+	if offset >= len(all) {
+		return nil, total, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], total, nil
+}
+
 // TotalUnreadCount returns the total number of unread messages across all mailboxes for a user.
 func (ms *MailboxStore) TotalUnreadCount(userID string) int {
 	mailboxes, err := ms.ListMailboxes(userID)

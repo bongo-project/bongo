@@ -449,6 +449,232 @@ func TestUpdateMessageTags_AutoCreatesTagDefinition(t *testing.T) {
 	}
 }
 
+// doBulkTagsRequest performs a POST /mail/bulk/tags request and returns the recorder.
+func doBulkTagsRequest(t *testing.T, h *MailHandler, userID string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/mail/bulk/tags", bytes.NewReader(bodyBytes))
+	r.Header.Set("Content-Type", "application/json")
+	r = r.WithContext(middleware.WithUserContext(r.Context(), userID, userID+"@example.com"))
+
+	w := httptest.NewRecorder()
+	h.BulkTagAction(w, r)
+	return w
+}
+
+func TestBulkTagAction_AddTags(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+	mailbox := "INBOX"
+
+	uid1 := env.seedMessage(t, userID, mailbox, "bulk-001", nil)
+	uid2 := env.seedMessage(t, userID, mailbox, "bulk-002", nil)
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action": "add",
+		"tags":   []string{"work"},
+		"message_ids": []map[string]any{
+			{"mailbox": mailbox, "uid": uid1},
+			{"mailbox": mailbox, "uid": uid2},
+		},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp bulkTagResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Updated != 2 {
+		t.Errorf("updated = %d, want 2", resp.Updated)
+	}
+	if resp.Failed != 0 {
+		t.Errorf("failed = %d, want 0", resp.Failed)
+	}
+}
+
+func TestBulkTagAction_RemoveTags(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+	mailbox := "INBOX"
+
+	uid1 := env.seedMessage(t, userID, mailbox, "bulk-003", []string{"work", "urgent"})
+	uid2 := env.seedMessage(t, userID, mailbox, "bulk-004", []string{"work"})
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action": "remove",
+		"tags":   []string{"work"},
+		"message_ids": []map[string]any{
+			{"mailbox": mailbox, "uid": uid1},
+			{"mailbox": mailbox, "uid": uid2},
+		},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp bulkTagResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Updated != 2 {
+		t.Errorf("updated = %d, want 2", resp.Updated)
+	}
+	if resp.Failed != 0 {
+		t.Errorf("failed = %d, want 0", resp.Failed)
+	}
+}
+
+func TestBulkTagAction_PartialFailure_UnknownUID(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+	mailbox := "INBOX"
+
+	uid1 := env.seedMessage(t, userID, mailbox, "bulk-005", nil)
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action": "add",
+		"tags":   []string{"work"},
+		"message_ids": []map[string]any{
+			{"mailbox": mailbox, "uid": uid1},
+			{"mailbox": mailbox, "uid": uint32(99999)},
+		},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	var resp bulkTagResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Updated != 1 {
+		t.Errorf("updated = %d, want 1", resp.Updated)
+	}
+	if resp.Failed != 1 {
+		t.Errorf("failed = %d, want 1", resp.Failed)
+	}
+}
+
+func TestBulkTagAction_InvalidAction(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action":      "replace",
+		"tags":        []string{"work"},
+		"message_ids": []map[string]any{{"mailbox": "INBOX", "uid": 1}},
+	})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestBulkTagAction_EmptyTags(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action":      "add",
+		"tags":        []string{},
+		"message_ids": []map[string]any{{"mailbox": "INBOX", "uid": 1}},
+	})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestBulkTagAction_EmptyMessageIDs(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action":      "add",
+		"tags":        []string{"work"},
+		"message_ids": []map[string]any{},
+	})
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestBulkTagAction_AutoCreatesTagDefinition(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+	mailbox := "INBOX"
+
+	uid := env.seedMessage(t, userID, mailbox, "bulk-006", nil)
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action": "add",
+		"tags":   []string{"bulk-auto"},
+		"message_ids": []map[string]any{
+			{"mailbox": mailbox, "uid": uid},
+		},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	tagMeta, err := env.tags.GetTag(userID, "bulk-auto")
+	if err != nil {
+		t.Fatalf("GetTag(bulk-auto): %v", err)
+	}
+	if tagMeta.Name != "bulk-auto" {
+		t.Errorf("tag name = %q, want %q", tagMeta.Name, "bulk-auto")
+	}
+}
+
+func TestBulkTagAction_PebbleUpdated(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+	mailbox := "INBOX"
+	mailGUID := "bulk-007"
+
+	uid := env.seedMessage(t, userID, mailbox, mailGUID, nil)
+
+	w := doBulkTagsRequest(t, env.handler, userID, map[string]any{
+		"action": "add",
+		"tags":   []string{"receipts"},
+		"message_ids": []map[string]any{
+			{"mailbox": mailbox, "uid": uid},
+		},
+	})
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	// Verify MailMeta in Pebble.
+	data, err := env.ps.Get([]byte(fmt.Sprintf("/user/%s/mail/%s", userID, mailGUID)))
+	if err != nil {
+		t.Fatalf("reading MailMeta from Pebble: %v", err)
+	}
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(data, &meta); err != nil {
+		t.Fatalf("unmarshal MailMeta: %v", err)
+	}
+	if len(meta.Tags) != 1 || meta.Tags[0] != "receipts" {
+		t.Errorf("MailMeta.Tags = %v, want [receipts]", meta.Tags)
+	}
+}
+
 func TestUpdateMessageTags_DuplicateTagsDeduped(t *testing.T) {
 	env := newMailTagsTestEnv(t)
 	userID := "user1"

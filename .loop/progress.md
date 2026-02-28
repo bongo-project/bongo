@@ -39,3 +39,10 @@
 - Tests: PASS (22 new tests)
 - Patterns: TagStore follows identical struct/constructor/applier pattern. directApplier reused across store tests. Colour auto-assign = existingCount % 16.
 ---
+
+### 2026-02-28 - Tasks 6,7: Tag HTTP handlers [sonnet, parallel]
+- Task 6: Created TagsHandler with ListTags, CreateTag, UpdateTag, DeleteTag. DELETE removes tag from all messages via Raft. Routes: GET/POST/PUT/DELETE /api/tags.
+- Task 7: Added UpdateMessageTags to MailHandler. POST /mail/{mailbox}/{uid}/tags with add/remove. Updates Pebble (MailMeta+MailboxMessage), SQLite, Bleve. Auto-creates tag defs.
+- Files: tags.go, tags_test.go, mail.go, mail_tags_test.go, agent.go
+- Tests: PASS (26 new tests across both handlers)
+---

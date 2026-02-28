@@ -5,19 +5,57 @@ import (
 	"time"
 )
 
+// tagColourPalette maps a ColourIndex (0-15) to a CSS hex colour.
+// Must stay in sync with the 16-colour palette in store/tag_store.go.
+var tagColourPalette = [16]string{
+	"#517faf", // 0 blue
+	"#5aad4a", // 1 green
+	"#ee8d03", // 2 orange
+	"#8a6fb8", // 3 purple
+	"#e15e50", // 4 red
+	"#d4a60a", // 5 gold
+	"#729fcf", // 6 sky blue
+	"#3bada8", // 7 teal
+	"#e06c9f", // 8 pink
+	"#70b8a8", // 9 sage
+	"#c07d40", // 10 brown
+	"#8c9e6b", // 11 olive
+	"#a07ab8", // 12 lavender
+	"#4e9a8f", // 13 cyan
+	"#c96464", // 14 rose
+	"#7a8fa8", // 15 slate
+}
+
+// TagDotColour returns a CSS colour string for the given palette index.
+// Falls back to the first palette colour if index is out of range.
+func TagDotColour(index int32) string {
+	if index < 0 || int(index) >= len(tagColourPalette) {
+		return tagColourPalette[0]
+	}
+	return tagColourPalette[index]
+}
+
+// TagDot holds the display data for a single tag dot in the message list.
+type TagDot struct {
+	Name   string
+	Colour string // CSS colour value
+}
+
 // MessageSummary holds data for a single row in the message list.
 type MessageSummary struct {
-	UID         uint32
-	From        string
-	Subject     string
-	Date        time.Time
-	Size        int64
-	Seen        bool
-	Flagged     bool
-	ThreadCount int
-	ThreadRoot  string
-	MailGUID    string
-	SpamScore   float32
+	UID          uint32
+	From         string
+	Subject      string
+	Date         time.Time
+	Size         int64
+	Seen         bool
+	Flagged      bool
+	ThreadCount  int
+	ThreadRoot   string
+	MailGUID     string
+	SpamScore    float32
+	Tags         []TagDot // up to 3 visible dots
+	OverflowTags int      // number of tags beyond the first 3
 }
 
 // ThreadChild holds data for a child message in a thread expansion.
@@ -101,7 +139,42 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 				} else {
 					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
 				}
-				<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
+				<div class="bulk-tag-dropdown" x-data="{ open: false, tagInput: '' }" style="position:relative;display:inline-block">
+				<button type="button" class="tool-btn" x-on:click="open = !open" aria-haspopup="true" x-bind:aria-expanded="open">Tag</button>
+				<div
+					x-show="open"
+					x-on:click.away="open = false"
+					x-on:keydown.escape.window="open = false"
+					x-cloak=""
+					class="bulk-tag-panel"
+					role="dialog"
+					aria-label="Tag selected messages"
+				>
+					<input
+						type="text"
+						class="bulk-tag-input"
+						x-model="tagInput"
+						placeholder="Tag name"
+						aria-label="Tag name"
+						x-on:keydown.enter.prevent={ fmt.Sprintf("bulkTagAction('%s', 'add', tagInput); open = false; tagInput = ''", mailbox) }
+					/>
+					<div class="bulk-tag-actions">
+						<button
+							type="button"
+							class="tool-btn"
+							x-on:click={ fmt.Sprintf("bulkTagAction('%s', 'add', tagInput); open = false; tagInput = ''", mailbox) }
+							x-bind:disabled="tagInput.trim() === ''"
+						>Add</button>
+						<button
+							type="button"
+							class="tool-btn"
+							x-on:click={ fmt.Sprintf("bulkTagAction('%s', 'remove', tagInput); open = false; tagInput = ''", mailbox) }
+							x-bind:disabled="tagInput.trim() === ''"
+						>Remove</button>
+					</div>
+				</div>
+			</div>
+			<button type="button" class="tool-btn danger" x-on:click={ "bulkAction('" + mailbox + "', 'delete')" }>{ t(ctx, "mail.delete") }</button>
 			</div>
 			if len(messages) == 0 {
 				@EmptyState(t(ctx, "mail.noMessages"), t(ctx, "mail.emptyMailbox"))
@@ -202,6 +275,16 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 						hx-swap="innerHTML"
 					>
 						{ fmt.Sprint(msg.ThreadCount) }
+					</span>
+				}
+				if len(msg.Tags) > 0 {
+					<span class="tag-dots" aria-hidden="true">
+						for _, dot := range msg.Tags {
+							<span class="tag-dot" style={ fmt.Sprintf("background:%s", dot.Colour) } title={ dot.Name }></span>
+						}
+						if msg.OverflowTags > 0 {
+							<span class="tag-dot-overflow" title={ fmt.Sprintf("+%d more tags", msg.OverflowTags) }>+{ fmt.Sprint(msg.OverflowTags) }</span>
+						}
 					</span>
 				}
 			</span>

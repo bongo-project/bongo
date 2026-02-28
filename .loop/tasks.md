@@ -17,8 +17,8 @@ Status: in-progress
 
 ### Phase 2: Tag CRUD API
 - [x] 5. Tag management store: CreateTag, ListTags, RenameTag, DeleteTag, UpdateTagColour in Pebble with cached counts (needs: 1)
-- [ ] 6. Tag management HTTP handlers: GET/POST/PUT/DELETE /api/tags with JSON responses (needs: 5)
-- [ ] 7. Single message tag handler: POST /mail/{mailbox}/{uid}/tags with add/remove actions, updates Pebble + SQLite + Bleve (needs: 4, 5)
+- [x] 6. Tag management HTTP handlers: GET/POST/PUT/DELETE /api/tags with JSON responses (needs: 5)
+- [x] 7. Single message tag handler: POST /mail/{mailbox}/{uid}/tags with add/remove actions, updates Pebble + SQLite + Bleve (needs: 4, 5)
 
 ### Phase 3: Tag Views & UI
 - [ ] 8. Tag virtual view handler: GET /mail/tag/{name} with pagination, reusing ListVirtualMessages pattern (needs: 4, 5)
