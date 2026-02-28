@@ -92,12 +92,13 @@ type Agent struct {
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
 
-	httpServer         *http.Server
-	ready              atomic.Bool
-	blobSyncCancel     context.CancelFunc
-	queueWorkerCancel  context.CancelFunc
-	reminderCancel     context.CancelFunc
-	pipelineCancel     context.CancelFunc
+	httpServer           *http.Server
+	ready                atomic.Bool
+	blobSyncCancel       context.CancelFunc
+	queueWorkerCancel    context.CancelFunc
+	reminderCancel       context.CancelFunc
+	pipelineCancel       context.CancelFunc
+	quarantinePurgeCancel context.CancelFunc
 
 	// dataDir is the resolved data directory (tmp dir in dev mode).
 	dataDir string
@@ -403,6 +404,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/logs", adminH.LogViewer)
 		r.Get("/admin/logs/stream", adminH.LogStream)
 		r.Post("/admin/settings/require-2fa", adminH.ToggleRequire2FA)
+
+		if a.Spool != nil {
+			quarantineH := handlers.NewQuarantineHandler(a.Spool, a.Blobs, a.logger)
+			r.Get("/admin/quarantine", quarantineH.ListQuarantine)
+			r.Post("/admin/quarantine/{id}/release", quarantineH.ReleaseMessage)
+			r.Post("/admin/quarantine/{id}/delete", quarantineH.DeleteMessage)
+			r.Post("/admin/quarantine/bulk", quarantineH.BulkAction)
+		}
 	})
 
 	// Protected routes.
@@ -447,6 +456,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/mail/{mailbox}/{uid}/delete", mailH.DeleteMessage)
 			r.Get("/import", mailH.ImportPage)
 			r.Post("/import", mailH.ImportMbox)
+
+			scanH := handlers.NewScanHandler(a.Store, a.Blobs, a.Mailboxes, a, a.logger)
+			r.Post("/api/mailbox/{mailbox}/scan", scanH.StartScan)
+			r.Get("/api/mailbox/{mailbox}/scan/progress", scanH.ScanProgress)
+			r.Delete("/api/mailbox/{mailbox}/scan", scanH.CancelScan)
 		}
 
 		if a.Mailboxes != nil {
@@ -680,6 +694,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			"workers", a.Config.Pipeline.Workers,
 			"poll_interval", a.Config.Pipeline.PollInterval,
 		)
+
+		// Start quarantine auto-purge (default 30-day retention, hourly checks).
+		purgeCtx, purgeCancel := context.WithCancel(ctx)
+		a.quarantinePurgeCancel = purgeCancel
+		go handlers.RunAutoPurge(purgeCtx, spool, a.Blobs, 30*24*time.Hour, time.Hour, a.logger)
+		a.logger.Info("quarantine: auto-purge started")
 
 		// Create inbound delivery pipeline (stores blob + enqueues to spool).
 		smtpPipeline = bongosmtp.NewDeliveryPipeline(a.Blobs, spool, a.logger)
@@ -1072,6 +1092,12 @@ func (a *Agent) Shutdown() error {
 	if a.reminderCancel != nil {
 		a.reminderCancel()
 		a.logger.Info("reminder checker stopped")
+	}
+
+	// 3.8. Quarantine auto-purge.
+	if a.quarantinePurgeCancel != nil {
+		a.quarantinePurgeCancel()
+		a.logger.Info("quarantine auto-purge stopped")
 	}
 
 	// 4. Blob sync cancel.
