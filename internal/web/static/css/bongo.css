@@ -40,7 +40,7 @@
   --sidebar-active: rgba(255,255,255,0.15);
   --sidebar-text: #b8cadf;
   --sidebar-bright: #ffffff;
-  --sidebar-width: 240px;
+  --sidebar-width: 220px;
 
   /* Text */
   --text: #1a1a2e;
@@ -132,7 +132,7 @@
   --sidebar-active: rgba(255,255,255,0.12);
   --sidebar-text: #94a3b8;
   --sidebar-bright: #e2e8f0;
-  --sidebar-width: 220px;
+  --sidebar-width: 200px;
   --bongo-green: #22c55e;
   --bongo-red: #ef4444;
 }
@@ -422,8 +422,8 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin: 14px 12px 6px;
-  padding: 10px 0;
+  margin: 12px 10px 6px;
+  padding: 8px 0;
   background: var(--bongo-orange);
   color: #1a1a2e;
   border: none;
@@ -480,9 +480,22 @@ input, select { font-family: inherit; font-size: 0.9rem; }
   text-transform: uppercase;
   letter-spacing: 1.5px;
   color: rgba(255,255,255,0.35);
-  padding: 8px 12px 4px;
+  padding: 8px 10px 4px;
   font-weight: 600;
 }
+.sidebar-label-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.sidebar-label-toggle:hover { color: rgba(255,255,255,0.55); }
+.sidebar-chevron {
+  font-size: 0.5rem;
+  transition: transform 0.15s;
+}
+.sidebar-chevron.collapsed { transform: rotate(-90deg); }
 
 /* Search page sidebar section variant */
 .sidebar-section { padding: 0 8px; }
@@ -500,10 +513,10 @@ input, select { font-family: inherit; font-size: 0.9rem; }
 .nav-item a {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 12px;
+  gap: 8px;
+  padding: 5px 10px;
   border-radius: var(--radius);
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   font-weight: 500;
   color: var(--sidebar-text);
   transition: background 0.12s, color 0.12s;
@@ -2321,7 +2334,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
 
 /* Tablet (1024px) */
 @media (max-width: 1024px) {
-  :root { --sidebar-width: 200px; }
+  :root { --sidebar-width: 180px; }
   .msg-from { width: 140px; }
   .user-email { display: none; }
   .mini-cal { display: none; }
