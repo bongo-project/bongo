@@ -8,7 +8,7 @@ import (
 
 func TestNewServer_NilTLS(t *testing.T) {
 	logger := slog.Default()
-	s := NewServer(nil, nil, nil, nil, nil, nil, nil, true, logger)
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, true, logger)
 	if s == nil {
 		t.Fatal("NewServer returned nil")
 	}
@@ -24,7 +24,7 @@ func TestNewServer_WithTLS(t *testing.T) {
 	logger := slog.Default()
 	tlsCfg := &tls.Config{} //nolint:gosec // test only
 
-	s := NewServer(nil, nil, nil, nil, nil, nil, tlsCfg, true, logger)
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, tlsCfg, true, logger)
 	if s == nil {
 		t.Fatal("NewServer returned nil")
 	}
@@ -38,7 +38,7 @@ func TestNewServer_WithTLS(t *testing.T) {
 
 func TestServer_PlainAddrBeforeListen(t *testing.T) {
 	logger := slog.Default()
-	s := NewServer(nil, nil, nil, nil, nil, nil, nil, true, logger)
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, true, logger)
 
 	addr := s.PlainAddr()
 	if addr != "" {
@@ -48,7 +48,7 @@ func TestServer_PlainAddrBeforeListen(t *testing.T) {
 
 func TestServer_CloseWithoutListen(t *testing.T) {
 	logger := slog.Default()
-	s := NewServer(nil, nil, nil, nil, nil, nil, nil, true, logger)
+	s := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, true, logger)
 
 	if err := s.Close(); err != nil {
 		t.Errorf("Close without Listen should not error, got %v", err)

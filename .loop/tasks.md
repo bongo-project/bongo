@@ -22,25 +22,25 @@ Status: in-progress
 
 ### Phase 3: Tag Views & UI
 - [x] 8. Tag virtual view handler: GET /mail/tag/{name} with pagination, reusing ListVirtualMessages pattern (needs: 4, 5)
-- [ ] 9. Sidebar tags section: collapsible, colour dots, unread counts, between Mailboxes and Views (needs: 8)
+- [x] 9. Sidebar tags section: collapsible, colour dots, unread counts, between Mailboxes and Views (needs: 8)
 - [x] 10. Message detail tag chips: coloured chips with text, add dropdown, remove X button, HTMX updates (needs: 7)
 - [x] 11. Message list tag dots: small coloured dots next to subject (max 3), tooltip on hover (needs: 4)
 - [x] 12. Bulk tagging: toolbar Tag button with dropdown, context menu Tag submenu, POST /mail/bulk/tags (needs: 7)
 
 ### Phase 4: IMAP Keywords
-- [ ] 13. IMAP PERMANENTFLAGS + FETCH: advertise \* in SELECT, return tags as $keyword in FLAGS response (needs: 4)
+- [x] 13. IMAP PERMANENTFLAGS + FETCH: advertise \* in SELECT, return tags as $keyword in FLAGS response (needs: 4)
 - [ ] 14. IMAP STORE keywords: handle +FLAGS/-FLAGS for custom $keywords, sync to tag store (needs: 13)
 
 ### Phase 5: Filter Rules
-- [ ] 15. Add TAG action type to FilterRule protobuf and rule engine apply logic (needs: 4)
+- [x] 15. Add TAG action type to FilterRule protobuf and rule engine apply logic (needs: 4)
 - [ ] 16. Filter rule UI: add tag action option to rule editor template (needs: 15)
 
 ### Phase 6: Import
-- [ ] 17. Gmail/IMAP/Thunderbird import: extract X-Gmail-Labels, IMAP keywords, X-Mozilla-Keys as tags (needs: 4)
+- [x] 17. Gmail/IMAP/Thunderbird import: extract X-Gmail-Labels, IMAP keywords, X-Mozilla-Keys as tags (needs: 4)
 - [ ] 18. Import dedup tag merging: when All Mail message already exists, merge tags instead of duplicating (needs: 17)
 
 ### Phase 7: Settings & Polish
-- [ ] 19. Tag management settings page: list tags with colour/count, rename, recolour, delete with confirmation (needs: 5, 6)
+- [x] 19. Tag management settings page: list tags with colour/count, rename, recolour, delete with confirmation (needs: 5, 6)
 
 ---
 

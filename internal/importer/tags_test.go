@@ -297,6 +297,66 @@ func TestExtractHeaderValue(t *testing.T) {
 	}
 }
 
+func TestDiffTags(t *testing.T) {
+	tests := []struct {
+		name      string
+		candidate []string
+		existing  [][]string
+		want      []string
+	}{
+		{
+			name:      "all new",
+			candidate: []string{"work", "finance"},
+			existing:  [][]string{},
+			want:      []string{"work", "finance"},
+		},
+		{
+			name:      "all already present",
+			candidate: []string{"work", "finance"},
+			existing:  [][]string{{"work", "finance"}},
+			want:      nil,
+		},
+		{
+			name:      "partial overlap",
+			candidate: []string{"work", "finance", "receipts"},
+			existing:  [][]string{{"work"}},
+			want:      []string{"finance", "receipts"},
+		},
+		{
+			name:      "overlap across multiple existing sets",
+			candidate: []string{"work", "finance", "receipts"},
+			existing:  [][]string{{"work"}, {"finance"}},
+			want:      []string{"receipts"},
+		},
+		{
+			name:      "no duplicates in output",
+			candidate: []string{"work", "work", "finance"},
+			existing:  [][]string{},
+			want:      []string{"work", "finance"},
+		},
+		{
+			name:      "empty candidate",
+			candidate: nil,
+			existing:  [][]string{{"work"}},
+			want:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := diffTags(tt.candidate, tt.existing...)
+			if len(got) != len(tt.want) {
+				t.Fatalf("diffTags() = %v, want %v", got, tt.want)
+			}
+			for i, g := range got {
+				if g != tt.want[i] {
+					t.Errorf("diffTags()[%d] = %q, want %q", i, g, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestMboxSourceExtractsTags(t *testing.T) {
 	raw := "From sender@example.com Mon Jan 1 00:00:00 2024\r\n" +
 		"From: sender@example.com\r\n" +

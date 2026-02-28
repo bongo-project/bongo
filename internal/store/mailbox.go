@@ -605,6 +605,16 @@ func (ms *MailboxStore) AppendMessage(userID, mailbox, mailGuid string, flags ui
 	return uid, nil
 }
 
+// WriteMessageTags updates the denormalised Tags field on a MailboxMessage via Raft.
+func (ms *MailboxStore) WriteMessageTags(userID, mailbox string, uid uint32, tags []string) error {
+	msg, err := ms.GetMessage(userID, mailbox, uid)
+	if err != nil {
+		return err
+	}
+	msg.Tags = tags
+	return ms.writeMessage(userID, mailbox, uid, msg)
+}
+
 func (ms *MailboxStore) writeMessage(userID, mailbox string, uid uint32, msg *bongov1.MailboxMessage) error {
 	msgBytes, err := proto.Marshal(msg)
 	if err != nil {

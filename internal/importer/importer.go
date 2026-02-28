@@ -10,6 +10,16 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 )
 
+// msgIDEntry tracks the destination folder and accumulated tags for a
+// message that has already been imported, keyed by Message-ID header value.
+// It is used during dedup to merge additional tags from later-processed
+// folders (e.g. "All Mail") into the already-imported message.
+type msgIDEntry struct {
+	dstFolder   string
+	tags        []string // tags from first import
+	pendingTags []string // additional tags discovered via dedup
+}
+
 // Config holds destination IMAP connection settings.
 type Config struct {
 	Host string
@@ -125,9 +135,10 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 	}
 
 	// Track Message-IDs for dedup when Gmail auto-map is active.
-	var messageIDs map[string]bool
+	// Maps Message-ID header value to the entry for the already-imported message.
+	var msgIDTrack map[string]*msgIDEntry
 	if im.dedupByMessageID {
-		messageIDs = make(map[string]bool)
+		msgIDTrack = make(map[string]*msgIDEntry)
 	}
 
 	var totalImported, totalSkipped, totalDeduped int
@@ -185,16 +196,30 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 			}
 
 			// Message-ID dedup: record for normal folders, check for lastFolders.
-			if messageIDs != nil {
+			if msgIDTrack != nil {
 				msgID := extractMessageID(msg.Raw)
 				if msgID != "" {
 					if isLastFolder {
-						if messageIDs[msgID] {
+						if entry, seen := msgIDTrack[msgID]; seen {
+							// Duplicate: merge any new tags from this occurrence
+							// into pending tags for later application via IMAP STORE.
+							newTags := diffTags(msg.Tags, entry.tags, entry.pendingTags)
+							if len(newTags) > 0 {
+								entry.pendingTags = append(entry.pendingTags, newTags...)
+								im.logger.Debug("dedup: queued tag merge",
+									"message_id", msgID,
+									"new_tags", newTags,
+									"folder", dstFolder,
+								)
+							}
 							deduped++
 							continue
 						}
 					}
-					messageIDs[msgID] = true
+					msgIDTrack[msgID] = &msgIDEntry{
+						dstFolder: dstFolder,
+						tags:      deduplicateStrings(msg.Tags),
+					}
 				}
 			}
 
@@ -289,6 +314,15 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 		totalDeduped += deduped
 	}
 
+	// Apply pending tag merges: for each message that was deduped with
+	// additional tags, SELECT its destination folder and STORE +FLAGS.
+	if dst != nil && msgIDTrack != nil {
+		merged := im.applyPendingTagMerges(ctx, dst, msgIDTrack)
+		if merged > 0 {
+			im.logger.Info("tag merges applied", "count", merged)
+		}
+	}
+
 	logAttrs := []any{
 		"folders", folderCount,
 		"imported", totalImported,
@@ -301,6 +335,120 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 	im.logger.Info("import complete", logAttrs...)
 
 	return nil
+}
+
+// applyPendingTagMerges applies accumulated pending tags to already-imported
+// messages by selecting each destination folder, searching for the message by
+// Message-ID header, then issuing IMAP STORE +FLAGS with the new keywords.
+// Returns the number of messages successfully updated.
+func (im *Importer) applyPendingTagMerges(ctx context.Context, dst *imapclient.Client, track map[string]*msgIDEntry) int {
+	// Group pending merges by destination folder so we only SELECT each folder once.
+	type pendingMerge struct {
+		messageID   string
+		pendingTags []string
+	}
+	byFolder := make(map[string][]pendingMerge)
+	for msgID, entry := range track {
+		if len(entry.pendingTags) == 0 {
+			continue
+		}
+		byFolder[entry.dstFolder] = append(byFolder[entry.dstFolder], pendingMerge{
+			messageID:   msgID,
+			pendingTags: entry.pendingTags,
+		})
+	}
+
+	if len(byFolder) == 0 {
+		return 0
+	}
+
+	merged := 0
+	for folder, merges := range byFolder {
+		select {
+		case <-ctx.Done():
+			return merged
+		default:
+		}
+
+		selCmd := dst.Select(folder, nil)
+		selData, err := selCmd.Wait()
+		if err != nil {
+			im.logger.Warn("tag merge: SELECT failed", "folder", folder, "error", err)
+			continue
+		}
+		if selData.NumMessages == 0 {
+			continue
+		}
+
+		for _, m := range merges {
+			select {
+			case <-ctx.Done():
+				return merged
+			default:
+			}
+
+			// Search for the message by Message-ID header.
+			criteria := &imap.SearchCriteria{
+				Header: []imap.SearchCriteriaHeaderField{
+					{Key: "Message-Id", Value: m.messageID},
+				},
+			}
+			searchCmd := dst.UIDSearch(criteria, nil)
+			searchData, err := searchCmd.Wait()
+			if err != nil {
+				im.logger.Warn("tag merge: SEARCH failed",
+					"message_id", m.messageID, "error", err)
+				continue
+			}
+			uids := searchData.AllUIDs()
+			if len(uids) == 0 {
+				im.logger.Debug("tag merge: message not found in folder",
+					"message_id", m.messageID, "folder", folder)
+				continue
+			}
+
+			// Build $keyword flags for the pending tags.
+			keywords := make([]imap.Flag, 0, len(m.pendingTags))
+			for _, tag := range m.pendingTags {
+				keywords = append(keywords, imap.Flag("$"+tag))
+			}
+
+			uidSet := imap.UIDSetNum(uids...)
+			storeFlags := &imap.StoreFlags{
+				Op:     imap.StoreFlagsAdd,
+				Silent: true,
+				Flags:  keywords,
+			}
+			storeCmd := dst.Store(uidSet, storeFlags, nil)
+			// Drain the fetch response (STORE returns updated flags unless SILENT).
+			for {
+				msg := storeCmd.Next()
+				if msg == nil {
+					break
+				}
+				for {
+					item := msg.Next()
+					if item == nil {
+						break
+					}
+				}
+			}
+			if err := storeCmd.Close(); err != nil {
+				im.logger.Warn("tag merge: STORE failed",
+					"message_id", m.messageID, "error", err)
+				continue
+			}
+
+			im.logger.Info("tag merge: applied",
+				"message_id", m.messageID,
+				"folder", folder,
+				"tags", m.pendingTags,
+			)
+			merged++
+		}
+	}
+
+	return merged
 }
 
 func (im *Importer) connectDst() (*imapclient.Client, error) {

@@ -27,6 +27,7 @@ type ConditionInfo struct {
 type ActionInfo struct {
 	Type   string
 	Target string
+	Tags   []string
 }
 
 // MailSample is a summary of a matched message for rule testing.
@@ -226,24 +227,49 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 				</div>
 				<div class="form-section">
 					<div class="form-section-title">{ t(ctx, "rules.actionHeader") }</div>
-					<div class="form-row two-col">
-						<div class="form-group">
-							<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
-							<select name="action_type" id="action_type" x-data={ actionTypeData(rule.Action.Type) } x-model="actionType">
-								<option value="move">Move to folder</option>
-								<option value="copy">Copy to folder</option>
-								<option value="flag">Flag as starred</option>
-								<option value="mark_read">Mark as read</option>
-								<option value="delete">Delete (move to Trash)</option>
-							</select>
+					<div x-data={ actionTypeData(rule.Action.Type, rule.Action.Tags) }>
+						<div class="form-row two-col">
+							<div class="form-group">
+								<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
+								<select name="action_type" id="action_type" x-model="actionType">
+									<option value="move">Move to folder</option>
+									<option value="copy">Copy to folder</option>
+									<option value="flag">Flag as starred</option>
+									<option value="mark_read">Mark as read</option>
+									<option value="delete">Delete (move to Trash)</option>
+									<option value="tag">Add tag</option>
+								</select>
+							</div>
+							<div class="form-group" x-show="actionType === 'move' || actionType === 'copy'">
+								<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
+								<select name="action_target" id="action_target">
+									for _, mb := range mailboxes {
+										<option value={ mb } selected?={ mb == rule.Action.Target }>{ mb }</option>
+									}
+								</select>
+							</div>
 						</div>
-						<div class="form-group">
-							<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
-							<select name="action_target" id="action_target">
-								for _, mb := range mailboxes {
-									<option value={ mb } selected?={ mb == rule.Action.Target }>{ mb }</option>
-								}
-							</select>
+						<div class="form-group" x-show="actionType === 'tag'">
+							<label>Tags to apply</label>
+							<div class="tag-input-wrapper" style="border:1px solid var(--form-element-border-color,#ccc); border-radius:4px; padding:0.35rem 0.5rem; display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center; background:var(--form-element-background-color,#fff); min-height:2.5rem">
+								<template x-for="(tag, idx) in selectedTags" :key="idx">
+									<span style="display:inline-flex; align-items:center; gap:0.25rem; background:var(--primary,#1095c1); color:#fff; border-radius:3px; padding:0.15rem 0.4rem; font-size:0.85rem">
+										<span x-text="tag"></span>
+										<input type="hidden" name="action_tag" :value="tag"/>
+										<button type="button" @click="selectedTags.splice(idx,1)" style="background:none; border:none; color:inherit; cursor:pointer; padding:0; font-size:0.9rem; line-height:1" aria-label="Remove tag">&#10005;</button>
+									</span>
+								</template>
+								<input
+									type="text"
+									x-model="tagInput"
+									@keydown.enter.prevent="addTag()"
+									@keydown.comma.prevent="addTag()"
+									placeholder="Type a tag and press Enter"
+									style="border:none; outline:none; flex:1; min-width:10rem; background:transparent; font-size:inherit; padding:0.1rem 0"
+									aria-label="Tag name input"
+								/>
+							</div>
+							<p style="font-size:0.8rem; color:var(--muted-color,#888); margin-top:0.25rem">Press Enter or comma to add each tag. You can add multiple tags.</p>
 						</div>
 					</div>
 				</div>
@@ -313,9 +339,15 @@ func conditionsAlpineData(conditions []ConditionInfo) string {
 	return fmt.Sprintf("{ conditions: [%s], updateOperators(c) { if(c.field==='size'){c.operator='greater_than'} else if(c.field==='has_attachment'){c.operator='equals';c.value='true'} else if(['greater_than','less_than'].includes(c.operator)){c.operator='contains'} } }", strings.Join(parts, ", "))
 }
 
-func actionTypeData(actionType string) string {
+func actionTypeData(actionType string, tags []string) string {
 	if actionType == "" {
 		actionType = "move"
 	}
-	return fmt.Sprintf("{ actionType: '%s' }", actionType)
+	// Build JS array literal of existing tags.
+	var tagParts []string
+	for _, tag := range tags {
+		tagParts = append(tagParts, fmt.Sprintf("'%s'", strings.ReplaceAll(tag, "'", "\\'")))
+	}
+	tagsJS := "[" + strings.Join(tagParts, ",") + "]"
+	return fmt.Sprintf("{ actionType: '%s', selectedTags: %s, tagInput: '', addTag() { const v = this.tagInput.trim().replace(/,$/, ''); if (v && !this.selectedTags.includes(v)) { this.selectedTags.push(v); } this.tagInput = ''; } }", actionType, tagsJS)
 }

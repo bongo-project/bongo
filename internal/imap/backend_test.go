@@ -321,6 +321,84 @@ func TestSessionSubscribeUnsubscribe(t *testing.T) {
 	}
 }
 
+func TestSeparateFlags(t *testing.T) {
+	tests := []struct {
+		name         string
+		flags        []imap.Flag
+		wantStd      []imap.Flag
+		wantKeywords []string
+	}{
+		{
+			name:         "empty",
+			flags:        nil,
+			wantStd:      nil,
+			wantKeywords: nil,
+		},
+		{
+			name:         "standard flags only",
+			flags:        []imap.Flag{imap.FlagSeen, imap.FlagFlagged},
+			wantStd:      []imap.Flag{imap.FlagSeen, imap.FlagFlagged},
+			wantKeywords: nil,
+		},
+		{
+			name:         "keyword only",
+			flags:        []imap.Flag{"$work"},
+			wantStd:      nil,
+			wantKeywords: []string{"work"},
+		},
+		{
+			name:         "mixed standard and keyword",
+			flags:        []imap.Flag{imap.FlagSeen, "$work", "$urgent"},
+			wantStd:      []imap.Flag{imap.FlagSeen},
+			wantKeywords: []string{"work", "urgent"},
+		},
+		{
+			name:         "keyword is lowercased",
+			flags:        []imap.Flag{"$Work", "$URGENT"},
+			wantStd:      nil,
+			wantKeywords: []string{"work", "urgent"},
+		},
+		{
+			name:         "dollar with no name is skipped",
+			flags:        []imap.Flag{"$"},
+			wantStd:      nil,
+			wantKeywords: nil,
+		},
+		{
+			name:         "no-prefix flag is ignored",
+			flags:        []imap.Flag{"custom"},
+			wantStd:      nil,
+			wantKeywords: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotStd, gotKW := separateFlags(tt.flags)
+
+			if len(gotStd) != len(tt.wantStd) {
+				t.Errorf("separateFlags stdFlags = %v, want %v", gotStd, tt.wantStd)
+			} else {
+				for i, f := range gotStd {
+					if f != tt.wantStd[i] {
+						t.Errorf("separateFlags stdFlags[%d] = %q, want %q", i, f, tt.wantStd[i])
+					}
+				}
+			}
+
+			if len(gotKW) != len(tt.wantKeywords) {
+				t.Errorf("separateFlags keywords = %v, want %v", gotKW, tt.wantKeywords)
+			} else {
+				for i, kw := range gotKW {
+					if kw != tt.wantKeywords[i] {
+						t.Errorf("separateFlags keywords[%d] = %q, want %q", i, kw, tt.wantKeywords[i])
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestSessionAppendRequiresBlobs(t *testing.T) {
 	// Append without blob store should panic (nil pointer), which we recover from.
 	s := &session{}
