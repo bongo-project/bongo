@@ -681,6 +681,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Set up inbound pipeline spool and Runner (before SMTP server so
 	// enqueued messages can be processed immediately).
 	var smtpPipeline *bongosmtp.DeliveryPipeline
+	var deliverProc *pipelinedeliver.DeliverProcessor
 	if a.Raft != nil {
 		spoolDir := filepath.Join(a.dataDir, "spool")
 		spool, err := pipeline.NewSpoolStore(spoolDir, a.logger)
@@ -718,7 +719,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// Deliver processor is always the final stage.
-		deliverProc := pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
+		deliverProc = pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
+		if a.Preferences != nil {
+			deliverProc.SetPreferences(a.Preferences)
+		}
 		stages = append(stages, deliverProc)
 
 		// Create blob reader adapter and start the Runner with config-driven options.
@@ -787,6 +791,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Initialize outbound queue subsystem.
 	if a.Raft != nil {
 		a.QueueStore = queue.NewQueueStore(a.Store, a)
+
+		// Wire forward queuer to deliver processor.
+		if deliverProc != nil {
+			deliverProc.SetQueuer(a.QueueStore)
+		}
 
 		// DKIM signer (nil if no key configured).
 		signer, err := mail.NewDKIMSigner(&a.Config.SMTP.DKIM, "localhost")

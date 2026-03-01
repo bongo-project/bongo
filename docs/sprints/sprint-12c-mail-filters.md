@@ -365,7 +365,7 @@ with sample subjects. Works from both list view and edit form.
 
 - No Sieve DSL parser (proto-based rules are simpler and sufficient)
 - No auto-reply action (requires outbound relay integration, defer)
-- No forward action (requires outbound relay integration, defer)
+- ~~No forward action (requires outbound relay integration, defer)~~ -- Implemented: rule-based and account-level forwarding via outbound queue
 - No vacation responder (complex, defer to future)
 - No rule import/export (Sieve format, future)
 - No "apply rules to existing mail" batch operation (future enhancement)

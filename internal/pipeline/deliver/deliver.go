@@ -31,6 +31,16 @@ type RecipientResolver interface {
 	ResolveRecipient(email string) (string, error)
 }
 
+// ForwardQueuer enqueues an outbound message for relay delivery.
+type ForwardQueuer interface {
+	Enqueue(msg *bongov1.OutboundMessage) error
+}
+
+// PreferenceProvider retrieves user preferences by user ID.
+type PreferenceProvider interface {
+	Get(userID string) *bongov1.UserPreferences
+}
+
 // DeliverProcessor is the final pipeline stage. It receives a fully-scored
 // QueueEnvelope (with blob already written to the blob store), parses the raw
 // message from the io.Reader, constructs a MailMeta protobuf for each
@@ -39,7 +49,15 @@ type DeliverProcessor struct {
 	applier  RaftApplier
 	resolver RecipientResolver
 	logger   *slog.Logger
+	queuer   ForwardQueuer
+	prefs    PreferenceProvider
 }
+
+// SetQueuer sets the outbound queue for forwarding messages.
+func (p *DeliverProcessor) SetQueuer(q ForwardQueuer) { p.queuer = q }
+
+// SetPreferences sets the preference provider for account-level forwarding.
+func (p *DeliverProcessor) SetPreferences(pp PreferenceProvider) { p.prefs = pp }
 
 // NewDeliverProcessor constructs a DeliverProcessor with the required dependencies.
 func NewDeliverProcessor(applier RaftApplier, resolver RecipientResolver, logger *slog.Logger) *DeliverProcessor {
@@ -154,11 +172,34 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Determine spam score from envelope stage results.
 	spamScore := spamScoreFromStages(env.Stages)
 
-	// Deliver to each recipient.
+	// Deliver to each recipient. Check account-level forwarding preferences.
 	for _, rcpt := range env.Recipients {
 		userID, err := p.resolver.ResolveRecipient(rcpt)
 		if err != nil {
 			p.logger.Warn("deliver: unknown recipient, skipping", "recipient", rcpt, "error", err, "id", env.Id)
+			continue
+		}
+
+		// Check account-level forwarding preferences.
+		skipLocal := false
+		if p.prefs != nil {
+			prefs := p.prefs.Get(userID)
+			if prefs.ForwardAddress != "" {
+				env.ForwardAddresses = append(env.ForwardAddresses, prefs.ForwardAddress)
+				p.logger.Info("deliver: account-level forwarding enabled",
+					"user", userID,
+					"forward_to", prefs.ForwardAddress,
+					"keep_copy", prefs.ForwardKeepCopy,
+				)
+				if !prefs.ForwardKeepCopy {
+					skipLocal = true
+				}
+			}
+		}
+
+		if skipLocal {
+			p.logger.Info("deliver: skipping local delivery (forward_keep_copy=false)",
+				"user", userID, "id", env.Id)
 			continue
 		}
 
@@ -223,6 +264,28 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			"id", env.Id,
 			"target_mailbox", targetMailbox,
 		)
+	}
+
+	// Enqueue forwarded copies to external addresses.
+	if len(env.ForwardAddresses) > 0 && p.queuer != nil {
+		fwdMsg := &bongov1.OutboundMessage{
+			Id:          uuid.New().String(),
+			SenderEmail: env.Sender,
+			Recipients:  env.ForwardAddresses,
+			BlobHash:    env.BlobHash,
+		}
+		if err := p.queuer.Enqueue(fwdMsg); err != nil {
+			p.logger.Warn("deliver: failed to enqueue forwarded message",
+				"id", env.Id,
+				"forward_to", env.ForwardAddresses,
+				"error", err,
+			)
+		} else {
+			p.logger.Info("deliver: forwarded message enqueued",
+				"id", env.Id,
+				"forward_to", env.ForwardAddresses,
+			)
+		}
 	}
 
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.

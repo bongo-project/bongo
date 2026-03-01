@@ -169,8 +169,11 @@ Once the script finishes, refresh the web UI. You should now see:
 - **Appearance** — Theme (light/dark/auto), language, timezone
 - **Account** — Display name, signature
 - **Notifications** — Desktop notification preferences
+- **Forwarding** — Forward all incoming mail to an external address, with an
+  option to keep a local copy
 - **Filter Rules** — Create rules to auto-sort incoming mail (e.g., move
-  newsletters to a folder, auto-star messages from your boss)
+  newsletters to a folder, auto-star messages from your boss, or forward
+  matching messages to an external address)
 
 ---
 

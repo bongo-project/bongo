@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/a-h/templ"
 
@@ -99,6 +100,28 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 
 	// Infinite scroll: checkbox sends "1" when checked, absent when unchecked.
 	prefs.InfiniteScroll = r.FormValue("infinite_scroll") == "1"
+
+	// Forwarding.
+	fwdAddr := strings.TrimSpace(r.FormValue("forward_address"))
+	if fwdAddr != "" {
+		// Basic email validation.
+		if !strings.Contains(fwdAddr, "@") || !strings.Contains(fwdAddr, ".") {
+			http.Error(w, "Invalid forwarding address", http.StatusBadRequest)
+			return
+		}
+		// Prevent forwarding to self.
+		_, email := middleware.UserFromContext(r.Context())
+		if strings.EqualFold(fwdAddr, email) {
+			http.Error(w, "Cannot forward to your own address", http.StatusBadRequest)
+			return
+		}
+	}
+	prefs.ForwardAddress = fwdAddr
+	prefs.ForwardKeepCopy = r.FormValue("forward_keep_copy") == "1"
+	// Default to keeping a copy when no forwarding address is set.
+	if fwdAddr == "" {
+		prefs.ForwardKeepCopy = true
+	}
 
 	if err := h.prefs.Set(userID, prefs); err != nil {
 		http.Error(w, "Failed to save preferences", http.StatusInternalServerError)

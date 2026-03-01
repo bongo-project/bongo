@@ -110,6 +110,11 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 		case "delete":
 			finalAction = "reject"
 			reasons = append(reasons, "delete")
+		case "forward":
+			if action.Target != "" {
+				env.ForwardAddresses = append(env.ForwardAddresses, action.Target)
+				reasons = append(reasons, "forward:"+action.Target)
+			}
 		case "tag":
 			env.PendingTags = appendUnique(env.PendingTags, action.Tags)
 			for _, t := range action.Tags {

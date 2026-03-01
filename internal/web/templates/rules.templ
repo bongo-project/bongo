@@ -234,6 +234,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								<select name="action_type" id="action_type" x-model="actionType">
 									<option value="move">Move to folder</option>
 									<option value="copy">Copy to folder</option>
+									<option value="forward">Forward to address</option>
 									<option value="flag">Flag as starred</option>
 									<option value="mark_read">Mark as read</option>
 									<option value="delete">Delete (move to Trash)</option>
@@ -248,6 +249,10 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									}
 								</select>
 							</div>
+						</div>
+						<div class="form-group" x-show="actionType === 'forward'">
+							<label for="action_target_forward">Forward to email address</label>
+							<input type="email" name="action_target_forward" id="action_target_forward" class="form-input" placeholder="user@example.com" value={ rule.Action.Target }/>
 						</div>
 						<div class="form-group" x-show="actionType === 'tag'">
 							<label>Tags to apply</label>

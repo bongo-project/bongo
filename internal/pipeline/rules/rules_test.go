@@ -427,6 +427,69 @@ func TestRulesTagDeduplication(t *testing.T) {
 	}
 }
 
+func TestRulesForwardAction(t *testing.T) {
+	// A "forward" rule should populate env.ForwardAddresses and record it in reasons.
+	provider := &mockRuleProvider{
+		rules: map[string][]*bongov1.FilterRule{
+			"alice@example.com": {
+				{
+					Id:      "r1",
+					Name:    "forward newsletters",
+					Enabled: true,
+					Conditions: []*bongov1.Condition{
+						{Field: "subject", Operator: "contains", Value: "Newsletter"},
+					},
+					Action: &bongov1.FilterAction{
+						Type:   "forward",
+						Target: "external@other.com",
+					},
+				},
+			},
+		},
+	}
+
+	p := rulesprocessor.NewRulesProcessor(provider, nil)
+	env := &bongov1.QueueEnvelope{
+		Recipients: []string{"alice@example.com"},
+	}
+	msg := strings.NewReader(minimalMessage(
+		"news@example.com",
+		"alice@example.com",
+		"Weekly Newsletter",
+		"Your digest.",
+	))
+
+	result, err := p.Process(context.Background(), env, msg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("expected action=pass, got %q", result.Action)
+	}
+	// ForwardAddresses should contain the target.
+	if len(env.ForwardAddresses) != 1 {
+		t.Fatalf("expected 1 forward address, got %v", env.ForwardAddresses)
+	}
+	if env.ForwardAddresses[0] != "external@other.com" {
+		t.Errorf("forward address = %q, want %q", env.ForwardAddresses[0], "external@other.com")
+	}
+	// Reasons should include "forward:external@other.com".
+	found := false
+	for _, r := range result.Reasons {
+		if r == "forward:external@other.com" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected reason 'forward:external@other.com' in %v", result.Reasons)
+	}
+	// TargetMailbox should not be changed.
+	if env.TargetMailbox != "" {
+		t.Errorf("forward action must not set TargetMailbox, got %q", env.TargetMailbox)
+	}
+}
+
 func TestRulesTagNoMailboxChange(t *testing.T) {
 	// A "tag" action must not change env.TargetMailbox.
 	provider := &mockRuleProvider{
