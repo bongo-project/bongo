@@ -58,6 +58,7 @@ type NodeStatus struct {
 
 templ AdminLayout(title, email, active string) {
 	@LayoutWithContent(title, email) {
+		<script>document.querySelector('.layout').classList.add('admin-layout')</script>
 		<aside class="sidebar admin-sidebar" id="sidebar" aria-label={ t(ctx, "admin.navigation") } x-bind:class="{'open': sidebarOpen}">
 			@AdminSidebar(active)
 		</aside>

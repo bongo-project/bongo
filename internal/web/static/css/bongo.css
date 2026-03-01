@@ -2490,6 +2490,15 @@ a.admin-nav-item.active, .admin-nav-item.active {
    29. RESPONSIVE BREAKPOINTS
    ============================================ */
 
+/* Large desktop (1440px) */
+@media (min-width: 1440px) {
+  :root { --sidebar-width: 240px; }
+  .content { max-width: 1200px; }
+  .compose-card { max-width: 900px; }
+  .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  .admin-scroll { max-width: 1100px; }
+}
+
 /* Tablet (1024px) */
 @media (max-width: 1024px) {
   :root { --sidebar-width: 180px; }
@@ -2665,6 +2674,22 @@ a.admin-nav-item.active, .admin-nav-item.active {
   .stat-grid { grid-template-columns: 1fr; }
   .login-card { padding: 24px 20px; }
   .login-brand h1 { font-size: 1.6rem; }
+}
+
+/* Very small phone (375px) */
+@media (max-width: 375px) {
+  .topbar { padding: 0 4px; }
+  .brand { font-size: 0.9rem; }
+  .toolbar { padding: 2px 4px; }
+  .tool-btn { padding: 3px 6px; font-size: 0.75rem; }
+  .msg-row { padding: 6px 6px; }
+  .compose-area { padding: 4px; }
+  .field-label { font-size: 0.72rem; }
+  .compose-footer { gap: 4px; }
+  .day-cell { min-height: 36px; }
+  .day-number { width: 16px; height: 16px; font-size: 0.65rem; }
+  .stat-grid { gap: 6px; }
+  .stat-card { padding: 10px; }
 }
 
 
