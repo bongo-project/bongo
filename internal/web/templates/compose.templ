@@ -63,6 +63,10 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								name="cc"
 								value={ cc }
 								placeholder="cc@example.com"
+								x-data="galAutocomplete"
+								:value="query"
+								@input.debounce.300ms="query = $el.value; search()"
+								@keydown="onKeydown($event)"
 								aria-label={ t(ctx, "compose.cc") }
 							/>
 						</div>
@@ -75,6 +79,10 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								id="bcc"
 								name="bcc"
 								placeholder="bcc@example.com"
+								x-data="galAutocomplete"
+								:value="query"
+								@input.debounce.300ms="query = $el.value; search()"
+								@keydown="onKeydown($event)"
 								aria-label={ t(ctx, "compose.bcc") }
 							/>
 						</div>

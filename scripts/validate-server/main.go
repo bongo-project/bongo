@@ -127,7 +127,11 @@ func main() {
 	fmt.Println("\n--- Phase 8: Antispam ---")
 	phase8Antispam(c, smtpAddr, imapAddr)
 
-	// Phase 9: Final summary.
+	// Phase 9: Bounce/DSN.
+	fmt.Println("\n--- Phase 9: Bounce/DSN ---")
+	phase9BounceDSN(c, smtpAddr, imapAddr)
+
+	// Phase 10: Final summary.
 	printReport(c)
 
 	if c.failed > 0 {
@@ -1339,6 +1343,88 @@ func markJunkAsSpam(imapAddr, user, pass string) error {
 
 	ic.Logout().Wait()
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9: Bounce/DSN Verification
+// ---------------------------------------------------------------------------
+
+func phase9BounceDSN(c *checker, smtpAddr, imapAddr string) {
+	defer func() {
+		if r := recover(); r != nil {
+			c.check("Bounce", "panic recovery", fmt.Errorf("panic: %v", r))
+		}
+	}()
+
+	// Send a message to a non-existent domain — delivery should fail and
+	// generate a bounce notification (DSN) back to the sender.
+	bounceMsg := buildBounceTestMessage("alice@localhost", "nobody@invalid-domain-that-does-not-exist.example")
+	err := sendRawSMTP(smtpAddr, "alice@localhost", "alice123", "nobody@invalid-domain-that-does-not-exist.example", bounceMsg)
+	c.check("Bounce", "Send to invalid domain", err)
+
+	// Wait for the queue processor to attempt delivery and generate a bounce.
+	// The queue retries on short intervals in dev mode; 8 seconds should suffice.
+	time.Sleep(8 * time.Second)
+
+	// Check alice's INBOX for a bounce/DSN notification.
+	hasBounce, err := checkForBounce(imapAddr, "alice@localhost", "alice123")
+	c.check("Bounce", "Check for DSN in sender INBOX", err)
+	if err == nil {
+		if hasBounce {
+			c.check("Bounce", "Bounce DSN received", nil)
+		} else {
+			c.check("Bounce", "Bounce DSN received", fmt.Errorf("no bounce notification found in alice's INBOX"))
+		}
+	}
+}
+
+func buildBounceTestMessage(from, to string) []byte {
+	now := time.Now()
+	var msg bytes.Buffer
+	msg.WriteString(fmt.Sprintf("From: %s\r\n", from))
+	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
+	msg.WriteString("Subject: Bounce test message\r\n")
+	msg.WriteString(fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z)))
+	msg.WriteString(fmt.Sprintf("Message-ID: <bounce-test-%d@validate>\r\n", now.UnixNano()))
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	msg.WriteString("\r\n")
+	msg.WriteString("This message is sent to an invalid domain to test bounce generation.\r\n")
+	return msg.Bytes()
+}
+
+func checkForBounce(imapAddr, user, pass string) (bool, error) {
+	ic, err := imapclient.DialInsecure(imapAddr, nil)
+	if err != nil {
+		return false, fmt.Errorf("dial: %w", err)
+	}
+	defer ic.Close()
+
+	if err := ic.Login(user, pass).Wait(); err != nil {
+		return false, fmt.Errorf("login: %w", err)
+	}
+
+	_, err = ic.Select("INBOX", nil).Wait()
+	if err != nil {
+		return false, fmt.Errorf("SELECT INBOX: %w", err)
+	}
+
+	// Search for bounce indicators in subject (common DSN subjects).
+	for _, term := range []string{"Undelivered", "Delivery Status", "bounce", "Mail Delivery", "Failure"} {
+		criteria := &imap.SearchCriteria{
+			Header: []imap.SearchCriteriaHeaderField{
+				{Key: "Subject", Value: term},
+			},
+		}
+		searchData, err := ic.Search(criteria, nil).Wait()
+		if err == nil && len(searchData.AllSeqNums()) > 0 {
+			ic.Logout().Wait()
+			return true, nil
+		}
+	}
+
+	ic.Logout().Wait()
+	return false, nil
 }
 
 func printReport(c *checker) {
