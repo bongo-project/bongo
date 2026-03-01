@@ -250,6 +250,10 @@
   "settings.langDe": "Deutsch",
   "settings.langEs": "Español",
   "settings.infiniteScroll": "Desplazamiento infinito (cargar más mensajes automáticamente al desplazar)",
+  "settings.forwarding": "Reenvio",
+  "settings.forwardAddress": "Reenviar a la direccion",
+  "settings.forwardKeepCopy": "Conservar una copia local",
+  "settings.forwardDesc": "Reenviar automaticamente el correo entrante a una direccion externa.",
 
   "rules.colName": "Nombre",
   "rules.colConditions": "Condiciones",

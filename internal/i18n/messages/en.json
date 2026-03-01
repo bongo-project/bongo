@@ -250,6 +250,10 @@
   "settings.langDe": "Deutsch",
   "settings.langEs": "Espanol",
   "settings.infiniteScroll": "Infinite scroll (load more messages automatically when scrolling)",
+  "settings.forwarding": "Forwarding",
+  "settings.forwardAddress": "Forward to address",
+  "settings.forwardKeepCopy": "Keep a local copy",
+  "settings.forwardDesc": "Automatically forward incoming mail to an external address.",
 
   "rules.colName": "Name",
   "rules.colConditions": "Conditions",

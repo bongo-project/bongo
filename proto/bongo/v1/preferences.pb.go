@@ -239,6 +239,8 @@ type UserPreferences struct {
 	CalendarView    string                 `protobuf:"bytes,9,opt,name=calendar_view,json=calendarView,proto3" json:"calendar_view,omitempty"`
 	Locale          string                 `protobuf:"bytes,10,opt,name=locale,proto3" json:"locale,omitempty"`
 	InfiniteScroll  bool                   `protobuf:"varint,11,opt,name=infinite_scroll,json=infiniteScroll,proto3" json:"infinite_scroll,omitempty"`
+	ForwardAddress  string                 `protobuf:"bytes,12,opt,name=forward_address,json=forwardAddress,proto3" json:"forward_address,omitempty"`       // External address to forward all mail to (empty = disabled)
+	ForwardKeepCopy bool                   `protobuf:"varint,13,opt,name=forward_keep_copy,json=forwardKeepCopy,proto3" json:"forward_keep_copy,omitempty"` // When forwarding, also deliver locally (default true)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -350,11 +352,25 @@ func (x *UserPreferences) GetInfiniteScroll() bool {
 	return false
 }
 
+func (x *UserPreferences) GetForwardAddress() string {
+	if x != nil {
+		return x.ForwardAddress
+	}
+	return ""
+}
+
+func (x *UserPreferences) GetForwardKeepCopy() bool {
+	if x != nil {
+		return x.ForwardKeepCopy
+	}
+	return false
+}
+
 var File_proto_bongo_v1_preferences_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_preferences_proto_rawDesc = "" +
 	"\n" +
-	" proto/bongo/v1/preferences.proto\x12\bbongo.v1\"\xcf\x03\n" +
+	" proto/bongo/v1/preferences.proto\x12\bbongo.v1\"\xa4\x04\n" +
 	"\x0fUserPreferences\x12%\n" +
 	"\x05theme\x18\x01 \x01(\x0e2\x0f.bongo.v1.ThemeR\x05theme\x125\n" +
 	"\vlayout_mode\x18\x02 \x01(\x0e2\x14.bongo.v1.LayoutModeR\n" +
@@ -369,7 +385,9 @@ const file_proto_bongo_v1_preferences_proto_rawDesc = "" +
 	"\rcalendar_view\x18\t \x01(\tR\fcalendarView\x12\x16\n" +
 	"\x06locale\x18\n" +
 	" \x01(\tR\x06locale\x12'\n" +
-	"\x0finfinite_scroll\x18\v \x01(\bR\x0einfiniteScroll*O\n" +
+	"\x0finfinite_scroll\x18\v \x01(\bR\x0einfiniteScroll\x12'\n" +
+	"\x0fforward_address\x18\f \x01(\tR\x0eforwardAddress\x12*\n" +
+	"\x11forward_keep_copy\x18\r \x01(\bR\x0fforwardKeepCopy*O\n" +
 	"\x05Theme\x12\x15\n" +
 	"\x11THEME_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +

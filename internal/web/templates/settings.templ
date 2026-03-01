@@ -36,6 +36,9 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 						<button type="button" class="settings-tab" role="tab"
 							x-bind:class="{ 'active': activeTab === 3 }" x-bind:aria-selected="activeTab === 3"
 							x-on:click="activeTab = 3">{ t(ctx, "settings.localization") }</button>
+						<button type="button" class="settings-tab" role="tab"
+							x-bind:class="{ 'active': activeTab === 4 }" x-bind:aria-selected="activeTab === 4"
+							x-on:click="activeTab = 4">{ t(ctx, "settings.forwarding") }</button>
 					</div>
 					<form method="post" action="/settings">
 						<!-- Appearance -->
@@ -148,6 +151,28 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 									<select name="timezone" id="timezone" class="settings-select">
 										@timezoneOptions(prefs.Timezone)
 									</select>
+								</div>
+							</div>
+						</div>
+						<!-- Forwarding -->
+						<div class="settings-section" x-show="activeTab === 4">
+							<h2 class="settings-section-title">{ t(ctx, "settings.forwarding") }</h2>
+							<p class="settings-section-desc">{ t(ctx, "settings.forwardDesc") }</p>
+							<div class="settings-card">
+								<div class="settings-row">
+									<div class="settings-row-label">
+										<div class="settings-row-title">{ t(ctx, "settings.forwardAddress") }</div>
+									</div>
+									<input type="email" name="forward_address" id="forward_address" class="settings-input" placeholder="user@example.com" value={ prefs.ForwardAddress }/>
+								</div>
+								<div class="settings-row">
+									<div class="settings-row-label">
+										<div class="settings-row-title">{ t(ctx, "settings.forwardKeepCopy") }</div>
+									</div>
+									<label class="toggle">
+										<input type="checkbox" name="forward_keep_copy" value="1" checked?={ prefs.ForwardKeepCopy }/>
+										<span class="toggle-slider"></span>
+									</label>
 								</div>
 							</div>
 						</div>

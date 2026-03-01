@@ -43,4 +43,6 @@ message UserPreferences {
   string calendar_view = 9;
   string locale = 10;
   bool infinite_scroll = 11;
+  string forward_address = 12;    // External address to forward all mail to (empty = disabled)
+  bool forward_keep_copy = 13;    // When forwarding, also deliver locally (default true)
 }

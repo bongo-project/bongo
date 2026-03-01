@@ -17,6 +17,7 @@ message QueueEnvelope {
   string current_stage = 10;             // Stage currently processing
   string target_mailbox = 11;            // Override destination (set by rules/spam)
   repeated string pending_tags = 12;     // Tags to apply at delivery (accumulated by rules stage)
+  repeated string forward_addresses = 13; // External addresses to forward this message to
 }
 
 message StageResult {

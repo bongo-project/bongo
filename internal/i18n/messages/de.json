@@ -250,6 +250,10 @@
   "settings.langDe": "Deutsch",
   "settings.langEs": "Espanol",
   "settings.infiniteScroll": "Endloses Scrollen (mehr Nachrichten beim Scrollen automatisch laden)",
+  "settings.forwarding": "Weiterleitung",
+  "settings.forwardAddress": "Weiterleiten an Adresse",
+  "settings.forwardKeepCopy": "Lokale Kopie behalten",
+  "settings.forwardDesc": "Eingehende E-Mails automatisch an eine externe Adresse weiterleiten.",
 
   "rules.colName": "Name",
   "rules.colConditions": "Bedingungen",

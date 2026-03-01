@@ -156,6 +156,7 @@ Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs ol
 ### Architecture Patterns
 - Three-tier update for metadata changes: Pebble (via Raft, source of truth), SQLite (derived index), Bleve (search index). Secondary indexes are best-effort (non-fatal on error).
 - Pipeline tag flow: rules stage accumulates in `QueueEnvelope.PendingTags`, deliver stage applies via `store.AddTags` before Raft write.
+- Pipeline forwarding flow: rules stage "forward" action and account-level `ForwardAddress` preference both append to `QueueEnvelope.ForwardAddresses`. Deliver stage enqueues an `OutboundMessage` via `ForwardQueuer` after local delivery. `ForwardKeepCopy=false` skips local delivery. Forwarding errors are non-fatal (logged as warnings).
 - IMAP keyword convention: `$` prefix for custom keywords. `separateFlags()` splits system flags from keywords, `tagsToIMAPKeywords()` adds prefix.
 
 ### UI Patterns

@@ -387,6 +387,180 @@ func TestDeliverIdempotent(t *testing.T) {
 	}
 }
 
+// mockQueuer records enqueued outbound messages.
+type mockQueuer struct {
+	messages []*bongov1.OutboundMessage
+	err      error
+}
+
+func (m *mockQueuer) Enqueue(msg *bongov1.OutboundMessage) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.messages = append(m.messages, msg)
+	return nil
+}
+
+// mockPrefs returns fixed preferences by user ID.
+type mockPrefs struct {
+	prefs map[string]*bongov1.UserPreferences
+}
+
+func (m *mockPrefs) Get(userID string) *bongov1.UserPreferences {
+	if p, ok := m.prefs[userID]; ok {
+		return p
+	}
+	return &bongov1.UserPreferences{ForwardKeepCopy: true}
+}
+
+// TestDeliverForwardAddressesEnqueued verifies that when ForwardAddresses is
+// set on the envelope, the deliver processor enqueues an outbound message.
+func TestDeliverForwardAddressesEnqueued(t *testing.T) {
+	applier := &mockApplier{}
+	resolver := &mockResolver{
+		mapping: map[string]string{
+			"alice@example.com": "user-alice",
+		},
+	}
+	queuer := &mockQueuer{}
+
+	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
+	proc.SetQueuer(queuer)
+
+	rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
+	env := &bongov1.QueueEnvelope{
+		Id:               "env-fwd",
+		Sender:           "bob@example.com",
+		Recipients:       []string{"alice@example.com"},
+		ReceivedAt:       time.Now().Unix(),
+		BlobHash:         "fwdhash",
+		ForwardAddresses: []string{"external@other.com"},
+	}
+
+	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("result.Action = %q, want %q", result.Action, "pass")
+	}
+
+	// Local delivery should still happen.
+	if len(applier.commands) != 1 {
+		t.Fatalf("expected 1 raft command (local delivery), got %d", len(applier.commands))
+	}
+
+	// Forward should be enqueued.
+	if len(queuer.messages) != 1 {
+		t.Fatalf("expected 1 enqueued forward message, got %d", len(queuer.messages))
+	}
+	fwd := queuer.messages[0]
+	if fwd.BlobHash != "fwdhash" {
+		t.Errorf("forward blob hash = %q, want %q", fwd.BlobHash, "fwdhash")
+	}
+	if len(fwd.Recipients) != 1 || fwd.Recipients[0] != "external@other.com" {
+		t.Errorf("forward recipients = %v, want [external@other.com]", fwd.Recipients)
+	}
+	if fwd.SenderEmail != "bob@example.com" {
+		t.Errorf("forward sender = %q, want %q", fwd.SenderEmail, "bob@example.com")
+	}
+}
+
+// TestDeliverAccountForwarding verifies that account-level forwarding preferences
+// trigger forwarding and that forward_keep_copy controls local delivery.
+func TestDeliverAccountForwarding(t *testing.T) {
+	tests := []struct {
+		name           string
+		keepCopy       bool
+		wantLocalCmds  int
+		wantForwards   int
+	}{
+		{"keep_copy_true", true, 1, 1},
+		{"keep_copy_false", false, 0, 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			applier := &mockApplier{}
+			resolver := &mockResolver{
+				mapping: map[string]string{
+					"alice@example.com": "user-alice",
+				},
+			}
+			queuer := &mockQueuer{}
+			prefs := &mockPrefs{
+				prefs: map[string]*bongov1.UserPreferences{
+					"user-alice": {
+						ForwardAddress:  "external@other.com",
+						ForwardKeepCopy: tt.keepCopy,
+					},
+				},
+			}
+
+			proc := NewDeliverProcessor(applier, resolver, newTestLogger())
+			proc.SetQueuer(queuer)
+			proc.SetPreferences(prefs)
+
+			rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
+			env := &bongov1.QueueEnvelope{
+				Id:         "env-acct-fwd",
+				Sender:     "bob@example.com",
+				Recipients: []string{"alice@example.com"},
+				ReceivedAt: time.Now().Unix(),
+				BlobHash:   "acctfwdhash",
+			}
+
+			_, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
+			if err != nil {
+				t.Fatalf("Process: %v", err)
+			}
+
+			if len(applier.commands) != tt.wantLocalCmds {
+				t.Errorf("local delivery commands = %d, want %d", len(applier.commands), tt.wantLocalCmds)
+			}
+			if len(queuer.messages) != tt.wantForwards {
+				t.Errorf("forwarded messages = %d, want %d", len(queuer.messages), tt.wantForwards)
+			}
+		})
+	}
+}
+
+// TestDeliverNoForwardWithoutQueuer verifies that forwarding is silently skipped
+// when no queuer is set (graceful degradation).
+func TestDeliverNoForwardWithoutQueuer(t *testing.T) {
+	applier := &mockApplier{}
+	resolver := &mockResolver{
+		mapping: map[string]string{
+			"alice@example.com": "user-alice",
+		},
+	}
+
+	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
+	// No queuer set.
+
+	rawMsg := minimalMessage("bob@example.com", "alice@example.com", "Hello", "Hi!\r\n")
+	env := &bongov1.QueueEnvelope{
+		Id:               "env-no-queuer",
+		Sender:           "bob@example.com",
+		Recipients:       []string{"alice@example.com"},
+		ReceivedAt:       time.Now().Unix(),
+		BlobHash:         "noqhash",
+		ForwardAddresses: []string{"external@other.com"},
+	}
+
+	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("result.Action = %q, want %q", result.Action, "pass")
+	}
+	// Local delivery should still succeed.
+	if len(applier.commands) != 1 {
+		t.Errorf("expected 1 command, got %d", len(applier.commands))
+	}
+}
+
 // TestDeliverSPFResult verifies that the spf_result from the envelope is
 // preserved in the stored MailMeta.
 func TestDeliverSPFResult(t *testing.T) {

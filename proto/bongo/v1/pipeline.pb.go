@@ -22,21 +22,22 @@ const (
 )
 
 type QueueEnvelope struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                             // Unique message ID (UUID)
-	Sender        string                 `protobuf:"bytes,2,opt,name=sender,proto3" json:"sender,omitempty"`                                     // Envelope sender
-	Recipients    []string               `protobuf:"bytes,3,rep,name=recipients,proto3" json:"recipients,omitempty"`                             // Envelope recipients
-	ReceivedAt    int64                  `protobuf:"varint,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`          // Unix timestamp
-	SourceIp      string                 `protobuf:"bytes,5,opt,name=source_ip,json=sourceIp,proto3" json:"source_ip,omitempty"`                 // Connecting IP
-	BlobHash      string                 `protobuf:"bytes,6,opt,name=blob_hash,json=blobHash,proto3" json:"blob_hash,omitempty"`                 // Reference to blob store content
-	Flags         uint32                 `protobuf:"varint,7,opt,name=flags,proto3" json:"flags,omitempty"`                                      // Processing flags (bitfield)
-	SpfResult     string                 `protobuf:"bytes,8,opt,name=spf_result,json=spfResult,proto3" json:"spf_result,omitempty"`              // From SMTP session
-	Stages        []*StageResult         `protobuf:"bytes,9,rep,name=stages,proto3" json:"stages,omitempty"`                                     // Results from completed stages
-	CurrentStage  string                 `protobuf:"bytes,10,opt,name=current_stage,json=currentStage,proto3" json:"current_stage,omitempty"`    // Stage currently processing
-	TargetMailbox string                 `protobuf:"bytes,11,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"` // Override destination (set by rules/spam)
-	PendingTags   []string               `protobuf:"bytes,12,rep,name=pending_tags,json=pendingTags,proto3" json:"pending_tags,omitempty"`       // Tags to apply at delivery (accumulated by rules stage)
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                      // Unique message ID (UUID)
+	Sender           string                 `protobuf:"bytes,2,opt,name=sender,proto3" json:"sender,omitempty"`                                              // Envelope sender
+	Recipients       []string               `protobuf:"bytes,3,rep,name=recipients,proto3" json:"recipients,omitempty"`                                      // Envelope recipients
+	ReceivedAt       int64                  `protobuf:"varint,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`                   // Unix timestamp
+	SourceIp         string                 `protobuf:"bytes,5,opt,name=source_ip,json=sourceIp,proto3" json:"source_ip,omitempty"`                          // Connecting IP
+	BlobHash         string                 `protobuf:"bytes,6,opt,name=blob_hash,json=blobHash,proto3" json:"blob_hash,omitempty"`                          // Reference to blob store content
+	Flags            uint32                 `protobuf:"varint,7,opt,name=flags,proto3" json:"flags,omitempty"`                                               // Processing flags (bitfield)
+	SpfResult        string                 `protobuf:"bytes,8,opt,name=spf_result,json=spfResult,proto3" json:"spf_result,omitempty"`                       // From SMTP session
+	Stages           []*StageResult         `protobuf:"bytes,9,rep,name=stages,proto3" json:"stages,omitempty"`                                              // Results from completed stages
+	CurrentStage     string                 `protobuf:"bytes,10,opt,name=current_stage,json=currentStage,proto3" json:"current_stage,omitempty"`             // Stage currently processing
+	TargetMailbox    string                 `protobuf:"bytes,11,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"`          // Override destination (set by rules/spam)
+	PendingTags      []string               `protobuf:"bytes,12,rep,name=pending_tags,json=pendingTags,proto3" json:"pending_tags,omitempty"`                // Tags to apply at delivery (accumulated by rules stage)
+	ForwardAddresses []string               `protobuf:"bytes,13,rep,name=forward_addresses,json=forwardAddresses,proto3" json:"forward_addresses,omitempty"` // External addresses to forward this message to
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *QueueEnvelope) Reset() {
@@ -153,6 +154,13 @@ func (x *QueueEnvelope) GetPendingTags() []string {
 	return nil
 }
 
+func (x *QueueEnvelope) GetForwardAddresses() []string {
+	if x != nil {
+		return x.ForwardAddresses
+	}
+	return nil
+}
+
 type StageResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Stage         string                 `protobuf:"bytes,1,opt,name=stage,proto3" json:"stage,omitempty"`                                 // "antispam", "antivirus", "rules"
@@ -249,7 +257,7 @@ var File_proto_bongo_v1_pipeline_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\x85\x03\n" +
+	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\xb2\x03\n" +
 	"\rQueueEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06sender\x18\x02 \x01(\tR\x06sender\x12\x1e\n" +
@@ -267,7 +275,8 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\rcurrent_stage\x18\n" +
 	" \x01(\tR\fcurrentStage\x12%\n" +
 	"\x0etarget_mailbox\x18\v \x01(\tR\rtargetMailbox\x12!\n" +
-	"\fpending_tags\x18\f \x03(\tR\vpendingTags\"\xc9\x01\n" +
+	"\fpending_tags\x18\f \x03(\tR\vpendingTags\x12+\n" +
+	"\x11forward_addresses\x18\r \x03(\tR\x10forwardAddresses\"\xc9\x01\n" +
 	"\vStageResult\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12\x16\n" +

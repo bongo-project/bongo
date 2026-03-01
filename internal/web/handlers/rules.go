@@ -287,9 +287,14 @@ func (h *RulesHandler) parseRuleForm(r *http.Request) *bongov1.FilterRule {
 	}
 
 	// Parse action.
+	actionType := r.FormValue("action_type")
+	target := r.FormValue("action_target")
+	if actionType == "forward" {
+		target = r.FormValue("action_target_forward")
+	}
 	rule.Action = &bongov1.FilterAction{
-		Type:   r.FormValue("action_type"),
-		Target: r.FormValue("action_target"),
+		Type:   actionType,
+		Target: target,
 		Tags:   r.Form["action_tag"],
 	}
 

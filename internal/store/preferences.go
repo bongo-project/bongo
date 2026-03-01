@@ -35,6 +35,7 @@ func DefaultPreferences() *bongov1.UserPreferences {
 		DefaultReply:    bongov1.DefaultReplyMode_REPLY_MODE_SENDER,
 		Timezone:        "UTC",
 		Locale:          "en",
+		ForwardKeepCopy: true,
 	}
 }
 

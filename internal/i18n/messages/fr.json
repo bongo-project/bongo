@@ -250,6 +250,10 @@
   "settings.langDe": "Deutsch",
   "settings.langEs": "Espanol",
   "settings.infiniteScroll": "Defilement infini (charger plus de messages automatiquement lors du defilement)",
+  "settings.forwarding": "Transfert",
+  "settings.forwardAddress": "Transférer à l'adresse",
+  "settings.forwardKeepCopy": "Conserver une copie locale",
+  "settings.forwardDesc": "Transférer automatiquement les messages entrants vers une adresse externe.",
 
   "rules.colName": "Nom",
   "rules.colConditions": "Conditions",
