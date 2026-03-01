@@ -1239,8 +1239,10 @@ function updateSidebarActive() {
     var href = a.getAttribute('href');
     if (!href) return;
     try { href = decodeURIComponent(href); } catch(e) {}
-    // Exact match or prefix match for mail folders (e.g. /mail/INBOX matches /mail/INBOX/123)
-    var isActive = (path === href) || (href.length > 1 && path.startsWith(href + '/'));
+    // Exact match, or prefix match only for thread views (/mail/INBOX/thread/xxx).
+    // Plain prefix matching would incorrectly highlight parent folders when child folders are active.
+    var rest = (href.length > 1 && path.startsWith(href + '/')) ? path.slice(href.length + 1) : '';
+    var isActive = (path === href) || rest.startsWith('thread/');
     a.classList.toggle('active', isActive);
   });
 }
