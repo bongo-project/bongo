@@ -15,153 +15,143 @@
    2. CSS VARIABLES
    Base: v2-inbox.html (mail UI palette)
    ============================================ */
+/* ============================================
+   BONGO v2 — TOKEN BLOCK (ComponentLib-backed)
+   Drop-in replacement for §2 of web/static/css/bongo.css.
+   Pairs with: /static/css/componentlib/colors_and_type.css
+   which must be <link>ed BEFORE this file.
+   ============================================ */
+
+/* Tell ComponentLib which accent we want. Override with
+   data-accent="mail" | "forest" | "cyan" | "coral" on <html>. */
+html:not([data-accent]), html[data-accent="bongo"] {
+  --accent:             #F59E0B;
+  --accent-hover:       #D97706;
+  --accent-active:      #B45309;
+  --accent-subtle:      #FEF3C7;
+  --accent-accessible:  #B45309;
+  --focus-ring:         rgba(245,158,11,.25);
+  --shadow-brand:       0 4px 14px rgba(245,158,11,.25);
+}
+html[data-theme="dark"][data-accent="bongo"],
+html[data-theme="dark"]:not([data-accent]) {
+  --accent:             #FBBF24;
+  --accent-hover:       #F59E0B;
+  --accent-active:      #D97706;
+  --accent-subtle:      rgba(251,191,36,.18);
+  --accent-accessible:  #FBBF24;
+  --focus-ring:         rgba(251,191,36,.30);
+  --shadow-brand:       0 4px 14px rgba(251,191,36,.25);
+}
+
 :root {
-  /* Brand */
-  --bongo-orange: #ffac35;
-  --bongo-orange-hover: #f59300;
-  --bongo-blue: #517faf;
-  --bongo-blue-dark: #3d6a9e;
-  --bongo-blue-light: #e8f0fa;
-  --bongo-blue-lightest: #f0f5fb;
-  --bongo-green: #7ed12d;
-  --bongo-red: #ef4444;
-  --bongo-yellow: #f59e0b;
+  /* ---- Brand (back-compat with existing bongo.css call-sites) ---- */
+  --bongo-orange:        var(--accent);
+  --bongo-orange-hover:  var(--accent-hover);
+  --bongo-blue:          #517FAF;
+  --bongo-blue-dark:     #3D6A9E;
+  --bongo-blue-light:    #E8F0FA;
+  --bongo-blue-lightest: #F0F5FB;
+  --bongo-green:         var(--success);
+  --bongo-red:           var(--error);
+  --bongo-yellow:        #F59E0B;
 
-  /* Surfaces */
-  --bg: #ffffff;
-  --bg-subtle: #f7f8fa;
-  --bg-muted: #f0f2f5;
-  --bg-hover: #edf0f4;
-  --bg-card: #ffffff;
+  /* ---- Surfaces (map to ComponentLib ramp) ---- */
+  --bg:        var(--surface-0);
+  --bg-subtle: var(--surface-1);
+  --bg-muted:  var(--surface-2);
+  --bg-hover:  var(--surface-2);
+  --bg-card:   var(--surface-1);
 
-  /* Sidebar */
-  --sidebar-bg: #2c4a72;
-  --sidebar-hover: rgba(255,255,255,0.08);
-  --sidebar-active: rgba(255,255,255,0.15);
-  --sidebar-text: #b8cadf;
-  --sidebar-bright: #ffffff;
-  --sidebar-width: 220px;
+  /* ---- Sidebar (charcoal, product-matching) ---- */
+  --sidebar-bg:       #1A1D21;
+  --sidebar-hover:    rgba(255,255,255,.06);
+  --sidebar-active:   rgba(255,255,255,.10);
+  --sidebar-text:     rgba(255,255,255,.72);
+  --sidebar-bright:   #FFFFFF;
+  --sidebar-width:    220px;
 
-  /* Text */
-  --text: #1a1a2e;
-  --text-secondary: #5f6368;
-  --text-muted: #9aa0a8;
-  --text-inverse: #ffffff;
+  /* ---- Text ---- */
+  --text:           var(--text-primary);
+  --text-inverse:   #FFFFFF;
 
-  /* Borders */
-  --border: #e4e7ec;
-  --border-strong: #d0d3d8;
+  /* ---- Borders ---- */
+  --border:        var(--border-subtle);
+  --border-strong: var(--border-default);
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.08);
-  --shadow-lg: 0 4px 16px rgba(0,0,0,0.12);
-  --shadow-card: 0 4px 24px rgba(0,0,0,0.08);
+  /* ---- Shadows (componentlib already defines shadow-sm/md/lg) ---- */
+  --shadow-card: var(--shadow-lg);
 
-  /* Sizing */
-  --topbar-h: 52px;
-  --radius: 6px;
-  --radius-lg: 10px;
+  /* ---- Sizing ---- */
+  --topbar-h:  52px;
+  --radius:    var(--radius-sm);
 
-  /* Calendar colours */
-  --cal-blue: #3b82f6;
-  --cal-green: #22c55e;
-  --cal-indigo: #6366f1;
-  --cal-orange: #f59e0b;
-  --cal-red: #ef4444;
-  --cal-violet: #8b5cf6;
-  --cal-yellow: #eab308;
+  /* ---- Calendar (preserved) ---- */
+  --cal-blue:   #3B82F6;
+  --cal-green:  #22C55E;
+  --cal-indigo: #6366F1;
+  --cal-orange: #F59E0B;
+  --cal-red:    #EF4444;
+  --cal-violet: #8B5CF6;
+  --cal-yellow: #EAB308;
 
-  /* Log viewer */
-  --log-bg: #0d1117;
-  --log-text: #c9d1d9;
-  --log-border: #21262d;
+  /* ---- Log viewer (preserved) ---- */
+  --log-bg:     #0D1117;
+  --log-text:   #C9D1D9;
+  --log-border: #21262D;
 }
 
-/* Dark theme */
+/* Dark theme — leans on ComponentLib's dark ramp but keeps the
+   sidebar dedicated-charcoal so it can't invert. */
 [data-theme="dark"] {
-  --bongo-orange: #e09530;
-  --bongo-orange-hover: #d06d00;
-  --bongo-blue: #7ba4cc;
-  --bongo-blue-dark: #4a6e96;
-  --bongo-blue-light: #1e3350;
-  --bongo-blue-lightest: #172a45;
-  --bongo-green: #4ade80;
-  --bongo-red: #f87171;
-  --bongo-yellow: #fbbf24;
+  --bongo-blue:          #7BA4CC;
+  --bongo-blue-dark:     #4A6E96;
+  --bongo-blue-light:    #1E3350;
+  --bongo-blue-lightest: #172A45;
 
-  --bg: #1a1a2e;
-  --bg-subtle: #20203a;
-  --bg-muted: #282842;
-  --bg-hover: #2e2e48;
-  --bg-card: #1e293b;
+  --bg:        var(--surface-0);
+  --bg-subtle: var(--surface-1);
+  --bg-muted:  var(--surface-2);
+  --bg-hover:  var(--surface-3);
+  --bg-card:   var(--surface-1);
 
-  --sidebar-bg: #1a2744;
-  --sidebar-text: #8aa4c8;
-  --sidebar-bright: #d0ddef;
+  --sidebar-bg:     #1A1D21;
+  --sidebar-text:   rgba(255,255,255,.70);
+  --sidebar-bright: #FFFFFF;
 
-  --text: #e0e0e8;
-  --text-secondary: #a0a4ac;
-  --text-muted: #6b7080;
+  --text:           var(--text-primary);
 
-  --border: #2e3040;
-  --border-strong: #3e4050;
+  --border:        var(--border-subtle);
+  --border-strong: var(--border-default);
 
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.3);
-  --shadow-lg: 0 4px 16px rgba(0,0,0,0.4);
-  --shadow-card: 0 4px 24px rgba(0,0,0,0.3);
+  --cal-blue:   #60A5FA;
+  --cal-green:  #4ADE80;
+  --cal-indigo: #818CF8;
+  --cal-orange: #FBBF24;
+  --cal-red:    #F87171;
+  --cal-violet: #A78BFA;
+  --cal-yellow: #FACC15;
 
-  --cal-blue: #60a5fa;
-  --cal-green: #4ade80;
-  --cal-indigo: #818cf8;
-  --cal-orange: #fbbf24;
-  --cal-red: #f87171;
-  --cal-violet: #a78bfa;
-  --cal-yellow: #facc15;
-
-  --log-bg: #010409;
-  --log-text: #8b949e;
-  --log-border: #161b22;
+  --log-bg:     #010409;
+  --log-text:   #8B949E;
+  --log-border: #161B22;
 }
 
-/* Admin layout modifier: slate dark sidebar + topbar */
+/* Admin layout modifier — preserved, sidebar stays slate-dark */
 .admin-layout {
-  --sidebar-bg: #1e293b;
-  --sidebar-hover: rgba(255,255,255,0.06);
-  --sidebar-active: rgba(255,255,255,0.12);
-  --sidebar-text: #94a3b8;
-  --sidebar-bright: #e2e8f0;
-  --sidebar-width: 200px;
-  --bongo-green: #22c55e;
-  --bongo-red: #ef4444;
+  --sidebar-bg:     #1E293B;
+  --sidebar-hover:  rgba(255,255,255,.06);
+  --sidebar-active: rgba(255,255,255,.10);
+  --sidebar-text:   #94A3B8;
+  --sidebar-bright: #F8FAFC;
 }
-[data-theme="dark"] .admin-layout {
-  --sidebar-bg: #0f172a;
-  --sidebar-text: #64748b;
-  --sidebar-bright: #cbd5e1;
-  --bg: #0f172a;
-  --bg-subtle: #1e293b;
-  --bg-muted: #334155;
-  --bg-hover: #1e293b;
-  --text: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
-  --border: #1e293b;
-  --border-strong: #334155;
-  --bongo-green: #4ade80;
-  --bongo-red: #f87171;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 2px 8px rgba(0,0,0,0.4);
-}
-
 
 /* ============================================
    3. BASE TYPOGRAPHY
    ============================================ */
 html, body {
   height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
