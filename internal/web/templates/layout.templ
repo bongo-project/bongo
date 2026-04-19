@@ -2,12 +2,13 @@ package templates
 
 templ Layout(title string, email string) {
 	<!DOCTYPE html>
-	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()">
+	<html lang={ localeFromCtx(ctx) } x-data="appState()" x-bind:data-theme="resolvedTheme()" data-accent="bongo" data-sidebar="dark">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
+			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 		</head>
 		<body>

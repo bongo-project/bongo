@@ -1,0 +1,230 @@
+/* =========================================================
+   ComponentLib — Colors & Type
+   Canonical tokens + semantic aliases for typography.
+   Source: _source/components.css (verbatim brand tokens)
+   ========================================================= */
+
+/* -------- Fonts: Geist Sans + Geist Mono (both self-hosted)
+   Variable files load in modern browsers; statics are per-weight fallbacks.
+-------- */
+
+/* Geist Sans */
+@font-face {
+    font-family: "Geist";
+    src: url("/static/fonts/Geist-VariableFont_wght.ttf") format("truetype-variations"),
+         url("/static/fonts/Geist-VariableFont_wght.ttf") format("truetype");
+    font-weight: 100 900; font-style: normal; font-display: swap;
+}
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Regular.ttf")    format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Medium.ttf")     format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-SemiBold.ttf")   format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-Bold.ttf")       format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/static/fonts/Geist-ExtraBold.ttf")  format("truetype"); font-weight: 800; font-style: normal; font-display: swap; }
+
+/* Geist Mono (statics only — no variable file uploaded) */
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Regular.ttf")    format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/static/fonts/GeistMono-Medium.ttf")     format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+
+:root {
+    /* -------- Radius -------- */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+
+    /* -------- Motion -------- */
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --duration: 0.2s;
+
+    /* -------- Type families -------- */
+    --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+    /* -------- Type scale -------- */
+    --fs-xs: 0.78rem;     /* eyebrow / section-label */
+    --fs-sm: 0.85rem;     /* small / muted */
+    --fs-base: 1rem;      /* body */
+    --fs-md: 1.05rem;     /* large body / subtitle */
+    --fs-lg: 1.15rem;     /* h3 / subtitle */
+    --fs-xl: 1.4rem;      /* h2 */
+    --fs-2xl: 1.75rem;    /* h1 */
+    --fs-3xl: 2rem;       /* section headers */
+    --fs-4xl: 3rem;       /* hero */
+
+    /* -------- Weights -------- */
+    --fw-regular: 400;
+    --fw-medium: 500;
+    --fw-semibold: 600;
+    --fw-bold: 700;
+    --fw-extrabold: 800;
+
+    /* -------- Tracking -------- */
+    --tracking-tight: -0.03em;
+    --tracking-snug: -0.02em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.03em;
+    --tracking-wider: 0.05em;
+    --tracking-widest: 0.08em;
+
+    /* -------- Spacing scale -------- */
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --space-6: 2rem;
+    --space-7: 3rem;
+    --space-8: 4rem;
+}
+
+/* -------- Light theme (default) -------- */
+[data-theme="light"],
+:root:not([data-theme="dark"]) {
+    /* 12-step warm-neutral ramp */
+    --n-0:#FCFCFD;--n-1:#F8F9FA;--n-2:#F1F3F5;--n-3:#E9ECEF;
+    --n-4:#DEE2E6;--n-5:#CED4DA;--n-6:#ADB5BD;--n-7:#868E96;
+    --n-8:#495057;--n-9:#343A40;--n-10:#212529;--n-11:#0B0D0F;
+
+    /* 2-token project override surface */
+    --brand:  var(--n-11);
+    --accent: #3B82F6;
+
+    --brand-text:#fff;
+    --accent-hover: color-mix(in oklab, var(--accent) 86%, black);
+    --accent-accessible: var(--accent-hover);
+    --accent-subtle: color-mix(in srgb, var(--accent) 8%, transparent);
+    --accent-glow:   color-mix(in srgb, var(--accent) 14%, transparent);
+    --focus-ring:    color-mix(in srgb, var(--accent) 40%, transparent);
+
+    /* Legacy aliases */
+    --brand-hover: var(--accent-hover);
+    --brand-accessible: var(--accent-accessible);
+    --brand-subtle: var(--accent-subtle);
+    --brand-glow: var(--accent-glow);
+
+    --surface-0: var(--n-0);
+    --surface-1: #FFFFFF;
+    --surface-2: var(--n-2);
+    --surface-3: var(--n-3);
+    --surface-4: var(--n-5);
+
+    --text-primary: var(--n-10);
+    --text-secondary: var(--n-7);
+    --text-muted: var(--n-6);
+
+    --border-subtle: rgba(0, 0, 0, 0.06);
+    --border-default: rgba(0, 0, 0, 0.12);
+    --border-hover: rgba(0, 0, 0, 0.18);
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.05), 0 1px 3px rgba(0,0,0,.06);
+    --shadow-md: 0 2px 4px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.08);
+    --shadow-lg: 0 4px 8px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.08), 0 16px 48px rgba(0,0,0,.04);
+    --shadow-brand: 0 4px 14px color-mix(in srgb, var(--accent) 22%, transparent),
+                    0 1px 3px color-mix(in srgb, var(--accent) 12%, transparent);
+
+    /* Status — LOCKED */
+    --success:#16A34A; --warning:#D97706; --error:#DC2626; --info: var(--accent);
+
+    --success-bg-subtle:#ECFDF5; --success-bg:#DCFCE7; --success-border-subtle:#A7F3D0;
+    --success-text:#065F46; --success-text-strong:#166534;
+
+    --warning-bg-subtle:#FFFBEB; --warning-bg:#FEF3C7; --warning-border-subtle:#FDE68A;
+    --warning-text:#92400E; --warning-text-strong:#78350F;
+
+    --error-bg-subtle:#FEF2F2; --error-bg:#FEE2E2; --error-border-subtle:#FECACA;
+    --error-text:#991B1B;
+
+    --info-bg-subtle: var(--accent-subtle);
+    --info-bg: var(--accent-glow);
+    --info-border-subtle: color-mix(in srgb, var(--accent) 28%, transparent);
+    --info-text: var(--accent-accessible);
+
+    --neutral: var(--n-7);
+}
+
+/* -------- Dark theme -------- */
+[data-theme="dark"] {
+    --n-0:#0A0B0D;--n-1:#111316;--n-2:#1A1D21;--n-3:#232629;
+    --n-4:#2D3135;--n-5:#3A3F44;--n-6:#6B7075;--n-7:#9AA0A6;
+    --n-8:#C9CCD1;--n-9:#E3E5E8;--n-10:#F2F3F5;--n-11:#FFFFFF;
+
+    --brand:  var(--n-11);
+    --accent: #7AB8FF;
+
+    --brand-text:#fff;
+    --accent-hover: color-mix(in oklab, var(--accent) 88%, white);
+    --accent-accessible: var(--accent);
+    --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
+    --accent-glow:   color-mix(in srgb, var(--accent) 20%, transparent);
+    --focus-ring:    color-mix(in srgb, var(--accent) 45%, transparent);
+
+    --brand-hover: var(--accent-hover);
+    --brand-accessible: var(--accent-accessible);
+    --brand-subtle: var(--accent-subtle);
+    --brand-glow: var(--accent-glow);
+
+    --surface-0: var(--n-0); --surface-1: var(--n-1); --surface-2: var(--n-2);
+    --surface-3: var(--n-3); --surface-4: var(--n-4);
+
+    --text-primary: var(--n-10); --text-secondary: var(--n-7); --text-muted: var(--n-6);
+
+    --border-subtle: rgba(255,255,255,.06);
+    --border-default: rgba(255,255,255,.1);
+    --border-hover:   rgba(255,255,255,.15);
+
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.3), 0 1px 3px rgba(0,0,0,.15);
+    --shadow-md: 0 2px 4px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.2);
+    --shadow-lg: 0 4px 8px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25), 0 16px 48px rgba(0,0,0,.15);
+    --shadow-brand: 0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent),
+                    0 1px 3px color-mix(in srgb, var(--accent) 16%, transparent);
+
+    --success:#4ADE80; --warning:#FBBF24; --error:#F87171; --info: var(--accent);
+
+    --neutral: var(--n-7);
+}
+
+/* -------- Per-project accent presets -------- */
+[data-accent="mail"]      { --accent: #059669; }
+[data-accent="container"] { --accent: #06B6D4; }
+[data-accent="logs"]      { --accent: #F59E0B; }
+[data-accent="gym"]       { --accent: #EF4444; }
+[data-accent="default"]   { --accent: #3B82F6; }
+[data-theme="dark"][data-accent="mail"]      { --accent: #34D399; }
+[data-theme="dark"][data-accent="container"] { --accent: #22D3EE; }
+[data-theme="dark"][data-accent="logs"]      { --accent: #FBBF24; }
+[data-theme="dark"][data-accent="gym"]       { --accent: #FB7185; }
+
+/* -------- Semantic type rules -------- */
+body {
+    font-family: var(--font-sans);
+    font-size: var(--fs-base);
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--surface-0);
+    -webkit-font-smoothing: antialiased;
+}
+
+h1 { font-size: var(--fs-2xl); font-weight: var(--fw-semibold); line-height: 1.3; }
+h2 { font-size: var(--fs-xl); font-weight: var(--fw-semibold); line-height: 1.3; }
+h3 { font-size: var(--fs-lg); font-weight: var(--fw-semibold); line-height: 1.3; }
+
+.display-hero { font-size: var(--fs-4xl); font-weight: var(--fw-extrabold); letter-spacing: var(--tracking-tight); line-height: 1.1; }
+.display-section { font-size: var(--fs-3xl); font-weight: var(--fw-bold); letter-spacing: var(--tracking-snug); line-height: 1.2; }
+
+.eyebrow,
+.section-label {
+    font-size: var(--fs-xs);
+    font-weight: var(--fw-bold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-widest);
+    color: var(--brand-accessible);
+}
+
+.subtitle { font-size: var(--fs-md); line-height: 1.7; color: var(--text-secondary); }
+.muted { color: var(--text-secondary); }
+small { font-size: var(--fs-sm); }
+
+code, pre, .mono {
+    font-family: var(--font-mono);
+    font-size: 0.875em;
+}
