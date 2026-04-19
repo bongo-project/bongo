@@ -38,6 +38,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/i18n"
 	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/observability"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
 	pipelineantivirus "github.com/bongo-go/bongo-go/internal/pipeline/antivirus"
@@ -289,6 +290,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	health := handlers.NewHealthHandler(a)
 	r.Get("/health/live", health.Live)
 	r.Get("/health/ready", health.Ready)
+	r.Handle("/metrics", observability.Handler())
 
 	// Internal KV endpoints for testing Raft consensus.
 	if a.Raft != nil {

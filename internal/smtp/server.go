@@ -16,6 +16,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/observability"
 )
 
 // Deliverer processes an inbound email message.
@@ -116,6 +117,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 // Data is called when the message data is received.
 func (s *Session) Data(r io.Reader) error {
 	if len(s.recipients) == 0 {
+		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 		return fmt.Errorf("no recipients")
 	}
 
@@ -145,16 +147,19 @@ func (s *Session) Data(r io.Reader) error {
 	}
 	if sd, ok := s.backend.deliverer.(spfDeliverer); ok {
 		if err := sd.DeliverWithSPF(s.from, s.recipients, reader, s.spfResult, sourceIP); err != nil {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
 			return err
 		}
 	} else {
 		if err := s.backend.deliverer.Deliver(s.from, s.recipients, reader); err != nil {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
 			return err
 		}
 	}
 
+	observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
 	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.recipients)
 	return nil
 }
