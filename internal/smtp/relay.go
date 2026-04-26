@@ -116,6 +116,14 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 		}
 	}
 
+	// Authenticate if credentials are configured.
+	if r.cfg != nil && r.cfg.Username != "" {
+		auth := &plainAuth{username: r.cfg.Username, password: r.cfg.Password}
+		if err := client.Auth(auth); err != nil {
+			return nil, fmt.Errorf("relay AUTH for %s: %w", addr, err)
+		}
+	}
+
 	if err := client.Mail(from); err != nil {
 		return nil, fmt.Errorf("MAIL FROM: %w", err)
 	}
@@ -160,4 +168,22 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 func isPermanentError(err error) bool {
 	errStr := err.Error()
 	return len(errStr) >= 3 && errStr[0] == '5'
+}
+
+// plainAuth implements smtp.Auth using the PLAIN mechanism.
+// Unlike net/smtp.PlainAuth, this does not refuse to send credentials
+// over unencrypted connections -- the relay handles STARTTLS separately
+// and some relay providers accept PLAIN over trusted networks.
+type plainAuth struct {
+	username string
+	password string
+}
+
+func (a *plainAuth) Start(server *netsmtp.ServerInfo) (string, []byte, error) {
+	resp := []byte("\x00" + a.username + "\x00" + a.password)
+	return "PLAIN", resp, nil
+}
+
+func (a *plainAuth) Next(fromServer []byte, more bool) ([]byte, error) {
+	return nil, nil
 }

@@ -2,12 +2,14 @@ package smtp
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"strings"
 	"testing"
 
+	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 
 	"github.com/bongo-go/bongo-go/internal/config"
@@ -15,9 +17,14 @@ import (
 
 // mockRelayBackend captures delivered messages for test assertions.
 type mockRelayBackend struct {
-	messages chan mockRelayMessage
-	rejectTo string // reject this recipient with 550
-	tempFail bool   // return 421 for all
+	messages     chan mockRelayMessage
+	rejectTo     string // reject this recipient with 550
+	tempFail     bool   // return 421 for all
+	requireAuth  bool   // require authentication
+	authUser     string // expected username
+	authPass     string // expected password
+	lastAuthUser string // captured from last session
+	lastAuthPass string // captured from last session
 }
 
 type mockRelayMessage struct {
@@ -36,7 +43,26 @@ type mockRelaySession struct {
 	recipients []string
 }
 
-func (s *mockRelaySession) AuthPlain(username, password string) error { return nil }
+func (s *mockRelaySession) AuthMechanisms() []string {
+	return []string{"PLAIN"}
+}
+
+func (s *mockRelaySession) Auth(mech string) (sasl.Server, error) {
+	if mech != "PLAIN" {
+		return nil, fmt.Errorf("unsupported mechanism: %s", mech)
+	}
+	return sasl.NewPlainServer(func(identity, username, password string) error {
+		s.backend.lastAuthUser = username
+		s.backend.lastAuthPass = password
+		if s.backend.requireAuth {
+			if username != s.backend.authUser || password != s.backend.authPass {
+				return fmt.Errorf("authentication failed")
+			}
+		}
+		return nil
+	}), nil
+}
+
 func (s *mockRelaySession) Mail(from string, opts *gosmtp.MailOptions) error {
 	if s.backend.tempFail {
 		return &gosmtp.SMTPError{Code: 421, Message: "try again later"}
@@ -138,5 +164,96 @@ func TestRelayTempFail(t *testing.T) {
 	_, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
 	if err == nil {
 		t.Error("expected temp error, got nil")
+	}
+}
+
+func TestRelayAuthSuccess(t *testing.T) {
+	backend := &mockRelayBackend{
+		messages:    make(chan mockRelayMessage, 10),
+		requireAuth: true,
+		authUser:    "apikey",
+		authPass:    "secret123",
+	}
+	addr := startMockSMTP(t, backend)
+
+	relay := NewRelay(&config.SMTPRelay{
+		Enabled:  true,
+		Host:     addr,
+		Username: "apikey",
+		Password: "secret123",
+	}, slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: auth test\r\n\r\nHello")
+	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if len(permFails) != 0 {
+		t.Errorf("unexpected permanent failures: %v", permFails)
+	}
+
+	msg := <-backend.messages
+	if msg.From != "alice@example.com" {
+		t.Errorf("from = %q, want alice@example.com", msg.From)
+	}
+
+	// Verify credentials were sent.
+	if backend.lastAuthUser != "apikey" {
+		t.Errorf("auth username = %q, want %q", backend.lastAuthUser, "apikey")
+	}
+	if backend.lastAuthPass != "secret123" {
+		t.Errorf("auth password = %q, want %q", backend.lastAuthPass, "secret123")
+	}
+}
+
+func TestRelayAuthFailure(t *testing.T) {
+	backend := &mockRelayBackend{
+		messages:    make(chan mockRelayMessage, 10),
+		requireAuth: true,
+		authUser:    "correct-user",
+		authPass:    "correct-pass",
+	}
+	addr := startMockSMTP(t, backend)
+
+	relay := NewRelay(&config.SMTPRelay{
+		Enabled:  true,
+		Host:     addr,
+		Username: "wrong-user",
+		Password: "wrong-pass",
+	}, slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: auth fail\r\n\r\nHello")
+	_, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err == nil {
+		t.Fatal("expected auth error, got nil")
+	}
+	if !strings.Contains(err.Error(), "AUTH") {
+		t.Errorf("error = %q, expected to contain 'AUTH'", err.Error())
+	}
+}
+
+func TestRelayNoAuthWhenNotConfigured(t *testing.T) {
+	backend := &mockRelayBackend{
+		messages: make(chan mockRelayMessage, 10),
+	}
+	addr := startMockSMTP(t, backend)
+
+	// No username/password set -- auth should be skipped.
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: no auth\r\n\r\nHello")
+	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if len(permFails) != 0 {
+		t.Errorf("unexpected permanent failures: %v", permFails)
+	}
+
+	<-backend.messages
+
+	// Auth should not have been attempted -- lastAuthUser stays empty.
+	if backend.lastAuthUser != "" {
+		t.Errorf("auth was attempted (user=%q) when no credentials configured", backend.lastAuthUser)
 	}
 }
