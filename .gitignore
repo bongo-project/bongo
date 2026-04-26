@@ -22,6 +22,8 @@ go.work.sum
 *.swp
 *.swo
 *~
+.jj
+.aiki
 
 # OS
 .DS_Store
