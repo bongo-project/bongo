@@ -80,6 +80,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		v.Set("log-level", serveLogLevel)
 	}
 
+	// In dev mode, skip auto-discovery of config files (bongo.hcl in cwd,
+	// /etc/bongo/bongo.hcl) so that --dev is fully self-contained.
+	// An explicit --config flag is still honoured.
+	if serveDev && serveConfig == "" {
+		v.Set("skip-discovery", "true")
+	}
+
 	cfg, configFile, err := config.LoadWithDiscovery(v)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)

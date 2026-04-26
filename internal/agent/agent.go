@@ -193,7 +193,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		}
 		a.tmpDir = tmp
 		dataDir = tmp
-		logger.Info("dev mode: using temporary storage", "dir", tmp)
+		cfg.Web.PlainHTTP = true
+		logger.Info("dev mode: using temporary storage, TLS disabled", "dir", tmp)
 	}
 
 	a.dataDir = dataDir
