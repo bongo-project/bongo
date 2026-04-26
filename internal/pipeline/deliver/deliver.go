@@ -291,7 +291,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Mark the envelope as delivered to prevent duplicate delivery on recovery.
 	env.Flags = pipeline.SetFlag(env.Flags, pipeline.MsgFlagDelivered)
 
-	durationMs := int32(time.Since(started).Milliseconds())
+	durationMs := pipeline.ClampInt32(time.Since(started).Milliseconds())
 	return &bongov1.StageResult{
 		Stage:       "deliver",
 		Backend:     "builtin",

@@ -1,5 +1,7 @@
 package pipeline
 
+import "math"
+
 // Processing flags for QueueEnvelope.Flags (bitfield).
 // These track which pipeline stages have been completed and their outcomes.
 const (
@@ -33,4 +35,13 @@ func SetFlag(flags, flag uint32) uint32 {
 // ClearFlag returns flags with the given flag bit cleared.
 func ClearFlag(flags, flag uint32) uint32 {
 	return flags &^ flag
+}
+
+// ClampInt32 safely converts an int64 to int32, clamping to math.MaxInt32
+// if the value overflows. Used for duration_ms fields in StageResult.
+func ClampInt32(v int64) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(v) // #nosec G115 -- bounds-checked above
 }

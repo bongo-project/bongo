@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -122,7 +123,7 @@ func (p *SpamAssassinProcessor) Process(ctx context.Context, env *bongov1.QueueE
 			Score:       0,
 			Reasons:     []string{"spamd_unavailable"},
 			ProcessedAt: start.Unix(),
-			DurationMs:  int32(time.Since(start).Milliseconds()), // #nosec G115 -- duration in ms never exceeds int32 range
+			DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 		}, nil
 	}
 
@@ -150,7 +151,7 @@ func (p *SpamAssassinProcessor) Process(ctx context.Context, env *bongov1.QueueE
 		Score:       normalised,
 		Reasons:     resp.rules,
 		ProcessedAt: start.Unix(),
-		DurationMs:  int32(time.Since(start).Milliseconds()), // #nosec G115 -- duration in ms never exceeds int32 range
+		DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 	}, nil
 }
 

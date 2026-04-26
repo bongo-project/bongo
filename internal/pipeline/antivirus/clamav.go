@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -109,7 +110,7 @@ func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 			Score:       0,
 			Reasons:     []string{"clamd unavailable"},
 			ProcessedAt: start.Unix(),
-			DurationMs:  int32(time.Since(start).Milliseconds()),
+			DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 		}, nil
 	}
 
@@ -153,7 +154,7 @@ func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 		Score:       score,
 		Reasons:     reasons,
 		ProcessedAt: start.Unix(),
-		DurationMs:  int32(time.Since(start).Milliseconds()),
+		DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 	}, nil
 }
 
@@ -183,7 +184,7 @@ func (p *ClamAVProcessor) scan(ctx context.Context, msg io.Reader) (string, erro
 		if n > 0 {
 			// Write the 4-byte length prefix.
 			var lenBuf [4]byte
-			binary.BigEndian.PutUint32(lenBuf[:], uint32(n))
+			binary.BigEndian.PutUint32(lenBuf[:], uint32(n)) // #nosec G115 -- n <= instreamChunkMax (2048)
 			if _, err := conn.Write(lenBuf[:]); err != nil {
 				return "", fmt.Errorf("antivirus: write chunk length: %w", err)
 			}

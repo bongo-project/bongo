@@ -14,6 +14,7 @@ import (
 	"github.com/jhillyerd/enmime"
 
 	"github.com/bongo-go/bongo-go/internal/antispam"
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -175,7 +176,7 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		"subject", subject,
 	)
 
-	durationMs := int32(time.Since(start).Milliseconds())
+	durationMs := pipeline.ClampInt32(time.Since(start).Milliseconds())
 
 	return &bongov1.StageResult{
 		Stage:       "antispam",
