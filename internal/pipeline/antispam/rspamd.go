@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -129,7 +130,7 @@ func (p *RspamdProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 			Score:       0,
 			Reasons:     []string{"rspamd unavailable"},
 			ProcessedAt: start.Unix(),
-			DurationMs:  int32(time.Since(start).Milliseconds()),
+			DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 		}, nil
 	}
 	defer resp.Body.Close()
@@ -146,7 +147,7 @@ func (p *RspamdProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 			Score:       0,
 			Reasons:     []string{fmt.Sprintf("rspamd returned HTTP %d", resp.StatusCode)},
 			ProcessedAt: start.Unix(),
-			DurationMs:  int32(time.Since(start).Milliseconds()),
+			DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 		}, nil
 	}
 
@@ -179,7 +180,7 @@ func (p *RspamdProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 		Score:       float32(score),
 		Reasons:     reasons,
 		ProcessedAt: start.Unix(),
-		DurationMs:  int32(time.Since(start).Milliseconds()),
+		DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 	}, nil
 }
 

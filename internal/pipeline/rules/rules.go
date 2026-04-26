@@ -13,6 +13,7 @@ import (
 
 	"github.com/jhillyerd/enmime"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	"github.com/bongo-go/bongo-go/internal/rules"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -133,7 +134,7 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 		Action:      finalAction,
 		Reasons:     reasons,
 		ProcessedAt: start.Unix(),
-		DurationMs:  int32(time.Since(start).Milliseconds()),
+		DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 	}, nil
 }
 
