@@ -142,15 +142,17 @@ func TestSMTPFullMailFlow(t *testing.T) {
 	}
 	t.Logf("raw message blob: %s (size: %d)", meta.RawMessage.Hash[:12], meta.RawMessage.Size)
 
-	// Verify attachments.
+	// Verify attachments. Attachment blobs are not stored separately — only
+	// the raw message blob is. Hashes on attachment BlobRefs are intentionally
+	// empty; verify metadata fields instead.
 	if len(meta.Attachments) < 1 {
 		t.Error("expected at least 1 attachment")
 	} else {
 		for i, att := range meta.Attachments {
-			if !a.Blobs.Exists(att.Hash) {
-				t.Errorf("attachment %d blob not found: %s", i, att.Hash[:12])
+			if att.Size == 0 {
+				t.Errorf("attachment %d: expected non-zero size", i)
 			}
-			t.Logf("attachment %d: %s (size: %d, type: %s)", i, att.Hash[:12], att.Size, att.ContentType)
+			t.Logf("attachment %d: size=%d type=%s filename=%s", i, att.Size, att.ContentType, att.Filename)
 		}
 	}
 
@@ -165,13 +167,21 @@ func TestSMTPFullMailFlow(t *testing.T) {
 		t.Logf("SQLite mail objects: %d", len(objs))
 	}
 
-	// Verify Bleve search by subject.
-	results, err := a.Search.Search(userID, "integration", 10)
-	if err != nil {
-		t.Fatalf("Search: %v", err)
+	// Verify Bleve search by subject. Poll with timeout — Scorch backend may
+	// need a moment to make a freshly indexed document visible to readers.
+	var results []store.SearchResult
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
+		var searchErr error
+		results, searchErr = a.Search.Search(userID, "integration", 10)
+		if searchErr != nil {
+			t.Fatalf("Search: %v", searchErr)
+		}
+		if len(results) > 0 {
+			break
+		}
 	}
 	if len(results) == 0 {
-		t.Error("no search results for 'integration'")
+		t.Error("no search results for 'integration' after 5s")
 	} else {
 		t.Logf("Bleve search results: %d (top hit: %s, score: %.2f)", len(results), results[0].GUID, results[0].Score)
 	}
