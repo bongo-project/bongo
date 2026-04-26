@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -120,17 +119,13 @@ func TestHealthEndpoints(t *testing.T) {
 		done <- a.Run(ctx)
 	}()
 
-	// Wait for HTTPS server to be ready (dev mode uses self-signed TLS).
-	baseURL := fmt.Sprintf("https://127.0.0.1:%d", port)
-	tlsClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
-		},
-	}
-	waitForHTTPS(t, tlsClient, baseURL+"/health/live", 5*time.Second)
+	// Dev mode uses plain HTTP (TLS disabled for ephemeral temp storage).
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	client := &http.Client{}
+	waitForHTTPS(t, client, baseURL+"/health/live", 5*time.Second)
 
 	// Test /health/live
-	resp, err := tlsClient.Get(baseURL + "/health/live")
+	resp, err := client.Get(baseURL + "/health/live")
 	if err != nil {
 		t.Fatalf("GET /health/live: %v", err)
 	}
@@ -146,7 +141,7 @@ func TestHealthEndpoints(t *testing.T) {
 	}
 
 	// Test /health/ready
-	resp2, err := tlsClient.Get(baseURL + "/health/ready")
+	resp2, err := client.Get(baseURL + "/health/ready")
 	if err != nil {
 		t.Fatalf("GET /health/ready: %v", err)
 	}

@@ -418,10 +418,15 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 	cfg := Defaults()
 
 	// Run discovery: explicit flag > BONGO_CONFIG env > ./bongo.hcl > /etc/bongo/bongo.hcl
+	// When skip-discovery is set (dev mode), only honour an explicit --config flag.
+	var configFile string
 	flagPath := v.GetString("config")
-	configFile, err := DiscoverConfigFile(flagPath)
-	if err != nil {
-		return nil, "", fmt.Errorf("discovering config file: %w", err)
+	if v.GetString("skip-discovery") == "" || flagPath != "" {
+		var err error
+		configFile, err = DiscoverConfigFile(flagPath)
+		if err != nil {
+			return nil, "", fmt.Errorf("discovering config file: %w", err)
+		}
 	}
 
 	if configFile != "" {
