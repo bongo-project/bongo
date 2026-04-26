@@ -12,6 +12,17 @@ type SearchResult struct {
 	Snippet string
 }
 
+templ SearchPageFull(query string, results []SearchResult, page, totalPages int, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string) {
+	@LayoutWithContent("Search", email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, "")
+		</aside>
+		<main class="content" id="main-content">
+			@SearchPage(query, results, page, totalPages)
+		</main>
+	}
+}
+
 templ SearchPage(query string, results []SearchResult, page, totalPages int) {
 	<div class="results-header">
 		<div class="results-title">{ t(ctx, "search.results") }</div>

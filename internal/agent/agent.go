@@ -524,6 +524,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Search != nil {
 			searchH := handlers.NewSearchHandler(a.Store, a.Mailboxes, a.Search)
+			searchH.SetTagStore(store.NewTagStore(a.Store, a))
 			r.Get("/search", searchH.Search)
 		}
 
