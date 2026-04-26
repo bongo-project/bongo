@@ -22,6 +22,7 @@ type SearchHandler struct {
 	pebble    *store.PebbleStore
 	mailboxes *store.MailboxStore
 	search    *store.SearchManager
+	tags      *store.TagStore
 }
 
 // NewSearchHandler creates a SearchHandler.
@@ -33,9 +34,12 @@ func NewSearchHandler(pebble *store.PebbleStore, mailboxes *store.MailboxStore, 
 	}
 }
 
+// SetTagStore injects the tag store for sidebar rendering.
+func (h *SearchHandler) SetTagStore(ts *store.TagStore) { h.tags = ts }
+
 // Search performs a full-text search.
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	query := r.URL.Query().Get("q")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
@@ -70,7 +74,9 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	templ.Handler(templates.SearchPage(query, results, page, totalPages)).ServeHTTP(w, r)
+	mailboxInfos := LoadMailboxInfos(h.mailboxes, userID, "")
+	sidebarTags := LoadSidebarTags(h.tags, userID, "")
+	templ.Handler(templates.SearchPageFull(query, results, page, totalPages, mailboxInfos, sidebarTags, email)).ServeHTTP(w, r)
 }
 
 func (h *SearchHandler) buildSearchResult(userID, guid string) *templates.SearchResult {
