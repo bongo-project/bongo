@@ -98,8 +98,10 @@ type SMTPLimits struct {
 }
 
 type SMTPRelay struct {
-	Enabled bool   `hcl:"enabled,optional" mapstructure:"enabled"`
-	Host    string `hcl:"host,optional" mapstructure:"host"`
+	Enabled  bool   `hcl:"enabled,optional" mapstructure:"enabled"`
+	Host     string `hcl:"host,optional" mapstructure:"host"`
+	Username string `hcl:"username,optional" mapstructure:"username"`
+	Password string `hcl:"password,optional" mapstructure:"password"`
 }
 
 type SMTPDKIMConfig struct {
