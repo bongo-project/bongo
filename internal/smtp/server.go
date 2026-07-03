@@ -51,8 +51,10 @@ type Backend struct {
 	subPort    int
 	logger     *slog.Logger
 
-	mu    sync.Mutex
-	perIP map[string]int
+	mu        sync.Mutex
+	perIP     map[string]int
+	maxPerIP  int                 // 0 = disabled; set from config.SMTPLimits.MaxConnectionsPerIP
+	inboundRL *inboundRateLimiter // nil = disabled; set from config.SMTPLimits.MessagesPerMinute
 }
 
 // NewBackend creates a new SMTP backend.
@@ -82,11 +84,6 @@ func (b *Backend) SetRelayQueue(q RelayQueuer) {
 	b.relayQueue = q
 }
 
-// maxConnectionsPerIP caps concurrent SMTP connections from a single source IP.
-// NOTE: behind a TCP-proxying reverse proxy without PROXY protocol, all inbound
-// connections share the proxy's IP, so this acts as a coarse safety net only.
-const maxConnectionsPerIP = 50
-
 // NewSession is called when a new SMTP connection is established.
 func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
 	var remoteIP net.IP
@@ -97,10 +94,12 @@ func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
 	}
 
 	// Per-IP concurrent-connection cap.
-	if remoteIP != nil {
+	// NOTE: behind a TCP-proxying reverse proxy without PROXY protocol, all
+	// inbound connections share the proxy's IP, so this is a coarse safety net.
+	if remoteIP != nil && b.maxPerIP > 0 {
 		ipStr := remoteIP.String()
 		b.mu.Lock()
-		if b.perIP[ipStr] >= maxConnectionsPerIP {
+		if b.perIP[ipStr] >= b.maxPerIP {
 			b.mu.Unlock()
 			b.logger.Warn("smtp: too many connections from source, rejecting", "ip", ipStr)
 			return nil, &gosmtp.SMTPError{Code: 421, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many connections from your address"}
@@ -214,6 +213,17 @@ func (s *Session) Data(r io.Reader) error {
 	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 		return fmt.Errorf("no recipients")
+	}
+
+	// Per-IP inbound message-rate check. Applied to MX (inbound) connections only;
+	// submission (authenticated outbound) is exempt — outbound rate limiting is
+	// handled separately by the compose pipeline.
+	if !s.submission && s.remoteIP != nil && s.backend.inboundRL != nil {
+		if !s.backend.inboundRL.Allow(s.remoteIP.String()) {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			s.logger.Warn("smtp: inbound rate limit exceeded", "ip", s.remoteIP)
+			return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Rate limit exceeded, try again later"}
+		}
 	}
 
 	// Prepend the Received-SPF header by streaming (no full-message buffering).
@@ -409,6 +419,11 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	if maxConn <= 0 {
 		maxConn = 1024
 	}
+
+	// Wire per-IP limits into the backend. These are read from config so operators
+	// can tune or disable them (0 = disabled).
+	backend.maxPerIP = cfg.Limits.MaxConnectionsPerIP
+	backend.inboundRL = newInboundRateLimiter(cfg.Limits.MessagesPerMinute)
 
 	return &Server{
 		mx:            mx,

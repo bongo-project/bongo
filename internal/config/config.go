@@ -97,6 +97,12 @@ type SMTPLimits struct {
 	MaxRecipients  int    `hcl:"max_recipients,optional" mapstructure:"max_recipients"`
 	MaxConnections int    `hcl:"max_connections,optional" mapstructure:"max_connections"`
 	FloodThreshold int    `hcl:"flood_threshold,optional" mapstructure:"flood_threshold"`
+	// MessagesPerMinute caps accepted inbound messages per source IP per minute.
+	// 0 disables the limit.
+	MessagesPerMinute int `hcl:"messages_per_minute,optional" mapstructure:"messages_per_minute"`
+	// MaxConnectionsPerIP caps concurrent SMTP connections from a single source IP.
+	// 0 disables the limit.
+	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
 }
 
 type SMTPRelay struct {
@@ -348,10 +354,12 @@ func Defaults() *Config {
 			Port:           25,
 			SubmissionPort: 587,
 			Limits: SMTPLimits{
-				MaxMessageSize: "25MB",
-				MaxRecipients:  100,
-				MaxConnections: 1024,
-				FloodThreshold: 50,
+				MaxMessageSize:      "25MB",
+				MaxRecipients:       100,
+				MaxConnections:      1024,
+				FloodThreshold:      50,
+				MessagesPerMinute:   60,
+				MaxConnectionsPerIP: 50,
 			},
 			DKIM: SMTPDKIMConfig{
 				Selector: "mail",
