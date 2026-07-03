@@ -29,8 +29,8 @@ func NewBlobHandler(blobs BlobGetter) *BlobHandler {
 // Get handles GET /internal/blob/{hash} — serves blob content.
 func (h *BlobHandler) Get(w http.ResponseWriter, r *http.Request) {
 	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		http.Error(w, "hash required", http.StatusBadRequest)
+	if !store.IsValidHash(hash) {
+		http.Error(w, "invalid blob hash", http.StatusBadRequest)
 		return
 	}
 
@@ -52,8 +52,8 @@ func (h *BlobHandler) Get(w http.ResponseWriter, r *http.Request) {
 // Head handles HEAD /internal/blob/{hash} — checks blob existence.
 func (h *BlobHandler) Head(w http.ResponseWriter, r *http.Request) {
 	hash := chi.URLParam(r, "hash")
-	if hash == "" {
-		http.Error(w, "hash required", http.StatusBadRequest)
+	if !store.IsValidHash(hash) {
+		http.Error(w, "invalid blob hash", http.StatusBadRequest)
 		return
 	}
 

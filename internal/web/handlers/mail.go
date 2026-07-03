@@ -860,6 +860,10 @@ var safeInlineTypes = map[string]bool{
 // ServeBlob streams a blob with the correct content type.
 func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 	hash := chi.URLParam(r, "hash")
+	if !store.IsValidHash(hash) {
+		http.Error(w, "invalid blob hash", http.StatusBadRequest)
+		return
+	}
 	rc, err := h.blobs.Get(hash)
 	if err != nil {
 		http.Error(w, "Blob not found", http.StatusNotFound)

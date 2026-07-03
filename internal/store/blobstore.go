@@ -3,11 +3,31 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 )
+
+// ErrInvalidHash is returned when a blob hash fails validation.
+var ErrInvalidHash = errors.New("invalid blob hash")
+
+// IsValidHash reports whether h is a valid SHA-256 blob hash:
+// exactly 64 lowercase hexadecimal characters (0-9, a-f).
+// Uppercase letters, path separators, and percent-encoded sequences are rejected.
+func IsValidHash(h string) bool {
+	if len(h) != 64 {
+		return false
+	}
+	for i := range len(h) {
+		c := h[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
 
 // BlobStore is a content-addressable blob store backed by the filesystem.
 // Blobs are identified by their SHA-256 hash and stored in a flat, shared pool.
@@ -95,7 +115,11 @@ func (bs *BlobStore) PutReader(r io.Reader) (string, int64, error) {
 }
 
 // Get opens a blob by hash and returns a reader. The caller must close it.
+// Returns ErrInvalidHash if hash is not a valid 64-char lowercase hex string.
 func (bs *BlobStore) Get(hash string) (io.ReadCloser, error) {
+	if !IsValidHash(hash) {
+		return nil, fmt.Errorf("blob %q: %w", hash, ErrInvalidHash)
+	}
 	path := bs.blobPath(hash)
 	f, err := os.Open(path)
 	if err != nil {
@@ -108,13 +132,21 @@ func (bs *BlobStore) Get(hash string) (io.ReadCloser, error) {
 }
 
 // Exists reports whether a blob with the given hash exists on disk.
+// Returns false for any hash that fails IsValidHash.
 func (bs *BlobStore) Exists(hash string) bool {
+	if !IsValidHash(hash) {
+		return false
+	}
 	_, err := os.Stat(bs.blobPath(hash))
 	return err == nil
 }
 
 // Delete removes a blob file.
+// Returns ErrInvalidHash if hash is not a valid 64-char lowercase hex string.
 func (bs *BlobStore) Delete(hash string) error {
+	if !IsValidHash(hash) {
+		return fmt.Errorf("blob %q: %w", hash, ErrInvalidHash)
+	}
 	path := bs.blobPath(hash)
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("deleting blob: %w", err)
@@ -251,4 +283,3 @@ func sha256Hex(data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:])
 }
-
