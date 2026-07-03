@@ -55,6 +55,7 @@ smtp {
 
   dkim {
     selector = "test"
+    domain   = "test.example"
   }
 }
 
@@ -131,5 +132,6 @@ telemetry {
   log {
     level  = "debug"
     format = "text"
+    file   = "/tmp/bongo-test/bongo.jsonl"
   }
 }

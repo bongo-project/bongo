@@ -62,6 +62,7 @@ func TestLoadFromFile(t *testing.T) {
 		{"smtp.submission_port", cfg.SMTP.SubmissionPort, 2587},
 		{"smtp.limits.max_recipients", cfg.SMTP.Limits.MaxRecipients, 50},
 		{"smtp.dkim.selector", cfg.SMTP.DKIM.Selector, "test"},
+		{"smtp.dkim.domain", cfg.SMTP.DKIM.Domain, "test.example"},
 		{"imap.port", cfg.IMAP.Port, 1143},
 		{"imap.port_tls", cfg.IMAP.PortTLS, 1993},
 		{"pop3.enabled", cfg.POP3.Enabled, false},
@@ -69,6 +70,7 @@ func TestLoadFromFile(t *testing.T) {
 		{"telemetry.prometheus.port", cfg.Telemetry.Prometheus.Port, 9191},
 		{"telemetry.log.level", cfg.Telemetry.Log.Level, "debug"},
 		{"telemetry.log.format", cfg.Telemetry.Log.Format, "text"},
+		{"telemetry.log.file", cfg.Telemetry.Log.File, "/tmp/bongo-test/bongo.jsonl"},
 	}
 
 	for _, tt := range tests {
@@ -415,6 +417,21 @@ func TestDefaultPipelineValidates(t *testing.T) {
 	cfg := Defaults()
 	if err := cfg.Pipeline.Validate(); err != nil {
 		t.Errorf("default PipelineConfig failed validation: %v", err)
+	}
+}
+
+func TestSessionSecretFromEnv(t *testing.T) {
+	t.Setenv("BONGO_WEB_SESSION_SECRET", "s3cr3t-from-env")
+
+	v := viper.New()
+	v.Set("config", "../../test/testdata/config.hcl")
+
+	cfg, err := Load(v)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.Web.SessionSecret != "s3cr3t-from-env" {
+		t.Errorf("expected session secret from env, got %q", cfg.Web.SessionSecret)
 	}
 }
 
