@@ -349,6 +349,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Config.Web.PlainHTTP {
 		tlsEnabled = false
 	}
+	// Behind a trusted TLS-terminating proxy, users reach us over HTTPS even
+	// though the local connection is plain HTTP: mark cookies Secure.
+	if a.Config.Web.BehindTLSProxy {
+		tlsEnabled = true
+	}
 
 	// Auth routes (public).
 	authH := handlers.NewAuthHandler(a.Auth, sessionSecret)
@@ -359,7 +364,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		authH.SetRaftApplier(a)
 	}
 	r.Get("/login", authH.LoginPage)
-	r.With(loginRL.LoginRateLimit()).Post("/login", authH.Login)
+	r.With(middleware.RequireSameOrigin(), loginRL.LoginRateLimit()).Post("/login", authH.Login)
 	r.Get("/login/2fa", authH.TwoFactorPage)
 	r.With(middleware.RequireSameOrigin()).Post("/login/2fa", authH.TwoFactorVerify)
 	r.With(middleware.RequireSameOrigin()).Post("/logout", authH.Logout)
@@ -767,6 +772,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessionSecret))
 			r.Use(middleware.RequireAdmin(sessionSecret))
+			r.Use(middleware.RequireSameOrigin())
 
 			quarantineH := handlers.NewQuarantineHandler(a.Spool, a.Blobs, a.logger)
 			r.Get("/admin/quarantine", quarantineH.ListQuarantine)
@@ -788,6 +794,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.SPFChecker = mail.NewSPFChecker()
 		backend.SetSPFChecker(a.SPFChecker)
 
+		// Relay policy: accept mail for local recipients from anyone (inbound MX),
+		// but only relay to external recipients for authenticated submission.
+		backend.SetResolver(bongosmtp.NewSystemDBResolver(a.Metadata))
+
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
 		if err := a.SMTP.Listen(); err != nil {
 			return fmt.Errorf("smtp listen: %w", err)
@@ -803,6 +813,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Initialize outbound queue subsystem.
 	if a.Raft != nil {
 		a.QueueStore = queue.NewQueueStore(a.Store, a)
+
+		// Allow authenticated SMTP submission to relay to external recipients.
+		if a.SMTP != nil {
+			a.SMTP.SetRelayQueue(a.QueueStore)
+		}
 
 		// Wire forward queuer to deliver processor.
 		if deliverProc != nil {

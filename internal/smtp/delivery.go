@@ -54,16 +54,26 @@ func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader
 // with SPF result and source IP metadata into the spool for asynchronous
 // pipeline processing.
 func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error {
-	raw, err := io.ReadAll(r)
+	blobHash, err := d.StoreBlob(r)
 	if err != nil {
-		return fmt.Errorf("reading message: %w", err)
+		return err
 	}
+	return d.EnqueueLocal(from, recipients, blobHash, spfResult, sourceIP)
+}
 
-	blobHash, err := d.blobs.Put(raw)
+// StoreBlob streams the raw message to the content-addressable blob store and
+// returns its hash. Streaming avoids buffering the whole message in memory.
+func (d *DeliveryPipeline) StoreBlob(r io.Reader) (string, error) {
+	blobHash, _, err := d.blobs.PutReader(r)
 	if err != nil {
-		return fmt.Errorf("storing raw message blob: %w", err)
+		return "", fmt.Errorf("storing raw message blob: %w", err)
 	}
+	return blobHash, nil
+}
 
+// EnqueueLocal enqueues a QueueEnvelope referencing an already-stored blob into
+// the spool for asynchronous local pipeline delivery.
+func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHash, spfResult, sourceIP string) error {
 	env := &bongov1.QueueEnvelope{
 		Id:         uuid.New().String(),
 		Sender:     from,

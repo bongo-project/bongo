@@ -1,7 +1,6 @@
 package smtp
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -9,14 +8,18 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	gosmtp "github.com/emersion/go-smtp"
+	"github.com/google/uuid"
+	"golang.org/x/net/netutil"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/observability"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // Deliverer processes an inbound email message.
@@ -24,12 +27,31 @@ type Deliverer interface {
 	Deliver(from string, recipients []string, r io.Reader) error
 }
 
+// splitDeliverer is implemented by the server-role DeliveryPipeline and lets the
+// session store the raw message once and route local vs. external recipients
+// separately (local -> spool pipeline, external -> outbound relay queue).
+type splitDeliverer interface {
+	StoreBlob(r io.Reader) (string, error)
+	EnqueueLocal(from string, recipients []string, blobHash, spfResult, sourceIP string) error
+}
+
+// RelayQueuer enqueues an authenticated user's message for outbound relay.
+type RelayQueuer interface {
+	Enqueue(msg *bongov1.OutboundMessage) error
+}
+
 // Backend implements gosmtp.Backend.
 type Backend struct {
 	auth       auth.Authenticator
 	deliverer  Deliverer
 	spfChecker *mail.SPFChecker
+	resolver   RecipientResolver
+	relayQueue RelayQueuer
+	subPort    int
 	logger     *slog.Logger
+
+	mu    sync.Mutex
+	perIP map[string]int
 }
 
 // NewBackend creates a new SMTP backend.
@@ -38,6 +60,7 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 		auth:      authenticator,
 		deliverer: deliverer,
 		logger:    logger,
+		perIP:     make(map[string]int),
 	}
 }
 
@@ -45,6 +68,23 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
 	b.spfChecker = checker
 }
+
+// SetResolver sets the recipient resolver used to enforce relay policy (accept
+// mail only for local recipients unless the session is authenticated).
+func (b *Backend) SetResolver(r RecipientResolver) {
+	b.resolver = r
+}
+
+// SetRelayQueue sets the outbound queue used to relay mail from authenticated
+// submission sessions to external recipients.
+func (b *Backend) SetRelayQueue(q RelayQueuer) {
+	b.relayQueue = q
+}
+
+// maxConnectionsPerIP caps concurrent SMTP connections from a single source IP.
+// NOTE: behind a TCP-proxying reverse proxy without PROXY protocol, all inbound
+// connections share the proxy's IP, so this acts as a coarse safety net only.
+const maxConnectionsPerIP = 50
 
 // NewSession is called when a new SMTP connection is established.
 func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
@@ -54,38 +94,71 @@ func (b *Backend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
 			remoteIP = tcpAddr.IP
 		}
 	}
+
+	// Per-IP concurrent-connection cap.
+	if remoteIP != nil {
+		ipStr := remoteIP.String()
+		b.mu.Lock()
+		if b.perIP[ipStr] >= maxConnectionsPerIP {
+			b.mu.Unlock()
+			b.logger.Warn("smtp: too many connections from source, rejecting", "ip", ipStr)
+			return nil, &gosmtp.SMTPError{Code: 421, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many connections from your address"}
+		}
+		b.perIP[ipStr]++
+		b.mu.Unlock()
+	}
+
+	// Detect whether this connection landed on the submission listener.
+	submission := false
+	if b.subPort != 0 {
+		if la, ok := c.Conn().LocalAddr().(*net.TCPAddr); ok && la.Port == b.subPort {
+			submission = true
+		}
+	}
+
 	return &Session{
-		backend:  b,
-		logger:   b.logger,
-		remoteIP: remoteIP,
+		backend:    b,
+		logger:     b.logger,
+		remoteIP:   remoteIP,
+		submission: submission,
 	}, nil
 }
 
 // Session implements gosmtp.Session.
 type Session struct {
-	backend    *Backend
-	logger     *slog.Logger
-	from       string
-	recipients []string
-	authed     bool
-	remoteIP   net.IP
-	spfResult  string
+	backend       *Backend
+	logger        *slog.Logger
+	from          string
+	localRcpts    []string
+	externalRcpts []string
+	authed        bool
+	userID        string
+	submission    bool
+	remoteIP      net.IP
+	spfResult     string
 }
 
 // AuthPlain handles PLAIN authentication.
 func (s *Session) AuthPlain(username, password string) error {
-	_, err := s.backend.auth.Authenticate(username, password)
+	userID, err := s.backend.auth.Authenticate(username, password)
 	if err != nil {
 		s.logger.Warn("smtp: auth failed", "username", username)
 		return err
 	}
 	s.authed = true
+	s.userID = userID
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
 }
 
 // Mail is called with the MAIL FROM command.
 func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
+	// Submission requires authentication before mail can be sent.
+	if s.submission && !s.authed {
+		s.logger.Warn("smtp: unauthenticated MAIL on submission port rejected", "from", from, "ip", s.remoteIP)
+		return &gosmtp.SMTPError{Code: 530, EnhancedCode: gosmtp.EnhancedCode{5, 7, 0}, Message: "Authentication required"}
+	}
+
 	s.from = from
 	s.logger.Debug("smtp: MAIL FROM", "from", from)
 
@@ -107,68 +180,127 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 	return nil
 }
 
-// Rcpt is called with the RCPT TO command.
+// Rcpt is called with the RCPT TO command. It enforces relay policy: mail is
+// accepted for local recipients from anyone (inbound MX), but delivery to
+// external recipients is only allowed for authenticated sessions (submission).
+// This is the explicit open-relay guard.
 func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
-	s.recipients = append(s.recipients, to)
-	s.logger.Debug("smtp: RCPT TO", "to", to)
+	// Without a resolver (dev/agent role) fall back to accepting locally; the
+	// server-role deployment always wires a resolver.
+	if s.backend.resolver == nil {
+		s.localRcpts = append(s.localRcpts, to)
+		return nil
+	}
+
+	if _, err := s.backend.resolver.ResolveRecipient(to); err == nil {
+		s.localRcpts = append(s.localRcpts, to)
+		s.logger.Debug("smtp: RCPT TO (local)", "to", to)
+		return nil
+	}
+
+	// Non-local recipient: relay is only permitted for authenticated senders.
+	if !s.authed {
+		s.logger.Warn("smtp: relay denied for non-local recipient", "to", to, "from", s.from, "ip", s.remoteIP)
+		return &gosmtp.SMTPError{Code: 550, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Relaying denied"}
+	}
+	s.externalRcpts = append(s.externalRcpts, to)
+	s.logger.Debug("smtp: RCPT TO (relay)", "to", to)
 	return nil
 }
 
 // Data is called when the message data is received.
 func (s *Session) Data(r io.Reader) error {
-	if len(s.recipients) == 0 {
+	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
 		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 		return fmt.Errorf("no recipients")
 	}
 
+	// Prepend the Received-SPF header by streaming (no full-message buffering).
 	var reader io.Reader = r
-
-	// Prepend Received-SPF header if SPF was checked.
 	if s.spfResult != "" {
-		domain := extractDomain(s.from)
-		header := fmt.Sprintf("Received-SPF: %s (bongo-go; domain=%s)\r\n", s.spfResult, domain)
-		rawData, err := io.ReadAll(r)
-		if err != nil {
-			return fmt.Errorf("reading message data: %w", err)
-		}
-		var buf bytes.Buffer
-		buf.WriteString(header)
-		buf.Write(rawData)
-		reader = &buf
+		domain := sanitizeHeaderValue(extractDomain(s.from))
+		header := fmt.Sprintf("Received-SPF: %s (bongo-go; domain=%s)\r\n", sanitizeHeaderValue(s.spfResult), domain)
+		reader = io.MultiReader(strings.NewReader(header), r)
 	}
 
-	// Pass SPF result and source IP to delivery pipeline if supported.
-	type spfDeliverer interface {
-		DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error
-	}
 	sourceIP := ""
 	if s.remoteIP != nil {
 		sourceIP = s.remoteIP.String()
 	}
+
+	// Server-role split delivery: store once, route local vs. external.
+	if sd, ok := s.backend.deliverer.(splitDeliverer); ok {
+		blobHash, err := sd.StoreBlob(reader)
+		if err != nil {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			s.logger.Error("smtp: storing message failed", "from", s.from, "error", err)
+			return err
+		}
+		if len(s.localRcpts) > 0 {
+			if err := sd.EnqueueLocal(s.from, s.localRcpts, blobHash, s.spfResult, sourceIP); err != nil {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				s.logger.Error("smtp: local delivery failed", "from", s.from, "error", err)
+				return err
+			}
+		}
+		if len(s.externalRcpts) > 0 {
+			if s.backend.relayQueue == nil {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				s.logger.Error("smtp: outbound relay unavailable", "from", s.from)
+				return &gosmtp.SMTPError{Code: 451, EnhancedCode: gosmtp.EnhancedCode{4, 3, 0}, Message: "Outbound relay temporarily unavailable"}
+			}
+			out := &bongov1.OutboundMessage{
+				Id:          uuid.New().String(),
+				SenderId:    s.userID,
+				SenderEmail: s.from,
+				Recipients:  s.externalRcpts,
+				BlobHash:    blobHash,
+			}
+			if err := s.backend.relayQueue.Enqueue(out); err != nil {
+				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+				s.logger.Error("smtp: enqueue outbound relay failed", "from", s.from, "error", err)
+				return err
+			}
+			s.logger.Info("smtp: outbound relay enqueued", "from", s.from, "recipients", s.externalRcpts)
+		}
+		observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
+		s.logger.Info("smtp: message accepted", "from", s.from, "local", s.localRcpts, "relay", s.externalRcpts)
+		return nil
+	}
+
+	// Fallback path (agent role / non-split deliverer): local recipients only.
+	type spfDeliverer interface {
+		DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error
+	}
 	if sd, ok := s.backend.deliverer.(spfDeliverer); ok {
-		if err := sd.DeliverWithSPF(s.from, s.recipients, reader, s.spfResult, sourceIP); err != nil {
+		if err := sd.DeliverWithSPF(s.from, s.localRcpts, reader, s.spfResult, sourceIP); err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
 			return err
 		}
-	} else {
-		if err := s.backend.deliverer.Deliver(s.from, s.recipients, reader); err != nil {
-			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
-			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
-			return err
-		}
+	} else if err := s.backend.deliverer.Deliver(s.from, s.localRcpts, reader); err != nil {
+		observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+		s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
+		return err
 	}
 
 	observability.SMTPMessagesTotal.WithLabelValues("accepted").Inc()
-	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.recipients)
+	s.logger.Info("smtp: message delivered", "from", s.from, "recipients", s.localRcpts)
 	return nil
 }
 
 // Reset is called between messages on the same connection.
 func (s *Session) Reset() {
 	s.from = ""
-	s.recipients = nil
+	s.localRcpts = nil
+	s.externalRcpts = nil
 	s.spfResult = ""
+}
+
+// sanitizeHeaderValue strips CR and LF to prevent header injection when
+// interpolating values into generated headers.
+func sanitizeHeaderValue(v string) string {
+	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
 }
 
 // extractDomain extracts the domain part from an email address.
@@ -182,6 +314,17 @@ func extractDomain(email string) string {
 
 // Logout is called when the connection is closed.
 func (s *Session) Logout() error {
+	if s.remoteIP != nil {
+		ip := s.remoteIP.String()
+		s.backend.mu.Lock()
+		if s.backend.perIP[ip] > 0 {
+			s.backend.perIP[ip]--
+			if s.backend.perIP[ip] == 0 {
+				delete(s.backend.perIP, ip)
+			}
+		}
+		s.backend.mu.Unlock()
+	}
 	return nil
 }
 
@@ -189,10 +332,18 @@ func (s *Session) Logout() error {
 type Server struct {
 	mx         *gosmtp.Server
 	submission *gosmtp.Server
+	backend    *Backend
+	maxConn    int
 	logger     *slog.Logger
 
-	mxListener   net.Listener
-	subListener  net.Listener
+	mxListener  net.Listener
+	subListener net.Listener
+}
+
+// SetRelayQueue wires the outbound relay queue used for authenticated
+// submission to external recipients. Safe to call after Listen/Serve.
+func (s *Server) SetRelayQueue(q RelayQueuer) {
+	s.backend.SetRelayQueue(q)
 }
 
 // NewServer creates an SMTP server from config.
@@ -205,9 +356,19 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 		subPort = 2587
 	}
 
+	// Let the backend detect submission connections by local port.
+	backend.subPort = subPort
+
+	// EHLO/HELO banner hostname: use the configured public hostname so it aligns
+	// with rDNS/SPF; fall back to localhost only when unset.
+	banner := cfg.Hostname
+	if banner == "" {
+		banner = "localhost"
+	}
+
 	mx := gosmtp.NewServer(backend)
 	mx.Addr = fmt.Sprintf(":%d", mxPort)
-	mx.Domain = "localhost"
+	mx.Domain = banner
 	mx.ReadTimeout = 60 * time.Second
 	mx.WriteTimeout = 60 * time.Second
 	mx.MaxMessageBytes = 25 * 1024 * 1024
@@ -219,47 +380,66 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 
 	submission := gosmtp.NewServer(backend)
 	submission.Addr = fmt.Sprintf(":%d", subPort)
-	submission.Domain = "localhost"
+	submission.Domain = banner
 	submission.ReadTimeout = 60 * time.Second
 	submission.WriteTimeout = 60 * time.Second
 	submission.MaxMessageBytes = 25 * 1024 * 1024
 	submission.MaxRecipients = mx.MaxRecipients
 	submission.AllowInsecureAuth = isDev
 
-	// Configure TLS if cert files are provided.
+	// Configure TLS if cert files are provided. Pin TLS 1.2 as the floor so it
+	// does not depend on the toolchain default.
 	if cfg.TLS.CertFile != "" && cfg.TLS.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
 		if err != nil {
 			logger.Warn("smtp: failed to load TLS cert, running without TLS", "error", err)
 		} else {
-			tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+			tlsCfg := &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				MinVersion:   tls.VersionTLS12,
+			}
 			mx.TLSConfig = tlsCfg
 			submission.TLSConfig = tlsCfg
 		}
 	}
 
+	maxConn := cfg.Limits.MaxConnections
+	if maxConn <= 0 {
+		maxConn = 1024
+	}
+
 	return &Server{
 		mx:         mx,
 		submission: submission,
+		backend:    backend,
+		maxConn:    maxConn,
 		logger:     logger,
 	}
 }
 
 // Listen binds the MX and submission ports. Call Serve() after to start handling.
+// Both listeners are wrapped with a global concurrent-connection cap to bound
+// goroutine/memory use under a connection flood.
 func (s *Server) Listen() error {
-	var err error
-	s.mxListener, err = net.Listen("tcp", s.mx.Addr)
+	mxl, err := net.Listen("tcp", s.mx.Addr)
 	if err != nil {
 		return fmt.Errorf("smtp mx listen: %w", err)
 	}
 
-	s.subListener, err = net.Listen("tcp", s.submission.Addr)
+	subl, err := net.Listen("tcp", s.submission.Addr)
 	if err != nil {
-		s.mxListener.Close()
+		mxl.Close()
 		return fmt.Errorf("smtp submission listen: %w", err)
 	}
 
-	s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr())
+	if s.maxConn > 0 {
+		mxl = netutil.LimitListener(mxl, s.maxConn)
+		subl = netutil.LimitListener(subl, s.maxConn)
+	}
+	s.mxListener = mxl
+	s.subListener = subl
+
+	s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr(), "max_conn", s.maxConn)
 	return nil
 }
 

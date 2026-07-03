@@ -36,9 +36,11 @@ RUN apk add --no-cache ca-certificates tzdata && \
 COPY --from=build /out/bongo-go     /usr/local/bin/bongo-go
 COPY --from=build /out/bongo-import /usr/local/bin/bongo-import
 
-# Runs as root so it can bind privileged mail ports (25/143/110/443) inside the
-# container namespace. The container is the isolation boundary for this test
-# deployment; harden with a non-root user + CAP_NET_BIND_SERVICE later.
+# The process runs as root to bind privileged mail ports, but the compose file
+# drops ALL Linux capabilities except NET_BIND_SERVICE and sets
+# no-new-privileges, so a compromise has almost no privileged surface. Moving to
+# a dedicated non-root UID is a further step (needs bind-mount UID alignment for
+# /logs and the DKIM key).
 
 # Mail + web + metrics ports (host mapping is defined in compose).
 EXPOSE 25 587 143 993 110 995 8080 9090

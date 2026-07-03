@@ -29,8 +29,9 @@ func SecurityHeaders() func(http.Handler) http.Handler {
 					"object-src 'none'",
 			)
 
-			// HSTS: only when the connection is over TLS.
-			if r.TLS != nil {
+			// HSTS: when the request reached the user over TLS, directly or via
+			// a trusted TLS-terminating proxy (X-Forwarded-Proto: https).
+			if IsHTTPS(r) {
 				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 			}
 			if h.Get("Cache-Control") == "" {

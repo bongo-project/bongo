@@ -12,7 +12,12 @@
 server {
   role      = "server"
   name      = "bongo-1"
-  bind_addr = "0.0.0.0"
+  # Protocol listeners bind all interfaces (reachable via Traefik on the
+  # container network). Raft advertises loopback: this is a single node with no
+  # peers, so it only ever talks to itself. Set this to the node's routable IP
+  # if you later form a multi-node cluster.
+  bind_addr      = "0.0.0.0"
+  advertise_addr = "127.0.0.1"
 }
 
 cluster {
@@ -49,6 +54,7 @@ smtp {
   enabled         = true
   port            = 25    # inbound MX
   submission_port = 587   # authenticated submission
+  hostname        = "mail.example.com"   # EHLO/HELO banner (align with rDNS/SPF)
 
   limits {
     max_message_size = "25MB"
@@ -91,9 +97,10 @@ pop3 {
 }
 
 web {
-  enabled    = true
-  port       = 8080
-  plain_http = true   # TLS terminated by Traefik in front of this container
+  enabled          = true
+  port             = 8080
+  plain_http       = true   # TLS terminated by Traefik in front of this container
+  behind_tls_proxy = true   # users reach us over HTTPS: mark cookies Secure, emit HSTS
 
   # Required block even when plain_http is set; left empty (Traefik owns TLS).
   tls {}
