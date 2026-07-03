@@ -1,0 +1,32 @@
+# Build artifacts
+bin/
+dist/
+tmp/
+*.log
+
+# Local data / state that must never enter the image
+data/
+logs/
+deploy/data/
+deploy/logs/
+deploy/certs/
+deploy/*.env
+deploy/.env
+
+# VCS and tooling
+.git/
+.github/
+.jj/
+.loop/
+.loop-archive/
+.claude/
+.codex
+
+# Tests / scratch
+test/tmp/
+scripts/ui-test/
+testdata/
+
+# Editor
+.vscode/
+.idea/

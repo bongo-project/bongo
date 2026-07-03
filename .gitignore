@@ -45,3 +45,9 @@ coverage.out
 *.db-wal
 bongo-import
 tmp/
+
+# Deployment secrets and local state (never commit)
+/deploy/.env
+/deploy/secrets/
+/deploy/logs/
+/deploy/certs/
