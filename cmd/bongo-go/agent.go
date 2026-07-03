@@ -49,8 +49,12 @@ func init() {
 }
 
 func runServe(cmd *cobra.Command, args []string) error {
-	// Resolve role: --dev flag takes precedence, then --role, then default.
-	role := "dev"
+	// Resolve role only if explicitly provided: --dev takes precedence, then
+	// --role. If neither is given, the role comes from the config file (falling
+	// back to the "dev" default when there is no config). This prevents a
+	// `serve --config bongo.hcl` from silently overriding role="server" with the
+	// dev default and running with ephemeral storage.
+	role := ""
 	if serveRole != "" {
 		role = serveRole
 	}
@@ -58,11 +62,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		role = "dev"
 	}
 
-	// Validate role.
-	switch role {
-	case "server", "edge", "dev", "agent":
-	default:
-		return fmt.Errorf("invalid role %q: must be server, edge, dev, or agent", role)
+	// Validate the role when one was explicitly set.
+	if role != "" {
+		switch role {
+		case "server", "edge", "dev", "agent":
+		default:
+			return fmt.Errorf("invalid role %q: must be server, edge, dev, or agent", role)
+		}
 	}
 
 	// Load config with precedence: CLI flags > env > file > defaults.
@@ -70,7 +76,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if serveConfig != "" {
 		v.Set("config", serveConfig)
 	}
-	v.Set("role", role)
+	if role != "" {
+		v.Set("role", role)
+	}
 	if cmd.Flags().Changed("bind") {
 		v.Set("bind", serveBind)
 	}

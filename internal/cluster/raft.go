@@ -139,8 +139,12 @@ func NewRaftNode(
 		logger:    logger,
 	}
 
-	// Bootstrap for single-node dev mode.
-	if cfg.Server.Role == "dev" {
+	// Bootstrap a single-node cluster for dev, or for a server that has no peers
+	// to join (the seed node). bootstrapSingle is a no-op when the node already
+	// has persisted Raft state, so this is safe across restarts. Additional
+	// nodes join later via gossip + the cluster join endpoint.
+	if cfg.Server.Role == "dev" ||
+		(cfg.Server.Role == "server" && len(cfg.Cluster.Join) == 0) {
 		if err := node.bootstrapSingle(raftCfg.LocalID, raftAddr); err != nil {
 			r.Shutdown()
 			return nil, err
