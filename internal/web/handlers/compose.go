@@ -620,6 +620,12 @@ type attachmentData struct {
 }
 
 func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, references string, attachments []attachmentData) []byte {
+	// Sanitize user-controlled values to prevent header-injection attacks.
+	from = mail.SanitizeHeaderValue(from)
+	to = mail.SanitizeHeaderValue(to)
+	cc = mail.SanitizeHeaderValue(cc)
+	subject = mail.SanitizeHeaderValue(subject)
+
 	var buf bytes.Buffer
 	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	buf.WriteString(fmt.Sprintf("To: %s\r\n", to))
@@ -660,9 +666,10 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 
 	// Attachment parts.
 	for _, att := range attachments {
+		safeName := mail.SanitizeHeaderFilename(att.Filename)
 		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
-		buf.WriteString(fmt.Sprintf("Content-Type: %s; name=\"%s\"\r\n", att.ContentType, att.Filename))
-		buf.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", att.Filename))
+		buf.WriteString(fmt.Sprintf("Content-Type: %s; name=\"%s\"\r\n", att.ContentType, safeName))
+		buf.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", safeName))
 		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
 		buf.WriteString("\r\n")
 
