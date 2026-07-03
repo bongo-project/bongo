@@ -281,16 +281,18 @@ live log viewer under **Admin → Logs**.
 
 ## 10. Backup
 
+Persistent data is bind-mounted under the project dir, so backup is a plain
+tar of `./data` (Pebble metadata + blobs + indexes + raft):
+
 ```bash
-# Stop for a consistent copy (or snapshot the volume live if you prefer)
+# Stop for a consistent copy (or snapshot the filesystem live if you prefer)
 docker compose stop bongo
-docker run --rm -v bongo_bongo-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/bongo-data-$(date +%F).tgz -C /data .
+sudo tar czf bongo-data-$(date +%F).tgz -C ./data .
 docker compose start bongo
 ```
 
-Restore = extract the tarball back into the `bongo-data` volume. The SQLite and
-Bleve indexes are rebuildable from Pebble + blobs.
+Restore = extract the tarball back into `./data`. The SQLite and Bleve indexes
+are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
 
 ---
 
