@@ -164,12 +164,18 @@ openssl rand -base64 32
 mkdir -p logs
 test -f secrets/dkim.key || echo "!! generate secrets/dkim.key first (see §4)"
 
-docker compose up -d --build
+docker compose pull                 # pull the image from ghcr.io/lhaig/bongo-go
+docker compose up -d
 docker compose logs -f bongo        # watch startup
 
 # After Traefik issues the mail.example.com cert (see §5), load it into bongo:
 docker compose restart bongo
 ```
+
+> **Image source:** CI publishes `ghcr.io/lhaig/bongo-go` on every push to `main`
+> and on version tags. If the package is private, run `docker login ghcr.io`
+> (e.g. with a GitHub personal access token that has `read:packages`) before
+> pulling, or make the package public in the GitHub repository settings.
 
 Confirm Traefik picked up the routers (its dashboard is on `:8080`), and that
 `certs-dumper` wrote the cert:

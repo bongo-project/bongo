@@ -9,16 +9,15 @@
 #               Let's Encrypt cert extracted from Traefik's acme.json.
 #
 #   cp .env.example .env   # then edit
-#   docker compose up -d --build
+#   docker compose pull
+#   docker compose up -d
 #   # once Traefik has issued the mail.example.com cert (see README §5):
 #   docker compose restart bongo
 
 services:
   bongo:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
-    image: bongo-go:latest
+    # local dev build: docker build -f deploy/Dockerfile -t ghcr.io/lhaig/bongo-go:latest ..
+    image: ghcr.io/lhaig/bongo-go:latest
     container_name: bongo
     restart: unless-stopped
 
