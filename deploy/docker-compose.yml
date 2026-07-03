@@ -50,12 +50,12 @@ services:
       - ./bongo.prod.hcl:/etc/bongo/bongo.hcl:ro
       - ./secrets/dkim.key:/secrets/dkim.key:ro   # DKIM signing key (you generate this)
                                                   # host must: chown 10001 deploy/secrets/dkim.key
-      - bongo-certs:/certs                        # mail TLS cert, written by certs-dumper
+      - ./certs:/certs                            # mail TLS cert, written by certs-dumper
                                                   # NOT :ro so entrypoint.sh can chown it for
                                                   # uid 10001 (certs-dumper writes as root)
       - ./logs:/logs                              # bongo.jsonl (shipped off-host)
                                                   # host must: chown -R 10001:10001 deploy/logs/
-      - bongo-data:/data                          # Pebble, blobs, indexes, raft (persistent)
+      - ./data:/data                              # Pebble, blobs, indexes, raft (persistent)
 
     networks:
       - traefik
@@ -114,7 +114,7 @@ services:
       - "traefik.tcp.services.bongo-imaps.loadbalancer.proxyProtocol.version=2"
 
   # Extracts the mail.example.com certificate from Traefik's acme.json into the
-  # shared bongo-certs volume, and re-dumps on renewal. Pin the tag as you like.
+  # shared ./certs dir, and re-dumps on renewal. Pin the tag as you like.
   certs-dumper:
     image: ldez/traefik-certs-dumper:v2.10.0
     container_name: bongo-certs-dumper
@@ -128,14 +128,10 @@ services:
       - "--domain-subdir=true"
     volumes:
       - /mnt/data/traefik/acme.json:/traefik/acme.json:ro
-      - bongo-certs:/certs
+      - ./certs:/certs
 
 networks:
   # The external network Traefik is attached to (compose project `hostbox` -> `traefik_web`).
   traefik:
     external: true
     name: ${TRAEFIK_NETWORK}
-
-volumes:
-  bongo-data:
-  bongo-certs:
