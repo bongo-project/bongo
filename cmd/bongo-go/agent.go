@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -100,11 +101,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	logLevel := parseLogLevel(cfg.Telemetry.Log.Level)
 	logSink := handlers.NewLogSink()
 
+	// Logs always go to stdout (so `docker logs`/journald still work). When
+	// telemetry.log.file is set, also append to that file for off-host shipping.
+	var logOut io.Writer = os.Stdout
+	if path := cfg.Telemetry.Log.File; path != "" {
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
+		if err != nil {
+			return fmt.Errorf("opening log file %s: %w", path, err)
+		}
+		defer f.Close()
+		logOut = io.MultiWriter(os.Stdout, f)
+	}
+
 	var baseHandler slog.Handler
 	if cfg.Telemetry.Log.Format == "text" {
-		baseHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+		baseHandler = slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: logLevel})
 	} else {
-		baseHandler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+		baseHandler = slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: logLevel})
 	}
 	// Wrap base handler so log entries are also sent to the admin log viewer.
 	handler := logSink.SlogHandler(baseHandler)

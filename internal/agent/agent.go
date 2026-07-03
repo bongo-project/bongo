@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,18 +56,18 @@ import (
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
-	Config    *config.Config
-	Store     *store.PebbleStore
-	Blobs     *store.BlobStore
-	Metadata  *store.MetadataManager
-	Search    *store.SearchManager
-	Auth      *auth.LocalAuth
-	Raft      *cluster.RaftNode
-	Gossip    *cluster.GossipNode
-	SMTP      *bongosmtp.Server
-	IMAP      *bongoimap.Server
-	POP3      *bongopop3.Server
-	Notifier  *bongoimap.Notifier
+	Config      *config.Config
+	Store       *store.PebbleStore
+	Blobs       *store.BlobStore
+	Metadata    *store.MetadataManager
+	Search      *store.SearchManager
+	Auth        *auth.LocalAuth
+	Raft        *cluster.RaftNode
+	Gossip      *cluster.GossipNode
+	SMTP        *bongosmtp.Server
+	IMAP        *bongoimap.Server
+	POP3        *bongopop3.Server
+	Notifier    *bongoimap.Notifier
 	Mailboxes   *store.MailboxStore
 	Preferences *store.PreferenceStore
 	Threads     *store.ThreadStore
@@ -111,12 +110,12 @@ type Agent struct {
 	// bongo-go server and delegates to a pipeline.Processor.
 	agentProcessors []*agentgrpc.AgentProcessorServer
 
-	httpServer           *http.Server
-	ready                atomic.Bool
-	blobSyncCancel       context.CancelFunc
-	queueWorkerCancel    context.CancelFunc
-	reminderCancel       context.CancelFunc
-	pipelineCancel       context.CancelFunc
+	httpServer            *http.Server
+	ready                 atomic.Bool
+	blobSyncCancel        context.CancelFunc
+	queueWorkerCancel     context.CancelFunc
+	reminderCancel        context.CancelFunc
+	pipelineCancel        context.CancelFunc
 	quarantinePurgeCancel context.CancelFunc
 
 	// dataDir is the resolved data directory (tmp dir in dev mode).
@@ -292,50 +291,52 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Get("/health/ready", health.Ready)
 	r.Handle("/metrics", observability.Handler())
 
-	// Internal KV endpoints for testing Raft consensus.
-	if a.Raft != nil {
-		kv := handlers.NewKVHandler(a)
-		r.Put("/internal/kv/*", kv.Put)
-		r.Get("/internal/kv/*", kv.Get)
-		r.Delete("/internal/kv/*", kv.Delete)
-	}
-
-	// Internal cluster membership endpoint.
-	clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
-	r.Get("/internal/cluster/members", clusterH.Members)
-
-	// Internal blob sync endpoints.
-	if a.Blobs != nil {
-		blobH := handlers.NewBlobHandler(a.Blobs)
-		r.Get("/internal/blob/{hash}", blobH.Get)
-		r.Head("/internal/blob/{hash}", blobH.Head)
-	}
-
-	// Cluster join endpoint.
-	if a.Raft != nil {
-		joinH := handlers.NewJoinHandler(a.Raft.Raft)
-		r.Post("/internal/cluster/join", joinH.Join)
-	}
-
-	// Queue management endpoints will be registered after queue init below.
-
-	// User management endpoint.
-	if a.Raft != nil {
-		userH := handlers.NewUserHandler(a, a.Metadata)
-		r.Post("/internal/user/create", userH.Create)
-	}
-
-	// Static assets (public).
-	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
-
 	// Session secret.
 	sessionSecret := []byte(a.Config.Web.SessionSecret)
 	if len(sessionSecret) == 0 {
-		// Auto-generate in dev mode.
+		if a.Config.Server.Role != "dev" {
+			return fmt.Errorf("web.session_secret is required outside dev mode")
+		}
 		sessionSecret = make([]byte, 32)
-		rand.Read(sessionSecret)
-		a.logger.Info("web: auto-generated session secret", "hex", hex.EncodeToString(sessionSecret))
+		if _, err := rand.Read(sessionSecret); err != nil {
+			return fmt.Errorf("generating session secret: %w", err)
+		}
+		a.logger.Info("web: auto-generated session secret for dev mode")
 	}
+
+	// Internal control-plane routes.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireInternalAuth(sessionSecret))
+
+		if a.Raft != nil {
+			kv := handlers.NewKVHandler(a)
+			r.Put("/internal/kv/*", kv.Put)
+			r.Get("/internal/kv/*", kv.Get)
+			r.Delete("/internal/kv/*", kv.Delete)
+		}
+
+		clusterH := handlers.NewClusterHandler(&lazyMemberLister{agent: a})
+		r.Get("/internal/cluster/members", clusterH.Members)
+
+		if a.Blobs != nil {
+			blobH := handlers.NewBlobHandler(a.Blobs)
+			r.Get("/internal/blob/{hash}", blobH.Get)
+			r.Head("/internal/blob/{hash}", blobH.Head)
+		}
+
+		if a.Raft != nil {
+			joinH := handlers.NewJoinHandler(a.Raft.Raft)
+			r.Post("/internal/cluster/join", joinH.Join)
+		}
+
+		if a.Raft != nil {
+			userH := handlers.NewUserHandler(a, a.Metadata)
+			r.Post("/internal/user/create", userH.Create)
+		}
+	})
+
+	// Static assets (public).
+	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
 
 	// Login rate limiter (5 attempts per 15-minute window).
 	loginRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
@@ -360,8 +361,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Get("/login", authH.LoginPage)
 	r.With(loginRL.LoginRateLimit()).Post("/login", authH.Login)
 	r.Get("/login/2fa", authH.TwoFactorPage)
-	r.Post("/login/2fa", authH.TwoFactorVerify)
-	r.Post("/logout", authH.Logout)
+	r.With(middleware.RequireSameOrigin()).Post("/login/2fa", authH.TwoFactorVerify)
+	r.With(middleware.RequireSameOrigin()).Post("/logout", authH.Logout)
 
 	// CardDAV endpoint with basic auth.
 	if a.Contacts != nil {
@@ -398,6 +399,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionSecret))
 		r.Use(middleware.RequireAdmin(sessionSecret))
+		r.Use(middleware.RequireSameOrigin())
 
 		adminH := handlers.NewAdminHandler(a.Store, a.Blobs, a.Metadata, a, a.logger)
 		if a.QueueStore != nil {
@@ -449,6 +451,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Use(middleware.RequireAuth(sessionSecret))
 		r.Use(middleware.Require2FA(a))
 		r.Use(middleware.InjectLocale(a))
+		r.Use(middleware.RequireSameOrigin())
 
 		// Security settings (TOTP, password change).
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
@@ -603,8 +606,12 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
 	a.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: r,
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Configure TLS for the web server (skip when plain_http is enabled).
@@ -670,6 +677,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.blobSyncCancel = blobSyncCancel
 
 		a.BlobSync = cluster.NewBlobSyncer(a.Blobs, &lazyMemberLister{agent: a}, a.logger)
+		a.BlobSync.SetSharedSecret(sessionSecret)
 		a.Raft.FSM.SetBlobSyncer(a.BlobSync)
 		a.Raft.FSM.SetSearchManager(a.Search)
 
@@ -801,8 +809,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			deliverProc.SetQueuer(a.QueueStore)
 		}
 
-		// DKIM signer (nil if no key configured).
-		signer, err := mail.NewDKIMSigner(&a.Config.SMTP.DKIM, "localhost")
+		// DKIM signer (nil if no key configured). The signing domain comes from
+		// smtp.dkim.domain; fall back to localhost when unset (dev/test).
+		dkimDomain := a.Config.SMTP.DKIM.Domain
+		if dkimDomain == "" {
+			dkimDomain = "localhost"
+		}
+		signer, err := mail.NewDKIMSigner(&a.Config.SMTP.DKIM, dkimDomain)
 		if err != nil {
 			a.logger.Warn("dkim: failed to load signer", "error", err)
 		}
@@ -826,10 +839,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		go a.QueueWorker.Run(queueCtx)
 
 		// Queue HTTP routes.
-		queueH := handlers.NewQueueHandler(a.QueueStore)
-		r.Get("/internal/queue/stats", queueH.Stats)
-		r.Post("/internal/queue/{id}/retry", queueH.Retry)
-		r.Delete("/internal/queue/{id}", queueH.Drop)
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireInternalAuth(sessionSecret))
+			queueH := handlers.NewQueueHandler(a.QueueStore)
+			r.Get("/internal/queue/stats", queueH.Stats)
+			r.Post("/internal/queue/{id}/retry", queueH.Retry)
+			r.Delete("/internal/queue/{id}", queueH.Drop)
+		})
 	}
 
 	// Start event reminder checker.
@@ -946,7 +962,19 @@ func (a *Agent) Run(ctx context.Context) error {
 			target := "https://" + httpsHost + r.RequestURI
 			http.Redirect(w, r, target, http.StatusMovedPermanently)
 		})
-		go http.ListenAndServe(redirectAddr, redirectHandler) //nolint:errcheck // background redirect server
+		go func() {
+			redirectSrv := &http.Server{
+				Addr:              redirectAddr,
+				Handler:           redirectHandler,
+				ReadHeaderTimeout: 10 * time.Second,
+				ReadTimeout:       15 * time.Second,
+				WriteTimeout:      15 * time.Second,
+				IdleTimeout:       30 * time.Second,
+			}
+			if err := redirectSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				a.logger.Error("web: redirect server error", "error", err)
+			}
+		}()
 		a.logger.Info("web: HTTP->HTTPS redirect started", "addr", redirectAddr)
 	}
 
@@ -1086,7 +1114,14 @@ func (a *Agent) autoJoinRaft() {
 		body, _ := json.Marshal(joinReq)
 
 		url := "http://" + m.HTTPAddr + "/internal/cluster/join"
-		resp, err := http.Post(url, "application/json", bytes.NewReader(body)) //nolint:gosec // internal cluster endpoint
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			a.logger.Debug("raft auto-join: failed to build request", "peer", m.Name, "error", err)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		security.SignInternalRequest(req, []byte(a.Config.Web.SessionSecret))
+		resp, err := http.DefaultClient.Do(req) //nolint:gosec // internal cluster endpoint
 		if err != nil {
 			a.logger.Debug("raft auto-join: failed to contact peer", "peer", m.Name, "error", err)
 			continue
@@ -1123,8 +1158,12 @@ func (a *Agent) runAgent(ctx context.Context) error {
 	port := a.Config.Web.Port
 	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
 	a.httpServer = &http.Server{
-		Addr:    addr,
-		Handler: r,
+		Addr:              addr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Separate processor roles (antispam, antivirus) from other agent roles.

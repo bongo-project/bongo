@@ -81,13 +81,13 @@ type TLSConfig struct {
 }
 
 type SMTPConfig struct {
-	Enabled        bool            `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port           int             `hcl:"port,optional" mapstructure:"port"`
-	SubmissionPort int             `hcl:"submission_port,optional" mapstructure:"submission_port"`
-	TLS            TLSConfig       `hcl:"tls,block" mapstructure:"tls"`
-	Limits         SMTPLimits      `hcl:"limits,block" mapstructure:"limits"`
-	Relay          SMTPRelay       `hcl:"relay,block" mapstructure:"relay"`
-	DKIM           SMTPDKIMConfig  `hcl:"dkim,block" mapstructure:"dkim"`
+	Enabled        bool           `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port           int            `hcl:"port,optional" mapstructure:"port"`
+	SubmissionPort int            `hcl:"submission_port,optional" mapstructure:"submission_port"`
+	TLS            TLSConfig      `hcl:"tls,block" mapstructure:"tls"`
+	Limits         SMTPLimits     `hcl:"limits,block" mapstructure:"limits"`
+	Relay          SMTPRelay      `hcl:"relay,block" mapstructure:"relay"`
+	DKIM           SMTPDKIMConfig `hcl:"dkim,block" mapstructure:"dkim"`
 }
 
 type SMTPLimits struct {
@@ -106,6 +106,7 @@ type SMTPRelay struct {
 
 type SMTPDKIMConfig struct {
 	Selector       string `hcl:"selector,optional" mapstructure:"selector"`
+	Domain         string `hcl:"domain,optional" mapstructure:"domain"`
 	PrivateKeyFile string `hcl:"private_key_file,optional" mapstructure:"private_key_file"`
 }
 
@@ -298,6 +299,9 @@ type PrometheusConfig struct {
 type LogConfig struct {
 	Level  string `hcl:"level,optional" mapstructure:"level"`
 	Format string `hcl:"format,optional" mapstructure:"format"`
+	// File, when set, writes logs to this path in addition to stdout. Useful
+	// for shipping logs off a server for later analysis.
+	File string `hcl:"file,optional" mapstructure:"file"`
 }
 
 // Defaults returns a Config with sensible defaults for dev mode.
@@ -457,6 +461,11 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 	}
 	if v.IsSet("log-level") {
 		cfg.Telemetry.Log.Level = v.GetString("log-level")
+	}
+	// Allow the session secret to be injected via BONGO_WEB_SESSION_SECRET so it
+	// can be kept out of the config file (e.g. Docker/12-factor deployments).
+	if s := v.GetString("web.session_secret"); s != "" {
+		cfg.Web.SessionSecret = s
 	}
 
 	return cfg, configFile, nil
