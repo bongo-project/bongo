@@ -77,24 +77,29 @@ services:
       - "traefik.http.middlewares.bongo-deny-internal.ipallowlist.sourcerange=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
       # --- Mail (TCP passthrough; bongo terminates TLS) ---
+      # PROXY protocol v2 forwards the real client IP to bongo (needed for SPF).
       # STARTTLS ports start in plaintext, so they must match HostSNI(`*`).
       - "traefik.tcp.routers.bongo-smtp.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-smtp.entrypoints=smtp"
       - "traefik.tcp.services.bongo-smtp.loadbalancer.server.port=25"
+      - "traefik.tcp.services.bongo-smtp.loadbalancer.proxyProtocol.version=2"
 
       - "traefik.tcp.routers.bongo-submission.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-submission.entrypoints=submission"
       - "traefik.tcp.services.bongo-submission.loadbalancer.server.port=587"
+      - "traefik.tcp.services.bongo-submission.loadbalancer.proxyProtocol.version=2"
 
       - "traefik.tcp.routers.bongo-imap.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-imap.entrypoints=imap"
       - "traefik.tcp.services.bongo-imap.loadbalancer.server.port=143"
+      - "traefik.tcp.services.bongo-imap.loadbalancer.proxyProtocol.version=2"
 
       # IMAPS is implicit TLS: passthrough so bongo presents its own cert.
       - "traefik.tcp.routers.bongo-imaps.rule=HostSNI(`${WEB_HOST}`)"
       - "traefik.tcp.routers.bongo-imaps.entrypoints=imaps"
       - "traefik.tcp.routers.bongo-imaps.tls.passthrough=true"
       - "traefik.tcp.services.bongo-imaps.loadbalancer.server.port=993"
+      - "traefik.tcp.services.bongo-imaps.loadbalancer.proxyProtocol.version=2"
 
   # Extracts the mail.example.com certificate from Traefik's acme.json into the
   # shared bongo-certs volume, and re-dumps on renewal. Pin the tag as you like.

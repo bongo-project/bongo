@@ -18,6 +18,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/netx"
 	"github.com/bongo-go/bongo-go/internal/observability"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -330,11 +331,12 @@ func (s *Session) Logout() error {
 
 // Server wraps two go-smtp server instances: MX and submission.
 type Server struct {
-	mx         *gosmtp.Server
-	submission *gosmtp.Server
-	backend    *Backend
-	maxConn    int
-	logger     *slog.Logger
+	mx            *gosmtp.Server
+	submission    *gosmtp.Server
+	backend       *Backend
+	maxConn       int
+	proxyProtocol bool
+	logger        *slog.Logger
 
 	mxListener  net.Listener
 	subListener net.Listener
@@ -409,11 +411,12 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	}
 
 	return &Server{
-		mx:         mx,
-		submission: submission,
-		backend:    backend,
-		maxConn:    maxConn,
-		logger:     logger,
+		mx:            mx,
+		submission:    submission,
+		backend:       backend,
+		maxConn:       maxConn,
+		proxyProtocol: cfg.ProxyProtocol,
+		logger:        logger,
 	}
 }
 
@@ -436,10 +439,14 @@ func (s *Server) Listen() error {
 		mxl = netutil.LimitListener(mxl, s.maxConn)
 		subl = netutil.LimitListener(subl, s.maxConn)
 	}
+	// Read the PROXY protocol header (from a TCP-terminating proxy) so the real
+	// client IP is available for SPF and logging.
+	mxl = netx.MaybeProxyProtocol(mxl, s.proxyProtocol)
+	subl = netx.MaybeProxyProtocol(subl, s.proxyProtocol)
 	s.mxListener = mxl
 	s.subListener = subl
 
-	s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr(), "max_conn", s.maxConn)
+	s.logger.Info("smtp: listening", "mx", s.mxListener.Addr(), "submission", s.subListener.Addr(), "max_conn", s.maxConn, "proxy_protocol", s.proxyProtocol)
 	return nil
 }
 
