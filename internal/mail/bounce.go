@@ -56,9 +56,17 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	boundary := fmt.Sprintf("bounce-%s", uuid.New().String()[:8])
 	now := time.Now()
 
+	// Sanitize all user-controlled values before writing them into headers.
+	senderEmail := SanitizeHeaderValue(original.SenderEmail)
+	safeReason := SanitizeHeaderValue(reason)
+	safeRecipients := make([]string, len(failedRecipients))
+	for i, r := range failedRecipients {
+		safeRecipients[i] = SanitizeHeaderValue(r)
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(fmt.Sprintf("From: MAILER-DAEMON <postmaster@localhost>\r\n"))
-	buf.WriteString(fmt.Sprintf("To: %s\r\n", original.SenderEmail))
+	buf.WriteString(fmt.Sprintf("To: %s\r\n", senderEmail))
 	buf.WriteString("Subject: Undelivered Mail Returned to Sender\r\n")
 	buf.WriteString(fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z)))
 	buf.WriteString(fmt.Sprintf("Message-ID: <bounce-%s@localhost>\r\n", uuid.New().String()))
@@ -74,10 +82,10 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
 	buf.WriteString("The following message could not be delivered to one or more recipients:\r\n\r\n")
-	for _, rcpt := range failedRecipients {
+	for _, rcpt := range safeRecipients {
 		buf.WriteString(fmt.Sprintf("  * %s\r\n", rcpt))
 	}
-	buf.WriteString(fmt.Sprintf("\r\nReason: %s\r\n", reason))
+	buf.WriteString(fmt.Sprintf("\r\nReason: %s\r\n", safeReason))
 	buf.WriteString("\r\n")
 
 	// Part 2: machine-readable DSN.
@@ -86,11 +94,11 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	buf.WriteString("\r\n")
 	buf.WriteString("Reporting-MTA: dns; localhost\r\n")
 	buf.WriteString("\r\n")
-	for _, rcpt := range failedRecipients {
+	for _, rcpt := range safeRecipients {
 		buf.WriteString(fmt.Sprintf("Final-Recipient: rfc822; %s\r\n", rcpt))
 		buf.WriteString("Action: failed\r\n")
 		buf.WriteString("Status: 5.0.0\r\n")
-		buf.WriteString(fmt.Sprintf("Diagnostic-Code: smtp; %s\r\n", reason))
+		buf.WriteString(fmt.Sprintf("Diagnostic-Code: smtp; %s\r\n", safeReason))
 		buf.WriteString("\r\n")
 	}
 
