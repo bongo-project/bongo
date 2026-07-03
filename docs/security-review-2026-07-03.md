@@ -242,6 +242,31 @@ and were fixed:
   `proxyProtocol.version=2`. The header is only trusted from loopback/private
   upstreams so a direct attacker cannot spoof the client IP.
 
+## Follow-up remediation (2026-07-03, second pass)
+
+All remaining Medium/Low items were implemented (norman-driven, one commit each):
+
+- **M1 — DONE.** CRLF/control chars stripped from all user values written into
+  generated headers (composer + bounce) via `internal/mail.SanitizeHeaderValue` /
+  `SanitizeHeaderFilename`.
+- **M2 — DONE.** `store.IsValidHash` (`^[a-f0-9]{64}$`); blob handlers return 400,
+  store guards Get/Exists/Delete, blobsync slices guarded.
+- **M3 — DONE.** Per-IP inbound rate limit (`messages_per_minute`, 451 transient)
+  and config-driven `max_connections_per_ip`, keyed on the real client IP.
+- **M5 — DONE.** Relay refuses PLAIN AUTH without STARTTLS unless
+  `smtp.relay.allow_insecure_auth`.
+- **H3 — DONE.** No silent self-signed cert on mail listeners (loud WARN + first-boot
+  tolerance; hard-fail on a configured-but-unloadable cert).
+- **H4 — DONE.** Container runs as non-root uid 10001 (su-exec + setcap).
+- **Low — DONE:** `max_message_size` honoured; per-purpose key derivation
+  (`security.DeriveKey`) for cookie vs internal-auth vs blob-sync; cookie
+  admin-flag staleness documented. **Deferred:** MIME parse-once (invasive
+  Processor interface change, perf-only).
+- **DEP-4 (discovered) — DONE.** Raft tolerated an absent `cluster.tls` cert on
+  first boot (warn + plaintext) instead of crashing — the deploy shares that cert
+  path with the sidecar-provisioned mail cert. Full first-boot server-mode boot
+  now verified.
+
 ## Suggested fix order
 1. B1+B2+B3 (one coherent SMTP auth/relay-policy change) — closes the mail-edge
    blocker and enables client sending.
