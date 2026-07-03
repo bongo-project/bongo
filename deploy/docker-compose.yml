@@ -99,18 +99,23 @@ services:
       # --- Mail (TCP passthrough; bongo terminates TLS) ---
       # PROXY protocol v2 forwards the real client IP to bongo (needed for SPF).
       # STARTTLS ports start in plaintext, so they must match HostSNI(`*`).
+      # NOTE: with multiple TCP services on one container, each router MUST name
+      # its service explicitly (Traefik cannot auto-link when there is >1).
       - "traefik.tcp.routers.bongo-smtp.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-smtp.entrypoints=smtp"
+      - "traefik.tcp.routers.bongo-smtp.service=bongo-smtp"
       - "traefik.tcp.services.bongo-smtp.loadbalancer.server.port=25"
       - "traefik.tcp.services.bongo-smtp.loadbalancer.proxyProtocol.version=2"
 
       - "traefik.tcp.routers.bongo-submission.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-submission.entrypoints=submission"
+      - "traefik.tcp.routers.bongo-submission.service=bongo-submission"
       - "traefik.tcp.services.bongo-submission.loadbalancer.server.port=587"
       - "traefik.tcp.services.bongo-submission.loadbalancer.proxyProtocol.version=2"
 
       - "traefik.tcp.routers.bongo-imap.rule=HostSNI(`*`)"
       - "traefik.tcp.routers.bongo-imap.entrypoints=imap"
+      - "traefik.tcp.routers.bongo-imap.service=bongo-imap"
       - "traefik.tcp.services.bongo-imap.loadbalancer.server.port=143"
       - "traefik.tcp.services.bongo-imap.loadbalancer.proxyProtocol.version=2"
 
@@ -118,6 +123,7 @@ services:
       - "traefik.tcp.routers.bongo-imaps.rule=HostSNI(`${WEB_HOST}`)"
       - "traefik.tcp.routers.bongo-imaps.entrypoints=imaps"
       - "traefik.tcp.routers.bongo-imaps.tls.passthrough=true"
+      - "traefik.tcp.routers.bongo-imaps.service=bongo-imaps"
       - "traefik.tcp.services.bongo-imaps.loadbalancer.server.port=993"
       - "traefik.tcp.services.bongo-imaps.loadbalancer.proxyProtocol.version=2"
 
