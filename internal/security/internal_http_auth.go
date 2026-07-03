@@ -16,6 +16,11 @@ const (
 	InternalAuthHeader    = "X-Bongo-Internal-Auth"
 	internalTimestampName = "ts"
 	internalSkew          = 90 * time.Second
+
+	// internalAuthPurpose labels the subkey derived from the raw session secret
+	// for internal control-plane HMAC. Blob-sync signs via SignInternalRequest,
+	// so it is covered by this same purpose.
+	internalAuthPurpose = "bongo/internal-auth/v1"
 )
 
 // signedPayload builds the string covered by the HMAC. It binds the timestamp,
@@ -33,7 +38,7 @@ func SignInternalRequest(r *http.Request, secret []byte) {
 	bodyHash := hashBodyForSigning(r)
 	ts := time.Now().Unix()
 	payload := signedPayload(ts, r.Method, r.URL.RequestURI(), bodyHash)
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, DeriveKey(secret, internalAuthPurpose))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	r.Header.Set(InternalAuthHeader, fmt.Sprintf("%s=%d,sig=%s", internalTimestampName, ts, sig))
@@ -114,7 +119,7 @@ func VerifyInternalRequest(r *http.Request, secret []byte) bool {
 	bodyHash := base64.RawURLEncoding.EncodeToString(sum[:])
 
 	payload := signedPayload(ts, r.Method, r.URL.RequestURI(), bodyHash)
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, DeriveKey(secret, internalAuthPurpose))
 	_, _ = mac.Write([]byte(payload))
 	return hmac.Equal(sig, mac.Sum(nil))
 }

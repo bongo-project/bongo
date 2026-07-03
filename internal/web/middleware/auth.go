@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/bongo-go/bongo-go/internal/security"
 )
 
 type contextKey string
@@ -20,6 +22,11 @@ const (
 	cookieName        = "bongo_session"
 	pendingCookieName = "bongo_2fa_pending"
 	pendingCookieTTL  = 5 * time.Minute
+
+	// sessionCookiePurpose labels the subkey derived from the raw session secret
+	// for cookie HMAC. The session and 2FA-pending cookies share the sign/verify
+	// helper below, so both use this purpose.
+	sessionCookiePurpose = "bongo/session-cookie/v1"
 )
 
 // PendingData represents the signed 2FA-pending cookie payload.
@@ -47,6 +54,10 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin,
 		expiry = 30 * 24 * time.Hour
 	}
 
+	// IsAdmin (and the account's disabled state) are snapshotted into the cookie
+	// at login and are only re-evaluated when the session expires. Privilege or
+	// disable changes therefore do not take effect until the user's next login or
+	// session expiry.
 	data := SessionData{
 		UserID:  userID,
 		Email:   email,
@@ -285,7 +296,7 @@ func ClearPendingCookie() *http.Cookie {
 }
 
 func sign(secret, payload []byte) []byte {
-	mac := hmac.New(sha256.New, secret)
+	mac := hmac.New(sha256.New, security.DeriveKey(secret, sessionCookiePurpose))
 	mac.Write(payload)
 	return mac.Sum(nil)
 }
