@@ -55,6 +55,7 @@ smtp {
   port            = 25    # inbound MX
   submission_port = 587   # authenticated submission
   hostname        = "mail.example.com"   # EHLO/HELO banner (align with rDNS/SPF)
+  proxy_protocol  = true  # read PROXY header from Traefik to see the real client IP (SPF)
 
   limits {
     max_message_size = "25MB"
@@ -83,9 +84,10 @@ smtp {
 }
 
 imap {
-  enabled  = true
-  port     = 143   # STARTTLS  (Traefik entrypoint: imap)
-  port_tls = 993   # implicit TLS (Traefik entrypoint: imaps, passthrough)
+  enabled        = true
+  port           = 143   # STARTTLS  (Traefik entrypoint: imap)
+  port_tls       = 993   # implicit TLS (Traefik entrypoint: imaps, passthrough)
+  proxy_protocol = true  # read PROXY header from Traefik to see the real client IP
 }
 
 pop3 {

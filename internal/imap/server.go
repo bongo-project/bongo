@@ -10,6 +10,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/netx"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -85,21 +86,25 @@ func NewServer(
 	return s
 }
 
-// Listen binds the IMAP listeners.
-func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config) error {
-	var err error
-	s.plainListener, err = net.Listen("tcp", addr)
+// Listen binds the IMAP listeners. When proxyProtocol is set, the PROXY header
+// is read before TLS so the real client IP is preserved behind a TCP proxy.
+func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol bool) error {
+	plain, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("imap listen %s: %w", addr, err)
 	}
+	s.plainListener = netx.MaybeProxyProtocol(plain, proxyProtocol)
 	s.logger.Info("imap: listening", "addr", s.plainListener.Addr())
 
 	if addrTLS != "" && tlsCfg != nil {
-		s.tlsListener, err = tls.Listen("tcp", addrTLS, tlsCfg)
+		rawTLS, err := net.Listen("tcp", addrTLS)
 		if err != nil {
 			s.plainListener.Close()
 			return fmt.Errorf("imaps listen %s: %w", addrTLS, err)
 		}
+		// PROXY header must be read before the TLS handshake, so wrap the raw
+		// listener first and layer TLS on top.
+		s.tlsListener = tls.NewListener(netx.MaybeProxyProtocol(rawTLS, proxyProtocol), tlsCfg)
 		s.logger.Info("imaps: listening", "addr", s.tlsListener.Addr())
 	}
 

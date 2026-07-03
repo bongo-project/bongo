@@ -85,6 +85,7 @@ type SMTPConfig struct {
 	Port           int            `hcl:"port,optional" mapstructure:"port"`
 	SubmissionPort int            `hcl:"submission_port,optional" mapstructure:"submission_port"`
 	Hostname       string         `hcl:"hostname,optional" mapstructure:"hostname"`
+	ProxyProtocol  bool           `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
 	TLS            TLSConfig      `hcl:"tls,block" mapstructure:"tls"`
 	Limits         SMTPLimits     `hcl:"limits,block" mapstructure:"limits"`
 	Relay          SMTPRelay      `hcl:"relay,block" mapstructure:"relay"`
@@ -112,15 +113,17 @@ type SMTPDKIMConfig struct {
 }
 
 type IMAPConfig struct {
-	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port    int  `hcl:"port,optional" mapstructure:"port"`
-	PortTLS int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
+	Enabled       bool `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port          int  `hcl:"port,optional" mapstructure:"port"`
+	PortTLS       int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
+	ProxyProtocol bool `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
 }
 
 type POP3Config struct {
-	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port    int  `hcl:"port,optional" mapstructure:"port"`
-	PortTLS int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
+	Enabled       bool `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port          int  `hcl:"port,optional" mapstructure:"port"`
+	PortTLS       int  `hcl:"port_tls,optional" mapstructure:"port_tls"`
+	ProxyProtocol bool `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
 }
 
 type WebConfig struct {

@@ -234,14 +234,13 @@ and were fixed:
 
 ### New finding
 
-- **NEW-1 (HIGH for deliverability) — client IP is lost behind Traefik TCP.**
-  Routing inbound SMTP (25) through a Traefik TCP entrypoint without PROXY
-  protocol means bongo sees Traefik's IP, not the sender's. This breaks inbound
-  **SPF**, makes the per-IP connection cap a global bucket, and blinds abuse
-  logging. Fix options: (a) enable PROXY protocol v2 on the Traefik TCP routers
-  and add a PROXY-protocol reader to bongo's SMTP/IMAP listeners
-  (`go-proxyproto`); or (b) expose port 25 directly to the internet, bypassing
-  Traefik. Recommended before relying on inbound spam filtering.
+- **NEW-1 (HIGH for deliverability) — FIXED.** Client IP was lost behind the
+  Traefik TCP passthrough (bongo saw Traefik's IP), breaking inbound SPF and the
+  per-IP cap. Implemented PROXY protocol: SMTP/IMAP/POP3 listeners now wrap with
+  a PROXY-protocol reader (`internal/netx/proxyproto.go`) gated by
+  `proxy_protocol` config, and the Traefik TCP routers send
+  `proxyProtocol.version=2`. The header is only trusted from loopback/private
+  upstreams so a direct attacker cannot spoof the client IP.
 
 ## Suggested fix order
 1. B1+B2+B3 (one coherent SMTP auth/relay-policy change) — closes the mail-edge

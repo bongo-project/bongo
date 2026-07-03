@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/netx"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -50,20 +51,22 @@ func NewServer(
 }
 
 // Listen binds the POP3 listeners on the given addresses.
-func (s *Server) Listen(plainAddr, tlsAddr string) error {
-	var err error
-	s.plainListener, err = net.Listen("tcp", plainAddr)
+func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
+	plain, err := net.Listen("tcp", plainAddr)
 	if err != nil {
 		return fmt.Errorf("pop3 listen %s: %w", plainAddr, err)
 	}
+	s.plainListener = netx.MaybeProxyProtocol(plain, proxyProtocol)
 	s.logger.Info("pop3: listening", "addr", s.plainListener.Addr())
 
 	if tlsAddr != "" && s.tlsCfg != nil {
-		s.tlsListener, err = tls.Listen("tcp", tlsAddr, s.tlsCfg)
+		rawTLS, err := net.Listen("tcp", tlsAddr)
 		if err != nil {
 			s.plainListener.Close()
 			return fmt.Errorf("pop3s listen %s: %w", tlsAddr, err)
 		}
+		// PROXY header must be read before the TLS handshake.
+		s.tlsListener = tls.NewListener(netx.MaybeProxyProtocol(rawTLS, proxyProtocol), s.tlsCfg)
 		s.logger.Info("pop3s: listening", "addr", s.tlsListener.Addr())
 	}
 
