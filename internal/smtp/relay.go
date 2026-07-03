@@ -110,14 +110,23 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 	defer client.Close()
 
 	// Opportunistic STARTTLS.
+	tlsCompleted := false
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
 			r.logger.Debug("relay: STARTTLS failed, continuing without", "host", host, "error", err)
+		} else {
+			tlsCompleted = true
 		}
 	}
 
 	// Authenticate if credentials are configured.
-	if r.cfg != nil && r.cfg.Username != "" {
+	hasCreds := r.cfg != nil && r.cfg.Username != ""
+	allowInsecure := r.cfg != nil && r.cfg.AllowInsecureAuth
+	send, authErr := shouldSendAuth(tlsCompleted, hasCreds, allowInsecure)
+	if authErr != nil {
+		return nil, fmt.Errorf("relay AUTH guard for %s: %w", addr, authErr)
+	}
+	if send {
 		auth := &plainAuth{username: r.cfg.Username, password: r.cfg.Password}
 		if err := client.Auth(auth); err != nil {
 			return nil, fmt.Errorf("relay AUTH for %s: %w", addr, err)
@@ -170,10 +179,31 @@ func isPermanentError(err error) bool {
 	return len(errStr) >= 3 && errStr[0] == '5'
 }
 
+// shouldSendAuth decides whether AUTH credentials should be transmitted.
+//
+//   - hasCreds: a relay username/password is configured.
+//   - tlsCompleted: STARTTLS negotiation succeeded for this connection.
+//   - allowInsecure: operator opt-in to send credentials over plaintext
+//     (smtp.relay.allow_insecure_auth = true).
+//
+// Returns (true, nil) when auth should proceed, (false, nil) when no
+// credentials are configured, and (false, err) when credentials are
+// configured but the connection is unencrypted and the operator has not
+// explicitly opted in.
+func shouldSendAuth(tlsCompleted, hasCreds, allowInsecure bool) (bool, error) {
+	if !hasCreds {
+		return false, nil
+	}
+	if tlsCompleted || allowInsecure {
+		return true, nil
+	}
+	return false, fmt.Errorf("relay: refusing to send AUTH over an unencrypted connection to smart host (set smtp.relay.allow_insecure_auth = true to override)")
+}
+
 // plainAuth implements smtp.Auth using the PLAIN mechanism.
-// Unlike net/smtp.PlainAuth, this does not refuse to send credentials
-// over unencrypted connections -- the relay handles STARTTLS separately
-// and some relay providers accept PLAIN over trusted networks.
+// Credentials are only transmitted after shouldSendAuth confirms it is safe
+// to do so (STARTTLS completed or the operator has explicitly opted in via
+// smtp.relay.allow_insecure_auth).
 type plainAuth struct {
 	username string
 	password string

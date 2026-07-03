@@ -176,11 +176,14 @@ func TestRelayAuthSuccess(t *testing.T) {
 	}
 	addr := startMockSMTP(t, backend)
 
+	// The mock server does not advertise STARTTLS, so AllowInsecureAuth must
+	// be set to permit credentials over the plain test connection.
 	relay := NewRelay(&config.SMTPRelay{
-		Enabled:  true,
-		Host:     addr,
-		Username: "apikey",
-		Password: "secret123",
+		Enabled:           true,
+		Host:              addr,
+		Username:          "apikey",
+		Password:          "secret123",
+		AllowInsecureAuth: true,
 	}, slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: auth test\r\n\r\nHello")
@@ -215,11 +218,14 @@ func TestRelayAuthFailure(t *testing.T) {
 	}
 	addr := startMockSMTP(t, backend)
 
+	// AllowInsecureAuth must be true so the guard passes and the server can
+	// reject the wrong credentials (the mock has no STARTTLS).
 	relay := NewRelay(&config.SMTPRelay{
-		Enabled:  true,
-		Host:     addr,
-		Username: "wrong-user",
-		Password: "wrong-pass",
+		Enabled:           true,
+		Host:              addr,
+		Username:          "wrong-user",
+		Password:          "wrong-pass",
+		AllowInsecureAuth: true,
 	}, slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: auth fail\r\n\r\nHello")
@@ -229,6 +235,39 @@ func TestRelayAuthFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "AUTH") {
 		t.Errorf("error = %q, expected to contain 'AUTH'", err.Error())
+	}
+}
+
+// TestRelayAuthRefusedOverPlaintext verifies that credentials are never sent
+// when STARTTLS did not complete and AllowInsecureAuth is false (the default).
+func TestRelayAuthRefusedOverPlaintext(t *testing.T) {
+	backend := &mockRelayBackend{
+		messages:    make(chan mockRelayMessage, 10),
+		requireAuth: false, // server does not check auth
+	}
+	addr := startMockSMTP(t, backend)
+
+	// No AllowInsecureAuth -- the guard must refuse.
+	relay := NewRelay(&config.SMTPRelay{
+		Enabled:  true,
+		Host:     addr,
+		Username: "apikey",
+		Password: "secret123",
+		// AllowInsecureAuth defaults to false
+	}, slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: guard test\r\n\r\nHello")
+	_, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err == nil {
+		t.Fatal("expected guard error, got nil")
+	}
+	if !strings.Contains(err.Error(), "unencrypted") {
+		t.Errorf("error = %q, expected to mention 'unencrypted'", err.Error())
+	}
+	// Credentials must not have reached the server.
+	if backend.lastAuthUser != "" || backend.lastAuthPass != "" {
+		t.Errorf("credentials were transmitted despite guard: user=%q pass=%q",
+			backend.lastAuthUser, backend.lastAuthPass)
 	}
 }
 
