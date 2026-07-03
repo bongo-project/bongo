@@ -110,6 +110,11 @@ type SMTPRelay struct {
 	Host     string `hcl:"host,optional" mapstructure:"host"`
 	Username string `hcl:"username,optional" mapstructure:"username"`
 	Password string `hcl:"password,optional" mapstructure:"password"`
+	// AllowInsecureAuth permits sending AUTH credentials over an unencrypted
+	// connection. Use only when relaying over a trusted private network where
+	// STARTTLS is unavailable. Defaults to false: credentials are never sent
+	// unless STARTTLS completes successfully.
+	AllowInsecureAuth bool `hcl:"allow_insecure_auth,optional" mapstructure:"allow_insecure_auth"`
 }
 
 type SMTPDKIMConfig struct {
