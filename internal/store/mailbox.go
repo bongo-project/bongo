@@ -1,11 +1,13 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/cockroachdb/pebble"
 	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -30,6 +32,44 @@ func NewMailboxStore(store *PebbleStore, applier RaftApplier) *MailboxStore {
 // DefaultMailboxes is the set of standard IMAP mailboxes.
 var DefaultMailboxes = []string{"INBOX", "Sent", "Drafts", "Trash", "Junk"}
 
+const (
+	mailboxAppendPrefix  = "/__mailbox_append__/"
+	mailboxCopyPrefix    = "/__mailbox_copy__/"
+	mailboxDeletePrefix  = "/__mailbox_delete__/"
+	mailboxDeliverPrefix = "/__mailbox_deliver__/"
+	mailboxExpungePrefix = "/__mailbox_expunge__/"
+	mailboxMovePrefix    = "/__mailbox_move__/"
+	mailboxRenamePrefix  = "/__mailbox_rename__/"
+)
+
+type mailboxTransferPayload struct {
+	SrcMailbox string `json:"src_mailbox"`
+	SrcUID     uint32 `json:"src_uid"`
+	DstMailbox string `json:"dst_mailbox"`
+}
+
+type mailboxRenamePayload struct {
+	OldName string `json:"old_name"`
+	NewName string `json:"new_name"`
+}
+
+type mailboxDeliveryPayload struct {
+	Meta  []byte `json:"meta"`
+	Flags uint32 `json:"flags"`
+}
+
+type MailboxCommandResult struct {
+	NewMail *MailboxNewMail
+}
+
+type MailboxNewMail struct {
+	UserID  string
+	Mailbox string
+	UID     uint32
+	GUID    string
+	Meta    *bongov1.MailMeta
+}
+
 func mailboxMetaKey(userID, name string) []byte {
 	return []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, name))
 }
@@ -44,6 +84,498 @@ func mailboxMsgKey(userID, name string, uid uint32) []byte {
 
 func mailboxPrefix(userID string) []byte {
 	return []byte(fmt.Sprintf("/user/%s/mailbox/", userID))
+}
+
+func mailboxAppendKey(userID, mailbox string) []byte {
+	return []byte(mailboxAppendPrefix + userID + "/" + mailbox)
+}
+
+func mailboxCopyKey(userID string) []byte {
+	return []byte(mailboxCopyPrefix + userID)
+}
+
+func mailboxDeleteKey(userID, mailbox string) []byte {
+	return []byte(mailboxDeletePrefix + userID + "/" + mailbox)
+}
+
+func mailboxDeliverKey(userID, mailbox string) []byte {
+	return []byte(mailboxDeliverPrefix + userID + "/" + mailbox)
+}
+
+func mailboxExpungeKey(userID, mailbox string) []byte {
+	return []byte(mailboxExpungePrefix + userID + "/" + mailbox)
+}
+
+func mailboxMoveKey(userID string) []byte {
+	return []byte(mailboxMovePrefix + userID)
+}
+
+func mailboxRenameKey(userID string) []byte {
+	return []byte(mailboxRenamePrefix + userID)
+}
+
+// IsMailboxAppendCommand reports whether the key represents a synthetic
+// single-command mailbox append operation.
+func IsMailboxAppendCommand(key []byte) bool {
+	return strings.HasPrefix(string(key), mailboxAppendPrefix)
+}
+
+// IsMailboxSyntheticCommand reports whether the key represents a synthetic
+// mailbox operation handled directly by the FSM.
+func IsMailboxSyntheticCommand(key []byte) bool {
+	keyStr := string(key)
+	return strings.HasPrefix(keyStr, mailboxAppendPrefix) ||
+		strings.HasPrefix(keyStr, mailboxCopyPrefix) ||
+		strings.HasPrefix(keyStr, mailboxDeletePrefix) ||
+		strings.HasPrefix(keyStr, mailboxDeliverPrefix) ||
+		strings.HasPrefix(keyStr, mailboxExpungePrefix) ||
+		strings.HasPrefix(keyStr, mailboxMovePrefix) ||
+		strings.HasPrefix(keyStr, mailboxRenamePrefix)
+}
+
+// ApplyMailboxCommand applies a synthetic mailbox command directly to the
+// local Pebble store.
+func ApplyMailboxCommand(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCommandResult, error) {
+	switch {
+	case IsMailboxAppendCommand(cmd.Key):
+		return applyMailboxAppend(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxCopyPrefix):
+		return nil, applyMailboxCopy(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxDeletePrefix):
+		return nil, applyMailboxDelete(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxDeliverPrefix):
+		return applyMailboxDelivery(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxExpungePrefix):
+		return nil, applyMailboxExpunge(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxMovePrefix):
+		return nil, applyMailboxMove(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxRenamePrefix):
+		return nil, applyMailboxRename(ps, cmd)
+	default:
+		return nil, fmt.Errorf("not a synthetic mailbox command")
+	}
+}
+
+// applyMailboxAppend applies a synthetic mailbox append command directly to the
+// local Pebble store. It updates mailbox metadata and writes the mailbox
+// message as one FSM-level operation.
+func applyMailboxAppend(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCommandResult, error) {
+	rest := strings.TrimPrefix(string(cmd.Key), mailboxAppendPrefix)
+	parts := strings.SplitN(rest, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("invalid mailbox append key %q", string(cmd.Key))
+	}
+	userID, mailbox := parts[0], parts[1]
+
+	var msg bongov1.MailboxMessage
+	if err := proto.Unmarshal(cmd.Value, &msg); err != nil {
+		return nil, fmt.Errorf("parsing mailbox append payload: %w", err)
+	}
+	if msg.MailGuid == "" {
+		return nil, fmt.Errorf("mailbox append payload missing mail guid")
+	}
+
+	meta, err := readMailboxMeta(ps, userID, mailbox)
+	if err != nil {
+		return nil, err
+	}
+	uid := meta.UidNext
+	meta.UidNext = uid + 1
+
+	msg.Uid = uid
+	if err := commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		if err := writeMailboxMetaBatch(batch, userID, mailbox, meta); err != nil {
+			return err
+		}
+		return writeMailboxMessageBatch(batch, userID, mailbox, uid, &msg)
+	}); err != nil {
+		return nil, err
+	}
+
+	return &MailboxCommandResult{
+		NewMail: &MailboxNewMail{
+			UserID:  userID,
+			Mailbox: mailbox,
+			UID:     uid,
+			GUID:    msg.MailGuid,
+		},
+	}, nil
+}
+
+func applyMailboxDelivery(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCommandResult, error) {
+	userID, mailbox, err := parseMailboxScopedKey(cmd.Key, mailboxDeliverPrefix)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload mailboxDeliveryPayload
+	if err := json.Unmarshal(cmd.Value, &payload); err != nil {
+		return nil, fmt.Errorf("parsing mailbox delivery payload: %w", err)
+	}
+
+	var meta bongov1.MailMeta
+	if err := proto.Unmarshal(payload.Meta, &meta); err != nil {
+		return nil, fmt.Errorf("parsing mail meta payload: %w", err)
+	}
+	if meta.Guid == "" {
+		return nil, fmt.Errorf("mailbox delivery payload missing guid")
+	}
+
+	mbMeta, err := readOrInitMailboxMeta(ps, userID, mailbox)
+	if err != nil {
+		return nil, err
+	}
+	uid := mbMeta.UidNext
+	mbMeta.UidNext = uid + 1
+
+	msg := &bongov1.MailboxMessage{
+		Uid:          uid,
+		MailGuid:     meta.Guid,
+		Flags:        payload.Flags,
+		InternalDate: meta.ReceivedAt,
+		Tags:         append([]string(nil), meta.Tags...),
+	}
+
+	if err := commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		if err := batch.Set([]byte(fmt.Sprintf("/user/%s/mail/%s", userID, meta.Guid)), payload.Meta, nil); err != nil {
+			return fmt.Errorf("writing mail meta: %w", err)
+		}
+		if err := writeMailboxMetaBatch(batch, userID, mailbox, mbMeta); err != nil {
+			return err
+		}
+		return writeMailboxMessageBatch(batch, userID, mailbox, uid, msg)
+	}); err != nil {
+		return nil, err
+	}
+
+	return &MailboxCommandResult{
+		NewMail: &MailboxNewMail{
+			UserID:  userID,
+			Mailbox: mailbox,
+			UID:     uid,
+			GUID:    meta.Guid,
+			Meta:    &meta,
+		},
+	}, nil
+}
+
+func applyMailboxCopy(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, payload, err := parseMailboxTransferCommand(cmd.Key, cmd.Value, mailboxCopyPrefix)
+	if err != nil {
+		return err
+	}
+
+	srcMsg, err := readMailboxMessage(ps, userID, payload.SrcMailbox, payload.SrcUID)
+	if err != nil {
+		return fmt.Errorf("reading source message: %w", err)
+	}
+
+	dstMeta, err := readMailboxMeta(ps, userID, payload.DstMailbox)
+	if err != nil {
+		return fmt.Errorf("reading dest mailbox: %w", err)
+	}
+	newUID := dstMeta.UidNext
+	dstMeta.UidNext = newUID + 1
+
+	newMsg := &bongov1.MailboxMessage{
+		Uid:          newUID,
+		MailGuid:     srcMsg.MailGuid,
+		Flags:        srcMsg.Flags &^ FlagRecent,
+		InternalDate: srcMsg.InternalDate,
+		Tags:         append([]string(nil), srcMsg.Tags...),
+	}
+	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		if err := writeMailboxMetaBatch(batch, userID, payload.DstMailbox, dstMeta); err != nil {
+			return err
+		}
+		return writeMailboxMessageBatch(batch, userID, payload.DstMailbox, newUID, newMsg)
+	})
+}
+
+func applyMailboxDelete(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, mailbox, err := parseMailboxScopedKey(cmd.Key, mailboxDeletePrefix)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(mailbox, "INBOX") {
+		return fmt.Errorf("cannot delete INBOX")
+	}
+
+	msgs, err := listMailboxMessages(ps, userID, mailbox)
+	if err != nil {
+		return fmt.Errorf("listing messages for delete: %w", err)
+	}
+	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		for _, msg := range msgs {
+			if err := batch.Delete(mailboxMsgKey(userID, mailbox, msg.Uid), nil); err != nil {
+				return fmt.Errorf("deleting message %d: %w", msg.Uid, err)
+			}
+		}
+		if err := batch.Delete(mailboxMetaKey(userID, mailbox), nil); err != nil {
+			return fmt.Errorf("deleting mailbox meta: %w", err)
+		}
+		return nil
+	})
+}
+
+func applyMailboxExpunge(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, mailbox, err := parseMailboxScopedKey(cmd.Key, mailboxExpungePrefix)
+	if err != nil {
+		return err
+	}
+
+	msgs, err := listMailboxMessages(ps, userID, mailbox)
+	if err != nil {
+		return fmt.Errorf("listing for expunge: %w", err)
+	}
+	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		for _, msg := range msgs {
+			if msg.Flags&FlagDeleted == 0 {
+				continue
+			}
+			if err := batch.Delete(mailboxMsgKey(userID, mailbox, msg.Uid), nil); err != nil {
+				return fmt.Errorf("expunging uid %d: %w", msg.Uid, err)
+			}
+		}
+		return nil
+	})
+}
+
+func applyMailboxMove(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, payload, err := parseMailboxTransferCommand(cmd.Key, cmd.Value, mailboxMovePrefix)
+	if err != nil {
+		return err
+	}
+
+	srcMsg, err := readMailboxMessage(ps, userID, payload.SrcMailbox, payload.SrcUID)
+	if err != nil {
+		return fmt.Errorf("reading source message: %w", err)
+	}
+
+	dstMeta, err := readMailboxMeta(ps, userID, payload.DstMailbox)
+	if err != nil {
+		return fmt.Errorf("reading dest mailbox: %w", err)
+	}
+	newUID := dstMeta.UidNext
+	dstMeta.UidNext = newUID + 1
+
+	newMsg := &bongov1.MailboxMessage{
+		Uid:          newUID,
+		MailGuid:     srcMsg.MailGuid,
+		Flags:        srcMsg.Flags &^ FlagRecent,
+		InternalDate: srcMsg.InternalDate,
+		Tags:         append([]string(nil), srcMsg.Tags...),
+	}
+	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		if err := writeMailboxMetaBatch(batch, userID, payload.DstMailbox, dstMeta); err != nil {
+			return err
+		}
+		if err := writeMailboxMessageBatch(batch, userID, payload.DstMailbox, newUID, newMsg); err != nil {
+			return err
+		}
+		if err := batch.Delete(mailboxMsgKey(userID, payload.SrcMailbox, payload.SrcUID), nil); err != nil {
+			return fmt.Errorf("deleting source message: %w", err)
+		}
+		return nil
+	})
+}
+
+func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, payload, err := parseMailboxRenameCommand(cmd.Key, cmd.Value)
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(payload.OldName, "INBOX") {
+		return fmt.Errorf("cannot rename INBOX")
+	}
+
+	oldMeta, err := readMailboxMeta(ps, userID, payload.OldName)
+	if err != nil {
+		return fmt.Errorf("reading old mailbox: %w", err)
+	}
+
+	newMeta := &bongov1.MailboxMeta{
+		Name:        payload.NewName,
+		UidValidity: oldMeta.UidValidity,
+		UidNext:     oldMeta.UidNext,
+	}
+	msgs, err := listMailboxMessages(ps, userID, payload.OldName)
+	if err != nil {
+		return fmt.Errorf("listing messages for rename: %w", err)
+	}
+	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+		if err := writeMailboxMetaBatch(batch, userID, payload.NewName, newMeta); err != nil {
+			return err
+		}
+		for _, msg := range msgs {
+			if err := writeMailboxMessageBatch(batch, userID, payload.NewName, msg.Uid, msg); err != nil {
+				return err
+			}
+			if err := batch.Delete(mailboxMsgKey(userID, payload.OldName, msg.Uid), nil); err != nil {
+				return fmt.Errorf("deleting old mailbox message %d: %w", msg.Uid, err)
+			}
+		}
+		if err := batch.Delete(mailboxMetaKey(userID, payload.OldName), nil); err != nil {
+			return fmt.Errorf("deleting old mailbox meta: %w", err)
+		}
+		return nil
+	})
+}
+
+func readMailboxMeta(ps *PebbleStore, userID, mailbox string) (*bongov1.MailboxMeta, error) {
+	data, err := ps.Get(mailboxMetaKey(userID, mailbox))
+	if err != nil {
+		return nil, fmt.Errorf("reading mailbox %q: %w", mailbox, err)
+	}
+	var meta bongov1.MailboxMeta
+	if err := proto.Unmarshal(data, &meta); err != nil {
+		return nil, fmt.Errorf("parsing mailbox meta: %w", err)
+	}
+	return &meta, nil
+}
+
+func readOrInitMailboxMeta(ps *PebbleStore, userID, mailbox string) (*bongov1.MailboxMeta, error) {
+	meta, err := readMailboxMeta(ps, userID, mailbox)
+	if err == nil {
+		return meta, nil
+	}
+	if strings.Contains(err.Error(), ErrNotFound.Error()) {
+		return &bongov1.MailboxMeta{
+			Name:        mailbox,
+			UidValidity: 1,
+			UidNext:     1,
+		}, nil
+	}
+	return nil, err
+}
+
+func parseMailboxScopedKey(key []byte, prefix string) (string, string, error) {
+	rest := strings.TrimPrefix(string(key), prefix)
+	parts := strings.SplitN(rest, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("invalid mailbox-scoped key %q", string(key))
+	}
+	return parts[0], parts[1], nil
+}
+
+func writeMailboxMeta(ps *PebbleStore, userID, mailbox string, meta *bongov1.MailboxMeta) error {
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshaling mailbox meta: %w", err)
+	}
+	if err := ps.Set(mailboxMetaKey(userID, mailbox), metaBytes); err != nil {
+		return fmt.Errorf("updating mailbox meta: %w", err)
+	}
+	return nil
+}
+
+func writeMailboxMetaBatch(batch *pebble.Batch, userID, mailbox string, meta *bongov1.MailboxMeta) error {
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("marshaling mailbox meta: %w", err)
+	}
+	if err := batch.Set(mailboxMetaKey(userID, mailbox), metaBytes, nil); err != nil {
+		return fmt.Errorf("updating mailbox meta: %w", err)
+	}
+	return nil
+}
+
+func readMailboxMessage(ps *PebbleStore, userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, error) {
+	data, err := ps.Get(mailboxMsgKey(userID, mailbox, uid))
+	if err != nil {
+		return nil, fmt.Errorf("reading mailbox message: %w", err)
+	}
+	var msg bongov1.MailboxMessage
+	if err := proto.Unmarshal(data, &msg); err != nil {
+		return nil, fmt.Errorf("parsing mailbox message: %w", err)
+	}
+	return &msg, nil
+}
+
+func writeMailboxMessage(ps *PebbleStore, userID, mailbox string, uid uint32, msg *bongov1.MailboxMessage) error {
+	msgBytes, err := proto.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshaling mailbox message: %w", err)
+	}
+	if err := ps.Set(mailboxMsgKey(userID, mailbox, uid), msgBytes); err != nil {
+		return fmt.Errorf("writing mailbox message: %w", err)
+	}
+	return nil
+}
+
+func writeMailboxMessageBatch(batch *pebble.Batch, userID, mailbox string, uid uint32, msg *bongov1.MailboxMessage) error {
+	msgBytes, err := proto.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshaling mailbox message: %w", err)
+	}
+	if err := batch.Set(mailboxMsgKey(userID, mailbox, uid), msgBytes, nil); err != nil {
+		return fmt.Errorf("writing mailbox message: %w", err)
+	}
+	return nil
+}
+
+func commitMailboxBatch(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
+	batch := ps.db.NewBatch()
+	defer batch.Close()
+	if err := fn(batch); err != nil {
+		return err
+	}
+	if err := batch.Commit(pebble.Sync); err != nil {
+		return fmt.Errorf("committing mailbox batch: %w", err)
+	}
+	return nil
+}
+
+func listMailboxMessages(ps *PebbleStore, userID, mailbox string) ([]*bongov1.MailboxMessage, error) {
+	iter, err := ps.PrefixScan(mailboxMsgPrefix(userID, mailbox))
+	if err != nil {
+		return nil, fmt.Errorf("listing messages: %w", err)
+	}
+	defer iter.Close()
+
+	var msgs []*bongov1.MailboxMessage
+	for iter.Next() {
+		val, err := iter.Value()
+		if err != nil {
+			return nil, fmt.Errorf("reading message: %w", err)
+		}
+		var msg bongov1.MailboxMessage
+		if err := proto.Unmarshal(val, &msg); err != nil {
+			return nil, fmt.Errorf("parsing mailbox message: %w", err)
+		}
+		msgs = append(msgs, &msg)
+	}
+	return msgs, nil
+}
+
+func parseMailboxTransferCommand(key, value []byte, prefix string) (string, mailboxTransferPayload, error) {
+	userID := strings.TrimPrefix(string(key), prefix)
+	if userID == "" {
+		return "", mailboxTransferPayload{}, fmt.Errorf("invalid mailbox transfer key %q", string(key))
+	}
+	var payload mailboxTransferPayload
+	if err := json.Unmarshal(value, &payload); err != nil {
+		return "", mailboxTransferPayload{}, fmt.Errorf("parsing mailbox transfer payload: %w", err)
+	}
+	if payload.SrcMailbox == "" || payload.DstMailbox == "" || payload.SrcUID == 0 {
+		return "", mailboxTransferPayload{}, fmt.Errorf("invalid mailbox transfer payload")
+	}
+	return userID, payload, nil
+}
+
+func parseMailboxRenameCommand(key, value []byte) (string, mailboxRenamePayload, error) {
+	userID := strings.TrimPrefix(string(key), mailboxRenamePrefix)
+	if userID == "" {
+		return "", mailboxRenamePayload{}, fmt.Errorf("invalid mailbox rename key %q", string(key))
+	}
+	var payload mailboxRenamePayload
+	if err := json.Unmarshal(value, &payload); err != nil {
+		return "", mailboxRenamePayload{}, fmt.Errorf("parsing mailbox rename payload: %w", err)
+	}
+	if payload.OldName == "" || payload.NewName == "" {
+		return "", mailboxRenamePayload{}, fmt.Errorf("invalid mailbox rename payload")
+	}
+	return userID, payload, nil
 }
 
 // ListMailboxes returns all mailboxes for a user.
@@ -123,26 +655,9 @@ func (ms *MailboxStore) DeleteMailbox(userID, name string) error {
 	if strings.EqualFold(name, "INBOX") {
 		return fmt.Errorf("cannot delete INBOX")
 	}
-
-	// Delete all message keys.
-	msgs, err := ms.ListMessages(userID, name)
-	if err != nil {
-		return fmt.Errorf("listing messages for delete: %w", err)
-	}
-	for _, msg := range msgs {
-		cmd := &bongov1.RaftCommand{
-			Op:  bongov1.Op_OP_DELETE,
-			Key: mailboxMsgKey(userID, name, msg.Uid),
-		}
-		if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-			return fmt.Errorf("deleting message %d: %w", msg.Uid, err)
-		}
-	}
-
-	// Delete the meta key.
 	cmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: mailboxMetaKey(userID, name),
+		Op:  bongov1.Op_OP_PUT,
+		Key: mailboxDeleteKey(userID, name),
 	}
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
@@ -152,59 +667,16 @@ func (ms *MailboxStore) RenameMailbox(userID, oldName, newName string) error {
 	if strings.EqualFold(oldName, "INBOX") {
 		return fmt.Errorf("cannot rename INBOX")
 	}
-
-	// Read old meta.
-	oldMeta, err := ms.GetMailbox(userID, oldName)
+	payload, err := json.Marshal(mailboxRenamePayload{OldName: oldName, NewName: newName})
 	if err != nil {
-		return fmt.Errorf("reading old mailbox: %w", err)
+		return fmt.Errorf("marshaling mailbox rename payload: %w", err)
 	}
-
-	// Create new meta.
-	newMeta := &bongov1.MailboxMeta{
-		Name:        newName,
-		UidValidity: oldMeta.UidValidity,
-		UidNext:     oldMeta.UidNext,
-	}
-	newMetaBytes, _ := proto.Marshal(newMeta)
 	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
-		Key:   mailboxMetaKey(userID, newName),
-		Value: newMetaBytes,
+		Key:   mailboxRenameKey(userID),
+		Value: payload,
 	}
-	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-		return fmt.Errorf("creating new mailbox: %w", err)
-	}
-
-	// Move all messages.
-	msgs, err := ms.ListMessages(userID, oldName)
-	if err != nil {
-		return fmt.Errorf("listing messages for rename: %w", err)
-	}
-	for _, msg := range msgs {
-		msgBytes, _ := proto.Marshal(msg)
-		putCmd := &bongov1.RaftCommand{
-			Op:    bongov1.Op_OP_PUT,
-			Key:   mailboxMsgKey(userID, newName, msg.Uid),
-			Value: msgBytes,
-		}
-		if err := ms.applier.ApplyCommand(putCmd, 5*time.Second); err != nil {
-			return err
-		}
-		delCmd := &bongov1.RaftCommand{
-			Op:  bongov1.Op_OP_DELETE,
-			Key: mailboxMsgKey(userID, oldName, msg.Uid),
-		}
-		if err := ms.applier.ApplyCommand(delCmd, 5*time.Second); err != nil {
-			return err
-		}
-	}
-
-	// Delete old meta.
-	delCmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: mailboxMetaKey(userID, oldName),
-	}
-	return ms.applier.ApplyCommand(delCmd, 5*time.Second)
+	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
 // EnsureDefaultMailboxes idempotently creates the standard IMAP mailboxes.
@@ -451,51 +923,36 @@ func (ms *MailboxStore) RemoveFlags(userID, mailbox string, uid, flags uint32) e
 
 // CopyMessage copies a message from one mailbox to another via Raft.
 func (ms *MailboxStore) CopyMessage(userID, srcMailbox string, uid uint32, dstMailbox string) error {
-	srcMsg, err := ms.GetMessage(userID, srcMailbox, uid)
+	payload, err := json.Marshal(mailboxTransferPayload{
+		SrcMailbox: srcMailbox,
+		SrcUID:     uid,
+		DstMailbox: dstMailbox,
+	})
 	if err != nil {
-		return fmt.Errorf("reading source message: %w", err)
+		return fmt.Errorf("marshaling mailbox copy payload: %w", err)
 	}
-
-	// Get dest mailbox meta to assign a new UID.
-	dstMeta, err := ms.GetMailbox(userID, dstMailbox)
-	if err != nil {
-		return fmt.Errorf("reading dest mailbox: %w", err)
-	}
-
-	newUID := dstMeta.UidNext
-	dstMeta.UidNext = newUID + 1
-
-	// Write updated dest meta.
-	metaBytes, _ := proto.Marshal(dstMeta)
-	metaCmd := &bongov1.RaftCommand{
+	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
-		Key:   mailboxMetaKey(userID, dstMailbox),
-		Value: metaBytes,
+		Key:   mailboxCopyKey(userID),
+		Value: payload,
 	}
-	if err := ms.applier.ApplyCommand(metaCmd, 5*time.Second); err != nil {
-		return fmt.Errorf("updating dest mailbox meta: %w", err)
-	}
-
-	// Write the message under the new UID (clear Recent flag).
-	newMsg := &bongov1.MailboxMessage{
-		Uid:          newUID,
-		MailGuid:     srcMsg.MailGuid,
-		Flags:        srcMsg.Flags &^ FlagRecent,
-		InternalDate: srcMsg.InternalDate,
-	}
-	return ms.writeMessage(userID, dstMailbox, newUID, newMsg)
+	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
 // MoveMessage moves a message from one mailbox to another via Raft.
 func (ms *MailboxStore) MoveMessage(userID, srcMailbox string, uid uint32, dstMailbox string) error {
-	if err := ms.CopyMessage(userID, srcMailbox, uid, dstMailbox); err != nil {
-		return fmt.Errorf("copy during move: %w", err)
+	payload, err := json.Marshal(mailboxTransferPayload{
+		SrcMailbox: srcMailbox,
+		SrcUID:     uid,
+		DstMailbox: dstMailbox,
+	})
+	if err != nil {
+		return fmt.Errorf("marshaling mailbox move payload: %w", err)
 	}
-
-	// Delete from source.
 	cmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: mailboxMsgKey(userID, srcMailbox, uid),
+		Op:    bongov1.Op_OP_PUT,
+		Key:   mailboxMoveKey(userID),
+		Value: payload,
 	}
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
@@ -511,15 +968,20 @@ func (ms *MailboxStore) Expunge(userID, mailbox string) ([]uint32, error) {
 	var expunged []uint32
 	for _, msg := range msgs {
 		if msg.Flags&FlagDeleted != 0 {
-			cmd := &bongov1.RaftCommand{
-				Op:  bongov1.Op_OP_DELETE,
-				Key: mailboxMsgKey(userID, mailbox, msg.Uid),
-			}
-			if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-				return expunged, fmt.Errorf("expunging uid %d: %w", msg.Uid, err)
-			}
 			expunged = append(expunged, msg.Uid)
 		}
+	}
+
+	if len(expunged) == 0 {
+		return nil, nil
+	}
+
+	cmd := &bongov1.RaftCommand{
+		Op:  bongov1.Op_OP_PUT,
+		Key: mailboxExpungeKey(userID, mailbox),
+	}
+	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return expunged, fmt.Errorf("expunging mailbox: %w", err)
 	}
 	return expunged, nil
 }
@@ -565,44 +1027,87 @@ func (ms *MailboxStore) StoreMailMeta(userID string, meta *bongov1.MailMeta) err
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
-// AppendMessage appends a message to a mailbox, assigning a new UID via Raft.
-// It writes the MailboxMessage and bumps UidNext atomically.
-// Returns the assigned UID.
+// DeliverMessage writes a MailMeta record and appends it to a mailbox via one
+// synthetic Raft command. Missing destination mailboxes are created on demand.
+func (ms *MailboxStore) DeliverMessage(userID, mailbox string, meta *bongov1.MailMeta, flags uint32) (uint32, error) {
+	cmd, err := buildMailboxDeliveryCommand(userID, mailbox, meta, flags)
+	if err != nil {
+		return 0, err
+	}
+	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return 0, fmt.Errorf("delivering mailbox message: %w", err)
+	}
+	mbMeta, err := ms.GetMailbox(userID, mailbox)
+	if err != nil {
+		return 0, fmt.Errorf("reloading mailbox after delivery: %w", err)
+	}
+	return mbMeta.UidNext - 1, nil
+}
+
+// AppendMessage appends a message to a mailbox and assigns a new UID.
+// It is issued as one synthetic Raft command and applied at the FSM layer as a
+// paired mailbox metadata update plus message write. Returns the assigned UID.
 func (ms *MailboxStore) AppendMessage(userID, mailbox, mailGuid string, flags uint32, internalDate int64) (uint32, error) {
-	meta, err := ms.GetMailbox(userID, mailbox)
-	if err != nil {
-		return 0, fmt.Errorf("reading mailbox %q: %w", mailbox, err)
-	}
-
-	uid := meta.UidNext
-	meta.UidNext = uid + 1
-
-	// Write updated mailbox meta.
-	metaBytes, err := proto.Marshal(meta)
-	if err != nil {
-		return 0, fmt.Errorf("marshaling mailbox meta: %w", err)
-	}
-	metaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   mailboxMetaKey(userID, mailbox),
-		Value: metaBytes,
-	}
-	if err := ms.applier.ApplyCommand(metaCmd, 5*time.Second); err != nil {
-		return 0, fmt.Errorf("updating mailbox meta: %w", err)
-	}
-
-	// Write the message.
 	msg := &bongov1.MailboxMessage{
-		Uid:          uid,
 		MailGuid:     mailGuid,
 		Flags:        flags,
 		InternalDate: internalDate,
 	}
-	if err := ms.writeMessage(userID, mailbox, uid, msg); err != nil {
-		return 0, fmt.Errorf("writing message: %w", err)
+	msgBytes, err := proto.Marshal(msg)
+	if err != nil {
+		return 0, fmt.Errorf("marshaling mailbox append payload: %w", err)
 	}
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   mailboxAppendKey(userID, mailbox),
+		Value: msgBytes,
+	}
+	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return 0, fmt.Errorf("appending mailbox message: %w", err)
+	}
+	meta, err := ms.GetMailbox(userID, mailbox)
+	if err != nil {
+		return 0, fmt.Errorf("reloading mailbox after append: %w", err)
+	}
+	return meta.UidNext - 1, nil
+}
 
-	return uid, nil
+// DeliverMail writes a MailMeta record and appends it to a mailbox via Raft.
+func DeliverMail(applier RaftApplier, userID, mailbox string, meta *bongov1.MailMeta, flags uint32) error {
+	cmd, err := BuildDeliverMailCommand(userID, mailbox, meta, flags)
+	if err != nil {
+		return err
+	}
+	if err := applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return fmt.Errorf("delivering mailbox message: %w", err)
+	}
+	return nil
+}
+
+// BuildDeliverMailCommand builds the synthetic Raft command used for a single
+// mailbox delivery.
+func BuildDeliverMailCommand(userID, mailbox string, meta *bongov1.MailMeta, flags uint32) (*bongov1.RaftCommand, error) {
+	return buildMailboxDeliveryCommand(userID, mailbox, meta, flags)
+}
+
+func buildMailboxDeliveryCommand(userID, mailbox string, meta *bongov1.MailMeta, flags uint32) (*bongov1.RaftCommand, error) {
+	SanitizeMailMeta(meta)
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling mail meta: %w", err)
+	}
+	payload, err := json.Marshal(mailboxDeliveryPayload{
+		Meta:  metaBytes,
+		Flags: flags,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshaling mailbox delivery payload: %w", err)
+	}
+	return &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   mailboxDeliverKey(userID, mailbox),
+		Value: payload,
+	}, nil
 }
 
 // WriteMessageTags updates the denormalised Tags field on a MailboxMessage via Raft.

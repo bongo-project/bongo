@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
@@ -22,6 +23,7 @@ type BlobSyncer struct {
 	logger  *slog.Logger
 	queue   chan string
 	client  *http.Client
+	secret  []byte
 }
 
 // NewBlobSyncer creates a new BlobSyncer.
@@ -35,6 +37,11 @@ func NewBlobSyncer(blobs *store.BlobStore, members MemberLister, logger *slog.Lo
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// SetSharedSecret sets the auth secret used for internal blob fetches.
+func (bs *BlobSyncer) SetSharedSecret(secret []byte) {
+	bs.secret = append([]byte(nil), secret...)
 }
 
 // Enqueue adds a blob hash to the sync queue if it doesn't exist locally.
@@ -84,7 +91,12 @@ func (bs *BlobSyncer) pull(hash string) error {
 
 		// HEAD check.
 		headURL := fmt.Sprintf("http://%s/internal/blob/%s", m.HTTPAddr, hash)
-		resp, err := bs.client.Head(headURL)
+		headReq, err := http.NewRequest(http.MethodHead, headURL, nil)
+		if err != nil {
+			continue
+		}
+		security.SignInternalRequest(headReq, bs.secret)
+		resp, err := bs.client.Do(headReq)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			continue
 		}
@@ -92,7 +104,12 @@ func (bs *BlobSyncer) pull(hash string) error {
 
 		// GET the blob.
 		getURL := fmt.Sprintf("http://%s/internal/blob/%s", m.HTTPAddr, hash)
-		resp, err = bs.client.Get(getURL)
+		getReq, err := http.NewRequest(http.MethodGet, getURL, nil)
+		if err != nil {
+			continue
+		}
+		security.SignInternalRequest(getReq, bs.secret)
+		resp, err = bs.client.Do(getReq)
 		if err != nil {
 			continue
 		}
@@ -119,4 +136,3 @@ func (bs *BlobSyncer) pull(hash string) error {
 
 	return fmt.Errorf("blob %s not found on any peer", hash[:12])
 }
-

@@ -49,36 +49,36 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
-				<div class="settings-container" style="max-width:960px">
+				<div class="settings-container u-max-w-960">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
-				<h2 style="margin:0">{ t(ctx, "nav.filterRules") }</h2>
+			<div class="page-header page-header-row">
+				<h2 class="u-m0">{ t(ctx, "nav.filterRules") }</h2>
 				<a href="/settings/rules/new" class="btn-outline">{ t(ctx, "rules.newRule") }</a>
 			</div>
 			if len(rules) == 0 {
 				<p class="secondary-text">{ t(ctx, "rules.noRulesYet") }</p>
 			} else {
-				<div id="rules-list" x-data="{ reorder(evt) { const ids = Array.from(evt.target.closest('tbody').querySelectorAll('tr[data-id]')).map(r => r.dataset.id); fetch('/settings/rules/reorder', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(ids)}); } }">
+				<div id="rules-list">
 					<table role="grid">
 						<thead>
 							<tr>
-								<th style="width:2rem"></th>
-								<th style="width:2rem">#</th>
+								<th class="u-width-2rem"></th>
+								<th class="u-width-2rem">#</th>
 								<th>{ t(ctx, "rules.colName") }</th>
 								<th>{ t(ctx, "rules.colConditions") }</th>
 								<th>{ t(ctx, "rules.colAction") }</th>
-								<th style="width:4rem">{ t(ctx, "rules.colActive") }</th>
-								<th style="width:10rem">{ t(ctx, "rules.colActions") }</th>
+								<th class="u-width-4rem">{ t(ctx, "rules.colActive") }</th>
+								<th class="u-width-10rem">{ t(ctx, "rules.colActions") }</th>
 							</tr>
 						</thead>
 						<tbody id="sortable-rules">
 							for i, rule := range rules {
 								<tr data-id={ rule.ID }>
-									<td class="drag-handle" style="cursor:grab;display:flex;align-items:center;gap:0.15rem">
+									<td class="drag-handle u-flex u-items-center u-gap-015 u-cursor-grab">
 										&#x2801;
-										<span style="display:flex;flex-direction:column">
+										<span class="u-flex u-flex-col">
 											if i > 0 {
 												<button type="button" class="rule-move-btn" aria-label="Move rule up" data-move-dir="up" data-move-id={ rule.ID }>&#x25B2;</button>
 											}
@@ -100,43 +100,26 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 									</td>
 									<td>
 										<div class="rule-actions">
-											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="btn-outline btn-sm" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "common.edit") }</a>
+											<a href={ templ.SafeURL("/settings/rules/" + rule.ID) } class="btn-outline btn-sm">{ t(ctx, "common.edit") }</a>
 											<button
 												hx-post={ "/settings/rules/" + rule.ID + "/test" }
 												hx-target={ "#test-results-" + rule.ID }
-												hx-swap="innerHTML"
-												class="btn-outline btn-sm" style="padding:0.25rem 0.5rem; font-size:0.8rem">{ t(ctx, "rules.test") }</button>
+												hx-swap="outerHTML"
+												class="btn-outline btn-sm">{ t(ctx, "rules.test") }</button>
 											<button
 												hx-delete={ "/settings/rules/" + rule.ID }
 												hx-target="closest tr"
 												hx-swap="outerHTML"
 												hx-confirm="Delete this rule?"
-												class="btn-flush btn-sm" style="padding:0.25rem 0.5rem; font-size:0.8rem">Del</button>
+												class="btn-flush btn-sm">Del</button>
 										</div>
 									</td>
 								</tr>
-								<tr id={ "test-results-" + rule.ID } style="display:none"></tr>
+								<tr id={ "test-results-" + rule.ID } class="u-hidden"></tr>
 							}
 						</tbody>
 					</table>
 				</div>
-				<script>
-					if (typeof Sortable !== 'undefined') {
-						document.addEventListener('DOMContentLoaded', function() {
-							var el = document.getElementById('sortable-rules');
-							if (el) {
-								Sortable.create(el, {
-									handle: '.drag-handle',
-									animation: 150,
-									onEnd: function(evt) {
-										var ids = Array.from(el.querySelectorAll('tr[data-id]')).map(function(r) { return r.dataset.id; });
-										fetch('/settings/rules/reorder', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(ids)});
-									}
-								});
-							}
-						});
-					}
-				</script>
 			}
 				</div>
 			</div>
@@ -155,7 +138,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
-				<div class="settings-container" style="max-width:720px">
+				<div class="settings-container u-max-w-720">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
@@ -220,7 +203,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							<template x-if="cond.field !== 'has_attachment'">
 								<input type="text" :name="'cond_value'" x-model="cond.value" placeholder="Value"/>
 							</template>
-							<button type="button" @click="conditions.splice(i, 1)" class="condition-row-remove" x-show="conditions.length > 1">&#10005;</button>
+							<button type="button" @click="conditions.splice(i, 1)" class="condition-row-remove" x-bind:hidden="conditions.length <= 1">&#10005;</button>
 						</div>
 					</template>
 					<button type="button" @click="conditions.push({field:'from', operator:'contains', value:''})" class="btn-outline btn-sm">{ t(ctx, "rules.addCondition") }</button>
@@ -241,7 +224,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									<option value="tag">Add tag</option>
 								</select>
 							</div>
-							<div class="form-group" x-show="actionType === 'move' || actionType === 'copy'">
+							<div class="form-group" x-bind:hidden="!(actionType === 'move' || actionType === 'copy')">
 								<label for="action_target">{ t(ctx, "rules.targetFolder") }</label>
 								<select name="action_target" id="action_target">
 									for _, mb := range mailboxes {
@@ -250,18 +233,18 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								</select>
 							</div>
 						</div>
-						<div class="form-group" x-show="actionType === 'forward'">
+						<div class="form-group" x-bind:hidden="actionType !== 'forward'">
 							<label for="action_target_forward">Forward to email address</label>
 							<input type="email" name="action_target_forward" id="action_target_forward" class="form-input" placeholder="user@example.com" value={ rule.Action.Target }/>
 						</div>
-						<div class="form-group" x-show="actionType === 'tag'">
+						<div class="form-group" x-bind:hidden="actionType !== 'tag'">
 							<label>Tags to apply</label>
-							<div class="tag-input-wrapper" style="border:1px solid var(--form-element-border-color,#ccc); border-radius:4px; padding:0.35rem 0.5rem; display:flex; flex-wrap:wrap; gap:0.35rem; align-items:center; background:var(--form-element-background-color,#fff); min-height:2.5rem">
+							<div class="tag-input-wrapper">
 								<template x-for="(tag, idx) in selectedTags" :key="idx">
-									<span style="display:inline-flex; align-items:center; gap:0.25rem; background:var(--primary,#1095c1); color:#fff; border-radius:3px; padding:0.15rem 0.4rem; font-size:0.85rem">
+									<span class="tag-pill">
 										<span x-text="tag"></span>
 										<input type="hidden" name="action_tag" :value="tag"/>
-										<button type="button" @click="selectedTags.splice(idx,1)" style="background:none; border:none; color:inherit; cursor:pointer; padding:0; font-size:0.9rem; line-height:1" aria-label="Remove tag">&#10005;</button>
+										<button type="button" class="tag-pill-remove" @click="selectedTags.splice(idx,1)" aria-label="Remove tag">&#10005;</button>
 									</span>
 								</template>
 								<input
@@ -270,11 +253,11 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									@keydown.enter.prevent="addTag()"
 									@keydown.comma.prevent="addTag()"
 									placeholder="Type a tag and press Enter"
-									style="border:none; outline:none; flex:1; min-width:10rem; background:transparent; font-size:inherit; padding:0.1rem 0"
+									class="tag-input-field"
 									aria-label="Tag name input"
 								/>
 							</div>
-							<p style="font-size:0.8rem; color:var(--muted-color,#888); margin-top:0.25rem">Press Enter or comma to add each tag. You can add multiple tags.</p>
+							<p class="tag-input-help">Press Enter or comma to add each tag. You can add multiple tags.</p>
 						</div>
 					</div>
 				</div>
@@ -295,24 +278,21 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 	}
 }
 
-templ RuleTestResults(matches int, total int, samples []MailSample) {
-	<td colspan="7" style="background:var(--bg-subtle); padding:0.75rem">
-		<p style="margin-bottom:0.5rem">
-			<strong>{ fmt.Sprintf("Matched %d of %d", matches, total) }</strong> recent messages
-		</p>
-		if len(samples) > 0 {
-			<ul style="margin:0; padding-left:1.5rem; font-size:0.85rem">
-				for _, s := range samples {
-					<li>{ s.Date } - { s.From } - { s.Subject }</li>
-				}
-			</ul>
-		}
-	</td>
-	<script>
-		// Show the test results row.
-		var row = document.currentScript.closest('tr');
-		if (row) row.style.display = '';
-	</script>
+templ RuleTestResults(ruleID string, matches int, total int, samples []MailSample) {
+	<tr id={ "test-results-" + ruleID }>
+		<td colspan="7" class="u-bg-subtle u-p-18">
+			<p class="u-mb-05">
+				<strong>{ fmt.Sprintf("Matched %d of %d", matches, total) }</strong> recent messages
+			</p>
+			if len(samples) > 0 {
+				<ul class="u-m0 u-font-085 u-pl-15">
+					for _, s := range samples {
+						<li>{ s.Date } - { s.From } - { s.Subject }</li>
+					}
+				</ul>
+			}
+		</td>
+	</tr>
 }
 
 func ruleFormTitle(isNew bool) string {

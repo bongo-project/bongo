@@ -37,8 +37,8 @@ func TagDotColour(index int32) string {
 
 // TagDot holds the display data for a single tag dot in the message list.
 type TagDot struct {
-	Name   string
-	Colour string // CSS colour value
+	Name        string
+	ColourIndex int32
 }
 
 // MessageSummary holds data for a single row in the message list.
@@ -90,7 +90,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
 			<div
 				x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
-				style="display:inline-flex;align-items:center;gap:0.5rem"
+				class="u-inline-flex u-items-center u-gap-05"
 			>
 				<button
 					type="button"
@@ -100,15 +100,15 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					x-text="scanning ? 'Scanning...' : 'Scan for spam'"
 					title="Scan mailbox for spam"
 				>Scan for spam</button>
-				<span x-show="scanning" x-cloak style="font-size:0.82rem;color:var(--text-muted)">
+				<span x-bind:hidden="!scanning" x-cloak class="u-font-082 u-text-muted">
 					<span x-text="progress.total > 0 ? progress.scanned + '/' + progress.total : ''"></span>
-					<span x-show="progress.spam > 0" x-text="' (' + progress.spam + ' spam)'"></span>
+					<span x-bind:hidden="progress.spam <= 0" x-text="' (' + progress.spam + ' spam)'"></span>
 				</span>
 				<span
-					x-show="result !== null && !scanning"
+					x-bind:hidden="!(result !== null && !scanning)"
 					x-cloak
 					x-text="result"
-					style="font-size:0.82rem;color:var(--text-muted)"
+					class="u-font-082 u-text-muted"
 				></span>
 			</div>
 			<div class="tool-spacer"></div>
@@ -126,7 +126,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 		<div class="mail-layout" x-bind:class="'layout-' + layoutMode">
 		<div class="message-list-pane">
 		<div id="message-list">
-			<div class="bulk-toolbar" x-show="count > 0" x-cloak="" aria-live="polite">
+			<div class="bulk-toolbar" x-bind:hidden="count === 0" x-cloak="" aria-live="polite">
 				<span x-text="count + ' selected'"></span>
 				<button type="button" class="tool-btn" x-on:click="selectAll()">{ t(ctx, "mail.selectAll") }</button>
 				<button type="button" class="tool-btn" x-on:click="deselectAll()">{ t(ctx, "mail.deselect") }</button>
@@ -139,10 +139,10 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 				} else {
 					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
 				}
-				<div class="bulk-tag-dropdown" x-data="{ open: false, tagInput: '' }" style="position:relative;display:inline-block">
+				<div class="bulk-tag-dropdown u-relative u-inline-block" x-data="{ open: false, tagInput: '' }">
 				<button type="button" class="tool-btn" x-on:click="open = !open" aria-haspopup="true" x-bind:aria-expanded="open">Tag</button>
 				<div
-					x-show="open"
+					x-bind:hidden="!open"
 					x-on:click.away="open = false"
 					x-on:keydown.escape.window="open = false"
 					x-cloak=""
@@ -191,7 +191,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			}
 		</div>
 		</div>
-		<div class="reading-pane" id="reading-pane" x-show="layoutMode !== 'list'">
+		<div class="reading-pane" id="reading-pane" x-bind:hidden="layoutMode === 'list'">
 			<div class="empty-state">
 				<p>{ t(ctx, "mail.selectToRead") }</p>
 			</div>
@@ -247,7 +247,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
-					style="text-decoration:none;color:inherit"
+					class="u-text-decoration-none"
 				>
 					{ msg.From }
 				</a>
@@ -260,7 +260,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID) }
 					hx-target="#main-content"
 					hx-push-url="true"
-					style="text-decoration:none;color:inherit"
+					class="u-text-decoration-none"
 				>
 					{ msg.Subject }
 				</a>
@@ -280,7 +280,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				if len(msg.Tags) > 0 {
 					<span class="tag-dots" aria-hidden="true">
 						for _, dot := range msg.Tags {
-							<span class="tag-dot" style={ fmt.Sprintf("background:%s", dot.Colour) } title={ dot.Name }></span>
+							<span class={ "tag-dot", tagPaletteBGClass(dot.ColourIndex) } title={ dot.Name }></span>
 						}
 						if msg.OverflowTags > 0 {
 							<span class="tag-dot-overflow" title={ fmt.Sprintf("+%d more tags", msg.OverflowTags) }>+{ fmt.Sprint(msg.OverflowTags) }</span>
@@ -308,7 +308,7 @@ templ InfiniteScrollSentinel(mailbox string, nextPage int) {
 		hx-swap="outerHTML"
 		hx-indicator=".load-more-spinner"
 	>
-		<span class="load-more-spinner htmx-indicator" style="text-align:center;padding:1rem;width:100%">
+		<span class="load-more-spinner htmx-indicator u-text-center u-mb-0 u-p-1rem u-w-full">
 			{ t(ctx, "common.loading") }...
 		</span>
 	</div>
@@ -325,7 +325,7 @@ templ MessageRowsPartial(messages []MessageSummary, mailbox string, page int, to
 
 templ ThreadChildren(children []ThreadChild, mailbox string) {
 	for _, child := range children {
-		<div class="msg-row thread-child" style={ fmt.Sprintf("padding-left:%drem", child.Depth*2) }>
+		<div class={ "msg-row", "thread-child", threadDepthClass(child.Depth) }>
 			<span class="msg-from">
 				<span class="thread-reply-arrow">&#8627;</span>
 				{ child.From }
@@ -345,6 +345,27 @@ func formatDate(t time.Time) string {
 		return t.Format("Jan 2")
 	}
 	return t.Format("Jan 2, 2006")
+}
+
+func tagPaletteSafeIndex(index int32) int32 {
+	if index < 0 || int(index) >= len(tagColourPalette) {
+		return 0
+	}
+	return index
+}
+
+func tagPaletteBGClass(index int32) string {
+	return fmt.Sprintf("tag-palette-bg-%d", tagPaletteSafeIndex(index))
+}
+
+func threadDepthClass(depth int) string {
+	if depth < 0 {
+		depth = 0
+	}
+	if depth > 12 {
+		depth = 12
+	}
+	return fmt.Sprintf("thread-depth-%d", depth)
 }
 
 func flagToggleVals(flagged bool) string {

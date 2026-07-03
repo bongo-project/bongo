@@ -1,6 +1,56 @@
 // Bongo-Go client-side JavaScript (Alpine.js components + keyboard shortcuts)
 
 document.addEventListener('alpine:init', () => {
+  function replacePrefixedClass(el, prefix, nextClass) {
+    if (!el) return;
+    Array.from(el.classList).forEach(function(cls) {
+      if (cls.indexOf(prefix) === 0) {
+        el.classList.remove(cls);
+      }
+    });
+    if (nextClass) {
+      el.classList.add(nextClass);
+    }
+  }
+
+  function swipeOffsetClass(deltaX) {
+    var clamped = Math.max(-800, Math.min(800, deltaX));
+    var bucket = Math.round(clamped / 4);
+    return 'swipe-x-' + bucket;
+  }
+
+  function contextPositionClass(prefix, value) {
+    var clamped = Math.max(0, Math.min(2040, value));
+    var bucket = Math.round(clamped / 8);
+    return prefix + bucket;
+  }
+
+  function calendarTopClass(minutes) {
+    var clamped = Math.max(0, Math.min(1439, minutes));
+    return 'cal-top-' + clamped;
+  }
+
+  function setSwipeDragState(el, deltaX) {
+    if (!el) return;
+    el.classList.remove('msg-row-swipe-animating', 'msg-row-swipe-dismiss-left', 'msg-row-swipe-dismiss-right');
+    replacePrefixedClass(el, 'swipe-x-', swipeOffsetClass(deltaX));
+  }
+
+  function finalizeSwipeState(el, direction) {
+    if (!el) return;
+    el.classList.remove('msg-row-swipe-dismiss-left', 'msg-row-swipe-dismiss-right');
+    el.classList.add('msg-row-swipe-animating');
+    el.classList.add(direction === 'left' ? 'msg-row-swipe-dismiss-left' : 'msg-row-swipe-dismiss-right');
+    replacePrefixedClass(el, 'swipe-x-', null);
+  }
+
+  function resetSwipeState(el) {
+    if (!el) return;
+    el.classList.remove('msg-row-swipe-dismiss-left', 'msg-row-swipe-dismiss-right');
+    el.classList.add('msg-row-swipe-animating');
+    replacePrefixedClass(el, 'swipe-x-', null);
+  }
+
   // App-level state: theme, layout, density
   Alpine.data('appState', () => ({
     theme: localStorage.getItem('bongo-theme') || 'auto',
@@ -352,8 +402,7 @@ document.addEventListener('alpine:init', () => {
       if (Math.abs(deltaX) > 20 && Math.abs(deltaY) < 30) {
         this.swiping = true;
         this.currentX = deltaX;
-        this.swipeTarget.style.transform = 'translateX(' + deltaX + 'px)';
-        this.swipeTarget.style.transition = 'none';
+        setSwipeDragState(this.swipeTarget, deltaX);
       }
     },
 
@@ -364,8 +413,7 @@ document.addEventListener('alpine:init', () => {
       }
       var deltaX = this.currentX;
       if (deltaX < -60) {
-        this.swipeTarget.style.transform = 'translateX(-100%)';
-        this.swipeTarget.style.transition = 'transform 200ms ease';
+        finalizeSwipeState(this.swipeTarget, 'left');
         var params = new URLSearchParams();
         params.set('destination', 'Trash');
         fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/move', {
@@ -374,8 +422,7 @@ document.addEventListener('alpine:init', () => {
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
         }).catch(function() {});
       } else if (deltaX > 60) {
-        this.swipeTarget.style.transform = 'translateX(100%)';
-        this.swipeTarget.style.transition = 'transform 200ms ease';
+        finalizeSwipeState(this.swipeTarget, 'right');
         var params2 = new URLSearchParams();
         params2.set('action', 'delete');
         params2.append('uids', uid.toString());
@@ -391,8 +438,7 @@ document.addEventListener('alpine:init', () => {
 
     _resetSwipe() {
       if (this.swipeTarget) {
-        this.swipeTarget.style.transform = '';
-        this.swipeTarget.style.transition = 'transform 200ms ease';
+        resetSwipeState(this.swipeTarget);
       }
       this.swipeTarget = null;
       this.swiping = false;
@@ -500,8 +546,7 @@ document.addEventListener('alpine:init', () => {
       if (Math.abs(deltaX) > 20 && Math.abs(deltaY) < 30) {
         this.swiping = true;
         this.currentX = deltaX;
-        this.swipeTarget.style.transform = 'translateX(' + deltaX + 'px)';
-        this.swipeTarget.style.transition = 'none';
+        setSwipeDragState(this.swipeTarget, deltaX);
       }
     },
 
@@ -513,8 +558,7 @@ document.addEventListener('alpine:init', () => {
       const deltaX = this.currentX;
       if (deltaX < -60) {
         // Swipe left: archive (move to Trash)
-        this.swipeTarget.style.transform = 'translateX(-100%)';
-        this.swipeTarget.style.transition = 'transform 200ms ease';
+        finalizeSwipeState(this.swipeTarget, 'left');
         const params = new URLSearchParams();
         params.set('destination', 'Trash');
         fetch('/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/move', {
@@ -524,8 +568,7 @@ document.addEventListener('alpine:init', () => {
         }).catch(() => {});
       } else if (deltaX > 60) {
         // Swipe right: delete
-        this.swipeTarget.style.transform = 'translateX(100%)';
-        this.swipeTarget.style.transition = 'transform 200ms ease';
+        finalizeSwipeState(this.swipeTarget, 'right');
         const params = new URLSearchParams();
         params.set('action', 'delete');
         params.append('uids', uid.toString());
@@ -541,8 +584,7 @@ document.addEventListener('alpine:init', () => {
 
     reset() {
       if (this.swipeTarget) {
-        this.swipeTarget.style.transform = '';
-        this.swipeTarget.style.transition = 'transform 200ms ease';
+        resetSwipeState(this.swipeTarget);
       }
       this.swipeTarget = null;
       this.swiping = false;
@@ -641,6 +683,8 @@ document.addEventListener('alpine:init', () => {
       if (y < 0) y = 8;
       this.x = x;
       this.y = y;
+      replacePrefixedClass(this.$el, 'ctx-left-', contextPositionClass('ctx-left-', x));
+      replacePrefixedClass(this.$el, 'ctx-top-', contextPositionClass('ctx-top-', y));
       this.visible = true;
       this.focusedItem = -1;
       // Focus first item after render.
@@ -767,10 +811,18 @@ document.addEventListener('alpine:init', () => {
   // Message detail tag chips: add/remove tags on a single message.
   // Initialised via x-data="messageTags(tags, allTags, mailbox, uid)".
   Alpine.data('messageTags', (initialTags, allTags, mailbox, uid) => ({
-    tags: initialTags,          // [{name, colour}, ...]  current tags on this message
-    allTags: allTags,           // [{name, colour}, ...]  all user-defined tags
+    tags: initialTags,          // [{name, colourIndex}, ...]  current tags on this message
+    allTags: allTags,           // [{name, colourIndex}, ...]  all user-defined tags
     openDropdown: false,
     newTagName: '',
+
+    messageTagBGClass(index) {
+      return 'message-tag-bg-' + (Number.isInteger(index) ? index : 0);
+    },
+
+    messageTagColourClass(index) {
+      return 'message-tag-colour-' + (Number.isInteger(index) ? index : 0);
+    },
 
     get filteredAllTags() {
       const q = this.newTagName.trim().toLowerCase();
@@ -791,7 +843,7 @@ document.addEventListener('alpine:init', () => {
     async addTag(name) {
       if (this.isTagged(name)) { this.closeDropdown(); return; }
       const existing = this.allTags.find(t => t.name === name);
-      const colour = existing ? existing.colour : '#517faf';
+      const colourIndex = existing ? existing.colourIndex : 0;
       const resp = await fetch(
         '/mail/' + encodeURIComponent(mailbox) + '/' + uid + '/tags',
         {
@@ -805,10 +857,10 @@ document.addEventListener('alpine:init', () => {
         if (data && Array.isArray(data.tags)) {
           this.tags = data.tags.map(n => {
             const t = this.tags.find(x => x.name === n) || this.allTags.find(x => x.name === n);
-            return { name: n, colour: t ? t.colour : colour };
+            return { name: n, colourIndex: t ? t.colourIndex : colourIndex };
           });
           if (!this.allTags.some(t => t.name === name)) {
-            this.allTags.push({ name, colour });
+            this.allTags.push({ name, colourIndex });
           }
         }
       }
@@ -829,7 +881,7 @@ document.addEventListener('alpine:init', () => {
         if (data && Array.isArray(data.tags)) {
           this.tags = data.tags.map(n => {
             const t = this.tags.find(x => x.name === n) || this.allTags.find(x => x.name === n);
-            return { name: n, colour: t ? t.colour : '#517faf' };
+            return { name: n, colourIndex: t ? t.colourIndex : 0 };
           });
         }
       }
@@ -859,6 +911,184 @@ document.addEventListener('alpine:init', () => {
       this.$watch('openDropdown', (val) => {
         if (val) this.$nextTick(() => this.$refs.tagInput && this.$refs.tagInput.focus());
       });
+    }
+  }));
+
+  Alpine.data('quarantineBulk', () => ({
+    selected: [],
+    allIds: [],
+
+    init() {
+      this.refreshIds();
+    },
+
+    refreshIds() {
+      this.allIds = Array.from(this.$el.querySelectorAll('tbody input[type=checkbox][value]')).map(el => el.value);
+    },
+
+    toggleAll(event) {
+      this.selected = event.target.checked ? [...this.allIds] : [];
+    },
+
+    allSelected() {
+      return this.allIds.length > 0 && this.selected.length === this.allIds.length;
+    },
+
+    appendIds(event) {
+      var form = event.target;
+      var container = form.querySelector('div[id^="bulk-ids"]');
+      if (!container) return;
+      container.innerHTML = '';
+      this.selected.forEach(function(id) {
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'ids';
+        input.value = id;
+        container.appendChild(input);
+      });
+    }
+  }));
+
+  Alpine.data('tagSettings', (palette) => ({
+    palette: palette,
+    tags: [],
+    editingTag: null,
+    editName: '',
+    editColourIndex: 0,
+    confirmDeleteTag: null,
+    newTagName: '',
+    newTagColourIndex: 0,
+    savingTag: false,
+    deletingTag: false,
+    creatingTag: false,
+    errorMsg: null,
+
+    init() {
+      this.loadTags();
+    },
+
+    tagPaletteBGClass(index) {
+      return 'tag-palette-bg-' + (Number.isInteger(index) ? index : 0);
+    },
+
+    tagPaletteHex(index) {
+      return this.palette[index] || this.palette[0] || '';
+    },
+
+    loadTags() {
+      fetch('/api/tags')
+        .then(r => r.ok ? r.json() : Promise.reject(r))
+        .then(data => {
+          this.tags = data.map(t => ({
+            name: t.name,
+            colourIndex: t.colour_index,
+            count: t.count,
+            sortOrder: t.sort_order
+          }));
+        })
+        .catch(() => { this.errorMsg = 'Failed to load tags.'; });
+    },
+
+    startEdit(tag) {
+      this.editingTag = tag.name;
+      this.editName = tag.name;
+      this.editColourIndex = tag.colourIndex;
+      this.confirmDeleteTag = null;
+      this.errorMsg = null;
+      this.$nextTick(() => {
+        if (this.$refs.editInput) this.$refs.editInput.focus();
+      });
+    },
+
+    cancelEdit() {
+      this.editingTag = null;
+      this.editName = '';
+      this.editColourIndex = 0;
+      this.errorMsg = null;
+    },
+
+    saveTag(tag) {
+      if (this.savingTag) return;
+      const name = this.editName.trim();
+      if (!name) {
+        this.errorMsg = 'Tag name cannot be empty.';
+        return;
+      }
+
+      const body = {};
+      if (name !== tag.name) body.name = name;
+      if (this.editColourIndex !== tag.colourIndex) body.colour_index = this.editColourIndex;
+
+      if (Object.keys(body).length === 0) {
+        this.cancelEdit();
+        return;
+      }
+
+      this.savingTag = true;
+      this.errorMsg = null;
+      fetch('/api/tags/' + encodeURIComponent(tag.name), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+        .then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
+        .then(() => {
+          this.cancelEdit();
+          this.loadTags();
+        })
+        .catch(err => {
+          this.errorMsg = typeof err === 'string' ? err : 'Failed to save tag.';
+        })
+        .finally(() => { this.savingTag = false; });
+    },
+
+    deleteTag(tag) {
+      if (this.deletingTag) return;
+      this.deletingTag = true;
+      this.errorMsg = null;
+      fetch('/api/tags/' + encodeURIComponent(tag.name), { method: 'DELETE' })
+        .then(r => {
+          if (!r.ok) return r.text().then(t => Promise.reject(t));
+        })
+        .then(() => {
+          this.confirmDeleteTag = null;
+          this.loadTags();
+        })
+        .catch(err => {
+          this.errorMsg = typeof err === 'string' ? err : 'Failed to delete tag.';
+        })
+        .finally(() => { this.deletingTag = false; });
+    },
+
+    createTag() {
+      const name = this.newTagName.trim();
+      if (!name || this.creatingTag) return;
+      this.creatingTag = true;
+      this.errorMsg = null;
+      fetch('/api/tags', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name })
+      })
+        .then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
+        .then(created => {
+          if (this.newTagColourIndex !== created.colour_index) {
+            return fetch('/api/tags/' + encodeURIComponent(created.name), {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ colour_index: this.newTagColourIndex })
+            }).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)));
+          }
+        })
+        .then(() => {
+          this.newTagName = '';
+          this.newTagColourIndex = 0;
+          this.loadTags();
+        })
+        .catch(err => {
+          this.errorMsg = typeof err === 'string' ? err : 'Failed to create tag.';
+        })
+        .finally(() => { this.creatingTag = false; });
     }
   }));
 });
@@ -911,11 +1141,11 @@ function toggleShortcutModal() {
     });
   }
   if (shortcutModalOpen) {
-    overlay.style.display = 'flex';
+    overlay.hidden = false;
     // Focus trap: focus the close button.
     document.getElementById('shortcut-modal-close').focus();
   } else {
-    overlay.style.display = 'none';
+    overlay.hidden = true;
   }
 }
 
@@ -1110,6 +1340,146 @@ function initDragDrop() {
   });
 }
 
+function syncAdminLayoutClass() {
+  if (!document.body) return;
+  document.body.classList.toggle('admin-layout', !!document.querySelector('[data-admin-page]'));
+}
+
+function initRulesSortable() {
+  if (typeof Sortable === 'undefined') return;
+  var el = document.getElementById('sortable-rules');
+  if (!el || el._sortableInit) return;
+  el._sortableInit = true;
+
+  Sortable.create(el, {
+    handle: '.drag-handle',
+    animation: 150,
+    onEnd: function() {
+      var ids = Array.from(el.querySelectorAll('tr[data-id]')).map(function(r) { return r.dataset.id; });
+      fetch('/settings/rules/reorder', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(ids)
+      });
+    }
+  });
+}
+
+function getAdminLogState() {
+  if (!window.__bongoAdminLogState) {
+    window.__bongoAdminLogState = { source: null };
+  }
+  return window.__bongoAdminLogState;
+}
+
+function clearAdminLogOutput() {
+  var output = document.querySelector('[data-log-output]');
+  if (output) output.textContent = '';
+}
+
+function connectAdminLogs() {
+  var output = document.querySelector('[data-log-output]');
+  var level = document.getElementById('log-level');
+  var component = document.getElementById('log-component');
+  if (!output || !level || !component) return;
+
+  var state = getAdminLogState();
+  if (state.source) state.source.close();
+
+  var url = '/admin/logs/stream?level=' + encodeURIComponent(level.value) +
+    '&component=' + encodeURIComponent(component.value);
+  state.source = new EventSource(url);
+  output.textContent = '';
+  state.source.onmessage = function(e) {
+    var el = document.createElement('div');
+    el.className = 'log-line';
+    el.textContent = e.data;
+    output.appendChild(el);
+    output.scrollTop = output.scrollHeight;
+  };
+  state.source.onerror = function() {
+    var el = document.createElement('div');
+    el.className = 'log-line log-line-error';
+    el.textContent = '[connection lost]';
+    output.appendChild(el);
+  };
+}
+
+function initAdminLogViewer() {
+  var viewer = document.querySelector('.log-viewer');
+  if (!viewer || viewer.dataset.logInit === 'true') return;
+  viewer.dataset.logInit = 'true';
+  connectAdminLogs();
+}
+
+function initContactsPage() {
+  var createForm = document.getElementById('create-form');
+  if (!createForm) return;
+  createForm.dataset.contactFormReady = 'true';
+}
+
+document.addEventListener('click', function(e) {
+  var copyBtn = e.target.closest('[data-copy-previous]');
+  if (copyBtn) {
+    var previous = copyBtn.previousElementSibling;
+    if (previous && navigator.clipboard) {
+      navigator.clipboard.writeText(previous.textContent.trim()).catch(function() {});
+    }
+    return;
+  }
+
+  var printBtn = e.target.closest('[data-print-page]');
+  if (printBtn) {
+    window.print();
+    return;
+  }
+
+  var folderToggle = e.target.closest('[data-folder-toggle]');
+  if (folderToggle) {
+    e.preventDefault();
+    e.stopPropagation();
+    var li = folderToggle.closest('.nav-has-children');
+    if (li) {
+      li.classList.toggle('collapsed');
+      folderToggle.setAttribute('aria-expanded', String(!li.classList.contains('collapsed')));
+    }
+    return;
+  }
+
+  var contactToggle = e.target.closest('[data-contact-form-toggle]');
+  if (contactToggle) {
+    var createForm = document.getElementById('create-form');
+    if (!createForm) return;
+    var action = contactToggle.dataset.contactFormToggle;
+    if (action === 'hide') {
+      createForm.setAttribute('hidden', '');
+    } else {
+      createForm.toggleAttribute('hidden');
+    }
+    return;
+  }
+
+  var contactRow = e.target.closest('[data-contact-select]');
+  if (contactRow) {
+    document.querySelectorAll('.contact-card').forEach(function(card) {
+      card.classList.remove('selected');
+    });
+    contactRow.classList.add('selected');
+    var panes = document.getElementById('contacts-panes');
+    if (panes) panes.classList.add('showing-detail');
+    return;
+  }
+
+  var logAction = e.target.closest('[data-log-action]');
+  if (logAction) {
+    if (logAction.dataset.logAction === 'connect') {
+      connectAdminLogs();
+    } else if (logAction.dataset.logAction === 'clear') {
+      clearAdminLogOutput();
+    }
+  }
+});
+
 // Re-init drag-drop after HTMX swaps.
 document.addEventListener('htmx:afterSettle', initDragDrop);
 
@@ -1146,16 +1516,19 @@ function initEventDrag() {
       // Create ghost element.
       const ghost = document.createElement('div');
       ghost.className = 'event-ghost';
-      ghost.style.height = block.style.height;
+      Array.from(block.classList).forEach(function(cls) {
+        if (cls.indexOf('cal-height-') === 0) {
+          ghost.classList.add(cls);
+        }
+      });
       col.appendChild(ghost);
 
       const onMouseMove = (ev) => {
         const relY = ev.clientY - colRect.top;
         // Snap to 30-min increments.
         const halfHours = Math.round(relY / (hourHeight / 2));
-        const snappedY = halfHours * (hourHeight / 2);
-        const pct = (snappedY / colRect.height) * 100;
-        ghost.style.top = Math.max(0, Math.min(pct, 100 - parseFloat(block.style.height))) + '%';
+        const minutes = Math.max(0, Math.min(1410, halfHours * 30));
+        replacePrefixedClass(ghost, 'cal-top-', calendarTopClass(minutes));
       };
 
       const onMouseUp = (ev) => {
@@ -1251,16 +1624,18 @@ function updateSidebarActive() {
 function initSettingsTabs() {
   var container = document.querySelector('.settings-container');
   if (!container) return;
+  if (container.dataset.tabsInit === 'true') return;
+  container.dataset.tabsInit = 'true';
   var tabs = container.querySelectorAll('.settings-tab');
   var sections = container.querySelectorAll('form > .settings-section');
   if (tabs.length === 0 || sections.length === 0) return;
   // Show only the first section by default.
-  sections.forEach(function(s, i) { s.style.display = i === 0 ? '' : 'none'; });
+  sections.forEach(function(s, i) { s.hidden = i !== 0; });
   tabs.forEach(function(tab, i) {
     tab.addEventListener('click', function() {
       tabs.forEach(function(t) { t.classList.remove('active'); });
       tab.classList.add('active');
-      sections.forEach(function(s, j) { s.style.display = j === i ? '' : 'none'; });
+      sections.forEach(function(s, j) { s.hidden = j !== i; });
     });
     // Set first tab as active.
     if (i === 0) tab.classList.add('active');
@@ -1268,16 +1643,23 @@ function initSettingsTabs() {
   });
 }
 
+function initCalendarDynamicStyles(root) {
+  return root;
+}
+
 // Flash message auto-dismiss + init drag-drop + init settings tabs
 document.addEventListener('DOMContentLoaded', () => {
+  syncAdminLayoutClass();
   initDragDrop();
   initEventDrag();
+  initRulesSortable();
+  initAdminLogViewer();
+  initContactsPage();
   updateSidebarActive();
   initSettingsTabs();
   document.querySelectorAll('.flash').forEach(el => {
     setTimeout(() => {
-      el.style.transition = 'opacity 0.3s';
-      el.style.opacity = '0';
+      el.classList.add('flash-dismissing');
       setTimeout(() => el.remove(), 300);
     }, 5000);
   });
@@ -1286,6 +1668,10 @@ document.addEventListener('DOMContentLoaded', () => {
 // Update sidebar active state + settings tabs after HTMX navigation.
 document.addEventListener('htmx:pushedIntoHistory', updateSidebarActive);
 document.addEventListener('htmx:afterSettle', function() {
+  syncAdminLayoutClass();
   updateSidebarActive();
+  initRulesSortable();
+  initAdminLogViewer();
+  initContactsPage();
   initSettingsTabs();
 });

@@ -108,20 +108,20 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<h2 class=\"settings-section-title\" style=\"font-size:1.2rem; margin-bottom:20px\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<h2 class=\"settings-section-title u-font-12 u-mb-20px\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "settings.security"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 23, Col: 114}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 23, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</h2><div class=\"settings-card\" style=\"margin-bottom:24px\"><div style=\"padding:20px\"><h3 class=\"settings-section-title\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</h2><div class=\"settings-card u-mb-24px\"><div class=\"settings-card-pad\"><h3 class=\"settings-section-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -134,7 +134,7 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</h3><form method=\"post\" action=\"/settings/security/password\"><div class=\"form-group\" style=\"margin-bottom:12px\"><label class=\"form-label\" for=\"current_password\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</h3><form method=\"post\" action=\"/settings/security/password\"><div class=\"form-group u-mb-12px\"><label class=\"form-label\" for=\"current_password\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -147,7 +147,7 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</label> <input type=\"password\" name=\"current_password\" id=\"current_password\" class=\"form-input\" required></div><div class=\"form-group\" style=\"margin-bottom:12px\"><label class=\"form-label\" for=\"new_password\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</label> <input type=\"password\" name=\"current_password\" id=\"current_password\" class=\"form-input\" required></div><div class=\"form-group u-mb-12px\"><label class=\"form-label\" for=\"new_password\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -160,20 +160,20 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</label> <input type=\"password\" name=\"new_password\" id=\"new_password\" class=\"form-input\" required minlength=\"8\"> <small style=\"color:var(--text-muted); font-size:0.78rem\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</label> <input type=\"password\" name=\"new_password\" id=\"new_password\" class=\"form-input\" required minlength=\"8\"> <small class=\"u-text-muted u-font-078\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "security.minPassword"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 35, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 35, Col: 80}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</small></div><div class=\"form-group\" style=\"margin-bottom:16px\"><label class=\"form-label\" for=\"confirm_password\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</small></div><div class=\"form-group u-mb-16px\"><label class=\"form-label\" for=\"confirm_password\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -199,7 +199,7 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</button></form></div></div><div class=\"settings-card\"><div style=\"padding:20px\"><h3 class=\"settings-section-title\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</button></form></div></div><div class=\"settings-card\"><div class=\"settings-card-pad\"><h3 class=\"settings-section-title\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -217,7 +217,7 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 				return templ_7745c5c3_Err
 			}
 			if totpEnabled {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"tfa-status\"><div class=\"tfa-status-text\"><div style=\"margin-bottom:8px\"><span class=\"badge badge-active\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"tfa-status\"><div class=\"tfa-status-text\"><div class=\"u-mb-12px\"><span class=\"badge badge-active\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -256,7 +256,7 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</summary><form method=\"post\" action=\"/settings/security/totp/disable\" style=\"margin-top:1rem\"><div class=\"form-group\" style=\"margin-bottom:12px\"><label class=\"form-label\" for=\"disable_password\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</summary><form method=\"post\" action=\"/settings/security/totp/disable\" class=\"u-mt-1\"><div class=\"form-group u-mb-12px\"><label class=\"form-label\" for=\"disable_password\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -287,7 +287,7 @@ func SecuritySettings(totpEnabled bool, email string, flash string) templ.Compon
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"tfa-status\"><div class=\"tfa-status-text\"><div style=\"margin-bottom:8px\"><span class=\"badge badge-disabled\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"tfa-status\"><div class=\"tfa-status-text\"><div class=\"u-mb-12px\"><span class=\"badge badge-disabled\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -401,20 +401,20 @@ func TOTPSetup(qrCodeBase64, manualKey, errMsg string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<h2 class=\"settings-section-title\" style=\"font-size:1.2rem;margin-bottom:20px\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<h2 class=\"settings-section-title u-font-12 u-mb-20px\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "security.setupTwoFactor"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 103, Col: 119}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 103, Col: 95}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</h2><div class=\"settings-card\"><div style=\"padding:20px\"><p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</h2><div class=\"settings-card\"><div class=\"settings-card-pad\"><p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -427,7 +427,7 @@ func TOTPSetup(qrCodeBase64, manualKey, errMsg string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</p><div style=\"text-align:center;margin:2rem 0\"><img src=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</p><div class=\"u-text-center u-mt-2 u-mb-2\"><img src=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -440,14 +440,14 @@ func TOTPSetup(qrCodeBase64, manualKey, errMsg string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" alt=\"TOTP QR Code\" width=\"200\" height=\"200\"></div><p style=\"text-align:center;margin-top:12px;color:var(--text-muted)\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" alt=\"TOTP QR Code\" width=\"200\" height=\"200\"></div><p class=\"u-text-center u-mb-12px u-text-muted\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "security.manualKeyPrompt"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 110, Col: 112}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 110, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -466,14 +466,14 @@ func TOTPSetup(qrCodeBase64, manualKey, errMsg string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</span> <button type=\"button\" class=\"btn-copy\" onclick=\"navigator.clipboard.writeText(this.previousElementSibling.textContent.trim())\" title=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</span> <button type=\"button\" class=\"btn-copy\" data-copy-previous=\"true\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.copy"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 113, Col: 164}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 113, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -486,13 +486,13 @@ func TOTPSetup(qrCodeBase64, manualKey, errMsg string) templ.Component {
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.copy"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 113, Col: 201}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 113, Col: 139}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"></rect><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"></path></svg></button></div><form method=\"post\" action=\"/settings/security/totp/confirm\" style=\"margin-top:2rem;max-width:320px;margin-left:auto;margin-right:auto\"><div class=\"form-group\" style=\"margin-bottom:16px\"><label class=\"form-label\" for=\"code\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"13\" height=\"13\" rx=\"2\" ry=\"2\"></rect><path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"></path></svg></button></div><form method=\"post\" action=\"/settings/security/totp/confirm\" class=\"u-mt-2 u-max-w-320 u-mx-auto\"><div class=\"form-group u-mb-16px\"><label class=\"form-label\" for=\"code\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -505,7 +505,7 @@ func TOTPSetup(qrCodeBase64, manualKey, errMsg string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</label> <input type=\"text\" name=\"code\" id=\"code\" class=\"form-input\" placeholder=\"Enter 6-digit code\" required autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9]{6}\" maxlength=\"6\" aria-label=\"TOTP verification code\" style=\"font-size:18px;letter-spacing:4px;text-align:center;font-weight:600\"></div><div style=\"display:flex;gap:0.75rem;align-items:center\"><button type=\"submit\" class=\"btn-primary\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</label> <input type=\"text\" name=\"code\" id=\"code\" class=\"form-input manual-code-input\" placeholder=\"Enter 6-digit code\" required autocomplete=\"one-time-code\" inputmode=\"numeric\" pattern=\"[0-9]{6}\" maxlength=\"6\" aria-label=\"TOTP verification code\"></div><div class=\"u-flex u-gap-075 u-items-center\"><button type=\"submit\" class=\"btn-primary\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -604,7 +604,7 @@ func TOTPRecoveryCodes(codes []string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</h2><div class=\"flash flash-warning\" style=\"margin-bottom:1.5rem\"><div class=\"flash-icon\">&#9888;</div><div class=\"flash-content\"><strong>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</h2><div class=\"flash flash-warning u-mb-15\"><div class=\"flash-icon\">&#9888;</div><div class=\"flash-content\"><strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -679,14 +679,14 @@ func TOTPRecoveryCodes(codes []string) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div><a href=\"/settings/security\" class=\"btn-primary\" style=\"display:inline-block;text-align:center;text-decoration:none\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div><a href=\"/settings/security\" class=\"btn-primary u-inline-block u-text-center u-text-decoration-none\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "security.savedCodes"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 160, Col: 152}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/security.templ`, Line: 160, Col: 136}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {

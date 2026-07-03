@@ -25,6 +25,7 @@ make test-cover       # go test -race -cover ./...
 make lint             # golangci-lint run
 make sec              # gosec ./... (security scanning)
 make run              # build + ./bin/bongo-go serve --dev
+make dev              # build + run dev server, validate, seed test data, wait (preferred for dev)
 make clean            # rm -rf bin/
 
 # Run a single test
@@ -85,6 +86,7 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 
 - `server` — Raft voter, storage, all protocols. 3 or 5 form a quorum.
 - `edge` — Stateless proxy. Runs protocol listeners, forwards to servers. No Raft, no local storage.
+- `agent` — Stateless remote protocol processor (SMTP, IMAP, etc.). Registers with servers via gRPC. No storage.
 - `dev` — All-in-one, single node, ephemeral storage. Zero config.
 
 ## Pebble Key Space
@@ -131,7 +133,7 @@ Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs ol
 - **Packages:** `internal/` for all private code. Public API only in `cmd/`.
 - **Errors:** Wrap with `fmt.Errorf("context: %w", err)`. No sentinel errors unless needed for `errors.Is()`.
 - **Interfaces:** Define at the consumer, not the implementer. Storage, auth, and antispam backends are interfaces.
-- **Testing:** Table-driven tests. `t.TempDir()` for storage tests. `httptest` for handlers. `-race` always.
+- **Testing:** Table-driven tests. `t.TempDir()` for storage tests. `httptest` for handlers. `-race` always. Full-stack integration tests in `test/integration/`.
 - **Naming:** Go standard — `camelCase` unexported, `PascalCase` exported. No abbreviations except well-known (SMTP, IMAP, etc.).
 - **Config:** All values have sensible defaults. Dev mode requires zero config.
 - **Imports:** stdlib, then third-party, then internal (separated by blank lines).
@@ -162,3 +164,35 @@ Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs ol
 ### UI Patterns
 - Alpine.js `fetch()` for JSON API endpoints; HTMX for HTML fragment swaps. Don't use HTMX for JSON-returning endpoints.
 - Chi route ordering: static segments (`/mail/tag/{name}`) must be registered before wildcard segments (`/mail/{mailbox}`).
+
+## Repo-Specific Guardrails
+
+- **Never expose `/internal/*` routes on the public web router without real protection.**
+  Naming a route "internal" is not a security boundary. Internal control-plane endpoints must either live on a private listener, require explicit auth, or both.
+
+- **Do not ignore `ApplyCommand()` or other persistence errors on user-visible write paths.**
+  If the request would be shown as successful to a user or admin, write failures must normally fail the request. Best-effort writes are allowed only when:
+  1. the code comment says the write is best-effort,
+  2. the user-visible behavior still makes sense without it, and
+  3. the failure is logged with context.
+
+- **Do not claim multi-step Raft mutations are atomic unless they actually are.**
+  Many mailbox/message operations update multiple keys. If a flow uses multiple `ApplyCommand()` calls, either:
+  1. implement a composite command,
+  2. add compensation/rollback logic, or
+  3. document the partial-failure semantics explicitly.
+
+- **Do not trust `X-Forwarded-For` by default.**
+  Only trust forwarded client IP headers when the request came from a configured trusted proxy. Shared helper logic should be used instead of duplicating ad hoc parsing in handlers and middleware.
+
+- **Set cookie security policy explicitly.**
+  Auth-related cookies should not rely on browser defaults for `SameSite`. New auth or setup cookies must set `HttpOnly`, `Secure` where appropriate, and an explicit `SameSite` value.
+
+- **All cookie-authenticated mutating routes need CSRF protection or strict origin validation.**
+  POST/PUT/DELETE routes behind session cookies should not depend on browser defaults alone.
+
+- **Never log secrets, tokens, generated passwords, or session material.**
+  This includes session secrets, recovery material, API keys, and other values that can be replayed.
+
+- **HTTP servers should have explicit timeouts.**
+  New `http.Server` instances should set sensible `ReadHeaderTimeout`, `ReadTimeout`, `WriteTimeout`, and `IdleTimeout` values unless there is a documented reason not to.

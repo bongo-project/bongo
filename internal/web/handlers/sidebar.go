@@ -33,10 +33,10 @@ func LoadSidebarTags(ts *store.TagStore, userID, selected string) []templates.Si
 	for i := 0; i < limit; i++ {
 		twc := twcs[i]
 		result = append(result, templates.SidebarTagInfo{
-			Name:     twc.Tag.Name,
-			Colour:   templates.TagDotColour(twc.Tag.ColourIndex),
-			Count:    twc.Count,
-			Selected: selected == "tag:"+twc.Tag.Name,
+			Name:        twc.Tag.Name,
+			ColourIndex: twc.Tag.ColourIndex,
+			Count:       twc.Count,
+			Selected:    selected == "tag:"+twc.Tag.Name,
 		})
 	}
 	return result

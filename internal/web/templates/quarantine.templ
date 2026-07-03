@@ -26,14 +26,14 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 			<h1 class="admin-title">Quarantine</h1>
 			<p class="admin-subtitle">Messages held for review — release to deliver or delete to discard</p>
 			<!-- Bulk action toolbar -->
-			<div class="bulk-bar" x-show="selected.length > 0" x-cloak>
+			<div class="bulk-bar" x-bind:hidden="selected.length === 0" x-cloak>
 				<span class="bulk-label" x-text="selected.length + ' selected'"></span>
-				<form method="post" action="/admin/quarantine/bulk" style="margin:0;display:flex;gap:0.5rem" @submit="appendIds">
+				<form method="post" action="/admin/quarantine/bulk" class="u-m0 u-flex u-gap-05" @submit="appendIds">
 					<input type="hidden" name="action" value="release"/>
 					<div id="bulk-ids-release"></div>
 					<button type="submit" class="btn-outline">Release Selected</button>
 				</form>
-				<form method="post" action="/admin/quarantine/bulk" style="margin:0;display:flex;gap:0.5rem" @submit="appendIds">
+				<form method="post" action="/admin/quarantine/bulk" class="u-m0 u-flex u-gap-05" @submit="appendIds">
 					<input type="hidden" name="action" value="delete"/>
 					<div id="bulk-ids-delete"></div>
 					<button type="submit" class="btn-flush">Delete Selected</button>
@@ -43,15 +43,15 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 				<table class="admin-table" aria-label="Quarantined messages">
 					<thead>
 						<tr>
-							<th style="width:36px">
+							<th class="u-width-36px">
 								<input type="checkbox" aria-label="Select all" @change="toggleAll($event)" :checked="allSelected()"/>
 							</th>
 							<th scope="col">Date</th>
 							<th scope="col">Sender</th>
 							<th scope="col">Subject</th>
 							<th scope="col">Reason</th>
-							<th scope="col" style="width:60px">Score</th>
-							<th scope="col" style="width:160px">Actions</th>
+							<th scope="col" class="u-width-60px">Score</th>
+							<th scope="col" class="u-width-160px">Actions</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -65,20 +65,20 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 										aria-label={ "Select " + m.ID }
 									/>
 								</td>
-								<td style="white-space:nowrap;font-size:0.82rem;color:var(--text-muted)">{ m.ReceivedAt.Format("2006-01-02 15:04") }</td>
-								<td style="font-size:0.88rem">
-									<code style="font-size:0.82rem">{ m.Sender }</code>
+								<td class="u-white-space-nowrap u-font-082 u-text-muted">{ m.ReceivedAt.Format("2006-01-02 15:04") }</td>
+								<td class="u-font-088">
+									<code class="u-font-082">{ m.Sender }</code>
 								</td>
-								<td style="font-size:0.88rem">
+								<td class="u-font-088">
 									if m.Subject != "" {
 										{ m.Subject }
 									} else {
-										<span style="color:var(--text-muted)">(no subject)</span>
+										<span class="u-text-muted">(no subject)</span>
 									}
 								</td>
-								<td style="font-size:0.82rem;color:var(--text-muted)">
+								<td class="u-font-082 u-text-muted">
 									if m.Stage != "" {
-										<span class="badge badge-disabled" style="margin-right:0.3rem">{ m.Stage }</span>
+										<span class="badge badge-disabled u-mr-03">{ m.Stage }</span>
 									}
 									{ truncate(m.Reason, 80) }
 								</td>
@@ -101,7 +101,7 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 						}
 						if len(msgs) == 0 {
 							<tr>
-								<td colspan="7" style="text-align:center;color:var(--text-muted);padding:2rem">
+								<td colspan="7" class="u-text-center u-text-muted u-p-2rem">
 									No quarantined messages.
 								</td>
 							</tr>
@@ -110,38 +110,11 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 				</table>
 			</div>
 			if len(msgs) > 0 {
-				<p style="font-size:0.82rem;color:var(--text-muted);margin-top:0.5rem">
+				<p class="u-font-082 u-text-muted u-mt-05">
 					{ fmt.Sprint(len(msgs)) } message(s) in quarantine
 				</p>
 			}
 		</div>
-		<script>
-			function quarantineBulk() {
-				return {
-					selected: [],
-					allIds: Array.from(document.querySelectorAll('tbody input[type=checkbox]')).map(el => el.value),
-					toggleAll(event) {
-						this.selected = event.target.checked ? [...this.allIds] : [];
-					},
-					allSelected() {
-						return this.allIds.length > 0 && this.selected.length === this.allIds.length;
-					},
-					appendIds(event) {
-						var form = event.target;
-						var container = form.querySelector('div[id^="bulk-ids"]');
-						if (!container) return;
-						container.innerHTML = '';
-						this.selected.forEach(function(id) {
-							var input = document.createElement('input');
-							input.type = 'hidden';
-							input.name = 'ids';
-							input.value = id;
-							container.appendChild(input);
-						});
-					}
-				}
-			}
-		</script>
 	}
 }
 

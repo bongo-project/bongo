@@ -15,8 +15,8 @@ templ ImportPage(mailboxes []string) {
 			}
 			<option value="">{ t(ctx, "import.newMailboxOption") }</option>
 		</select>
-		<input type="text" name="new_mailbox" placeholder={ t(ctx, "import.newMailboxPlaceholder") } style="margin-top:0.5rem"/>
-		<button type="submit" style="margin-top:1rem">{ t(ctx, "import.import") }</button>
+		<input type="text" name="new_mailbox" placeholder={ t(ctx, "import.newMailboxPlaceholder") } class="u-mt-05"/>
+		<button type="submit" class="u-mt-1">{ t(ctx, "import.import") }</button>
 	</form>
 }
 
@@ -29,5 +29,5 @@ templ ImportResult(imported int, failed int, mailbox string) {
 		}
 	</p>
 	<a href={ templ.SafeURL(mailboxURL(mailbox)) } role="button">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
-	<a href="/import" role="button" class="outline secondary" style="margin-left:0.5rem">{ t(ctx, "import.importMore") }</a>
+	<a href="/import" role="button" class="outline secondary u-ml-05">{ t(ctx, "import.importMore") }</a>
 }

@@ -68,7 +68,7 @@ func AdminQuarantine(msgs []QuarantineEntry, email, flash string) templ.Componen
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<h1 class=\"admin-title\">Quarantine</h1><p class=\"admin-subtitle\">Messages held for review — release to deliver or delete to discard</p><!-- Bulk action toolbar --><div class=\"bulk-bar\" x-show=\"selected.length > 0\" x-cloak><span class=\"bulk-label\" x-text=\"selected.length + ' selected'\"></span><form method=\"post\" action=\"/admin/quarantine/bulk\" style=\"margin:0;display:flex;gap:0.5rem\" @submit=\"appendIds\"><input type=\"hidden\" name=\"action\" value=\"release\"><div id=\"bulk-ids-release\"></div><button type=\"submit\" class=\"btn-outline\">Release Selected</button></form><form method=\"post\" action=\"/admin/quarantine/bulk\" style=\"margin:0;display:flex;gap:0.5rem\" @submit=\"appendIds\"><input type=\"hidden\" name=\"action\" value=\"delete\"><div id=\"bulk-ids-delete\"></div><button type=\"submit\" class=\"btn-flush\">Delete Selected</button></form></div><div class=\"admin-table-card\"><table class=\"admin-table\" aria-label=\"Quarantined messages\"><thead><tr><th style=\"width:36px\"><input type=\"checkbox\" aria-label=\"Select all\" @change=\"toggleAll($event)\" :checked=\"allSelected()\"></th><th scope=\"col\">Date</th><th scope=\"col\">Sender</th><th scope=\"col\">Subject</th><th scope=\"col\">Reason</th><th scope=\"col\" style=\"width:60px\">Score</th><th scope=\"col\" style=\"width:160px\">Actions</th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<h1 class=\"admin-title\">Quarantine</h1><p class=\"admin-subtitle\">Messages held for review — release to deliver or delete to discard</p><!-- Bulk action toolbar --><div class=\"bulk-bar\" x-bind:hidden=\"selected.length === 0\" x-cloak><span class=\"bulk-label\" x-text=\"selected.length + ' selected'\"></span><form method=\"post\" action=\"/admin/quarantine/bulk\" class=\"u-m0 u-flex u-gap-05\" @submit=\"appendIds\"><input type=\"hidden\" name=\"action\" value=\"release\"><div id=\"bulk-ids-release\"></div><button type=\"submit\" class=\"btn-outline\">Release Selected</button></form><form method=\"post\" action=\"/admin/quarantine/bulk\" class=\"u-m0 u-flex u-gap-05\" @submit=\"appendIds\"><input type=\"hidden\" name=\"action\" value=\"delete\"><div id=\"bulk-ids-delete\"></div><button type=\"submit\" class=\"btn-flush\">Delete Selected</button></form></div><div class=\"admin-table-card\"><table class=\"admin-table\" aria-label=\"Quarantined messages\"><thead><tr><th class=\"u-width-36px\"><input type=\"checkbox\" aria-label=\"Select all\" @change=\"toggleAll($event)\" :checked=\"allSelected()\"></th><th scope=\"col\">Date</th><th scope=\"col\">Sender</th><th scope=\"col\">Subject</th><th scope=\"col\">Reason</th><th scope=\"col\" class=\"u-width-60px\">Score</th><th scope=\"col\" class=\"u-width-160px\">Actions</th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -99,33 +99,33 @@ func AdminQuarantine(msgs []QuarantineEntry, email, flash string) templ.Componen
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"></td><td style=\"white-space:nowrap;font-size:0.82rem;color:var(--text-muted)\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"></td><td class=\"u-white-space-nowrap u-font-082 u-text-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(m.ReceivedAt.Format("2006-01-02 15:04"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/quarantine.templ`, Line: 68, Col: 122}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/quarantine.templ`, Line: 68, Col: 106}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</td><td style=\"font-size:0.88rem\"><code style=\"font-size:0.82rem\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</td><td class=\"u-font-088\"><code class=\"u-font-082\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(m.Sender)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/quarantine.templ`, Line: 70, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/quarantine.templ`, Line: 70, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</code></td><td style=\"font-size:0.88rem\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</code></td><td class=\"u-font-088\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -140,24 +140,24 @@ func AdminQuarantine(msgs []QuarantineEntry, email, flash string) templ.Componen
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<span style=\"color:var(--text-muted)\">(no subject)</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<span class=\"u-text-muted\">(no subject)</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</td><td style=\"font-size:0.82rem;color:var(--text-muted)\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</td><td class=\"u-font-082 u-text-muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if m.Stage != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<span class=\"badge badge-disabled\" style=\"margin-right:0.3rem\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<span class=\"badge badge-disabled u-mr-03\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(m.Stage)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/quarantine.templ`, Line: 81, Col: 82}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/quarantine.templ`, Line: 81, Col: 62}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -244,7 +244,7 @@ func AdminQuarantine(msgs []QuarantineEntry, email, flash string) templ.Componen
 				}
 			}
 			if len(msgs) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<tr><td colspan=\"7\" style=\"text-align:center;color:var(--text-muted);padding:2rem\">No quarantined messages.</td></tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<tr><td colspan=\"7\" class=\"u-text-center u-text-muted u-p-2rem\">No quarantined messages.</td></tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -254,7 +254,7 @@ func AdminQuarantine(msgs []QuarantineEntry, email, flash string) templ.Componen
 				return templ_7745c5c3_Err
 			}
 			if len(msgs) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p style=\"font-size:0.82rem;color:var(--text-muted);margin-top:0.5rem\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p class=\"u-font-082 u-text-muted u-mt-05\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -272,7 +272,7 @@ func AdminQuarantine(msgs []QuarantineEntry, email, flash string) templ.Componen
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div><script>\n\t\t\tfunction quarantineBulk() {\n\t\t\t\treturn {\n\t\t\t\t\tselected: [],\n\t\t\t\t\tallIds: Array.from(document.querySelectorAll('tbody input[type=checkbox]')).map(el => el.value),\n\t\t\t\t\ttoggleAll(event) {\n\t\t\t\t\t\tthis.selected = event.target.checked ? [...this.allIds] : [];\n\t\t\t\t\t},\n\t\t\t\t\tallSelected() {\n\t\t\t\t\t\treturn this.allIds.length > 0 && this.selected.length === this.allIds.length;\n\t\t\t\t\t},\n\t\t\t\t\tappendIds(event) {\n\t\t\t\t\t\tvar form = event.target;\n\t\t\t\t\t\tvar container = form.querySelector('div[id^=\"bulk-ids\"]');\n\t\t\t\t\t\tif (!container) return;\n\t\t\t\t\t\tcontainer.innerHTML = '';\n\t\t\t\t\t\tthis.selected.forEach(function(id) {\n\t\t\t\t\t\t\tvar input = document.createElement('input');\n\t\t\t\t\t\t\tinput.type = 'hidden';\n\t\t\t\t\t\t\tinput.name = 'ids';\n\t\t\t\t\t\t\tinput.value = id;\n\t\t\t\t\t\t\tcontainer.appendChild(input);\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t</script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

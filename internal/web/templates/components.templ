@@ -20,10 +20,10 @@ type MailboxInfo struct {
 
 // SidebarTagInfo holds display data for a single tag in the sidebar.
 type SidebarTagInfo struct {
-	Name     string // Tag name
-	Colour   string // CSS colour value from the tag palette
-	Count    int    // Number of messages bearing this tag
-	Selected bool   // True when the current view is this tag
+	Name        string // Tag name
+	ColourIndex int32  // Palette index from the tag palette
+	Count       int    // Number of messages bearing this tag
+	Selected    bool   // True when the current view is this tag
 }
 
 templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
@@ -43,7 +43,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 					<span>{ t(ctx, "nav.tags") }</span>
 					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
 				</div>
-				<ul class="nav-list" x-show="open" aria-label="Tags">
+				<ul class="nav-list" x-bind:hidden="!open" aria-label="Tags">
 					for i, tag := range tags {
 						if i < 20 {
 							<li class="nav-item">
@@ -56,7 +56,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 									hx-target="#main-content"
 									hx-push-url="true"
 								>
-									<span class="nav-tag-dot" style={ "background:" + tag.Colour } aria-hidden="true"></span>
+									<span class={ "nav-tag-dot", tagPaletteBGClass(tag.ColourIndex) } aria-hidden="true"></span>
 									<span>{ tag.Name }</span>
 									if tag.Count > 0 {
 										<span class="nav-badge" aria-label={ fmt.Sprintf("%d messages", tag.Count) }>{ fmt.Sprint(tag.Count) }</span>
@@ -81,7 +81,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				<span>{ t(ctx, "nav.views") }</span>
 				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
 			</div>
-			<ul class="nav-list" x-show="open">
+			<ul class="nav-list" x-bind:hidden="!open">
 				<li class="nav-item">
 					<a
 						href="/mail/unread"
@@ -132,7 +132,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				<span>{ t(ctx, "nav.quickLinks") }</span>
 				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
 			</div>
-			<ul class="nav-list" x-show="open" aria-label="Applications">
+			<ul class="nav-list" x-bind:hidden="!open" aria-label="Applications">
 				<li class="nav-item">
 					<a href="/contacts">
 						<span class="nav-icon" aria-hidden="true">&#128101;</span>
@@ -165,7 +165,7 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 				<button
 					type="button"
 					class="folder-toggle"
-					onclick="event.stopPropagation(); var li = this.closest('.nav-has-children'); li.classList.toggle('collapsed'); this.setAttribute('aria-expanded', !li.classList.contains('collapsed'));"
+					data-folder-toggle="true"
 					aria-expanded="true"
 					aria-label="Toggle subfolder"
 				>
@@ -274,12 +274,11 @@ templ FlashMessage(msg, level string) {
 templ ContextMenu() {
 	<div
 		x-data="contextMenu"
-		x-show="visible"
+		x-bind:hidden="!visible"
 		x-on:click.away="close()"
 		x-on:keydown.escape.window="close()"
 		x-on:keydown="onKeydown($event)"
 		x-on:ctx-menu.window="openAt($event.detail.x, $event.detail.y, $event.detail.uid, $event.detail.mailbox)"
-		x-bind:style="'left:' + x + 'px;top:' + y + 'px'"
 		class="context-menu"
 		role="menu"
 		x-cloak=""
@@ -296,7 +295,7 @@ templ ContextMenu() {
 		<hr/>
 		<div class="ctx-tag-submenu" x-data="{ tagOpen: false, tagInput: '' }">
 			<a role="menuitem" class="ctx-tag-toggle" x-on:click.stop="tagOpen = !tagOpen">Tag...</a>
-			<div x-show="tagOpen" x-cloak="" class="ctx-tag-input-row">
+			<div x-bind:hidden="!tagOpen" x-cloak="" class="ctx-tag-input-row">
 				<input
 					type="text"
 					x-model="tagInput"

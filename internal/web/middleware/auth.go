@@ -64,6 +64,7 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(expiry.Seconds()),
 	}
 }
@@ -75,6 +76,7 @@ func ClearSessionCookie() *http.Cookie {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	}
 }
@@ -218,6 +220,7 @@ func CreatePendingCookie(secret []byte, userID, email string, remember, isAdmin,
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(pendingCookieTTL.Seconds()),
 	}
 }
@@ -276,6 +279,7 @@ func ClearPendingCookie() *http.Cookie {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
 		MaxAge:   -1,
 	}
 }

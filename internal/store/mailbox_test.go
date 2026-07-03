@@ -16,6 +16,10 @@ type directApplier struct {
 }
 
 func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	if cmd.Op == bongov1.Op_OP_PUT && IsMailboxSyntheticCommand(cmd.Key) {
+		_, err := ApplyMailboxCommand(a.store, cmd)
+		return err
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		return a.store.Set(cmd.Key, cmd.Value)
@@ -357,6 +361,73 @@ func TestStoreMailMeta(t *testing.T) {
 	}
 	if got.Subject != "Hello" {
 		t.Errorf("subject = %q, want %q", got.Subject, "Hello")
+	}
+}
+
+func TestDeliverMessage(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	userID := "user1"
+
+	meta := &bongov1.MailMeta{
+		Guid:       "deliver-guid",
+		Subject:    "Delivered",
+		From:       "sender@example.com",
+		To:         []string{"user@example.com"},
+		ReceivedAt: 1700000000,
+		RawMessage: &bongov1.BlobRef{Hash: "abc123", Size: 42},
+	}
+
+	uid, err := ms.DeliverMessage(userID, "INBOX", meta, FlagSeen)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+	if uid != 1 {
+		t.Fatalf("uid = %d, want 1", uid)
+	}
+
+	gotMetaBytes, err := ms.store.Get([]byte(fmt.Sprintf("/user/%s/mail/%s", userID, meta.Guid)))
+	if err != nil {
+		t.Fatalf("Get mail meta: %v", err)
+	}
+	var gotMeta bongov1.MailMeta
+	if err := proto.Unmarshal(gotMetaBytes, &gotMeta); err != nil {
+		t.Fatalf("Unmarshal meta: %v", err)
+	}
+	if gotMeta.Subject != meta.Subject {
+		t.Errorf("subject = %q, want %q", gotMeta.Subject, meta.Subject)
+	}
+
+	msg, err := ms.GetMessage(userID, "INBOX", 1)
+	if err != nil {
+		t.Fatalf("GetMessage: %v", err)
+	}
+	if msg.MailGuid != meta.Guid {
+		t.Errorf("mail_guid = %q, want %q", msg.MailGuid, meta.Guid)
+	}
+	if msg.Flags != FlagSeen {
+		t.Errorf("flags = %d, want %d", msg.Flags, FlagSeen)
+	}
+}
+
+func TestDeliverMessageCreatesMailbox(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+
+	meta := &bongov1.MailMeta{
+		Guid:       "auto-create-guid",
+		Subject:    "Auto Create",
+		ReceivedAt: 1700000000,
+	}
+
+	if _, err := ms.DeliverMessage("user1", "Rules/Newsletters", meta, 0); err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+
+	mb, err := ms.GetMailbox("user1", "Rules/Newsletters")
+	if err != nil {
+		t.Fatalf("GetMailbox: %v", err)
+	}
+	if mb.UidNext != 2 {
+		t.Errorf("UidNext = %d, want 2", mb.UidNext)
 	}
 }
 

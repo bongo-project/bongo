@@ -45,45 +45,44 @@ templ TagSettingsPage(data TagSettingsData) {
 		</aside>
 		<main class="content" id="main-content">
 			<div class="settings-scroll">
-				<div class="settings-container" style="max-width:960px">
+				<div class="settings-container u-max-w-960">
 					if data.Flash != "" {
 						@FlashMessage(data.Flash, "success")
 					}
-					<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem">
-						<h2 style="margin:0">{ t(ctx, "nav.tags") }</h2>
+					<div class="page-header page-header-row">
+						<h2 class="u-m0">{ t(ctx, "nav.tags") }</h2>
 					</div>
 					<div
 						id="tag-settings"
 						x-data={ fmt.Sprintf(`tagSettings(%s)`, tagSettingsPaletteJS()) }
 					>
 						<!-- Tag list -->
-						<div class="settings-card" style="margin-bottom:1.5rem">
+						<div class="settings-card u-mb-24px">
 							<template x-if="tags.length === 0">
-								<p class="secondary-text" style="padding:1rem 1.25rem; margin:0">No tags yet. Create one below.</p>
+								<p class="secondary-text u-m0 u-py-16 u-px-20">No tags yet. Create one below.</p>
 							</template>
 							<template x-for="tag in tags" :key="tag.name">
 								<div class="settings-row tag-settings-row">
 									<!-- Colour swatch -->
 									<span
-										class="tag-swatch tag-settings-swatch"
-										:style="`background: ${tag.colour}; width:14px; height:14px; flex-shrink:0`"
-										:title="tag.colour"
+										class="tag-swatch tag-settings-swatch tag-swatch-md"
+										:class="tagPaletteBGClass(tag.colourIndex)"
+										:title="tagPaletteHex(tag.colourIndex)"
 									></span>
 									<!-- Name / inline edit -->
-									<div class="settings-row-label" style="min-width:0; flex:1">
+									<div class="settings-row-label u-flex-1 u-min-w-0">
 										<template x-if="editingTag !== tag.name">
 											<span class="settings-row-title" x-text="tag.name"></span>
 										</template>
 										<template x-if="editingTag === tag.name">
 											<input
 												type="text"
-												class="settings-input"
+												class="settings-input u-max-w-280"
 												x-model="editName"
 												x-on:keydown.enter.prevent="saveTag(tag)"
 												x-on:keydown.escape="cancelEdit()"
 												x-ref="editInput"
 												aria-label="Tag name"
-												style="max-width:280px"
 											/>
 										</template>
 									</div>
@@ -92,7 +91,6 @@ templ TagSettingsPage(data TagSettingsData) {
 										class="nav-badge"
 										x-text="tag.count"
 										:title="`${tag.count} message(s)`"
-										style="flex-shrink:0"
 									></span>
 									<!-- Colour picker (shown in edit mode) -->
 									<template x-if="editingTag === tag.name">
@@ -101,7 +99,7 @@ templ TagSettingsPage(data TagSettingsData) {
 												<button
 													type="button"
 													class="tag-colour-swatch-btn"
-													:style="`background:${colour}; outline: editColourIndex === idx ? '2px solid var(--text)' : 'none'; outline-offset:'2px'`"
+													:class="[tagPaletteBGClass(idx), editColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']"
 													:aria-label="`Colour ${idx}`"
 													:aria-pressed="editColourIndex === idx"
 													x-on:click="editColourIndex = idx"
@@ -110,7 +108,7 @@ templ TagSettingsPage(data TagSettingsData) {
 										</div>
 									</template>
 									<!-- Action buttons -->
-									<div class="tag-settings-actions" style="display:flex; gap:6px; flex-shrink:0">
+									<div class="tag-settings-actions u-flex u-gap-6px u-flex-shrink-0">
 										<template x-if="editingTag !== tag.name && confirmDeleteTag !== tag.name">
 											<button
 												type="button"
@@ -145,7 +143,7 @@ templ TagSettingsPage(data TagSettingsData) {
 											>&#x2715;</button>
 										</template>
 										<template x-if="confirmDeleteTag === tag.name">
-											<span style="display:flex; align-items:center; gap:6px; font-size:0.82rem; color:var(--text-secondary)">
+											<span class="u-flex u-items-center u-gap-6px u-font-082 u-text-muted">
 												Delete?
 												<button
 													type="button"
@@ -166,14 +164,14 @@ templ TagSettingsPage(data TagSettingsData) {
 						</div>
 						<!-- Error message -->
 						<template x-if="errorMsg">
-							<div role="alert" class="flash flash-error" style="margin-bottom:1rem" x-text="errorMsg"></div>
+							<div role="alert" class="flash flash-error u-mb-1" x-text="errorMsg"></div>
 						</template>
 						<!-- Create new tag -->
 						<div class="settings-card">
-							<div class="settings-section-title" style="padding:14px 18px 0; font-size:0.9rem; font-weight:600">Add new tag</div>
-							<div class="settings-row" style="flex-wrap:wrap; gap:10px; align-items:flex-start">
-								<div style="display:flex; flex-direction:column; gap:4px; flex:1; min-width:180px">
-									<label for="new-tag-name" class="settings-row-title" style="font-size:0.82rem">Name</label>
+							<div class="settings-section-title u-font-09 u-fw-600 u-pt-14 u-px-18">Add new tag</div>
+							<div class="settings-row u-flex-wrap u-gap-10px u-items-start">
+								<div class="u-flex u-flex-col u-flex-1 u-min-w-180 u-gap-4px">
+									<label for="new-tag-name" class="settings-row-title u-font-082">Name</label>
 									<input
 										id="new-tag-name"
 										type="text"
@@ -185,14 +183,14 @@ templ TagSettingsPage(data TagSettingsData) {
 										aria-label="New tag name"
 									/>
 								</div>
-								<div style="display:flex; flex-direction:column; gap:4px">
-									<span class="settings-row-title" style="font-size:0.82rem" id="new-colour-label">Colour</span>
+								<div class="u-flex u-flex-col u-gap-4px">
+									<span class="settings-row-title u-font-082" id="new-colour-label">Colour</span>
 									<div class="tag-colour-picker" role="group" aria-labelledby="new-colour-label">
 										<template x-for="(colour, idx) in palette" :key="idx">
 											<button
 												type="button"
 												class="tag-colour-swatch-btn"
-												:style="`background:${colour}; outline: newTagColourIndex === idx ? '2px solid var(--text)' : 'none'; outline-offset:'2px'`"
+												:class="[tagPaletteBGClass(idx), newTagColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']"
 												:aria-label="`Colour ${idx}`"
 												:aria-pressed="newTagColourIndex === idx"
 												x-on:click="newTagColourIndex = idx"
@@ -200,7 +198,7 @@ templ TagSettingsPage(data TagSettingsData) {
 										</template>
 									</div>
 								</div>
-								<div style="display:flex; align-items:flex-end; padding-bottom:2px">
+								<div class="u-flex u-items-end u-pb-2">
 									<button
 										type="button"
 										class="btn-save"
@@ -214,143 +212,5 @@ templ TagSettingsPage(data TagSettingsData) {
 				</div>
 			</div>
 		</main>
-		<script>
-		function tagSettings(palette) {
-			return {
-				palette: palette,
-				tags: [],
-				editingTag: null,
-				editName: '',
-				editColourIndex: 0,
-				confirmDeleteTag: null,
-				newTagName: '',
-				newTagColourIndex: 0,
-				savingTag: false,
-				deletingTag: false,
-				creatingTag: false,
-				errorMsg: null,
-
-				init() {
-					this.loadTags();
-				},
-
-				loadTags() {
-					fetch('/api/tags')
-						.then(r => r.ok ? r.json() : Promise.reject(r))
-						.then(data => {
-							this.tags = data.map(t => ({
-								name: t.name,
-								colourIndex: t.colour_index,
-								colour: palette[t.colour_index] || palette[0],
-								count: t.count,
-								sortOrder: t.sort_order,
-							}));
-						})
-						.catch(() => { this.errorMsg = 'Failed to load tags.'; });
-				},
-
-				startEdit(tag) {
-					this.editingTag = tag.name;
-					this.editName = tag.name;
-					this.editColourIndex = tag.colourIndex;
-					this.confirmDeleteTag = null;
-					this.errorMsg = null;
-					this.$nextTick(() => {
-						if (this.$refs.editInput) this.$refs.editInput.focus();
-					});
-				},
-
-				cancelEdit() {
-					this.editingTag = null;
-					this.editName = '';
-					this.editColourIndex = 0;
-					this.errorMsg = null;
-				},
-
-				saveTag(tag) {
-					if (this.savingTag) return;
-					const name = this.editName.trim();
-					if (!name) { this.errorMsg = 'Tag name cannot be empty.'; return; }
-
-					const body = {};
-					if (name !== tag.name) body.name = name;
-					if (this.editColourIndex !== tag.colourIndex) body.colour_index = this.editColourIndex;
-
-					if (Object.keys(body).length === 0) {
-						this.cancelEdit();
-						return;
-					}
-
-					this.savingTag = true;
-					this.errorMsg = null;
-					fetch('/api/tags/' + encodeURIComponent(tag.name), {
-						method: 'PUT',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify(body),
-					})
-						.then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
-						.then(() => {
-							this.cancelEdit();
-							this.loadTags();
-						})
-						.catch(err => {
-							this.errorMsg = typeof err === 'string' ? err : 'Failed to save tag.';
-						})
-						.finally(() => { this.savingTag = false; });
-				},
-
-				deleteTag(tag) {
-					if (this.deletingTag) return;
-					this.deletingTag = true;
-					this.errorMsg = null;
-					fetch('/api/tags/' + encodeURIComponent(tag.name), { method: 'DELETE' })
-						.then(r => {
-							if (!r.ok) return r.text().then(t => Promise.reject(t));
-						})
-						.then(() => {
-							this.confirmDeleteTag = null;
-							this.loadTags();
-						})
-						.catch(err => {
-							this.errorMsg = typeof err === 'string' ? err : 'Failed to delete tag.';
-						})
-						.finally(() => { this.deletingTag = false; });
-				},
-
-				createTag() {
-					const name = this.newTagName.trim();
-					if (!name || this.creatingTag) return;
-					this.creatingTag = true;
-					this.errorMsg = null;
-					// Create with default colour, then update colour if non-default.
-					fetch('/api/tags', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ name: name }),
-					})
-						.then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)))
-						.then(created => {
-							// If the user chose a non-default colour, apply it now.
-							if (this.newTagColourIndex !== created.colour_index) {
-								return fetch('/api/tags/' + encodeURIComponent(created.name), {
-									method: 'PUT',
-									headers: { 'Content-Type': 'application/json' },
-									body: JSON.stringify({ colour_index: this.newTagColourIndex }),
-								}).then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(t)));
-							}
-						})
-						.then(() => {
-							this.newTagName = '';
-							this.newTagColourIndex = 0;
-							this.loadTags();
-						})
-						.catch(err => {
-							this.errorMsg = typeof err === 'string' ? err : 'Failed to create tag.';
-						})
-						.finally(() => { this.creatingTag = false; });
-				},
-			};
-		}
-		</script>
 	}
 }
