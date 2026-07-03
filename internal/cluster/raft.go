@@ -84,7 +84,18 @@ func NewRaftNode(
 		}
 
 		var netTransport *raft.NetworkTransport
-		if cfg.Cluster.TLS.CertFile != "" && cfg.Cluster.TLS.KeyFile != "" {
+		useTLS := cfg.Cluster.TLS.CertFile != "" && cfg.Cluster.TLS.KeyFile != ""
+		// Tolerate a not-yet-provisioned cert on first boot (mirrors the mail
+		// listeners): warn loudly and fall back to a plaintext transport rather
+		// than crashing. A cert that exists but fails to load is a real
+		// misconfiguration and still fails hard below.
+		if useTLS {
+			if _, statErr := os.Stat(cfg.Cluster.TLS.CertFile); os.IsNotExist(statErr) {
+				logger.Warn("raft: TLS certificate not found, using an unencrypted transport; provide the cert and restart", "cert_file", cfg.Cluster.TLS.CertFile)
+				useTLS = false
+			}
+		}
+		if useTLS {
 			tlsCfg, tlsErr := loadRaftTLS(cfg)
 			if tlsErr != nil {
 				return nil, fmt.Errorf("loading raft TLS: %w", tlsErr)
