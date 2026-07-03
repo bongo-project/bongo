@@ -5,10 +5,12 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -349,3 +351,131 @@ func TestBlobGetNotFound(t *testing.T) {
 	}
 }
 
+func TestIsValidHash(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{
+			name:  "valid 64-char lowercase hex",
+			input: "a3f1b2c4d5e6f7089012345678901234567890abcdef0123456789abcdef0123",
+			want:  true,
+		},
+		{
+			name:  "all zeros",
+			input: "0000000000000000000000000000000000000000000000000000000000000000",
+			want:  true,
+		},
+		{
+			name:  "all fs",
+			input: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+			want:  true,
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  false,
+		},
+		{
+			name:  "63 chars (too short)",
+			input: "a3f1b2c4d5e6f7089012345678901234567890abcdef0123456789abcdef012",
+			want:  false,
+		},
+		{
+			name:  "65 chars (too long)",
+			input: "a3f1b2c4d5e6f7089012345678901234567890abcdef0123456789abcdef01234",
+			want:  false,
+		},
+		{
+			name:  "uppercase hex rejected",
+			input: "A3F1B2C4D5E6F7089012345678901234567890ABCDEF0123456789ABCDEF0123",
+			want:  false,
+		},
+		{
+			name:  "mixed case rejected",
+			input: "a3f1B2c4d5e6f7089012345678901234567890abcdef0123456789abcdef0123",
+			want:  false,
+		},
+		{
+			name:  "path traversal sequence",
+			input: "../../../../../../../../../../../../../../etc/passwd/0000000000000",
+			want:  false,
+		},
+		{
+			name:  "double-dot component",
+			input: ".." + strings.Repeat("0", 62),
+			want:  false,
+		},
+		{
+			name:  "percent-encoded traversal",
+			input: "%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f%2e%2e%2fpasswd00",
+			want:  false,
+		},
+		{
+			name:  "non-hex chars (g-z)",
+			input: "g3f1b2c4d5e6f7089012345678901234567890abcdef0123456789abcdef0123",
+			want:  false,
+		},
+		{
+			name:  "slash in hash",
+			input: "/3f1b2c4d5e6f7089012345678901234567890abcdef0123456789abcdef0123",
+			want:  false,
+		},
+		{
+			name:  "null byte in hash",
+			input: "\x003f1b2c4d5e6f7089012345678901234567890abcdef0123456789abcdef012",
+			want:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := IsValidHash(tc.input)
+			if got != tc.want {
+				t.Errorf("IsValidHash(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBlobStoreRejectsInvalidHash(t *testing.T) {
+	bs := newTestBlobStore(t)
+
+	invalidHashes := []string{
+		"",
+		"short",
+		"../../etc/passwd",
+		"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+		strings.Repeat("0", 63),
+		strings.Repeat("0", 65),
+	}
+
+	for _, hash := range invalidHashes {
+		t.Run("Get/"+hash, func(t *testing.T) {
+			_, err := bs.Get(hash)
+			if err == nil {
+				t.Fatalf("Get(%q): expected error, got nil", hash)
+			}
+			if !errors.Is(err, ErrInvalidHash) {
+				t.Errorf("Get(%q): error = %v, want ErrInvalidHash", hash, err)
+			}
+		})
+
+		t.Run("Exists/"+hash, func(t *testing.T) {
+			if bs.Exists(hash) {
+				t.Errorf("Exists(%q): want false for invalid hash", hash)
+			}
+		})
+
+		t.Run("Delete/"+hash, func(t *testing.T) {
+			err := bs.Delete(hash)
+			if err == nil {
+				t.Fatalf("Delete(%q): expected error, got nil", hash)
+			}
+			if !errors.Is(err, ErrInvalidHash) {
+				t.Errorf("Delete(%q): error = %v, want ErrInvalidHash", hash, err)
+			}
+		})
+	}
+}

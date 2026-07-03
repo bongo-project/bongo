@@ -44,15 +44,29 @@ func (bs *BlobSyncer) SetSharedSecret(secret []byte) {
 	bs.secret = append([]byte(nil), secret...)
 }
 
+// shortHash returns the first 12 characters of h, or h itself if shorter.
+// Used for safe log truncation — never panics on short input.
+func shortHash(h string) string {
+	if len(h) <= 12 {
+		return h
+	}
+	return h[:12]
+}
+
 // Enqueue adds a blob hash to the sync queue if it doesn't exist locally.
+// Invalid hashes (not 64-char lowercase hex) are silently dropped with a warning.
 func (bs *BlobSyncer) Enqueue(hash string) {
+	if !store.IsValidHash(hash) {
+		bs.logger.Warn("blobsync: ignoring invalid hash", "hash", shortHash(hash))
+		return
+	}
 	if bs.blobs.Exists(hash) {
 		return
 	}
 	select {
 	case bs.queue <- hash:
 	default:
-		bs.logger.Warn("blobsync: queue full, dropping hash", "hash", hash[:12])
+		bs.logger.Warn("blobsync: queue full, dropping hash", "hash", shortHash(hash))
 	}
 }
 
@@ -67,7 +81,7 @@ func (bs *BlobSyncer) Run(ctx context.Context) {
 				continue
 			}
 			if err := bs.pull(hash); err != nil {
-				bs.logger.Warn("blobsync: pull failed", "hash", hash[:12], "error", err)
+				bs.logger.Warn("blobsync: pull failed", "hash", shortHash(hash), "error", err)
 			}
 		}
 	}
@@ -130,9 +144,9 @@ func (bs *BlobSyncer) pull(hash string) error {
 			return fmt.Errorf("hash mismatch: expected %s, got %s", hash, storedHash)
 		}
 
-		bs.logger.Debug("blobsync: pulled blob", "hash", hash[:12], "from", m.HTTPAddr)
+		bs.logger.Debug("blobsync: pulled blob", "hash", shortHash(hash), "from", m.HTTPAddr)
 		return nil
 	}
 
-	return fmt.Errorf("blob %s not found on any peer", hash[:12])
+	return fmt.Errorf("blob %s not found on any peer", shortHash(hash))
 }
