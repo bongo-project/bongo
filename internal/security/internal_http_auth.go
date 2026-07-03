@@ -1,10 +1,12 @@
 package security
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -13,20 +15,48 @@ import (
 const (
 	InternalAuthHeader    = "X-Bongo-Internal-Auth"
 	internalTimestampName = "ts"
-	internalSkew          = 5 * time.Minute
+	internalSkew          = 90 * time.Second
 )
+
+// signedPayload builds the string covered by the HMAC. It binds the timestamp,
+// method, URI, AND a hash of the request body so a captured signature cannot be
+// replayed with a different body.
+func signedPayload(ts int64, method, uri string, bodyHash string) string {
+	return fmt.Sprintf("%d|%s|%s|%s", ts, method, uri, bodyHash)
+}
 
 // SignInternalRequest adds an HMAC-based auth header for internal HTTP calls.
 func SignInternalRequest(r *http.Request, secret []byte) {
 	if len(secret) == 0 || r == nil {
 		return
 	}
+	bodyHash := hashBodyForSigning(r)
 	ts := time.Now().Unix()
-	payload := fmt.Sprintf("%d|%s|%s", ts, r.Method, r.URL.RequestURI())
+	payload := signedPayload(ts, r.Method, r.URL.RequestURI(), bodyHash)
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 	r.Header.Set(InternalAuthHeader, fmt.Sprintf("%s=%d,sig=%s", internalTimestampName, ts, sig))
+}
+
+// hashBodyForSigning returns the base64 SHA-256 of the request body without
+// consuming it for later transmission (uses GetBody when available).
+func hashBodyForSigning(r *http.Request) string {
+	var body []byte
+	switch {
+	case r.GetBody != nil:
+		if rc, err := r.GetBody(); err == nil {
+			body, _ = io.ReadAll(rc)
+			_ = rc.Close()
+		}
+	case r.Body != nil:
+		body, _ = io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		buf := body
+		r.GetBody = func() (io.ReadCloser, error) { return io.NopCloser(bytes.NewReader(buf)), nil }
+	}
+	sum := sha256.Sum256(body)
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // VerifyInternalRequest verifies the internal HTTP auth header.
@@ -73,7 +103,17 @@ func VerifyInternalRequest(r *http.Request, secret []byte) bool {
 	if err != nil {
 		return false
 	}
-	payload := fmt.Sprintf("%d|%s|%s", ts, r.Method, r.URL.RequestURI())
+
+	// Hash the body and restore it so the downstream handler can still read it.
+	var body []byte
+	if r.Body != nil {
+		body, _ = io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(body))
+	}
+	sum := sha256.Sum256(body)
+	bodyHash := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	payload := signedPayload(ts, r.Method, r.URL.RequestURI(), bodyHash)
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(payload))
 	return hmac.Equal(sig, mac.Sum(nil))

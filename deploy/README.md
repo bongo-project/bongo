@@ -303,4 +303,11 @@ Bleve indexes are rebuildable from Pebble + blobs.
   for production.
 - **No log rotation on `bongo.jsonl`:** add `logrotate` or cap it if it runs for
   a long time.
+- **Inbound SPF is blind behind Traefik TCP.** Because inbound SMTP (port 25) is
+  routed through Traefik's TCP entrypoint, bongo sees Traefik's IP as the sender,
+  not the real remote — so SPF checks and per-IP abuse controls don't see the
+  true client. Before relying on inbound spam filtering, either enable PROXY
+  protocol v2 on the Traefik TCP routers + a PROXY-protocol reader in bongo, or
+  expose port 25 directly (bypassing Traefik). See
+  `docs/security-review-2026-07-03.md` (NEW-1).
 - **This is preview software** — do not put irreplaceable mail here yet.

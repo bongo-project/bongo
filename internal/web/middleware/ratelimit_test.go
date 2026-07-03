@@ -174,9 +174,18 @@ func TestClientIP_RemoteAddr(t *testing.T) {
 			want:       "203.0.113.1",
 		},
 		{
-			name:       "X-Forwarded-For multiple",
+			// Rightmost entry is the one the trusted proxy appended for the
+			// real client; earlier entries are client-supplied and untrusted.
+			name:       "X-Forwarded-For multiple uses rightmost",
 			remoteAddr: "10.0.0.1:9999",
-			xff:        "203.0.113.1, 10.0.0.2, 10.0.0.3",
+			xff:        "10.0.0.2, 203.0.113.1",
+			want:       "203.0.113.1",
+		},
+		{
+			// An attacker prepending a spoofed IP cannot change the result.
+			name:       "X-Forwarded-For spoof resistant",
+			remoteAddr: "10.0.0.1:9999",
+			xff:        "6.6.6.6, 203.0.113.1",
 			want:       "203.0.113.1",
 		},
 		{

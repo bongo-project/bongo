@@ -84,6 +84,7 @@ type SMTPConfig struct {
 	Enabled        bool           `hcl:"enabled,optional" mapstructure:"enabled"`
 	Port           int            `hcl:"port,optional" mapstructure:"port"`
 	SubmissionPort int            `hcl:"submission_port,optional" mapstructure:"submission_port"`
+	Hostname       string         `hcl:"hostname,optional" mapstructure:"hostname"`
 	TLS            TLSConfig      `hcl:"tls,block" mapstructure:"tls"`
 	Limits         SMTPLimits     `hcl:"limits,block" mapstructure:"limits"`
 	Relay          SMTPRelay      `hcl:"relay,block" mapstructure:"relay"`
@@ -132,6 +133,10 @@ type WebConfig struct {
 	// PlainHTTP disables TLS for the web server. Use when running behind a
 	// TLS-terminating reverse proxy on a trusted network.
 	PlainHTTP bool `hcl:"plain_http,optional" mapstructure:"plain_http"`
+	// BehindTLSProxy indicates the web server is fronted by a trusted
+	// TLS-terminating proxy (e.g. Traefik). When set, auth cookies are marked
+	// Secure even though the local connection is plain HTTP.
+	BehindTLSProxy bool `hcl:"behind_tls_proxy,optional" mapstructure:"behind_tls_proxy"`
 }
 
 type CalDAVConfig struct {
