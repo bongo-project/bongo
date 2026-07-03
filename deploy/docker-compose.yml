@@ -1,0 +1,103 @@
+# Bongo-Go single-node deployment behind the existing Traefik (hostbox stack).
+#
+# Traefik already owns 80/443 and the mail entrypoints 25/587/143/993, so bongo
+# does NOT publish ports itself — Traefik routes to it over the shared
+# `traefik_web` network:
+#   - Web UI  : HTTP router  (mail.example.com -> bongo:8080), Traefik terminates TLS
+#   - Mail    : TCP routers on the smtp/submission/imap/imaps entrypoints,
+#               passed through to bongo, which terminates TLS itself using the
+#               Let's Encrypt cert extracted from Traefik's acme.json.
+#
+#   cp .env.example .env   # then edit
+#   docker compose up -d --build
+#   # once Traefik has issued the mail.example.com cert (see README §5):
+#   docker compose restart bongo
+
+services:
+  bongo:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: bongo-go:latest
+    container_name: bongo
+    restart: unless-stopped
+
+    environment:
+      # Injected into cfg.Web.SessionSecret (kept out of the config file).
+      BONGO_WEB_SESSION_SECRET: ${BONGO_WEB_SESSION_SECRET:?set in .env}
+
+    command: ["serve", "--config", "/etc/bongo/bongo.hcl"]
+
+    volumes:
+      - ./bongo.prod.hcl:/etc/bongo/bongo.hcl:ro
+      - ./secrets/dkim.key:/secrets/dkim.key:ro   # DKIM signing key (you generate this)
+      - bongo-certs:/certs:ro                     # mail TLS cert, written by certs-dumper
+      - ./logs:/logs                              # bongo.jsonl (shipped off-host)
+      - bongo-data:/data                          # Pebble, blobs, indexes, raft (persistent)
+
+    networks:
+      - traefik
+
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=${TRAEFIK_NETWORK}"
+
+      # --- Web UI (HTTP router; Traefik terminates TLS + issues the cert) ---
+      - "traefik.http.routers.bongo.rule=Host(`${WEB_HOST}`)"
+      - "traefik.http.routers.bongo.entrypoints=websecure"
+      - "traefik.http.routers.bongo.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.services.bongo.loadbalancer.server.port=8080"
+
+      # --- Mail (TCP passthrough; bongo terminates TLS) ---
+      # STARTTLS ports start in plaintext, so they must match HostSNI(`*`).
+      - "traefik.tcp.routers.bongo-smtp.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.bongo-smtp.entrypoints=smtp"
+      - "traefik.tcp.services.bongo-smtp.loadbalancer.server.port=25"
+
+      - "traefik.tcp.routers.bongo-submission.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.bongo-submission.entrypoints=submission"
+      - "traefik.tcp.services.bongo-submission.loadbalancer.server.port=587"
+
+      - "traefik.tcp.routers.bongo-imap.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.bongo-imap.entrypoints=imap"
+      - "traefik.tcp.services.bongo-imap.loadbalancer.server.port=143"
+
+      # IMAPS is implicit TLS: passthrough so bongo presents its own cert.
+      - "traefik.tcp.routers.bongo-imaps.rule=HostSNI(`${WEB_HOST}`)"
+      - "traefik.tcp.routers.bongo-imaps.entrypoints=imaps"
+      - "traefik.tcp.routers.bongo-imaps.tls.passthrough=true"
+      - "traefik.tcp.services.bongo-imaps.loadbalancer.server.port=993"
+
+  # Extracts the mail.example.com certificate from Traefik's acme.json into the
+  # shared bongo-certs volume, and re-dumps on renewal. Pin the tag as you like.
+  certs-dumper:
+    image: ldez/traefik-certs-dumper:v2.10.0
+    container_name: bongo-certs-dumper
+    restart: unless-stopped
+    command:
+      - "file"
+      - "--version=v2"
+      - "--watch"
+      - "--source=/traefik/acme.json"
+      - "--dest=/certs"
+      - "--domain-subdir=true"
+    volumes:
+      - /mnt/data/traefik/acme.json:/traefik/acme.json:ro
+      - bongo-certs:/certs
+
+networks:
+  # The external network Traefik is attached to (compose project `hostbox` -> `traefik_web`).
+  traefik:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+
+volumes:
+  bongo-data:
+  bongo-certs:
