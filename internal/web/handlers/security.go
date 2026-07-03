@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
@@ -366,8 +367,11 @@ func (h *SecurityHandler) clearTOTPPendingCookie(w http.ResponseWriter) {
 	})
 }
 
+// signPayload signs the TOTP-setup cookie. It derives the same cookie subkey as
+// middleware.sign (purpose "bongo/session-cookie/v1") so all cookie HMAC uses a
+// key distinct from the internal control-plane and blob-sync usages.
 func (h *SecurityHandler) signPayload(payload []byte) []byte {
-	mac := hmac.New(sha256.New, h.sessionSecret)
+	mac := hmac.New(sha256.New, security.DeriveKey(h.sessionSecret, "bongo/session-cookie/v1"))
 	mac.Write(payload)
 	return mac.Sum(nil)
 }
