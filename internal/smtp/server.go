@@ -383,7 +383,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	mx.Domain = banner
 	mx.ReadTimeout = 60 * time.Second
 	mx.WriteTimeout = 60 * time.Second
-	mx.MaxMessageBytes = 25 * 1024 * 1024
+	mx.MaxMessageBytes = cfg.Limits.MaxMessageSizeBytes()
 	mx.MaxRecipients = cfg.Limits.MaxRecipients
 	if mx.MaxRecipients <= 0 {
 		mx.MaxRecipients = 100
@@ -395,7 +395,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	submission.Domain = banner
 	submission.ReadTimeout = 60 * time.Second
 	submission.WriteTimeout = 60 * time.Second
-	submission.MaxMessageBytes = 25 * 1024 * 1024
+	submission.MaxMessageBytes = mx.MaxMessageBytes
 	submission.MaxRecipients = mx.MaxRecipients
 	submission.AllowInsecureAuth = isDev
 
