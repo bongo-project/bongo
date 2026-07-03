@@ -28,24 +28,40 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # ---- Runtime stage ----------------------------------------------------------
 # Alpine keeps a shell for debugging and ships ca-certificates + tzdata, both
 # needed for outbound SMTP over TLS (MX delivery) and correct timestamps.
+# su-exec is a minimal setuid/setgid/execvp helper for privilege drop.
+# libcap provides setcap, used below to grant cap_net_bind_service as a file
+# capability so the non-root process can still bind privileged mail ports.
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata && \
+RUN apk add --no-cache ca-certificates tzdata su-exec libcap && \
+    # Dedicated service account with a fixed uid/gid (10001).  The fixed id
+    # lets the host operator chown bind-mounted directories once and forget it.
+    # -S = system account, -H = no home dir, -D = no password.
+    addgroup -g 10001 -S bongo && \
+    adduser  -u 10001 -S -G bongo -H -D bongo && \
     mkdir -p /data /etc/bongo /certs /logs
 
 COPY --from=build /out/bongo-go     /usr/local/bin/bongo-go
 COPY --from=build /out/bongo-import /usr/local/bin/bongo-import
 
-# The process runs as root to bind privileged mail ports, but the compose file
-# drops ALL Linux capabilities except NET_BIND_SERVICE and sets
-# no-new-privileges, so a compromise has almost no privileged surface. Moving to
-# a dedicated non-root UID is a further step (needs bind-mount UID alignment for
-# /logs and the DKIM key).
+# Grant cap_net_bind_service as a file capability on the binary so uid 10001
+# can bind privileged ports (25, 587, 143, 993) after the privilege drop in the
+# entrypoint.  The capability is only active when the bounding set contains it
+# (ensured by cap_add: NET_BIND_SERVICE in docker-compose.yml).
+#
+# NOTE: this requires the absence of no-new-privileges in docker-compose.yml.
+# The Linux kernel ignores file capabilities when PR_SET_NO_NEW_PRIVS is set,
+# which would silently prevent binding privileged ports.  See compose comment.
+RUN setcap 'cap_net_bind_service=+ep' /usr/local/bin/bongo-go
+
+# Entrypoint script: chowns writable directories, then drops to uid 10001.
+COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh
 
 # Mail + web + metrics ports (host mapping is defined in compose).
 EXPOSE 25 587 143 993 110 995 8080 9090
 
 VOLUME ["/data", "/logs"]
 
-ENTRYPOINT ["bongo-go"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["serve", "--config", "/etc/bongo/bongo.hcl"]

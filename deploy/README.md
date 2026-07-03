@@ -296,8 +296,25 @@ Bleve indexes are rebuildable from Pebble + blobs.
   from `cluster.tls`, which is why `bongo.prod.hcl` sets it to the same
   Let's Encrypt cert as `smtp.tls`. Worth refactoring to a dedicated `imap.tls`
   block later. (POP3 is disabled here — no Traefik entrypoint for it.)
-- **Container runs as root** so it can bind privileged ports; move to a non-root
-  user + `CAP_NET_BIND_SERVICE` for production.
+- **Container runs as uid 10001 (non-root).** The entrypoint starts as root,
+  chowns `/data`, `/logs`, and `/certs`, then drops to the dedicated `bongo`
+  user (uid/gid 10001) via `su-exec`.  The binary carries `cap_net_bind_service`
+  as a file capability so ports 25, 587, 143, 993 still bind from non-root.
+  Two one-off host commands are required before first start:
+
+  ```bash
+  # DKIM key: /secrets/dkim.key is :ro and cannot be chowned inside the
+  # container. The host file must be readable by uid 10001.
+  chown 10001 deploy/secrets/dkim.key
+
+  # Log directory: bind-mounted from the host, may arrive root-owned.
+  mkdir -p deploy/logs
+  chown -R 10001:10001 deploy/logs
+  ```
+
+  The `/certs` volume (TLS keys from certs-dumper) is handled automatically:
+  the entrypoint chowns it on each startup.  After a cert renewal the directory
+  reverts to root ownership; a `docker compose restart bongo` restores it.
 - **Secure cookies behind a proxy:** with `plain_http=true`, the app doesn't set
   the `Secure` cookie flag itself (TLS is at Traefik). Fine for a test; revisit
   for production.

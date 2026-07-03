@@ -22,11 +22,20 @@ services:
     container_name: bongo
     restart: unless-stopped
 
-    # Hardening: drop all Linux capabilities except the one needed to bind the
-    # privileged mail ports, and forbid privilege escalation. Even though the
-    # process runs as root inside the container, it has almost no capabilities.
-    security_opt:
-      - no-new-privileges:true
+    # Hardening: drop all Linux capabilities except NET_BIND_SERVICE, which is
+    # needed for the non-root process to bind privileged mail ports (25, 587,
+    # 143, 993).  The entrypoint.sh script runs as root, chowns writable
+    # directories, then execs bongo-go as uid/gid 10001 (via su-exec).  The
+    # binary carries cap_net_bind_service as a file capability (setcap in the
+    # Dockerfile) so the non-root process receives it from the bounding set on
+    # execve.
+    #
+    # NOTE: no-new-privileges is intentionally NOT set here.  The Linux kernel
+    # ignores file capabilities when PR_SET_NO_NEW_PRIVS is active (execve
+    # strips them), which would prevent uid 10001 from binding ports <1024.
+    # The security posture remains strong: non-root uid, cap_drop ALL, and
+    # only NET_BIND_SERVICE re-added.  There are no setuid binaries in the
+    # image, so no-new-privileges provides no additional benefit.
     cap_drop:
       - ALL
     cap_add:
@@ -41,8 +50,12 @@ services:
     volumes:
       - ./bongo.prod.hcl:/etc/bongo/bongo.hcl:ro
       - ./secrets/dkim.key:/secrets/dkim.key:ro   # DKIM signing key (you generate this)
-      - bongo-certs:/certs:ro                     # mail TLS cert, written by certs-dumper
+                                                  # host must: chown 10001 deploy/secrets/dkim.key
+      - bongo-certs:/certs                        # mail TLS cert, written by certs-dumper
+                                                  # NOT :ro so entrypoint.sh can chown it for
+                                                  # uid 10001 (certs-dumper writes as root)
       - ./logs:/logs                              # bongo.jsonl (shipped off-host)
+                                                  # host must: chown -R 10001:10001 deploy/logs/
       - bongo-data:/data                          # Pebble, blobs, indexes, raft (persistent)
 
     networks:
