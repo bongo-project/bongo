@@ -387,7 +387,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" @change=\"\n\t\t\t\t\t\t\t\tfiles = Array.from($el.files);\n\t\t\t\t\t\t\t\ttotalSize = files.reduce((s,f) => s + f.size, 0);\n\t\t\t\t\t\t\t\"><template x-if=\"files.length > 0\"><div style=\"margin-top:0.5rem;font-size:0.85rem\" aria-live=\"polite\"><template x-for=\"(f, i) in files\" :key=\"i\"><div style=\"padding:0.2rem 0\"><span x-text=\"f.name\"></span> <small x-text=\"'(' + formatBytes(f.size) + ')'\"></small></div></template><div style=\"margin-top:0.25rem;color:var(--text-muted)\"><span x-text=\"files.length + ' file(s), total: ' + formatBytes(totalSize)\"></span></div></div></template></div></div><div class=\"compose-footer\"><button type=\"submit\" class=\"btn-send\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" @change=\"\n\t\t\t\t\t\t\t\tfiles = Array.from($el.files);\n\t\t\t\t\t\t\t\ttotalSize = files.reduce((s,f) => s + f.size, 0);\n\t\t\t\t\t\t\t\"><template x-if=\"files.length > 0\"><div class=\"u-mt-05 u-font-085\" aria-live=\"polite\"><template x-for=\"(f, i) in files\" :key=\"i\"><div class=\"u-file-row\"><span x-text=\"f.name\"></span> <small x-text=\"'(' + formatBytes(f.size) + ')'\"></small></div></template><div class=\"u-mt-025 u-text-muted\"><span x-text=\"files.length + ' file(s), total: ' + formatBytes(totalSize)\"></span></div></div></template></div></div><div class=\"compose-footer\"><button type=\"submit\" class=\"btn-send\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

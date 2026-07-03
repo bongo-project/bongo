@@ -132,6 +132,17 @@ func opStringToProto(op string) bongov1.Op {
 
 // applyProto handles a protobuf-encoded RaftCommand.
 func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
+		result, err := store.ApplyMailboxCommand(f.store, cmd)
+		if err != nil {
+			f.logger.Error("fsm: mailbox synthetic command failed", "key", string(cmd.Key), "error", err)
+			return err
+		}
+		f.logger.Debug("fsm: mailbox synthetic command applied", "key", string(cmd.Key))
+		f.handleMailboxCommandResult(result)
+		return nil
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
@@ -149,104 +160,34 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 
 	f.logger.Debug("fsm: applied", "op", cmd.Op.String(), "key", string(cmd.Key))
 
-	// Place new mail into INBOX mailbox (Raft-consistent).
-	if cmd.Op == bongov1.Op_OP_PUT {
-		f.placeInMailbox(cmd)
-	}
-
 	f.updateDerivedIndexes(cmd)
 	return nil
 }
 
-// placeInMailbox creates a mailbox message entry in INBOX when mail is delivered.
-// This runs inside FSM Apply so it is Raft-consistent.
-func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
-	key := string(cmd.Key)
-
-	// Only handle /user/{id}/mail/{guid} keys.
-	if !strings.HasPrefix(key, "/user/") || !strings.Contains(key, "/mail/") {
+func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
+	if result == nil || result.NewMail == nil {
 		return
 	}
+	newMail := result.NewMail
 
-	parts := strings.SplitN(key, "/", 5) // ["", "user", "{id}", "mail", "{guid}"]
-	if len(parts) < 5 || parts[3] != "mail" {
-		return
-	}
-
-	userID := parts[2]
-	guid := parts[4]
-
-	// Parse MailMeta to get the received timestamp and spam score.
-	var meta bongov1.MailMeta
-	if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
-		f.logger.Warn("fsm: failed to parse MailMeta for mailbox placement", "error", err)
-		return
-	}
-
-	// Use target mailbox from filter rules if set, otherwise route based on spam score.
-	mailbox := meta.TargetMailbox
-	if mailbox == "" {
-		mailbox = "INBOX"
-		if meta.SpamScore >= 0.5 {
-			mailbox = "Junk"
-			f.logger.Info("auto-junk", "score", meta.SpamScore, "from", meta.From, "subject", meta.Subject)
+	if newMail.Meta != nil {
+		metaBytes, err := proto.Marshal(newMail.Meta)
+		if err != nil {
+			f.logger.Warn("fsm: failed to marshal delivered MailMeta for indexing", "error", err, "user", newMail.UserID, "guid", newMail.GUID)
+		} else {
+			f.updateDerivedIndexes(&bongov1.RaftCommand{
+				Op:    bongov1.Op_OP_PUT,
+				Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", newMail.UserID, newMail.GUID)),
+				Value: metaBytes,
+			})
 		}
 	}
-
-	// Read current mailbox meta.
-	metaKey := []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox))
-	var mbMeta bongov1.MailboxMeta
-
-	existing, err := f.store.Get(metaKey)
-	if err == nil {
-		proto.Unmarshal(existing, &mbMeta)
-	} else {
-		// Mailbox doesn't exist yet — initialize it.
-		mbMeta.Name = mailbox
-		mbMeta.UidValidity = 1
-		mbMeta.UidNext = 1
-	}
-
-	// Assign UID and bump uid_next.
-	uid := mbMeta.UidNext
-	mbMeta.UidNext = uid + 1
-
-	// Write updated mailbox meta.
-	metaBytes, err := proto.Marshal(&mbMeta)
-	if err != nil {
-		f.logger.Warn("fsm: failed to marshal mailbox meta", "error", err)
-		return
-	}
-	if err := f.store.Set(metaKey, metaBytes); err != nil {
-		f.logger.Warn("fsm: failed to write mailbox meta", "error", err)
-		return
-	}
-
-	// Write mailbox message entry.
-	msgKey := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid))
-	mbMsg := &bongov1.MailboxMessage{
-		Uid:          uid,
-		MailGuid:     guid,
-		Flags:        uint32(meta.Flags),
-		InternalDate: meta.ReceivedAt,
-	}
-	msgBytes, err := proto.Marshal(mbMsg)
-	if err != nil {
-		f.logger.Warn("fsm: failed to marshal mailbox message", "error", err)
-		return
-	}
-	if err := f.store.Set(msgKey, msgBytes); err != nil {
-		f.logger.Warn("fsm: failed to write mailbox message", "error", err)
-		return
-	}
-
-	f.logger.Debug("fsm: mail placed in mailbox", "user", userID, "mailbox", mailbox, "guid", guid, "uid", uid)
 
 	// Notify IMAP sessions about the new mail.
 	if f.notifier != nil {
 		// Count total messages for EXISTS response.
 		var totalMsgs uint32
-		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/", userID, mailbox))
+		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/", newMail.UserID, newMail.Mailbox))
 		iter, err := f.store.PrefixScan(prefix)
 		if err == nil {
 			for iter.Next() {
@@ -254,7 +195,7 @@ func (f *FSM) placeInMailbox(cmd *bongov1.RaftCommand) {
 			}
 			iter.Close()
 		}
-		f.notifier.NotifyNewMail(userID, mailbox, uid, totalMsgs)
+		f.notifier.NotifyNewMail(newMail.UserID, newMail.Mailbox, newMail.UID, totalMsgs)
 	}
 }
 

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -90,7 +89,7 @@ func (rl *LoginRateLimiter) IsLimited(ip string) bool {
 func (rl *LoginRateLimiter) LoginRateLimit() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ip := extractIP(r)
+			ip := ClientIP(r)
 			if rl.IsLimited(ip) {
 				retryAfter := int(rl.window.Seconds())
 				w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
@@ -100,36 +99,6 @@ func (rl *LoginRateLimiter) LoginRateLimit() func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-// extractIP returns the client IP from the request, preferring X-Forwarded-For
-// when present (first entry only), falling back to RemoteAddr.
-func extractIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For may be "client, proxy1, proxy2"; take the first entry.
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				xff = xff[:i]
-				break
-			}
-		}
-		// Trim spaces.
-		for len(xff) > 0 && xff[0] == ' ' {
-			xff = xff[1:]
-		}
-		for len(xff) > 0 && xff[len(xff)-1] == ' ' {
-			xff = xff[:len(xff)-1]
-		}
-		if xff != "" {
-			return xff
-		}
-	}
-
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 // pruneLoop runs in the background and removes expired buckets every 5 minutes.

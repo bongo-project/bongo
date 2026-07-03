@@ -9,11 +9,12 @@ import (
 
 func TestSecurityHeaders(t *testing.T) {
 	tests := []struct {
-		name           string
-		contentType    string
-		tlsEnabled     bool
-		wantCacheCtrl  string
-		wantHSTS       bool
+		name          string
+		contentType   string
+		cacheControl  string
+		tlsEnabled    bool
+		wantCacheCtrl string
+		wantHSTS      bool
 	}{
 		{
 			name:          "html response sets no-store",
@@ -23,17 +24,17 @@ func TestSecurityHeaders(t *testing.T) {
 			wantHSTS:      false,
 		},
 		{
-			name:          "non-html response does not set cache-control",
+			name:          "non-html response still defaults to no-store",
 			contentType:   "application/json",
 			tlsEnabled:    false,
-			wantCacheCtrl: "",
+			wantCacheCtrl: "no-store",
 			wantHSTS:      false,
 		},
 		{
-			name:          "css response does not set cache-control",
+			name:          "css response still defaults to no-store unless overridden",
 			contentType:   "text/css",
 			tlsEnabled:    false,
-			wantCacheCtrl: "",
+			wantCacheCtrl: "no-store",
 			wantHSTS:      false,
 		},
 		{
@@ -56,6 +57,9 @@ func TestSecurityHeaders(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			handler := SecurityHeaders()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", tc.contentType)
+				if tc.cacheControl != "" {
+					w.Header().Set("Cache-Control", tc.cacheControl)
+				}
 				w.WriteHeader(http.StatusOK)
 			}))
 
@@ -97,6 +101,22 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+func TestSecurityHeadersDefaultCacheControlSurvivesCommittedHeaders(t *testing.T) {
+	handler := SecurityHeaders()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html></html>"))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if got := rr.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+}
+
 func TestSecurityHeadersCSP(t *testing.T) {
 	handler := SecurityHeaders()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -109,14 +129,15 @@ func TestSecurityHeadersCSP(t *testing.T) {
 	csp := rr.Header().Get("Content-Security-Policy")
 	wantDirectives := []string{
 		"default-src 'self'",
-		"script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-		"style-src 'self' 'unsafe-inline'",
+		"script-src 'self'",
+		"style-src 'self'",
 		"img-src 'self' data: cid:",
 		"font-src 'self'",
 		"connect-src 'self'",
 		"frame-ancestors 'none'",
 		"base-uri 'self'",
 		"form-action 'self'",
+		"object-src 'none'",
 	}
 	for _, directive := range wantDirectives {
 		found := false

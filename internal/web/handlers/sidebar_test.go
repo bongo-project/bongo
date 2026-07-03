@@ -23,20 +23,20 @@ func TestSidebarTagInfoSelected(t *testing.T) {
 	// Verify the Selected field logic via direct struct construction (mirrors
 	// what LoadSidebarTags sets when building results).
 	tag := templates.SidebarTagInfo{
-		Name:     "work",
-		Colour:   "#517faf",
-		Count:    5,
-		Selected: "tag:work" == "tag:work",
+		Name:        "work",
+		ColourIndex: 0,
+		Count:       5,
+		Selected:    "tag:work" == "tag:work",
 	}
 	if !tag.Selected {
 		t.Error("tag.Selected should be true when selected matches tag:name")
 	}
 
 	tag2 := templates.SidebarTagInfo{
-		Name:     "personal",
-		Colour:   "#5aad4a",
-		Count:    0,
-		Selected: "tag:work" == "tag:personal",
+		Name:        "personal",
+		ColourIndex: 1,
+		Count:       0,
+		Selected:    "tag:work" == "tag:personal",
 	}
 	if tag2.Selected {
 		t.Error("tag2.Selected should be false when selected does not match")

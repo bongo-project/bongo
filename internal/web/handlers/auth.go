@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/base32"
 	"fmt"
-	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -91,7 +90,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	remember := r.FormValue("remember") == "1"
 
-	ip := clientIP(r)
+	ip := middleware.ClientIP(r)
 
 	userID, err := h.auth.Authenticate(email, password)
 	if err != nil {
@@ -158,7 +157,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := clientIP(r)
+	ip := middleware.ClientIP(r)
 	code := r.FormValue("code")
 
 	// Load profile to get TOTP secret and recovery codes.
@@ -194,17 +193,33 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		}
 		profile.RecoveryCodes = newCodes
 
-		if h.raft != nil {
-			key := []byte(fmt.Sprintf("/user/%s/profile", pending.UserID))
-			profileBytes, marshalErr := proto.Marshal(profile)
-			if marshalErr == nil {
-				cmd := &bongov1.RaftCommand{
-					Op:    bongov1.Op_OP_PUT,
-					Key:   key,
-					Value: profileBytes,
-				}
-				_ = h.raft.ApplyCommand(cmd, 5*time.Second)
+		if h.raft == nil {
+			if h.limiter != nil {
+				h.limiter.RecordFailure(ip)
 			}
+			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
+			return
+		}
+		key := []byte(fmt.Sprintf("/user/%s/profile", pending.UserID))
+		profileBytes, marshalErr := proto.Marshal(profile)
+		if marshalErr != nil {
+			if h.limiter != nil {
+				h.limiter.RecordFailure(ip)
+			}
+			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
+			return
+		}
+		cmd := &bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   key,
+			Value: profileBytes,
+		}
+		if err := h.raft.ApplyCommand(cmd, 5*time.Second); err != nil {
+			if h.limiter != nil {
+				h.limiter.RecordFailure(ip)
+			}
+			http.Redirect(w, r, "/login/2fa?error="+urlEncode("Verification failed. Please try again."), http.StatusSeeOther)
+			return
 		}
 
 		remaining := len(newCodes)
@@ -230,7 +245,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 
 // completeLogin clears the pending cookie, sets the session cookie, and redirects to inbox.
 func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pending *middleware.PendingData) {
-	ip := clientIP(r)
+	ip := middleware.ClientIP(r)
 	http.SetCookie(w, middleware.ClearPendingCookie())
 	if h.limiter != nil {
 		h.limiter.Reset(ip)
@@ -256,33 +271,6 @@ func urlEncode(s string) string {
 		}
 	}
 	return string(encoded)
-}
-
-// clientIP extracts the client IP from the request, preferring X-Forwarded-For.
-func clientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				xff = xff[:i]
-				break
-			}
-		}
-		// Trim spaces.
-		for len(xff) > 0 && xff[0] == ' ' {
-			xff = xff[1:]
-		}
-		for len(xff) > 0 && xff[len(xff)-1] == ' ' {
-			xff = xff[:len(xff)-1]
-		}
-		if xff != "" {
-			return xff
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
 }
 
 func (h *AuthHandler) loadProfile(userID string) (*bongov1.UserProfile, error) {

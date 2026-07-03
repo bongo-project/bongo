@@ -18,7 +18,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 				@FlashMessage(flash, "success")
 			}
 			<div class="toolbar" role="toolbar" aria-label="Contact actions">
-				<button type="button" class="tool-btn primary" onclick="document.getElementById('create-form').toggleAttribute('hidden')">{ t(ctx, "contacts.newContact") }</button>
+				<button type="button" class="tool-btn primary" data-contact-form-toggle="toggle">{ t(ctx, "contacts.newContact") }</button>
 				<a href="/contacts/export" class="tool-btn">{ t(ctx, "contacts.exportVcard") }</a>
 				<div class="tool-spacer"></div>
 				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label="Import contacts">
@@ -27,33 +27,33 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 				</form>
 			</div>
 			<div id="create-form" hidden>
-				<div class="settings-card" style="margin:16px 24px">
-					<form method="post" action="/contacts" style="padding:18px">
-						<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+				<div class="settings-card u-mt-1">
+					<form method="post" action="/contacts" class="u-p-18">
+						<div class="form-grid-two">
 							<label>
 								<span class="settings-row-title">{ t(ctx, "contacts.name") }</span>
-								<input type="text" name="display_name" class="settings-input" style="width:100%" required/>
+								<input type="text" name="display_name" class="settings-input u-w-full" required/>
 							</label>
 							<label>
 								<span class="settings-row-title">{ t(ctx, "contacts.email") }</span>
-								<input type="email" name="email" class="settings-input" style="width:100%"/>
+								<input type="email" name="email" class="settings-input u-w-full"/>
 							</label>
 							<label>
 								<span class="settings-row-title">{ t(ctx, "contacts.phone") }</span>
-								<input type="tel" name="phone" class="settings-input" style="width:100%"/>
+								<input type="tel" name="phone" class="settings-input u-w-full"/>
 							</label>
 							<label>
 								<span class="settings-row-title">{ t(ctx, "contacts.company") }</span>
-								<input type="text" name="company" class="settings-input" style="width:100%"/>
+								<input type="text" name="company" class="settings-input u-w-full"/>
 							</label>
 						</div>
-						<label style="margin-top:0.75rem;display:block">
+						<label class="u-mt-075 u-block">
 							<span class="settings-row-title">{ t(ctx, "contacts.notes") }</span>
-							<textarea name="notes" rows="2" class="settings-input" style="width:100%"></textarea>
+							<textarea name="notes" rows="2" class="settings-input u-w-full"></textarea>
 						</label>
-						<div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+						<div class="form-inline-actions">
 							<button type="submit" class="btn-send">{ t(ctx, "contacts.create") }</button>
-							<button type="button" class="btn-secondary" onclick="document.getElementById('create-form').setAttribute('hidden','')">{ t(ctx, "contacts.cancel") }</button>
+							<button type="button" class="btn-secondary" data-contact-form-toggle="hide">{ t(ctx, "contacts.cancel") }</button>
 						</div>
 					</form>
 				</div>
@@ -71,7 +71,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 						@Pagination(page, totalPages, "/contacts")
 					</div>
 					<div class="contact-detail-pane" id="contact-detail">
-						<div class="detail-placeholder" style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:0.9rem">
+						<div class="detail-placeholder detail-placeholder-center">
 							Select a contact to view details
 						</div>
 					</div>
@@ -92,9 +92,9 @@ templ ContactRow(c *bongov1.Contact) {
 		data-guid={ c.Guid }
 		role="listitem"
 		tabindex="0"
-		onclick="document.querySelectorAll('.contact-card').forEach(c=>c.classList.remove('selected'));this.classList.add('selected');document.getElementById('contacts-panes')?.classList.add('showing-detail')"
+		data-contact-select="true"
 	>
-		<div class="contact-avatar" style={ avatarStyleContact(c.DisplayName, c.Email) } aria-hidden="true">
+		<div class={ "contact-avatar", avatarClassContact(c.DisplayName, c.Email) } aria-hidden="true">
 			{ avatarInitialsContact(c.DisplayName, c.Email) }
 		</div>
 		<div class="contact-info">
@@ -116,7 +116,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 			<div class="contact-detail-pane">
 				<div class="detail-card">
 					<div class="detail-header">
-						<div class="detail-avatar" style={ avatarStyleContact(c.DisplayName, c.Email) } aria-hidden="true">
+						<div class={ "detail-avatar", avatarClassContact(c.DisplayName, c.Email) } aria-hidden="true">
 							{ avatarInitialsContact(c.DisplayName, c.Email) }
 						</div>
 						<h2 class="detail-name">{ c.DisplayName }</h2>
@@ -154,7 +154,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 							<div class="detail-field">
 								<div class="detail-field-label">Notes</div>
 								<div class="detail-field-value">
-									<textarea name="notes" rows="3" class="settings-input" style="width:100%">{ c.Notes }</textarea>
+									<textarea name="notes" rows="3" class="settings-input u-w-full">{ c.Notes }</textarea>
 								</div>
 							</div>
 						</div>
@@ -173,9 +173,9 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 							</button>
 						</div>
 					</form>
-					<div class="detail-section-title" style="font-size:0.75rem">
+					<div class="detail-section-title u-font-075">
 						<span>Created: { formatContactDate(c.CreatedAt) }</span>
-						<span style="margin-left:1rem">Updated: { formatContactDate(c.UpdatedAt) }</span>
+						<span class="u-ml-1">Updated: { formatContactDate(c.UpdatedAt) }</span>
 					</div>
 				</div>
 			</div>
@@ -187,7 +187,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 templ ContactDetailPartial(c *bongov1.Contact) {
 	<div class="detail-card">
 		<div class="detail-header">
-			<div class="detail-avatar" style={ avatarStyleContact(c.DisplayName, c.Email) } aria-hidden="true">
+			<div class={ "detail-avatar", avatarClassContact(c.DisplayName, c.Email) } aria-hidden="true">
 				{ avatarInitialsContact(c.DisplayName, c.Email) }
 			</div>
 			<h2 class="detail-name">{ c.DisplayName }</h2>
@@ -225,17 +225,17 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 				<div class="detail-field">
 					<div class="detail-field-label">Notes</div>
 					<div class="detail-field-value">
-						<textarea name="notes" rows="3" class="form-input" style="width:100%">{ c.Notes }</textarea>
+						<textarea name="notes" rows="3" class="form-input u-w-full">{ c.Notes }</textarea>
 					</div>
 				</div>
 			</div>
 			<div class="detail-actions">
 				<button type="submit" class="btn-primary">{ t(ctx, "contacts.save") }</button>
-				<span class="detail-spacer" style="flex:1"></span>
+				<span class="detail-spacer u-flex-1"></span>
 				<button
 					type="button"
 					class="btn-flush"
-					style="color:var(--bongo-red)"
+					class="btn-flush u-text-danger"
 					hx-delete={ "/contacts/" + c.Guid }
 					hx-confirm="Delete this contact?"
 					hx-target="#contacts-panes"
@@ -245,9 +245,9 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 				</button>
 			</div>
 		</form>
-		<div class="detail-section-title" style="font-size:0.75rem; padding:12px 24px; color:var(--text-muted)">
+		<div class="detail-section-title u-font-075 u-px-12 u-text-muted">
 			<span>Created: { formatContactDate(c.CreatedAt) }</span>
-			<span style="margin-left:1rem">Updated: { formatContactDate(c.UpdatedAt) }</span>
+			<span class="u-ml-1">Updated: { formatContactDate(c.UpdatedAt) }</span>
 		</div>
 	</div>
 }
@@ -302,14 +302,13 @@ func avatarInitialsContact(name, email string) string {
 	return "??"
 }
 
-func avatarStyleContact(name, email string) string {
+func avatarClassContact(name, email string) string {
 	s := name + email
 	var hash uint32
 	for _, c := range s {
 		hash = hash*31 + uint32(c)
 	}
-	colours := []string{"#517faf", "#5aad4a", "#ee8d03", "#8a6fb8", "#e15e50", "#d4a60a", "#729fcf"}
-	return fmt.Sprintf("background:%s", colours[hash%uint32(len(colours))])
+	return fmt.Sprintf("avatar-colour-%d", hash%7)
 }
 
 // contactsActiveClass is unused but suppresses lint for the fmt import.

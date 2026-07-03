@@ -202,7 +202,7 @@ func (h *RulesHandler) TestRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := h.testRuleAgainstMail(userID, rule)
-	templ.Handler(templates.RuleTestResults(results.Matches, results.Total, results.Samples)).ServeHTTP(w, r)
+	templ.Handler(templates.RuleTestResults(ruleID, results.Matches, results.Total, results.Samples)).ServeHTTP(w, r)
 }
 
 type testResults struct {

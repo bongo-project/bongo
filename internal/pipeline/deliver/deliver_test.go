@@ -2,6 +2,7 @@ package deliver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -66,8 +67,20 @@ func newTestLogger() *slog.Logger {
 // unmarshalMailMeta decodes a MailMeta from the value of a RaftCommand.
 func unmarshalMailMeta(t *testing.T, cmd *bongov1.RaftCommand) *bongov1.MailMeta {
 	t.Helper()
+	var metaBytes []byte
+	if strings.HasPrefix(string(cmd.Key), "/__mailbox_deliver__/") {
+		var payload struct {
+			Meta []byte `json:"meta"`
+		}
+		if err := json.Unmarshal(cmd.Value, &payload); err != nil {
+			t.Fatalf("unmarshal delivery payload: %v", err)
+		}
+		metaBytes = payload.Meta
+	} else {
+		metaBytes = cmd.Value
+	}
 	var meta bongov1.MailMeta
-	if err := proto.Unmarshal(cmd.Value, &meta); err != nil {
+	if err := proto.Unmarshal(metaBytes, &meta); err != nil {
 		t.Fatalf("unmarshal MailMeta: %v", err)
 	}
 	return &meta
@@ -111,8 +124,8 @@ func TestDeliverBasic(t *testing.T) {
 	}
 
 	key := string(applier.commands[0].Key)
-	if !strings.HasPrefix(key, "/user/user-alice/mail/") {
-		t.Errorf("key = %q, want prefix /user/user-alice/mail/", key)
+	if !strings.HasPrefix(key, "/__mailbox_deliver__/user-alice/INBOX") {
+		t.Errorf("key = %q, want prefix /__mailbox_deliver__/user-alice/INBOX", key)
 	}
 
 	meta := unmarshalMailMeta(t, applier.commands[0])
@@ -470,10 +483,10 @@ func TestDeliverForwardAddressesEnqueued(t *testing.T) {
 // trigger forwarding and that forward_keep_copy controls local delivery.
 func TestDeliverAccountForwarding(t *testing.T) {
 	tests := []struct {
-		name           string
-		keepCopy       bool
-		wantLocalCmds  int
-		wantForwards   int
+		name          string
+		keepCopy      bool
+		wantLocalCmds int
+		wantForwards  int
 	}{
 		{"keep_copy_true", true, 1, 1},
 		{"keep_copy_false", false, 0, 1},

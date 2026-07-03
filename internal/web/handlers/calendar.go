@@ -806,12 +806,11 @@ func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap 
 		for _, e := range timed {
 			st := time.Unix(e.StartTime, 0).In(loc)
 			et := time.Unix(e.EndTime, 0).In(loc)
-			topPct := (float64(st.Hour())*60 + float64(st.Minute())) / (24 * 60) * 100
+			topMinutes := st.Hour()*60 + st.Minute()
 			durMin := et.Sub(st).Minutes()
 			if durMin < 30 {
 				durMin = 30
 			}
-			heightPct := durMin / (24 * 60) * 100
 
 			color := calColorMap[e.CalendarId]
 			if color == "" {
@@ -819,10 +818,10 @@ func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap 
 			}
 
 			blocks = append(blocks, templates.EventBlock{
-				Event:     e,
-				TopPct:    topPct,
-				HeightPct: heightPct,
-				Color:     color,
+				Event:         e,
+				TopMinutes:    topMinutes,
+				HeightMinutes: int(durMin),
+				ColourClass:   templates.CalendarColourClass(color),
 			})
 		}
 
@@ -860,12 +859,11 @@ func buildDayColumn(date time.Time, events []*bongov1.Event, calColorMap map[str
 	for _, e := range timed {
 		st := time.Unix(e.StartTime, 0).In(loc)
 		et := time.Unix(e.EndTime, 0).In(loc)
-		topPct := (float64(st.Hour())*60 + float64(st.Minute())) / (24 * 60) * 100
+		topMinutes := st.Hour()*60 + st.Minute()
 		durMin := et.Sub(st).Minutes()
 		if durMin < 30 {
 			durMin = 30
 		}
-		heightPct := durMin / (24 * 60) * 100
 
 		color := calColorMap[e.CalendarId]
 		if color == "" {
@@ -873,10 +871,10 @@ func buildDayColumn(date time.Time, events []*bongov1.Event, calColorMap map[str
 		}
 
 		blocks = append(blocks, templates.EventBlock{
-			Event:     e,
-			TopPct:    topPct,
-			HeightPct: heightPct,
-			Color:     color,
+			Event:         e,
+			TopMinutes:    topMinutes,
+			HeightMinutes: int(durMin),
+			ColourClass:   templates.CalendarColourClass(color),
 		})
 	}
 

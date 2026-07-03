@@ -740,70 +740,22 @@ func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
 
 	// Create MailMeta.
 	meta := &bongov1.MailMeta{
-		Guid:      guid,
-		MessageId: fmt.Sprintf("<welcome-%s@bongo>", userID[:8]),
-		Subject:   "Welcome to Bongo Mail!",
-		From:      fmt.Sprintf("postmaster@%s", domainFromEmail(email)),
-		To:        []string{email},
+		Guid:       guid,
+		MessageId:  fmt.Sprintf("<welcome-%s@bongo>", userID[:8]),
+		Subject:    "Welcome to Bongo Mail!",
+		From:       fmt.Sprintf("postmaster@%s", domainFromEmail(email)),
+		To:         []string{email},
 		ReceivedAt: now.Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
 			Size: int64(len(rawMsg)),
 		},
 	}
-	metaBytes, err := proto.Marshal(meta)
-	if err != nil {
-		h.logger.Warn("admin: failed to marshal welcome email meta", "user", email, "error", err)
+	if _, err := h.mailboxes.DeliverMessage(userID, "INBOX", meta, 0); err != nil {
+		h.logger.Warn("admin: failed to deliver welcome email", "user", email, "error", err)
 		return
 	}
-
-	// Store MailMeta.
-	mailMetaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
-		Value: metaBytes,
-	}
-	if err := h.applier.ApplyCommand(mailMetaCmd, 5*time.Second); err != nil {
-		h.logger.Warn("admin: failed to store welcome email meta", "user", email, "error", err)
-		return
-	}
-
-	// Deliver to INBOX.
-	h.adminDeliverToMailbox(userID, "INBOX", guid, meta)
 	h.logger.Info("admin: welcome email delivered", "user", email)
-}
-
-// adminDeliverToMailbox puts a message into the specified mailbox (mirrors ComposeHandler.deliverToMailbox).
-func (h *AdminHandler) adminDeliverToMailbox(userID, mailbox, guid string, meta *bongov1.MailMeta) {
-	mbMeta, err := h.mailboxes.GetMailbox(userID, mailbox)
-	if err != nil {
-		h.logger.Warn("admin: mailbox not found for delivery", "user", userID, "mailbox", mailbox, "error", err)
-		return
-	}
-
-	uid := mbMeta.UidNext
-	mbMeta.UidNext = uid + 1
-	metaBytes, _ := proto.Marshal(mbMeta)
-	metaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox)),
-		Value: metaBytes,
-	}
-	_ = h.applier.ApplyCommand(metaCmd, 5*time.Second)
-
-	msg := &bongov1.MailboxMessage{
-		Uid:          uid,
-		MailGuid:     guid,
-		Flags:        0,
-		InternalDate: meta.ReceivedAt,
-	}
-	msgBytes, _ := proto.Marshal(msg)
-	msgCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid)),
-		Value: msgBytes,
-	}
-	_ = h.applier.ApplyCommand(msgCmd, 5*time.Second)
 }
 
 // domainFromEmail extracts the domain part from an email address.

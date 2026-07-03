@@ -13,7 +13,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jhillyerd/enmime"
-	"google.golang.org/protobuf/proto"
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
@@ -205,16 +204,22 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 		// Determine target mailbox: envelope override takes precedence.
 		targetMailbox := env.TargetMailbox
+		if targetMailbox == "" {
+			targetMailbox = "INBOX"
+			if spamScore >= 0.5 {
+				targetMailbox = "Junk"
+			}
+		}
 
 		guid := uuid.New().String()
 
 		meta := &bongov1.MailMeta{
-			Guid:      guid,
-			MessageId: messageID,
-			Subject:   subject,
-			From:      headerFrom,
-			To:        toAddrs,
-			Cc:        ccAddrs,
+			Guid:       guid,
+			MessageId:  messageID,
+			Subject:    subject,
+			From:       headerFrom,
+			To:         toAddrs,
+			Cc:         ccAddrs,
 			ReceivedAt: receivedAt.Unix(),
 			RawMessage: &bongov1.BlobRef{
 				Hash:        env.BlobHash,
@@ -242,19 +247,8 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			}
 		}
 
-		metaBytes, err := proto.Marshal(meta)
-		if err != nil {
-			return nil, fmt.Errorf("deliver: marshal mail meta for %s: %w", rcpt, err)
-		}
-
-		cmd := &bongov1.RaftCommand{
-			Op:    bongov1.Op_OP_PUT,
-			Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
-			Value: metaBytes,
-		}
-
-		if err := p.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-			return nil, fmt.Errorf("deliver: apply raft command for %s: %w", rcpt, err)
+		if err := store.DeliverMail(p.applier, userID, targetMailbox, meta, 0); err != nil {
+			return nil, fmt.Errorf("deliver: apply delivery command for %s: %w", rcpt, err)
 		}
 
 		p.logger.Info("deliver: mail stored",

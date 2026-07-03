@@ -271,13 +271,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Create MailMeta.
 	meta := &bongov1.MailMeta{
-		Guid:        guid,
-		MessageId:   fmt.Sprintf("<%s@bongo>", guid),
-		Subject:     subject,
-		From:        email,
-		To:          splitRecipients(to),
-		Cc:          splitRecipients(cc),
-		ReceivedAt:  time.Now().Unix(),
+		Guid:       guid,
+		MessageId:  fmt.Sprintf("<%s@bongo>", guid),
+		Subject:    subject,
+		From:       email,
+		To:         splitRecipients(to),
+		Cc:         splitRecipients(cc),
+		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
 			Size: int64(len(rawMsg)),
@@ -287,23 +287,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		References:  references,
 	}
 
-	metaBytes, _ := proto.Marshal(meta)
-
-	// Store sender's MailMeta.
-	mailMetaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
-		Value: metaBytes,
-	}
-	if err := h.applier.ApplyCommand(mailMetaCmd, 5*time.Second); err != nil {
-		http.Error(w, "Failed to store metadata", http.StatusInternalServerError)
-		return
-	}
-
-	// Copy to Sent folder.
-	h.deliverToMailbox(userID, "Sent", guid, meta)
-
-	// Split recipients into local and external.
+	// Split recipients into local and external before any user-visible writes
+	// so pre-delivery rejection does not leave a partial Sent copy behind.
 	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
 	var localRecipients, externalRecipients []string
 	for _, rcpt := range allRecipients {
@@ -318,7 +303,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check rate limit for external recipients.
+	// Check rate limit for external recipients before persisting sender-visible state.
 	if len(externalRecipients) > 0 && h.rateLimiter != nil && !h.rateLimiter.Allow(email) {
 		http.Error(w, "Rate limit exceeded. Please try again later.", http.StatusTooManyRequests)
 		return
@@ -331,16 +316,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Store MailMeta for recipient.
-		recipientMetaCmd := &bongov1.RaftCommand{
-			Op:    bongov1.Op_OP_PUT,
-			Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", recipientID, guid)),
-			Value: metaBytes,
+		recipientMeta := proto.Clone(meta).(*bongov1.MailMeta)
+		if _, err := h.mailboxes.DeliverMessage(recipientID, "INBOX", recipientMeta, 0); err != nil {
+			h.logger.Warn("web: failed to deliver local recipient copy", "recipient", rcpt, "user_id", recipientID, "guid", guid, "error", err)
+			http.Error(w, "Failed to deliver local recipient copy", http.StatusInternalServerError)
+			return
 		}
-		_ = h.applier.ApplyCommand(recipientMetaCmd, 5*time.Second)
-
-		// Deliver to INBOX.
-		h.deliverToMailbox(recipientID, "INBOX", guid, meta)
 
 		// Index for search.
 		if h.search != nil {
@@ -359,16 +340,25 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			MessageGuid: meta.MessageId,
 		}
 		if err := h.queueStore.Enqueue(outMsg); err != nil {
-			http.Error(w, "Failed to queue message for delivery", http.StatusInternalServerError)
+			h.logger.Warn("web: failed to enqueue outbound delivery", "user", userID, "guid", guid, "error", err)
+			http.Error(w, "Failed to enqueue outbound delivery", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	// Store sender copy only after recipient delivery work has succeeded.
+	if _, err := h.mailboxes.DeliverMessage(userID, "Sent", meta, 0); err != nil {
+		http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
+		return
 	}
 
 	// If reply, set Answered flag on original.
 	if mode == "reply" && replyMailbox != "" && replyUIDStr != "" {
 		replyUID, _ := strconv.ParseUint(replyUIDStr, 10, 32)
 		if replyUID > 0 {
-			_ = h.mailboxes.AddFlags(userID, replyMailbox, uint32(replyUID), store.FlagAnswered)
+			if err := h.mailboxes.AddFlags(userID, replyMailbox, uint32(replyUID), store.FlagAnswered); err != nil {
+				h.logger.Warn("web: failed to set answered flag", "mailbox", replyMailbox, "uid", replyUID, "user", userID, "error", err)
+			}
 		}
 	}
 
@@ -449,27 +439,21 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	guid := fmt.Sprintf("draft-%d-%s", time.Now().UnixNano(), hash[:8])
 
 	meta := &bongov1.MailMeta{
-		Guid:        guid,
-		Subject:     subject,
-		From:        email,
-		To:          splitRecipients(to),
-		ReceivedAt:  time.Now().Unix(),
+		Guid:       guid,
+		Subject:    subject,
+		From:       email,
+		To:         splitRecipients(to),
+		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
 			Size: int64(len(rawMsg)),
 		},
 		Attachments: attachments,
 	}
-	metaBytes, _ := proto.Marshal(meta)
-
-	mailMetaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
-		Value: metaBytes,
+	if _, err := h.mailboxes.DeliverMessage(userID, "Drafts", meta, 0); err != nil {
+		http.Error(w, "Failed to store draft", http.StatusInternalServerError)
+		return
 	}
-	_ = h.applier.ApplyCommand(mailMetaCmd, 5*time.Second)
-
-	h.deliverToMailbox(userID, "Drafts", guid, meta)
 
 	h.logger.Info("web: draft saved", "user", userID, "subject", subject)
 
@@ -526,37 +510,6 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
-}
-
-func (h *ComposeHandler) deliverToMailbox(userID, mailbox, guid string, meta *bongov1.MailMeta) {
-	mbMeta, err := h.mailboxes.GetMailbox(userID, mailbox)
-	if err != nil {
-		return
-	}
-
-	uid := mbMeta.UidNext
-	mbMeta.UidNext = uid + 1
-	metaBytes, _ := proto.Marshal(mbMeta)
-	metaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox)),
-		Value: metaBytes,
-	}
-	_ = h.applier.ApplyCommand(metaCmd, 5*time.Second)
-
-	msg := &bongov1.MailboxMessage{
-		Uid:          uid,
-		MailGuid:     guid,
-		Flags:        0,
-		InternalDate: meta.ReceivedAt,
-	}
-	msgBytes, _ := proto.Marshal(msg)
-	msgCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid)),
-		Value: msgBytes,
-	}
-	_ = h.applier.ApplyCommand(msgCmd, 5*time.Second)
 }
 
 func (h *ComposeHandler) resolveLocalUser(email string) string {

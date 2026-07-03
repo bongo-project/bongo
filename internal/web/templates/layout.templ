@@ -10,6 +10,7 @@ templ Layout(title string, email string) {
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
+			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
 		</head>
 		<body>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
@@ -44,7 +45,7 @@ templ Layout(title string, email string) {
 					></button>
 					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
 					<span class="user-email" aria-label={ "Logged in as " + email }>{ email }</span>
-					<form method="post" action="/logout" style="margin:0">
+					<form method="post" action="/logout" class="u-m0">
 						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
 					</form>
 				</div>
@@ -54,7 +55,7 @@ templ Layout(title string, email string) {
 					<div class="flash-icon">&#9888;</div>
 					<div class="flash-content">
 						{ t(ctx, "security.require2FABanner") }
-						<a href="/settings/security" style="margin-left:0.5rem;font-weight:600">{ t(ctx, "security.setupTwoFactor") }</a>
+						<a href="/settings/security" class="u-ml-05 u-fw-600">{ t(ctx, "security.setupTwoFactor") }</a>
 					</div>
 				</div>
 			}
@@ -71,7 +72,7 @@ templ Layout(title string, email string) {
 				<button
 					type="button"
 					class="notification-prompt outline secondary"
-					x-show="permission === 'default'"
+					x-bind:hidden="permission !== 'default'"
 					x-on:click="requestPermission()"
 					x-cloak=""
 				>
@@ -80,7 +81,7 @@ templ Layout(title string, email string) {
 			</div>
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
-			<script src="/static/js/alpine.min.js" defer></script>
+			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src="/static/js/bongo.js"></script>
 		</body>
 	</html>
@@ -95,6 +96,7 @@ templ LayoutWithContent(title string, email string) {
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
+			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
 		</head>
 		<body>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
@@ -129,7 +131,7 @@ templ LayoutWithContent(title string, email string) {
 					></button>
 					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
 					<span class="user-email" aria-label={ "Logged in as " + email }>{ email }</span>
-					<form method="post" action="/logout" style="margin:0">
+					<form method="post" action="/logout" class="u-m0">
 						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
 					</form>
 				</div>
@@ -139,7 +141,7 @@ templ LayoutWithContent(title string, email string) {
 					<div class="flash-icon">&#9888;</div>
 					<div class="flash-content">
 						{ t(ctx, "security.require2FABanner") }
-						<a href="/settings/security" style="margin-left:0.5rem;font-weight:600">{ t(ctx, "security.setupTwoFactor") }</a>
+						<a href="/settings/security" class="u-ml-05 u-fw-600">{ t(ctx, "security.setupTwoFactor") }</a>
 					</div>
 				</div>
 			}
@@ -152,7 +154,7 @@ templ LayoutWithContent(title string, email string) {
 				<button
 					type="button"
 					class="notification-prompt outline secondary"
-					x-show="permission === 'default'"
+					x-bind:hidden="permission !== 'default'"
 					x-on:click="requestPermission()"
 					x-cloak=""
 				>
@@ -161,7 +163,7 @@ templ LayoutWithContent(title string, email string) {
 			</div>
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
-			<script src="/static/js/alpine.min.js" defer></script>
+			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src="/static/js/bongo.js"></script>
 		</body>
 	</html>

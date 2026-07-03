@@ -155,7 +155,7 @@ func TestLoginRateLimit_RetryAfterHeader(t *testing.T) {
 	}
 }
 
-func TestExtractIP_RemoteAddr(t *testing.T) {
+func TestClientIP_RemoteAddr(t *testing.T) {
 	tests := []struct {
 		name       string
 		remoteAddr string
@@ -184,6 +184,12 @@ func TestExtractIP_RemoteAddr(t *testing.T) {
 			remoteAddr: "1.2.3.4",
 			want:       "1.2.3.4",
 		},
+		{
+			name:       "public peer does not trust XFF",
+			remoteAddr: "203.0.113.5:1234",
+			xff:        "198.51.100.9",
+			want:       "203.0.113.5",
+		},
 	}
 
 	for _, tc := range tests {
@@ -193,9 +199,9 @@ func TestExtractIP_RemoteAddr(t *testing.T) {
 			if tc.xff != "" {
 				req.Header.Set("X-Forwarded-For", tc.xff)
 			}
-			got := extractIP(req)
+			got := ClientIP(req)
 			if got != tc.want {
-				t.Errorf("extractIP() = %q, want %q", got, tc.want)
+				t.Errorf("ClientIP() = %q, want %q", got, tc.want)
 			}
 		})
 	}

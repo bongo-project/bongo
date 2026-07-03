@@ -20,21 +20,21 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 					} else if flash != "" {
 						@FlashMessage(flash, "success")
 					}
-					<h2 class="settings-section-title" style="font-size:1.2rem; margin-bottom:20px">{ t(ctx, "settings.security") }</h2>
-					<div class="settings-card" style="margin-bottom:24px">
-						<div style="padding:20px">
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "settings.security") }</h2>
+					<div class="settings-card u-mb-24px">
+						<div class="settings-card-pad">
 							<h3 class="settings-section-title">{ t(ctx, "settings.changePassword") }</h3>
 							<form method="post" action="/settings/security/password">
-								<div class="form-group" style="margin-bottom:12px">
+								<div class="form-group u-mb-12px">
 									<label class="form-label" for="current_password">{ t(ctx, "settings.currentPassword") }</label>
 									<input type="password" name="current_password" id="current_password" class="form-input" required/>
 								</div>
-								<div class="form-group" style="margin-bottom:12px">
+								<div class="form-group u-mb-12px">
 									<label class="form-label" for="new_password">{ t(ctx, "settings.newPassword") }</label>
 									<input type="password" name="new_password" id="new_password" class="form-input" required minlength="8"/>
-									<small style="color:var(--text-muted); font-size:0.78rem">{ t(ctx, "security.minPassword") }</small>
+									<small class="u-text-muted u-font-078">{ t(ctx, "security.minPassword") }</small>
 								</div>
-								<div class="form-group" style="margin-bottom:16px">
+								<div class="form-group u-mb-16px">
 									<label class="form-label" for="confirm_password">{ t(ctx, "settings.confirmPassword") }</label>
 									<input type="password" name="confirm_password" id="confirm_password" class="form-input" required minlength="8"/>
 								</div>
@@ -43,12 +43,12 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 						</div>
 					</div>
 					<div class="settings-card">
-						<div style="padding:20px">
+						<div class="settings-card-pad">
 							<h3 class="settings-section-title">{ t(ctx, "settings.twoFactorAuth") }</h3>
 							if totpEnabled {
 								<div class="tfa-status">
 									<div class="tfa-status-text">
-										<div style="margin-bottom:8px">
+										<div class="u-mb-12px">
 											<span class="badge badge-active">{ t(ctx, "common.active") }</span>
 										</div>
 										<p>{ t(ctx, "security.twoFactorEnabled") }</p>
@@ -56,8 +56,8 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 								</div>
 								<details>
 									<summary>{ t(ctx, "security.disableTwoFactor") }</summary>
-									<form method="post" action="/settings/security/totp/disable" style="margin-top:1rem">
-										<div class="form-group" style="margin-bottom:12px">
+									<form method="post" action="/settings/security/totp/disable" class="u-mt-1">
+										<div class="form-group u-mb-12px">
 											<label class="form-label" for="disable_password">{ t(ctx, "security.enterPasswordToDisable") }</label>
 											<input type="password" name="password" id="disable_password" class="form-input" required/>
 										</div>
@@ -67,7 +67,7 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 							} else {
 								<div class="tfa-status">
 									<div class="tfa-status-text">
-										<div style="margin-bottom:8px">
+										<div class="u-mb-12px">
 											<span class="badge badge-disabled">{ t(ctx, "common.inactive") }</span>
 										</div>
 										<p>{ t(ctx, "security.twoFactorDescription") }</p>
@@ -100,26 +100,26 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 					if errMsg != "" {
 						@FlashMessage(errMsg, "error")
 					}
-					<h2 class="settings-section-title" style="font-size:1.2rem;margin-bottom:20px">{ t(ctx, "security.setupTwoFactor") }</h2>
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "security.setupTwoFactor") }</h2>
 					<div class="settings-card">
-						<div style="padding:20px">
+						<div class="settings-card-pad">
 							<p>{ t(ctx, "security.scanQrCode") }</p>
-							<div style="text-align:center;margin:2rem 0">
+							<div class="u-text-center u-mt-2 u-mb-2">
 								<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
 							</div>
-							<p style="text-align:center;margin-top:12px;color:var(--text-muted)">{ t(ctx, "security.manualKeyPrompt") }</p>
+							<p class="u-text-center u-mb-12px u-text-muted">{ t(ctx, "security.manualKeyPrompt") }</p>
 							<div class="manual-key" id="totp-key">
 								<span>{ manualKey }</span>
-								<button type="button" class="btn-copy" onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim())" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
+								<button type="button" class="btn-copy" data-copy-previous="true" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
 									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
 								</button>
 							</div>
-							<form method="post" action="/settings/security/totp/confirm" style="margin-top:2rem;max-width:320px;margin-left:auto;margin-right:auto">
-								<div class="form-group" style="margin-bottom:16px">
+							<form method="post" action="/settings/security/totp/confirm" class="u-mt-2 u-max-w-320 u-mx-auto">
+								<div class="form-group u-mb-16px">
 									<label class="form-label" for="code">{ t(ctx, "security.verificationCode") }</label>
-									<input type="text" name="code" id="code" class="form-input" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code" style="font-size:18px;letter-spacing:4px;text-align:center;font-weight:600"/>
+									<input type="text" name="code" id="code" class="form-input manual-code-input" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code"/>
 								</div>
-								<div style="display:flex;gap:0.75rem;align-items:center">
+								<div class="u-flex u-gap-075 u-items-center">
 									<button type="submit" class="btn-primary">{ t(ctx, "auth.verifyAndEnable") }</button>
 									<a href="/settings/security">{ t(ctx, "common.cancel") }</a>
 								</div>
@@ -143,7 +143,7 @@ templ TOTPRecoveryCodes(codes []string) {
 		</aside>
 		<main class="content" id="main-content">
 			<h2>{ t(ctx, "security.recoveryCodes") }</h2>
-			<div class="flash flash-warning" style="margin-bottom:1.5rem">
+			<div class="flash flash-warning u-mb-15">
 				<div class="flash-icon">&#9888;</div>
 				<div class="flash-content">
 					<strong>{ t(ctx, "security.saveCodesWarning") }</strong> { t(ctx, "security.saveCodesDescription") }
@@ -157,7 +157,7 @@ templ TOTPRecoveryCodes(codes []string) {
 						<div class="recovery-code">{ code }</div>
 					}
 				</div>
-				<a href="/settings/security" class="btn-primary" style="display:inline-block;text-align:center;text-decoration:none">{ t(ctx, "security.savedCodes") }</a>
+				<a href="/settings/security" class="btn-primary u-inline-block u-text-center u-text-decoration-none">{ t(ctx, "security.savedCodes") }</a>
 			</fieldset>
 		</main>
 	}

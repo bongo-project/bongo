@@ -18,8 +18,8 @@ func TestCreateSessionCookie(t *testing.T) {
 	if !cookie.HttpOnly {
 		t.Error("cookie should be HttpOnly")
 	}
-	if cookie.SameSite != 0 {
-		t.Error("cookie should omit SameSite (browser defaults to Lax)")
+	if cookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("cookie SameSite = %v, want Lax", cookie.SameSite)
 	}
 	if cookie.Value == "" {
 		t.Error("cookie value should not be empty")
@@ -54,6 +54,9 @@ func TestClearSessionCookie(t *testing.T) {
 	cookie := ClearSessionCookie()
 	if cookie.MaxAge != -1 {
 		t.Errorf("MaxAge = %d, want -1", cookie.MaxAge)
+	}
+	if cookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("cookie SameSite = %v, want Lax", cookie.SameSite)
 	}
 }
 

@@ -349,16 +349,10 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		},
 		Attachments: attachmentRefs,
 	}
-	if err := s.mailboxes.StoreMailMeta(s.userID, meta); err != nil {
-		s.logger.Warn("imap: append store meta failed", "mailbox", mailbox, "user", s.userID, "error", err)
-		return nil, fmt.Errorf("storing mail meta: %w", err)
-	}
-
-	// Append to mailbox.
-	uid, err := s.mailboxes.AppendMessage(s.userID, mailbox, guid, flags, internalDate.Unix())
+	uid, err := s.mailboxes.DeliverMessage(s.userID, mailbox, meta, flags)
 	if err != nil {
 		s.logger.Warn("imap: append failed", "mailbox", mailbox, "user", s.userID, "guid", guid, "error", err)
-		return nil, fmt.Errorf("appending to mailbox: %w", err)
+		return nil, fmt.Errorf("delivering to mailbox: %w", err)
 	}
 
 	s.logger.Info("imap: mail stored", "mailbox", mailbox, "user", s.userID, "guid", guid, "subject", subject, "size", size)

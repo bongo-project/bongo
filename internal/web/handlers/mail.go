@@ -199,8 +199,8 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 					colourIdx = tm.ColourIndex
 				}
 				summary.Tags = append(summary.Tags, templates.TagDot{
-					Name:   tagName,
-					Colour: templates.TagDotColour(colourIdx),
+					Name:        tagName,
+					ColourIndex: colourIdx,
 				})
 			}
 		}
@@ -382,7 +382,9 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-mark as seen.
 	if msg.Flags&store.FlagSeen == 0 {
-		_ = h.mailboxes.AddFlags(userID, mailbox, msg.Uid, store.FlagSeen)
+		if err := h.mailboxes.AddFlags(userID, mailbox, msg.Uid, store.FlagSeen); err != nil {
+			h.logger.Warn("web: failed to auto-mark message seen", "mailbox", mailbox, "uid", msg.Uid, "user", userID, "error", err)
+		}
 	}
 
 	meta := h.loadMailMeta(userID, msg.MailGuid)
@@ -527,34 +529,67 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 
 		switch action {
 		case "mark-read":
-			_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagSeen)
+			if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagSeen); err != nil {
+				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
+				return
+			}
 		case "mark-unread":
-			_ = h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagSeen)
+			if err := h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagSeen); err != nil {
+				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
+				return
+			}
 		case "flag":
-			_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagFlagged)
+			if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagFlagged); err != nil {
+				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
+				return
+			}
 		case "unflag":
-			_ = h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagFlagged)
+			if err := h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagFlagged); err != nil {
+				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
+				return
+			}
 		case "delete":
-			_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted)
-			_, _ = h.mailboxes.Expunge(userID, mailbox)
+			if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted); err != nil {
+				http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
+				return
+			}
+			if _, err := h.mailboxes.Expunge(userID, mailbox); err != nil {
+				http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
+				return
+			}
 		case "move":
 			dest := r.FormValue("destination")
 			if dest != "" {
-				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest)
+				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest); err != nil {
+					http.Error(w, "Bulk move failed", http.StatusInternalServerError)
+					return
+				}
 			}
 		case "spam":
 			if mailbox != "Junk" {
-				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "Junk")
+				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "Junk"); err != nil {
+					http.Error(w, "Bulk spam action failed", http.StatusInternalServerError)
+					return
+				}
 			}
 			if msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid)); err == nil && h.applier != nil {
-				_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0)
+				if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0); err != nil {
+					http.Error(w, "Bulk spam action failed", http.StatusInternalServerError)
+					return
+				}
 			}
 		case "not-spam":
 			if mailbox != "INBOX" {
-				_ = h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "INBOX")
+				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "INBOX"); err != nil {
+					http.Error(w, "Bulk not-spam action failed", http.StatusInternalServerError)
+					return
+				}
 			}
 			if msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid)); err == nil && h.applier != nil {
-				_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0)
+				if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0); err != nil {
+					http.Error(w, "Bulk not-spam action failed", http.StatusInternalServerError)
+					return
+				}
 			}
 		}
 	}
@@ -629,7 +664,10 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 
 	// Ensure target mailbox exists.
 	if _, err := h.mailboxes.GetMailbox(userID, targetMailbox); err != nil {
-		_ = h.mailboxes.CreateMailbox(userID, targetMailbox)
+		if err := h.mailboxes.CreateMailbox(userID, targetMailbox); err != nil {
+			http.Error(w, "Failed to create target mailbox", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	file, _, err := r.FormFile("mbox")
@@ -705,60 +743,16 @@ func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 
-		metaBytes, err := proto.Marshal(meta)
-		if err != nil {
+		if _, err := h.mailboxes.DeliverMessage(userID, targetMailbox, meta, 0); err != nil {
 			failed++
 			continue
 		}
-
-		cmd := &bongov1.RaftCommand{
-			Op:    bongov1.Op_OP_PUT,
-			Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
-			Value: metaBytes,
-		}
-		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-			failed++
-			continue
-		}
-
-		h.deliverToMailbox(userID, targetMailbox, guid, meta)
 		imported++
 	}
 
 	h.logger.Info("web: mbox imported", "mailbox", targetMailbox, "user", userID, "imported", imported, "failed", failed)
 
 	templ.Handler(templates.ImportResult(imported, failed, targetMailbox)).ServeHTTP(w, r)
-}
-
-// deliverToMailbox is the same pattern used by ComposeHandler; duplicated here for MailHandler.
-func (h *MailHandler) deliverToMailbox(userID, mailbox, guid string, meta *bongov1.MailMeta) {
-	mbMeta, err := h.mailboxes.GetMailbox(userID, mailbox)
-	if err != nil {
-		return
-	}
-	uid := mbMeta.UidNext
-	mbMeta.UidNext = uid + 1
-	metaBytes, _ := proto.Marshal(mbMeta)
-	metaCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/meta", userID, mailbox)),
-		Value: metaBytes,
-	}
-	_ = h.applier.ApplyCommand(metaCmd, 5*time.Second)
-
-	msg := &bongov1.MailboxMessage{
-		Uid:          uid,
-		MailGuid:     guid,
-		Flags:        0,
-		InternalDate: meta.ReceivedAt,
-	}
-	msgBytes, _ := proto.Marshal(msg)
-	msgCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uid)),
-		Value: msgBytes,
-	}
-	_ = h.applier.ApplyCommand(msgCmd, 5*time.Second)
 }
 
 // splitMbox splits an mbox byte slice into individual RFC 5322 messages.
@@ -917,9 +911,15 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "add":
-		_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), flagBit)
+		if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), flagBit); err != nil {
+			http.Error(w, "Failed to update flag", http.StatusInternalServerError)
+			return
+		}
 	case "remove":
-		_ = h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), flagBit)
+		if err := h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), flagBit); err != nil {
+			http.Error(w, "Failed to update flag", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	h.logger.Info("web: flag toggled", "flag", flag, "action", action, "mailbox", mailbox, "uid", uid, "user", userID)
@@ -1313,8 +1313,14 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
-	_ = h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted)
-	_, _ = h.mailboxes.Expunge(userID, mailbox)
+	if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted); err != nil {
+		http.Error(w, "failed to mark message deleted", http.StatusInternalServerError)
+		return
+	}
+	if _, err := h.mailboxes.Expunge(userID, mailbox); err != nil {
+		http.Error(w, "failed to delete message", http.StatusInternalServerError)
+		return
+	}
 
 	h.logger.Info("web: message deleted", "mailbox", mailbox, "uid", uid, "user", userID)
 
@@ -1562,7 +1568,9 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 		Key:   []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid)),
 		Value: metaBytes,
 	}
-	_ = h.applier.ApplyCommand(cmd, 5*time.Second)
+	if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		h.logger.Warn("web: failed to backfill message references", "user", userID, "guid", guid, "error", err)
+	}
 }
 
 // MarkSpam moves a message to Junk, updates spam score to 1.0, and trains Bayes.
@@ -1588,7 +1596,9 @@ func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
 
 	// Update spam score to 1.0.
 	if h.applier != nil {
-		_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0)
+		if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0); err != nil {
+			h.logger.Warn("web: failed to update spam score", "mailbox", mailbox, "uid", uid, "user", userID, "error", err)
+		}
 	}
 
 	// Train Bayes filter.
@@ -1624,7 +1634,9 @@ func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
 
 	// Update spam score to 0.0.
 	if h.applier != nil {
-		_ = antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0)
+		if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0); err != nil {
+			h.logger.Warn("web: failed to clear spam score", "mailbox", mailbox, "uid", uid, "user", userID, "error", err)
+		}
 	}
 
 	// Train Bayes filter.
@@ -1664,6 +1676,11 @@ func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) {
 	}
 
 	tokens := antispam.Tokenize(subject, bodyText)
-	_ = h.bayes.Train(userID, tokens, isSpam)
-	_ = h.bayes.IncrementTrained(userID)
+	if err := h.bayes.Train(userID, tokens, isSpam); err != nil {
+		h.logger.Warn("web: bayes training failed", "user", userID, "guid", guid, "spam", isSpam, "error", err)
+		return
+	}
+	if err := h.bayes.IncrementTrained(userID); err != nil {
+		h.logger.Warn("web: bayes trained counter update failed", "user", userID, "guid", guid, "spam", isSpam, "error", err)
+	}
 }
