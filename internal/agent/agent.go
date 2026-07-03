@@ -875,14 +875,16 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Config.IMAP.Enabled && a.Raft != nil {
 		isDev := a.Config.Server.Role == "dev"
 
-		// Load or generate TLS config.
-		tlsCfg, err := security.LoadOrGenerate(
+		// Resolve TLS config. Non-dev roles fail hard when a configured cert exists
+		// but cannot be loaded; absent certs (first-boot) produce a loud WARN + fallback.
+		tlsCfg, err := a.mailListenerTLS(
+			"imap",
 			a.Config.Cluster.TLS.CertFile,
 			a.Config.Cluster.TLS.KeyFile,
 			[]string{"localhost", "127.0.0.1"},
 		)
 		if err != nil {
-			a.logger.Warn("imap: failed to load TLS, running without TLS", "error", err)
+			return fmt.Errorf("imap: resolving TLS config: %w", err)
 		}
 
 		a.IMAP = bongoimap.NewServer(
@@ -917,13 +919,16 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Config.POP3.Enabled && a.Raft != nil {
 		isDev := a.Config.Server.Role == "dev"
 
-		pop3TLSCfg, err := security.LoadOrGenerate(
+		// Resolve TLS config. Non-dev roles fail hard when a configured cert exists
+		// but cannot be loaded; absent certs (first-boot) produce a loud WARN + fallback.
+		pop3TLSCfg, err := a.mailListenerTLS(
+			"pop3",
 			a.Config.Cluster.TLS.CertFile,
 			a.Config.Cluster.TLS.KeyFile,
 			[]string{"localhost", "127.0.0.1"},
 		)
 		if err != nil {
-			a.logger.Warn("pop3: failed to load TLS, running without TLS", "error", err)
+			return fmt.Errorf("pop3: resolving TLS config: %w", err)
 		}
 
 		a.POP3 = bongopop3.NewServer(a.Auth, a.Mailboxes, a.Store, a.Blobs, pop3TLSCfg, isDev, a.logger)
@@ -1405,6 +1410,52 @@ func (a *Agent) shutdownAgent() error {
 }
 
 // Shutdown closes all resources held by the agent.
+// mailListenerTLS resolves the TLS config for a mail protocol listener (IMAP, POP3).
+// It implements role-aware behaviour across four cases:
+//
+//  1. dev role: quiet ephemeral self-signed (expected for local development).
+//  2. server/edge, no cert path configured: loud WARN + self-signed fallback.
+//  3. server/edge, cert path configured but file absent (first-boot): loud WARN + self-signed fallback.
+//  4. server/edge, cert file exists but fails to load (corrupt/mismatch): hard error returned to caller.
+//
+// Callers must fail startup on a non-nil error.
+func (a *Agent) mailListenerTLS(proto, certFile, keyFile string, hosts []string) (*tls.Config, error) {
+	if a.Config.Server.Role == "dev" {
+		cfg, err := security.SelfSignedTLSConfig(hosts)
+		if err != nil {
+			return nil, fmt.Errorf("%s: generating self-signed TLS cert: %w", proto, err)
+		}
+		return cfg, nil
+	}
+
+	if certFile == "" || keyFile == "" {
+		a.logger.Warn(proto + ": no TLS certificate configured, serving a self-signed certificate that clients will NOT trust; configure a real certificate and restart")
+		cfg, err := security.SelfSignedTLSConfig(hosts)
+		if err != nil {
+			return nil, fmt.Errorf("%s: generating self-signed TLS cert: %w", proto, err)
+		}
+		return cfg, nil
+	}
+
+	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+		a.logger.Warn(proto+": TLS certificate not found, serving a self-signed certificate that clients will NOT trust; provide the cert and restart",
+			"cert_file", certFile)
+		cfg, err := security.SelfSignedTLSConfig(hosts)
+		if err != nil {
+			return nil, fmt.Errorf("%s: generating self-signed TLS cert: %w", proto, err)
+		}
+		return cfg, nil
+	}
+
+	// File exists (or stat failed for another reason such as permission denied) —
+	// attempt a strict load. Any error here is a real misconfiguration.
+	cfg, err := security.LoadCert(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("%s: TLS certificate exists but failed to load (corrupt or key mismatch): %w", proto, err)
+	}
+	return cfg, nil
+}
+
 func (a *Agent) Shutdown() error {
 	var errs []error
 

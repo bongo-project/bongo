@@ -96,6 +96,38 @@ func LoadOrGenerate(certFile, keyFile string, hosts []string) (*tls.Config, erro
 	}, nil
 }
 
+// LoadCert loads TLS config strictly from cert/key files on disk.
+// It returns an error if the files are absent or fail to parse.
+// Unlike LoadOrGenerate, it never generates a fallback certificate.
+func LoadCert(certFile, keyFile string) (*tls.Config, error) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("loading TLS key pair: %w", err)
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
+// SelfSignedTLSConfig generates an ephemeral self-signed TLS config for the given hosts.
+// This is a convenience wrapper around GenerateSelfSigned for callers that need a
+// ready-to-use *tls.Config rather than raw PEM bytes.
+func SelfSignedTLSConfig(hosts []string) (*tls.Config, error) {
+	certPEM, keyPEM, err := GenerateSelfSigned(hosts)
+	if err != nil {
+		return nil, fmt.Errorf("generating self-signed cert: %w", err)
+	}
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("parsing generated cert: %w", err)
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}, nil
+}
+
 // LoadCAPool loads a CA certificate file and returns a CertPool for client verification.
 func LoadCAPool(caFile string) (*x509.CertPool, error) {
 	caPEM, err := os.ReadFile(caFile)
