@@ -471,7 +471,11 @@ func isImageType(ct string) bool {
 }
 
 func isTextType(ct string) bool {
-	return ct == "text/plain" || ct == "text/csv" || ct == "text/html" || ct == "application/json" || ct == "application/xml"
+	// text/html is deliberately excluded: the text preview swaps the fetched
+	// blob into the page via hx-swap="innerHTML", so an HTML attachment would
+	// execute its markup/handlers in our authenticated origin (stored XSS).
+	// HTML attachments fall through to a download-only chip.
+	return ct == "text/plain" || ct == "text/csv" || ct == "application/json" || ct == "application/xml"
 }
 
 func inlineBlobURL(hash, contentType string) string {
