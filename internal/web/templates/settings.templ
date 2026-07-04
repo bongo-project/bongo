@@ -120,7 +120,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 										<option value="all" selected?={ prefs.DefaultReply == bongov1.DefaultReplyMode_REPLY_MODE_ALL }>{ t(ctx, "settings.replyAll") }</option>
 									</select>
 								</div>
-								<div class="settings-row">
+								<div class="settings-row settings-row-stacked">
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.signature") }</div>
 									</div>
