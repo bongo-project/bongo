@@ -272,7 +272,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 	}
 }
 
-templ AdminUserForm(user *AdminUserInfo, isNew bool, email, flash string) {
+templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email, flash string) {
 	@AdminLayout("User", email, "users") {
 		<div class="admin-scroll">
 			if flash != "" {
@@ -286,8 +286,25 @@ templ AdminUserForm(user *AdminUserInfo, isNew bool, email, flash string) {
 			<div class="form-card">
 				<form method="post" action={ templ.SafeURL(userFormAction(user, isNew)) }>
 					if isNew {
-						<label for="user_email">{ t(ctx, "auth.email") }</label>
-						<input type="email" name="email" id="user_email" required/>
+						if len(domains) > 0 {
+							<div class="admin-inline-form">
+								<div class="u-flex-1">
+									<label for="user_username" class="admin-inline-label">Username</label>
+									<input type="text" name="username" id="user_username" required autocomplete="username" pattern="[^@]+" class="u-m0"/>
+								</div>
+								<div class="u-flex-1">
+									<label for="user_domain" class="admin-inline-label">Domain</label>
+									<select name="domain" id="user_domain" required class="u-m0">
+										for _, domain := range domains {
+											<option value={ domain.Name }>{ domain.Name }</option>
+										}
+									</select>
+								</div>
+							</div>
+						} else {
+							<label for="user_email">{ t(ctx, "auth.email") }</label>
+							<input type="email" name="email" id="user_email" required/>
+						}
 					}
 					<label for="display_name">Display Name</label>
 					<input type="text" name="display_name" id="display_name" value={ userDisplayName(user) }/>

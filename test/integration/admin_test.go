@@ -187,6 +187,82 @@ func TestUserManagement(t *testing.T) {
 		}
 	})
 
+	t.Run("new user form offers configured domain selector", func(t *testing.T) {
+		resp, err := adminClient.PostForm(baseURL+"/admin/domains", url.Values{
+			"domain": {"accounts.local"},
+		})
+		if err != nil {
+			t.Fatalf("POST /admin/domains: %v", err)
+		}
+		resp.Body.Close()
+
+		resp, err = adminClient.Get(baseURL + "/admin/users/new")
+		if err != nil {
+			t.Fatalf("GET /admin/users/new: %v", err)
+		}
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		bodyStr := string(body)
+		if !strings.Contains(bodyStr, `name="username"`) {
+			t.Fatal("new user form does not contain username field")
+		}
+		if !strings.Contains(bodyStr, `name="domain"`) {
+			t.Fatal("new user form does not contain domain selector")
+		}
+		if !strings.Contains(bodyStr, "accounts.local") {
+			t.Fatal("new user form does not include configured domain")
+		}
+	})
+
+	t.Run("create user from username and configured domain", func(t *testing.T) {
+		resp, err := adminClient.PostForm(baseURL+"/admin/users", url.Values{
+			"username":     {"jane"},
+			"domain":       {"accounts.local"},
+			"display_name": {"Jane Domain"},
+			"password":     {"testpass3"},
+		})
+		if err != nil {
+			t.Fatalf("POST /admin/users: %v", err)
+		}
+		resp.Body.Close()
+
+		resp, err = adminClient.Get(baseURL + "/admin/users?q=" + url.QueryEscape("jane@accounts.local"))
+		if err != nil {
+			t.Fatalf("GET /admin/users: %v", err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if !strings.Contains(string(body), "jane@accounts.local") {
+			t.Fatal("user list does not contain composed user address")
+		}
+
+		janeClient := loginAs(t, baseURL, "jane@accounts.local", "testpass3")
+		resp, err = janeClient.Get(baseURL + "/mail/INBOX")
+		if err != nil {
+			t.Fatalf("GET /mail/INBOX as composed-domain user: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("composed-domain user mailbox status = %d, want 200", resp.StatusCode)
+		}
+	})
+
+	t.Run("create user rejects unknown selected domain", func(t *testing.T) {
+		resp, err := adminClient.PostForm(baseURL+"/admin/users", url.Values{
+			"username": {"mallory"},
+			"domain":   {"unknown.local"},
+			"password": {"testpass4"},
+		})
+		if err != nil {
+			t.Fatalf("POST /admin/users: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", resp.StatusCode)
+		}
+	})
+
 	t.Run("disable user prevents login", func(t *testing.T) {
 		// Ensure user exists.
 		adminClient.PostForm(baseURL+"/admin/users", url.Values{

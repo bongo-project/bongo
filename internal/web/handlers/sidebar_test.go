@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"testing"
+	"time"
 
+	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 func TestLoadSidebarTagsNilStore(t *testing.T) {
@@ -41,6 +44,24 @@ func TestSidebarTagInfoSelected(t *testing.T) {
 	}
 	if tag2.Selected {
 		t.Error("tag2.Selected should be false when selected does not match")
+	}
+}
+
+func TestLoadMailboxInfosFreshUserShowsDefaultMailboxes(t *testing.T) {
+	ms := newSidebarMailboxStore(t)
+
+	got := LoadMailboxInfos(ms, "fresh-user", "INBOX")
+	if len(got) != len(store.DefaultMailboxes) {
+		t.Fatalf("fresh user sidebar mailbox count = %d, want %d default mailboxes (%v)", len(got), len(store.DefaultMailboxes), store.DefaultMailboxes)
+	}
+
+	for i, name := range store.DefaultMailboxes {
+		if got[i].Name != name {
+			t.Fatalf("mailbox %d = %q, want %q", i, got[i].Name, name)
+		}
+	}
+	if !got[0].Selected {
+		t.Fatal("INBOX should be selected for a fresh user sidebar")
 	}
 }
 
@@ -332,6 +353,36 @@ func TestBuildMailboxTree(t *testing.T) {
 			}
 		})
 	}
+}
+
+type sidebarDirectApplier struct {
+	store *store.PebbleStore
+}
+
+func (a *sidebarDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
+		_, err := store.ApplyMailboxCommand(a.store, cmd)
+		return err
+	}
+	switch cmd.Op {
+	case bongov1.Op_OP_PUT:
+		return a.store.Set(cmd.Key, cmd.Value)
+	case bongov1.Op_OP_DELETE:
+		return a.store.Delete(cmd.Key)
+	}
+	return nil
+}
+
+func newSidebarMailboxStore(t *testing.T) *store.MailboxStore {
+	t.Helper()
+
+	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	return store.NewMailboxStore(ps, &sidebarDirectApplier{store: ps})
 }
 
 func TestMailboxIcon(t *testing.T) {

@@ -62,6 +62,37 @@ func TestI18nCoverage(t *testing.T) {
 	}
 }
 
+func TestKnownUserFacingStringsAreLocalized(t *testing.T) {
+	checks := []struct {
+		path string
+		text string
+	}{
+		{filepath.Join("..", "web", "templates", "mailbox.templ"), "Scan for spam"},
+		{filepath.Join("..", "web", "templates", "mailbox.templ"), "Tag name"},
+		{filepath.Join("..", "web", "templates", "components.templ"), "Tag..."},
+		{filepath.Join("..", "web", "templates", "components.templ"), "Add</button>"},
+		{filepath.Join("..", "web", "templates", "components.templ"), "Remove</button>"},
+		{filepath.Join("..", "web", "templates", "rules.templ"), "Press Enter or comma to add each tag."},
+		{filepath.Join("..", "web", "static", "js", "bongo.js"), "Keyboard Shortcuts"},
+		{filepath.Join("..", "web", "static", "js", "bongo.js"), "Failed to create tag."},
+	}
+
+	var hardcoded []string
+	for _, check := range checks {
+		data, err := os.ReadFile(check.path)
+		if err != nil {
+			t.Fatalf("reading %s: %v", check.path, err)
+		}
+		if strings.Contains(string(data), check.text) {
+			hardcoded = append(hardcoded, check.path+": "+check.text)
+		}
+	}
+
+	if len(hardcoded) > 0 {
+		t.Fatalf("known user-facing strings are still hard-coded instead of translated:\n  %s", strings.Join(hardcoded, "\n  "))
+	}
+}
+
 var tCallRegex = regexp.MustCompile(`t\(ctx,\s*"([^"]+)"\)`)
 
 func extractTemplMessageIDs(t *testing.T, dir string) []string {

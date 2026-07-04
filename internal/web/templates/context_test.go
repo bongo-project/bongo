@@ -1,7 +1,10 @@
 package templates
 
 import (
+	"bytes"
+	"context"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -29,5 +32,39 @@ func TestPageWindow(t *testing.T) {
 				t.Errorf("pageWindow(%d, %d) = %v, want %v", tc.page, tc.totalPages, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestLayoutWithContentLoadsSharedDesignTokens(t *testing.T) {
+	var buf bytes.Buffer
+	if err := LayoutWithContent("Inbox", "user@example.test").Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render LayoutWithContent: %v", err)
+	}
+
+	html := buf.String()
+	if !strings.Contains(html, `/static/css/componentlib/colors_and_type.css`) {
+		t.Fatal("LayoutWithContent does not load shared componentlib design tokens before bongo.css")
+	}
+	if strings.Index(html, `/static/css/componentlib/colors_and_type.css`) > strings.Index(html, `/static/css/bongo.css`) {
+		t.Fatal("componentlib design tokens must be loaded before bongo.css")
+	}
+}
+
+func TestMailboxContentExposesRealResponsivePaneTargets(t *testing.T) {
+	var buf bytes.Buffer
+	if err := MailboxContent("INBOX", nil, 1, 1, "", false).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render MailboxContent: %v", err)
+	}
+
+	html := buf.String()
+	for _, want := range []string{
+		`class="mail-layout"`,
+		`class="message-list-pane"`,
+		`class="reading-pane"`,
+		`id="reading-pane"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("MailboxContent missing %s", want)
+		}
 	}
 }

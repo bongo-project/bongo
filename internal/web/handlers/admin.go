@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/mail"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -164,19 +166,28 @@ func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 // NewUserForm shows the create user form.
 func (h *AdminHandler) NewUserForm(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
-	templ.Handler(templates.AdminUserForm(nil, true, email, "")).ServeHTTP(w, r)
+	templ.Handler(templates.AdminUserForm(nil, h.userFormDomains(), true, email, "")).ServeHTTP(w, r)
 }
 
 // CreateUser creates a new user.
 func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
-	newEmail := r.FormValue("email")
+	newEmail, err := composeAdminUserEmail(
+		r.FormValue("email"),
+		r.FormValue("username"),
+		r.FormValue("domain"),
+		h.userFormDomains(),
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	displayName := r.FormValue("display_name")
 	password := r.FormValue("password")
 	isAdmin := r.FormValue("is_admin") == "1"
 	quotaStr := r.FormValue("quota_bytes")
 
-	if newEmail == "" || password == "" {
-		http.Error(w, "email and password are required", http.StatusBadRequest)
+	if password == "" {
+		http.Error(w, "password is required", http.StatusBadRequest)
 		return
 	}
 
@@ -228,7 +239,7 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 		QuotaBytes:  profile.QuotaBytes,
 	}
 
-	templ.Handler(templates.AdminUserForm(info, false, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.AdminUserForm(info, nil, false, email, flash)).ServeHTTP(w, r)
 }
 
 // UpdateUser updates a user's profile.
@@ -786,6 +797,83 @@ func domainFromEmail(email string) string {
 		return email[idx+1:]
 	}
 	return "localhost"
+}
+
+func composeAdminUserEmail(rawEmail, rawUsername, rawDomain string, domains []templates.DomainInfo) (string, error) {
+	email := strings.TrimSpace(rawEmail)
+	if email != "" {
+		if !validEmailAddress(email) {
+			return "", fmt.Errorf("email address is invalid")
+		}
+		return email, nil
+	}
+
+	username := strings.TrimSpace(rawUsername)
+	domain := strings.ToLower(strings.TrimSpace(rawDomain))
+	if username == "" || domain == "" {
+		return "", fmt.Errorf("username and domain are required")
+	}
+	if strings.Contains(username, "@") {
+		return "", fmt.Errorf("username must not include a domain")
+	}
+	if !domainEnabledForUserForm(domain, domains) {
+		return "", fmt.Errorf("domain is not enabled")
+	}
+
+	email = username + "@" + domain
+	if !validEmailAddress(email) {
+		return "", fmt.Errorf("email address is invalid")
+	}
+	return email, nil
+}
+
+func validEmailAddress(email string) bool {
+	addr, err := mail.ParseAddress(email)
+	return err == nil && addr.Address == email && strings.Contains(email, "@")
+}
+
+func domainEnabledForUserForm(domain string, domains []templates.DomainInfo) bool {
+	for _, d := range domains {
+		if d.Enabled && strings.EqualFold(d.Name, domain) {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *AdminHandler) userFormDomains() []templates.DomainInfo {
+	configured := h.loadDomains()
+	if len(configured) > 0 {
+		return enabledDomains(configured)
+	}
+
+	seen := map[string]bool{}
+	var names []string
+	for _, email := range h.loadUserEmails() {
+		domain := strings.ToLower(strings.TrimSpace(domainFromEmail(email)))
+		if domain == "" || seen[domain] {
+			continue
+		}
+		seen[domain] = true
+		names = append(names, domain)
+	}
+	sort.Strings(names)
+
+	domains := make([]templates.DomainInfo, 0, len(names))
+	for _, name := range names {
+		domains = append(domains, templates.DomainInfo{Name: name, Enabled: true})
+	}
+	return domains
+}
+
+func enabledDomains(domains []templates.DomainInfo) []templates.DomainInfo {
+	enabled := make([]templates.DomainInfo, 0, len(domains))
+	for _, domain := range domains {
+		if domain.Enabled {
+			enabled = append(enabled, domain)
+		}
+	}
+	return enabled
 }
 
 // --- Internal helpers ---
