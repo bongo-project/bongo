@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -16,6 +17,12 @@ import (
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// defaultIdleTimeout bounds how long a POP3 connection may sit without sending
+// a complete command before it is dropped. RFC 1939 requires an autologout
+// timer of at least 10 minutes; this also sheds idle/abandoned connections
+// that would otherwise hold a goroutine and socket open indefinitely.
+const defaultIdleTimeout = 10 * time.Minute
 
 // popMsg represents a message in the POP3 session snapshot.
 type popMsg struct {
@@ -40,6 +47,10 @@ type session struct {
 	isDev     bool
 	logger    *slog.Logger
 
+	// idleTimeout is the maximum time to wait for the next command before the
+	// connection is dropped. Zero disables the deadline.
+	idleTimeout time.Duration
+
 	// Authorization state.
 	username string
 
@@ -62,29 +73,43 @@ func newSession(
 	logger *slog.Logger,
 ) *session {
 	return &session{
-		conn:      conn,
-		reader:    bufio.NewReader(conn),
-		writer:    bufio.NewWriter(conn),
-		auth:      authenticator,
-		mailboxes: mailboxes,
-		pebble:    pebble,
-		blobs:     blobs,
-		tlsCfg:    tlsCfg,
-		isTLS:     isTLS,
-		isDev:     isDev,
-		logger:    logger,
-		deleted:   make(map[int]bool),
+		conn:        conn,
+		reader:      bufio.NewReader(conn),
+		writer:      bufio.NewWriter(conn),
+		auth:        authenticator,
+		mailboxes:   mailboxes,
+		pebble:      pebble,
+		blobs:       blobs,
+		tlsCfg:      tlsCfg,
+		isTLS:       isTLS,
+		isDev:       isDev,
+		logger:      logger,
+		idleTimeout: defaultIdleTimeout,
+		deleted:     make(map[int]bool),
 	}
 }
 
 func (s *session) handle() {
 	defer s.conn.Close()
 
+	// Bound the greeting write too: a client that connects but never reads is
+	// just as idle as one that never writes, and an unbounded write would hang
+	// this goroutine and socket indefinitely.
+	s.extendDeadline()
 	s.respond("+OK bongo-go POP3 ready")
 
 	for {
+		// Drop the connection if the client goes idle between commands.
+		s.extendDeadline()
+
 		line, err := s.reader.ReadString('\n')
 		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				// RFC 1939 autologout: close the connection without entering
+				// UPDATE state. No goodbye is sent (the client is gone, and a
+				// write could block on an unread socket).
+				s.logger.Debug("pop3: idle timeout, closing connection")
+			}
 			return
 		}
 		line = strings.TrimRight(line, "\r\n")
@@ -126,6 +151,14 @@ func (s *session) handle() {
 		default:
 			s.respond("-ERR unknown command")
 		}
+	}
+}
+
+// extendDeadline refreshes the idle deadline (both read and write) for the next
+// command/response cycle. A zero idleTimeout disables the deadline.
+func (s *session) extendDeadline() {
+	if s.idleTimeout > 0 {
+		_ = s.conn.SetDeadline(time.Now().Add(s.idleTimeout))
 	}
 }
 

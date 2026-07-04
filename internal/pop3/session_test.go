@@ -166,6 +166,7 @@ func TestSessionIdleConnectionTimesOut(t *testing.T) {
 
 	done := make(chan struct{})
 	s := newSession(serverConn, nil, nil, nil, nil, nil, false, false, slog.Default())
+	s.idleTimeout = 50 * time.Millisecond // keep the test fast; production default is minutes
 	go func() {
 		s.handle()
 		close(done)
