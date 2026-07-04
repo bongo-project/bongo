@@ -87,6 +87,12 @@ func TestBlockRemoteImages(t *testing.T) {
 	}
 }
 
+func TestHTMLAttachmentsAreNotSafeForInlineHTMXPreview(t *testing.T) {
+	if safeInlineTypes["text/html"] {
+		t.Fatal("text/html attachments must not be swapped into the authenticated DOM as inline HTMX previews")
+	}
+}
+
 func setupServeBlobRouter(t *testing.T) (*chi.Mux, *store.BlobStore) {
 	t.Helper()
 	bs, err := store.NewBlobStore(t.TempDir())

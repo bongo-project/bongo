@@ -148,6 +148,39 @@ func TestLoginRateLimit(t *testing.T) {
 	}
 }
 
+func TestDAVBasicAuthFailuresAreRateLimited(t *testing.T) {
+	baseURL, cancel := startSecurityTestAgent(t)
+	defer cancel()
+
+	for _, tc := range []struct {
+		name string
+		path string
+	}{
+		{name: "carddav", path: "/carddav/"},
+		{name: "caldav", path: "/caldav/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newNoRedirectClient(nil)
+			var resp *http.Response
+			for i := 0; i < 6; i++ {
+				req, err := http.NewRequest(http.MethodGet, baseURL+tc.path, nil)
+				if err != nil {
+					t.Fatalf("NewRequest: %v", err)
+				}
+				req.SetBasicAuth("admin@localhost", "wrong-password")
+				resp, err = client.Do(req)
+				if err != nil {
+					t.Fatalf("attempt %d: %v", i+1, err)
+				}
+				resp.Body.Close()
+			}
+			if resp.StatusCode != http.StatusTooManyRequests {
+				t.Fatalf("status after repeated Basic Auth failures = %d, want 429", resp.StatusCode)
+			}
+		})
+	}
+}
+
 // TestSecurityHeaders verifies that the expected security headers are present
 // on HTML pages and that static assets carry Cache-Control.
 func TestSecurityHeaders(t *testing.T) {
@@ -164,11 +197,11 @@ func TestSecurityHeaders(t *testing.T) {
 		defer resp.Body.Close()
 
 		headers := map[string]string{
-			"Content-Security-Policy":   "",
-			"X-Frame-Options":           "DENY",
-			"X-Content-Type-Options":    "nosniff",
-			"Referrer-Policy":           "strict-origin-when-cross-origin",
-			"Permissions-Policy":        "",
+			"Content-Security-Policy": "",
+			"X-Frame-Options":         "DENY",
+			"X-Content-Type-Options":  "nosniff",
+			"Referrer-Policy":         "strict-origin-when-cross-origin",
+			"Permissions-Policy":      "",
 		}
 
 		for name, want := range headers {

@@ -3,12 +3,15 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -269,6 +272,128 @@ func TestUserManagement(t *testing.T) {
 	})
 }
 
+func TestDisabledUserExistingSessionRevoked(t *testing.T) {
+	baseURL, cancel := startAdminTestAgent(t)
+	defer cancel()
+
+	adminClient := loginAs(t, baseURL, "admin@localhost", "admin")
+	resp, err := adminClient.PostForm(baseURL+"/admin/users", url.Values{
+		"email":        {"revoke-session@localhost"},
+		"display_name": {"Revoke Session"},
+		"password":     {"testpass"},
+	})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	resp.Body.Close()
+
+	userClient := loginAs(t, baseURL, "revoke-session@localhost", "testpass")
+	resp, err = userClient.Get(baseURL + "/mail/INBOX")
+	if err != nil {
+		t.Fatalf("GET /mail/INBOX before disable: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("pre-disable inbox status = %d, want 200", resp.StatusCode)
+	}
+
+	userID := findUserIDByEmail(t, adminClient, baseURL, "revoke-session@localhost")
+	resp, err = adminClient.PostForm(baseURL+"/admin/users/"+userID+"/toggle-disabled", url.Values{})
+	if err != nil {
+		t.Fatalf("toggle disable: %v", err)
+	}
+	resp.Body.Close()
+
+	noRedirect := &http.Client{
+		Jar: userClient.Jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err = noRedirect.Get(baseURL + "/mail/INBOX")
+	if err != nil {
+		t.Fatalf("GET /mail/INBOX after disable: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("disabled user's existing session still has mailbox access")
+	}
+}
+
+func TestMailBlobRequiresMessageOwnership(t *testing.T) {
+	baseURL, cancel := startAdminTestAgent(t)
+	defer cancel()
+
+	adminClient := loginAs(t, baseURL, "admin@localhost", "admin")
+	for _, user := range []struct {
+		email    string
+		password string
+	}{
+		{"blob-owner@localhost", "ownerpass"},
+		{"blob-attacker@localhost", "attackerpass"},
+	} {
+		resp, err := adminClient.PostForm(baseURL+"/admin/users", url.Values{
+			"email":        {user.email},
+			"display_name": {user.email},
+			"password":     {user.password},
+		})
+		if err != nil {
+			t.Fatalf("create %s: %v", user.email, err)
+		}
+		resp.Body.Close()
+	}
+
+	ownerClient := loginAs(t, baseURL, "blob-owner@localhost", "ownerpass")
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("to", "blob-owner@localhost")
+	_ = writer.WriteField("subject", "Private attachment")
+	_ = writer.WriteField("body", "Attached private data")
+	part, err := writer.CreateFormFile("attachments", "private.txt")
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	_, _ = part.Write([]byte("private attachment contents"))
+	_ = writer.Close()
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/compose/send", &body)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp, err := ownerClient.Do(req)
+	if err != nil {
+		t.Fatalf("owner compose: %v", err)
+	}
+	resp.Body.Close()
+
+	var hash string
+	for uid := 1; uid <= 5 && hash == ""; uid++ {
+		resp, err = ownerClient.Get(fmt.Sprintf("%s/mail/INBOX/%d", baseURL, uid))
+		if err != nil {
+			t.Fatalf("owner message view uid %d: %v", uid, err)
+		}
+		msgBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if strings.Contains(string(msgBody), "Private attachment") {
+			hash = extractMailBlobHash(string(msgBody))
+		}
+	}
+	if hash == "" {
+		t.Fatalf("could not find attachment blob hash in message view")
+	}
+
+	attackerClient := loginAs(t, baseURL, "blob-attacker@localhost", "attackerpass")
+	resp, err = attackerClient.Get(baseURL + "/mail/blob/" + hash)
+	if err != nil {
+		t.Fatalf("attacker blob fetch: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Fatal("authenticated user without message ownership could fetch another user's blob")
+	}
+}
+
 func TestDomainAndAlias(t *testing.T) {
 	baseURL, cancel := startAdminTestAgent(t)
 	defer cancel()
@@ -341,6 +466,46 @@ func TestDomainAndAlias(t *testing.T) {
 			t.Error("alias list still contains info@test.local after delete")
 		}
 	})
+}
+
+func findUserIDByEmail(t *testing.T, client *http.Client, baseURL, email string) string {
+	t.Helper()
+	resp, err := client.Get(baseURL + "/admin/users?q=" + url.QueryEscape(email))
+	if err != nil {
+		t.Fatalf("GET /admin/users: %v", err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+
+	bodyStr := string(body)
+	for searchFrom := 0; ; {
+		idx := strings.Index(bodyStr[searchFrom:], "/admin/users/")
+		if idx == -1 {
+			break
+		}
+		idx += searchFrom
+		rest := bodyStr[idx+len("/admin/users/"):]
+		endIdx := strings.IndexByte(rest, '"')
+		if endIdx == -1 {
+			break
+		}
+		candidate := rest[:endIdx]
+		if candidate != "" && candidate != "new" && !strings.Contains(candidate, "/") {
+			return candidate
+		}
+		searchFrom = idx + 1
+	}
+	t.Fatalf("could not find user ID for %s", email)
+	return ""
+}
+
+func extractMailBlobHash(body string) string {
+	re := regexp.MustCompile(`/mail/blob/([a-f0-9]{64})`)
+	matches := re.FindStringSubmatch(body)
+	if len(matches) < 2 {
+		return ""
+	}
+	return matches[1]
 }
 
 func TestQueueInspection(t *testing.T) {
