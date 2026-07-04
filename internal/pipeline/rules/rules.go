@@ -24,12 +24,27 @@ type RuleProvider interface {
 	List(userID string) ([]*bongov1.FilterRule, error)
 }
 
+// RecipientResolver resolves an envelope recipient email address to a local
+// user ID. Filter rules are keyed by user ID, but envelope recipients are email
+// addresses, so they must be resolved before looking up rules.
+type RecipientResolver interface {
+	ResolveRecipient(email string) (string, error)
+}
+
 // RulesProcessor wraps the rules.Engine as a pipeline Processor. It evaluates
 // each recipient's filter rules and updates the envelope with the outcome.
 type RulesProcessor struct {
 	ruleStore RuleProvider
+	resolver  RecipientResolver
 	engine    *rules.Engine
 	logger    *slog.Logger
+}
+
+// SetResolver sets the recipient resolver used to map envelope recipient email
+// addresses to user IDs. When unset, recipients are treated as user IDs (used
+// by unit tests that pass IDs directly).
+func (p *RulesProcessor) SetResolver(r RecipientResolver) {
+	p.resolver = r
 }
 
 // NewRulesProcessor creates a RulesProcessor backed by the given RuleProvider.
@@ -75,7 +90,18 @@ func (p *RulesProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope
 	)
 
 	for _, recipient := range env.GetRecipients() {
-		userRules, err := p.ruleStore.List(recipient)
+		// Rules are keyed by user ID; envelope recipients are email addresses.
+		userID := recipient
+		if p.resolver != nil {
+			resolved, err := p.resolver.ResolveRecipient(recipient)
+			if err != nil || resolved == "" {
+				// Not a local user (e.g. an external forward target) — no rules.
+				continue
+			}
+			userID = resolved
+		}
+
+		userRules, err := p.ruleStore.List(userID)
 		if err != nil {
 			p.logger.Warn("rules: failed to load rules for recipient",
 				"recipient", recipient,

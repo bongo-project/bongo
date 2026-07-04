@@ -770,6 +770,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			case "rules":
 				if a.Rules != nil {
 					rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
+					rulesProc.SetResolver(resolver)
 					stages = append(stages, rulesProc)
 				}
 			case "antivirus":
