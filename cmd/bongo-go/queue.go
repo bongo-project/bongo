@@ -10,12 +10,14 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bongo-go/bongo-go/internal/security"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 var (
-	queueHTTPAddr string
-	queueJSON     bool
+	queueHTTPAddr      string
+	queueJSON          bool
+	queueSessionSecret string
 )
 
 var queueCmd = &cobra.Command{
@@ -46,6 +48,7 @@ var queueDropCmd = &cobra.Command{
 func init() {
 	queueCmd.PersistentFlags().StringVar(&queueHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
 	queueCmd.PersistentFlags().BoolVar(&queueJSON, "json", false, "Output as JSON")
+	queueCmd.PersistentFlags().StringVar(&queueSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 
 	queueCmd.AddCommand(queueStatusCmd)
 	queueCmd.AddCommand(queueRetryCmd)
@@ -53,12 +56,40 @@ func init() {
 	rootCmd.AddCommand(queueCmd)
 }
 
+// queueRequest builds a signed request to an /internal/queue endpoint. The
+// endpoints are guarded by RequireInternalAuth, so the request must carry an
+// HMAC signature derived from the node's web.session_secret.
+func queueRequest(method, url string) (*http.Response, error) {
+	secret := queueSessionSecret
+	if secret == "" {
+		secret = os.Getenv("BONGO_WEB_SESSION_SECRET")
+	}
+
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	if secret != "" {
+		security.SignInternalRequest(req, []byte(secret))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %s: %w", queueHTTPAddr, err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+		return nil, fmt.Errorf("server returned 401 Unauthorized: pass --session-secret (or set BONGO_WEB_SESSION_SECRET) matching the node's web.session_secret")
+	}
+	return resp, nil
+}
+
 func runQueueStatus(cmd *cobra.Command, args []string) error {
 	url := fmt.Sprintf("http://%s/internal/queue/stats", queueHTTPAddr)
 
-	resp, err := http.Get(url)
+	resp, err := queueRequest(http.MethodGet, url)
 	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", queueHTTPAddr, err)
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -95,9 +126,9 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 	id := args[0]
 	url := fmt.Sprintf("http://%s/internal/queue/%s/retry", queueHTTPAddr, id)
 
-	resp, err := http.Post(url, "application/json", nil)
+	resp, err := queueRequest(http.MethodPost, url)
 	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", queueHTTPAddr, err)
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -119,14 +150,9 @@ func runQueueDrop(cmd *cobra.Command, args []string) error {
 	id := args[0]
 	url := fmt.Sprintf("http://%s/internal/queue/%s", queueHTTPAddr, id)
 
-	req, err := http.NewRequest(http.MethodDelete, url, nil)
+	resp, err := queueRequest(http.MethodDelete, url)
 	if err != nil {
 		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", queueHTTPAddr, err)
 	}
 	defer resp.Body.Close()
 

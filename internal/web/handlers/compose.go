@@ -331,7 +331,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Enqueue external recipients for outbound delivery.
+	// Enqueue external recipients for outbound delivery. A missing queue store
+	// on a node that accepted external recipients means outbound mail would be
+	// silently dropped while the user is told it was sent — fail loudly instead.
+	if len(externalRecipients) > 0 && h.queueStore == nil {
+		h.logger.Error("web: cannot send to external recipients: outbound queue not configured", "user", userID, "guid", guid, "recipients", externalRecipients)
+		http.Error(w, "Outbound delivery is not available on this node", http.StatusServiceUnavailable)
+		return
+	}
 	if len(externalRecipients) > 0 && h.queueStore != nil {
 		outMsg := &bongov1.OutboundMessage{
 			Id:          guid,
