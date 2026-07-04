@@ -1,5 +1,13 @@
 // Bongo-Go client-side JavaScript (Alpine.js components + keyboard shortcuts)
 
+// i18n returns a localized string exposed by the server via the #i18n-data
+// element's data attributes (see layout.templ). key is the camelCased dataset
+// name, e.g. 'shortcutsTitle' for data-shortcuts-title.
+function i18n(key) {
+  const el = document.getElementById('i18n-data');
+  return (el && el.dataset[key]) || '';
+}
+
 document.addEventListener('alpine:init', () => {
   function replacePrefixedClass(el, prefix, nextClass) {
     if (!el) return;
@@ -1108,7 +1116,7 @@ document.addEventListener('alpine:init', () => {
           this.loadTags();
         })
         .catch(err => {
-          this.errorMsg = typeof err === 'string' ? err : 'Failed to create tag.';
+          this.errorMsg = typeof err === 'string' ? err : i18n('tagCreateFailed');
         })
         .finally(() => { this.creatingTag = false; });
     }
@@ -1139,7 +1147,7 @@ function toggleShortcutModal() {
     overlay.setAttribute('role', 'presentation');
     overlay.innerHTML =
       '<div class="shortcut-modal" role="dialog" aria-labelledby="shortcut-modal-title" aria-modal="true">' +
-        '<h3 id="shortcut-modal-title">Keyboard Shortcuts</h3>' +
+        '<h3 id="shortcut-modal-title">' + i18n('shortcutsTitle') + '</h3>' +
         '<dl>' +
           '<dt><kbd>j</kbd></dt><dd>Next message</dd>' +
           '<dt><kbd>k</kbd></dt><dd>Previous message</dd>' +

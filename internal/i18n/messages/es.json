@@ -292,5 +292,15 @@
   "rules.opEquals": "es igual a",
   "rules.addCondition": "+ Agregar condición",
   "rules.whenMatched": "Al coincidir",
-  "rules.targetFolder": "Carpeta destino"
+  "rules.targetFolder": "Carpeta destino",
+  "action.add": "Añadir",
+  "action.remove": "Quitar",
+  "tag.applyMenu": "Etiqueta...",
+  "tag.namePlaceholder": "Nombre de etiqueta",
+  "tag.createFailed": "No se pudo crear la etiqueta.",
+  "mailbox.scanForSpam": "Buscar spam",
+  "mailbox.scanning": "Analizando...",
+  "mailbox.scanTitle": "Buscar spam en el buzón",
+  "rules.tagInputHelp": "Pulse Intro o coma para añadir cada etiqueta. Puede añadir varias.",
+  "shortcuts.title": "Atajos de teclado"
 }

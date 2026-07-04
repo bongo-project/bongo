@@ -15,6 +15,15 @@ templ Layout(title string, email string) {
 			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
 		</head>
 		<body>
+			<!-- Translation strings needed by bongo.js. CSP forbids inline
+			scripts, so they are passed as data attributes (templ escapes them,
+			the browser decodes them, bongo.js reads them via dataset). -->
+			<span
+				id="i18n-data"
+				hidden
+				data-shortcuts-title={ t(ctx, "shortcuts.title") }
+				data-tag-create-failed={ t(ctx, "tag.createFailed") }
+			></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header class="topbar" role="banner">
 				<div class="topbar-left">
@@ -104,6 +113,15 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
 		</head>
 		<body>
+			<!-- Translation strings needed by bongo.js. CSP forbids inline
+			scripts, so they are passed as data attributes (templ escapes them,
+			the browser decodes them, bongo.js reads them via dataset). -->
+			<span
+				id="i18n-data"
+				hidden
+				data-shortcuts-title={ t(ctx, "shortcuts.title") }
+				data-tag-create-failed={ t(ctx, "tag.createFailed") }
+			></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header class="topbar" role="banner">
 				<div class="topbar-left">

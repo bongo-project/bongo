@@ -97,9 +97,11 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					class="tool-btn"
 					x-on:click="startScan()"
 					x-bind:disabled="scanning"
-					x-text="scanning ? 'Scanning...' : 'Scan for spam'"
-					title="Scan mailbox for spam"
-				>Scan for spam</button>
+					title={ t(ctx, "mailbox.scanTitle") }
+				>
+					<span x-bind:hidden="scanning">{ t(ctx, "mailbox.scanForSpam") }</span>
+					<span x-bind:hidden="!scanning" x-cloak>{ t(ctx, "mailbox.scanning") }</span>
+				</button>
 				<span x-bind:hidden="!scanning" x-cloak class="u-font-082 u-text-muted">
 					<span x-text="progress.total > 0 ? progress.scanned + '/' + progress.total : ''"></span>
 					<span x-bind:hidden="progress.spam <= 0" x-text="' (' + progress.spam + ' spam)'"></span>
@@ -154,8 +156,8 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 						type="text"
 						class="bulk-tag-input"
 						x-model="tagInput"
-						placeholder="Tag name"
-						aria-label="Tag name"
+						placeholder={ t(ctx, "tag.namePlaceholder") }
+						aria-label={ t(ctx, "tag.namePlaceholder") }
 						x-on:keydown.enter.prevent={ fmt.Sprintf("bulkTagAction('%s', 'add', tagInput); open = false; tagInput = ''", mailbox) }
 					/>
 					<div class="bulk-tag-actions">
@@ -164,13 +166,13 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 							class="tool-btn"
 							x-on:click={ fmt.Sprintf("bulkTagAction('%s', 'add', tagInput); open = false; tagInput = ''", mailbox) }
 							x-bind:disabled="tagInput.trim() === ''"
-						>Add</button>
+						>{ t(ctx, "action.add") }</button>
 						<button
 							type="button"
 							class="tool-btn"
 							x-on:click={ fmt.Sprintf("bulkTagAction('%s', 'remove', tagInput); open = false; tagInput = ''", mailbox) }
 							x-bind:disabled="tagInput.trim() === ''"
-						>Remove</button>
+						>{ t(ctx, "action.remove") }</button>
 					</div>
 				</div>
 			</div>

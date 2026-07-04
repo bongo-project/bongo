@@ -292,5 +292,15 @@
   "rules.opEquals": "ist gleich",
   "rules.addCondition": "+ Bedingung hinzufuegen",
   "rules.whenMatched": "Bei Uebereinstimmung",
-  "rules.targetFolder": "Zielordner"
+  "rules.targetFolder": "Zielordner",
+  "action.add": "Hinzufügen",
+  "action.remove": "Entfernen",
+  "tag.applyMenu": "Tag...",
+  "tag.namePlaceholder": "Tag-Name",
+  "tag.createFailed": "Tag konnte nicht erstellt werden.",
+  "mailbox.scanForSpam": "Nach Spam suchen",
+  "mailbox.scanning": "Wird gescannt...",
+  "mailbox.scanTitle": "Postfach nach Spam durchsuchen",
+  "rules.tagInputHelp": "Drücken Sie Enter oder Komma, um jedes Tag hinzuzufügen. Sie können mehrere Tags hinzufügen.",
+  "shortcuts.title": "Tastenkürzel"
 }

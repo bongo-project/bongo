@@ -292,5 +292,15 @@
   "rules.opEquals": "equals",
   "rules.addCondition": "+ Add Condition",
   "rules.whenMatched": "When matched",
-  "rules.targetFolder": "Target folder"
+  "rules.targetFolder": "Target folder",
+  "action.add": "Add",
+  "action.remove": "Remove",
+  "tag.applyMenu": "Tag...",
+  "tag.namePlaceholder": "Tag name",
+  "tag.createFailed": "Failed to create tag.",
+  "mailbox.scanForSpam": "Scan for spam",
+  "mailbox.scanning": "Scanning...",
+  "mailbox.scanTitle": "Scan mailbox for spam",
+  "rules.tagInputHelp": "Press Enter or comma to add each tag. You can add multiple tags.",
+  "shortcuts.title": "Keyboard Shortcuts"
 }

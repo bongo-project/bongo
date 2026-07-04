@@ -294,18 +294,18 @@ templ ContextMenu() {
 		<a x-on:click="action('unflag')" role="menuitem">{ t(ctx, "mail.unflag") }</a>
 		<hr/>
 		<div class="ctx-tag-submenu" x-data="{ tagOpen: false, tagInput: '' }">
-			<a role="menuitem" class="ctx-tag-toggle" x-on:click.stop="tagOpen = !tagOpen">Tag...</a>
+			<a role="menuitem" class="ctx-tag-toggle" x-on:click.stop="tagOpen = !tagOpen">{ t(ctx, "tag.applyMenu") }</a>
 			<div x-bind:hidden="!tagOpen" x-cloak="" class="ctx-tag-input-row">
 				<input
 					type="text"
 					x-model="tagInput"
-					placeholder="Tag name"
-					aria-label="Tag name"
+					placeholder={ t(ctx, "tag.namePlaceholder") }
+					aria-label={ t(ctx, "tag.namePlaceholder") }
 					x-on:keydown.enter.prevent="action('tag-add:' + tagInput); tagInput = ''; tagOpen = false"
 					x-on:click.stop=""
 				/>
-				<button type="button" class="tool-btn" x-on:click.stop="action('tag-add:' + tagInput); tagInput = ''; tagOpen = false" x-bind:disabled="tagInput.trim() === ''">Add</button>
-				<button type="button" class="tool-btn" x-on:click.stop="action('tag-remove:' + tagInput); tagInput = ''; tagOpen = false" x-bind:disabled="tagInput.trim() === ''">Remove</button>
+				<button type="button" class="tool-btn" x-on:click.stop="action('tag-add:' + tagInput); tagInput = ''; tagOpen = false" x-bind:disabled="tagInput.trim() === ''">{ t(ctx, "action.add") }</button>
+				<button type="button" class="tool-btn" x-on:click.stop="action('tag-remove:' + tagInput); tagInput = ''; tagOpen = false" x-bind:disabled="tagInput.trim() === ''">{ t(ctx, "action.remove") }</button>
 			</div>
 		</div>
 		<hr/>
