@@ -202,22 +202,25 @@ smtp {
 
 ## 7. Create the first admin user
 
-Non-dev mode does **not** auto-create an admin. Create one via the CLI, run
-inside the container so it can reach the internal endpoint and read the session
-secret:
+Non-dev mode does **not** auto-create an admin. Create one via the CLI with the
+`--admin` flag, run inside the container so it can reach the internal endpoint
+and read the session secret:
 
 ```bash
 docker compose exec bongo \
   bongo-go user create \
     --email you@example.com \
     --password 'a-strong-password' \
+    --admin \
     --session-secret "$BONGO_WEB_SESSION_SECRET"
 ```
 
-The `--session-secret` must match `BONGO_WEB_SESSION_SECRET` (the internal
-control-plane endpoint requires a signed request). If it's set in the
-container's environment you can drop the flag — the CLI falls back to
-`BONGO_WEB_SESSION_SECRET`.
+`--admin` grants administrator rights (needed to reach the `/admin` UI). Without
+it you get a normal mailbox user. The `--session-secret` must match
+`BONGO_WEB_SESSION_SECRET` (the internal control-plane endpoint requires a
+signed request); if it's set in the container's environment you can drop the
+flag — the CLI falls back to `BONGO_WEB_SESSION_SECRET`. Once you have one admin,
+create further users (admin or not) from **Admin → Users** in the web UI.
 
 Then log in at `https://mail.example.com/`.
 

@@ -31,6 +31,7 @@ type createUserRequest struct {
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
+	Admin       bool   `json:"admin"`
 }
 
 type createUserResponse struct {
@@ -50,7 +51,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := auth.CreateUser(h.applier, h.metadata, req.Email, req.DisplayName, req.Password)
+	userID, err := auth.CreateUser(h.applier, h.metadata, req.Email, req.DisplayName, req.Password, req.Admin)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

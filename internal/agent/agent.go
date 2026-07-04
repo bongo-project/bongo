@@ -25,8 +25,6 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
 
-	"google.golang.org/protobuf/proto"
-
 	agentgrpc "github.com/bongo-go/bongo-go/internal/agent/grpc"
 	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/auth"
@@ -1037,14 +1035,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 // createDevUser creates the admin@localhost test user in dev mode.
 func (a *Agent) createDevUser() error {
-	userID, err := auth.CreateUser(a, a.Metadata, "admin@localhost", "Admin", "admin")
+	userID, err := auth.CreateUser(a, a.Metadata, "admin@localhost", "Admin", "admin", true)
 	if err != nil {
 		return err
-	}
-
-	// Set admin flag on the dev user profile.
-	if err := a.setUserAdmin(userID, true); err != nil {
-		a.logger.Warn("dev mode: failed to set admin flag", "error", err)
 	}
 
 	a.logger.Info("dev mode: test user created",
@@ -1062,33 +1055,6 @@ func (a *Agent) createDevUser() error {
 	}
 
 	return nil
-}
-
-// setUserAdmin updates the is_admin flag on a user's profile.
-func (a *Agent) setUserAdmin(userID string, isAdmin bool) error {
-	key := []byte(fmt.Sprintf("/user/%s/profile", userID))
-	data, err := a.Store.Get(key)
-	if err != nil {
-		return fmt.Errorf("loading profile: %w", err)
-	}
-
-	var profile bongov1.UserProfile
-	if err := proto.Unmarshal(data, &profile); err != nil {
-		return fmt.Errorf("parsing profile: %w", err)
-	}
-
-	profile.IsAdmin = isAdmin
-	profileBytes, err := proto.Marshal(&profile)
-	if err != nil {
-		return fmt.Errorf("marshaling profile: %w", err)
-	}
-
-	cmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   key,
-		Value: profileBytes,
-	}
-	return a.ApplyCommand(cmd, 5*time.Second)
 }
 
 // NotifyNewMail implements the MailboxNotifier interface for the FSM.

@@ -140,7 +140,7 @@ func TestCreateUser(t *testing.T) {
 	kv := &mockKeyGetter{data: make(map[string][]byte)}
 	applier := &mockRaftApplier{store: kv}
 
-	userID, err := CreateUser(applier, mm, "bob@example.com", "Bob", "secret123")
+	userID, err := CreateUser(applier, mm, "bob@example.com", "Bob", "secret123", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -158,6 +158,22 @@ func TestCreateUser(t *testing.T) {
 	var profile bongov1.UserProfile
 	if err := proto.Unmarshal(data, &profile); err != nil {
 		t.Fatal(err)
+	}
+	if profile.IsAdmin {
+		t.Error("expected non-admin profile when isAdmin=false")
+	}
+
+	// An admin user has the flag set.
+	adminID, err := CreateUser(applier, mm, "carol@example.com", "Carol", "secret123", true)
+	if err != nil {
+		t.Fatalf("CreateUser(admin): %v", err)
+	}
+	var adminProfile bongov1.UserProfile
+	if err := proto.Unmarshal(kv.data[fmt.Sprintf("/user/%s/profile", adminID)], &adminProfile); err != nil {
+		t.Fatal(err)
+	}
+	if !adminProfile.IsAdmin {
+		t.Error("expected admin profile when isAdmin=true")
 	}
 	if profile.Email != "bob@example.com" {
 		t.Errorf("email = %q, want %q", profile.Email, "bob@example.com")

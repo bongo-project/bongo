@@ -20,8 +20,9 @@ type RaftApplier interface {
 
 // CreateUser creates a new user with the given email and password.
 // It hashes the password with bcrypt, creates a UserProfile protobuf,
-// applies it via Raft, and inserts the user into system.db.
-func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, displayName, password string) (string, error) {
+// applies it via Raft, and inserts the user into system.db. When isAdmin is
+// true the profile is marked as an administrator.
+func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, displayName, password string, isAdmin bool) (string, error) {
 	userID := uuid.New().String()
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -33,6 +34,7 @@ func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, dis
 		Email:        email,
 		DisplayName:  displayName,
 		PasswordHash: hash,
+		IsAdmin:      isAdmin,
 	}
 	profileBytes, err := proto.Marshal(profile)
 	if err != nil {
