@@ -16,6 +16,7 @@ import (
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
+	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
@@ -171,6 +172,13 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Determine spam score from envelope stage results.
 	spamScore := spamScoreFromStages(env.Stages)
 
+	// Verify the DKIM signature once (identical for every recipient) so the
+	// result and signing domain are recorded on each delivered copy.
+	dkimResult, dkimDomain, dkimErr := antispam.VerifyDKIM(raw)
+	if dkimErr != nil {
+		p.logger.Debug("deliver: DKIM verification error", "id", env.Id, "error", dkimErr)
+	}
+
 	// Deliver to each recipient. Check account-level forwarding preferences.
 	for _, rcpt := range env.Recipients {
 		userID, err := p.resolver.ResolveRecipient(rcpt)
@@ -231,6 +239,8 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			References:    references,
 			SpamScore:     spamScore,
 			SpfResult:     env.SpfResult,
+			DkimResult:    dkimResult,
+			DkimDomain:    dkimDomain,
 			TargetMailbox: targetMailbox,
 		}
 
