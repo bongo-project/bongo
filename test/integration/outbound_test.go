@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
+	"net/http/cookiejar"
 	smtplib "net/smtp"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -176,6 +179,61 @@ func TestOutboundRelay(t *testing.T) {
 		t.Log("message received by mock SMTP server")
 	case <-time.After(30 * time.Second):
 		t.Fatal("message not received by mock SMTP server within timeout")
+	}
+}
+
+func TestWebUIComposeExternalRecipientRelaysOutbound(t *testing.T) {
+	mockAddr, received := mockExternalSMTP(t)
+
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.Web.Port = sharedFreePort(t)
+	cfg.SMTP.Enabled = true
+	cfg.SMTP.Relay.Enabled = true
+	cfg.SMTP.Relay.Host = mockAddr
+
+	startDevAgent(t, cfg)
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookie jar: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+
+	resp, err := client.PostForm(baseURL+"/login", url.Values{
+		"email":    {"admin@localhost"},
+		"password": {"admin"},
+	})
+	if err != nil {
+		t.Fatalf("POST /login: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("login status = %d, want 200", resp.StatusCode)
+	}
+
+	resp, err = client.PostForm(baseURL+"/compose/send", url.Values{
+		"to":      {"bob@external.com"},
+		"subject": {"webui outbound relay"},
+		"body":    {"This message should leave via the outbound relay."},
+	})
+	if err != nil {
+		t.Fatalf("POST /compose/send: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("compose status = %d, want 200", resp.StatusCode)
+	}
+
+	select {
+	case data := <-received:
+		if !strings.Contains(string(data), "webui outbound relay") {
+			t.Fatalf("received message does not contain expected subject:\n%s", string(data))
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("message composed in Web UI was not received by mock SMTP server")
 	}
 }
 
