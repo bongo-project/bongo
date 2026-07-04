@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -29,6 +31,11 @@ type session struct {
 	search    *store.SearchManager
 	notifier  *Notifier
 	logger    *slog.Logger
+
+	// Brute-force defence: per-source-IP failed-LOGIN throttling. authLimiter is
+	// shared across connections; remoteIP identifies this connection's source.
+	remoteIP    net.IP
+	authLimiter *authlimit.Limiter
 
 	userID          string
 	selectedMailbox string
@@ -49,14 +56,37 @@ func (s *session) Close() error {
 	return nil
 }
 
-// Login authenticates the user.
+// errAuthRateLimited is returned once a source IP has failed LOGIN too many
+// times. The "rate limit" text lets clients (and operators) distinguish
+// throttling from ordinary bad credentials.
+var errAuthRateLimited = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeLimit,
+	Text: "Too many failed login attempts; rate limit exceeded, try again later",
+}
+
+// Login authenticates the user, throttling brute-force attempts per source IP.
 func (s *session) Login(username, password string) error {
+	ip := ""
+	if s.remoteIP != nil {
+		ip = s.remoteIP.String()
+	}
+
+	if s.authLimiter.Blocked(ip) {
+		s.logger.Warn("imap: login throttled after repeated failures", "username", username, "ip", s.remoteIP)
+		return errAuthRateLimited
+	}
+
 	userID, err := s.auth.Authenticate(username, password)
 	if err != nil {
-		s.logger.Debug("imap: login failed", "username", username)
+		s.logger.Warn("imap: login failed", "username", username, "ip", s.remoteIP)
+		if s.authLimiter.Record(ip) {
+			return errAuthRateLimited
+		}
 		return imapserver.ErrAuthFailed
 	}
 	s.userID = userID
+	s.authLimiter.Reset(ip)
 	s.logger.Debug("imap: login succeeded", "username", username, "user_id", userID)
 	return nil
 }
