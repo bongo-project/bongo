@@ -292,5 +292,15 @@
   "rules.opEquals": "est egal a",
   "rules.addCondition": "+ Ajouter une condition",
   "rules.whenMatched": "Quand la regle correspond",
-  "rules.targetFolder": "Dossier cible"
+  "rules.targetFolder": "Dossier cible",
+  "action.add": "Ajouter",
+  "action.remove": "Retirer",
+  "tag.applyMenu": "Étiquette...",
+  "tag.namePlaceholder": "Nom de l'étiquette",
+  "tag.createFailed": "Échec de la création de l'étiquette.",
+  "mailbox.scanForSpam": "Rechercher du spam",
+  "mailbox.scanning": "Analyse...",
+  "mailbox.scanTitle": "Rechercher du spam dans la boîte",
+  "rules.tagInputHelp": "Appuyez sur Entrée ou virgule pour ajouter chaque étiquette. Vous pouvez en ajouter plusieurs.",
+  "shortcuts.title": "Raccourcis clavier"
 }

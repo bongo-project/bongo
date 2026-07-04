@@ -257,7 +257,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									aria-label="Tag name input"
 								/>
 							</div>
-							<p class="tag-input-help">Press Enter or comma to add each tag. You can add multiple tags.</p>
+							<p class="tag-input-help">{ t(ctx, "rules.tagInputHelp") }</p>
 						</div>
 					</div>
 				</div>
