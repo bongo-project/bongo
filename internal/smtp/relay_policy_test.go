@@ -8,6 +8,7 @@ import (
 
 	gosmtp "github.com/emersion/go-smtp"
 
+	"github.com/bongo-go/bongo-go/internal/auth"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -118,6 +119,37 @@ func TestSubmissionRequiresAuth(t *testing.T) {
 	s.authed = true
 	if err := s.Mail("me@example.com", nil); err != nil {
 		t.Fatalf("authenticated MAIL should be accepted, got %v", err)
+	}
+}
+
+// Authenticated submission must still authorize the envelope sender. A valid
+// user should not be able to submit mail as another local user or arbitrary
+// third-party address.
+func TestSubmissionRejectsUnauthorizedMailFrom(t *testing.T) {
+	b, _, _ := testBackend("alice@example.com", "ceo@example.com")
+	s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice"}
+
+	if err := s.Mail("ceo@example.com", nil); err == nil {
+		t.Fatal("authenticated user was allowed to submit as a different local address")
+	}
+}
+
+func TestSMTPAuthFailuresAreRateLimited(t *testing.T) {
+	deliverer := &fakeSplitDeliverer{}
+	b := &Backend{
+		auth:      &fakeAuth{err: auth.ErrBadCredentials},
+		deliverer: deliverer,
+		perIP:     map[string]int{},
+		logger:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	s := &Session{backend: b, logger: b.logger, submission: true}
+
+	var err error
+	for i := 0; i < 6; i++ {
+		err = s.AuthPlain("alice@example.com", "wrong-password")
+	}
+	if smtpCode(err) == 0 {
+		t.Fatalf("repeated SMTP AUTH failures were not converted to a throttling SMTP error; got %v", err)
 	}
 }
 

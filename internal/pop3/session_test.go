@@ -160,6 +160,24 @@ func TestActiveStats(t *testing.T) {
 	}
 }
 
+func TestSessionIdleConnectionTimesOut(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+
+	done := make(chan struct{})
+	s := newSession(serverConn, nil, nil, nil, nil, nil, false, false, slog.Default())
+	go func() {
+		s.handle()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("idle POP3 connection did not time out")
+	}
+}
+
 func TestServerListenAndClose(t *testing.T) {
 	s := &Server{
 		logger:  slog.Default(),

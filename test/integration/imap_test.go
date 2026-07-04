@@ -3,7 +3,10 @@
 package integration
 
 import (
+	"bufio"
 	"context"
+	"fmt"
+	"net"
 	smtplib "net/smtp"
 	"strings"
 	"testing"
@@ -304,4 +307,63 @@ func TestIMAPFullRoundTrip(t *testing.T) {
 	}
 
 	t.Log("IMAP full round-trip test passed")
+}
+
+func TestIMAPAuthFailuresAreRateLimited(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.Web.Port = sharedFreePort(t)
+	cfg.SMTP.Enabled = true
+	cfg.IMAP.Enabled = true
+
+	a := startDevAgent(t, cfg)
+
+	conn, err := net.DialTimeout("tcp", a.IMAP.PlainAddr(), 2*time.Second)
+	if err != nil {
+		t.Fatalf("dial IMAP: %v", err)
+	}
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+
+	if _, err := readIMAPLine(conn, reader); err != nil {
+		t.Fatalf("read greeting: %v", err)
+	}
+
+	var line string
+	for i := 0; i < 6; i++ {
+		tag := fmt.Sprintf("a%d", i)
+		if _, err := fmt.Fprintf(conn, "%s LOGIN admin@localhost wrong-password\r\n", tag); err != nil {
+			t.Fatalf("write LOGIN %d: %v", i+1, err)
+		}
+		line, err = readIMAPTaggedLine(conn, reader, tag)
+		if err != nil {
+			t.Fatalf("read LOGIN %d response: %v", i+1, err)
+		}
+	}
+
+	upper := strings.ToUpper(line)
+	if strings.Contains(upper, " NO ") && !strings.Contains(upper, "RATE") && !strings.Contains(upper, "LIMIT") {
+		t.Fatalf("repeated IMAP auth failures were not rate limited; final response: %q", line)
+	}
+}
+
+func readIMAPLine(conn net.Conn, reader *bufio.Reader) (string, error) {
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		return "", err
+	}
+	line, err := reader.ReadString('\n')
+	return strings.TrimRight(line, "\r\n"), err
+}
+
+func readIMAPTaggedLine(conn net.Conn, reader *bufio.Reader, tag string) (string, error) {
+	for {
+		line, err := readIMAPLine(conn, reader)
+		if err != nil {
+			return line, err
+		}
+		if strings.HasPrefix(line, tag+" ") {
+			return line, nil
+		}
+	}
 }
