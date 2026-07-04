@@ -302,6 +302,20 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("web: auto-generated session secret for dev mode")
 	}
 
+	// The outbound queue store and rate limiter must exist before any HTTP
+	// handlers are registered: compose and admin handlers capture them by
+	// pointer at route-registration time (below). The rest of the queue
+	// subsystem (relay, DKIM signer, worker) is initialised later, once the
+	// SMTP pipeline it depends on is available, and reuses these instances.
+	// Creating them only in that later block left composeH.queueStore nil, so
+	// web-composed mail to external recipients was silently never enqueued.
+	if a.Raft != nil && a.QueueStore == nil {
+		a.QueueStore = queue.NewQueueStore(a.Store, a)
+	}
+	if a.RateLimiter == nil {
+		a.RateLimiter = mail.NewRateLimiter(a.Config.SMTP.Limits.FloodThreshold)
+	}
+
 	// Internal control-plane routes.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireInternalAuth(sessionSecret))
@@ -808,9 +822,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.logger.Info("smtp: started", "mx", a.SMTP.MXAddr(), "submission", a.SMTP.SubmissionAddr())
 	}
 
-	// Initialize outbound queue subsystem.
+	// Initialize outbound queue subsystem. a.QueueStore was already created
+	// before route registration (handlers capture it by pointer); reuse it.
 	if a.Raft != nil {
-		a.QueueStore = queue.NewQueueStore(a.Store, a)
+		if a.QueueStore == nil {
+			a.QueueStore = queue.NewQueueStore(a.Store, a)
+		}
 
 		// Allow authenticated SMTP submission to relay to external recipients.
 		if a.SMTP != nil {
@@ -837,8 +854,10 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Outbound relay.
 		a.Relay = bongosmtp.NewRelay(&a.Config.SMTP.Relay, a.logger)
 
-		// Rate limiter.
-		a.RateLimiter = mail.NewRateLimiter(a.Config.SMTP.Limits.FloodThreshold)
+		// Rate limiter (already created before route registration; reuse it).
+		if a.RateLimiter == nil {
+			a.RateLimiter = mail.NewRateLimiter(a.Config.SMTP.Limits.FloodThreshold)
+		}
 
 		// Bounce generator (uses inbound delivery pipeline for bounce messages).
 		if smtpPipeline != nil {
