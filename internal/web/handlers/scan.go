@@ -169,6 +169,10 @@ func (h *ScanHandler) ScanProgress(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no") // proxy no-buffer; Connection header is illegal over HTTP/2
 
+	// Flush immediately so the HTTP/2 stream is established before blocking.
+	fmt.Fprintf(w, ": ping\n\n")
+	flusher.Flush()
+
 	ctx := r.Context()
 
 	for {

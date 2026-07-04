@@ -856,6 +856,42 @@ const (
 	FlagRecent   uint32 = 32
 )
 
+// GetMessageVirtual resolves a UID within a virtual mailbox (unread/starred/all-mail)
+// by scanning all real mailboxes. Returns the message and the real mailbox name.
+func (ms *MailboxStore) GetMessageVirtual(userID, virtual string, uid uint32) (*bongov1.MailboxMessage, string, error) {
+	mailboxes, err := ms.ListMailboxes(userID)
+	if err != nil {
+		return nil, "", err
+	}
+	for _, mb := range mailboxes {
+		msgs, err := ms.ListMessages(userID, mb.Name)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			if msg.Uid != uid {
+				continue
+			}
+			switch virtual {
+			case "unread":
+				if msg.Flags&FlagSeen != 0 {
+					continue
+				}
+			case "starred":
+				if msg.Flags&FlagFlagged == 0 {
+					continue
+				}
+			case "all-mail":
+				// all messages qualify
+			default:
+				return nil, "", fmt.Errorf("unknown virtual mailbox: %s", virtual)
+			}
+			return msg, mb.Name, nil
+		}
+	}
+	return nil, "", fmt.Errorf("message uid %d not found in virtual mailbox %s", uid, virtual)
+}
+
 // GetMessage returns a single message by UID.
 func (ms *MailboxStore) GetMessage(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, error) {
 	data, err := ms.store.Get(mailboxMsgKey(userID, mailbox, uid))
