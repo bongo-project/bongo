@@ -8,8 +8,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
-	"net/url"
 	smtplib "net/smtp"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -155,18 +155,24 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 			t.Fatalf("SendMail: %v", err)
 		}
 
-		// Wait for delivery.
-		time.Sleep(500 * time.Millisecond)
-
-		// Check that the message appears in the inbox.
-		resp, err := client.Get(baseURL + "/mail/INBOX")
-		if err != nil {
-			t.Fatalf("GET /mail/INBOX: %v", err)
+		// Delivery is asynchronous (the pipeline poll interval defaults to 1s),
+		// so poll the inbox until the message appears rather than assuming a
+		// fixed delay shorter than the poll interval.
+		var bodyStr string
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			resp, err := client.Get(baseURL + "/mail/INBOX")
+			if err != nil {
+				t.Fatalf("GET /mail/INBOX: %v", err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			bodyStr = string(body)
+			if strings.Contains(bodyStr, "Web UI Test Message") {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
 		}
-		defer resp.Body.Close()
-
-		body, _ := io.ReadAll(resp.Body)
-		bodyStr := string(body)
 		if !strings.Contains(bodyStr, "Web UI Test Message") {
 			t.Error("inbox does not contain 'Web UI Test Message'")
 			t.Logf("body length: %d", len(bodyStr))
