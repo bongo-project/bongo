@@ -366,6 +366,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Raft != nil {
 			userH := handlers.NewUserHandler(a, a.Metadata)
+			if a.Mailboxes != nil {
+				userH.SetMailboxes(a.Mailboxes)
+			}
 			r.Post("/internal/user/create", userH.Create)
 		}
 	})
@@ -395,6 +398,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	authH.SetProfileLoader(a)
 	authH.SetRateLimiter(loginRL)
 	authH.SetTLSEnabled(tlsEnabled)
+	if a.Mailboxes != nil {
+		authH.SetMailboxEnsurer(a.Mailboxes)
+	}
 	if a.Raft != nil {
 		authH.SetRaftApplier(a)
 	}

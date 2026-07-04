@@ -16,15 +16,27 @@ type UserApplier interface {
 	ApplyCommand(cmd *bongov1.RaftCommand, timeout time.Duration) error
 }
 
+// DefaultMailboxEnsurer provisions a user's standard IMAP mailboxes
+// (INBOX, Sent, Drafts, Trash, Junk). Implemented by *store.MailboxStore.
+type DefaultMailboxEnsurer interface {
+	EnsureDefaultMailboxes(userID string) error
+}
+
 // UserHandler provides user management endpoints.
 type UserHandler struct {
-	applier  UserApplier
-	metadata *store.MetadataManager
+	applier   UserApplier
+	metadata  *store.MetadataManager
+	mailboxes DefaultMailboxEnsurer
 }
 
 // NewUserHandler creates a new UserHandler.
 func NewUserHandler(applier UserApplier, metadata *store.MetadataManager) *UserHandler {
 	return &UserHandler{applier: applier, metadata: metadata}
+}
+
+// SetMailboxes wires the store used to provision default mailboxes for new users.
+func (h *UserHandler) SetMailboxes(m DefaultMailboxEnsurer) {
+	h.mailboxes = m
 }
 
 type createUserRequest struct {
@@ -55,6 +67,17 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Provision the standard mailboxes (INBOX, Sent, Drafts, Trash, Junk) so a
+	// new account has its folders (notably Trash) immediately. Surface a failure
+	// rather than leaving the account half-provisioned; login also self-heals
+	// missing default mailboxes as a safety net for older accounts.
+	if h.mailboxes != nil {
+		if err := h.mailboxes.EnsureDefaultMailboxes(userID); err != nil {
+			http.Error(w, "user created but default mailboxes failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
