@@ -28,6 +28,7 @@ import (
 	agentgrpc "github.com/bongo-go/bongo-go/internal/agent/grpc"
 	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	bongocaldav "github.com/bongo-go/bongo-go/internal/caldav"
 	bongocarddav "github.com/bongo-go/bongo-go/internal/carddav"
 	"github.com/bongo-go/bongo-go/internal/cluster"
@@ -381,12 +382,18 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.With(middleware.RequireSameOrigin()).Post("/login/2fa", authH.TwoFactorVerify)
 	r.With(middleware.RequireSameOrigin()).Post("/logout", authH.Logout)
 
+	// Shared brute-force throttle for DAV Basic Auth (CalDAV + CardDAV): a source
+	// IP that fails Basic Auth too many times is locked out with HTTP 429.
+	davAuthLimiter := authlimit.New(davMaxAuthFailures, davAuthFailWindow)
+
 	// CardDAV endpoint with basic auth.
 	if a.Contacts != nil {
 		carddavBackend := bongocarddav.NewBackend(a.Contacts, a.Search, a.logger)
 		carddavHandler := &carddavHTTPHandler{
 			auth:    a.Auth,
 			backend: carddavBackend,
+			limiter: davAuthLimiter,
+			logger:  a.logger,
 		}
 		r.Handle("/carddav/*", carddavHandler)
 		r.Get("/.well-known/carddav", func(w http.ResponseWriter, r *http.Request) {
@@ -400,6 +407,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		caldavHandler := &caldavHTTPHandler{
 			auth:    a.Auth,
 			backend: caldavBackend,
+			limiter: davAuthLimiter,
+			logger:  a.logger,
 		}
 		r.Handle("/caldav/*", caldavHandler)
 		r.Get("/.well-known/caldav", func(w http.ResponseWriter, r *http.Request) {
@@ -1589,24 +1598,60 @@ func (r *raftStateAdapter) LeaderAddr() string {
 	return string(id)
 }
 
-// carddavHTTPHandler wraps a CardDAV backend with HTTP basic auth.
+const (
+	// davMaxAuthFailures is the number of failed DAV Basic Auth attempts from a
+	// source IP tolerated before it is locked out with HTTP 429.
+	davMaxAuthFailures = 5
+	// davAuthFailWindow is the lockout/forget window for DAV auth failures.
+	davAuthFailWindow = 15 * time.Minute
+)
+
+// davBasicAuth authenticates a DAV request via HTTP Basic Auth with per-source-IP
+// brute-force throttling. On success it returns the user ID and true; on failure
+// it writes the response (401, or 429 once the IP is locked out) and returns
+// false.
+func davBasicAuth(w http.ResponseWriter, r *http.Request, authn *auth.LocalAuth, limiter *authlimit.Limiter, realm string, logger *slog.Logger) (string, bool) {
+	ip := middleware.ClientIP(r)
+	if limiter.Blocked(ip) {
+		logger.Warn("dav: basic auth throttled after repeated failures", "ip", ip, "path", r.URL.Path)
+		http.Error(w, "Too many authentication failures, try again later", http.StatusTooManyRequests)
+		return "", false
+	}
+
+	username, password, ok := r.BasicAuth()
+	if !ok {
+		w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+
+	userID, err := authn.Authenticate(username, password)
+	if err != nil {
+		if limiter.Record(ip) {
+			logger.Warn("dav: basic auth locked out after repeated failures", "ip", ip)
+			http.Error(w, "Too many authentication failures, try again later", http.StatusTooManyRequests)
+			return "", false
+		}
+		w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`"`)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return "", false
+	}
+
+	limiter.Reset(ip)
+	return userID, true
+}
+
+// carddavHTTPHandler wraps a CardDAV backend with throttled HTTP basic auth.
 type carddavHTTPHandler struct {
 	auth    *auth.LocalAuth
 	backend *bongocarddav.Backend
+	limiter *authlimit.Limiter
+	logger  *slog.Logger
 }
 
 func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	username, password, ok := r.BasicAuth()
+	userID, ok := davBasicAuth(w, r, h.auth, h.limiter, "Bongo CardDAV", h.logger)
 	if !ok {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CardDAV"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	userID, err := h.auth.Authenticate(username, password)
-	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CardDAV"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -1620,24 +1665,17 @@ func (h *carddavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler.ServeHTTP(w, r)
 }
 
-// caldavHTTPHandler wraps a CalDAV backend with HTTP basic auth.
+// caldavHTTPHandler wraps a CalDAV backend with throttled HTTP basic auth.
 type caldavHTTPHandler struct {
 	auth    *auth.LocalAuth
 	backend *bongocaldav.Backend
+	limiter *authlimit.Limiter
+	logger  *slog.Logger
 }
 
 func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	username, password, ok := r.BasicAuth()
+	userID, ok := davBasicAuth(w, r, h.auth, h.limiter, "Bongo CalDAV", h.logger)
 	if !ok {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CalDAV"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	userID, err := h.auth.Authenticate(username, password)
-	if err != nil {
-		w.Header().Set("WWW-Authenticate", `Basic realm="Bongo CalDAV"`)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 

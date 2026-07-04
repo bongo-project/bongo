@@ -5,13 +5,23 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapserver"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	"github.com/bongo-go/bongo-go/internal/netx"
 	"github.com/bongo-go/bongo-go/internal/store"
+)
+
+const (
+	// imapMaxAuthFailures is the number of failed LOGINs from a source IP
+	// tolerated before further attempts are throttled.
+	imapMaxAuthFailures = 5
+	// imapAuthFailWindow is the lockout/forget window for auth-failure counting.
+	imapAuthFailWindow = 15 * time.Minute
 )
 
 // Server wraps the go-imap v2 IMAP server.
@@ -45,17 +55,31 @@ func NewServer(
 		imap.CapMove:      {},
 	}
 
-	newSession := func(_ *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+	// Shared across all connections so per-IP failure counts survive reconnects
+	// (go-imap creates a new session per connection).
+	authLimiter := authlimit.New(imapMaxAuthFailures, imapAuthFailWindow)
+
+	newSession := func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+		var remoteIP net.IP
+		if conn != nil {
+			if nc := conn.NetConn(); nc != nil {
+				if tcpAddr, ok := nc.RemoteAddr().(*net.TCPAddr); ok {
+					remoteIP = tcpAddr.IP
+				}
+			}
+		}
 		sess := &session{
-			auth:      authenticator,
-			pebble:    pebble,
-			blobs:     blobs,
-			mailboxes: mailboxes,
-			tags:      tags,
-			metadata:  metadata,
-			search:    search,
-			notifier:  notifier,
-			logger:    logger,
+			auth:        authenticator,
+			pebble:      pebble,
+			blobs:       blobs,
+			mailboxes:   mailboxes,
+			tags:        tags,
+			metadata:    metadata,
+			search:      search,
+			notifier:    notifier,
+			logger:      logger,
+			remoteIP:    remoteIP,
+			authLimiter: authLimiter,
 		}
 		greeting := &imapserver.GreetingData{}
 		return sess, greeting, nil
