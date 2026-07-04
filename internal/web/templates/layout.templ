@@ -6,6 +6,8 @@ templ Layout(title string, email string) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. -->
+			<meta name="htmx-config" content='{"includeIndicatorStyles":false}'/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
@@ -93,6 +95,8 @@ templ LayoutWithContent(title string, email string) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. -->
+			<meta name="htmx-config" content='{"includeIndicatorStyles":false}'/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
@@ -175,6 +179,8 @@ templ LoginLayout(title string) {
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<!-- Do not let HTMX inject inline indicator styles (blocked by our CSP); they live in bongo.css instead. -->
+			<meta name="htmx-config" content='{"includeIndicatorStyles":false}'/>
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
