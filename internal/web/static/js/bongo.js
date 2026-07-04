@@ -1,11 +1,19 @@
 // Bongo-Go client-side JavaScript (Alpine.js components + keyboard shortcuts)
 
-// i18n returns a localized string exposed by the server via the #i18n-data
-// element's data attributes (see layout.templ). key is the camelCased dataset
-// name, e.g. 'shortcutsTitle' for data-shortcuts-title.
+// i18n returns a localized string exposed by the server as a JSON object on the
+// #i18n-data element (see layout.templ / i18nJSON). CSP forbids inline scripts,
+// so the translations travel in a data attribute. key is a message id such as
+// 'shortcuts.title' or 'js.scanCancelled'.
 function i18n(key) {
-  const el = document.getElementById('i18n-data');
-  return (el && el.dataset[key]) || '';
+  if (i18n._cache === undefined) {
+    const el = document.getElementById('i18n-data');
+    try {
+      i18n._cache = el ? JSON.parse(el.dataset.messages) : {};
+    } catch (e) {
+      i18n._cache = {};
+    }
+  }
+  return i18n._cache[key] || '';
 }
 
 document.addEventListener('alpine:init', () => {
@@ -500,7 +508,7 @@ document.addEventListener('alpine:init', () => {
         try {
           const data = JSON.parse(e.data);
           if (this.permission === 'granted') {
-            const n = new Notification(data.from || 'New mail', {
+            const n = new Notification(data.from || i18n('js.newMail'), {
               body: data.subject || '',
               icon: '/static/logo.png'
             });
@@ -525,8 +533,8 @@ document.addEventListener('alpine:init', () => {
         try {
           const data = JSON.parse(e.data);
           if (this.permission === 'granted') {
-            const n = new Notification('Event in ' + data.minutes_before + ' minutes', {
-              body: data.title || 'Upcoming event',
+            const n = new Notification(i18n('js.eventReminderPrefix') + data.minutes_before + i18n('js.eventReminderSuffix'), {
+              body: data.title || i18n('js.upcomingEvent'),
               icon: '/static/logo.png'
             });
             n.onclick = () => { window.focus(); n.close(); };
@@ -643,12 +651,12 @@ document.addEventListener('alpine:init', () => {
           // Scan already running — just connect to the progress stream.
         } else if (!resp.ok) {
           this.scanning = false;
-          this.result = 'Scan failed: ' + resp.status;
+          this.result = i18n('js.scanFailedPrefix') + resp.status;
           return;
         }
       } catch (e) {
         this.scanning = false;
-        this.result = 'Scan error: ' + e.message;
+        this.result = i18n('js.scanErrorPrefix') + e.message;
         return;
       }
 
@@ -659,7 +667,7 @@ document.addEventListener('alpine:init', () => {
           this.progress = p;
           if (p.done) {
             this.scanning = false;
-            this.result = p.scanned + ' scanned, ' + p.spam + ' moved to Junk';
+            this.result = p.scanned + i18n('js.scannedInfix') + p.spam + i18n('js.movedToJunkSuffix');
             this.evtSource.close();
             this.evtSource = null;
           }
@@ -682,7 +690,7 @@ document.addEventListener('alpine:init', () => {
         this.evtSource = null;
       }
       this.scanning = false;
-      this.result = 'Scan cancelled';
+      this.result = i18n('js.scanCancelled');
     },
 
     destroy() {
@@ -1016,7 +1024,7 @@ document.addEventListener('alpine:init', () => {
             sortOrder: t.sort_order
           }));
         })
-        .catch(() => { this.errorMsg = 'Failed to load tags.'; });
+        .catch(() => { this.errorMsg = i18n('js.tagsLoadFailed'); });
     },
 
     startEdit(tag) {
@@ -1041,7 +1049,7 @@ document.addEventListener('alpine:init', () => {
       if (this.savingTag) return;
       const name = this.editName.trim();
       if (!name) {
-        this.errorMsg = 'Tag name cannot be empty.';
+        this.errorMsg = i18n('js.tagNameEmpty');
         return;
       }
 
@@ -1067,7 +1075,7 @@ document.addEventListener('alpine:init', () => {
           this.loadTags();
         })
         .catch(err => {
-          this.errorMsg = typeof err === 'string' ? err : 'Failed to save tag.';
+          this.errorMsg = typeof err === 'string' ? err : i18n('js.tagSaveFailed');
         })
         .finally(() => { this.savingTag = false; });
     },
@@ -1085,7 +1093,7 @@ document.addEventListener('alpine:init', () => {
           this.loadTags();
         })
         .catch(err => {
-          this.errorMsg = typeof err === 'string' ? err : 'Failed to delete tag.';
+          this.errorMsg = typeof err === 'string' ? err : i18n('js.tagDeleteFailed');
         })
         .finally(() => { this.deletingTag = false; });
     },
@@ -1116,7 +1124,7 @@ document.addEventListener('alpine:init', () => {
           this.loadTags();
         })
         .catch(err => {
-          this.errorMsg = typeof err === 'string' ? err : i18n('tagCreateFailed');
+          this.errorMsg = typeof err === 'string' ? err : i18n('tag.createFailed');
         })
         .finally(() => { this.creatingTag = false; });
     }
@@ -1147,20 +1155,20 @@ function toggleShortcutModal() {
     overlay.setAttribute('role', 'presentation');
     overlay.innerHTML =
       '<div class="shortcut-modal" role="dialog" aria-labelledby="shortcut-modal-title" aria-modal="true">' +
-        '<h3 id="shortcut-modal-title">' + i18n('shortcutsTitle') + '</h3>' +
+        '<h3 id="shortcut-modal-title">' + i18n('shortcuts.title') + '</h3>' +
         '<dl>' +
-          '<dt><kbd>j</kbd></dt><dd>Next message</dd>' +
-          '<dt><kbd>k</kbd></dt><dd>Previous message</dd>' +
-          '<dt><kbd>Enter</kbd></dt><dd>Open message</dd>' +
-          '<dt><kbd>r</kbd></dt><dd>Reply</dd>' +
-          '<dt><kbd>d</kbd></dt><dd>Delete</dd>' +
-          '<dt><kbd>s</kbd></dt><dd>Star / unstar</dd>' +
-          '<dt><kbd>/</kbd></dt><dd>Focus search</dd>' +
-          '<dt><kbd>c</kbd></dt><dd>Compose new message</dd>' +
-          '<dt><kbd>Esc</kbd></dt><dd>Close modal / menu</dd>' +
-          '<dt><kbd>?</kbd></dt><dd>Show this help</dd>' +
+          '<dt><kbd>j</kbd></dt><dd>' + i18n('js.shortcutNextMessage') + '</dd>' +
+          '<dt><kbd>k</kbd></dt><dd>' + i18n('js.shortcutPrevMessage') + '</dd>' +
+          '<dt><kbd>Enter</kbd></dt><dd>' + i18n('js.shortcutOpenMessage') + '</dd>' +
+          '<dt><kbd>r</kbd></dt><dd>' + i18n('js.shortcutReply') + '</dd>' +
+          '<dt><kbd>d</kbd></dt><dd>' + i18n('js.shortcutDelete') + '</dd>' +
+          '<dt><kbd>s</kbd></dt><dd>' + i18n('js.shortcutToggleStar') + '</dd>' +
+          '<dt><kbd>/</kbd></dt><dd>' + i18n('js.shortcutFocusSearch') + '</dd>' +
+          '<dt><kbd>c</kbd></dt><dd>' + i18n('js.shortcutCompose') + '</dd>' +
+          '<dt><kbd>Esc</kbd></dt><dd>' + i18n('js.shortcutCloseModal') + '</dd>' +
+          '<dt><kbd>?</kbd></dt><dd>' + i18n('js.shortcutShowHelp') + '</dd>' +
         '</dl>' +
-        '<button type="button" class="outline secondary modal-close" id="shortcut-modal-close">Close</button>' +
+        '<button type="button" class="outline secondary modal-close" id="shortcut-modal-close">' + i18n('js.close') + '</button>' +
       '</div>';
     document.body.appendChild(overlay);
     overlay.addEventListener('click', function(ev) {
@@ -1311,7 +1319,7 @@ document.body.addEventListener('htmx:afterSwap', function(evt) {
   if (announcer) {
     var heading = target.querySelector('h1, h2, h3');
     if (heading) {
-      announcer.textContent = heading.textContent + ' loaded';
+      announcer.textContent = heading.textContent + i18n('js.contentLoaded');
     }
   }
 });
@@ -1430,7 +1438,7 @@ function connectAdminLogs() {
   state.source.onerror = function() {
     var el = document.createElement('div');
     el.className = 'log-line log-line-error';
-    el.textContent = '[connection lost]';
+    el.textContent = i18n('js.logConnectionLost');
     output.appendChild(el);
   };
 }

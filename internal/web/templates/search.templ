@@ -13,7 +13,7 @@ type SearchResult struct {
 }
 
 templ SearchPageFull(query string, results []SearchResult, page, totalPages int, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string) {
-	@LayoutWithContent("Search", email) {
+	@LayoutWithContent(t(ctx, "common.search"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, "")
 		</aside>
@@ -28,7 +28,7 @@ templ SearchPage(query string, results []SearchResult, page, totalPages int) {
 		<div class="results-title">{ t(ctx, "search.results") }</div>
 		if query != "" {
 			<div class="results-count">
-				{ fmt.Sprintf("%d", len(results)) } results for <span class="results-query">"{ query }"</span>
+				{ fmt.Sprintf("%d", len(results)) } { t(ctx, "search.resultsForCount") } <span class="results-query">"{ query }"</span>
 			</div>
 		}
 	</div>

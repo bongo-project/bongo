@@ -1,7 +1,7 @@
 package templates
 
 templ LoginPage(errMsg string) {
-	@LoginLayout("Login") {
+	@LoginLayout(t(ctx, "auth.login")) {
 		<div class="login-wrapper">
 			<div class="login-brand">
 				<h1>Bongo<span>Mail</span></h1>
@@ -11,7 +11,7 @@ templ LoginPage(errMsg string) {
 				if errMsg != "" {
 					@FlashMessage(errMsg, "error")
 				}
-				<form method="post" action="/login" aria-label="Sign in">
+				<form method="post" action="/login" aria-label={ t(ctx, "auth.signIn") }>
 					<div class="form-group">
 						<label class="form-label" for="email">{ t(ctx, "auth.email") }</label>
 						<input type="email" id="email" name="email" class="form-input" placeholder="admin@localhost" required autofocus autocomplete="email"/>
@@ -32,7 +32,7 @@ templ LoginPage(errMsg string) {
 }
 
 templ TwoFactorPage(errMsg string, recoveryWarning string) {
-	@LoginLayout("Two-Factor Authentication") {
+	@LoginLayout(t(ctx, "auth.twoFactorAuth")) {
 		<div class="login-wrapper">
 			<div class="login-brand">
 				<h1>Bongo<span>Mail</span></h1>
@@ -48,7 +48,7 @@ templ TwoFactorPage(errMsg string, recoveryWarning string) {
 				if recoveryWarning != "" {
 					@FlashMessage(recoveryWarning, "warning")
 				}
-				<form method="post" action="/login/2fa" aria-label="Two-factor authentication">
+				<form method="post" action="/login/2fa" aria-label={ t(ctx, "auth.twoFactorAuth") }>
 					<div class="form-group">
 						<label class="form-label" for="code">{ t(ctx, "auth.authCode") }</label>
 						<input

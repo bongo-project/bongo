@@ -84,8 +84,8 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 		@FlashMessage(flash, "success")
 	}
 	<div x-data="messageList">
-		<div class="toolbar" role="toolbar" aria-label="Message actions">
-			<input type="checkbox" class="tool-check" title="Select all" aria-label="Select all messages" x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
+		<div class="toolbar" role="toolbar" aria-label={ t(ctx, "mail.messageActions") }>
+			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
 			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
 			<div
@@ -120,9 +120,9 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 				}
 			</span>
 			<span class="layout-toggle">
-				<button type="button" class="layout-opt" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title="List view">&#9776;</button>
-				<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title="Two-pane view">&#9707;</button>
-				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title="Three-pane view">&#9701;</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('list')" x-bind:class="{'active': layoutMode === 'list'}" title={ t(ctx, "mail.listView") }>&#9776;</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('two-pane')" x-bind:class="{'active': layoutMode === 'two-pane'}" title={ t(ctx, "mail.twoPaneView") }>&#9707;</button>
+				<button type="button" class="layout-opt" x-on:click="setLayout('three-pane')" x-bind:class="{'active': layoutMode === 'three-pane'}" title={ t(ctx, "mail.threePaneView") }>&#9701;</button>
 			</span>
 		</div>
 		<div class="mail-layout" x-bind:class="'layout-' + layoutMode">
@@ -142,7 +142,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					<button type="button" class="tool-btn" x-on:click={ "bulkAction('" + mailbox + "', 'spam')" }>{ t(ctx, "mail.markAsSpam") }</button>
 				}
 				<div class="bulk-tag-dropdown u-relative u-inline-block" x-data="{ open: false, tagInput: '' }">
-				<button type="button" class="tool-btn" x-on:click="open = !open" aria-haspopup="true" x-bind:aria-expanded="open">Tag</button>
+				<button type="button" class="tool-btn" x-on:click="open = !open" aria-haspopup="true" x-bind:aria-expanded="open">{ t(ctx, "tag.applyMenu") }</button>
 				<div
 					x-bind:hidden="!open"
 					x-on:click.away="open = false"
@@ -150,7 +150,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 					x-cloak=""
 					class="bulk-tag-panel"
 					role="dialog"
-					aria-label="Tag selected messages"
+					aria-label={ t(ctx, "mail.tagSelectedMessages") }
 				>
 					<input
 						type="text"
@@ -181,7 +181,7 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			if len(messages) == 0 {
 				@EmptyState(t(ctx, "mail.noMessages"), t(ctx, "mail.emptyMailbox"))
 			} else {
-				<div class="msg-list" role="list" aria-label="Messages">
+				<div class="msg-list" role="list" aria-label={ t(ctx, "mail.messages") }>
 					@MessageRows(messages, mailbox)
 					if infiniteScroll && page < totalPages {
 						@InfiniteScrollSentinel(mailbox, page+1)
@@ -219,7 +219,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			<input
 				type="checkbox"
 				class="msg-check"
-				aria-label="Select message"
+				aria-label={ t(ctx, "mail.selectMessage") }
 				x-on:change={ fmt.Sprintf("toggle(%d, $event)", msg.UID) }
 				x-bind:checked={ fmt.Sprintf("isSelected(%d)", msg.UID) }
 			/>
@@ -230,9 +230,9 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				hx-vals={ flagToggleVals(msg.Flagged) }
 				hx-swap="outerHTML"
 				if msg.Flagged {
-					aria-label="Unstar message"
+					aria-label={ t(ctx, "mail.unstarMessage") }
 				} else {
-					aria-label="Star message"
+					aria-label={ t(ctx, "mail.starMessage") }
 				}
 			>
 				if msg.Flagged {
@@ -267,7 +267,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 					{ msg.Subject }
 				</a>
 				if mailbox == "Junk" && msg.SpamScore > 0 {
-					<span class="spam-badge" title="Spam score">{ fmt.Sprintf("%.0f%%", msg.SpamScore*100) }</span>
+					<span class="spam-badge" title={ t(ctx, "mail.spamScore") }>{ fmt.Sprintf("%.0f%%", msg.SpamScore*100) }</span>
 				}
 				if msg.ThreadCount > 1 {
 					<span

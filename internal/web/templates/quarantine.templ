@@ -18,40 +18,40 @@ type QuarantineEntry struct {
 }
 
 templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
-	@AdminLayout("Quarantine", email, "quarantine") {
+	@AdminLayout(t(ctx, "quarantine.title"), email, "quarantine") {
 		<div class="admin-scroll" x-data="quarantineBulk()">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<h1 class="admin-title">Quarantine</h1>
-			<p class="admin-subtitle">Messages held for review — release to deliver or delete to discard</p>
+			<h1 class="admin-title">{ t(ctx, "quarantine.title") }</h1>
+			<p class="admin-subtitle">{ t(ctx, "quarantine.subtitle") }</p>
 			<!-- Bulk action toolbar -->
 			<div class="bulk-bar" x-bind:hidden="selected.length === 0" x-cloak>
 				<span class="bulk-label" x-text="selected.length + ' selected'"></span>
 				<form method="post" action="/admin/quarantine/bulk" class="u-m0 u-flex u-gap-05" @submit="appendIds">
 					<input type="hidden" name="action" value="release"/>
 					<div id="bulk-ids-release"></div>
-					<button type="submit" class="btn-outline">Release Selected</button>
+					<button type="submit" class="btn-outline">{ t(ctx, "quarantine.releaseSelected") }</button>
 				</form>
 				<form method="post" action="/admin/quarantine/bulk" class="u-m0 u-flex u-gap-05" @submit="appendIds">
 					<input type="hidden" name="action" value="delete"/>
 					<div id="bulk-ids-delete"></div>
-					<button type="submit" class="btn-flush">Delete Selected</button>
+					<button type="submit" class="btn-flush">{ t(ctx, "quarantine.deleteSelected") }</button>
 				</form>
 			</div>
 			<div class="admin-table-card">
-				<table class="admin-table" aria-label="Quarantined messages">
+				<table class="admin-table" aria-label={ t(ctx, "quarantine.tableLabel") }>
 					<thead>
 						<tr>
 							<th class="u-width-36px">
-								<input type="checkbox" aria-label="Select all" @change="toggleAll($event)" :checked="allSelected()"/>
+								<input type="checkbox" aria-label={ t(ctx, "mail.selectAll") } @change="toggleAll($event)" :checked="allSelected()"/>
 							</th>
-							<th scope="col">Date</th>
-							<th scope="col">Sender</th>
-							<th scope="col">Subject</th>
-							<th scope="col">Reason</th>
-							<th scope="col" class="u-width-60px">Score</th>
-							<th scope="col" class="u-width-160px">Actions</th>
+							<th scope="col">{ t(ctx, "mail.date") }</th>
+							<th scope="col">{ t(ctx, "quarantine.sender") }</th>
+							<th scope="col">{ t(ctx, "mail.subject") }</th>
+							<th scope="col">{ t(ctx, "quarantine.reason") }</th>
+							<th scope="col" class="u-width-60px">{ t(ctx, "quarantine.score") }</th>
+							<th scope="col" class="u-width-160px">{ t(ctx, "rules.colActions") }</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -62,7 +62,7 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 										type="checkbox"
 										:value={ fmt.Sprintf("%q", m.ID) }
 										x-model="selected"
-										aria-label={ "Select " + m.ID }
+										aria-label={ t(ctx, "quarantine.selectMessage") + " " + m.ID }
 									/>
 								</td>
 								<td class="u-white-space-nowrap u-font-082 u-text-muted">{ m.ReceivedAt.Format("2006-01-02 15:04") }</td>
@@ -73,7 +73,7 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 									if m.Subject != "" {
 										{ m.Subject }
 									} else {
-										<span class="u-text-muted">(no subject)</span>
+										<span class="u-text-muted">{ t(ctx, "quarantine.noSubject") }</span>
 									}
 								</td>
 								<td class="u-font-082 u-text-muted">
@@ -90,10 +90,10 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 								<td>
 									<div class="row-actions">
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/quarantine/%s/release", m.ID)) }>
-											<button type="submit" class="btn-outline">Release</button>
+											<button type="submit" class="btn-outline">{ t(ctx, "quarantine.release") }</button>
 										</form>
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/quarantine/%s/delete", m.ID)) }>
-											<button type="submit" class="btn-flush">Delete</button>
+											<button type="submit" class="btn-flush">{ t(ctx, "common.delete") }</button>
 										</form>
 									</div>
 								</td>
@@ -102,7 +102,7 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 						if len(msgs) == 0 {
 							<tr>
 								<td colspan="7" class="u-text-center u-text-muted u-p-2rem">
-									No quarantined messages.
+									{ t(ctx, "quarantine.noMessages") }
 								</td>
 							</tr>
 						}
@@ -111,7 +111,7 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 			</div>
 			if len(msgs) > 0 {
 				<p class="u-font-082 u-text-muted u-mt-05">
-					{ fmt.Sprint(len(msgs)) } message(s) in quarantine
+					{ fmt.Sprint(len(msgs)) } { t(ctx, "quarantine.messagesInQuarantine") }
 				</p>
 			}
 		</div>

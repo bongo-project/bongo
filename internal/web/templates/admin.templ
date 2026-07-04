@@ -65,15 +65,15 @@ templ AdminLayout(title, email, active string) {
 		<main class="content" id="main-content" role="main">
 			{ children... }
 			<footer class="admin-footer">
-				Bongo &mdash; Mail and Calendar Server
+				Bongo &mdash; { t(ctx, "admin.serverTagline") }
 			</footer>
 		</main>
 	}
 }
 
 templ AdminSidebar(active string) {
-	<nav class="admin-nav" aria-label="Admin navigation">
-		<div class="admin-nav-section">Main</div>
+	<nav class="admin-nav" aria-label={ t(ctx, "admin.navigation") }>
+		<div class="admin-nav-section">{ t(ctx, "admin.sectionMain") }</div>
 		<a href="/admin" class={ "admin-nav-item", templ.KV("active", active == "dashboard") } aria-current?={ active == "dashboard" }>
 			<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg>
 			<span>{ t(ctx, "admin.dashboard") }</span>
@@ -90,10 +90,10 @@ templ AdminSidebar(active string) {
 			<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
 			<span>{ t(ctx, "admin.aliases") }</span>
 		</a>
-		<div class="admin-nav-section">System</div>
+		<div class="admin-nav-section">{ t(ctx, "admin.sectionSystem") }</div>
 		<a href="/admin/quarantine" class={ "admin-nav-item", templ.KV("active", active == "quarantine") } aria-current?={ active == "quarantine" }>
 			<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-			<span>Quarantine</span>
+			<span>{ t(ctx, "admin.quarantine") }</span>
 		</a>
 		<a href="/admin/queue" class={ "admin-nav-item", templ.KV("active", active == "queue") } aria-current?={ active == "queue" }>
 			<svg class="admin-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
@@ -117,7 +117,7 @@ templ AdminSidebar(active string) {
 }
 
 templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash string) {
-	@AdminLayout("Admin Dashboard", email, "dashboard") {
+	@AdminLayout(t(ctx, "admin.dashboardTitle"), email, "dashboard") {
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
@@ -126,8 +126,8 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 			<p class="admin-subtitle">{ t(ctx, "admin.systemDashboard") }</p>
 			<!-- Health Cards -->
 			<div class="stat-grid">
-				<div class="stat-card" aria-label="Raft Status">
-					<div class="stat-label">Raft Status</div>
+				<div class="stat-card" aria-label={ t(ctx, "admin.raftStatus") }>
+					<div class="stat-label">{ t(ctx, "admin.raftStatus") }</div>
 					<div class="stat-value">
 						<span class={ "badge", raftBadgeClass(health.RaftState) }>{ health.RaftState }</span>
 					</div>
@@ -135,48 +135,48 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 						<div class="stat-change">{ health.LeaderAddr }</div>
 					}
 				</div>
-				<div class="stat-card" aria-label="Uptime">
-					<div class="stat-label">Uptime</div>
+				<div class="stat-card" aria-label={ t(ctx, "admin.uptime") }>
+					<div class="stat-label">{ t(ctx, "admin.uptime") }</div>
 					<div class="stat-value">{ formatDuration(health.Uptime) }</div>
 				</div>
-				<div class="stat-card" aria-label="Storage">
-					<div class="stat-label">Storage</div>
+				<div class="stat-card" aria-label={ t(ctx, "admin.storage") }>
+					<div class="stat-label">{ t(ctx, "admin.storage") }</div>
 					<div class="stat-value">{ formatBytes(health.PebbleSize + health.BlobSize) }</div>
 					<div class="stat-change">{ fmt.Sprint(health.BlobCount) } blobs</div>
 				</div>
-				<div class="stat-card" aria-label="Users">
+				<div class="stat-card" aria-label={ t(ctx, "admin.users") }>
 					<div class="stat-label">{ t(ctx, "admin.users") }</div>
 					<div class="stat-value">{ fmt.Sprint(health.UserCount) }</div>
-					<div class="stat-change">{ fmt.Sprint(health.NodeCount) } nodes</div>
+					<div class="stat-change">{ fmt.Sprint(health.NodeCount) } { t(ctx, "admin.nodes") }</div>
 				</div>
 			</div>
 			<!-- System Status Table -->
 			<div class="admin-table-card">
-				<div class="admin-table-header">System Status</div>
+				<div class="admin-table-header">{ t(ctx, "admin.systemStatus") }</div>
 				<table>
 					<tbody>
 						<tr>
-							<th>Agent Status</th>
-							<td><span class="status-dot green"></span> Operation normal</td>
+							<th>{ t(ctx, "admin.agentStatus") }</th>
+							<td><span class="status-dot green"></span> { t(ctx, "admin.operationNormal") }</td>
 						</tr>
 						<tr>
-							<th>Raft State</th>
+							<th>{ t(ctx, "admin.raftState") }</th>
 							<td>{ health.RaftState }</td>
 						</tr>
 						<tr>
-							<th>Storage</th>
+							<th>{ t(ctx, "admin.storage") }</th>
 							<td>Pebble: { formatBytes(health.PebbleSize) }, Blobs: { fmt.Sprint(health.BlobCount) } ({ formatBytes(health.BlobSize) })</td>
 						</tr>
 						<tr>
-							<th>Cluster</th>
-							<td>{ fmt.Sprint(health.NodeCount) } nodes</td>
+							<th>{ t(ctx, "admin.cluster") }</th>
+							<td>{ fmt.Sprint(health.NodeCount) } { t(ctx, "admin.nodes") }</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
 			<!-- Security Policy -->
 			<div class="form-card">
-				<h3>Security Policy</h3>
+				<h3>{ t(ctx, "admin.securityPolicy") }</h3>
 				<form method="post" action="/admin/settings/require-2fa">
 					<label class="u-flex u-items-center u-gap-05">
 						if require2FA {
@@ -186,7 +186,7 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 						}
 						{ t(ctx, "admin.require2FA") }
 					</label>
-					<small class="u-block u-mt-025 u-mb-075 u-text-muted">When enabled, users without 2FA will be redirected to the setup page on login.</small>
+					<small class="u-block u-mt-025 u-mb-075 u-text-muted">{ t(ctx, "admin.require2FAHelp") }</small>
 					<button type="submit" class="btn-primary">{ t(ctx, "admin.savePolicy") }</button>
 				</form>
 			</div>
@@ -195,13 +195,13 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 }
 
 templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
-	@AdminLayout("Users", email, "users") {
+	@AdminLayout(t(ctx, "admin.users"), email, "users") {
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
 			<h1 class="admin-title">{ t(ctx, "admin.users") }</h1>
-			<p class="admin-subtitle">Manage user accounts and permissions</p>
+			<p class="admin-subtitle">{ t(ctx, "admin.usersSubtitle") }</p>
 			<div class="admin-toolbar">
 				<div class="admin-toolbar-group">
 					<form method="get" action="/admin/users" class="u-m0">
@@ -213,16 +213,16 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 				</div>
 			</div>
 			<div class="admin-table-card">
-				<table class="admin-table" aria-label="User list">
+				<table class="admin-table" aria-label={ t(ctx, "admin.userList") }>
 					<thead>
 						<tr>
 							<th class="u-width-40px"></th>
 							<th scope="col">{ t(ctx, "auth.email") }</th>
-							<th scope="col">Name</th>
-							<th scope="col">Role</th>
-							<th scope="col">Quota</th>
-							<th scope="col">Status</th>
-							<th scope="col" class="u-width-100px">Actions</th>
+							<th scope="col">{ t(ctx, "common.name") }</th>
+							<th scope="col">{ t(ctx, "admin.role") }</th>
+							<th scope="col">{ t(ctx, "admin.quota") }</th>
+							<th scope="col">{ t(ctx, "common.status") }</th>
+							<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -237,9 +237,9 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 								<td>{ u.DisplayName }</td>
 								<td>
 									if u.IsAdmin {
-										<span class="badge badge-admin">admin</span>
+										<span class="badge badge-admin">{ t(ctx, "admin.roleAdmin") }</span>
 									} else {
-										<span class="badge badge-user">user</span>
+										<span class="badge badge-user">{ t(ctx, "admin.roleUser") }</span>
 									}
 								</td>
 								<td>
@@ -263,7 +263,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 							</tr>
 						}
 						if len(users) == 0 {
-							<tr><td colspan="7" class="u-text-center u-text-muted u-p-2rem">No users found.</td></tr>
+							<tr><td colspan="7" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noUsers") }</td></tr>
 						}
 					</tbody>
 				</table>
@@ -273,7 +273,7 @@ templ AdminUserList(users []AdminUserInfo, query, email, flash string) {
 }
 
 templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email, flash string) {
-	@AdminLayout("User", email, "users") {
+	@AdminLayout(t(ctx, "admin.user"), email, "users") {
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
@@ -289,11 +289,11 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 						if len(domains) > 0 {
 							<div class="admin-inline-form">
 								<div class="u-flex-1">
-									<label for="user_username" class="admin-inline-label">Username</label>
+									<label for="user_username" class="admin-inline-label">{ t(ctx, "admin.username") }</label>
 									<input type="text" name="username" id="user_username" required autocomplete="username" pattern="[^@]+" class="u-m0"/>
 								</div>
 								<div class="u-flex-1">
-									<label for="user_domain" class="admin-inline-label">Domain</label>
+									<label for="user_domain" class="admin-inline-label">{ t(ctx, "admin.domain") }</label>
 									<select name="domain" id="user_domain" required class="u-m0">
 										for _, domain := range domains {
 											<option value={ domain.Name }>{ domain.Name }</option>
@@ -306,18 +306,18 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 							<input type="email" name="email" id="user_email" required/>
 						}
 					}
-					<label for="display_name">Display Name</label>
+					<label for="display_name">{ t(ctx, "admin.displayName") }</label>
 					<input type="text" name="display_name" id="display_name" value={ userDisplayName(user) }/>
 					if isNew {
 						<label for="password">{ t(ctx, "auth.password") }</label>
 						<input type="password" name="password" id="password" required minlength="4"/>
 					}
-					<label for="quota_bytes">Quota (bytes, 0 = unlimited)</label>
+					<label for="quota_bytes">{ t(ctx, "admin.quotaLabel") }</label>
 					<input type="number" name="quota_bytes" id="quota_bytes" value={ fmt.Sprint(userQuota(user)) } min="0"/>
 					<fieldset>
 						<label>
 							<input type="checkbox" name="is_admin" value="1" checked?={ user != nil && user.IsAdmin }/>
-							Administrator
+							{ t(ctx, "admin.administrator") }
 						</label>
 					</fieldset>
 					<div class="u-flex u-gap-05 u-mt-1">
@@ -334,7 +334,7 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 			</div>
 			if !isNew && user != nil {
 				<div class="form-card">
-					<h3>Actions</h3>
+					<h3>{ t(ctx, "common.actions") }</h3>
 					<div class="u-flex u-gap-05">
 						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/toggle-disabled", user.UserID)) }>
 							<button type="submit" class={ adminToggleClass(user.Disabled) }>
@@ -346,7 +346,7 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 							</button>
 						</form>
 						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
-							<button type="submit" class="btn-outline">Reset Password</button>
+							<button type="submit" class="btn-outline">{ t(ctx, "admin.resetPassword") }</button>
 						</form>
 					</div>
 				</div>
@@ -356,31 +356,31 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 }
 
 templ AdminDomainList(domains []DomainInfo, email, flash string) {
-	@AdminLayout("Domains", email, "domains") {
+	@AdminLayout(t(ctx, "admin.domains"), email, "domains") {
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
 			<h1 class="admin-title">{ t(ctx, "admin.domains") }</h1>
-			<p class="admin-subtitle">Manage mail domains and DNS configuration</p>
+			<p class="admin-subtitle">{ t(ctx, "admin.domainsSubtitle") }</p>
 			<div class="form-card">
 				<h3>{ t(ctx, "admin.addDomain") }</h3>
 				<form method="post" action="/admin/domains" class="admin-inline-form">
 					<div class="u-flex-1">
-						<label for="domain_name" class="admin-inline-label">Domain name</label>
+						<label for="domain_name" class="admin-inline-label">{ t(ctx, "admin.domainName") }</label>
 						<input type="text" name="domain" id="domain_name" placeholder="example.com" required class="u-m0"/>
 					</div>
 					<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "admin.addDomain") }</button>
 				</form>
 			</div>
 			<div class="admin-table-card">
-				<table class="admin-table" aria-label="Domain list">
+				<table class="admin-table" aria-label={ t(ctx, "admin.domainList") }>
 					<thead>
 						<tr>
-							<th scope="col">Domain</th>
-							<th scope="col">MX Record</th>
-							<th scope="col">Status</th>
-							<th scope="col" class="u-width-160px">Actions</th>
+							<th scope="col">{ t(ctx, "admin.domain") }</th>
+							<th scope="col">{ t(ctx, "admin.mxRecord") }</th>
+							<th scope="col">{ t(ctx, "common.status") }</th>
+							<th scope="col" class="u-width-160px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -389,9 +389,9 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 								<td><strong>{ d.Name }</strong></td>
 								<td>
 									if d.HasMX {
-										<span class="dns-check">&#10003; Valid</span>
+										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
 									} else {
-										<span class="dns-fail">&#10007; Missing</span>
+										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
 									}
 								</td>
 								<td>
@@ -420,7 +420,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							</tr>
 						}
 						if len(domains) == 0 {
-							<tr><td colspan="4" class="u-text-center u-text-muted u-p-2rem">No domains configured.</td></tr>
+							<tr><td colspan="4" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
 						}
 					</tbody>
 				</table>
@@ -430,38 +430,38 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 }
 
 templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
-	@AdminLayout("Aliases", email, "aliases") {
+	@AdminLayout(t(ctx, "admin.aliases"), email, "aliases") {
 		<div class="admin-scroll">
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
 			<h1 class="admin-title">{ t(ctx, "admin.aliases") }</h1>
-			<p class="admin-subtitle">Email address forwarding rules</p>
+			<p class="admin-subtitle">{ t(ctx, "admin.aliasesSubtitle") }</p>
 			<div class="form-card">
-				<h3>Add Alias</h3>
+				<h3>{ t(ctx, "admin.addAlias") }</h3>
 				<form method="post" action="/admin/aliases" class="admin-inline-form u-flex-wrap">
 					<div class="u-flex-1 u-min-w-200">
-						<label for="alias_address" class="admin-inline-label">Alias Address</label>
+						<label for="alias_address" class="admin-inline-label">{ t(ctx, "admin.aliasAddress") }</label>
 						<input type="email" name="address" id="alias_address" placeholder="info@example.com" required class="u-m0"/>
 					</div>
 					<div class="u-flex-1 u-min-w-200">
-						<label for="target_user" class="admin-inline-label">Target User</label>
+						<label for="target_user" class="admin-inline-label">{ t(ctx, "admin.targetUser") }</label>
 						<select name="target_user" id="target_user" required class="u-m0">
 							for _, u := range users {
 								<option value={ u }>{ u }</option>
 							}
 						</select>
 					</div>
-					<button type="submit" class="btn-primary admin-btn-42">Add</button>
+					<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "action.add") }</button>
 				</form>
 			</div>
 			<div class="admin-table-card">
-				<table class="admin-table" aria-label="Alias list">
+				<table class="admin-table" aria-label={ t(ctx, "admin.aliasList") }>
 					<thead>
 						<tr>
-							<th scope="col">Alias Address</th>
-							<th scope="col">Target User</th>
-							<th scope="col" class="u-width-100px">Actions</th>
+							<th scope="col">{ t(ctx, "admin.aliasAddress") }</th>
+							<th scope="col">{ t(ctx, "admin.targetUser") }</th>
+							<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -477,7 +477,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 							</tr>
 						}
 						if len(aliases) == 0 {
-							<tr><td colspan="3" class="u-text-center u-text-muted u-p-2rem">No aliases configured.</td></tr>
+							<tr><td colspan="3" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noAliases") }</td></tr>
 						}
 					</tbody>
 				</table>
@@ -487,44 +487,44 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 }
 
 templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1.OutboundMessage, email string) {
-	@AdminLayout("Queue", email, "queue") {
+	@AdminLayout(t(ctx, "admin.queue"), email, "queue") {
 		<div class="admin-scroll">
 			<h1 class="admin-title">{ t(ctx, "admin.queue") }</h1>
-			<p class="admin-subtitle">Monitor and manage outgoing message delivery</p>
+			<p class="admin-subtitle">{ t(ctx, "admin.queueSubtitle") }</p>
 			<!-- Stat Cards -->
 			<div class="stat-grid">
 				<div class="stat-card">
 					<div class="stat-number blue">{ fmt.Sprint(stats.PendingCount) }</div>
-					<div class="stat-label">Pending</div>
+					<div class="stat-label">{ t(ctx, "admin.pending") }</div>
 				</div>
 				<div class="stat-card">
 					<div class="stat-number red">{ fmt.Sprint(stats.FailedCount) }</div>
-					<div class="stat-label">Failed</div>
+					<div class="stat-label">{ t(ctx, "admin.failed") }</div>
 				</div>
 				<div class="stat-card">
 					<div class="stat-number orange">{ formatSeconds(stats.OldestPendingSeconds) }</div>
-					<div class="stat-label">Oldest Pending</div>
+					<div class="stat-label">{ t(ctx, "admin.oldestPending") }</div>
 				</div>
 			</div>
 			<!-- Bulk Actions -->
 			<div class="bulk-bar">
-				<span class="bulk-label">Bulk actions:</span>
+				<span class="bulk-label">{ t(ctx, "admin.bulkActions") }:</span>
 				<form method="post" action="/admin/queue/flush" class="u-m0">
 					<button type="submit" class="btn-flush">{ t(ctx, "admin.flushQueue") }</button>
 				</form>
 			</div>
 			if len(pending) > 0 {
-				<h2 class="section-title">Pending Messages</h2>
+				<h2 class="section-title">{ t(ctx, "admin.pendingMessages") }</h2>
 				<div class="admin-table-card">
-					<table class="admin-table" aria-label="Pending messages">
+					<table class="admin-table" aria-label={ t(ctx, "admin.pendingMessages") }>
 						<thead>
 							<tr>
-								<th>Sender</th>
-								<th>Recipients</th>
-								<th>Attempts</th>
-								<th>Created</th>
-								<th>Next Retry</th>
-								<th class="u-width-130px">Actions</th>
+								<th>{ t(ctx, "admin.sender") }</th>
+								<th>{ t(ctx, "admin.recipients") }</th>
+								<th>{ t(ctx, "admin.attempts") }</th>
+								<th>{ t(ctx, "admin.created") }</th>
+								<th>{ t(ctx, "admin.nextRetry") }</th>
+								<th class="u-width-130px">{ t(ctx, "common.actions") }</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -552,15 +552,15 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 				</div>
 			}
 			if len(bounced) > 0 {
-				<h2 class="section-title">Failed Messages</h2>
+				<h2 class="section-title">{ t(ctx, "admin.failedMessages") }</h2>
 				<div class="admin-table-card">
-					<table class="admin-table" aria-label="Failed messages">
+					<table class="admin-table" aria-label={ t(ctx, "admin.failedMessages") }>
 						<thead>
 							<tr>
-								<th>Sender</th>
-								<th>Recipients</th>
-								<th>Reason</th>
-								<th class="u-width-80px">Actions</th>
+								<th>{ t(ctx, "admin.sender") }</th>
+								<th>{ t(ctx, "admin.recipients") }</th>
+								<th>{ t(ctx, "admin.reason") }</th>
+								<th class="u-width-80px">{ t(ctx, "common.actions") }</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -585,28 +585,28 @@ templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1
 }
 
 templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
-	@AdminLayout("Cluster", email, "cluster") {
+	@AdminLayout(t(ctx, "admin.cluster"), email, "cluster") {
 		<div class="admin-scroll">
 			<h1 class="admin-title">{ t(ctx, "admin.cluster") }</h1>
-			<p class="admin-subtitle">Raft consensus and node health</p>
+			<p class="admin-subtitle">{ t(ctx, "admin.clusterSubtitle") }</p>
 			<!-- Raft State Table -->
 			<div class="admin-table-card">
-				<div class="admin-table-header">Raft State</div>
+				<div class="admin-table-header">{ t(ctx, "admin.raftState") }</div>
 				<table>
 					<tbody>
 						<tr>
-							<th>State</th>
+							<th>{ t(ctx, "admin.state") }</th>
 							<td><span class={ "badge", raftBadgeClass(raftState) }>{ raftState }</span></td>
 						</tr>
 						<tr>
-							<th>Nodes</th>
+							<th>{ t(ctx, "admin.nodesLabel") }</th>
 							<td>{ fmt.Sprint(len(nodes)) }</td>
 						</tr>
 					</tbody>
 				</table>
 			</div>
 			<!-- Node Cards -->
-			<h2 class="section-title">Cluster Nodes</h2>
+			<h2 class="section-title">{ t(ctx, "admin.clusterNodes") }</h2>
 			<div class="node-grid">
 				for _, n := range nodes {
 					<div class={ "node-card", templ.KV("leader", isLeader(n.Role)) }>
@@ -619,11 +619,11 @@ templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 						</div>
 						<div class="node-details">
 							<div class="node-detail">
-								<span class="node-detail-label">Address</span>
+								<span class="node-detail-label">{ t(ctx, "admin.address") }</span>
 								<span class="node-detail-value">{ n.Address }</span>
 							</div>
 							<div class="node-detail">
-								<span class="node-detail-label">Status</span>
+								<span class="node-detail-label">{ t(ctx, "common.status") }</span>
 								<span class="node-detail-value">{ n.Status }</span>
 							</div>
 						</div>
@@ -631,41 +631,41 @@ templ AdminClusterOverview(nodes []NodeStatus, raftState, email string) {
 				}
 			</div>
 			if len(nodes) == 0 {
-				<p class="u-text-center u-text-muted">No cluster members found.</p>
+				<p class="u-text-center u-text-muted">{ t(ctx, "admin.noClusterMembers") }</p>
 			}
 		</div>
 	}
 }
 
 templ AdminLogViewer(email string) {
-	@AdminLayout("Logs", email, "logs") {
+	@AdminLayout(t(ctx, "admin.logs"), email, "logs") {
 		<div class="admin-scroll admin-scroll-wide">
 			<h1 class="admin-title">{ t(ctx, "admin.logs") }</h1>
-			<p class="admin-subtitle">Real-time server log stream</p>
+			<p class="admin-subtitle">{ t(ctx, "admin.logsSubtitle") }</p>
 			<div class="log-viewer">
 				<div class="log-toolbar">
-					<label class="admin-log-label">Level:</label>
-					<select id="log-level" aria-label="Log level filter">
-						<option value="">All</option>
+					<label class="admin-log-label">{ t(ctx, "admin.level") }:</label>
+					<select id="log-level" aria-label={ t(ctx, "admin.logLevelFilter") }>
+						<option value="">{ t(ctx, "common.all") }</option>
 						<option value="debug">DEBUG</option>
 						<option value="info" selected>INFO</option>
 						<option value="warn">WARN</option>
 						<option value="error">ERROR</option>
 					</select>
-					<label class="admin-log-label admin-log-label-spaced">Component:</label>
-					<select id="log-component" aria-label="Component filter">
-						<option value="">All</option>
+					<label class="admin-log-label admin-log-label-spaced">{ t(ctx, "admin.component") }:</label>
+					<select id="log-component" aria-label={ t(ctx, "admin.componentFilter") }>
+						<option value="">{ t(ctx, "common.all") }</option>
 						<option value="smtp">SMTP</option>
 						<option value="imap">IMAP</option>
 						<option value="raft">Raft</option>
-						<option value="web">Web</option>
-						<option value="queue">Queue</option>
+						<option value="web">{ t(ctx, "admin.web") }</option>
+						<option value="queue">{ t(ctx, "admin.queue") }</option>
 					</select>
-					<button type="button" id="log-connect" class="btn-outline admin-log-btn admin-log-btn-auto" data-log-action="connect">Connect</button>
-					<button type="button" id="log-clear" class="btn-outline admin-log-btn" data-log-action="clear">Clear</button>
+					<button type="button" id="log-connect" class="btn-outline admin-log-btn admin-log-btn-auto" data-log-action="connect">{ t(ctx, "admin.connect") }</button>
+					<button type="button" id="log-clear" class="btn-outline admin-log-btn" data-log-action="clear">{ t(ctx, "admin.clear") }</button>
 				</div>
-				<div id="log-output" class="log-output" data-log-output="true" aria-live="polite" aria-label="Log output">
-					Connecting...
+				<div id="log-output" class="log-output" data-log-output="true" aria-live="polite" aria-label={ t(ctx, "admin.logOutput") }>
+					{ t(ctx, "admin.connecting") }...
 				</div>
 			</div>
 		</div>

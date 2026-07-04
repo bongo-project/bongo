@@ -65,7 +65,7 @@ func ComposePageFull(mode string, to string, cc string, subject string, body str
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = LayoutWithContent("Compose", email).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = LayoutWithContent(t(ctx, "compose.compose"), email).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

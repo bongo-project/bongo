@@ -3,11 +3,11 @@ package templates
 import bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 
 templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
-	@LayoutWithContent("Settings", email) {
+	@LayoutWithContent(t(ctx, "settings.settings"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
-			<nav aria-label="Settings navigation">
+			<nav aria-label={ t(ctx, "settings.navAriaLabel") }>
 				<div class="sidebar-group">
-					<div class="sidebar-label">Navigation</div>
+					<div class="sidebar-label">{ t(ctx, "settings.navigation") }</div>
 					<ul class="nav-list">
 						<li class="nav-item"><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true"><span class="nav-icon" aria-hidden="true">&#9993;</span> { t(ctx, "nav.backToMail") }</a></li>
 						<li class="nav-item"><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true"><span class="nav-icon" aria-hidden="true">&#128295;</span> { t(ctx, "settings.filterRules") }</a></li>
@@ -23,7 +23,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 					if flash != "" {
 						@FlashMessage(flash, "success")
 					}
-					<div class="settings-tabs" role="tablist" aria-label="Settings sections">
+					<div class="settings-tabs" role="tablist" aria-label={ t(ctx, "settings.sectionsAria") }>
 						<button type="button" class="settings-tab" role="tab"
 							x-bind:class="{ 'active': activeTab === 0 }" x-bind:aria-selected="activeTab === 0"
 							x-on:click="activeTab = 0">{ t(ctx, "settings.appearance") }</button>
@@ -44,7 +44,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 						<!-- Appearance -->
 						<div class="settings-section" x-bind:hidden="activeTab !== 0">
 							<h2 class="settings-section-title">{ t(ctx, "settings.appearance") }</h2>
-							<p class="settings-section-desc">Theme, layout, and density preferences.</p>
+							<p class="settings-section-desc">{ t(ctx, "settings.appearanceDesc") }</p>
 							<div class="settings-card">
 								<div class="settings-row">
 									<div class="settings-row-label">
@@ -81,7 +81,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 						<!-- Display -->
 						<div class="settings-section" x-bind:hidden="activeTab !== 1">
 							<h2 class="settings-section-title">{ t(ctx, "settings.display") }</h2>
-							<p class="settings-section-desc">How messages are displayed.</p>
+							<p class="settings-section-desc">{ t(ctx, "settings.displayDesc") }</p>
 							<div class="settings-card">
 								<div class="settings-row">
 									<div class="settings-row-label">
@@ -97,7 +97,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 								<div class="settings-row">
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.infiniteScroll") }</div>
-										<div class="settings-row-desc">Load more messages as you scroll down.</div>
+										<div class="settings-row-desc">{ t(ctx, "settings.infiniteScrollDesc") }</div>
 									</div>
 									<label class="toggle">
 										<input type="checkbox" name="infinite_scroll" value="1" checked?={ prefs.InfiniteScroll }/>
@@ -109,7 +109,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 						<!-- Composition -->
 						<div class="settings-section" x-bind:hidden="activeTab !== 2">
 							<h2 class="settings-section-title">{ t(ctx, "settings.composition") }</h2>
-							<p class="settings-section-desc">Compose and reply preferences.</p>
+							<p class="settings-section-desc">{ t(ctx, "settings.compositionDesc") }</p>
 							<div class="settings-card">
 								<div class="settings-row">
 									<div class="settings-row-label">
@@ -131,7 +131,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 						<!-- Localization -->
 						<div class="settings-section" x-bind:hidden="activeTab !== 3">
 							<h2 class="settings-section-title">{ t(ctx, "settings.localization") }</h2>
-							<p class="settings-section-desc">Language and timezone.</p>
+							<p class="settings-section-desc">{ t(ctx, "settings.localizationDesc") }</p>
 							<div class="settings-card">
 								<div class="settings-row">
 									<div class="settings-row-label">

@@ -136,13 +136,221 @@ func TagSettingsPage(data TagSettingsData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\"><!-- Tag list --><div class=\"settings-card u-mb-24px\"><template x-if=\"tags.length === 0\"><p class=\"secondary-text u-m0 u-py-16 u-px-20\">No tags yet. Create one below.</p></template><template x-for=\"tag in tags\" :key=\"tag.name\"><div class=\"settings-row tag-settings-row\"><!-- Colour swatch --><span class=\"tag-swatch tag-settings-swatch tag-swatch-md\" :class=\"tagPaletteBGClass(tag.colourIndex)\" :title=\"tagPaletteHex(tag.colourIndex)\"></span><!-- Name / inline edit --><div class=\"settings-row-label u-flex-1 u-min-w-0\"><template x-if=\"editingTag !== tag.name\"><span class=\"settings-row-title\" x-text=\"tag.name\"></span></template><template x-if=\"editingTag === tag.name\"><input type=\"text\" class=\"settings-input u-max-w-280\" x-model=\"editName\" x-on:keydown.enter.prevent=\"saveTag(tag)\" x-on:keydown.escape=\"cancelEdit()\" x-ref=\"editInput\" aria-label=\"Tag name\"></template></div><!-- Message count --><span class=\"nav-badge\" x-text=\"tag.count\" :title=\"`${tag.count} message(s)`\"></span><!-- Colour picker (shown in edit mode) --><template x-if=\"editingTag === tag.name\"><div class=\"tag-colour-picker\" role=\"group\" aria-label=\"Choose colour\"><template x-for=\"(colour, idx) in palette\" :key=\"idx\"><button type=\"button\" class=\"tag-colour-swatch-btn\" :class=\"[tagPaletteBGClass(idx), editColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']\" :aria-label=\"`Colour ${idx}`\" :aria-pressed=\"editColourIndex === idx\" x-on:click=\"editColourIndex = idx\"></button></template></div></template><!-- Action buttons --><div class=\"tag-settings-actions u-flex u-gap-6px u-flex-shrink-0\"><template x-if=\"editingTag !== tag.name && confirmDeleteTag !== tag.name\"><button type=\"button\" class=\"btn-icon\" :aria-label=\"`Edit tag ${tag.name}`\" x-on:click=\"startEdit(tag)\" title=\"Edit\">&#9998;</button></template><template x-if=\"editingTag === tag.name\"><button type=\"button\" class=\"btn-sm btn-primary\" x-on:click=\"saveTag(tag)\" :disabled=\"savingTag\">Save</button></template><template x-if=\"editingTag === tag.name\"><button type=\"button\" class=\"btn-sm btn-ghost\" x-on:click=\"cancelEdit()\">Cancel</button></template><template x-if=\"editingTag !== tag.name && confirmDeleteTag !== tag.name\"><button type=\"button\" class=\"btn-icon btn-icon--danger\" :aria-label=\"`Delete tag ${tag.name}`\" x-on:click=\"confirmDeleteTag = tag.name\" title=\"Delete\">&#x2715;</button></template><template x-if=\"confirmDeleteTag === tag.name\"><span class=\"u-flex u-items-center u-gap-6px u-font-082 u-text-muted\">Delete? <button type=\"button\" class=\"btn-sm btn-danger\" x-on:click=\"deleteTag(tag)\" :disabled=\"deletingTag\">Yes, delete</button> <button type=\"button\" class=\"btn-sm btn-ghost\" x-on:click=\"confirmDeleteTag = null\">Cancel</button></span></template></div></div></template></div><!-- Error message --><template x-if=\"errorMsg\"><div role=\"alert\" class=\"flash flash-error u-mb-1\" x-text=\"errorMsg\"></div></template><!-- Create new tag --><div class=\"settings-card\"><div class=\"settings-section-title u-font-09 u-fw-600 u-pt-14 u-px-18\">Add new tag</div><div class=\"settings-row u-flex-wrap u-gap-10px u-items-start\"><div class=\"u-flex u-flex-col u-flex-1 u-min-w-180 u-gap-4px\"><label for=\"new-tag-name\" class=\"settings-row-title u-font-082\">Name</label> <input id=\"new-tag-name\" type=\"text\" class=\"settings-input\" x-model=\"newTagName\" placeholder=\"e.g. work, urgent\" maxlength=\"50\" x-on:keydown.enter.prevent=\"createTag()\" aria-label=\"New tag name\"></div><div class=\"u-flex u-flex-col u-gap-4px\"><span class=\"settings-row-title u-font-082\" id=\"new-colour-label\">Colour</span><div class=\"tag-colour-picker\" role=\"group\" aria-labelledby=\"new-colour-label\"><template x-for=\"(colour, idx) in palette\" :key=\"idx\"><button type=\"button\" class=\"tag-colour-swatch-btn\" :class=\"[tagPaletteBGClass(idx), newTagColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']\" :aria-label=\"`Colour ${idx}`\" :aria-pressed=\"newTagColourIndex === idx\" x-on:click=\"newTagColourIndex = idx\"></button></template></div></div><div class=\"u-flex u-items-end u-pb-2\"><button type=\"button\" class=\"btn-save\" x-on:click=\"createTag()\" :disabled=\"creatingTag || !newTagName.trim()\">Add tag</button></div></div></div></div></div></div></main>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\"><!-- Tag list --><div class=\"settings-card u-mb-24px\"><template x-if=\"tags.length === 0\"><p class=\"secondary-text u-m0 u-py-16 u-px-20\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var7 string
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.noTagsYet"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 62, Col: 80}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p></template><template x-for=\"tag in tags\" :key=\"tag.name\"><div class=\"settings-row tag-settings-row\"><!-- Colour swatch --><span class=\"tag-swatch tag-settings-swatch tag-swatch-md\" :class=\"tagPaletteBGClass(tag.colourIndex)\" :title=\"tagPaletteHex(tag.colourIndex)\"></span><!-- Name / inline edit --><div class=\"settings-row-label u-flex-1 u-min-w-0\"><template x-if=\"editingTag !== tag.name\"><span class=\"settings-row-title\" x-text=\"tag.name\"></span></template><template x-if=\"editingTag === tag.name\"><input type=\"text\" class=\"settings-input u-max-w-280\" x-model=\"editName\" x-on:keydown.enter.prevent=\"saveTag(tag)\" x-on:keydown.escape=\"cancelEdit()\" x-ref=\"editInput\" aria-label=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var8 string
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.namePlaceholder"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 85, Col: 54}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\"></template></div><!-- Message count --><span class=\"nav-badge\" x-text=\"tag.count\" :title=\"`${tag.count} message(s)`\"></span><!-- Colour picker (shown in edit mode) --><template x-if=\"editingTag === tag.name\"><div class=\"tag-colour-picker\" role=\"group\" aria-label=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var9 string
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.chooseColour"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 97, Col: 93}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\"><template x-for=\"(colour, idx) in palette\" :key=\"idx\"><button type=\"button\" class=\"tag-colour-swatch-btn\" :class=\"[tagPaletteBGClass(idx), editColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']\" :aria-label=\"`Colour ${idx}`\" :aria-pressed=\"editColourIndex === idx\" x-on:click=\"editColourIndex = idx\"></button></template></div></template><!-- Action buttons --><div class=\"tag-settings-actions u-flex u-gap-6px u-flex-shrink-0\"><template x-if=\"editingTag !== tag.name && confirmDeleteTag !== tag.name\"><button type=\"button\" class=\"btn-icon\" :aria-label=\"`Edit tag ${tag.name}`\" x-on:click=\"startEdit(tag)\" title=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var10 string
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.edit"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 118, Col: 41}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">&#9998;</button></template><template x-if=\"editingTag === tag.name\"><button type=\"button\" class=\"btn-sm btn-primary\" x-on:click=\"saveTag(tag)\" :disabled=\"savingTag\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var11 string
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.save"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 127, Col: 35}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</button></template><template x-if=\"editingTag === tag.name\"><button type=\"button\" class=\"btn-sm btn-ghost\" x-on:click=\"cancelEdit()\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var12 string
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.cancel"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 134, Col: 37}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</button></template><template x-if=\"editingTag !== tag.name && confirmDeleteTag !== tag.name\"><button type=\"button\" class=\"btn-icon btn-icon--danger\" :aria-label=\"`Delete tag ${tag.name}`\" x-on:click=\"confirmDeleteTag = tag.name\" title=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var13 string
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.delete"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 142, Col: 43}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\">&#x2715;</button></template><template x-if=\"confirmDeleteTag === tag.name\"><span class=\"u-flex u-items-center u-gap-6px u-font-082 u-text-muted\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.deletePrompt"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 147, Col: 40}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, " <button type=\"button\" class=\"btn-sm btn-danger\" x-on:click=\"deleteTag(tag)\" :disabled=\"deletingTag\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var15 string
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.yesDelete"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 153, Col: 38}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</button> <button type=\"button\" class=\"btn-sm btn-ghost\" x-on:click=\"confirmDeleteTag = null\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var16 string
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "common.cancel"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 158, Col: 38}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</button></span></template></div></div></template></div><!-- Error message --><template x-if=\"errorMsg\"><div role=\"alert\" class=\"flash flash-error u-mb-1\" x-text=\"errorMsg\"></div></template><!-- Create new tag --><div class=\"settings-card\"><div class=\"settings-section-title u-font-09 u-fw-600 u-pt-14 u-px-18\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var17 string
+			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.addNewTag"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 171, Col: 103}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div><div class=\"settings-row u-flex-wrap u-gap-10px u-items-start\"><div class=\"u-flex u-flex-col u-flex-1 u-min-w-180 u-gap-4px\"><label for=\"new-tag-name\" class=\"settings-row-title u-font-082\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var18 string
+			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.name"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 174, Col: 93}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</label> <input id=\"new-tag-name\" type=\"text\" class=\"settings-input\" x-model=\"newTagName\" placeholder=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var19 string
+			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.namePlaceholderExample"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 180, Col: 60}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\" maxlength=\"50\" x-on:keydown.enter.prevent=\"createTag()\" aria-label=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var20 string
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.newTagNameAria"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 183, Col: 51}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\"></div><div class=\"u-flex u-flex-col u-gap-4px\"><span class=\"settings-row-title u-font-082\" id=\"new-colour-label\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var21 string
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.colour"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 187, Col: 97}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</span><div class=\"tag-colour-picker\" role=\"group\" aria-labelledby=\"new-colour-label\"><template x-for=\"(colour, idx) in palette\" :key=\"idx\"><button type=\"button\" class=\"tag-colour-swatch-btn\" :class=\"[tagPaletteBGClass(idx), newTagColourIndex === idx ? 'tag-colour-swatch-btn--selected' : '']\" :aria-label=\"`Colour ${idx}`\" :aria-pressed=\"newTagColourIndex === idx\" x-on:click=\"newTagColourIndex = idx\"></button></template></div></div><div class=\"u-flex u-items-end u-pb-2\"><button type=\"button\" class=\"btn-save\" x-on:click=\"createTag()\" :disabled=\"creatingTag || !newTagName.trim()\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var22 string
+			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "tag.addTag"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/settings_tags.templ`, Line: 207, Col: 32}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</button></div></div></div></div></div></div></main>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = LayoutWithContent("Tags", data.Email).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = LayoutWithContent(t(ctx, "nav.tags"), data.Email).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

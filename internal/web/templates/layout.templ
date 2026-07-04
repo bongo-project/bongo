@@ -16,18 +16,13 @@ templ Layout(title string, email string) {
 		</head>
 		<body>
 			<!-- Translation strings needed by bongo.js. CSP forbids inline
-			scripts, so they are passed as data attributes (templ escapes them,
-			the browser decodes them, bongo.js reads them via dataset). -->
-			<span
-				id="i18n-data"
-				hidden
-				data-shortcuts-title={ t(ctx, "shortcuts.title") }
-				data-tag-create-failed={ t(ctx, "tag.createFailed") }
-			></span>
+			scripts, so they are passed as a JSON data island (templ escapes it,
+			the browser decodes it, bongo.js parses it from dataset.messages). -->
+			<span id="i18n-data" hidden data-messages={ i18nJSON(ctx) }></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header class="topbar" role="banner">
 				<div class="topbar-left">
-					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
 					<a href="/mail/INBOX" class="brand" aria-label="BongoMail">Bongo<span>Mail</span></a>
 				</div>
 				<div class="topbar-center">
@@ -55,7 +50,7 @@ templ Layout(title string, email string) {
 						title={ t(ctx, "nav.toggleTheme") }
 					></button>
 					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
-					<span class="user-email" aria-label={ "Logged in as " + email }>{ email }</span>
+					<span class="user-email" aria-label={ t(ctx, "nav.loggedInAs") + " " + email }>{ email }</span>
 					<form method="post" action="/logout" class="u-m0">
 						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
 					</form>
@@ -72,7 +67,7 @@ templ Layout(title string, email string) {
 			}
 			<div class="layout">
 				<div class="sidebar-overlay" x-on:click="sidebarOpen = false" x-bind:class="{'open': sidebarOpen}" aria-hidden="true"></div>
-				<aside class="sidebar" id="sidebar" aria-label="Mailbox navigation" x-bind:class="{'open': sidebarOpen}">
+				<aside class="sidebar" id="sidebar" aria-label={ t(ctx, "nav.mailboxNav") } x-bind:class="{'open': sidebarOpen}">
 					{ children... }
 				</aside>
 				<main class="content" id="main-content" role="main">
@@ -114,18 +109,13 @@ templ LayoutWithContent(title string, email string) {
 		</head>
 		<body>
 			<!-- Translation strings needed by bongo.js. CSP forbids inline
-			scripts, so they are passed as data attributes (templ escapes them,
-			the browser decodes them, bongo.js reads them via dataset). -->
-			<span
-				id="i18n-data"
-				hidden
-				data-shortcuts-title={ t(ctx, "shortcuts.title") }
-				data-tag-create-failed={ t(ctx, "tag.createFailed") }
-			></span>
+			scripts, so they are passed as a JSON data island (templ escapes it,
+			the browser decodes it, bongo.js parses it from dataset.messages). -->
+			<span id="i18n-data" hidden data-messages={ i18nJSON(ctx) }></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header class="topbar" role="banner">
 				<div class="topbar-left">
-					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">&#9776;</button>
+					<button type="button" class="hamburger" x-on:click="toggleSidebar()" aria-label={ t(ctx, "nav.toggleNavMenu") } aria-expanded="false" aria-controls="sidebar">&#9776;</button>
 					<a href="/mail/INBOX" class="brand" aria-label="BongoMail">Bongo<span>Mail</span></a>
 				</div>
 				<div class="topbar-center">
@@ -153,7 +143,7 @@ templ LayoutWithContent(title string, email string) {
 						title={ t(ctx, "nav.toggleTheme") }
 					></button>
 					<a href="/settings" class="topbar-link">{ t(ctx, "nav.settings") }</a>
-					<span class="user-email" aria-label={ "Logged in as " + email }>{ email }</span>
+					<span class="user-email" aria-label={ t(ctx, "nav.loggedInAs") + " " + email }>{ email }</span>
 					<form method="post" action="/logout" class="u-m0">
 						<button type="submit" class="topbar-link hide-mobile">{ t(ctx, "auth.logout") }</button>
 					</form>

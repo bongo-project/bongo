@@ -9,7 +9,7 @@ import (
 )
 
 templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email string, flash string) {
-	@LayoutWithContent("Contacts", email) {
+	@LayoutWithContent(t(ctx, "contacts.contacts"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@ContactsSidebar()
 		</aside>
@@ -17,12 +17,12 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 			if flash != "" {
 				@FlashMessage(flash, "success")
 			}
-			<div class="toolbar" role="toolbar" aria-label="Contact actions">
+			<div class="toolbar" role="toolbar" aria-label={ t(ctx, "contacts.contactActions") }>
 				<button type="button" class="tool-btn primary" data-contact-form-toggle="toggle">{ t(ctx, "contacts.newContact") }</button>
 				<a href="/contacts/export" class="tool-btn">{ t(ctx, "contacts.exportVcard") }</a>
 				<div class="tool-spacer"></div>
-				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label="Import contacts">
-					<input type="file" name="vcf" accept=".vcf" aria-label="Select VCF file to import"/>
+				<form class="import-form" method="post" action="/contacts/import" enctype="multipart/form-data" aria-label={ t(ctx, "contacts.importContacts") }>
+					<input type="file" name="vcf" accept=".vcf" aria-label={ t(ctx, "contacts.selectVcf") }/>
 					<button type="submit" class="tool-btn">{ t(ctx, "contacts.import") }</button>
 				</form>
 			</div>
@@ -63,7 +63,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 			} else {
 				<div class="contacts-panes" id="contacts-panes">
 					<div class="contact-list-pane">
-						<div class="contact-scroll" role="list" aria-label="Contact list">
+						<div class="contact-scroll" role="list" aria-label={ t(ctx, "contacts.contactList") }>
 							for _, c := range contacts {
 								@ContactRow(c)
 							}
@@ -72,7 +72,7 @@ templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email stri
 					</div>
 					<div class="contact-detail-pane" id="contact-detail">
 						<div class="detail-placeholder detail-placeholder-center">
-							Select a contact to view details
+							{ t(ctx, "contacts.selectToView") }
 						</div>
 					</div>
 				</div>
@@ -105,7 +105,7 @@ templ ContactRow(c *bongov1.Contact) {
 }
 
 templ ContactDetailPage(c *bongov1.Contact, email string) {
-	@LayoutWithContent("Contact", email) {
+	@LayoutWithContent(t(ctx, "contacts.contact"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@ContactsSidebar()
 		</aside>
@@ -128,31 +128,31 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 						<input type="hidden" name="_method" value="PUT"/>
 						<div class="detail-fields">
 							<div class="detail-field">
-								<div class="detail-field-label">Name</div>
+								<div class="detail-field-label">{ t(ctx, "contacts.name") }</div>
 								<div class="detail-field-value">
 									<input type="text" name="display_name" class="settings-input" value={ c.DisplayName } required/>
 								</div>
 							</div>
 							<div class="detail-field">
-								<div class="detail-field-label">Email</div>
+								<div class="detail-field-label">{ t(ctx, "contacts.email") }</div>
 								<div class="detail-field-value">
 									<input type="email" name="email" class="settings-input" value={ c.Email }/>
 								</div>
 							</div>
 							<div class="detail-field">
-								<div class="detail-field-label">Phone</div>
+								<div class="detail-field-label">{ t(ctx, "contacts.phone") }</div>
 								<div class="detail-field-value">
 									<input type="tel" name="phone" class="settings-input" value={ c.Phone }/>
 								</div>
 							</div>
 							<div class="detail-field">
-								<div class="detail-field-label">Company</div>
+								<div class="detail-field-label">{ t(ctx, "contacts.company") }</div>
 								<div class="detail-field-value">
 									<input type="text" name="company" class="settings-input" value={ c.Company }/>
 								</div>
 							</div>
 							<div class="detail-field">
-								<div class="detail-field-label">Notes</div>
+								<div class="detail-field-label">{ t(ctx, "contacts.notes") }</div>
 								<div class="detail-field-value">
 									<textarea name="notes" rows="3" class="settings-input u-w-full">{ c.Notes }</textarea>
 								</div>
@@ -166,7 +166,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 								type="button"
 								class="btn-danger"
 								hx-delete={ "/contacts/" + c.Guid }
-								hx-confirm="Delete this contact?"
+								hx-confirm={ t(ctx, "contacts.confirmDelete") }
 								hx-target="body"
 							>
 								{ t(ctx, "contacts.delete") }
@@ -174,8 +174,8 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 						</div>
 					</form>
 					<div class="detail-section-title u-font-075">
-						<span>Created: { formatContactDate(c.CreatedAt) }</span>
-						<span class="u-ml-1">Updated: { formatContactDate(c.UpdatedAt) }</span>
+						<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
+						<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
 					</div>
 				</div>
 			</div>
@@ -199,31 +199,31 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 			<input type="hidden" name="_method" value="PUT"/>
 			<div class="detail-fields">
 				<div class="detail-field">
-					<div class="detail-field-label">Name</div>
+					<div class="detail-field-label">{ t(ctx, "contacts.name") }</div>
 					<div class="detail-field-value">
 						<input type="text" name="display_name" class="form-input" value={ c.DisplayName } required/>
 					</div>
 				</div>
 				<div class="detail-field">
-					<div class="detail-field-label">Email</div>
+					<div class="detail-field-label">{ t(ctx, "contacts.email") }</div>
 					<div class="detail-field-value">
 						<input type="email" name="email" class="form-input" value={ c.Email }/>
 					</div>
 				</div>
 				<div class="detail-field">
-					<div class="detail-field-label">Phone</div>
+					<div class="detail-field-label">{ t(ctx, "contacts.phone") }</div>
 					<div class="detail-field-value">
 						<input type="tel" name="phone" class="form-input" value={ c.Phone }/>
 					</div>
 				</div>
 				<div class="detail-field">
-					<div class="detail-field-label">Company</div>
+					<div class="detail-field-label">{ t(ctx, "contacts.company") }</div>
 					<div class="detail-field-value">
 						<input type="text" name="company" class="form-input" value={ c.Company }/>
 					</div>
 				</div>
 				<div class="detail-field">
-					<div class="detail-field-label">Notes</div>
+					<div class="detail-field-label">{ t(ctx, "contacts.notes") }</div>
 					<div class="detail-field-value">
 						<textarea name="notes" rows="3" class="form-input u-w-full">{ c.Notes }</textarea>
 					</div>
@@ -237,7 +237,7 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 					class="btn-flush"
 					class="btn-flush u-text-danger"
 					hx-delete={ "/contacts/" + c.Guid }
-					hx-confirm="Delete this contact?"
+					hx-confirm={ t(ctx, "contacts.confirmDelete") }
 					hx-target="#contacts-panes"
 					hx-swap="outerHTML"
 				>
@@ -246,14 +246,14 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 			</div>
 		</form>
 		<div class="detail-section-title u-font-075 u-px-12 u-text-muted">
-			<span>Created: { formatContactDate(c.CreatedAt) }</span>
-			<span class="u-ml-1">Updated: { formatContactDate(c.UpdatedAt) }</span>
+			<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
+			<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
 		</div>
 	</div>
 }
 
 templ ContactsSidebar() {
-	<nav aria-label="Contacts navigation">
+	<nav aria-label={ t(ctx, "contacts.contactsNav") }>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.contacts") }</div>
 			<ul class="nav-list">
@@ -266,7 +266,7 @@ templ ContactsSidebar() {
 			</ul>
 		</div>
 		<div class="sidebar-group">
-			<div class="sidebar-label">Navigation</div>
+			<div class="sidebar-label">{ t(ctx, "contacts.navigation") }</div>
 			<ul class="nav-list">
 				<li class="nav-item">
 					<a href="/mail/INBOX">

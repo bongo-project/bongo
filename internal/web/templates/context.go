@@ -2,11 +2,41 @@ package templates
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	"github.com/bongo-go/bongo-go/internal/i18n"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
 )
+
+// jsMessageIDs are the translation keys that bongo.js needs at runtime. They
+// are serialized into the #i18n-data element by layout.templ and read by the
+// i18n() helper in bongo.js. CSP forbids inline scripts, so a JSON data island
+// (in a data attribute) is used instead of an inline <script>.
+var jsMessageIDs = []string{
+	"shortcuts.title", "tag.createFailed",
+	"js.newMail", "js.upcomingEvent", "js.eventReminderPrefix", "js.eventReminderSuffix",
+	"js.scanFailedPrefix", "js.scanErrorPrefix", "js.scannedInfix", "js.movedToJunkSuffix", "js.scanCancelled",
+	"js.tagsLoadFailed", "js.tagNameEmpty", "js.tagSaveFailed", "js.tagDeleteFailed",
+	"js.shortcutNextMessage", "js.shortcutPrevMessage", "js.shortcutOpenMessage", "js.shortcutReply",
+	"js.shortcutDelete", "js.shortcutToggleStar", "js.shortcutFocusSearch", "js.shortcutCompose",
+	"js.shortcutCloseModal", "js.shortcutShowHelp", "js.close", "js.contentLoaded", "js.logConnectionLost",
+}
+
+// i18nJSON returns a JSON object mapping each bongo.js message key to its
+// translation in the request locale. json.Marshal escapes <, >, & to \u00XX,
+// so the result is safe to embed in an HTML attribute value.
+func i18nJSON(ctx context.Context) string {
+	m := make(map[string]string, len(jsMessageIDs))
+	for _, id := range jsMessageIDs {
+		m[id] = t(ctx, id)
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
 
 // localeFromCtx returns the locale stored in the request context by the
 // InjectLocale middleware. Falls back to "en" if not set.

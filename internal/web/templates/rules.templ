@@ -1,5 +1,6 @@
 package templates
 
+import "context"
 import "fmt"
 import "strings"
 
@@ -38,7 +39,7 @@ type MailSample struct {
 }
 
 templ RulesListPage(rules []RuleInfo, email string, flash string) {
-	@LayoutWithContent("Filter Rules", email) {
+	@LayoutWithContent(t(ctx, "nav.filterRules"), email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="nav-list">
@@ -80,10 +81,10 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 										&#x2801;
 										<span class="u-flex u-flex-col">
 											if i > 0 {
-												<button type="button" class="rule-move-btn" aria-label="Move rule up" data-move-dir="up" data-move-id={ rule.ID }>&#x25B2;</button>
+												<button type="button" class="rule-move-btn" aria-label={ t(ctx, "rules.moveUp") } data-move-dir="up" data-move-id={ rule.ID }>&#x25B2;</button>
 											}
 											if i < len(rules)-1 {
-												<button type="button" class="rule-move-btn" aria-label="Move rule down" data-move-dir="down" data-move-id={ rule.ID }>&#x25BC;</button>
+												<button type="button" class="rule-move-btn" aria-label={ t(ctx, "rules.moveDown") } data-move-dir="down" data-move-id={ rule.ID }>&#x25BC;</button>
 											}
 										</span>
 									</td>
@@ -110,8 +111,8 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 												hx-delete={ "/settings/rules/" + rule.ID }
 												hx-target="closest tr"
 												hx-swap="outerHTML"
-												hx-confirm="Delete this rule?"
-												class="btn-flush btn-sm">Del</button>
+												hx-confirm={ t(ctx, "rules.deleteConfirm") }
+												class="btn-flush btn-sm">{ t(ctx, "rules.deleteShort") }</button>
 										</div>
 									</td>
 								</tr>
@@ -128,7 +129,7 @@ templ RulesListPage(rules []RuleInfo, email string, flash string) {
 }
 
 templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, flash string) {
-	@LayoutWithContent(ruleFormTitle(isNew), email) {
+	@LayoutWithContent(ruleFormTitle(ctx, isNew), email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="nav-list">
@@ -155,7 +156,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 					<div class="form-section-title">{ t(ctx, "rules.ruleSettings") }</div>
 					<div class="form-group">
 						<label for="name">{ t(ctx, "rules.colName") }</label>
-						<input type="text" name="name" id="name" class="form-input" value={ rule.Name } placeholder="e.g. Newsletters to Updates" required/>
+						<input type="text" name="name" id="name" class="form-input" value={ rule.Name } placeholder={ t(ctx, "rules.namePlaceholder") } required/>
 					</div>
 					<div class="checkbox-wrapper">
 						<input type="checkbox" name="enabled" id="rule_enabled" checked?={ rule.Enabled }/>
@@ -163,7 +164,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 					</div>
 					<div class="checkbox-wrapper">
 						<input type="checkbox" name="stop_processing" id="rule_stop" checked?={ rule.StopProcessing }/>
-						<label for="rule_stop">Stop processing further rules when matched</label>
+						<label for="rule_stop">{ t(ctx, "rules.stopProcessing") }</label>
 					</div>
 				</div>
 				<div class="form-section">
@@ -201,7 +202,7 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 								</select>
 							</template>
 							<template x-if="cond.field !== 'has_attachment'">
-								<input type="text" :name="'cond_value'" x-model="cond.value" placeholder="Value"/>
+								<input type="text" :name="'cond_value'" x-model="cond.value" placeholder={ t(ctx, "rules.valuePlaceholder") }/>
 							</template>
 							<button type="button" @click="conditions.splice(i, 1)" class="condition-row-remove" x-bind:hidden="conditions.length <= 1">&#10005;</button>
 						</div>
@@ -215,13 +216,13 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							<div class="form-group">
 								<label for="action_type">{ t(ctx, "rules.whenMatched") }</label>
 								<select name="action_type" id="action_type" x-model="actionType">
-									<option value="move">Move to folder</option>
-									<option value="copy">Copy to folder</option>
-									<option value="forward">Forward to address</option>
-									<option value="flag">Flag as starred</option>
-									<option value="mark_read">Mark as read</option>
-									<option value="delete">Delete (move to Trash)</option>
-									<option value="tag">Add tag</option>
+									<option value="move">{ t(ctx, "rules.actionMove") }</option>
+									<option value="copy">{ t(ctx, "rules.actionCopy") }</option>
+									<option value="forward">{ t(ctx, "rules.actionForward") }</option>
+									<option value="flag">{ t(ctx, "rules.actionFlag") }</option>
+									<option value="mark_read">{ t(ctx, "rules.actionMarkRead") }</option>
+									<option value="delete">{ t(ctx, "rules.actionDelete") }</option>
+									<option value="tag">{ t(ctx, "rules.actionTag") }</option>
 								</select>
 							</div>
 							<div class="form-group" x-bind:hidden="!(actionType === 'move' || actionType === 'copy')">
@@ -234,17 +235,17 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 							</div>
 						</div>
 						<div class="form-group" x-bind:hidden="actionType !== 'forward'">
-							<label for="action_target_forward">Forward to email address</label>
+							<label for="action_target_forward">{ t(ctx, "rules.forwardToEmail") }</label>
 							<input type="email" name="action_target_forward" id="action_target_forward" class="form-input" placeholder="user@example.com" value={ rule.Action.Target }/>
 						</div>
 						<div class="form-group" x-bind:hidden="actionType !== 'tag'">
-							<label>Tags to apply</label>
+							<label>{ t(ctx, "rules.tagsToApply") }</label>
 							<div class="tag-input-wrapper">
 								<template x-for="(tag, idx) in selectedTags" :key="idx">
 									<span class="tag-pill">
 										<span x-text="tag"></span>
 										<input type="hidden" name="action_tag" :value="tag"/>
-										<button type="button" class="tag-pill-remove" @click="selectedTags.splice(idx,1)" aria-label="Remove tag">&#10005;</button>
+										<button type="button" class="tag-pill-remove" @click="selectedTags.splice(idx,1)" aria-label={ t(ctx, "rules.removeTag") }>&#10005;</button>
 									</span>
 								</template>
 								<input
@@ -252,9 +253,9 @@ templ RuleFormPage(rule RuleInfo, mailboxes []string, isNew bool, email string, 
 									x-model="tagInput"
 									@keydown.enter.prevent="addTag()"
 									@keydown.comma.prevent="addTag()"
-									placeholder="Type a tag and press Enter"
+									placeholder={ t(ctx, "rules.tagInputPlaceholder") }
 									class="tag-input-field"
-									aria-label="Tag name input"
+									aria-label={ t(ctx, "tag.namePlaceholder") }
 								/>
 							</div>
 							<p class="tag-input-help">{ t(ctx, "rules.tagInputHelp") }</p>
@@ -282,7 +283,7 @@ templ RuleTestResults(ruleID string, matches int, total int, samples []MailSampl
 	<tr id={ "test-results-" + ruleID }>
 		<td colspan="7" class="u-bg-subtle u-p-18">
 			<p class="u-mb-05">
-				<strong>{ fmt.Sprintf("Matched %d of %d", matches, total) }</strong> recent messages
+				<strong>{ fmt.Sprintf("%d / %d", matches, total) }</strong> { t(ctx, "rules.recentMessagesMatched") }
 			</p>
 			if len(samples) > 0 {
 				<ul class="u-m0 u-font-085 u-pl-15">
@@ -295,11 +296,11 @@ templ RuleTestResults(ruleID string, matches int, total int, samples []MailSampl
 	</tr>
 }
 
-func ruleFormTitle(isNew bool) string {
+func ruleFormTitle(ctx context.Context, isNew bool) string {
 	if isNew {
-		return "New Filter Rule"
+		return t(ctx, "rules.newRule")
 	}
-	return "Edit Filter Rule"
+	return t(ctx, "rules.editRule")
 }
 
 func ruleFormAction(id string, isNew bool) templ.SafeURL {

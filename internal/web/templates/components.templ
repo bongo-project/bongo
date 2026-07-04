@@ -28,7 +28,7 @@ type SidebarTagInfo struct {
 
 templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 	<a href="/compose" class="compose-btn" hx-get="/compose" hx-target="#main-content" hx-push-url="true">+ { t(ctx, "mail.compose") }</a>
-	<nav aria-label="Mailboxes">
+	<nav aria-label={ t(ctx, "nav.mailboxes") }>
 		<div class="sidebar-group">
 			<div class="sidebar-label">{ t(ctx, "nav.mailboxes") }</div>
 			<ul class="nav-list" id="mailbox-drop-targets">
@@ -43,7 +43,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 					<span>{ t(ctx, "nav.tags") }</span>
 					<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
 				</div>
-				<ul class="nav-list" x-bind:hidden="!open" aria-label="Tags">
+				<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.tags") }>
 					for i, tag := range tags {
 						if i < 20 {
 							<li class="nav-item">
@@ -132,7 +132,7 @@ templ Sidebar(mailboxes []MailboxInfo, tags []SidebarTagInfo, selected string) {
 				<span>{ t(ctx, "nav.quickLinks") }</span>
 				<span class="sidebar-chevron" x-bind:class="{'collapsed': !open}">&#9660;</span>
 			</div>
-			<ul class="nav-list" x-bind:hidden="!open" aria-label="Applications">
+			<ul class="nav-list" x-bind:hidden="!open" aria-label={ t(ctx, "nav.applications") }>
 				<li class="nav-item">
 					<a href="/contacts">
 						<span class="nav-icon" aria-hidden="true">&#128101;</span>
@@ -167,7 +167,7 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 					class="folder-toggle"
 					data-folder-toggle="true"
 					aria-expanded="true"
-					aria-label="Toggle subfolder"
+					aria-label={ t(ctx, "nav.toggleSubfolder") }
 				>
 					<span class="toggle-icon expanded">&#9654;</span>
 				</button>
@@ -218,7 +218,7 @@ templ MailboxTreeNode(mb MailboxInfo, selected string) {
 
 templ Pagination(page, totalPages int, baseURL string) {
 	if totalPages > 1 {
-		<nav class="pagination" aria-label="Pagination">
+		<nav class="pagination" aria-label={ t(ctx, "common.pagination") }>
 			if page > 1 {
 				<a
 					class="page-btn"
@@ -226,7 +226,7 @@ templ Pagination(page, totalPages int, baseURL string) {
 					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page-1) }
 					hx-target="#message-list"
 					hx-push-url="true"
-					aria-label="Previous page"
+					aria-label={ t(ctx, "common.previousPage") }
 				>
 					{ t(ctx, "common.previous") }
 				</a>
@@ -256,7 +256,7 @@ templ Pagination(page, totalPages int, baseURL string) {
 					hx-get={ fmt.Sprintf("%s?page=%d", baseURL, page+1) }
 					hx-target="#message-list"
 					hx-push-url="true"
-					aria-label="Next page"
+					aria-label={ t(ctx, "common.nextPage") }
 				>
 					{ t(ctx, "common.next") }
 				</a>

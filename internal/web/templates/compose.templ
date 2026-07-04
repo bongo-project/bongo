@@ -3,7 +3,7 @@ package templates
 import "fmt"
 
 templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string) {
-	@LayoutWithContent("Compose", email) {
+	@LayoutWithContent(t(ctx, "compose.compose"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, "")
 		</aside>
