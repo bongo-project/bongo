@@ -95,7 +95,7 @@ func TestBuildRFC5322HeaderInjection(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			out := buildRFC5322WithAttachments(
 				tt.from, tt.to, tt.cc, tt.subject,
-				"body text", "", "",
+				"body text", "<test@example.com>", "", "",
 				tt.attachments,
 			)
 

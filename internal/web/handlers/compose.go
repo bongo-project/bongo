@@ -258,8 +258,14 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Generate a single Message-ID scoped to the sender's domain, used both in
+	// the outgoing message header and the stored copy's metadata so threading
+	// stays consistent. A non-FQDN Message-ID (the old "@bongo") is a negative
+	// deliverability signal.
+	messageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(email))
+
 	// Build RFC 5322 message.
-	rawMsg := buildRFC5322WithAttachments(email, to, cc, subject, body, inReplyTo, references, attachmentFiles)
+	rawMsg := buildRFC5322WithAttachments(email, to, cc, subject, body, messageID, inReplyTo, references, attachmentFiles)
 
 	// Store blob.
 	hash, err := h.blobs.Put(rawMsg)
@@ -273,7 +279,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Create MailMeta.
 	meta := &bongov1.MailMeta{
 		Guid:       guid,
-		MessageId:  fmt.Sprintf("<%s@bongo>", guid),
+		MessageId:  messageID,
 		Subject:    subject,
 		From:       email,
 		To:         splitRecipients(to),
@@ -443,7 +449,8 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rawMsg := buildRFC5322WithAttachments(email, to, "", subject, body, "", "", attachmentFiles)
+	draftMessageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(email))
+	rawMsg := buildRFC5322WithAttachments(email, to, "", subject, body, draftMessageID, "", "", attachmentFiles)
 
 	hash, err := h.blobs.Put(rawMsg)
 	if err != nil {
@@ -634,7 +641,7 @@ type attachmentData struct {
 	Data        []byte
 }
 
-func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, references string, attachments []attachmentData) []byte {
+func buildRFC5322WithAttachments(from, to, cc, subject, body, messageID, inReplyTo, references string, attachments []attachmentData) []byte {
 	// Sanitize user-controlled values to prevent header-injection attacks.
 	from = mail.SanitizeHeaderValue(from)
 	to = mail.SanitizeHeaderValue(to)
@@ -649,7 +656,7 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 	}
 	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-	fmt.Fprintf(&buf, "Message-ID: <%d@bongo>\r\n", time.Now().UnixNano())
+	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
 	if inReplyTo != "" {
 		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", inReplyTo)
 	}
@@ -702,6 +709,24 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 
 	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
 	return buf.Bytes()
+}
+
+// senderDomain returns the domain part of an email address, falling back to
+// "localhost" when the address has no parseable domain.
+func senderDomain(email string) string {
+	if i := strings.LastIndex(email, "@"); i >= 0 && i < len(email)-1 {
+		return email[i+1:]
+	}
+	return "localhost"
+}
+
+// randomToken returns a short random hex string for Message-ID uniqueness.
+func randomToken() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "0"
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // normalizeRecipient extracts the bare local@domain address from a recipient
