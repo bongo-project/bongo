@@ -1,7 +1,7 @@
 package templates
 
 templ SecuritySettings(totpEnabled bool, email string, flash string) {
-	@LayoutWithContent("Security", email) {
+	@LayoutWithContent(t(ctx, "settings.security"), email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="nav-list">
@@ -86,7 +86,7 @@ templ SecuritySettings(totpEnabled bool, email string, flash string) {
 }
 
 templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
-	@LayoutWithContent("Setup 2FA", "") {
+	@LayoutWithContent(t(ctx, "security.setupTwoFactor"), "") {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="nav-list">
@@ -105,7 +105,7 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 						<div class="settings-card-pad">
 							<p>{ t(ctx, "security.scanQrCode") }</p>
 							<div class="u-text-center u-mt-2 u-mb-2">
-								<img src={ "data:image/png;base64," + qrCodeBase64 } alt="TOTP QR Code" width="200" height="200"/>
+								<img src={ "data:image/png;base64," + qrCodeBase64 } alt={ t(ctx, "security.qrCodeAlt") } width="200" height="200"/>
 							</div>
 							<p class="u-text-center u-mb-12px u-text-muted">{ t(ctx, "security.manualKeyPrompt") }</p>
 							<div class="manual-key" id="totp-key">
@@ -117,7 +117,7 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 							<form method="post" action="/settings/security/totp/confirm" class="u-mt-2 u-max-w-320 u-mx-auto">
 								<div class="form-group u-mb-16px">
 									<label class="form-label" for="code">{ t(ctx, "security.verificationCode") }</label>
-									<input type="text" name="code" id="code" class="form-input manual-code-input" placeholder="Enter 6-digit code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label="TOTP verification code"/>
+									<input type="text" name="code" id="code" class="form-input manual-code-input" placeholder={ t(ctx, "security.enterCode") } required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" aria-label={ t(ctx, "security.verificationCode") }/>
 								</div>
 								<div class="u-flex u-gap-075 u-items-center">
 									<button type="submit" class="btn-primary">{ t(ctx, "auth.verifyAndEnable") }</button>
@@ -133,7 +133,7 @@ templ TOTPSetup(qrCodeBase64, manualKey, errMsg string) {
 }
 
 templ TOTPRecoveryCodes(codes []string) {
-	@LayoutWithContent("Recovery Codes", "") {
+	@LayoutWithContent(t(ctx, "security.recoveryCodes"), "") {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="nav-list">

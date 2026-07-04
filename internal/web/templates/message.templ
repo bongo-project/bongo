@@ -73,14 +73,14 @@ func tagColourCSS(index int32) string {
 }
 
 templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
-	<div class="toolbar" role="toolbar" aria-label="Thread actions">
+	<div class="toolbar" role="toolbar" aria-label={ t(ctx, "mail.threadActions") }>
 		<a
 			href={ templ.SafeURL(mailboxURL(msg.Mailbox)) }
 			class="tool-btn"
 			hx-get={ mailboxURL(msg.Mailbox) }
 			hx-target="#main-content"
 			hx-push-url="true"
-			aria-label="Back to Inbox"
+			aria-label={ t(ctx, "mail.backToInbox") }
 		>
 			&larr; { t(ctx, "mail.back") }
 		</a>
@@ -92,7 +92,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 			class="tool-btn danger"
 			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
 			hx-target="#main-content"
-			hx-confirm="Delete this message?"
+			hx-confirm={ t(ctx, "mail.confirmDelete") }
 		>
 			{ t(ctx, "mail.delete") }
 		</button>
@@ -104,7 +104,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 			hx-post={ fmt.Sprintf("/mail/%s/%d/move", encMailbox(msg.Mailbox), msg.UID) }
 			hx-target="#main-content"
 			hx-trigger="change"
-			aria-label="Move to folder"
+			aria-label={ t(ctx, "mail.moveToFolder") }
 		>
 			<option value="">{ t(ctx, "mail.moveTo") }</option>
 			for _, mb := range mailboxes {
@@ -133,7 +133,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 					}
 					<span class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</span>
 					if len(msg.Cc) > 0 {
-						<span class="msg-recipients">Cc: { joinStrings(msg.Cc) }</span>
+						<span class="msg-recipients">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
 					}
 					<span class="msg-head-spacer"></span>
 					<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
@@ -185,7 +185,7 @@ templ MessagePaneContent(msg MessageDetail) {
 			class="tool-btn danger"
 			hx-post={ fmt.Sprintf("/mail/%s/%d/delete", encMailbox(msg.Mailbox), msg.UID) }
 			hx-target="#main-content"
-			hx-confirm="Delete this message?"
+			hx-confirm={ t(ctx, "mail.confirmDelete") }
 		>
 			{ t(ctx, "mail.delete") }
 		</button>
@@ -201,7 +201,7 @@ templ MessagePaneContent(msg MessageDetail) {
 					<span class="msg-sender">{ msg.From }</span>
 					<span class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</span>
 					if len(msg.Cc) > 0 {
-						<span class="msg-recipients">Cc: { joinStrings(msg.Cc) }</span>
+						<span class="msg-recipients">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
 					}
 					<span class="msg-head-spacer"></span>
 					<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
@@ -257,7 +257,7 @@ templ messageTags(msg MessageDetail) {
 			msg.UID,
 		) }
 	>
-		<div class="msg-tags-chips" role="list" aria-label="Message tags">
+		<div class="msg-tags-chips" role="list" aria-label={ t(ctx, "mail.messageTags") }>
 			<template x-for="tag in tags" :key="tag.name">
 				<span
 					class="tag-chip"
@@ -286,14 +286,14 @@ templ messageTags(msg MessageDetail) {
 				@click="openDropdown = !openDropdown"
 				aria-haspopup="listbox"
 				:aria-expanded="openDropdown"
-				aria-label="Add tag"
+				aria-label={ t(ctx, "mail.addTag") }
 			>+ { t(ctx, "mail.addTag") }</button>
 			<div
 				x-bind:hidden="!openDropdown"
 				x-cloak
 				class="tag-dropdown"
 				role="listbox"
-				aria-label="Available tags"
+				aria-label={ t(ctx, "mail.availableTags") }
 				@click.outside="openDropdown = false"
 				@keydown.escape.window="openDropdown = false"
 			>
@@ -392,7 +392,7 @@ templ attachmentList(attachments []Attachment) {
 							<button class="lightbox-close" @click="expanded = false" type="button">X</button>
 						</div>
 					</div>
-					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
@@ -406,7 +406,7 @@ templ attachmentList(attachments []Attachment) {
 						sandbox=""
 						title={ att.Filename }
 					></iframe>
-					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
@@ -422,14 +422,14 @@ templ attachmentList(attachments []Attachment) {
 					>
 						{ t(ctx, "common.loading") }...
 					</div>
-					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
 					</a>
 				</div>
 			} else {
-				<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf("Download %s (%s)", att.Filename, formatSize(att.Size)) }>
+				<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 					<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 					{ att.Filename }
 					<span class="attachment-size">{ formatSize(att.Size) }</span>

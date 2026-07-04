@@ -34,7 +34,7 @@ func tagSettingsPaletteJS() string {
 }
 
 templ TagSettingsPage(data TagSettingsData) {
-	@LayoutWithContent("Tags", data.Email) {
+	@LayoutWithContent(t(ctx, "nav.tags"), data.Email) {
 		<aside class="sidebar" id="sidebar">
 			<nav>
 				<ul class="nav-list">
@@ -59,7 +59,7 @@ templ TagSettingsPage(data TagSettingsData) {
 						<!-- Tag list -->
 						<div class="settings-card u-mb-24px">
 							<template x-if="tags.length === 0">
-								<p class="secondary-text u-m0 u-py-16 u-px-20">No tags yet. Create one below.</p>
+								<p class="secondary-text u-m0 u-py-16 u-px-20">{ t(ctx, "tag.noTagsYet") }</p>
 							</template>
 							<template x-for="tag in tags" :key="tag.name">
 								<div class="settings-row tag-settings-row">
@@ -82,7 +82,7 @@ templ TagSettingsPage(data TagSettingsData) {
 												x-on:keydown.enter.prevent="saveTag(tag)"
 												x-on:keydown.escape="cancelEdit()"
 												x-ref="editInput"
-												aria-label="Tag name"
+												aria-label={ t(ctx, "tag.namePlaceholder") }
 											/>
 										</template>
 									</div>
@@ -94,7 +94,7 @@ templ TagSettingsPage(data TagSettingsData) {
 									></span>
 									<!-- Colour picker (shown in edit mode) -->
 									<template x-if="editingTag === tag.name">
-										<div class="tag-colour-picker" role="group" aria-label="Choose colour">
+										<div class="tag-colour-picker" role="group" aria-label={ t(ctx, "tag.chooseColour") }>
 											<template x-for="(colour, idx) in palette" :key="idx">
 												<button
 													type="button"
@@ -115,7 +115,7 @@ templ TagSettingsPage(data TagSettingsData) {
 												class="btn-icon"
 												:aria-label="`Edit tag ${tag.name}`"
 												x-on:click="startEdit(tag)"
-												title="Edit"
+												title={ t(ctx, "common.edit") }
 											>&#9998;</button>
 										</template>
 										<template x-if="editingTag === tag.name">
@@ -124,14 +124,14 @@ templ TagSettingsPage(data TagSettingsData) {
 												class="btn-sm btn-primary"
 												x-on:click="saveTag(tag)"
 												:disabled="savingTag"
-											>Save</button>
+											>{ t(ctx, "common.save") }</button>
 										</template>
 										<template x-if="editingTag === tag.name">
 											<button
 												type="button"
 												class="btn-sm btn-ghost"
 												x-on:click="cancelEdit()"
-											>Cancel</button>
+											>{ t(ctx, "common.cancel") }</button>
 										</template>
 										<template x-if="editingTag !== tag.name && confirmDeleteTag !== tag.name">
 											<button
@@ -139,23 +139,23 @@ templ TagSettingsPage(data TagSettingsData) {
 												class="btn-icon btn-icon--danger"
 												:aria-label="`Delete tag ${tag.name}`"
 												x-on:click="confirmDeleteTag = tag.name"
-												title="Delete"
+												title={ t(ctx, "common.delete") }
 											>&#x2715;</button>
 										</template>
 										<template x-if="confirmDeleteTag === tag.name">
 											<span class="u-flex u-items-center u-gap-6px u-font-082 u-text-muted">
-												Delete?
+												{ t(ctx, "tag.deletePrompt") }
 												<button
 													type="button"
 													class="btn-sm btn-danger"
 													x-on:click="deleteTag(tag)"
 													:disabled="deletingTag"
-												>Yes, delete</button>
+												>{ t(ctx, "tag.yesDelete") }</button>
 												<button
 													type="button"
 													class="btn-sm btn-ghost"
 													x-on:click="confirmDeleteTag = null"
-												>Cancel</button>
+												>{ t(ctx, "common.cancel") }</button>
 											</span>
 										</template>
 									</div>
@@ -168,23 +168,23 @@ templ TagSettingsPage(data TagSettingsData) {
 						</template>
 						<!-- Create new tag -->
 						<div class="settings-card">
-							<div class="settings-section-title u-font-09 u-fw-600 u-pt-14 u-px-18">Add new tag</div>
+							<div class="settings-section-title u-font-09 u-fw-600 u-pt-14 u-px-18">{ t(ctx, "tag.addNewTag") }</div>
 							<div class="settings-row u-flex-wrap u-gap-10px u-items-start">
 								<div class="u-flex u-flex-col u-flex-1 u-min-w-180 u-gap-4px">
-									<label for="new-tag-name" class="settings-row-title u-font-082">Name</label>
+									<label for="new-tag-name" class="settings-row-title u-font-082">{ t(ctx, "tag.name") }</label>
 									<input
 										id="new-tag-name"
 										type="text"
 										class="settings-input"
 										x-model="newTagName"
-										placeholder="e.g. work, urgent"
+										placeholder={ t(ctx, "tag.namePlaceholderExample") }
 										maxlength="50"
 										x-on:keydown.enter.prevent="createTag()"
-										aria-label="New tag name"
+										aria-label={ t(ctx, "tag.newTagNameAria") }
 									/>
 								</div>
 								<div class="u-flex u-flex-col u-gap-4px">
-									<span class="settings-row-title u-font-082" id="new-colour-label">Colour</span>
+									<span class="settings-row-title u-font-082" id="new-colour-label">{ t(ctx, "tag.colour") }</span>
 									<div class="tag-colour-picker" role="group" aria-labelledby="new-colour-label">
 										<template x-for="(colour, idx) in palette" :key="idx">
 											<button
@@ -204,7 +204,7 @@ templ TagSettingsPage(data TagSettingsData) {
 										class="btn-save"
 										x-on:click="createTag()"
 										:disabled="creatingTag || !newTagName.trim()"
-									>Add tag</button>
+									>{ t(ctx, "tag.addTag") }</button>
 								</div>
 							</div>
 						</div>

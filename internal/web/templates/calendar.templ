@@ -33,7 +33,7 @@ type EventBlock struct {
 }
 
 templ CalendarPage(year, month int, days []DayCell, calendars []*bongov1.Calendar, email string, flash string) {
-	@LayoutWithContent("Calendar", email) {
+	@LayoutWithContent(t(ctx, "nav.calendar"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(calendars)
 		</aside>
@@ -106,9 +106,9 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 }
 
 templ CalendarSidebar(calendars []*bongov1.Calendar) {
-	<nav aria-label="Calendar navigation">
+	<nav aria-label={ t(ctx, "calendar.navigation") }>
 		<div class="sidebar-group">
-			<div class="sidebar-label">Calendar</div>
+			<div class="sidebar-label">{ t(ctx, "nav.calendar") }</div>
 			<ul class="nav-list">
 				<li class="nav-item">
 					<a href="/calendar" class="active">
@@ -137,7 +137,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 			</form>
 		</div>
 		<div class="sidebar-group">
-			<div class="sidebar-label">Navigation</div>
+			<div class="sidebar-label">{ t(ctx, "nav.navigation") }</div>
 			<ul class="nav-list">
 				<li class="nav-item">
 					<a href="/mail/INBOX">
@@ -157,7 +157,7 @@ templ CalendarSidebar(calendars []*bongov1.Calendar) {
 }
 
 templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew bool, date string, email string) {
-	@LayoutWithContent("Event", email) {
+	@LayoutWithContent(t(ctx, "calendar.event"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(calendars)
 		</aside>
@@ -197,7 +197,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					<input type="text" name="location" value={ eventLocation(event) }/>
 				</label>
 				<label>
-					Calendar
+					{ t(ctx, "nav.calendar") }
 					<select name="calendar_id">
 						for _, cal := range calendars {
 							<option
@@ -247,29 +247,29 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 					<label>
 						{ t(ctx, "calendar.repeat") }
 						<select name="rrule">
-							<option value="">None</option>
-							<option value="FREQ=DAILY" if eventRrule(event) == "FREQ=DAILY" { selected }>Daily</option>
-							<option value="FREQ=WEEKLY" if eventRrule(event) == "FREQ=WEEKLY" { selected }>Weekly</option>
-							<option value="FREQ=MONTHLY" if eventRrule(event) == "FREQ=MONTHLY" { selected }>Monthly</option>
-							<option value="FREQ=YEARLY" if eventRrule(event) == "FREQ=YEARLY" { selected }>Yearly</option>
+							<option value="">{ t(ctx, "calendar.none") }</option>
+							<option value="FREQ=DAILY" if eventRrule(event) == "FREQ=DAILY" { selected }>{ t(ctx, "calendar.repeatDaily") }</option>
+							<option value="FREQ=WEEKLY" if eventRrule(event) == "FREQ=WEEKLY" { selected }>{ t(ctx, "calendar.repeatWeekly") }</option>
+							<option value="FREQ=MONTHLY" if eventRrule(event) == "FREQ=MONTHLY" { selected }>{ t(ctx, "calendar.repeatMonthly") }</option>
+							<option value="FREQ=YEARLY" if eventRrule(event) == "FREQ=YEARLY" { selected }>{ t(ctx, "calendar.repeatYearly") }</option>
 						</select>
 					</label>
 					<label>
 						{ t(ctx, "calendar.reminder") }
 						<select name="reminder_minutes">
-							<option value="0" if eventReminderMinutes(event) == "0" { selected }>None</option>
-							<option value="5" if eventReminderMinutes(event) == "5" { selected }>5 min before</option>
-							<option value="10" if eventReminderMinutes(event) == "10" { selected }>10 min before</option>
-							<option value="15" if eventReminderMinutes(event) == "15" { selected }>15 min before</option>
-							<option value="30" if eventReminderMinutes(event) == "30" { selected }>30 min before</option>
-							<option value="60" if eventReminderMinutes(event) == "60" { selected }>1 hour before</option>
+							<option value="0" if eventReminderMinutes(event) == "0" { selected }>{ t(ctx, "calendar.none") }</option>
+							<option value="5" if eventReminderMinutes(event) == "5" { selected }>{ t(ctx, "calendar.reminder5") }</option>
+							<option value="10" if eventReminderMinutes(event) == "10" { selected }>{ t(ctx, "calendar.reminder10") }</option>
+							<option value="15" if eventReminderMinutes(event) == "15" { selected }>{ t(ctx, "calendar.reminder15") }</option>
+							<option value="30" if eventReminderMinutes(event) == "30" { selected }>{ t(ctx, "calendar.reminder30") }</option>
+							<option value="60" if eventReminderMinutes(event) == "60" { selected }>{ t(ctx, "calendar.reminder60") }</option>
 						</select>
 					</label>
 				</div>
 				if !isNew {
 					<div class="meta event-meta">
-						<span>Created: { formatEventDate(event.CreatedAt) }</span>
-						<span class="u-ml-1">Updated: { formatEventDate(event.UpdatedAt) }</span>
+						<span>{ t(ctx, "calendar.created") } { formatEventDate(event.CreatedAt) }</span>
+						<span class="u-ml-1">{ t(ctx, "calendar.updated") } { formatEventDate(event.UpdatedAt) }</span>
 					</div>
 				}
 				<div class="u-flex u-gap-05">
@@ -286,7 +286,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 							type="button"
 							class="outline contrast"
 							hx-delete={ "/calendar/event/" + event.Guid }
-							hx-confirm="Delete this event?"
+							hx-confirm={ t(ctx, "calendar.confirmDelete") }
 						>
 							{ t(ctx, "calendar.deleteEvent") }
 						</button>
@@ -298,7 +298,7 @@ templ EventFormPage(event *bongov1.Event, calendars []*bongov1.Calendar, isNew b
 }
 
 templ WeekViewPage(year, week int, days []DayColumn, calendars []*bongov1.Calendar, calColors map[string]string, email string, flash string) {
-	@LayoutWithContent("Calendar", email) {
+	@LayoutWithContent(t(ctx, "nav.calendar"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(calendars)
 		</aside>
@@ -324,7 +324,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 		>
 			{ t(ctx, "calendar.previous") }
 		</a>
-		<h2 class="calendar-month-title">Week { fmt.Sprint(week) }, { fmt.Sprint(year) }</h2>
+		<h2 class="calendar-month-title">{ t(ctx, "calendar.week") } { fmt.Sprint(week) }, { fmt.Sprint(year) }</h2>
 		<a
 			href={ templ.SafeURL(fmt.Sprintf("/calendar/week/%d/%d", nextWeekYear(year, week), nextWeekNum(year, week))) }
 			hx-get={ fmt.Sprintf("/calendar/week/%d/%d", nextWeekYear(year, week), nextWeekNum(year, week)) }
@@ -390,7 +390,7 @@ templ WeekViewGrid(year, week int, days []DayColumn, calendars []*bongov1.Calend
 }
 
 templ DayViewPage(date time.Time, col DayColumn, calendars []*bongov1.Calendar, calColors map[string]string, email string, flash string) {
-	@LayoutWithContent("Calendar", email) {
+	@LayoutWithContent(t(ctx, "nav.calendar"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(calendars)
 		</aside>
@@ -577,13 +577,13 @@ templ MiniCalendar(year, month, selectedDay int) {
 			</button>
 		</div>
 		<div class="mini-cal-grid">
-			<span class="mini-cal-hdr">M</span>
-			<span class="mini-cal-hdr">T</span>
-			<span class="mini-cal-hdr">W</span>
-			<span class="mini-cal-hdr">T</span>
-			<span class="mini-cal-hdr">F</span>
-			<span class="mini-cal-hdr">S</span>
-			<span class="mini-cal-hdr">S</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniMon") }</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniTue") }</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniWed") }</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniThu") }</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniFri") }</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniSat") }</span>
+			<span class="mini-cal-hdr">{ t(ctx, "calendar.miniSun") }</span>
 			for _, d := range miniCalDays(year, month, selectedDay) {
 				if d.Day == 0 {
 					<span class="mini-cal-day empty"></span>
@@ -623,7 +623,7 @@ templ CalendarListPanel(calendars []*bongov1.Calendar) {
 }
 
 templ CalendarSearchResults(events []*bongov1.Event, query string, email string) {
-	@LayoutWithContent("Search", email) {
+	@LayoutWithContent(t(ctx, "common.search"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@CalendarSidebar(nil)
 		</aside>

@@ -25,7 +25,7 @@ templ ImportResult(imported int, failed int, mailbox string) {
 	<p>
 		{ fmt.Sprintf("%d", imported) } { t(ctx, "import.messagesImportedTo") } { mailbox }.
 		if failed > 0 {
-			{ fmt.Sprintf("%d messages failed to import.", failed) }
+			{ fmt.Sprintf("%d", failed) } { t(ctx, "import.messagesFailed") }
 		}
 	</p>
 	<a href={ templ.SafeURL(mailboxURL(mailbox)) } role="button">{ t(ctx, "import.goToMailbox") } { mailbox }</a>
