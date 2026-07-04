@@ -325,7 +325,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 		// Index for search.
 		if h.search != nil {
-			h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil)
+			if err := h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil); err != nil {
+				h.logger.Warn("web: failed to index recipient mail", "guid", guid, "error", err)
+			}
 		}
 	}
 
@@ -364,7 +366,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Index sender's copy.
 	if h.search != nil {
-		h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil)
+		if err := h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil); err != nil {
+			h.logger.Warn("web: failed to index sender copy", "guid", guid, "error", err)
+		}
 	}
 
 	h.logger.Info("web: message sent", "from", email, "to_count", len(allRecipients), "subject", subject, "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
@@ -594,7 +598,7 @@ func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) s
 	// Add quote prefix.
 	lines := strings.Split(body, "\n")
 	var quoted strings.Builder
-	quoted.WriteString(fmt.Sprintf("\n\nOn %s, %s wrote:\n", time.Unix(meta.ReceivedAt, 0).Format("Jan 2, 2006"), meta.From))
+	fmt.Fprintf(&quoted, "\n\nOn %s, %s wrote:\n", time.Unix(meta.ReceivedAt, 0).Format("Jan 2, 2006"), meta.From)
 	for _, line := range lines {
 		quoted.WriteString("> " + line + "\n")
 	}
@@ -627,19 +631,19 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 	subject = mail.SanitizeHeaderValue(subject)
 
 	var buf bytes.Buffer
-	buf.WriteString(fmt.Sprintf("From: %s\r\n", from))
-	buf.WriteString(fmt.Sprintf("To: %s\r\n", to))
+	fmt.Fprintf(&buf, "From: %s\r\n", from)
+	fmt.Fprintf(&buf, "To: %s\r\n", to)
 	if cc != "" {
-		buf.WriteString(fmt.Sprintf("Cc: %s\r\n", cc))
+		fmt.Fprintf(&buf, "Cc: %s\r\n", cc)
 	}
-	buf.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
-	buf.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
-	buf.WriteString(fmt.Sprintf("Message-ID: <%d@bongo>\r\n", time.Now().UnixNano()))
+	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
+	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	fmt.Fprintf(&buf, "Message-ID: <%d@bongo>\r\n", time.Now().UnixNano())
 	if inReplyTo != "" {
-		buf.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", inReplyTo))
+		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", inReplyTo)
 	}
 	if references != "" {
-		buf.WriteString(fmt.Sprintf("References: %s\r\n", references))
+		fmt.Fprintf(&buf, "References: %s\r\n", references)
 	}
 	buf.WriteString("MIME-Version: 1.0\r\n")
 
@@ -654,11 +658,11 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 	var randBytes [16]byte
 	_, _ = rand.Read(randBytes[:])
 	boundary := "bongo-" + hex.EncodeToString(randBytes[:])
-	buf.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary))
+	fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary)
 	buf.WriteString("\r\n")
 
 	// Text body part.
-	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
 	buf.WriteString(body)
@@ -667,9 +671,9 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 	// Attachment parts.
 	for _, att := range attachments {
 		safeName := mail.SanitizeHeaderFilename(att.Filename)
-		buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
-		buf.WriteString(fmt.Sprintf("Content-Type: %s; name=\"%s\"\r\n", att.ContentType, safeName))
-		buf.WriteString(fmt.Sprintf("Content-Disposition: attachment; filename=\"%s\"\r\n", safeName))
+		fmt.Fprintf(&buf, "--%s\r\n", boundary)
+		fmt.Fprintf(&buf, "Content-Type: %s; name=\"%s\"\r\n", att.ContentType, safeName)
+		fmt.Fprintf(&buf, "Content-Disposition: attachment; filename=\"%s\"\r\n", safeName)
 		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
 		buf.WriteString("\r\n")
 
@@ -685,7 +689,7 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 		}
 	}
 
-	buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
 	return buf.Bytes()
 }
 

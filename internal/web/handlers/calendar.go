@@ -515,11 +515,6 @@ func (h *CalendarHandler) ImportCalendar(w http.ResponseWriter, r *http.Request)
 		}
 
 		for _, vevent := range cal.Events() {
-			uid, _ := vevent.Props.Text(ical.PropUID)
-			if uid == "" {
-				uid = fmt.Sprintf("import-%d", time.Now().UnixNano())
-			}
-
 			event := &bongov1.Event{
 				CalendarId: calID,
 			}
@@ -826,11 +821,11 @@ func buildWeekColumns(weekStart time.Time, events []*bongov1.Event, calColorMap 
 		}
 
 		days[i] = templates.DayColumn{
-			Date:      d,
-			IsToday:   d.Format("2006-01-02") == todayDate,
-			AllDay:    allDay,
-			Blocks:    blocks,
-			DateStr:   d.Format("2006-01-02"),
+			Date:    d,
+			IsToday: d.Format("2006-01-02") == todayDate,
+			AllDay:  allDay,
+			Blocks:  blocks,
+			DateStr: d.Format("2006-01-02"),
 		}
 	}
 

@@ -182,7 +182,10 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 		DisplayName: fromName,
 		Email:       fromEmail,
 	}
-	h.contacts.Create(userID, contact)
+	if _, err := h.contacts.Create(userID, contact); err != nil {
+		http.Error(w, "failed to add contact", http.StatusInternalServerError)
+		return
+	}
 
 	if returnTo != "" {
 		http.Redirect(w, r, returnTo+"?flash=Contact+added", http.StatusSeeOther)
@@ -228,7 +231,7 @@ func (h *ContactsHandler) ExportContacts(w http.ResponseWriter, r *http.Request)
 		}
 
 		enc := vcard.NewEncoder(&buf)
-		enc.Encode(card)
+		_ = enc.Encode(card)
 	}
 
 	w.Header().Set("Content-Type", "text/vcard")
@@ -337,7 +340,7 @@ func parseVCardBlock(block []byte) (*bongov1.Contact, error) {
 
 	// Store raw vCard for round-trip fidelity.
 	var rawBuf bytes.Buffer
-	vcard.NewEncoder(&rawBuf).Encode(card)
+	_ = vcard.NewEncoder(&rawBuf).Encode(card)
 
 	return &bongov1.Contact{
 		DisplayName: displayName,

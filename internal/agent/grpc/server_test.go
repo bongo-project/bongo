@@ -360,8 +360,7 @@ func TestFetchBlob(t *testing.T) {
 	_, err = client.FetchBlob(context.Background(), &bongov1.FetchBlobRequest{
 		BlobHash: "0000000000000000000000000000000000000000000000000000000000000000",
 	})
-	if err != nil {
-		// For streaming RPCs, error may come on first Recv, not on initial call.
-		// That's fine.
-	}
+	// For streaming RPCs, error may come on first Recv, not on initial call.
+	// Ignore any error here.
+	_ = err
 }

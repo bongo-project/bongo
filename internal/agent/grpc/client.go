@@ -74,14 +74,14 @@ func NewAgentClient(config AgentClientConfig, logger *slog.Logger) *AgentClient 
 
 // Start connects to the server, registers, and starts the heartbeat loop.
 func (c *AgentClient) Start(ctx context.Context) error {
+	// grpc.NewClient establishes connections lazily; use a timeout context for
+	// the first RPC (Register) to preserve the original DialTimeout semantics.
 	dialCtx, dialCancel := context.WithTimeout(ctx, c.config.DialTimeout)
 	defer dialCancel()
 
-	conn, err := grpc.DialContext(
-		dialCtx,
+	conn, err := grpc.NewClient(
 		c.config.ServerAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return fmt.Errorf("agent client: dial %s: %w", c.config.ServerAddr, err)
@@ -92,8 +92,8 @@ func (c *AgentClient) Start(ctx context.Context) error {
 	c.client = bongov1.NewAgentServiceClient(conn)
 	c.mu.Unlock()
 
-	// Register with the server.
-	resp, err := c.client.Register(ctx, &bongov1.RegisterRequest{
+	// Register with the server, applying the dial timeout to the first RPC.
+	resp, err := c.client.Register(dialCtx, &bongov1.RegisterRequest{
 		AgentId: c.config.AgentID,
 		Roles:   c.config.Roles,
 		Address: c.config.ListenAddr,

@@ -140,7 +140,9 @@ func (bs *BlobSyncer) pull(hash string) error {
 		}
 
 		if storedHash != hash {
-			bs.blobs.Delete(storedHash)
+			if err := bs.blobs.Delete(storedHash); err != nil {
+				bs.logger.Warn("blobsync: failed to delete mismatched blob", "hash", storedHash, "error", err)
+			}
 			return fmt.Errorf("hash mismatch: expected %s, got %s", hash, storedHash)
 		}
 

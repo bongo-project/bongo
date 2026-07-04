@@ -427,9 +427,7 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 
 // guidFromPath extracts the GUID from a CalDAV object path (strips .ics suffix).
 func guidFromPath(path string) string {
-	if strings.HasSuffix(path, ".ics") {
-		path = path[:len(path)-4]
-	}
+	path = strings.TrimSuffix(path, ".ics")
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' {
 			return path[i+1:]

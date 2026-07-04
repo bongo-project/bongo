@@ -227,7 +227,7 @@ func (s *Session) Data(r io.Reader) error {
 	}
 
 	// Prepend the Received-SPF header by streaming (no full-message buffering).
-	var reader io.Reader = r
+	reader := r
 	if s.spfResult != "" {
 		domain := sanitizeHeaderValue(extractDomain(s.from))
 		header := fmt.Sprintf("Received-SPF: %s (bongo-go; domain=%s)\r\n", sanitizeHeaderValue(s.spfResult), domain)

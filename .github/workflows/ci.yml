@@ -8,7 +8,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
+      # golangci-lint v2 (v1 binaries are built with an older Go and refuse to
+      # analyse this go1.25 module). Pinned to a version built with Go >= 1.25.
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
 
   test:
     runs-on: ubuntu-latest

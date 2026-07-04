@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
 	"github.com/bongo-go/bongo-go/internal/pipeline"
@@ -377,7 +378,7 @@ func (s *AgentServer) DispatchOrLocal(
 	}
 
 	// Dial the remote agent and send ProcessMessage.
-	conn, err := grpc.NewClient(agentInfo.Address, grpc.WithInsecure())
+	conn, err := grpc.NewClient(agentInfo.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		s.logger.Warn("dispatch: failed to connect to agent", "agent_id", agentInfo.ID, "address", agentInfo.Address, "error", err)
 		if localProcessor != nil {

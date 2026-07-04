@@ -168,7 +168,7 @@ func (im *Importer) Import(ctx context.Context, src MessageSource) error {
 		if dst != nil {
 			createCmd := dst.Create(dstFolder, nil)
 			// Ignore error if already exists.
-			createCmd.Wait()
+			_ = createCmd.Wait()
 		}
 
 		folderStart := time.Now()

@@ -65,45 +65,45 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	}
 
 	var buf bytes.Buffer
-	buf.WriteString(fmt.Sprintf("From: MAILER-DAEMON <postmaster@localhost>\r\n"))
-	buf.WriteString(fmt.Sprintf("To: %s\r\n", senderEmail))
+	buf.WriteString("From: MAILER-DAEMON <postmaster@localhost>\r\n")
+	fmt.Fprintf(&buf, "To: %s\r\n", senderEmail)
 	buf.WriteString("Subject: Undelivered Mail Returned to Sender\r\n")
-	buf.WriteString(fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z)))
-	buf.WriteString(fmt.Sprintf("Message-ID: <bounce-%s@localhost>\r\n", uuid.New().String()))
+	fmt.Fprintf(&buf, "Date: %s\r\n", now.Format(time.RFC1123Z))
+	fmt.Fprintf(&buf, "Message-ID: <bounce-%s@localhost>\r\n", uuid.New().String())
 	if original.MessageGuid != "" {
-		buf.WriteString(fmt.Sprintf("In-Reply-To: %s\r\n", original.MessageGuid))
+		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", original.MessageGuid)
 	}
 	buf.WriteString("MIME-Version: 1.0\r\n")
-	buf.WriteString(fmt.Sprintf("Content-Type: multipart/report; report-type=delivery-status; boundary=\"%s\"\r\n", boundary))
+	fmt.Fprintf(&buf, "Content-Type: multipart/report; report-type=delivery-status; boundary=\"%s\"\r\n", boundary)
 	buf.WriteString("\r\n")
 
 	// Part 1: human-readable.
-	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
 	buf.WriteString("The following message could not be delivered to one or more recipients:\r\n\r\n")
 	for _, rcpt := range safeRecipients {
-		buf.WriteString(fmt.Sprintf("  * %s\r\n", rcpt))
+		fmt.Fprintf(&buf, "  * %s\r\n", rcpt)
 	}
-	buf.WriteString(fmt.Sprintf("\r\nReason: %s\r\n", safeReason))
+	fmt.Fprintf(&buf, "\r\nReason: %s\r\n", safeReason)
 	buf.WriteString("\r\n")
 
 	// Part 2: machine-readable DSN.
-	buf.WriteString(fmt.Sprintf("--%s\r\n", boundary))
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
 	buf.WriteString("Content-Type: message/delivery-status\r\n")
 	buf.WriteString("\r\n")
 	buf.WriteString("Reporting-MTA: dns; localhost\r\n")
 	buf.WriteString("\r\n")
 	for _, rcpt := range safeRecipients {
-		buf.WriteString(fmt.Sprintf("Final-Recipient: rfc822; %s\r\n", rcpt))
+		fmt.Fprintf(&buf, "Final-Recipient: rfc822; %s\r\n", rcpt)
 		buf.WriteString("Action: failed\r\n")
 		buf.WriteString("Status: 5.0.0\r\n")
-		buf.WriteString(fmt.Sprintf("Diagnostic-Code: smtp; %s\r\n", safeReason))
+		fmt.Fprintf(&buf, "Diagnostic-Code: smtp; %s\r\n", safeReason)
 		buf.WriteString("\r\n")
 	}
 
 	// Close boundary.
-	buf.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
+	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
 
 	return buf.Bytes()
 }
