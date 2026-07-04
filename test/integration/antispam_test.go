@@ -59,7 +59,7 @@ func startAntispamAgent(t *testing.T) (*agent.Agent, context.CancelFunc) {
 
 func createAntispamUser(t *testing.T, a *agent.Agent, email, password string) string {
 	t.Helper()
-	userID, err := auth.CreateUser(a, a.Metadata, email, "Antispam Test", password)
+	userID, err := auth.CreateUser(a, a.Metadata, email, "Antispam Test", password, false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

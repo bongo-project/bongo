@@ -51,7 +51,7 @@ func TestSMTPFullMailFlow(t *testing.T) {
 	}
 
 	// Create a test user.
-	userID, err := auth.CreateUser(a, a.Metadata, "testuser@localhost", "Test User", "testpass")
+	userID, err := auth.CreateUser(a, a.Metadata, "testuser@localhost", "Test User", "testpass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

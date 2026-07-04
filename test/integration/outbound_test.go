@@ -141,7 +141,7 @@ func TestOutboundRelay(t *testing.T) {
 	a := startDevAgent(t, cfg)
 
 	// Create sender user.
-	userID, err := auth.CreateUser(a, a.Metadata, "sender@localhost", "Sender", "pass")
+	userID, err := auth.CreateUser(a, a.Metadata, "sender@localhost", "Sender", "pass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestBounceGeneration(t *testing.T) {
 
 	a := startDevAgent(t, cfg)
 
-	userID, err := auth.CreateUser(a, a.Metadata, "sender@localhost", "Sender", "pass")
+	userID, err := auth.CreateUser(a, a.Metadata, "sender@localhost", "Sender", "pass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -300,7 +300,7 @@ func TestSPFInbound(t *testing.T) {
 	a := startDevAgent(t, cfg)
 
 	// Create recipient user.
-	userID, err := auth.CreateUser(a, a.Metadata, "recipient@localhost", "Recipient", "pass")
+	userID, err := auth.CreateUser(a, a.Metadata, "recipient@localhost", "Recipient", "pass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

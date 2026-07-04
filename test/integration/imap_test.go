@@ -50,7 +50,7 @@ func TestIMAPFullRoundTrip(t *testing.T) {
 	}
 
 	// Create a test user with default mailboxes.
-	userID, err := auth.CreateUser(a, a.Metadata, "imaptest@localhost", "IMAP Test", "testpass")
+	userID, err := auth.CreateUser(a, a.Metadata, "imaptest@localhost", "IMAP Test", "testpass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

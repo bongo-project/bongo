@@ -144,7 +144,7 @@ func startPOP3Agent(t *testing.T) (*agent.Agent, context.CancelFunc) {
 
 func createPOP3User(t *testing.T, a *agent.Agent, email, password string) string {
 	t.Helper()
-	userID, err := auth.CreateUser(a, a.Metadata, email, "POP3 Test", password)
+	userID, err := auth.CreateUser(a, a.Metadata, email, "POP3 Test", password, false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}

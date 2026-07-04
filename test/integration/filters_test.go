@@ -56,7 +56,7 @@ func startFilterAgent(t *testing.T) (*agent.Agent, context.CancelFunc) {
 
 func createFilterUser(t *testing.T, a *agent.Agent, email, password string) string {
 	t.Helper()
-	userID, err := auth.CreateUser(a, a.Metadata, email, "Filter Test", password)
+	userID, err := auth.CreateUser(a, a.Metadata, email, "Filter Test", password, false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
