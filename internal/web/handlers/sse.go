@@ -42,7 +42,7 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no") // proxy no-buffer; Connection header is illegal over HTTP/2
 
 	// Subscribe to INBOX by default.
 	mailbox := r.URL.Query().Get("mailbox")
