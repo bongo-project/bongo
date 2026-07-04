@@ -766,6 +766,7 @@ func (a *Agent) Run(ctx context.Context) error {
 					pipelineantispam.WithBayes(bayesFilter),
 					pipelineantispam.WithLogger(a.logger),
 				)
+				antispamProc.SetResolver(resolver)
 				stages = append(stages, antispamProc)
 			case "rules":
 				if a.Rules != nil {

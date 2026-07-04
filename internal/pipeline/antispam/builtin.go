@@ -29,9 +29,23 @@ const (
 type BuiltinProcessor struct {
 	scorer        *antispam.Scorer
 	bayes         *antispam.BayesFilter // may be nil
+	resolver      RecipientResolver     // may be nil; resolves recipient email -> user ID
 	threshold     float32               // score >= this -> tag as spam (move to Junk)
 	highThreshold float32               // score >= this -> quarantine
 	logger        *slog.Logger
+}
+
+// RecipientResolver resolves an envelope recipient email address to a local
+// user ID. Bayesian training/classification is keyed by user ID, so recipient
+// emails must be resolved before looking it up.
+type RecipientResolver interface {
+	ResolveRecipient(email string) (string, error)
+}
+
+// SetResolver sets the recipient resolver. When unset, recipients are treated
+// as user IDs (used by unit tests that pass IDs directly).
+func (p *BuiltinProcessor) SetResolver(r RecipientResolver) {
+	p.resolver = r
 }
 
 // Option is a functional option for BuiltinProcessor.
@@ -122,8 +136,13 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		}
 	}
 
+	// Verify the DKIM signature so the scorer's DKIM heuristic (which reads
+	// DKIMResult) can fire; without this it was always "" and never scored.
+	dkimResult, _, _ := antispam.VerifyDKIM(raw)
+
 	input := &antispam.ScoringInput{
 		SPFResult:      env.GetSpfResult(),
+		DKIMResult:     dkimResult,
 		Headers:        headers,
 		Subject:        subject,
 		BodySample:     bodySample,
@@ -136,10 +155,19 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Blend with Bayesian score if available and the envelope identifies a recipient.
 	if p.bayes != nil {
 		for _, rcpt := range env.GetRecipients() {
-			trained := p.bayes.TrainedCount(rcpt)
+			// Bayes is keyed by user ID; envelope recipients are emails.
+			userID := rcpt
+			if p.resolver != nil {
+				resolved, rerr := p.resolver.ResolveRecipient(rcpt)
+				if rerr != nil || resolved == "" {
+					continue
+				}
+				userID = resolved
+			}
+			trained := p.bayes.TrainedCount(userID)
 			if trained >= 20 {
 				tokens := antispam.Tokenize(subject, bodySample)
-				bayesScore := p.bayes.Classify(rcpt, tokens)
+				bayesScore := p.bayes.Classify(userID, tokens)
 				blended := 0.6*score + 0.4*float32(bayesScore)
 				p.logger.Debug("antispam: blended score",
 					"recipient", rcpt,
