@@ -186,6 +186,17 @@ func (s *Session) Mail(from string, opts *gosmtp.MailOptions) error {
 		return &gosmtp.SMTPError{Code: 530, EnhancedCode: gosmtp.EnhancedCode{5, 7, 0}, Message: "Authentication required"}
 	}
 
+	// Authenticated submission may not spoof another local user's address. If
+	// the envelope sender resolves to a local account, it must be the
+	// authenticated user's own account. Addresses that do not resolve to a
+	// local user are left to the relay policy (Rcpt) and SPF to police.
+	if s.submission && s.authed && s.backend.resolver != nil {
+		if fromUID, err := s.backend.resolver.ResolveRecipient(from); err == nil && fromUID != s.userID {
+			s.logger.Warn("smtp: submission sender not authorized", "from", from, "user", s.userID, "ip", s.remoteIP)
+			return &gosmtp.SMTPError{Code: 553, EnhancedCode: gosmtp.EnhancedCode{5, 7, 1}, Message: "Sender address not owned by authenticated user"}
+		}
+	}
+
 	s.from = from
 	s.logger.Debug("smtp: MAIL FROM", "from", from)
 
