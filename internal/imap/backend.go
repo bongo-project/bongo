@@ -363,7 +363,9 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		if envelope != nil {
 			body = envelope.Text
 		}
-		s.search.IndexMail(s.userID, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false, nil)
+		if err := s.search.IndexMail(s.userID, guid, subject, headerFrom, toAddrs, body, internalDate.Unix(), false, nil); err != nil {
+			s.logger.Warn("imap: search index failed on append", "guid", guid, "error", err)
+		}
 	}
 
 	// Notify IDLE watchers.
@@ -621,7 +623,9 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 
 		// Set \Seen flag if not PEEK and not read-only.
 		if !section.Peek && !s.readOnly {
-			s.mailboxes.AddFlags(s.userID, s.selectedMailbox, msg.Uid, store.FlagSeen)
+			if err := s.mailboxes.AddFlags(s.userID, s.selectedMailbox, msg.Uid, store.FlagSeen); err != nil {
+				s.logger.Warn("imap: failed to set seen flag", "uid", msg.Uid, "error", err)
+			}
 		}
 	}
 
@@ -864,7 +868,7 @@ func (s *session) writeBodySection(respW *imapserver.FetchResponseWriter, sectio
 	}
 
 	wc := respW.WriteBodySection(section, int64(len(content)))
-	wc.Write(content)
+	_, _ = wc.Write(content)
 	wc.Close()
 }
 
@@ -1036,7 +1040,9 @@ func (s *session) applyKeywords(mailGUID string, uid uint32, op imap.StoreFlagsO
 
 	// Update Bleve index (best-effort).
 	if s.search != nil {
-		s.search.IndexMail(s.userID, mailGUID, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, false, meta.Tags)
+		if err := s.search.IndexMail(s.userID, mailGUID, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, false, meta.Tags); err != nil {
+			s.logger.Warn("imap: search index failed on store", "guid", mailGUID, "error", err)
+		}
 	}
 
 	return nil

@@ -62,18 +62,18 @@ func newSession(
 	logger *slog.Logger,
 ) *session {
 	return &session{
-		conn:    conn,
-		reader:  bufio.NewReader(conn),
-		writer:  bufio.NewWriter(conn),
-		auth:    authenticator,
+		conn:      conn,
+		reader:    bufio.NewReader(conn),
+		writer:    bufio.NewWriter(conn),
+		auth:      authenticator,
 		mailboxes: mailboxes,
-		pebble:  pebble,
-		blobs:   blobs,
-		tlsCfg:  tlsCfg,
-		isTLS:   isTLS,
-		isDev:   isDev,
-		logger:  logger,
-		deleted: make(map[int]bool),
+		pebble:    pebble,
+		blobs:     blobs,
+		tlsCfg:    tlsCfg,
+		isTLS:     isTLS,
+		isDev:     isDev,
+		logger:    logger,
+		deleted:   make(map[int]bool),
 	}
 }
 
@@ -278,13 +278,13 @@ func (s *session) handleList(args string) {
 	}
 
 	count, size := s.activeStats()
-	s.writer.WriteString(fmt.Sprintf("+OK %d messages (%d octets)\r\n", count, size))
+	fmt.Fprintf(s.writer, "+OK %d messages (%d octets)\r\n", count, size)
 	for i, m := range s.messages {
 		num := i + 1
 		if s.deleted[num] {
 			continue
 		}
-		s.writer.WriteString(fmt.Sprintf("%d %d\r\n", num, m.size))
+		fmt.Fprintf(s.writer, "%d %d\r\n", num, m.size)
 	}
 	s.writer.WriteString(".\r\n")
 	s.writer.Flush()
@@ -315,7 +315,7 @@ func (s *session) handleUidl(args string) {
 		if s.deleted[num] {
 			continue
 		}
-		s.writer.WriteString(fmt.Sprintf("%d %s\r\n", num, m.guid))
+		fmt.Fprintf(s.writer, "%d %s\r\n", num, m.guid)
 	}
 	s.writer.WriteString(".\r\n")
 	s.writer.Flush()

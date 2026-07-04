@@ -458,17 +458,6 @@ func parseMailboxScopedKey(key []byte, prefix string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
-func writeMailboxMeta(ps *PebbleStore, userID, mailbox string, meta *bongov1.MailboxMeta) error {
-	metaBytes, err := proto.Marshal(meta)
-	if err != nil {
-		return fmt.Errorf("marshaling mailbox meta: %w", err)
-	}
-	if err := ps.Set(mailboxMetaKey(userID, mailbox), metaBytes); err != nil {
-		return fmt.Errorf("updating mailbox meta: %w", err)
-	}
-	return nil
-}
-
 func writeMailboxMetaBatch(batch *pebble.Batch, userID, mailbox string, meta *bongov1.MailboxMeta) error {
 	metaBytes, err := proto.Marshal(meta)
 	if err != nil {
@@ -490,17 +479,6 @@ func readMailboxMessage(ps *PebbleStore, userID, mailbox string, uid uint32) (*b
 		return nil, fmt.Errorf("parsing mailbox message: %w", err)
 	}
 	return &msg, nil
-}
-
-func writeMailboxMessage(ps *PebbleStore, userID, mailbox string, uid uint32, msg *bongov1.MailboxMessage) error {
-	msgBytes, err := proto.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("marshaling mailbox message: %w", err)
-	}
-	if err := ps.Set(mailboxMsgKey(userID, mailbox, uid), msgBytes); err != nil {
-		return fmt.Errorf("writing mailbox message: %w", err)
-	}
-	return nil
 }
 
 func writeMailboxMessageBatch(batch *pebble.Batch, userID, mailbox string, uid uint32, msg *bongov1.MailboxMessage) error {

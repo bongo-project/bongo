@@ -296,15 +296,6 @@ func defaultPipelineStages() []StageConfig {
 	}
 }
 
-// devPipelineStages returns stage list for dev mode: builtin antispam only.
-func devPipelineStages() []StageConfig {
-	return []StageConfig{
-		{Name: "antispam", Enabled: true, Backend: "builtin"},
-		{Name: "antivirus", Enabled: false, Backend: ""},
-		{Name: "rules", Enabled: false, Backend: ""},
-	}
-}
-
 type TelemetryConfig struct {
 	Prometheus PrometheusConfig `hcl:"prometheus,block" mapstructure:"prometheus"`
 	Log        LogConfig        `hcl:"log,block" mapstructure:"log"`
@@ -477,9 +468,7 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 	if v.IsSet("join") {
 		cfg.Cluster.Join = strings.Split(v.GetString("join"), ",")
 	}
-	if v.IsSet("bootstrap-expect") {
-		// stored on cluster config for later use
-	}
+	// bootstrap-expect is reserved for future multi-node bootstrap logic; no action needed here.
 	if v.IsSet("log-level") {
 		cfg.Telemetry.Log.Level = v.GetString("log-level")
 	}

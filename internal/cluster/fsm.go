@@ -411,7 +411,7 @@ var _ raft.FSMSnapshot = (*fsmSnapshot)(nil)
 
 func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 	if err := tarDir(s.pebbleDir, sink); err != nil {
-		sink.Cancel()
+		_ = sink.Cancel()
 		return fmt.Errorf("persisting snapshot: %w", err)
 	}
 	return sink.Close()

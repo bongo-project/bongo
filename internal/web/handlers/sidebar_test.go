@@ -22,11 +22,12 @@ func TestMaxSidebarTagsConstant(t *testing.T) {
 func TestSidebarTagInfoSelected(t *testing.T) {
 	// Verify the Selected field logic via direct struct construction (mirrors
 	// what LoadSidebarTags sets when building results).
+	currentSelected := "tag:work"
 	tag := templates.SidebarTagInfo{
 		Name:        "work",
 		ColourIndex: 0,
 		Count:       5,
-		Selected:    "tag:work" == "tag:work",
+		Selected:    currentSelected == "tag:work",
 	}
 	if !tag.Selected {
 		t.Error("tag.Selected should be true when selected matches tag:name")

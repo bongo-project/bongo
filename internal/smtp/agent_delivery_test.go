@@ -2,7 +2,6 @@ package smtp
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net"
 	"strings"
@@ -50,9 +49,7 @@ func startMockServer(t *testing.T, mock *mockAgentServer) (bongov1.AgentServiceC
 	bongov1.RegisterAgentServiceServer(srv, mock)
 
 	go func() {
-		if err := srv.Serve(lis); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
-			// Server stopped — acceptable during test cleanup.
-		}
+		_ = srv.Serve(lis) // ErrServerStopped is expected during test cleanup.
 	}()
 
 	conn, err := grpc.NewClient(

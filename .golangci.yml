@@ -1,19 +1,55 @@
-run:
-  timeout: 3m
-
+version: "2"
 linters:
-  enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - gosimple
-    - unused
-    - ineffassign
   disable:
     - depguard
     - exhaustive
     - wrapcheck
-
-issues:
-  exclude-dirs:
-    - proto
+  settings:
+    errcheck:
+      exclude-functions:
+        # HTTP response writes — errors are unactionable once headers are sent.
+        - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
+        - io.Copy
+        # IMAP protocol response writers — network-level write errors surface via
+        # the outer session error return, not individual write calls.
+        - (*github.com/emersion/go-imap/v2/imapserver.UpdateWriter).WriteNumMessages
+        - (*github.com/emersion/go-imap/v2/imapserver.UpdateWriter).WriteExpunge
+        - (*github.com/emersion/go-imap/v2/imapserver.UpdateWriter).WriteMessageFlags
+        - (*github.com/emersion/go-imap/v2/imapserver.MoveWriter).WriteCopyData
+        - (*github.com/emersion/go-imap/v2/imapserver.MoveWriter).WriteExpunge
+        # POP3 protocol writes — same rationale as IMAP above.
+        - (*bufio.Writer).WriteString
+        # SMTP client cleanup — best-effort after data transfer is complete.
+        - (*net/smtp.Client).Quit
+        # Standard deferred rollback on an already-failed (or committed) transaction.
+        - (*database/sql.Tx).Rollback
+        # Cobra flag requirements — used in init(); panic semantics are intentional.
+        - (*github.com/spf13/cobra.Command).MarkFlagRequired
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      # Dev/CI tooling, not shipped in the binary.
+      - scripts
+      - proto
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Test helpers frequently ignore errors and carry interface stubs.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unused
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

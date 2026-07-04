@@ -284,7 +284,9 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 		if profile.Disabled {
 			enabled = 0
 		}
-		h.metadata.System.DB().Exec("UPDATE users SET enabled = ? WHERE id = ?", enabled, userID)
+		if _, err := h.metadata.System.DB().Exec("UPDATE users SET enabled = ? WHERE id = ?", enabled, userID); err != nil {
+			h.logger.Warn("admin: failed to update user enabled in sqlite", "user_id", userID, "error", err)
+		}
 	}
 
 	action := "enabled"
@@ -370,10 +372,12 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 
 	// Also insert into system.db.
 	if h.metadata != nil && h.metadata.System != nil {
-		h.metadata.System.DB().Exec(
+		if _, err := h.metadata.System.DB().Exec(
 			"INSERT OR REPLACE INTO domains (name, enabled, created_at) VALUES (?, 1, ?)",
 			domain, time.Now().Unix(),
-		)
+		); err != nil {
+			h.logger.Warn("admin: failed to insert domain into sqlite", "domain", domain, "error", err)
+		}
 	}
 
 	h.logger.Info("admin: domain created", "domain", domain, "has_mx", hasMX)
@@ -419,7 +423,9 @@ func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 		if newValue == "disabled" {
 			enabled = 0
 		}
-		h.metadata.System.DB().Exec("UPDATE domains SET enabled = ? WHERE name = ?", enabled, domain)
+		if _, err := h.metadata.System.DB().Exec("UPDATE domains SET enabled = ? WHERE name = ?", enabled, domain); err != nil {
+			h.logger.Warn("admin: failed to update domain enabled in sqlite", "domain", domain, "error", err)
+		}
 	}
 
 	http.Redirect(w, r, "/admin/domains?flash=Domain+toggled", http.StatusSeeOther)
@@ -440,7 +446,9 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.metadata != nil && h.metadata.System != nil {
-		h.metadata.System.DB().Exec("DELETE FROM domains WHERE name = ?", domain)
+		if _, err := h.metadata.System.DB().Exec("DELETE FROM domains WHERE name = ?", domain); err != nil {
+			h.logger.Warn("admin: failed to delete domain from sqlite", "domain", domain, "error", err)
+		}
 	}
 
 	h.logger.Info("admin: domain deleted", "domain", domain)
@@ -486,12 +494,14 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 	if h.metadata != nil && h.metadata.System != nil {
 		// Look up target user ID.
 		var targetID string
-		h.metadata.System.DB().QueryRow("SELECT id FROM users WHERE username = ?", targetUser).Scan(&targetID)
+		_ = h.metadata.System.DB().QueryRow("SELECT id FROM users WHERE username = ?", targetUser).Scan(&targetID)
 		if targetID != "" {
-			h.metadata.System.DB().Exec(
+			if _, err := h.metadata.System.DB().Exec(
 				"INSERT OR REPLACE INTO aliases (address, target_user_id, enabled, created_at) VALUES (?, ?, 1, ?)",
 				address, targetID, time.Now().Unix(),
-			)
+			); err != nil {
+				h.logger.Warn("admin: failed to insert alias into sqlite", "alias", address, "error", err)
+			}
 		}
 	}
 
@@ -515,7 +525,9 @@ func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.metadata != nil && h.metadata.System != nil {
-		h.metadata.System.DB().Exec("DELETE FROM aliases WHERE address = ?", address)
+		if _, err := h.metadata.System.DB().Exec("DELETE FROM aliases WHERE address = ?", address); err != nil {
+			h.logger.Warn("admin: failed to delete alias from sqlite", "alias", address, "error", err)
+		}
 	}
 
 	h.logger.Info("admin: alias deleted", "alias", address)
@@ -547,7 +559,9 @@ func (h *AdminHandler) QueueDashboard(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) RetryMessage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if h.queueStore != nil {
-		h.queueStore.RetryNow(id)
+		if err := h.queueStore.RetryNow(id); err != nil {
+			h.logger.Warn("admin: failed to retry queue message", "id", id, "error", err)
+		}
 	}
 	http.Redirect(w, r, "/admin/queue", http.StatusSeeOther)
 }
@@ -558,7 +572,9 @@ func (h *AdminHandler) DropMessage(w http.ResponseWriter, r *http.Request) {
 	if h.queueStore != nil {
 		// Try pending first, then bounced.
 		if err := h.queueStore.Delete(id); err != nil {
-			h.queueStore.DeleteBounced(id)
+			if err2 := h.queueStore.DeleteBounced(id); err2 != nil {
+				h.logger.Warn("admin: failed to drop queue message", "id", id, "error", err2)
+			}
 		}
 	}
 	http.Redirect(w, r, "/admin/queue", http.StatusSeeOther)
@@ -567,7 +583,9 @@ func (h *AdminHandler) DropMessage(w http.ResponseWriter, r *http.Request) {
 // FlushQueue retries all pending messages.
 func (h *AdminHandler) FlushQueue(w http.ResponseWriter, r *http.Request) {
 	if h.queueStore != nil {
-		h.queueStore.FlushQueue()
+		if _, err := h.queueStore.FlushQueue(); err != nil {
+			h.logger.Warn("admin: failed to flush queue", "error", err)
+		}
 	}
 	http.Redirect(w, r, "/admin/queue?flash=Queue+flushed", http.StatusSeeOther)
 }
@@ -710,15 +728,15 @@ func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
 	// Build a simple RFC 5322 welcome message.
 	now := time.Now()
 	var buf bytes.Buffer
-	buf.WriteString(fmt.Sprintf("From: Bongo Mail <postmaster@%s>\r\n", domainFromEmail(email)))
-	buf.WriteString(fmt.Sprintf("To: %s\r\n", email))
+	fmt.Fprintf(&buf, "From: Bongo Mail <postmaster@%s>\r\n", domainFromEmail(email))
+	fmt.Fprintf(&buf, "To: %s\r\n", email)
 	buf.WriteString("Subject: Welcome to Bongo Mail!\r\n")
-	buf.WriteString(fmt.Sprintf("Date: %s\r\n", now.Format(time.RFC1123Z)))
-	buf.WriteString(fmt.Sprintf("Message-ID: <welcome-%s@bongo>\r\n", userID[:8]))
+	fmt.Fprintf(&buf, "Date: %s\r\n", now.Format(time.RFC1123Z))
+	fmt.Fprintf(&buf, "Message-ID: <welcome-%s@bongo>\r\n", userID[:8])
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
-	buf.WriteString(fmt.Sprintf("Hi %s,\r\n\r\n", greeting))
+	fmt.Fprintf(&buf, "Hi %s,\r\n\r\n", greeting)
 	buf.WriteString("Welcome to Bongo Mail! Your account is all set up and ready to go.\r\n\r\n")
 	buf.WriteString("Here are a few things to get you started:\r\n\r\n")
 	buf.WriteString("  - Your email address: " + email + "\r\n")
@@ -809,7 +827,9 @@ func (h *AdminHandler) updateProfileFields(userID string, isAdmin, disabled bool
 			profile.QuotaBytes = q
 		}
 	}
-	h.saveProfile(userID, profile)
+	if err := h.saveProfile(userID, profile); err != nil {
+		h.logger.Warn("admin: failed to save profile", "user_id", userID, "error", err)
+	}
 }
 
 func (h *AdminHandler) loadUsers(query string) []templates.AdminUserInfo {
@@ -977,10 +997,12 @@ func createUserViaRaft(applier store.RaftApplier, metadata *store.MetadataManage
 	}
 
 	if metadata != nil && metadata.System != nil {
-		metadata.System.DB().Exec(
+		if _, err := metadata.System.DB().Exec(
 			"INSERT INTO users (id, username, display_name, enabled, created_at, modified_at) VALUES (?, ?, ?, 1, ?, ?) ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name, modified_at = excluded.modified_at",
 			userID, email, displayName, time.Now().Unix(), time.Now().Unix(),
-		)
+		); err != nil {
+			slog.Warn("admin: failed to insert user into sqlite", "user_id", userID, "error", err)
+		}
 	}
 
 	return userID, nil
