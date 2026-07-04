@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	netmail "net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -292,7 +293,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	allRecipients := append(splitRecipients(to), splitRecipients(cc)...)
 	var localRecipients, externalRecipients []string
 	for _, rcpt := range allRecipients {
-		rcpt = strings.TrimSpace(rcpt)
+		// Reduce to the bare local@domain address: the To/Cc fields may carry a
+		// display name or angle brackets ("Lance <a@b.com>"), which must not
+		// leak into the SMTP envelope or the MX-lookup domain ("b.com>").
+		rcpt = normalizeRecipient(rcpt)
 		if rcpt == "" {
 			continue
 		}
@@ -698,6 +702,21 @@ func buildRFC5322WithAttachments(from, to, cc, subject, body, inReplyTo, referen
 
 	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
 	return buf.Bytes()
+}
+
+// normalizeRecipient extracts the bare local@domain address from a recipient
+// field that may include a display name or angle brackets (e.g.
+// "Lance <a@b.com>" or "<a@b.com>"). It falls back to the trimmed input when
+// the value cannot be parsed as an address.
+func normalizeRecipient(rcpt string) string {
+	rcpt = strings.TrimSpace(rcpt)
+	if rcpt == "" {
+		return ""
+	}
+	if addr, err := netmail.ParseAddress(rcpt); err == nil {
+		return addr.Address
+	}
+	return rcpt
 }
 
 func splitRecipients(s string) []string {
