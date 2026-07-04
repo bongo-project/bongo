@@ -83,7 +83,7 @@ func TestValidateCookie_MalformedValue(t *testing.T) {
 }
 
 func TestRequireAuth_NoCookie(t *testing.T) {
-	handler := RequireAuth(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called without auth")
 	}))
 
@@ -101,7 +101,7 @@ func TestRequireAuth_NoCookie(t *testing.T) {
 
 func TestRequireAuth_ValidCookie(t *testing.T) {
 	var gotUserID, gotEmail string
-	handler := RequireAuth(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUserID, gotEmail = UserFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -123,8 +123,40 @@ func TestRequireAuth_ValidCookie(t *testing.T) {
 	}
 }
 
+func TestRequireAuth_DisabledUserRevoked(t *testing.T) {
+	called := false
+	isDisabled := func(userID string) bool { return userID == "user123" }
+	handler := RequireAuth(testSecret, isDisabled)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
+	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
+	req.AddCookie(cookie)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("handler was called for a disabled user; session should be revoked")
+	}
+	if rr.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303 (redirect to login)", rr.Code)
+	}
+	// The stale session cookie should be cleared.
+	cleared := false
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == cookie.Name && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("session cookie was not cleared for the disabled user")
+	}
+}
+
 func TestRequireAuth_ExpiredCookie(t *testing.T) {
-	_ = RequireAuth(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_ = RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called with expired cookie")
 	}))
 
@@ -146,7 +178,7 @@ func TestRequireAuth_ExpiredCookie(t *testing.T) {
 }
 
 func TestRequireAuth_HTMXRedirect(t *testing.T) {
-	handler := RequireAuth(testSecret)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called without auth")
 	}))
 

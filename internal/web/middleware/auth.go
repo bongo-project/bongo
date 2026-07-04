@@ -96,7 +96,10 @@ func ClearSessionCookie() *http.Cookie {
 // userID and email into the request context. Redirects to /login on failure.
 // For HTMX requests it uses HX-Redirect so the browser does a full-page
 // navigation instead of swapping the login page into a partial target.
-func RequireAuth(secret []byte) func(http.Handler) http.Handler {
+// isDisabled, when non-nil, is consulted on every request so that disabling a
+// user immediately revokes their existing sessions — the cookie is
+// self-contained, so this is the only place live account state is re-checked.
+func RequireAuth(secret []byte, isDisabled func(userID string) bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(cookieName)
@@ -112,6 +115,13 @@ func RequireAuth(secret []byte) func(http.Handler) http.Handler {
 			}
 
 			if time.Now().Unix() > data.Exp {
+				redirectToLogin(w, r)
+				return
+			}
+
+			// Revoke the session immediately if the account has been disabled.
+			if isDisabled != nil && isDisabled(data.UserID) {
+				http.SetCookie(w, ClearSessionCookie())
 				redirectToLogin(w, r)
 				return
 			}
