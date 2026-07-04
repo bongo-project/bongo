@@ -519,5 +519,6 @@
   "common.pagination": "Pagination",
   "common.previousPage": "Previous page",
   "common.nextPage": "Next page",
-  "nav.mailboxNav": "Mailbox navigation"
+  "nav.mailboxNav": "Mailbox navigation",
+  "admin.messageQueue": "Message Queue"
 }

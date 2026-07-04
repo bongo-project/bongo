@@ -5,7 +5,6 @@ package integration
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -24,6 +23,7 @@ import (
 func setupRenderingAgent(t *testing.T) (*agent.Agent, string, *http.Client, context.CancelFunc) {
 	t.Helper()
 	cfg := config.Defaults()
+	cfg.Pipeline.PollInterval = "50ms" // deliver promptly so short test waits suffice
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = sharedFreePort(t)
@@ -52,15 +52,13 @@ func setupRenderingAgent(t *testing.T) (*agent.Agent, string, *http.Client, cont
 		t.Fatal("agent not ready in time")
 	}
 
-	baseURL := fmt.Sprintf("https://127.0.0.1:%d", cfg.Web.Port)
+	// Dev mode serves the web UI over plain HTTP (like every other integration
+	// test agent), so use http:// rather than https://.
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
 
 	jar, _ := cookiejar.New(nil)
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test only
-	}
 	client := &http.Client{
-		Jar:       jar,
-		Transport: transport,
+		Jar: jar,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return fmt.Errorf("too many redirects")

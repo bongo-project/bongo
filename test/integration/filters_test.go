@@ -20,6 +20,7 @@ func startFilterAgent(t *testing.T) (*agent.Agent, context.CancelFunc) {
 	t.Helper()
 
 	cfg := config.Defaults()
+	cfg.Pipeline.PollInterval = "50ms" // deliver promptly so short test waits suffice
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.Web.Port = sharedFreePort(t)

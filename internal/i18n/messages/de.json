@@ -519,5 +519,6 @@
   "common.pagination": "Seitennummerierung",
   "common.previousPage": "Vorherige Seite",
   "common.nextPage": "Nächste Seite",
-  "nav.mailboxNav": "Postfachnavigation"
+  "nav.mailboxNav": "Postfachnavigation",
+  "admin.messageQueue": "Nachrichtenwarteschlange"
 }

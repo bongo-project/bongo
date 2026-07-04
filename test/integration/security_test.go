@@ -737,8 +737,8 @@ func TestRequire2FAPolicy(t *testing.T) {
 // extractTOTPManualKey attempts to extract the base32 TOTP secret from the
 // TOTP setup page HTML. The template renders it in a <pre> element.
 func extractTOTPManualKey(body string) string {
-	// The template renders the manual key in a <pre>...</pre> block.
-	preRe := regexp.MustCompile(`(?s)<pre[^>]*>([A-Z2-7]{16,})</pre>`)
+	// The template renders the manual key inside the #totp-key element.
+	preRe := regexp.MustCompile(`(?s)id="totp-key".*?([A-Z2-7]{16,})`)
 	matches := preRe.FindStringSubmatch(body)
 	if len(matches) >= 2 {
 		return strings.TrimSpace(matches[1])
@@ -753,7 +753,7 @@ func extractRecoveryCodes(body string) []string {
 	// Codes are displayed inside <div ...> elements in the grid.
 	// Match patterns like: <div ...>XXXXXXXX</div> where the content is
 	// an alphanumeric code (letters and digits only, 8+ chars).
-	codeRe := regexp.MustCompile(`<div[^>]*>([A-Za-z0-9]{8,})</div>`)
+	codeRe := regexp.MustCompile(`<div[^>]*>([A-Z0-9]{8}-[A-Z0-9]{8})</div>`)
 	matches := codeRe.FindAllStringSubmatch(body, -1)
 
 	seen := make(map[string]bool)
@@ -762,7 +762,7 @@ func extractRecoveryCodes(body string) []string {
 		if len(m) >= 2 {
 			code := strings.TrimSpace(m[1])
 			// Filter out obviously non-code content (HTML keywords, long words).
-			if len(code) >= 8 && len(code) <= 16 && !seen[code] {
+			if len(code) >= 8 && len(code) <= 17 && !seen[code] {
 				seen[code] = true
 				codes = append(codes, code)
 			}

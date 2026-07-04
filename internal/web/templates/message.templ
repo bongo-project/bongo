@@ -178,7 +178,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 }
 
 templ MessagePaneContent(msg MessageDetail) {
-	<div class="toolbar u-py-6 u-px-12">
+	<div class="toolbar pane-toolbar u-py-6 u-px-12">
 		<a href={ templ.SafeURL(fmt.Sprintf("/compose/reply/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.reply") }</a>
 		<a href={ templ.SafeURL(fmt.Sprintf("/compose/forward/%s/%d", msg.Mailbox, msg.UID)) } class="tool-btn">{ t(ctx, "mail.forward") }</a>
 		<button
