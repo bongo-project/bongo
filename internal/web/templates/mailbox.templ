@@ -209,7 +209,7 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 			role="listitem"
 			tabindex="0"
 			data-uid={ fmt.Sprint(msg.UID) }
-			x-on:contextmenu={ fmt.Sprintf("$event.preventDefault(); $dispatch('ctx-menu', {x: $event.clientX, y: $event.clientY, uid: %d, mailbox: '%s'})", msg.UID, mailbox) }
+			x-on:contextmenu={ fmt.Sprintf("openContextMenu($event, %d, '%s')", msg.UID, mailbox) }
 			x-on:touchstart={ fmt.Sprintf("start($event, %d)", msg.UID) }
 			x-on:touchmove="move($event)"
 			x-on:touchend={ fmt.Sprintf("end($event, %d, '%s')", msg.UID, mailbox) }

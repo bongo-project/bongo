@@ -374,7 +374,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</textarea><div class=\"drop-zone\" x-data=\"{files: [], totalSize: 0, formatBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }}\"><input type=\"file\" id=\"attachments\" name=\"attachments\" multiple aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</textarea><div class=\"drop-zone\" x-data=\"dropZone\"><input type=\"file\" id=\"attachments\" name=\"attachments\" multiple aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -387,14 +387,14 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" @change=\"\n\t\t\t\t\t\t\t\tfiles = Array.from($el.files);\n\t\t\t\t\t\t\t\ttotalSize = files.reduce((s,f) => s + f.size, 0);\n\t\t\t\t\t\t\t\"><template x-if=\"files.length > 0\"><div class=\"u-mt-05 u-font-085\" aria-live=\"polite\"><template x-for=\"(f, i) in files\" :key=\"i\"><div class=\"u-file-row\"><span x-text=\"f.name\"></span> <small x-text=\"'(' + formatBytes(f.size) + ')'\"></small></div></template><div class=\"u-mt-025 u-text-muted\"><span x-text=\"files.length + ' file(s), total: ' + formatBytes(totalSize)\"></span></div></div></template></div></div><div class=\"compose-footer\"><button type=\"submit\" class=\"btn-send\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" x-on:change=\"updateFiles($el)\"><template x-if=\"files.length > 0\"><div class=\"u-mt-05 u-font-085\" aria-live=\"polite\"><template x-for=\"(f, i) in files\" :key=\"i\"><div class=\"u-file-row\"><span x-text=\"f.name\"></span> <small x-text=\"'(' + formatBytes(f.size) + ')'\"></small></div></template><div class=\"u-mt-025 u-text-muted\"><span x-text=\"files.length + ' file(s), total: ' + formatBytes(totalSize)\"></span></div></div></template></div></div><div class=\"compose-footer\"><button type=\"submit\" class=\"btn-send\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.send"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 141, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 138, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -407,7 +407,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.saveDraft"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 142, Col: 106}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 139, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -420,7 +420,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		var templ_7745c5c3_Var28 string
 		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.discard"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 144, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 141, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {

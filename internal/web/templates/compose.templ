@@ -109,7 +109,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 					>{ body }</textarea>
 					<div
 						class="drop-zone"
-						x-data="{files: [], totalSize: 0, formatBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }}"
+						x-data="dropZone"
 					>
 						<input
 							type="file"
@@ -117,10 +117,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 							name="attachments"
 							multiple
 							aria-label={ t(ctx, "compose.attachments") }
-							@change="
-								files = Array.from($el.files);
-								totalSize = files.reduce((s,f) => s + f.size, 0);
-							"
+							x-on:change="updateFiles($el)"
 						/>
 						<template x-if="files.length > 0">
 							<div class="u-mt-05 u-font-085" aria-live="polite">

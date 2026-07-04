@@ -443,6 +443,28 @@ document.addEventListener('alpine:init', () => {
       this.swipeTarget = null;
       this.swiping = false;
       this.currentX = 0;
+    },
+
+    openContextMenu(event, uid, mailbox) {
+      event.preventDefault();
+      this.$dispatch('ctx-menu', { x: event.clientX, y: event.clientY, uid: uid, mailbox: mailbox });
+    }
+  }));
+
+  // Attachment drop-zone for the compose form.
+  Alpine.data('dropZone', () => ({
+    files: [],
+    totalSize: 0,
+
+    formatBytes(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+      return (b / 1048576).toFixed(1) + ' MB';
+    },
+
+    updateFiles(el) {
+      this.files = Array.from(el.files);
+      this.totalSize = this.files.reduce(function(s, f) { return s + f.size; }, 0);
     }
   }));
 

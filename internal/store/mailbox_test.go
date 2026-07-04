@@ -493,6 +493,72 @@ func TestSanitizeMailMeta(t *testing.T) {
 	}
 }
 
+func TestGetMessageVirtual(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	userID := "user1"
+
+	metaUnread := &bongov1.MailMeta{
+		Guid: "unread-guid",
+	}
+	metaRead := &bongov1.MailMeta{
+		Guid: "read-guid",
+	}
+	metaStarred := &bongov1.MailMeta{
+		Guid: "starred-guid",
+	}
+
+	uidUnread, err := ms.DeliverMessage(userID, "INBOX", metaUnread, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage unread: %v", err)
+	}
+	uidRead, err := ms.DeliverMessage(userID, "INBOX", metaRead, FlagSeen)
+	if err != nil {
+		t.Fatalf("DeliverMessage read: %v", err)
+	}
+	uidStarred, err := ms.DeliverMessage(userID, "INBOX", metaStarred, FlagFlagged)
+	if err != nil {
+		t.Fatalf("DeliverMessage starred: %v", err)
+	}
+
+	tests := []struct {
+		name        string
+		virtual     string
+		uid         uint32
+		wantGUID    string
+		wantMailbox string
+		wantErr     bool
+	}{
+		{"unread finds unread message", "unread", uidUnread, "unread-guid", "INBOX", false},
+		{"unread does not find read message", "unread", uidRead, "", "", true},
+		{"starred finds starred message", "starred", uidStarred, "starred-guid", "INBOX", false},
+		{"starred does not find unread message", "starred", uidUnread, "", "", true},
+		{"all-mail finds read message", "all-mail", uidRead, "read-guid", "INBOX", false},
+		{"all-mail finds unread message", "all-mail", uidUnread, "unread-guid", "INBOX", false},
+		{"unknown uid returns error", "all-mail", 9999, "", "", true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			msg, mb, err := ms.GetMessageVirtual(userID, tc.virtual, tc.uid)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got msg %v in mailbox %q", msg, mb)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("GetMessageVirtual: %v", err)
+			}
+			if msg.MailGuid != tc.wantGUID {
+				t.Errorf("mail_guid = %q, want %q", msg.MailGuid, tc.wantGUID)
+			}
+			if mb != tc.wantMailbox {
+				t.Errorf("mailbox = %q, want %q", mb, tc.wantMailbox)
+			}
+		})
+	}
+}
+
 func TestSanitizeMailMeta_ValidUTF8Unchanged(t *testing.T) {
 	meta := &bongov1.MailMeta{
 		Subject:   "Valid UTF-8 subject",

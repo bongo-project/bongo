@@ -374,7 +374,7 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
 	if err != nil {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
@@ -382,8 +382,8 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-mark as seen.
 	if msg.Flags&store.FlagSeen == 0 {
-		if err := h.mailboxes.AddFlags(userID, mailbox, msg.Uid, store.FlagSeen); err != nil {
-			h.logger.Warn("web: failed to auto-mark message seen", "mailbox", mailbox, "uid", msg.Uid, "user", userID, "error", err)
+		if err := h.mailboxes.AddFlags(userID, realMailbox, msg.Uid, store.FlagSeen); err != nil {
+			h.logger.Warn("web: failed to auto-mark message seen", "mailbox", realMailbox, "uid", msg.Uid, "user", userID, "error", err)
 		}
 	}
 
@@ -799,7 +799,7 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	msg, _, err := h.resolveMessage(userID, mailbox, uint32(uid))
 	if err != nil {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
@@ -898,6 +898,17 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	flag := r.FormValue("flag")
 
+	// Resolve virtual mailboxes to the real mailbox before writing flags.
+	realMailbox := mailbox
+	if store.VirtualMailboxes[mailbox] {
+		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
+		if err != nil {
+			http.Error(w, "Message not found", http.StatusNotFound)
+			return
+		}
+		realMailbox = rm
+	}
+
 	var flagBit uint32
 	switch flag {
 	case "seen":
@@ -915,12 +926,12 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 
 	switch action {
 	case "add":
-		if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), flagBit); err != nil {
+		if err := h.mailboxes.AddFlags(userID, realMailbox, uint32(uid), flagBit); err != nil {
 			http.Error(w, "Failed to update flag", http.StatusInternalServerError)
 			return
 		}
 	case "remove":
-		if err := h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), flagBit); err != nil {
+		if err := h.mailboxes.RemoveFlags(userID, realMailbox, uint32(uid), flagBit); err != nil {
 			http.Error(w, "Failed to update flag", http.StatusInternalServerError)
 			return
 		}
@@ -929,7 +940,7 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("web: flag toggled", "flag", flag, "action", action, "mailbox", mailbox, "uid", uid, "user", userID)
 
 	// Return updated star icon.
-	msg, _ := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	msg, _ := h.mailboxes.GetMessage(userID, realMailbox, uint32(uid))
 	flagged := msg != nil && msg.Flags&store.FlagFlagged != 0
 
 	if flagged {
@@ -950,7 +961,17 @@ func (h *MailHandler) MoveMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest); err != nil {
+	realMailbox := mailbox
+	if store.VirtualMailboxes[mailbox] {
+		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
+		if err != nil {
+			http.Error(w, "Message not found", http.StatusNotFound)
+			return
+		}
+		realMailbox = rm
+	}
+
+	if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), dest); err != nil {
 		h.logger.Warn("web: move failed", "mailbox", mailbox, "uid", uid, "dest", dest, "user", userID, "error", err)
 		http.Error(w, "Move failed", http.StatusInternalServerError)
 		return
@@ -1011,7 +1032,7 @@ func (h *MailHandler) UpdateMessageTags(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Resolve mailbox message to get the mail GUID.
-	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
 	if err != nil {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
@@ -1105,7 +1126,7 @@ func (h *MailHandler) UpdateMessageTags(w http.ResponseWriter, r *http.Request) 
 	} else {
 		msgCmd := &bongov1.RaftCommand{
 			Op:    bongov1.Op_OP_PUT,
-			Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, mailbox, uint32(uid))),
+			Key:   []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/%010d", userID, realMailbox, uint32(uid))),
 			Value: msgBytes,
 		}
 		if err := h.applier.ApplyCommand(msgCmd, 5*time.Second); err != nil {
@@ -1317,11 +1338,21 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
-	if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted); err != nil {
+	realMailbox := mailbox
+	if store.VirtualMailboxes[mailbox] {
+		_, rm, err := h.resolveMessage(userID, mailbox, uint32(uid))
+		if err != nil {
+			http.Error(w, "Message not found", http.StatusNotFound)
+			return
+		}
+		realMailbox = rm
+	}
+
+	if err := h.mailboxes.AddFlags(userID, realMailbox, uint32(uid), store.FlagDeleted); err != nil {
 		http.Error(w, "failed to mark message deleted", http.StatusInternalServerError)
 		return
 	}
-	if _, err := h.mailboxes.Expunge(userID, mailbox); err != nil {
+	if _, err := h.mailboxes.Expunge(userID, realMailbox); err != nil {
 		http.Error(w, "failed to delete message", http.StatusInternalServerError)
 		return
 	}
@@ -1501,6 +1532,16 @@ func decodeMailbox(encoded string) string {
 	return encoded
 }
 
+// resolveMessage returns the mailbox message and the real mailbox name.
+// For virtual mailboxes (unread/starred/all-mail) it scans all real mailboxes.
+func (h *MailHandler) resolveMessage(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, string, error) {
+	if store.VirtualMailboxes[mailbox] {
+		return h.mailboxes.GetMessageVirtual(userID, mailbox, uid)
+	}
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uid)
+	return msg, mailbox, err
+}
+
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {
 	key := fmt.Sprintf("/user/%s/mail/%s", userID, guid)
 	data, err := h.pebble.Get([]byte(key))
@@ -1584,15 +1625,15 @@ func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
 	// Get the mail GUID from the mailbox message.
-	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
 	if err != nil {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
 	}
 
 	// Move to Junk.
-	if mailbox != "Junk" {
-		if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "Junk"); err != nil {
+	if realMailbox != "Junk" {
+		if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), "Junk"); err != nil {
 			http.Error(w, "Move failed", http.StatusInternalServerError)
 			return
 		}
@@ -1622,15 +1663,15 @@ func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 
-	msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
 	if err != nil {
 		http.Error(w, "Message not found", http.StatusNotFound)
 		return
 	}
 
 	// Move to INBOX.
-	if mailbox != "INBOX" {
-		if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "INBOX"); err != nil {
+	if realMailbox != "INBOX" {
+		if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), "INBOX"); err != nil {
 			http.Error(w, "Move failed", http.StatusInternalServerError)
 			return
 		}
