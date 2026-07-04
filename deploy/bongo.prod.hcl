@@ -115,6 +115,13 @@ caldav {
 antispam {
   builtin {
     enabled = true
+
+    # Spam-score thresholds for the built-in heuristic scorer (range 0.0-1.0).
+    # threshold: at or above this, mail is tagged as spam and moved to Junk.
+    # high_threshold: at or above this, mail is quarantined instead of delivered.
+    # Raise these to be more permissive, lower them to be more aggressive.
+    threshold      = 0.5
+    high_threshold = 0.9
   }
 
   rspamd {

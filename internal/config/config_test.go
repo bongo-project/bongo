@@ -128,6 +128,41 @@ func TestLoadWithEnvVars(t *testing.T) {
 	}
 }
 
+func TestAntispamBuiltinThresholds(t *testing.T) {
+	// Defaults from Defaults() should surface as 0.5 / 0.9.
+	def := Defaults().Antispam.Builtin
+	if got := def.SpamThreshold(); got != 0.5 {
+		t.Errorf("default SpamThreshold = %.2f, want 0.5", got)
+	}
+	if got := def.SpamHighThreshold(); got != 0.9 {
+		t.Errorf("default SpamHighThreshold = %.2f, want 0.9", got)
+	}
+
+	tests := []struct {
+		name         string
+		b            AntispamBuiltin
+		wantThresh   float32
+		wantHighTher float32
+	}{
+		{"unset falls back to defaults", AntispamBuiltin{}, 0.5, 0.9},
+		{"custom valid values", AntispamBuiltin{Threshold: 0.6, HighThreshold: 0.85}, 0.6, 0.85},
+		{"out-of-range threshold falls back", AntispamBuiltin{Threshold: 1.5, HighThreshold: 0.8}, 0.5, 0.8},
+		{"negative threshold falls back", AntispamBuiltin{Threshold: -0.2, HighThreshold: 0.8}, 0.5, 0.8},
+		{"high below threshold is raised to threshold", AntispamBuiltin{Threshold: 0.7, HighThreshold: 0.4}, 0.7, 0.7},
+		{"high out of range falls back to 0.9", AntispamBuiltin{Threshold: 0.6, HighThreshold: 2.0}, 0.6, 0.9},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.b.SpamThreshold(); got != tt.wantThresh {
+				t.Errorf("SpamThreshold() = %.2f, want %.2f", got, tt.wantThresh)
+			}
+			if got := tt.b.SpamHighThreshold(); got != tt.wantHighTher {
+				t.Errorf("SpamHighThreshold() = %.2f, want %.2f", got, tt.wantHighTher)
+			}
+		})
+	}
+}
+
 func TestPipelineConfigDefaults(t *testing.T) {
 	cfg := Defaults()
 

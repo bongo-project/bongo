@@ -164,6 +164,43 @@ type AntispamConfig struct {
 
 type AntispamBuiltin struct {
 	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`
+	// Threshold is the spam score at or above which mail is tagged as spam and
+	// routed to Junk. Valid range (0.0, 1.0]. Defaults to 0.5 when unset.
+	Threshold float64 `hcl:"threshold,optional" mapstructure:"threshold"`
+	// HighThreshold is the spam score at or above which mail is quarantined
+	// instead of delivered. Valid range (0.0, 1.0]. Defaults to 0.9 when unset
+	// and is never lower than Threshold.
+	HighThreshold float64 `hcl:"high_threshold,optional" mapstructure:"high_threshold"`
+}
+
+// Built-in heuristic spam-scorer defaults, used when the configured thresholds
+// are unset or fall outside the (0.0, 1.0] range.
+const (
+	antispamDefaultThreshold     float32 = 0.5
+	antispamDefaultHighThreshold float32 = 0.9
+)
+
+// SpamThreshold returns the tag-as-spam threshold, falling back to the default
+// (0.5) when the configured value is unset or outside the (0.0, 1.0] range.
+func (b AntispamBuiltin) SpamThreshold() float32 {
+	if b.Threshold > 0 && b.Threshold <= 1 {
+		return float32(b.Threshold)
+	}
+	return antispamDefaultThreshold
+}
+
+// SpamHighThreshold returns the quarantine threshold, falling back to the
+// default (0.9) when unset or out of range. It is never lower than the
+// tag threshold so the tag/quarantine ordering is always well-defined.
+func (b AntispamBuiltin) SpamHighThreshold() float32 {
+	high := antispamDefaultHighThreshold
+	if b.HighThreshold > 0 && b.HighThreshold <= 1 {
+		high = float32(b.HighThreshold)
+	}
+	if t := b.SpamThreshold(); high < t {
+		high = t
+	}
+	return high
 }
 
 type RspamdConfig struct {
@@ -380,7 +417,9 @@ func Defaults() *Config {
 		},
 		Antispam: AntispamConfig{
 			Builtin: AntispamBuiltin{
-				Enabled: true,
+				Enabled:       true,
+				Threshold:     0.5,
+				HighThreshold: 0.9,
 			},
 			Rspamd: RspamdConfig{
 				URL: "http://localhost:11333",
