@@ -150,3 +150,54 @@ func TestServeBlobValidHashNotFound(t *testing.T) {
 		t.Errorf("ServeBlob valid-not-found: status = %d, want %d", w.Code, http.StatusNotFound)
 	}
 }
+
+func TestServeBlobHTMLAttachmentIsNotRenderedInline(t *testing.T) {
+	router, bs := setupServeBlobRouter(t)
+
+	payload := []byte("<script>alert(document.cookie)</script>")
+	hash, err := bs.Put(payload)
+	if err != nil {
+		t.Fatalf("blob put: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash+"?inline=1&ct=text/html", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if got := w.Header().Get("Content-Disposition"); got != "attachment" {
+		t.Errorf("HTML attachment Content-Disposition = %q, want %q (must not render inline)", got, "attachment")
+	}
+	if ct := w.Header().Get("Content-Type"); strings.Contains(ct, "text/html") {
+		t.Errorf("HTML attachment Content-Type = %q, must not be served as text/html inline", ct)
+	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}
+
+func TestServeBlobInlineTextPreviewIsEscaped(t *testing.T) {
+	router, bs := setupServeBlobRouter(t)
+
+	// A text/plain attachment whose bytes contain HTML must be neutralised
+	// before it is swapped into the page via hx-swap="innerHTML".
+	payload := []byte(`hello <img src=x onerror=alert(1)> world`)
+	hash, err := bs.Put(payload)
+	if err != nil {
+		t.Fatalf("blob put: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash+"?inline=1&ct=text/plain", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if strings.Contains(body, "<img") {
+		t.Errorf("inline text preview leaked raw markup (XSS): %q", body)
+	}
+	if !strings.Contains(body, "&lt;img") {
+		t.Errorf("inline text preview should HTML-escape markup, got: %q", body)
+	}
+	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}

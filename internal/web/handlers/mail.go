@@ -843,16 +843,25 @@ func sanitizeFilename(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// safeInlineTypes lists content types safe for inline display.
+// safeInlineTypes are rendered directly by the browser (via <img>/<iframe>),
+// so they may be served with Content-Disposition: inline. text/html is
+// intentionally absent: rendering an attacker-supplied HTML attachment inline
+// would execute its scripts in our own origin with the user's session (stored
+// XSS). HTML attachments are always served as downloads.
 var safeInlineTypes = map[string]bool{
-	"image/jpeg":       true,
-	"image/png":        true,
-	"image/gif":        true,
-	"image/webp":       true,
-	"application/pdf":  true,
+	"image/jpeg":      true,
+	"image/png":       true,
+	"image/gif":       true,
+	"image/webp":      true,
+	"application/pdf": true,
+}
+
+// inlineTextTypes are shown as text previews that htmx swaps into the page DOM
+// (hx-swap="innerHTML"). Their bytes are served HTML-escaped so untrusted
+// markup can never execute in our origin. text/html is intentionally absent.
+var inlineTextTypes = map[string]bool{
 	"text/plain":       true,
 	"text/csv":         true,
-	"text/html":        true,
 	"application/json": true,
 	"application/xml":  true,
 }
@@ -875,18 +884,39 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 	contentType := r.URL.Query().Get("ct")
 	inline := r.URL.Query().Get("inline") == "1"
 
-	if inline && contentType != "" && safeInlineTypes[contentType] {
+	// Never let the browser MIME-sniff a blob into an executable type (e.g. a
+	// text/plain attachment whose bytes look like HTML); serve exactly the
+	// declared type.
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+
+	switch {
+	case inline && inlineTextTypes[contentType]:
+		// The text preview is swapped into the authenticated page via
+		// hx-swap="innerHTML", so raw markup would execute in our origin.
+		// Serve the content HTML-escaped inside a <pre>.
+		data, err := io.ReadAll(rc)
+		if err != nil {
+			http.Error(w, "Blob not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprintf(w, "<pre class=\"attachment-text\">%s</pre>", html.EscapeString(string(data)))
+	case inline && contentType != "" && safeInlineTypes[contentType]:
+		// Images and PDFs are rendered by <img>/<iframe>, not innerHTML-swapped.
 		w.Header().Set("Content-Disposition", "inline")
 		w.Header().Set("Content-Type", contentType)
 		if contentType == "application/pdf" {
 			w.Header().Set("Content-Security-Policy", "sandbox")
 		}
-	} else {
+		io.Copy(w, rc)
+	default:
+		// Force a download with a non-renderable type so the browser never
+		// interprets the bytes (and does not content-sniff them into HTML).
 		w.Header().Set("Content-Disposition", "attachment")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		io.Copy(w, rc)
 	}
-
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-	io.Copy(w, rc)
 }
 
 // ToggleFlags handles flag toggling via HTMX.
