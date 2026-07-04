@@ -873,6 +873,18 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid blob hash", http.StatusBadRequest)
 		return
 	}
+
+	// Blobs are content-addressable and shared across all users, so the hash
+	// alone is not an authorization token: require that the requesting user
+	// actually owns a message referencing this blob. Otherwise any
+	// authenticated user could read another user's attachments by hash. A 404
+	// (not 403) avoids confirming that the blob exists.
+	userID, _ := middleware.UserFromContext(r.Context())
+	if userID == "" || !h.userOwnsBlob(userID, hash) {
+		http.Error(w, "Blob not found", http.StatusNotFound)
+		return
+	}
+
 	rc, err := h.blobs.Get(hash)
 	if err != nil {
 		http.Error(w, "Blob not found", http.StatusNotFound)
@@ -1570,6 +1582,38 @@ func (h *MailHandler) resolveMessage(userID, mailbox string, uid uint32) (*bongo
 	}
 	msg, err := h.mailboxes.GetMessage(userID, mailbox, uid)
 	return msg, mailbox, err
+}
+
+// userOwnsBlob reports whether the user has a message whose raw content or an
+// attachment references the given blob hash. Used to authorize blob downloads:
+// blobs are shared/deduplicated across users, so ownership must be proven per
+// request rather than trusting the hash. Returns as soon as a match is found.
+func (h *MailHandler) userOwnsBlob(userID, hash string) bool {
+	iter, err := h.pebble.PrefixScan([]byte(fmt.Sprintf("/user/%s/mail/", userID)))
+	if err != nil {
+		return false
+	}
+	defer iter.Close()
+
+	for iter.Next() {
+		val, err := iter.Value()
+		if err != nil {
+			continue
+		}
+		var meta bongov1.MailMeta
+		if err := proto.Unmarshal(val, &meta); err != nil {
+			continue
+		}
+		if meta.RawMessage != nil && meta.RawMessage.Hash == hash {
+			return true
+		}
+		for _, att := range meta.Attachments {
+			if att.Hash == hash {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (h *MailHandler) loadMailMeta(userID, guid string) *bongov1.MailMeta {
