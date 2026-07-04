@@ -1,6 +1,7 @@
 package antispam
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -24,19 +25,52 @@ type ScoringResult struct {
 	Reasons []string
 }
 
-// DefaultSpamPhrases are common spam indicator phrases.
+// DefaultSpamPhrases are common spam indicator phrases matched against the
+// subject and body. Entries are deliberately specific: standalone words such
+// as "winner", "congratulations" or "unsubscribe" appear routinely in
+// legitimate newsletters and transactional mail and are excluded to avoid
+// false positives.
 var DefaultSpamPhrases = []string{
-	"click here",
+	"click here to claim",
 	"act now",
-	"limited time",
+	"limited time offer",
 	"free money",
 	"you have been selected",
-	"congratulations",
-	"winner",
-	"urgent action",
+	"urgent action required",
 	"verify your account",
-	"unsubscribe",
+	"confirm your password",
+	"account suspended",
+	"wire transfer",
+	"risk free",
+	"100% free",
+	"cash bonus",
+	"claim your prize",
+	"make money fast",
+	"double your income",
+	"work from home",
+	"lowest price",
+	"no credit check",
+	"satisfaction guaranteed",
+	"weight loss",
+	"cheap meds",
+	"viagra",
+	"cialis",
+	"nigerian prince",
+	"bitcoin investment",
+	"crypto giveaway",
+	"meet singles",
+	"this is not spam",
 }
+
+// Phrase-matching weights. Subject matches are a stronger signal than body
+// matches. The combined phrase contribution is capped below the default Junk
+// threshold so that phrase hits alone can never route mail to Junk without a
+// corroborating signal (failing SPF/DKIM, missing headers, etc.).
+const (
+	subjectPhrasePoints float32 = 0.15
+	bodyPhrasePoints    float32 = 0.08
+	maxPhraseScore      float32 = 0.40
+)
 
 // Scorer scores inbound messages based on multiple signals.
 type Scorer struct {
@@ -108,21 +142,37 @@ func (s *Scorer) Score(input *ScoringInput) ScoringResult {
 		}
 	}
 
-	// Spam phrases in subject.
+	// Spam phrases in the subject (strong signal) and body (weaker signal).
+	// A phrase found in the subject scores higher than the same phrase in the
+	// body; each phrase counts at most once, taking the subject weight when it
+	// appears in both.
 	subjectLower := strings.ToLower(input.Subject)
+	bodyLower := strings.ToLower(input.BodySample)
 	var phraseScore float32
+	matched := 0
 	for _, phrase := range s.SpamPhrases {
-		if strings.Contains(subjectLower, phrase) {
-			phraseScore += 0.10
-			if phraseScore >= 0.30 {
-				phraseScore = 0.30
-				break
-			}
+		switch {
+		case strings.Contains(subjectLower, phrase):
+			phraseScore += subjectPhrasePoints
+			matched++
+		case bodyLower != "" && strings.Contains(bodyLower, phrase):
+			phraseScore += bodyPhrasePoints
+			matched++
+		default:
+			continue
+		}
+		if phraseScore >= maxPhraseScore {
+			phraseScore = maxPhraseScore
+			break
 		}
 	}
 	if phraseScore > 0 {
 		score += phraseScore
-		reasons = append(reasons, "spam phrases in subject")
+		if matched == 1 {
+			reasons = append(reasons, "spam phrase matched")
+		} else {
+			reasons = append(reasons, fmt.Sprintf("%d spam phrases matched", matched))
+		}
 	}
 
 	// Cap at 1.0.

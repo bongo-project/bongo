@@ -59,6 +59,53 @@ func TestScorer_SpamPhrases(t *testing.T) {
 	}
 }
 
+func TestScorer_BodyPhrases(t *testing.T) {
+	s := NewScorer()
+	result := s.Score(&ScoringInput{
+		SPFResult:  "pass",
+		DKIMResult: "pass",
+		Headers: map[string]string{
+			"Message-Id": "<test@example.com>",
+			"Date":       "Mon, 01 Jan 2024 00:00:00 +0000",
+			"From":       "user@example.com",
+		},
+		Subject:        "Hi there",
+		BodySample:     "Act now! This limited time offer lets you make money fast from home.",
+		EnvelopeSender: "user@example.com",
+	})
+
+	// Body phrases contribute, but capped below the Junk threshold on their own.
+	if result.Score <= 0 {
+		t.Errorf("body-phrase message score = %.2f (reasons: %v), want > 0", result.Score, result.Reasons)
+	}
+	if result.Score >= DefaultSpamThreshold {
+		t.Errorf("body-phrase-only score = %.2f, want < %.2f (phrases alone must not junk mail)", result.Score, DefaultSpamThreshold)
+	}
+}
+
+func TestScorer_LegitimateNewsletter(t *testing.T) {
+	s := NewScorer()
+	// A well-formed newsletter that authenticates and contains words previously
+	// on the phrase list (unsubscribe, congratulations, winner) must not be
+	// flagged as spam.
+	result := s.Score(&ScoringInput{
+		SPFResult:  "pass",
+		DKIMResult: "pass",
+		Headers: map[string]string{
+			"Message-Id": "<news@list.example.com>",
+			"Date":       "Mon, 01 Jan 2024 00:00:00 +0000",
+			"From":       "news@list.example.com",
+		},
+		Subject:        "Congratulations to this month's community winner",
+		BodySample:     "Thanks for reading. To unsubscribe, click the link at the bottom of this email.",
+		EnvelopeSender: "news@list.example.com",
+	})
+
+	if result.Score >= DefaultSpamThreshold {
+		t.Errorf("legitimate newsletter score = %.2f (reasons: %v), want < %.2f", result.Score, result.Reasons, DefaultSpamThreshold)
+	}
+}
+
 func TestScorer_CappedAt1(t *testing.T) {
 	s := NewScorer()
 	// Trigger every check.
