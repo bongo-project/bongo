@@ -25,6 +25,8 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
 
+	"google.golang.org/protobuf/proto"
+
 	agentgrpc "github.com/bongo-go/bongo-go/internal/agent/grpc"
 	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/auth"
@@ -130,6 +132,26 @@ func (a *Agent) IsLeader() bool {
 		return false
 	}
 	return a.Raft.Raft.State() == raft.Leader
+}
+
+// userDisabled reports whether the given user's account is currently disabled,
+// used by RequireAuth to revoke live sessions the moment an admin disables an
+// account. Reads the authoritative UserProfile from Pebble; fails open (treats
+// the account as active) on a read/parse error so a transient store problem
+// cannot log everyone out.
+func (a *Agent) userDisabled(userID string) bool {
+	if a.Store == nil || userID == "" {
+		return false
+	}
+	data, err := a.Store.Get([]byte("/user/" + userID + "/profile"))
+	if err != nil || len(data) == 0 {
+		return false
+	}
+	var profile bongov1.UserProfile
+	if err := proto.Unmarshal(data, &profile); err != nil {
+		return false
+	}
+	return profile.Disabled
 }
 
 // Ready implements handlers.ReadinessChecker.
@@ -423,7 +445,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Admin routes (require auth + admin).
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(sessionSecret))
+		r.Use(middleware.RequireAuth(sessionSecret, a.userDisabled))
 		r.Use(middleware.RequireAdmin(sessionSecret))
 		r.Use(middleware.RequireSameOrigin())
 
@@ -474,7 +496,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Protected routes.
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(sessionSecret))
+		r.Use(middleware.RequireAuth(sessionSecret, a.userDisabled))
 		r.Use(middleware.Require2FA(a))
 		r.Use(middleware.InjectLocale(a))
 		r.Use(middleware.RequireSameOrigin())
@@ -791,7 +813,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAuth(sessionSecret))
+			r.Use(middleware.RequireAuth(sessionSecret, a.userDisabled))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
 
