@@ -55,6 +55,12 @@ type Backend struct {
 	perIP     map[string]int
 	maxPerIP  int                 // 0 = disabled; set from config.SMTPLimits.MaxConnectionsPerIP
 	inboundRL *inboundRateLimiter // nil = disabled; set from config.SMTPLimits.MessagesPerMinute
+
+	// authFail tracks failed AUTH attempts per source IP so a source can be
+	// temporarily locked out after too many failures (brute-force defence).
+	// Guarded by mu. nil is treated as disabled.
+	authFail      map[string]*authFailState
+	authFailSweep int // recordAuthFailure calls since the last full sweep
 }
 
 // NewBackend creates a new SMTP backend.
@@ -64,6 +70,7 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 		deliverer: deliverer,
 		logger:    logger,
 		perIP:     make(map[string]int),
+		authFail:  make(map[string]*authFailState),
 	}
 }
 
@@ -136,17 +143,37 @@ type Session struct {
 	submission    bool
 	remoteIP      net.IP
 	spfResult     string
+	authFailures  int // failed AUTH attempts on this connection
 }
 
 // AuthPlain handles PLAIN authentication.
 func (s *Session) AuthPlain(username, password string) error {
+	ip := ""
+	if s.remoteIP != nil {
+		ip = s.remoteIP.String()
+	}
+
+	// Brute-force defence: refuse further attempts once this connection or the
+	// source IP has accumulated too many failures. Returning a temporary (4xx)
+	// error keeps well-behaved clients backing off without permanently locking
+	// out a user who later provides the right password.
+	if s.authFailures >= maxAuthFailures || s.backend.authThrottled(ip) {
+		s.logger.Warn("smtp: auth throttled after repeated failures", "username", username, "ip", s.remoteIP)
+		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
+	}
+
 	userID, err := s.backend.auth.Authenticate(username, password)
 	if err != nil {
-		s.logger.Warn("smtp: auth failed", "username", username)
+		s.authFailures++
+		s.backend.recordAuthFailure(ip)
+		s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
 		return err
 	}
+
 	s.authed = true
 	s.userID = userID
+	s.authFailures = 0
+	s.backend.resetAuthFailures(ip)
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
 }
