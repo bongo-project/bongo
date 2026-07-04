@@ -762,8 +762,11 @@ func (a *Agent) Run(ctx context.Context) error {
 			case "antispam":
 				scorer := antispam.NewScorer()
 				bayesFilter := antispam.NewBayesFilter(a.Store, a)
+				builtin := a.Config.Antispam.Builtin
 				antispamProc := pipelineantispam.NewBuiltinProcessor(scorer,
 					pipelineantispam.WithBayes(bayesFilter),
+					pipelineantispam.WithThreshold(builtin.SpamThreshold()),
+					pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
 					pipelineantispam.WithLogger(a.logger),
 				)
 				antispamProc.SetResolver(resolver)
@@ -1330,10 +1333,13 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 	switch role {
 	case "antispam":
 		scorer := antispam.NewScorer()
+		builtin := a.Config.Antispam.Builtin
 		// In agent mode there is no local Pebble store or Raft, so the Bayes
 		// filter (which needs per-user trained data) is not available. The
 		// heuristic scorer runs standalone without blending.
 		proc = pipelineantispam.NewBuiltinProcessor(scorer,
+			pipelineantispam.WithThreshold(builtin.SpamThreshold()),
+			pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
 			pipelineantispam.WithLogger(a.logger),
 		)
 	case "antivirus":
