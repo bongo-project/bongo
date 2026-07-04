@@ -228,5 +228,12 @@ func LoadMailboxInfos(ms *store.MailboxStore, userID, selected string) []templat
 			Unread: int(unseen),
 		})
 	}
+	// A user with no stored mailboxes (brand new, or a transient load failure)
+	// still gets the standard folders so the sidebar is never empty.
+	if len(flats) == 0 {
+		for _, name := range store.DefaultMailboxes {
+			flats = append(flats, flatMailbox{Name: name})
+		}
+	}
 	return BuildMailboxTree(flats, selected)
 }
