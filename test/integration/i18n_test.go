@@ -175,20 +175,16 @@ func TestI18nContextPropagation(t *testing.T) {
 func setLocaleCookie(t *testing.T, client *http.Client, baseURL, locale string) {
 	t.Helper()
 
-	// Set locale via the settings API if available, otherwise use cookie.
-	resp, err := client.PostForm(baseURL+"/settings/locale", map[string][]string{
+	// Locale is stored as a user preference (InjectLocale reads it from Pebble),
+	// persisted via POST /settings — there is no dedicated /settings/locale route.
+	resp, err := client.PostForm(baseURL+"/settings", map[string][]string{
 		"locale": {locale},
 	})
 	if err != nil {
-		t.Logf("POST /settings/locale failed (may not exist): %v", err)
-		// Fall back to setting cookie directly.
-		req, _ := http.NewRequest("GET", baseURL+"/mail/INBOX", nil)
-		req.AddCookie(&http.Cookie{Name: "locale", Value: locale})
-		r, err := client.Do(req)
-		if err == nil {
-			r.Body.Close()
-		}
-		return
+		t.Fatalf("POST /settings (locale=%s): %v", locale, err)
 	}
 	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("POST /settings (locale=%s): status %d", locale, resp.StatusCode)
+	}
 }

@@ -519,5 +519,6 @@
   "common.pagination": "Pagination",
   "common.previousPage": "Page précédente",
   "common.nextPage": "Page suivante",
-  "nav.mailboxNav": "Navigation des boîtes aux lettres"
+  "nav.mailboxNav": "Navigation des boîtes aux lettres",
+  "admin.messageQueue": "File de messages"
 }

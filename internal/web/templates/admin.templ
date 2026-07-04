@@ -489,7 +489,7 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 templ AdminQueueDashboard(stats *bongov1.QueueStats, pending, bounced []*bongov1.OutboundMessage, email string) {
 	@AdminLayout(t(ctx, "admin.queue"), email, "queue") {
 		<div class="admin-scroll">
-			<h1 class="admin-title">{ t(ctx, "admin.queue") }</h1>
+			<h1 class="admin-title">{ t(ctx, "admin.messageQueue") }</h1>
 			<p class="admin-subtitle">{ t(ctx, "admin.queueSubtitle") }</p>
 			<!-- Stat Cards -->
 			<div class="stat-grid">
