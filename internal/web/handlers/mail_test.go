@@ -1,14 +1,18 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 func TestBlockRemoteImages(t *testing.T) {
@@ -93,21 +97,54 @@ func TestHTMLAttachmentsAreNotSafeForInlineHTMXPreview(t *testing.T) {
 	}
 }
 
-func setupServeBlobRouter(t *testing.T) (*chi.Mux, *store.BlobStore) {
+const serveBlobTestUser = "test-user"
+
+func setupServeBlobRouter(t *testing.T) (*chi.Mux, *store.BlobStore, *store.PebbleStore) {
 	t.Helper()
-	bs, err := store.NewBlobStore(t.TempDir())
+	dir := t.TempDir()
+	bs, err := store.NewBlobStore(dir)
 	if err != nil {
 		t.Fatalf("NewBlobStore: %v", err)
 	}
-	// NewMailHandler with nil pebble/mailboxes — ServeBlob only uses blobs.
-	h := NewMailHandler(nil, bs, nil, discardLogger())
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	h := NewMailHandler(ps, bs, nil, discardLogger())
 	r := chi.NewRouter()
+	// Inject an authenticated user so ServeBlob's ownership check can run.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := middleware.WithUserContext(req.Context(), serveBlobTestUser, "test@localhost")
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
 	r.Get("/mail/blob/{hash}", h.ServeBlob)
-	return r, bs
+	return r, bs, ps
+}
+
+// ownBlobForTestUser writes a MailMeta owned by serveBlobTestUser that
+// references hash as an attachment, so ServeBlob's ownership check passes.
+func ownBlobForTestUser(t *testing.T, ps *store.PebbleStore, hash string) {
+	t.Helper()
+	meta := &bongov1.MailMeta{
+		Guid:        "test-guid-" + hash[:8],
+		Attachments: []*bongov1.BlobRef{{Hash: hash}},
+	}
+	data, err := proto.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal meta: %v", err)
+	}
+	key := fmt.Sprintf("/user/%s/mail/%s", serveBlobTestUser, meta.Guid)
+	if err := ps.Set([]byte(key), data); err != nil {
+		t.Fatalf("store meta: %v", err)
+	}
 }
 
 func TestServeBlobInvalidHash(t *testing.T) {
-	router, _ := setupServeBlobRouter(t)
+	router, _, _ := setupServeBlobRouter(t)
 
 	// Note: empty hash and path traversal sequences are rejected by chi's router
 	// before reaching the handler (chi normalises paths). The store-level
@@ -138,27 +175,52 @@ func TestServeBlobInvalidHash(t *testing.T) {
 }
 
 func TestServeBlobValidHashNotFound(t *testing.T) {
-	router, _ := setupServeBlobRouter(t)
+	router, _, ps := setupServeBlobRouter(t)
 
 	hash := "0000000000000000000000000000000000000000000000000000000000000000"
+	// Own the hash so we exercise the blob-missing path, not the ownership check.
+	ownBlobForTestUser(t, ps, hash)
 	req := httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash, nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Valid hash but blob does not exist — 404, not 400.
+	// Valid, owned hash but blob does not exist — 404, not 400.
 	if w.Code != http.StatusNotFound {
 		t.Errorf("ServeBlob valid-not-found: status = %d, want %d", w.Code, http.StatusNotFound)
 	}
 }
 
+func TestServeBlobRequiresOwnership(t *testing.T) {
+	router, bs, _ := setupServeBlobRouter(t)
+
+	// A blob exists in the shared store but the requesting user owns no message
+	// referencing it — it must not be served.
+	hash, err := bs.Put([]byte("someone else's private attachment"))
+	if err != nil {
+		t.Fatalf("blob put: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code == http.StatusOK {
+		t.Fatal("blob served to a user who owns no message referencing it")
+	}
+	if w.Code != http.StatusNotFound {
+		t.Errorf("unowned blob: status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
 func TestServeBlobHTMLAttachmentIsNotRenderedInline(t *testing.T) {
-	router, bs := setupServeBlobRouter(t)
+	router, bs, ps := setupServeBlobRouter(t)
 
 	payload := []byte("<script>alert(document.cookie)</script>")
 	hash, err := bs.Put(payload)
 	if err != nil {
 		t.Fatalf("blob put: %v", err)
 	}
+	ownBlobForTestUser(t, ps, hash)
 
 	req := httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash+"?inline=1&ct=text/html", nil)
 	w := httptest.NewRecorder()
@@ -176,7 +238,7 @@ func TestServeBlobHTMLAttachmentIsNotRenderedInline(t *testing.T) {
 }
 
 func TestServeBlobInlineTextPreviewIsEscaped(t *testing.T) {
-	router, bs := setupServeBlobRouter(t)
+	router, bs, ps := setupServeBlobRouter(t)
 
 	// A text/plain attachment whose bytes contain HTML must be neutralised
 	// before it is swapped into the page via hx-swap="innerHTML".
@@ -185,6 +247,7 @@ func TestServeBlobInlineTextPreviewIsEscaped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("blob put: %v", err)
 	}
+	ownBlobForTestUser(t, ps, hash)
 
 	req := httptest.NewRequest(http.MethodGet, "/mail/blob/"+hash+"?inline=1&ct=text/plain", nil)
 	w := httptest.NewRecorder()
