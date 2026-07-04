@@ -14,6 +14,17 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
+// disableStreamTimeouts clears the server's read/write deadlines for a
+// long-lived streaming response (SSE). Without this, http.Server.WriteTimeout
+// forcibly resets the connection mid-stream after 60s, which browsers surface
+// as ERR_HTTP2_PROTOCOL_ERROR before the EventSource reconnects in a tight loop.
+// It is a no-op on writers that do not support deadlines (e.g. test recorders).
+func disableStreamTimeouts(w http.ResponseWriter) {
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+	_ = rc.SetReadDeadline(time.Time{})
+}
+
 // SSEHandler handles Server-Sent Events for real-time updates.
 type SSEHandler struct {
 	notifier  *bongoimap.Notifier
@@ -39,6 +50,10 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
 		return
 	}
+
+	// Long-lived stream: opt out of the server's WriteTimeout so the connection
+	// is not reset mid-stream.
+	disableStreamTimeouts(w)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

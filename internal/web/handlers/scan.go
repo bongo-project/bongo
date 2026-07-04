@@ -165,6 +165,9 @@ func (h *ScanHandler) ScanProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Long-lived stream: opt out of the server's WriteTimeout.
+	disableStreamTimeouts(w)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no") // proxy no-buffer; Connection header is illegal over HTTP/2
