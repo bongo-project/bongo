@@ -40,6 +40,7 @@ type AuthHandler struct {
 	profiles      ProfileLoader
 	limiter       LoginLimiter
 	raft          TOTPRaftApplier
+	mailboxes     DefaultMailboxEnsurer
 	tlsEnabled    bool
 }
 
@@ -70,6 +71,13 @@ func (h *AuthHandler) SetTLSEnabled(enabled bool) {
 // SetRaftApplier wires a Raft applier for updating profiles (e.g., consuming recovery codes).
 func (h *AuthHandler) SetRaftApplier(r TOTPRaftApplier) {
 	h.raft = r
+}
+
+// SetMailboxEnsurer wires the store used to self-heal a user's default
+// mailboxes on login, so accounts created before default-mailbox provisioning
+// (or via paths that skipped it) gain their standard folders (notably Trash).
+func (h *AuthHandler) SetMailboxEnsurer(m DefaultMailboxEnsurer) {
+	h.mailboxes = m
 }
 
 // LoginPage renders the login form.
@@ -252,6 +260,13 @@ func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pend
 	}
 	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled)
 	http.SetCookie(w, cookie)
+
+	// Self-heal default mailboxes (idempotent, cheap) so older accounts missing
+	// Trash/Drafts gain them. Best-effort: never block login on this.
+	if h.mailboxes != nil {
+		_ = h.mailboxes.EnsureDefaultMailboxes(pending.UserID)
+	}
+
 	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
 }
 
