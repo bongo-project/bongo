@@ -20,6 +20,8 @@
   "mail.replyAll": "Répondre à tous",
   "mail.forward": "Transférer",
   "mail.delete": "Supprimer",
+  "mail.emptyTrash": "Vider la corbeille",
+  "mail.emptyTrashConfirm": "Supprimer définitivement tous les messages de la corbeille ?",
   "mail.export": "Exporter",
   "mail.print": "Imprimer",
   "mail.back": "Retour",

@@ -20,6 +20,8 @@
   "mail.replyAll": "Responder a todos",
   "mail.forward": "Reenviar",
   "mail.delete": "Eliminar",
+  "mail.emptyTrash": "Vaciar papelera",
+  "mail.emptyTrashConfirm": "¿Eliminar permanentemente todos los mensajes de la papelera?",
   "mail.export": "Exportar",
   "mail.print": "Imprimir",
   "mail.back": "Volver",

@@ -20,6 +20,8 @@
   "mail.replyAll": "Reply All",
   "mail.forward": "Forward",
   "mail.delete": "Delete",
+  "mail.emptyTrash": "Empty Trash",
+  "mail.emptyTrashConfirm": "Permanently delete every message in Trash?",
   "mail.export": "Export",
   "mail.print": "Print",
   "mail.back": "Back",

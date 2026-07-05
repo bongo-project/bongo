@@ -227,6 +227,18 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  function messageRowsWithUIDs() {
+    return Array.from(document.querySelectorAll('.msg-list .msg-row[data-uid]')).filter(function(row) {
+      return row.dataset.uid && !Number.isNaN(parseInt(row.dataset.uid, 10));
+    });
+  }
+
+  function setToolbarSelectAllChecked(checked) {
+    document.querySelectorAll('.tool-check').forEach(function(input) {
+      input.checked = checked;
+    });
+  }
+
   // Bulk message selection
   Alpine.data('messageSelect', () => ({
     selected: {},
@@ -239,13 +251,15 @@ document.addEventListener('alpine:init', () => {
 
     toggle(uid, event) {
       if (event && event.shiftKey && this.lastClicked !== null) {
-        const rows = Array.from(document.querySelectorAll('.msg-list .msg-row'));
-        const uids = rows.map(r => parseInt(r.dataset.uid));
+        const rows = messageRowsWithUIDs();
+        const uids = rows.map(r => parseInt(r.dataset.uid, 10));
         const start = uids.indexOf(this.lastClicked);
         const end = uids.indexOf(uid);
-        const [lo, hi] = start < end ? [start, end] : [end, start];
-        for (let i = lo; i <= hi; i++) {
-          this.selected[uids[i]] = true;
+        if (start !== -1 && end !== -1) {
+          const [lo, hi] = start < end ? [start, end] : [end, start];
+          for (let i = lo; i <= hi; i++) {
+            this.selected[uids[i]] = true;
+          }
         }
       } else {
         if (this.selected[uid]) {
@@ -259,14 +273,16 @@ document.addEventListener('alpine:init', () => {
     },
 
     selectAll() {
-      const rows = document.querySelectorAll('.msg-list .msg-row');
-      rows.forEach(r => { this.selected[parseInt(r.dataset.uid)] = true; });
+      const rows = messageRowsWithUIDs();
+      rows.forEach(r => { this.selected[parseInt(r.dataset.uid, 10)] = true; });
       this._updateCount();
+      setToolbarSelectAllChecked(rows.length > 0);
     },
 
     deselectAll() {
       this.selected = {};
       this.count = 0;
+      setToolbarSelectAllChecked(false);
     },
 
     isSelected(uid) {
@@ -289,6 +305,7 @@ document.addEventListener('alpine:init', () => {
           this.selected = {};
           this.count = 0;
           this.lastClicked = null;
+          setToolbarSelectAllChecked(false);
           // Refresh message list via HTMX.
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
         }
@@ -313,13 +330,15 @@ document.addEventListener('alpine:init', () => {
 
     toggle(uid, event) {
       if (event && event.shiftKey && this.lastClicked !== null) {
-        const rows = Array.from(document.querySelectorAll('.msg-list .msg-row'));
-        const uids = rows.map(r => parseInt(r.dataset.uid));
+        const rows = messageRowsWithUIDs();
+        const uids = rows.map(r => parseInt(r.dataset.uid, 10));
         const start = uids.indexOf(this.lastClicked);
         const end = uids.indexOf(uid);
-        const [lo, hi] = start < end ? [start, end] : [end, start];
-        for (let i = lo; i <= hi; i++) {
-          this.selected[uids[i]] = true;
+        if (start !== -1 && end !== -1) {
+          const [lo, hi] = start < end ? [start, end] : [end, start];
+          for (let i = lo; i <= hi; i++) {
+            this.selected[uids[i]] = true;
+          }
         }
       } else {
         if (this.selected[uid]) {
@@ -333,14 +352,16 @@ document.addEventListener('alpine:init', () => {
     },
 
     selectAll() {
-      const rows = document.querySelectorAll('.msg-list .msg-row');
-      rows.forEach(r => { this.selected[parseInt(r.dataset.uid)] = true; });
+      const rows = messageRowsWithUIDs();
+      rows.forEach(r => { this.selected[parseInt(r.dataset.uid, 10)] = true; });
       this._updateCount();
+      setToolbarSelectAllChecked(rows.length > 0);
     },
 
     deselectAll() {
       this.selected = {};
       this.count = 0;
+      setToolbarSelectAllChecked(false);
     },
 
     isSelected(uid) {
@@ -363,6 +384,7 @@ document.addEventListener('alpine:init', () => {
           this.selected = {};
           this.count = 0;
           this.lastClicked = null;
+          setToolbarSelectAllChecked(false);
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
         }
       } catch (e) {
@@ -384,6 +406,7 @@ document.addEventListener('alpine:init', () => {
           this.selected = {};
           this.count = 0;
           this.lastClicked = null;
+          setToolbarSelectAllChecked(false);
           htmx.ajax('GET', '/mail/' + encodeURIComponent(mailbox), '#main-content');
         } else {
           console.error('Bulk tag action failed:', resp.status);

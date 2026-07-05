@@ -542,6 +542,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/mail/{mailbox}", mailH.ListMessages)
 			r.Get("/mail/{mailbox}/thread/{rootGUID}", mailH.ShowThread)
 			r.Post("/mail/{mailbox}/bulk", mailH.BulkAction)
+			r.Post("/mail/{mailbox}/empty-trash", mailH.EmptyTrash)
 			r.Post("/mail/bulk/tags", mailH.BulkTagAction)
 			r.Get("/mail/{mailbox}/{uid}/export", mailH.ExportEML)
 			r.Get("/mail/{mailbox}/{uid}", mailH.ShowMessage)
