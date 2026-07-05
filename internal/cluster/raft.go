@@ -122,13 +122,17 @@ func NewRaftNode(
 		// File-based snapshot store for server mode.
 		snapDir := filepath.Join(cfg.Storage.DataDir, "raft-snapshots")
 		if err := os.MkdirAll(snapDir, 0o750); err != nil {
-			netTransport.Close()
+			if closeErr := netTransport.Close(); closeErr != nil {
+				logger.Warn("raft: failed to close transport after snapshot dir failure", "error", closeErr)
+			}
 			return nil, fmt.Errorf("creating snapshot dir: %w", err)
 		}
 
 		fileSnaps, err := raft.NewFileSnapshotStore(snapDir, 2, io.Discard)
 		if err != nil {
-			netTransport.Close()
+			if closeErr := netTransport.Close(); closeErr != nil {
+				logger.Warn("raft: failed to close transport after snapshot store failure", "error", closeErr)
+			}
 			return nil, fmt.Errorf("creating file snapshot store: %w", err)
 		}
 		snaps = fileSnaps

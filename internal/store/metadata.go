@@ -3,6 +3,7 @@ package store
 import (
 	"container/list"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,8 +45,8 @@ func openSQLiteDB(path string) (*sql.DB, error) {
 		return nil, fmt.Errorf("opening sqlite %s: %w", path, err)
 	}
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("setting WAL mode: %w", err)
+		closeErr := db.Close()
+		return nil, errors.Join(fmt.Errorf("setting WAL mode: %w", err), closeErr)
 	}
 	return db, nil
 }
@@ -58,8 +59,8 @@ func newUserIndex(dbPath, userID string) (*UserIndex, error) {
 
 	idx := &UserIndex{db: db, userID: userID}
 	if err := idx.createSchema(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("creating user schema: %w", err)
+		closeErr := db.Close()
+		return nil, errors.Join(fmt.Errorf("creating user schema: %w", err), closeErr)
 	}
 	return idx, nil
 }
@@ -319,8 +320,8 @@ func newSystemIndex(dbPath string) (*SystemIndex, error) {
 
 	idx := &SystemIndex{db: db}
 	if err := idx.createSchema(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("creating system schema: %w", err)
+		closeErr := db.Close()
+		return nil, errors.Join(fmt.Errorf("creating system schema: %w", err), closeErr)
 	}
 	return idx, nil
 }

@@ -82,7 +82,9 @@ func (h *KVHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(val)
+	if _, err := w.Write(val); err != nil { // #nosec G705 -- internal KV endpoint returns binary values by design
+		return
+	}
 }
 
 // Delete handles DELETE /internal/kv/{key} — applies a delete command through Raft.

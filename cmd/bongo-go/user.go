@@ -38,8 +38,12 @@ func init() {
 	userCreateCmd.Flags().StringVar(&userHTTPAddr, "http-addr", "http://127.0.0.1:8080", "HTTP address of a running node")
 	userCreateCmd.Flags().StringVar(&userSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 	userCreateCmd.Flags().BoolVar(&userAdmin, "admin", false, "Grant the new user administrator privileges")
-	userCreateCmd.MarkFlagRequired("email")
-	userCreateCmd.MarkFlagRequired("password")
+	if err := userCreateCmd.MarkFlagRequired("email"); err != nil {
+		panic(err)
+	}
+	if err := userCreateCmd.MarkFlagRequired("password"); err != nil {
+		panic(err)
+	}
 
 	userCmd.AddCommand(userCreateCmd)
 	rootCmd.AddCommand(userCmd)

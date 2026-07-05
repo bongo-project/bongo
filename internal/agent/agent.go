@@ -236,8 +236,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	// Open blob store (shared content-addressable files).
 	blobStore, err := store.NewBlobStore(dataDir)
 	if err != nil {
-		pebbleStore.Close()
-		return nil, fmt.Errorf("opening blob store: %w", err)
+		closeErr := pebbleStore.Close()
+		return nil, fmt.Errorf("opening blob store: %w", errors.Join(err, closeErr))
 	}
 	a.Blobs = blobStore
 	logger.Info("blob store opened", "dir", filepath.Join(dataDir, "blobs"))
@@ -245,8 +245,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	// Open metadata manager (per-user SQLite + system.db).
 	metaMgr, err := store.NewMetadataManager(dataDir)
 	if err != nil {
-		pebbleStore.Close()
-		return nil, fmt.Errorf("opening metadata manager: %w", err)
+		closeErr := pebbleStore.Close()
+		return nil, fmt.Errorf("opening metadata manager: %w", errors.Join(err, closeErr))
 	}
 	a.Metadata = metaMgr
 	logger.Info("metadata manager opened", "dir", filepath.Join(dataDir, "metadata"))
@@ -254,9 +254,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	// Open search manager (per-user Bleve + GAL).
 	searchMgr, err := store.NewSearchManager(dataDir)
 	if err != nil {
-		metaMgr.Close()
-		pebbleStore.Close()
-		return nil, fmt.Errorf("opening search manager: %w", err)
+		closeErr := errors.Join(metaMgr.Close(), pebbleStore.Close())
+		return nil, fmt.Errorf("opening search manager: %w", errors.Join(err, closeErr))
 	}
 	a.Search = searchMgr
 	logger.Info("search manager opened")
@@ -268,10 +267,8 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	if cfg.Server.Role == "server" || cfg.Server.Role == "dev" {
 		raftNode, err := cluster.NewRaftNode(cfg, pebbleStore, blobStore, metaMgr, logger)
 		if err != nil {
-			searchMgr.Close()
-			metaMgr.Close()
-			pebbleStore.Close()
-			return nil, fmt.Errorf("creating raft node: %w", err)
+			closeErr := errors.Join(searchMgr.Close(), metaMgr.Close(), pebbleStore.Close())
+			return nil, fmt.Errorf("creating raft node: %w", errors.Join(err, closeErr))
 		}
 		a.Raft = raftNode
 		logger.Info("raft node initialized", "role", cfg.Server.Role)
@@ -1041,7 +1038,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		httpsHost := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
 		redirectHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			target := "https://" + httpsHost + r.RequestURI
-			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 -- target host is server config, path/query preserve same request URI
 		})
 		go func() {
 			redirectSrv := &http.Server{
@@ -1175,7 +1172,10 @@ func (a *Agent) autoJoinRaft() {
 			a.logger.Debug("raft auto-join: failed to contact peer", "peer", m.Name, "error", err)
 			continue
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			a.logger.Debug("raft auto-join: failed to close response body", "peer", m.Name, "error", err)
+			continue
+		}
 
 		if resp.StatusCode == http.StatusOK {
 			a.logger.Info("raft: auto-joined cluster via peer", "peer", m.Name)

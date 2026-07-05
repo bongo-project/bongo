@@ -174,8 +174,20 @@ func (s *session) parseCommand(line string) (string, string) {
 
 func (s *session) respond(format string, a ...any) {
 	msg := fmt.Sprintf(format, a...)
-	s.writer.WriteString(msg + "\r\n")
-	s.writer.Flush()
+	s.writeString(msg + "\r\n")
+	s.flushWriter()
+}
+
+func (s *session) writeString(value string) {
+	if _, err := s.writer.WriteString(value); err != nil {
+		s.logger.Warn("pop3: failed to write response", "error", err)
+	}
+}
+
+func (s *session) flushWriter() {
+	if err := s.writer.Flush(); err != nil {
+		s.logger.Warn("pop3: failed to flush response", "error", err)
+	}
 }
 
 func (s *session) handleQuit() {
@@ -186,16 +198,16 @@ func (s *session) handleQuit() {
 }
 
 func (s *session) handleCapa() {
-	s.writer.WriteString("+OK capabilities\r\n")
-	s.writer.WriteString("USER\r\n")
-	s.writer.WriteString("UIDL\r\n")
-	s.writer.WriteString("TOP\r\n")
+	s.writeString("+OK capabilities\r\n")
+	s.writeString("USER\r\n")
+	s.writeString("UIDL\r\n")
+	s.writeString("TOP\r\n")
 	if !s.isTLS && s.tlsCfg != nil {
-		s.writer.WriteString("STLS\r\n")
+		s.writeString("STLS\r\n")
 	}
-	s.writer.WriteString("IMPLEMENTATION bongo-go\r\n")
-	s.writer.WriteString(".\r\n")
-	s.writer.Flush()
+	s.writeString("IMPLEMENTATION bongo-go\r\n")
+	s.writeString(".\r\n")
+	s.flushWriter()
 }
 
 func (s *session) handleUser(args string) {
@@ -319,8 +331,8 @@ func (s *session) handleList(args string) {
 		}
 		fmt.Fprintf(s.writer, "%d %d\r\n", num, m.size)
 	}
-	s.writer.WriteString(".\r\n")
-	s.writer.Flush()
+	s.writeString(".\r\n")
+	s.flushWriter()
 }
 
 func (s *session) handleUidl(args string) {
@@ -342,7 +354,7 @@ func (s *session) handleUidl(args string) {
 		return
 	}
 
-	s.writer.WriteString("+OK\r\n")
+	s.writeString("+OK\r\n")
 	for i, m := range s.messages {
 		num := i + 1
 		if s.deleted[num] {
@@ -350,8 +362,8 @@ func (s *session) handleUidl(args string) {
 		}
 		fmt.Fprintf(s.writer, "%d %s\r\n", num, m.guid)
 	}
-	s.writer.WriteString(".\r\n")
-	s.writer.Flush()
+	s.writeString(".\r\n")
+	s.flushWriter()
 }
 
 func (s *session) handleRetr(args string) {
@@ -531,7 +543,7 @@ func (s *session) writeByteStuffed(data []byte, bodyLines int) {
 
 		if !inBody && line == "" {
 			inBody = true
-			s.writer.WriteString("\r\n")
+			s.writeString("\r\n")
 			continue
 		}
 
@@ -544,13 +556,13 @@ func (s *session) writeByteStuffed(data []byte, bodyLines int) {
 
 		// Byte-stuffing: lines starting with "." get an extra ".".
 		if strings.HasPrefix(line, ".") {
-			s.writer.WriteString(".")
+			s.writeString(".")
 		}
-		s.writer.WriteString(line + "\r\n")
+		s.writeString(line + "\r\n")
 	}
 
-	s.writer.WriteString(".\r\n")
-	s.writer.Flush()
+	s.writeString(".\r\n")
+	s.flushWriter()
 }
 
 // applyDeletions moves deleted messages to Trash.

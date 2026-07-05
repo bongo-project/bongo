@@ -123,10 +123,15 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		return
 	}
 	rawMsg, err := io.ReadAll(rc)
-	rc.Close()
+	closeErr := rc.Close()
 	if err != nil {
 		w.logger.Error("queue: reading blob", "error", err)
 		w.handleFailure(msg, "reading blob: "+err.Error())
+		return
+	}
+	if closeErr != nil {
+		w.logger.Error("queue: closing blob", "error", closeErr)
+		w.handleFailure(msg, "closing blob: "+closeErr.Error())
 		return
 	}
 

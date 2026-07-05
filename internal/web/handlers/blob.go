@@ -46,7 +46,9 @@ func (h *BlobHandler) Get(w http.ResponseWriter, r *http.Request) {
 	defer rc.Close()
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	io.Copy(w, rc)
+	if _, err := io.Copy(w, rc); err != nil {
+		return
+	}
 }
 
 // Head handles HEAD /internal/blob/{hash} — checks blob existence.

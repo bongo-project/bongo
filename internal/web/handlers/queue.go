@@ -28,7 +28,9 @@ func (h *QueueHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		return
+	}
 }
 
 // Retry resets a message for immediate retry.
@@ -45,7 +47,9 @@ func (h *QueueHandler) Retry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "id": id})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok", "id": id}); err != nil {
+		return
+	}
 }
 
 // Drop removes a message from the queue.
@@ -62,5 +66,7 @@ func (h *QueueHandler) Drop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "id": id})
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok", "id": id}); err != nil {
+		return
+	}
 }

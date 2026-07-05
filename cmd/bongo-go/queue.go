@@ -78,7 +78,9 @@ func queueRequest(method, url string) (*http.Response, error) {
 		return nil, fmt.Errorf("connecting to %s: %w", queueHTTPAddr, err)
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("closing response body: %w", err)
+		}
 		return nil, fmt.Errorf("server returned 401 Unauthorized: pass --session-secret (or set BONGO_WEB_SESSION_SECRET) matching the node's web.session_secret")
 	}
 	return resp, nil
@@ -117,7 +119,9 @@ func runQueueStatus(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Fprintf(w, "Oldest:\t-\n")
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("flushing output: %w", err)
+	}
 
 	return nil
 }
@@ -138,7 +142,9 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 	}
 
 	if queueJSON {
-		io.Copy(os.Stdout, resp.Body)
+		if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
+			return fmt.Errorf("writing response: %w", err)
+		}
 		return nil
 	}
 
@@ -162,7 +168,9 @@ func runQueueDrop(cmd *cobra.Command, args []string) error {
 	}
 
 	if queueJSON {
-		io.Copy(os.Stdout, resp.Body)
+		if _, err := io.Copy(os.Stdout, resp.Body); err != nil {
+			return fmt.Errorf("writing response: %w", err)
+		}
 		return nil
 	}
 

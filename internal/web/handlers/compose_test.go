@@ -1,6 +1,11 @@
 package handlers
 
-import "testing"
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestNormalizeRecipient(t *testing.T) {
 	tests := []struct {
@@ -25,4 +30,26 @@ func TestNormalizeRecipient(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestComposeSendRejectsOversizedBody(t *testing.T) {
+	h := NewComposeHandler(nil, nil, nil, nil, nil, discardLogger())
+	req := httptest.NewRequest(http.MethodPost, "/compose/send", io.LimitReader(zeroReader{}, composeMultipartMaxBytes+1))
+	req = withUserContext(req, "user-oversized-compose", "user@example.com")
+	rec := httptest.NewRecorder()
+
+	h.Send(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	return len(p), nil
 }

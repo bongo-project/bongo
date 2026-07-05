@@ -557,7 +557,9 @@ func (s *Server) Listen() error {
 
 	subl, err := net.Listen("tcp", s.submission.Addr)
 	if err != nil {
-		mxl.Close()
+		if closeErr := mxl.Close(); closeErr != nil {
+			return fmt.Errorf("smtp submission listen: %w", errors.Join(err, closeErr))
+		}
 		return fmt.Errorf("smtp submission listen: %w", err)
 	}
 

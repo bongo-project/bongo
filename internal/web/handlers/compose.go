@@ -28,6 +28,8 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
+const composeMultipartMaxBytes = 33 << 20
+
 // ComposeHandler handles email composition.
 type ComposeHandler struct {
 	pebble      *store.PebbleStore
@@ -179,7 +181,8 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, composeMultipartMaxBytes)
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		if err2 := r.ParseForm(); err2 != nil {
 			http.Error(w, "Invalid form", http.StatusBadRequest)
 			return
@@ -232,8 +235,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
+			closeErr := f.Close()
+			if err != nil || closeErr != nil {
 				continue
 			}
 			contentType := fh.Header.Get("Content-Type")
@@ -407,7 +410,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, composeMultipartMaxBytes)
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		_ = r.ParseForm()
 	}
 
@@ -425,8 +429,8 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			data, err := io.ReadAll(f)
-			f.Close()
-			if err != nil {
+			closeErr := f.Close()
+			if err != nil || closeErr != nil {
 				continue
 			}
 			contentType := fh.Header.Get("Content-Type")
@@ -491,14 +495,18 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	if q == "" || h.search == nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("[]"))
+		if _, err := w.Write([]byte("[]")); err != nil {
+			return
+		}
 		return
 	}
 
 	entries, err := h.search.SearchGAL(q, 10)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte("[]"))
+		if _, err := w.Write([]byte("[]")); err != nil {
+			return
+		}
 		return
 	}
 
@@ -535,7 +543,9 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	if err := json.NewEncoder(w).Encode(result); err != nil {
+		return
+	}
 }
 
 func (h *ComposeHandler) resolveLocalUser(email string) string {

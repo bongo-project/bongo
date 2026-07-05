@@ -319,7 +319,9 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(blocks)
+	if err := json.NewEncoder(w).Encode(blocks); err != nil {
+		return
+	}
 }
 
 // NewEvent renders the create event form.
@@ -348,7 +350,7 @@ func (h *CalendarHandler) CreateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t := time.Unix(event.StartTime, 0)
-	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+created", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // ShowEvent renders an event detail/edit view.
@@ -391,7 +393,7 @@ func (h *CalendarHandler) UpdateEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t := time.Unix(updated.StartTime, 0)
-	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+updated", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 }
 
 // DeleteEvent handles DELETE to remove an event.
@@ -414,7 +416,7 @@ func (h *CalendarHandler) DeleteEvent(w http.ResponseWriter, r *http.Request) {
 
 	if event != nil {
 		t := time.Unix(event.StartTime, 0)
-		http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), http.StatusSeeOther)
+		http.Redirect(w, r, fmt.Sprintf("/calendar/%d/%d?flash=Event+deleted", t.Year(), int(t.Month())), http.StatusSeeOther) // #nosec G710 -- fixed same-origin calendar path
 		return
 	}
 	http.Redirect(w, r, "/calendar?flash=Event+deleted", http.StatusSeeOther)
@@ -487,7 +489,9 @@ func (h *CalendarHandler) ExportCalendar(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "text/calendar")
 	w.Header().Set("Content-Disposition", `attachment; filename="calendar.ics"`)
-	w.Write(buf.Bytes())
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		return
+	}
 }
 
 // ImportCalendar imports events from an .ics file.

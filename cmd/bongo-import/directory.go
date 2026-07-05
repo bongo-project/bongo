@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -191,10 +192,11 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 				logger.Info("importing mbox", "file", mboxPath, "folder", folder)
 				src := importer.NewMboxSource([]string{mboxPath}, folder)
 				if err := im.Import(ctx, src); err != nil {
-					src.Close()
-					return fmt.Errorf("importing mbox %s: %w", mboxPath, err)
+					return fmt.Errorf("importing mbox %s: %w", mboxPath, errors.Join(err, src.Close()))
 				}
-				src.Close()
+				if err := src.Close(); err != nil {
+					return fmt.Errorf("closing mbox source %s: %w", mboxPath, err)
+				}
 			}
 
 			// Import EML files grouped by folder.
@@ -202,10 +204,11 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 				logger.Info("importing eml files", "folder", folder, "count", len(files))
 				src := importer.NewEMLSource(files, folder)
 				if err := im.Import(ctx, src); err != nil {
-					src.Close()
-					return fmt.Errorf("importing eml folder %s: %w", folder, err)
+					return fmt.Errorf("importing eml folder %s: %w", folder, errors.Join(err, src.Close()))
 				}
-				src.Close()
+				if err := src.Close(); err != nil {
+					return fmt.Errorf("closing eml source %s: %w", folder, err)
+				}
 			}
 
 			// Import Maildir directories.
@@ -213,10 +216,11 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 				logger.Info("importing maildir", "path", mdPath)
 				src := importer.NewMaildirSource(mdPath)
 				if err := im.Import(ctx, src); err != nil {
-					src.Close()
-					return fmt.Errorf("importing maildir %s: %w", mdPath, err)
+					return fmt.Errorf("importing maildir %s: %w", mdPath, errors.Join(err, src.Close()))
 				}
-				src.Close()
+				if err := src.Close(); err != nil {
+					return fmt.Errorf("closing maildir source %s: %w", mdPath, err)
+				}
 			}
 		}
 
@@ -311,9 +315,8 @@ func folderFromPath(filePath, root string) string {
 // webLogin authenticates to the bongo-go web UI and returns an HTTP client
 // with the session cookie set.
 func webLogin(baseURL, user, pass string) (*http.Client, error) {
-	//nolint:gosec // dev tool - self-signed certs expected
 	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- import tool supports local/self-signed Bongo web endpoints
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -346,7 +349,7 @@ func webLogin(baseURL, user, pass string) (*http.Client, error) {
 
 // uploadFile sends a file as a multipart form upload.
 func uploadFile(client *http.Client, endpoint, fieldName, filePath string) error {
-	f, err := os.Open(filePath)
+	f, err := os.Open(filePath) // #nosec G304 -- import upload file path is selected by the operator
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", filePath, err)
 	}

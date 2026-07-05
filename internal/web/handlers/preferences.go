@@ -150,7 +150,9 @@ func (h *PreferencesHandler) UserPrefsJSON(w http.ResponseWriter, r *http.Reques
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		return
+	}
 }
 
 func themeString(t bongov1.Theme) string {

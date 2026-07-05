@@ -123,7 +123,9 @@ func (s *Server) Listen(addr, addrTLS string, tlsCfg *tls.Config, proxyProtocol 
 	if addrTLS != "" && tlsCfg != nil {
 		rawTLS, err := net.Listen("tcp", addrTLS)
 		if err != nil {
-			s.plainListener.Close()
+			if closeErr := s.plainListener.Close(); closeErr != nil {
+				s.logger.Warn("imap: failed to close plain listener after TLS listen failure", "error", closeErr)
+			}
 			return fmt.Errorf("imaps listen %s: %w", addrTLS, err)
 		}
 		// PROXY header must be read before the TLS handshake, so wrap the raw

@@ -164,7 +164,7 @@ func (ts *TagStore) CreateTag(userID, name string) (*bongov1.TagMeta, error) {
 		Name:        name,
 		ColourIndex: int32(existing % tagColourPaletteSize),
 		CreatedAt:   time.Now().Unix(),
-		SortOrder:   int32(existing),
+		SortOrder:   int32(existing), // #nosec G115 -- bounded by MaxTagsPerUser above
 	}
 
 	data, err := proto.Marshal(meta)

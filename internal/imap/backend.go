@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"strings"
 	"time"
@@ -294,7 +295,9 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		return nil, fmt.Errorf("reading blob for parsing: %w", err)
 	}
 	rawMsg, err := io.ReadAll(rc)
-	rc.Close()
+	if closeErr := rc.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("reading raw message: %w", err)
 	}
@@ -450,9 +453,13 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 				if err == nil {
 					s.cachedMsgs = msgs
 				}
-				w.WriteNumMessages(notif.ExistsCount)
+				if err := w.WriteNumMessages(notif.ExistsCount); err != nil {
+					return err
+				}
 			case NotifExpunge:
-				w.WriteExpunge(notif.SeqNum)
+				if err := w.WriteExpunge(notif.SeqNum); err != nil {
+					return err
+				}
 			case NotifFlagChange:
 				// Fetch the message to include tag-derived keywords in the flags response.
 				updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, notif.UID)
@@ -462,7 +469,9 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 				} else {
 					imapFlags = flagsToIMAP(notif.Flags)
 				}
-				w.WriteMessageFlags(notif.SeqNum, imap.UID(notif.UID), imapFlags)
+				if err := w.WriteMessageFlags(notif.SeqNum, imap.UID(notif.UID), imapFlags); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -653,7 +662,9 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 		if rawMsg == nil {
 			continue
 		}
-		s.writeBodySection(respW, section, rawMsg)
+		if err := s.writeBodySection(respW, section, rawMsg); err != nil {
+			return err
+		}
 
 		// Set \Seen flag if not PEEK and not read-only.
 		if !section.Peek && !s.readOnly {
@@ -787,7 +798,7 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 		return &imap.BodyStructureSinglePart{
 			Type:    "text",
 			Subtype: "plain",
-			Size:    uint32(len(rawMsg)),
+			Size:    bodyPartSize(len(rawMsg)),
 		}
 	}
 
@@ -813,14 +824,14 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 			children = append(children, &imap.BodyStructureSinglePart{
 				Type:    "text",
 				Subtype: "plain",
-				Size:    uint32(len(env.Text)),
+				Size:    bodyPartSize(len(env.Text)),
 			})
 		}
 		if env.HTML != "" {
 			children = append(children, &imap.BodyStructureSinglePart{
 				Type:    "text",
 				Subtype: "html",
-				Size:    uint32(len(env.HTML)),
+				Size:    bodyPartSize(len(env.HTML)),
 			})
 		}
 		for _, att := range env.Attachments {
@@ -834,7 +845,7 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 			children = append(children, &imap.BodyStructureSinglePart{
 				Type:    attType,
 				Subtype: attSub,
-				Size:    uint32(len(att.Content)),
+				Size:    bodyPartSize(len(att.Content)),
 			})
 		}
 		if len(children) == 0 {
@@ -852,7 +863,7 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 	return &imap.BodyStructureSinglePart{
 		Type:    mainType,
 		Subtype: subType,
-		Size:    uint32(len(rawMsg)),
+		Size:    bodyPartSize(len(rawMsg)),
 	}
 }
 
@@ -876,7 +887,17 @@ func ensureExtendedBodyStructure(bs imap.BodyStructure) {
 	}
 }
 
-func (s *session) writeBodySection(respW *imapserver.FetchResponseWriter, section *imap.FetchItemBodySection, rawMsg []byte) {
+func bodyPartSize(n int) uint32 {
+	if n <= 0 {
+		return 0
+	}
+	if uint64(n) > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(n)
+}
+
+func (s *session) writeBodySection(respW *imapserver.FetchResponseWriter, section *imap.FetchItemBodySection, rawMsg []byte) error {
 	var content []byte
 
 	switch section.Specifier {
@@ -922,8 +943,13 @@ func (s *session) writeBodySection(respW *imapserver.FetchResponseWriter, sectio
 	}
 
 	wc := respW.WriteBodySection(section, int64(len(content)))
-	_, _ = wc.Write(content)
-	wc.Close()
+	if _, err := wc.Write(content); err != nil {
+		return err
+	}
+	if err := wc.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *session) extractMIMEPart(rawMsg []byte, partPath []int) []byte {
@@ -1009,7 +1035,9 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 				respW := w.CreateMessage(seqNum)
 				respW.WriteUID(uid)
 				respW.WriteFlags(messageToIMAPFlags(updated.Flags, updated.Tags))
-				respW.Close()
+				if err := respW.Close(); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -1201,15 +1229,19 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 		s.logger.Info("imap: messages moved", "src", s.selectedMailbox, "dest", dest, "user", s.userID, "count", len(expungeSeqNums))
 	}
 
-	w.WriteCopyData(&imap.CopyData{
+	if err := w.WriteCopyData(&imap.CopyData{
 		UIDValidity: validity,
 		SourceUIDs:  srcUIDs,
 		DestUIDs:    dstUIDs,
-	})
+	}); err != nil {
+		return err
+	}
 
 	// Write expunge notifications in reverse order.
 	for i := len(expungeSeqNums) - 1; i >= 0; i-- {
-		w.WriteExpunge(expungeSeqNums[i])
+		if err := w.WriteExpunge(expungeSeqNums[i]); err != nil {
+			return err
+		}
 	}
 
 	// Refresh cache.

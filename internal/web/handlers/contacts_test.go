@@ -6,6 +6,30 @@ import (
 	"github.com/emersion/go-vcard"
 )
 
+func TestSafeContactReturnPathRejectsExternalURLs(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty falls back", "", "/contacts"},
+		{"absolute external URL", "https://evil.example/mail/1", "/contacts"},
+		{"scheme-relative URL", "//evil.example/mail/1", "/contacts"},
+		{"relative without slash", "mail/1", "/contacts"},
+		{"malformed URL", "://bad", "/contacts"},
+		{"same-origin path", "/mail/INBOX/1", "/mail/INBOX/1"},
+		{"same-origin path with query", "/mail/INBOX/1?pane=read", "/mail/INBOX/1?pane=read"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := safeContactReturnPath(tc.in); got != tc.want {
+				t.Fatalf("safeContactReturnPath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSplitVCardBlocks(t *testing.T) {
 	tests := []struct {
 		name  string

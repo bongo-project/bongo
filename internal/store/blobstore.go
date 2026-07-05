@@ -82,33 +82,35 @@ func (bs *BlobStore) PutReader(r io.Reader) (string, int64, error) {
 
 	size, err := io.Copy(w, r)
 	if err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return "", 0, fmt.Errorf("writing blob: %w", err)
+		closeErr := tmp.Close()
+		removeErr := cleanupTempFile(tmpPath)
+		return "", 0, errors.Join(fmt.Errorf("writing blob: %w", err), closeErr, removeErr)
 	}
 
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return "", 0, fmt.Errorf("closing temp file: %w", err)
+		removeErr := cleanupTempFile(tmpPath)
+		return "", 0, errors.Join(fmt.Errorf("closing temp file: %w", err), removeErr)
 	}
 
 	hash := hex.EncodeToString(h.Sum(nil))
 
 	if bs.Exists(hash) {
-		os.Remove(tmpPath)
+		if err := cleanupTempFile(tmpPath); err != nil {
+			return "", 0, fmt.Errorf("cleaning duplicate blob temp file: %w", err)
+		}
 		return hash, size, nil
 	}
 
 	destDir := filepath.Join(bs.blobDir, hash[:2])
 	if err := os.MkdirAll(destDir, 0o750); err != nil {
-		os.Remove(tmpPath)
-		return "", 0, fmt.Errorf("creating prefix dir: %w", err)
+		removeErr := cleanupTempFile(tmpPath)
+		return "", 0, errors.Join(fmt.Errorf("creating prefix dir: %w", err), removeErr)
 	}
 
 	destPath := filepath.Join(destDir, hash)
 	if err := os.Rename(tmpPath, destPath); err != nil {
-		os.Remove(tmpPath)
-		return "", 0, fmt.Errorf("renaming blob: %w", err)
+		removeErr := cleanupTempFile(tmpPath)
+		return "", 0, errors.Join(fmt.Errorf("renaming blob: %w", err), removeErr)
 	}
 
 	return hash, size, nil
@@ -121,7 +123,7 @@ func (bs *BlobStore) Get(hash string) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("blob %q: %w", hash, ErrInvalidHash)
 	}
 	path := bs.blobPath(hash)
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- hash is validated as lowercase SHA-256 before deriving the path
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("blob %s: %w", hash, ErrNotFound)
@@ -243,39 +245,50 @@ func (bs *BlobStore) writeAtomically(hash string, writeFn func(*os.File) error) 
 	tmpPath := tmp.Name()
 
 	if err := writeFn(tmp); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("writing blob: %w", err)
+		closeErr := tmp.Close()
+		removeErr := cleanupTempFile(tmpPath)
+		return errors.Join(fmt.Errorf("writing blob: %w", err), closeErr, removeErr)
 	}
 
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("closing temp file: %w", err)
+		removeErr := cleanupTempFile(tmpPath)
+		return errors.Join(fmt.Errorf("closing temp file: %w", err), removeErr)
 	}
 
 	// Re-check existence after write (another goroutine may have written it).
 	if bs.Exists(hash) {
-		os.Remove(tmpPath)
+		if err := cleanupTempFile(tmpPath); err != nil {
+			return fmt.Errorf("cleaning duplicate blob temp file: %w", err)
+		}
 		return nil
 	}
 
 	destDir := filepath.Join(bs.blobDir, hash[:2])
 	if err := os.MkdirAll(destDir, 0o750); err != nil {
-		os.Remove(tmpPath)
-		return fmt.Errorf("creating prefix dir: %w", err)
+		removeErr := cleanupTempFile(tmpPath)
+		return errors.Join(fmt.Errorf("creating prefix dir: %w", err), removeErr)
 	}
 
 	destPath := filepath.Join(destDir, hash)
 	if err := os.Rename(tmpPath, destPath); err != nil {
 		// If rename fails because another goroutine created it, that's fine.
 		if bs.Exists(hash) {
-			os.Remove(tmpPath)
+			if err := cleanupTempFile(tmpPath); err != nil {
+				return fmt.Errorf("cleaning duplicate blob temp file: %w", err)
+			}
 			return nil
 		}
-		os.Remove(tmpPath)
-		return fmt.Errorf("renaming blob: %w", err)
+		removeErr := cleanupTempFile(tmpPath)
+		return errors.Join(fmt.Errorf("renaming blob: %w", err), removeErr)
 	}
 
+	return nil
+}
+
+func cleanupTempFile(path string) error {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return nil
 }
 

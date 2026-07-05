@@ -159,7 +159,7 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	if failed > 0 {
 		flash += fmt.Sprintf("+(%d+failed)", failed)
 	}
-	http.Redirect(w, r, "/admin/quarantine?flash="+flash, http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/quarantine?flash="+flash, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // loadQuarantine reads all envelopes from spool/quarantine/ and extracts display info.

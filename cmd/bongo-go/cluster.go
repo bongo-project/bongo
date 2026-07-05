@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"text/tabwriter"
@@ -37,9 +38,12 @@ func init() {
 }
 
 func runClusterStatus(cmd *cobra.Command, args []string) error {
+	if _, _, err := net.SplitHostPort(clusterHTTPAddr); err != nil {
+		return fmt.Errorf("invalid --http-addr %q: %w", clusterHTTPAddr, err)
+	}
 	url := fmt.Sprintf("http://%s/internal/cluster/members", clusterHTTPAddr)
 
-	resp, err := http.Get(url)
+	resp, err := http.Get(url) // #nosec G107 -- CLI queries an operator-supplied local node address
 	if err != nil {
 		return fmt.Errorf("connecting to %s: %w", clusterHTTPAddr, err)
 	}
@@ -66,7 +70,9 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 		addr := fmt.Sprintf("%s:%d", m.Addr, m.Port)
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", m.Name, addr, m.Role, m.Status)
 	}
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("flushing output: %w", err)
+	}
 
 	return nil
 }

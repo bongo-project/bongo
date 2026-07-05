@@ -59,6 +59,24 @@ func TestUntarPathTraversal(t *testing.T) {
 	}
 }
 
+func TestUntarRejectsOversizedFile(t *testing.T) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "huge.bin",
+		Mode: 0o644,
+		Size: maxSnapshotTarFileBytes + 1,
+	}); err != nil {
+		t.Fatalf("WriteHeader: %v", err)
+	}
+	_ = tw.Close()
+
+	err := untar(&buf, t.TempDir())
+	if err == nil {
+		t.Fatal("expected oversized tar entry to be rejected")
+	}
+}
+
 func TestTarRoundTrip(t *testing.T) {
 	srcDir := t.TempDir()
 

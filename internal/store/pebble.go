@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/cockroachdb/pebble"
 )
@@ -143,6 +144,9 @@ func (s *PebbleStore) EstimateDiskUsage() int64 {
 	est, err := s.db.EstimateDiskUsage([]byte{0x00}, []byte{0xFF})
 	if err != nil {
 		return 0
+	}
+	if est > math.MaxInt64 {
+		return math.MaxInt64
 	}
 	return int64(est)
 }

@@ -270,7 +270,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: user updated", "user_id", userID, "display_name", displayName, "is_admin", isAdmin)
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+updated", userID), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+updated", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ToggleDisabled toggles the disabled flag on a user.
@@ -307,7 +307,7 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: user toggled", "user_id", userID, "state", action)
 
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+%s", userID, action), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+%s", userID, action), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ResetPassword generates a temporary password for a user.
@@ -340,7 +340,7 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("admin: password reset", "user_id", userID, "email", profile.Email)
 
 	flash := fmt.Sprintf("Password+reset.+Temporary+password:+%s", tempPassword)
-	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // countAdmins returns the number of users whose profile has the admin flag set.
@@ -394,7 +394,11 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		copy(k, iter.Key())
 		keys = append(keys, k)
 	}
-	iter.Close()
+	if err := iter.Close(); err != nil {
+		h.logger.Warn("admin: failed to close user data iterator", "user_id", userID, "error", err)
+		http.Error(w, "failed to scan user data", http.StatusInternalServerError)
+		return
+	}
 
 	deleted, failed := 0, 0
 	for _, k := range keys {
@@ -487,7 +491,7 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 	} else {
 		flash += ".+No+MX+records+found"
 	}
-	http.Redirect(w, r, "/admin/domains?flash="+flash, http.StatusSeeOther)
+	http.Redirect(w, r, "/admin/domains?flash="+flash, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // ToggleDomain toggles the enabled state of a domain.

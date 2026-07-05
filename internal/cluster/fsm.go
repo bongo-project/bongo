@@ -233,7 +233,9 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 			for iter.Next() {
 				totalMsgs++
 			}
-			iter.Close()
+			if err := iter.Close(); err != nil {
+				f.logger.Warn("fsm: failed to close mailbox count iterator", "user", newMail.UserID, "mailbox", newMail.Mailbox, "error", err)
+			}
 		}
 		f.notifier.NotifyNewMail(newMail.UserID, newMail.Mailbox, newMail.UID, totalMsgs)
 	}
@@ -373,7 +375,9 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 
 	destDir := filepath.Join(checkpointDir, "pebble")
 	if err := f.store.DB().Checkpoint(destDir); err != nil {
-		os.RemoveAll(checkpointDir)
+		if removeErr := os.RemoveAll(checkpointDir); removeErr != nil {
+			f.logger.Warn("fsm: failed to remove failed snapshot checkpoint", "dir", checkpointDir, "error", removeErr)
+		}
 		return nil, fmt.Errorf("creating pebble checkpoint: %w", err)
 	}
 
@@ -476,7 +480,10 @@ func (s *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
 
 func (s *fsmSnapshot) Release() {
 	if s.checkpointDir != "" {
-		os.RemoveAll(s.checkpointDir)
+		if err := os.RemoveAll(s.checkpointDir); err != nil {
+			s.logger.Warn("fsm: failed to clean up snapshot checkpoint", "dir", s.checkpointDir, "error", err)
+			return
+		}
 		s.logger.Debug("fsm: snapshot checkpoint cleaned up", "dir", s.checkpointDir)
 	}
 }

@@ -69,7 +69,7 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin,
 	sig := sign(secret, payload)
 	value := base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig)
 
-	return &http.Cookie{
+	return &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can still log in
 		Name:     cookieName,
 		Value:    value,
 		Path:     "/",
@@ -82,7 +82,7 @@ func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin,
 
 // ClearSessionCookie returns a cookie that clears the session.
 func ClearSessionCookie() *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ // #nosec G124 -- clearing must also work for non-Secure dev cookies
 		Name:     cookieName,
 		Value:    "",
 		Path:     "/",
@@ -235,7 +235,7 @@ func CreatePendingCookie(secret []byte, userID, email string, remember, isAdmin,
 	sig := sign(secret, payload)
 	value := base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig)
 
-	return &http.Cookie{
+	return &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can still complete 2FA
 		Name:     pendingCookieName,
 		Value:    value,
 		Path:     "/",
@@ -295,7 +295,7 @@ func ValidatePendingCookie(secret []byte, r *http.Request) (*PendingData, error)
 
 // ClearPendingCookie returns a cookie that clears the 2FA-pending cookie.
 func ClearPendingCookie() *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ // #nosec G124 -- clearing must also work for non-Secure dev 2FA cookies
 		Name:     pendingCookieName,
 		Value:    "",
 		Path:     "/",

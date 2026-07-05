@@ -1,14 +1,15 @@
 package queue
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 	"github.com/bongo-go/bongo-go/internal/store"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 const (
@@ -190,8 +191,8 @@ func (qs *QueueStore) Stats() (*bongov1.QueueStats, error) {
 	for iter.Next() {
 		val, err := iter.Value()
 		if err != nil {
-			iter.Close()
-			return nil, fmt.Errorf("reading pending value: %w", err)
+			closeErr := iter.Close()
+			return nil, fmt.Errorf("reading pending value: %w", errors.Join(err, closeErr))
 		}
 		var msg bongov1.OutboundMessage
 		if err := proto.Unmarshal(val, &msg); err != nil {
@@ -203,7 +204,9 @@ func (qs *QueueStore) Stats() (*bongov1.QueueStats, error) {
 			oldestSet = true
 		}
 	}
-	iter.Close()
+	if err := iter.Close(); err != nil {
+		return nil, fmt.Errorf("closing pending iterator: %w", err)
+	}
 
 	// Count bounced.
 	biter, err := qs.store.PrefixScan([]byte(bouncedPrefix))
@@ -213,7 +216,9 @@ func (qs *QueueStore) Stats() (*bongov1.QueueStats, error) {
 	for biter.Next() {
 		stats.FailedCount++
 	}
-	biter.Close()
+	if err := biter.Close(); err != nil {
+		return nil, fmt.Errorf("closing bounced iterator: %w", err)
+	}
 
 	return stats, nil
 }
@@ -383,10 +388,13 @@ func (qs *QueueStore) findPendingKey(id string) ([]byte, error) {
 // backoff computes the next retry timestamp using exponential backoff.
 // attempt 1 = 2min, attempt 5 = ~32min, capped at 24h.
 func backoff(attempt int32) int64 {
-	seconds := int64(1) << uint(attempt) * 60 // 2^attempt * 60 seconds
-	maxSeconds := int64(24 * 60 * 60)          // 24 hours
-	if seconds > maxSeconds {
-		seconds = maxSeconds
+	const maxSeconds int64 = 24 * 60 * 60 // 24 hours
+	if attempt < 0 {
+		attempt = 0
 	}
+	if attempt > 10 {
+		return time.Now().Unix() + maxSeconds
+	}
+	seconds := (int64(1) << attempt) * 60 // 2^attempt * 60 seconds
 	return time.Now().Unix() + seconds
 }

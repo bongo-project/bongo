@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/bits"
 	"strings"
 	"time"
 	"unicode"
@@ -145,7 +146,11 @@ func (b *BayesFilter) Classify(userID string, tokens []string) float64 {
 func (b *BayesFilter) TrainedCount(userID string) int {
 	// We count by checking a summary key.
 	key := fmt.Sprintf("/user/%s/bayes/trained", userID)
-	return int(b.getCount([]byte(key)))
+	count := b.getCount([]byte(key))
+	if bits.UintSize == 32 && count > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int(count) // #nosec G115 -- 64-bit platforms fit uint64 counts used here; 32-bit is clamped above
 }
 
 // IncrementTrained increments the trained message count.

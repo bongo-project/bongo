@@ -31,7 +31,7 @@ func NewState(path string) (*State, error) {
 	}
 
 	if path != "" {
-		raw, err := os.ReadFile(path)
+		raw, err := os.ReadFile(path) // #nosec G304 -- importer state path is operator supplied
 		if err == nil {
 			if err := json.Unmarshal(raw, &s.data); err != nil {
 				return nil, fmt.Errorf("parsing state file: %w", err)
@@ -112,7 +112,7 @@ func (s *State) Save() error {
 		return fmt.Errorf("marshaling state: %w", err)
 	}
 
-	if err := os.WriteFile(s.path, raw, 0o644); err != nil {
+	if err := os.WriteFile(s.path, raw, 0o600); err != nil {
 		return fmt.Errorf("writing state file: %w", err)
 	}
 

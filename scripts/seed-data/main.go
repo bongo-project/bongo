@@ -418,14 +418,14 @@ func waitForHealth(baseURL string, timeout time.Duration) error {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // dev tool
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- dev seed tool accepts local self-signed certs
 		},
 	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(baseURL + "/health/live")
 		if err == nil {
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
@@ -433,6 +433,15 @@ func waitForHealth(baseURL string, timeout time.Duration) error {
 		time.Sleep(time.Second)
 	}
 	return fmt.Errorf("server did not become healthy within %v", timeout)
+}
+
+func closeHTTPBody(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	if err := resp.Body.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: closing response body: %v\n", err)
+	}
 }
 
 func sendMail(addr, user, pass string, email seedEmail) error {
@@ -471,7 +480,7 @@ func sendMail(addr, user, pass string, email seedEmail) error {
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		tlsCfg := &tls.Config{
 			ServerName:         strings.Split(addr, ":")[0],
-			InsecureSkipVerify: true, //nolint:gosec // dev tool
+			InsecureSkipVerify: true, // #nosec G402 -- dev seed tool accepts local self-signed certs
 		}
 		_ = c.StartTLS(tlsCfg)
 	}
@@ -532,7 +541,7 @@ func loginAndGetClient(baseURL, user, pass string) *http.Client {
 		Jar:     jar,
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // dev tool
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- dev seed tool accepts local self-signed certs
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -546,7 +555,7 @@ func loginAndGetClient(baseURL, user, pass string) *http.Client {
 		fmt.Fprintf(os.Stderr, "  login failed: %v\n", err)
 		return client
 	}
-	resp.Body.Close()
+	closeHTTPBody(resp)
 
 	return client
 }
@@ -558,7 +567,7 @@ func createContact(client *http.Client, baseURL string, c seedContact) error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	closeHTTPBody(resp)
 	return nil
 }
 
@@ -588,7 +597,7 @@ func createEvent(client *http.Client, baseURL string, e seedEvent) error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	closeHTTPBody(resp)
 	return nil
 }
 
