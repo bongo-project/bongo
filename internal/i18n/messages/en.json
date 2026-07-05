@@ -334,6 +334,8 @@
   "admin.displayName": "Display Name",
   "admin.quotaLabel": "Quota (bytes, 0 = unlimited)",
   "admin.administrator": "Administrator",
+  "admin.deleteUser": "Delete User",
+  "admin.confirmDeleteUser": "Permanently delete this user and all of their mail and data? This cannot be undone.",
   "admin.resetPassword": "Reset Password",
   "admin.domainsSubtitle": "Manage mail domains and DNS configuration",
   "admin.domainName": "Domain name",

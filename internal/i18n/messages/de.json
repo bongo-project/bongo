@@ -334,6 +334,8 @@
   "admin.displayName": "Anzeigename",
   "admin.quotaLabel": "Kontingent (Bytes, 0 = unbegrenzt)",
   "admin.administrator": "Administrator",
+  "admin.deleteUser": "Benutzer loschen",
+  "admin.confirmDeleteUser": "Diesen Benutzer und alle seine E-Mails und Daten dauerhaft loschen? Dies kann nicht ruckgangig gemacht werden.",
   "admin.resetPassword": "Passwort zurücksetzen",
   "admin.domainsSubtitle": "Mail-Domänen und DNS-Konfiguration verwalten",
   "admin.domainName": "Domänenname",

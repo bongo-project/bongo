@@ -343,6 +343,94 @@ func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther)
 }
 
+// countAdmins returns the number of users whose profile has the admin flag set.
+func (h *AdminHandler) countAdmins() int {
+	count := 0
+	for _, u := range h.loadUsers("") {
+		if u.IsAdmin {
+			count++
+		}
+	}
+	return count
+}
+
+// DeleteUser permanently removes a user and all of their data. It refuses to
+// delete the acting admin's own account or the last remaining administrator.
+//
+// Deletion is not atomic: it issues one Raft delete per key under the user's
+// prefix, then removes the system.db row. A partial failure leaves orphaned
+// keys (harmless: indexes are rebuildable, blobs are reclaimed by GC), but the
+// profile is removed so the account can no longer authenticate.
+func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userID")
+	actingUserID, _ := middleware.UserFromContext(r.Context())
+
+	if userID == actingUserID {
+		h.hxRedirect(w, fmt.Sprintf("/admin/users/%s?flash=You+cannot+delete+your+own+account", userID))
+		return
+	}
+
+	profile, err := h.loadProfile(userID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	if profile.IsAdmin && h.countAdmins() <= 1 {
+		h.hxRedirect(w, fmt.Sprintf("/admin/users/%s?flash=Cannot+delete+the+last+administrator", userID))
+		return
+	}
+
+	// Collect every key under the user's prefix, then delete each via Raft.
+	prefix := []byte(fmt.Sprintf("/user/%s/", userID))
+	iter, err := h.store.PrefixScan(prefix)
+	if err != nil {
+		http.Error(w, "failed to scan user data", http.StatusInternalServerError)
+		return
+	}
+	var keys [][]byte
+	for iter.Next() {
+		k := make([]byte, len(iter.Key()))
+		copy(k, iter.Key())
+		keys = append(keys, k)
+	}
+	iter.Close()
+
+	deleted, failed := 0, 0
+	for _, k := range keys {
+		if err := h.applier.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: k}, 5*time.Second); err != nil {
+			failed++
+			h.logger.Warn("admin: failed to delete user key", "user_id", userID, "key", string(k), "error", err)
+			continue
+		}
+		deleted++
+	}
+
+	// Remove the system.db users row (not cleaned by key deletes) so the account
+	// disappears from the user list and cannot authenticate.
+	if h.metadata != nil && h.metadata.System != nil {
+		if _, err := h.metadata.System.DB().Exec("DELETE FROM users WHERE id = ?", userID); err != nil {
+			h.logger.Warn("admin: failed to delete user from sqlite", "user_id", userID, "error", err)
+		}
+	}
+
+	h.logger.Info("admin: user deleted", "user_id", userID, "email", profile.Email, "keys_deleted", deleted, "keys_failed", failed)
+
+	if failed > 0 {
+		h.hxRedirect(w, "/admin/users?flash=User+deleted+with+some+errors+(see+logs)")
+		return
+	}
+	h.hxRedirect(w, "/admin/users?flash=User+deleted")
+}
+
+// hxRedirect issues an HTMX client-side redirect (for hx-post triggers) while
+// remaining a valid response for a plain form submission.
+func (h *AdminHandler) hxRedirect(w http.ResponseWriter, url string) {
+	w.Header().Set("HX-Redirect", url)
+	w.Header().Set("Location", url)
+	w.WriteHeader(http.StatusSeeOther)
+}
+
 // --- Domain Management ---
 
 // ListDomains shows the domain list.
