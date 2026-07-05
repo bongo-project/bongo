@@ -432,6 +432,8 @@
   "js.shortcutShowHelp": "Afficher cette aide",
   "js.close": "Fermer",
   "js.contentLoaded": " chargé",
+  "js.logConnecting": "[connexion]",
+  "js.logConnected": "[connecté]",
   "js.logConnectionLost": "[connexion perdue]",
   "mail.threadActions": "Actions du fil",
   "mail.backToInbox": "Retour à la boîte de réception",

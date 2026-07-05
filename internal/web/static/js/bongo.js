@@ -1438,10 +1438,19 @@ function clearAdminLogOutput() {
   if (output) output.textContent = '';
 }
 
+function appendAdminLogLine(output, text, className) {
+  var el = document.createElement('div');
+  el.className = className || 'log-line';
+  el.textContent = text;
+  output.appendChild(el);
+  output.scrollTop = output.scrollHeight;
+}
+
 function connectAdminLogs() {
   var output = document.querySelector('[data-log-output]');
   var level = document.getElementById('log-level');
   var component = document.getElementById('log-component');
+  var connectButton = document.getElementById('log-connect');
   if (!output || !level || !component) return;
 
   var state = getAdminLogState();
@@ -1451,18 +1460,17 @@ function connectAdminLogs() {
     '&component=' + encodeURIComponent(component.value);
   state.source = new EventSource(url);
   output.textContent = '';
+  appendAdminLogLine(output, i18n('js.logConnecting'), 'log-line log-line-muted');
+  state.source.onopen = function() {
+    if (connectButton) connectButton.classList.add('connected');
+    appendAdminLogLine(output, i18n('js.logConnected'), 'log-line log-line-muted');
+  };
   state.source.onmessage = function(e) {
-    var el = document.createElement('div');
-    el.className = 'log-line';
-    el.textContent = e.data;
-    output.appendChild(el);
-    output.scrollTop = output.scrollHeight;
+    appendAdminLogLine(output, e.data, 'log-line');
   };
   state.source.onerror = function() {
-    var el = document.createElement('div');
-    el.className = 'log-line log-line-error';
-    el.textContent = i18n('js.logConnectionLost');
-    output.appendChild(el);
+    if (connectButton) connectButton.classList.remove('connected');
+    appendAdminLogLine(output, i18n('js.logConnectionLost'), 'log-line log-line-error');
   };
 }
 

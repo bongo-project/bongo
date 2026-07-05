@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/a-h/templ"
@@ -74,11 +73,15 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 	}
 
 	// Messages per page.
-	if mpp, err := strconv.Atoi(r.FormValue("messages_per_page")); err == nil {
-		switch mpp {
-		case 10, 25, 50, 100:
-			prefs.MessagesPerPage = int32(mpp)
-		}
+	switch r.FormValue("messages_per_page") {
+	case "10":
+		prefs.MessagesPerPage = 10
+	case "25":
+		prefs.MessagesPerPage = 25
+	case "50":
+		prefs.MessagesPerPage = 50
+	case "100":
+		prefs.MessagesPerPage = 100
 	}
 
 	// Default reply mode.

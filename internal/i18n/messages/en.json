@@ -432,6 +432,8 @@
   "js.shortcutShowHelp": "Show this help",
   "js.close": "Close",
   "js.contentLoaded": " loaded",
+  "js.logConnecting": "[connecting]",
+  "js.logConnected": "[connected]",
   "js.logConnectionLost": "[connection lost]",
   "mail.threadActions": "Thread actions",
   "mail.backToInbox": "Back to Inbox",
