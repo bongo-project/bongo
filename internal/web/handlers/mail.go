@@ -502,6 +502,8 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	detail.Thread = h.loadThreadMessageDetails(userID, msg.MailGuid, realMailbox)
+
 	// Pane mode: return just the message content without layout wrapper.
 	if r.URL.Query().Get("pane") == "1" {
 		templ.Handler(templates.MessagePaneContent(detail)).ServeHTTP(w, r)
@@ -510,6 +512,143 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
 	templ.Handler(templates.MessagePage(detail, mailboxInfos)).ServeHTTP(w, r)
+}
+
+func (h *MailHandler) loadThreadMessageDetails(userID, currentGUID, currentMailbox string) []templates.MessageDetail {
+	if h.threads == nil {
+		return nil
+	}
+	summary, err := h.threads.BuildThread(userID, currentGUID)
+	if err != nil || len(summary.AllNodes) <= 1 {
+		return nil
+	}
+
+	details := make([]templates.MessageDetail, 0, len(summary.AllNodes)-1)
+	for _, node := range summary.AllNodes {
+		if node.GUID == currentGUID {
+			continue
+		}
+		mailbox, msg := h.findMailboxMessageByGUID(userID, currentMailbox, node.GUID)
+		if msg == nil {
+			continue
+		}
+		meta := h.loadMailMeta(userID, msg.MailGuid)
+		if meta == nil {
+			continue
+		}
+		details = append(details, h.messageDetailFromMeta(userID, mailbox, msg, meta))
+	}
+	return details
+}
+
+func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid string) (string, *bongov1.MailboxMessage) {
+	if preferredMailbox != "" && !store.VirtualMailboxes[preferredMailbox] {
+		if msgs, err := h.mailboxes.ListMessages(userID, preferredMailbox); err == nil {
+			for _, msg := range msgs {
+				if msg.MailGuid == guid {
+					return preferredMailbox, msg
+				}
+			}
+		}
+	}
+
+	mbs, err := h.mailboxes.ListMailboxes(userID)
+	if err != nil {
+		return "", nil
+	}
+	for _, mb := range mbs {
+		msgs, err := h.mailboxes.ListMessages(userID, mb.Name)
+		if err != nil {
+			continue
+		}
+		for _, msg := range msgs {
+			if msg.MailGuid == guid {
+				return mb.Name, msg
+			}
+		}
+	}
+	return "", nil
+}
+
+func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1.MailboxMessage, meta *bongov1.MailMeta) templates.MessageDetail {
+	detail := templates.MessageDetail{
+		UID:     msg.Uid,
+		Mailbox: mailbox,
+		Subject: meta.Subject,
+		From:    meta.From,
+		To:      meta.To,
+		Date:    time.Unix(meta.ReceivedAt, 0),
+		Seen:    msg.Flags&store.FlagSeen != 0,
+		Flagged: msg.Flags&store.FlagFlagged != 0,
+	}
+
+	if len(meta.Tags) > 0 && h.tags != nil {
+		for _, name := range meta.Tags {
+			ti := templates.TagInfo{Name: name}
+			if tm, err := h.tags.GetTag(userID, name); err == nil {
+				ti.ColourIndex = tm.ColourIndex
+			}
+			detail.Tags = append(detail.Tags, ti)
+		}
+	}
+
+	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
+		rc, err := h.blobs.Get(meta.RawMessage.Hash)
+		if err == nil {
+			rawMsg, _ := io.ReadAll(rc)
+			rc.Close()
+
+			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+			if err == nil {
+				if env.HTML != "" {
+					inlined := inlineStyleBlocks(env.HTML)
+					sanitized := h.sanitizer.Sanitize(inlined)
+					detail.HTMLBody, detail.HasBlockedImages = blockRemoteImages(sanitized)
+				}
+				detail.TextBody = env.Text
+
+				for _, att := range env.Attachments {
+					a := templates.Attachment{
+						Filename:    att.FileName,
+						ContentType: att.ContentType,
+						Size:        int64(len(att.Content)),
+					}
+					for _, br := range meta.Attachments {
+						if br.Filename == att.FileName {
+							a.Hash = br.Hash
+							if br.ContentType != "" {
+								a.ContentType = br.ContentType
+							}
+							break
+						}
+					}
+					detail.Attachments = append(detail.Attachments, a)
+				}
+			} else {
+				detail.TextBody = string(rawMsg)
+			}
+		}
+	}
+
+	for _, blobRef := range meta.Attachments {
+		found := false
+		for _, existing := range detail.Attachments {
+			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			detail.Attachments = append(detail.Attachments, templates.Attachment{
+				Filename:    blobRef.Filename,
+				Hash:        blobRef.Hash,
+				ContentType: blobRef.ContentType,
+				Size:        blobRef.Size,
+			})
+		}
+	}
+
+	return detail
 }
 
 // BulkAction handles bulk operations on selected messages.
