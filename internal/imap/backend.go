@@ -640,6 +640,10 @@ func (s *session) fetchMessage(w *imapserver.FetchWriter, seqNum uint32, msg *bo
 	if options.BodyStructure != nil && rawMsg != nil {
 		bodyStructure := s.buildBodyStructure(rawMsg)
 		if bodyStructure != nil {
+			// A client requesting the extended BODYSTRUCTURE (as opposed to the
+			// non-extended BODY) requires every part to carry a non-nil Extended
+			// field; go-imap panics otherwise. Ensure it before writing.
+			ensureExtendedBodyStructure(bodyStructure)
 			respW.WriteBodyStructure(bodyStructure)
 		}
 	}
@@ -849,6 +853,26 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 		Type:    mainType,
 		Subtype: subType,
 		Size:    uint32(len(rawMsg)),
+	}
+}
+
+// ensureExtendedBodyStructure walks a body structure and gives every part a
+// non-nil Extended field. go-imap panics when a client requests the extended
+// BODYSTRUCTURE but any part lacks it; the extension fields are all optional,
+// so an empty value is a valid (NIL-filled) extended response.
+func ensureExtendedBodyStructure(bs imap.BodyStructure) {
+	switch v := bs.(type) {
+	case *imap.BodyStructureSinglePart:
+		if v.Extended == nil {
+			v.Extended = &imap.BodyStructureSinglePartExt{}
+		}
+	case *imap.BodyStructureMultiPart:
+		if v.Extended == nil {
+			v.Extended = &imap.BodyStructureMultiPartExt{}
+		}
+		for _, child := range v.Children {
+			ensureExtendedBodyStructure(child)
+		}
 	}
 }
 
