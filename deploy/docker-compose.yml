@@ -171,8 +171,37 @@ services:
       - "traefik.http.routers.bongo-web.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       - "traefik.http.services.bongo-web.loadbalancer.server.port=80"
 
+  # Grafana Alloy — collects EVERY container's logs on this host and ships them
+  # to Loki on the Nomad/Pi cluster over Tailscale. Reads logs via the Docker
+  # API (socket), so it captures bongo and all other services. Set LOKI_ENDPOINT
+  # in .env once the hostbox box can reach Loki (see deploy/LOGGING.md).
+  alloy:
+    image: grafana/alloy:latest
+    container_name: bongo-alloy
+    restart: unless-stopped
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --storage.path=/var/lib/alloy
+    environment:
+      # Set the real value in .env before starting this service. A default is
+      # used so an unset value never breaks `docker compose up -d bongo`.
+      LOKI_ENDPOINT: ${LOKI_ENDPOINT:-http://127.0.0.1:3100/loki/api/v1/push}
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # read all containers' logs
+      - alloy-data:/var/lib/alloy                       # WAL/positions survive restarts
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   # The external network Traefik is attached to (compose project `hostbox` -> `traefik_web`).
   traefik:
     external: true
+
+volumes:
+  alloy-data:
     name: ${TRAEFIK_NETWORK}
