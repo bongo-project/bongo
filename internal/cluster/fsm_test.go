@@ -274,6 +274,61 @@ func TestFSMSnapshotAndRestore(t *testing.T) {
 	}
 }
 
+// TestFSMRestoreReplacesStaleState verifies Restore REPLACES rather than merges:
+// keys present in the target store but absent from the snapshot must be removed,
+// and keys present in both take the snapshot's value.
+func TestFSMRestoreReplacesStaleState(t *testing.T) {
+	env := newFSMTestEnv(t)
+
+	// Snapshot contains only /keep/a.
+	env.fsm.Apply(makeProtoLog(1, &bongov1.RaftCommand{
+		Op: bongov1.Op_OP_PUT, Key: []byte("/keep/a"), Value: []byte("snap"),
+	}))
+
+	snap, err := env.fsm.Snapshot()
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	defer snap.Release()
+	var buf bytes.Buffer
+	if err := snap.Persist(&bufferSink{buf: &buf}); err != nil {
+		t.Fatalf("Persist: %v", err)
+	}
+
+	// Target store seeded with a stale key (not in snapshot) and a divergent
+	// value for /keep/a.
+	dir2 := t.TempDir()
+	ps2, err := store.NewPebbleStore(dir2 + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	defer ps2.Close()
+	bs2, err := store.NewBlobStore(dir2)
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	mm2, err := store.NewMetadataManager(dir2)
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	defer mm2.Close()
+
+	_ = ps2.Set([]byte("/stale/x"), []byte("old"))
+	_ = ps2.Set([]byte("/keep/a"), []byte("stale-version"))
+
+	fsm2 := NewFSM(ps2, bs2, mm2, testLogger())
+	if err := fsm2.Restore(io.NopCloser(&buf)); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+
+	if v, err := ps2.Get([]byte("/keep/a")); err != nil || string(v) != "snap" {
+		t.Errorf("/keep/a = %q (err %v), want %q", v, err, "snap")
+	}
+	if _, err := ps2.Get([]byte("/stale/x")); err == nil {
+		t.Error("/stale/x survived Restore: state was merged, not replaced")
+	}
+}
+
 type bufferSink struct {
 	buf *bytes.Buffer
 }

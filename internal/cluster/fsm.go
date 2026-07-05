@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/hashicorp/raft"
 	"google.golang.org/protobuf/proto"
 
@@ -416,17 +417,34 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 	}
 	defer iter.Close()
 
+	// Restore must REPLACE the FSM state with the snapshot (raft.FSM contract),
+	// not merge into it. Clear the existing keyspace and load the snapshot keys
+	// in one atomic batch: merging would let keys deleted after the snapshot
+	// survive (resurrecting them) and leave live-only keys behind.
+	db := f.store.DB()
+	batch := db.NewBatch()
+	defer batch.Close()
+
+	// Every key lives under the "/" prefix, so ["/", "0") spans all of them.
+	if err := batch.DeleteRange([]byte("/"), []byte("0"), nil); err != nil {
+		return fmt.Errorf("clearing store before restore: %w", err)
+	}
+
 	count := 0
 	for iter.Next() {
-		key := iter.Key()
 		val, err := iter.Value()
 		if err != nil {
 			return fmt.Errorf("reading restored value: %w", err)
 		}
-		if err := f.store.Set(key, val); err != nil {
-			return fmt.Errorf("restoring key %s: %w", key, err)
+		// Batch.Set copies key and value, so iterator-owned buffers are safe.
+		if err := batch.Set(iter.Key(), val, nil); err != nil {
+			return fmt.Errorf("staging restored key: %w", err)
 		}
 		count++
+	}
+
+	if err := db.Apply(batch, pebble.Sync); err != nil {
+		return fmt.Errorf("applying restore batch: %w", err)
 	}
 
 	f.logger.Info("fsm: restored from snapshot", "keys", count)
