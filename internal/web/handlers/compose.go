@@ -366,7 +366,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store sender copy only after recipient delivery work has succeeded.
-	if _, err := h.mailboxes.DeliverMessage(userID, "Sent", meta, 0); err != nil {
+	// Mark it Seen: a message you sent is not "unread" and must not inflate
+	// unread counts.
+	if _, err := h.mailboxes.DeliverMessage(userID, "Sent", meta, store.FlagSeen); err != nil {
 		http.Error(w, "Failed to store message in Sent", http.StatusInternalServerError)
 		return
 	}
@@ -472,7 +474,9 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		},
 		Attachments: attachments,
 	}
-	if _, err := h.mailboxes.DeliverMessage(userID, "Drafts", meta, 0); err != nil {
+	// A draft is authored by the user, not received mail: mark it Seen so it
+	// does not count as unread.
+	if _, err := h.mailboxes.DeliverMessage(userID, "Drafts", meta, store.FlagSeen); err != nil {
 		http.Error(w, "Failed to store draft", http.StatusInternalServerError)
 		return
 	}

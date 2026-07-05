@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // doDeleteRequest performs POST /mail/{mailbox}/{uid}/delete and returns the recorder.
@@ -55,6 +58,26 @@ func TestDeleteMessageMovesToTrash(t *testing.T) {
 	}
 	if trash[0].MailGuid != "guid-move" {
 		t.Errorf("Trash message guid = %q, want %q", trash[0].MailGuid, "guid-move")
+	}
+}
+
+func TestSentCopyIsNotCountedUnread(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user-sent"
+
+	// Mirror how the compose handler stores the Sent copy: delivered with the
+	// Seen flag so it never inflates unread counts.
+	meta := &bongov1.MailMeta{Guid: "sent-1", Subject: "Hi", ReceivedAt: time.Now().Unix()}
+	if _, err := env.mailboxes.DeliverMessage(userID, "Sent", meta, store.FlagSeen); err != nil {
+		t.Fatalf("DeliverMessage to Sent: %v", err)
+	}
+
+	_, _, unseen, err := env.mailboxes.CountMessages(userID, "Sent")
+	if err != nil {
+		t.Fatalf("CountMessages: %v", err)
+	}
+	if unseen != 0 {
+		t.Errorf("Sent unseen = %d, want 0 (sent mail must not count as unread)", unseen)
 	}
 }
 
