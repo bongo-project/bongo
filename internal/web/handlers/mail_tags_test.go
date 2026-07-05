@@ -25,6 +25,13 @@ type directApplierTags struct {
 }
 
 func (a *directApplierTags) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	// Route synthetic mailbox operations (deliver/move/expunge/...) through the
+	// FSM dispatcher, mirroring the real cluster apply path. Otherwise they would
+	// be written as opaque keys and never executed.
+	if store.IsMailboxSyntheticCommand(cmd.Key) {
+		_, err := store.ApplyMailboxCommand(a.ps, cmd)
+		return err
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		return a.ps.Set(cmd.Key, cmd.Value)

@@ -30,6 +30,22 @@ import (
 
 const defaultMessagesPerPage = 25
 
+// trashMailbox is the folder deleted messages are moved to. Deleting a message
+// that is already in Trash removes it permanently.
+const trashMailbox = "Trash"
+
+// ensureTrash makes sure the Trash mailbox exists before a message is moved
+// into it (the move FSM does not auto-create the destination). It is cheap on
+// the common path: CreateMailbox does an existence check and only writes when
+// Trash is missing.
+func (h *MailHandler) ensureTrash(userID string) error {
+	if err := h.mailboxes.CreateMailbox(userID, trashMailbox); err != nil &&
+		!strings.Contains(err.Error(), "already exists") {
+		return err
+	}
+	return nil
+}
+
 // MailHandler handles mail browsing endpoints.
 type MailHandler struct {
 	pebble    *store.PebbleStore
@@ -549,13 +565,26 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case "delete":
-			if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted); err != nil {
-				http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
-				return
-			}
-			if _, err := h.mailboxes.Expunge(userID, mailbox); err != nil {
-				http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
-				return
+			if mailbox == trashMailbox {
+				// Already in Trash: remove permanently.
+				if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted); err != nil {
+					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
+					return
+				}
+				if _, err := h.mailboxes.Expunge(userID, mailbox); err != nil {
+					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
+					return
+				}
+			} else {
+				// Move to Trash instead of permanently deleting.
+				if err := h.ensureTrash(userID); err != nil {
+					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
+					return
+				}
+				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), trashMailbox); err != nil {
+					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
+					return
+				}
 			}
 		case "move":
 			dest := r.FormValue("destination")
@@ -1390,18 +1419,33 @@ func (h *MailHandler) DeleteMessage(w http.ResponseWriter, r *http.Request) {
 		realMailbox = rm
 	}
 
-	if err := h.mailboxes.AddFlags(userID, realMailbox, uint32(uid), store.FlagDeleted); err != nil {
-		http.Error(w, "failed to mark message deleted", http.StatusInternalServerError)
-		return
-	}
-	if _, err := h.mailboxes.Expunge(userID, realMailbox); err != nil {
-		http.Error(w, "failed to delete message", http.StatusInternalServerError)
-		return
+	flash := "Message+moved+to+Trash"
+	if realMailbox == trashMailbox {
+		// Already in Trash: remove permanently.
+		if err := h.mailboxes.AddFlags(userID, realMailbox, uint32(uid), store.FlagDeleted); err != nil {
+			http.Error(w, "failed to mark message deleted", http.StatusInternalServerError)
+			return
+		}
+		if _, err := h.mailboxes.Expunge(userID, realMailbox); err != nil {
+			http.Error(w, "failed to delete message", http.StatusInternalServerError)
+			return
+		}
+		flash = "Message+permanently+deleted"
+		h.logger.Info("web: message permanently deleted", "mailbox", realMailbox, "uid", uid, "user", userID)
+	} else {
+		// Move to Trash instead of permanently deleting.
+		if err := h.ensureTrash(userID); err != nil {
+			http.Error(w, "failed to prepare Trash", http.StatusInternalServerError)
+			return
+		}
+		if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), trashMailbox); err != nil {
+			http.Error(w, "failed to move message to Trash", http.StatusInternalServerError)
+			return
+		}
+		h.logger.Info("web: message moved to Trash", "mailbox", realMailbox, "uid", uid, "user", userID)
 	}
 
-	h.logger.Info("web: message deleted", "mailbox", mailbox, "uid", uid, "user", userID)
-
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Message+deleted", mailbox))
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=%s", mailbox, flash))
 	w.WriteHeader(http.StatusOK)
 }
 
