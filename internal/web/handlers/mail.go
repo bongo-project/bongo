@@ -664,51 +664,53 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	action := r.FormValue("action")
 	uidStrs := r.Form["uids"]
 
-	for _, uidStr := range uidStrs {
-		uid, err := strconv.ParseUint(uidStr, 10, 32)
-		if err != nil {
-			continue
-		}
+	targets := h.bulkActionTargets(userID, mailbox, uidStrs, action)
+	if len(targets) == 0 && len(uidStrs) > 0 {
+		http.Error(w, "Bulk update failed", http.StatusBadRequest)
+		return
+	}
+
+	for _, target := range targets {
+		uid := target.uid
+		targetMailbox := target.mailbox
 
 		switch action {
 		case "mark-read":
-			if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagSeen); err != nil {
+			if err := h.mailboxes.AddFlags(userID, targetMailbox, uid, store.FlagSeen); err != nil {
 				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
 				return
 			}
 		case "mark-unread":
-			if err := h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagSeen); err != nil {
+			if err := h.mailboxes.RemoveFlags(userID, targetMailbox, uid, store.FlagSeen); err != nil {
 				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
 				return
 			}
 		case "flag":
-			if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagFlagged); err != nil {
+			if err := h.mailboxes.AddFlags(userID, targetMailbox, uid, store.FlagFlagged); err != nil {
 				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
 				return
 			}
 		case "unflag":
-			if err := h.mailboxes.RemoveFlags(userID, mailbox, uint32(uid), store.FlagFlagged); err != nil {
+			if err := h.mailboxes.RemoveFlags(userID, targetMailbox, uid, store.FlagFlagged); err != nil {
 				http.Error(w, "Bulk update failed", http.StatusInternalServerError)
 				return
 			}
 		case "delete":
-			if mailbox == trashMailbox {
-				// Already in Trash: remove permanently.
-				if err := h.mailboxes.AddFlags(userID, mailbox, uint32(uid), store.FlagDeleted); err != nil {
+			if targetMailbox == trashMailbox {
+				if err := h.mailboxes.AddFlags(userID, targetMailbox, uid, store.FlagDeleted); err != nil {
 					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
 					return
 				}
-				if _, err := h.mailboxes.Expunge(userID, mailbox); err != nil {
+				if _, err := h.mailboxes.Expunge(userID, targetMailbox); err != nil {
 					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
 					return
 				}
 			} else {
-				// Move to Trash instead of permanently deleting.
 				if err := h.ensureTrash(userID); err != nil {
 					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
 					return
 				}
-				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), trashMailbox); err != nil {
+				if err := h.mailboxes.MoveMessage(userID, targetMailbox, uid, trashMailbox); err != nil {
 					http.Error(w, "Bulk delete failed", http.StatusInternalServerError)
 					return
 				}
@@ -716,32 +718,32 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		case "move":
 			dest := r.FormValue("destination")
 			if dest != "" {
-				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), dest); err != nil {
+				if err := h.mailboxes.MoveMessage(userID, targetMailbox, uid, dest); err != nil {
 					http.Error(w, "Bulk move failed", http.StatusInternalServerError)
 					return
 				}
 			}
 		case "spam":
-			if mailbox != "Junk" {
-				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "Junk"); err != nil {
+			if targetMailbox != "Junk" {
+				if err := h.mailboxes.MoveMessage(userID, targetMailbox, uid, "Junk"); err != nil {
 					http.Error(w, "Bulk spam action failed", http.StatusInternalServerError)
 					return
 				}
 			}
-			if msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid)); err == nil && h.applier != nil {
+			if msg, err := h.mailboxes.GetMessage(userID, targetMailbox, uid); err == nil && h.applier != nil {
 				if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0); err != nil {
 					http.Error(w, "Bulk spam action failed", http.StatusInternalServerError)
 					return
 				}
 			}
 		case "not-spam":
-			if mailbox != "INBOX" {
-				if err := h.mailboxes.MoveMessage(userID, mailbox, uint32(uid), "INBOX"); err != nil {
+			if targetMailbox != "INBOX" {
+				if err := h.mailboxes.MoveMessage(userID, targetMailbox, uid, "INBOX"); err != nil {
 					http.Error(w, "Bulk not-spam action failed", http.StatusInternalServerError)
 					return
 				}
 			}
-			if msg, err := h.mailboxes.GetMessage(userID, mailbox, uint32(uid)); err == nil && h.applier != nil {
+			if msg, err := h.mailboxes.GetMessage(userID, targetMailbox, uid); err == nil && h.applier != nil {
 				if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0); err != nil {
 					http.Error(w, "Bulk not-spam action failed", http.StatusInternalServerError)
 					return
@@ -751,6 +753,94 @@ func (h *MailHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("web: bulk action", "action", action, "mailbox", mailbox, "user", userID, "count", len(uidStrs))
+	w.WriteHeader(http.StatusOK)
+}
+
+type bulkMessageTarget struct {
+	mailbox string
+	uid     uint32
+}
+
+func (h *MailHandler) bulkActionTargets(userID, mailbox string, uidStrs []string, action string) []bulkMessageTarget {
+	targets := make([]bulkMessageTarget, 0, len(uidStrs))
+	seen := make(map[string]bool)
+	addTarget := func(mailbox string, uid uint32) {
+		key := fmt.Sprintf("%s:%d", mailbox, uid)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		targets = append(targets, bulkMessageTarget{mailbox: mailbox, uid: uid})
+	}
+
+	for _, uidStr := range uidStrs {
+		uid64, err := strconv.ParseUint(uidStr, 10, 32)
+		if err != nil {
+			continue
+		}
+		uid := uint32(uid64)
+
+		if action != "delete" || h.threads == nil {
+			addTarget(mailbox, uid)
+			continue
+		}
+
+		msg, realMailbox, err := h.messageForMailboxUID(userID, mailbox, uid)
+		if err != nil || msg == nil {
+			addTarget(mailbox, uid)
+			continue
+		}
+
+		summary, err := h.threads.BuildThread(userID, msg.MailGuid)
+		if err != nil || len(summary.AllNodes) <= 1 {
+			addTarget(realMailbox, uid)
+			continue
+		}
+		for _, node := range summary.AllNodes {
+			nodeMailbox, nodeMsg := h.findMailboxMessageByGUID(userID, realMailbox, node.GUID)
+			if nodeMsg == nil {
+				continue
+			}
+			addTarget(nodeMailbox, nodeMsg.Uid)
+		}
+	}
+	return targets
+}
+
+func (h *MailHandler) messageForMailboxUID(userID, mailbox string, uid uint32) (*bongov1.MailboxMessage, string, error) {
+	if store.VirtualMailboxes[mailbox] {
+		msg, realMailbox, err := h.mailboxes.GetMessageVirtual(userID, mailbox, uid)
+		return msg, realMailbox, err
+	}
+	msg, err := h.mailboxes.GetMessage(userID, mailbox, uid)
+	return msg, mailbox, err
+}
+
+// EmptyTrash permanently removes every message currently in Trash.
+func (h *MailHandler) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	if err := h.ensureTrash(userID); err != nil {
+		http.Error(w, "Empty Trash failed", http.StatusInternalServerError)
+		return
+	}
+	msgs, err := h.mailboxes.ListMessages(userID, trashMailbox)
+	if err != nil {
+		http.Error(w, "Empty Trash failed", http.StatusInternalServerError)
+		return
+	}
+	for _, msg := range msgs {
+		if err := h.mailboxes.AddFlags(userID, trashMailbox, msg.Uid, store.FlagDeleted); err != nil {
+			http.Error(w, "Empty Trash failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	if _, err := h.mailboxes.Expunge(userID, trashMailbox); err != nil {
+		http.Error(w, "Empty Trash failed", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("web: emptied trash", "user", userID, "count", len(msgs))
+	w.Header().Set("HX-Redirect", "/mail/Trash?flash=Trash+emptied")
 	w.WriteHeader(http.StatusOK)
 }
 

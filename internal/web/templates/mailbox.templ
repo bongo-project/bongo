@@ -88,6 +88,16 @@ templ MailboxContent(mailbox string, messages []MessageSummary, page, totalPages
 			<input type="checkbox" class="tool-check" title={ t(ctx, "mail.selectAll") } aria-label={ t(ctx, "mail.selectAllMessages") } x-on:change="$event.target.checked ? selectAll() : deselectAll()"/>
 			<a href="/compose" class="tool-btn">{ t(ctx, "mail.compose") }</a>
 			<button class="tool-btn" hx-get={ mailboxURL(mailbox) } hx-target="#main-content">{ t(ctx, "mail.refresh") }</button>
+			if mailbox == "Trash" {
+				<button
+					type="button"
+					class="tool-btn danger"
+					hx-post="/mail/Trash/empty-trash"
+					hx-confirm={ t(ctx, "mail.emptyTrashConfirm") }
+				>
+					{ t(ctx, "mail.emptyTrash") }
+				</button>
+			}
 			<div
 				x-data={ fmt.Sprintf("spamScan('%s')", mailbox) }
 				class="u-inline-flex u-items-center u-gap-05"
