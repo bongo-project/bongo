@@ -163,5 +163,12 @@ telemetry {
     level  = "info"                 # set to "debug" when we need to chase a problem
     format = "json"                 # structured logs for shipping/analysis
     file   = "/logs/bongo.jsonl"    # also written to the bind-mounted /logs dir
+
+    # In-place size rotation of the log file (keeps disk usage bounded; an
+    # external shipper such as Vector can keep tailing the same path).
+    max_size_mb = 50                # rotate once bongo.jsonl reaches 50 MB
+    max_backups = 5                 # keep 5 rotated files
+    max_age_days = 30               # delete rotated files older than 30 days
+    compress    = true              # gzip rotated files
   }
 }

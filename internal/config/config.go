@@ -349,6 +349,43 @@ type LogConfig struct {
 	// File, when set, writes logs to this path in addition to stdout. Useful
 	// for shipping logs off a server for later analysis.
 	File string `hcl:"file,optional" mapstructure:"file"`
+	// Rotation settings for File (ignored when File is empty). The file is
+	// rotated in place, so external log shippers can keep tailing it.
+	MaxSizeMB  int  `hcl:"max_size_mb,optional" mapstructure:"max_size_mb"`   // rotate once the file reaches this size
+	MaxBackups int  `hcl:"max_backups,optional" mapstructure:"max_backups"`   // number of rotated files to retain
+	MaxAgeDays int  `hcl:"max_age_days,optional" mapstructure:"max_age_days"` // delete rotated files older than this
+	Compress   bool `hcl:"compress,optional" mapstructure:"compress"`        // gzip rotated files
+}
+
+// Log-file rotation defaults, used when the corresponding config value is unset.
+const (
+	defaultLogMaxSizeMB  = 50
+	defaultLogMaxBackups = 5
+	defaultLogMaxAgeDays = 30
+)
+
+// LogMaxSizeMB returns the configured rotation size or the default.
+func (c LogConfig) LogMaxSizeMB() int {
+	if c.MaxSizeMB > 0 {
+		return c.MaxSizeMB
+	}
+	return defaultLogMaxSizeMB
+}
+
+// LogMaxBackups returns the configured backup count or the default.
+func (c LogConfig) LogMaxBackups() int {
+	if c.MaxBackups > 0 {
+		return c.MaxBackups
+	}
+	return defaultLogMaxBackups
+}
+
+// LogMaxAgeDays returns the configured retention age or the default.
+func (c LogConfig) LogMaxAgeDays() int {
+	if c.MaxAgeDays > 0 {
+		return c.MaxAgeDays
+	}
+	return defaultLogMaxAgeDays
 }
 
 // Defaults returns a Config with sensible defaults for dev mode.
@@ -443,8 +480,9 @@ func Defaults() *Config {
 				Port:    9090,
 			},
 			Log: LogConfig{
-				Level:  "info",
-				Format: "json",
+				Level:    "info",
+				Format:   "json",
+				Compress: true,
 			},
 		},
 	}

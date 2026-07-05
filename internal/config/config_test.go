@@ -128,6 +128,37 @@ func TestLoadWithEnvVars(t *testing.T) {
 	}
 }
 
+func TestLogRotationDefaults(t *testing.T) {
+	// Unset values fall back to defaults.
+	var lc LogConfig
+	if got := lc.LogMaxSizeMB(); got != defaultLogMaxSizeMB {
+		t.Errorf("LogMaxSizeMB() = %d, want %d", got, defaultLogMaxSizeMB)
+	}
+	if got := lc.LogMaxBackups(); got != defaultLogMaxBackups {
+		t.Errorf("LogMaxBackups() = %d, want %d", got, defaultLogMaxBackups)
+	}
+	if got := lc.LogMaxAgeDays(); got != defaultLogMaxAgeDays {
+		t.Errorf("LogMaxAgeDays() = %d, want %d", got, defaultLogMaxAgeDays)
+	}
+
+	// Explicit values are honoured.
+	set := LogConfig{MaxSizeMB: 10, MaxBackups: 2, MaxAgeDays: 7}
+	if got := set.LogMaxSizeMB(); got != 10 {
+		t.Errorf("LogMaxSizeMB() = %d, want 10", got)
+	}
+	if got := set.LogMaxBackups(); got != 2 {
+		t.Errorf("LogMaxBackups() = %d, want 2", got)
+	}
+	if got := set.LogMaxAgeDays(); got != 7 {
+		t.Errorf("LogMaxAgeDays() = %d, want 7", got)
+	}
+
+	// Defaults() enables compression.
+	if !Defaults().Telemetry.Log.Compress {
+		t.Error("Defaults().Telemetry.Log.Compress = false, want true")
+	}
+}
+
 func TestAntispamBuiltinThresholds(t *testing.T) {
 	// Defaults from Defaults() should surface as 0.5 / 0.9.
 	def := Defaults().Antispam.Builtin
