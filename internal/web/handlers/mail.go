@@ -29,6 +29,7 @@ import (
 )
 
 const defaultMessagesPerPage = 25
+const maxMessagePageLimit = int(^uint(0) >> 1)
 
 // trashMailbox is the folder deleted messages are moved to. Deleting a message
 // that is already in Trash removes it permanently.
@@ -136,93 +137,24 @@ func (h *MailHandler) ListMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	offset := (page - 1) * perPage
-	var msgs []*bongov1.MailboxMessage
-	var total int
-	var err error
-
-	if store.VirtualMailboxes[mailbox] {
-		msgs, total, err = h.mailboxes.ListVirtualMessages(userID, mailbox, offset, perPage)
-	} else {
-		msgs, total, err = h.mailboxes.ListMessagesPaged(userID, mailbox, offset, perPage)
-	}
+	msgs, err := h.listDisplayCandidates(userID, mailbox)
 	if err != nil {
 		http.Error(w, "Error loading messages", http.StatusInternalServerError)
 		return
 	}
 
+	allSummaries := h.buildMessageSummaries(userID, msgs)
+	total := len(allSummaries)
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
 	}
-
-	// Build summaries with thread info.
-	summaries := make([]templates.MessageSummary, 0, len(msgs))
-	seenRoots := make(map[string]bool)
-
-	for _, msg := range msgs {
-		summary := templates.MessageSummary{
-			UID:      msg.Uid,
-			MailGUID: msg.MailGuid,
-			Date:     time.Unix(msg.InternalDate, 0),
-			Seen:     msg.Flags&store.FlagSeen != 0,
-			Flagged:  msg.Flags&store.FlagFlagged != 0,
-		}
-
-		// Load mail meta for subject/from.
-		meta := h.loadMailMeta(userID, msg.MailGuid)
-		if meta != nil {
-			summary.From = meta.From
-			summary.Subject = meta.Subject
-			if meta.RawMessage != nil {
-				summary.Size = meta.RawMessage.Size
-			}
-			summary.SpamScore = meta.SpamScore
-
-			// Thread grouping: find root and count.
-			if h.threads != nil && meta.MessageId != "" {
-				rootGUID, _ := h.threads.GetThreadRoot(userID, msg.MailGuid)
-				summary.ThreadRoot = rootGUID
-
-				// Skip if we already showed this thread root.
-				if seenRoots[rootGUID] {
-					continue
-				}
-				seenRoots[rootGUID] = true
-
-				count := h.threads.GetThreadCount(userID, meta.MessageId)
-				if count > 1 {
-					summary.ThreadCount = count
-				}
-			}
-		}
-		if summary.Subject == "" {
-			summary.Subject = "(no subject)"
-		}
-
-		// Resolve tag dots from the denormalised tags on the message.
-		// Show at most 3 dots; any excess is recorded as OverflowTags.
-		if h.tags != nil && len(msg.Tags) > 0 {
-			const maxDots = 3
-			visible := msg.Tags
-			if len(visible) > maxDots {
-				summary.OverflowTags = len(visible) - maxDots
-				visible = visible[:maxDots]
-			}
-			for _, tagName := range visible {
-				var colourIdx int32
-				if tm, err := h.tags.GetTag(userID, tagName); err == nil {
-					colourIdx = tm.ColourIndex
-				}
-				summary.Tags = append(summary.Tags, templates.TagDot{
-					Name:        tagName,
-					ColourIndex: colourIdx,
-				})
-			}
-		}
-
-		summaries = append(summaries, summary)
+	if page > totalPages {
+		page = totalPages
 	}
+
+	offset := (page - 1) * perPage
+	summaries := paginateMessageSummaries(allSummaries, offset, perPage)
 
 	// Load user preferences for infinite scroll setting.
 	infiniteScroll := false
@@ -276,8 +208,6 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	offset := (page - 1) * perPage
-
 	// Build virtual mailbox name used in template URLs (e.g. /mail/tag:work/uid).
 	virtualMailbox := "tag:" + tagName
 
@@ -296,23 +226,61 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var msgs []*bongov1.MailboxMessage
-	var total int
-	var err error
-
 	if len(guidSet) > 0 {
-		msgs, total, err = h.mailboxes.ListMessagesByGUIDs(userID, guidSet, offset, perPage)
+		var err error
+		msgs, _, err = h.mailboxes.ListMessagesByGUIDs(userID, guidSet, 0, maxMessagePageLimit)
 		if err != nil {
 			http.Error(w, "Error loading messages", http.StatusInternalServerError)
 			return
 		}
 	}
 
+	allSummaries := h.buildMessageSummaries(userID, msgs)
+	total := len(allSummaries)
 	totalPages := (total + perPage - 1) / perPage
 	if totalPages < 1 {
 		totalPages = 1
 	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * perPage
+	summaries := paginateMessageSummaries(allSummaries, offset, perPage)
 
-	// Build summaries with thread info.
+	infiniteScroll := false
+	if h.prefs != nil {
+		if up := h.prefs.Get(userID); up.InfiniteScroll {
+			infiniteScroll = true
+		}
+	}
+
+	if r.URL.Query().Get("partial") == "1" {
+		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, page, totalPages)).ServeHTTP(w, r)
+		return
+	}
+
+	mailboxInfos := h.loadMailboxInfos(userID, virtualMailbox)
+	sidebarTags := h.loadSidebarTags(userID, virtualMailbox)
+	flash := r.URL.Query().Get("flash")
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.MailboxContent(virtualMailbox, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
+		return
+	}
+
+	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+}
+
+func (h *MailHandler) listDisplayCandidates(userID, mailbox string) ([]*bongov1.MailboxMessage, error) {
+	if store.VirtualMailboxes[mailbox] {
+		msgs, _, err := h.mailboxes.ListVirtualMessages(userID, mailbox, 0, maxMessagePageLimit)
+		return msgs, err
+	}
+	msgs, _, err := h.mailboxes.ListMessagesPaged(userID, mailbox, 0, maxMessagePageLimit)
+	return msgs, err
+}
+
+func (h *MailHandler) buildMessageSummaries(userID string, msgs []*bongov1.MailboxMessage) []templates.MessageSummary {
 	summaries := make([]templates.MessageSummary, 0, len(msgs))
 	seenRoots := make(map[string]bool)
 
@@ -343,7 +311,13 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 				}
 				seenRoots[rootGUID] = true
 
-				count := h.threads.GetThreadCount(userID, meta.MessageId)
+				rootMeta := meta
+				if rootGUID != "" && rootGUID != msg.MailGuid {
+					if loadedRoot := h.loadMailMeta(userID, rootGUID); loadedRoot != nil {
+						rootMeta = loadedRoot
+					}
+				}
+				count := h.threads.GetThreadCount(userID, rootMeta.MessageId)
 				if count > 1 {
 					summary.ThreadCount = count
 				}
@@ -353,31 +327,45 @@ func (h *MailHandler) ListTagMessages(w http.ResponseWriter, r *http.Request) {
 			summary.Subject = "(no subject)"
 		}
 
+		h.addTagDots(userID, msg, &summary)
 		summaries = append(summaries, summary)
 	}
 
-	infiniteScroll := false
-	if h.prefs != nil {
-		if up := h.prefs.Get(userID); up.InfiniteScroll {
-			infiniteScroll = true
+	return summaries
+}
+
+func (h *MailHandler) addTagDots(userID string, msg *bongov1.MailboxMessage, summary *templates.MessageSummary) {
+	if h.tags == nil || len(msg.Tags) == 0 {
+		return
+	}
+
+	const maxDots = 3
+	visible := msg.Tags
+	if len(visible) > maxDots {
+		summary.OverflowTags = len(visible) - maxDots
+		visible = visible[:maxDots]
+	}
+	for _, tagName := range visible {
+		var colourIdx int32
+		if tm, err := h.tags.GetTag(userID, tagName); err == nil {
+			colourIdx = tm.ColourIndex
 		}
+		summary.Tags = append(summary.Tags, templates.TagDot{
+			Name:        tagName,
+			ColourIndex: colourIdx,
+		})
 	}
+}
 
-	if r.URL.Query().Get("partial") == "1" {
-		templ.Handler(templates.MessageRowsPartial(summaries, virtualMailbox, page, totalPages)).ServeHTTP(w, r)
-		return
+func paginateMessageSummaries(all []templates.MessageSummary, offset, limit int) []templates.MessageSummary {
+	if offset >= len(all) {
+		return nil
 	}
-
-	mailboxInfos := h.loadMailboxInfos(userID, virtualMailbox)
-	sidebarTags := h.loadSidebarTags(userID, virtualMailbox)
-	flash := r.URL.Query().Get("flash")
-
-	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.MailboxContent(virtualMailbox, summaries, page, totalPages, flash, infiniteScroll)).ServeHTTP(w, r)
-		return
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
 	}
-
-	templ.Handler(templates.MailboxPage(virtualMailbox, mailboxInfos, sidebarTags, summaries, page, totalPages, email, flash, infiniteScroll)).ServeHTTP(w, r)
+	return all[offset:end]
 }
 
 // ShowMessage renders a single message detail view.

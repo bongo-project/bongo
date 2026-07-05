@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"google.golang.org/protobuf/proto"
@@ -234,6 +235,72 @@ func TestServeBlobHTMLAttachmentIsNotRenderedInline(t *testing.T) {
 	}
 	if got := w.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}
+
+func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	applier := &directApplierTags{ps: ps}
+	mailboxes := store.NewMailboxStore(ps, applier)
+	if err := mailboxes.CreateMailbox("user1", "Sent"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+
+	rootMessageID := "<root@example.test>"
+	for i := 0; i < 62; i++ {
+		guid := fmt.Sprintf("thread-message-%02d", i)
+		meta := &bongov1.MailMeta{
+			Guid:       guid,
+			Subject:    "Re: test Lance",
+			From:       "admin@example.com",
+			MessageId:  fmt.Sprintf("<message-%02d@example.test>", i),
+			ReceivedAt: time.Unix(1_700_000_000+int64(i), 0).Unix(),
+		}
+		if i == 0 {
+			meta.MessageId = rootMessageID
+		} else {
+			meta.InReplyTo = rootMessageID
+			meta.References = rootMessageID
+		}
+		if _, err := mailboxes.DeliverMessage("user1", "Sent", meta, 0); err != nil {
+			t.Fatalf("DeliverMessage %d: %v", i, err)
+		}
+	}
+
+	h := NewMailHandler(ps, nil, mailboxes, discardLogger())
+	h.SetThreadStore(store.NewThreadStore(ps, mailboxes))
+
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := middleware.WithUserContext(req.Context(), "user1", "admin@example.com")
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Get("/mail/{mailbox}", h.ListMessages)
+
+	req := httptest.NewRequest(http.MethodGet, "/mail/Sent", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	body := w.Body.String()
+	if strings.Contains(body, "1 of 3") {
+		t.Fatalf("thread-grouped mailbox reported raw-message pages; body contains 1 of 3")
+	}
+	if !strings.Contains(body, "1 of 1") {
+		t.Fatalf("thread-grouped mailbox should report one display page; body missing 1 of 1")
+	}
+	if got := strings.Count(body, `class="msg-row`); got != 1 {
+		t.Fatalf("rendered message rows = %d, want 1", got)
 	}
 }
 
