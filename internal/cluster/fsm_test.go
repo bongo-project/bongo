@@ -114,6 +114,27 @@ func TestFSMApplyDelete(t *testing.T) {
 	}
 }
 
+func TestFSMSkipsAlreadyAppliedEntriesOnReplay(t *testing.T) {
+	env := newFSMTestEnv(t)
+	key := []byte("/user/u1/mail/m1")
+
+	// Deliver a message (index 1), then delete it (index 2).
+	env.fsm.Apply(makeProtoLog(1, &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: []byte("body")}))
+	env.fsm.Apply(makeProtoLog(2, &bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: key}))
+
+	if _, err := env.pebble.Get(key); err == nil {
+		t.Fatal("key should be deleted after the delete entry")
+	}
+
+	// Simulate a restart replaying the log: re-applying the already-applied PUT
+	// (index 1) must be skipped so the deleted message is not resurrected.
+	env.fsm.Apply(makeProtoLog(1, &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: []byte("body")}))
+
+	if _, err := env.pebble.Get(key); err == nil {
+		t.Error("deleted key was resurrected by replaying an already-applied entry (index <= applied)")
+	}
+}
+
 func TestFSMApplyMultiple(t *testing.T) {
 	env := newFSMTestEnv(t)
 
@@ -193,13 +214,15 @@ func TestFSMSnapshotAndRestore(t *testing.T) {
 		"/system/domain/example.com": "domain-data",
 	}
 
+	idx := uint64(1)
 	for key, val := range testData {
 		cmd := &bongov1.RaftCommand{
 			Op:    bongov1.Op_OP_PUT,
 			Key:   []byte(key),
 			Value: []byte(val),
 		}
-		env.fsm.Apply(makeProtoLog(1, cmd))
+		env.fsm.Apply(makeProtoLog(idx, cmd))
+		idx++
 	}
 
 	snap, err := env.fsm.Snapshot()
