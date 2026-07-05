@@ -348,6 +348,14 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/reset-password", user.UserID)) }>
 							<button type="submit" class="btn-outline">{ t(ctx, "admin.resetPassword") }</button>
 						</form>
+						<button
+							type="button"
+							class="btn-danger"
+							hx-post={ fmt.Sprintf("/admin/users/%s/delete", user.UserID) }
+							hx-confirm={ t(ctx, "admin.confirmDeleteUser") }
+						>
+							{ t(ctx, "admin.deleteUser") }
+						</button>
 					</div>
 				</div>
 			}

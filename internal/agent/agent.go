@@ -480,6 +480,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}", adminH.UpdateUser)
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
+		r.Post("/admin/users/{userID}/delete", adminH.DeleteUser)
 		r.Get("/admin/domains", adminH.ListDomains)
 		r.Post("/admin/domains", adminH.CreateDomain)
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)

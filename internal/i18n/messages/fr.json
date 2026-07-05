@@ -334,6 +334,8 @@
   "admin.displayName": "Nom affiché",
   "admin.quotaLabel": "Quota (octets, 0 = illimité)",
   "admin.administrator": "Administrateur",
+  "admin.deleteUser": "Supprimer l'utilisateur",
+  "admin.confirmDeleteUser": "Supprimer definitivement cet utilisateur et toutes ses donnees et messages ? Cette action est irreversible.",
   "admin.resetPassword": "Réinitialiser le mot de passe",
   "admin.domainsSubtitle": "Gérer les domaines de messagerie et la configuration DNS",
   "admin.domainName": "Nom de domaine",

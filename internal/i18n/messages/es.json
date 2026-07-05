@@ -334,6 +334,8 @@
   "admin.displayName": "Nombre visible",
   "admin.quotaLabel": "Cuota (bytes, 0 = ilimitado)",
   "admin.administrator": "Administrador",
+  "admin.deleteUser": "Eliminar usuario",
+  "admin.confirmDeleteUser": "Eliminar permanentemente este usuario y todos sus correos y datos? Esta accion no se puede deshacer.",
   "admin.resetPassword": "Restablecer contraseña",
   "admin.domainsSubtitle": "Gestionar dominios de correo y configuración DNS",
   "admin.domainName": "Nombre de dominio",
