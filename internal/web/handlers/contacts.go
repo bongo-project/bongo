@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime/quotedprintable"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -132,7 +133,7 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	http.Redirect(w, r, "/contacts/"+guid+"?flash=Contact+updated", http.StatusSeeOther)
+	http.Redirect(w, r, "/contacts/"+url.PathEscape(guid)+"?flash=Contact+updated", http.StatusSeeOther)
 }
 
 // DeleteContact handles DELETE to remove a contact.
@@ -161,17 +162,17 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 
 	fromEmail := r.FormValue("from_email")
 	fromName := r.FormValue("from_name")
-	returnTo := r.FormValue("return_to")
+	returnTo := safeContactReturnPath(r.FormValue("return_to"))
 
 	if fromEmail == "" {
-		http.Redirect(w, r, returnTo, http.StatusSeeOther)
+		http.Redirect(w, r, returnTo, http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
 		return
 	}
 
 	existing, _ := h.contacts.FindByEmail(userID, fromEmail)
 	if existing != nil {
 		if returnTo != "" {
-			http.Redirect(w, r, returnTo+"?flash=Already+in+contacts", http.StatusSeeOther)
+			http.Redirect(w, r, returnTo+"?flash=Already+in+contacts", http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
 			return
 		}
 		http.Redirect(w, r, "/contacts?flash=Already+in+contacts", http.StatusSeeOther)
@@ -188,10 +189,21 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 	}
 
 	if returnTo != "" {
-		http.Redirect(w, r, returnTo+"?flash=Contact+added", http.StatusSeeOther)
+		http.Redirect(w, r, returnTo+"?flash=Contact+added", http.StatusSeeOther) // #nosec G710 -- returnTo is constrained by safeContactReturnPath
 		return
 	}
 	http.Redirect(w, r, "/contacts?flash=Contact+added", http.StatusSeeOther)
+}
+
+func safeContactReturnPath(raw string) string {
+	if raw == "" {
+		return "/contacts"
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.IsAbs() || u.Host != "" || !strings.HasPrefix(u.Path, "/") {
+		return "/contacts"
+	}
+	return u.RequestURI()
 }
 
 // ExportContacts downloads all contacts as a .vcf file.
@@ -236,7 +248,9 @@ func (h *ContactsHandler) ExportContacts(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "text/vcard")
 	w.Header().Set("Content-Disposition", `attachment; filename="contacts.vcf"`)
-	w.Write(buf.Bytes())
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		return
+	}
 }
 
 // ImportContacts uploads and parses a .vcf file to create contacts.

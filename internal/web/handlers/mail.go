@@ -30,6 +30,7 @@ import (
 
 const defaultMessagesPerPage = 25
 const maxMessagePageLimit = int(^uint(0) >> 1)
+const importMboxMultipartMaxBytes = 501 << 20
 
 // trashMailbox is the folder deleted messages are moved to. Deleting a message
 // that is already in Trash removes it permanently.
@@ -447,7 +448,9 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		rc, err := h.blobs.Get(meta.RawMessage.Hash)
 		if err == nil {
 			rawMsg, _ := io.ReadAll(rc)
-			rc.Close()
+			if err := rc.Close(); err != nil {
+				rawMsg = nil
+			}
 
 			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 			if err == nil {
@@ -596,7 +599,9 @@ func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1
 		rc, err := h.blobs.Get(meta.RawMessage.Hash)
 		if err == nil {
 			rawMsg, _ := io.ReadAll(rc)
-			rc.Close()
+			if err := rc.Close(); err != nil {
+				rawMsg = nil
+			}
 
 			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 			if err == nil {
@@ -895,7 +900,8 @@ func (h *MailHandler) ImportPage(w http.ResponseWriter, r *http.Request) {
 func (h *MailHandler) ImportMbox(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
-	if err := r.ParseMultipartForm(500 << 20); err != nil {
+	r.Body = http.MaxBytesReader(w, r.Body, importMboxMultipartMaxBytes)
+	if err := r.ParseMultipartForm(500 << 20); err != nil { // #nosec G120 -- request body is capped by MaxBytesReader above
 		http.Error(w, "File too large or invalid form", http.StatusBadRequest)
 		return
 	}
@@ -1072,7 +1078,9 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 	if meta.RawMessage.Size > 0 {
 		w.Header().Set("Content-Length", strconv.FormatInt(meta.RawMessage.Size, 10))
 	}
-	io.Copy(w, rc)
+	if _, err := io.Copy(w, rc); err != nil {
+		return
+	}
 }
 
 // sanitizeFilename removes unsafe characters and limits length for use as a download filename.
@@ -1167,13 +1175,17 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 		if contentType == "application/pdf" {
 			w.Header().Set("Content-Security-Policy", "sandbox")
 		}
-		io.Copy(w, rc)
+		if _, err := io.Copy(w, rc); err != nil {
+			return
+		}
 	default:
 		// Force a download with a non-renderable type so the browser never
 		// interprets the bytes (and does not content-sniff them into HTML).
 		w.Header().Set("Content-Disposition", "attachment")
 		w.Header().Set("Content-Type", "application/octet-stream")
-		io.Copy(w, rc)
+		if _, err := io.Copy(w, rc); err != nil {
+			return
+		}
 	}
 }
 
@@ -1230,11 +1242,12 @@ func (h *MailHandler) ToggleFlags(w http.ResponseWriter, r *http.Request) {
 	// Return updated star icon.
 	msg, _ := h.mailboxes.GetMessage(userID, realMailbox, uint32(uid))
 	flagged := msg != nil && msg.Flags&store.FlagFlagged != 0
+	postPath := fmt.Sprintf("/mail/%s/%d/flags", url.PathEscape(mailbox), uid)
 
 	if flagged {
-		fmt.Fprintf(w, `<span class="flag-star flagged" hx-post="/mail/%s/%d/flags" hx-vals='{"action":"remove","flag":"flagged"}' hx-swap="outerHTML">&#9733;</span>`, mailbox, uid)
+		fmt.Fprintf(w, `<span class="flag-star flagged" hx-post="%s" hx-vals='{"action":"remove","flag":"flagged"}' hx-swap="outerHTML">&#9733;</span>`, postPath)
 	} else {
-		fmt.Fprintf(w, `<span class="flag-star" hx-post="/mail/%s/%d/flags" hx-vals='{"action":"add","flag":"flagged"}' hx-swap="outerHTML">&#9734;</span>`, mailbox, uid)
+		fmt.Fprintf(w, `<span class="flag-star" hx-post="%s" hx-vals='{"action":"add","flag":"flagged"}' hx-swap="outerHTML">&#9734;</span>`, postPath)
 	}
 }
 
@@ -1909,8 +1922,13 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 	if err != nil {
 		return
 	}
-	rawMsg, _ := io.ReadAll(rc)
-	rc.Close()
+	rawMsg, err := io.ReadAll(rc)
+	if closeErr := rc.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return
+	}
 
 	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 	if err != nil {
@@ -2041,8 +2059,13 @@ func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) {
 	if err != nil {
 		return
 	}
-	rawMsg, _ := io.ReadAll(rc)
-	rc.Close()
+	rawMsg, err := io.ReadAll(rc)
+	if closeErr := rc.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return
+	}
 
 	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 	if err != nil {

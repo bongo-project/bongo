@@ -237,7 +237,9 @@ func (h *RulesHandler) testRuleAgainstMail(userID string, rule *bongov1.FilterRu
 			rc, err := h.blobs.Get(meta.RawMessage.Hash)
 			if err == nil {
 				rawBytes, err := io.ReadAll(rc)
-				rc.Close()
+				if closeErr := rc.Close(); err == nil {
+					err = closeErr
+				}
 				if err == nil {
 					bodyText = extractBodyText(rawBytes)
 				}

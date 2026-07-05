@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -92,8 +93,13 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 			switch notif.Type {
 			case bongoimap.NotifNewMail:
 				from, subject := h.loadMessageInfo(userID, mailbox, notif.UID)
-				fmt.Fprintf(w, "event: newmail\ndata: {\"mailbox\":%q,\"uid\":%d,\"exists\":%d,\"from\":%q,\"subject\":%q}\n\n",
-					mailbox, notif.UID, notif.ExistsCount, from, subject)
+				writeSSEJSON(w, "newmail", map[string]any{
+					"mailbox": mailbox,
+					"uid":     notif.UID,
+					"exists":  notif.ExistsCount,
+					"from":    from,
+					"subject": subject,
+				})
 
 				// Send OOB badge update for sidebar unread count.
 				if h.mailboxes != nil {
@@ -105,14 +111,23 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case bongoimap.NotifExpunge:
-				fmt.Fprintf(w, "event: expunge\ndata: {\"mailbox\":%q,\"uid\":%d,\"seq\":%d}\n\n",
-					mailbox, notif.UID, notif.SeqNum)
+				writeSSEJSON(w, "expunge", map[string]any{
+					"mailbox": mailbox,
+					"uid":     notif.UID,
+					"seq":     notif.SeqNum,
+				})
 			case bongoimap.NotifFlagChange:
-				fmt.Fprintf(w, "event: flagchange\ndata: {\"mailbox\":%q,\"uid\":%d,\"flags\":%d}\n\n",
-					mailbox, notif.UID, notif.Flags)
+				writeSSEJSON(w, "flagchange", map[string]any{
+					"mailbox": mailbox,
+					"uid":     notif.UID,
+					"flags":   notif.Flags,
+				})
 			case bongoimap.NotifEventReminder:
-				fmt.Fprintf(w, "event: reminder\ndata: {\"title\":%q,\"start_time\":%d,\"minutes_before\":%d}\n\n",
-					notif.EventTitle, notif.EventStart, notif.MinutesBefore)
+				writeSSEJSON(w, "reminder", map[string]any{
+					"title":          notif.EventTitle,
+					"start_time":     notif.EventStart,
+					"minutes_before": notif.MinutesBefore,
+				})
 			}
 			flusher.Flush()
 
@@ -121,6 +136,14 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+func writeSSEJSON(w http.ResponseWriter, event string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 }
 
 // loadMessageInfo loads from and subject for a message by UID.

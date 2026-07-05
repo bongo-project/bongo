@@ -138,7 +138,7 @@ func (s *SpoolStore) List(dir string) ([]*bongov1.QueueEnvelope, error) {
 // ReadEnvelope reads and unmarshals a single envelope from dir.
 func (s *SpoolStore) ReadEnvelope(dir string, id string) (*bongov1.QueueEnvelope, error) {
 	path := filepath.Join(s.baseDir, dir, id+envSuffix)
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- dir/id are internal spool names beneath baseDir
 	if err != nil {
 		return nil, fmt.Errorf("spool: read envelope %s/%s: %w", dir, id, err)
 	}
@@ -163,7 +163,7 @@ func (s *SpoolStore) WriteEnvelope(dir string, env *bongov1.QueueEnvelope) error
 	tmpPath := filepath.Join(dirPath, ".tmp-"+env.Id+envSuffix)
 	finalPath := filepath.Join(dirPath, env.Id+envSuffix)
 
-	if err := os.WriteFile(tmpPath, data, 0o640); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0o600); err != nil {
 		return fmt.Errorf("spool: write temp %s: %w", tmpPath, err)
 	}
 

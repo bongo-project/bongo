@@ -3,6 +3,7 @@ package smtp
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -104,8 +105,7 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 
 	client, err := netsmtp.NewClient(conn, host)
 	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("smtp client for %s: %w", addr, err)
+		return nil, fmt.Errorf("smtp client for %s: %w", addr, errors.Join(err, conn.Close()))
 	}
 	defer client.Close()
 
@@ -150,7 +150,9 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 
 	// If all recipients failed permanently, no need to send DATA.
 	if len(permanentFails) == len(recipients) {
-		client.Quit()
+		if err := client.Quit(); err != nil {
+			return permanentFails, fmt.Errorf("smtp quit after permanent recipient failures: %w", err)
+		}
 		return permanentFails, nil
 	}
 
@@ -160,15 +162,16 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 	}
 
 	if _, err := wc.Write(rawMsg); err != nil {
-		wc.Close()
-		return permanentFails, fmt.Errorf("writing message: %w", err)
+		return permanentFails, fmt.Errorf("writing message: %w", errors.Join(err, wc.Close()))
 	}
 
 	if err := wc.Close(); err != nil {
 		return permanentFails, fmt.Errorf("closing data: %w", err)
 	}
 
-	client.Quit()
+	if err := client.Quit(); err != nil {
+		return permanentFails, fmt.Errorf("smtp quit: %w", err)
+	}
 	r.logger.Info("relay: delivered", "host", addr, "from", from, "recipients", len(recipients)-len(permanentFails))
 	return permanentFails, nil
 }

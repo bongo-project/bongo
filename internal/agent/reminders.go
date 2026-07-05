@@ -76,7 +76,9 @@ func (a *Agent) checkReminders(mu *sync.Mutex, sent map[string]bool) {
 		}
 		usersSeen[userID] = true
 	}
-	iter.Close()
+	if err := iter.Close(); err != nil {
+		a.logger.Warn("reminders: failed to close user iterator", "error", err)
+	}
 
 	for userID := range usersSeen {
 		events, err := a.Events.ListByDateRange(userID, rangeStart, rangeEnd, "")

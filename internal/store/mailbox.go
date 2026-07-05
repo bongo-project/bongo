@@ -611,7 +611,7 @@ func (ms *MailboxStore) CreateMailbox(userID, name string) error {
 
 	meta := &bongov1.MailboxMeta{
 		Name:        name,
-		UidValidity: uint32(time.Now().Unix()),
+		UidValidity: uint32(time.Now().Unix() & 0xffffffff),
 		UidNext:     1,
 	}
 	metaBytes, err := proto.Marshal(meta)

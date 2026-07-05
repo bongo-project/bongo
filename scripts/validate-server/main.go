@@ -26,15 +26,15 @@ import (
 )
 
 var (
-	host      = flag.String("host", "localhost", "Server hostname")
-	webPort   = flag.Int("web-port", 8080, "Web UI port (HTTPS)")
-	smtpPort  = flag.Int("smtp-port", 2587, "SMTP submission port")
-	imapPort  = flag.Int("imap-port", 1143, "IMAP port")
-	pop3Port  = flag.Int("pop3-port", 1110, "POP3 port")
-	adminUser = flag.String("admin-user", "admin@localhost", "Admin email")
-	adminPass = flag.String("admin-pass", "admin", "Admin password")
-	plainHTTP = flag.Bool("plain-http", false, "Use HTTP instead of HTTPS")
-	seedOnly  = flag.Bool("seed-only", false, "Populate test data without running validation assertions")
+	host        = flag.String("host", "localhost", "Server hostname")
+	webPort     = flag.Int("web-port", 8080, "Web UI port (HTTPS)")
+	smtpPort    = flag.Int("smtp-port", 2587, "SMTP submission port")
+	imapPort    = flag.Int("imap-port", 1143, "IMAP port")
+	pop3Port    = flag.Int("pop3-port", 1110, "POP3 port")
+	adminUser   = flag.String("admin-user", "admin@localhost", "Admin email")
+	adminPass   = flag.String("admin-pass", "admin", "Admin password")
+	plainHTTP   = flag.Bool("plain-http", false, "Use HTTP instead of HTTPS")
+	seedOnly    = flag.Bool("seed-only", false, "Populate test data without running validation assertions")
 	seedTimeout = flag.Duration("timeout", 30*time.Second, "Health check timeout (seed-only mode)")
 )
 
@@ -64,6 +64,31 @@ func (c *checker) check(section, name string, err error) {
 }
 
 func (c *checker) total() int { return c.passed + c.failed }
+
+func closeHTTPBody(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	if err := resp.Body.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: closing response body: %v\n", err)
+	}
+}
+
+func logoutIMAPClient(client *imapclient.Client) {
+	if client == nil {
+		return
+	}
+	if err := client.Logout().Wait(); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: IMAP logout failed: %v\n", err)
+	}
+}
+
+func closeIMAPClient(client *imapclient.Client) {
+	logoutIMAPClient(client)
+	if err := client.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: IMAP close failed: %v\n", err)
+	}
+}
 
 func main() {
 	flag.Parse()
@@ -165,7 +190,7 @@ func phase1UserSetup(c *checker, baseURL, adminEmail, adminPassword, imapAddr st
 		c.check("Users", "Admin login", fmt.Errorf("GET /mail/INBOX: %w", err))
 		return adminClient
 	}
-	resp.Body.Close()
+	closeHTTPBody(resp)
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusSeeOther {
 		c.check("Users", "Admin login", nil)
 	} else {
@@ -183,7 +208,7 @@ func phase1UserSetup(c *checker, baseURL, adminEmail, adminPassword, imapAddr st
 			c.check("Users", "Create "+u.email, fmt.Errorf("POST /admin/users: %w", err))
 			continue
 		}
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		// 303 See Other is the expected redirect on success.
 		if resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusOK {
 			c.check("Users", "Create "+u.email, nil)
@@ -350,7 +375,7 @@ func sendValidationEmail(addr string, e emailMsg) error {
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		tlsCfg := &tls.Config{
 			ServerName:         strings.Split(addr, ":")[0],
-			InsecureSkipVerify: true, //nolint:gosec
+			InsecureSkipVerify: true, // #nosec G402 -- validation tool accepts local self-signed certs
 		}
 		_ = c.StartTLS(tlsCfg)
 	}
@@ -519,9 +544,9 @@ func phase3IMAPOperations(c *checker, imapAddr string) {
 	// COPY message 1 to Archive.
 	if selectData.NumMessages > 0 {
 		// Re-select INBOX (we're still in it, but just to be safe).
-		client.Select("INBOX", nil).Wait()
-		copyCmd := client.Copy(imap.SeqSet{{Start: 1, Stop: 1}}, "Archive")
-		if _, err := copyCmd.Wait(); err != nil {
+		if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+			c.check("IMAP", "COPY to Archive", fmt.Errorf("SELECT INBOX: %w", err))
+		} else if _, err := client.Copy(imap.SeqSet{{Start: 1, Stop: 1}}, "Archive").Wait(); err != nil {
 			c.check("IMAP", "COPY to Archive", fmt.Errorf("COPY: %w", err))
 		} else {
 			// Verify the message is in Archive.
@@ -537,22 +562,25 @@ func phase3IMAPOperations(c *checker, imapAddr string) {
 	}
 
 	// SEARCH for "budget".
-	client.Select("INBOX", nil).Wait()
-	searchCmd := client.Search(&imap.SearchCriteria{
-		Header: []imap.SearchCriteriaHeaderField{
-			{Key: "Subject", Value: "budget"},
-		},
-	}, nil)
-	searchData, err := searchCmd.Wait()
-	if err != nil {
-		c.check("IMAP", "SEARCH budget", fmt.Errorf("SEARCH: %w", err))
+	if _, err := client.Select("INBOX", nil).Wait(); err != nil {
+		c.check("IMAP", "SEARCH budget", fmt.Errorf("SELECT INBOX: %w", err))
 	} else {
-		seqNums := searchData.AllSeqNums()
-		if len(seqNums) > 0 {
-			c.check("IMAP", fmt.Sprintf("SEARCH budget (%d results)", len(seqNums)), nil)
+		searchCmd := client.Search(&imap.SearchCriteria{
+			Header: []imap.SearchCriteriaHeaderField{
+				{Key: "Subject", Value: "budget"},
+			},
+		}, nil)
+		searchData, err := searchCmd.Wait()
+		if err != nil {
+			c.check("IMAP", "SEARCH budget", fmt.Errorf("SEARCH: %w", err))
 		} else {
-			// Not a hard failure; the messages may not have "budget" in subject for bob.
-			c.check("IMAP", "SEARCH budget (0 results, non-critical)", nil)
+			seqNums := searchData.AllSeqNums()
+			if len(seqNums) > 0 {
+				c.check("IMAP", fmt.Sprintf("SEARCH budget (%d results)", len(seqNums)), nil)
+			} else {
+				// Not a hard failure; the messages may not have "budget" in subject for bob.
+				c.check("IMAP", "SEARCH budget (0 results, non-critical)", nil)
+			}
 		}
 	}
 
@@ -587,7 +615,10 @@ func phase4POP3Retrieval(c *checker, pop3Addr string) {
 		return
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(30 * time.Second)) //nolint:errcheck
+	if err := conn.SetDeadline(time.Now().Add(30 * time.Second)); err != nil {
+		c.check("POP3", "Set deadline", err)
+		return
+	}
 
 	reader := bufio.NewReader(conn)
 
@@ -790,7 +821,7 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 				c.check("Contacts", label+": Create "+ct.name, err)
 				continue
 			}
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			created++
 		}
 		c.check("Contacts", fmt.Sprintf("%s: Created %d/%d contacts", label, created, want), boolErr(created == want))
@@ -802,7 +833,7 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 			continue
 		}
 		vcfData, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		if len(vcfData) == 0 {
 			c.check("Contacts", label+": Export VCF", fmt.Errorf("empty response"))
 			continue
@@ -816,14 +847,14 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		closeHTTPBody(resp)
 
 		guids := extractGUIDs(string(body), "/contacts/")
 		for _, guid := range guids {
 			req, _ := http.NewRequest(http.MethodDelete, baseURL+"/contacts/"+guid, nil)
 			dresp, _ := userClient.Do(req)
 			if dresp != nil {
-				dresp.Body.Close()
+				closeHTTPBody(dresp)
 			}
 		}
 		c.check("Contacts", fmt.Sprintf("%s: Deleted %d contacts", label, len(guids)), nil)
@@ -836,8 +867,14 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 			c.check("Contacts", label+": Import VCF", fmt.Errorf("multipart: %w", err))
 			continue
 		}
-		part.Write(vcfData)
-		mw.Close()
+		if _, err := part.Write(vcfData); err != nil {
+			c.check("Contacts", label+": Import VCF", fmt.Errorf("write multipart: %w", err))
+			continue
+		}
+		if err := mw.Close(); err != nil {
+			c.check("Contacts", label+": Import VCF", fmt.Errorf("close multipart: %w", err))
+			continue
+		}
 
 		req, _ := http.NewRequest(http.MethodPost, baseURL+"/contacts/import", &buf)
 		req.Header.Set("Content-Type", mw.FormDataContentType())
@@ -846,7 +883,7 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 			c.check("Contacts", label+": Import VCF", err)
 			continue
 		}
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		c.check("Contacts", label+": Import VCF", nil)
 
 		// Verify all restored.
@@ -856,7 +893,7 @@ func phase5Contacts(c *checker, baseURL string, adminClient *http.Client) {
 			continue
 		}
 		body, _ = io.ReadAll(resp.Body)
-		resp.Body.Close()
+		closeHTTPBody(resp)
 
 		restored := 0
 		for _, ct := range tu.contacts {
@@ -961,7 +998,7 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 				c.check("Calendar", label+": Create "+e.title, err)
 				continue
 			}
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			created++
 		}
 		c.check("Calendar", fmt.Sprintf("%s: Created %d/%d events", label, created, want), boolErr(created == want))
@@ -973,7 +1010,7 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 			continue
 		}
 		icsData, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		if len(icsData) == 0 {
 			c.check("Calendar", label+": Export ICS", fmt.Errorf("empty response"))
 			continue
@@ -989,7 +1026,7 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 				continue
 			}
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			guids := extractGUIDs(string(body), "/calendar/event/")
 			for _, guid := range guids {
 				if guid == "new" || strings.HasPrefix(guid, "new?") {
@@ -998,7 +1035,7 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 				req, _ := http.NewRequest(http.MethodDelete, baseURL+"/calendar/event/"+guid, nil)
 				dresp, _ := userClient.Do(req)
 				if dresp != nil {
-					dresp.Body.Close()
+					closeHTTPBody(dresp)
 				}
 			}
 		}
@@ -1012,8 +1049,14 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 			c.check("Calendar", label+": Import ICS", fmt.Errorf("multipart: %w", err))
 			continue
 		}
-		part.Write(icsData)
-		mw.Close()
+		if _, err := part.Write(icsData); err != nil {
+			c.check("Calendar", label+": Import ICS", fmt.Errorf("write multipart: %w", err))
+			continue
+		}
+		if err := mw.Close(); err != nil {
+			c.check("Calendar", label+": Import ICS", fmt.Errorf("close multipart: %w", err))
+			continue
+		}
 
 		req, _ := http.NewRequest(http.MethodPost, baseURL+"/calendar/import", &buf)
 		req.Header.Set("Content-Type", mw.FormDataContentType())
@@ -1022,7 +1065,7 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 			c.check("Calendar", label+": Import ICS", err)
 			continue
 		}
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		c.check("Calendar", label+": Import ICS", nil)
 
 		// Verify events restored.
@@ -1037,7 +1080,7 @@ func phase6Calendar(c *checker, baseURL string, adminClient *http.Client) {
 					continue
 				}
 				body, _ := io.ReadAll(resp.Body)
-				resp.Body.Close()
+				closeHTTPBody(resp)
 				if strings.Contains(string(body), e.title) {
 					found = true
 					break
@@ -1070,7 +1113,7 @@ func phase7WebAuth(c *checker, baseURL string) {
 	if err != nil {
 		c.check("WebAuth", "Login flow", err)
 	} else {
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		if resp.StatusCode == http.StatusOK {
 			c.check("WebAuth", "Login flow", nil)
 		} else {
@@ -1083,7 +1126,7 @@ func phase7WebAuth(c *checker, baseURL string) {
 	if err != nil {
 		c.check("WebAuth", "Logout", err)
 	} else {
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		c.check("WebAuth", "Logout", nil)
 	}
 
@@ -1091,7 +1134,7 @@ func phase7WebAuth(c *checker, baseURL string) {
 	unauthClient := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- validation tool accepts local self-signed certs
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -1101,7 +1144,7 @@ func phase7WebAuth(c *checker, baseURL string) {
 	if err != nil {
 		c.check("WebAuth", "Requires auth", err)
 	} else {
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		// Should redirect to /login or return 401/403.
 		if resp.StatusCode == http.StatusSeeOther || resp.StatusCode == http.StatusFound ||
 			resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
@@ -1123,7 +1166,7 @@ func phase7WebAuth(c *checker, baseURL string) {
 		Jar:     jar,
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- validation tool accepts local self-signed certs
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -1133,7 +1176,7 @@ func phase7WebAuth(c *checker, baseURL string) {
 	if err != nil {
 		c.check("WebAuth", "Non-admin /admin", err)
 	} else {
-		resp.Body.Close()
+		closeHTTPBody(resp)
 		if resp.StatusCode == http.StatusForbidden {
 			c.check("WebAuth", "Non-admin /admin returns 403", nil)
 		} else {
@@ -1236,7 +1279,7 @@ func sendRawSMTP(addr, from, pass, to string, msg []byte) error {
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		tlsCfg := &tls.Config{
 			ServerName:         strings.Split(addr, ":")[0],
-			InsecureSkipVerify: true, //nolint:gosec
+			InsecureSkipVerify: true, // #nosec G402 -- validation tool accepts local self-signed certs
 		}
 		_ = c.StartTLS(tlsCfg)
 	}
@@ -1303,7 +1346,7 @@ func checkSpamRouting(imapAddr, user, pass string) (junkCount int, inboxHasSpam 
 		inboxHasSpam = true
 	}
 
-	ic.Logout().Wait()
+	logoutIMAPClient(ic)
 	return junkCount, inboxHasSpam, nil
 }
 
@@ -1321,12 +1364,12 @@ func markJunkAsSpam(imapAddr, user, pass string) error {
 	mbox, err := ic.Select("Junk", nil).Wait()
 	if err != nil {
 		// Junk folder may not exist yet — nothing to train on.
-		ic.Logout().Wait()
+		logoutIMAPClient(ic)
 		return nil
 	}
 
 	if mbox.NumMessages == 0 {
-		ic.Logout().Wait()
+		logoutIMAPClient(ic)
 		return nil // Nothing to mark.
 	}
 
@@ -1341,7 +1384,7 @@ func markJunkAsSpam(imapAddr, user, pass string) error {
 		return fmt.Errorf("STORE +FLAGS: %w", err)
 	}
 
-	ic.Logout().Wait()
+	logoutIMAPClient(ic)
 	return nil
 }
 
@@ -1418,12 +1461,12 @@ func checkForBounce(imapAddr, user, pass string) (bool, error) {
 		}
 		searchData, err := ic.Search(criteria, nil).Wait()
 		if err == nil && len(searchData.AllSeqNums()) > 0 {
-			ic.Logout().Wait()
+			logoutIMAPClient(ic)
 			return true, nil
 		}
 	}
 
-	ic.Logout().Wait()
+	logoutIMAPClient(ic)
 	return false, nil
 }
 
@@ -1486,7 +1529,7 @@ func loginWebClient(baseURL, email, password string) *http.Client {
 		Jar:     jar,
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- validation tool accepts local self-signed certs
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -1500,7 +1543,7 @@ func loginWebClient(baseURL, email, password string) *http.Client {
 		fmt.Fprintf(os.Stderr, "  login %s failed: %v\n", email, err)
 		return client
 	}
-	resp.Body.Close()
+	closeHTTPBody(resp)
 
 	return client
 }
@@ -1644,7 +1687,7 @@ func phase3bIMAPHierarchy(c *checker, imapAddr string) {
 		}
 	}
 
-	ic.Logout().Wait()
+	logoutIMAPClient(ic)
 }
 
 func hasAttr(attrs []imap.MailboxAttr, want imap.MailboxAttr) bool {
@@ -1682,7 +1725,7 @@ func runSeedOnly(baseURL, smtpAddr, imapAddr string) {
 			fmt.Fprintf(os.Stderr, "  failed to create %s: %v\n", u.email, err)
 			continue
 		}
-		resp.Body.Close()
+		closeHTTPBody(resp)
 	}
 	fmt.Printf("  created %d test users\n", len(testUsers))
 
@@ -1714,14 +1757,14 @@ func waitForSeedHealth(baseURL string, timeout time.Duration) error {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // dev tool
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- validation tool accepts local self-signed certs
 		},
 	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(baseURL + "/health/live")
 		if err == nil {
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			if resp.StatusCode == http.StatusOK {
 				return nil
 			}
@@ -1769,7 +1812,9 @@ func seedSubfolders(imapAddr string) {
 
 		if err := ic.Login(u.email, u.pass).Wait(); err != nil {
 			fmt.Fprintf(os.Stderr, "  IMAP login failed for %s: %v\n", u.email, err)
-			ic.Close()
+			if closeErr := ic.Close(); closeErr != nil {
+				fmt.Fprintf(os.Stderr, "  warning: IMAP close failed for %s: %v\n", u.email, closeErr)
+			}
 			continue
 		}
 
@@ -1792,8 +1837,10 @@ func seedSubfolders(imapAddr string) {
 			}
 		}
 
-		ic.Logout().Wait()
-		ic.Close()
+		logoutIMAPClient(ic)
+		if err := ic.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: IMAP close failed for %s: %v\n", u.email, err)
+		}
 	}
 }
 
@@ -1912,7 +1959,7 @@ func sendSeedEmail(addr string, e seedEmail) error {
 	if ok, _ := c.Extension("STARTTLS"); ok {
 		tlsCfg := &tls.Config{
 			ServerName:         strings.Split(addr, ":")[0],
-			InsecureSkipVerify: true, //nolint:gosec // dev tool
+			InsecureSkipVerify: true, // #nosec G402 -- validation tool accepts local self-signed certs
 		}
 		_ = c.StartTLS(tlsCfg)
 	}
@@ -2031,7 +2078,7 @@ func seedContactsAndEvents(baseURL string) {
 			if err != nil {
 				continue
 			}
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			totalContacts++
 		}
 
@@ -2047,7 +2094,7 @@ func seedContactsAndEvents(baseURL string) {
 			if err != nil {
 				continue
 			}
-			resp.Body.Close()
+			closeHTTPBody(resp)
 			totalEvents++
 		}
 

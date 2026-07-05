@@ -130,7 +130,7 @@ func SelfSignedTLSConfig(hosts []string) (*tls.Config, error) {
 
 // LoadCAPool loads a CA certificate file and returns a CertPool for client verification.
 func LoadCAPool(caFile string) (*x509.CertPool, error) {
-	caPEM, err := os.ReadFile(caFile)
+	caPEM, err := os.ReadFile(caFile) // #nosec G304 -- operator-configured CA bundle path
 	if err != nil {
 		return nil, fmt.Errorf("reading CA file: %w", err)
 	}

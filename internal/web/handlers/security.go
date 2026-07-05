@@ -296,11 +296,11 @@ func (h *SecurityHandler) setTOTPPendingCookie(w http.ResponseWriter, secret str
 		Exp:    time.Now().Add(totpPendingCookieTTL).Unix(),
 	}
 
-	data, _ := json.Marshal(payload)
+	data, _ := json.Marshal(payload) // #nosec G117 -- TOTP setup secret is signed and stored temporarily in an HttpOnly cookie
 	sig := h.signPayload(data)
 	value := base64.RawURLEncoding.EncodeToString(data) + "." + base64.RawURLEncoding.EncodeToString(sig)
 
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- Secure is set from runtime TLS/proxy config so dev HTTP can enable TOTP
 		Name:     totpPendingCookieName,
 		Value:    value,
 		Path:     "/",
@@ -357,7 +357,7 @@ func (h *SecurityHandler) getTOTPPendingCookie(r *http.Request) (string, error) 
 }
 
 func (h *SecurityHandler) clearTOTPPendingCookie(w http.ResponseWriter) {
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- clearing must also work for non-Secure dev TOTP cookies
 		Name:     totpPendingCookieName,
 		Value:    "",
 		Path:     "/",

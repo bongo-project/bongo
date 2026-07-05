@@ -111,10 +111,19 @@ func (bs *BlobSyncer) pull(hash string) error {
 		}
 		security.SignInternalRequest(headReq, bs.secret)
 		resp, err := bs.client.Do(headReq)
-		if err != nil || resp.StatusCode != http.StatusOK {
+		if err != nil {
 			continue
 		}
-		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				bs.logger.Debug("blobsync: failed to close HEAD response body", "hash", hash, "error", closeErr)
+			}
+			continue
+		}
+		if err := resp.Body.Close(); err != nil {
+			bs.logger.Debug("blobsync: failed to close HEAD response body", "hash", hash, "error", err)
+			continue
+		}
 
 		// GET the blob.
 		getURL := fmt.Sprintf("http://%s/internal/blob/%s", m.HTTPAddr, hash)
@@ -129,12 +138,16 @@ func (bs *BlobSyncer) pull(hash string) error {
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				bs.logger.Debug("blobsync: failed to close non-OK GET response body", "hash", hash, "error", closeErr)
+			}
 			continue
 		}
 
 		storedHash, _, err := bs.blobs.PutReader(resp.Body)
-		resp.Body.Close()
+		if closeErr := resp.Body.Close(); err == nil {
+			err = closeErr
+		}
 		if err != nil {
 			return fmt.Errorf("storing pulled blob: %w", err)
 		}

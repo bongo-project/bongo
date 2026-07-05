@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -70,8 +71,7 @@ func NewIMAPSource(host string, port int, useTLS bool, user, pass string, logger
 
 	loginCmd := c.Login(user, pass)
 	if err := loginCmd.Wait(); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("login failed: %w", err)
+		return nil, fmt.Errorf("login failed: %w", errors.Join(err, conn.Close()))
 	}
 
 	return &IMAPSource{
@@ -166,7 +166,9 @@ func (s *IMAPSource) Messages(ctx context.Context, folder string) (<-chan Messag
 					}
 					// Drain body literals to avoid blocking.
 					if bs, ok := item.(imapclient.FetchItemDataBodySection); ok {
-						io.Copy(io.Discard, bs.Literal)
+						if _, err := io.Copy(io.Discard, bs.Literal); err != nil {
+							s.logger.Debug("imap import: failed to drain fetch literal", "error", err)
+						}
 					}
 				}
 			}
@@ -199,7 +201,9 @@ func (s *IMAPSource) Messages(ctx context.Context, folder string) (<-chan Messag
 					if readErr != nil {
 						errCh <- fmt.Errorf("reading message body: %w", readErr)
 						drainFetch()
-						fetchCmd.Close()
+						if closeErr := fetchCmd.Close(); closeErr != nil {
+							s.logger.Debug("imap import: failed to close fetch after read error", "error", closeErr)
+						}
 						return
 					}
 					msg.Raw = raw
@@ -254,7 +258,9 @@ func (s *IMAPSource) Close() error {
 		return err
 	case <-time.After(5 * time.Second):
 		s.logger.Warn("imap client.Close() timed out, force-closing connection")
-		s.conn.Close()
+		if err := s.conn.Close(); err != nil {
+			s.logger.Warn("imap connection force-close failed", "error", err)
+		}
 		return nil
 	}
 }
@@ -283,7 +289,7 @@ func (s *MboxSource) Messages(ctx context.Context, folder string) (<-chan Messag
 		defer close(errCh)
 
 		for _, path := range s.files {
-			f, err := os.Open(path)
+			f, err := os.Open(path) // #nosec G304 -- import source files are operator supplied
 			if err != nil {
 				errCh <- fmt.Errorf("opening %s: %w", path, err)
 				return
@@ -342,7 +348,10 @@ func (s *MboxSource) Messages(ctx context.Context, folder string) (<-chan Messag
 				flush()
 			}
 
-			f.Close()
+			if err := f.Close(); err != nil {
+				errCh <- fmt.Errorf("closing %s: %w", path, err)
+				return
+			}
 
 			if err := scanner.Err(); err != nil {
 				errCh <- fmt.Errorf("scanning %s: %w", path, err)
@@ -419,7 +428,7 @@ func (s *MaildirSource) Messages(ctx context.Context, folder string) (<-chan Mes
 					continue
 				}
 
-				raw, err := os.ReadFile(filepath.Join(path, entry.Name()))
+				raw, err := os.ReadFile(filepath.Join(path, entry.Name())) // #nosec G304 -- EML import directory is operator supplied
 				if err != nil {
 					errCh <- fmt.Errorf("reading %s: %w", entry.Name(), err)
 					return
@@ -520,7 +529,7 @@ func (s *EMLSource) Messages(ctx context.Context, folder string) (<-chan Message
 		defer close(errCh)
 
 		for _, path := range s.files {
-			raw, err := os.ReadFile(path)
+			raw, err := os.ReadFile(path) // #nosec G304 -- import source files are operator supplied
 			if err != nil {
 				errCh <- fmt.Errorf("reading %s: %w", path, err)
 				return

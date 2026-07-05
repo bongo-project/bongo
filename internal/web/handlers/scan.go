@@ -316,7 +316,9 @@ func (h *ScanHandler) scoreMessage(meta *bongov1.MailMeta) float32 {
 		return 0
 	}
 	raw, err := io.ReadAll(rc)
-	rc.Close()
+	if closeErr := rc.Close(); err == nil {
+		err = closeErr
+	}
 	if err != nil {
 		return 0
 	}

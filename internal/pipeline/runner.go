@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -151,7 +152,9 @@ func (r *Runner) processMessage(ctx context.Context, env *bongov1.QueueEnvelope)
 
 		env.CurrentStage = stage.Name()
 		result, err := stage.Process(ctx, env, rc)
-		rc.Close()
+		if closeErr := rc.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
 		if err != nil {
 			if moveErr := r.spool.Move(env.Id, "processing", "error"); moveErr != nil {
 				r.logger.Error("pipeline: move to error failed", "id", env.Id, "error", moveErr)

@@ -100,11 +100,15 @@ func (c *AgentClient) Start(ctx context.Context) error {
 		Meta:    c.config.Meta,
 	})
 	if err != nil {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			c.logger.Warn("agent client: failed to close rejected connection", "error", closeErr)
+		}
 		return fmt.Errorf("agent client: register: %w", err)
 	}
 	if !resp.Accepted {
-		conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			c.logger.Warn("agent client: failed to close rejected connection", "error", closeErr)
+		}
 		return fmt.Errorf("agent client: registration rejected: %s", resp.Message)
 	}
 
@@ -142,7 +146,9 @@ func (c *AgentClient) Stop() {
 	c.mu.Unlock()
 
 	if conn != nil {
-		conn.Close()
+		if err := conn.Close(); err != nil {
+			c.logger.Warn("agent client: failed to close connection", "error", err)
+		}
 	}
 
 	c.logger.Info("agent client: stopped", "agent_id", c.config.AgentID)

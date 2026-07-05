@@ -62,7 +62,9 @@ func (s *Server) Listen(plainAddr, tlsAddr string, proxyProtocol bool) error {
 	if tlsAddr != "" && s.tlsCfg != nil {
 		rawTLS, err := net.Listen("tcp", tlsAddr)
 		if err != nil {
-			s.plainListener.Close()
+			if closeErr := s.plainListener.Close(); closeErr != nil {
+				s.logger.Warn("pop3: failed to close plain listener after TLS listen failure", "error", closeErr)
+			}
 			return fmt.Errorf("pop3s listen %s: %w", tlsAddr, err)
 		}
 		// PROXY header must be read before the TLS handshake.

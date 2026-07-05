@@ -2,6 +2,7 @@ package importer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -469,8 +470,7 @@ func (im *Importer) connectDst() (*imapclient.Client, error) {
 
 	loginCmd := c.Login(im.cfg.User, im.cfg.Pass)
 	if err := loginCmd.Wait(); err != nil {
-		c.Close()
-		return nil, fmt.Errorf("destination login failed: %w", err)
+		return nil, fmt.Errorf("destination login failed: %w", errors.Join(err, c.Close()))
 	}
 
 	return c, nil

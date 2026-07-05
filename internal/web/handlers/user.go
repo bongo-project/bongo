@@ -82,5 +82,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createUserResponse{UserID: userID})
+	if err := json.NewEncoder(w).Encode(createUserResponse{UserID: userID}); err != nil {
+		return
+	}
 }
