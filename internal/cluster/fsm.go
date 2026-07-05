@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,12 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/store"
 )
+
+// raftAppliedIndexKey stores the highest Raft log index already applied to
+// Pebble. Pebble persists independently of the Raft log, so on restart Raft
+// replays committed entries; without this watermark those entries would be
+// re-applied, re-creating data that was deleted after it was first written.
+const raftAppliedIndexKey = "/system/raft/applied_index"
 
 // Command represents a legacy JSON Raft FSM command (kept for backward compat).
 type Command struct {
@@ -80,8 +87,40 @@ func (f *FSM) SetNotifier(n MailboxNotifier) {
 	f.notifier = n
 }
 
-// Apply applies a committed Raft log entry to the Pebble store.
+// appliedIndex returns the highest Raft index already applied to Pebble, or 0.
+func (f *FSM) appliedIndex() uint64 {
+	v, err := f.store.Get([]byte(raftAppliedIndexKey))
+	if err != nil || len(v) != 8 {
+		return 0
+	}
+	return binary.BigEndian.Uint64(v)
+}
+
+// setAppliedIndex records the highest Raft index applied to Pebble.
+func (f *FSM) setAppliedIndex(idx uint64) {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], idx)
+	if err := f.store.Set([]byte(raftAppliedIndexKey), buf[:]); err != nil {
+		f.logger.Warn("fsm: failed to persist applied index", "index", idx, "error", err)
+	}
+}
+
+// Apply applies a committed Raft log entry to the Pebble store. Entries at or
+// below the persisted applied index are skipped so that log replay on restart
+// does not re-apply (and thereby resurrect deleted) data.
 func (f *FSM) Apply(log *raft.Log) interface{} {
+	if log.Index != 0 && log.Index <= f.appliedIndex() {
+		return nil
+	}
+	result := f.applyEntry(log)
+	if log.Index != 0 {
+		f.setAppliedIndex(log.Index)
+	}
+	return result
+}
+
+// applyEntry applies a single committed Raft log entry to the Pebble store.
+func (f *FSM) applyEntry(log *raft.Log) interface{} {
 	// Try protobuf first.
 	var cmd bongov1.RaftCommand
 	if err := proto.Unmarshal(log.Data, &cmd); err == nil && cmd.Op != bongov1.Op_OP_UNSPECIFIED {
