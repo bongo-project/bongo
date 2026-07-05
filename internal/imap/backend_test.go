@@ -435,3 +435,46 @@ func TestSessionUnselect(t *testing.T) {
 		t.Error("cachedMsgs should be nil after Unselect")
 	}
 }
+
+func TestEnsureExtendedBodyStructure(t *testing.T) {
+	// A single part with no Extended must gain one.
+	single := &imap.BodyStructureSinglePart{Type: "text", Subtype: "plain"}
+	ensureExtendedBodyStructure(single)
+	if single.Extended == nil {
+		t.Error("single part Extended still nil after ensureExtendedBodyStructure")
+	}
+
+	// A multipart and all of its children must gain Extended recursively.
+	multi := &imap.BodyStructureMultiPart{
+		Subtype: "mixed",
+		Children: []imap.BodyStructure{
+			&imap.BodyStructureSinglePart{Type: "text", Subtype: "plain"},
+			&imap.BodyStructureSinglePart{Type: "text", Subtype: "html"},
+		},
+	}
+	ensureExtendedBodyStructure(multi)
+	if multi.Extended == nil {
+		t.Error("multipart Extended still nil")
+	}
+	for i, child := range multi.Children {
+		sp, ok := child.(*imap.BodyStructureSinglePart)
+		if !ok || sp.Extended == nil {
+			t.Errorf("child %d Extended still nil", i)
+		}
+	}
+}
+
+func TestBuildBodyStructureIsWritableAsExtended(t *testing.T) {
+	// A message that produced the production panic: any built structure, once
+	// passed through ensureExtendedBodyStructure, must have Extended populated
+	// so go-imap can write it for a BODYSTRUCTURE (extended) request.
+	raw := []byte("Subject: t\r\nContent-Type: text/plain\r\n\r\nhello\r\n")
+	s := &session{}
+	bs := s.buildBodyStructure(raw)
+	ensureExtendedBodyStructure(bs)
+	if sp, ok := bs.(*imap.BodyStructureSinglePart); ok {
+		if sp.Extended == nil {
+			t.Error("built single-part structure missing Extended")
+		}
+	}
+}
