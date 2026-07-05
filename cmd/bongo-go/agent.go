@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 
 	"github.com/bongo-go/bongo-go/internal/agent"
 	"github.com/bongo-go/bongo-go/internal/config"
@@ -110,15 +111,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 	logSink := handlers.NewLogSink()
 
 	// Logs always go to stdout (so `docker logs`/journald still work). When
-	// telemetry.log.file is set, also append to that file for off-host shipping.
+	// telemetry.log.file is set, also write to that file for off-host shipping.
+	// The file is size-rotated in place (lumberjack), which keeps disk usage
+	// bounded while letting an external shipper keep tailing the same path.
 	var logOut io.Writer = os.Stdout
 	if path := cfg.Telemetry.Log.File; path != "" {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)
-		if err != nil {
-			return fmt.Errorf("opening log file %s: %w", path, err)
+		logCfg := cfg.Telemetry.Log
+		rotator := &lumberjack.Logger{
+			Filename:   path,
+			MaxSize:    logCfg.LogMaxSizeMB(),
+			MaxBackups: logCfg.LogMaxBackups(),
+			MaxAge:     logCfg.LogMaxAgeDays(),
+			Compress:   logCfg.Compress,
 		}
-		defer f.Close()
-		logOut = io.MultiWriter(os.Stdout, f)
+		defer rotator.Close()
+		logOut = io.MultiWriter(os.Stdout, rotator)
 	}
 
 	var baseHandler slog.Handler

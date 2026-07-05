@@ -54,6 +54,15 @@ services:
 
     command: ["serve", "--config", "/etc/bongo/bongo.hcl"]
 
+    # Cap the Docker json-file log buffer so it can't fill the disk. bongo also
+    # writes a rotated bongo.jsonl (see telemetry.log in bongo.prod.hcl); a
+    # host-level collector (e.g. Grafana Alloy / Vector) can read either.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     volumes:
       - ./bongo.prod.hcl:/etc/bongo/bongo.hcl:ro
       - ./secrets/dkim.key:/secrets/dkim.key:ro   # DKIM signing key (you generate this)
