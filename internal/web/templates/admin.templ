@@ -290,11 +290,11 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 							<div class="admin-inline-form">
 								<div class="u-flex-1">
 									<label for="user_username" class="admin-inline-label">{ t(ctx, "admin.username") }</label>
-									<input type="text" name="username" id="user_username" required autocomplete="username" pattern="[^@]+" class="u-m0"/>
+									<input type="text" name="username" id="user_username" required autocomplete="username" pattern="[^@]+" class="form-input u-m0"/>
 								</div>
 								<div class="u-flex-1">
 									<label for="user_domain" class="admin-inline-label">{ t(ctx, "admin.domain") }</label>
-									<select name="domain" id="user_domain" required class="u-m0">
+									<select name="domain" id="user_domain" required class="form-select u-m0">
 										for _, domain := range domains {
 											<option value={ domain.Name }>{ domain.Name }</option>
 										}
@@ -303,19 +303,19 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 							</div>
 						} else {
 							<label for="user_email">{ t(ctx, "auth.email") }</label>
-							<input type="email" name="email" id="user_email" required/>
+							<input type="email" name="email" id="user_email" class="form-input" required/>
 						}
 					}
-					<label for="display_name">{ t(ctx, "admin.displayName") }</label>
-					<input type="text" name="display_name" id="display_name" value={ userDisplayName(user) }/>
+					<label for="display_name" class="form-label">{ t(ctx, "admin.displayName") }</label>
+					<input type="text" name="display_name" id="display_name" class="form-input" value={ userDisplayName(user) }/>
 					if isNew {
-						<label for="password">{ t(ctx, "auth.password") }</label>
-						<input type="password" name="password" id="password" required minlength="4"/>
+						<label for="password" class="form-label">{ t(ctx, "auth.password") }</label>
+						<input type="password" name="password" id="password" class="form-input" required minlength="4"/>
 					}
-					<label for="quota_bytes">{ t(ctx, "admin.quotaLabel") }</label>
-					<input type="number" name="quota_bytes" id="quota_bytes" value={ fmt.Sprint(userQuota(user)) } min="0"/>
+					<label for="quota_bytes" class="form-label">{ t(ctx, "admin.quotaLabel") }</label>
+					<input type="number" name="quota_bytes" id="quota_bytes" class="form-input" value={ fmt.Sprint(userQuota(user)) } min="0"/>
 					<fieldset>
-						<label>
+						<label class="form-check">
 							<input type="checkbox" name="is_admin" value="1" checked?={ user != nil && user.IsAdmin }/>
 							{ t(ctx, "admin.administrator") }
 						</label>
@@ -376,7 +376,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 				<form method="post" action="/admin/domains" class="admin-inline-form">
 					<div class="u-flex-1">
 						<label for="domain_name" class="admin-inline-label">{ t(ctx, "admin.domainName") }</label>
-						<input type="text" name="domain" id="domain_name" placeholder="example.com" required class="u-m0"/>
+						<input type="text" name="domain" id="domain_name" placeholder="example.com" required class="form-input u-m0"/>
 					</div>
 					<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "admin.addDomain") }</button>
 				</form>
@@ -450,11 +450,11 @@ templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {
 				<form method="post" action="/admin/aliases" class="admin-inline-form u-flex-wrap">
 					<div class="u-flex-1 u-min-w-200">
 						<label for="alias_address" class="admin-inline-label">{ t(ctx, "admin.aliasAddress") }</label>
-						<input type="email" name="address" id="alias_address" placeholder="info@example.com" required class="u-m0"/>
+						<input type="email" name="address" id="alias_address" placeholder="info@example.com" required class="form-input u-m0"/>
 					</div>
 					<div class="u-flex-1 u-min-w-200">
 						<label for="target_user" class="admin-inline-label">{ t(ctx, "admin.targetUser") }</label>
-						<select name="target_user" id="target_user" required class="u-m0">
+						<select name="target_user" id="target_user" required class="form-select u-m0">
 							for _, u := range users {
 								<option value={ u }>{ u }</option>
 							}
@@ -653,7 +653,7 @@ templ AdminLogViewer(email string) {
 			<div class="log-viewer">
 				<div class="log-toolbar">
 					<label class="admin-log-label">{ t(ctx, "admin.level") }:</label>
-					<select id="log-level" aria-label={ t(ctx, "admin.logLevelFilter") }>
+					<select id="log-level" class="form-select" aria-label={ t(ctx, "admin.logLevelFilter") }>
 						<option value="">{ t(ctx, "common.all") }</option>
 						<option value="debug">DEBUG</option>
 						<option value="info" selected>INFO</option>
@@ -661,7 +661,7 @@ templ AdminLogViewer(email string) {
 						<option value="error">ERROR</option>
 					</select>
 					<label class="admin-log-label admin-log-label-spaced">{ t(ctx, "admin.component") }:</label>
-					<select id="log-component" aria-label={ t(ctx, "admin.componentFilter") }>
+					<select id="log-component" class="form-select" aria-label={ t(ctx, "admin.componentFilter") }>
 						<option value="">{ t(ctx, "common.all") }</option>
 						<option value="smtp">SMTP</option>
 						<option value="imap">IMAP</option>

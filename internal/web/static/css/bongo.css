@@ -2464,6 +2464,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
   margin-bottom: 24px;
 }
 .form-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; color: var(--text); }
+.form-card form { display: flex; flex-direction: column; gap: 12px; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-group.full { grid-column: 1 / -1; }
@@ -2471,13 +2472,28 @@ a.admin-nav-item.active, .admin-nav-item.active {
   font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: 0.3px;
 }
-.form-input {
+.form-input,
+.admin-layout .form-card input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+.admin-layout .form-card select,
+.admin-layout .form-card textarea {
   border: 1px solid var(--border-strong); border-radius: var(--radius);
   padding: 8px 12px; font-size: 0.9rem; background: var(--bg); color: var(--text);
+  min-height: 40px;
 }
-.form-input:focus {
+.form-input:focus,
+.admin-layout .form-card input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):focus,
+.admin-layout .form-card select:focus,
+.admin-layout .form-card textarea:focus {
   border-color: var(--bongo-blue); outline: none;
   box-shadow: 0 0 0 3px rgba(81,127,175,0.15);
+}
+.admin-layout .form-card label:not(.form-check):not(.admin-inline-label) {
+  font-size: 0.78rem; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+.admin-layout .form-card fieldset {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px 14px; margin: 4px 0 0;
 }
 .form-check {
   display: flex; align-items: center; gap: 8px;
@@ -2517,6 +2533,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .form-select {
   border: 1px solid var(--border-strong); border-radius: var(--radius);
   padding: 8px 12px; font-size: 0.9rem; background: var(--bg); color: var(--text);
+  min-height: 40px;
 }
 .form-select:focus {
   border-color: var(--bongo-blue); outline: none;
