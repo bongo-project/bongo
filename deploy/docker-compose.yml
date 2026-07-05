@@ -187,6 +187,13 @@ services:
       # Set the real value in .env before starting this service. A default is
       # used so an unset value never breaks `docker compose up -d bongo`.
       LOKI_ENDPOINT: ${LOKI_ENDPOINT:-http://127.0.0.1:3100/loki/api/v1/push}
+    # Resolve the internal Loki hostname to the cluster Traefik nodes (this box
+    # doesn't use the .example resolver). Traefik routes Host(loki.example) -> Loki,
+    # so this survives a Loki reschedule (stable, unlike the dynamic Nomad port).
+    extra_hosts:
+      - "loki.example:REDACTED-CLUSTER-NODE"
+      - "loki.example:REDACTED-CLUSTER-NODE"
+      - "loki.example:REDACTED-CLUSTER-NODE"
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro   # read all containers' logs
