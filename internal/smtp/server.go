@@ -3,6 +3,7 @@ package smtp
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 	"github.com/google/uuid"
 	"golang.org/x/net/netutil"
@@ -176,6 +178,77 @@ func (s *Session) AuthPlain(username, password string) error {
 	s.backend.resetAuthFailures(ip)
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
+}
+
+// Compile-time assertion that Session satisfies go-smtp's AuthSession add-on
+// interface. go-smtp v0.24 advertises AUTH and accepts credentials only for
+// sessions implementing this interface; the legacy AuthPlain method alone is
+// never consulted, which is why submission previously offered no AUTH at all.
+var _ gosmtp.AuthSession = (*Session)(nil)
+
+// AuthMechanisms lists the SASL mechanisms offered on this session. Only the
+// submission service (587) offers authentication; the MX service (25) does not.
+// go-smtp additionally gates AUTH on TLS (AllowInsecureAuth is false outside
+// dev mode), so these are never advertised on a plaintext connection.
+func (s *Session) AuthMechanisms() []string {
+	if !s.submission {
+		return nil
+	}
+	return []string{sasl.Plain, sasl.Login}
+}
+
+// Auth returns a SASL server for the requested mechanism. PLAIN and LOGIN both
+// funnel through AuthPlain so throttling and credential checks are identical.
+func (s *Session) Auth(mech string) (sasl.Server, error) {
+	if !s.submission {
+		return nil, gosmtp.ErrAuthUnsupported
+	}
+	switch mech {
+	case sasl.Plain:
+		return sasl.NewPlainServer(func(_, username, password string) error {
+			return s.AuthPlain(username, password)
+		}), nil
+	case sasl.Login:
+		return &loginServer{authenticate: s.AuthPlain}, nil
+	default:
+		return nil, gosmtp.ErrAuthUnsupported
+	}
+}
+
+// loginServer implements the non-standard but widely-supported SASL LOGIN
+// mechanism (go-sasl ships only a LOGIN client). It prompts for the username,
+// then the password, then authenticates.
+type loginServer struct {
+	authenticate func(username, password string) error
+	username     string
+	step         int
+}
+
+// Next drives the LOGIN challenge/response exchange. go-smtp base64-encodes the
+// returned challenge and decodes the client response before calling Next again.
+func (l *loginServer) Next(response []byte) (challenge []byte, done bool, err error) {
+	switch l.step {
+	case 0:
+		l.step++
+		if len(response) > 0 {
+			// Some clients send the username as the initial response.
+			l.username = string(response)
+			l.step++
+			return []byte("Password:"), false, nil
+		}
+		return []byte("Username:"), false, nil
+	case 1:
+		l.username = string(response)
+		l.step++
+		return []byte("Password:"), false, nil
+	case 2:
+		if err := l.authenticate(l.username, string(response)); err != nil {
+			return nil, false, err
+		}
+		return nil, true, nil
+	default:
+		return nil, false, errors.New("sasl: unexpected LOGIN state")
+	}
 }
 
 // Mail is called with the MAIL FROM command.
