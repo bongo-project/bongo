@@ -253,6 +253,7 @@ func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
 	}
 
 	rootMessageID := "<root@example.test>"
+	var newestUID uint32
 	for i := 0; i < 62; i++ {
 		guid := fmt.Sprintf("thread-message-%02d", i)
 		meta := &bongov1.MailMeta{
@@ -268,9 +269,11 @@ func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
 			meta.InReplyTo = rootMessageID
 			meta.References = rootMessageID
 		}
-		if _, err := mailboxes.DeliverMessage("user1", "Sent", meta, 0); err != nil {
+		uid, err := mailboxes.DeliverMessage("user1", "Sent", meta, 0)
+		if err != nil {
 			t.Fatalf("DeliverMessage %d: %v", i, err)
 		}
+		newestUID = uid
 	}
 
 	h := NewMailHandler(ps, nil, mailboxes, discardLogger())
@@ -284,6 +287,7 @@ func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
 		})
 	})
 	r.Get("/mail/{mailbox}", h.ListMessages)
+	r.Get("/mail/{mailbox}/{uid}", h.ShowMessage)
 
 	req := httptest.NewRequest(http.MethodGet, "/mail/Sent", nil)
 	w := httptest.NewRecorder()
@@ -301,6 +305,16 @@ func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
 	}
 	if got := strings.Count(body, `class="msg-row`); got != 1 {
 		t.Fatalf("rendered message rows = %d, want 1", got)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/Sent/%d", newestUID), nil)
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("thread detail status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+	if got := strings.Count(w.Body.String(), `<article class="message">`); got != 62 {
+		t.Fatalf("thread detail message cards = %d, want 62", got)
 	}
 }
 

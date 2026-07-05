@@ -41,6 +41,7 @@ type MessageDetail struct {
 	HasBlockedImages bool
 	Tags             []TagInfo
 	AllTags          []TagInfo
+	Thread           []MessageDetail
 }
 
 // tagPaletteColours maps colour_index (0-15) to a CSS hex colour.
@@ -174,6 +175,9 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 				}
 			</div>
 		</article>
+		for _, threadMsg := range msg.Thread {
+			@ThreadMessageArticle(threadMsg, false)
+		}
 	</div>
 }
 
@@ -242,7 +246,60 @@ templ MessagePaneContent(msg MessageDetail) {
 				}
 			</div>
 		</article>
+		for _, threadMsg := range msg.Thread {
+			@ThreadMessageArticle(threadMsg, true)
+		}
 	</div>
+}
+
+templ ThreadMessageArticle(msg MessageDetail, borderless bool) {
+	<article class="message">
+		<div class={ "msg-card", templ.KV("u-border-none", borderless) }>
+			<div class="msg-head">
+				<span class="msg-sender">{ msg.From }</span>
+				<span class="msg-recipients">{ t(ctx, "mail.to") }: { joinStrings(msg.To) }</span>
+				if len(msg.Cc) > 0 {
+					<span class="msg-recipients">{ t(ctx, "mail.cc") }: { joinStrings(msg.Cc) }</span>
+				}
+				<span class="msg-head-spacer"></span>
+				<span class="msg-date">{ msg.Date.Format("Mon, Jan 2 2006 3:04 PM") }</span>
+			</div>
+			if msg.HasBlockedImages {
+				<div class="blocked-banner" role="alert">
+					<span>&#9888; { t(ctx, "mail.remoteImagesBlocked") }</span>
+					<button
+						type="button"
+							@click="
+								document.querySelectorAll('.blocked-image').forEach(el => {
+									const img = document.createElement('img');
+									img.src = el.dataset.src;
+									img.className = 'loaded-remote-image';
+									el.replaceWith(img);
+								});
+								$el.closest('.blocked-banner').remove();
+						"
+						aria-label={ t(ctx, "mail.loadRemoteImages") }
+					>
+						{ t(ctx, "mail.loadRemoteImages") }
+					</button>
+				</div>
+			}
+			<div class="msg-body">
+				if msg.HTMLBody != "" {
+					<div class="email-body">
+						@templ.Raw(msg.HTMLBody)
+					</div>
+				} else {
+					<pre class="text-body u-white-space-prewrap u-font-inherit">
+						@templ.Raw(formatQuotedText(msg.TextBody))
+					</pre>
+				}
+			</div>
+			if len(msg.Attachments) > 0 {
+				@attachmentList(msg.Attachments)
+			}
+		</div>
+	</article>
 }
 
 // messageTags renders the tag chips row with add/remove controls.
