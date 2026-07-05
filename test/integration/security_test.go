@@ -588,11 +588,13 @@ func TestRemoteImageBlocking(t *testing.T) {
 		t.Skip("could not find the delivered message — skipping image blocking assertions")
 	}
 
-	// The remote image should be blocked: no img src pointing to tracker.example.com.
-	if strings.Contains(messageBody, `src="https://tracker.example.com/pixel.gif"`) {
+	// The remote image must be blocked: the tracker URL may only appear inside
+	// the placeholder's data-src attribute, never as a live <img src>. Match on
+	// a leading space so data-src="..." (preceded by '-') is not a false hit.
+	if strings.Contains(messageBody, ` src="https://tracker.example.com/pixel.gif"`) {
 		t.Error("remote tracker URL appeared as img src — image blocking failed")
 	}
-	if strings.Contains(messageBody, `src='https://tracker.example.com/pixel.gif'`) {
+	if strings.Contains(messageBody, ` src='https://tracker.example.com/pixel.gif'`) {
 		t.Error("remote tracker URL appeared as img src — image blocking failed")
 	}
 
