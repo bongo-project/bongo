@@ -749,12 +749,13 @@ func (h *AdminHandler) LogStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no") // proxy no-buffer; Connection header is illegal over HTTP/2
 
-	// Flush immediately so the HTTP/2 stream is established before blocking.
-	fmt.Fprintf(w, ": ping\n\n")
-	flusher.Flush()
-
 	ch := h.logSink.Subscribe()
 	defer h.logSink.Unsubscribe(ch)
+
+	// Send a real data event immediately so the UI can show that Connect worked
+	// even when no new log entries are produced after opening the stream.
+	fmt.Fprintf(w, "data: %s [INFO] web: Log stream connected\n\n", time.Now().Format("15:04:05.000"))
+	flusher.Flush()
 
 	ctx := r.Context()
 	for {
@@ -765,12 +766,13 @@ func (h *AdminHandler) LogStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			// Filter by level.
-			if level != "" && entry.Level != level {
+			// Filter by level. slog stores levels as upper-case names while the
+			// UI sends lower-case option values.
+			if level != "" && !strings.EqualFold(entry.Level, level) {
 				continue
 			}
 			// Filter by component.
-			if component != "" && entry.Component != component {
+			if component != "" && !strings.EqualFold(entry.Component, component) {
 				continue
 			}
 			fmt.Fprintf(w, "data: %s [%s] %s: %s\n\n",

@@ -23,6 +23,18 @@ jobs:
           go-version-file: go.mod
       - run: go test -race -cover ./...
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - run: govulncheck ./...
+      - run: gosec -quiet -include=G109,G402 ./cmd/bongo-go/... ./internal/...
+
   integration:
     runs-on: ubuntu-latest
     steps:

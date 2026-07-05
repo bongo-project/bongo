@@ -20,7 +20,8 @@ var jsMessageIDs = []string{
 	"js.tagsLoadFailed", "js.tagNameEmpty", "js.tagSaveFailed", "js.tagDeleteFailed",
 	"js.shortcutNextMessage", "js.shortcutPrevMessage", "js.shortcutOpenMessage", "js.shortcutReply",
 	"js.shortcutDelete", "js.shortcutToggleStar", "js.shortcutFocusSearch", "js.shortcutCompose",
-	"js.shortcutCloseModal", "js.shortcutShowHelp", "js.close", "js.contentLoaded", "js.logConnectionLost",
+	"js.shortcutCloseModal", "js.shortcutShowHelp", "js.close", "js.contentLoaded", "js.logConnecting",
+	"js.logConnected", "js.logConnectionLost",
 }
 
 // i18nJSON returns a JSON object mapping each bongo.js message key to its

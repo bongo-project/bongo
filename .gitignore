@@ -51,3 +51,6 @@ tmp/
 /deploy/secrets/
 /deploy/logs/
 /deploy/certs/
+
+# Local handoff artifacts
+/prds/handoff/

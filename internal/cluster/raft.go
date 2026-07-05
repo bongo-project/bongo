@@ -301,14 +301,14 @@ func NewTLSStreamLayer(bindAddr string, advertise net.Addr, tlsCfg *tls.Config) 
 
 func (t *TLSStreamLayer) Accept() (net.Conn, error) { return t.listener.Accept() }
 func (t *TLSStreamLayer) Close() error              { return t.listener.Close() }
-func (t *TLSStreamLayer) Addr() net.Addr             { return t.advertise }
+func (t *TLSStreamLayer) Addr() net.Addr            { return t.advertise }
 
 func (t *TLSStreamLayer) Dial(address raft.ServerAddress, timeout time.Duration) (net.Conn, error) {
 	dialer := &net.Dialer{Timeout: timeout}
 	conn, err := tls.DialWithDialer(dialer, "tcp", string(address), &tls.Config{
 		Certificates:       t.tlsCfg.Certificates,
 		RootCAs:            t.tlsCfg.RootCAs,
-		InsecureSkipVerify: t.tlsCfg.RootCAs == nil, //nolint:gosec // self-signed without CA
+		InsecureSkipVerify: t.tlsCfg.RootCAs == nil, // #nosec G402 -- private raft peers may use pinned self-signed certs without a CA
 		MinVersion:         tls.VersionTLS12,
 	})
 	if err != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/go-rod/rod"
 )
@@ -141,5 +142,10 @@ func phase8Admin(c *checker, browser *rod.Browser) {
 			boolErr(has(page, "#log-connect")))
 		c.check("Admin", "Log output area",
 			boolErr(has(page, "#log-output")))
+		evalPage(page, `(function(){ var btn = document.querySelector('#log-connect'); if (btn) btn.click(); return 'ok'; })()`)
+		time.Sleep(500 * time.Millisecond)
+		logText := evalPage(page, `(function(){ var out = document.querySelector('#log-output'); return out ? out.textContent : ''; })()`)
+		c.check("Admin", "Log connect shows stream status",
+			boolErr(strings.Contains(strings.ToLower(logText), "connect")))
 	}
 }

@@ -36,7 +36,7 @@ func phase4Bulk(c *checker, page *rod.Page) {
 
 	// Selection counter: read Alpine's count value directly.
 	countVal := evalPage(page,
-		`(function(){ var el = document.querySelector('#message-list'); if (el && el._x_dataStack) return String(el._x_dataStack[0].count); return '0'; })()`)
+		`(function(){ var el = document.querySelector('[x-data="messageList"]'); if (el && el._x_dataStack) return String(el._x_dataStack[0].count); return '0'; })()`)
 	c.check("Bulk", fmt.Sprintf("Selection count > 0 (got %s)", countVal),
 		boolErr(countVal != "0" && countVal != ""))
 
@@ -48,6 +48,13 @@ func phase4Bulk(c *checker, page *rod.Page) {
 		boolErr(strings.Contains(toolbarHTML, "selectAll")))
 	c.check("Bulk", "Deselect button exists",
 		boolErr(strings.Contains(toolbarHTML, "deselectAll")))
+
+	evalPage(page, `(function(){ var btn = Array.from(document.querySelectorAll('.bulk-toolbar button')).find(function(el){ return el.getAttribute('x-on:click') === 'selectAll()'; }); if (btn) btn.click(); return 'ok'; })()`)
+	time.Sleep(300 * time.Millisecond)
+	selectAllState := evalPage(page,
+		`(function(){ var el = document.querySelector('[x-data="messageList"]'); if (!el || !el._x_dataStack) return 'missing'; var selected = Object.keys(el._x_dataStack[0].selected); var rows = document.querySelectorAll('.msg-row[data-uid]').length; return selected.indexOf('NaN') === -1 && selected.length === rows ? 'ok' : selected.length + '/' + rows + '/nan=' + (selected.indexOf('NaN') !== -1); })()`)
+	c.check("Bulk", "Select All selects only real message rows",
+		boolErr(selectAllState == "ok"))
 
 	bulkActions := []string{"mark-read", "mark-unread", "flag", "unflag", "spam", "delete"}
 	for _, action := range bulkActions {

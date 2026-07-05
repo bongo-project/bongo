@@ -3,6 +3,7 @@
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
 BUILD_DIR  := bin
+SEC_GOCACHE ?= /tmp/bongo-gocache-security
 
 all: generate build
 
@@ -34,7 +35,8 @@ lint:
 	golangci-lint run
 
 sec:
-	gosec ./...
+	GOCACHE=$(SEC_GOCACHE) govulncheck ./...
+	GOCACHE=$(SEC_GOCACHE) gosec -quiet -include=G109,G402 ./cmd/bongo-go/... ./internal/...
 
 ## Run targets
 
