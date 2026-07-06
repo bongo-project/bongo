@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -38,14 +39,15 @@ type session struct {
 	reader *bufio.Reader
 	writer *bufio.Writer
 
-	auth      *auth.LocalAuth
-	mailboxes *store.MailboxStore
-	pebble    *store.PebbleStore
-	blobs     *store.BlobStore
-	tlsCfg    *tls.Config
-	isTLS     bool
-	isDev     bool
-	logger    *slog.Logger
+	auth        *auth.LocalAuth
+	mailboxes   *store.MailboxStore
+	pebble      *store.PebbleStore
+	blobs       *store.BlobStore
+	tlsCfg      *tls.Config
+	isTLS       bool
+	isDev       bool
+	authLimiter *authlimit.Limiter
+	logger      *slog.Logger
 
 	// idleTimeout is the maximum time to wait for the next command before the
 	// connection is dropped. Zero disables the deadline.
@@ -70,6 +72,7 @@ func newSession(
 	tlsCfg *tls.Config,
 	isTLS bool,
 	isDev bool,
+	authLimiter *authlimit.Limiter,
 	logger *slog.Logger,
 ) *session {
 	return &session{
@@ -83,10 +86,24 @@ func newSession(
 		tlsCfg:      tlsCfg,
 		isTLS:       isTLS,
 		isDev:       isDev,
+		authLimiter: authLimiter,
 		logger:      logger,
 		idleTimeout: defaultIdleTimeout,
 		deleted:     make(map[int]bool),
 	}
+}
+
+// clientIP returns the remote client's IP for auth-throttle keying. The POP3
+// listeners are wrapped with the PROXY-protocol reader, so RemoteAddr reflects
+// the real client behind the proxy.
+func (s *session) clientIP() string {
+	if s.conn == nil {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(s.conn.RemoteAddr().String()); err == nil {
+		return host
+	}
+	return s.conn.RemoteAddr().String()
 }
 
 func (s *session) handle() {
@@ -237,14 +254,36 @@ func (s *session) handlePass(args string) {
 		return
 	}
 
+	// Require STLS before accepting credentials in the clear, unless running in
+	// dev mode. This prevents sending the password over a plaintext connection.
+	if !s.isTLS && !s.isDev && s.tlsCfg != nil {
+		s.respond("-ERR must issue STLS before authenticating")
+		return
+	}
+
+	// Brute-force defence: block the source IP after too many failed attempts.
+	ip := s.clientIP()
+	if s.authLimiter != nil && s.authLimiter.Blocked(ip) {
+		s.logger.Warn("pop3: auth throttled after repeated failures", "username", s.username, "ip", ip)
+		s.username = ""
+		s.respond("-ERR too many failed attempts, try again later")
+		return
+	}
+
 	userID, err := s.auth.Authenticate(s.username, args)
 	if err != nil {
-		s.logger.Warn("pop3: auth failed", "username", s.username)
+		s.logger.Warn("pop3: auth failed", "username", s.username, "ip", ip)
+		if s.authLimiter != nil {
+			s.authLimiter.Record(ip)
+		}
 		s.username = ""
 		s.respond("-ERR authentication failed")
 		return
 	}
 
+	if s.authLimiter != nil {
+		s.authLimiter.Reset(ip)
+	}
 	s.userID = userID
 	s.authenticated = true
 	s.logger.Debug("pop3: auth succeeded", "username", s.username, "user_id", userID)

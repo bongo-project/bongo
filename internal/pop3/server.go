@@ -6,21 +6,31 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	"github.com/bongo-go/bongo-go/internal/netx"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
+// POP3 auth brute-force defence: block a source IP after this many failed
+// attempts within the sliding window (matches IMAP/DAV).
+const (
+	pop3MaxAuthFailures = 5
+	pop3AuthFailWindow  = 15 * time.Minute
+)
+
 // Server is a POP3 server that handles plaintext and TLS connections.
 type Server struct {
-	auth      *auth.LocalAuth
-	mailboxes *store.MailboxStore
-	pebble    *store.PebbleStore
-	blobs     *store.BlobStore
-	tlsCfg    *tls.Config
-	isDev     bool
-	logger    *slog.Logger
+	auth        *auth.LocalAuth
+	mailboxes   *store.MailboxStore
+	pebble      *store.PebbleStore
+	blobs       *store.BlobStore
+	tlsCfg      *tls.Config
+	isDev       bool
+	authLimiter *authlimit.Limiter
+	logger      *slog.Logger
 
 	plainListener net.Listener
 	tlsListener   net.Listener
@@ -39,14 +49,15 @@ func NewServer(
 	logger *slog.Logger,
 ) *Server {
 	return &Server{
-		auth:      authenticator,
-		mailboxes: mailboxes,
-		pebble:    pebble,
-		blobs:     blobs,
-		tlsCfg:    tlsCfg,
-		isDev:     isDev,
-		logger:    logger,
-		closeCh:   make(chan struct{}),
+		auth:        authenticator,
+		mailboxes:   mailboxes,
+		pebble:      pebble,
+		blobs:       blobs,
+		tlsCfg:      tlsCfg,
+		isDev:       isDev,
+		authLimiter: authlimit.New(pop3MaxAuthFailures, pop3AuthFailWindow),
+		logger:      logger,
+		closeCh:     make(chan struct{}),
 	}
 }
 
@@ -106,7 +117,7 @@ func (s *Server) acceptLoop(ln net.Listener, isTLS bool) error {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			sess := newSession(conn, s.auth, s.mailboxes, s.pebble, s.blobs, s.tlsCfg, isTLS, s.isDev, s.logger)
+			sess := newSession(conn, s.auth, s.mailboxes, s.pebble, s.blobs, s.tlsCfg, isTLS, s.isDev, s.authLimiter, s.logger)
 			sess.handle()
 		}()
 	}
