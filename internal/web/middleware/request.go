@@ -62,7 +62,7 @@ func PrivateOnly() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := net.ParseIP(ClientIP(r))
-			if ip == nil || !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+			if ip == nil || (!ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast()) {
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
