@@ -466,6 +466,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 		r.Use(middleware.RequireAdmin(sessionSecret))
 		r.Use(middleware.RequireSameOrigin())
+		// Double-submit CSRF token, defence-in-depth on top of same-origin.
+		r.Use(middleware.InjectCSRF(sessionSecret))
+		r.Use(middleware.RequireCSRF(sessionSecret, a.Config.Server.Role != "dev"))
 
 		adminH := handlers.NewAdminHandler(a.Store, a.Blobs, a.Metadata, a, a.logger)
 		if a.QueueStore != nil {
@@ -519,6 +522,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Use(middleware.Require2FA(a))
 		r.Use(middleware.InjectLocale(a))
 		r.Use(middleware.RequireSameOrigin())
+		// Double-submit CSRF token, defence-in-depth on top of same-origin.
+		r.Use(middleware.InjectCSRF(sessionSecret))
+		r.Use(middleware.RequireCSRF(sessionSecret, a.Config.Server.Role != "dev"))
 
 		// Security settings (TOTP, password change).
 		securityH := handlers.NewSecurityHandler(a, a, a.Auth, sessionSecret)
@@ -845,6 +851,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
+			// Double-submit CSRF token, defence-in-depth on top of same-origin.
+			r.Use(middleware.InjectCSRF(sessionSecret))
+			r.Use(middleware.RequireCSRF(sessionSecret, a.Config.Server.Role != "dev"))
 
 			quarantineH := handlers.NewQuarantineHandler(a.Spool, a.Blobs, a.logger)
 			r.Get("/admin/quarantine", quarantineH.ListQuarantine)
