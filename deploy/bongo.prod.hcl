@@ -62,6 +62,9 @@ smtp {
     max_recipients   = 100
     max_connections  = 1024
     flood_threshold  = 50
+    # Per-user cap on authenticated-submission messages/minute. Bounds spam
+    # volume from a single compromised account. 0 disables. Default 30.
+    outbound_messages_per_minute = 30
   }
 
   dkim {

@@ -53,6 +53,9 @@ type Backend struct {
 	subPort    int
 	logger     *slog.Logger
 
+	hostname   string              // public hostname, used in the Received header
+	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
+
 	mu        sync.Mutex
 	perIP     map[string]int
 	maxPerIP  int                 // 0 = disabled; set from config.SMTPLimits.MaxConnectionsPerIP
@@ -337,13 +340,27 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
-	// Prepend the Received-SPF header by streaming (no full-message buffering).
-	reader := r
+	// Per-user outbound rate limit on authenticated submission. The inbound
+	// limiter above exempts submission; this bounds spam volume from a single
+	// compromised account relaying to external recipients.
+	if s.submission && s.authed && s.userID != "" && len(s.externalRcpts) > 0 && s.backend.outboundRL != nil {
+		if !s.backend.outboundRL.Allow(s.userID) {
+			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
+			s.logger.Warn("smtp: outbound rate limit exceeded", "user", s.userID)
+			return &gosmtp.SMTPError{Code: 452, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Outbound rate limit exceeded, slow down"}
+		}
+	}
+
+	// Build the header prefix streamed ahead of the message body (no full-message
+	// buffering). A Received header is added on every inbound hop so forwarding
+	// loops accumulate hops and can be detected and broken downstream.
+	var prefix strings.Builder
+	prefix.WriteString(s.buildReceivedHeader())
 	if s.spfResult != "" {
 		domain := sanitizeHeaderValue(extractDomain(s.from))
-		header := fmt.Sprintf("Received-SPF: %s (bongo-go; domain=%s)\r\n", sanitizeHeaderValue(s.spfResult), domain)
-		reader = io.MultiReader(strings.NewReader(header), r)
+		fmt.Fprintf(&prefix, "Received-SPF: %s (bongo-go; domain=%s)\r\n", sanitizeHeaderValue(s.spfResult), domain)
 	}
+	reader := io.MultiReader(strings.NewReader(prefix.String()), r)
 
 	sourceIP := ""
 	if s.remoteIP != nil {
@@ -423,6 +440,27 @@ func (s *Session) Reset() {
 // interpolating values into generated headers.
 func sanitizeHeaderValue(v string) string {
 	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
+}
+
+// buildReceivedHeader constructs the trace Received header added to every
+// inbound message. Every value is server-generated or an IP literal, but the
+// hostname is sanitized defensively. Accumulating one Received header per hop
+// lets the delivery stage detect and break mail-forwarding loops.
+func (s *Session) buildReceivedHeader() string {
+	host := s.backend.hostname
+	if host == "" {
+		host = "localhost"
+	}
+	from := "unknown"
+	if s.remoteIP != nil {
+		from = "[" + s.remoteIP.String() + "]"
+	}
+	proto := "SMTP"
+	if s.authed {
+		proto = "ESMTPA"
+	}
+	return fmt.Sprintf("Received: from %s by %s with %s; %s\r\n",
+		from, sanitizeHeaderValue(host), proto, time.Now().Format(time.RFC1123Z))
 }
 
 // extractDomain extracts the domain part from an email address.
@@ -535,6 +573,8 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	// can tune or disable them (0 = disabled).
 	backend.maxPerIP = cfg.Limits.MaxConnectionsPerIP
 	backend.inboundRL = newInboundRateLimiter(cfg.Limits.MessagesPerMinute)
+	backend.outboundRL = newInboundRateLimiter(cfg.Limits.OutboundMessagesPerMinute)
+	backend.hostname = banner
 
 	return &Server{
 		mx:            mx,

@@ -606,3 +606,48 @@ func TestDeliverSPFResult(t *testing.T) {
 		t.Errorf("meta.SpfResult = %q, want %q", meta.SpfResult, "pass")
 	}
 }
+
+func TestCountReceivedHeaders(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want int
+	}{
+		{"none", "From: a@b.com\r\nSubject: hi\r\n\r\nbody", 0},
+		{"one", "Received: from x by y; date\r\nFrom: a@b.com\r\n\r\nbody", 1},
+		{
+			"three with fold",
+			"Received: from a\r\n by b; d1\r\nReceived: from c by d; d2\r\nReceived: from e by f; d3\r\nFrom: a@b.com\r\n\r\nbody",
+			3,
+		},
+		{"ignores received-spf", "Received-SPF: pass\r\nReceived: from x by y; d\r\nFrom: a@b\r\n\r\nb", 1},
+		{"stops at body", "Received: from x by y; d\r\n\r\nReceived: not-a-header\r\n", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := countReceivedHeaders([]byte(tt.raw)); got != tt.want {
+				t.Errorf("countReceivedHeaders = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestForwardTargetsDropsSelfForward(t *testing.T) {
+	resolver := &mockResolver{mapping: map[string]string{
+		"alice@example.com": "user-alice",
+		"alias@example.com": "user-alice", // same account as the recipient
+		"bob@external.net":  "user-bob",
+	}}
+	proc := NewDeliverProcessor(nil, resolver, newTestLogger())
+
+	// Recipient alice forwards to her own alias (loop) and to an external addr.
+	got := proc.forwardTargets(
+		[]string{"alias@example.com", "bob@external.net", "bob@external.net"},
+		[]string{"alice@example.com"},
+	)
+
+	want := []string{"bob@external.net"}
+	if len(got) != len(want) || got[0] != want[0] {
+		t.Errorf("forwardTargets = %v, want %v (self-forward alias should be dropped, dupes collapsed)", got, want)
+	}
+}

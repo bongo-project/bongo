@@ -103,6 +103,10 @@ type SMTPLimits struct {
 	// MaxConnectionsPerIP caps concurrent SMTP connections from a single source IP.
 	// 0 disables the limit.
 	MaxConnectionsPerIP int `hcl:"max_connections_per_ip,optional" mapstructure:"max_connections_per_ip"`
+	// OutboundMessagesPerMinute caps accepted authenticated-submission messages
+	// per user per minute, bounding damage from a single compromised account.
+	// 0 disables the limit.
+	OutboundMessagesPerMinute int `hcl:"outbound_messages_per_minute,optional" mapstructure:"outbound_messages_per_minute"`
 }
 
 type SMTPRelay struct {
@@ -447,8 +451,9 @@ func Defaults() *Config {
 				MaxRecipients:       100,
 				MaxConnections:      1024,
 				FloodThreshold:      50,
-				MessagesPerMinute:   60,
-				MaxConnectionsPerIP: 50,
+				MessagesPerMinute:         60,
+				MaxConnectionsPerIP:       50,
+				OutboundMessagesPerMinute: 30,
 			},
 			DKIM: SMTPDKIMConfig{
 				Selector: "mail",
