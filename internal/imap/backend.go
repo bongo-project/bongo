@@ -280,6 +280,20 @@ func (s *session) statusForMailbox(mailbox string, options *imap.StatusOptions) 
 	return data, nil
 }
 
+// maxAppendBytes caps the size of an IMAP APPEND literal. go-imap enforces this
+// via the SessionAppendLimit interface BEFORE Append is called, rejecting
+// oversized literals with a TOOBIG response and draining them — without it the
+// default is 100 MiB and the handler below would stream the whole literal to a
+// blob and then read it entirely back into memory, so an authenticated user
+// could OOM the shared server or fill the data volume with one command.
+const maxAppendBytes uint32 = 50 * 1024 * 1024 // 50 MiB
+
+// AppendLimit implements imapserver.SessionAppendLimit, advertising and
+// enforcing the maximum APPEND payload size.
+func (s *session) AppendLimit() uint32 {
+	return maxAppendBytes
+}
+
 // Append stores a message in the specified mailbox.
 func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.AppendOptions) (*imap.AppendData, error) {
 	// Store raw message as a blob.

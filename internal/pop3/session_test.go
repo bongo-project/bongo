@@ -165,7 +165,7 @@ func TestSessionIdleConnectionTimesOut(t *testing.T) {
 	defer clientConn.Close()
 
 	done := make(chan struct{})
-	s := newSession(serverConn, nil, nil, nil, nil, nil, false, false, slog.Default())
+	s := newSession(serverConn, nil, nil, nil, nil, nil, false, false, nil, slog.Default())
 	s.idleTimeout = 50 * time.Millisecond // keep the test fast; production default is minutes
 	go func() {
 		s.handle()
@@ -250,4 +250,33 @@ func testTLSConfig(t *testing.T) *tls.Config {
 		t.Fatalf("X509KeyPair: %v", err)
 	}
 	return &tls.Config{Certificates: []tls.Certificate{cert}}
+}
+
+// TestHandlePassRequiresSTLS verifies that, outside dev mode and when TLS is
+// available, PASS is refused on a plaintext connection until STLS is issued.
+func TestHandlePassRequiresSTLS(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	s := newSession(serverConn, nil, nil, nil, nil, &tls.Config{}, false /*isTLS*/, false /*isDev*/, nil, slog.Default())
+
+	got := make(chan string, 1)
+	go func() {
+		r := bufio.NewReader(clientConn)
+		line, _ := r.ReadString('\n')
+		got <- strings.TrimRight(line, "\r\n")
+	}()
+
+	s.username = "user@example.com"
+	s.handlePass("secret")
+
+	select {
+	case line := <-got:
+		if !strings.HasPrefix(line, "-ERR") || !strings.Contains(line, "STLS") {
+			t.Errorf("response = %q, want -ERR mentioning STLS", line)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no response from handlePass")
+	}
 }
