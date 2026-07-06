@@ -479,3 +479,18 @@ func TestBlobStoreRejectsInvalidHash(t *testing.T) {
 		})
 	}
 }
+
+func TestIsValidUserID(t *testing.T) {
+	valid := []string{"a", "user-123", "3f2504e0-4f89-11d3-9a0c-0305e82c3301", "User_ID-9"}
+	for _, id := range valid {
+		if !IsValidUserID(id) {
+			t.Errorf("IsValidUserID(%q) = false, want true", id)
+		}
+	}
+	invalid := []string{"", "../etc", "a/b", "a\\b", "..", "a b", "x\x00y", string(make([]byte, 129))}
+	for _, id := range invalid {
+		if IsValidUserID(id) {
+			t.Errorf("IsValidUserID(%q) = true, want false", id)
+		}
+	}
+}

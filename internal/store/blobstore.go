@@ -16,6 +16,25 @@ var ErrInvalidHash = errors.New("invalid blob hash")
 // IsValidHash reports whether h is a valid SHA-256 blob hash:
 // exactly 64 lowercase hexadecimal characters (0-9, a-f).
 // Uppercase letters, path separators, and percent-encoded sequences are rejected.
+// IsValidUserID reports whether a user ID is safe to embed in a filesystem
+// path. User IDs are server-generated UUIDs; this allows only [A-Za-z0-9_-] so
+// a crafted or mis-resolved ID (e.g. a raw email falling through a resolver)
+// can never contain a path separator or traversal sequence and escape the
+// per-user data directory.
+func IsValidUserID(id string) bool {
+	if id == "" || len(id) > 128 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func IsValidHash(h string) bool {
 	if len(h) != 64 {
 		return false
@@ -158,6 +177,11 @@ func (bs *BlobStore) Delete(hash string) error {
 
 // Verify re-hashes the blob file content and checks it matches the filename.
 func (bs *BlobStore) Verify(hash string) (bool, error) {
+	// Validate before building a filesystem path, consistent with Get/Exists/
+	// Delete, so a crafted hash can never traverse out of the blob directory.
+	if !IsValidHash(hash) {
+		return false, fmt.Errorf("invalid blob hash")
+	}
 	f, err := os.Open(bs.blobPath(hash))
 	if err != nil {
 		return false, fmt.Errorf("opening blob for verify: %w", err)
