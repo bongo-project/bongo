@@ -53,6 +53,24 @@ func IsHTTPS(r *http.Request) bool {
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
 }
 
+// PrivateOnly restricts a handler to requests whose real client IP (see
+// ClientIP, which only trusts forwarded headers from trusted proxies) is
+// loopback, private, or link-local. It keeps control-plane endpoints such as
+// /metrics off the public internet at the code layer instead of relying solely
+// on the reverse proxy's IP allow-list.
+func PrivateOnly() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := net.ParseIP(ClientIP(r))
+			if ip == nil || !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func trustForwardedFor(host string) bool {
 	ip := net.ParseIP(host)
 	if ip == nil {

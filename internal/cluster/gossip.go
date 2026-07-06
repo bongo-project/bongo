@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,6 +35,24 @@ func NewGossipNode(cfg *config.Config, httpAddr string, raftAddr string, logger 
 	mlCfg.BindAddr = cfg.Server.BindAddr
 	mlCfg.BindPort = cfg.Cluster.Gossip.Port
 	mlCfg.LogOutput = io.Discard // We use slog.
+
+	// Gossip encryption/authentication. The encryption_key was previously a
+	// declared-but-ignored config field, so setting it gave a false sense of a
+	// protected gossip pool while traffic stayed plaintext and unauthenticated.
+	// Wire it into memberlist's SecretKey and fail hard on a malformed key
+	// rather than silently continuing without encryption.
+	if rawKey := cfg.Cluster.Gossip.EncryptionKey; rawKey != "" {
+		secret, err := base64.StdEncoding.DecodeString(rawKey)
+		if err != nil {
+			return nil, fmt.Errorf("cluster.gossip.encryption_key must be base64-encoded: %w", err)
+		}
+		switch len(secret) {
+		case 16, 24, 32:
+			mlCfg.SecretKey = secret
+		default:
+			return nil, fmt.Errorf("cluster.gossip.encryption_key must decode to 16, 24, or 32 bytes (got %d)", len(secret))
+		}
+	}
 
 	// Use advertise address if set.
 	if cfg.Server.AdvertiseAddr != "" {

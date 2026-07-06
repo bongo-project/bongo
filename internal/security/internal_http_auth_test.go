@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -41,5 +42,23 @@ func TestInternalAuthRejectsWrongSecret(t *testing.T) {
 
 	if VerifyInternalRequest(req, []byte("other-secret")) {
 		t.Fatal("request signed with a different secret must NOT verify")
+	}
+}
+
+func TestVerifyInternalRequest_RejectsReplay(t *testing.T) {
+	secret := []byte("test-internal-secret-32-bytes-xx")
+	req, _ := http.NewRequest(http.MethodPost, "http://node/internal/kv/x", strings.NewReader("body"))
+	SignInternalRequest(req, secret)
+
+	// First verification of a freshly-signed request succeeds.
+	if !VerifyInternalRequest(req, secret) {
+		t.Fatal("first verification should succeed")
+	}
+
+	// Replaying the exact same signed header (same nonce) must be rejected.
+	replay, _ := http.NewRequest(http.MethodPost, "http://node/internal/kv/x", strings.NewReader("body"))
+	replay.Header.Set(InternalAuthHeader, req.Header.Get(InternalAuthHeader))
+	if VerifyInternalRequest(replay, secret) {
+		t.Error("replayed request with a reused nonce should be rejected")
 	}
 }
