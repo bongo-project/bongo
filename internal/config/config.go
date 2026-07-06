@@ -160,7 +160,26 @@ type CalDAVConfig struct {
 type AntispamConfig struct {
 	Builtin AntispamBuiltin `hcl:"builtin,block" mapstructure:"builtin"`
 	Rspamd  RspamdConfig    `hcl:"rspamd,block" mapstructure:"rspamd"`
+
+	// Inbound DMARC policy evaluation checks SPF/DKIM identifier alignment
+	// against the RFC5322.From domain and honours the domain's published policy
+	// — the primary defence against same-domain sender spoofing reaching the
+	// inbox. It is ON and enforcing by default (the zero value); the options
+	// below are inverted so omitting them keeps the protection enabled.
+	//
+	// DMARCDisabled turns off DMARC evaluation entirely.
+	DMARCDisabled bool `hcl:"dmarc_disabled,optional" mapstructure:"dmarc_disabled"`
+	// DMARCMonitorOnly evaluates DMARC and logs the result but does not apply
+	// the policy (monitoring mode), so nothing is quarantined or rejected.
+	DMARCMonitorOnly bool `hcl:"dmarc_monitor_only,optional" mapstructure:"dmarc_monitor_only"`
 }
+
+// DMARCEnabled reports whether inbound DMARC evaluation is active (default true).
+func (a AntispamConfig) DMARCEnabled() bool { return !a.DMARCDisabled }
+
+// DMARCEnforce reports whether a failing DMARC policy is applied to delivery
+// (default true). False means monitoring mode (evaluate and log only).
+func (a AntispamConfig) DMARCEnforce() bool { return !a.DMARCMonitorOnly }
 
 type AntispamBuiltin struct {
 	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`

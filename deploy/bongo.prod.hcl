@@ -128,6 +128,13 @@ antispam {
     enabled = false
     url     = "http://localhost:11333"
   }
+
+  # Inbound DMARC is ON and enforcing by default: a message whose RFC5322.From
+  # domain publishes a DMARC policy and fails SPF/DKIM alignment is routed to
+  # Junk (p=quarantine) or held out of the inbox (p=reject). This is the primary
+  # defence against same-domain sender spoofing. To tune:
+  #   dmarc_disabled     = true   # turn DMARC evaluation off entirely
+  #   dmarc_monitor_only = true   # evaluate and log only, do not apply policy
 }
 
 antivirus {
