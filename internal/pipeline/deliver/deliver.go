@@ -3,6 +3,7 @@
 package deliver
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -270,25 +271,33 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		)
 	}
 
-	// Enqueue forwarded copies to external addresses.
+	// Enqueue forwarded copies to external addresses, with loop protection.
 	if len(env.ForwardAddresses) > 0 && p.queuer != nil {
-		fwdMsg := &bongov1.OutboundMessage{
-			Id:          uuid.New().String(),
-			SenderEmail: env.Sender,
-			Recipients:  env.ForwardAddresses,
-			BlobHash:    env.BlobHash,
-		}
-		if err := p.queuer.Enqueue(fwdMsg); err != nil {
-			p.logger.Warn("deliver: failed to enqueue forwarded message",
-				"id", env.Id,
-				"forward_to", env.ForwardAddresses,
-				"error", err,
-			)
-		} else {
-			p.logger.Info("deliver: forwarded message enqueued",
-				"id", env.Id,
-				"forward_to", env.ForwardAddresses,
-			)
+		// Hop-count guard: each inbound pass through the MX adds a Received
+		// header, so a message that re-enters via a local forward accumulates
+		// hops. Past the ceiling, suppress forwarding to break the loop.
+		if hops := countReceivedHeaders(raw); hops > maxForwardHops {
+			p.logger.Warn("deliver: forwarding suppressed, hop limit exceeded",
+				"id", env.Id, "hops", hops, "forward_to", env.ForwardAddresses)
+		} else if targets := p.forwardTargets(env.ForwardAddresses, env.Recipients); len(targets) > 0 {
+			fwdMsg := &bongov1.OutboundMessage{
+				Id:          uuid.New().String(),
+				SenderEmail: env.Sender,
+				Recipients:  targets,
+				BlobHash:    env.BlobHash,
+			}
+			if err := p.queuer.Enqueue(fwdMsg); err != nil {
+				p.logger.Warn("deliver: failed to enqueue forwarded message",
+					"id", env.Id,
+					"forward_to", targets,
+					"error", err,
+				)
+			} else {
+				p.logger.Info("deliver: forwarded message enqueued",
+					"id", env.Id,
+					"forward_to", targets,
+				)
+			}
 		}
 	}
 
@@ -314,4 +323,68 @@ func spamScoreFromStages(stages []*bongov1.StageResult) float32 {
 		}
 	}
 	return 0.0
+}
+
+// maxForwardHops caps how many Received headers a message may carry before the
+// delivery stage stops forwarding it. Each inbound pass through the MX adds one
+// Received header, so a message caught in a forward loop accumulates hops; past
+// this ceiling forwarding is suppressed to break the loop.
+const maxForwardHops = 25
+
+// countReceivedHeaders counts the "Received:" headers in the message header
+// block (up to the first blank line). "Received-SPF" and other Received-* fields
+// are deliberately not counted.
+func countReceivedHeaders(raw []byte) int {
+	count := 0
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		trimmed := bytes.TrimRight(line, "\r")
+		if len(trimmed) == 0 {
+			break // end of header block
+		}
+		if line[0] == ' ' || line[0] == '\t' {
+			continue // folded continuation of the previous header
+		}
+		if idx := bytes.IndexByte(trimmed, ':'); idx > 0 {
+			if strings.EqualFold(string(bytes.TrimSpace(trimmed[:idx])), "Received") {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// forwardTargets deduplicates the forward addresses and drops any that resolve
+// to one of the message's local recipients (a self-forward), which would loop
+// the message straight back into the pipeline.
+func (p *DeliverProcessor) forwardTargets(addresses, recipients []string) []string {
+	recipientIDs := make(map[string]struct{})
+	if p.resolver != nil {
+		for _, r := range recipients {
+			if id, err := p.resolver.ResolveRecipient(r); err == nil {
+				recipientIDs[id] = struct{}{}
+			}
+		}
+	}
+
+	var out []string
+	seen := make(map[string]struct{})
+	for _, addr := range addresses {
+		if addr == "" {
+			continue
+		}
+		if _, dup := seen[addr]; dup {
+			continue
+		}
+		seen[addr] = struct{}{}
+		if p.resolver != nil {
+			if id, err := p.resolver.ResolveRecipient(addr); err == nil {
+				if _, self := recipientIDs[id]; self {
+					p.logger.Warn("deliver: dropping self-forward target", "target", addr)
+					continue
+				}
+			}
+		}
+		out = append(out, addr)
+	}
+	return out
 }
