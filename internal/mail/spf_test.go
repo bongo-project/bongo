@@ -121,3 +121,65 @@ func TestSPFSoftfail(t *testing.T) {
 		t.Errorf("result = %q, want softfail", result)
 	}
 }
+
+// countingResolver wraps a mockResolver and counts TXT lookups so tests can
+// assert the RFC 7208 DNS-lookup budget is enforced.
+type countingResolver struct {
+	*mockResolver
+	txtLookups int
+}
+
+func (c *countingResolver) LookupTXT(ctx context.Context, domain string) ([]string, error) {
+	c.txtLookups++
+	return c.mockResolver.LookupTXT(ctx, domain)
+}
+
+// TestSPFIncludeLoopIsPermerror ensures a self-referential include tree does not
+// recurse forever and resolves to permerror.
+func TestSPFIncludeLoopIsPermerror(t *testing.T) {
+	resolver := &mockResolver{
+		txt: map[string][]string{
+			"a.example": {"v=spf1 include:b.example -all"},
+			"b.example": {"v=spf1 include:a.example -all"},
+		},
+	}
+	checker := NewSPFCheckerWithResolver(resolver)
+
+	result, err := checker.Check(context.Background(), net.ParseIP("192.168.1.1"), "a.example")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if result != "permerror" {
+		t.Errorf("result = %q, want permerror", result)
+	}
+}
+
+// TestSPFExceedsLookupLimit ensures a deep include chain is capped at
+// maxSPFDNSLookups DNS-querying mechanisms and returns permerror.
+func TestSPFExceedsLookupLimit(t *testing.T) {
+	txt := map[string][]string{}
+	// Build a 20-deep include chain: each domain includes the next.
+	for i := 0; i < 20; i++ {
+		txt[spfChainDomain(i)] = []string{"v=spf1 include:" + spfChainDomain(i+1) + " -all"}
+	}
+	txt[spfChainDomain(20)] = []string{"v=spf1 -all"}
+
+	base := &countingResolver{mockResolver: &mockResolver{txt: txt}}
+	checker := NewSPFCheckerWithResolver(base)
+
+	result, err := checker.Check(context.Background(), net.ParseIP("192.168.1.1"), spfChainDomain(0))
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if result != "permerror" {
+		t.Errorf("result = %q, want permerror", result)
+	}
+	// Root TXT (not charged) + at most maxSPFDNSLookups charged include lookups.
+	if base.txtLookups > maxSPFDNSLookups+1 {
+		t.Errorf("txtLookups = %d, want <= %d (budget not enforced)", base.txtLookups, maxSPFDNSLookups+1)
+	}
+}
+
+func spfChainDomain(i int) string {
+	return "d" + string(rune('a'+i%26)) + string(rune('0'+i/26)) + ".example"
+}

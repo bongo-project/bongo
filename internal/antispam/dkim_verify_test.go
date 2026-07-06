@@ -1,7 +1,9 @@
 package antispam
 
 import (
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestVerifyDKIM_NoDKIMSignature(t *testing.T) {
@@ -32,6 +34,33 @@ func TestVerifyDKIM_InvalidSignature(t *testing.T) {
 	}
 	if domain != "example.com" {
 		t.Errorf("domain = %q, want %q", domain, "example.com")
+	}
+}
+
+// TestVerifyDKIM_ManySignaturesAreCapped ensures a message stuffed with many
+// DKIM-Signature headers cannot trigger unbounded goroutine/DNS fan-out. With
+// the MaxVerifications cap, verification must complete quickly and not hang.
+func TestVerifyDKIM_ManySignaturesAreCapped(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 50000; i++ {
+		b.WriteString("DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=fake;\r\n")
+		b.WriteString(" h=from:to:subject; bh=AAAA; b=BBBB\r\n")
+	}
+	b.WriteString("From: test@example.com\r\nTo: user@example.com\r\nSubject: Hello\r\n\r\nBody\r\n")
+	msg := []byte(b.String())
+
+	done := make(chan struct{})
+	go func() {
+		// Result value is irrelevant; the point is that it returns promptly and
+		// does not spawn ~50k goroutines/DNS lookups.
+		_, _, _ = VerifyDKIM(msg)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("VerifyDKIM did not return within 10s for a many-signature message (cap not enforced)")
 	}
 }
 
