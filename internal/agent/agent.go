@@ -314,7 +314,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	health := handlers.NewHealthHandler(a)
 	r.Get("/health/live", health.Live)
 	r.Get("/health/ready", health.Ready)
-	r.Handle("/metrics", observability.Handler())
+	// /metrics is control-plane data; gate it to private/loopback clients at the
+	// code layer so exposure never depends on the reverse proxy's IP allow-list alone.
+	r.With(middleware.PrivateOnly()).Handle("/metrics", observability.Handler())
 
 	// Session secret. Every session/2FA/setup cookie is HMAC'd with a key
 	// derived from this value; a weak secret is offline-guessable from a single

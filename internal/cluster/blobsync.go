@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -10,6 +11,11 @@ import (
 	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/store"
 )
+
+// maxBlobSyncBytes bounds a single blob pulled from a peer, so a compromised
+// member cannot exhaust local disk by streaming unbounded data. Generous enough
+// for any legitimate mail blob (the SMTP/IMAP message caps are well below this).
+const maxBlobSyncBytes = 64 << 20 // 64 MiB
 
 // MemberLister provides the list of cluster members.
 type MemberLister interface {
@@ -144,7 +150,10 @@ func (bs *BlobSyncer) pull(hash string) error {
 			continue
 		}
 
-		storedHash, _, err := bs.blobs.PutReader(resp.Body)
+		// Bound the amount read from a peer so a malicious/compromised member
+		// cannot stream unbounded data to exhaust disk/temp space. An oversized
+		// blob is truncated, which fails the hash check below and is rejected.
+		storedHash, _, err := bs.blobs.PutReader(io.LimitReader(resp.Body, maxBlobSyncBytes))
 		if closeErr := resp.Body.Close(); err == nil {
 			err = closeErr
 		}

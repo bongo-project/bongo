@@ -3,12 +3,14 @@ package security
 import (
 	"bytes"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -24,10 +26,11 @@ const (
 )
 
 // signedPayload builds the string covered by the HMAC. It binds the timestamp,
-// method, URI, AND a hash of the request body so a captured signature cannot be
-// replayed with a different body.
-func signedPayload(ts int64, method, uri string, bodyHash string) string {
-	return fmt.Sprintf("%d|%s|%s|%s", ts, method, uri, bodyHash)
+// a per-request nonce, method, URI, AND a hash of the request body so a captured
+// signature cannot be replayed (the nonce is single-use within the skew window)
+// nor reused with a different body.
+func signedPayload(ts int64, nonce, method, uri string, bodyHash string) string {
+	return fmt.Sprintf("%d|%s|%s|%s|%s", ts, nonce, method, uri, bodyHash)
 }
 
 // SignInternalRequest adds an HMAC-based auth header for internal HTTP calls.
@@ -37,11 +40,49 @@ func SignInternalRequest(r *http.Request, secret []byte) {
 	}
 	bodyHash := hashBodyForSigning(r)
 	ts := time.Now().Unix()
-	payload := signedPayload(ts, r.Method, r.URL.RequestURI(), bodyHash)
+	nonce := newNonce()
+	payload := signedPayload(ts, nonce, r.Method, r.URL.RequestURI(), bodyHash)
 	mac := hmac.New(sha256.New, DeriveKey(secret, internalAuthPurpose))
 	_, _ = mac.Write([]byte(payload))
 	sig := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-	r.Header.Set(InternalAuthHeader, fmt.Sprintf("%s=%d,sig=%s", internalTimestampName, ts, sig))
+	r.Header.Set(InternalAuthHeader, fmt.Sprintf("%s=%d,nonce=%s,sig=%s", internalTimestampName, ts, nonce, sig))
+}
+
+// newNonce returns a random 128-bit base64 nonce.
+func newNonce() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return base64.RawURLEncoding.EncodeToString(b[:])
+}
+
+// internalNonces tracks recently-seen nonces so a signed request cannot be
+// replayed within the timestamp skew window.
+var internalNonces = &nonceCache{seen: make(map[string]time.Time)}
+
+type nonceCache struct {
+	mu        sync.Mutex
+	seen      map[string]time.Time // nonce -> expiry
+	lastSweep time.Time
+}
+
+// checkAndRecord returns false if the nonce was already seen (a replay);
+// otherwise it records the nonce with an expiry and returns true.
+func (c *nonceCache) checkAndRecord(nonce string, now time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if now.Sub(c.lastSweep) > internalSkew {
+		for k, exp := range c.seen {
+			if now.After(exp) {
+				delete(c.seen, k)
+			}
+		}
+		c.lastSweep = now
+	}
+	if exp, ok := c.seen[nonce]; ok && now.Before(exp) {
+		return false
+	}
+	c.seen[nonce] = now.Add(2 * internalSkew)
+	return true
 }
 
 // hashBodyForSigning returns the base64 SHA-256 of the request body without
@@ -74,10 +115,7 @@ func VerifyInternalRequest(r *http.Request, secret []byte) bool {
 		return false
 	}
 
-	var tsStr, sigB64 string
-	for _, part := range []string{raw} {
-		_ = part
-	}
+	var tsStr, nonce, sigB64 string
 	for _, field := range splitComma(raw) {
 		k, v, ok := cutKV(field)
 		if !ok {
@@ -86,11 +124,13 @@ func VerifyInternalRequest(r *http.Request, secret []byte) bool {
 		switch k {
 		case internalTimestampName:
 			tsStr = v
+		case "nonce":
+			nonce = v
 		case "sig":
 			sigB64 = v
 		}
 	}
-	if tsStr == "" || sigB64 == "" {
+	if tsStr == "" || nonce == "" || sigB64 == "" {
 		return false
 	}
 
@@ -118,10 +158,15 @@ func VerifyInternalRequest(r *http.Request, secret []byte) bool {
 	sum := sha256.Sum256(body)
 	bodyHash := base64.RawURLEncoding.EncodeToString(sum[:])
 
-	payload := signedPayload(ts, r.Method, r.URL.RequestURI(), bodyHash)
+	payload := signedPayload(ts, nonce, r.Method, r.URL.RequestURI(), bodyHash)
 	mac := hmac.New(sha256.New, DeriveKey(secret, internalAuthPurpose))
 	_, _ = mac.Write([]byte(payload))
-	return hmac.Equal(sig, mac.Sum(nil))
+	if !hmac.Equal(sig, mac.Sum(nil)) {
+		return false
+	}
+
+	// Signature is valid; reject if this nonce was already used (replay).
+	return internalNonces.checkAndRecord(nonce, now)
 }
 
 func splitComma(s string) []string {
