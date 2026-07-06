@@ -797,7 +797,10 @@ func (a *Agent) Run(ctx context.Context) error {
 					pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
 					pipelineantispam.WithLogger(a.logger),
 				}
-				if a.Config.Antispam.DMARCEnabled() {
+				// DMARC is skipped in dev mode: it does live DNS lookups and would
+				// quarantine local test mail sent from real DMARC-reject domains
+				// (e.g. example.com). Production roles evaluate and enforce it.
+				if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
 					antispamOpts = append(antispamOpts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
 				}
 				antispamProc := pipelineantispam.NewBuiltinProcessor(scorer, antispamOpts...)
@@ -1380,7 +1383,7 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 			pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
 			pipelineantispam.WithLogger(a.logger),
 		}
-		if a.Config.Antispam.DMARCEnabled() {
+		if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
 			agentAntispamOpts = append(agentAntispamOpts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
 		}
 		proc = pipelineantispam.NewBuiltinProcessor(scorer, agentAntispamOpts...)
