@@ -44,25 +44,43 @@ type SessionData struct {
 	Email   string `json:"email"`
 	Exp     int64  `json:"exp"`
 	IsAdmin bool   `json:"adm,omitempty"`
+	// Epoch is a fingerprint of the user's credential state at login (see
+	// security.SessionEpoch). RequireAuth revokes the session if it no longer
+	// matches the account's current state, so a password change or 2FA toggle
+	// invalidates outstanding sessions. Empty for cookies issued before this
+	// field existed (those are simply not epoch-checked).
+	Epoch string `json:"ep,omitempty"`
+}
+
+// LiveSessionState is the account state re-checked on every request. Because the
+// session cookie is self-contained, this is where disable/admin/credential
+// changes are re-evaluated so they take effect immediately rather than at the
+// next login or expiry.
+type LiveSessionState struct {
+	// Found is false when the profile could not be read (store error / missing);
+	// callers fail open in that case, leaving the cookie's snapshot in force.
+	Found    bool
+	Disabled bool
+	IsAdmin  bool
+	Epoch    string
 }
 
 // CreateSessionCookie creates a signed session cookie.
 // Set secure to true when the server is running over HTTPS to enable the Secure flag.
-func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin, secure bool) *http.Cookie {
+// epoch is the credential fingerprint (security.SessionEpoch) used for live
+// revocation; pass "" to opt out.
+func CreateSessionCookie(secret []byte, userID, email string, remember, isAdmin, secure bool, epoch string) *http.Cookie {
 	expiry := 24 * time.Hour
 	if remember {
 		expiry = 30 * 24 * time.Hour
 	}
 
-	// IsAdmin (and the account's disabled state) are snapshotted into the cookie
-	// at login and are only re-evaluated when the session expires. Privilege or
-	// disable changes therefore do not take effect until the user's next login or
-	// session expiry.
 	data := SessionData{
 		UserID:  userID,
 		Email:   email,
 		Exp:     time.Now().Add(expiry).Unix(),
 		IsAdmin: isAdmin,
+		Epoch:   epoch,
 	}
 
 	payload, _ := json.Marshal(data)
@@ -96,10 +114,12 @@ func ClearSessionCookie() *http.Cookie {
 // userID and email into the request context. Redirects to /login on failure.
 // For HTMX requests it uses HX-Redirect so the browser does a full-page
 // navigation instead of swapping the login page into a partial target.
-// isDisabled, when non-nil, is consulted on every request so that disabling a
-// user immediately revokes their existing sessions — the cookie is
-// self-contained, so this is the only place live account state is re-checked.
-func RequireAuth(secret []byte, isDisabled func(userID string) bool) func(http.Handler) http.Handler {
+// stateFn, when non-nil, is consulted on every request so that disabling a
+// user, changing their password, toggling 2FA, or changing their admin status
+// takes effect immediately despite the self-contained cookie. It is the only
+// place live account state is re-checked. When it reports Found=false (store
+// error) the request fails open, leaving the cookie's snapshot in force.
+func RequireAuth(secret []byte, stateFn func(userID string) LiveSessionState) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(cookieName)
@@ -119,16 +139,27 @@ func RequireAuth(secret []byte, isDisabled func(userID string) bool) func(http.H
 				return
 			}
 
-			// Revoke the session immediately if the account has been disabled.
-			if isDisabled != nil && isDisabled(data.UserID) {
-				http.SetCookie(w, ClearSessionCookie())
-				redirectToLogin(w, r)
-				return
+			// Re-evaluate live account state. isAdmin defaults to the cookie
+			// snapshot but is overridden by the live value so a demotion (or
+			// promotion) takes effect at once.
+			isAdmin := data.IsAdmin
+			if stateFn != nil {
+				st := stateFn(data.UserID)
+				if st.Found {
+					// Disabled account, or credentials changed since this
+					// session was issued -> revoke immediately.
+					if st.Disabled || (data.Epoch != "" && st.Epoch != "" && data.Epoch != st.Epoch) {
+						http.SetCookie(w, ClearSessionCookie())
+						redirectToLogin(w, r)
+						return
+					}
+					isAdmin = st.IsAdmin
+				}
 			}
 
 			ctx := context.WithValue(r.Context(), userIDKey, data.UserID)
 			ctx = context.WithValue(ctx, emailKey, data.Email)
-			ctx = context.WithValue(ctx, adminKey, data.IsAdmin)
+			ctx = context.WithValue(ctx, adminKey, isAdmin)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

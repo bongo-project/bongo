@@ -134,24 +134,31 @@ func (a *Agent) IsLeader() bool {
 	return a.Raft.Raft.State() == raft.Leader
 }
 
-// userDisabled reports whether the given user's account is currently disabled,
-// used by RequireAuth to revoke live sessions the moment an admin disables an
-// account. Reads the authoritative UserProfile from Pebble; fails open (treats
-// the account as active) on a read/parse error so a transient store problem
+// userSessionState returns the live account state (disabled flag, admin flag,
+// and credential epoch) consulted by RequireAuth on every request, so that
+// disabling a user, demoting an admin, or changing a password/2FA takes effect
+// immediately despite the self-contained session cookie. Reads the
+// authoritative UserProfile from Pebble; on a read/parse error it returns a
+// zero (Found=false) value so callers fail open and a transient store problem
 // cannot log everyone out.
-func (a *Agent) userDisabled(userID string) bool {
+func (a *Agent) userSessionState(userID string) middleware.LiveSessionState {
 	if a.Store == nil || userID == "" {
-		return false
+		return middleware.LiveSessionState{}
 	}
 	data, err := a.Store.Get([]byte("/user/" + userID + "/profile"))
 	if err != nil || len(data) == 0 {
-		return false
+		return middleware.LiveSessionState{}
 	}
 	var profile bongov1.UserProfile
 	if err := proto.Unmarshal(data, &profile); err != nil {
-		return false
+		return middleware.LiveSessionState{}
 	}
-	return profile.Disabled
+	return middleware.LiveSessionState{
+		Found:    true,
+		Disabled: profile.Disabled,
+		IsAdmin:  profile.IsAdmin,
+		Epoch:    security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled),
+	}
 }
 
 // Ready implements handlers.ReadinessChecker.
@@ -309,7 +316,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Get("/health/ready", health.Ready)
 	r.Handle("/metrics", observability.Handler())
 
-	// Session secret.
+	// Session secret. Every session/2FA/setup cookie is HMAC'd with a key
+	// derived from this value; a weak secret is offline-guessable from a single
+	// observed cookie, after which an attacker can forge any cookie. Require a
+	// meaningful minimum length outside dev.
+	const minSessionSecretLen = 32
 	sessionSecret := []byte(a.Config.Web.SessionSecret)
 	if len(sessionSecret) == 0 {
 		if a.Config.Server.Role != "dev" {
@@ -320,6 +331,8 @@ func (a *Agent) Run(ctx context.Context) error {
 			return fmt.Errorf("generating session secret: %w", err)
 		}
 		a.logger.Info("web: auto-generated session secret for dev mode")
+	} else if a.Config.Server.Role != "dev" && len(sessionSecret) < minSessionSecretLen {
+		return fmt.Errorf("web.session_secret must be at least %d bytes (got %d); generate one with `openssl rand -base64 32`", minSessionSecretLen, len(sessionSecret))
 	}
 
 	// The outbound queue store and rate limiter must exist before any HTTP
@@ -404,7 +417,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	r.Get("/login", authH.LoginPage)
 	r.With(middleware.RequireSameOrigin(), loginRL.LoginRateLimit()).Post("/login", authH.Login)
 	r.Get("/login/2fa", authH.TwoFactorPage)
-	r.With(middleware.RequireSameOrigin()).Post("/login/2fa", authH.TwoFactorVerify)
+	// The 2FA verification endpoint MUST also be rate limited, otherwise the
+	// second factor (a 6-digit TOTP) is brute-forceable once the password is known.
+	r.With(middleware.RequireSameOrigin(), loginRL.LoginRateLimit()).Post("/login/2fa", authH.TwoFactorVerify)
 	r.With(middleware.RequireSameOrigin()).Post("/logout", authH.Logout)
 
 	// Shared brute-force throttle for DAV Basic Auth (CalDAV + CardDAV): a source
@@ -448,7 +463,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Admin routes (require auth + admin).
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(sessionSecret, a.userDisabled))
+		r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 		r.Use(middleware.RequireAdmin(sessionSecret))
 		r.Use(middleware.RequireSameOrigin())
 
@@ -500,7 +515,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Protected routes.
 	r.Group(func(r chi.Router) {
-		r.Use(middleware.RequireAuth(sessionSecret, a.userDisabled))
+		r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 		r.Use(middleware.Require2FA(a))
 		r.Use(middleware.InjectLocale(a))
 		r.Use(middleware.RequireSameOrigin())
@@ -827,7 +842,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
-			r.Use(middleware.RequireAuth(sessionSecret, a.userDisabled))
+			r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
 			r.Use(middleware.RequireAdmin(sessionSecret))
 			r.Use(middleware.RequireSameOrigin())
 
