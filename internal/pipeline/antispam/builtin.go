@@ -14,6 +14,7 @@ import (
 	"github.com/jhillyerd/enmime"
 
 	"github.com/bongo-go/bongo-go/internal/antispam"
+	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -32,6 +33,8 @@ type BuiltinProcessor struct {
 	resolver      RecipientResolver     // may be nil; resolves recipient email -> user ID
 	threshold     float32               // score >= this -> tag as spam (move to Junk)
 	highThreshold float32               // score >= this -> quarantine
+	dmarc         *mail.DMARCEvaluator  // may be nil; inbound DMARC policy enforcement
+	dmarcEnforce  bool                  // when false, DMARC is evaluated and logged but not applied
 	logger        *slog.Logger
 }
 
@@ -78,6 +81,18 @@ func WithHighThreshold(t float32) Option {
 func WithLogger(l *slog.Logger) Option {
 	return func(p *BuiltinProcessor) {
 		p.logger = l
+	}
+}
+
+// WithDMARC enables inbound DMARC policy evaluation against the RFC5322.From
+// domain, using the SPF and DKIM results already computed for the message. When
+// enforce is true, a DMARC failure escalates the message action (p=quarantine
+// -> Junk, p=reject -> held out of the inbox); when false, the result is logged
+// but delivery is unchanged (monitoring mode).
+func WithDMARC(e *mail.DMARCEvaluator, enforce bool) Option {
+	return func(p *BuiltinProcessor) {
+		p.dmarc = e
+		p.dmarcEnforce = enforce
 	}
 }
 
@@ -138,7 +153,7 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	// Verify the DKIM signature so the scorer's DKIM heuristic (which reads
 	// DKIMResult) can fire; without this it was always "" and never scored.
-	dkimResult, _, _ := antispam.VerifyDKIM(raw)
+	dkimResult, dkimDomain, _ := antispam.VerifyDKIM(raw)
 
 	input := &antispam.ScoringInput{
 		SPFResult:      env.GetSpfResult(),
@@ -196,6 +211,14 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	reasons := result.Reasons
 
+	// DMARC policy enforcement. A DMARC failure on the RFC5322.From domain
+	// escalates the action so a same-domain spoof (which the heuristic scorer
+	// alone may not catch) cannot land in the inbox. This runs escalate-only:
+	// it never weakens an action the scorer already chose.
+	if p.dmarc != nil {
+		action, reasons = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
+	}
+
 	p.logger.Info("antispam: scored",
 		"score", score,
 		"action", action,
@@ -215,6 +238,71 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		ProcessedAt: start.Unix(),
 		DurationMs:  durationMs,
 	}, nil
+}
+
+// applyDMARC evaluates DMARC for the message and, in enforce mode, escalates
+// the action when the From domain's policy is violated. It returns the
+// (possibly escalated) action and the reason list (with a dmarc reason appended
+// when the policy caused an escalation).
+func (p *BuiltinProcessor) applyDMARC(ctx context.Context, env *bongov1.QueueEnvelope, fromHeader, dkimDomain, dkimResult, action string, reasons []string) (string, []string) {
+	fromDomain := mail.FromHeaderDomain(fromHeader)
+	if fromDomain == "" {
+		return action, reasons
+	}
+	spfDomain := mail.FromHeaderDomain(env.GetSender())
+	res := p.dmarc.Evaluate(ctx, fromDomain, spfDomain, env.GetSpfResult(), dkimDomain, dkimResult)
+
+	if !res.RecordFound || res.Pass {
+		return action, reasons
+	}
+
+	// DMARC disposition -> pipeline action. quarantine routes to Junk ("tag");
+	// reject holds the message out of the inbox ("reject").
+	var dmarcAction string
+	switch res.Disposition {
+	case mail.DMARCReject:
+		dmarcAction = "reject"
+	case mail.DMARCQuarantine:
+		dmarcAction = "tag"
+	default:
+		dmarcAction = "pass"
+	}
+
+	p.logger.Info("dmarc: evaluated",
+		"from_domain", fromDomain,
+		"policy", res.Policy,
+		"disposition", res.Disposition,
+		"spf_aligned", res.SPFAligned,
+		"dkim_aligned", res.DKIMAligned,
+		"enforce", p.dmarcEnforce,
+	)
+
+	if !p.dmarcEnforce {
+		return action, reasons
+	}
+
+	if actionSeverity(dmarcAction) > actionSeverity(action) {
+		action = dmarcAction
+		reasons = append(reasons, "dmarc_"+res.Disposition)
+		if action == "tag" && env != nil {
+			env.TargetMailbox = "Junk"
+		}
+	}
+	return action, reasons
+}
+
+// actionSeverity orders pipeline actions so DMARC can escalate but never weaken
+// the scorer's decision. reject/quarantine both hold the message out of the
+// inbox and rank highest.
+func actionSeverity(action string) int {
+	switch action {
+	case "reject", "quarantine":
+		return 3
+	case "tag":
+		return 1
+	default: // pass
+		return 0
+	}
 }
 
 // extractBasicHeaders does a best-effort extraction of Subject and key headers
