@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/security"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -119,7 +120,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 				if h.limiter != nil {
 					h.limiter.RecordFailure(ip)
 				}
-				templ.Handler(templates.LoginPage("Account is disabled.")).ServeHTTP(w, r)
+				// Use the same generic message as a bad password so a valid
+				// (but disabled) account is not confirmed to an attacker who
+				// already has the password.
+				templ.Handler(templates.LoginPage("Invalid email or password.")).ServeHTTP(w, r)
 				return
 			}
 			isAdmin = profile.IsAdmin
@@ -139,9 +143,23 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		h.limiter.Reset(ip)
 	}
 
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, email, remember, isAdmin, h.tlsEnabled)
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, userID, email, remember, isAdmin, h.tlsEnabled, h.sessionEpoch(userID))
 	http.SetCookie(w, cookie)
 	http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
+}
+
+// sessionEpoch computes the credential fingerprint embedded in a new session
+// cookie so RequireAuth can revoke the session after a password or 2FA change.
+// Returns "" (no epoch check) if the profile cannot be read.
+func (h *AuthHandler) sessionEpoch(userID string) string {
+	if h.profiles == nil {
+		return ""
+	}
+	profile, err := h.loadProfile(userID)
+	if err != nil {
+		return ""
+	}
+	return security.SessionEpoch(profile.PasswordHash, profile.TotpSecret, profile.TotpEnabled)
 }
 
 // TwoFactorPage renders the 2FA verification form.
@@ -238,7 +256,7 @@ func (h *AuthHandler) TwoFactorVerify(w http.ResponseWriter, r *http.Request) {
 		if h.limiter != nil {
 			h.limiter.Reset(ip)
 		}
-		cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled)
+		cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
 		http.SetCookie(w, cookie)
 		http.Redirect(w, r, "/mail/INBOX?warning="+urlEncode(recoveryWarning), http.StatusSeeOther)
 		return
@@ -258,7 +276,7 @@ func (h *AuthHandler) completeLogin(w http.ResponseWriter, r *http.Request, pend
 	if h.limiter != nil {
 		h.limiter.Reset(ip)
 	}
-	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled)
+	cookie := middleware.CreateSessionCookie(h.sessionSecret, pending.UserID, pending.Email, pending.Remember, pending.IsAdmin, h.tlsEnabled, h.sessionEpoch(pending.UserID))
 	http.SetCookie(w, cookie)
 
 	// Self-heal default mailboxes (idempotent, cheap) so older accounts missing

@@ -14,6 +14,13 @@ import (
 // ErrBadCredentials indicates invalid username or password.
 var ErrBadCredentials = fmt.Errorf("invalid credentials")
 
+// dummyBcryptHash is a valid bcrypt hash of an arbitrary password, compared
+// against on the user-not-found and profile-missing paths so that
+// authentication takes roughly the same time whether or not the username
+// exists. Without this, the presence of the bcrypt compare only for valid
+// users is a timing oracle for account enumeration.
+var dummyBcryptHash, _ = bcrypt.GenerateFromPassword([]byte("bongo-timing-equalizer"), bcrypt.DefaultCost)
+
 // Authenticator validates credentials and returns the user ID.
 type Authenticator interface {
 	Authenticate(username, password string) (string, error)
@@ -41,6 +48,8 @@ func (a *LocalAuth) Authenticate(username, password string) (string, error) {
 	// Look up user ID from system.db by username (email).
 	userID, err := a.lookupUserID(username)
 	if err != nil {
+		// Equalize timing with the valid-user path (see dummyBcryptHash).
+		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(password))
 		return "", ErrBadCredentials
 	}
 
@@ -48,6 +57,7 @@ func (a *LocalAuth) Authenticate(username, password string) (string, error) {
 	key := []byte(fmt.Sprintf("/user/%s/profile", userID))
 	data, err := a.store.Get(key)
 	if err != nil {
+		_ = bcrypt.CompareHashAndPassword(dummyBcryptHash, []byte(password))
 		return "", ErrBadCredentials
 	}
 

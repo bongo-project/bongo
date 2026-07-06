@@ -10,7 +10,7 @@ import (
 var testSecret = []byte("test-secret-key-32-bytes-long!!")
 
 func TestCreateSessionCookie(t *testing.T) {
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false, "")
 
 	if cookie.Name != "bongo_session" {
 		t.Errorf("cookie name = %q, want bongo_session", cookie.Name)
@@ -42,8 +42,8 @@ func TestCreateSessionCookie(t *testing.T) {
 }
 
 func TestCreateSessionCookie_Remember(t *testing.T) {
-	normal := CreateSessionCookie(testSecret, "u", "e", false, false, false)
-	remember := CreateSessionCookie(testSecret, "u", "e", true, false, false)
+	normal := CreateSessionCookie(testSecret, "u", "e", false, false, false, "")
+	remember := CreateSessionCookie(testSecret, "u", "e", true, false, false, "")
 
 	if remember.MaxAge <= normal.MaxAge {
 		t.Error("remember cookie should have longer MaxAge")
@@ -61,7 +61,7 @@ func TestClearSessionCookie(t *testing.T) {
 }
 
 func TestValidateCookie_InvalidSignature(t *testing.T) {
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false, "")
 
 	// Tamper with cookie.
 	_, err := validateCookie([]byte("wrong-secret"), cookie.Value)
@@ -106,7 +106,7 @@ func TestRequireAuth_ValidCookie(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false, "")
 	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
@@ -125,13 +125,15 @@ func TestRequireAuth_ValidCookie(t *testing.T) {
 
 func TestRequireAuth_DisabledUserRevoked(t *testing.T) {
 	called := false
-	isDisabled := func(userID string) bool { return userID == "user123" }
-	handler := RequireAuth(testSecret, isDisabled)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	stateFn := func(userID string) LiveSessionState {
+		return LiveSessionState{Found: true, Disabled: userID == "user123"}
+	}
+	handler := RequireAuth(testSecret, stateFn)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false)
+	cookie := CreateSessionCookie(testSecret, "user123", "test@example.com", false, false, false, "")
 	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
 	req.AddCookie(cookie)
 	rr := httptest.NewRecorder()
@@ -204,5 +206,53 @@ func TestUserFromContext_Empty(t *testing.T) {
 	userID, email := UserFromContext(req.Context())
 	if userID != "" || email != "" {
 		t.Errorf("expected empty values, got userID=%q email=%q", userID, email)
+	}
+}
+
+func TestRequireAuth_EpochMismatchRevoked(t *testing.T) {
+	called := false
+	// Session was issued with epoch "old"; the live state reports "new" (e.g.
+	// the password was changed since login) -> revoke.
+	stateFn := func(string) LiveSessionState {
+		return LiveSessionState{Found: true, Epoch: "new"}
+	}
+	handler := RequireAuth(testSecret, stateFn)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cookie := CreateSessionCookie(testSecret, "user123", "e@x.com", false, false, false, "old")
+	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
+	req.AddCookie(cookie)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("handler ran despite epoch mismatch; stale session should be revoked")
+	}
+	if rr.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303", rr.Code)
+	}
+}
+
+func TestRequireAuth_LiveAdminOverride(t *testing.T) {
+	var sawAdmin bool
+	// Cookie snapshot says non-admin, but the live state reports admin -> the
+	// request context must reflect the live value (and vice versa for demotion).
+	stateFn := func(string) LiveSessionState {
+		return LiveSessionState{Found: true, IsAdmin: true, Epoch: "e"}
+	}
+	handler := RequireAuth(testSecret, stateFn)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sawAdmin = AdminFromContext(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cookie := CreateSessionCookie(testSecret, "user123", "e@x.com", false, false /*isAdmin*/, false, "e")
+	req := httptest.NewRequest("GET", "/admin", nil)
+	req.AddCookie(cookie)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if !sawAdmin {
+		t.Error("live admin promotion not reflected in context (M6)")
 	}
 }
