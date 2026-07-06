@@ -439,6 +439,10 @@ func NewMetadataManager(dataDir string, opts ...MetadataManagerOption) (*Metadat
 
 // OpenUser opens or returns a cached UserIndex for the given user ID.
 func (m *MetadataManager) OpenUser(userID string) (*UserIndex, error) {
+	if !IsValidUserID(userID) {
+		return nil, fmt.Errorf("invalid user id")
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

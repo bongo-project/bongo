@@ -124,6 +124,11 @@ func ExtractThunderbirdTags(raw []byte) []string {
 // extractHeaderValue scans raw RFC 5322 headers for a named header (case-
 // insensitive) and returns its value. Handles folded headers (continuation
 // lines starting with whitespace). Returns empty string if not found.
+// maxHeaderValueBytes bounds the total length of a single (possibly folded)
+// header value accumulated during import, so a crafted message cannot exhaust
+// memory via unbounded continuation lines.
+const maxHeaderValueBytes = 64 * 1024
+
 func extractHeaderValue(raw []byte, lowerName string) string {
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	// Ensure the scanner can handle long header values.
@@ -141,8 +146,13 @@ func extractHeaderValue(raw []byte, lowerName string) string {
 			break
 		}
 
-		// Folded continuation of a found header.
+		// Folded continuation of a found header. Cap the cumulative length so a
+		// crafted message with endless continuation lines cannot grow the buffer
+		// without bound.
 		if found && len(line) > 0 && (line[0] == ' ' || line[0] == '\t') {
+			if value.Len() >= maxHeaderValueBytes {
+				break
+			}
 			value.WriteString(" ")
 			value.WriteString(strings.TrimSpace(line))
 			continue

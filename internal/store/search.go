@@ -372,6 +372,10 @@ func (sm *SearchManager) Close() error {
 }
 
 func (sm *SearchManager) openUser(userID string) (bleve.Index, error) {
+	if !IsValidUserID(userID) {
+		return nil, fmt.Errorf("invalid user id")
+	}
+
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
