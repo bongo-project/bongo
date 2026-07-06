@@ -2,10 +2,40 @@ package mail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
 )
+
+// maxSPFDNSLookups is the RFC 7208 §4.6.4 ceiling on DNS-querying mechanisms
+// (a, mx, include, and the redirect modifier) evaluated for a single SPF check.
+// Without it, an attacker who controls the MAIL FROM domain's DNS can craft a
+// deep/branching or cyclic include tree that makes the public MX issue an
+// unbounded burst of DNS queries per connection (resolver/CPU exhaustion and
+// outbound DNS amplification).
+const maxSPFDNSLookups = 10
+
+// errSPFAbort aborts evaluation and forces a permerror result at the top level.
+// It is raised when the DNS-lookup budget is exhausted or an include/redirect
+// loop is detected, per RFC 7208.
+var errSPFAbort = errors.New("spf: evaluation aborted (lookup limit or loop)")
+
+// spfState carries the per-evaluation DNS-lookup budget and the set of already
+// visited domains (include-loop / redirect-loop guard) across recursion.
+type spfState struct {
+	lookups int
+	visited map[string]struct{}
+}
+
+// count charges one DNS-querying mechanism against the budget.
+func (st *spfState) count() error {
+	st.lookups++
+	if st.lookups > maxSPFDNSLookups {
+		return errSPFAbort
+	}
+	return nil
+}
 
 // DNSResolver provides DNS lookups for SPF checking.
 type DNSResolver interface {
@@ -47,6 +77,27 @@ func NewSPFCheckerWithResolver(resolver DNSResolver) *SPFChecker {
 // Check evaluates the SPF policy for a sender IP and domain.
 // Returns one of: pass, fail, softfail, neutral, none, temperror, permerror.
 func (sc *SPFChecker) Check(ctx context.Context, senderIP net.IP, senderDomain string) (string, error) {
+	result, err := sc.checkWithState(ctx, senderIP, senderDomain, &spfState{visited: make(map[string]struct{})})
+	if errors.Is(err, errSPFAbort) {
+		// Exceeding the DNS-lookup limit is a permanent error per RFC 7208.
+		return "permerror", nil
+	}
+	return result, err
+}
+
+func (sc *SPFChecker) checkWithState(ctx context.Context, senderIP net.IP, senderDomain string, st *spfState) (string, error) {
+	// Guard against include/redirect loops: a domain already on the *current*
+	// recursion path aborts to permerror. Tracking the path (add on entry,
+	// remove on exit) rather than a global visited set means a legitimate
+	// diamond include (same domain reached via two branches) is not penalised;
+	// the shared lookup budget still bounds total work.
+	key := strings.ToLower(strings.TrimSuffix(senderDomain, "."))
+	if _, onPath := st.visited[key]; onPath {
+		return "permerror", errSPFAbort
+	}
+	st.visited[key] = struct{}{}
+	defer delete(st.visited, key)
+
 	records, err := sc.resolver.LookupTXT(ctx, senderDomain)
 	if err != nil {
 		return "temperror", fmt.Errorf("DNS lookup: %w", err)
@@ -64,10 +115,10 @@ func (sc *SPFChecker) Check(ctx context.Context, senderIP net.IP, senderDomain s
 		return "none", nil
 	}
 
-	return sc.evaluate(ctx, senderIP, senderDomain, spfRecord)
+	return sc.evaluate(ctx, senderIP, senderDomain, spfRecord, st)
 }
 
-func (sc *SPFChecker) evaluate(ctx context.Context, senderIP net.IP, domain, record string) (string, error) {
+func (sc *SPFChecker) evaluate(ctx context.Context, senderIP net.IP, domain, record string, st *spfState) (string, error) {
 	parts := strings.Fields(record)
 	if len(parts) == 0 || parts[0] != "v=spf1" {
 		return "permerror", nil
@@ -82,8 +133,13 @@ func (sc *SPFChecker) evaluate(ctx context.Context, senderIP net.IP, domain, rec
 			mechanism = mechanism[1:]
 		}
 
-		match, err := sc.matchMechanism(ctx, senderIP, domain, mechanism)
+		match, err := sc.matchMechanism(ctx, senderIP, domain, mechanism, st)
 		if err != nil {
+			if errors.Is(err, errSPFAbort) {
+				// Propagate the budget exhaustion up to Check, which maps it
+				// to permerror; do not silently continue past it.
+				return "", err
+			}
 			continue
 		}
 		if match {
@@ -94,7 +150,7 @@ func (sc *SPFChecker) evaluate(ctx context.Context, senderIP net.IP, domain, rec
 	return "neutral", nil
 }
 
-func (sc *SPFChecker) matchMechanism(ctx context.Context, senderIP net.IP, domain, mechanism string) (bool, error) {
+func (sc *SPFChecker) matchMechanism(ctx context.Context, senderIP net.IP, domain, mechanism string, st *spfState) (bool, error) {
 	switch {
 	case mechanism == "all":
 		return true, nil
@@ -106,6 +162,9 @@ func (sc *SPFChecker) matchMechanism(ctx context.Context, senderIP net.IP, domai
 		return matchIP(senderIP, mechanism[4:])
 
 	case mechanism == "a" || strings.HasPrefix(mechanism, "a:"):
+		if err := st.count(); err != nil {
+			return false, err
+		}
 		host := domain
 		if strings.HasPrefix(mechanism, "a:") {
 			host = mechanism[2:]
@@ -122,6 +181,9 @@ func (sc *SPFChecker) matchMechanism(ctx context.Context, senderIP net.IP, domai
 		return false, nil
 
 	case mechanism == "mx" || strings.HasPrefix(mechanism, "mx:"):
+		if err := st.count(); err != nil {
+			return false, err
+		}
 		lookupDomain := domain
 		if strings.HasPrefix(mechanism, "mx:") {
 			lookupDomain = mechanism[3:]
@@ -145,12 +207,24 @@ func (sc *SPFChecker) matchMechanism(ctx context.Context, senderIP net.IP, domai
 		return false, nil
 
 	case strings.HasPrefix(mechanism, "include:"):
+		if err := st.count(); err != nil {
+			return false, err
+		}
 		includeDomain := mechanism[8:]
-		result, err := sc.Check(ctx, senderIP, includeDomain)
+		result, err := sc.checkWithState(ctx, senderIP, includeDomain, st)
 		if err != nil {
 			return false, err
 		}
-		return result == "pass", nil
+		switch result {
+		case "pass":
+			return true, nil
+		case "permerror", "none":
+			// RFC 7208 §5.2: an include whose target yields permerror or none
+			// makes the including record a permerror.
+			return false, errSPFAbort
+		default: // fail, softfail, neutral, temperror -> not a match
+			return false, nil
+		}
 	}
 
 	return false, nil
