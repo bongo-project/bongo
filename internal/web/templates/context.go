@@ -68,6 +68,21 @@ func require2FAFromCtx(ctx context.Context) bool {
 	return middleware.Require2FAFromContext(ctx)
 }
 
+// csrfHeaders returns a JSON object suitable for an hx-headers attribute so
+// every HTMX mutation carries the CSRF token. json.Marshal escapes <, >, & so
+// the result is safe to embed in an HTML attribute (as with i18nJSON).
+func csrfHeaders(ctx context.Context) string {
+	token := middleware.CSRFTokenFromContext(ctx)
+	if token == "" {
+		return "{}"
+	}
+	b, err := json.Marshal(map[string]string{"X-CSRF-Token": token})
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
 // pageWindow returns the page numbers to display in a truncated pagination
 // control. It always includes page 1 and totalPages, the current page, and
 // up to 2 pages on each side. Gaps are represented by 0 (rendered as "...").

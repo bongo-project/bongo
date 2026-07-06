@@ -14,10 +14,11 @@ templ Layout(title string, email string) {
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
 		</head>
-		<body>
+		<body hx-headers={ csrfHeaders(ctx) }>
 			<!-- Translation strings needed by bongo.js. CSP forbids inline
 			scripts, so they are passed as a JSON data island (templ escapes it,
-			the browser decodes it, bongo.js parses it from dataset.messages). -->
+			the browser decodes it, bongo.js parses it from dataset.messages).
+			hx-headers on <body> makes every HTMX mutation send the CSRF token. -->
 			<span id="i18n-data" hidden data-messages={ i18nJSON(ctx) }></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header class="topbar" role="banner">
@@ -107,10 +108,11 @@ templ LayoutWithContent(title string, email string) {
 			<link rel="stylesheet" href="/static/css/bongo.css"/>
 			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
 		</head>
-		<body>
+		<body hx-headers={ csrfHeaders(ctx) }>
 			<!-- Translation strings needed by bongo.js. CSP forbids inline
 			scripts, so they are passed as a JSON data island (templ escapes it,
-			the browser decodes it, bongo.js parses it from dataset.messages). -->
+			the browser decodes it, bongo.js parses it from dataset.messages).
+			hx-headers on <body> makes every HTMX mutation send the CSRF token. -->
 			<span id="i18n-data" hidden data-messages={ i18nJSON(ctx) }></span>
 			<a href="#main-content" class="skip-link">{ t(ctx, "nav.skipToContent") }</a>
 			<header class="topbar" role="banner">
