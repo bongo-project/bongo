@@ -73,7 +73,20 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) {
 // NewMailHandler creates a MailHandler.
 func NewMailHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes *store.MailboxStore, logger *slog.Logger) *MailHandler {
 	policy := bluemonday.UGCPolicy()
-	policy.AllowAttrs("style").OnElements("div", "span", "p", "td", "th", "table", "tr")
+	// Allow a curated set of *presentational* CSS properties on layout elements.
+	// AllowStyles validates each value, so url() (tracking-pixel / remote-image
+	// blocker bypass) and unknown functions are stripped. position, z-index, and
+	// full width/height are deliberately excluded so a mail cannot break out of
+	// the message pane to overlay the app chrome (UI-redressing / phishing).
+	policy.AllowStyles(
+		"color", "background-color",
+		"font", "font-weight", "font-style", "font-size", "font-family",
+		"text-align", "text-decoration", "line-height", "letter-spacing",
+		"margin", "margin-top", "margin-bottom", "margin-left", "margin-right",
+		"padding", "padding-top", "padding-bottom", "padding-left", "padding-right",
+		"border", "border-color", "border-width", "border-style", "border-radius",
+		"vertical-align",
+	).OnElements("div", "span", "p", "td", "th", "table", "tr")
 	return &MailHandler{
 		pebble:    pebble,
 		blobs:     blobs,

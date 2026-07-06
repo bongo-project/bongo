@@ -281,12 +281,21 @@ func (h *CalendarHandler) ShareCalendar(w http.ResponseWriter, r *http.Request) 
 
 // FreeBusy returns busy time blocks for a user in a date range.
 func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
+	callerID, _ := middleware.UserFromContext(r.Context())
 	targetUser := r.URL.Query().Get("user")
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
 
 	if targetUser == "" || startStr == "" || endStr == "" {
 		http.Error(w, "user, start, and end are required", http.StatusBadRequest)
+		return
+	}
+
+	// Authorization: a caller may read their own free/busy, or that of a user
+	// who has shared a calendar with them. Without this check any authenticated
+	// user could read every user's schedule by guessing the ?user= id (IDOR).
+	if targetUser != callerID && !h.targetSharesWith(targetUser, callerID) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -322,6 +331,24 @@ func (h *CalendarHandler) FreeBusy(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(blocks); err != nil {
 		return
 	}
+}
+
+// targetSharesWith reports whether targetUser has shared any of their calendars
+// with callerID, which authorizes callerID to view targetUser's free/busy.
+func (h *CalendarHandler) targetSharesWith(targetUser, callerID string) bool {
+	if callerID == "" || h.calendars == nil {
+		return false
+	}
+	shared, err := h.calendars.ListSharedCalendars(callerID)
+	if err != nil {
+		return false
+	}
+	for _, sc := range shared {
+		if sc.OwnerID == targetUser {
+			return true
+		}
+	}
+	return false
 }
 
 // NewEvent renders the create event form.
