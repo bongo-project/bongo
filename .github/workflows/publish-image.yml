@@ -46,6 +46,20 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      - name: Build metadata
+        id: buildmeta
+        shell: bash
+        run: |
+          short_sha="${GITHUB_SHA::12}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="${GITHUB_REF_NAME}-${short_sha}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "commit=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "${GITHUB_OUTPUT}"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -55,6 +69,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.buildmeta.outputs.version }}
+            COMMIT=${{ steps.buildmeta.outputs.commit }}
+            DATE=${{ steps.buildmeta.outputs.date }}
           # GHA layer cache keeps builds fast on incremental changes.
           cache-from: type=gha
           cache-to: type=gha,mode=max

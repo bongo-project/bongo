@@ -317,6 +317,7 @@
   "admin.systemStatus": "Systemstatus",
   "admin.agentStatus": "Agent-Status",
   "admin.operationNormal": "Betrieb normal",
+  "admin.version": "Version",
   "admin.raftState": "Raft-Zustand",
   "admin.securityPolicy": "Sicherheitsrichtlinie",
   "admin.require2FAHelp": "Wenn aktiviert, werden Benutzer ohne 2FA bei der Anmeldung zur Einrichtungsseite weitergeleitet.",

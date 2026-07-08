@@ -317,6 +317,7 @@
   "admin.systemStatus": "État du système",
   "admin.agentStatus": "État de l'agent",
   "admin.operationNormal": "Fonctionnement normal",
+  "admin.version": "Version",
   "admin.raftState": "État Raft",
   "admin.securityPolicy": "Politique de sécurité",
   "admin.require2FAHelp": "Lorsque cette option est activée, les utilisateurs sans 2FA seront redirigés vers la page de configuration à la connexion.",
