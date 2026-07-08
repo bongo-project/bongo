@@ -512,6 +512,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/cluster", adminH.ClusterOverview)
 		r.Get("/admin/logs", adminH.LogViewer)
 		r.Get("/admin/logs/stream", adminH.LogStream)
+		r.Get("/admin/version", handlers.Version)
 		r.Post("/admin/settings/require-2fa", adminH.ToggleRequire2FA)
 	})
 

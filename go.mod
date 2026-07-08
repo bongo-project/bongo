@@ -3,7 +3,7 @@ module github.com/bongo-go/bongo-go
 go 1.25.12
 
 require (
-	github.com/a-h/templ v0.3.977
+	github.com/a-h/templ v0.3.1001
 	github.com/blevesearch/bleve/v2 v2.5.7
 	github.com/cockroachdb/pebble v1.1.5
 	github.com/emersion/go-ical v0.0.0-20250609112844-439c63cef608

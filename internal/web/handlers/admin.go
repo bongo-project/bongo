@@ -23,6 +23,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/cluster"
 	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-go/bongo-go/internal/version"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -105,6 +106,7 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	health := templates.SystemHealth{
 		Uptime: time.Since(h.startTime),
+		Build:  version.Info(),
 	}
 
 	// Raft state.

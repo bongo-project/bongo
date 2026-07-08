@@ -317,6 +317,7 @@
   "admin.systemStatus": "System Status",
   "admin.agentStatus": "Agent Status",
   "admin.operationNormal": "Operation normal",
+  "admin.version": "Version",
   "admin.raftState": "Raft State",
   "admin.securityPolicy": "Security Policy",
   "admin.require2FAHelp": "When enabled, users without 2FA will be redirected to the setup page on login.",

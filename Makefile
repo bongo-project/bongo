@@ -4,6 +4,11 @@ BINARY     := bongo-go
 IMPORT_BIN := bongo-import
 BUILD_DIR  := bin
 SEC_GOCACHE ?= /tmp/bongo-gocache-security
+VERSION_PKG := github.com/bongo-go/bongo-go/internal/version
+BUILD_VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo dev)
+BUILD_COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILD_LDFLAGS := -X $(VERSION_PKG).Version=$(BUILD_VERSION) -X $(VERSION_PKG).Commit=$(BUILD_COMMIT) -X $(VERSION_PKG).Date=$(BUILD_DATE)
 
 all: generate build
 
@@ -11,8 +16,8 @@ all: generate build
 
 build: generate
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BINARY) ./cmd/bongo-go
-	go build -o $(BUILD_DIR)/$(IMPORT_BIN) ./cmd/bongo-import
+	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/bongo-go
+	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(IMPORT_BIN) ./cmd/bongo-import
 
 generate:
 	@touch internal/web/templates/*.templ

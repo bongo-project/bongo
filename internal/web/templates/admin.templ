@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bongo-go/bongo-go/internal/version"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -19,6 +20,7 @@ type SystemHealth struct {
 	BlobSize    int64
 	UserCount   int
 	MessageRate int
+	Build       version.BuildInfo
 }
 
 // AdminUserInfo holds data for the user management list.
@@ -158,6 +160,13 @@ templ AdminDashboard(health SystemHealth, email string, require2FA bool, flash s
 						<tr>
 							<th>{ t(ctx, "admin.agentStatus") }</th>
 							<td><span class="status-dot green"></span> { t(ctx, "admin.operationNormal") }</td>
+						</tr>
+						<tr>
+							<th>{ t(ctx, "admin.version") }</th>
+							<td>
+								<strong>{ health.Build.Version }</strong>
+								<span class="u-text-muted"> &middot; { health.Build.Commit } &middot; { health.Build.Date }</span>
+							</td>
 						</tr>
 						<tr>
 							<th>{ t(ctx, "admin.raftState") }</th>

@@ -1,12 +1,19 @@
 # syntax=docker/dockerfile:1
 
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG DATE=unknown
+
 # ---- Build stage ------------------------------------------------------------
 # Pinned to the go directive in go.mod (go 1.25.x) and the templ version used
 # by the project. Pure-Go build (modernc sqlite, no cgo) -> fully static binary.
 FROM golang:1.25-bookworm AS build
+ARG VERSION
+ARG COMMIT
+ARG DATE
 
 # Install the exact templ version the repo uses so generated code matches.
-RUN go install github.com/a-h/templ/cmd/templ@v0.3.977
+RUN go install github.com/a-h/templ/cmd/templ@v0.3.1001
 
 WORKDIR /src
 
@@ -22,8 +29,8 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     templ generate && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bongo-go     ./cmd/bongo-go && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bongo-import ./cmd/bongo-import
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-go/bongo-go/internal/version.Version=${VERSION} -X github.com/bongo-go/bongo-go/internal/version.Commit=${COMMIT} -X github.com/bongo-go/bongo-go/internal/version.Date=${DATE}" -o /out/bongo-go     ./cmd/bongo-go && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-go/bongo-go/internal/version.Version=${VERSION} -X github.com/bongo-go/bongo-go/internal/version.Commit=${COMMIT} -X github.com/bongo-go/bongo-go/internal/version.Date=${DATE}" -o /out/bongo-import ./cmd/bongo-import
 
 # ---- Runtime stage ----------------------------------------------------------
 # Alpine keeps a shell for debugging and ships ca-certificates + tzdata, both
@@ -32,6 +39,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # libcap provides setcap, used below to grant cap_net_bind_service as a file
 # capability so the non-root process can still bind privileged mail ports.
 FROM alpine:3.20
+ARG VERSION
+ARG COMMIT
+ARG DATE
+
+LABEL org.opencontainers.image.title="Bongo"
+LABEL org.opencontainers.image.version=$VERSION
+LABEL org.opencontainers.image.revision=$COMMIT
+LABEL org.opencontainers.image.created=$DATE
 
 RUN apk add --no-cache ca-certificates tzdata su-exec libcap && \
     # Dedicated service account with a fixed uid/gid (10001).  The fixed id
