@@ -208,7 +208,7 @@ networks:
   # The external network Traefik is attached to (compose project `hostbox` -> `traefik_web`).
   traefik:
     external: true
+    name: ${TRAEFIK_NETWORK}
 
 volumes:
   alloy-data:
-    name: ${TRAEFIK_NETWORK}
