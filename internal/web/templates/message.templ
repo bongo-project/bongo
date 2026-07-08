@@ -73,6 +73,22 @@ func tagColourCSS(index int32) string {
 	return tagPaletteColours[index]
 }
 
+// MessageFullPage renders the message view as a complete document (layout,
+// <head>/CSS, and sidebar) for a direct navigation or browser refresh of
+// /mail/{mailbox}/{uid}. HTMX clicks instead receive just MessagePage, which is
+// swapped into the existing page's #main-content. Without this wrapper a refresh
+// returned the bare content with no stylesheet and lost all styling.
+templ MessageFullPage(msg MessageDetail, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string) {
+	@LayoutWithContent(msg.Subject, email) {
+		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
+			@Sidebar(mailboxes, tags, msg.Mailbox)
+		</aside>
+		<main class="content" id="main-content" data-selected-mailbox={ msg.Mailbox }>
+			@MessagePage(msg, mailboxes)
+		</main>
+	}
+}
+
 templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 	<div class="toolbar" role="toolbar" aria-label={ t(ctx, "mail.threadActions") }>
 		<a

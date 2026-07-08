@@ -384,7 +384,7 @@ func paginateMessageSummaries(all []templates.MessageSummary, offset, limit int)
 
 // ShowMessage renders a single message detail view.
 func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
+	userID, email := middleware.UserFromContext(r.Context())
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
 	if err != nil {
@@ -527,7 +527,17 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID, mailbox)
-	templ.Handler(templates.MessagePage(detail, mailboxInfos)).ServeHTTP(w, r)
+
+	// HTMX click: return just the content, swapped into the existing
+	// #main-content. Direct navigation / refresh: return the full document
+	// (layout + sidebar + <head>/CSS) so the page keeps its styling.
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.MessagePage(detail, mailboxInfos)).ServeHTTP(w, r)
+		return
+	}
+
+	sidebarTags := h.loadSidebarTags(userID, mailbox)
+	templ.Handler(templates.MessageFullPage(detail, mailboxInfos, sidebarTags, email)).ServeHTTP(w, r)
 }
 
 func (h *MailHandler) loadThreadMessageDetails(userID, currentGUID, currentMailbox string) []templates.MessageDetail {

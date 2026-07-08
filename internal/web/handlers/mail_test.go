@@ -345,3 +345,72 @@ func TestServeBlobInlineTextPreviewIsEscaped(t *testing.T) {
 		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
 	}
 }
+
+// TestShowMessageFullPageIncludesLayout verifies that a direct navigation /
+// browser refresh of a message URL returns a complete styled document (layout +
+// stylesheet), while an HTMX request returns only the content fragment. This
+// guards the regression where refreshing a message view lost all styling
+// because the handler returned the bare content without the layout wrapper.
+func TestShowMessageFullPageIncludesLayout(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	applier := &directApplierTags{ps: ps}
+	mailboxes := store.NewMailboxStore(ps, applier)
+	if err := mailboxes.CreateMailbox("user1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+	meta := &bongov1.MailMeta{
+		Guid:       "msg-1",
+		Subject:    "Styling regression check",
+		From:       "sender@example.test",
+		MessageId:  "<m1@example.test>",
+		ReceivedAt: time.Unix(1_700_000_000, 0).Unix(),
+	}
+	uid, err := mailboxes.DeliverMessage("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+
+	h := NewMailHandler(ps, nil, mailboxes, discardLogger())
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := middleware.WithUserContext(req.Context(), "user1", "user1@example.test")
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Get("/mail/{mailbox}/{uid}", h.ShowMessage)
+
+	url := fmt.Sprintf("/mail/INBOX/%d", uid)
+
+	// Full-page load (no HX-Request): must be a complete document with the stylesheet.
+	full := httptest.NewRecorder()
+	r.ServeHTTP(full, httptest.NewRequest(http.MethodGet, url, nil))
+	if full.Code != http.StatusOK {
+		t.Fatalf("full-page status = %d: %s", full.Code, full.Body.String())
+	}
+	fb := full.Body.String()
+	if !strings.Contains(fb, "<html") || !strings.Contains(fb, "bongo.css") {
+		t.Errorf("full-page message view is missing the layout/stylesheet (styling would be lost on refresh)")
+	}
+	if !strings.Contains(fb, "Styling regression check") {
+		t.Errorf("full-page message view missing the message subject")
+	}
+
+	// HTMX request: must be just the content fragment (no full document).
+	htmx := httptest.NewRecorder()
+	hreq := httptest.NewRequest(http.MethodGet, url, nil)
+	hreq.Header.Set("HX-Request", "true")
+	r.ServeHTTP(htmx, hreq)
+	if htmx.Code != http.StatusOK {
+		t.Fatalf("htmx status = %d", htmx.Code)
+	}
+	if strings.Contains(htmx.Body.String(), "<html") {
+		t.Errorf("HTMX message response should be a fragment, not a full <html> document")
+	}
+}
