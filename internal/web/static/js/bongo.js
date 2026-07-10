@@ -16,6 +16,37 @@ function i18n(key) {
   return i18n._cache[key] || '';
 }
 
+// CSRF: the server requires an X-CSRF-Token header on state-changing requests.
+// HTMX sends it automatically via hx-headers on <body>, but Alpine's fetch()
+// calls (bulk actions, settings auto-save, tag CRUD, etc.) do not, so wrap
+// window.fetch to inject the token on same-origin, non-GET requests. The token
+// is the same value rendered into the body's hx-headers attribute.
+(function () {
+  function csrfToken() {
+    try {
+      var hh = document.body && document.body.getAttribute('hx-headers');
+      if (hh) return (JSON.parse(hh) || {})['X-CSRF-Token'] || '';
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+  var origFetch = window.fetch;
+  window.fetch = function (input, init) {
+    init = init || {};
+    var url = (typeof input === 'string') ? input : (input && input.url) || '';
+    var method = (init.method || (typeof input === 'object' && input.method) || 'GET').toUpperCase();
+    var sameOrigin = url.indexOf('/') === 0 || url.indexOf(window.location.origin) === 0;
+    if (sameOrigin && method !== 'GET' && method !== 'HEAD') {
+      var token = csrfToken();
+      if (token) {
+        var headers = new Headers(init.headers || (typeof input === 'object' ? input.headers : undefined) || {});
+        if (!headers.has('X-CSRF-Token')) headers.set('X-CSRF-Token', token);
+        init.headers = headers;
+      }
+    }
+    return origFetch.call(this, input, init);
+  };
+})();
+
 document.addEventListener('alpine:init', () => {
   function replacePrefixedClass(el, prefix, nextClass) {
     if (!el) return;

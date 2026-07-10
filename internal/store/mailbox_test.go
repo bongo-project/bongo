@@ -576,3 +576,38 @@ func TestSanitizeMailMeta_ValidUTF8Unchanged(t *testing.T) {
 		t.Errorf("From changed unexpectedly: %q", meta.From)
 	}
 }
+
+func TestListVirtualMessagesAllMailExcludesTrash(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	userID := "user1"
+	_ = ms.CreateMailbox(userID, "Trash")
+
+	if _, err := ms.DeliverMessage(userID, "INBOX", &bongov1.MailMeta{Guid: "inbox-guid"}, 0); err != nil {
+		t.Fatalf("deliver inbox: %v", err)
+	}
+	if _, err := ms.DeliverMessage(userID, "Trash", &bongov1.MailMeta{Guid: "trash-guid"}, 0); err != nil {
+		t.Fatalf("deliver trash: %v", err)
+	}
+
+	msgs, total, err := ms.ListVirtualMessages(userID, "all-mail", 0, 100)
+	if err != nil {
+		t.Fatalf("ListVirtualMessages: %v", err)
+	}
+	for _, m := range msgs {
+		if m.MailGuid == "trash-guid" {
+			t.Errorf("all-mail included a Trash message; it should be excluded")
+		}
+	}
+	var sawInbox bool
+	for _, m := range msgs {
+		if m.MailGuid == "inbox-guid" {
+			sawInbox = true
+		}
+	}
+	if !sawInbox {
+		t.Errorf("all-mail should still include the INBOX message")
+	}
+	if total != 1 {
+		t.Errorf("all-mail total = %d, want 1 (Trash excluded)", total)
+	}
+}
