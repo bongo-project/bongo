@@ -771,6 +771,12 @@ func (ms *MailboxStore) ListVirtualMessages(userID, virtual string, offset, limi
 					all = append(all, msg)
 				}
 			case "all-mail":
+				// All Mail excludes Trash, so a deleted message (moved to
+				// Trash) no longer appears here — matching the expectation that
+				// "delete" removes it from the everyday view.
+				if mb.Name == "Trash" {
+					continue
+				}
 				all = append(all, msg)
 			}
 		}
