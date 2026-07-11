@@ -17,9 +17,10 @@
 services:
   bongo:
     # local dev build: docker build -f deploy/Dockerfile -t ghcr.io/lhaig/bongo-go:latest ..
-    image: ghcr.io/lhaig/bongo-go:latest
+    image: ghcr.io/lhaig/bongo-go:0.1.2
     container_name: bongo
     restart: unless-stopped
+    mem_limit: 512m
 
     # Hardening: drop all Linux capabilities except NET_BIND_SERVICE, which is
     # needed for the non-root process to bind privileged mail ports (25, 587,
@@ -139,9 +140,15 @@ services:
   # Extracts the mail.example.com certificate from Traefik's acme.json into the
   # shared ./certs dir, and re-dumps on renewal. Pin the tag as you like.
   certs-dumper:
-    image: ldez/traefik-certs-dumper:v2.10.0
+    image: ldez/traefik-certs-dumper@sha256:a34b27edf8e5e96a215035a6bfba00d769d2638f8444a5dd6dc27299d75f43c5
     container_name: bongo-certs-dumper
     restart: unless-stopped
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     command:
       - "file"
       - "--version=v2"
@@ -156,9 +163,15 @@ services:
   # Static landing page for the apex example.com so it serves a real page with a
   # valid Let's Encrypt cert instead of Traefik's default self-signed cert.
   website:
-    image: nginx:alpine
+    image: nginx:1.29-alpine
     container_name: bongo-website
     restart: unless-stopped
+    mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     volumes:
       - ./website:/usr/share/nginx/html:ro
     networks:
@@ -176,9 +189,10 @@ services:
   # API (socket), so it captures bongo and all other services. Set LOKI_ENDPOINT
   # in .env once the hostbox box can reach Loki (see deploy/LOGGING.md).
   alloy:
-    image: grafana/alloy:latest
+    image: grafana/alloy:v1.17.1
     container_name: bongo-alloy
     restart: unless-stopped
+    mem_limit: 256m
     command:
       - run
       - /etc/alloy/config.alloy
