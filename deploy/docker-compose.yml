@@ -197,6 +197,8 @@ services:
     volumes:
       - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro   # read all containers' logs
+      - ./logs:/bongo-logs:ro                          # bongo.jsonl structured logs
+      - /mnt/data/obs-logs:/host-logs:ro               # backup-status.jsonl
       - alloy-data:/var/lib/alloy                       # WAL/positions survive restarts
     logging:
       driver: json-file
