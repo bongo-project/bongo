@@ -36,6 +36,7 @@ type Command struct {
 type SearchIndexer interface {
 	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore ...float64) error
 	IndexProfile(userID, email, displayName string) error
+	DeleteMailIndex(userID, guid string) error
 }
 
 // BlobEnqueuer is the interface for blob sync enqueueing.
@@ -281,6 +282,16 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 
 	if cmd.Op == bongov1.Op_OP_DELETE {
 		f.logger.Debug("fsm: derived index delete", "user", userID, "guid", guid)
+		if docType == store.DocTypeMail {
+			if err := f.metadata.DeleteMail(userID, guid); err != nil {
+				f.logger.Warn("fsm: failed to delete mail from sqlite index", "error", err, "user", userID, "guid", guid)
+			}
+			if f.search != nil {
+				if err := f.search.DeleteMailIndex(userID, guid); err != nil {
+					f.logger.Warn("fsm: failed to delete mail from bleve", "error", err, "user", userID, "guid", guid)
+				}
+			}
+		}
 		return
 	}
 

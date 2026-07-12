@@ -13,8 +13,9 @@ import (
 )
 
 type mockSearchIndexer struct {
-	profiles []string
-	mails    []string
+	profiles     []string
+	mails        []string
+	deletedMails []string
 }
 
 func (m *mockSearchIndexer) IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore ...float64) error {
@@ -24,6 +25,11 @@ func (m *mockSearchIndexer) IndexMail(userID, guid string, subject, from string,
 
 func (m *mockSearchIndexer) IndexProfile(userID, email, displayName string) error {
 	m.profiles = append(m.profiles, userID+"/"+email)
+	return nil
+}
+
+func (m *mockSearchIndexer) DeleteMailIndex(userID, guid string) error {
+	m.deletedMails = append(m.deletedMails, userID+"/"+guid)
 	return nil
 }
 

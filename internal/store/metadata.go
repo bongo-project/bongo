@@ -193,6 +193,29 @@ func (u *UserIndex) IndexMailTags(mailGUID string, tags []string) error {
 	return tx.Commit()
 }
 
+// DeleteMail removes a mail's derived-index rows (storeobject, maildocument,
+// message_tags) so the indexes don't retain entries for a deleted message. It is
+// the symmetric inverse of IndexMail + IndexMailTags.
+func (u *UserIndex) DeleteMail(mailGUID string) error {
+	tx, err := u.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, stmt := range []string{
+		`DELETE FROM message_tags WHERE mail_guid = ?`,
+		`DELETE FROM maildocument WHERE guid = ?`,
+		`DELETE FROM storeobject WHERE guid = ?`,
+	} {
+		if _, err := tx.Exec(stmt, mailGUID); err != nil {
+			return fmt.Errorf("deleting mail index rows: %w", err)
+		}
+	}
+
+	return tx.Commit()
+}
+
 // QueryByTag returns all mail GUIDs that have the given tag, ordered by mail_guid.
 func (u *UserIndex) QueryByTag(tag string) ([]string, error) {
 	rows, err := u.db.Query(`
@@ -365,6 +388,25 @@ func (s *SystemIndex) DB() *sql.DB {
 	return s.db
 }
 
+// ListUserIDs returns the IDs of all users known to the system index.
+func (s *SystemIndex) ListUserIDs() ([]string, error) {
+	rows, err := s.db.Query(`SELECT id FROM users`)
+	if err != nil {
+		return nil, fmt.Errorf("listing user ids: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scanning user id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // Close closes the system database.
 func (s *SystemIndex) Close() error {
 	return s.db.Close()
@@ -521,6 +563,15 @@ func (m *MetadataManager) IndexMailTags(userID, mailGUID string, tags []string) 
 		return err
 	}
 	return idx.IndexMailTags(mailGUID, tags)
+}
+
+// DeleteMail opens the user's database and removes a mail's derived-index rows.
+func (m *MetadataManager) DeleteMail(userID, mailGUID string) error {
+	idx, err := m.OpenUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.DeleteMail(mailGUID)
 }
 
 // QueryByTag opens the user's database and returns all mail GUIDs with the given tag.

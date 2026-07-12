@@ -977,6 +977,62 @@ func (ms *MailboxStore) MoveMessage(userID, srcMailbox string, uid uint32, dstMa
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
 }
 
+// OrphanedMailGUIDs returns mail GUIDs whose MailMeta exists in Pebble but which
+// no MailboxMessage in any of the user's mailboxes references — e.g. metadata
+// left behind by EXPUNGE, which deletes the mailbox entry but not the MailMeta.
+// Results are restricted to MailMeta older than minAge so the sweep never races
+// with in-flight delivery that writes the MailMeta just before the mailbox entry.
+// Read-only.
+func (ms *MailboxStore) OrphanedMailGUIDs(userID string, minAge time.Duration) ([]string, error) {
+	// Set of GUIDs still referenced by a live mailbox message.
+	referenced := make(map[string]bool)
+	mailboxes, err := ms.ListMailboxes(userID)
+	if err != nil {
+		return nil, fmt.Errorf("listing mailboxes: %w", err)
+	}
+	for _, mb := range mailboxes {
+		msgs, err := listMailboxMessages(ms.store, userID, mb.Name)
+		if err != nil {
+			return nil, fmt.Errorf("listing messages in %q: %w", mb.Name, err)
+		}
+		for _, m := range msgs {
+			referenced[m.MailGuid] = true
+		}
+	}
+
+	prefix := mailMetaPrefix(userID)
+	iter, err := ms.store.PrefixScan(prefix)
+	if err != nil {
+		return nil, fmt.Errorf("scanning mail meta: %w", err)
+	}
+	defer iter.Close()
+
+	cutoff := time.Now().Add(-minAge).Unix()
+	var orphans []string
+	for iter.Next() {
+		guid := strings.TrimPrefix(string(iter.Key()), string(prefix))
+		// Only direct mail-meta keys (guid has no further path separator).
+		if guid == "" || strings.Contains(guid, "/") || referenced[guid] {
+			continue
+		}
+		val, err := iter.Value()
+		if err != nil {
+			return nil, fmt.Errorf("reading mail meta: %w", err)
+		}
+		var meta bongov1.MailMeta
+		if err := proto.Unmarshal(val, &meta); err != nil {
+			continue
+		}
+		// Skip recent metadata: it may be a message mid-delivery whose mailbox
+		// entry has not been written yet.
+		if meta.ReceivedAt > cutoff {
+			continue
+		}
+		orphans = append(orphans, guid)
+	}
+	return orphans, nil
+}
+
 // Expunge removes all messages with the Deleted flag from a mailbox.
 // Returns the UIDs that were expunged.
 func (ms *MailboxStore) Expunge(userID, mailbox string) ([]uint32, error) {
