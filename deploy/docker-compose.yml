@@ -17,7 +17,7 @@
 services:
   bongo:
     # local dev build: docker build -f deploy/Dockerfile -t ghcr.io/lhaig/bongo-go:latest ..
-    image: ghcr.io/lhaig/bongo-go:0.3.9
+    image: ghcr.io/lhaig/bongo-go:0.3.10
     container_name: bongo
     restart: unless-stopped
     mem_limit: 512m
