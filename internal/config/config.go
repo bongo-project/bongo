@@ -119,6 +119,11 @@ type SMTPRelay struct {
 	// STARTTLS is unavailable. Defaults to false: credentials are never sent
 	// unless STARTTLS completes successfully.
 	AllowInsecureAuth bool `hcl:"allow_insecure_auth,optional" mapstructure:"allow_insecure_auth"`
+	// MTASTSEnabled honours recipient-domain MTA-STS policies (RFC 8461) on
+	// outbound MX delivery: enforce-mode domains require an authenticated TLS
+	// connection to a policy-listed MX or delivery is deferred. Default off, so
+	// delivery stays opportunistic-STARTTLS until enabled.
+	MTASTSEnabled bool `hcl:"mta_sts_enabled,optional" mapstructure:"mta_sts_enabled"`
 }
 
 type SMTPDKIMConfig struct {
