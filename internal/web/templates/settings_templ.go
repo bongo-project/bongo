@@ -1041,26 +1041,5 @@ func timezoneOptions(selected string) templ.Component {
 	})
 }
 
-func commonTimezones() []string {
-	return []string{
-		"UTC",
-		"America/New_York",
-		"America/Chicago",
-		"America/Denver",
-		"America/Los_Angeles",
-		"America/Sao_Paulo",
-		"Europe/London",
-		"Europe/Paris",
-		"Europe/Berlin",
-		"Europe/Amsterdam",
-		"Europe/Moscow",
-		"Asia/Tokyo",
-		"Asia/Shanghai",
-		"Asia/Kolkata",
-		"Asia/Singapore",
-		"Australia/Sydney",
-		"Pacific/Auckland",
-	}
-}
-
+// commonTimezones now lives in timezones.go (reads the system tz database).
 var _ = templruntime.GeneratedTemplate

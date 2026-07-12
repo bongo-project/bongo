@@ -1895,6 +1895,9 @@ a.admin-nav-item.active, .admin-nav-item.active {
 .contact-row-remove { flex: 0 0 auto; color: var(--text-muted); cursor: pointer; padding: 0 6px; }
 .contact-row-remove:hover { color: var(--accent, var(--bongo-blue)); }
 .contact-address-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.contact-address-block { border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: 8px; margin-bottom: 8px; }
+.contact-address-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.contact-address-head .contact-type-select { flex: 1; }
 
 .detail-actions {
   display: flex; align-items: center; gap: 8px;

@@ -56,3 +56,42 @@ func TestContactVCardDetailsEmpty(t *testing.T) {
 		t.Errorf("no vCard should yield no extras, got %v", got)
 	}
 }
+
+func TestCommonTimezonesFromSystem(t *testing.T) {
+	tz := commonTimezones()
+	// The system tz database (or, failing that, the fallback) must yield a
+	// substantial list starting with UTC and containing well-known zones.
+	if len(tz) < 40 {
+		t.Fatalf("got %d timezones, expected a full list", len(tz))
+	}
+	if tz[0] != "UTC" {
+		t.Errorf("first zone = %q, want UTC", tz[0])
+	}
+	for _, want := range []string{"Europe/London", "America/New_York", "Asia/Tokyo"} {
+		found := false
+		for _, z := range tz {
+			if z == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("timezone %q missing from list", want)
+		}
+	}
+}
+
+func TestNormalizeBirthday(t *testing.T) {
+	for in, want := range map[string]string{
+		"1985-05-05":           "1985-05-05",
+		"19850505":             "1985-05-05",
+		"1985-05-05T00:00:00Z": "1985-05-05",
+		"1985-05-05 12:00":     "1985-05-05",
+		"":                     "",
+		"--0505":               "--0505",
+	} {
+		if got := normalizeBirthday(in); got != want {
+			t.Errorf("normalizeBirthday(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

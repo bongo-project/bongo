@@ -26,6 +26,7 @@ func TestBuildVCardFromForm(t *testing.T) {
 		"phone_type":   {"cell", "home"},
 		"company":      {"Acme"},
 		"title":        {"CEO"},
+		"adr_type":     {"home"},
 		"adr_street":   {"1 High St"},
 		"adr_city":     {"Metropolis"},
 		"adr_region":   {"NY"},

@@ -70,6 +70,16 @@ type contactFormRow struct {
 	Type  string
 }
 
+// contactAddressRow is one editable postal address with its type.
+type contactAddressRow struct {
+	Type       string
+	Street     string
+	City       string
+	Region     string
+	PostalCode string
+	Country    string
+}
+
 // contactFormData is the pre-filled state for the full contact edit form,
 // derived from the stored vCard (falling back to the quick fields).
 type contactFormData struct {
@@ -79,11 +89,7 @@ type contactFormData struct {
 	Phones      []contactFormRow
 	Company     string
 	Title       string
-	Street      string
-	City        string
-	Region      string
-	PostalCode  string
-	Country     string
+	Addresses   []contactAddressRow
 	Birthday    string
 	Website     string
 	Nickname    string
@@ -109,21 +115,27 @@ func newContactFormData(c *bongov1.Contact) contactFormData {
 		fd.DisplayName = fn
 	}
 	for _, f := range card[vcard.FieldEmail] {
-		fd.Emails = append(fd.Emails, contactFormRow{Value: f.Value, Type: firstVCardType(f)})
+		fd.Emails = append(fd.Emails, contactFormRow{Value: f.Value, Type: normalizeVCardType(f)})
 	}
 	for _, f := range card[vcard.FieldTelephone] {
-		fd.Phones = append(fd.Phones, contactFormRow{Value: f.Value, Type: firstVCardType(f)})
+		fd.Phones = append(fd.Phones, contactFormRow{Value: f.Value, Type: normalizeVCardType(f)})
 	}
 	fd.Company = card.PreferredValue(vcard.FieldOrganization)
 	fd.Title = card.Value(vcard.FieldTitle)
-	fd.Birthday = card.Value(vcard.FieldBirthday)
+	fd.Birthday = normalizeBirthday(card.Value(vcard.FieldBirthday))
 	fd.Website = card.Value(vcard.FieldURL)
 	fd.Nickname = card.Value(vcard.FieldNickname)
 	fd.Timezone = card.Value(vcard.FieldTimezone)
 	fd.Notes = card.Value(vcard.FieldNote)
-	if addrs := card.Addresses(); len(addrs) > 0 {
-		a := addrs[0]
-		fd.Street, fd.City, fd.Region, fd.PostalCode, fd.Country = a.StreetAddress, a.Locality, a.Region, a.PostalCode, a.Country
+	for _, a := range card.Addresses() {
+		fd.Addresses = append(fd.Addresses, contactAddressRow{
+			Type:       normalizeVCardType(a.Field),
+			Street:     a.StreetAddress,
+			City:       a.Locality,
+			Region:     a.Region,
+			PostalCode: a.PostalCode,
+			Country:    a.Country,
+		})
 	}
 	return fd
 }
@@ -135,13 +147,45 @@ func decodeContactCard(c *bongov1.Contact) (vcard.Card, error) {
 	return vcard.NewDecoder(bytes.NewReader(c.VcardRaw)).Decode()
 }
 
-func firstVCardType(f *vcard.Field) string {
-	if f.Params != nil {
-		if ts := f.Params[vcard.ParamType]; len(ts) > 0 {
-			return ts[0]
+// normalizeVCardType returns a lower-cased type for the field, mapping common
+// synonyms to the editor's options (home/work/cell) and otherwise returning the
+// first raw type so non-standard values are preserved through a round-trip.
+func normalizeVCardType(f *vcard.Field) string {
+	if f == nil || f.Params == nil {
+		return ""
+	}
+	types := f.Params[vcard.ParamType]
+	for _, t := range types {
+		switch strings.ToLower(strings.TrimSpace(t)) {
+		case "home":
+			return "home"
+		case "work":
+			return "work"
+		case "cell", "mobile":
+			return "cell"
 		}
 	}
+	if len(types) > 0 {
+		return strings.ToLower(strings.TrimSpace(types[0]))
+	}
 	return ""
+}
+
+// normalizeBirthday coerces a vCard BDAY into the YYYY-MM-DD form an HTML date
+// input needs, handling the common YYYYMMDD and date-time variants. Values it
+// cannot interpret are returned unchanged.
+func normalizeBirthday(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if i := strings.IndexAny(s, "T "); i > 0 {
+		s = s[:i]
+	}
+	if len(s) == 8 && !strings.Contains(s, "-") {
+		return s[0:4] + "-" + s[4:6] + "-" + s[6:8]
+	}
+	return s
 }
 
 // contactAlpineData renders the x-data object seeding the dynamic email/phone
@@ -158,7 +202,22 @@ func contactAlpineData(fd contactFormData) string {
 		}
 		return strings.Join(parts, ", ")
 	}
-	return fmt.Sprintf("{ emails: [%s], phones: [%s] }", rows(fd.Emails), rows(fd.Phones))
+	var addrs []string
+	for _, a := range fd.Addresses {
+		addrs = append(addrs, fmt.Sprintf("{type:'%s', street:'%s', city:'%s', region:'%s', postal:'%s', country:'%s'}",
+			jsEscape(a.Type), jsEscape(a.Street), jsEscape(a.City), jsEscape(a.Region), jsEscape(a.PostalCode), jsEscape(a.Country)))
+	}
+	return fmt.Sprintf("{ emails: [%s], phones: [%s], addresses: [%s] }", rows(fd.Emails), rows(fd.Phones), strings.Join(addrs, ", "))
+}
+
+// timezoneInList reports whether tz is one of the curated options.
+func timezoneInList(tz string) bool {
+	for _, z := range commonTimezones() {
+		if z == tz {
+			return true
+		}
+	}
+	return false
 }
 
 func jsEscape(s string) string {
@@ -337,6 +396,9 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 						<div class="contact-multi-row">
 							<input type="email" name="email" x-model="em.value" class="form-input" placeholder={ t(ctx, "contacts.email") }/>
 							<select name="email_type" x-model="em.type" class="form-input contact-type-select">
+								<template x-if="em.type && em.type !== 'home' && em.type !== 'work' && em.type !== 'cell' && em.type !== 'other'">
+									<option :value="em.type" x-text="em.type"></option>
+								</template>
 								<option value="">&#8212;</option>
 								<option value="home">{ t(ctx, "contacts.typeHome") }</option>
 								<option value="work">{ t(ctx, "contacts.typeWork") }</option>
@@ -356,6 +418,9 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 						<div class="contact-multi-row">
 							<input type="tel" name="phone" x-model="ph.value" class="form-input" placeholder={ t(ctx, "contacts.phone") }/>
 							<select name="phone_type" x-model="ph.type" class="form-input contact-type-select">
+								<template x-if="ph.type && ph.type !== 'home' && ph.type !== 'work' && ph.type !== 'cell' && ph.type !== 'other'">
+									<option :value="ph.type" x-text="ph.type"></option>
+								</template>
 								<option value="">&#8212;</option>
 								<option value="home">{ t(ctx, "contacts.typeHome") }</option>
 								<option value="work">{ t(ctx, "contacts.typeWork") }</option>
@@ -372,18 +437,55 @@ templ ContactEditForm(fd contactFormData, isNew bool) {
 			@contactTextField("title", "contacts.title", fd.Title)
 			<div class="detail-field">
 				<div class="detail-field-label">{ t(ctx, "contacts.address") }</div>
-				<div class="detail-field-value contact-address-grid">
-					<input type="text" name="adr_street" class="form-input" value={ fd.Street } placeholder={ t(ctx, "contacts.street") }/>
-					<input type="text" name="adr_city" class="form-input" value={ fd.City } placeholder={ t(ctx, "contacts.city") }/>
-					<input type="text" name="adr_region" class="form-input" value={ fd.Region } placeholder={ t(ctx, "contacts.region") }/>
-					<input type="text" name="adr_postal" class="form-input" value={ fd.PostalCode } placeholder={ t(ctx, "contacts.postalCode") }/>
-					<input type="text" name="adr_country" class="form-input" value={ fd.Country } placeholder={ t(ctx, "contacts.country") }/>
+				<div class="detail-field-value">
+					<template x-for="(ad, i) in addresses" :key="i">
+						<div class="contact-address-block">
+							<div class="contact-address-head">
+								<select name="adr_type" x-model="ad.type" class="form-input contact-type-select">
+									<template x-if="ad.type && ad.type !== 'home' && ad.type !== 'work' && ad.type !== 'other'">
+										<option :value="ad.type" x-text="ad.type"></option>
+									</template>
+									<option value="">&#8212;</option>
+									<option value="home">{ t(ctx, "contacts.typeHome") }</option>
+									<option value="work">{ t(ctx, "contacts.typeWork") }</option>
+									<option value="other">{ t(ctx, "contacts.typeOther") }</option>
+								</select>
+								<button type="button" class="btn-flush contact-row-remove" @click="addresses.splice(i, 1)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
+							</div>
+							<div class="contact-address-grid">
+								<input type="text" name="adr_street" x-model="ad.street" class="form-input" placeholder={ t(ctx, "contacts.street") }/>
+								<input type="text" name="adr_city" x-model="ad.city" class="form-input" placeholder={ t(ctx, "contacts.city") }/>
+								<input type="text" name="adr_region" x-model="ad.region" class="form-input" placeholder={ t(ctx, "contacts.region") }/>
+								<input type="text" name="adr_postal" x-model="ad.postal" class="form-input" placeholder={ t(ctx, "contacts.postalCode") }/>
+								<input type="text" name="adr_country" x-model="ad.country" class="form-input" placeholder={ t(ctx, "contacts.country") }/>
+							</div>
+						</div>
+					</template>
+					<button type="button" class="btn-outline btn-sm" @click="addresses.push({type:'', street:'', city:'', region:'', postal:'', country:''})">{ t(ctx, "contacts.addAddress") }</button>
 				</div>
 			</div>
-			@contactTextField("birthday", "contacts.birthday", fd.Birthday)
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.birthday") }</div>
+				<div class="detail-field-value">
+					<input type="date" name="birthday" class="form-input" value={ fd.Birthday }/>
+				</div>
+			</div>
 			@contactTextField("website", "contacts.website", fd.Website)
 			@contactTextField("nickname", "contacts.nickname", fd.Nickname)
-			@contactTextField("timezone", "contacts.timezone", fd.Timezone)
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.timezone") }</div>
+				<div class="detail-field-value">
+					<select name="timezone" class="form-input">
+						<option value="">&#8212;</option>
+						if fd.Timezone != "" && !timezoneInList(fd.Timezone) {
+							<option value={ fd.Timezone } selected>{ fd.Timezone }</option>
+						}
+						for _, tz := range commonTimezones() {
+							<option value={ tz } selected?={ tz == fd.Timezone }>{ tz }</option>
+						}
+					</select>
+				</div>
+			</div>
 			<div class="detail-field">
 				<div class="detail-field-label">{ t(ctx, "contacts.notes") }</div>
 				<div class="detail-field-value">
