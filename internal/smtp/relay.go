@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/miekg/dns"
+
 	"github.com/bongo-go/bongo-go/internal/config"
 )
 
@@ -19,7 +21,8 @@ import (
 type Relay struct {
 	cfg    *config.SMTPRelay
 	logger *slog.Logger
-	mtasts *MTASTSCache // nil unless MTA-STS is enabled
+	mtasts *MTASTSCache  // nil unless MTA-STS is enabled
+	dane   *daneResolver // nil unless DANE is enabled
 }
 
 // NewRelay creates a new Relay.
@@ -27,6 +30,9 @@ func NewRelay(cfg *config.SMTPRelay, logger *slog.Logger) *Relay {
 	r := &Relay{cfg: cfg, logger: logger}
 	if cfg != nil && cfg.MTASTSEnabled {
 		r.mtasts = NewMTASTSCache()
+	}
+	if cfg != nil && cfg.DANEEnabled {
+		r.dane = newDANEResolver(cfg.DNSSECResolver)
 	}
 	return r
 }
@@ -41,6 +47,9 @@ type deliveryTLSPolicy struct {
 	// mxAuthorized reports whether this MX host is permitted by the policy. When
 	// false under an enforcing policy the MX must be skipped.
 	mxAuthorized bool
+	// daneTLSA, when set, holds the DNSSEC-authenticated TLSA records the server
+	// certificate must match (DANE). It replaces PKIX host verification.
+	daneTLSA []*dns.TLSA
 }
 
 // mtaStsPolicyForMX derives the TLS policy for delivering to mxHost in the given
@@ -96,31 +105,20 @@ func (r *Relay) deliverViaMX(ctx context.Context, from string, recipients []stri
 
 	var allPermanentFails []string
 	for domain, domainRcpts := range byDomain {
-		mxRecords, err := net.LookupMX(domain)
+		hosts, mxSecure, err := r.lookupMXHosts(ctx, domain)
 		if err != nil {
 			r.logger.Warn("relay: MX lookup failed", "domain", domain, "error", err)
 			return nil, fmt.Errorf("MX lookup for %s: %w", domain, err)
 		}
 
-		if len(mxRecords) == 0 {
-			// Fall back to A record.
-			mxRecords = []*net.MX{{Host: domain, Pref: 0}}
-		}
-
-		// Sort by priority.
-		sort.Slice(mxRecords, func(i, j int) bool {
-			return mxRecords[i].Pref < mxRecords[j].Pref
-		})
-
 		var lastErr error
-		for _, mx := range mxRecords {
-			host := strings.TrimSuffix(mx.Host, ".")
+		for _, host := range hosts {
 			addr := net.JoinHostPort(host, "25")
 
-			pol := r.mtaStsPolicyForMX(ctx, domain, host)
+			pol := r.tlsPolicyForMX(ctx, domain, host, mxSecure)
 			if !pol.mxAuthorized {
-				lastErr = fmt.Errorf("MX %s not authorized by MTA-STS policy for %s", host, domain)
-				r.logger.Warn("relay: MX not authorized by MTA-STS policy, skipping", "domain", domain, "host", host)
+				lastErr = fmt.Errorf("MX %s not authorized by policy for %s", host, domain)
+				r.logger.Warn("relay: MX not authorized by policy, skipping", "domain", domain, "host", host)
 				continue
 			}
 
@@ -141,6 +139,43 @@ func (r *Relay) deliverViaMX(ctx context.Context, from string, recipients []stri
 	return allPermanentFails, nil
 }
 
+// lookupMXHosts resolves a recipient domain's MX hosts (preference order) and
+// reports whether the MX RRset is DNSSEC-secure (only meaningful when DANE is
+// enabled). Falls back to the domain itself (implicit MX / A record) when no MX
+// records exist.
+func (r *Relay) lookupMXHosts(ctx context.Context, domain string) ([]string, bool, error) {
+	if r.dane != nil {
+		if hosts, secure := r.dane.secureMX(ctx, domain); len(hosts) > 0 {
+			return hosts, secure, nil
+		}
+	}
+	mxRecords, err := net.LookupMX(domain)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(mxRecords) == 0 {
+		return []string{domain}, false, nil
+	}
+	sort.Slice(mxRecords, func(i, j int) bool { return mxRecords[i].Pref < mxRecords[j].Pref })
+	hosts := make([]string, 0, len(mxRecords))
+	for _, mx := range mxRecords {
+		hosts = append(hosts, strings.TrimSuffix(mx.Host, "."))
+	}
+	return hosts, false, nil
+}
+
+// tlsPolicyForMX derives the outbound TLS policy for an MX host, giving DANE
+// precedence over MTA-STS (RFC 7672 / RFC 8461 §2).
+func (r *Relay) tlsPolicyForMX(ctx context.Context, domain, host string, mxSecure bool) deliveryTLSPolicy {
+	if r.dane != nil && mxSecure {
+		if tlsa := r.dane.tlsaFor(ctx, host); len(tlsa) > 0 {
+			r.logger.Info("relay: DANE TLSA present, pinning MX certificate", "domain", domain, "host", host, "records", len(tlsa))
+			return deliveryTLSPolicy{requireTLS: true, mxAuthorized: true, daneTLSA: tlsa}
+		}
+	}
+	return r.mtaStsPolicyForMX(ctx, domain, host)
+}
+
 func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []string, rawMsg []byte, pol deliveryTLSPolicy) (permanentFails []string, err error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -159,11 +194,24 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 	defer client.Close()
 
 	// STARTTLS. Opportunistic by default; when the recipient domain's policy
-	// (MTA-STS enforce, later DANE) requires TLS, a missing or failed STARTTLS
+	// (DANE, or MTA-STS enforce) requires TLS, a missing or failed STARTTLS
 	// defers delivery instead of falling back to plaintext.
+	tlsCfg := &tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}
+	if len(pol.daneTLSA) > 0 {
+		// DANE authenticates the server via TLSA matching, not the WebPKI, so
+		// disable PKIX verification and match the presented chain to the records.
+		tlsa := pol.daneTLSA
+		tlsCfg.InsecureSkipVerify = true // #nosec G402 -- authenticated by DANE TLSA below
+		tlsCfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			if tlsaMatches(tlsa, cs.PeerCertificates) {
+				return nil
+			}
+			return fmt.Errorf("DANE: certificate for %s matches no TLSA record", host)
+		}
+	}
 	tlsCompleted := false
 	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+		if err := client.StartTLS(tlsCfg); err != nil {
 			if pol.requireTLS {
 				return nil, fmt.Errorf("relay: policy requires authenticated TLS to %s but STARTTLS failed: %w", host, err)
 			}
