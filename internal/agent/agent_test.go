@@ -7,9 +7,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/bongo-go/bongo-go/internal/config"
 )
@@ -28,6 +31,27 @@ func freePort(t *testing.T) int {
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	return port
+}
+
+func TestWebDAVMethodsRegistered(t *testing.T) {
+	// chi must route WebDAV methods to a wildcard handler rather than 405ing, or
+	// CalDAV/CardDAV clients (which lead with PROPFIND) cannot connect.
+	r := chi.NewRouter()
+	r.Handle("/caldav/*", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for _, method := range []string{"PROPFIND", "REPORT", "MKCALENDAR", "PROPPATCH"} {
+		req := httptest.NewRequest(method, "/caldav/user/calendars/", nil)
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code == http.StatusMethodNotAllowed {
+			t.Errorf("%s returned 405 — chi did not route the WebDAV method", method)
+		}
+		if rr.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want 200 (reached handler)", method, rr.Code)
+		}
+	}
 }
 
 func TestNewAgentDev(t *testing.T) {

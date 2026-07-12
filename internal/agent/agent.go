@@ -57,6 +57,21 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
+// init registers the WebDAV / CalDAV / CardDAV HTTP methods with chi. Chi only
+// routes the standard HTTP methods by default, so without this the DAV handlers
+// (mounted with r.Handle) never see PROPFIND/REPORT/etc — the router returns 405
+// before the request reaches them, breaking CalDAV/CardDAV for real clients
+// (Thunderbird, Apple Mail, etc.). Must run before any route is registered; an
+// init function guarantees that.
+func init() {
+	for _, m := range []string{
+		"PROPFIND", "PROPPATCH", "MKCOL", "COPY", "MOVE",
+		"LOCK", "UNLOCK", "REPORT", "MKCALENDAR", "ACL",
+	} {
+		chi.RegisterMethod(m)
+	}
+}
+
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
 	Config      *config.Config
