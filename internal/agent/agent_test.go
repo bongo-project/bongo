@@ -14,7 +14,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/bongo-go/bongo-go/internal/auth"
 	"github.com/bongo-go/bongo-go/internal/config"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 func testLogger() *slog.Logger {
@@ -119,6 +121,67 @@ func TestAgentRunAndCancel(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Run did not return after context cancellation")
+	}
+}
+
+func TestSweepOrphanedUsers(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Web.Port = freePort(t)
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.SMTP.Enabled = false
+
+	a, err := NewAgent(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+
+	// Wait for leadership (the sweep is leader-only).
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !a.IsLeader() {
+		t.Fatal("agent did not acquire leadership")
+	}
+
+	uid, err := auth.CreateUser(a, a.Metadata, "ghost@localhost", "Ghost", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	rowExists := func() bool {
+		var one int
+		return a.Metadata.System.DB().QueryRow("SELECT 1 FROM users WHERE id = ?", uid).Scan(&one) == nil
+	}
+	if !rowExists() {
+		t.Fatal("user row should exist after creation")
+	}
+
+	// Orphan the user: remove only its Pebble profile, leaving the SQLite row.
+	if err := a.ApplyCommand(&bongov1.RaftCommand{
+		Op:  bongov1.Op_OP_DELETE,
+		Key: []byte("/user/" + uid + "/profile"),
+	}, 5*time.Second); err != nil {
+		t.Fatalf("delete profile: %v", err)
+	}
+
+	// First pass: marks the orphan but does not delete it.
+	prev := a.sweepOrphanedUsers(map[string]bool{})
+	if !prev[uid] {
+		t.Fatal("orphan should be marked on the first pass")
+	}
+	if !rowExists() {
+		t.Fatal("orphan must NOT be deleted on the first pass")
+	}
+
+	// Second consecutive pass: deletes the orphaned row.
+	a.sweepOrphanedUsers(prev)
+	if rowExists() {
+		t.Error("orphaned user row should be deleted on the second pass")
 	}
 }
 

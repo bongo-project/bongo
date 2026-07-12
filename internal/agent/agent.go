@@ -1126,10 +1126,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	// nodes and on followers.
 	a.ensureConfiguredDomain()
 
-	// Reclaim orphaned mail metadata (MailMeta + derived indexes left behind by
-	// EXPUNGE). Leader-only, self-gating; conservative two-pass sweep.
+	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
+	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
+	// self-gating; conservative two-pass sweep.
 	if a.Raft != nil {
-		go a.runOrphanMailGC(ctx, orphanGCInterval, orphanGCMinAge)
+		go a.runOrphanGC(ctx, orphanGCInterval, orphanGCMinAge)
 	}
 
 	a.ready.Store(true)
@@ -1238,28 +1239,81 @@ const (
 	orphanGCMinAge = time.Hour
 )
 
-// runOrphanMailGC periodically reclaims orphaned mail metadata: MailMeta records
+// runOrphanGC periodically reclaims orphaned mail metadata: MailMeta records
 // (and their derived SQLite/Bleve index rows) that no live MailboxMessage
 // references, e.g. left behind by EXPUNGE. It is leader-only and conservative —
 // a GUID must be seen orphaned in two consecutive passes before deletion, so a
 // message briefly between MailMeta and mailbox-entry writes is never reclaimed.
-func (a *Agent) runOrphanMailGC(ctx context.Context, interval, minAge time.Duration) {
+func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration) {
 	if a.Mailboxes == nil || a.Metadata == nil || a.Metadata.System == nil {
 		return
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	// GUIDs (as "userID/guid") seen orphaned in the previous pass.
-	prev := map[string]bool{}
+	// Orphans seen in the previous pass (mail GUIDs as "userID/guid"; users as
+	// their ID). Deletion only happens on a second consecutive sighting.
+	prevMail := map[string]bool{}
+	prevUsers := map[string]bool{}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			prev = a.sweepOrphanedMail(prev, minAge)
+			prevMail = a.sweepOrphanedMail(prevMail, minAge)
+			prevUsers = a.sweepOrphanedUsers(prevUsers)
 		}
 	}
+}
+
+// sweepOrphanedUsers runs one pass reconciling the SQLite users index against
+// Pebble: a users row whose /user/{id}/profile is missing is an orphan (it would
+// list in the admin UI but 404 on click, and cannot authenticate). Such a row is
+// deleted — along with any aliases that targeted it — but only on a second
+// consecutive sighting, so a user still mid-creation (row written before profile)
+// is never removed. Returns the IDs seen orphaned this pass. Leader-only.
+func (a *Agent) sweepOrphanedUsers(prev map[string]bool) map[string]bool {
+	if a.Raft == nil || !a.IsLeader() || a.Store == nil {
+		return map[string]bool{}
+	}
+
+	userIDs, err := a.Metadata.System.ListUserIDs()
+	if err != nil {
+		a.logger.Warn("orphan-gc: listing users failed", "error", err)
+		return prev
+	}
+
+	current := map[string]bool{}
+	deleted := 0
+	for _, userID := range userIDs {
+		// A present profile means the user is real — never a candidate.
+		if _, err := a.Store.Get([]byte("/user/" + userID + "/profile")); err == nil {
+			continue
+		} else if !errors.Is(err, store.ErrNotFound) {
+			a.logger.Warn("orphan-gc: profile check failed", "user", userID, "error", err)
+			continue
+		}
+
+		current[userID] = true
+		if !prev[userID] {
+			continue // first sighting — wait one more interval before deleting
+		}
+
+		db := a.Metadata.System.DB()
+		if _, err := db.Exec("DELETE FROM users WHERE id = ?", userID); err != nil {
+			a.logger.Warn("orphan-gc: deleting orphaned user row failed", "user", userID, "error", err)
+			continue
+		}
+		// Aliases pointing at a now-gone user are undeliverable; drop them too.
+		if _, err := db.Exec("DELETE FROM aliases WHERE target_user_id = ?", userID); err != nil {
+			a.logger.Warn("orphan-gc: deleting aliases for orphaned user failed", "user", userID, "error", err)
+		}
+		deleted++
+	}
+	if deleted > 0 {
+		a.logger.Info("orphan-gc: reclaimed orphaned user rows", "count", deleted)
+	}
+	return current
 }
 
 // sweepOrphanedMail runs one orphan-reclamation pass and returns the set of
