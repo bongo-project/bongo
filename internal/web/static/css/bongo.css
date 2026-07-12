@@ -3751,6 +3751,13 @@ select.settings-select {
 .mini-cal-day {
   border: 2px solid var(--border-default);
   background: var(--surface-1);
+  color: var(--text-primary);
+}
+.mini-cal-hdr {
+  color: var(--text-muted);
+}
+.mini-cal-day.other-month {
+  color: var(--text-muted);
 }
 .mini-cal-day.empty {
   border-color: transparent;
@@ -3772,6 +3779,26 @@ select.settings-select {
   background: var(--surface-1);
   border-radius: var(--radius-md);
   padding: 16px;
+}
+/* Stack each field on its own row: a bare <label> is inline by default, which
+   otherwise crams Title/Description/Location onto one line. */
+.event-form > label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.event-form label > input:not([type="checkbox"]),
+.event-form label > textarea,
+.event-form label > select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  font-weight: 400;
+}
+.event-form .calendar-inline-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .event-form input[type="text"],
 .event-form input[type="date"],

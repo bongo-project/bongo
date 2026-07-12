@@ -72,6 +72,7 @@ templ CalendarMonthGrid(year, month int, days []DayCell, calendars []*bongov1.Ca
 			{ t(ctx, "calendar.next") }
 		</a>
 	</div>
+	@ViewSwitcherDay("month", firstOfMonth(year, month))
 	<div class="calendar-grid">
 		<div class="calendar-header">{ t(ctx, "calendar.mon") }</div>
 		<div class="calendar-header">{ t(ctx, "calendar.tue") }</div>
@@ -951,6 +952,10 @@ func miniCalDays(year, month, selectedDay int) []MiniCalDay {
 	}
 
 	return days
+}
+
+func firstOfMonth(year, month int) time.Time {
+	return time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.Now().Location())
 }
 
 func miniPrevYear(year, month int) int {
