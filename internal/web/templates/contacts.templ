@@ -64,6 +64,111 @@ func contactVCardDetails(c *bongov1.Contact) []contactExtraField {
 	return out
 }
 
+// contactFormRow is one editable multi-valued entry (email or phone).
+type contactFormRow struct {
+	Value string
+	Type  string
+}
+
+// contactFormData is the pre-filled state for the full contact edit form,
+// derived from the stored vCard (falling back to the quick fields).
+type contactFormData struct {
+	Guid        string
+	DisplayName string
+	Emails      []contactFormRow
+	Phones      []contactFormRow
+	Company     string
+	Title       string
+	Street      string
+	City        string
+	Region      string
+	PostalCode  string
+	Country     string
+	Birthday    string
+	Website     string
+	Nickname    string
+	Timezone    string
+	Notes       string
+}
+
+func newContactFormData(c *bongov1.Contact) contactFormData {
+	fd := contactFormData{Guid: c.Guid, DisplayName: c.DisplayName, Company: c.Company, Notes: c.Notes}
+
+	card, err := decodeContactCard(c)
+	if err != nil || card == nil {
+		if c.Email != "" {
+			fd.Emails = []contactFormRow{{Value: c.Email}}
+		}
+		if c.Phone != "" {
+			fd.Phones = []contactFormRow{{Value: c.Phone}}
+		}
+		return fd
+	}
+
+	if fn := card.PreferredValue(vcard.FieldFormattedName); fn != "" {
+		fd.DisplayName = fn
+	}
+	for _, f := range card[vcard.FieldEmail] {
+		fd.Emails = append(fd.Emails, contactFormRow{Value: f.Value, Type: firstVCardType(f)})
+	}
+	for _, f := range card[vcard.FieldTelephone] {
+		fd.Phones = append(fd.Phones, contactFormRow{Value: f.Value, Type: firstVCardType(f)})
+	}
+	fd.Company = card.PreferredValue(vcard.FieldOrganization)
+	fd.Title = card.Value(vcard.FieldTitle)
+	fd.Birthday = card.Value(vcard.FieldBirthday)
+	fd.Website = card.Value(vcard.FieldURL)
+	fd.Nickname = card.Value(vcard.FieldNickname)
+	fd.Timezone = card.Value(vcard.FieldTimezone)
+	fd.Notes = card.Value(vcard.FieldNote)
+	if addrs := card.Addresses(); len(addrs) > 0 {
+		a := addrs[0]
+		fd.Street, fd.City, fd.Region, fd.PostalCode, fd.Country = a.StreetAddress, a.Locality, a.Region, a.PostalCode, a.Country
+	}
+	return fd
+}
+
+func decodeContactCard(c *bongov1.Contact) (vcard.Card, error) {
+	if len(c.VcardRaw) == 0 {
+		return nil, nil
+	}
+	return vcard.NewDecoder(bytes.NewReader(c.VcardRaw)).Decode()
+}
+
+func firstVCardType(f *vcard.Field) string {
+	if f.Params != nil {
+		if ts := f.Params[vcard.ParamType]; len(ts) > 0 {
+			return ts[0]
+		}
+	}
+	return ""
+}
+
+// contactAlpineData renders the x-data object seeding the dynamic email/phone
+// rows (mirrors the rules form's conditionsAlpineData pattern). Add/remove is
+// done with inline push/splice in the template.
+func contactAlpineData(fd contactFormData) string {
+	rows := func(list []contactFormRow) string {
+		if len(list) == 0 {
+			return "{value:'', type:''}"
+		}
+		var parts []string
+		for _, r := range list {
+			parts = append(parts, fmt.Sprintf("{value:'%s', type:'%s'}", jsEscape(r.Value), jsEscape(r.Type)))
+		}
+		return strings.Join(parts, ", ")
+	}
+	return fmt.Sprintf("{ emails: [%s], phones: [%s] }", rows(fd.Emails), rows(fd.Phones))
+}
+
+func jsEscape(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "'", "\\'")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	return s
+}
+
 func formatVCardAddress(a *vcard.Address) string {
 	var parts []string
 	for _, p := range []string{a.StreetAddress, a.ExtendedAddress, a.Locality, a.Region, a.PostalCode, a.Country} {
@@ -190,56 +295,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 							<p class="detail-title">{ c.Company }</p>
 						}
 					</div>
-					<form method="post" action={ templ.SafeURL("/contacts/" + c.Guid) }>
-						<input type="hidden" name="_method" value="PUT"/>
-						<div class="detail-fields">
-							<div class="detail-field">
-								<div class="detail-field-label">{ t(ctx, "contacts.name") }</div>
-								<div class="detail-field-value">
-									<input type="text" name="display_name" class="settings-input" value={ c.DisplayName } required/>
-								</div>
-							</div>
-							<div class="detail-field">
-								<div class="detail-field-label">{ t(ctx, "contacts.email") }</div>
-								<div class="detail-field-value">
-									<input type="email" name="email" class="settings-input" value={ c.Email }/>
-								</div>
-							</div>
-							<div class="detail-field">
-								<div class="detail-field-label">{ t(ctx, "contacts.phone") }</div>
-								<div class="detail-field-value">
-									<input type="tel" name="phone" class="settings-input" value={ c.Phone }/>
-								</div>
-							</div>
-							<div class="detail-field">
-								<div class="detail-field-label">{ t(ctx, "contacts.company") }</div>
-								<div class="detail-field-value">
-									<input type="text" name="company" class="settings-input" value={ c.Company }/>
-								</div>
-							</div>
-							<div class="detail-field">
-								<div class="detail-field-label">{ t(ctx, "contacts.notes") }</div>
-								<div class="detail-field-value">
-									<textarea name="notes" rows="3" class="settings-input u-w-full">{ c.Notes }</textarea>
-								</div>
-							</div>
-						</div>
-						<div class="detail-actions">
-							<button type="submit" class="btn-edit">{ t(ctx, "contacts.save") }</button>
-							<a href="/contacts" class="btn-action">{ t(ctx, "contacts.cancel") }</a>
-							<span class="detail-spacer"></span>
-							<button
-								type="button"
-								class="btn-danger"
-								hx-delete={ "/contacts/" + c.Guid }
-								hx-confirm={ t(ctx, "contacts.confirmDelete") }
-								hx-target="body"
-							>
-								{ t(ctx, "contacts.delete") }
-							</button>
-						</div>
-					</form>
-					@ContactExtraFields(c)
+					@ContactEditForm(newContactFormData(c), false)
 					<div class="detail-section-title u-font-075">
 						<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
 						<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
@@ -251,6 +307,118 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 }
 
 // ContactDetailPartial renders the detail card for the HTMX reading pane.
+// ContactEditForm renders the full contact editor: every standard vCard field,
+// with dynamic add/remove rows for emails and phones (Alpine CSP build, mirroring
+// the rules form). Unmodelled properties are preserved by the handler on save.
+templ ContactEditForm(fd contactFormData, isNew bool) {
+	<form
+		method="post"
+		if isNew {
+			action="/contacts"
+		} else {
+			action={ templ.SafeURL("/contacts/" + fd.Guid) }
+		}
+		x-data={ contactAlpineData(fd) }
+	>
+		if !isNew {
+			<input type="hidden" name="_method" value="PUT"/>
+		}
+		<div class="detail-fields">
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.name") }</div>
+				<div class="detail-field-value">
+					<input type="text" name="display_name" class="form-input" value={ fd.DisplayName } required/>
+				</div>
+			</div>
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.email") }</div>
+				<div class="detail-field-value">
+					<template x-for="(em, i) in emails" :key="i">
+						<div class="contact-multi-row">
+							<input type="email" name="email" x-model="em.value" class="form-input" placeholder={ t(ctx, "contacts.email") }/>
+							<select name="email_type" x-model="em.type" class="form-input contact-type-select">
+								<option value="">&#8212;</option>
+								<option value="home">{ t(ctx, "contacts.typeHome") }</option>
+								<option value="work">{ t(ctx, "contacts.typeWork") }</option>
+								<option value="cell">{ t(ctx, "contacts.typeCell") }</option>
+								<option value="other">{ t(ctx, "contacts.typeOther") }</option>
+							</select>
+							<button type="button" class="btn-flush contact-row-remove" @click="emails.splice(i, 1)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
+						</div>
+					</template>
+					<button type="button" class="btn-outline btn-sm" @click="emails.push({value:'', type:''})">{ t(ctx, "contacts.addEmail") }</button>
+				</div>
+			</div>
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.phone") }</div>
+				<div class="detail-field-value">
+					<template x-for="(ph, i) in phones" :key="i">
+						<div class="contact-multi-row">
+							<input type="tel" name="phone" x-model="ph.value" class="form-input" placeholder={ t(ctx, "contacts.phone") }/>
+							<select name="phone_type" x-model="ph.type" class="form-input contact-type-select">
+								<option value="">&#8212;</option>
+								<option value="home">{ t(ctx, "contacts.typeHome") }</option>
+								<option value="work">{ t(ctx, "contacts.typeWork") }</option>
+								<option value="cell">{ t(ctx, "contacts.typeCell") }</option>
+								<option value="other">{ t(ctx, "contacts.typeOther") }</option>
+							</select>
+							<button type="button" class="btn-flush contact-row-remove" @click="phones.splice(i, 1)" aria-label={ t(ctx, "contacts.remove") }>&#10005;</button>
+						</div>
+					</template>
+					<button type="button" class="btn-outline btn-sm" @click="phones.push({value:'', type:''})">{ t(ctx, "contacts.addPhone") }</button>
+				</div>
+			</div>
+			@contactTextField("company", "contacts.company", fd.Company)
+			@contactTextField("title", "contacts.title", fd.Title)
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.address") }</div>
+				<div class="detail-field-value contact-address-grid">
+					<input type="text" name="adr_street" class="form-input" value={ fd.Street } placeholder={ t(ctx, "contacts.street") }/>
+					<input type="text" name="adr_city" class="form-input" value={ fd.City } placeholder={ t(ctx, "contacts.city") }/>
+					<input type="text" name="adr_region" class="form-input" value={ fd.Region } placeholder={ t(ctx, "contacts.region") }/>
+					<input type="text" name="adr_postal" class="form-input" value={ fd.PostalCode } placeholder={ t(ctx, "contacts.postalCode") }/>
+					<input type="text" name="adr_country" class="form-input" value={ fd.Country } placeholder={ t(ctx, "contacts.country") }/>
+				</div>
+			</div>
+			@contactTextField("birthday", "contacts.birthday", fd.Birthday)
+			@contactTextField("website", "contacts.website", fd.Website)
+			@contactTextField("nickname", "contacts.nickname", fd.Nickname)
+			@contactTextField("timezone", "contacts.timezone", fd.Timezone)
+			<div class="detail-field">
+				<div class="detail-field-label">{ t(ctx, "contacts.notes") }</div>
+				<div class="detail-field-value">
+					<textarea name="notes" rows="3" class="form-input u-w-full">{ fd.Notes }</textarea>
+				</div>
+			</div>
+		</div>
+		<div class="detail-actions">
+			<button type="submit" class="btn-primary">{ t(ctx, "contacts.save") }</button>
+			if !isNew {
+				<span class="detail-spacer u-flex-1"></span>
+				<button
+					type="button"
+					class="btn-flush u-text-danger"
+					hx-delete={ "/contacts/" + fd.Guid }
+					hx-confirm={ t(ctx, "contacts.confirmDelete") }
+					hx-target="#contacts-panes"
+					hx-swap="outerHTML"
+				>
+					{ t(ctx, "contacts.delete") }
+				</button>
+			}
+		</div>
+	</form>
+}
+
+templ contactTextField(name, labelKey, value string) {
+	<div class="detail-field">
+		<div class="detail-field-label">{ t(ctx, labelKey) }</div>
+		<div class="detail-field-value">
+			<input type="text" name={ name } class="form-input" value={ value }/>
+		</div>
+	</div>
+}
+
 // ContactExtraFields renders a read-only panel of the additional vCard fields
 // (address, birthday, extra emails/phones, etc.) that the quick-edit form does
 // not cover, so the web UI shows the full contact synced from a CardDAV client.
@@ -279,57 +447,7 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 				<p class="detail-title">{ c.Company }</p>
 			}
 		</div>
-		<form method="post" action={ templ.SafeURL("/contacts/" + c.Guid) }>
-			<input type="hidden" name="_method" value="PUT"/>
-			<div class="detail-fields">
-				<div class="detail-field">
-					<div class="detail-field-label">{ t(ctx, "contacts.name") }</div>
-					<div class="detail-field-value">
-						<input type="text" name="display_name" class="form-input" value={ c.DisplayName } required/>
-					</div>
-				</div>
-				<div class="detail-field">
-					<div class="detail-field-label">{ t(ctx, "contacts.email") }</div>
-					<div class="detail-field-value">
-						<input type="email" name="email" class="form-input" value={ c.Email }/>
-					</div>
-				</div>
-				<div class="detail-field">
-					<div class="detail-field-label">{ t(ctx, "contacts.phone") }</div>
-					<div class="detail-field-value">
-						<input type="tel" name="phone" class="form-input" value={ c.Phone }/>
-					</div>
-				</div>
-				<div class="detail-field">
-					<div class="detail-field-label">{ t(ctx, "contacts.company") }</div>
-					<div class="detail-field-value">
-						<input type="text" name="company" class="form-input" value={ c.Company }/>
-					</div>
-				</div>
-				<div class="detail-field">
-					<div class="detail-field-label">{ t(ctx, "contacts.notes") }</div>
-					<div class="detail-field-value">
-						<textarea name="notes" rows="3" class="form-input u-w-full">{ c.Notes }</textarea>
-					</div>
-				</div>
-			</div>
-			<div class="detail-actions">
-				<button type="submit" class="btn-primary">{ t(ctx, "contacts.save") }</button>
-				<span class="detail-spacer u-flex-1"></span>
-				<button
-					type="button"
-					class="btn-flush"
-					class="btn-flush u-text-danger"
-					hx-delete={ "/contacts/" + c.Guid }
-					hx-confirm={ t(ctx, "contacts.confirmDelete") }
-					hx-target="#contacts-panes"
-					hx-swap="outerHTML"
-				>
-					{ t(ctx, "contacts.delete") }
-				</button>
-			</div>
-		</form>
-		@ContactExtraFields(c)
+		@ContactEditForm(newContactFormData(c), false)
 		<div class="detail-section-title u-font-075 u-px-12 u-text-muted">
 			<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
 			<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>

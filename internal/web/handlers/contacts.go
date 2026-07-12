@@ -67,15 +67,9 @@ func (h *ContactsHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 
-	contact := &bongov1.Contact{
-		DisplayName: r.FormValue("display_name"),
-		Email:       r.FormValue("email"),
-		Phone:       r.FormValue("phone"),
-		Company:     r.FormValue("company"),
-		Notes:       r.FormValue("notes"),
-	}
-	// Generate a vCard from the fields so CardDAV clients get a complete card.
-	syncQuickFieldsToVCard(contact)
+	contact := &bongov1.Contact{}
+	// Build the full vCard from the edit form (also sets the derived quick fields).
+	buildVCardFromForm(contact, r)
 
 	if _, err := h.contacts.Create(userID, contact); err != nil {
 		http.Error(w, "failed to create contact", http.StatusInternalServerError)
@@ -124,15 +118,9 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	existing.DisplayName = r.FormValue("display_name")
-	existing.Email = r.FormValue("email")
-	existing.Phone = r.FormValue("phone")
-	existing.Company = r.FormValue("company")
-	existing.Notes = r.FormValue("notes")
-
-	// Reflect the quick-field edits back into the stored vCard so they sync to
-	// CardDAV clients, while preserving every other property the vCard carries.
-	syncQuickFieldsToVCard(existing)
+	// Rebuild the stored vCard from the full edit form (all fields), preserving
+	// any properties the form does not cover, and refresh the derived quick fields.
+	buildVCardFromForm(existing, r)
 
 	if err := h.contacts.Update(userID, guid, existing); err != nil {
 		http.Error(w, "failed to update contact", http.StatusInternalServerError)
@@ -405,6 +393,96 @@ func syncQuickFieldsToVCard(c *bongov1.Contact) {
 	if err := vcard.NewEncoder(&buf).Encode(card); err == nil {
 		c.VcardRaw = buf.Bytes()
 	}
+}
+
+// buildVCardFromForm rebuilds a contact's stored vCard from the full edit form.
+// It merges into the existing vCard so properties the form does not model (photo,
+// IMPP, custom X- fields, etc.) are preserved, replaces every field the form does
+// cover, and refreshes the derived quick fields used by the list and search index.
+// Form fields: display_name; email[]/email_type[]; phone[]/phone_type[]; company;
+// title; adr_street/adr_city/adr_region/adr_postal/adr_country; birthday; website;
+// nickname; timezone; notes.
+func buildVCardFromForm(c *bongov1.Contact, r *http.Request) {
+	_ = r.ParseForm()
+
+	var card vcard.Card
+	if len(c.VcardRaw) > 0 {
+		if decoded, err := vcard.NewDecoder(bytes.NewReader(c.VcardRaw)).Decode(); err == nil {
+			card = decoded
+		}
+	}
+	if card == nil {
+		card = make(vcard.Card)
+		card.SetValue(vcard.FieldVersion, "3.0")
+	}
+
+	fn := strings.TrimSpace(r.FormValue("display_name"))
+	card.SetValue(vcard.FieldFormattedName, fn)
+
+	// Multi-valued fields: replace the whole set from the form's parallel arrays.
+	replaceTypedVCardFields(card, vcard.FieldEmail, r.Form["email"], r.Form["email_type"])
+	replaceTypedVCardFields(card, vcard.FieldTelephone, r.Form["phone"], r.Form["phone_type"])
+
+	setOrDeleteVCardValue(card, vcard.FieldOrganization, r.FormValue("company"))
+	setOrDeleteVCardValue(card, vcard.FieldTitle, r.FormValue("title"))
+	setOrDeleteVCardValue(card, vcard.FieldBirthday, r.FormValue("birthday"))
+	setOrDeleteVCardValue(card, vcard.FieldURL, r.FormValue("website"))
+	setOrDeleteVCardValue(card, vcard.FieldNickname, r.FormValue("nickname"))
+	setOrDeleteVCardValue(card, vcard.FieldTimezone, r.FormValue("timezone"))
+	setOrDeleteVCardValue(card, vcard.FieldNote, r.FormValue("notes"))
+
+	// Single postal address.
+	delete(card, vcard.FieldAddress)
+	adr := &vcard.Address{
+		StreetAddress: strings.TrimSpace(r.FormValue("adr_street")),
+		Locality:      strings.TrimSpace(r.FormValue("adr_city")),
+		Region:        strings.TrimSpace(r.FormValue("adr_region")),
+		PostalCode:    strings.TrimSpace(r.FormValue("adr_postal")),
+		Country:       strings.TrimSpace(r.FormValue("adr_country")),
+	}
+	if adr.StreetAddress != "" || adr.Locality != "" || adr.Region != "" || adr.PostalCode != "" || adr.Country != "" {
+		card.AddAddress(adr)
+	}
+
+	var buf bytes.Buffer
+	if err := vcard.NewEncoder(&buf).Encode(card); err == nil {
+		c.VcardRaw = buf.Bytes()
+	}
+
+	// Derived quick fields (list, search, SQLite index).
+	c.DisplayName = fn
+	c.Email = card.PreferredValue(vcard.FieldEmail)
+	c.Phone = card.PreferredValue(vcard.FieldTelephone)
+	c.Company = card.PreferredValue(vcard.FieldOrganization)
+	c.Notes = card.Value(vcard.FieldNote)
+}
+
+// replaceTypedVCardFields replaces all values of a multi-valued field from
+// parallel value/type arrays, skipping blank values.
+func replaceTypedVCardFields(card vcard.Card, field string, values, types []string) {
+	delete(card, field)
+	for i, v := range values {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			continue
+		}
+		f := &vcard.Field{Value: v}
+		if i < len(types) {
+			if typ := strings.TrimSpace(types[i]); typ != "" {
+				f.Params = vcard.Params{vcard.ParamType: []string{typ}}
+			}
+		}
+		card.Add(field, f)
+	}
+}
+
+// setOrDeleteVCardValue sets a single-valued field, or removes it when blank.
+func setOrDeleteVCardValue(card vcard.Card, field, value string) {
+	if value = strings.TrimSpace(value); value == "" {
+		delete(card, field)
+		return
+	}
+	card.SetValue(field, value)
 }
 
 // setPreferredVCardValue updates the preferred value of a (possibly multi-valued)
