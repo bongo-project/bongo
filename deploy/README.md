@@ -81,6 +81,17 @@ mail._domainkey.example.com.  IN  TXT  "v=DKIM1; k=rsa; p=<dkim-public-key>"
 
 ; DMARC: start in report-only, tighten later
 _dmarc.example.com.      IN  TXT    "v=DMARC1; p=none; rua=mailto:postmaster@example.com"
+
+; --- Client autoconfiguration (optional but recommended; see §12) ---
+; SRV records let clients discover servers from just an email address (RFC 6186)
+_imaps._tcp.example.com.       IN  SRV  0 1 993 mail.example.com.
+_submission._tcp.example.com.  IN  SRV  0 1 587 mail.example.com.
+_autodiscover._tcp.example.com. IN SRV  0 1 443 mail.example.com.
+
+; Optional subdomains that Thunderbird/Outlook probe before the .well-known path.
+; Point them at the same host so Traefik can serve autoconfig there too.
+autoconfig.example.com.   IN  A      <server-public-ip>
+autodiscover.example.com. IN  A      <server-public-ip>
 ```
 
 And the **PTR** (reverse DNS), set at your VPS provider, not in this zone:
@@ -339,3 +350,51 @@ are rebuildable from Pebble + blobs, so a Pebble + blobs copy is sufficient.
   expose port 25 directly (bypassing Traefik). See
   `docs/security-review-2026-07-03.md` (NEW-1).
 - **This is preview software** — do not put irreplaceable mail here yet.
+
+---
+
+## 12. Client autoconfiguration
+
+Bongo serves the discovery documents that let Thunderbird, Outlook, and Apple
+Mail configure an account from just an email address + password — no manual
+host/port entry.
+
+**How it's wired.** The endpoints live on the bongo container, but clients look
+them up on the *email* domain (`example.com`), whose apex normally serves the
+static landing page. The compose file adds two higher-priority Traefik routers
+(`bongo-autoconfig`, `bongo-autoconfig-sub`) that peel the autoconfig paths off
+the apex to bongo; all other apex traffic still reaches the website container.
+Nothing else changes.
+
+| Client | Endpoint (on `example.com`) | Notes |
+|--------|------------------------------|-------|
+| Thunderbird | `/.well-known/autoconfig/mail/config-v1.1.xml` | Also `autoconfig.<domain>/mail/config-v1.1.xml` |
+| Outlook | `/autodiscover/autodiscover.xml` (POST) | Also `autodiscover.<domain>/...` |
+| Apple Mail | `/.well-known/mobileconfig?email=<addr>` | Unsigned profile; OS shows "Unverified" on install |
+
+**To enable it:**
+
+1. Add the SRV records (and optional `autoconfig`/`autodiscover` A records) from
+   §3. The `.well-known` paths on the apex work without the subdomains; the
+   subdomains just cover clients that probe them first.
+2. Set `MAIL_DOMAIN=example.com` in `.env` (defaults to `example.com` if unset).
+3. `docker compose up -d` to apply the new Traefik labels.
+
+**Verify:**
+
+```bash
+# Thunderbird document (from anywhere)
+curl -s https://example.com/.well-known/autoconfig/mail/config-v1.1.xml?emailaddress=you@example.com
+
+# Outlook document
+curl -s -X POST https://example.com/autodiscover/autodiscover.xml \
+  -d '<Autodiscover><Request><EMailAddress>you@example.com</EMailAddress></Request></Autodiscover>'
+
+# Apple profile (downloads a .mobileconfig)
+curl -s https://example.com/.well-known/mobileconfig?email=you@example.com
+```
+
+Only configured (enabled) domains are answered; an unknown domain returns 404.
+The documents advertise `mail.example.com` on 993 (IMAPS) and 587 (submission
+STARTTLS) and contain no secrets. The Apple profile is intentionally unsigned;
+signing it with the Let's Encrypt certificate is possible future work.
