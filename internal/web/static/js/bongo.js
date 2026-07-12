@@ -169,6 +169,19 @@ document.addEventListener('alpine:init', () => {
       fetch('/settings', { method: 'POST', body: new URLSearchParams(form) }).catch(() => {});
     },
 
+    // setTheme applies an explicit choice (e.g. the Settings dropdown). It writes
+    // localStorage so the choice actually takes effect: init() prefers
+    // localStorage over the server preference, so a settings-only save would be
+    // ignored on reload whenever localStorage already held a different value.
+    setTheme(theme) {
+      this.theme = theme;
+      localStorage.setItem('bongo-theme', theme);
+      this.applyTheme();
+      const form = new FormData();
+      form.set('theme', theme);
+      fetch('/settings', { method: 'POST', body: new URLSearchParams(form) }).catch(() => {});
+    },
+
     applyTheme() {
       document.documentElement.setAttribute('data-theme', this.resolvedTheme());
     },

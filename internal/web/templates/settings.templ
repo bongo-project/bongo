@@ -50,7 +50,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.theme") }</div>
 									</div>
-									<select name="theme" id="theme" class="settings-select">
+									<select name="theme" id="theme" class="settings-select" x-on:change="setTheme($event.target.value)">
 										<option value="auto" selected?={ prefs.Theme == bongov1.Theme_THEME_AUTO || prefs.Theme == bongov1.Theme_THEME_UNSPECIFIED }>{ t(ctx, "settings.themeAuto") }</option>
 										<option value="light" selected?={ prefs.Theme == bongov1.Theme_THEME_LIGHT }>{ t(ctx, "settings.themeLight") }</option>
 										<option value="dark" selected?={ prefs.Theme == bongov1.Theme_THEME_DARK }>{ t(ctx, "settings.themeDark") }</option>
@@ -60,7 +60,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.layout") }</div>
 									</div>
-									<select name="layout_mode" id="layout_mode" class="settings-select">
+									<select name="layout_mode" id="layout_mode" class="settings-select" x-on:change="setLayout($event.target.value)">
 										<option value="list" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_LIST || prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_UNSPECIFIED }>{ t(ctx, "settings.layoutList") }</option>
 										<option value="two-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_TWO_PANE }>{ t(ctx, "settings.layoutTwoPane") }</option>
 										<option value="three-pane" selected?={ prefs.LayoutMode == bongov1.LayoutMode_LAYOUT_THREE_PANE }>{ t(ctx, "settings.layoutThreePane") }</option>
@@ -70,7 +70,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.density") }</div>
 									</div>
-									<select name="density" id="density" class="settings-select">
+									<select name="density" id="density" class="settings-select" x-on:change="setDensity($event.target.value)">
 										<option value="compact" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMPACT }>{ t(ctx, "settings.densityCompact") }</option>
 										<option value="comfortable" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_COMFORTABLE || prefs.Density == bongov1.DisplayDensity_DENSITY_UNSPECIFIED }>{ t(ctx, "settings.densityComfortable") }</option>
 										<option value="spacious" selected?={ prefs.Density == bongov1.DisplayDensity_DENSITY_SPACIOUS }>{ t(ctx, "settings.densitySpacious") }</option>
