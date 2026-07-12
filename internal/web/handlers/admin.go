@@ -1052,20 +1052,23 @@ func (h *AdminHandler) loadUsers(query string) []templates.AdminUserInfo {
 			continue
 		}
 
-		info := templates.AdminUserInfo{
+		// The list (SQLite) and the detail page (Pebble profile) must agree: an
+		// orphaned users row with no profile would otherwise appear in the list
+		// but 404 on click. Skip such rows so the list only shows real users.
+		profile, err := h.loadProfile(uid)
+		if err != nil {
+			h.logger.Warn("admin: skipping user with no profile in list", "user_id", uid, "username", uname, "error", err)
+			continue
+		}
+
+		users = append(users, templates.AdminUserInfo{
 			UserID:      uid,
 			Email:       uname,
 			DisplayName: dname,
-		}
-
-		// Load profile for admin/disabled status.
-		if profile, err := h.loadProfile(uid); err == nil {
-			info.IsAdmin = profile.IsAdmin
-			info.Disabled = profile.Disabled
-			info.QuotaBytes = profile.QuotaBytes
-		}
-
-		users = append(users, info)
+			IsAdmin:     profile.IsAdmin,
+			Disabled:    profile.Disabled,
+			QuotaBytes:  profile.QuotaBytes,
+		})
 	}
 	return users
 }
