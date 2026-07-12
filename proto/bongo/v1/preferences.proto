@@ -45,4 +45,5 @@ message UserPreferences {
   bool infinite_scroll = 11;
   string forward_address = 12;    // External address to forward all mail to (empty = disabled)
   bool forward_keep_copy = 13;    // When forwarding, also deliver locally (default true)
+  string signature_html = 14;     // HTML signature (fallback to plain-text signature if empty)
 }

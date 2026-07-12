@@ -78,6 +78,29 @@ func TestPreferenceStore_SetGetRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPreferenceStore_SignatureHtmlRoundTrip(t *testing.T) {
+	ps := newPrefTestEnv(t)
+	userID := "test-user-sightml"
+
+	prefs := &bongov1.UserPreferences{
+		Signature:     "-- plain",
+		SignatureHtml: "<b>x</b>",
+	}
+
+	if err := ps.Set(userID, prefs); err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+
+	got := ps.Get(userID)
+
+	if got.Signature != "-- plain" {
+		t.Errorf("signature: got %q, want %q", got.Signature, "-- plain")
+	}
+	if got.SignatureHtml != "<b>x</b>" {
+		t.Errorf("signature_html: got %q, want %q", got.SignatureHtml, "<b>x</b>")
+	}
+}
+
 func TestPreferenceStore_UpdatedAtSet(t *testing.T) {
 	ps := newPrefTestEnv(t)
 	userID := "test-user-ts"
