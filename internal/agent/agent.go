@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/emersion/go-webdav/caldav"
 	"github.com/emersion/go-webdav/carddav"
 
+	"golang.org/x/net/publicsuffix"
 	"google.golang.org/protobuf/proto"
 
 	agentgrpc "github.com/bongo-go/bongo-go/internal/agent/grpc"
@@ -467,13 +469,33 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Config.IMAP.PortTLS,
 		a.Config.SMTP.SubmissionPort,
 	)
-	// Outside dev, only answer for configured (enabled) domains so the endpoint
-	// cannot be used as an open autoconfig generator for arbitrary domains.
-	if a.Config.Server.Role != "dev" && a.Metadata != nil && a.Metadata.System != nil {
-		db := a.Metadata.System.DB()
+	// Outside dev, only answer for domains this server actually handles, so the
+	// endpoint cannot be used as an open autoconfig generator for arbitrary
+	// domains. The allowed set is the server's configured mail domain (DKIM
+	// domain and the registered domain of the mail hostname) plus any domains
+	// explicitly added to the metadata index. The configured domain matters
+	// because a single-domain deployment need never add a row to the domains
+	// table — mail still flows via the DKIM/hostname config.
+	if a.Config.Server.Role != "dev" {
+		configured := map[string]bool{}
+		if d := strings.ToLower(strings.TrimSpace(a.Config.SMTP.DKIM.Domain)); d != "" {
+			configured[d] = true
+		}
+		if h := strings.ToLower(strings.TrimSpace(a.Config.SMTP.Hostname)); h != "" {
+			if reg, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
+				configured[strings.ToLower(reg)] = true
+			}
+		}
+		metadata := a.Metadata
 		autoconfigH.SetDomainChecker(func(domain string) bool {
+			if configured[domain] {
+				return true
+			}
+			if metadata == nil || metadata.System == nil {
+				return false
+			}
 			var one int
-			err := db.QueryRow("SELECT 1 FROM domains WHERE name = ? AND enabled = 1", domain).Scan(&one)
+			err := metadata.System.DB().QueryRow("SELECT 1 FROM domains WHERE name = ? AND enabled = 1", domain).Scan(&one)
 			return err == nil
 		})
 	}
