@@ -47,6 +47,35 @@ function i18n(key) {
   };
 })();
 
+// CSRF for native (non-HTMX, non-fetch) <form> submissions: a full-page browser
+// POST cannot set an X-CSRF-Token header, so inject the token as a hidden _csrf
+// field on submit. GET forms are skipped so the token never lands in a URL (log
+// / referrer leakage). Runs in the capture phase so the field is present before
+// the browser serialises the form.
+(function () {
+  function csrfToken() {
+    try {
+      var hh = document.body && document.body.getAttribute('hx-headers');
+      if (hh) return (JSON.parse(hh) || {})['X-CSRF-Token'] || '';
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    var method = (form.getAttribute('method') || 'GET').toUpperCase();
+    if (method === 'GET' || method === 'HEAD') return;
+    if (form.querySelector('input[name="_csrf"]')) return;
+    var token = csrfToken();
+    if (!token) return;
+    var input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = '_csrf';
+    input.value = token;
+    form.appendChild(input);
+  }, true);
+})();
+
 document.addEventListener('alpine:init', () => {
   function replacePrefixedClass(el, prefix, nextClass) {
     if (!el) return;

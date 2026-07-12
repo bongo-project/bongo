@@ -14,6 +14,7 @@ const csrfCtxKey contextKey = "csrfToken"
 
 const (
 	csrfHeaderName = "X-CSRF-Token"
+	csrfFieldName  = "_csrf"
 	csrfPurpose    = "bongo/csrf-token/v1"
 )
 
@@ -81,6 +82,14 @@ func RequireCSRF(secret []byte, enforce bool) func(http.Handler) http.Handler {
 
 			want := csrfToken(secret, userID)
 			got := r.Header.Get(csrfHeaderName)
+			// Native <form> submissions cannot set a header; accept a hidden _csrf
+			// field. Only read the form when the header is absent, so JSON/fetch
+			// request bodies (which carry the header) are never pre-consumed. For a
+			// multipart form this parses the body, but such handlers read the form
+			// anyway (ParseMultipartForm caches), so it is compatible.
+			if got == "" {
+				got = r.PostFormValue(csrfFieldName)
+			}
 			if got == "" || !hmac.Equal([]byte(got), []byte(want)) {
 				http.Error(w, "Forbidden: invalid CSRF token", http.StatusForbidden)
 				return

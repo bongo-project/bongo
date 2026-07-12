@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -38,6 +40,41 @@ func TestRequireCSRF_AcceptsValidToken(t *testing.T) {
 	h.ServeHTTP(rr, req)
 	if !called {
 		t.Errorf("handler did not run with a valid token (status %d)", rr.Code)
+	}
+}
+
+func TestRequireCSRF_AcceptsFormFieldToken(t *testing.T) {
+	// Native <form method="post"> submissions carry the token in a hidden _csrf
+	// field, not a header.
+	called := false
+	h := RequireCSRF(testSecret, true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+	body := url.Values{"_csrf": {csrfToken(testSecret, "u1")}, "subject": {"hi"}}.Encode()
+	req := httptest.NewRequest("POST", "/compose/send", strings.NewReader(body)).WithContext(csrfCtx("u1"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if !called {
+		t.Errorf("handler did not run with a valid _csrf form field (status %d)", rr.Code)
+	}
+}
+
+func TestRequireCSRF_RejectsWrongFormFieldToken(t *testing.T) {
+	called := false
+	h := RequireCSRF(testSecret, true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	}))
+	body := url.Values{"_csrf": {csrfToken(testSecret, "attacker")}}.Encode()
+	req := httptest.NewRequest("POST", "/compose/send", strings.NewReader(body)).WithContext(csrfCtx("victim"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	if called {
+		t.Error("handler ran with another user's token in _csrf field")
+	}
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", rr.Code)
 	}
 }
 
