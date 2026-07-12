@@ -17,7 +17,7 @@
 services:
   bongo:
     # local dev build: docker build -f deploy/Dockerfile -t ghcr.io/lhaig/bongo-go:latest ..
-    image: ghcr.io/lhaig/bongo-go:0.1.2
+    image: ghcr.io/lhaig/bongo-go:0.3.0
     container_name: bongo
     restart: unless-stopped
     mem_limit: 512m
@@ -105,6 +105,27 @@ services:
       - "traefik.http.routers.bongo-internal.service=bongo"
       - "traefik.http.routers.bongo-internal.middlewares=bongo-deny-internal"
       - "traefik.http.middlewares.bongo-deny-internal.ipallowlist.sourcerange=127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+      # --- Client autoconfiguration (Thunderbird / Outlook / Apple Mail) ---
+      # Clients look these up on the EMAIL domain (example.com), whose apex
+      # otherwise serves the static landing page. Higher priority peels off ONLY
+      # the autoconfig paths to bongo; every other apex request still reaches the
+      # website container.
+      - "traefik.http.routers.bongo-autoconfig.rule=Host(`${MAIL_DOMAIN:-example.com}`) && (PathPrefix(`/.well-known/autoconfig`) || PathPrefix(`/autodiscover`) || PathPrefix(`/Autodiscover`) || PathPrefix(`/AutoDiscover`) || Path(`/mail/config-v1.1.xml`) || Path(`/.well-known/mobileconfig`))"
+      - "traefik.http.routers.bongo-autoconfig.entrypoints=websecure"
+      - "traefik.http.routers.bongo-autoconfig.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.bongo-autoconfig.priority=200"
+      - "traefik.http.routers.bongo-autoconfig.service=bongo"
+
+      # Optional: the autoconfig./autodiscover. subdomains some clients probe
+      # first. Requires DNS A/AAAA records for autoconfig.<domain> and
+      # autodiscover.<domain> pointing at this host (Let's Encrypt then issues
+      # their certs on demand). Harmless when those DNS records are absent.
+      - "traefik.http.routers.bongo-autoconfig-sub.rule=Host(`autoconfig.${MAIL_DOMAIN:-example.com}`) || Host(`autodiscover.${MAIL_DOMAIN:-example.com}`)"
+      - "traefik.http.routers.bongo-autoconfig-sub.entrypoints=websecure"
+      - "traefik.http.routers.bongo-autoconfig-sub.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
+      - "traefik.http.routers.bongo-autoconfig-sub.priority=200"
+      - "traefik.http.routers.bongo-autoconfig-sub.service=bongo"
 
       # --- Mail (TCP passthrough; bongo terminates TLS) ---
       # PROXY protocol v2 forwards the real client IP to bongo (needed for SPF).

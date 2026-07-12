@@ -458,6 +458,37 @@ func (a *Agent) Run(ctx context.Context) error {
 		})
 	}
 
+	// Mail-client autoconfiguration (public: clients fetch these before any
+	// credentials exist). Advertises the mail hostname + standard ports so
+	// Thunderbird/Outlook/Apple Mail can self-configure from an email address.
+	autoconfigH := handlers.NewAutoconfigHandler(
+		a.Config.SMTP.Hostname,
+		a.Config.IMAP.Port,
+		a.Config.IMAP.PortTLS,
+		a.Config.SMTP.SubmissionPort,
+	)
+	// Outside dev, only answer for configured (enabled) domains so the endpoint
+	// cannot be used as an open autoconfig generator for arbitrary domains.
+	if a.Config.Server.Role != "dev" && a.Metadata != nil && a.Metadata.System != nil {
+		db := a.Metadata.System.DB()
+		autoconfigH.SetDomainChecker(func(domain string) bool {
+			var one int
+			err := db.QueryRow("SELECT 1 FROM domains WHERE name = ? AND enabled = 1", domain).Scan(&one)
+			return err == nil
+		})
+	}
+	// Mozilla autoconfig (Thunderbird): /.well-known/ path and the autoconfig. vhost path.
+	r.Get("/.well-known/autoconfig/mail/config-v1.1.xml", autoconfigH.MozillaConfig)
+	r.Get("/mail/config-v1.1.xml", autoconfigH.MozillaConfig)
+	// Microsoft Autodiscover (Outlook): POST carries the address; GET is a fallback.
+	// Register the common path casings since chi matches case-sensitively.
+	for _, p := range []string{"/autodiscover/autodiscover.xml", "/Autodiscover/Autodiscover.xml", "/AutoDiscover/AutoDiscover.xml"} {
+		r.Post(p, autoconfigH.Autodiscover)
+		r.Get(p, autoconfigH.Autodiscover)
+	}
+	// Apple profile (iOS/macOS Mail): downloadable, unsigned .mobileconfig.
+	r.Get("/.well-known/mobileconfig", autoconfigH.AppleMobileconfig)
+
 	// Redirect root to inbox.
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
