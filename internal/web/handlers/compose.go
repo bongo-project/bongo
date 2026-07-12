@@ -3,7 +3,6 @@ package handlers
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -655,74 +654,22 @@ type attachmentData struct {
 	Data        []byte
 }
 
+// buildRFC5322WithAttachments is a thin backward-compatible wrapper around
+// buildMIME. It constructs a plain-text message, optionally with file
+// attachments (no HTML, no inline images). Both current callers in this file
+// keep their existing signatures without modification.
 func buildRFC5322WithAttachments(from, to, cc, subject, body, messageID, inReplyTo, references string, attachments []attachmentData) []byte {
-	// Sanitize user-controlled values to prevent header-injection attacks.
-	from = mail.SanitizeHeaderValue(from)
-	to = mail.SanitizeHeaderValue(to)
-	cc = mail.SanitizeHeaderValue(cc)
-	subject = mail.SanitizeHeaderValue(subject)
-
-	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "From: %s\r\n", from)
-	fmt.Fprintf(&buf, "To: %s\r\n", to)
-	if cc != "" {
-		fmt.Fprintf(&buf, "Cc: %s\r\n", cc)
-	}
-	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
-	fmt.Fprintf(&buf, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
-	if inReplyTo != "" {
-		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", inReplyTo)
-	}
-	if references != "" {
-		fmt.Fprintf(&buf, "References: %s\r\n", references)
-	}
-	buf.WriteString("MIME-Version: 1.0\r\n")
-
-	if len(attachments) == 0 {
-		buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-		buf.WriteString("\r\n")
-		buf.WriteString(body)
-		return buf.Bytes()
-	}
-
-	// Build multipart/mixed message.
-	var randBytes [16]byte
-	_, _ = rand.Read(randBytes[:])
-	boundary := "bongo-" + hex.EncodeToString(randBytes[:])
-	fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary)
-	buf.WriteString("\r\n")
-
-	// Text body part.
-	fmt.Fprintf(&buf, "--%s\r\n", boundary)
-	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	buf.WriteString("\r\n")
-	buf.WriteString(body)
-	buf.WriteString("\r\n")
-
-	// Attachment parts.
-	for _, att := range attachments {
-		safeName := mail.SanitizeHeaderFilename(att.Filename)
-		fmt.Fprintf(&buf, "--%s\r\n", boundary)
-		fmt.Fprintf(&buf, "Content-Type: %s; name=\"%s\"\r\n", att.ContentType, safeName)
-		fmt.Fprintf(&buf, "Content-Disposition: attachment; filename=\"%s\"\r\n", safeName)
-		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
-		buf.WriteString("\r\n")
-
-		encoded := base64.StdEncoding.EncodeToString(att.Data)
-		// Wrap at 76 characters per RFC 2045.
-		for i := 0; i < len(encoded); i += 76 {
-			end := i + 76
-			if end > len(encoded) {
-				end = len(encoded)
-			}
-			buf.WriteString(encoded[i:end])
-			buf.WriteString("\r\n")
-		}
-	}
-
-	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
-	return buf.Bytes()
+	return buildMIME(mimeParts{
+		from:        from,
+		to:          to,
+		cc:          cc,
+		subject:     subject,
+		plain:       body,
+		messageID:   messageID,
+		inReplyTo:   inReplyTo,
+		references:  references,
+		attachments: attachments,
+	})
 }
 
 // senderDomain returns the domain part of an email address, falling back to
