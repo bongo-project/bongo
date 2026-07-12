@@ -1106,6 +1106,11 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 	}
 
+	// Seed the server's configured mail domain as a managed domain (leader-only,
+	// idempotent). Self-gates on Raft + leadership, so it is a no-op on edge/agent
+	// nodes and on followers.
+	a.ensureConfiguredDomain()
+
 	a.ready.Store(true)
 
 	a.logger.Info("bongo-go started",
@@ -1202,6 +1207,68 @@ func (a *Agent) createDevUser() error {
 	}
 
 	return nil
+}
+
+// ensureConfiguredDomain seeds the server's configured mail domain into the
+// managed-domain system on startup, so it is a first-class domain everywhere
+// (admin UI, client autoconfiguration, alias/user forms) without an operator
+// having to add it by hand. It is idempotent — a domain that already exists is
+// left untouched, never overwriting operator state — and leader-only, since the
+// write goes through Raft. The domain is taken from the DKIM domain, falling
+// back to the registered domain of the mail hostname.
+func (a *Agent) ensureConfiguredDomain() {
+	if a.Raft == nil || !a.IsLeader() {
+		return
+	}
+
+	domain := strings.ToLower(strings.TrimSpace(a.Config.SMTP.DKIM.Domain))
+	if domain == "" {
+		if h := strings.ToLower(strings.TrimSpace(a.Config.SMTP.Hostname)); h != "" {
+			if reg, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
+				domain = strings.ToLower(reg)
+			}
+		}
+	}
+	if domain == "" {
+		return
+	}
+
+	key := []byte(fmt.Sprintf("/system/domain/%s", domain))
+
+	// Idempotent: if the domain already exists, only make sure the derived SQLite
+	// index has it, then stop — never overwrite an operator's enabled/disabled state.
+	if a.Store != nil {
+		if _, err := a.Store.Get(key); err == nil {
+			a.indexConfiguredDomain(domain)
+			return
+		} else if !errors.Is(err, store.ErrNotFound) {
+			a.logger.Warn("startup: could not check configured domain", "domain", domain, "error", err)
+			return
+		}
+	}
+
+	cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: key, Value: []byte("enabled")}
+	if err := a.ApplyCommand(cmd, 5*time.Second); err != nil {
+		a.logger.Warn("startup: failed to seed configured mail domain", "domain", domain, "error", err)
+		return
+	}
+	a.indexConfiguredDomain(domain)
+	a.logger.Info("startup: seeded configured mail domain as managed", "domain", domain)
+}
+
+// indexConfiguredDomain best-effort inserts a domain into the derived SQLite
+// index used by the admin UI. INSERT OR IGNORE preserves any existing row (and
+// its enabled flag) rather than resetting it.
+func (a *Agent) indexConfiguredDomain(domain string) {
+	if a.Metadata == nil || a.Metadata.System == nil {
+		return
+	}
+	if _, err := a.Metadata.System.DB().Exec(
+		"INSERT OR IGNORE INTO domains (name, enabled, created_at) VALUES (?, 1, ?)",
+		domain, time.Now().Unix(),
+	); err != nil {
+		a.logger.Warn("startup: failed to index configured domain", "domain", domain, "error", err)
+	}
 }
 
 // NotifyNewMail implements the MailboxNotifier interface for the FSM.

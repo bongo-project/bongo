@@ -98,6 +98,52 @@ func TestAgentRunAndCancel(t *testing.T) {
 	}
 }
 
+func TestEnsureConfiguredDomainSeedsOnStartup(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Web.Port = freePort(t)
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.SMTP.Enabled = false
+	cfg.SMTP.DKIM.Domain = "example.test"
+
+	a, err := NewAgent(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+
+	// Poll until the configured domain is seeded (leadership + Raft apply are async).
+	key := []byte("/system/domain/example.test")
+	seeded := false
+	for i := 0; i < 50; i++ {
+		if _, err := a.Store.Get(key); err == nil {
+			seeded = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !seeded {
+		cancel()
+		<-done
+		t.Fatal("configured domain was not seeded into Pebble on startup")
+	}
+
+	// Derived SQLite index should carry it too.
+	var name string
+	if err := a.Metadata.System.DB().QueryRow(
+		"SELECT name FROM domains WHERE name = ?", "example.test").Scan(&name); err != nil {
+		t.Errorf("configured domain not in SQLite index: %v", err)
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+}
+
 func TestHealthEndpoints(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
