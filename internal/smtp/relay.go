@@ -19,11 +19,51 @@ import (
 type Relay struct {
 	cfg    *config.SMTPRelay
 	logger *slog.Logger
+	mtasts *MTASTSCache // nil unless MTA-STS is enabled
 }
 
 // NewRelay creates a new Relay.
 func NewRelay(cfg *config.SMTPRelay, logger *slog.Logger) *Relay {
-	return &Relay{cfg: cfg, logger: logger}
+	r := &Relay{cfg: cfg, logger: logger}
+	if cfg != nil && cfg.MTASTSEnabled {
+		r.mtasts = NewMTASTSCache()
+	}
+	return r
+}
+
+// deliveryTLSPolicy captures the TLS requirements for one outbound MX
+// connection, derived from the recipient domain's MTA-STS policy (and, later,
+// DANE). The zero value is plain opportunistic STARTTLS.
+type deliveryTLSPolicy struct {
+	// requireTLS: STARTTLS must be offered and complete with a certificate valid
+	// for the MX host; failure defers delivery (never falls back to plaintext).
+	requireTLS bool
+	// mxAuthorized reports whether this MX host is permitted by the policy. When
+	// false under an enforcing policy the MX must be skipped.
+	mxAuthorized bool
+}
+
+// mtaStsPolicyForMX derives the TLS policy for delivering to mxHost in the given
+// recipient domain, honouring the domain's MTA-STS policy when enabled. enforce
+// mode requires authenticated TLS to a policy-listed MX; testing and none leave
+// the existing (verifying) opportunistic behaviour unchanged so a rollout can
+// never block delivery.
+func (r *Relay) mtaStsPolicyForMX(ctx context.Context, domain, mxHost string) deliveryTLSPolicy {
+	if r.mtasts == nil {
+		return deliveryTLSPolicy{mxAuthorized: true}
+	}
+	policy, err := r.mtasts.PolicyFor(ctx, domain)
+	if err != nil {
+		// A domain that advertises MTA-STS but whose policy we cannot fetch is
+		// not enforced (fail open on transient policy-fetch errors), matching
+		// common practice.
+		r.logger.Warn("relay: MTA-STS policy unavailable, not enforcing", "domain", domain, "error", err)
+		return deliveryTLSPolicy{mxAuthorized: true}
+	}
+	if policy == nil || policy.Mode != MTASTSModeEnforce {
+		return deliveryTLSPolicy{mxAuthorized: true}
+	}
+	return deliveryTLSPolicy{requireTLS: true, mxAuthorized: policy.MXMatches(mxHost)}
 }
 
 // Deliver sends a message to external recipients.
@@ -37,7 +77,9 @@ func (r *Relay) Deliver(ctx context.Context, from string, recipients []string, r
 
 func (r *Relay) deliverViaRelay(ctx context.Context, from string, recipients []string, rawMsg []byte) ([]string, error) {
 	r.logger.Info("relay: delivering via smart relay", "host", r.cfg.Host, "recipients", len(recipients))
-	return r.sendToHost(ctx, r.cfg.Host, from, recipients, rawMsg)
+	// The smarthost is an operator-configured trusted relay, not an MX resolved
+	// from untrusted DNS, so MTA-STS/DANE policy does not apply.
+	return r.sendToHost(ctx, r.cfg.Host, from, recipients, rawMsg, deliveryTLSPolicy{mxAuthorized: true})
 }
 
 func (r *Relay) deliverViaMX(ctx context.Context, from string, recipients []string, rawMsg []byte) ([]string, error) {
@@ -75,7 +117,14 @@ func (r *Relay) deliverViaMX(ctx context.Context, from string, recipients []stri
 			host := strings.TrimSuffix(mx.Host, ".")
 			addr := net.JoinHostPort(host, "25")
 
-			permFails, err := r.sendToHost(ctx, addr, from, domainRcpts, rawMsg)
+			pol := r.mtaStsPolicyForMX(ctx, domain, host)
+			if !pol.mxAuthorized {
+				lastErr = fmt.Errorf("MX %s not authorized by MTA-STS policy for %s", host, domain)
+				r.logger.Warn("relay: MX not authorized by MTA-STS policy, skipping", "domain", domain, "host", host)
+				continue
+			}
+
+			permFails, err := r.sendToHost(ctx, addr, from, domainRcpts, rawMsg, pol)
 			allPermanentFails = append(allPermanentFails, permFails...)
 			if err == nil {
 				lastErr = nil
@@ -92,7 +141,7 @@ func (r *Relay) deliverViaMX(ctx context.Context, from string, recipients []stri
 	return allPermanentFails, nil
 }
 
-func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []string, rawMsg []byte) (permanentFails []string, err error) {
+func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []string, rawMsg []byte, pol deliveryTLSPolicy) (permanentFails []string, err error) {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
 		host = addr
@@ -109,14 +158,21 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 	}
 	defer client.Close()
 
-	// Opportunistic STARTTLS.
+	// STARTTLS. Opportunistic by default; when the recipient domain's policy
+	// (MTA-STS enforce, later DANE) requires TLS, a missing or failed STARTTLS
+	// defers delivery instead of falling back to plaintext.
 	tlsCompleted := false
 	if ok, _ := client.Extension("STARTTLS"); ok {
-		if err := client.StartTLS(&tls.Config{ServerName: host}); err != nil {
+		if err := client.StartTLS(&tls.Config{ServerName: host, MinVersion: tls.VersionTLS12}); err != nil {
+			if pol.requireTLS {
+				return nil, fmt.Errorf("relay: policy requires authenticated TLS to %s but STARTTLS failed: %w", host, err)
+			}
 			r.logger.Debug("relay: STARTTLS failed, continuing without", "host", host, "error", err)
 		} else {
 			tlsCompleted = true
 		}
+	} else if pol.requireTLS {
+		return nil, fmt.Errorf("relay: policy requires TLS to %s but it does not offer STARTTLS", host)
 	}
 
 	// Authenticate if credentials are configured.
