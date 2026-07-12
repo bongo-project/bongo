@@ -241,6 +241,7 @@ type UserPreferences struct {
 	InfiniteScroll  bool                   `protobuf:"varint,11,opt,name=infinite_scroll,json=infiniteScroll,proto3" json:"infinite_scroll,omitempty"`
 	ForwardAddress  string                 `protobuf:"bytes,12,opt,name=forward_address,json=forwardAddress,proto3" json:"forward_address,omitempty"`       // External address to forward all mail to (empty = disabled)
 	ForwardKeepCopy bool                   `protobuf:"varint,13,opt,name=forward_keep_copy,json=forwardKeepCopy,proto3" json:"forward_keep_copy,omitempty"` // When forwarding, also deliver locally (default true)
+	SignatureHtml   string                 `protobuf:"bytes,14,opt,name=signature_html,json=signatureHtml,proto3" json:"signature_html,omitempty"`          // HTML signature (fallback to plain-text signature if empty)
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -366,11 +367,18 @@ func (x *UserPreferences) GetForwardKeepCopy() bool {
 	return false
 }
 
+func (x *UserPreferences) GetSignatureHtml() string {
+	if x != nil {
+		return x.SignatureHtml
+	}
+	return ""
+}
+
 var File_proto_bongo_v1_preferences_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_preferences_proto_rawDesc = "" +
 	"\n" +
-	" proto/bongo/v1/preferences.proto\x12\bbongo.v1\"\xa4\x04\n" +
+	" proto/bongo/v1/preferences.proto\x12\bbongo.v1\"\xcb\x04\n" +
 	"\x0fUserPreferences\x12%\n" +
 	"\x05theme\x18\x01 \x01(\x0e2\x0f.bongo.v1.ThemeR\x05theme\x125\n" +
 	"\vlayout_mode\x18\x02 \x01(\x0e2\x14.bongo.v1.LayoutModeR\n" +
@@ -387,7 +395,8 @@ const file_proto_bongo_v1_preferences_proto_rawDesc = "" +
 	" \x01(\tR\x06locale\x12'\n" +
 	"\x0finfinite_scroll\x18\v \x01(\bR\x0einfiniteScroll\x12'\n" +
 	"\x0fforward_address\x18\f \x01(\tR\x0eforwardAddress\x12*\n" +
-	"\x11forward_keep_copy\x18\r \x01(\bR\x0fforwardKeepCopy*O\n" +
+	"\x11forward_keep_copy\x18\r \x01(\bR\x0fforwardKeepCopy\x12%\n" +
+	"\x0esignature_html\x18\x0e \x01(\tR\rsignatureHtml*O\n" +
 	"\x05Theme\x12\x15\n" +
 	"\x11THEME_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
