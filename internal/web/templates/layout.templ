@@ -88,6 +88,7 @@ templ Layout(title string, email string) {
 			</div>
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
+			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
 		</body>
@@ -178,6 +179,7 @@ templ LayoutWithContent(title string, email string) {
 			</div>
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
+			<script src={ "/static/js/richeditor.js?v=" + assetVersion() }></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
 			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
 		</body>
