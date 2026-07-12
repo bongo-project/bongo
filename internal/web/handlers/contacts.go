@@ -74,6 +74,8 @@ func (h *ContactsHandler) CreateContact(w http.ResponseWriter, r *http.Request) 
 		Company:     r.FormValue("company"),
 		Notes:       r.FormValue("notes"),
 	}
+	// Generate a vCard from the fields so CardDAV clients get a complete card.
+	syncQuickFieldsToVCard(contact)
 
 	if _, err := h.contacts.Create(userID, contact); err != nil {
 		http.Error(w, "failed to create contact", http.StatusInternalServerError)
@@ -127,6 +129,10 @@ func (h *ContactsHandler) UpdateContact(w http.ResponseWriter, r *http.Request) 
 	existing.Phone = r.FormValue("phone")
 	existing.Company = r.FormValue("company")
 	existing.Notes = r.FormValue("notes")
+
+	// Reflect the quick-field edits back into the stored vCard so they sync to
+	// CardDAV clients, while preserving every other property the vCard carries.
+	syncQuickFieldsToVCard(existing)
 
 	if err := h.contacts.Update(userID, guid, existing); err != nil {
 		http.Error(w, "failed to update contact", http.StatusInternalServerError)
@@ -183,6 +189,7 @@ func (h *ContactsHandler) QuickAddContact(w http.ResponseWriter, r *http.Request
 		DisplayName: fromName,
 		Email:       fromEmail,
 	}
+	syncQuickFieldsToVCard(contact)
 	if _, err := h.contacts.Create(userID, contact); err != nil {
 		http.Error(w, "failed to add contact", http.StatusInternalServerError)
 		return
@@ -364,6 +371,57 @@ func parseVCardBlock(block []byte) (*bongov1.Contact, error) {
 		Notes:       notes,
 		VcardRaw:    rawBuf.Bytes(),
 	}, nil
+}
+
+// syncQuickFieldsToVCard re-encodes the contact's stored vCard so the quick
+// fields editable in the web UI (formatted name, primary email/phone, company,
+// note) are reflected in the vCard served to CardDAV clients, while preserving
+// every other property the vCard already carried (additional emails/phones,
+// postal address, birthday, title, etc.). Without this, web-UI edits silently
+// diverge from what CardDAV clients see, since CardDAV serves the raw vCard.
+func syncQuickFieldsToVCard(c *bongov1.Contact) {
+	var card vcard.Card
+	if len(c.VcardRaw) > 0 {
+		if decoded, err := vcard.NewDecoder(bytes.NewReader(c.VcardRaw)).Decode(); err == nil {
+			card = decoded
+		}
+	}
+	if card == nil {
+		card = make(vcard.Card)
+		card.SetValue(vcard.FieldVersion, "3.0")
+	}
+
+	card.SetValue(vcard.FieldFormattedName, c.DisplayName)
+	setPreferredVCardValue(card, vcard.FieldEmail, c.Email)
+	setPreferredVCardValue(card, vcard.FieldTelephone, c.Phone)
+	setPreferredVCardValue(card, vcard.FieldOrganization, c.Company)
+	if c.Notes != "" {
+		card.SetValue(vcard.FieldNote, c.Notes)
+	} else {
+		delete(card, vcard.FieldNote)
+	}
+
+	var buf bytes.Buffer
+	if err := vcard.NewEncoder(&buf).Encode(card); err == nil {
+		c.VcardRaw = buf.Bytes()
+	}
+}
+
+// setPreferredVCardValue updates the preferred value of a (possibly multi-valued)
+// vCard field in place so other values are preserved, adds the field if absent,
+// or drops it when the new value is empty and it was the only value.
+func setPreferredVCardValue(card vcard.Card, field, value string) {
+	if pref := card.Preferred(field); pref != nil {
+		if value == "" && len(card[field]) <= 1 {
+			delete(card, field)
+			return
+		}
+		pref.Value = value
+		return
+	}
+	if value != "" {
+		card.Add(field, &vcard.Field{Value: value})
+	}
 }
 
 // buildNameFromN constructs a display name from the structured N field.
