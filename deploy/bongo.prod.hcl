@@ -78,6 +78,16 @@ smtp {
     # to send through a smarthost instead (needed if your provider blocks :25
     # outbound).
     enabled = false
+
+    # Outbound TLS security for direct-to-MX delivery (both default off, which
+    # keeps opportunistic STARTTLS). Enabling them upgrades delivery to
+    # recipients that opt in via DNS to mandatory, authenticated TLS:
+    #   mta_sts_enabled = true   # honour recipient MTA-STS policies (RFC 8461)
+    #   dane_enabled    = true   # honour DNSSEC DANE TLSA records (RFC 7672)
+    #   dnssec_resolver = "1.1.1.1:53"   # resolver for DANE lookups (validated
+    #                                    # in-process; trusted only to deliver data)
+    # A domain that requires TLS but whose MX cannot present a matching/valid
+    # certificate has its mail deferred (retried) rather than sent in the clear.
   }
 
   tls {
