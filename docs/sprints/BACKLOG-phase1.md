@@ -265,3 +265,31 @@ The bongo-project/bongo-project repo has a `gh-pages` branch with images and som
 content. Migrate the full old Bongo project website (docs, screenshots, downloads page)
 to GitHub Pages so it's preserved and publicly accessible. May need to pull content from
 bongo-project.org archives or reconstruct from available sources.
+
+## UI/UX & Feature Backlog (from example.com real-world testing, 2026-07)
+
+- [ ] **Rich / visual email signatures.** Currently plain-text only
+  (`UserPreferences.Signature`, a `<textarea>` in Settings, appended by
+  `compose.go signatureBody()` as `"\n\n-- \n" + sig`). Add an HTML signature (logo,
+  colours, formatting) with a plain-text fallback: store HTML (plus a derived/editable
+  plain version), send `multipart/alternative` (text/html + text/plain), wire into the
+  TipTap composer, and embed the logo via a `cid:` inline attachment or base64 data URI
+  (web CSP `img-src` already allows `cid:` and `data:`).
+
+- [ ] **Visual consistency: bring the main UI up to the admin UI.** The admin interface
+  (`AdminLayout` / `admin.templ`) looks noticeably more polished than the main mail and
+  calendar UI. Align styling, spacing, and component treatment.
+
+- [ ] **Inbox action buttons look like buttons.** The mailbox toolbar actions currently
+  render as plain text / links (`tool-btn`). Give them a clear button treatment so the
+  available actions are obvious.
+
+- [ ] **Calendar event-creation discoverability.** No visible "New event" affordance —
+  add one. Also support double-click to create: on a day cell (month view) and on a time
+  slot (week/day view). Today the only entry point is clicking the day *number* (the plain
+  `<a href="/calendar/event/new?date=...">` in `CalendarMonthGrid`).
+
+- [ ] **Display vCard address labels on contacts.** vCards can carry an address label —
+  the `LABEL` property (vCard 3.0: `LABEL;TYPE=home:` formatted block) or `LABEL="..."`
+  parameter (4.0) — in addition to the `TYPE` (home/work) already shown and edited. Parse
+  and display the label text on the contact view.
