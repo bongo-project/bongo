@@ -1083,6 +1083,157 @@ document.addEventListener('alpine:init', () => {
     }
   }));
 
+  // Rich-text editor component. Expects the following structure inside the x-data root:
+  //   [data-editor]     — contenteditable div for visual editing
+  //   [data-source]     — <textarea> for raw HTML source view
+  //   [data-img-input]  — <input type="file"> for image upload (hidden)
+  //   data-initial-body — attribute on the root element with the initial plain-text body
+  //   <input type="hidden" name="body"> — field kept in sync for form submission
+  //
+  // Pure helper functions (escapeHTML, buildDataURI, insertImageHTML, etc.) are
+  // provided by richeditor.js (window.RichEditor), which is loaded before bongo.js.
+  Alpine.data('richEditor', () => ({
+    isSourceMode: false,
+
+    _editor() {
+      return this.$el.querySelector('[data-editor]');
+    },
+
+    _source() {
+      return this.$el.querySelector('[data-source]');
+    },
+
+    // _hidden locates the hidden input whose value is submitted with the form.
+    // The field name must match what the server reads (r.FormValue("body")).
+    _hidden() {
+      return this.$el.querySelector('input[type="hidden"][name="body"]');
+    },
+
+    _syncHidden() {
+      var hidden = this._hidden();
+      if (!hidden) return;
+      if (this.isSourceMode) {
+        var source = this._source();
+        if (source) hidden.value = source.value;
+      } else {
+        var editor = this._editor();
+        if (editor) hidden.value = editor.innerHTML;
+      }
+    },
+
+    init() {
+      this.$nextTick(() => {
+        // Seed editor with initial content (e.g. quoted body on reply/forward).
+        // data-initial-body is set by the template from the server-supplied body string.
+        // innerText is used so plain-text newlines become visual line breaks and any
+        // HTML characters in the server value are safely displayed, not parsed as markup.
+        var initial = this.$el.dataset.initialBody;
+        if (initial) {
+          var editor = this._editor();
+          if (editor) editor.innerText = initial;
+        }
+        this._syncHidden();
+
+        // Sync the hidden field on form submission regardless of which mode the
+        // editor is in when the user clicks Send or Save Draft.
+        var form = this.$el.closest('form');
+        if (form) {
+          var self = this;
+          form.addEventListener('submit', function () { self._syncHidden(); });
+        }
+      });
+    },
+
+    // format executes a document editing command (bold, italic, underline, etc.)
+    // on the current selection in the contenteditable editor.
+    format(cmd) {
+      if (this.isSourceMode) return;
+      document.execCommand(cmd, false, null);
+      this._syncHidden();
+    },
+
+    // setColor applies a foreground colour to the current selection.
+    setColor(color) {
+      if (this.isSourceMode || !color) return;
+      document.execCommand('foreColor', false, color);
+      this._syncHidden();
+    },
+
+    // promptLink shows a browser prompt for a URL then wraps the selection in a link.
+    promptLink() {
+      if (this.isSourceMode) return;
+      var url = window.prompt('Enter URL:');
+      if (url) this.insertLink(url);
+    },
+
+    // insertLink wraps the current selection in an anchor with the given URL.
+    insertLink(url) {
+      if (this.isSourceMode || !url) return;
+      document.execCommand('createLink', false, url);
+      this._syncHidden();
+    },
+
+    // triggerImagePicker clicks the hidden file input to open the OS picker.
+    triggerImagePicker() {
+      var input = this.$el.querySelector('[data-img-input]');
+      if (input) input.click();
+    },
+
+    // handleImageFile is called from x-on:change on the file input.
+    // It reads $event and delegates to insertImage so the file-picker path
+    // obeys the same 1 MB cap as direct calls.
+    handleImageFile(event) {
+      var file = event && event.target && event.target.files && event.target.files[0];
+      if (file) this.insertImage(file);
+    },
+
+    // insertImage reads a local File via window.RichEditor.fileToDataURI and
+    // inserts an <img> into the editor. Files over 1 MB are silently rejected.
+    insertImage(file) {
+      if (this.isSourceMode || !file) return;
+      var self = this;
+      var RE = window.RichEditor;
+      if (!RE) {
+        console.error('richEditor: window.RichEditor not loaded — richeditor.js must precede bongo.js');
+        return;
+      }
+      RE.fileToDataURI(file, RE.IMAGE_CAP_BYTES)
+        .then(function (dataURI) {
+          var html = RE.insertImageHTML(dataURI, file.name || '');
+          document.execCommand('insertHTML', false, html);
+          self._syncHidden();
+        })
+        .catch(function (err) {
+          console.warn('richEditor: image rejected —', err.message);
+        });
+    },
+
+    // toggleSource switches between the rendered contenteditable view and the
+    // raw-HTML textarea, preserving content in both directions.
+    toggleSource() {
+      var editor = this._editor();
+      var source = this._source();
+      var hidden = this._hidden();
+      if (!editor || !source) return;
+
+      if (!this.isSourceMode) {
+        // Visual → source: copy innerHTML to textarea.
+        source.value = editor.innerHTML;
+        this.isSourceMode = true;
+      } else {
+        // Source → visual: copy textarea back to innerHTML.
+        editor.innerHTML = source.value;
+        this.isSourceMode = false;
+        if (hidden) hidden.value = editor.innerHTML;
+      }
+    },
+
+    // onInput syncs the hidden field whenever the user types in the editor.
+    onInput() {
+      this._syncHidden();
+    }
+  }));
+
   Alpine.data('tagSettings', (palette) => ({
     palette: palette,
     tags: [],
