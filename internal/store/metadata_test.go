@@ -281,6 +281,54 @@ func TestConcurrentUserDBs(t *testing.T) {
 	}
 }
 
+func TestDeleteMail(t *testing.T) {
+	mgr := newTestManager(t)
+	userID := "u1"
+	guid := "mail-del"
+
+	// Index a mail into all three tiers.
+	if err := mgr.IndexMail(userID, guid, "Subject", "from@example.com", 1000, 42); err != nil {
+		t.Fatalf("IndexMail: %v", err)
+	}
+	if err := mgr.IndexMailTags(userID, guid, []string{"notjunk", "inbox"}); err != nil {
+		t.Fatalf("IndexMailTags: %v", err)
+	}
+
+	idx, err := mgr.OpenUser(userID)
+	if err != nil {
+		t.Fatalf("OpenUser: %v", err)
+	}
+	count := func(table, col string) int {
+		var n int
+		if err := idx.db.QueryRow("SELECT COUNT(*) FROM "+table+" WHERE "+col+" = ?", guid).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		return n
+	}
+	if count("storeobject", "guid") != 1 || count("maildocument", "guid") != 1 || count("message_tags", "mail_guid") != 2 {
+		t.Fatalf("pre-delete counts wrong: so=%d md=%d mt=%d",
+			count("storeobject", "guid"), count("maildocument", "guid"), count("message_tags", "mail_guid"))
+	}
+
+	// DeleteMail must remove every derived row.
+	if err := mgr.DeleteMail(userID, guid); err != nil {
+		t.Fatalf("DeleteMail: %v", err)
+	}
+	if count("storeobject", "guid") != 0 || count("maildocument", "guid") != 0 || count("message_tags", "mail_guid") != 0 {
+		t.Fatalf("post-delete counts wrong: so=%d md=%d mt=%d",
+			count("storeobject", "guid"), count("maildocument", "guid"), count("message_tags", "mail_guid"))
+	}
+
+	// DeleteMail is tag-agnostic: every tag on the message is gone, not just one.
+	// Check both the tags we indexed (and the count assertion above already
+	// proves all message_tags rows were removed).
+	for _, tag := range []string{"notjunk", "inbox"} {
+		if guids, _ := mgr.QueryByTag(userID, tag); len(guids) != 0 {
+			t.Fatalf("QueryByTag(%q) after delete = %v, want none", tag, guids)
+		}
+	}
+}
+
 func TestIndexMailTags(t *testing.T) {
 	cases := []struct {
 		name     string

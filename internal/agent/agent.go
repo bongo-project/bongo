@@ -1111,6 +1111,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	// nodes and on followers.
 	a.ensureConfiguredDomain()
 
+	// Reclaim orphaned mail metadata (MailMeta + derived indexes left behind by
+	// EXPUNGE). Leader-only, self-gating; conservative two-pass sweep.
+	if a.Raft != nil {
+		go a.runOrphanMailGC(ctx, orphanGCInterval, orphanGCMinAge)
+	}
+
 	a.ready.Store(true)
 
 	a.logger.Info("bongo-go started",
@@ -1207,6 +1213,81 @@ func (a *Agent) createDevUser() error {
 	}
 
 	return nil
+}
+
+const (
+	// orphanGCInterval is how often the orphaned-mail sweep runs.
+	orphanGCInterval = 15 * time.Minute
+	// orphanGCMinAge is the minimum MailMeta age before it is eligible for
+	// reclamation, guarding against racing with in-flight delivery.
+	orphanGCMinAge = time.Hour
+)
+
+// runOrphanMailGC periodically reclaims orphaned mail metadata: MailMeta records
+// (and their derived SQLite/Bleve index rows) that no live MailboxMessage
+// references, e.g. left behind by EXPUNGE. It is leader-only and conservative —
+// a GUID must be seen orphaned in two consecutive passes before deletion, so a
+// message briefly between MailMeta and mailbox-entry writes is never reclaimed.
+func (a *Agent) runOrphanMailGC(ctx context.Context, interval, minAge time.Duration) {
+	if a.Mailboxes == nil || a.Metadata == nil || a.Metadata.System == nil {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	// GUIDs (as "userID/guid") seen orphaned in the previous pass.
+	prev := map[string]bool{}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			prev = a.sweepOrphanedMail(prev, minAge)
+		}
+	}
+}
+
+// sweepOrphanedMail runs one orphan-reclamation pass and returns the set of
+// GUIDs seen orphaned this pass (for the caller's next-pass comparison). Only
+// GUIDs orphaned in both the previous and current pass are deleted. Leader-only.
+func (a *Agent) sweepOrphanedMail(prev map[string]bool, minAge time.Duration) map[string]bool {
+	if a.Raft == nil || !a.IsLeader() {
+		return map[string]bool{}
+	}
+
+	userIDs, err := a.Metadata.System.ListUserIDs()
+	if err != nil {
+		a.logger.Warn("orphan-gc: listing users failed", "error", err)
+		return prev
+	}
+
+	current := map[string]bool{}
+	deleted := 0
+	for _, userID := range userIDs {
+		orphans, err := a.Mailboxes.OrphanedMailGUIDs(userID, minAge)
+		if err != nil {
+			a.logger.Warn("orphan-gc: detecting orphans failed", "user", userID, "error", err)
+			continue
+		}
+		for _, guid := range orphans {
+			mark := userID + "/" + guid
+			current[mark] = true
+			if !prev[mark] {
+				continue // first sighting — wait one more interval before deleting
+			}
+			key := []byte(fmt.Sprintf("/user/%s/mail/%s", userID, guid))
+			cmd := &bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: key}
+			if err := a.ApplyCommand(cmd, 5*time.Second); err != nil {
+				a.logger.Warn("orphan-gc: deleting mail meta failed", "user", userID, "guid", guid, "error", err)
+				continue
+			}
+			deleted++
+		}
+	}
+	if deleted > 0 {
+		a.logger.Info("orphan-gc: reclaimed orphaned mail metadata", "count", deleted)
+	}
+	return current
 }
 
 // ensureConfiguredDomain seeds the server's configured mail domain into the

@@ -298,6 +298,16 @@ func (sm *SearchManager) DeleteEventIndex(userID, guid string) error {
 	return idx.Delete("event:" + guid)
 }
 
+// DeleteMailIndex removes a mail document from a user's search index. Mail is
+// indexed under the bare guid (see IndexMail), so deletion uses the guid directly.
+func (sm *SearchManager) DeleteMailIndex(userID, guid string) error {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return err
+	}
+	return idx.Delete(guid)
+}
+
 // SearchEvents searches for events in a user's index.
 func (sm *SearchManager) SearchEvents(userID, query string, limit int) ([]EventSearchResult, error) {
 	idx, err := sm.openUser(userID)
