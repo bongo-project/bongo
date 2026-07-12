@@ -24,19 +24,24 @@ func LoadSidebarTags(ts *store.TagStore, userID, selected string) []templates.Si
 		return nil
 	}
 
-	limit := len(twcs)
-	if limit > maxSidebarTags {
-		limit = maxSidebarTags
-	}
-
-	result := make([]templates.SidebarTagInfo, 0, limit)
-	for i := 0; i < limit; i++ {
-		twc := twcs[i]
+	result := make([]templates.SidebarTagInfo, 0, maxSidebarTags)
+	for _, twc := range twcs {
+		if len(result) >= maxSidebarTags {
+			break
+		}
+		isSelected := selected == "tag:"+twc.Tag.Name
+		// Hide tags that currently have no tagged messages: they still exist and
+		// remain manageable under Settings > Tags, but an empty tag adds noise to
+		// the sidebar. The selected tag is kept so the active view never vanishes
+		// mid-browse (e.g. after removing the last message from it).
+		if twc.Count == 0 && !isSelected {
+			continue
+		}
 		result = append(result, templates.SidebarTagInfo{
 			Name:        twc.Tag.Name,
 			ColourIndex: twc.Tag.ColourIndex,
 			Count:       twc.Count,
-			Selected:    selected == "tag:"+twc.Tag.Name,
+			Selected:    isSelected,
 		})
 	}
 	return result

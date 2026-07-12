@@ -16,6 +16,45 @@ func TestLoadSidebarTagsNilStore(t *testing.T) {
 	}
 }
 
+func TestLoadSidebarTagsHidesEmptyTags(t *testing.T) {
+	env := newMailTagsTestEnv(t)
+	userID := "user1"
+
+	// "work" has a tagged message (count 1); "empty" is defined but unused (count 0).
+	if _, err := env.tags.CreateTag(userID, "work"); err != nil {
+		t.Fatalf("CreateTag work: %v", err)
+	}
+	if _, err := env.tags.CreateTag(userID, "empty"); err != nil {
+		t.Fatalf("CreateTag empty: %v", err)
+	}
+	env.seedMessage(t, userID, "INBOX", "g1", []string{"work"})
+
+	// Default view: the empty tag is hidden, the used tag is shown.
+	got := LoadSidebarTags(env.tags, userID, "")
+	names := map[string]int{}
+	for _, s := range got {
+		names[s.Name] = s.Count
+	}
+	if _, shown := names["empty"]; shown {
+		t.Errorf("empty tag should be hidden from the sidebar, got %v", got)
+	}
+	if names["work"] != 1 {
+		t.Errorf("work tag should be shown with count 1, got %v", got)
+	}
+
+	// When the empty tag is the selected view, it stays visible.
+	got = LoadSidebarTags(env.tags, userID, "tag:empty")
+	found := false
+	for _, s := range got {
+		if s.Name == "empty" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("selected empty tag should remain visible, got %v", got)
+	}
+}
+
 func TestMaxSidebarTagsConstant(t *testing.T) {
 	if maxSidebarTags != 20 {
 		t.Errorf("maxSidebarTags = %d, want 20", maxSidebarTags)

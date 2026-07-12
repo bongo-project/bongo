@@ -92,6 +92,14 @@ _autodiscover._tcp.example.com. IN SRV  0 1 443 mail.example.com.
 ; Point them at the same host so Traefik can serve autoconfig there too.
 autoconfig.example.com.   IN  A      <server-public-ip>
 autodiscover.example.com. IN  A      <server-public-ip>
+
+; --- CalDAV / CardDAV auto-discovery (RFC 6764) ---
+; Lets calendar/contacts clients find the server (and its non-root context path)
+; from just an email address. The SRV gives host:port; the TXT gives the path.
+_caldavs._tcp.example.com.   IN  SRV  0 1 443 mail.example.com.
+_caldavs._tcp.example.com.   IN  TXT  "path=/caldav/"
+_carddavs._tcp.example.com.  IN  SRV  0 1 443 mail.example.com.
+_carddavs._tcp.example.com.  IN  TXT  "path=/carddav/"
 ```
 
 And the **PTR** (reverse DNS), set at your VPS provider, not in this zone:
