@@ -431,16 +431,35 @@ func buildVCardFromForm(c *bongov1.Contact, r *http.Request) {
 	setOrDeleteVCardValue(card, vcard.FieldTimezone, r.FormValue("timezone"))
 	setOrDeleteVCardValue(card, vcard.FieldNote, r.FormValue("notes"))
 
-	// Single postal address.
+	// Postal addresses (multi-valued; each keeps its optional type).
 	delete(card, vcard.FieldAddress)
-	adr := &vcard.Address{
-		StreetAddress: strings.TrimSpace(r.FormValue("adr_street")),
-		Locality:      strings.TrimSpace(r.FormValue("adr_city")),
-		Region:        strings.TrimSpace(r.FormValue("adr_region")),
-		PostalCode:    strings.TrimSpace(r.FormValue("adr_postal")),
-		Country:       strings.TrimSpace(r.FormValue("adr_country")),
+	streets := r.Form["adr_street"]
+	cities := r.Form["adr_city"]
+	regions := r.Form["adr_region"]
+	postals := r.Form["adr_postal"]
+	countries := r.Form["adr_country"]
+	adrTypes := r.Form["adr_type"]
+	at := func(a []string, i int) string {
+		if i < len(a) {
+			return strings.TrimSpace(a[i])
+		}
+		return ""
 	}
-	if adr.StreetAddress != "" || adr.Locality != "" || adr.Region != "" || adr.PostalCode != "" || adr.Country != "" {
+	for i := range streets {
+		adr := &vcard.Address{
+			StreetAddress: at(streets, i),
+			Locality:      at(cities, i),
+			Region:        at(regions, i),
+			PostalCode:    at(postals, i),
+			Country:       at(countries, i),
+		}
+		if adr.StreetAddress == "" && adr.Locality == "" && adr.Region == "" && adr.PostalCode == "" && adr.Country == "" {
+			continue
+		}
+		// Pre-seed the embedded Field so AddAddress preserves the TYPE param.
+		if typ := at(adrTypes, i); typ != "" {
+			adr.Field = &vcard.Field{Params: vcard.Params{vcard.ParamType: []string{typ}}}
+		}
 		card.AddAddress(adr)
 	}
 
