@@ -1,12 +1,78 @@
 package templates
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/emersion/go-vcard"
+
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// contactExtraField is a labelled read-only value parsed from a contact's vCard
+// for display (the label is an i18n key).
+type contactExtraField struct {
+	LabelKey string
+	Value    string
+}
+
+// contactVCardDetails parses the stored vCard and returns the notable fields
+// beyond the primary name/email/phone/company already shown in the header and
+// edit form: additional emails and phones, postal address, job title, birthday,
+// website and nickname. Returns nil when there is no vCard or it fails to parse.
+func contactVCardDetails(c *bongov1.Contact) []contactExtraField {
+	if len(c.VcardRaw) == 0 {
+		return nil
+	}
+	card, err := vcard.NewDecoder(bytes.NewReader(c.VcardRaw)).Decode()
+	if err != nil {
+		return nil
+	}
+
+	var out []contactExtraField
+	for i, v := range card.Values(vcard.FieldEmail) {
+		if i == 0 || strings.TrimSpace(v) == "" {
+			continue // first email is already shown
+		}
+		out = append(out, contactExtraField{"contacts.email", v})
+	}
+	for i, v := range card.Values(vcard.FieldTelephone) {
+		if i == 0 || strings.TrimSpace(v) == "" {
+			continue
+		}
+		out = append(out, contactExtraField{"contacts.phone", v})
+	}
+	if v := card.Value(vcard.FieldTitle); v != "" {
+		out = append(out, contactExtraField{"contacts.title", v})
+	}
+	for _, a := range card.Addresses() {
+		if s := formatVCardAddress(a); s != "" {
+			out = append(out, contactExtraField{"contacts.address", s})
+		}
+	}
+	if v := card.Value(vcard.FieldBirthday); v != "" {
+		out = append(out, contactExtraField{"contacts.birthday", v})
+	}
+	if v := card.Value(vcard.FieldURL); v != "" {
+		out = append(out, contactExtraField{"contacts.website", v})
+	}
+	if v := card.Value(vcard.FieldNickname); v != "" {
+		out = append(out, contactExtraField{"contacts.nickname", v})
+	}
+	return out
+}
+
+func formatVCardAddress(a *vcard.Address) string {
+	var parts []string
+	for _, p := range []string{a.StreetAddress, a.ExtendedAddress, a.Locality, a.Region, a.PostalCode, a.Country} {
+		if s := strings.TrimSpace(p); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, ", ")
+}
 
 templ ContactsPage(contacts []*bongov1.Contact, page, totalPages int, email string, flash string) {
 	@LayoutWithContent(t(ctx, "contacts.contacts"), email) {
@@ -173,6 +239,7 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 							</button>
 						</div>
 					</form>
+					@ContactExtraFields(c)
 					<div class="detail-section-title u-font-075">
 						<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
 						<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>
@@ -184,6 +251,23 @@ templ ContactDetailPage(c *bongov1.Contact, email string) {
 }
 
 // ContactDetailPartial renders the detail card for the HTMX reading pane.
+// ContactExtraFields renders a read-only panel of the additional vCard fields
+// (address, birthday, extra emails/phones, etc.) that the quick-edit form does
+// not cover, so the web UI shows the full contact synced from a CardDAV client.
+templ ContactExtraFields(c *bongov1.Contact) {
+	if len(contactVCardDetails(c)) > 0 {
+		<div class="detail-extra-fields u-px-12">
+			<div class="detail-field-label u-text-muted">{ t(ctx, "contacts.additionalDetails") }</div>
+			for _, f := range contactVCardDetails(c) {
+				<div class="detail-field">
+					<div class="detail-field-label">{ t(ctx, f.LabelKey) }</div>
+					<div class="detail-field-value">{ f.Value }</div>
+				</div>
+			}
+		</div>
+	}
+}
+
 templ ContactDetailPartial(c *bongov1.Contact) {
 	<div class="detail-card">
 		<div class="detail-header">
@@ -245,6 +329,7 @@ templ ContactDetailPartial(c *bongov1.Contact) {
 				</button>
 			</div>
 		</form>
+		@ContactExtraFields(c)
 		<div class="detail-section-title u-font-075 u-px-12 u-text-muted">
 			<span>{ t(ctx, "contacts.created") }: { formatContactDate(c.CreatedAt) }</span>
 			<span class="u-ml-1">{ t(ctx, "contacts.updated") }: { formatContactDate(c.UpdatedAt) }</span>

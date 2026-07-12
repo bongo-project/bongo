@@ -15,7 +15,6 @@
   "nav.security": "Seguridad",
   "nav.settings": "Configuración",
   "nav.allContacts": "Todos los contactos",
-
   "mail.reply": "Responder",
   "mail.replyAll": "Responder a todos",
   "mail.forward": "Reenviar",
@@ -51,7 +50,6 @@
   "mail.addTag": "Agregar etiqueta",
   "mail.createTag": "Crear etiqueta",
   "mail.tagNamePlaceholder": "Nombre de etiqueta",
-
   "compose.to": "Para",
   "compose.cc": "Cc",
   "compose.bcc": "Cco",
@@ -64,7 +62,6 @@
   "compose.newMessage": "Redactar: Nuevo mensaje",
   "compose.reply": "Redactar: Respuesta",
   "compose.forward": "Redactar: Reenvío",
-
   "calendar.month": "Mes",
   "calendar.week": "Semana",
   "calendar.day": "Día",
@@ -91,7 +88,6 @@
   "calendar.searchEvents": "Buscar eventos...",
   "calendar.noResults": "Sin resultados",
   "calendar.noEventsMatched": "Ningún evento coincide con su búsqueda.",
-
   "contacts.contacts": "Contactos",
   "contacts.newContact": "Nuevo contacto",
   "contacts.edit": "Editar",
@@ -101,6 +97,12 @@
   "contacts.phone": "Teléfono",
   "contacts.company": "Empresa",
   "contacts.notes": "Notas",
+  "contacts.title": "Cargo",
+  "contacts.address": "Dirección",
+  "contacts.birthday": "Cumpleaños",
+  "contacts.website": "Sitio web",
+  "contacts.nickname": "Apodo",
+  "contacts.additionalDetails": "Detalles adicionales",
   "contacts.save": "Guardar",
   "contacts.cancel": "Cancelar",
   "contacts.create": "Crear",
@@ -108,7 +110,6 @@
   "contacts.addContacts": "Añada contactos manualmente o importe un archivo vCard.",
   "contacts.exportVcard": "Exportar vCard",
   "contacts.import": "Importar",
-
   "admin.admin": "Administración",
   "admin.dashboard": "Panel de control",
   "admin.users": "Usuarios",
@@ -127,7 +128,6 @@
   "admin.savePolicy": "Guardar política",
   "admin.welcome": "Bienvenido a Bongo",
   "admin.navigation": "Navegación de administración",
-
   "settings.settings": "Configuración",
   "settings.theme": "Tema",
   "settings.layout": "Diseño",
@@ -151,7 +151,6 @@
   "settings.newPassword": "Nueva contraseña",
   "settings.confirmPassword": "Confirmar nueva contraseña",
   "settings.enableNotifications": "Activar notificaciones",
-
   "auth.tagline": "Tu correo, a tu manera",
   "auth.login": "Iniciar sesión",
   "auth.email": "Correo electrónico",
@@ -165,7 +164,6 @@
   "auth.authCode": "Código de autenticación",
   "auth.backToLogin": "Volver al inicio de sesión",
   "auth.verifyAndEnable": "Verificar y activar",
-
   "common.save": "Guardar",
   "common.cancel": "Cancelar",
   "common.copy": "Copiar",
@@ -188,16 +186,13 @@
   "common.inactive": "Inactivo",
   "common.enable": "Activar",
   "common.disable": "Desactivar",
-
   "nav.skipToContent": "Ir al contenido principal",
   "nav.searchPlaceholder": "Buscar correo...",
   "nav.toggleTheme": "Cambiar tema",
-
   "search.results": "Resultados de búsqueda",
   "search.noResults": "Sin resultados",
   "search.noMatches": "Ningún mensaje coincide con su búsqueda.",
   "search.resultsFor": "Resultados de búsqueda para",
-
   "rules.newRule": "Nueva regla",
   "rules.editRule": "Editar regla",
   "rules.createRule": "Crear regla",
@@ -205,7 +200,6 @@
   "rules.backToRules": "Volver a reglas",
   "rules.test": "Probar",
   "rules.noRulesYet": "Aún no hay reglas de filtro. Cree una para organizar automáticamente el correo entrante.",
-
   "security.require2FABanner": "Su administrador requiere autenticación de dos factores. Por favor configúrela para continuar.",
   "security.setupTwoFactor": "Configurar autenticación de dos factores",
   "security.disableTwoFactor": "Desactivar autenticación de dos factores",
@@ -219,13 +213,10 @@
   "security.saveCodesWarning": "Guarde estos códigos en un lugar seguro.",
   "security.saveCodesDescription": "No se mostrarán de nuevo. Cada código solo se puede usar una vez. Use estos códigos para iniciar sesión si pierde acceso a su aplicación de autenticación.",
   "security.savedCodes": "He guardado mis códigos",
-
   "admin.retry": "Reintentar",
   "admin.drop": "Descartar",
   "admin.flushQueue": "Vaciar cola (reintentar todo ahora)",
-
   "auth.enterCodeHint": "Ingrese su código de autenticación de 6 dígitos o un código de recuperación.",
-
   "import.importMessages": "Importar mensajes",
   "import.uploadDescription": "Suba un archivo mbox para importar mensajes a un buzón.",
   "import.mboxFile": "Archivo Mbox",
@@ -234,7 +225,6 @@
   "import.importComplete": "Importación completada",
   "import.messagesImportedTo": "mensajes importados a",
   "import.importMore": "Importar más",
-
   "settings.themeAuto": "Automático (seguir sistema operativo)",
   "settings.themeLight": "Claro",
   "settings.themeDark": "Oscuro",
@@ -256,7 +246,6 @@
   "settings.forwardAddress": "Reenviar a la direccion",
   "settings.forwardKeepCopy": "Conservar una copia local",
   "settings.forwardDesc": "Reenviar automaticamente el correo entrante a una direccion externa.",
-
   "rules.colName": "Nombre",
   "rules.colConditions": "Condiciones",
   "rules.colAction": "Acción",
@@ -265,10 +254,8 @@
   "rules.ruleSettings": "Configuración de la regla",
   "rules.conditionsHeader": "Condiciones (todas deben coincidir)",
   "rules.actionHeader": "Acción",
-
   "common.yes": "Sí",
   "common.no": "No",
-
   "calendar.mon": "Lun",
   "calendar.tue": "Mar",
   "calendar.wed": "Mié",
@@ -276,14 +263,11 @@
   "calendar.fri": "Vie",
   "calendar.sat": "Sáb",
   "calendar.sun": "Dom",
-
   "security.status": "Estado:",
   "security.minPassword": "Mínimo 8 caracteres",
-
   "import.newMailboxOption": "-- Nuevo buzón (escriba el nombre abajo) --",
   "import.newMailboxPlaceholder": "Nombre del nuevo buzón (opcional)",
   "import.goToMailbox": "Ir a",
-
   "rules.fieldFrom": "De",
   "rules.fieldTo": "Para",
   "rules.fieldCc": "Cc",

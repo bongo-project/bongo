@@ -15,7 +15,6 @@
   "nav.security": "Security",
   "nav.settings": "Settings",
   "nav.allContacts": "All Contacts",
-
   "mail.reply": "Reply",
   "mail.replyAll": "Reply All",
   "mail.forward": "Forward",
@@ -51,7 +50,6 @@
   "mail.addTag": "Add tag",
   "mail.createTag": "Create tag",
   "mail.tagNamePlaceholder": "Tag name",
-
   "compose.to": "To",
   "compose.cc": "Cc",
   "compose.bcc": "Bcc",
@@ -64,7 +62,6 @@
   "compose.newMessage": "Compose: New Message",
   "compose.reply": "Compose: Reply",
   "compose.forward": "Compose: Forward",
-
   "calendar.month": "Month",
   "calendar.week": "Week",
   "calendar.day": "Day",
@@ -91,7 +88,6 @@
   "calendar.searchEvents": "Search events...",
   "calendar.noResults": "No results",
   "calendar.noEventsMatched": "No events matched your search.",
-
   "contacts.contacts": "Contacts",
   "contacts.newContact": "New Contact",
   "contacts.edit": "Edit",
@@ -101,6 +97,12 @@
   "contacts.phone": "Phone",
   "contacts.company": "Company",
   "contacts.notes": "Notes",
+  "contacts.title": "Title",
+  "contacts.address": "Address",
+  "contacts.birthday": "Birthday",
+  "contacts.website": "Website",
+  "contacts.nickname": "Nickname",
+  "contacts.additionalDetails": "Additional details",
   "contacts.save": "Save",
   "contacts.cancel": "Cancel",
   "contacts.create": "Create",
@@ -108,7 +110,6 @@
   "contacts.addContacts": "Add contacts manually or import a vCard file.",
   "contacts.exportVcard": "Export vCard",
   "contacts.import": "Import",
-
   "admin.admin": "Admin",
   "admin.dashboard": "Dashboard",
   "admin.users": "Users",
@@ -127,7 +128,6 @@
   "admin.savePolicy": "Save Policy",
   "admin.welcome": "Welcome to Bongo",
   "admin.navigation": "Admin navigation",
-
   "settings.settings": "Settings",
   "settings.theme": "Theme",
   "settings.layout": "Layout",
@@ -151,7 +151,6 @@
   "settings.newPassword": "New Password",
   "settings.confirmPassword": "Confirm New Password",
   "settings.enableNotifications": "Enable notifications",
-
   "auth.tagline": "Your mail, your way",
   "auth.login": "Login",
   "auth.email": "Email",
@@ -165,7 +164,6 @@
   "auth.authCode": "Authentication code",
   "auth.backToLogin": "Back to login",
   "auth.verifyAndEnable": "Verify and Enable",
-
   "common.save": "Save",
   "common.cancel": "Cancel",
   "common.copy": "Copy",
@@ -188,16 +186,13 @@
   "common.inactive": "Inactive",
   "common.enable": "Enable",
   "common.disable": "Disable",
-
   "nav.skipToContent": "Skip to main content",
   "nav.searchPlaceholder": "Search mail...",
   "nav.toggleTheme": "Toggle theme",
-
   "search.results": "Search Results",
   "search.noResults": "No results",
   "search.noMatches": "No messages match your search.",
   "search.resultsFor": "Search results for",
-
   "rules.newRule": "New Rule",
   "rules.editRule": "Edit Rule",
   "rules.createRule": "Create Rule",
@@ -205,7 +200,6 @@
   "rules.backToRules": "Back to Rules",
   "rules.test": "Test",
   "rules.noRulesYet": "No filter rules yet. Create one to automatically organize incoming mail.",
-
   "security.require2FABanner": "Your administrator requires two-factor authentication. Please set it up to continue.",
   "security.setupTwoFactor": "Set Up Two-Factor Authentication",
   "security.disableTwoFactor": "Disable Two-Factor Authentication",
@@ -219,13 +213,10 @@
   "security.saveCodesWarning": "Save these codes in a safe place.",
   "security.saveCodesDescription": "They will not be shown again. Each code can only be used once. Use these codes to sign in if you lose access to your authenticator app.",
   "security.savedCodes": "I have saved my codes",
-
   "admin.retry": "Retry",
   "admin.drop": "Drop",
   "admin.flushQueue": "Flush Queue (retry all now)",
-
   "auth.enterCodeHint": "Enter your 6-digit authenticator code or a recovery code.",
-
   "import.importMessages": "Import Messages",
   "import.uploadDescription": "Upload an mbox file to import messages into a mailbox.",
   "import.mboxFile": "Mbox File",
@@ -234,7 +225,6 @@
   "import.importComplete": "Import Complete",
   "import.messagesImportedTo": "messages imported to",
   "import.importMore": "Import More",
-
   "settings.themeAuto": "Auto (follow OS)",
   "settings.themeLight": "Light",
   "settings.themeDark": "Dark",
@@ -256,7 +246,6 @@
   "settings.forwardAddress": "Forward to address",
   "settings.forwardKeepCopy": "Keep a local copy",
   "settings.forwardDesc": "Automatically forward incoming mail to an external address.",
-
   "rules.colName": "Name",
   "rules.colConditions": "Conditions",
   "rules.colAction": "Action",
@@ -265,10 +254,8 @@
   "rules.ruleSettings": "Rule Settings",
   "rules.conditionsHeader": "Conditions (all must match)",
   "rules.actionHeader": "Action",
-
   "common.yes": "Yes",
   "common.no": "No",
-
   "calendar.mon": "Mon",
   "calendar.tue": "Tue",
   "calendar.wed": "Wed",
@@ -276,14 +263,11 @@
   "calendar.fri": "Fri",
   "calendar.sat": "Sat",
   "calendar.sun": "Sun",
-
   "security.status": "Status:",
   "security.minPassword": "Minimum 8 characters",
-
   "import.newMailboxOption": "-- New mailbox (type name below) --",
   "import.newMailboxPlaceholder": "New mailbox name (optional)",
   "import.goToMailbox": "Go to",
-
   "rules.fieldFrom": "From",
   "rules.fieldTo": "To",
   "rules.fieldCc": "CC",
