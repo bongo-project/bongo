@@ -124,6 +124,15 @@ type SMTPRelay struct {
 	// connection to a policy-listed MX or delivery is deferred. Default off, so
 	// delivery stays opportunistic-STARTTLS until enabled.
 	MTASTSEnabled bool `hcl:"mta_sts_enabled,optional" mapstructure:"mta_sts_enabled"`
+	// DANEEnabled honours DNSSEC-authenticated DANE TLSA records (RFC 7672) on
+	// outbound MX delivery: when a securely-resolved MX host publishes a secure
+	// TLSA record, TLS is mandatory and the server certificate must match the
+	// record (DANE takes precedence over MTA-STS). Default off.
+	DANEEnabled bool `hcl:"dane_enabled,optional" mapstructure:"dane_enabled"`
+	// DNSSECResolver is the recursive resolver (host:port) used for DANE TLSA
+	// lookups. Records are validated in-process, so the resolver is trusted only
+	// to deliver data, not to validate. Defaults to 1.1.1.1:53 when empty.
+	DNSSECResolver string `hcl:"dnssec_resolver,optional" mapstructure:"dnssec_resolver"`
 }
 
 type SMTPDKIMConfig struct {
