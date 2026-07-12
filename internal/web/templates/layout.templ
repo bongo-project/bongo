@@ -11,8 +11,8 @@ templ Layout(title string, email string) {
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
-			<link rel="stylesheet" href="/static/css/bongo.css"/>
-			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
+			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/generated_geometry.css?v=" + assetVersion() }/>
 		</head>
 		<body hx-headers={ csrfHeaders(ctx) }>
 			<!-- Translation strings needed by bongo.js. CSP forbids inline
@@ -89,7 +89,7 @@ templ Layout(title string, email string) {
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
-			<script src="/static/js/bongo.js"></script>
+			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
 		</body>
 	</html>
 }
@@ -105,8 +105,8 @@ templ LayoutWithContent(title string, email string) {
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
-			<link rel="stylesheet" href="/static/css/bongo.css"/>
-			<link rel="stylesheet" href="/static/css/generated_geometry.css"/>
+			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
+			<link rel="stylesheet" href={ "/static/css/generated_geometry.css?v=" + assetVersion() }/>
 		</head>
 		<body hx-headers={ csrfHeaders(ctx) }>
 			<!-- Translation strings needed by bongo.js. CSP forbids inline
@@ -179,7 +179,7 @@ templ LayoutWithContent(title string, email string) {
 			<script src="/static/js/htmx.min.js"></script>
 			<script src="/static/js/sortable.min.js"></script>
 			<script src="/static/js/alpine-csp.min.js" defer></script>
-			<script src="/static/js/bongo.js"></script>
+			<script src={ "/static/js/bongo.js?v=" + assetVersion() }></script>
 		</body>
 	</html>
 }
@@ -195,7 +195,7 @@ templ LoginLayout(title string) {
 			<title>{ title } - Bongo</title>
 			<link rel="icon" type="image/png" href="/static/img/bongo-favicon.png"/>
 			<link rel="stylesheet" href="/static/css/componentlib/colors_and_type.css"/>
-			<link rel="stylesheet" href="/static/css/bongo.css"/>
+			<link rel="stylesheet" href={ "/static/css/bongo.css?v=" + assetVersion() }/>
 		</head>
 		<body class="login-page">
 			{ children... }
