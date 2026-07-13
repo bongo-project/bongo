@@ -103,3 +103,9 @@ htmx-alpine-pro, non-isolated, DONE/PASS. Advisor's dedupe risk (compose must ke
 
 NOTE [design]: signature application differs by mode — RICH appends the HTML signature server-side in buildRichMessage (editor stays empty while composing); PLAIN relies on prefilling the plain signature into the textarea. composeInitialBody returning "" for new broke the plain path (bug 2.10b). Rich compose editor is seeded empty (initialHTML="").
 Retargeted 2.10 to fixes (a)+(b); split (c) rich-draft round-trip into 2.11 (more involved draft-storage change, lower priority).
+
+## 2026-07-13 — 2.9 end-to-end integration test (test 31cf517)
+
+golang-pro, non-isolated, DONE/MINOR. Advisor plan overrode several AC errors (createTestNode helpers only serve /internal raft routes — must use agent.NewAgent like webui_test.go; needs `-tags integration`; resolve userID by prefix-scanning /user/*/profile not /system/alias; select Sent by unique subject; signature must contain text). Test passes: TestRichComposeEndToEnd {rich w/ inline image+signature, plain single part}.
+- All 9 core Phase 2 tasks complete (2.1-2.9). 2.10 signature fixes done. Only 2.11 (rich-draft round-trip, lower priority) remains TODO.
+PATTERN [integration]: web-UI integration tests need agent.NewAgent + a.Run (dev role, admin@localhost/admin) — the raft createTestNode/sharedStartHTTP helpers only expose /internal control-plane routes. Run with `go test -tags integration ./test/integration/`.
