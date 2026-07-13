@@ -69,6 +69,14 @@
     return typeof html === 'string' ? html : '';
   }
 
+  // resolveFieldName returns the hidden-input field name from an element dataset.
+  // Falls back to 'body' when the fieldName attribute is absent or an empty string,
+  // so the default compose wiring (no data-field-name attribute) is unaffected.
+  // This pure helper is exposed for independent unit testing.
+  function resolveFieldName(dataset) {
+    return (dataset && dataset.fieldName) || 'body';
+  }
+
   global.RichEditor = {
     IMAGE_CAP_BYTES: IMAGE_CAP_BYTES,
     escapeHTML: escapeHTML,
@@ -77,6 +85,7 @@
     insertImageHTML: insertImageHTML,
     fileToDataURI: fileToDataURI,
     syncToSource: syncToSource,
-    syncFromSource: syncFromSource
+    syncFromSource: syncFromSource,
+    resolveFieldName: resolveFieldName
   };
 }(typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : {}));

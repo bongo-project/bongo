@@ -2,16 +2,32 @@ package handlers
 
 import (
 	"encoding/json"
+	"html"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/a-h/templ"
 
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-go/bongo-go/internal/web/sanitize"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// htmlTagRe matches any HTML tag for stripping in plainTextFromHTML.
+var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
+
+// plainTextFromHTML strips all HTML tags from sanitized HTML, unescapes HTML
+// entities, and collapses whitespace to a single space. The input must already
+// have been sanitized (via sanitize.Compose) so that <script> element content
+// has been removed before this function is called.
+func plainTextFromHTML(sanitizedHTML string) string {
+	stripped := htmlTagRe.ReplaceAllString(sanitizedHTML, " ")
+	unescaped := html.UnescapeString(stripped)
+	return strings.Join(strings.Fields(unescaped), " ")
+}
 
 // PreferencesHandler handles user preference endpoints.
 type PreferencesHandler struct {
@@ -92,7 +108,16 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 		prefs.DefaultReply = bongov1.DefaultReplyMode_REPLY_MODE_ALL
 	}
 
-	prefs.Signature = r.FormValue("signature")
+	// Signature: prefer the rich HTML version when present; fall back to plain.
+	// sanitize.Compose strips <script> elements and their text content, so the
+	// plain-text derivation is safe even for malicious input.
+	if sigHTML := r.FormValue("signature_html"); sigHTML != "" {
+		cleaned := sanitize.Compose(sigHTML)
+		prefs.SignatureHtml = cleaned
+		prefs.Signature = plainTextFromHTML(cleaned)
+	} else if sig := r.FormValue("signature"); sig != "" {
+		prefs.Signature = sig
+	}
 	prefs.Timezone = r.FormValue("timezone")
 
 	// Locale.

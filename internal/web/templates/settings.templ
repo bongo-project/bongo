@@ -124,7 +124,40 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.signature") }</div>
 									</div>
-									<textarea name="signature" id="signature" rows="4" class="settings-input u-w-full">{ prefs.Signature }</textarea>
+									<div
+										x-data="richEditor"
+										data-field-name="signature_html"
+										data-initial-html={ prefs.SignatureHtml }
+										style="border: 1px solid var(--border); border-radius: var(--radius); width: 100%; box-sizing: border-box; overflow: hidden; background: var(--bg);"
+									>
+										<div class="format-toolbar" x-show="!isSourceMode" style="padding: 4px 8px; gap: 2px;">
+											<button type="button" class="format-btn" aria-label="Bold" x-on:click="format('bold')"><b>B</b></button>
+											<button type="button" class="format-btn" aria-label="Italic" x-on:click="format('italic')"><i>I</i></button>
+											<span class="format-sep"></span>
+											<button type="button" class="format-btn" aria-label="Insert link" x-on:click="promptLink()">&#128279;</button>
+											<input type="color" aria-label="Text colour" x-on:change="setColor($event.target.value)" style="width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; padding: 0; vertical-align: middle;"/>
+											<button type="button" class="format-btn" aria-label="Insert image" x-on:click="triggerImagePicker()">&#128247;</button>
+											<span class="format-sep"></span>
+											<button type="button" class="format-btn" aria-label="Toggle HTML source" x-on:click="toggleSource()">HTML</button>
+										</div>
+										<div class="format-toolbar" x-show="isSourceMode" style="padding: 4px 8px;">
+											<button type="button" class="format-btn" aria-label="Toggle visual editor" x-on:click="toggleSource()">Visual</button>
+										</div>
+										<div
+											data-editor
+											contenteditable="true"
+											x-show="!isSourceMode"
+											x-on:input="onInput()"
+											style="min-height: 90px; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; color: var(--text);"
+										></div>
+										<textarea
+											data-source
+											x-show="isSourceMode"
+											style="width: 100%; min-height: 90px; border: none; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; resize: vertical; background: var(--bg); color: var(--text); box-sizing: border-box;"
+										></textarea>
+										<input type="file" data-img-input accept="image/*" style="display: none;" x-on:change="handleImageFile($event)"/>
+										<input type="hidden" name="signature_html"/>
+									</div>
 								</div>
 							</div>
 						</div>

@@ -1084,14 +1084,19 @@ document.addEventListener('alpine:init', () => {
   }));
 
   // Rich-text editor component. Expects the following structure inside the x-data root:
-  //   [data-editor]     — contenteditable div for visual editing
-  //   [data-source]     — <textarea> for raw HTML source view
-  //   [data-img-input]  — <input type="file"> for image upload (hidden)
-  //   data-initial-body — attribute on the root element with the initial plain-text body
-  //   <input type="hidden" name="body"> — field kept in sync for form submission
+  //   [data-editor]       — contenteditable div for visual editing
+  //   [data-source]       — <textarea> for raw HTML source view
+  //   [data-img-input]    — <input type="file"> for image upload (hidden)
+  //   data-initial-body   — attribute on the root element with the initial plain-text body
+  //                         (sets editor.innerText; plain text is safely displayed, not parsed)
+  //   data-initial-html   — attribute on the root element with pre-sanitized HTML to seed the
+  //                         editor via innerHTML (used when the stored value is already HTML)
+  //   data-field-name     — name of the <input type="hidden"> to keep in sync; defaults to
+  //                         'body' when absent so the compose wiring is unaffected
+  //   <input type="hidden" name="body"> — default hidden field; override via data-field-name
   //
-  // Pure helper functions (escapeHTML, buildDataURI, insertImageHTML, etc.) are
-  // provided by richeditor.js (window.RichEditor), which is loaded before bongo.js.
+  // Pure helper functions (escapeHTML, buildDataURI, insertImageHTML, resolveFieldName, etc.)
+  // are provided by richeditor.js (window.RichEditor), which is loaded before bongo.js.
   Alpine.data('richEditor', () => ({
     isSourceMode: false,
 
@@ -1104,9 +1109,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     // _hidden locates the hidden input whose value is submitted with the form.
-    // The field name must match what the server reads (r.FormValue("body")).
+    // The field name is read from data-field-name on the component root, defaulting
+    // to 'body' so existing compose wiring (which omits the attribute) is unaffected.
+    // window.RichEditor.resolveFieldName is used to centralise the defaulting logic so
+    // it can be unit-tested independently.
     _hidden() {
-      return this.$el.querySelector('input[type="hidden"][name="body"]');
+      var RE = window.RichEditor;
+      var name = RE ? RE.resolveFieldName(this.$el.dataset) : (this.$el.dataset.fieldName || 'body');
+      return this.$el.querySelector('input[type="hidden"][name="' + name + '"]');
     },
 
     _syncHidden() {
@@ -1131,6 +1141,15 @@ document.addEventListener('alpine:init', () => {
         if (initial) {
           var editor = this._editor();
           if (editor) editor.innerText = initial;
+        }
+        // data-initial-html seeds the editor with pre-sanitized HTML (e.g. a stored
+        // HTML signature). innerHTML is used because the value is already sanitized
+        // on the server side (via sanitize.Compose) before being stored.
+        // This path takes precedence over data-initial-body when both are set.
+        var initialHtml = this.$el.dataset.initialHtml;
+        if (initialHtml) {
+          var editor = this._editor();
+          if (editor) editor.innerHTML = initialHtml;
         }
         this._syncHidden();
 
