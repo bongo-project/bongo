@@ -149,3 +149,30 @@ test('insertImageHTML escapes dangerous characters in dataURI and alt', () => {
 test('IMAGE_CAP_BYTES is exactly 1 MB', () => {
   assert.equal(RE.IMAGE_CAP_BYTES, 1 * 1024 * 1024);
 });
+
+// --- resolveFieldName pure helper ---
+
+test('resolveFieldName returns "body" when dataset is null', () => {
+  assert.equal(RE.resolveFieldName(null), 'body');
+});
+
+test('resolveFieldName returns "body" when dataset is undefined', () => {
+  assert.equal(RE.resolveFieldName(undefined), 'body');
+});
+
+test('resolveFieldName returns "body" when dataset.fieldName is absent', () => {
+  assert.equal(RE.resolveFieldName({}), 'body');
+});
+
+test('resolveFieldName returns "body" when dataset.fieldName is empty string', () => {
+  assert.equal(RE.resolveFieldName({ fieldName: '' }), 'body');
+});
+
+test('resolveFieldName returns the specified field name', () => {
+  assert.equal(RE.resolveFieldName({ fieldName: 'signature_html' }), 'signature_html');
+});
+
+test('resolveFieldName returns a custom field name unchanged', () => {
+  assert.equal(RE.resolveFieldName({ fieldName: 'body' }), 'body');
+  assert.equal(RE.resolveFieldName({ fieldName: 'draft_body' }), 'draft_body');
+});
