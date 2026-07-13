@@ -86,6 +86,45 @@ func TestSaveSettingsSignatureHTML_PlainHTML(t *testing.T) {
 	}
 }
 
+// TestSaveSettingsSignatureHTML_ClearEmpty verifies that posting an empty
+// signature_html field clears both SignatureHtml and Signature (FIX a).
+func TestSaveSettingsSignatureHTML_ClearEmpty(t *testing.T) {
+	env := newPrefsTestEnv(t)
+	userID := "user-sig-clear"
+	email := "sigclear@example.com"
+
+	// First save a non-empty signature (regression: normal save must still work).
+	form := baseSettingsForm()
+	form.Set("signature_html", "<b>Jane</b>")
+	w := env.doSettingsPost(t, userID, email, form)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("setup: expected 303 redirect, got %d", w.Code)
+	}
+	prefs := env.prefStore.Get(userID)
+	if !strings.Contains(prefs.SignatureHtml, "<b>Jane</b>") {
+		t.Fatalf("setup: SignatureHtml = %q, want to contain '<b>Jane</b>'", prefs.SignatureHtml)
+	}
+	if prefs.Signature != "Jane" {
+		t.Fatalf("setup: Signature = %q, want %q", prefs.Signature, "Jane")
+	}
+
+	// Now POST with an empty signature_html — should clear both fields.
+	form2 := baseSettingsForm()
+	form2.Set("signature_html", "")
+	w2 := env.doSettingsPost(t, userID, email, form2)
+	if w2.Code != http.StatusSeeOther {
+		t.Fatalf("clear: expected 303 redirect, got %d", w2.Code)
+	}
+
+	prefs2 := env.prefStore.Get(userID)
+	if prefs2.SignatureHtml != "" {
+		t.Errorf("clear: SignatureHtml = %q, want ''", prefs2.SignatureHtml)
+	}
+	if prefs2.Signature != "" {
+		t.Errorf("clear: Signature = %q, want ''", prefs2.Signature)
+	}
+}
+
 func TestSaveSettingsSignatureHTML_ScriptTagStripped(t *testing.T) {
 	env := newPrefsTestEnv(t)
 	userID := "user-sig-2"
