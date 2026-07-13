@@ -96,3 +96,10 @@ golang-pro, non-isolated, DONE/MINOR (lint). Advisor PROCEED with good risk note
 - compose_mime.go: perInlineImageCapBytes=1<<20, totalInlineImageCapBytes=10<<20, checkInlineImageCaps + sentinel errors; buildRichMessage returns err; Send maps to 400 before writes. Comment: inline images not blob-stored separately (already in referenced raw-message blob).
 - Orchestrator fix: sentinel error strings were capitalized (ST1005) — lowercased them and mapped to friendly capitalized 400 messages in Send (added errors import). Tests assert body Contains the phrase, so still green.
 PATTERN [lint]: Go sentinel error strings must be lowercase (ST1005); when the same text is user-facing, keep the sentinel lowercase and capitalize at the http.Error boundary via errors.Is mapping.
+
+## 2026-07-13 — 2.8 shared RichEditorField + i18n/a11y (feat 70b0622)
+
+htmx-alpine-pro, non-isolated, DONE/PASS. Advisor's dedupe risk (compose must keep name=body, no signature seeding on new msgs, 200px) handled: @RichEditorField("body","","200px","") for compose, @RichEditorField("signature_html",prefs.SignatureHtml,"90px",...) for settings; richeditor_test.go asserts both field names render. 11 i18n keys x4 locales; role=textbox/aria-multiline on contenteditable.
+
+NOTE [design]: signature application differs by mode — RICH appends the HTML signature server-side in buildRichMessage (editor stays empty while composing); PLAIN relies on prefilling the plain signature into the textarea. composeInitialBody returning "" for new broke the plain path (bug 2.10b). Rich compose editor is seeded empty (initialHTML="").
+Retargeted 2.10 to fixes (a)+(b); split (c) rich-draft round-trip into 2.11 (more involved draft-storage change, lower priority).
