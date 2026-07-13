@@ -486,6 +486,123 @@ func TestBuildMIMEDataURIEndToEnd(t *testing.T) {
 	}
 }
 
+// TestCheckInlineImageCaps is a fast unit test for the cap-enforcement helper.
+// It uses synthetic inlineImage structs to avoid HTML-parsing overhead, and
+// verifies all three cases: per-image cap exceeded, total cap exceeded, and
+// under both caps (no error).
+func TestCheckInlineImageCaps(t *testing.T) {
+	// makeImgs builds n distinct inlineImages each with the given decoded size.
+	makeImgs := func(n, size int) []inlineImage {
+		imgs := make([]inlineImage, n)
+		for i := range n {
+			data := make([]byte, size)
+			data[0] = byte(i + 1) // distinct first byte → distinct SHA-256
+			imgs[i] = inlineImage{
+				ContentID:   fmt.Sprintf("img%d@bongo", i),
+				ContentType: "image/png",
+				Data:        data,
+			}
+		}
+		return imgs
+	}
+
+	tests := []struct {
+		name    string
+		imgs    []inlineImage
+		wantErr error
+	}{
+		{
+			name:    "no images — no error",
+			imgs:    nil,
+			wantErr: nil,
+		},
+		{
+			name:    "single image under cap — no error",
+			imgs:    makeImgs(1, 1000),
+			wantErr: nil,
+		},
+		{
+			name:    "single image at cap boundary (== perInlineImageCapBytes) — no error",
+			imgs:    makeImgs(1, perInlineImageCapBytes),
+			wantErr: nil,
+		},
+		{
+			name:    "single image exceeds per-image cap",
+			imgs:    makeImgs(1, perInlineImageCapBytes+1),
+			wantErr: errInlineImageTooLarge,
+		},
+		{
+			// 11 images each just under per-image cap: total = 11*(1<<20-1) = 11,534,325 > 10<<20.
+			name:    "multiple images exceed total cap",
+			imgs:    makeImgs(11, perInlineImageCapBytes-1),
+			wantErr: errTotalInlineTooLarge,
+		},
+		{
+			// 10 images each just under per-image cap: total = 10*(1<<20-1) = 10,485,750 < 10<<20.
+			name:    "multiple images under total cap — no error",
+			imgs:    makeImgs(10, perInlineImageCapBytes-1),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkInlineImageCaps(tt.imgs)
+			if err != tt.wantErr {
+				t.Errorf("checkInlineImageCaps() = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestPreCheckInlineImageSizes verifies that the fast pre-check correctly computes
+// decoded sizes (including padding bytes) and returns the right sentinel errors.
+func TestPreCheckInlineImageSizes(t *testing.T) {
+	// makeDataURI builds a minimal data: URI img tag for the given number of raw bytes.
+	makeDataURI := func(rawBytes int) string {
+		data := make([]byte, rawBytes)
+		return fmt.Sprintf(`<img src="data:image/png;base64,%s">`, base64.StdEncoding.EncodeToString(data))
+	}
+
+	tests := []struct {
+		name    string
+		html    string
+		wantErr error
+	}{
+		{
+			name:    "no images",
+			html:    "<p>no images</p>",
+			wantErr: nil,
+		},
+		{
+			// Exactly at the per-image cap boundary — must NOT be rejected (cap is strict >).
+			name:    "single image exactly at per-image cap",
+			html:    makeDataURI(perInlineImageCapBytes),
+			wantErr: nil,
+		},
+		{
+			name:    "single image one byte over per-image cap",
+			html:    makeDataURI(perInlineImageCapBytes + 1),
+			wantErr: errInlineImageTooLarge,
+		},
+		{
+			// Non-image type must be ignored.
+			name:    "non-image type ignored",
+			html:    `<img src="data:application/javascript;base64,YWxlcnQ=">`,
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := preCheckInlineImageSizes(tt.html)
+			if err != tt.wantErr {
+				t.Errorf("preCheckInlineImageSizes() = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // TestBuildRFC5322WithAttachmentsBackwardCompat verifies the existing function
 // signature still works and produces a plain-only message when no attachments.
 func TestBuildRFC5322WithAttachmentsBackwardCompat(t *testing.T) {

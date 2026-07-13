@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"mime"
 	"regexp"
@@ -14,6 +15,91 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/mail"
 )
+
+// perInlineImageCapBytes is the server-side cap for a single decoded inline image
+// in a rich send. Matches richeditor.js IMAGE_CAP_BYTES = 1 * 1024 * 1024.
+// The client cap (file size) and server cap (decoded bytes) are equivalent because
+// base64 decoding produces approximately the original binary size.
+const perInlineImageCapBytes = 1 << 20 // 1 MiB
+
+// totalInlineImageCapBytes is the server-side cap for the sum of all decoded inline
+// image bytes in a single rich send.
+const totalInlineImageCapBytes = 10 << 20 // 10 MiB
+
+// Sentinel errors returned by checkInlineImageCaps; used by buildRichMessage to
+// reject oversized inline images with a clear 400 before any user-visible writes.
+var (
+	errInlineImageTooLarge = errors.New("inline image too large")
+	errTotalInlineTooLarge = errors.New("total inline images too large")
+)
+
+// checkInlineImageCaps enforces per-image and total decoded-byte limits over the
+// inline images extracted by extractDataURIImages. It returns errInlineImageTooLarge
+// if any single image exceeds perInlineImageCapBytes, or errTotalInlineTooLarge if
+// the running total exceeds totalInlineImageCapBytes.
+//
+// Inline images are intentionally NOT blob-stored separately: the whole raw message
+// is blob-stored and referenced by MailMeta; standalone inline blobs would be
+// unreferenced and eligible for GC within ~1 hour. Do NOT silently drop oversized
+// images — reject the send so the user is clearly informed.
+func checkInlineImageCaps(imgs []inlineImage) error {
+	var total int
+	for _, img := range imgs {
+		if len(img.Data) > perInlineImageCapBytes {
+			return errInlineImageTooLarge
+		}
+		total += len(img.Data)
+		if total > totalInlineImageCapBytes {
+			return errTotalInlineTooLarge
+		}
+	}
+	return nil
+}
+
+// preCheckInlineImageSizes fast-scans html for data: URI image sizes without
+// performing base64 decoding. It computes exact decoded byte counts by using
+// base64 string lengths minus the trailing '=' padding characters, which gives
+// the exact same result as base64.StdEncoding.Decode without allocating.
+// Returns errInlineImageTooLarge or errTotalInlineTooLarge when the raw HTML
+// exceeds the inline-image caps, allowing rejection before the expensive HTML
+// sanitizer runs.
+//
+// This is an optimistic fast-path: it checks only images in the raw (unsanitised)
+// user-supplied HTML. The definitive check on extractDataURIImages output still
+// runs afterward to cover the appended signature HTML and any edge cases.
+func preCheckInlineImageSizes(html string) error {
+	var total int
+	for _, loc := range dataURIImageRe.FindAllStringSubmatchIndex(html, -1) {
+		if len(loc) < 6 {
+			continue
+		}
+		rawType := strings.TrimSpace(html[loc[2]:loc[3]])
+		mt, _, err := mime.ParseMediaType(rawType)
+		if err != nil || !allowedInlineMediaTypes[mt] {
+			continue
+		}
+		// Compute exact decoded length from the base64 string at loc[4]:loc[5]
+		// without materialising it. Standard base64: decodedLen = b64Len*3/4 minus
+		// the number of trailing '=' padding characters (0, 1, or 2).
+		b64Len := loc[5] - loc[4]
+		padding := 0
+		if b64Len > 0 && html[loc[5]-1] == '=' {
+			padding++
+			if b64Len > 1 && html[loc[5]-2] == '=' {
+				padding++
+			}
+		}
+		decodedLen := b64Len*3/4 - padding
+		if decodedLen > perInlineImageCapBytes {
+			return errInlineImageTooLarge
+		}
+		total += decodedLen
+		if total > totalInlineImageCapBytes {
+			return errTotalInlineTooLarge
+		}
+	}
+	return nil
+}
 
 // inlineImage holds a decoded inline image extracted from a data: URI.
 // ContentID does not include angle brackets.

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -290,6 +291,172 @@ func TestComposeSendOmittedBodyMode_DefaultsToPlain(t *testing.T) {
 	ct := msg.Header.Get("Content-Type")
 	if !strings.HasPrefix(ct, "text/plain") {
 		t.Errorf("Content-Type = %q, want text/plain (plain mode default)", ct)
+	}
+}
+
+// TestComposeSendRichMode_OversizedInlineImage_PerCap verifies that a rich send
+// containing a single inline data: image whose decoded size exceeds
+// perInlineImageCapBytes is rejected with 400 and stores NO Sent copy.
+func TestComposeSendRichMode_OversizedInlineImage_PerCap(t *testing.T) {
+	env := newComposeRichTestEnv(t)
+	userID := "user-inline-percap-test"
+	email := "percap@example.com"
+	env.registerLocalUser(t, userID, email)
+
+	// Single image: perInlineImageCapBytes+1 decoded bytes — exceeds per-image cap.
+	data := make([]byte, perInlineImageCapBytes+1)
+	data[0] = 0xFF // non-zero first byte avoids all-zero content
+	body := `<p>Hi</p><img src="data:image/png;base64,` + base64.StdEncoding.EncodeToString(data) + `">`
+
+	form := url.Values{
+		"to":        {email},
+		"subject":   {"Oversized per-image inline"},
+		"body":      {body},
+		"body_mode": {"rich"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/compose/send", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUserContext(req, userID, email)
+	w := httptest.NewRecorder()
+	env.handler.Send(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Inline image too large") {
+		t.Errorf("response body = %q, want to contain 'Inline image too large'", w.Body.String())
+	}
+
+	// Assert no Sent copy was stored — reject BEFORE any user-visible writes.
+	msgs, err := env.mailboxes.ListMessages(userID, "Sent")
+	if err != nil {
+		t.Fatalf("ListMessages(Sent): %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected no messages in Sent after rejection, got %d", len(msgs))
+	}
+}
+
+// TestComposeSendRichMode_OversizedTotalInlineImages verifies that a rich send
+// where the SUM of decoded inline-image bytes exceeds totalInlineImageCapBytes
+// (even though each individual image is under the per-image cap) is rejected
+// with 400 and stores NO Sent copy.
+//
+// Uses multipart/form-data to avoid URL-encoding 15 MB of base64 data, keeping
+// the test fast.
+func TestComposeSendRichMode_OversizedTotalInlineImages(t *testing.T) {
+	env := newComposeRichTestEnv(t)
+	userID := "user-inline-totalcap-test"
+	email := "totalcap@example.com"
+	env.registerLocalUser(t, userID, email)
+
+	// 11 unique images each of perInlineImageCapBytes-1 bytes decoded.
+	// Total: 11 * (1<<20 - 1) = 11,534,325 > totalInlineImageCapBytes (10<<20 = 10,485,760).
+	// Each individual image < perInlineImageCapBytes so the per-image check passes first.
+	const numImages = 11
+	var sb strings.Builder
+	sb.WriteString("<p>Many images</p>")
+	for i := range numImages {
+		data := make([]byte, perInlineImageCapBytes-1)
+		data[0] = byte(i + 1) // unique first byte ensures distinct SHA-256 (no dedup collapse)
+		sb.WriteString(`<img src="data:image/png;base64,`)
+		sb.WriteString(base64.StdEncoding.EncodeToString(data))
+		sb.WriteString(`">`)
+	}
+
+	// Use multipart/form-data to transmit the 15 MB HTML body without URL encoding,
+	// keeping this test fast (URL-encoding base64 at this scale is very slow).
+	var bodyBuf bytes.Buffer
+	mw := multipart.NewWriter(&bodyBuf)
+	_ = mw.WriteField("to", email)
+	_ = mw.WriteField("subject", "Oversized total inline images")
+	_ = mw.WriteField("body", sb.String())
+	_ = mw.WriteField("body_mode", "rich")
+	_ = mw.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/compose/send", &bodyBuf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req = withUserContext(req, userID, email)
+	w := httptest.NewRecorder()
+	env.handler.Send(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Total inline images too large") {
+		t.Errorf("response body = %q, want to contain 'Total inline images too large'", w.Body.String())
+	}
+
+	// Assert no Sent copy was stored — reject BEFORE any user-visible writes.
+	msgs, err := env.mailboxes.ListMessages(userID, "Sent")
+	if err != nil {
+		t.Fatalf("ListMessages(Sent): %v", err)
+	}
+	if len(msgs) != 0 {
+		t.Errorf("expected no messages in Sent after rejection, got %d", len(msgs))
+	}
+}
+
+// TestComposeSendRichMode_InlineImageUnderCap_MultipartRelated is a regression
+// guard: a rich send with an inline image UNDER both caps must succeed and
+// produce a multipart/related message containing the cid: inline part.
+func TestComposeSendRichMode_InlineImageUnderCap_MultipartRelated(t *testing.T) {
+	env := newComposeRichTestEnv(t)
+	userID := "user-inline-undercap-test"
+	email := "undercap@example.com"
+	env.registerLocalUser(t, userID, email)
+
+	// samplePNGBase64 is a tiny valid 1×1 PNG — well under both caps.
+	body := `<p>Hi</p><img src="data:image/png;base64,` + samplePNGBase64 + `">`
+
+	form := url.Values{
+		"to":        {email},
+		"subject":   {"Inline image under cap"},
+		"body":      {body},
+		"body_mode": {"rich"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/compose/send", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUserContext(req, userID, email)
+	w := httptest.NewRecorder()
+	env.handler.Send(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+
+	raw := env.rawSentMessage(t, userID)
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("ReadMessage: %v", err)
+	}
+	ct := msg.Header.Get("Content-Type")
+	mediaTypeParsed, params, err := mime.ParseMediaType(ct)
+	if err != nil {
+		t.Fatalf("ParseMediaType(%q): %v", ct, err)
+	}
+	if mediaTypeParsed != "multipart/related" {
+		t.Errorf("Content-Type = %q, want multipart/related", mediaTypeParsed)
+	}
+
+	relParts := readParts(t, msg.Body, params["boundary"])
+	if len(relParts) < 2 {
+		t.Fatalf("expected >= 2 related parts, got %d", len(relParts))
+	}
+
+	// Verify the inline image part exists and has the correct headers.
+	foundInline := false
+	for _, p := range relParts[1:] {
+		disp := strings.ToLower(strings.TrimSpace(p.hdr("Content-Disposition")))
+		if disp == "inline" {
+			if p.hdr("Content-ID") == "" {
+				t.Error("inline part missing Content-ID")
+			}
+			foundInline = true
+		}
+	}
+	if !foundInline {
+		t.Error("sent message has no inline part with Content-Disposition: inline")
 	}
 }
 
