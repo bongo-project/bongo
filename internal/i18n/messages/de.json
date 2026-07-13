@@ -525,5 +525,16 @@
   "common.previousPage": "Vorherige Seite",
   "common.nextPage": "Nächste Seite",
   "nav.mailboxNav": "Postfachnavigation",
-  "admin.messageQueue": "Nachrichtenwarteschlange"
+  "admin.messageQueue": "Nachrichtenwarteschlange",
+  "editor.bold": "Fett",
+  "editor.italic": "Kursiv",
+  "editor.insertLink": "Link einfuegen",
+  "editor.textColour": "Textfarbe",
+  "editor.insertImage": "Bild einfuegen",
+  "editor.toggleSource": "HTML-Quelltext",
+  "editor.toggleVisual": "Visueller Editor",
+  "editor.editorLabel": "Nachrichtentext",
+  "editor.sourceLabel": "HTML-Quelltext anzeigen",
+  "compose.bodyModePlain": "Nur Text",
+  "compose.bodyModeRich": "Formatierter Text"
 }

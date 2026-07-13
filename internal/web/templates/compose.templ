@@ -107,15 +107,15 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 								class="format-btn"
 								x-bind:class="{'active': bodyMode === 'rich'}"
 								x-on:click="bodyMode = 'rich'"
-								aria-label="Rich text mode"
-							>Rich</button>
+								aria-label={ t(ctx, "compose.bodyModeRich") }
+							>{ t(ctx, "compose.bodyModeRich") }</button>
 							<button
 								type="button"
 								class="format-btn"
 								x-bind:class="{'active': bodyMode === 'plain'}"
 								x-on:click="bodyMode = 'plain'"
-								aria-label="Plain text mode"
-							>Plain</button>
+								aria-label={ t(ctx, "compose.bodyModePlain") }
+							>{ t(ctx, "compose.bodyModePlain") }</button>
 						</div>
 						<input type="hidden" name="body_mode" x-bind:value="bodyMode"/>
 						<!-- Plain mode: a real <textarea> is in the DOM only when bodyMode==='plain'.
@@ -137,39 +137,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 						     the HTML signature is appended server-side in buildRichMessage so
 						     that it appears exactly once in the sent mail. -->
 						<template x-if="bodyMode === 'rich'">
-							<div
-								x-data="richEditor"
-								style="border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg);"
-							>
-								<div class="format-toolbar" x-show="!isSourceMode" style="padding: 4px 8px; gap: 2px;">
-									<button type="button" class="format-btn" aria-label="Bold" x-on:click="format('bold')"><b>B</b></button>
-									<button type="button" class="format-btn" aria-label="Italic" x-on:click="format('italic')"><i>I</i></button>
-									<span class="format-sep"></span>
-									<button type="button" class="format-btn" aria-label="Insert link" x-on:click="promptLink()">&#128279;</button>
-									<input type="color" aria-label="Text colour" x-on:change="setColor($event.target.value)" style="width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; padding: 0; vertical-align: middle;"/>
-									<button type="button" class="format-btn" aria-label="Insert image" x-on:click="triggerImagePicker()">&#128247;</button>
-									<span class="format-sep"></span>
-									<button type="button" class="format-btn" aria-label="Toggle HTML source" x-on:click="toggleSource()">HTML</button>
-								</div>
-								<div class="format-toolbar" x-show="isSourceMode" style="padding: 4px 8px;">
-									<button type="button" class="format-btn" aria-label="Toggle visual editor" x-on:click="toggleSource()">Visual</button>
-								</div>
-								<div
-									data-editor
-									contenteditable="true"
-									x-show="!isSourceMode"
-									x-on:input="onInput()"
-									style="min-height: 200px; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; color: var(--text);"
-									aria-label={ t(ctx, "compose.body") }
-								></div>
-								<textarea
-									data-source
-									x-show="isSourceMode"
-									style="width: 100%; min-height: 200px; border: none; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; resize: vertical; background: var(--bg); color: var(--text); box-sizing: border-box;"
-								></textarea>
-								<input type="file" data-img-input accept="image/*" style="display: none;" x-on:change="handleImageFile($event)"/>
-								<input type="hidden" name="body"/>
-							</div>
+							@RichEditorField("body", "", "200px", "")
 						</template>
 					</div>
 					<div

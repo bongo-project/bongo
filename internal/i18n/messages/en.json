@@ -525,5 +525,16 @@
   "common.previousPage": "Previous page",
   "common.nextPage": "Next page",
   "nav.mailboxNav": "Mailbox navigation",
-  "admin.messageQueue": "Message Queue"
+  "admin.messageQueue": "Message Queue",
+  "editor.bold": "Bold",
+  "editor.italic": "Italic",
+  "editor.insertLink": "Insert link",
+  "editor.textColour": "Text colour",
+  "editor.insertImage": "Insert image",
+  "editor.toggleSource": "Toggle HTML source",
+  "editor.toggleVisual": "Toggle visual editor",
+  "editor.editorLabel": "Message body",
+  "editor.sourceLabel": "HTML source",
+  "compose.bodyModePlain": "Plain text",
+  "compose.bodyModeRich": "Rich text"
 }

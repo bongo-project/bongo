@@ -525,5 +525,16 @@
   "common.previousPage": "Page précédente",
   "common.nextPage": "Page suivante",
   "nav.mailboxNav": "Navigation des boîtes aux lettres",
-  "admin.messageQueue": "File de messages"
+  "admin.messageQueue": "File de messages",
+  "editor.bold": "Gras",
+  "editor.italic": "Italique",
+  "editor.insertLink": "Inserer un lien",
+  "editor.textColour": "Couleur du texte",
+  "editor.insertImage": "Inserer une image",
+  "editor.toggleSource": "Basculer vers HTML",
+  "editor.toggleVisual": "Editeur visuel",
+  "editor.editorLabel": "Corps du message",
+  "editor.sourceLabel": "Source HTML",
+  "compose.bodyModePlain": "Texte brut",
+  "compose.bodyModeRich": "Texte enrichi"
 }
