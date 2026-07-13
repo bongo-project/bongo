@@ -335,27 +335,27 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\"></div></div><textarea id=\"body\" name=\"body\" class=\"compose-textarea\" placeholder=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\"></div></div><div x-data=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var22 string
-		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.body"))
+		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(`{"bodyMode":"` + composeDefaultBodyMode(mode) + `"}`)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 107, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 103, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"><div class=\"compose-mode-toggle\" style=\"display: flex; gap: 4px; padding: 4px 0;\"><button type=\"button\" class=\"format-btn\" x-bind:class=\"{'active': bodyMode === 'rich'}\" x-on:click=\"bodyMode = 'rich'\" aria-label=\"Rich text mode\">Rich</button> <button type=\"button\" class=\"format-btn\" x-bind:class=\"{'active': bodyMode === 'plain'}\" x-on:click=\"bodyMode = 'plain'\" aria-label=\"Plain text mode\">Plain</button></div><input type=\"hidden\" name=\"body_mode\" x-bind:value=\"bodyMode\"><!-- Plain mode: a real <textarea> is in the DOM only when bodyMode==='plain'.\n\t\t\t\t\t\t     Using x-if (not x-show) ensures the element is completely removed from\n\t\t\t\t\t\t     the DOM in rich mode, so it is not submitted — no HTML entities or tags\n\t\t\t\t\t\t     can leak into the text/plain MIME part. Reply/forward default to plain so\n\t\t\t\t\t\t     the quoted body (with '>' markers) is submitted as literal plain text. --><template x-if=\"bodyMode === 'plain'\"><textarea name=\"body\" style=\"width: 100%; min-height: 200px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; resize: vertical; background: var(--bg); color: var(--text); box-sizing: border-box;\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var23 string
 		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.body"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 108, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 130, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 		if templ_7745c5c3_Err != nil {
@@ -366,67 +366,80 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var24 string
-		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(body)
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(composeInitialBody(mode, body))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 109, Col: 12}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 131, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</textarea><div class=\"drop-zone\" x-data=\"dropZone\"><input type=\"file\" id=\"attachments\" name=\"attachments\" multiple aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</textarea></template><!-- Rich mode: the richEditor component is in the DOM only when\n\t\t\t\t\t\t     bodyMode==='rich'. Its hidden <input name=\"body\"> is populated by\n\t\t\t\t\t\t     richEditor._syncHidden() (bongo.js) with editor.innerHTML on submit.\n\t\t\t\t\t\t     New messages default to rich mode and start with an empty editor;\n\t\t\t\t\t\t     the HTML signature is appended server-side in buildRichMessage so\n\t\t\t\t\t\t     that it appears exactly once in the sent mail. --><template x-if=\"bodyMode === 'rich'\"><div x-data=\"richEditor\" style=\"border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg);\"><div class=\"format-toolbar\" x-show=\"!isSourceMode\" style=\"padding: 4px 8px; gap: 2px;\"><button type=\"button\" class=\"format-btn\" aria-label=\"Bold\" x-on:click=\"format('bold')\"><b>B</b></button> <button type=\"button\" class=\"format-btn\" aria-label=\"Italic\" x-on:click=\"format('italic')\"><i>I</i></button> <span class=\"format-sep\"></span> <button type=\"button\" class=\"format-btn\" aria-label=\"Insert link\" x-on:click=\"promptLink()\">&#128279;</button> <input type=\"color\" aria-label=\"Text colour\" x-on:change=\"setColor($event.target.value)\" style=\"width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; padding: 0; vertical-align: middle;\"> <button type=\"button\" class=\"format-btn\" aria-label=\"Insert image\" x-on:click=\"triggerImagePicker()\">&#128247;</button> <span class=\"format-sep\"></span> <button type=\"button\" class=\"format-btn\" aria-label=\"Toggle HTML source\" x-on:click=\"toggleSource()\">HTML</button></div><div class=\"format-toolbar\" x-show=\"isSourceMode\" style=\"padding: 4px 8px;\"><button type=\"button\" class=\"format-btn\" aria-label=\"Toggle visual editor\" x-on:click=\"toggleSource()\">Visual</button></div><div data-editor contenteditable=\"true\" x-show=\"!isSourceMode\" x-on:input=\"onInput()\" style=\"min-height: 200px; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; color: var(--text);\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.attachments"))
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.body"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 119, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 163, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\" x-on:change=\"updateFiles($el)\"><template x-if=\"files.length > 0\"><div class=\"u-mt-05 u-font-085\" aria-live=\"polite\"><template x-for=\"(f, i) in files\" :key=\"i\"><div class=\"u-file-row\"><span x-text=\"f.name\"></span> <small x-text=\"'(' + formatBytes(f.size) + ')'\"></small></div></template><div class=\"u-mt-025 u-text-muted\"><span x-text=\"files.length + ' file(s), total: ' + formatBytes(totalSize)\"></span></div></div></template></div></div><div class=\"compose-footer\"><button type=\"submit\" class=\"btn-send\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\"></div><textarea data-source x-show=\"isSourceMode\" style=\"width: 100%; min-height: 200px; border: none; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; resize: vertical; background: var(--bg); color: var(--text); box-sizing: border-box;\"></textarea> <input type=\"file\" data-img-input accept=\"image/*\" style=\"display: none;\" x-on:change=\"handleImageFile($event)\"> <input type=\"hidden\" name=\"body\"></div></template></div><div class=\"drop-zone\" x-data=\"dropZone\"><input type=\"file\" id=\"attachments\" name=\"attachments\" multiple aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var26 string
-		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.send"))
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.attachments"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 138, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 184, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</button> <button type=\"submit\" formaction=\"/compose/draft\" class=\"btn-secondary\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" x-on:change=\"updateFiles($el)\"><template x-if=\"files.length > 0\"><div class=\"u-mt-05 u-font-085\" aria-live=\"polite\"><template x-for=\"(f, i) in files\" :key=\"i\"><div class=\"u-file-row\"><span x-text=\"f.name\"></span> <small x-text=\"'(' + formatBytes(f.size) + ')'\"></small></div></template><div class=\"u-mt-025 u-text-muted\"><span x-text=\"files.length + ' file(s), total: ' + formatBytes(totalSize)\"></span></div></div></template></div></div><div class=\"compose-footer\"><button type=\"submit\" class=\"btn-send\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var27 string
-		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.saveDraft"))
+		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.send"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 139, Col: 106}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 203, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</button> <span class=\"reply-spacer\"></span> <a href=\"/mail/INBOX\" class=\"btn-secondary\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</button> <button type=\"submit\" formaction=\"/compose/draft\" class=\"btn-secondary\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var28 string
-		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.discard"))
+		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.saveDraft"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 141, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 204, Col: 106}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</a></div></form></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</button> <span class=\"reply-spacer\"></span> <a href=\"/mail/INBOX\" class=\"btn-secondary\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var29 string
+		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t(ctx, "compose.discard"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/templates/compose.templ`, Line: 206, Col: 76}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</a></div></form></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -439,6 +452,27 @@ func uintToStr(v uint32) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", v)
+}
+
+// composeDefaultBodyMode returns "plain" for reply/forward modes and "rich" for
+// new messages. This is rendered into the Alpine x-data initial state so that
+// the body_mode form field defaults correctly without requiring JavaScript logic.
+func composeDefaultBodyMode(mode string) string {
+	if mode == "reply" || mode == "forward" {
+		return "plain"
+	}
+	return "rich"
+}
+
+// composeInitialBody returns the body text used to seed the richEditor for
+// reply and forward modes (quoted text + plain signature). For new messages it
+// returns an empty string so the editor starts blank — the server appends the
+// HTML signature in rich mode, avoiding double-application.
+func composeInitialBody(mode, body string) string {
+	if mode == "reply" || mode == "forward" {
+		return body
+	}
+	return ""
 }
 
 var _ = templruntime.GeneratedTemplate

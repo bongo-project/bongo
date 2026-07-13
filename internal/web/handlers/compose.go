@@ -23,6 +23,7 @@ import (
 	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-go/bongo-go/internal/web/sanitize"
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -266,8 +267,19 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// deliverability signal.
 	messageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(email))
 
-	// Build RFC 5322 message.
-	rawMsg := buildRFC5322WithAttachments(email, to, cc, subject, body, messageID, inReplyTo, references, attachmentFiles)
+	// Build RFC 5322 message. body_mode='rich' → multipart/alternative with
+	// sanitized HTML and derived plain text. Any other value (or absent) falls
+	// through to the existing plain-text path (byte-compatible with previous
+	// behaviour).
+	bodyMode := r.FormValue("body_mode")
+	var rawMsg []byte
+	var searchBody string
+	if bodyMode == "rich" {
+		rawMsg, searchBody = h.buildRichMessage(email, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles)
+	} else {
+		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, messageID, inReplyTo, references, attachmentFiles)
+		searchBody = body
+	}
 
 	// Store blob.
 	hash, err := h.blobs.Put(rawMsg)
@@ -335,9 +347,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Index for search.
+		// Index for search. In rich mode index the derived plain text; in plain
+		// mode index the submitted body directly — both are captured in searchBody.
 		if h.search != nil {
-			if err := h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil); err != nil {
+			if err := h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
 				h.logger.Warn("web: failed to index recipient mail", "guid", guid, "error", err)
 			}
 		}
@@ -385,9 +398,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Index sender's copy.
+	// Index sender's copy. Use searchBody (derived plain text in rich mode).
 	if h.search != nil {
-		if err := h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), body, time.Now().Unix(), false, nil); err != nil {
+		if err := h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
 			h.logger.Warn("web: failed to index sender copy", "guid", guid, "error", err)
 		}
 	}
@@ -645,6 +658,75 @@ func (h *ComposeHandler) signatureBody(userID string) string {
 		return ""
 	}
 	return "\n\n-- \n" + up.Signature
+}
+
+// signatureHTML returns the user's HTML signature wrapped in a <div>, or empty
+// string when the user has no HTML signature. It is appended to the HTML part
+// in rich-mode composition so that the signature appears exactly once — the
+// composer does not pre-fill the editor with the signature in rich mode.
+func (h *ComposeHandler) signatureHTML(userID string) string {
+	if h.prefs == nil {
+		return ""
+	}
+	up := h.prefs.Get(userID)
+	if up.SignatureHtml == "" {
+		return ""
+	}
+	return "<div>" + up.SignatureHtml + "</div>"
+}
+
+// buildRichMessage constructs a multipart/alternative (or multipart/related /
+// multipart/mixed) RFC 5322 message from an HTML body submitted in rich mode.
+// It returns the raw message bytes and the derived plain-text string (used for
+// FTS indexing so the search index never stores raw HTML).
+//
+// Processing order (per RISK 5 guidance):
+//  1. Sanitize the submitted HTML with sanitize.Compose.
+//  2. Append the HTML signature so that any data: images inside it are also
+//     inlined — BEFORE calling extractDataURIImages.
+//  3. extractDataURIImages rewrites data: img src to cid: and returns inline parts.
+//  4. Derive plain text from the sanitized body only (not the HTML signature)
+//     using plainTextFromHTML, then append the plain signature.
+//  5. Build the message via buildMIME.
+func (h *ComposeHandler) buildRichMessage(
+	from, to, cc, subject, rawHTML, userID, messageID, inReplyTo, references string,
+	attachments []attachmentData,
+) (rawMsg []byte, plainText string) {
+	// 1. Sanitize submitted HTML.
+	sanitizedBody := sanitize.Compose(rawHTML)
+
+	// 2. Append HTML signature before extracting inline images so that data:
+	//    images embedded in the signature are also converted to cid: parts.
+	combined := sanitizedBody + h.signatureHTML(userID)
+
+	// 3. Extract inline images (data: → cid:).
+	rewrittenHTML, inlineImgs := extractDataURIImages(combined)
+
+	// 4. Derive plain text from the sanitized body (not the combined HTML — the
+	//    signature HTML is handled separately as plain text below).
+	plainText = plainTextFromHTML(sanitizedBody)
+	if h.prefs != nil {
+		up := h.prefs.Get(userID)
+		if up.Signature != "" {
+			plainText += "\n\n-- \n" + up.Signature
+		}
+	}
+
+	// 5. Build the MIME message.
+	rawMsg = buildMIME(mimeParts{
+		from:        from,
+		to:          to,
+		cc:          cc,
+		subject:     subject,
+		plain:       plainText,
+		html:        rewrittenHTML,
+		messageID:   messageID,
+		inReplyTo:   inReplyTo,
+		references:  references,
+		inline:      inlineImgs,
+		attachments: attachments,
+	})
+	return rawMsg, plainText
 }
 
 // attachmentData holds file data for building MIME messages.
