@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -275,7 +276,22 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	var rawMsg []byte
 	var searchBody string
 	if bodyMode == "rich" {
-		rawMsg, searchBody = h.buildRichMessage(email, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles)
+		var buildErr error
+		rawMsg, searchBody, buildErr = h.buildRichMessage(email, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles)
+		if buildErr != nil {
+			// Reject before any user-visible writes (blob store, Sent copy, enqueue).
+			// This mirrors the attachment-size rejection pattern above (~L229).
+			// Map the lowercase sentinel errors to friendly, capitalized 400 messages.
+			msg := "Message could not be built"
+			switch {
+			case errors.Is(buildErr, errInlineImageTooLarge):
+				msg = "Inline image too large (max 1MB each)"
+			case errors.Is(buildErr, errTotalInlineTooLarge):
+				msg = "Total inline images too large (max 10MB)"
+			}
+			http.Error(w, msg, http.StatusBadRequest)
+			return
+		}
 	} else {
 		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, messageID, inReplyTo, references, attachmentFiles)
 		searchBody = body
@@ -691,8 +707,17 @@ func (h *ComposeHandler) signatureHTML(userID string) string {
 func (h *ComposeHandler) buildRichMessage(
 	from, to, cc, subject, rawHTML, userID, messageID, inReplyTo, references string,
 	attachments []attachmentData,
-) (rawMsg []byte, plainText string) {
-	// 1. Sanitize submitted HTML.
+) (rawMsg []byte, plainText string, err error) {
+	// 1a. Fast pre-check: estimate inline-image sizes from base64 string lengths
+	//     before running the expensive HTML sanitiser. This makes the rejection
+	//     path DoS-safe — we avoid running bluemonday on clearly oversized input.
+	//     The definitive check (step 4) still runs after extractDataURIImages
+	//     to cover the appended signature HTML as well.
+	if err := preCheckInlineImageSizes(rawHTML); err != nil {
+		return nil, "", err
+	}
+
+	// 1b. Sanitize submitted HTML.
 	sanitizedBody := sanitize.Compose(rawHTML)
 
 	// 2. Append HTML signature before extracting inline images so that data:
@@ -702,7 +727,14 @@ func (h *ComposeHandler) buildRichMessage(
 	// 3. Extract inline images (data: → cid:).
 	rewrittenHTML, inlineImgs := extractDataURIImages(combined)
 
-	// 4. Derive plain text from the sanitized body (not the combined HTML — the
+	// 4. Definitive inline-image size check on decoded bytes. This is the actual
+	//    DoS control — the client-side cap in richeditor.js is bypassable.
+	//    Catches any images that arrived via the signature (not covered by step 1a).
+	if err := checkInlineImageCaps(inlineImgs); err != nil {
+		return nil, "", err
+	}
+
+	// 5. Derive plain text from the sanitized body (not the combined HTML — the
 	//    signature HTML is handled separately as plain text below).
 	plainText = plainTextFromHTML(sanitizedBody)
 	if h.prefs != nil {
@@ -712,7 +744,7 @@ func (h *ComposeHandler) buildRichMessage(
 		}
 	}
 
-	// 5. Build the MIME message.
+	// 6. Build the MIME message.
 	rawMsg = buildMIME(mimeParts{
 		from:        from,
 		to:          to,
@@ -726,7 +758,7 @@ func (h *ComposeHandler) buildRichMessage(
 		inline:      inlineImgs,
 		attachments: attachments,
 	})
-	return rawMsg, plainText
+	return rawMsg, plainText, nil
 }
 
 // attachmentData holds file data for building MIME messages.
