@@ -1,0 +1,60 @@
+package templates
+
+// RichEditorField renders the rich-editor component: toolbar, contenteditable
+// region, and HTML-source textarea. It is the single authoritative copy of the
+// editor markup used by both the compose page and the settings signature editor.
+//
+// Parameters:
+//   - fieldName:   Name of the <input type="hidden"> synced by richeditor.js
+//                 (e.g. "body" or "signature_html"). Also set as data-field-name
+//                 on the root element; "body" is the default in the JS fallback
+//                 so passing "body" is semantically identical to omitting it.
+//   - initialHTML: Pre-sanitized HTML to seed the editor (e.g. stored signature).
+//                 Pass "" for new-compose — the JS checks for truthy value so an
+//                 empty attribute has no effect, but we omit it when empty to
+//                 preserve the documented new-message semantics.
+//   - minHeight:  CSS min-height for the editor and source areas (e.g. "200px").
+//   - wrapStyle:  Extra inline style appended to the outer wrapper div, used to
+//                 set width/box-sizing for the settings variant.
+templ RichEditorField(fieldName string, initialHTML string, minHeight string, wrapStyle string) {
+	<div
+		x-data="richEditor"
+		data-field-name={ fieldName }
+		if initialHTML != "" {
+			data-initial-html={ initialHTML }
+		}
+		style={ "border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); " + wrapStyle }
+	>
+		<div class="format-toolbar" x-show="!isSourceMode" style="padding: 4px 8px; gap: 2px;">
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.bold") } x-on:click="format('bold')"><b>B</b></button>
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.italic") } x-on:click="format('italic')"><i>I</i></button>
+			<span class="format-sep"></span>
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.insertLink") } x-on:click="promptLink()">&#128279;</button>
+			<input type="color" aria-label={ t(ctx, "editor.textColour") } x-on:change="setColor($event.target.value)" style="width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; padding: 0; vertical-align: middle;"/>
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.insertImage") } x-on:click="triggerImagePicker()">&#128247;</button>
+			<span class="format-sep"></span>
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.toggleSource") } x-on:click="toggleSource()">HTML</button>
+		</div>
+		<div class="format-toolbar" x-show="isSourceMode" style="padding: 4px 8px;">
+			<button type="button" class="format-btn" aria-label={ t(ctx, "editor.toggleVisual") } x-on:click="toggleSource()">Visual</button>
+		</div>
+		<div
+			data-editor
+			contenteditable="true"
+			role="textbox"
+			aria-multiline="true"
+			x-show="!isSourceMode"
+			x-on:input="onInput()"
+			aria-label={ t(ctx, "editor.editorLabel") }
+			style={ "min-height: " + minHeight + "; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; color: var(--text);" }
+		></div>
+		<textarea
+			data-source
+			aria-label={ t(ctx, "editor.sourceLabel") }
+			x-show="isSourceMode"
+			style={ "width: 100%; min-height: " + minHeight + "; border: none; padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; resize: vertical; background: var(--bg); color: var(--text); box-sizing: border-box;" }
+		></textarea>
+		<input type="file" data-img-input accept="image/*" style="display: none;" x-on:change="handleImageFile($event)"/>
+		<input type="hidden" name={ fieldName }/>
+	</div>
+}

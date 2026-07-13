@@ -156,3 +156,35 @@ func toSet(items []string) map[string]bool {
 	}
 	return s
 }
+
+// TestEditorI18nKeysResolveInAllLocales asserts that the new editor.* and
+// compose.bodyMode* keys are present and non-empty in every supported locale.
+// A key is considered "unresolved" when T() returns the key ID itself (the
+// fallback for missing translations).
+func TestEditorI18nKeysResolveInAllLocales(t *testing.T) {
+	inst := NewI18n("en")
+
+	keys := []string{
+		"editor.bold",
+		"editor.italic",
+		"editor.insertLink",
+		"editor.textColour",
+		"editor.insertImage",
+		"editor.toggleSource",
+		"editor.toggleVisual",
+		"editor.editorLabel",
+		"editor.sourceLabel",
+		"compose.bodyModePlain",
+		"compose.bodyModeRich",
+	}
+	locales := []string{"en", "de", "es", "fr"}
+
+	for _, locale := range locales {
+		for _, key := range keys {
+			got := inst.T(locale, key)
+			if got == "" || got == key {
+				t.Errorf("locale %s: T(%q) = %q (unresolved or empty — add this key to %s.json)", locale, key, got, locale)
+			}
+		}
+	}
+}
