@@ -511,15 +511,17 @@ func composeDefaultBodyMode(mode string) string {
 	return "rich"
 }
 
-// composeInitialBody returns the body text used to seed the richEditor for
-// reply and forward modes (quoted text + plain signature). For new messages it
-// returns an empty string so the editor starts blank — the server appends the
-// HTML signature in rich mode, avoiding double-application.
+// composeInitialBody returns the body text used to seed the plain-text
+// <textarea> for all compose modes. For reply/forward this is the quoted text
+// with the plain signature; for new messages it is the plain signature so that
+// the plain-mode textarea is pre-filled.
+//
+// No double-signature risk: the plain and rich editors are mutually-exclusive
+// x-if branches. New messages default to rich mode, which starts with an empty
+// editor and receives the HTML signature server-side in buildRichMessage. The
+// plain Send path uses the posted body as-is and never appends a signature.
 func composeInitialBody(mode, body string) string {
-	if mode == "reply" || mode == "forward" {
-		return body
-	}
-	return ""
+	return body
 }
 
 var _ = templruntime.GeneratedTemplate

@@ -108,11 +108,14 @@ func (h *PreferencesHandler) SaveSettings(w http.ResponseWriter, r *http.Request
 		prefs.DefaultReply = bongov1.DefaultReplyMode_REPLY_MODE_ALL
 	}
 
-	// Signature: prefer the rich HTML version when present; fall back to plain.
+	// Signature: when the form includes signature_html (the rich editor always
+	// posts it, even empty), apply it unconditionally so that clearing the field
+	// also clears the stored signature. Fall back to the plain 'signature' field
+	// only when signature_html is entirely absent from the form.
 	// sanitize.Compose strips <script> elements and their text content, so the
 	// plain-text derivation is safe even for malicious input.
-	if sigHTML := r.FormValue("signature_html"); sigHTML != "" {
-		cleaned := sanitize.Compose(sigHTML)
+	if r.Form.Has("signature_html") {
+		cleaned := sanitize.Compose(r.FormValue("signature_html"))
 		prefs.SignatureHtml = cleaned
 		prefs.Signature = plainTextFromHTML(cleaned)
 	} else if sig := r.FormValue("signature"); sig != "" {
