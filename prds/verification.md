@@ -8,10 +8,10 @@ Mode: `norman verify`, rigor: **adversarial** (3 lens verifiers per requirement 
 | ID | Requirement | Majority vote | Final |
 |----|-------------|---------------|-------|
 | US-001 | HTML signature editor in Settings | PASS | **PASS** |
-| US-002 | Plain-text fallback preserved | PASS | **PARTIAL** (critic) |
+| US-002 | Plain-text fallback preserved | PASS | **PASS** (closed by 2.12) |
 | US-003 | Rich compose with plain/rich toggle | PASS | **PASS** |
 | US-004 | Inline logo via cid: | PASS | **PASS** |
-| US-005 | Received mail renders (integration) | PASS | **PARTIAL** (critic) |
+| US-005 | Received mail renders (integration) | PASS | **PASS** (closed by 2.12) |
 | FR-3 | Server-side HTML sanitizer | PASS | **PASS** |
 | FR-5 | MIME builder tree | PASS | **PASS** |
 | FR-6 | data:->cid: extraction with stable IDs | PASS | **PASS** |
@@ -19,7 +19,7 @@ Mode: `norman verify`, rigor: **adversarial** (3 lens verifiers per requirement 
 | FR-10 | i18n + a11y for editor | PASS | **PASS** |
 | SEC-caps | Server-side inline image size caps | PASS | **PASS** |
 
-**9 PASS, 2 PARTIAL.** All 11 requirements are *implemented* and confirmed by reading the code; the two PARTIALs are test-coverage gaps, not defects. An adversarial XSS probe against the sanitizer (mixed-case `<SCRIPT>`, nested `<scr<script>ipt>`, `<img onerror>`, `javascript:` href) found no injection leak.
+**11 PASS** (after task 2.12 closed the two coverage gaps; originally 9 PASS + 2 PARTIAL). All 11 requirements are *implemented* and confirmed by reading the code; the two PARTIALs are test-coverage gaps, not defects. An adversarial XSS probe against the sanitizer (mixed-case `<SCRIPT>`, nested `<scr<script>ipt>`, `<img onerror>`, `javascript:` href) found no injection leak.
 
 ## Gaps (test coverage only — implementation is correct)
 
@@ -38,3 +38,12 @@ Both are addressable with small additions to `test/integration/rich_compose_test
 - FR-5/FR-6: `compose_mime.go` `buildMIME`/`extractDataURIImages`; `compose_mime_test.go` tree + dedup + sha256 Content-IDs.
 - SEC-caps: `checkInlineImageCaps` (1MB/10MB) → 400 before writes; `compose_rich_send_test.go`.
 - FR-10: 11 `editor.*`/`compose.bodyMode*` keys × 4 locales; `TestI18nCoverage` parity; `role=textbox` in `richeditor.templ`.
+
+
+## Update 2026-07-17 — gaps closed (task 2.12)
+
+Both PARTIALs are resolved by new tests in `internal/web/handlers/compose_rich_send_test.go`:
+- `TestComposeSendPlainMode_EmptyHTMLSignature_PlainFallback` — empty `signature_html` + plain `Signature`, plain send → single `text/plain`, no `multipart/alternative`, no `text/html`, body carries the plain signature. (Caveat retained in the test comment: the plain Send path never appends a signature server-side — the plain signature is supplied via the prefilled body — so this documents plain-fallback structure rather than server-side suppression.)
+- `TestComposeSendRichMode_SignatureInlineImage_RoundTrips` — a `data:` logo embedded in the HTML **signature** (text-only body) → `multipart/related` with the `text/html` part referencing the logo via `cid:` (no `data:` remains) and a sibling inline part with Content-ID + Content-Disposition: inline.
+
+Final: **11/11 PASS.**
