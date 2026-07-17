@@ -460,6 +460,206 @@ func TestComposeSendRichMode_InlineImageUnderCap_MultipartRelated(t *testing.T) 
 	}
 }
 
+// TestComposeSendPlainMode_EmptyHTMLSignature_PlainFallback verifies that when a
+// user has SignatureHtml="" but a non-empty plain Signature, a plain-mode send
+// produces a single text/plain message (NOT multipart) that contains the plain
+// signature text.
+//
+// IMPORTANT — plain mode does NOT consult prefs on the server: compose.go emits the
+// submitted body verbatim (the POST body IS the output). Setting prefs here establishes
+// the documented precondition state (user has plain sig, no HTML sig). The plain
+// signature must be included in the POST body to simulate the client-side prefill
+// that the compose textarea performs. This test therefore proves that a prefilled
+// plain body round-trips as a single text/plain part; it does NOT prove "empty
+// SignatureHtml suppresses HTML in plain mode" — nothing is ever appended in plain
+// mode regardless of prefs.
+func TestComposeSendPlainMode_EmptyHTMLSignature_PlainFallback(t *testing.T) {
+	env := newComposeRichTestEnv(t)
+	userID := "user-plain-emptysig-test"
+	email := "emptysig@example.com"
+	env.registerLocalUser(t, userID, email)
+
+	// Precondition: user has a plain signature but NO HTML signature.
+	// The settings form derives Signature from signature_html, so we set them
+	// directly on the store to establish the documented precondition state.
+	prefs := store.DefaultPreferences()
+	prefs.Signature = "Regards, Jane"
+	prefs.SignatureHtml = "" // explicitly empty
+	if err := env.prefs.Set(userID, prefs); err != nil {
+		t.Fatalf("prefs.Set: %v", err)
+	}
+
+	// POST body already contains the plain signature (simulates client-side prefill).
+	// The plain Send handler emits this verbatim — it does not re-append the signature.
+	postBody := "hello\n\n-- \nRegards, Jane"
+	form := url.Values{
+		"to":        {email},
+		"subject":   {"Test Plain Empty HTML Sig"},
+		"body":      {postBody},
+		"body_mode": {"plain"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/compose/send", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUserContext(req, userID, email)
+	w := httptest.NewRecorder()
+	env.handler.Send(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+
+	raw := env.rawSentMessage(t, userID)
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("ReadMessage: %v", err)
+	}
+
+	ct := msg.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("Content-Type = %q, want text/plain", ct)
+	}
+
+	bodyData, _ := io.ReadAll(msg.Body)
+	bodyStr := string(bodyData)
+
+	// The plain body was submitted with the signature already included; it must appear.
+	if !strings.Contains(bodyStr, "Regards, Jane") {
+		t.Errorf("body = %q, want to contain 'Regards, Jane'", bodyStr)
+	}
+
+	// Must NOT be a multipart message — plain mode never adds an HTML part.
+	rawLower := strings.ToLower(string(raw))
+	if strings.Contains(rawLower, "multipart/alternative") {
+		t.Error("raw message contains 'multipart/alternative' — expected single text/plain")
+	}
+	if strings.Contains(rawLower, "text/html") {
+		t.Error("raw message contains 'text/html' — expected single text/plain")
+	}
+}
+
+// TestComposeSendRichMode_SignatureInlineImage_RoundTrips verifies that an HTML
+// signature containing an inline data: image is rewritten server-side to a cid:
+// reference (in buildRichMessage), producing a multipart/related message whose
+// sibling inline part carries the image. The POST body is text-only so the ONLY
+// inline image originates from the HTML signature.
+func TestComposeSendRichMode_SignatureInlineImage_RoundTrips(t *testing.T) {
+	env := newComposeRichTestEnv(t)
+	userID := "user-sig-inline-test"
+	email := "siginline@example.com"
+	env.registerLocalUser(t, userID, email)
+
+	// Precondition: HTML signature contains readable text AND a small inline data: image.
+	// extractDataURIImages requires a double-quoted src="data:<type>;base64,<b64>" attribute.
+	sigHTML := `<b>Jane</b><img src="data:image/png;base64,` + samplePNGBase64 + `">`
+	prefs := store.DefaultPreferences()
+	prefs.SignatureHtml = sigHTML
+	prefs.Signature = "Jane"
+	if err := env.prefs.Set(userID, prefs); err != nil {
+		t.Fatalf("prefs.Set: %v", err)
+	}
+
+	// POST body is TEXT-ONLY (no inline image) so the only inline image comes from
+	// the HTML signature that buildRichMessage appends before extractDataURIImages.
+	form := url.Values{
+		"to":        {email},
+		"subject":   {"Test Sig Inline Image"},
+		"body":      {"<p>hello</p>"},
+		"body_mode": {"rich"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/compose/send", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withUserContext(req, userID, email)
+	w := httptest.NewRecorder()
+	env.handler.Send(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected 303 redirect, got %d: %s", w.Code, w.Body.String())
+	}
+
+	raw := env.rawSentMessage(t, userID)
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatalf("ReadMessage: %v", err)
+	}
+
+	// Top-level must be multipart/related (alternative content + inline image siblings).
+	ct := msg.Header.Get("Content-Type")
+	topMediaType, topParams, err := mime.ParseMediaType(ct)
+	if err != nil {
+		t.Fatalf("ParseMediaType(%q): %v", ct, err)
+	}
+	if topMediaType != "multipart/related" {
+		t.Fatalf("top-level Content-Type = %q, want multipart/related", topMediaType)
+	}
+
+	relParts := readParts(t, msg.Body, topParams["boundary"])
+	if len(relParts) < 2 {
+		t.Fatalf("expected >= 2 related parts (alt + inline image), got %d", len(relParts))
+	}
+
+	// First related part must be multipart/alternative.
+	altCT := relParts[0].hdr("Content-Type")
+	altMediaType, altParams, err := mime.ParseMediaType(altCT)
+	if err != nil {
+		t.Fatalf("ParseMediaType alt part %q: %v", altCT, err)
+	}
+	if altMediaType != "multipart/alternative" {
+		t.Fatalf("related[0] Content-Type = %q, want multipart/alternative", altMediaType)
+	}
+
+	altParts := readParts(t, bytes.NewReader(relParts[0].body), altParams["boundary"])
+	if len(altParts) < 2 {
+		t.Fatalf("expected >= 2 alternative parts (plain + html), got %d", len(altParts))
+	}
+
+	// Locate the text/html part within the alternative and assert on its content.
+	var htmlPartBody string
+	for _, p := range altParts {
+		if strings.HasPrefix(p.hdr("Content-Type"), "text/html") {
+			htmlPartBody = string(p.body)
+			break
+		}
+	}
+	if htmlPartBody == "" {
+		t.Fatal("no text/html part found in multipart/alternative")
+	}
+
+	// The signature text must be present in the HTML part.
+	if !strings.Contains(htmlPartBody, "Jane") {
+		t.Errorf("text/html does not contain signature text 'Jane': %q", htmlPartBody)
+	}
+	// The data: URI from the signature must have been rewritten to cid: — no data: remains.
+	if strings.Contains(htmlPartBody, "data:") {
+		t.Error("text/html still contains data: URI — signature image was not rewritten to cid:")
+	}
+	if !strings.Contains(htmlPartBody, "cid:") {
+		t.Error("text/html does not contain cid: reference — signature image rewrite did not occur")
+	}
+
+	// At least one sibling related part must be an inline image with a Content-ID.
+	var foundInline bool
+	var inlineCID string
+	for _, p := range relParts[1:] {
+		disp := strings.ToLower(strings.TrimSpace(p.hdr("Content-Disposition")))
+		if disp == "inline" {
+			cid := p.hdr("Content-ID")
+			if cid == "" {
+				t.Error("inline part missing Content-ID")
+			}
+			inlineCID = stripAngle(cid)
+			foundInline = true
+		}
+	}
+	if !foundInline {
+		t.Error("no inline part with Content-Disposition: inline found in multipart/related")
+	}
+
+	// The cid: reference in the HTML must match the inline part's Content-ID (stripped of angle brackets).
+	if inlineCID != "" && !strings.Contains(htmlPartBody, "cid:"+inlineCID) {
+		t.Errorf("text/html cid: reference does not match inline part Content-ID %q", inlineCID)
+	}
+}
+
 // TestComposeSendPlainMode_QuotedBodyPassedThrough verifies that plain mode
 // passes the submitted body through to the text/plain MIME part without any
 // HTML encoding, decoding, or tag insertion.
