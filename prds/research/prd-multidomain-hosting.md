@@ -1,6 +1,6 @@
 # PRD: Multi-Domain, Multi-Tenant Mail Hosting
 
-Status: research/draft (2026-07-18). Large multi-phase epic — see the Phased Plan.
+Status: finalized (2026-07-18) — ready for `norman import`. Large multi-phase epic — see the Phased Plan.
 
 ## 1. Introduction / Overview
 
@@ -48,6 +48,17 @@ send-as, and full tenant isolation with delegated domain administrators.
   addresses-per-account model; add per-domain catch-all.
 - **Sending:** Send-as — a user may send from any address they own/are verified for; DKIM
   signs with that address's domain key.
+- **Send-as verification:** Both paths — an admin/domain-admin may grant an address as
+  send-capable, AND a user may self-verify ownership via an emailed code. Either sets
+  `verified=true` + `can_send=true`.
+- **Quota-exceed behaviour:** Reject at RCPT with a 5xx (permanent) SMTP error — no accept-then-
+  bounce, no silent loss. (A 4xx temp-defer variant is a possible future refinement, not now.)
+- **Address model:** Collapse aliases and identities into ONE address type. A single `addresses`
+  entry has `kind` (descriptive), `can_send`, and `verified` flags; an "alias" is simply an
+  address with `can_send=false`. One delivery + ownership path, no split concepts.
+- **Domain-admin scope:** A delegated domain-admin manages, for their granted domain(s) only:
+  users & addresses, the catch-all, per-domain quotas/policies (within global caps), and DKIM
+  key generation/rotation + DNS record view.
 
 ## 4. Architecture / Data Model (proposed)
 
@@ -124,12 +135,24 @@ account.
 ### US-SEND-1: Send-as an owned address
 As a user, I can choose which of my addresses to send from, and it authenticates correctly.
 **Acceptance Criteria:**
-- [ ] Compose shows a From selector listing only addresses the account owns with `can_send`;
-      selecting `b@d2` produces a message with `From: b@d2`, envelope MAIL FROM `b@d2`, and a
-      `d=d2` DKIM signature.
-- [ ] Attempting to send as an address the account does NOT own (e.g. by tampering the form)
-      is rejected server-side (403/400), not sent.
+- [ ] Compose shows a From selector listing only addresses the account owns with `can_send=true`
+      AND `verified=true`; selecting `b@d2` produces a message with `From: b@d2`, envelope MAIL
+      FROM `b@d2`, and a `d=d2` DKIM signature.
+- [ ] Attempting to send as an address the account does NOT own or that is not verified/send-
+      capable (e.g. by tampering the form) is rejected server-side (403/400), not sent.
 - [ ] Message-ID host and any bounce/return-path align with the chosen sending domain.
+
+### US-SEND-2: Becoming send-capable (both verification paths)
+As a user or admin, an address becomes send-capable either by admin grant or by the user
+verifying ownership via an emailed code.
+**Acceptance Criteria:**
+- [ ] Admin path: an admin/domain-admin marking an address send-capable sets `can_send=true` +
+      `verified=true`; it then appears in that account's From selector.
+- [ ] Self-serve path: a user adds an address and requests verification; the system sends a
+      one-time code to that address; submitting the correct code sets `verified=true` +
+      `can_send=true`; an unverified address never appears in the From selector and cannot be
+      sent as.
+- [ ] Verification codes are single-use, time-limited, and never logged.
 
 ### US-TENANT-1: Domain ownership
 As a global admin, I can assign a domain to an owner (tenant).
@@ -140,17 +163,23 @@ As a global admin, I can assign a domain to an owner (tenant).
 ### US-TENANT-2: Delegated domain admin, isolated
 As a domain admin, I manage only my own domain and cannot see or affect other tenants.
 **Acceptance Criteria:**
-- [ ] A user granted domain-admin for `d1` can list/create/disable users and aliases for `d1`
-      only; requests targeting `d2`'s users/aliases/domain settings return 403 and reveal no
-      `d2` data (including in list endpoints — `d2` rows never appear).
+- [ ] A user granted domain-admin for `d1` can, for `d1` only: create/disable users and manage
+      addresses, set the catch-all, set per-domain quotas/policies (bounded by global caps), and
+      generate/rotate the `d1` DKIM key + view its DNS record.
+- [ ] Requests targeting `d2`'s users/addresses/catch-all/quota/DKIM/domain settings return 403
+      and reveal no `d2` data (list endpoints never include `d2` rows).
 - [ ] A domain admin cannot read another tenant's mailbox, blobs, or settings.
 - [ ] A global admin retains full cross-domain access.
 
 ### US-TENANT-3: Per-domain quotas & policies
-As an admin, I can set per-domain limits.
+As an admin, I can set per-domain limits, and over-quota inbound mail is rejected cleanly.
 **Acceptance Criteria:**
 - [ ] A domain can have a mailbox/storage quota and a max-users limit; creating a user beyond
-      the domain's max-users is rejected; delivery/quota behaviour respects the domain quota.
+      the domain's max-users is rejected.
+- [ ] When a mailbox/domain is over its storage quota, an inbound message is rejected at RCPT
+      with a 5xx permanent error (the sending server bounces it) — the message is not accepted,
+      not silently dropped, and no local copy is stored.
+- [ ] Under-quota delivery is unaffected.
 
 ### US-HYGIENE-1: Correct sender identities
 As an operator, system-generated mail uses proper domains.
@@ -171,14 +200,16 @@ As an operator, system-generated mail uses proper domains.
 - FR-5: Address management (add/remove/verify addresses per account) in user + admin UIs.
   (US-RECV-2)
 - FR-6: Per-domain catch-all configuration. (US-RECV-3)
-- FR-7: Compose From-picker limited to owned `can_send` addresses; server-side ownership
-  enforcement; DKIM/envelope/Message-ID follow the chosen From. (US-SEND-1)
+- FR-7: Compose From-picker limited to owned `can_send && verified` addresses; server-side
+  ownership+verified enforcement; DKIM/envelope/Message-ID follow the chosen From. (US-SEND-1)
+- FR-7b: Send-as verification — admin/domain-admin grant path AND a self-serve emailed one-time-
+  code flow; codes single-use, time-limited, never logged. (US-SEND-2)
 - FR-8: Domain ownership (`owner_user_id`) and a `domain_admins` grant model. (US-TENANT-1/2)
 - FR-9: Authorization layer that scopes every admin read/write for a domain-admin to their
   granted domains (list endpoints filtered, mutations checked, mailbox/blob access denied
   cross-tenant). (US-TENANT-2)
-- FR-10: Per-domain quotas/policies (storage, max-users) enforced at the relevant choke points.
-  (US-TENANT-3)
+- FR-10: Per-domain quotas/policies (storage, max-users) enforced at the relevant choke points;
+  over-quota inbound rejected at RCPT with a 5xx (no accept-then-bounce). (US-TENANT-3)
 - FR-11: Fix bounce sender + welcome/bounce Message-ID to proper FQDNs. (US-HYGIENE-1)
 - FR-12: Data migration for existing deployment (usernames→primary addresses, aliases→alias
   addresses, primary domain→owned by the global admin) with a reversible/idempotent path.
@@ -219,7 +250,8 @@ Independent, high-value, low-risk first; the big security surface last.
   - FR-3/FR-4 address index + alias-delivery fix + migration; FR-6 catch-all.
   - FR-5 address management UI; FR-12 migration.
 - **Phase C — Sending identity:**
-  - FR-7 send-as (From-picker + ownership enforcement + DKIM/envelope alignment).
+  - FR-7 send-as (From-picker + ownership+verified enforcement + DKIM/envelope alignment) and
+    FR-7b verification (admin-grant + self-serve emailed code).
 - **Phase D — Tenancy (largest, security-critical):**
   - FR-8 ownership + domain-admin grants; FR-9 isolation/authorization layer; FR-10 per-domain
     quotas/policies; adversarial isolation tests.
@@ -232,12 +264,22 @@ Independent, high-value, low-risk first; the big security surface last.
 - A domain admin cannot access another tenant's data in adversarial tests (0 leaks).
 - example.com single-domain deployment shows no regression across the existing suite.
 
-## 11. Open Questions
+## 11. Resolved Decisions & Remaining Questions
 
-- Address verification method for send-as (admin-granted vs an email/DNS verification flow)?
-- Quota enforcement points and behaviour on exceed (reject at RCPT? bounce? defer?).
-- Should aliases and "identities" remain distinct `kind`s, or collapse to one address type with
-  `can_send`/`verified` flags (leaning collapse)?
-- Domain-admin scope: users + aliases + catch-all + quotas — anything else (rules, antispam
-  thresholds) delegated per domain?
-- Backup/restore + blob GC implications of tenant data (out of scope to build, but note).
+**Resolved (2026-07-18):**
+- Send-as verification → **both** admin-grant and self-serve emailed one-time-code (FR-7b).
+- Quota-exceed → **reject at RCPT with 5xx** (FR-10); no accept-then-bounce.
+- Address model → **collapse** aliases + identities into one `addresses` type with
+  `can_send`/`verified` flags (FR-3).
+- Domain-admin delegated scope → **users & addresses, catch-all, per-domain quotas/policies,
+  and DKIM key/DNS** for granted domains only (US-TENANT-2).
+
+**Still open (can be settled during the relevant phase, not blocking):**
+- Filter rules / antispam thresholds: keep global for now, or also delegate per domain later?
+  (Default: not delegated in this epic.)
+- Storage-quota accounting granularity: per-mailbox vs per-domain aggregate vs both — finalize
+  in Phase D against the blob/store model.
+- Verification-code transport for a brand-new domain with no working MX yet (bootstrap): admin-
+  grant covers this; self-serve email verify assumes the address can already receive.
+- Backup/restore + blob GC implications of tenant data — out of scope to build here; revisit so
+  a tenant export/delete doesn't strand shared/dedup'd blobs.
