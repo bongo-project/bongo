@@ -698,7 +698,7 @@ func SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) te
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = RichEditorField("signature_html", prefs.SignatureHtml, "90px", "width: 100%; box-sizing: border-box;").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = RichEditorField("signature_html", prefs.SignatureHtml, "signature").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
