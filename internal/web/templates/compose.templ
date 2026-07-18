@@ -2,18 +2,18 @@ package templates
 
 import "fmt"
 
-templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string) {
+templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string) {
 	@LayoutWithContent(t(ctx, "compose.compose"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, "")
 		</aside>
 		<main class="content" id="main-content">
-			@ComposePage(mode, to, cc, subject, body, replyMailbox, replyUID)
+			@ComposePage(mode, to, cc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom)
 		</main>
 	}
 }
 
-templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32) {
+templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string) {
 	<div class="compose-area">
 		<div class="compose-card">
 			<div class="compose-header">
@@ -36,6 +36,22 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 					<input type="hidden" name="mode" value={ mode }/>
 				}
 				<div class="compose-body">
+					if len(fromOptions) > 1 {
+						<div class="field-row">
+							<span class="field-label">{ t(ctx, "compose.from") }</span>
+							<div class="field-content">
+								<select name="from" aria-label={ t(ctx, "compose.from") }>
+									for _, opt := range fromOptions {
+										if opt == selectedFrom {
+											<option value={ opt } selected>{ opt }</option>
+										} else {
+											<option value={ opt }>{ opt }</option>
+										}
+									}
+								</select>
+							</div>
+						</div>
+					}
 					<div class="field-row">
 						<span class="field-label">{ t(ctx, "compose.to") }</span>
 						<div class="field-content">

@@ -50,6 +50,7 @@
   "mail.addTag": "Tag hinzufügen",
   "mail.createTag": "Tag erstellen",
   "mail.tagNamePlaceholder": "Tag-Name",
+  "compose.from": "Von",
   "compose.to": "An",
   "compose.cc": "Cc",
   "compose.bcc": "Bcc",
