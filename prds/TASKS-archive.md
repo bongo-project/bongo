@@ -26,3 +26,15 @@ Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Sen
 | 3.1 | FR-11 sender hygiene: bounces use `postmaster@<relevant-domain>` (not `@localhost`) with an FQDN Message-ID; welcome email uses an FQDN Message-ID (not `@bongo`) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.ResolveServerDomain` chain; fixed all 4 bounce localhost sites + both welcome Message-ID sites; review PASS |
 | 3.2 | FR-1 per-domain DKIM signer registry: `DomainRecord` gains `dkim_selector`+`dkim_private_key`+`dkim_enabled`; refactor single global signer (`agent.go:987`, `queue/worker.go:139`) to a registry keyed by From domain; unkeyed domains send unsigned + logged (never wrong `d=`) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.DKIMRegistry` keyed by From-header domain; new `DomainRecord`/domain.proto; worker uses registry, unkeyed→unsigned+log; single-domain seeded from config (byte-compat); review MINOR |
 | 3.3 | FR-2 admin DKIM key management: "Generate DKIM key" action per domain → store private key (never logged), display `selector._domainkey.<domain> TXT` record; rotation regenerates + updates display | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | GenerateDKIMKey (RSA-2048, PKCS8) stores DomainRecord@/system/domain/{d}/dkim via Raft, Adds to shared registry (immediate signing), LoadStoredDKIMKeys at startup; TXT = public key only; key never logged/rendered; review PASS |
+
+## Phase 4: Multi-Domain — Receiving (PRD Phase B) — 5 tasks completed 2026-07-18
+
+Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Address index + alias-delivery fix + catch-all + address management.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 4.1 | FR-3 global address index (AddressRecord proto + AddressStore + system.db `addresses`) | DONE (2026-07-18) | Put/Get/Delete/ListByUser; Raft-first + SQLite mirror (errors not swallowed); case-insensitive; proto clean. Commit aa8fc2c |
+| 4.2 | FR-12 migration (usernames→primary, aliases→alias) | DONE (2026-07-18) | store.PopulateAddressIndex leader-only/idempotent/additive; alias username→user_id resolved. Commit ad6d1a9 |
+| 4.3 | FR-4 unify delivery (fix alias inbound, US-RECV-1) | DONE (2026-07-18) | store.RecipientResolver 3-tier; ONE shared instance across compose+pipeline+SMTP RCPT; no O(n) scan; integration test external→alias→INBOX. Commit f58ce50 |
+| 4.4 | FR-6 per-domain catch-all | DONE (2026-07-18) | CatchAllStore /system/catchall/{domain}; resolver tier-3 (explicit wins, no-key→reject open-relay guard); admin Set/ClearCatchAll. Commit 4ca9867 |
+| 4.5 | FR-5 admin address management + migration create-only | DONE (2026-07-18) | admin Add/RemoveAddress; primary-delete + unknown-user guards; PopulateAddressIndex create-only; CSP-clean; i18n parity. Commit 902ce70 |
