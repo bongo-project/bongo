@@ -27,18 +27,7 @@ compose toggle.
 
 ## Phase 3: Multi-Domain — Foundation & Quick Wins (PRD Phase A) — 3 tasks completed 2026-07-18 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 4: Multi-Domain — Receiving (PRD Phase B)
-
-Source PRD: multi-domain multi-tenant hosting. Address index + alias-delivery fix + catch-all;
-unifies the compose/delivery split-brain onto one delivery path.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 4.1 | FR-3 global address index: proto `AddressRecord{user_id,domain,kind,can_send,verified}`; `/system/address/{addr}` Pebble key + `addresses` SQLite index; `AddressStore` (pebble-read + applier-write, 5s timeout) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | AddressStore Put/Get/Delete/ListByUser; Raft-first + SQLite mirror (errors not swallowed); case-insensitive; addresses table in system.db; proto clean (no churn) |
-| 4.2 | FR-12 migration: every `users.username` → `primary` address, every `/system/alias/{a}` → `alias` address for its target; idempotent + reversible; leader-only, safe on live example.com | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | store.PopulateAddressIndex (leader-only, idempotent, additive); alias username→user_id resolved; CAUTION: blind upsert must become create-only in 4.4/4.5 |
-| 4.3 | FR-4 unify delivery on the address index: `ResolveRecipient` (`smtp/delivery.go:124`) resolves via `addresses` then catch-all then reject; unify `compose.go:581 resolveLocalUser` onto the same path (fixes alias inbound, US-RECV-1) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | store.RecipientResolver 3-tier (AddressStore Pebble → legacy alias/users → reject); ONE shared instance across compose+pipeline+SMTP RCPT; alias inbound FIXED (integration test); no O(n) scan; TODO(4.4) catch-all seam; review MINOR |
-| 4.4 | FR-6 per-domain catch-all: `*@d -> acct` config + resolution; explicit address always wins; no catch-all → reject | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | CatchAllStore /system/catchall/{domain}; resolver tier-3 (explicit wins, no-key→reject = open-relay guard, Pebble-read); admin Set/ClearCatchAll (RequireAdmin+CSRF); review PASS |
-| 4.5 | FR-5 address management UI: add/remove addresses per account in user + admin UIs; removing an address stops delivery | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | admin Add/RemoveAddress (identity, can_send=false); primary-delete + unknown-user guards; PopulateAddressIndex now create-only (map built before skip); CSP-clean templ; i18n parity; review MINOR (fixed user-exists guard) |
+## Phase 4: Multi-Domain — Receiving (PRD Phase B) — 5 tasks completed 2026-07-18 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 5: Multi-Domain — Sending Identity (PRD Phase C)
 
