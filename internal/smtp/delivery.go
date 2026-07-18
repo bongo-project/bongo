@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -97,38 +96,6 @@ func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHa
 	)
 
 	return nil
-}
-
-// SystemDBResolver resolves email addresses using the system.db users table.
-type SystemDBResolver struct {
-	metadata *store.MetadataManager
-}
-
-// NewSystemDBResolver creates a resolver backed by system.db.
-func NewSystemDBResolver(metadata *store.MetadataManager) *SystemDBResolver {
-	return &SystemDBResolver{metadata: metadata}
-}
-
-// ResolveRecipient looks up a user ID by email address.
-func (r *SystemDBResolver) ResolveRecipient(email string) (string, error) {
-	// Normalize: strip angle brackets if present.
-	email = strings.TrimPrefix(email, "<")
-	email = strings.TrimSuffix(email, ">")
-	email = strings.TrimSpace(email)
-
-	if r.metadata == nil || r.metadata.System == nil {
-		return "", fmt.Errorf("metadata not available")
-	}
-
-	var userID string
-	err := r.metadata.System.DB().QueryRow(
-		"SELECT id FROM users WHERE username = ? AND enabled = 1",
-		email,
-	).Scan(&userID)
-	if err != nil {
-		return "", fmt.Errorf("recipient not found: %s", email)
-	}
-	return userID, nil
 }
 
 // BlobStoreAdapter wraps a store.BlobStore to satisfy the pipeline.BlobReader

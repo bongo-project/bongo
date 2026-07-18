@@ -335,6 +335,21 @@ func (a *Agent) Run(ctx context.Context) error {
 		return a.runAgent(ctx)
 	}
 
+	// Build the shared recipient resolver once and share it across compose,
+	// the inbound pipeline, and the SMTP backend RCPT guard. A single instance
+	// guarantees that local-send (compose) and inbound delivery agree on the
+	// address→user mapping (task 4.3 / US-RECV-1).
+	//
+	// Three-tier resolution: (1) AddressStore Pebble (source of truth, all
+	// nodes), (2) legacy /system/alias Pebble key + users-table (post-boot
+	// accounts/aliases), (3) TODO(4.4) catch-all. Miss → reject (550).
+	// See store.RecipientResolver for full documentation.
+	var sharedSys *store.SystemIndex
+	if a.Metadata != nil {
+		sharedSys = a.Metadata.System
+	}
+	sharedResolver := store.NewRecipientResolver(a.AddressStore, a.Store, sharedSys)
+
 	// Set up HTTP routes.
 	r := chi.NewRouter()
 	r.Use(middleware.SecurityHeaders())
@@ -686,6 +701,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			if a.Preferences != nil {
 				composeH.SetPreferences(a.Preferences)
 			}
+			// Unified resolver: same instance as the inbound SMTP path so
+			// local-send and inbound delivery agree on address→user mapping.
+			composeH.SetLocalResolver(sharedResolver)
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
@@ -872,7 +890,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Spool = spool
 
 		// Build pipeline processors from PipelineConfig stage list.
-		resolver := bongosmtp.NewSystemDBResolver(a.Metadata)
+		resolver := sharedResolver
 		var stages []pipeline.Processor
 
 		for _, stageCfg := range a.Config.Pipeline.Stages {
@@ -975,7 +993,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		// Relay policy: accept mail for local recipients from anyone (inbound MX),
 		// but only relay to external recipients for authenticated submission.
-		backend.SetResolver(bongosmtp.NewSystemDBResolver(a.Metadata))
+		// Uses the same shared resolver as the pipeline so RCPT accept and
+		// deliver-stage resolution are always consistent.
+		backend.SetResolver(sharedResolver)
 
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
 		if err := a.SMTP.Listen(); err != nil {

@@ -26,6 +26,7 @@ type composeRichTestEnv struct {
 	blobs     *store.BlobStore
 	mailboxes *store.MailboxStore
 	prefs     *store.PreferenceStore
+	meta      *store.MetadataManager
 	handler   *ComposeHandler
 }
 
@@ -44,29 +45,46 @@ func newComposeRichTestEnv(t *testing.T) *composeRichTestEnv {
 		t.Fatalf("NewBlobStore: %v", err)
 	}
 
+	meta, err := store.NewMetadataManager(dir + "/meta")
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	t.Cleanup(func() { meta.Close() })
+
 	applier := &directApplierTags{ps: ps}
 	mailboxes := store.NewMailboxStore(ps, applier)
 	prefStore := store.NewPreferenceStore(ps, applier)
 
+	// Shared resolver (nil AddressStore — falls through to tier-2 users-table).
+	resolver := store.NewRecipientResolver(nil, ps, meta.System)
+
 	h := NewComposeHandler(ps, blobs, mailboxes, nil, applier, discardLogger())
 	h.SetPreferences(prefStore)
+	h.SetLocalResolver(resolver)
 
 	return &composeRichTestEnv{
 		ps:        ps,
 		blobs:     blobs,
 		mailboxes: mailboxes,
 		prefs:     prefStore,
+		meta:      meta,
 		handler:   h,
 	}
 }
 
-// registerLocalUser stores a /system/alias entry so resolveLocalUser recognises
-// email as belonging to userID. This prevents Send() from requiring a QueueStore
-// for external delivery.
+// registerLocalUser inserts the user into the SQLite users table so that the
+// shared resolver's tier-2 fallback (users-table lookup) recognises 'email' as
+// belonging to 'userID'. This prevents Send() from treating the recipient as
+// external and requiring a QueueStore.
 func (e *composeRichTestEnv) registerLocalUser(t *testing.T, userID, email string) {
 	t.Helper()
-	key := []byte("/system/alias/" + strings.ToLower(email))
-	if err := e.ps.Set(key, []byte(userID)); err != nil {
+	_, err := e.meta.System.DB().Exec(
+		`INSERT INTO users (id, username, display_name, enabled, created_at, modified_at)
+		 VALUES (?, ?, ?, 1, unixepoch(), unixepoch())
+		 ON CONFLICT(id) DO NOTHING`,
+		userID, email, "Test User",
+	)
+	if err != nil {
 		t.Fatalf("registerLocalUser(%s): %v", email, err)
 	}
 }
