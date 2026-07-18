@@ -189,3 +189,12 @@ Worker: golang-pro (sonnet), one advisor fix round (6 agents). Advisor PROCEED w
 go build ./... OK; go test -race store+smtp+handlers green; integration (-tags integration) green. SignatureHtml intact, no proto churn.
 PATTERN [delivery] ONE shared store.RecipientResolver injected into every recipient-resolving consumer (SMTP RCPT guard + pipeline + compose) guarantees RCPT-accept and delivery agree; resolver reads Pebble (tier 1/2a) for node-correctness; fallbacks are indexed-only (never a profile PrefixScan on the public MX path).
 MINOR (non-blocking): (1) SetLocalResolver docstring in compose.go slightly stale re: fallback wording; (2) tier-2a legacy-alias resolution needs BOTH pebble!=nil AND system!=nil (edge nodes skip it) — acceptable.
+
+## 2026-07-18 — Task 4.4 DONE (FR-6 per-domain catch-all, US-RECV-3)
+
+Worker: golang-pro (sonnet). Advisor PROCEED (warned off the mixed-case managed-domain cross-check trap — worker correctly relied on the missing-key check as the open-relay defense). Code review PASS.
+- New internal/store/catchall_store.go — CatchAllStore (pebble-read + applier-write, 5s): Set(domain,ownerID)/Clear(domain)/Get(domain) at /system/catchall/{lowercased-domain}→ownerID (plain bytes). Exported store.CatchAllKey(domain) shared by store + resolver (key format defined once).
+- recipient_resolver.go — Tier 3 slotted at the TODO(4.4) seam: AFTER explicit tiers 1/2, BEFORE reject. Reads CatchAllKey(domain) from Pebble (node-correct); domain via SplitN; pebble nil-guard (edge/agent); empty/no key → falls through to 550. Explicit-wins is structural; open-relay guard = no key ⇒ no acceptance.
+- admin.go SetCatchAll/ClearCatchAll (validate owner user exists) at routes /admin/domains/{domain}/catchall[/delete] in the admin group (RequireAdmin + RequireSameOrigin/CSRF); admin.templ catch-all field on the domain view (make generate); i18n keys ×4 locales (parity). agent.go wires CatchAllStore into AdminHandler (~604).
+Tests: catchall_store_test.go (set/get/clear), recipient_resolver_test.go (catch-all owner returned when set; reject when not; EXPLICIT beats catch-all), admin_catchall_test.go (handler + owner validation). go build OK; -race store/handlers/i18n/agent green.
+PATTERN [delivery] Per-domain catch-all is the LAST resolver tier; the open-relay guarantee is simply "no /system/catchall/{domain} key ⇒ fall through to 550" — never accept unmatched mail for a domain without an explicit catch-all entry.

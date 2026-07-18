@@ -47,6 +47,7 @@ type AdminHandler struct {
 	logSink      *LogSink
 	mailboxes    *store.MailboxStore
 	dkimRegistry *internalmail.DKIMRegistry
+	catchAll     *store.CatchAllStore
 	startTime    time.Time
 }
 
@@ -107,6 +108,11 @@ func (h *AdminHandler) SetMailboxStore(ms *store.MailboxStore) {
 // SetDKIMRegistry sets the per-domain DKIM signer registry used by GenerateDKIMKey.
 func (h *AdminHandler) SetDKIMRegistry(reg *internalmail.DKIMRegistry) {
 	h.dkimRegistry = reg
+}
+
+// SetCatchAllStore sets the catch-all store used by SetCatchAll and ClearCatchAll.
+func (h *AdminHandler) SetCatchAllStore(cs *store.CatchAllStore) {
+	h.catchAll = cs
 }
 
 // --- Dashboard ---
@@ -641,6 +647,89 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("dkim: key generated", "domain", domain, "selector", selector)
 
 	http.Redirect(w, r, "/admin/domains?flash=DKIM+key+generated", http.StatusSeeOther)
+}
+
+// SetCatchAll sets the catch-all owner for a domain.
+//
+// POST /admin/domains/{domain}/catchall
+// Form field: owner_user_id — the user ID that will receive unmatched mail.
+//
+// The owner must exist in the local users table (best-effort validation; the
+// SQLite read may lag on follower nodes). Requires RequireAdmin + CSRF (applied
+// at the route group level in agent.go).
+//
+// Partial-failure note: if the owner account is later deleted, the catch-all key
+// will dangle and route to a dead user_id, causing downstream delivery failure.
+// Cleanup is the administrator's responsibility.
+func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	ownerUserID := strings.TrimSpace(r.FormValue("owner_user_id"))
+	if ownerUserID == "" {
+		http.Error(w, "owner_user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	// Best-effort owner validation: check the local SQLite users table.
+	// Reads per-node SQLite which may be stale on followers (same caveat as
+	// existing createUserViaRaft/domain handlers). Treat as UX guard, not
+	// a correctness guarantee — the Raft write is the source of truth.
+	if h.metadata != nil && h.metadata.System != nil {
+		var exists int
+		err := h.metadata.System.DB().QueryRow(
+			"SELECT 1 FROM users WHERE id = ? AND enabled = 1", ownerUserID,
+		).Scan(&exists)
+		if err != nil {
+			http.Error(w, "owner user not found or disabled", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if h.catchAll == nil {
+		http.Error(w, "catch-all store not available", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.catchAll.Set(domain, ownerUserID); err != nil {
+		h.logger.Error("admin: failed to set catch-all", "domain", domain, "owner", ownerUserID, "error", err)
+		http.Error(w, "failed to set catch-all", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: catch-all set", "domain", domain, "owner_user_id", ownerUserID)
+	http.Redirect(w, r, "/admin/domains?flash=Catch-all+set+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// ClearCatchAll removes the catch-all configuration for a domain.
+//
+// POST /admin/domains/{domain}/catchall/delete
+//
+// Idempotent: clearing a domain with no catch-all is not an error.
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) ClearCatchAll(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	if h.catchAll == nil {
+		http.Error(w, "catch-all store not available", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.catchAll.Clear(domain); err != nil {
+		h.logger.Error("admin: failed to clear catch-all", "domain", domain, "error", err)
+		http.Error(w, "failed to clear catch-all", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: catch-all cleared", "domain", domain)
+	http.Redirect(w, r, "/admin/domains?flash=Catch-all+cleared+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // dkimTXTRecord derives the DKIM DNS TXT record value from a PEM-encoded private
@@ -1245,6 +1334,7 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 						HasMX:   hasMX,
 					}
 					h.enrichDomainDKIM(&di)
+					h.enrichDomainCatchAll(&di)
 					domains = append(domains, di)
 				}
 			}
@@ -1272,6 +1362,7 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 					Enabled: string(val) == "enabled",
 				}
 				h.enrichDomainDKIM(&di)
+				h.enrichDomainCatchAll(&di)
 				domains = append(domains, di)
 			}
 		}
@@ -1300,6 +1391,20 @@ func (h *AdminHandler) enrichDomainDKIM(di *templates.DomainInfo) {
 	di.DkimSelector = rec.DkimSelector
 	// Derive the public TXT record — never expose the private key.
 	di.DkimTXTRecord = dkimTXTRecord(di.Name, rec.DkimSelector, rec.DkimPrivateKey)
+}
+
+// enrichDomainCatchAll reads the catch-all owner for a domain from Pebble and
+// populates CatchAllOwnerID on the DomainInfo. Best-effort: missing or empty
+// keys leave CatchAllOwnerID as "".
+func (h *AdminHandler) enrichDomainCatchAll(di *templates.DomainInfo) {
+	if h.catchAll == nil || h.store == nil {
+		return
+	}
+	ownerID, ok, err := h.catchAll.Get(di.Name)
+	if err != nil || !ok {
+		return
+	}
+	di.CatchAllOwnerID = ownerID
 }
 
 func (h *AdminHandler) loadAliases() []templates.AliasInfo {

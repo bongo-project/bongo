@@ -37,12 +37,13 @@ type AdminUserInfo struct {
 
 // DomainInfo holds data for the domain management list.
 type DomainInfo struct {
-	Name          string
-	Enabled       bool
-	HasMX         bool
-	DkimEnabled   bool
-	DkimSelector  string
-	DkimTXTRecord string // full DNS TXT record to publish, derived from public key only
+	Name            string
+	Enabled         bool
+	HasMX           bool
+	DkimEnabled     bool
+	DkimSelector    string
+	DkimTXTRecord   string // full DNS TXT record to publish, derived from public key only
+	CatchAllOwnerID string // user ID configured as catch-all target, empty if not set
 }
 
 // AliasInfo holds data for the alias management list.
@@ -401,6 +402,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							<th scope="col">{ t(ctx, "admin.mxRecord") }</th>
 							<th scope="col">{ t(ctx, "common.status") }</th>
 							<th scope="col">{ t(ctx, "admin.dkimKey") }</th>
+							<th scope="col">{ t(ctx, "admin.catchAll") }</th>
 							<th scope="col" class="u-width-200px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
@@ -434,6 +436,19 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 									}
 								</td>
 								<td>
+									if d.CatchAllOwnerID != "" {
+										<span class="dns-check">&#10003; { d.CatchAllOwnerID }</span>
+										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/catchall/delete", d.Name)) }>
+											<button type="submit" class="btn-flush">{ t(ctx, "common.clear") }</button>
+										</form>
+									} else {
+										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/catchall", d.Name)) } class="admin-inline-form">
+											<input type="text" name="owner_user_id" placeholder={ t(ctx, "admin.catchAllOwnerPlaceholder") } class="form-input u-m0" required/>
+											<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.setCatchAll") }</button>
+										</form>
+									}
+								</td>
+								<td>
 									<div class="row-actions">
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
 											<button type="submit" class="btn-outline">
@@ -461,7 +476,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							</tr>
 						}
 						if len(domains) == 0 {
-							<tr><td colspan="5" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
+							<tr><td colspan="6" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
 						}
 					</tbody>
 				</table>
