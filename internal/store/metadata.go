@@ -378,6 +378,23 @@ func (s *SystemIndex) createSchema() error {
 
 	CREATE INDEX IF NOT EXISTS idx_aliases_target
 		ON aliases(target_user_id);
+
+	-- addresses is the global address index (FR-3 / US-RECV-2).
+	-- DERIVED INDEX — rebuildable from Pebble (/system/address/{addr}).
+	-- Addresses are stored lowercase. kind is one of: primary, alias, identity.
+	-- can_send/verified are stored as 0/1 integers (SQLite boolean convention).
+	CREATE TABLE IF NOT EXISTS addresses (
+		address    TEXT PRIMARY KEY,
+		user_id    TEXT NOT NULL,
+		domain     TEXT,
+		kind       TEXT,
+		can_send   INTEGER,
+		verified   INTEGER,
+		created_at INTEGER
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_addresses_user
+		ON addresses(user_id);
 	`
 	_, err := s.db.Exec(schema)
 	return err
