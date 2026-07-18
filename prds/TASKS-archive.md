@@ -38,3 +38,12 @@ Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Add
 | 4.3 | FR-4 unify delivery (fix alias inbound, US-RECV-1) | DONE (2026-07-18) | store.RecipientResolver 3-tier; ONE shared instance across compose+pipeline+SMTP RCPT; no O(n) scan; integration test external→alias→INBOX. Commit f58ce50 |
 | 4.4 | FR-6 per-domain catch-all | DONE (2026-07-18) | CatchAllStore /system/catchall/{domain}; resolver tier-3 (explicit wins, no-key→reject open-relay guard); admin Set/ClearCatchAll. Commit 4ca9867 |
 | 4.5 | FR-5 admin address management + migration create-only | DONE (2026-07-18) | admin Add/RemoveAddress; primary-delete + unknown-user guards; PopulateAddressIndex create-only; CSP-clean; i18n parity. Commit 902ce70 |
+
+## Phase 5: Multi-Domain — Sending Identity (PRD Phase C) — 2 tasks completed 2026-07-18
+
+Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Send-as owned/verified addresses + both verification paths.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 5.1 | FR-7 send-as: From-picker (owned can_send&&verified), server-side enforcement, From/envelope/Message-ID/DKIM d= alignment | DONE (2026-07-18) | server-rendered From `<select>`; tampered/unowned/unverified→403, default path bypasses (back-compat); fromAddr drives all identity sites. Commit 1f3fc74 |
+| 5.2 | FR-7b verification: admin grant + self-serve emailed one-time code | DONE (2026-07-18) | AddressVerifyStore (crypto/rand code → sha256 hash stored not plaintext, never logged, single-use, expiry, max-5-attempts, constant-time); cross-user claim rejected; emailed via queue. Commits f89ac1c |
