@@ -31,6 +31,13 @@ import (
 
 const composeMultipartMaxBytes = 33 << 20
 
+// localRecipientResolver resolves an email address to a local user ID.
+// Defined at the consumer (ComposeHandler) to avoid an import cycle with
+// internal/smtp. Satisfied by *store.RecipientResolver.
+type localRecipientResolver interface {
+	ResolveRecipient(email string) (string, error)
+}
+
 // ComposeHandler handles email composition.
 type ComposeHandler struct {
 	pebble      *store.PebbleStore
@@ -41,6 +48,7 @@ type ComposeHandler struct {
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
 	prefs       *store.PreferenceStore
+	resolver    localRecipientResolver // unified address→userID resolver (task 4.3)
 	logger      *slog.Logger
 }
 
@@ -69,6 +77,13 @@ func (h *ComposeHandler) SetRateLimiter(rl *mail.RateLimiter) {
 // SetPreferences sets the preference store for per-user settings.
 func (h *ComposeHandler) SetPreferences(prefs *store.PreferenceStore) {
 	h.prefs = prefs
+}
+
+// SetLocalResolver injects the shared recipient resolver used by resolveLocalUser.
+// When nil, resolveLocalUser falls back to the legacy Pebble alias+profile scan
+// (backward compatible but O(n) and should not be left nil in production).
+func (h *ComposeHandler) SetLocalResolver(r localRecipientResolver) {
+	h.resolver = r
 }
 
 // NewMessage renders the compose form.
@@ -576,44 +591,27 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// resolveLocalUser maps a bare email address to a local user ID using the
+// shared recipient resolver (task 4.3). Returns "" when the address is not local.
+//
+// The shared resolver checks (in order):
+//  1. AddressStore Pebble key (source of truth, covers migrated primaries + aliases).
+//  2. Legacy /system/alias Pebble key + users-table (post-boot accounts/aliases).
+//  3. Returns an error → not local, returns "".
+//
+// This eliminates the previous split-brain between compose.go (alias-aware but
+// O(n) profile scan, also returning a username instead of a userID from the alias
+// branch) and inbound delivery.go (users-table only, alias-blind). Both paths now
+// use the same resolver and consistently return a userID.
 func (h *ComposeHandler) resolveLocalUser(email string) string {
-	// Look up by email in system metadata.
-	key := fmt.Sprintf("/system/alias/%s", strings.ToLower(email))
-	data, err := h.pebble.Get([]byte(key))
-	if err == nil && len(data) > 0 {
-		return string(data)
+	if h.resolver == nil {
+		return ""
 	}
-
-	// Try looking up in user profiles.
-	// Scan all user profiles for matching email.
-	iter, err := h.pebble.PrefixScan([]byte("/user/"))
+	userID, err := h.resolver.ResolveRecipient(email)
 	if err != nil {
 		return ""
 	}
-	defer iter.Close()
-
-	for iter.Next() {
-		keyStr := string(iter.Key())
-		if !strings.HasSuffix(keyStr, "/profile") {
-			continue
-		}
-		val, err := iter.Value()
-		if err != nil {
-			continue
-		}
-		var profile bongov1.UserProfile
-		if err := proto.Unmarshal(val, &profile); err != nil {
-			continue
-		}
-		if strings.EqualFold(profile.Email, email) {
-			// Extract userID from key: /user/{userID}/profile
-			parts := strings.Split(keyStr, "/")
-			if len(parts) >= 3 {
-				return parts[2]
-			}
-		}
-	}
-	return ""
+	return userID
 }
 
 func (h *ComposeHandler) loadMailboxInfos(userID string) []templates.MailboxInfo {
