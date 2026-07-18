@@ -25,16 +25,7 @@ compose toggle.
 | 2.11 | Rich draft round-trip: SaveDraft records body_mode so a rich draft reopens into the rich editor as HTML, not raw tags | [prd-rich-signatures.md](active/prd-rich-signatures.md) | TODO | split from 2.10(c); lower priority |
 | 2.12 | Close verify test-coverage gaps: (US-002) plain send with EMPTY signature_html + plain Signature -> single text/plain ending with plain sig; (US-005) inline logo embedded in the HTML SIGNATURE round-trips to a cid: inline part on the sent message | [prd-rich-signatures.md](active/prd-rich-signatures.md) | DONE (2026-07-17) | added US-002 empty-sig plain + US-005 signature-logo cid tests |
 
-## Phase 3: Multi-Domain — Foundation & Quick Wins (PRD Phase A)
-
-Source PRD: multi-domain multi-tenant hosting. Independent, high-value, low-risk first:
-sender hygiene + per-domain DKIM. Unblocks correct sending for additional hosted domains.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 3.1 | FR-11 sender hygiene: bounces use `postmaster@<relevant-domain>` (not `@localhost`) with an FQDN Message-ID; welcome email uses an FQDN Message-ID (not `@bongo`) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.ResolveServerDomain` chain; fixed all 4 bounce localhost sites + both welcome Message-ID sites; review PASS |
-| 3.2 | FR-1 per-domain DKIM signer registry: `DomainRecord` gains `dkim_selector`+`dkim_private_key`+`dkim_enabled`; refactor single global signer (`agent.go:987`, `queue/worker.go:139`) to a registry keyed by From domain; unkeyed domains send unsigned + logged (never wrong `d=`) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.DKIMRegistry` keyed by From-header domain; new `DkimKey`/domain.proto; worker uses registry, unkeyed→unsigned+log; single-domain seeded from config (byte-compat); review MINOR |
-| 3.3 | FR-2 admin DKIM key management: "Generate DKIM key" action per domain → store private key (never logged), display `selector._domainkey.<domain> TXT` record; rotation regenerates + updates display | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | GenerateDKIMKey (RSA-2048, PKCS8) stores DomainRecord@/system/domain/{d}/dkim via Raft, Adds to shared registry (immediate signing), LoadStoredDKIMKeys at startup; TXT = public key only; key never logged/rendered; review PASS |
+## Phase 3: Multi-Domain — Foundation & Quick Wins (PRD Phase A) — 3 tasks completed 2026-07-18 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Phase 4: Multi-Domain — Receiving (PRD Phase B)
 
