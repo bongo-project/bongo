@@ -23,7 +23,7 @@ func TestRichEditorFieldRendersAccessibilityAttributes(t *testing.T) {
 
 	var buf bytes.Buffer
 	ctx := context.Background()
-	if err := RichEditorField("body", "", "200px", "").Render(ctx, &buf); err != nil {
+	if err := RichEditorField("body", "", "compose").Render(ctx, &buf); err != nil {
 		t.Fatalf("RichEditorField.Render: %v", err)
 	}
 	html := buf.String()
@@ -65,6 +65,31 @@ func TestRichEditorFieldRendersAccessibilityAttributes(t *testing.T) {
 	}
 }
 
+// TestRichEditorFieldHasNoInlineStyles guards the CSP fix: the app CSP is
+// `style-src 'self'` (no unsafe-inline), so any inline style="" attribute is
+// blocked by the browser — which previously collapsed the editable area to zero
+// height. All presentation must come from CSS classes instead. This asserts the
+// component emits no style="" and that the editable region carries its class.
+func TestRichEditorFieldHasNoInlineStyles(t *testing.T) {
+	initI18nForTest()
+	ctx := context.Background()
+
+	for _, variant := range []string{"signature", "compose"} {
+		var buf bytes.Buffer
+		if err := RichEditorField("body", "", variant).Render(ctx, &buf); err != nil {
+			t.Fatalf("RichEditorField(%q).Render: %v", variant, err)
+		}
+		html := buf.String()
+		if strings.Contains(html, "style=") {
+			t.Errorf("RichEditorField(%q): emits an inline style attribute, which the CSP blocks:\n%s", variant, html)
+		}
+		// The editable region must be styled via its class so it has height.
+		if !strings.Contains(html, "rich-editor-area") {
+			t.Errorf("RichEditorField(%q): editable area missing the rich-editor-area class", variant)
+		}
+	}
+}
+
 // TestRichEditorFieldToolbarButtonsAreTypeButton verifies every button inside
 // the editor toolbar carries type="button" so they cannot accidentally submit
 // the enclosing form.
@@ -73,7 +98,7 @@ func TestRichEditorFieldToolbarButtonsAreTypeButton(t *testing.T) {
 
 	var buf bytes.Buffer
 	ctx := context.Background()
-	if err := RichEditorField("body", "", "200px", "").Render(ctx, &buf); err != nil {
+	if err := RichEditorField("body", "", "compose").Render(ctx, &buf); err != nil {
 		t.Fatalf("RichEditorField.Render: %v", err)
 	}
 	html := buf.String()
@@ -101,7 +126,7 @@ func TestRichEditorFieldWithInitialHTML(t *testing.T) {
 
 	// With initialHTML: attribute must be present.
 	var buf bytes.Buffer
-	if err := RichEditorField("signature_html", "<p>Hello</p>", "90px", "width:100%;").Render(ctx, &buf); err != nil {
+	if err := RichEditorField("signature_html", "<p>Hello</p>", "signature").Render(ctx, &buf); err != nil {
 		t.Fatalf("RichEditorField.Render (with HTML): %v", err)
 	}
 	if !strings.Contains(buf.String(), `data-initial-html=`) {
@@ -110,7 +135,7 @@ func TestRichEditorFieldWithInitialHTML(t *testing.T) {
 
 	// Without initialHTML: attribute must be absent.
 	buf.Reset()
-	if err := RichEditorField("body", "", "200px", "").Render(ctx, &buf); err != nil {
+	if err := RichEditorField("body", "", "compose").Render(ctx, &buf); err != nil {
 		t.Fatalf("RichEditorField.Render (empty HTML): %v", err)
 	}
 	if strings.Contains(buf.String(), `data-initial-html=`) {
@@ -126,7 +151,7 @@ func TestRichEditorFieldHiddenInputName(t *testing.T) {
 
 	for _, name := range []string{"body", "signature_html"} {
 		var buf bytes.Buffer
-		if err := RichEditorField(name, "", "200px", "").Render(ctx, &buf); err != nil {
+		if err := RichEditorField(name, "", "compose").Render(ctx, &buf); err != nil {
 			t.Fatalf("RichEditorField(%q).Render: %v", name, err)
 		}
 		want := `<input type="hidden" name="` + name + `"`

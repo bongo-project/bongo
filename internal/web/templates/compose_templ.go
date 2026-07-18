@@ -348,7 +348,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"><div class=\"compose-mode-toggle\" style=\"display: flex; gap: 4px; padding: 4px 0;\"><button type=\"button\" class=\"format-btn\" x-bind:class=\"{'active': bodyMode === 'rich'}\" x-on:click=\"bodyMode = 'rich'\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"><div class=\"compose-mode-toggle\"><button type=\"button\" class=\"format-btn\" x-bind:class=\"{'active': bodyMode === 'rich'}\" x-on:click=\"bodyMode = 'rich'\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -400,7 +400,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</button></div><input type=\"hidden\" name=\"body_mode\" x-bind:value=\"bodyMode\"><!-- Plain mode: a real <textarea> is in the DOM only when bodyMode==='plain'.\n\t\t\t\t\t\t     Using x-if (not x-show) ensures the element is completely removed from\n\t\t\t\t\t\t     the DOM in rich mode, so it is not submitted — no HTML entities or tags\n\t\t\t\t\t\t     can leak into the text/plain MIME part. Reply/forward default to plain so\n\t\t\t\t\t\t     the quoted body (with '>' markers) is submitted as literal plain text. --><template x-if=\"bodyMode === 'plain'\"><textarea name=\"body\" style=\"width: 100%; min-height: 200px; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; outline: none; font-size: 0.88rem; line-height: 1.5; resize: vertical; background: var(--bg); color: var(--text); box-sizing: border-box;\" aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</button></div><input type=\"hidden\" name=\"body_mode\" x-bind:value=\"bodyMode\"><!-- Plain mode: a real <textarea> is in the DOM only when bodyMode==='plain'.\n\t\t\t\t\t\t     Using x-if (not x-show) ensures the element is completely removed from\n\t\t\t\t\t\t     the DOM in rich mode, so it is not submitted — no HTML entities or tags\n\t\t\t\t\t\t     can leak into the text/plain MIME part. Reply/forward default to plain so\n\t\t\t\t\t\t     the quoted body (with '>' markers) is submitted as literal plain text. --><template x-if=\"bodyMode === 'plain'\"><textarea name=\"body\" class=\"compose-plain-body\" aria-label=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -430,7 +430,7 @@ func ComposePage(mode string, to string, cc string, subject string, body string,
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = RichEditorField("body", "", "200px", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = RichEditorField("body", "", "compose").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

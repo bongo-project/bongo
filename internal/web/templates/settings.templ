@@ -124,7 +124,7 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 									<div class="settings-row-label">
 										<div class="settings-row-title">{ t(ctx, "settings.signature") }</div>
 									</div>
-									@RichEditorField("signature_html", prefs.SignatureHtml, "90px", "width: 100%; box-sizing: border-box;")
+									@RichEditorField("signature_html", prefs.SignatureHtml, "signature")
 								</div>
 							</div>
 						</div>
