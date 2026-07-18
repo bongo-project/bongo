@@ -24,3 +24,49 @@ compose toggle.
 | 2.10 | Signature fixes: (a) SaveSettings clears an emptied signature; (b) new-message plain mode prefills the plain signature (composeInitialBody returns body for new) without double-sig | [prd-rich-signatures.md](active/prd-rich-signatures.md) | DONE (2026-07-13) | r.Form.Has clears sig; composeInitialBody returns body for new |
 | 2.11 | Rich draft round-trip: SaveDraft records body_mode so a rich draft reopens into the rich editor as HTML, not raw tags | [prd-rich-signatures.md](active/prd-rich-signatures.md) | TODO | split from 2.10(c); lower priority |
 | 2.12 | Close verify test-coverage gaps: (US-002) plain send with EMPTY signature_html + plain Signature -> single text/plain ending with plain sig; (US-005) inline logo embedded in the HTML SIGNATURE round-trips to a cid: inline part on the sent message | [prd-rich-signatures.md](active/prd-rich-signatures.md) | DONE (2026-07-17) | added US-002 empty-sig plain + US-005 signature-logo cid tests |
+
+## Phase 3: Multi-Domain — Foundation & Quick Wins (PRD Phase A)
+
+Source PRD: multi-domain multi-tenant hosting. Independent, high-value, low-risk first:
+sender hygiene + per-domain DKIM. Unblocks correct sending for additional hosted domains.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 3.1 | FR-11 sender hygiene: bounces use `postmaster@<relevant-domain>` (not `@localhost`) with an FQDN Message-ID; welcome email uses an FQDN Message-ID (not `@bongo`) | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-HYGIENE-1; independent quick win; `mail/bounce.go:68`, `admin.go:849` |
+| 3.2 | FR-1 per-domain DKIM signer registry: `DomainRecord` gains `dkim_selector`+`dkim_private_key`+`dkim_enabled`; refactor single global signer (`agent.go:987`, `queue/worker.go:139`) to a registry keyed by From domain; unkeyed domains send unsigned + logged (never wrong `d=`) | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-DKIM-1; keep rsa-sha256 + selector-per-domain; preserve single-domain output |
+| 3.3 | FR-2 admin DKIM key management: "Generate DKIM key" action per domain → store private key (never logged), display `selector._domainkey.<domain> TXT` record; rotation regenerates + updates display | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-DKIM-2; needs: 3.2 |
+
+## Phase 4: Multi-Domain — Receiving (PRD Phase B)
+
+Source PRD: multi-domain multi-tenant hosting. Address index + alias-delivery fix + catch-all;
+unifies the compose/delivery split-brain onto one delivery path.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 4.1 | FR-3 global address index: proto `AddressRecord{user_id,domain,kind,can_send,verified}`; `/system/address/{addr}` Pebble key + `addresses` SQLite index; `AddressStore` (pebble-read + applier-write, 5s timeout) | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-RECV-2; foundation for delivery + send-as |
+| 4.2 | FR-12 migration: every `users.username` → `primary` address, every `/system/alias/{a}` → `alias` address for its target; idempotent + reversible; leader-only, safe on live example.com | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | needs: 4.1 |
+| 4.3 | FR-4 unify delivery on the address index: `ResolveRecipient` (`smtp/delivery.go:124`) resolves via `addresses` then catch-all then reject; unify `compose.go:581 resolveLocalUser` onto the same path (fixes alias inbound, US-RECV-1) | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | needs: 4.1; integration test: external → alias → INBOX |
+| 4.4 | FR-6 per-domain catch-all: `*@d -> acct` config + resolution; explicit address always wins; no catch-all → reject | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-RECV-3; needs: 4.3 |
+| 4.5 | FR-5 address management UI: add/remove addresses per account in user + admin UIs; removing an address stops delivery | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-RECV-2; needs: 4.1 |
+
+## Phase 5: Multi-Domain — Sending Identity (PRD Phase C)
+
+Source PRD: multi-domain multi-tenant hosting. Send-as owned/verified addresses with DKIM +
+envelope + Message-ID alignment; both verification paths.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 5.1 | FR-7 send-as: compose From-picker lists only owned `can_send && verified` addresses; server-side ownership+verified enforcement (tampered From → 403/400); `From`/envelope MAIL FROM/`d=` DKIM/Message-ID host all follow the chosen sending domain | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-SEND-1; needs: 3.2, 4.1 |
+| 5.2 | FR-7b send-as verification: admin/domain-admin grant sets `can_send`+`verified`; self-serve adds address → emailed one-time code → correct code sets `verified`+`can_send`; codes single-use, time-limited, never logged; unverified never in From-picker | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-SEND-2; needs: 4.1, 5.1 |
+
+## Phase 6: Multi-Domain — Tenancy & Isolation (PRD Phase D)
+
+Source PRD: multi-domain multi-tenant hosting. Largest, security-critical. Domain ownership,
+delegated domain-admins, per-domain quotas, adversarial isolation tests. Default-deny.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 6.1 | FR-8 domain ownership + grants: `DomainRecord.owner_user_id` (tenant) + `domain_admins(domain,user_id)` grant table; admin UI shows/changes owner; new users/addresses associate with their domain | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-TENANT-1 |
+| 6.2 | FR-9 authorization/isolation layer: scope every admin read/write for a domain-admin to granted domains — list endpoints filtered, mutations checked, cross-tenant mailbox/blob access denied; default-deny; global admin retains full access | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-TENANT-2; needs: 6.1; security-critical |
+| 6.3 | FR-10 per-domain quotas/policies: storage + max-users limits (within global caps); creating a user beyond max-users rejected; over-quota inbound rejected at RCPT with 5xx (no accept-then-bounce, no silent drop, no local copy) | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | US-TENANT-3; needs: 6.1 |
+| 6.4 | Adversarial tenant-isolation tests: a domain admin probing another tenant's users/addresses/catch-all/quota/DKIM/mailbox/blobs gets 403 and zero data leakage across all admin endpoints | [prd-multidomain-hosting.md](backlog/prd-multidomain-hosting.md) | TODO | verifies US-TENANT-2; needs: 6.2, 6.3 |

@@ -1,6 +1,6 @@
 # PRD: Multi-Domain, Multi-Tenant Mail Hosting
 
-Status: finalized (2026-07-18) — ready for `norman import`. Large multi-phase epic — see the Phased Plan.
+Status: imported (2026-07-18) — tasks in TASKS.md Phases 3–6. Large multi-phase epic — see the Phased Plan.
 
 ## 1. Introduction / Overview
 
