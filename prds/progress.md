@@ -198,3 +198,14 @@ Worker: golang-pro (sonnet). Advisor PROCEED (warned off the mixed-case managed-
 - admin.go SetCatchAll/ClearCatchAll (validate owner user exists) at routes /admin/domains/{domain}/catchall[/delete] in the admin group (RequireAdmin + RequireSameOrigin/CSRF); admin.templ catch-all field on the domain view (make generate); i18n keys ×4 locales (parity). agent.go wires CatchAllStore into AdminHandler (~604).
 Tests: catchall_store_test.go (set/get/clear), recipient_resolver_test.go (catch-all owner returned when set; reject when not; EXPLICIT beats catch-all), admin_catchall_test.go (handler + owner validation). go build OK; -race store/handlers/i18n/agent green.
 PATTERN [delivery] Per-domain catch-all is the LAST resolver tier; the open-relay guarantee is simply "no /system/catchall/{domain} key ⇒ fall through to 550" — never accept unmatched mail for a domain without an explicit catch-all entry.
+
+## 2026-07-18 — Task 4.5 DONE (FR-5 admin address management + migration create-only)
+
+Worker: golang-pro (sonnet). Advisor PROCEED (flagged the map-before-skip trap). Code review MINOR.
+- admin.go AddAddress/RemoveAddress (routes POST /admin/users/{userID}/addresses[/delete] in the admin group: RequireAdmin+SameOrigin+CSRF). Add: validate '@', derive domain, Kind=identity, CanSend/Verified=false; reject if owned by a DIFFERENT user (409). Remove: guard refuses primary (address==profile.Email OR Kind==primary) → flash, keeps account reachable. ApplyCommand errors fail the request.
+- I FIXED review MINOR #1 myself: AddAddress now loadProfile(userID) → 404 if the user doesn't exist (no dangling record routing to a dead user_id) + TestAdminAddAddress_UnknownUser.
+- store/address_migrate.go now CREATE-ONLY: emailToUserID map populated for EVERY primary BEFORE the Get-before-Put skip (advisor's top risk — alias resolution on re-run still works); resolves the 4.2 CAUTION. Doc comments updated.
+- admin.templ: addresses section on the user page (list via AddressStore.ListByUser + add form + per-row remove) using CSS classes (0 inline styles, CSP-clean); AdminUserInfo gained Addresses+PrimaryEmail; make generate. i18n keys ×4 locales (parity).
+Tests: admin_address_test.go (add OK, no-@, unknown-user 404, remove non-primary, primary-delete guard, cross-owner conflict), address_migrate_test.go (create-only: edited record unchanged on re-run, missing primary still created). FULL go test -race ./... = rc=0; integration green earlier.
+PATTERN [migration] Create-only seeding = Get-before-Put, but populate any lookup maps (email→id) BEFORE the skip so dependent phases (alias resolution) still work on every re-run.
+MINOR remaining (non-blocking): resolver delivery for added addresses is proven via AddressStore.Get (= resolver tier 1) + existing recipient_resolver_test.go, not a fresh end-to-end assert — effectively covered.

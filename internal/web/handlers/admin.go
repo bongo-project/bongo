@@ -48,6 +48,7 @@ type AdminHandler struct {
 	mailboxes    *store.MailboxStore
 	dkimRegistry *internalmail.DKIMRegistry
 	catchAll     *store.CatchAllStore
+	addresses    *store.AddressStore
 	startTime    time.Time
 }
 
@@ -113,6 +114,11 @@ func (h *AdminHandler) SetDKIMRegistry(reg *internalmail.DKIMRegistry) {
 // SetCatchAllStore sets the catch-all store used by SetCatchAll and ClearCatchAll.
 func (h *AdminHandler) SetCatchAllStore(cs *store.CatchAllStore) {
 	h.catchAll = cs
+}
+
+// SetAddressStore sets the address store used by AddAddress and RemoveAddress.
+func (h *AdminHandler) SetAddressStore(as *store.AddressStore) {
+	h.addresses = as
 }
 
 // --- Dashboard ---
@@ -250,12 +256,24 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info := &templates.AdminUserInfo{
-		UserID:      userID,
-		Email:       profile.Email,
-		DisplayName: profile.DisplayName,
-		IsAdmin:     profile.IsAdmin,
-		Disabled:    profile.Disabled,
-		QuotaBytes:  profile.QuotaBytes,
+		UserID:       userID,
+		Email:        profile.Email,
+		DisplayName:  profile.DisplayName,
+		IsAdmin:      profile.IsAdmin,
+		Disabled:     profile.Disabled,
+		QuotaBytes:   profile.QuotaBytes,
+		PrimaryEmail: strings.ToLower(strings.TrimSpace(profile.Email)),
+	}
+
+	// Populate the address list from the SQLite derived index (best-effort;
+	// stale on followers but acceptable for admin display).
+	if h.addresses != nil {
+		addrs, err := h.addresses.ListByUser(userID)
+		if err != nil {
+			h.logger.Warn("admin: failed to list addresses for user", "user_id", userID, "error", err)
+		} else {
+			info.Addresses = addrs
+		}
 	}
 
 	templ.Handler(templates.AdminUserForm(info, nil, false, email, flash)).ServeHTTP(w, r)
@@ -1033,6 +1051,140 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 
 	flash := "2FA+policy+updated"
 	http.Redirect(w, r, "/admin?flash="+flash, http.StatusSeeOther)
+}
+
+// --- Address Management ---
+
+// AddAddress adds an additional address to a user's account.
+//
+// POST /admin/users/{userID}/addresses
+// Form field: address — the new email address to add.
+//
+// Validation:
+//   - address must contain '@'
+//   - if the address already exists in the index it must belong to THIS user;
+//     if it belongs to a different user, the request is rejected.
+//
+// The new address is stored with Kind=identity, CanSend=false, Verified=false.
+// Send-capability and verification are Phase 5 features.
+//
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userID")
+
+	if h.addresses == nil {
+		http.Error(w, "address store not available", http.StatusInternalServerError)
+		return
+	}
+
+	address := strings.ToLower(strings.TrimSpace(r.FormValue("address")))
+	if address == "" {
+		http.Error(w, "address is required", http.StatusBadRequest)
+		return
+	}
+	atIdx := strings.LastIndex(address, "@")
+	if atIdx <= 0 || atIdx == len(address)-1 {
+		http.Error(w, "address must be a valid email address containing '@'", http.StatusBadRequest)
+		return
+	}
+	domain := address[atIdx+1:]
+
+	// Guard: the target account must exist, so we never create an address
+	// record that routes mail to a non-existent user_id.
+	if _, err := h.loadProfile(userID); err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	// Check whether this address is already owned by someone else.
+	existing, ok, err := h.addresses.Get(address)
+	if err != nil {
+		h.logger.Error("admin: failed to look up address", "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+	if ok && existing.UserId != userID {
+		http.Error(w, "address is already owned by a different account", http.StatusConflict)
+		return
+	}
+
+	rec := &bongov1.AddressRecord{
+		UserId:   userID,
+		Domain:   domain,
+		Kind:     "identity",
+		CanSend:  false,
+		Verified: false,
+	}
+	if err := h.addresses.Put(address, rec); err != nil {
+		h.logger.Error("admin: failed to add address", "user_id", userID, "address", address, "error", err)
+		http.Error(w, "failed to add address", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: address added", "user_id", userID, "address", address)
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+added", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// RemoveAddress removes a non-primary address from a user's account.
+//
+// POST /admin/users/{userID}/addresses/delete
+// Form field: address — the email address to remove.
+//
+// Guard: refuses to delete when the address Kind is "primary" OR when the
+// address equals the user's profile email (case-insensitive). This prevents
+// an account from being left unreachable.
+//
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userID")
+
+	if h.addresses == nil {
+		http.Error(w, "address store not available", http.StatusInternalServerError)
+		return
+	}
+
+	address := strings.ToLower(strings.TrimSpace(r.FormValue("address")))
+	if address == "" {
+		http.Error(w, "address is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load the user profile to get the primary email for the guard check.
+	profile, err := h.loadProfile(userID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+	primaryEmail := strings.ToLower(strings.TrimSpace(profile.Email))
+
+	// Guard: prevent deletion of the primary address so the account stays reachable.
+	if address == primaryEmail {
+		flash := "Cannot+remove+primary+address"
+		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		return
+	}
+
+	// Also guard by Kind in case the address record exists.
+	existing, ok, err := h.addresses.Get(address)
+	if err != nil {
+		h.logger.Error("admin: failed to look up address for removal", "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+	if ok && existing.Kind == "primary" {
+		flash := "Cannot+remove+primary+address"
+		http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=%s", userID, flash), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+		return
+	}
+
+	if err := h.addresses.Delete(address); err != nil {
+		h.logger.Error("admin: failed to remove address", "user_id", userID, "address", address, "error", err)
+		http.Error(w, "failed to remove address", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: address removed", "user_id", userID, "address", address)
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+removed", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // --- Welcome Email ---

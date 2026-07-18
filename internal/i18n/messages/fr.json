@@ -545,5 +545,13 @@
   "editor.editorLabel": "Corps du message",
   "editor.sourceLabel": "Source HTML",
   "compose.bodyModePlain": "Texte brut",
-  "compose.bodyModeRich": "Texte enrichi"
+  "compose.bodyModeRich": "Texte enrichi",
+  "admin.addresses": "Adresses",
+  "admin.addressesHelp": "Adresses supplementaires pour ce compte. L'adresse principale ne peut pas etre supprimee. Les nouvelles adresses recoivent du courrier mais ne peuvent pas envoyer avant verification (Phase 5).",
+  "admin.addressList": "Liste des adresses",
+  "admin.addressLabel": "Adresse",
+  "admin.addAddress": "Ajouter une adresse",
+  "admin.primary": "principale",
+  "admin.noAddresses": "Aucune adresse supplementaire.",
+  "common.remove": "Supprimer"
 }

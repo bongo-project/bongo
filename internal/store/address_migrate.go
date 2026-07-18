@@ -27,14 +27,15 @@ import (
 //	via the phase-1 map; if not found there, falls back to the SystemIndex
 //	users table. Aliases with an unresolvable target are logged and skipped.
 //
-// Idempotency: AddressStore.Put is an upsert, so re-running the migration is
-// safe and produces identical records. It is additive — it never deletes or
-// modifies existing users, aliases, profiles, or mailboxes.
+// Create-only: this function only creates missing address records. If an
+// address already exists in Pebble (the source of truth), it is skipped so
+// that admin-added or admin-edited records are never overwritten on restart.
+// A new record is written only when as.Get returns ok=false.
 //
-// CAUTION: This function performs blind upserts on every run. Once address
-// records become user-editable (tasks 4.4/4.5, e.g. verified/can_send toggles),
-// this MUST become create-only (Get-before-Put) to avoid clobbering user edits.
-// Add that guard before exposing the edit UI.
+// Note: the emailToUserID map is populated for EVERY primary profile (even
+// those whose Put is skipped) so that phase 2 alias resolution always works
+// correctly — this is critical for aliases whose target primary was already
+// present in the index before the migration runs.
 //
 // This function is intended to be called on the Raft leader at startup only.
 // Leadership changes after boot will NOT re-trigger the migration — the same
@@ -102,10 +103,23 @@ func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, l
 			}
 			domain := email[atIdx+1:]
 
+			// Always populate the map — even if we skip Put below — so that
+			// phase 2 alias targets can be resolved for already-present primaries.
 			emailToUserID[email] = userID
 
-			// NOTE: blind upsert — idempotent now (only migration writes address records).
-			// Must become Get-before-Put once tasks 4.4/4.5 allow users to edit these fields.
+			// Create-only: skip Put if the record already exists in Pebble.
+			// This preserves admin-edited fields (e.g. can_send, verified toggles)
+			// across restarts. (task 4.5)
+			if _, exists, err := as.Get(email); err != nil {
+				logger.Warn("address index migration: checking existing primary record",
+					"email", email, "user_id", userID, "error", err)
+				// Fall through and try to write anyway so a transient read error
+				// does not permanently suppress the record.
+			} else if exists {
+				// Record already in Pebble — preserve it unchanged.
+				continue
+			}
+
 			rec := &bongov1.AddressRecord{
 				UserId:   userID,
 				Domain:   domain,
@@ -181,6 +195,17 @@ func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, l
 			if userID == "" {
 				logger.Warn("address index migration: alias target unresolvable; skipping",
 					"alias", aliasAddr, "target", targetUsername)
+				continue
+			}
+
+			// Create-only: skip Put if the alias record already exists in Pebble.
+			// This preserves any admin-edited alias records across restarts.
+			if _, exists, err := as.Get(aliasAddr); err != nil {
+				logger.Warn("address index migration: checking existing alias record",
+					"alias", aliasAddr, "error", err)
+				// Fall through on read error.
+			} else if exists {
+				// Record already in Pebble — preserve it unchanged.
 				continue
 			}
 

@@ -545,5 +545,13 @@
   "editor.editorLabel": "Nachrichtentext",
   "editor.sourceLabel": "HTML-Quelltext anzeigen",
   "compose.bodyModePlain": "Nur Text",
-  "compose.bodyModeRich": "Formatierter Text"
+  "compose.bodyModeRich": "Formatierter Text",
+  "admin.addresses": "Adressen",
+  "admin.addressesHelp": "Zusaetzliche Adressen fuer dieses Konto. Die primaere Adresse kann nicht entfernt werden. Neue Adressen empfangen E-Mails, koennen jedoch erst nach Verifizierung senden (Phase 5).",
+  "admin.addressList": "Adressliste",
+  "admin.addressLabel": "Adresse",
+  "admin.addAddress": "Adresse hinzufuegen",
+  "admin.primary": "primaer",
+  "admin.noAddresses": "Keine weiteren Adressen.",
+  "common.remove": "Entfernen"
 }

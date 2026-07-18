@@ -545,5 +545,13 @@
   "editor.editorLabel": "Cuerpo del mensaje",
   "editor.sourceLabel": "Fuente HTML",
   "compose.bodyModePlain": "Texto sin formato",
-  "compose.bodyModeRich": "Texto enriquecido"
+  "compose.bodyModeRich": "Texto enriquecido",
+  "admin.addresses": "Direcciones",
+  "admin.addressesHelp": "Direcciones adicionales para esta cuenta. La direccion principal no se puede eliminar. Las nuevas direcciones reciben correo pero no pueden enviar hasta que sean verificadas (Fase 5).",
+  "admin.addressList": "Lista de direcciones",
+  "admin.addressLabel": "Direccion",
+  "admin.addAddress": "Agregar direccion",
+  "admin.primary": "principal",
+  "admin.noAddresses": "No hay direcciones adicionales.",
+  "common.remove": "Eliminar"
 }

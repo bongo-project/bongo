@@ -33,6 +33,13 @@ type AdminUserInfo struct {
 	QuotaBytes   int64
 	UsedBytes    int64
 	MessageCount int
+	// Addresses is the list of all addresses for this user (primary + added).
+	// Populated only on the detail/edit page; empty on the list page.
+	// Sourced from the SQLite derived index (best-effort; may be stale on followers).
+	Addresses []string
+	// PrimaryEmail is the user's primary email address (from profile).
+	// Used by the remove-address guard to prevent deletion of the primary address.
+	PrimaryEmail string
 }
 
 // DomainInfo holds data for the domain management list.
@@ -370,6 +377,48 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 							{ t(ctx, "admin.deleteUser") }
 						</button>
 					</div>
+				</div>
+				<div class="form-card">
+					<h3>{ t(ctx, "admin.addresses") }</h3>
+					<p class="u-text-muted u-font-082">{ t(ctx, "admin.addressesHelp") }</p>
+					if len(user.Addresses) > 0 {
+						<div class="admin-table-card u-mb-1">
+							<table class="admin-table" aria-label={ t(ctx, "admin.addressList") }>
+								<thead>
+									<tr>
+										<th scope="col">{ t(ctx, "admin.addressLabel") }</th>
+										<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
+									</tr>
+								</thead>
+								<tbody>
+									for _, addr := range user.Addresses {
+										<tr>
+											<td><code class="u-font-088">{ addr }</code></td>
+											<td>
+												if addr != user.PrimaryEmail {
+													<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/addresses/delete", user.UserID)) }>
+														<input type="hidden" name="address" value={ addr }/>
+														<button type="submit" class="btn-flush">{ t(ctx, "common.remove") }</button>
+													</form>
+												} else {
+													<span class="badge badge-user">{ t(ctx, "admin.primary") }</span>
+												}
+											</td>
+										</tr>
+									}
+								</tbody>
+							</table>
+						</div>
+					} else {
+						<p class="u-text-muted u-font-082">{ t(ctx, "admin.noAddresses") }</p>
+					}
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/addresses", user.UserID)) } class="admin-inline-form">
+						<div class="u-flex-1">
+							<label for="new_address" class="admin-inline-label">{ t(ctx, "admin.addAddress") }</label>
+							<input type="email" name="address" id="new_address" placeholder="extra@example.com" required class="form-input u-m0"/>
+						</div>
+						<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "action.add") }</button>
+					</form>
 				</div>
 			}
 		</div>

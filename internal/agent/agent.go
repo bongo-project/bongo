@@ -604,6 +604,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetCatchAllStore(store.NewCatchAllStore(a.Store, a))
 		}
 
+		// Wire the address store so AddAddress/RemoveAddress can manage
+		// per-user address records via Raft. (task 4.5 / FR-5)
+		if a.AddressStore != nil {
+			adminH.SetAddressStore(a.AddressStore)
+		}
+
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
 		r.Get("/admin/users/new", adminH.NewUserForm)
@@ -613,6 +619,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}/toggle-disabled", adminH.ToggleDisabled)
 		r.Post("/admin/users/{userID}/reset-password", adminH.ResetPassword)
 		r.Post("/admin/users/{userID}/delete", adminH.DeleteUser)
+		r.Post("/admin/users/{userID}/addresses", adminH.AddAddress)
+		r.Post("/admin/users/{userID}/addresses/delete", adminH.RemoveAddress)
 		r.Get("/admin/domains", adminH.ListDomains)
 		r.Post("/admin/domains", adminH.CreateDomain)
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)

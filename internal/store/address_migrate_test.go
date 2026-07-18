@@ -252,6 +252,147 @@ func TestPopulateAddressIndex_EmptyEmail_Skipped(t *testing.T) {
 	}
 }
 
+// --- Create-only test (task 4.5) ---
+
+// TestPopulateAddressIndex_CreateOnly proves that PopulateAddressIndex does not
+// clobber an existing address record (e.g. one edited by the admin), while still
+// creating records for addresses that are genuinely missing.
+//
+// This validates the CAUTION that was documented in address_migrate.go before
+// task 4.5 — get-before-put is now implemented.
+func TestPopulateAddressIndex_CreateOnly(t *testing.T) {
+	ps, as, sys := newMigrateTestEnv(t)
+
+	// Seed alice's profile so the migration sees her as a primary user.
+	seedProfile(t, ps, "user1", &bongov1.UserProfile{Email: "alice@example.com"})
+
+	// Pre-seed alice's primary address with admin-edited fields (can_send=false).
+	// The migration would normally set can_send=true for a primary, so if it
+	// clobbers this record, the test will catch it.
+	preEdited := &bongov1.AddressRecord{
+		UserId:   "user1",
+		Domain:   "example.com",
+		Kind:     "primary",
+		CanSend:  false, // admin-edited — must be preserved
+		Verified: false, // admin-edited — must be preserved
+	}
+	if err := as.Put("alice@example.com", preEdited); err != nil {
+		t.Fatalf("pre-seeding alice primary: %v", err)
+	}
+
+	// Pre-seed an admin-added identity address for alice.
+	adminAdded := &bongov1.AddressRecord{
+		UserId:   "user1",
+		Domain:   "example.com",
+		Kind:     "identity",
+		CanSend:  false,
+		Verified: false,
+	}
+	if err := as.Put("alice-work@example.com", adminAdded); err != nil {
+		t.Fatalf("pre-seeding alice identity: %v", err)
+	}
+
+	// Seed a second user whose primary address does NOT exist in the index yet.
+	seedProfile(t, ps, "user2", &bongov1.UserProfile{Email: "bob@example.com"})
+
+	// Run the migration.
+	if err := PopulateAddressIndex(ps, as, sys, slog.Default()); err != nil {
+		t.Fatalf("PopulateAddressIndex: %v", err)
+	}
+
+	// alice@example.com must be UNCHANGED (pre-existing edited record preserved).
+	alice, ok, err := as.Get("alice@example.com")
+	if err != nil || !ok {
+		t.Fatalf("alice primary not found: ok=%v err=%v", ok, err)
+	}
+	if alice.CanSend {
+		t.Error("alice.CanSend was clobbered to true; expected admin-edited false")
+	}
+	if alice.Verified {
+		t.Error("alice.Verified was clobbered to true; expected admin-edited false")
+	}
+	if alice.Kind != "primary" {
+		t.Errorf("alice.Kind = %q, want primary", alice.Kind)
+	}
+
+	// alice-work@example.com (admin-added identity) must also be UNCHANGED.
+	work, ok, err := as.Get("alice-work@example.com")
+	if err != nil || !ok {
+		t.Fatalf("alice-work identity not found: ok=%v err=%v", ok, err)
+	}
+	if work.Kind != "identity" {
+		t.Errorf("alice-work.Kind = %q, want identity (should be unchanged)", work.Kind)
+	}
+
+	// bob@example.com (genuinely missing before migration) must have been created.
+	bob, ok, err := as.Get("bob@example.com")
+	if err != nil || !ok {
+		t.Fatalf("bob not found after migration: ok=%v err=%v", ok, err)
+	}
+	if bob.Kind != "primary" {
+		t.Errorf("bob.Kind = %q, want primary", bob.Kind)
+	}
+	if !bob.CanSend {
+		t.Error("bob.CanSend = false, want true (new primary should have can_send=true)")
+	}
+	if !bob.Verified {
+		t.Error("bob.Verified = false, want true (new primary should be verified=true)")
+	}
+	if bob.UserId != "user2" {
+		t.Errorf("bob.UserId = %q, want user2", bob.UserId)
+	}
+}
+
+// TestPopulateAddressIndex_CreateOnly_AliasMapBuilt ensures that even when
+// a primary address already exists and is skipped (create-only), the
+// emailToUserID map is still populated so that alias resolution works.
+// This guards the TOP RISK identified in the task specification.
+func TestPopulateAddressIndex_CreateOnly_AliasMapBuilt(t *testing.T) {
+	ps, as, sys := newMigrateTestEnv(t)
+
+	// Seed alice as primary (her Pebble record already exists).
+	seedProfile(t, ps, "user1", &bongov1.UserProfile{Email: "alice@example.com"})
+
+	// Pre-seed alice's address so the migration would skip Put.
+	if err := as.Put("alice@example.com", &bongov1.AddressRecord{
+		UserId: "user1", Domain: "example.com", Kind: "primary",
+		CanSend: false, // edited — must be preserved
+	}); err != nil {
+		t.Fatalf("pre-seeding alice: %v", err)
+	}
+
+	// Seed an alias whose target is alice. The alias has NO pre-existing record.
+	seedAlias(t, ps, "alias@example.com", "alice@example.com")
+
+	// Run migration. If emailToUserID is NOT built for alice (because Put was
+	// skipped), the alias target "alice@example.com" cannot be resolved and
+	// alias@example.com would be silently dropped — a bug.
+	if err := PopulateAddressIndex(ps, as, sys, slog.Default()); err != nil {
+		t.Fatalf("PopulateAddressIndex: %v", err)
+	}
+
+	// alias@example.com must have been created and point to user1.
+	aliasRec, ok, err := as.Get("alias@example.com")
+	if err != nil || !ok {
+		t.Fatalf("alias not found after migration: ok=%v err=%v", ok, err)
+	}
+	if aliasRec.UserId != "user1" {
+		t.Errorf("alias.UserId = %q, want user1 (emailToUserID map must be built even when Put is skipped)", aliasRec.UserId)
+	}
+	if aliasRec.Kind != "alias" {
+		t.Errorf("alias.Kind = %q, want alias", aliasRec.Kind)
+	}
+
+	// alice's record must be unchanged.
+	aliceRec, ok, err := as.Get("alice@example.com")
+	if err != nil || !ok {
+		t.Fatalf("alice not found after migration: ok=%v err=%v", ok, err)
+	}
+	if aliceRec.CanSend {
+		t.Error("alice.CanSend was clobbered; admin-edited false must be preserved")
+	}
+}
+
 // --- Table-driven comprehensive test ---
 
 func TestPopulateAddressIndex_TableDriven(t *testing.T) {
