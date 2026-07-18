@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+// DomainRecord stores per-domain DKIM signing configuration.
+// Stored under /system/domain/{domain}/dkim in Pebble.
+// The existing /system/domain/{domain} key ("enabled"/"disabled" bytes) is
+// intentionally left untouched to avoid a live-data migration.
+message DomainRecord {
+  // dkim_enabled indicates that outbound mail from this domain should be
+  // signed with the key in dkim_private_key.
+  bool dkim_enabled = 1;
+
+  // dkim_selector is the DKIM DNS selector (e.g. "mail", "2024", ...).
+  string dkim_selector = 2;
+
+  // dkim_private_key holds the PEM-encoded RSA private key used for DKIM
+  // signing. This field is secret: never log it.
+  string dkim_private_key = 3;
+}

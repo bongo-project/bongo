@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	netmail "net/mail"
 	"os"
 
 	"github.com/emersion/go-msgauth/dkim"
@@ -59,6 +60,44 @@ func NewDKIMSignerFromKey(selector, domain string, key crypto.Signer) *DKIMSigne
 		domain:   domain,
 		key:      key,
 	}
+}
+
+// NewDKIMSignerFromPEM creates a DKIM signer from a PEM-encoded private key
+// string. This is used for per-domain keys stored in DomainRecord.dkim_private_key.
+// The PEM must contain an RSA or Ed25519 private key.
+func NewDKIMSignerFromPEM(selector, domain, pemData string) (*DKIMSigner, error) {
+	if selector == "" {
+		selector = "mail"
+	}
+	key, err := parsePrivateKey([]byte(pemData))
+	if err != nil {
+		return nil, fmt.Errorf("parsing DKIM key for domain %s: %w", domain, err)
+	}
+	return &DKIMSigner{
+		selector: selector,
+		domain:   domain,
+		key:      key,
+	}, nil
+}
+
+// FromRawMessageDomain parses the From header from a raw RFC 5322 message
+// and returns the lowercased sending domain. Returns an error if the From
+// header is missing, empty, or cannot be parsed to a valid address with a
+// domain component.
+func FromRawMessageDomain(rawMsg []byte) (string, error) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(rawMsg))
+	if err != nil {
+		return "", fmt.Errorf("parsing message headers: %w", err)
+	}
+	fromHdr := msg.Header.Get("From")
+	if fromHdr == "" {
+		return "", fmt.Errorf("no From header")
+	}
+	domain := FromHeaderDomain(fromHdr)
+	if domain == "" {
+		return "", fmt.Errorf("cannot parse domain from From header: %q", fromHdr)
+	}
+	return domain, nil
 }
 
 // Sign adds a DKIM-Signature header to the message.

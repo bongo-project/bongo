@@ -27,33 +27,34 @@ type LeaderChecker interface {
 
 // Worker processes the outbound message queue.
 type Worker struct {
-	store   *QueueStore
-	relay   *bongosmtp.Relay
-	signer  *mail.DKIMSigner
-	leader  LeaderChecker
-	bouncer *mail.BounceGenerator
-	blobs   *store.BlobStore
-	logger  *slog.Logger
+	store    *QueueStore
+	relay    *bongosmtp.Relay
+	registry *mail.DKIMRegistry
+	leader   LeaderChecker
+	bouncer  *mail.BounceGenerator
+	blobs    *store.BlobStore
+	logger   *slog.Logger
 }
 
-// NewWorker creates a new queue worker.
+// NewWorker creates a new queue worker. registry may be nil, in which case
+// all messages are sent unsigned.
 func NewWorker(
 	queueStore *QueueStore,
 	relay *bongosmtp.Relay,
-	signer *mail.DKIMSigner,
+	registry *mail.DKIMRegistry,
 	leader LeaderChecker,
 	bouncer *mail.BounceGenerator,
 	blobs *store.BlobStore,
 	logger *slog.Logger,
 ) *Worker {
 	return &Worker{
-		store:   queueStore,
-		relay:   relay,
-		signer:  signer,
-		leader:  leader,
-		bouncer: bouncer,
-		blobs:   blobs,
-		logger:  logger,
+		store:    queueStore,
+		relay:    relay,
+		registry: registry,
+		leader:   leader,
+		bouncer:  bouncer,
+		blobs:    blobs,
+		logger:   logger,
 	}
 }
 
@@ -135,11 +136,15 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		return
 	}
 
-	// DKIM sign.
-	signed, err := w.signer.Sign(rawMsg)
+	// DKIM sign — registry selects signer by From domain; unkeyed domains are
+	// sent unsigned (skip is logged inside Sign). A nil registry also passes
+	// through unsigned.
+	signed, err := w.registry.Sign(rawMsg, w.logger)
 	if err != nil {
-		w.logger.Error("queue: DKIM signing failed", "error", err)
-		signed = rawMsg // fall back to unsigned
+		// Sign only returns a non-nil error on unexpected internal failures;
+		// "no key for domain" is a silent skip handled inside Sign.
+		w.logger.Error("queue: DKIM signing failed, sending unsigned", "error", err)
+		signed = rawMsg
 	}
 
 	// Deliver via relay.
