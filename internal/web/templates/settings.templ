@@ -9,10 +9,10 @@ templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 				<div class="sidebar-group">
 					<div class="sidebar-label">{ t(ctx, "settings.navigation") }</div>
 					<ul class="nav-list">
-						<li class="nav-item"><a href="/mail/INBOX" hx-get="/mail/INBOX" hx-target="#main-content" hx-push-url="true"><span class="nav-icon" aria-hidden="true">&#9993;</span> { t(ctx, "nav.backToMail") }</a></li>
-						<li class="nav-item"><a href="/settings/rules" hx-get="/settings/rules" hx-target="#main-content" hx-push-url="true"><span class="nav-icon" aria-hidden="true">&#128295;</span> { t(ctx, "settings.filterRules") }</a></li>
-						<li class="nav-item"><a href="/settings/tags" hx-get="/settings/tags" hx-target="#main-content" hx-push-url="true"><span class="nav-icon" aria-hidden="true">&#127991;</span> { t(ctx, "nav.tags") }</a></li>
-						<li class="nav-item"><a href="/settings/security" hx-get="/settings/security" hx-target="#main-content" hx-push-url="true"><span class="nav-icon" aria-hidden="true">&#128274;</span> { t(ctx, "settings.security") }</a></li>
+						<li class="nav-item"><a href="/mail/INBOX"><span class="nav-icon" aria-hidden="true">&#9993;</span> { t(ctx, "nav.backToMail") }</a></li>
+						<li class="nav-item"><a href="/settings/rules"><span class="nav-icon" aria-hidden="true">&#128295;</span> { t(ctx, "settings.filterRules") }</a></li>
+						<li class="nav-item"><a href="/settings/tags"><span class="nav-icon" aria-hidden="true">&#127991;</span> { t(ctx, "nav.tags") }</a></li>
+						<li class="nav-item"><a href="/settings/security"><span class="nav-icon" aria-hidden="true">&#128274;</span> { t(ctx, "settings.security") }</a></li>
 					</ul>
 				</div>
 			</nav>
