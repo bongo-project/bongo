@@ -209,3 +209,13 @@ Worker: golang-pro (sonnet). Advisor PROCEED (flagged the map-before-skip trap).
 Tests: admin_address_test.go (add OK, no-@, unknown-user 404, remove non-primary, primary-delete guard, cross-owner conflict), address_migrate_test.go (create-only: edited record unchanged on re-run, missing primary still created). FULL go test -race ./... = rc=0; integration green earlier.
 PATTERN [migration] Create-only seeding = Get-before-Put, but populate any lookup maps (email→id) BEFORE the skip so dependent phases (alias resolution) still work on every re-run.
 MINOR remaining (non-blocking): resolver delivery for added addresses is proven via AddressStore.Get (= resolver tier 1) + existing recipient_resolver_test.go, not a fresh end-to-end assert — effectively covered.
+
+## 2026-07-18 — Task 5.1 DONE (FR-7 send-as, US-SEND-1)
+
+Worker: golang-pro (sonnet). Advisor PROCEED (flagged critical back-compat RISK 1: default single-address path must bypass the Get gate — worker handled it). Code review MINOR (dead test code, I removed it).
+- compose.go: ComposeHandler gains addresses *store.AddressStore (SetAddressStore, wired agent.go). buildFromPickerOptions(userID, primaryEmail): ListByUser→Get→keep owned && CanSend && Verified; rendered as a server-side <select name="from"> (CSP-safe, no Alpine) only when >1 option. Threaded into ComposePage/ComposePageFull (New/Reply/Forward) — templ signature change, make generate.
+- SEND-AS GATE (compose.go Send ~286): fromAddr defaults to session email; enforcement runs ONLY when submitted `from` differs (case-insensitive) from session email → AddressStore.Get: nil store→403, not-found→403, rec.UserId!=userID→403, !(CanSend&&Verified)→403; else fromAddr=chosen. Runs BEFORE any blob/Sent/queue write. Default/empty `from` bypasses (back-compat for edge/agent/pre-migration).
+- ALIGNMENT: fromAddr drives From header (buildRichMessage/buildRFC5322 → DKIM d= via 3.2 registry keyed on From-header domain), envelope SenderEmail (MAIL FROM/return-path, line 506), Message-ID host (senderDomain(fromAddr)), meta.From, search index.
+- i18n From-label ×4 locales (parity). SignatureHtml intact, no proto churn.
+Tests: compose_sendas_test.go (picker excludes not-verified/other-user; select b@d2→From/SenderEmail/Message-ID=d2; tampered unowned/unverified→403 nothing enqueued). go build OK; -race handlers+i18n green.
+PATTERN [sendas] Send-as identity alignment = set ONE fromAddr and thread it into From header + envelope SenderEmail + Message-ID host; DKIM needs NO extra code (mail.DKIMRegistry signs by From-header domain). ENFORCE server-side only when from != session primary; the default primary path must bypass the address-index gate so it never regresses on un-migrated/edge nodes.

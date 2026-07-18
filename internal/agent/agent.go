@@ -723,6 +723,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			// Unified resolver: same instance as the inbound SMTP path so
 			// local-send and inbound delivery agree on address→user mapping.
 			composeH.SetLocalResolver(sharedResolver)
+			// Address store for From picker and server-side send-as enforcement (task 5.1).
+			if a.AddressStore != nil {
+				composeH.SetAddressStore(a.AddressStore)
+			}
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)

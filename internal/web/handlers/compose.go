@@ -49,6 +49,7 @@ type ComposeHandler struct {
 	rateLimiter *mail.RateLimiter
 	prefs       *store.PreferenceStore
 	resolver    localRecipientResolver // unified address→userID resolver (task 4.3)
+	addresses   *store.AddressStore    // for send-as From picker and enforcement (task 5.1)
 	logger      *slog.Logger
 }
 
@@ -86,18 +87,78 @@ func (h *ComposeHandler) SetLocalResolver(r localRecipientResolver) {
 	h.resolver = r
 }
 
+// SetAddressStore injects the address store for send-as From picker and server-side
+// enforcement (task 5.1). When nil, the picker shows only the session email and
+// send-as enforcement is bypassed (backward-compatible for edge/pre-migration nodes).
+func (h *ComposeHandler) SetAddressStore(as *store.AddressStore) {
+	h.addresses = as
+}
+
+// buildFromPickerOptions returns the list of addresses the authenticated user
+// may send from (those owned by userID with CanSend=true AND Verified=true),
+// plus the currently selected address (defaults to the session primary email).
+//
+// When the address store is nil or ListByUser returns no results, a single-entry
+// slice containing primaryEmail is returned so the template hides the picker and
+// the send path falls back to the session email as before.
+func (h *ComposeHandler) buildFromPickerOptions(userID, primaryEmail string) (options []string, selected string) {
+	primaryLower := strings.ToLower(primaryEmail)
+	selected = primaryLower
+
+	if h.addresses == nil {
+		return []string{primaryEmail}, selected
+	}
+
+	addrs, err := h.addresses.ListByUser(userID)
+	if err != nil || len(addrs) == 0 {
+		return []string{primaryEmail}, selected
+	}
+
+	// Filter: keep only addresses owned by this user with CanSend && Verified.
+	// Always check via Pebble (Get) — SQLite's can_send/verified columns may be stale.
+	for _, addr := range addrs {
+		rec, ok, err := h.addresses.Get(addr)
+		if err != nil || !ok {
+			continue
+		}
+		if rec.UserId != userID || !rec.CanSend || !rec.Verified {
+			continue
+		}
+		options = append(options, strings.ToLower(addr))
+	}
+
+	// Ensure the primary email is always in the list (safety net for pre-migration
+	// nodes where the primary might not yet be indexed in SQLite).
+	hasPrimary := false
+	for _, opt := range options {
+		if strings.EqualFold(opt, primaryEmail) {
+			hasPrimary = true
+			break
+		}
+	}
+	if !hasPrimary {
+		options = append([]string{primaryLower}, options...)
+	}
+
+	if len(options) == 0 {
+		return []string{primaryEmail}, selected
+	}
+	return options, selected
+}
+
 // NewMessage renders the compose form.
 func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	body := h.signatureBody(userID)
+	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0)).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0, fromOpts, fromSel)).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel)).ServeHTTP(w, r)
 }
 
 // Reply renders the reply form with pre-filled fields.
@@ -148,14 +209,16 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	_, replyEmail := middleware.UserFromContext(r.Context())
+	fromOpts, fromSel := h.buildFromPickerOptions(userID, replyEmail)
+
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), fromOpts, fromSel)).ServeHTTP(w, r)
 		return
 	}
 
-	_, replyEmail := middleware.UserFromContext(r.Context())
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel)).ServeHTTP(w, r)
 }
 
 // Forward renders the forward form.
@@ -183,14 +246,16 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 
 	body := h.signatureBody(userID) + h.loadQuotedBody(userID, meta)
 
+	_, fwdEmail := middleware.UserFromContext(r.Context())
+	fromOpts, fromSel := h.buildFromPickerOptions(userID, fwdEmail)
+
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid))).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel)).ServeHTTP(w, r)
 		return
 	}
 
-	_, fwdEmail := middleware.UserFromContext(r.Context())
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel)).ServeHTTP(w, r)
 }
 
 // Send processes the compose form and delivers the message.
@@ -216,6 +281,40 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	if to == "" || subject == "" {
 		http.Error(w, "To and Subject are required", http.StatusBadRequest)
 		return
+	}
+
+	// Resolve the effective From address.
+	//
+	// Back-compat gate (RISK 1): if the submitted "from" is empty or equals
+	// the session email (case-insensitive), use the session email directly and
+	// skip AddressStore enforcement. This preserves behaviour on edge/agent nodes
+	// and pre-migration clusters where the primary may not yet be indexed.
+	//
+	// Enforcement runs ONLY when "from" differs from the session email, which is
+	// the tamper/send-as case. This must happen before any blob/Sent/queue writes.
+	fromAddr := email
+	chosenFrom := strings.ToLower(strings.TrimSpace(r.FormValue("from")))
+	if chosenFrom != "" && !strings.EqualFold(chosenFrom, email) {
+		if h.addresses == nil {
+			http.Error(w, "Send-as is not available on this node", http.StatusForbidden)
+			return
+		}
+		rec, ok, err := h.addresses.Get(chosenFrom)
+		switch {
+		case err != nil:
+			http.Error(w, "Address lookup failed", http.StatusInternalServerError)
+			return
+		case !ok:
+			http.Error(w, "Forbidden: address not found", http.StatusForbidden)
+			return
+		case rec.UserId != userID:
+			http.Error(w, "Forbidden: address not owned by your account", http.StatusForbidden)
+			return
+		case !rec.CanSend || !rec.Verified:
+			http.Error(w, "Forbidden: address is not authorised for sending", http.StatusForbidden)
+			return
+		}
+		fromAddr = chosenFrom
 	}
 
 	// Build threading headers for replies.
@@ -280,19 +379,23 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// Generate a single Message-ID scoped to the sender's domain, used both in
 	// the outgoing message header and the stored copy's metadata so threading
 	// stays consistent. A non-FQDN Message-ID (the old "@bongo") is a negative
-	// deliverability signal.
-	messageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(email))
+	// deliverability signal. The host is derived from fromAddr (the chosen From)
+	// so that Message-ID host aligns with the From domain (task 5.1).
+	messageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(fromAddr))
 
 	// Build RFC 5322 message. body_mode='rich' → multipart/alternative with
 	// sanitized HTML and derived plain text. Any other value (or absent) falls
 	// through to the existing plain-text path (byte-compatible with previous
 	// behaviour).
+	// fromAddr (not email) is used as the From header so DKIM signing via the
+	// registry (which keys on the From-header domain) automatically uses the
+	// correct d= value without any additional signing code (task 5.1).
 	bodyMode := r.FormValue("body_mode")
 	var rawMsg []byte
 	var searchBody string
 	if bodyMode == "rich" {
 		var buildErr error
-		rawMsg, searchBody, buildErr = h.buildRichMessage(email, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles)
+		rawMsg, searchBody, buildErr = h.buildRichMessage(fromAddr, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles)
 		if buildErr != nil {
 			// Reject before any user-visible writes (blob store, Sent copy, enqueue).
 			// This mirrors the attachment-size rejection pattern above (~L229).
@@ -308,7 +411,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, messageID, inReplyTo, references, attachmentFiles)
+		rawMsg = buildRFC5322WithAttachments(fromAddr, to, cc, subject, body, messageID, inReplyTo, references, attachmentFiles)
 		searchBody = body
 	}
 
@@ -321,12 +424,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	guid := fmt.Sprintf("%d-%s", time.Now().UnixNano(), hash[:8])
 
-	// Create MailMeta.
+	// Create MailMeta. meta.From is set to fromAddr (the chosen From address)
+	// so the stored copy reflects the actual sender identity.
 	meta := &bongov1.MailMeta{
 		Guid:       guid,
 		MessageId:  messageID,
 		Subject:    subject,
-		From:       email,
+		From:       fromAddr,
 		To:         splitRecipients(to),
 		Cc:         splitRecipients(cc),
 		ReceivedAt: time.Now().Unix(),
@@ -381,7 +485,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		// Index for search. In rich mode index the derived plain text; in plain
 		// mode index the submitted body directly — both are captured in searchBody.
 		if h.search != nil {
-			if err := h.search.IndexMail(recipientID, guid, subject, email, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
+			if err := h.search.IndexMail(recipientID, guid, subject, fromAddr, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
 				h.logger.Warn("web: failed to index recipient mail", "guid", guid, "error", err)
 			}
 		}
@@ -399,7 +503,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		outMsg := &bongov1.OutboundMessage{
 			Id:          guid,
 			SenderId:    userID,
-			SenderEmail: email,
+			SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From (task 5.1)
 			Recipients:  externalRecipients,
 			BlobHash:    hash,
 			MessageGuid: meta.MessageId,
@@ -431,12 +535,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Index sender's copy. Use searchBody (derived plain text in rich mode).
 	if h.search != nil {
-		if err := h.search.IndexMail(userID, guid, subject, email, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
+		if err := h.search.IndexMail(userID, guid, subject, fromAddr, splitRecipients(to), searchBody, time.Now().Unix(), false, nil); err != nil {
 			h.logger.Warn("web: failed to index sender copy", "guid", guid, "error", err)
 		}
 	}
 
-	h.logger.Info("web: message sent", "from", email, "to_count", len(allRecipients), "subject", subject, "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
+	h.logger.Info("web: message sent", "from", fromAddr, "to_count", len(allRecipients), "subject", subject, "local", len(localRecipients), "external", len(externalRecipients), "user", userID)
 
 	// Build flash message based on delivery type.
 	flash := "Message+sent"

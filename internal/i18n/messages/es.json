@@ -50,6 +50,7 @@
   "mail.addTag": "Agregar etiqueta",
   "mail.createTag": "Crear etiqueta",
   "mail.tagNamePlaceholder": "Nombre de etiqueta",
+  "compose.from": "De",
   "compose.to": "Para",
   "compose.cc": "Cc",
   "compose.bcc": "Cco",

@@ -50,6 +50,7 @@
   "mail.addTag": "Add tag",
   "mail.createTag": "Create tag",
   "mail.tagNamePlaceholder": "Tag name",
+  "compose.from": "From",
   "compose.to": "To",
   "compose.cc": "Cc",
   "compose.bcc": "Bcc",
