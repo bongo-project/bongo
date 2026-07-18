@@ -91,10 +91,11 @@ type Agent struct {
 	Threads     *store.ThreadStore
 	Rules       *rules.RuleStore
 	Contacts    *store.ContactStore
-	Events      *store.EventStore
-	Calendars   *store.CalendarStore
-	BlobSync    *cluster.BlobSyncer
-	logger      *slog.Logger
+	Events       *store.EventStore
+	Calendars    *store.CalendarStore
+	BlobSync     *cluster.BlobSyncer
+	AddressStore *store.AddressStore
+	logger       *slog.Logger
 
 	// Inbound pipeline subsystem.
 	Spool          *pipeline.SpoolStore
@@ -313,6 +314,15 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		if a.Search != nil {
 			a.Events.SetSearch(a.Search)
 		}
+
+		// Construct the global address index store (FR-12).
+		// The Agent itself is the RaftApplier. sys may be nil on edge nodes
+		// (guarded inside AddressStore.Put).
+		var sys *store.SystemIndex
+		if a.Metadata != nil {
+			sys = a.Metadata.System
+		}
+		a.AddressStore = store.NewAddressStore(pebbleStore, a, sys)
 	}
 
 	return a, nil
@@ -1155,6 +1165,11 @@ func (a *Agent) Run(ctx context.Context) error {
 	// nodes and on followers.
 	a.ensureConfiguredDomain()
 
+	// Populate the global address index from existing user profiles and aliases
+	// (FR-12 / US-RECV-2). Leader-only, idempotent, additive — never deletes or
+	// modifies existing users, aliases, profiles, or mailboxes.
+	a.migrateAddressIndex()
+
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
 	// EXPUNGE, and users-index rows with no Pebble profile. Leader-only,
 	// self-gating; conservative two-pass sweep.
@@ -1448,6 +1463,31 @@ func (a *Agent) indexConfiguredDomain(domain string) {
 	); err != nil {
 		a.logger.Warn("startup: failed to index configured domain", "domain", domain, "error", err)
 	}
+}
+
+// migrateAddressIndex populates the global address index (AddressStore) from
+// existing Pebble user profiles and /system/alias/ entries. It mirrors the
+// shape of ensureConfiguredDomain: leader-only, idempotent, additive, and
+// best-effort (failures are logged; they never abort startup).
+//
+// Leadership changes after boot will NOT re-trigger this migration — the same
+// known limitation as ensureConfiguredDomain. A second boot on a new leader
+// will re-run it, which is safe because store.PopulateAddressIndex is idempotent.
+func (a *Agent) migrateAddressIndex() {
+	if a.Raft == nil || !a.IsLeader() || a.AddressStore == nil {
+		return
+	}
+
+	var sys *store.SystemIndex
+	if a.Metadata != nil {
+		sys = a.Metadata.System
+	}
+
+	if err := store.PopulateAddressIndex(a.Store, a.AddressStore, sys, a.logger); err != nil {
+		a.logger.Warn("startup: address index migration failed", "error", err)
+		return
+	}
+	a.logger.Info("startup: address index migration complete")
 }
 
 // NotifyNewMail implements the MailboxNotifier interface for the FSM.
