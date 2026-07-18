@@ -441,6 +441,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Static assets (public).
 	r.Handle("/static/*", http.StripPrefix("/static/", handlers.StaticHandler()))
 
+	// Root icon probes (e.g. iOS apple-touch-icon) — point them at the served
+	// favicon so these common requests get a fast redirect instead of a 404.
+	appleTouchIcon := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/img/bongo-favicon.png", http.StatusMovedPermanently)
+	}
+	r.Get("/apple-touch-icon.png", appleTouchIcon)
+	r.Get("/apple-touch-icon-precomposed.png", appleTouchIcon)
+
 	// Login rate limiter (5 attempts per 15-minute window).
 	loginRL := middleware.NewLoginRateLimiter(middleware.DefaultMaxAttempts, middleware.DefaultWindow)
 

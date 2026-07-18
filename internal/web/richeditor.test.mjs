@@ -36,7 +36,7 @@ globalThis.FileReader = class MockFileReader {
 // globalThis.window = globalThis lets the IIFE detect 'window' and assign
 // window.RichEditor, which lands on globalThis.RichEditor.
 globalThis.window = globalThis;
-const code = readFileSync(join(__dirname, 'richeditor.js'), 'utf8');
+const code = readFileSync(join(__dirname, 'static/js/richeditor.js'), 'utf8');
 // eslint-disable-next-line no-new-func
 new Function(code)();
 
