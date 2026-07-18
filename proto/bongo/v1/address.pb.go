@@ -105,6 +105,75 @@ func (x *AddressRecord) GetVerified() bool {
 	return false
 }
 
+// AddressVerification stores a pending email verification challenge.
+// Key: /user/{user_id}/addrverify/{lowercased-address}
+// The plaintext code is NEVER stored — only a SHA-256 hash.
+// Single-use: consumed on first successful verification.
+type AddressVerification struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// code_hash is the SHA-256 hash of the one-time verification code.
+	// The plaintext code is sent by email and never stored.
+	CodeHash []byte `protobuf:"bytes,1,opt,name=code_hash,json=codeHash,proto3" json:"code_hash,omitempty"`
+	// expires_at is a Unix timestamp after which this challenge is invalid.
+	ExpiresAt int64 `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	// attempts is the number of failed verification attempts so far.
+	// When it reaches maxVerifyAttempts the challenge is invalidated.
+	Attempts      int32 `protobuf:"varint,3,opt,name=attempts,proto3" json:"attempts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddressVerification) Reset() {
+	*x = AddressVerification{}
+	mi := &file_proto_bongo_v1_address_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddressVerification) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddressVerification) ProtoMessage() {}
+
+func (x *AddressVerification) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bongo_v1_address_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddressVerification.ProtoReflect.Descriptor instead.
+func (*AddressVerification) Descriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_address_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *AddressVerification) GetCodeHash() []byte {
+	if x != nil {
+		return x.CodeHash
+	}
+	return nil
+}
+
+func (x *AddressVerification) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
+func (x *AddressVerification) GetAttempts() int32 {
+	if x != nil {
+		return x.Attempts
+	}
+	return 0
+}
+
 var File_proto_bongo_v1_address_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_address_proto_rawDesc = "" +
@@ -115,7 +184,12 @@ const file_proto_bongo_v1_address_proto_rawDesc = "" +
 	"\x06domain\x18\x02 \x01(\tR\x06domain\x12\x12\n" +
 	"\x04kind\x18\x03 \x01(\tR\x04kind\x12\x19\n" +
 	"\bcan_send\x18\x04 \x01(\bR\acanSend\x12\x1a\n" +
-	"\bverified\x18\x05 \x01(\bR\bverifiedB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\bverified\x18\x05 \x01(\bR\bverified\"m\n" +
+	"\x13AddressVerification\x12\x1b\n" +
+	"\tcode_hash\x18\x01 \x01(\fR\bcodeHash\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\x03R\texpiresAt\x12\x1a\n" +
+	"\battempts\x18\x03 \x01(\x05R\battemptsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_address_proto_rawDescOnce sync.Once
@@ -129,9 +203,10 @@ func file_proto_bongo_v1_address_proto_rawDescGZIP() []byte {
 	return file_proto_bongo_v1_address_proto_rawDescData
 }
 
-var file_proto_bongo_v1_address_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_proto_bongo_v1_address_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_bongo_v1_address_proto_goTypes = []any{
-	(*AddressRecord)(nil), // 0: bongo.v1.AddressRecord
+	(*AddressRecord)(nil),       // 0: bongo.v1.AddressRecord
+	(*AddressVerification)(nil), // 1: bongo.v1.AddressVerification
 }
 var file_proto_bongo_v1_address_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -152,7 +227,7 @@ func file_proto_bongo_v1_address_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_address_proto_rawDesc), len(file_proto_bongo_v1_address_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

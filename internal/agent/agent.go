@@ -629,6 +629,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}/delete", adminH.DeleteUser)
 		r.Post("/admin/users/{userID}/addresses", adminH.AddAddress)
 		r.Post("/admin/users/{userID}/addresses/delete", adminH.RemoveAddress)
+		r.Post("/admin/users/{userID}/addresses/grant-send", adminH.GrantSend)
 		r.Get("/admin/domains", adminH.ListDomains)
 		r.Post("/admin/domains", adminH.CreateDomain)
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)
@@ -814,6 +815,25 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/api/tags", tagsH.CreateTag)
 			r.Put("/api/tags/{name}", tagsH.UpdateTag)
 			r.Delete("/api/tags/{name}", tagsH.DeleteTag)
+		}
+
+		// Self-serve send-as address verification (task 5.2 / FR-7b, PATH B).
+		// Requires the address store and verify store; degrades gracefully on
+		// edge/agent nodes where neither may be available.
+		if a.AddressStore != nil && a.Store != nil {
+			addrVerifyH := handlers.NewAddressVerifyHandler(a.logger)
+			addrVerifyH.SetAddressStore(a.AddressStore)
+			addrVerifyH.SetVerifyStore(store.NewAddressVerifyStore(a.Store, a))
+			if a.Blobs != nil {
+				addrVerifyH.SetBlobStore(a.Blobs)
+			}
+			if a.QueueStore != nil {
+				addrVerifyH.SetQueueStore(a.QueueStore)
+			}
+			r.Get("/settings/addresses", addrVerifyH.ShowAddresses)
+			r.Post("/settings/addresses", addrVerifyH.AddSendAsAddress)
+			r.Post("/settings/addresses/{address}/verify-request", addrVerifyH.RequestVerification)
+			r.Post("/settings/addresses/{address}/verify-submit", addrVerifyH.SubmitCode)
 		}
 	})
 

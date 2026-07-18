@@ -1,0 +1,103 @@
+package templates
+
+// UserAddressInfo holds display data for one address on the self-serve page.
+type UserAddressInfo struct {
+	Address             string
+	CanSend             bool
+	Verified            bool
+	PendingVerification bool
+}
+
+templ AddressVerifyPage(addresses []UserAddressInfo, email, flash, errMsg string) {
+	@LayoutWithContent(t(ctx, "settings.sendAsAddresses"), email) {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="nav-list">
+					<li><a href="/mail/INBOX">{ t(ctx, "nav.backToMail") }</a></li>
+					<li><a href="/settings">{ t(ctx, "nav.settings") }</a></li>
+					<li><a href="/settings/security">{ t(ctx, "settings.security") }</a></li>
+					<li><a href="/settings/addresses" class="active">{ t(ctx, "settings.sendAsAddresses") }</a></li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="content" id="main-content">
+			<div class="settings-scroll">
+				<div class="settings-container">
+					if flash != "" {
+						@FlashMessage(flash, "success")
+					}
+					if errMsg != "" {
+						@FlashMessage(errMsg, "error")
+					}
+					<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "settings.sendAsAddresses") }</h2>
+					<p class="u-text-muted u-font-088 u-mb-16px">{ t(ctx, "settings.sendAsDesc") }</p>
+					<!-- Address list -->
+					<div class="settings-card u-mb-24px">
+						<div class="settings-card-pad">
+							if len(addresses) == 0 {
+								<p class="u-text-muted u-font-088">{ t(ctx, "settings.noSendAsAddresses") }</p>
+							} else {
+								<table class="admin-table">
+									<thead>
+										<tr>
+											<th scope="col">{ t(ctx, "admin.addressLabel") }</th>
+											<th scope="col">{ t(ctx, "admin.sendStatus") }</th>
+											<th scope="col">{ t(ctx, "common.actions") }</th>
+										</tr>
+									</thead>
+									<tbody>
+										for _, ai := range addresses {
+											<tr>
+												<td><code class="u-font-088">{ ai.Address }</code></td>
+												<td>
+													if ai.CanSend && ai.Verified {
+														<span class="badge badge-active">{ t(ctx, "admin.sendCapable") }</span>
+													} else if ai.PendingVerification {
+														<span class="badge badge-user">{ t(ctx, "settings.verificationPending") }</span>
+													} else {
+														<span class="badge">{ t(ctx, "admin.notVerified") }</span>
+													}
+												</td>
+												<td>
+													if !(ai.CanSend && ai.Verified) {
+														if ai.PendingVerification {
+															<!-- Enter code form -->
+															<details class="u-inline">
+																<summary class="btn-flush">{ t(ctx, "settings.enterCode") }</summary>
+																<form method="post" action={ templ.SafeURL("/settings/addresses/" + ai.Address + "/verify-submit") } class="u-mt-8px">
+																	<div class="u-flex-gap-4">
+																		<input type="text" name="code" placeholder={ t(ctx, "settings.codeInputPlaceholder") } required class="form-input u-m0"/>
+																		<button type="submit" class="btn-primary">{ t(ctx, "settings.verifyCode") }</button>
+																	</div>
+																</form>
+															</details>
+														} else {
+															<form method="post" action={ templ.SafeURL("/settings/addresses/" + ai.Address + "/verify-request") }>
+																<button type="submit" class="btn-flush">{ t(ctx, "settings.requestVerification") }</button>
+															</form>
+														}
+													}
+												</td>
+											</tr>
+										}
+									</tbody>
+								</table>
+							}
+						</div>
+					</div>
+					<!-- Add new address -->
+					<div class="settings-card">
+						<div class="settings-card-pad">
+							<h3 class="settings-section-title">{ t(ctx, "settings.addSendAsAddress") }</h3>
+							<p class="u-text-muted u-font-088 u-mb-12px">{ t(ctx, "settings.addSendAsDesc") }</p>
+							<form method="post" action="/settings/addresses" class="u-flex-gap-4">
+								<input type="email" name="address" placeholder="you@otherdomain.com" required class="form-input u-m0 u-flex-1"/>
+								<button type="submit" class="btn-primary">{ t(ctx, "action.add") }</button>
+							</form>
+						</div>
+					</div>
+				</div>
+			</div>
+		</main>
+	}
+}
