@@ -369,6 +369,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.RateLimiter = mail.NewRateLimiter(a.Config.SMTP.Limits.FloodThreshold)
 	}
 
+	// Construct the DKIM registry early (before admin routes) so the admin
+	// handler can register per-domain signers via GenerateDKIMKey immediately.
+	// The primary-domain signer and stored per-domain keys are seeded later
+	// (inside the Raft block) once Pebble is confirmed available; the registry
+	// itself is safe to create unconditionally and on all roles.
+	if a.DKIMRegistry == nil {
+		a.DKIMRegistry = mail.NewDKIMRegistry()
+	}
+
 	// Internal control-plane routes.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireInternalAuth(sessionSecret))
@@ -557,6 +566,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Mailboxes != nil {
 			adminH.SetMailboxStore(a.Mailboxes)
 		}
+		// Wire the DKIM registry so GenerateDKIMKey can register signers
+		// immediately after key generation (registry was created above).
+		adminH.SetDKIMRegistry(a.DKIMRegistry)
 
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
@@ -571,6 +583,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/domains", adminH.CreateDomain)
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)
 		r.Post("/admin/domains/{domain}/delete", adminH.DeleteDomain)
+		r.Post("/admin/domains/{domain}/dkim/generate", adminH.GenerateDKIMKey)
 		r.Get("/admin/aliases", adminH.ListAliases)
 		r.Post("/admin/aliases", adminH.CreateAlias)
 		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)
@@ -995,16 +1008,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		a.DKIMSigner = signer
 
-		// Build the per-domain DKIM registry. Seed the primary domain with the
-		// config-built signer (may be nil if DKIM is not configured) so that
-		// single-domain behaviour is byte-identical to the previous implementation.
-		// Per-domain keys from DomainRecord are added to the registry separately
-		// (task 3.3 admin UI will populate them; the store layer is wired here).
-		reg := mail.NewDKIMRegistry()
+		// Seed the per-domain DKIM registry with the primary (config-built)
+		// signer so that single-domain behaviour is byte-identical to the
+		// previous implementation. The registry itself was constructed earlier
+		// (before admin routes) so the admin handler already holds a reference.
 		if signer != nil {
-			reg.Seed(dkimDomain, signer)
+			a.DKIMRegistry.Seed(dkimDomain, signer)
 		}
-		a.DKIMRegistry = reg
+		// Load stored per-domain DKIM keys from Pebble into the registry so
+		// that signing survives a restart (keys generated via the admin UI).
+		handlers.LoadStoredDKIMKeys(a.Store, a.DKIMRegistry, a.logger)
 
 		// Outbound relay.
 		a.Relay = bongosmtp.NewRelay(&a.Config.SMTP.Relay, a.logger)

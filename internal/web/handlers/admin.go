@@ -3,8 +3,12 @@ package handlers
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"net"
@@ -21,6 +25,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-go/bongo-go/internal/cluster"
+	internalmail "github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/queue"
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/version"
@@ -31,17 +36,18 @@ import (
 
 // AdminHandler handles admin panel endpoints.
 type AdminHandler struct {
-	store      *store.PebbleStore
-	blobs      *store.BlobStore
-	metadata   *store.MetadataManager
-	applier    store.RaftApplier
-	queueStore *queue.QueueStore
-	gossip     GossipLister
-	raftState  RaftStateGetter
-	logger     *slog.Logger
-	logSink    *LogSink
-	mailboxes  *store.MailboxStore
-	startTime  time.Time
+	store        *store.PebbleStore
+	blobs        *store.BlobStore
+	metadata     *store.MetadataManager
+	applier      store.RaftApplier
+	queueStore   *queue.QueueStore
+	gossip       GossipLister
+	raftState    RaftStateGetter
+	logger       *slog.Logger
+	logSink      *LogSink
+	mailboxes    *store.MailboxStore
+	dkimRegistry *internalmail.DKIMRegistry
+	startTime    time.Time
 }
 
 // GossipLister returns gossip member info.
@@ -96,6 +102,11 @@ func (h *AdminHandler) SetLogSink(ls *LogSink) {
 // SetMailboxStore sets the mailbox store for creating default mailboxes.
 func (h *AdminHandler) SetMailboxStore(ms *store.MailboxStore) {
 	h.mailboxes = ms
+}
+
+// SetDKIMRegistry sets the per-domain DKIM signer registry used by GenerateDKIMKey.
+func (h *AdminHandler) SetDKIMRegistry(reg *internalmail.DKIMRegistry) {
+	h.dkimRegistry = reg
 }
 
 // --- Dashboard ---
@@ -559,6 +570,115 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("admin: domain deleted", "domain", domain)
 
 	http.Redirect(w, r, "/admin/domains?flash=Domain+deleted", http.StatusSeeOther)
+}
+
+// GenerateDKIMKey generates (or rotates) a per-domain RSA-2048 DKIM signing key.
+// It stores the DomainRecord proto at /system/domain/{domain}/dkim via Raft and
+// registers the new signer in the DKIM registry so that outbound mail from the
+// domain is signed immediately. The private key is NEVER logged.
+func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	// Generate RSA-2048 key pair.
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048) // #nosec G403 -- RSA-2048 is DKIM standard
+	if err != nil {
+		h.logger.Error("dkim: failed to generate RSA key", "domain", domain, "error", err)
+		http.Error(w, "failed to generate key", http.StatusInternalServerError)
+		return
+	}
+
+	// PEM-encode the private key as PKCS8.
+	pkcs8Bytes, err := x509.MarshalPKCS8PrivateKey(privKey)
+	if err != nil {
+		h.logger.Error("dkim: failed to marshal private key", "domain", domain, "error", err)
+		http.Error(w, "failed to marshal key", http.StatusInternalServerError)
+		return
+	}
+	pemBlock := &pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8Bytes}
+	pemKey := string(pem.EncodeToMemory(pemBlock))
+
+	const selector = "mail"
+
+	// Build and store the DomainRecord proto under /system/domain/{domain}/dkim.
+	rec := &bongov1.DomainRecord{
+		DkimEnabled:    true,
+		DkimSelector:   selector,
+		DkimPrivateKey: pemKey,
+	}
+	data, err := proto.Marshal(rec)
+	if err != nil {
+		h.logger.Error("dkim: failed to marshal DomainRecord", "domain", domain, "error", err)
+		http.Error(w, "failed to marshal record", http.StatusInternalServerError)
+		return
+	}
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte(fmt.Sprintf("/system/domain/%s/dkim", domain)),
+		Value: data,
+	}
+	if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		h.logger.Error("dkim: failed to store DomainRecord", "domain", domain, "error", err)
+		http.Error(w, "failed to store key", http.StatusInternalServerError)
+		return
+	}
+
+	// Register signer in registry so outbound mail is signed immediately.
+	if h.dkimRegistry != nil {
+		signer, err := internalmail.NewDKIMSignerFromPEM(selector, domain, pemKey)
+		if err != nil {
+			// Non-fatal: the key is stored; it will be loaded on next restart.
+			h.logger.Warn("dkim: failed to create signer after generation", "domain", domain, "error", err)
+		} else {
+			h.dkimRegistry.Add(domain, signer)
+		}
+	}
+
+	// Log only safe metadata — never the private key.
+	h.logger.Info("dkim: key generated", "domain", domain, "selector", selector)
+
+	http.Redirect(w, r, "/admin/domains?flash=DKIM+key+generated", http.StatusSeeOther)
+}
+
+// dkimTXTRecord derives the DKIM DNS TXT record value from a PEM-encoded private
+// key. Returns an empty string on error (treated as "not configured").
+// The public key is encoded as base64(DER SubjectPublicKeyInfo) — the standard
+// DKIM p= form. Only the public key is included; the private key is never exposed.
+func dkimTXTRecord(domain, selector, pemKey string) string {
+	if pemKey == "" || selector == "" {
+		return ""
+	}
+	block, _ := pem.Decode([]byte(pemKey))
+	if block == nil {
+		return ""
+	}
+	var pub interface{}
+	// Try PKCS8 first (produced by our generator). ParsePKCS8PrivateKey returns
+	// the concrete *rsa.PrivateKey; assert via the crypto.Signer interface whose
+	// Public() method returns crypto.PublicKey (= any in Go 1.20+).
+	if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		if rsaKey, ok := k.(*rsa.PrivateKey); ok {
+			pub = rsaKey.Public()
+		}
+	}
+	// Try PKCS1 (legacy RSA format).
+	if pub == nil {
+		if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+			pub = k.Public()
+		}
+	}
+	if pub == nil {
+		return ""
+	}
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return ""
+	}
+	b64 := base64.StdEncoding.EncodeToString(der)
+	return fmt.Sprintf("%s._domainkey.%s TXT \"v=DKIM1; k=rsa; p=%s\"", selector, domain, b64)
 }
 
 // --- Alias Management ---
@@ -1119,18 +1239,22 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 					if mxs, err := net.LookupMX(name); err == nil && len(mxs) > 0 {
 						hasMX = true
 					}
-					domains = append(domains, templates.DomainInfo{
+					di := templates.DomainInfo{
 						Name:    name,
 						Enabled: enabled == 1,
 						HasMX:   hasMX,
-					})
+					}
+					h.enrichDomainDKIM(&di)
+					domains = append(domains, di)
 				}
 			}
 			return domains
 		}
 	}
 
-	// Fall back to Pebble scan.
+	// Fall back to Pebble scan: only keys without a '/' after the prefix are
+	// plain domain entries (i.e., /system/domain/{domain}); skip sub-keys like
+	// /system/domain/{domain}/dkim.
 	if h.store != nil {
 		iter, err := h.store.PrefixScan([]byte("/system/domain/"))
 		if err == nil {
@@ -1138,15 +1262,44 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 			for iter.Next() {
 				key := string(iter.Key())
 				name := strings.TrimPrefix(key, "/system/domain/")
+				// Skip sub-keys (e.g. /dkim suffix).
+				if strings.Contains(name, "/") {
+					continue
+				}
 				val, _ := iter.Value()
-				domains = append(domains, templates.DomainInfo{
+				di := templates.DomainInfo{
 					Name:    name,
 					Enabled: string(val) == "enabled",
-				})
+				}
+				h.enrichDomainDKIM(&di)
+				domains = append(domains, di)
 			}
 		}
 	}
 	return domains
+}
+
+// enrichDomainDKIM reads the DKIM record for a domain from Pebble and populates
+// DkimEnabled, DkimSelector, and DkimTXTRecord on the DomainInfo. It is
+// best-effort: if the key is absent or the record cannot be parsed, the fields
+// remain zero-valued ("not configured").
+func (h *AdminHandler) enrichDomainDKIM(di *templates.DomainInfo) {
+	if h.store == nil {
+		return
+	}
+	dkimKey := []byte(fmt.Sprintf("/system/domain/%s/dkim", di.Name))
+	data, err := h.store.Get(dkimKey)
+	if err != nil {
+		return // not configured yet
+	}
+	var rec bongov1.DomainRecord
+	if err := proto.Unmarshal(data, &rec); err != nil {
+		return
+	}
+	di.DkimEnabled = rec.DkimEnabled
+	di.DkimSelector = rec.DkimSelector
+	// Derive the public TXT record — never expose the private key.
+	di.DkimTXTRecord = dkimTXTRecord(di.Name, rec.DkimSelector, rec.DkimPrivateKey)
 }
 
 func (h *AdminHandler) loadAliases() []templates.AliasInfo {
