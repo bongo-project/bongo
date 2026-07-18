@@ -113,3 +113,15 @@ PATTERN [integration]: web-UI integration tests need agent.NewAgent + a.Run (dev
 ## 2026-07-17 — 2.12 close verify test gaps (test 0a74125)
 
 golang-pro, DONE/PASS. Added TestComposeSendPlainMode_EmptyHTMLSignature_PlainFallback (US-002) and TestComposeSendRichMode_SignatureInlineImage_RoundTrips (US-005) to compose_rich_send_test.go. Advisor's honest caveat recorded: plain Send never appends a signature (prefill is client-side), so GAP1 documents plain-fallback structure, not server-side suppression. norman verify now 11/11 PASS.
+
+## 2026-07-18 — norman import: multi-domain hosting
+
+Imported prd-multidomain-hosting.md (research → backlog). Extracted 14 tasks across 4 phases
+mapped to PRD Phases A–D:
+- Phase 3 (A) Foundation & quick wins: 3.1 sender hygiene, 3.2 per-domain DKIM registry, 3.3 admin DKIM key mgmt.
+- Phase 4 (B) Receiving: 4.1 address index, 4.2 migration, 4.3 unify delivery (alias inbound fix), 4.4 catch-all, 4.5 address mgmt UI.
+- Phase 5 (C) Sending identity: 5.1 send-as, 5.2 verification (both paths).
+- Phase 6 (D) Tenancy: 6.1 ownership+grants, 6.2 isolation/authz, 6.3 quotas, 6.4 adversarial isolation tests.
+
+DECISION: recommend executing Phase 3 first (independent, low-risk, unblocks hosting-for-sending). Phases 4→5→6 are sequential; 6 is the security-critical bulk.
+PATTERN: [dependency] - address index (4.1) is the keystone for delivery (4.3), address mgmt (4.5), and send-as (5.1); tenancy ownership (6.1) gates isolation (6.2) + quotas (6.3).
