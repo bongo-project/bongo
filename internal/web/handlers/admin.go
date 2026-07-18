@@ -266,13 +266,22 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Populate the address list from the SQLite derived index (best-effort;
-	// stale on followers but acceptable for admin display).
+	// stale on followers but acceptable for admin display). Enrich with
+	// CanSend/Verified from Pebble for the send-status column.
 	if h.addresses != nil {
 		addrs, err := h.addresses.ListByUser(userID)
 		if err != nil {
 			h.logger.Warn("admin: failed to list addresses for user", "user_id", userID, "error", err)
 		} else {
-			info.Addresses = addrs
+			info.Addresses = make([]templates.AdminAddressInfo, 0, len(addrs))
+			for _, addr := range addrs {
+				ai := templates.AdminAddressInfo{Address: addr}
+				if rec, ok, recErr := h.addresses.Get(addr); recErr == nil && ok {
+					ai.CanSend = rec.CanSend
+					ai.Verified = rec.Verified
+				}
+				info.Addresses = append(info.Addresses, ai)
+			}
 		}
 	}
 
@@ -1185,6 +1194,65 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: address removed", "user_id", userID, "address", address)
 	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Address+removed", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// GrantSend grants send-as capability to an owned address.
+//
+// POST /admin/users/{userID}/addresses/grant-send
+// Form field: address — the address to make send-capable.
+//
+// Sets CanSend=true AND Verified=true on the AddressRecord. This is the admin
+// verification path (PATH A) from task 5.2. The address must already exist in
+// the index and be owned by the target user.
+//
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) GrantSend(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userID")
+
+	if h.addresses == nil {
+		http.Error(w, "address store not available", http.StatusInternalServerError)
+		return
+	}
+
+	address := strings.ToLower(strings.TrimSpace(r.FormValue("address")))
+	if address == "" {
+		http.Error(w, "address is required", http.StatusBadRequest)
+		return
+	}
+
+	// Load the target user (guard: must exist).
+	if _, err := h.loadProfile(userID); err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	// The address must exist and belong to this user.
+	existing, ok, err := h.addresses.Get(address)
+	if err != nil {
+		h.logger.Error("admin: grant-send: failed to look up address", "address", address, "error", err)
+		http.Error(w, "failed to look up address", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "address not found", http.StatusNotFound)
+		return
+	}
+	if existing.UserId != userID {
+		http.Error(w, "address is owned by a different account", http.StatusConflict)
+		return
+	}
+
+	// Update the record: set CanSend=true and Verified=true.
+	existing.CanSend = true
+	existing.Verified = true
+	if err := h.addresses.Put(address, existing); err != nil {
+		h.logger.Error("admin: grant-send: failed to update address", "user_id", userID, "address", address, "error", err)
+		http.Error(w, "failed to grant send capability", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: send capability granted", "user_id", userID, "address", address)
+	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=Send+capability+granted", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // --- Welcome Email ---

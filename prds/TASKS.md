@@ -37,7 +37,7 @@ envelope + Message-ID alignment; both verification paths.
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
 | 5.1 | FR-7 send-as: compose From-picker lists only owned `can_send && verified` addresses; server-side ownership+verified enforcement (tampered From → 403/400); `From`/envelope MAIL FROM/`d=` DKIM/Message-ID host all follow the chosen sending domain | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | server-rendered From `<select>` (CSP-safe); gate rejects unowned/unverified 403, default path bypasses (back-compat); fromAddr drives From/SenderEmail/Message-ID/DKIM d=; review MINOR (dead test code removed) |
-| 5.2 | FR-7b send-as verification: admin/domain-admin grant sets `can_send`+`verified`; self-serve adds address → emailed one-time code → correct code sets `verified`+`can_send`; codes single-use, time-limited, never logged; unverified never in From-picker | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | TODO | US-SEND-2; needs: 4.1, 5.1 |
+| 5.2 | FR-7b send-as verification: admin/domain-admin grant sets `can_send`+`verified`; self-serve adds address → emailed one-time code → correct code sets `verified`+`can_send`; codes single-use, time-limited, never logged; unverified never in From-picker | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | admin GrantSend; self-serve AddressVerifyStore (crypto/rand code, sha256 hash stored not plaintext, never logged, single-use, expiry, max-5-attempts, constant-time); cross-user claim rejected; emailed via queue; review MINOR (fixed msgID panic/collision) |
 
 ## Phase 6: Multi-Domain — Tenancy & Isolation (PRD Phase D)
 

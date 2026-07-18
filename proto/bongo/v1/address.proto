@@ -23,3 +23,20 @@ message AddressRecord {
   // verified indicates the address ownership has been verified.
   bool verified = 5;
 }
+
+// AddressVerification stores a pending email verification challenge.
+// Key: /user/{user_id}/addrverify/{lowercased-address}
+// The plaintext code is NEVER stored — only a SHA-256 hash.
+// Single-use: consumed on first successful verification.
+message AddressVerification {
+  // code_hash is the SHA-256 hash of the one-time verification code.
+  // The plaintext code is sent by email and never stored.
+  bytes code_hash = 1;
+
+  // expires_at is a Unix timestamp after which this challenge is invalid.
+  int64 expires_at = 2;
+
+  // attempts is the number of failed verification attempts so far.
+  // When it reaches maxVerifyAttempts the challenge is invalidated.
+  int32 attempts = 3;
+}

@@ -23,6 +23,13 @@ type SystemHealth struct {
 	Build       version.BuildInfo
 }
 
+// AdminAddressInfo holds display data for a single address in the admin user form.
+type AdminAddressInfo struct {
+	Address  string
+	CanSend  bool
+	Verified bool
+}
+
 // AdminUserInfo holds data for the user management list.
 type AdminUserInfo struct {
 	UserID       string
@@ -36,7 +43,7 @@ type AdminUserInfo struct {
 	// Addresses is the list of all addresses for this user (primary + added).
 	// Populated only on the detail/edit page; empty on the list page.
 	// Sourced from the SQLite derived index (best-effort; may be stale on followers).
-	Addresses []string
+	Addresses []AdminAddressInfo
 	// PrimaryEmail is the user's primary email address (from profile).
 	// Used by the remove-address guard to prevent deletion of the primary address.
 	PrimaryEmail string
@@ -387,17 +394,31 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 								<thead>
 									<tr>
 										<th scope="col">{ t(ctx, "admin.addressLabel") }</th>
+										<th scope="col">{ t(ctx, "admin.sendStatus") }</th>
 										<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
 									</tr>
 								</thead>
 								<tbody>
-									for _, addr := range user.Addresses {
+									for _, ai := range user.Addresses {
 										<tr>
-											<td><code class="u-font-088">{ addr }</code></td>
+											<td><code class="u-font-088">{ ai.Address }</code></td>
 											<td>
-												if addr != user.PrimaryEmail {
+												if ai.CanSend && ai.Verified {
+													<span class="badge badge-active">{ t(ctx, "admin.sendCapable") }</span>
+												} else {
+													<span class="badge badge-user">{ t(ctx, "admin.notVerified") }</span>
+												}
+											</td>
+											<td class="u-flex-gap-4">
+												if ai.Address != user.PrimaryEmail && !(ai.CanSend && ai.Verified) {
+													<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/addresses/grant-send", user.UserID)) }>
+														<input type="hidden" name="address" value={ ai.Address }/>
+														<button type="submit" class="btn-flush">{ t(ctx, "admin.grantSend") }</button>
+													</form>
+												}
+												if ai.Address != user.PrimaryEmail {
 													<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/users/%s/addresses/delete", user.UserID)) }>
-														<input type="hidden" name="address" value={ addr }/>
+														<input type="hidden" name="address" value={ ai.Address }/>
 														<button type="submit" class="btn-flush">{ t(ctx, "common.remove") }</button>
 													</form>
 												} else {
