@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"golang.org/x/net/publicsuffix"
 
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -24,20 +26,48 @@ type BounceGenerator struct {
 	deliverer Deliverer
 	blobs     *store.BlobStore
 	logger    *slog.Logger
+	domain    string
 }
 
-// NewBounceGenerator creates a new BounceGenerator.
-func NewBounceGenerator(deliverer Deliverer, blobs *store.BlobStore, logger *slog.Logger) *BounceGenerator {
+// NewBounceGenerator creates a new BounceGenerator. domain is the server's
+// configured FQDN/primary domain (see ResolveServerDomain) used in bounce
+// From/Message-ID/Reporting-MTA headers.
+func NewBounceGenerator(deliverer Deliverer, blobs *store.BlobStore, logger *slog.Logger, domain string) *BounceGenerator {
 	return &BounceGenerator{
 		deliverer: deliverer,
 		blobs:     blobs,
 		logger:    logger,
+		domain:    domain,
 	}
+}
+
+// ResolveServerDomain derives the server's primary mail domain from config values
+// using the same fallback chain as agent.go ensureConfiguredDomain / autoconfig:
+//
+//  1. SMTP DKIM domain (if set)
+//  2. EffectiveTLDPlusOne of SMTP hostname (if hostname is set and parseable)
+//  3. SMTP hostname verbatim (if set)
+//  4. os.Hostname()
+//  5. "localhost" (last resort)
+func ResolveServerDomain(dkimDomain, smtpHostname string) string {
+	if d := strings.ToLower(strings.TrimSpace(dkimDomain)); d != "" {
+		return d
+	}
+	if h := strings.ToLower(strings.TrimSpace(smtpHostname)); h != "" {
+		if reg, err := publicsuffix.EffectiveTLDPlusOne(h); err == nil {
+			return strings.ToLower(reg)
+		}
+		return h
+	}
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return strings.ToLower(h)
+	}
+	return "localhost"
 }
 
 // GenerateAndDeliver creates an RFC 3464 DSN bounce and delivers it to the sender's INBOX.
 func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage, failedRecipients []string, reason string) error {
-	bounceMsg := buildBounce(original, failedRecipients, reason)
+	bounceMsg := buildBounce(original, failedRecipients, reason, bg.domain)
 
 	bg.logger.Info("bounce: generating DSN",
 		"sender", original.SenderEmail,
@@ -46,13 +76,13 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 	)
 
 	return bg.deliverer.Deliver(
-		"MAILER-DAEMON@localhost",
+		"MAILER-DAEMON@"+bg.domain,
 		[]string{original.SenderEmail},
 		bytes.NewReader(bounceMsg),
 	)
 }
 
-func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, reason string) []byte {
+func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain string) []byte {
 	boundary := fmt.Sprintf("bounce-%s", uuid.New().String()[:8])
 	now := time.Now()
 
@@ -65,11 +95,11 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	}
 
 	var buf bytes.Buffer
-	buf.WriteString("From: MAILER-DAEMON <postmaster@localhost>\r\n")
+	fmt.Fprintf(&buf, "From: MAILER-DAEMON <postmaster@%s>\r\n", domain)
 	fmt.Fprintf(&buf, "To: %s\r\n", senderEmail)
 	buf.WriteString("Subject: Undelivered Mail Returned to Sender\r\n")
 	fmt.Fprintf(&buf, "Date: %s\r\n", now.Format(time.RFC1123Z))
-	fmt.Fprintf(&buf, "Message-ID: <bounce-%s@localhost>\r\n", uuid.New().String())
+	fmt.Fprintf(&buf, "Message-ID: <bounce-%s@%s>\r\n", uuid.New().String(), domain)
 	if original.MessageGuid != "" {
 		fmt.Fprintf(&buf, "In-Reply-To: %s\r\n", original.MessageGuid)
 	}
@@ -92,7 +122,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	fmt.Fprintf(&buf, "--%s\r\n", boundary)
 	buf.WriteString("Content-Type: message/delivery-status\r\n")
 	buf.WriteString("\r\n")
-	buf.WriteString("Reporting-MTA: dns; localhost\r\n")
+	fmt.Fprintf(&buf, "Reporting-MTA: dns; %s\r\n", domain)
 	buf.WriteString("\r\n")
 	for _, rcpt := range safeRecipients {
 		fmt.Fprintf(&buf, "Final-Recipient: rfc822; %s\r\n", rcpt)
@@ -108,9 +138,10 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	return buf.Bytes()
 }
 
-// BuildBounceMessage builds a bounce message (exported for testing).
-func BuildBounceMessage(original *bongov1.OutboundMessage, failedRecipients []string, reason string) []byte {
-	return buildBounce(original, failedRecipients, reason)
+// BuildBounceMessage builds a bounce message (exported for testing). domain is
+// the server's configured FQDN/primary domain (see ResolveServerDomain).
+func BuildBounceMessage(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain string) []byte {
+	return buildBounce(original, failedRecipients, reason, domain)
 }
 
 // FormatRecipientList formats failed recipients for display.

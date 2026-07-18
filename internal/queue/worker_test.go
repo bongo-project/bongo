@@ -57,7 +57,7 @@ func newWorkerTestEnv(t *testing.T, isLeader bool) (*Worker, *QueueStore, *store
 	leader := &mockLeader{leader: isLeader}
 
 	deliverer := &mockDeliverer{messages: make(chan deliveredMsg, 100)}
-	bouncer := mail.NewBounceGenerator(deliverer, blobs, slog.Default())
+	bouncer := mail.NewBounceGenerator(deliverer, blobs, slog.Default(), "test.local")
 
 	worker := NewWorker(qs, relay, nil, leader, bouncer, blobs, slog.Default())
 
