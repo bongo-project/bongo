@@ -101,13 +101,14 @@ type Agent struct {
 	PipelineRunner *pipeline.Runner
 
 	// Queue subsystem.
-	QueueStore  *queue.QueueStore
-	QueueWorker *queue.Worker
-	DKIMSigner  *mail.DKIMSigner
-	Relay       *bongosmtp.Relay
-	RateLimiter *mail.RateLimiter
-	SPFChecker  *mail.SPFChecker
-	BounceGen   *mail.BounceGenerator
+	QueueStore   *queue.QueueStore
+	QueueWorker  *queue.Worker
+	DKIMSigner   *mail.DKIMSigner   // primary domain signer (seeded from config)
+	DKIMRegistry *mail.DKIMRegistry // per-domain signer registry passed to the worker
+	Relay        *bongosmtp.Relay
+	RateLimiter  *mail.RateLimiter
+	SPFChecker   *mail.SPFChecker
+	BounceGen    *mail.BounceGenerator
 
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
@@ -994,6 +995,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		a.DKIMSigner = signer
 
+		// Build the per-domain DKIM registry. Seed the primary domain with the
+		// config-built signer (may be nil if DKIM is not configured) so that
+		// single-domain behaviour is byte-identical to the previous implementation.
+		// Per-domain keys from DomainRecord are added to the registry separately
+		// (task 3.3 admin UI will populate them; the store layer is wired here).
+		reg := mail.NewDKIMRegistry()
+		if signer != nil {
+			reg.Seed(dkimDomain, signer)
+		}
+		a.DKIMRegistry = reg
+
 		// Outbound relay.
 		a.Relay = bongosmtp.NewRelay(&a.Config.SMTP.Relay, a.logger)
 
@@ -1012,7 +1024,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// Queue worker (leader-only processing).
-		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMSigner, a, a.BounceGen, a.Blobs, a.logger)
+		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMRegistry, a, a.BounceGen, a.Blobs, a.logger)
 		queueCtx, queueCancel := context.WithCancel(ctx)
 		a.queueWorkerCancel = queueCancel
 		go a.QueueWorker.Run(queueCtx)

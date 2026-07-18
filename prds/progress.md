@@ -135,3 +135,14 @@ Worker: golang-pro (sonnet). Advisor plan review REVISE→folded in; code review
 Files: internal/mail/bounce.go, internal/agent/agent.go, internal/web/handlers/admin.go (+ 3 tests). go build ./... OK; go test -race mail/handlers/queue green.
 PATTERN: [mail] Server primary domain resolution lives in mail.ResolveServerDomain — reuse it for any outbound-hygiene domain need (mirrors agent.go ensureConfiguredDomain chain).
 MINOR (non-blocking): bounce test asserts From + a no-@localhost byte scan but does not directly assert the MAILER-DAEMON envelope arg to Deliver.
+
+## 2026-07-18 — Task 3.2 DONE (FR-1 per-domain DKIM registry)
+
+Worker: golang-pro (sonnet). Advisor plan review caught a FALSE PREMISE (no DomainRecord protobuf existed — /system/domain/{d} stored plain "enabled"/"disabled" bytes) and steered to a NEW proto message under a SEPARATE key, avoiding admin.go churn (that is 3.3) and any live-data migration. Code review MINOR (non-blocking).
+- New proto/bongo/v1/domain.proto (DkimKey-style message: dkim_enabled=1, dkim_selector=2, dkim_private_key=3 PEM); regenerated via buf — ALL *.pb.go show header-only churn (buf version line); signature_html confirmed intact.
+- New internal/mail/dkim_registry.go: DKIMRegistry (RWMutex map lowercased-domain→*DKIMSigner). Sign(rawMsg, logger) picks signer by From-HEADER domain (FromRawMessageDomain); missing/unparseable From or no key → unsigned + structured skip log (domain+reason only, NO key material); nil registry = passthrough. Seed() preserves byte-compat for the primary domain from the config-built signer.
+- queue/worker.go: Worker.signer → registry; processMessage calls registry.Sign. agent.go: builds registry, seeds primary (dkimDomain), passes to NewWorker.
+Tests: internal/mail/dkim_registry_test.go (two keyed domains → d= matches From; unkeyed → no DKIM-Signature + skip logged; primary-only byte-compat). go build ./... OK; go test -race mail/queue green.
+PATTERN: [dkim] Per-domain signing goes through mail.DKIMRegistry keyed by the From-HEADER domain (not envelope sender); registry.Add(domain, signer) is the hook for 3.3 to load DomainRecord keys.
+PATTERN: [proto] Adding a new proto message triggers a 1-line buf-version header rewrite across ALL *.pb.go — expected, harmless; verify signature_html + real content are untouched.
+MINOR (non-blocking): registry.Sign always returns nil error, so the worker's `if err != nil` DKIM branch is now dead code (kept for safety). 3.2 wires the registry + Add() hook but does NOT yet load per-domain keys from the store — that lands with the 3.3 admin key-gen.
