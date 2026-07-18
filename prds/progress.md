@@ -159,3 +159,13 @@ Files: admin.go, admin_dkim_store.go (new), admin.templ/_templ.go, agent.go, i18
 PATTERN: [dkim] The admin handler and queue worker share ONE mail.DKIMRegistry created at agent.go:~377; inject via setters BEFORE route/worker construction so generated keys sign immediately without a restart.
 PATTERN: [security] Derive the DKIM public TXT from the stored private PEM at render time (dkimTXTRecord) and keep the private key OUT of the template DomainInfo struct — never add a private-key field to a view model.
 NOTE: I mislabelled the 3.2 proto message as "DkimKey" in TASKS.md 3.2 row — it is actually bongov1.DomainRecord (domain.proto). 3.3 reuses it (no new proto).
+
+## 2026-07-18 — Task 4.1 DONE (FR-3 global address index foundation)
+
+Worker: golang-pro (sonnet). Advisor PROCEED (steered addresses table into the existing system.db SystemIndex, not a new DB; flagged two-tier non-atomicity). Code review clean.
+- New proto/bongo/v1/address.proto — AddressRecord{user_id=1, domain=2, kind=3, can_send=4, verified=5}; buf regen produced ONLY address.pb.go (no header churn on other .pb.go this run); signature_html + DkimPrivateKey verified intact.
+- New internal/store/address_store.go — AddressStore{pebble, applier, system}: Put (lowercases addr+domain, proto.Clone to avoid mutating caller, Raft OP_PUT first = source of truth, then SQLite upsert; SQLite error RETURNED not swallowed), Get (Pebble read, (nil,false,nil) on ErrNotFound), Delete (Raft then SQLite, idempotent), ListByUser (SQLite index). Key = /system/address/{lowercased-addr}. system handle nil-safe (edge/agent).
+- internal/store/metadata.go — added idempotent `addresses` table + idx_addresses_user to SystemIndex schema (rebuildable from Pebble).
+Tests: address_store_test.go (case-insensitive Put→Get, Delete both tiers, ListByUser, clean not-found), -race, directApplier + real SystemIndex. go build ./... OK; go test -race ./internal/store green.
+PATTERN: [store] Global (non-per-user) derived indexes go in the system.db SystemIndex (users/domains/aliases/addresses); a store that mirrors Pebble→SQLite takes a *SystemIndex handle (nil-safe) alongside pebble+applier. Raft write FIRST (source of truth), SQLite second, return SQLite errors (document Pebble-may-lead-SQLite, self-heals on rebuild).
+NOTE: address index is the keystone — 4.3 (delivery) must read PEBBLE (Get) for cross-node correctness since only the handling node's SQLite is updated; 4.2 migration + rebuild wiring populates SQLite on all nodes.

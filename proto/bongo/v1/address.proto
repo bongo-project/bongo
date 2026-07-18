@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package bongo.v1;
+
+option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+
+// AddressRecord stores metadata about a mail address in the global address index.
+// Key: /system/address/{lowercased-address}
+// Addresses are normalised to lowercase on write and on lookup.
+message AddressRecord {
+  // user_id is the owning user's ID.
+  string user_id = 1;
+
+  // domain is the domain part of the address (e.g. "example.com"), lowercased.
+  string domain = 2;
+
+  // kind classifies the address role: "primary", "alias", or "identity".
+  string kind = 3;
+
+  // can_send indicates the user may send outbound mail from this address.
+  bool can_send = 4;
+
+  // verified indicates the address ownership has been verified.
+  bool verified = 5;
+}
