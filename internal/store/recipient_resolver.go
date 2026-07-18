@@ -7,7 +7,7 @@ import (
 
 // RecipientResolver resolves an email address to a local user ID.
 //
-// Three-tier lookup:
+// Three-tier lookup (explicit tiers run first; catch-all is always last):
 //
 //  1. AddressStore.Get(addr) reads Pebble (source of truth, correct on all nodes).
 //     Covers migrated primary addresses and aliases written by tasks 4.1/4.2.
@@ -19,9 +19,10 @@ import (
 //     non-leader followers and edge nodes. This is documented and acceptable
 //     within task 4.3 scope; Pebble reads (tiers 1 and 2a) are always current.
 //
-//  TODO(4.4): per-domain catch-all lookup — insert between tier 2 and the reject.
-//  Query the catch-all configuration for the recipient's domain here. Return the
-//  catch-all owner's user ID if configured, otherwise fall through to the reject.
+//  3. Per-domain catch-all lookup (task 4.4): reads /system/catchall/{domain}
+//     from Pebble. Returns the owner's user ID when configured. Only domains with
+//     an explicit catch-all entry accept unmatched mail; others are still rejected.
+//     Skipped when pebble is nil (same nil-guard as tier 2a).
 //
 //  Reject: returns a non-nil error. Callers should map this to a 550 (no relay).
 //
@@ -111,11 +112,23 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 		}
 	}
 
-	// TODO(4.4): per-domain catch-all lookup slot.
-	// Before rejecting, query the catch-all configuration for the domain part of
-	// 'email'. If a catch-all owner is configured for that domain, return their
-	// user ID here. This avoids open relay: only domains explicitly configured
-	// as local (with a catch-all owner) should be accepted.
+	// Tier 3: per-domain catch-all (task 4.4).
+	// Reads /system/catchall/{domain} directly from Pebble — correct on all nodes.
+	// Open-relay guard: no key == no acceptance; domains without an explicit
+	// catch-all entry continue to reject below. pebble nil-guard mirrors tier 2a.
+	if r.pebble != nil {
+		parts := strings.SplitN(email, "@", 2)
+		if len(parts) == 2 && parts[1] != "" {
+			domain := parts[1] // already lowercased by normalisation above
+			catchAllData, catchAllErr := r.pebble.Get(CatchAllKey(domain))
+			if catchAllErr == nil && len(catchAllData) > 0 {
+				ownerID := strings.TrimSpace(string(catchAllData))
+				if ownerID != "" {
+					return ownerID, nil
+				}
+			}
+		}
+	}
 
 	return "", fmt.Errorf("resolve recipient: %s: not a local address", email)
 }

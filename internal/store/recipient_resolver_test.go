@@ -291,6 +291,90 @@ func TestRecipientResolver_TableDriven(t *testing.T) {
 	}
 }
 
+// --- Catch-all (tier 3) tests ---
+
+// seedCatchAll writes a catch-all entry for a domain directly to Pebble.
+func seedCatchAll(t *testing.T, ps *PebbleStore, domain, ownerID string) {
+	t.Helper()
+	if err := ps.Set(CatchAllKey(domain), []byte(ownerID)); err != nil {
+		t.Fatalf("seedCatchAll %q → %q: %v", domain, ownerID, err)
+	}
+}
+
+// TestRecipientResolver_CatchAll_Hit verifies that an unmatched address on a domain
+// with a catch-all configured resolves to the catch-all owner (US-RECV-3).
+func TestRecipientResolver_CatchAll_Hit(t *testing.T) {
+	ps, _, _, resolver := newResolverTestEnv(t)
+
+	const ownerID = "catchall-owner"
+	seedCatchAll(t, ps, "catchall.example.com", ownerID)
+
+	userID, err := resolver.ResolveRecipient("random@catchall.example.com")
+	if err != nil {
+		t.Fatalf("expected catch-all resolution, got error: %v", err)
+	}
+	if userID != ownerID {
+		t.Errorf("got %q, want %q", userID, ownerID)
+	}
+}
+
+// TestRecipientResolver_CatchAll_Miss verifies that without a catch-all,
+// unmatched mail is still rejected — no open relay (US-RECV-3).
+func TestRecipientResolver_CatchAll_Miss(t *testing.T) {
+	_, _, _, resolver := newResolverTestEnv(t)
+
+	_, err := resolver.ResolveRecipient("nobody@nodomain.example.com")
+	if err == nil {
+		t.Error("expected rejection for domain without catch-all (open-relay risk), got nil")
+	}
+}
+
+// TestRecipientResolver_ExplicitBeats_CatchAll verifies that an explicit user
+// or alias always wins over the catch-all (US-RECV-3 explicit-wins requirement).
+func TestRecipientResolver_ExplicitBeats_CatchAll(t *testing.T) {
+	ps, as, sys, resolver := newResolverTestEnv(t)
+
+	// Set up a catch-all on the domain.
+	seedCatchAll(t, ps, "example.com", "catchall-owner")
+
+	// Also set up an explicit user for bob@example.com.
+	insertUser(t, sys, "bob-id", "bob@example.com")
+	putAddress(t, as, "bob@example.com", "bob-id", "primary")
+
+	// bob@example.com must resolve to bob, not the catch-all owner.
+	userID, err := resolver.ResolveRecipient("bob@example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userID != "bob-id" {
+		t.Errorf("got %q, want %q (explicit must beat catch-all)", userID, "bob-id")
+	}
+
+	// A non-existent address on same domain falls back to catch-all.
+	userID, err = resolver.ResolveRecipient("nobody@example.com")
+	if err != nil {
+		t.Fatalf("catch-all should accept non-existent address: %v", err)
+	}
+	if userID != "catchall-owner" {
+		t.Errorf("got %q, want %q", userID, "catchall-owner")
+	}
+}
+
+// TestRecipientResolver_CatchAll_CaseNormalisation verifies that a catch-all
+// lookup is case-insensitive (domain part lowercased before lookup).
+func TestRecipientResolver_CatchAll_CaseNormalisation(t *testing.T) {
+	ps, _, _, resolver := newResolverTestEnv(t)
+	seedCatchAll(t, ps, "mixedcase.example.com", "owner1")
+
+	userID, err := resolver.ResolveRecipient("Anything@MIXEDCASE.EXAMPLE.COM")
+	if err != nil {
+		t.Fatalf("catch-all case normalisation: %v", err)
+	}
+	if userID != "owner1" {
+		t.Errorf("got %q, want owner1", userID)
+	}
+}
+
 // TestRecipientResolver_NilAddressStoreGraceful verifies that a nil AddressStore
 // (edge/degraded node) falls through to the legacy tier without panicking.
 func TestRecipientResolver_NilAddressStoreGraceful(t *testing.T) {

@@ -342,7 +342,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	//
 	// Three-tier resolution: (1) AddressStore Pebble (source of truth, all
 	// nodes), (2) legacy /system/alias Pebble key + users-table (post-boot
-	// accounts/aliases), (3) TODO(4.4) catch-all. Miss → reject (550).
+	// accounts/aliases), (3) per-domain catch-all /system/catchall/{domain}
+	// (task 4.4 / US-RECV-3). Miss → reject (550).
 	// See store.RecipientResolver for full documentation.
 	var sharedSys *store.SystemIndex
 	if a.Metadata != nil {
@@ -595,6 +596,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
 
+		// Wire the catch-all store so SetCatchAll/ClearCatchAll can persist
+		// per-domain catch-all configuration via Raft. The resolver reads
+		// catch-all directly from Pebble (CatchAllKey) so no separate field
+		// on the resolver is required — task 4.4 (US-RECV-3) is now complete.
+		if a.Store != nil {
+			adminH.SetCatchAllStore(store.NewCatchAllStore(a.Store, a))
+		}
+
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
 		r.Get("/admin/users/new", adminH.NewUserForm)
@@ -609,6 +618,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)
 		r.Post("/admin/domains/{domain}/delete", adminH.DeleteDomain)
 		r.Post("/admin/domains/{domain}/dkim/generate", adminH.GenerateDKIMKey)
+		r.Post("/admin/domains/{domain}/catchall", adminH.SetCatchAll)
+		r.Post("/admin/domains/{domain}/catchall/delete", adminH.ClearCatchAll)
 		r.Get("/admin/aliases", adminH.ListAliases)
 		r.Post("/admin/aliases", adminH.CreateAlias)
 		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)
