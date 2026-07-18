@@ -125,3 +125,13 @@ mapped to PRD Phases A–D:
 
 DECISION: recommend executing Phase 3 first (independent, low-risk, unblocks hosting-for-sending). Phases 4→5→6 are sequential; 6 is the security-critical bulk.
 PATTERN: [dependency] - address index (4.1) is the keystone for delivery (4.3), address mgmt (4.5), and send-as (5.1); tenancy ownership (6.1) gates isolation (6.2) + quotas (6.3).
+
+## 2026-07-18 — Task 3.1 DONE (FR-11 sender hygiene)
+
+Worker: golang-pro (sonnet). Advisor plan review REVISE→folded in; code review PASS.
+- Added `mail.ResolveServerDomain(dkimDomain, smtpHostname)`: DKIM domain → EffectiveTLDPlusOne(hostname) → hostname → os.Hostname() → "localhost".
+- `BounceGenerator` gains a `domain` field (wired in agent.go:1007); fixed ALL four localhost sites: From postmaster@, Message-ID, MAILER-DAEMON envelope, Reporting-MTA.
+- Welcome email: extracted pure `buildWelcomeEmail(...)`; both the header Message-ID and the stored `MailMeta.MessageId` now use `domainFromEmail(email)` instead of `@bongo`.
+Files: internal/mail/bounce.go, internal/agent/agent.go, internal/web/handlers/admin.go (+ 3 tests). go build ./... OK; go test -race mail/handlers/queue green.
+PATTERN: [mail] Server primary domain resolution lives in mail.ResolveServerDomain — reuse it for any outbound-hygiene domain need (mirrors agent.go ensureConfiguredDomain chain).
+MINOR (non-blocking): bounce test asserts From + a no-@localhost byte scan but does not directly assert the MAILER-DAEMON envelope arg to Deliver.

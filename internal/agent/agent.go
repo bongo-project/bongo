@@ -1003,8 +1003,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// Bounce generator (uses inbound delivery pipeline for bounce messages).
+		// Resolve the server's primary domain using the same chain as
+		// ensureConfiguredDomain / autoconfig: DKIM domain -> registered domain
+		// from SMTP hostname -> SMTP hostname -> os.Hostname() -> "localhost".
 		if smtpPipeline != nil {
-			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger)
+			bounceDomain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
+			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain)
 		}
 
 		// Queue worker (leader-only processing).

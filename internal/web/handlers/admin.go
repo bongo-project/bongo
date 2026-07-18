@@ -828,25 +828,25 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 
 // --- Welcome Email ---
 
-// sendWelcomeEmail delivers a welcome message to the new user's INBOX.
-func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
-	if h.mailboxes == nil || h.blobs == nil {
-		return
-	}
-
+// buildWelcomeEmail constructs a RFC 5322 welcome message and returns both the
+// raw bytes and the Message-ID value (including angle brackets). It is a pure
+// function so that it can be unit-tested without a store harness.
+// The Message-ID uses the domain extracted from email so it is a proper FQDN,
+// not the literal "@bongo".
+func buildWelcomeEmail(userID, email, displayName string, now time.Time) (rawMsg []byte, messageID string) {
 	greeting := displayName
 	if greeting == "" {
 		greeting = email
 	}
+	domain := domainFromEmail(email)
+	messageID = fmt.Sprintf("<welcome-%s@%s>", userID[:8], domain)
 
-	// Build a simple RFC 5322 welcome message.
-	now := time.Now()
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "From: Bongo Mail <postmaster@%s>\r\n", domainFromEmail(email))
+	fmt.Fprintf(&buf, "From: Bongo Mail <postmaster@%s>\r\n", domain)
 	fmt.Fprintf(&buf, "To: %s\r\n", email)
 	buf.WriteString("Subject: Welcome to Bongo Mail!\r\n")
 	fmt.Fprintf(&buf, "Date: %s\r\n", now.Format(time.RFC1123Z))
-	fmt.Fprintf(&buf, "Message-ID: <welcome-%s@bongo>\r\n", userID[:8])
+	fmt.Fprintf(&buf, "Message-ID: %s\r\n", messageID)
 	buf.WriteString("MIME-Version: 1.0\r\n")
 	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
@@ -859,7 +859,17 @@ func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
 	buf.WriteString("  - Check your calendar at /calendar and contacts at /contacts\r\n")
 	buf.WriteString("\r\nHappy mailing!\r\n")
 	buf.WriteString("-- The Bongo Mail Team\r\n")
-	rawMsg := buf.Bytes()
+	return buf.Bytes(), messageID
+}
+
+// sendWelcomeEmail delivers a welcome message to the new user's INBOX.
+func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
+	if h.mailboxes == nil || h.blobs == nil {
+		return
+	}
+
+	now := time.Now()
+	rawMsg, messageID := buildWelcomeEmail(userID, email, displayName, now)
 
 	// Store raw message as blob.
 	hash, err := h.blobs.Put(rawMsg)
@@ -870,10 +880,10 @@ func (h *AdminHandler) sendWelcomeEmail(userID, email, displayName string) {
 
 	guid := fmt.Sprintf("welcome-%d-%s", now.UnixNano(), hash[:8])
 
-	// Create MailMeta.
+	// Create MailMeta. messageID is reused so the header and stored index match.
 	meta := &bongov1.MailMeta{
 		Guid:       guid,
-		MessageId:  fmt.Sprintf("<welcome-%s@bongo>", userID[:8]),
+		MessageId:  messageID,
 		Subject:    "Welcome to Bongo Mail!",
 		From:       fmt.Sprintf("postmaster@%s", domainFromEmail(email)),
 		To:         []string{email},
