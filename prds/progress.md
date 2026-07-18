@@ -146,3 +146,16 @@ Tests: internal/mail/dkim_registry_test.go (two keyed domains → d= matches Fro
 PATTERN: [dkim] Per-domain signing goes through mail.DKIMRegistry keyed by the From-HEADER domain (not envelope sender); registry.Add(domain, signer) is the hook for 3.3 to load DomainRecord keys.
 PATTERN: [proto] Adding a new proto message triggers a 1-line buf-version header rewrite across ALL *.pb.go — expected, harmless; verify signature_html + real content are untouched.
 MINOR (non-blocking): registry.Sign always returns nil error, so the worker's `if err != nil` DKIM branch is now dead code (kept for safety). 3.2 wires the registry + Add() hook but does NOT yet load per-domain keys from the store — that lands with the 3.3 admin key-gen.
+
+## 2026-07-18 — Task 3.3 DONE (FR-2 admin DKIM key management)
+
+Worker: golang-pro (sonnet). Advisor flagged two traps up front — both handled:
+- NIL-REGISTRY TRAP: registry now created early (agent.go:377) BEFORE NewAdminHandler (553), injected via SetDKIMRegistry (571), and the SAME instance is passed to the queue worker (1040) → a key generated in the handler signs outbound mail immediately (shared registry.Add).
+- SECRET LEAK: private key never logged (handler + store log only domain+selector+err) and never rendered — templates.DomainInfo has only DkimSelector + DkimTXTRecord (no private-key field). dkimTXTRecord() parses the stored PEM but emits ONLY the public key (rsaKey.Public → MarshalPKIXPublicKey → base64) as `<selector>._domainkey.<domain> TXT "v=DKIM1; k=rsa; p=..."`.
+- GenerateDKIMKey: RSA-2048 (#nosec G403 justified), PKCS8 PEM, stores DomainRecord@/system/domain/{d}/dkim via Raft ApplyCommand (fails request on error), registry.Add for immediate signing, redirect+flash. Route POST /admin/domains/{domain}/dkim/generate is in the admin group (RequireAuth+RequireAdmin+RequireSameOrigin+CSRF).
+- LoadStoredDKIMKeys (admin_dkim_store.go): PrefixScan /system/domain/, filter /dkim suffix (skips the enabled/disabled byte keys), unmarshal DomainRecord, Add enabled keys → signing survives restart.
+- admin.templ: Generate button + selector + TXT record; make generate re-ran (admin_templ.go); i18n keys added to en/de/es/fr (parity).
+Files: admin.go, admin_dkim_store.go (new), admin.templ/_templ.go, agent.go, i18n x4 (+ admin_dkim_test.go). go build + full `go test -race ./...` green (rc=0); gosec clean on handlers.
+PATTERN: [dkim] The admin handler and queue worker share ONE mail.DKIMRegistry created at agent.go:~377; inject via setters BEFORE route/worker construction so generated keys sign immediately without a restart.
+PATTERN: [security] Derive the DKIM public TXT from the stored private PEM at render time (dkimTXTRecord) and keep the private key OUT of the template DomainInfo struct — never add a private-key field to a view model.
+NOTE: I mislabelled the 3.2 proto message as "DkimKey" in TASKS.md 3.2 row — it is actually bongov1.DomainRecord (domain.proto). 3.3 reuses it (no new proto).

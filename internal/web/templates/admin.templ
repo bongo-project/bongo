@@ -37,9 +37,12 @@ type AdminUserInfo struct {
 
 // DomainInfo holds data for the domain management list.
 type DomainInfo struct {
-	Name    string
-	Enabled bool
-	HasMX   bool
+	Name          string
+	Enabled       bool
+	HasMX         bool
+	DkimEnabled   bool
+	DkimSelector  string
+	DkimTXTRecord string // full DNS TXT record to publish, derived from public key only
 }
 
 // AliasInfo holds data for the alias management list.
@@ -397,7 +400,8 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							<th scope="col">{ t(ctx, "admin.domain") }</th>
 							<th scope="col">{ t(ctx, "admin.mxRecord") }</th>
 							<th scope="col">{ t(ctx, "common.status") }</th>
-							<th scope="col" class="u-width-160px">{ t(ctx, "common.actions") }</th>
+							<th scope="col">{ t(ctx, "admin.dkimKey") }</th>
+							<th scope="col" class="u-width-200px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -419,6 +423,17 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 									}
 								</td>
 								<td>
+									if d.DkimEnabled && d.DkimTXTRecord != "" {
+										<span class="dns-check">&#10003; { d.DkimSelector }</span>
+										<details class="dkim-details">
+											<summary>{ t(ctx, "admin.dkimDNSRecord") }</summary>
+											<pre class="dkim-txt-record">{ d.DkimTXTRecord }</pre>
+										</details>
+									} else {
+										<span class="u-text-muted">{ t(ctx, "admin.dkimKeyNone") }</span>
+									}
+								</td>
+								<td>
 									<div class="row-actions">
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
 											<button type="submit" class="btn-outline">
@@ -426,6 +441,15 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 													{ t(ctx, "common.disable") }
 												} else {
 													{ t(ctx, "common.enable") }
+												}
+											</button>
+										</form>
+										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/dkim/generate", d.Name)) }>
+											<button type="submit" class="btn-outline">
+												if d.DkimEnabled {
+													{ t(ctx, "admin.rotateDKIMKey") }
+												} else {
+													{ t(ctx, "admin.generateDKIMKey") }
 												}
 											</button>
 										</form>
@@ -437,7 +461,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							</tr>
 						}
 						if len(domains) == 0 {
-							<tr><td colspan="4" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
+							<tr><td colspan="5" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
 						}
 					</tbody>
 				</table>
