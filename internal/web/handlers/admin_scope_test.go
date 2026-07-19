@@ -19,13 +19,13 @@ import (
 
 // adminScopeTestEnv holds all the infrastructure needed for tenant-isolation tests.
 type adminScopeTestEnv struct {
-	h          *AdminHandler
-	ps         *store.PebbleStore
-	md         *store.MetadataManager
-	applier    *directApplierTags
-	das        *store.DomainAdminStore
-	as         *store.AddressStore
-	catchAll   *store.CatchAllStore
+	h        *AdminHandler
+	ps       *store.PebbleStore
+	md       *store.MetadataManager
+	applier  *directApplierTags
+	das      *store.DomainAdminStore
+	as       *store.AddressStore
+	catchAll *store.CatchAllStore
 	// Named IDs seeded during setup.
 	globalAdminID  string
 	domainAdmin1ID string // admin of d1, NOT d2
@@ -67,12 +67,12 @@ func newAdminScopeTestEnv(t *testing.T) *adminScopeTestEnv {
 
 	// Build a partial env so seedDomainForScope can use it.
 	env := &adminScopeTestEnv{
-		h:       h,
-		ps:      ps,
-		md:      md,
-		applier: applier,
-		das:     das,
-		as:      as,
+		h:        h,
+		ps:       ps,
+		md:       md,
+		applier:  applier,
+		das:      das,
+		as:       as,
 		catchAll: cs,
 	}
 
@@ -1060,13 +1060,13 @@ func TestGlobalAdmin_AllEndpointsAllowed(t *testing.T) {
 		fn     func(http.ResponseWriter, *http.Request)
 	}{
 		{
-			name: "ToggleDomain d1",
-			fn:   env.h.ToggleDomain,
+			name:   "ToggleDomain d1",
+			fn:     env.h.ToggleDomain,
 			params: map[string]string{"domain": testDomain1},
 		},
 		{
-			name: "ToggleDomain d2",
-			fn:   env.h.ToggleDomain,
+			name:   "ToggleDomain d2",
+			fn:     env.h.ToggleDomain,
 			params: map[string]string{"domain": testDomain2},
 		},
 		{
@@ -1570,7 +1570,7 @@ func TestAdversarialSweep_AllEndpoints_DomainAdmin(t *testing.T) {
 				"target_user": {env.d2UserID},
 			}, wantDenied: true},
 		{name: "DeleteAlias/d2", fn: env.h.DeleteAlias, method: http.MethodPost,
-			params: map[string]string{"address": "sweep-alias2@" + testDomain2},
+			params:     map[string]string{"address": "sweep-alias2@" + testDomain2},
 			wantDenied: true},
 
 		// --- USER-SCOPED: d2-user resources -> 403 for d1-admin ---
@@ -1660,6 +1660,52 @@ func TestShowDomain_DomainAdmin_D2Forbidden(t *testing.T) {
 	body := w.Body.String()
 	if strings.Contains(body, testDomain2) {
 		t.Errorf("ShowDomain d2 (domain-admin of d1) response body contains %q — data leak", testDomain2)
+	}
+}
+
+// TestDownloadDNSZone_DomainAdmin_D2Forbidden verifies the zone download honours
+// domain isolation: a d1-admin cannot download d2's zone (403, no data leak).
+func TestDownloadDNSZone_DomainAdmin_D2Forbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains/"+testDomain2+"/dns.zone", nil)
+	r = withChiParam(r, "domain", testDomain2)
+	r = withDomainAdmin1(r, env.domainAdmin1ID)
+	w := httptest.NewRecorder()
+	env.h.DownloadDNSZone(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("DownloadDNSZone d2 (domain-admin of d1) status = %d, want 403", w.Code)
+	}
+	if strings.Contains(w.Body.String(), testDomain2) {
+		t.Errorf("DownloadDNSZone d2 body contains %q — data leak", testDomain2)
+	}
+}
+
+// TestDownloadDNSZone_GlobalAdmin_OK verifies a global admin downloads a valid
+// zone file: attachment headers set, and the body contains the domain's records.
+func TestDownloadDNSZone_GlobalAdmin_OK(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains/"+testDomain1+"/dns.zone", nil)
+	r = withChiParam(r, "domain", testDomain1)
+	r = withGlobalAdmin(r, env.globalAdminID)
+	w := httptest.NewRecorder()
+	env.h.DownloadDNSZone(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("DownloadDNSZone status = %d, want 200", w.Code)
+	}
+	if cd := w.Header().Get("Content-Disposition"); !strings.Contains(cd, testDomain1+".zone") {
+		t.Errorf("Content-Disposition = %q, want attachment filename %s.zone", cd, testDomain1)
+	}
+	body := w.Body.String()
+	// Must contain the SPF record and an MX line for this domain.
+	if !strings.Contains(body, "v=spf1 mx ~all") {
+		t.Errorf("zone body missing SPF record:\n%s", body)
+	}
+	if !strings.Contains(body, testDomain1+".") {
+		t.Errorf("zone body missing FQDN for %s:\n%s", testDomain1, body)
 	}
 }
 

@@ -65,6 +65,15 @@ type DNSCheckRow struct {
 	Found    string // what was actually found (may be "-" if nothing)
 }
 
+// DNSGuideRow is one record in the domain-owner DNS setup guide (task 7.3).
+// It describes a record the operator should publish, in provider-agnostic form.
+type DNSGuideRow struct {
+	Type  string // "A" | "AAAA" | "MX" | "TXT" | "SRV"
+	Host  string // relative host label: "@", "mail", "_dmarc", "mail._domainkey", "_imaps._tcp"
+	TTL   int    // record TTL in seconds
+	Value string // record value (TXT values are unquoted here; the zone renderer quotes them)
+}
+
 // DomainInfo holds data for the domain management list and detail page.
 type DomainInfo struct {
 	Name            string
@@ -81,6 +90,10 @@ type DomainInfo struct {
 	MaxStorageBytes int64        // per-domain aggregate storage limit in bytes
 	UsageBytes      int64        // last-recomputed aggregate usage in bytes
 	DNSRows         []DNSCheckRow // extensible DNS check rows; populated only on detail page
+	// DNS setup guide (task 7.3); populated only on the detail page.
+	DNSGuide     []DNSGuideRow // records the owner should publish
+	DKIMPending  bool          // true when no DKIM key exists yet (guide omits the DKIM record)
+	MailHostname string        // shared server hostname the guide points MX/SRV at
 }
 
 // AliasInfo holds data for the alias management list.
@@ -644,6 +657,44 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 						}
 					</tbody>
 				</table>
+			</div>
+			<!-- DNS Setup Guide (task 7.3): records the owner should publish -->
+			<div class="form-card">
+				<h3>{ t(ctx, "admin.dnsGuideTitle") }</h3>
+				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.dnsGuideHelp") }</small>
+				if d.DKIMPending {
+					<p class="dns-guide-notice u-mb-075">{ t(ctx, "admin.dnsGuideDKIMPending") }</p>
+				}
+				if len(d.DNSGuide) > 0 {
+					<table class="admin-table dns-guide-table">
+						<thead>
+							<tr>
+								<th scope="col">{ t(ctx, "admin.dnsGuideType") }</th>
+								<th scope="col">{ t(ctx, "admin.dnsGuideHost") }</th>
+								<th scope="col">{ t(ctx, "admin.dnsGuideTTL") }</th>
+								<th scope="col">{ t(ctx, "admin.dnsGuideValue") }</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, row := range d.DNSGuide {
+								<tr>
+									<td><strong>{ row.Type }</strong></td>
+									<td><code class="u-font-088">{ row.Host }</code></td>
+									<td class="u-text-muted">{ fmt.Sprintf("%d", row.TTL) }</td>
+									<td class="dns-guide-value">
+										<code class="u-font-088">{ row.Value }</code>
+										<button type="button" class="btn-copy" data-copy-previous aria-label={ t(ctx, "admin.dnsGuideCopy") } title={ t(ctx, "admin.dnsGuideCopy") }>&#128203;</button>
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+					<div class="admin-toolbar u-mt-075">
+						<a href={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/dns.zone", d.Name)) } class="btn-outline" download>
+							{ t(ctx, "admin.dnsGuideDownload") }
+						</a>
+					</div>
+				}
 			</div>
 			<!-- Enable / Disable -->
 			<div class="form-card">

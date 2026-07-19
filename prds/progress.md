@@ -304,3 +304,17 @@ Worker: golang-pro (sonnet). Advisor caught the binary-OK-can't-represent-neutra
 - i18n ×4, CSP-safe rows (Status→CSS class, Found in <details>).
 Tests: admin_test.go TestBuildDNSChecks (MX ✓/points-elsewhere-OVH ✗, SPF us/other/none, DKIM match/mismatch/neutral, DMARC present/absent) + extract-our-p= tests; injected values, no network. go build OK; -race handlers green.
 PATTERN [dns] DNS-config verification = compare ACTUAL vs EXPECTED-for-this-server, not existence. Keep the compare logic a PURE function fed looked-up values (network stays out of tests); run the lookups concurrently with a bounded deadline; model 4 states (ok/fail/neutral/error) not a bool. MX-correct = an MX host equals the server mail hostname (SMTP.Hostname).
+
+## 2026-07-19 — Task 7.3: Domain-owner DNS setup guide + 3 UI bug fixes
+
+PATTERN: [dns-guide] Pure builder `buildDNSGuide(domain, mailHostname, v4, v6, dkimSelector, dkimTXTRecord) ([]DNSGuideRow, pending bool)` in internal/web/handlers/dns_guide.go — no I/O so the same values feed the on-page table, the BIND zone download, and unit tests; can never drift from the 7.2 status checks. `dnsGuideZone(domain, rows)` renders FQDN-expanded BIND lines (TXT quoted, others bare).
+PATTERN: [dns-guide] Shared-host model (owner decision): MX + all SRV targets = server SMTP.Hostname (read dynamically, never hardcoded in repo). A/AAAA come from resolveServerIPs(mailHostname) — server resolves its own hostname, so no server IP in config.
+PATTERN: [dns-guide] Never publish an empty-p= DKIM record (worse than none = "revoked"). buildDNSGuide omits the _domainkey row and returns pending=true when no key exists; UI shows a "generate a key first" notice instead.
+PATTERN: [dns-guide] autodiscover/autoconfig are HTTP-based in bongo (serves /.well-known/autoconfig, /autodiscover/autodiscover.xml, /.well-known/mobileconfig); the DNS guide only needs A records for autoconfig./autodiscover. hosts + the RFC6186 SRV set to point clients at the server.
+PATTERN: [ui] Reused existing `[data-copy-previous]` clipboard handler (bongo.js:1740) for per-row copy buttons — copies previousElementSibling.textContent; CSP-safe (no inline handlers).
+Route: GET /admin/domains/{domain}/dns.zone -> DownloadDNSZone (requireDomainAccess + 404-on-unknown, attachment). Tests: 14 unit (builder/zone/extract) + 2 handler (adversarial 403 + global-admin attachment headers). -race green.
+
+Also fixed 3 reported UI bugs (not tracked tasks):
+- DKIM Create/Rotate redirected to /admin/domains (list) instead of /admin/domains/{domain} — now returns to the detail page with flash.
+- Admin content overflowed right: `.admin-scroll` flex child lacked `min-width:0` (defaulted to min-width:auto, refused to shrink below widest child); added it. Plus `.dkim-txt-record` (<pre>) had no wrap CSS, and DNS <code> values didn't break — added pre-wrap/overflow-wrap; styled missing .dns-neutral/.dns-error.
+- Ctrl/Cmd+C (copy) hijacked as compose shortcut: global keydown handler (bongo.js:1487) never checked modifiers; added early return when ctrlKey/metaKey/altKey held.
