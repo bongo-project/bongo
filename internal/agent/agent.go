@@ -612,6 +612,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetCatchAllStore(store.NewCatchAllStore(a.Store, a))
 		}
 
+		// Wire the domain-admin store so SetDomainOwner, GrantDomainAdmin, and
+		// RevokeDomainAdmin can persist ownership and grant data via Raft.
+		// (task 6.1 / FR-8 domain ownership + tenant model)
+		if a.Store != nil {
+			adminH.SetDomainAdminStore(store.NewDomainAdminStore(a.Store, a))
+		}
+
 		// Wire the address store so AddAddress/RemoveAddress can manage
 		// per-user address records via Raft. (task 4.5 / FR-5)
 		if a.AddressStore != nil {
@@ -637,6 +644,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/domains/{domain}/dkim/generate", adminH.GenerateDKIMKey)
 		r.Post("/admin/domains/{domain}/catchall", adminH.SetCatchAll)
 		r.Post("/admin/domains/{domain}/catchall/delete", adminH.ClearCatchAll)
+		r.Post("/admin/domains/{domain}/owner", adminH.SetDomainOwner)
+		r.Post("/admin/domains/{domain}/admins", adminH.GrantDomainAdmin)
+		r.Post("/admin/domains/{domain}/admins/revoke", adminH.RevokeDomainAdmin)
 		r.Get("/admin/aliases", adminH.ListAliases)
 		r.Post("/admin/aliases", adminH.CreateAlias)
 		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)

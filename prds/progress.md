@@ -228,3 +228,23 @@ Worker: golang-pro (sonnet). Advisor PROCEED (flagged non-atomic success path �
 - address_verify.templ user settings section (add addr / request code / enter code), CSP-safe classes; i18n ×4 locales.
 Tests: address_verify_store_test.go, address_verify_test.go (happy path, wrong/expired/reused code fail, unverified excluded + send rejected, cross-user claim rejected, code absent from captured log buffer), admin_grant_send_test.go. go build OK; -race store+handlers green. SignatureHtml intact.
 PATTERN [verification] One-time email codes: crypto/rand generate → store SHA-256 hash + expiry + attempts (never the plaintext) → email plaintext via outbound queue → crypto/subtle constant-time compare on submit, expiry + max-attempts guard, consume (Put-then-Delete, ordered so a failed Delete safely re-fails, never silently grants). NEVER log the code — log user_id/address/attempts only.
+
+## 2026-07-19 — Phase 6 scoping decisions (user-confirmed)
+
+Before implementing tenancy, confirmed 4 load-bearing decisions with the user:
+1. ISOLATION ENFORCEMENT: context-injected authorized-domain SET (resolved by middleware) + explicit per-handler filter/check + adversarial isolation tests (6.4). Defense-in-depth across ~30 admin endpoints; default-deny.
+2. PACING: INCREMENTAL with checkpoints — 6.1 data model (ownership+grants) → USER REVIEW → 6.2 isolation layer → 6.3 quotas → 6.4 adversarial. Pause between for review (security surface).
+3. USER↔DOMAIN: a user belongs to the domain of their PRIMARY address; the domain-admin for that domain governs them (one unambiguous owner per user).
+4. QUOTAS: per-domain max-users AND per-domain aggregate storage; over-quota inbound → RCPT 5xx (already the FR-10 decision).
+CURRENT AUTH STATE (grounding): is_admin is a single GLOBAL flag (cookie + live re-check); RequireAdmin is all-or-nothing; DomainRecord has NO owner field yet; no domain_admins model; ~30 admin routes (agent.go 621-651 + quarantine 1026-1029) all need scoping in 6.2.
+DEPLOY: user chose to WAIT and bundle the Phase 5 (5.2 verification) + hygiene deploy WITH Phase 6 (no separate v0.6.0 now).
+
+## 2026-07-19 — Task 6.1 DONE (FR-8 domain ownership + grant model — DATA MODEL ONLY, no enforcement)
+
+Worker: golang-pro (sonnet). Advisor caught the clobber hazard: co-locating owner in the /dkim DomainRecord would be wiped by GenerateDKIMKey's fresh-record write → owner stored SEPARATELY. Code review MINOR.
+- proto: DomainRecord gains owner_user_id=4 (regen, other protos + SignatureHtml intact). NOTE: this proto field is currently UNUSED — owner is actually stored as RAW BYTES at /system/domain/{domain}/owner (consistent with catch-all/alias), read via DomainAdminStore.GetOwner. 6.2 must use the store helper, NOT DomainRecord.OwnerUserId (always empty). Decide in 6.2: use the field or remove it.
+- internal/store/domain_admin_store.go — DomainAdminStore (pebble-read + applier-write): SetOwner/GetOwner (/system/domain/{d}/owner); Grant/Revoke/ListForDomain/ListForUser (/system/domain_admin/{d}/{uid} — '_' after 'domain' so it never pollutes the /system/domain/ PrefixScans in listDomains/LoadStoredDKIMKeys). Grant VALIDATES domain+user exist; Revoke does NOT (intentional — lets you clean grants for deleted users). AuthorizedDomains(userID, isGlobalAdmin): global→allManagedDomains; else owned (scan /owner sub-keys == userID) + granted (ListForUser), deduped; regular→empty. DomainFromEmail helper in store pkg.
+- admin.go + admin.templ: global-admin UI to set/change owner + grant/revoke domain-admins on the domain view; agent.go routes (RequireAdmin+CSRF); i18n ×4.
+Tests: domain_admin_store_test.go (owner set/get/change; grant/revoke/list; AuthorizedDomains all 4 roles; grant rejects nonexistent domain/user). go build OK; -race store+i18n green.
+MINORs (non-blocking): (1) Revoke no existence check — intentional/good; (2) owner+grant records dangle if user later deleted — DeleteUser cascade is a 6.2/follow-up concern; (3) vestigial owner_user_id proto field (see note above).
+CHECKPOINT: stop here for user review of the 6.2 isolation-layer plan before enforcing.
