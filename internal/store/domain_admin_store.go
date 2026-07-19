@@ -311,6 +311,52 @@ func (s *DomainAdminStore) AuthorizedDomains(userID string, isGlobalAdmin bool) 
 	return result, nil
 }
 
+// DeleteOwner removes the owner record for a domain via Raft.
+// Deleting a domain with no owner is idempotent (OP_DELETE on a missing key is safe).
+// Used by the DeleteUser cascade to clear dangling owner references.
+func (s *DomainAdminStore) DeleteOwner(domain string) error {
+	cmd := &bongov1.RaftCommand{
+		Op:  bongov1.Op_OP_DELETE,
+		Key: domainOwnerKey(strings.ToLower(domain)),
+	}
+	if err := s.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return fmt.Errorf("domain admin store delete owner %q: raft: %w", domain, err)
+	}
+	return nil
+}
+
+// ListDomainsOwnedBy returns all domain names where the given user is set as
+// the owner (i.e., /system/domain/{domain}/owner == userID). Returns an empty
+// slice (not an error) when no such domains exist.
+func (s *DomainAdminStore) ListDomainsOwnedBy(userID string) ([]string, error) {
+	iter, err := s.pebble.PrefixScan([]byte("/system/domain/"))
+	if err != nil {
+		return nil, fmt.Errorf("domain admin store list owned by %q: scan: %w", userID, err)
+	}
+	defer iter.Close()
+
+	var domains []string
+	for iter.Next() {
+		key := string(iter.Key())
+		name := strings.TrimPrefix(key, "/system/domain/")
+		if !strings.HasSuffix(name, "/owner") {
+			continue
+		}
+		domain := strings.TrimSuffix(name, "/owner")
+		if strings.Contains(domain, "/") {
+			continue // unexpected nested key
+		}
+		val, vErr := iter.Value()
+		if vErr != nil {
+			continue
+		}
+		if strings.TrimSpace(string(val)) == userID {
+			domains = append(domains, domain)
+		}
+	}
+	return domains, nil
+}
+
 // DomainFromEmail extracts the domain part from an email address.
 // Returns "localhost" if no '@' is found or the address is empty.
 // Mirrors the unexported domainFromEmail helper in the handlers package;

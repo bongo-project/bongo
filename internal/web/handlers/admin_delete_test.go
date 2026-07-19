@@ -38,13 +38,16 @@ func newAdminDeleteTestHandler(t *testing.T) (*AdminHandler, *directApplierTags,
 }
 
 // deleteUserRequest performs POST /admin/users/{userID}/delete as actingUserID.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func deleteUserRequest(t *testing.T, h *AdminHandler, targetUserID, actingUserID string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/users/%s/delete", targetUserID), nil)
 	rctx := chi.NewRouteContext()
 	rctx.URLParams.Add("userID", targetUserID)
 	r = r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
-	r = r.WithContext(middleware.WithUserContext(r.Context(), actingUserID, "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), actingUserID, "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()
 	h.DeleteUser(w, r)
 	return w

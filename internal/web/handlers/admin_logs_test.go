@@ -7,14 +7,25 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/bongo-go/bongo-go/internal/web/middleware"
 )
+
+// logStreamHandlerWithGlobalScope wraps h.LogStream in a global-admin scope context
+// so the scope check passes in direct httptest.Server tests.
+func logStreamHandlerWithGlobalScope(h *AdminHandler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := middleware.WithAdminScopeContext(r.Context(), middleware.AdminScope{Global: true})
+		h.LogStream(w, r.WithContext(ctx))
+	})
+}
 
 func TestLogStreamSendsInitialConnectedMessage(t *testing.T) {
 	sink := NewLogSink()
 	h := NewAdminHandler(nil, nil, nil, nil, discardLogger())
 	h.SetLogSink(sink)
 
-	srv := httptest.NewServer(http.HandlerFunc(h.LogStream))
+	srv := httptest.NewServer(logStreamHandlerWithGlobalScope(h))
 	defer srv.Close()
 
 	resp, err := srv.Client().Get(srv.URL + "?level=info")
@@ -41,7 +52,7 @@ func TestLogStreamFiltersLevelsCaseInsensitively(t *testing.T) {
 	h := NewAdminHandler(nil, nil, nil, nil, discardLogger())
 	h.SetLogSink(sink)
 
-	srv := httptest.NewServer(http.HandlerFunc(h.LogStream))
+	srv := httptest.NewServer(logStreamHandlerWithGlobalScope(h))
 	defer srv.Close()
 
 	resp, err := srv.Client().Get(srv.URL + "?level=info&component=web")

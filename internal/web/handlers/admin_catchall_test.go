@@ -53,6 +53,7 @@ func insertTestUser(t *testing.T, mgr *store.MetadataManager, id, email string) 
 }
 
 // postCatchAll posts to /admin/domains/{domain}/catchall with form data.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func postCatchAll(t *testing.T, h *AdminHandler, domain, ownerID string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{"owner_user_id": {ownerID}}
@@ -61,7 +62,9 @@ func postCatchAll(t *testing.T, h *AdminHandler, domain, ownerID string) *httpte
 		strings.NewReader(form.Encode()),
 	)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "domain", domain)
 	w := httptest.NewRecorder()
 	h.SetCatchAll(w, r)
@@ -69,13 +72,16 @@ func postCatchAll(t *testing.T, h *AdminHandler, domain, ownerID string) *httpte
 }
 
 // deleteCatchAll posts to /admin/domains/{domain}/catchall/delete.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func deleteCatchAll(t *testing.T, h *AdminHandler, domain string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodPost,
 		fmt.Sprintf("/admin/domains/%s/catchall/delete", domain),
 		nil,
 	)
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "domain", domain)
 	w := httptest.NewRecorder()
 	h.ClearCatchAll(w, r)

@@ -68,6 +68,7 @@ func insertTestUserWithProfile(t *testing.T, ps *store.PebbleStore, mgr *store.M
 }
 
 // postAddAddress posts to /admin/users/{userID}/addresses with form data.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func postAddAddress(t *testing.T, h *AdminHandler, userID, address string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{"address": {address}}
@@ -76,7 +77,9 @@ func postAddAddress(t *testing.T, h *AdminHandler, userID, address string) *http
 		strings.NewReader(form.Encode()),
 	)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "userID", userID)
 	w := httptest.NewRecorder()
 	h.AddAddress(w, r)
@@ -84,6 +87,7 @@ func postAddAddress(t *testing.T, h *AdminHandler, userID, address string) *http
 }
 
 // postRemoveAddress posts to /admin/users/{userID}/addresses/delete with form data.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func postRemoveAddress(t *testing.T, h *AdminHandler, userID, address string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{"address": {address}}
@@ -92,7 +96,9 @@ func postRemoveAddress(t *testing.T, h *AdminHandler, userID, address string) *h
 		strings.NewReader(form.Encode()),
 	)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "userID", userID)
 	w := httptest.NewRecorder()
 	h.RemoveAddress(w, r)

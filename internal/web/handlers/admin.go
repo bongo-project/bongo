@@ -131,7 +131,14 @@ func (h *AdminHandler) SetDomainAdminStore(das *store.DomainAdminStore) {
 // --- Dashboard ---
 
 // Dashboard shows the admin system health page.
+// Domain-admins are redirected to /admin/domains since global infrastructure
+// stats (Raft, nodes, Pebble, total user count) must not be exposed to them.
 func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !scope.Global {
+		http.Redirect(w, r, "/admin/domains", http.StatusSeeOther)
+		return
+	}
 	_, email := middleware.UserFromContext(r.Context())
 
 	health := templates.SystemHealth{
@@ -186,23 +193,51 @@ func (h *AdminHandler) Dashboard(w http.ResponseWriter, r *http.Request) {
 // --- User Management ---
 
 // ListUsers shows the user list.
+// Domain-admins see only users whose primary-address domain is in their scope.
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
+	scope := middleware.AdminScopeFromContext(r.Context())
 	query := r.URL.Query().Get("q")
 	flash := r.URL.Query().Get("flash")
 
 	users := h.loadUsers(query)
+	if !scope.Global {
+		// Filter to only users in authorized domains.
+		filtered := users[:0]
+		for _, u := range users {
+			if scope.HasDomain(domainFromEmail(u.Email)) {
+				filtered = append(filtered, u)
+			}
+		}
+		users = filtered
+	}
 	templ.Handler(templates.AdminUserList(users, query, email, flash)).ServeHTTP(w, r)
 }
 
 // NewUserForm shows the create user form.
+// Domain-admins only see their authorized domains in the domain dropdown.
 func (h *AdminHandler) NewUserForm(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
-	templ.Handler(templates.AdminUserForm(nil, h.userFormDomains(), true, email, "")).ServeHTTP(w, r)
+	scope := middleware.AdminScopeFromContext(r.Context())
+	domains := h.userFormDomains()
+	if !scope.Global {
+		filtered := domains[:0]
+		for _, d := range domains {
+			if scope.HasDomain(d.Name) {
+				filtered = append(filtered, d)
+			}
+		}
+		domains = filtered
+	}
+	templ.Handler(templates.AdminUserForm(nil, domains, true, email, "")).ServeHTTP(w, r)
 }
 
 // CreateUser creates a new user.
+// Domain-admins may only create users in their authorized domains and cannot
+// set the global is_admin flag (field-level guard against privilege escalation).
 func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+
 	newEmail, err := composeAdminUserEmail(
 		r.FormValue("email"),
 		r.FormValue("username"),
@@ -213,9 +248,17 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Scope check: domain-admins may only create users in their domains.
+	if !requireDomainAccess(w, scope, domainFromEmail(newEmail)) {
+		return
+	}
+
 	displayName := r.FormValue("display_name")
 	password := r.FormValue("password")
-	isAdmin := r.FormValue("is_admin") == "1"
+	// Field-level guard: only global admins may set the is_admin flag.
+	// A domain-admin submitting is_admin=1 is silently treated as is_admin=0.
+	isAdmin := scope.Global && r.FormValue("is_admin") == "1"
 	quotaStr := r.FormValue("quota_bytes")
 
 	if password == "" {
@@ -253,12 +296,12 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 // ShowUser shows the edit user form.
 func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
+	scope := middleware.AdminScopeFromContext(r.Context())
 	userID := chi.URLParam(r, "userID")
 	flash := r.URL.Query().Get("flash")
 
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
 		return
 	}
 
@@ -296,20 +339,25 @@ func (h *AdminHandler) ShowUser(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateUser updates a user's profile.
+// Domain-admins may update users in their authorized domains but cannot set
+// the global is_admin flag (field-level guard against privilege escalation).
 func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
-	displayName := r.FormValue("display_name")
-	isAdmin := r.FormValue("is_admin") == "1"
-	quotaStr := r.FormValue("quota_bytes")
+	scope := middleware.AdminScopeFromContext(r.Context())
 
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
 		return
 	}
 
+	displayName := r.FormValue("display_name")
+	quotaStr := r.FormValue("quota_bytes")
+
 	profile.DisplayName = displayName
-	profile.IsAdmin = isAdmin
+	// Field-level guard: only global admins may change the is_admin flag.
+	if scope.Global {
+		profile.IsAdmin = r.FormValue("is_admin") == "1"
+	}
 	if quotaStr != "" {
 		if q, err := strconv.ParseInt(quotaStr, 10, 64); err == nil {
 			profile.QuotaBytes = q
@@ -321,7 +369,7 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.logger.Info("admin: user updated", "user_id", userID, "display_name", displayName, "is_admin", isAdmin)
+	h.logger.Info("admin: user updated", "user_id", userID, "display_name", displayName, "is_admin", profile.IsAdmin)
 
 	http.Redirect(w, r, fmt.Sprintf("/admin/users/%s?flash=User+updated", userID), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
@@ -329,10 +377,10 @@ func (h *AdminHandler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 // ToggleDisabled toggles the disabled flag on a user.
 func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
+	scope := middleware.AdminScopeFromContext(r.Context())
 
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
 		return
 	}
 
@@ -366,10 +414,10 @@ func (h *AdminHandler) ToggleDisabled(w http.ResponseWriter, r *http.Request) {
 // ResetPassword generates a temporary password for a user.
 func (h *AdminHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
+	scope := middleware.AdminScopeFromContext(r.Context())
 
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
 		return
 	}
 
@@ -414,18 +462,22 @@ func (h *AdminHandler) countAdmins() int {
 // prefix, then removes the system.db row. A partial failure leaves orphaned
 // keys (harmless: indexes are rebuildable, blobs are reclaimed by GC), but the
 // profile is removed so the account can no longer authenticate.
+//
+// Cascade (best-effort): domain-admin grants for the deleted user are revoked,
+// and domain-owner references are cleared. Cascade failures are logged but do
+// not abort the delete (per the task 6.2 acceptance criteria).
 func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	actingUserID, _ := middleware.UserFromContext(r.Context())
+	scope := middleware.AdminScopeFromContext(r.Context())
 
 	if userID == actingUserID {
 		h.hxRedirect(w, fmt.Sprintf("/admin/users/%s?flash=You+cannot+delete+your+own+account", userID))
 		return
 	}
 
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
 		return
 	}
 
@@ -463,6 +515,33 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		deleted++
 	}
 
+	// Cascade: revoke domain-admin grants held by the deleted user (best-effort).
+	// This prevents dangling grants from granting access after account deletion.
+	if h.domainAdmin != nil {
+		grants, gErr := h.domainAdmin.ListForUser(userID)
+		if gErr != nil {
+			h.logger.Warn("admin: delete cascade: failed to list domain grants", "user_id", userID, "error", gErr)
+		} else {
+			for _, domain := range grants {
+				if rErr := h.domainAdmin.Revoke(domain, userID); rErr != nil {
+					h.logger.Warn("admin: delete cascade: failed to revoke domain grant", "user_id", userID, "domain", domain, "error", rErr)
+				}
+			}
+		}
+		// Cascade: clear domain-owner references pointing at the deleted user
+		// so 6.1's dangling-reference issue is resolved (best-effort).
+		ownedDomains, oErr := h.domainAdmin.ListDomainsOwnedBy(userID)
+		if oErr != nil {
+			h.logger.Warn("admin: delete cascade: failed to list owned domains", "user_id", userID, "error", oErr)
+		} else {
+			for _, domain := range ownedDomains {
+				if dErr := h.domainAdmin.DeleteOwner(domain); dErr != nil {
+					h.logger.Warn("admin: delete cascade: failed to clear domain owner", "user_id", userID, "domain", domain, "error", dErr)
+				}
+			}
+		}
+	}
+
 	// Remove the system.db users row (not cleaned by key deletes) so the account
 	// disappears from the user list and cannot authenticate.
 	if h.metadata != nil && h.metadata.System != nil {
@@ -491,16 +570,33 @@ func (h *AdminHandler) hxRedirect(w http.ResponseWriter, url string) {
 // --- Domain Management ---
 
 // ListDomains shows the domain list.
+// Domain-admins see only domains in their authorized scope.
 func (h *AdminHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
+	scope := middleware.AdminScopeFromContext(r.Context())
 	flash := r.URL.Query().Get("flash")
 
 	domains := h.loadDomains()
+	if !scope.Global {
+		filtered := domains[:0]
+		for _, d := range domains {
+			if scope.HasDomain(d.Name) {
+				filtered = append(filtered, d)
+			}
+		}
+		domains = filtered
+	}
 	templ.Handler(templates.AdminDomainList(domains, email, flash)).ServeHTTP(w, r)
 }
 
 // CreateDomain adds a new domain.
+// This is a global-only operation: minting a new tenant is restricted to global admins.
 func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
+
 	domain := strings.TrimSpace(r.FormValue("domain"))
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
@@ -550,6 +646,10 @@ func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
 // ToggleDomain toggles the enabled state of a domain.
 func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
 
 	key := []byte(fmt.Sprintf("/system/domain/%s", domain))
 	data, err := h.store.Get(key)
@@ -590,6 +690,10 @@ func (h *AdminHandler) ToggleDomain(w http.ResponseWriter, r *http.Request) {
 // DeleteDomain removes a domain.
 func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
 
 	key := []byte(fmt.Sprintf("/system/domain/%s", domain))
 	cmd := &bongov1.RaftCommand{
@@ -613,6 +717,7 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 // GenerateDKIMKey generates (or rotates) a per-domain RSA-2048 DKIM signing key.
+// Domain-admins may only operate on their authorized domains.
 // It stores the DomainRecord proto at /system/domain/{domain}/dkim via Raft and
 // registers the new signer in the DKIM registry so that outbound mail from the
 // domain is signed immediately. The private key is NEVER logged.
@@ -620,6 +725,11 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
 		return
 	}
 
@@ -702,6 +812,11 @@ func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
+
 	ownerUserID := strings.TrimSpace(r.FormValue("owner_user_id"))
 	if ownerUserID == "" {
 		http.Error(w, "owner_user_id is required", http.StatusBadRequest)
@@ -751,6 +866,11 @@ func (h *AdminHandler) ClearCatchAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
+
 	if h.catchAll == nil {
 		http.Error(w, "catch-all store not available", http.StatusInternalServerError)
 		return
@@ -774,6 +894,13 @@ func (h *AdminHandler) ClearCatchAll(w http.ResponseWriter, r *http.Request) {
 // Both the domain and the user must exist. Changing the owner is idempotent.
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) SetDomainOwner(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	// Reassigning a domain's owner is global-only: it changes tenancy hierarchy,
+	// which must not be delegatable to a domain-admin.
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
+
 	domain := chi.URLParam(r, "domain")
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
@@ -815,6 +942,11 @@ func (h *AdminHandler) GrantDomainAdmin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
+
 	userID := strings.TrimSpace(r.FormValue("user_id"))
 	if userID == "" {
 		http.Error(w, "user_id is required", http.StatusBadRequest)
@@ -847,6 +979,11 @@ func (h *AdminHandler) RevokeDomainAdmin(w http.ResponseWriter, r *http.Request)
 	domain := chi.URLParam(r, "domain")
 	if domain == "" {
 		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
 		return
 	}
 
@@ -912,22 +1049,39 @@ func dkimTXTRecord(domain, selector, pemKey string) string {
 // --- Alias Management ---
 
 // ListAliases shows the alias list.
+// Domain-admins see only aliases whose address domain is in their scope.
 func (h *AdminHandler) ListAliases(w http.ResponseWriter, r *http.Request) {
 	_, email := middleware.UserFromContext(r.Context())
+	scope := middleware.AdminScopeFromContext(r.Context())
 	flash := r.URL.Query().Get("flash")
 
 	aliases := h.loadAliases()
+	if !scope.Global {
+		filtered := aliases[:0]
+		for _, a := range aliases {
+			if scope.HasDomain(domainFromEmail(a.Address)) {
+				filtered = append(filtered, a)
+			}
+		}
+		aliases = filtered
+	}
 	users := h.loadUserEmails()
 	templ.Handler(templates.AdminAliasList(aliases, users, email, flash)).ServeHTTP(w, r)
 }
 
 // CreateAlias creates a new alias.
+// Domain-admins may only create aliases in their authorized domains.
 func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 	address := strings.TrimSpace(r.FormValue("address"))
 	targetUser := r.FormValue("target_user")
 
 	if address == "" || targetUser == "" {
 		http.Error(w, "address and target_user are required", http.StatusBadRequest)
+		return
+	}
+
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domainFromEmail(address)) {
 		return
 	}
 
@@ -964,8 +1118,14 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteAlias removes an alias.
+// Domain-admins may only delete aliases in their authorized domains.
 func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 	address := chi.URLParam(r, "address")
+
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domainFromEmail(address)) {
+		return
+	}
 
 	key := []byte(fmt.Sprintf("/system/alias/%s", address))
 	cmd := &bongov1.RaftCommand{
@@ -991,7 +1151,12 @@ func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
 // --- Queue Management ---
 
 // QueueDashboard shows the queue status.
+// This is a global-only endpoint: queue management exposes infrastructure state.
 func (h *AdminHandler) QueueDashboard(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	_, email := middleware.UserFromContext(r.Context())
 
 	stats := &bongov1.QueueStats{}
@@ -1009,7 +1174,12 @@ func (h *AdminHandler) QueueDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 // RetryMessage retries a queue message.
+// This is a global-only endpoint.
 func (h *AdminHandler) RetryMessage(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if h.queueStore != nil {
 		if err := h.queueStore.RetryNow(id); err != nil {
@@ -1020,7 +1190,12 @@ func (h *AdminHandler) RetryMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // DropMessage removes a message from the queue.
+// This is a global-only endpoint.
 func (h *AdminHandler) DropMessage(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if h.queueStore != nil {
 		// Try pending first, then bounced.
@@ -1034,7 +1209,12 @@ func (h *AdminHandler) DropMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // FlushQueue retries all pending messages.
+// This is a global-only endpoint.
 func (h *AdminHandler) FlushQueue(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	if h.queueStore != nil {
 		if _, err := h.queueStore.FlushQueue(); err != nil {
 			h.logger.Warn("admin: failed to flush queue", "error", err)
@@ -1046,7 +1226,12 @@ func (h *AdminHandler) FlushQueue(w http.ResponseWriter, r *http.Request) {
 // --- Cluster Overview ---
 
 // ClusterOverview shows cluster node status.
+// This is a global-only endpoint: cluster topology is infrastructure-level info.
 func (h *AdminHandler) ClusterOverview(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	_, email := middleware.UserFromContext(r.Context())
 
 	var nodes []templates.NodeStatus
@@ -1075,13 +1260,23 @@ func (h *AdminHandler) ClusterOverview(w http.ResponseWriter, r *http.Request) {
 // --- Log Viewer ---
 
 // LogViewer shows the log viewer page.
+// This is a global-only endpoint: logs contain infrastructure-level information.
 func (h *AdminHandler) LogViewer(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	_, email := middleware.UserFromContext(r.Context())
 	templ.Handler(templates.AdminLogViewer(email)).ServeHTTP(w, r)
 }
 
 // LogStream streams log entries via SSE.
+// This is a global-only endpoint.
 func (h *AdminHandler) LogStream(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	if h.logSink == nil {
 		http.Error(w, "log streaming not available", http.StatusServiceUnavailable)
 		return
@@ -1143,7 +1338,13 @@ func (h *AdminHandler) LogStream(w http.ResponseWriter, r *http.Request) {
 // --- Security Policy ---
 
 // ToggleRequire2FA toggles the system-wide 2FA requirement.
+// This is a global-only endpoint: system-wide security policy must not be
+// controlled by domain-admins.
 func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) {
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
 	enabled := r.FormValue("enabled") == "1"
 
 	key := []byte("/system/settings/require_2fa")
@@ -1192,6 +1393,7 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
+	scope := middleware.AdminScopeFromContext(r.Context())
 
 	if h.addresses == nil {
 		http.Error(w, "address store not available", http.StatusInternalServerError)
@@ -1210,10 +1412,14 @@ func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 	}
 	domain := address[atIdx+1:]
 
-	// Guard: the target account must exist, so we never create an address
-	// record that routes mail to a non-existent user_id.
-	if _, err := h.loadProfile(userID); err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	// Guard: check the target account exists AND is in scope.
+	if _, ok := h.requireUserAccess(w, scope, userID); !ok {
+		return
+	}
+
+	// Guard: the NEW address's domain must also be in scope — a domain-admin may
+	// not allocate an address in a domain they do not administer (cross-tenant).
+	if !requireDomainAccess(w, scope, domain) {
 		return
 	}
 
@@ -1258,6 +1464,7 @@ func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
+	scope := middleware.AdminScopeFromContext(r.Context())
 
 	if h.addresses == nil {
 		http.Error(w, "address store not available", http.StatusInternalServerError)
@@ -1270,10 +1477,9 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load the user profile to get the primary email for the guard check.
-	profile, err := h.loadProfile(userID)
-	if err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	// Load the user profile and check scope.
+	profile, ok := h.requireUserAccess(w, scope, userID)
+	if !ok {
 		return
 	}
 	primaryEmail := strings.ToLower(strings.TrimSpace(profile.Email))
@@ -1320,6 +1526,7 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) GrantSend(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
+	scope := middleware.AdminScopeFromContext(r.Context())
 
 	if h.addresses == nil {
 		http.Error(w, "address store not available", http.StatusInternalServerError)
@@ -1332,9 +1539,14 @@ func (h *AdminHandler) GrantSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load the target user (guard: must exist).
-	if _, err := h.loadProfile(userID); err != nil {
-		http.Error(w, "user not found", http.StatusNotFound)
+	// Load the target user and check scope (guard: must exist and be in scope).
+	if _, ok := h.requireUserAccess(w, scope, userID); !ok {
+		return
+	}
+
+	// Guard: the address's own domain must be in scope — a domain-admin may not
+	// grant send-as for a domain they do not administer (spoofing prevention).
+	if !requireDomainAccess(w, scope, domainFromEmail(address)) {
 		return
 	}
 

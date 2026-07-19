@@ -29,7 +29,9 @@ func createAliasRequest(t *testing.T, h *AdminHandler, address, target, actingUs
 	form := url.Values{"address": {address}, "target_user": {target}}
 	r := httptest.NewRequest(http.MethodPost, "/admin/aliases", strings.NewReader(form.Encode()))
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r = r.WithContext(middleware.WithUserContext(context.Background(), actingUserID, "admin@example.com"))
+	ctx := middleware.WithUserContext(context.Background(), actingUserID, "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	w := httptest.NewRecorder()
 	h.CreateAlias(w, r)
 	return w
