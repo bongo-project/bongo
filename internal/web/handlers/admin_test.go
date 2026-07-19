@@ -8,6 +8,333 @@ import (
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 )
 
+// ---------------------------------------------------------------------------
+// DNS check tests (task 7.2)
+// ---------------------------------------------------------------------------
+
+// TestBuildDNSChecks tests the pure buildDNSChecks function with injected
+// DNS lookup values — no real network calls.
+func TestBuildDNSChecks(t *testing.T) {
+	const (
+		domain     = "example.com"
+		mailHost   = "mail.example.com"
+		selector   = "mail"
+		ourDKIMTXT = `mail._domainkey.example.com TXT "v=DKIM1; k=rsa; p=AAAA1234"`
+		ourDKIMp   = "AAAA1234"
+	)
+
+	tests := []struct {
+		name            string
+		mailHostname    string
+		expectedDKIMTXT string
+		mx              []string
+		spfTXTs         []string
+		dkimTXTs        []string
+		dmarcTXTs       []string
+		// wantStatuses: indexed by label order: MX, SPF, DKIM, DMARC
+		wantMXStatus    string
+		wantSPFStatus   string
+		wantDKIMStatus  string
+		wantDMARCStatus string
+	}{
+		{
+			name:            "MX correct - points to our mail host",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{"mail.example.com."},
+			spfTXTs:         []string{"v=spf1 mx ~all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=" + ourDKIMp},
+			dmarcTXTs:       []string{"v=DMARC1; p=none; rua=mailto:postmaster@example.com"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "ok",
+			wantDMARCStatus: "ok",
+		},
+		{
+			name:            "MX points elsewhere - OVH/example-net case",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{"mx1.mail.ovh.net."},
+			spfTXTs:         []string{"v=spf1 include:mx.ovh.com -all"},
+			dkimTXTs:        nil,
+			dmarcTXTs:       nil,
+			wantMXStatus:    "fail",
+			wantSPFStatus:   "fail",
+			wantDKIMStatus:  "fail",
+			wantDMARCStatus: "fail",
+		},
+		{
+			name:            "MX missing entirely",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              nil,
+			spfTXTs:         nil,
+			dkimTXTs:        nil,
+			dmarcTXTs:       nil,
+			wantMXStatus:    "fail",
+			wantSPFStatus:   "fail",
+			wantDKIMStatus:  "fail",
+			wantDMARCStatus: "fail",
+		},
+		{
+			name:            "SPF with a:mailhost authorises us",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{mailHost},
+			spfTXTs:         []string{"v=spf1 a:mail.example.com -all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=" + ourDKIMp},
+			dmarcTXTs:       []string{"v=DMARC1; p=none"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "ok",
+			wantDMARCStatus: "ok",
+		},
+		{
+			name:            "SPF with include:example.com authorises us",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{mailHost},
+			spfTXTs:         []string{"v=spf1 include:example.com ~all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=" + ourDKIMp},
+			dmarcTXTs:       []string{"v=DMARC1; p=none"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "ok",
+			wantDMARCStatus: "ok",
+		},
+		{
+			name:            "DKIM mismatch - published key differs from ours",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{mailHost},
+			spfTXTs:         []string{"v=spf1 mx ~all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=DIFFERENTKEY9999"},
+			dmarcTXTs:       []string{"v=DMARC1; p=none"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "fail",
+			wantDMARCStatus: "ok",
+		},
+		{
+			name:            "DKIM not generated - neutral state",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: "", // no DKIM key generated for this domain
+			mx:              []string{mailHost},
+			spfTXTs:         []string{"v=spf1 mx ~all"},
+			dkimTXTs:        nil,
+			dmarcTXTs:       []string{"v=DMARC1; p=none"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "neutral",
+			wantDMARCStatus: "ok",
+		},
+		{
+			name:            "DMARC absent",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{mailHost},
+			spfTXTs:         []string{"v=spf1 mx ~all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=" + ourDKIMp},
+			dmarcTXTs:       nil,
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "ok",
+			wantDMARCStatus: "fail",
+		},
+		{
+			name:            "MX trailing dot is normalised",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{"mail.example.com."},
+			spfTXTs:         []string{"v=spf1 mx ~all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=" + ourDKIMp},
+			dmarcTXTs:       []string{"v=DMARC1; p=none"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "ok",
+			wantDMARCStatus: "ok",
+		},
+		{
+			name:            "multiple MX records - one matches",
+			mailHostname:    mailHost,
+			expectedDKIMTXT: ourDKIMTXT,
+			mx:              []string{"backup-mx.example.com.", "mail.example.com."},
+			spfTXTs:         []string{"v=spf1 mx ~all"},
+			dkimTXTs:        []string{"v=DKIM1; k=rsa; p=" + ourDKIMp},
+			dmarcTXTs:       []string{"v=DMARC1; p=none"},
+			wantMXStatus:    "ok",
+			wantSPFStatus:   "ok",
+			wantDKIMStatus:  "ok",
+			wantDMARCStatus: "ok",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rows := buildDNSChecks(domain, tt.mailHostname, tt.expectedDKIMTXT, tt.mx, tt.spfTXTs, tt.dkimTXTs, tt.dmarcTXTs)
+
+			// We expect exactly 4 rows: MX, SPF, DKIM, DMARC.
+			if len(rows) != 4 {
+				t.Fatalf("buildDNSChecks() returned %d rows, want 4", len(rows))
+			}
+
+			want := map[string]string{
+				"MX":    tt.wantMXStatus,
+				"SPF":   tt.wantSPFStatus,
+				"DKIM":  tt.wantDKIMStatus,
+				"DMARC": tt.wantDMARCStatus,
+			}
+
+			for _, row := range rows {
+				wantStatus, ok := want[row.Label]
+				if !ok {
+					t.Errorf("unexpected row label %q", row.Label)
+					continue
+				}
+				if row.Status != wantStatus {
+					t.Errorf("row %q: Status = %q, want %q (expected=%q, found=%q)",
+						row.Label, row.Status, wantStatus, row.Expected, row.Found)
+				}
+			}
+		})
+	}
+}
+
+// TestExtractDKIMPublicKey tests the helper that extracts p= from a DKIM TXT record.
+func TestExtractDKIMPublicKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		txtLine string
+		want    string
+	}{
+		{
+			name:    "standard format",
+			txtLine: `v=DKIM1; k=rsa; p=AAAA1234`,
+			want:    "AAAA1234",
+		},
+		{
+			name:    "with quoted wrapper in TXT record string",
+			txtLine: `v=DKIM1; k=rsa; p=BBBB5678"`,
+			want:    "BBBB5678",
+		},
+		{
+			name:    "base64 with plus and slash",
+			txtLine: `v=DKIM1; k=rsa; p=ABC+/123=`,
+			want:    "ABC+/123=",
+		},
+		{
+			name:    "empty p=",
+			txtLine: `v=DKIM1; k=rsa; p=`,
+			want:    "",
+		},
+		{
+			name:    "no p= token",
+			txtLine: `v=DKIM1; k=rsa`,
+			want:    "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractDKIMPublicKey(tt.txtLine)
+			if got != tt.want {
+				t.Errorf("extractDKIMPublicKey(%q) = %q, want %q", tt.txtLine, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestExtractOurDKIMPublicKey tests extracting the p= value from our full
+// TXT record format: "selector._domainkey.domain TXT "v=DKIM1; k=rsa; p=BASE64""
+func TestExtractOurDKIMPublicKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		txtRec string
+		want   string
+	}{
+		{
+			name:   "standard dkimTXTRecord output",
+			txtRec: `mail._domainkey.example.com TXT "v=DKIM1; k=rsa; p=AAAA1234"`,
+			want:   "AAAA1234",
+		},
+		{
+			name:   "base64 with special chars",
+			txtRec: `mail._domainkey.example.com TXT "v=DKIM1; k=rsa; p=AB+/CD==E"`,
+			want:   "AB+/CD==E",
+		},
+		{
+			name:   "empty record",
+			txtRec: "",
+			want:   "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractOurDKIMPublicKey(tt.txtRec)
+			if got != tt.want {
+				t.Errorf("extractOurDKIMPublicKey(%q) = %q, want %q", tt.txtRec, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestMXCheckCorrectness specifically tests the MX comparison logic to ensure
+// the OVH/example-net false-positive bug is fixed.
+func TestMXCheckCorrectness(t *testing.T) {
+	tests := []struct {
+		name         string
+		mailHostname string
+		mx           []string
+		wantOK       bool
+		wantHasMX    bool // should HasMX reflect "points to us" not just "exists"
+	}{
+		{
+			name:         "MX points to our server - ok",
+			mailHostname: "mail.example.com",
+			mx:           []string{"mail.example.com."},
+			wantOK:       true,
+			wantHasMX:    true,
+		},
+		{
+			name:         "MX points to OVH - not ok",
+			mailHostname: "mail.example.com",
+			mx:           []string{"mx1.mail.ovh.net."},
+			wantOK:       false,
+			wantHasMX:    false,
+		},
+		{
+			name:         "MX exists but points elsewhere - not ok",
+			mailHostname: "mail.example.com",
+			mx:           []string{"backup.otherprovider.net."},
+			wantOK:       false,
+			wantHasMX:    false,
+		},
+		{
+			name:         "no MX records at all",
+			mailHostname: "mail.example.com",
+			mx:           nil,
+			wantOK:       false,
+			wantHasMX:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rows := buildDNSChecks("example.com", tt.mailHostname, "", tt.mx, nil, nil, nil)
+			if len(rows) == 0 {
+				t.Fatal("buildDNSChecks returned no rows")
+			}
+			mxRow := rows[0]
+			if mxRow.Label != "MX" {
+				t.Fatalf("first row label = %q, want MX", mxRow.Label)
+			}
+			gotOK := mxRow.Status == "ok"
+			if gotOK != tt.wantOK {
+				t.Errorf("MX row OK = %v, want %v (found=%q)", gotOK, tt.wantOK, mxRow.Found)
+			}
+		})
+	}
+}
+
 func TestComposeAdminUserEmail(t *testing.T) {
 	domains := []templates.DomainInfo{
 		{Name: "example.test", Enabled: true},

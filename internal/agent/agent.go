@@ -74,29 +74,29 @@ func init() {
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
-	Config      *config.Config
-	Store       *store.PebbleStore
-	Blobs       *store.BlobStore
-	Metadata    *store.MetadataManager
-	Search      *store.SearchManager
-	Auth        *auth.LocalAuth
-	Raft        *cluster.RaftNode
-	Gossip      *cluster.GossipNode
-	SMTP        *bongosmtp.Server
-	IMAP        *bongoimap.Server
-	POP3        *bongopop3.Server
-	Notifier    *bongoimap.Notifier
-	Mailboxes   *store.MailboxStore
-	Preferences *store.PreferenceStore
-	Threads     *store.ThreadStore
-	Rules       *rules.RuleStore
-	Contacts    *store.ContactStore
+	Config       *config.Config
+	Store        *store.PebbleStore
+	Blobs        *store.BlobStore
+	Metadata     *store.MetadataManager
+	Search       *store.SearchManager
+	Auth         *auth.LocalAuth
+	Raft         *cluster.RaftNode
+	Gossip       *cluster.GossipNode
+	SMTP         *bongosmtp.Server
+	IMAP         *bongoimap.Server
+	POP3         *bongopop3.Server
+	Notifier     *bongoimap.Notifier
+	Mailboxes    *store.MailboxStore
+	Preferences  *store.PreferenceStore
+	Threads      *store.ThreadStore
+	Rules        *rules.RuleStore
+	Contacts     *store.ContactStore
 	Events       *store.EventStore
 	Calendars    *store.CalendarStore
-	BlobSync        *cluster.BlobSyncer
-	AddressStore    *store.AddressStore
-	DomainQuota     *store.DomainQuotaStore
-	logger          *slog.Logger
+	BlobSync     *cluster.BlobSyncer
+	AddressStore *store.AddressStore
+	DomainQuota  *store.DomainQuotaStore
+	logger       *slog.Logger
 
 	// Inbound pipeline subsystem.
 	Spool          *pipeline.SpoolStore
@@ -653,8 +653,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// Wire the mail hostname so the domain detail page can hint the expected
-		// MX value. Empty string = no hint shown.
-		adminH.SetMailHostname(a.Config.SMTP.Hostname)
+		// MX value. Fall back to the OS hostname when SMTP.Hostname is unset so
+		// the DNS checks still have a non-empty expected target.
+		mailHost := strings.ToLower(strings.TrimSpace(a.Config.SMTP.Hostname))
+		if mailHost == "" {
+			if h, err := os.Hostname(); err == nil {
+				mailHost = strings.ToLower(strings.TrimSpace(h))
+			}
+		}
+		adminH.SetMailHostname(mailHost)
 
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)

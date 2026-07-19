@@ -606,5 +606,12 @@
   "admin.quotaHelp": "Kontingentgrenzen werden vom globalen Administrator festgelegt und periodisch neu berechnet.",
   "admin.dangerZoneSectionTitle": "Gefahrenzone",
   "admin.deleteDomain": "Domaene loeschen",
-  "admin.confirmDeleteDomain": "Diese Domaene und alle Einstellungen dauerhaft loeschen? Dies kann nicht rueckgaengig gemacht werden."
+  "admin.confirmDeleteDomain": "Diese Domaene und alle Einstellungen dauerhaft loeschen? Dies kann nicht rueckgaengig gemacht werden.",
+  "admin.dnsNotGenerated": "Nicht generiert",
+  "admin.dnsCheckError": "Konnte nicht geprueft werden",
+  "admin.dnsShowExpected": "Erwarteten Wert anzeigen",
+  "admin.dnsShowFound": "Gefundenen Wert anzeigen",
+  "admin.spfRecord": "SPF",
+  "admin.dkimRecord": "DKIM",
+  "admin.dmarcRecord": "DMARC"
 }

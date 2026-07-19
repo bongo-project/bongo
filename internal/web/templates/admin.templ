@@ -51,9 +51,16 @@ type AdminUserInfo struct {
 
 // DNSCheckRow holds one DNS verification row for the domain detail page.
 // The slice is extensible: add SPF/DKIM/DMARC rows later without redesign.
+//
+// Status values:
+//   - "ok"      – record exists and matches expected value
+//   - "fail"    – record missing or does not match
+//   - "neutral" – check not applicable (e.g. DKIM key not yet generated)
+//   - "error"   – lookup failed; could not determine status
 type DNSCheckRow struct {
-	Label    string // e.g. "MX"
-	OK       bool   // true if the record was found/valid
+	Label    string // e.g. "MX", "SPF", "DKIM", "DMARC"
+	OK       bool   // true when Status == "ok" (kept for backwards compat)
+	Status   string // "ok" | "fail" | "neutral" | "error"
 	Expected string // value the operator should publish (hint; may be empty)
 	Found    string // what was actually found (may be "-" if nothing)
 }
@@ -594,22 +601,41 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 							<tr>
 								<td><strong>{ row.Label }</strong></td>
 								<td>
-									if row.OK {
+									switch row.Status {
+									case "ok":
 										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
-									} else {
+									case "neutral":
+										<span class="dns-neutral">&#8212; { t(ctx, "admin.dnsNotGenerated") }</span>
+									case "error":
+										<span class="dns-error">&#63; { t(ctx, "admin.dnsCheckError") }</span>
+									default:
 										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
 									}
 								</td>
 								<td>
 									if row.Expected != "" {
-										<code class="u-font-088">{ row.Expected }</code>
+										if len(row.Expected) > 60 {
+											<details>
+												<summary class="u-font-088">{ t(ctx, "admin.dnsShowExpected") }</summary>
+												<code class="u-font-088 u-block u-mt-025">{ row.Expected }</code>
+											</details>
+										} else {
+											<code class="u-font-088">{ row.Expected }</code>
+										}
 									} else {
 										<span class="u-text-muted">-</span>
 									}
 								</td>
 								<td>
 									if row.Found != "" && row.Found != "-" {
-										<code class="u-font-088">{ row.Found }</code>
+										if len(row.Found) > 60 {
+											<details>
+												<summary class="u-font-088">{ t(ctx, "admin.dnsShowFound") }</summary>
+												<code class="u-font-088 u-block u-mt-025">{ row.Found }</code>
+											</details>
+										} else {
+											<code class="u-font-088">{ row.Found }</code>
+										}
 									} else {
 										<span class="u-text-muted">-</span>
 									}

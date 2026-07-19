@@ -606,5 +606,12 @@
   "admin.quotaHelp": "Quota limits are set by the global administrator. Usage figures are recomputed periodically.",
   "admin.dangerZoneSectionTitle": "Danger Zone",
   "admin.deleteDomain": "Delete Domain",
-  "admin.confirmDeleteDomain": "Permanently delete this domain and all its settings? This cannot be undone."
+  "admin.confirmDeleteDomain": "Permanently delete this domain and all its settings? This cannot be undone.",
+  "admin.dnsNotGenerated": "Not generated",
+  "admin.dnsCheckError": "Could not check",
+  "admin.dnsShowExpected": "Show expected",
+  "admin.dnsShowFound": "Show found",
+  "admin.spfRecord": "SPF",
+  "admin.dkimRecord": "DKIM",
+  "admin.dmarcRecord": "DMARC"
 }

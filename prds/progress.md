@@ -294,3 +294,13 @@ PATTERN [admin-ui] Per-entity detail sub-screen (like ShowUser) is the pattern f
 
 ## 2026-07-19 — Backlog B1 recorded: de-brand the repo (user-requested)
 Remove ALL 157 deployment refs (deploy/ configs + node name bongo-1, .env.example, autoconfig comment, docs/, prds/ logs, tests) → repo mentions only bongo/bongo-go with generic example.com placeholders. USER-AUTHORISED git history rewrite + FORCE-PUSH if needed. CAVEAT: live /mnt/data/bongo config is not in git (keeps real values); verify no runtime code depends on literal "deployment" first. Unscheduled.
+
+## 2026-07-19 — Task 7.2 DONE (DNS config status checks + MX false-positive fix)
+
+Worker: golang-pro (sonnet). Advisor caught the binary-OK-can't-represent-neutral/error risk → DNSCheckRow gained Status ("ok"|"fail"|"neutral"|"error", OK kept for compat). Code review MINOR.
+- buildDNSChecks(domain, mailHost, expectedDKIMTXT, mx/spf/dkim/dmarc []string) → []DNSCheckRow: PURE (no network, table-tested). MX ✓ only if an MX host (trailing-dot-trimmed, lowercased) == mailHost (FIXES the existence-only bug — example.net→OVH now ✗); SPF spfAuthorisesHost (mx mechanism / a:<host> / references mailhost) else ✗; DKIM neutral when no key here, else compare published p= to OUR p= (extracted from DkimTXTRecord); DMARC ✓ if a record starts v=DMARC1.
+- doDNSLookups(ctx, domain, selector, mailHost, dkimTXT): the 4 lookups run CONCURRENTLY under a short deadline (~2-3s) so worst case ~3s not ~12s; lookup errors → Status="error" ("could not check"), never a panic. ShowDomain (detail) does all 4; loadDomains (list) uses the fixed MX-only check → HasMX = points-to-us.
+- mailHostname from a.Config.SMTP.Hostname; I ADDED the missing fallback to os.Hostname() when empty (review MINOR #1) + gofmt'd (MINOR #2).
+- i18n ×4, CSP-safe rows (Status→CSS class, Found in <details>).
+Tests: admin_test.go TestBuildDNSChecks (MX ✓/points-elsewhere-OVH ✗, SPF us/other/none, DKIM match/mismatch/neutral, DMARC present/absent) + extract-our-p= tests; injected values, no network. go build OK; -race handlers green.
+PATTERN [dns] DNS-config verification = compare ACTUAL vs EXPECTED-for-this-server, not existence. Keep the compare logic a PURE function fed looked-up values (network stays out of tests); run the lookups concurrently with a bounded deadline; model 4 states (ok/fail/neutral/error) not a bool. MX-correct = an MX host equals the server mail hostname (SMTP.Hostname).

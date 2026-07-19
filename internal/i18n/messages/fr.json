@@ -606,5 +606,12 @@
   "admin.quotaHelp": "Les limites de quota sont definies par l'administrateur global et recalculees periodiquement.",
   "admin.dangerZoneSectionTitle": "Zone dangereuse",
   "admin.deleteDomain": "Supprimer le domaine",
-  "admin.confirmDeleteDomain": "Supprimer definitivement ce domaine et tous ses parametres? Cette action est irreversible."
+  "admin.confirmDeleteDomain": "Supprimer definitivement ce domaine et tous ses parametres? Cette action est irreversible.",
+  "admin.dnsNotGenerated": "Non genere",
+  "admin.dnsCheckError": "Impossible de verifier",
+  "admin.dnsShowExpected": "Afficher la valeur attendue",
+  "admin.dnsShowFound": "Afficher la valeur trouvee",
+  "admin.spfRecord": "SPF",
+  "admin.dkimRecord": "DKIM",
+  "admin.dmarcRecord": "DMARC"
 }
