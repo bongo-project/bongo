@@ -1487,6 +1487,13 @@ document.addEventListener('keydown', function(e) {
 document.addEventListener('keydown', (e) => {
   if (shortcutModalOpen) return;
 
+  // Ignore shortcuts when a modifier is held so browser/OS combos like
+  // Ctrl/Cmd+C (copy), Cmd+R (reload) etc. are not hijacked as single-key
+  // shortcuts (e.g. 'c' = compose).
+  if (e.ctrlKey || e.metaKey || e.altKey) {
+    return;
+  }
+
   const tag = e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable) {
     return;
