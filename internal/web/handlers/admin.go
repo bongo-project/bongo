@@ -50,6 +50,7 @@ type AdminHandler struct {
 	catchAll     *store.CatchAllStore
 	addresses    *store.AddressStore
 	domainAdmin  *store.DomainAdminStore
+	domainQuota  *store.DomainQuotaStore
 	startTime    time.Time
 }
 
@@ -126,6 +127,12 @@ func (h *AdminHandler) SetAddressStore(as *store.AddressStore) {
 // GrantDomainAdmin, and RevokeDomainAdmin.
 func (h *AdminHandler) SetDomainAdminStore(das *store.DomainAdminStore) {
 	h.domainAdmin = das
+}
+
+// SetDomainQuotaStore sets the domain quota store used by CreateUser (max-users
+// enforcement) and SetDomainQuota (global-admin only).
+func (h *AdminHandler) SetDomainQuotaStore(dqs *store.DomainQuotaStore) {
+	h.domainQuota = dqs
 }
 
 // --- Dashboard ---
@@ -264,6 +271,27 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	if password == "" {
 		http.Error(w, "password is required", http.StatusBadRequest)
 		return
+	}
+
+	// Max-users quota enforcement: reject before creating if the domain is at
+	// its user limit. Checked for both global and domain admins (both traverse
+	// this handler). Note: check-then-apply is not atomic — two concurrent
+	// creates can both pass the check. This matches the existing per-user
+	// aggregate-limit convention (see CLAUDE.md, 100-tags/user). 0 = unlimited.
+	if h.domainQuota != nil {
+		newDomain := domainFromEmail(newEmail)
+		q, qErr := h.domainQuota.GetQuota(newDomain)
+		if qErr != nil {
+			h.logger.Warn("admin: failed to check domain user quota", "domain", newDomain, "error", qErr)
+		} else if q.MaxUsers > 0 {
+			count, countErr := h.domainQuota.CountUsersForDomain(newDomain)
+			if countErr != nil {
+				h.logger.Warn("admin: failed to count domain users", "domain", newDomain, "error", countErr)
+			} else if int64(count) >= q.MaxUsers {
+				http.Error(w, "domain user limit reached", http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	// Create user via auth package.
@@ -586,7 +614,7 @@ func (h *AdminHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 		}
 		domains = filtered
 	}
-	templ.Handler(templates.AdminDomainList(domains, email, flash)).ServeHTTP(w, r)
+	templ.Handler(templates.AdminDomainList(domains, email, flash, scope.Global)).ServeHTTP(w, r)
 }
 
 // CreateDomain adds a new domain.
@@ -1006,6 +1034,61 @@ func (h *AdminHandler) RevokeDomainAdmin(w http.ResponseWriter, r *http.Request)
 
 	h.logger.Info("admin: domain admin revoked", "domain", domain, "user_id", userID)
 	http.Redirect(w, r, "/admin/domains?flash=Admin+revoked+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// SetDomainQuota sets the per-domain quota limits (max_users and max_storage_bytes).
+// This is a global-admin-only operation; domain-admins may only VIEW quotas.
+// A value of 0 means unlimited for each field.
+func (h *AdminHandler) SetDomainQuota(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireGlobalAdmin(w, scope) {
+		return
+	}
+
+	if h.domainQuota == nil {
+		http.Error(w, "domain quota store not available", http.StatusInternalServerError)
+		return
+	}
+
+	maxUsersStr := strings.TrimSpace(r.FormValue("max_users"))
+	maxStorageStr := strings.TrimSpace(r.FormValue("max_storage_bytes"))
+
+	var maxUsers, maxStorage int64
+	if maxUsersStr != "" {
+		v, err := strconv.ParseInt(maxUsersStr, 10, 64)
+		if err != nil || v < 0 {
+			http.Error(w, "max_users must be a non-negative integer", http.StatusBadRequest)
+			return
+		}
+		maxUsers = v
+	}
+	if maxStorageStr != "" {
+		v, err := strconv.ParseInt(maxStorageStr, 10, 64)
+		if err != nil || v < 0 {
+			http.Error(w, "max_storage_bytes must be a non-negative integer", http.StatusBadRequest)
+			return
+		}
+		maxStorage = v
+	}
+
+	q := &bongov1.DomainQuota{
+		MaxUsers:        maxUsers,
+		MaxStorageBytes: maxStorage,
+	}
+	if err := h.domainQuota.SetQuota(domain, q); err != nil {
+		h.logger.Error("admin: failed to set domain quota", "domain", domain, "error", err)
+		http.Error(w, "failed to set domain quota: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: domain quota set", "domain", domain, "max_users", maxUsers, "max_storage_bytes", maxStorage)
+	http.Redirect(w, r, "/admin/domains?flash=Quota+set+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // dkimTXTRecord derives the DKIM DNS TXT record value from a PEM-encoded private
@@ -1881,6 +1964,7 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 					h.enrichDomainCatchAll(&di)
 					h.enrichDomainOwner(&di)
 					h.enrichDomainAdmins(&di)
+					h.enrichDomainQuota(&di)
 					domains = append(domains, di)
 				}
 			}
@@ -1911,6 +1995,7 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 				h.enrichDomainCatchAll(&di)
 				h.enrichDomainOwner(&di)
 				h.enrichDomainAdmins(&di)
+				h.enrichDomainQuota(&di)
 				domains = append(domains, di)
 			}
 		}
@@ -1980,6 +2065,24 @@ func (h *AdminHandler) enrichDomainAdmins(di *templates.DomainInfo) {
 		return
 	}
 	di.DomainAdmins = admins
+}
+
+// enrichDomainQuota reads the quota and recomputed usage for a domain from
+// Pebble and populates MaxUsers, MaxStorageBytes, and UsageBytes on the
+// DomainInfo. Best-effort: missing keys leave all quota fields at zero.
+func (h *AdminHandler) enrichDomainQuota(di *templates.DomainInfo) {
+	if h.domainQuota == nil {
+		return
+	}
+	q, err := h.domainQuota.GetQuota(di.Name)
+	if err == nil {
+		di.MaxUsers = q.MaxUsers
+		di.MaxStorageBytes = q.MaxStorageBytes
+	}
+	usage, err := h.domainQuota.GetUsage(di.Name)
+	if err == nil {
+		di.UsageBytes = usage
+	}
 }
 
 func (h *AdminHandler) loadAliases() []templates.AliasInfo {

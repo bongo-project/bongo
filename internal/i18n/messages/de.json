@@ -575,5 +575,13 @@
   "settings.verifyCode": "Verifizieren",
   "settings.requestVerification": "Code senden",
   "settings.addSendAsAddress": "Adresse hinzufuegen",
-  "settings.addSendAsDesc": "Geben Sie eine Adresse ein, die Ihnen gehoert. Ein einmaliger Verifizierungscode wird an diese Adresse gesendet."
+  "settings.addSendAsDesc": "Geben Sie eine Adresse ein, die Ihnen gehoert. Ein einmaliger Verifizierungscode wird an diese Adresse gesendet.",
+  "admin.domainQuota": "Kontingent",
+  "admin.quotaUsage": "Nutzung",
+  "admin.quotaBytes": "Bytes",
+  "admin.quotaUnlimited": "unbegrenzt",
+  "admin.quotaMaxUsers": "Max. Benutzer",
+  "admin.quotaMaxStorage": "Max. Speicher (Bytes)",
+  "admin.quotaEdit": "Kontingent bearbeiten",
+  "admin.quotaSet": "Kontingent setzen"
 }

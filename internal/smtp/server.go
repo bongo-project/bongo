@@ -45,13 +45,14 @@ type RelayQueuer interface {
 
 // Backend implements gosmtp.Backend.
 type Backend struct {
-	auth       auth.Authenticator
-	deliverer  Deliverer
-	spfChecker *mail.SPFChecker
-	resolver   RecipientResolver
-	relayQueue RelayQueuer
-	subPort    int
-	logger     *slog.Logger
+	auth         auth.Authenticator
+	deliverer    Deliverer
+	spfChecker   *mail.SPFChecker
+	resolver     RecipientResolver
+	quotaChecker QuotaChecker
+	relayQueue   RelayQueuer
+	subPort      int
+	logger       *slog.Logger
 
 	hostname   string              // public hostname, used in the Received header
 	outboundRL *inboundRateLimiter // nil = disabled; per-user submission rate limit
@@ -88,6 +89,14 @@ func (b *Backend) SetSPFChecker(checker *mail.SPFChecker) {
 // mail only for local recipients unless the session is authenticated).
 func (b *Backend) SetResolver(r RecipientResolver) {
 	b.resolver = r
+}
+
+// SetQuotaChecker sets the storage quota checker used to reject inbound mail
+// to domains that are at or over their storage quota. Safe to call after Listen.
+// When nil (dev/agent/edge nodes), quota checking is skipped and all local
+// recipients are accepted regardless of usage.
+func (b *Backend) SetQuotaChecker(qc QuotaChecker) {
+	b.quotaChecker = qc
 }
 
 // SetRelayQueue sets the outbound queue used to relay mail from authenticated
@@ -306,7 +315,21 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 		return nil
 	}
 
-	if _, err := s.backend.resolver.ResolveRecipient(to); err == nil {
+	if userID, err := s.backend.resolver.ResolveRecipient(to); err == nil {
+		// Storage quota check: reject permanently if the recipient's owning
+		// domain is at or over its max_storage_bytes limit. The QuotaChecker
+		// derives the primary domain from the already-resolved userID so we
+		// do not re-scan. Nil checker (dev/agent/edge) = unlimited.
+		if s.backend.quotaChecker != nil {
+			over, qErr := s.backend.quotaChecker.RecipientOverQuota(userID)
+			if qErr != nil {
+				// Transient store error: fail open to avoid blocking legitimate mail.
+				s.logger.Warn("smtp: quota check error (fail open)", "to", to, "user", userID, "error", qErr)
+			} else if over {
+				s.logger.Warn("smtp: RCPT rejected: domain over storage quota", "to", to, "user", userID)
+				return &gosmtp.SMTPError{Code: 552, EnhancedCode: gosmtp.EnhancedCode{5, 2, 2}, Message: "Mailbox quota exceeded"}
+			}
+		}
 		s.localRcpts = append(s.localRcpts, to)
 		s.logger.Debug("smtp: RCPT TO (local)", "to", to)
 		return nil

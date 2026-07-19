@@ -102,6 +102,65 @@ func (x *DomainRecord) GetOwnerUserId() string {
 	return ""
 }
 
+// DomainQuota holds per-domain resource limits.
+// Stored under /system/domain/{domain}/quota in Pebble via Raft.
+// 0 means unlimited for both fields.
+type DomainQuota struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// max_users is the maximum number of users whose primary domain is this
+	// domain. 0 = unlimited.
+	MaxUsers int64 `protobuf:"varint,1,opt,name=max_users,json=maxUsers,proto3" json:"max_users,omitempty"`
+	// max_storage_bytes is the maximum aggregate storage (sum of raw_message
+	// blob sizes for all users in this domain). 0 = unlimited.
+	MaxStorageBytes int64 `protobuf:"varint,2,opt,name=max_storage_bytes,json=maxStorageBytes,proto3" json:"max_storage_bytes,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *DomainQuota) Reset() {
+	*x = DomainQuota{}
+	mi := &file_proto_bongo_v1_domain_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DomainQuota) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DomainQuota) ProtoMessage() {}
+
+func (x *DomainQuota) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bongo_v1_domain_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DomainQuota.ProtoReflect.Descriptor instead.
+func (*DomainQuota) Descriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_domain_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *DomainQuota) GetMaxUsers() int64 {
+	if x != nil {
+		return x.MaxUsers
+	}
+	return 0
+}
+
+func (x *DomainQuota) GetMaxStorageBytes() int64 {
+	if x != nil {
+		return x.MaxStorageBytes
+	}
+	return 0
+}
+
 var File_proto_bongo_v1_domain_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_domain_proto_rawDesc = "" +
@@ -111,7 +170,10 @@ const file_proto_bongo_v1_domain_proto_rawDesc = "" +
 	"\fdkim_enabled\x18\x01 \x01(\bR\vdkimEnabled\x12#\n" +
 	"\rdkim_selector\x18\x02 \x01(\tR\fdkimSelector\x12(\n" +
 	"\x10dkim_private_key\x18\x03 \x01(\tR\x0edkimPrivateKey\x12\"\n" +
-	"\rowner_user_id\x18\x04 \x01(\tR\vownerUserIdB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\rowner_user_id\x18\x04 \x01(\tR\vownerUserId\"V\n" +
+	"\vDomainQuota\x12\x1b\n" +
+	"\tmax_users\x18\x01 \x01(\x03R\bmaxUsers\x12*\n" +
+	"\x11max_storage_bytes\x18\x02 \x01(\x03R\x0fmaxStorageBytesB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_domain_proto_rawDescOnce sync.Once
@@ -125,9 +187,10 @@ func file_proto_bongo_v1_domain_proto_rawDescGZIP() []byte {
 	return file_proto_bongo_v1_domain_proto_rawDescData
 }
 
-var file_proto_bongo_v1_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_proto_bongo_v1_domain_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_bongo_v1_domain_proto_goTypes = []any{
 	(*DomainRecord)(nil), // 0: bongo.v1.DomainRecord
+	(*DomainQuota)(nil),  // 1: bongo.v1.DomainQuota
 }
 var file_proto_bongo_v1_domain_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -148,7 +211,7 @@ func file_proto_bongo_v1_domain_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_domain_proto_rawDesc), len(file_proto_bongo_v1_domain_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

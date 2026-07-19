@@ -575,5 +575,13 @@
   "settings.verifyCode": "Verifier",
   "settings.requestVerification": "Envoyer le code",
   "settings.addSendAsAddress": "Ajouter une adresse",
-  "settings.addSendAsDesc": "Entrez une adresse que vous possedez. Un code de verification unique lui sera envoye."
+  "settings.addSendAsDesc": "Entrez une adresse que vous possedez. Un code de verification unique lui sera envoye.",
+  "admin.domainQuota": "Quota",
+  "admin.quotaUsage": "Utilisation",
+  "admin.quotaBytes": "octets",
+  "admin.quotaUnlimited": "illimite",
+  "admin.quotaMaxUsers": "Max utilisateurs",
+  "admin.quotaMaxStorage": "Stockage max (octets)",
+  "admin.quotaEdit": "Modifier le quota",
+  "admin.quotaSet": "Definir le quota"
 }
