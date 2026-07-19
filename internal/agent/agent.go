@@ -678,6 +678,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Get("/admin/domains", adminH.ListDomains)
 		r.Post("/admin/domains", adminH.CreateDomain)
 		r.Get("/admin/domains/{domain}", adminH.ShowDomain)
+		r.Get("/admin/domains/{domain}/dns.zone", adminH.DownloadDNSZone)
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)
 		r.Post("/admin/domains/{domain}/delete", adminH.DeleteDomain)
 		r.Post("/admin/domains/{domain}/dkim/generate", adminH.GenerateDKIMKey)

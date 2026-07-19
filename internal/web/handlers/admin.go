@@ -688,11 +688,64 @@ func (h *AdminHandler) loadDomain(name string) (templates.DomainInfo, bool) {
 		}
 	}
 
+	// DNS setup guide (task 7.3): resolve the server's own addresses so the
+	// generated A/AAAA records point at us, then build the provider-agnostic
+	// record set. Reuses the same dnsCtx deadline as the status checks.
+	v4, v6 := h.resolveServerIPs(dnsCtx)
+	di.MailHostname = h.mailHostname
+	di.DNSGuide, di.DKIMPending = buildDNSGuide(name, h.mailHostname, v4, v6, di.DkimSelector, di.DkimTXTRecord)
+
 	h.enrichDomainCatchAll(&di)
 	h.enrichDomainOwner(&di)
 	h.enrichDomainAdmins(&di)
 	h.enrichDomainQuota(&di)
 	return di, true
+}
+
+// resolveServerIPs looks up the server's own mail hostname and returns its first
+// IPv4 and IPv6 address (either may be empty on lookup failure). Used to fill the
+// A/AAAA records in the domain-owner DNS guide without hardcoding the server IP.
+func (h *AdminHandler) resolveServerIPs(ctx context.Context) (v4, v6 string) {
+	host := strings.TrimSpace(h.mailHostname)
+	if host == "" {
+		return "", ""
+	}
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return "", ""
+	}
+	for _, ip := range ips {
+		if ip4 := ip.To4(); ip4 != nil {
+			if v4 == "" {
+				v4 = ip4.String()
+			}
+		} else if v6 == "" {
+			v6 = ip.String()
+		}
+	}
+	return v4, v6
+}
+
+// DownloadDNSZone streams the domain's DNS setup records as a BIND zone file.
+//
+// GET /admin/domains/{domain}/dns.zone
+// Domain-admins may only download zones for their authorized domains.
+func (h *AdminHandler) DownloadDNSZone(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	scope := middleware.AdminScopeFromContext(r.Context())
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
+	di, found := h.loadDomain(domain)
+	if !found {
+		http.Error(w, "domain not found", http.StatusNotFound)
+		return
+	}
+	zone := dnsGuideZone(domain, di.DNSGuide)
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", domain+".zone"))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	_, _ = w.Write([]byte(zone))
 }
 
 // doDNSLookups performs the four DNS lookups (MX, SPF/TXT, DKIM, DMARC) for a
@@ -1189,7 +1242,9 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 	// Log only safe metadata — never the private key.
 	h.logger.Info("dkim: key generated", "domain", domain, "selector", selector)
 
-	http.Redirect(w, r, "/admin/domains?flash=DKIM+key+generated", http.StatusSeeOther)
+	// Return to the domain detail page (not the list) so the operator can copy
+	// the freshly generated TXT record and re-check DNS status in place.
+	http.Redirect(w, r, fmt.Sprintf("/admin/domains/%s?flash=DKIM+key+generated", domain), http.StatusSeeOther)
 }
 
 // SetCatchAll sets the catch-all owner for a domain.

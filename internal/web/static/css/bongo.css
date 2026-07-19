@@ -2351,7 +2351,7 @@ a.admin-nav-item.active, .admin-nav-item.active {
 /* ============================================
    19. ADMIN LAYOUT (shared)
    ============================================ */
-.admin-scroll { flex: 1; overflow-y: auto; padding: 24px; }
+.admin-scroll { flex: 1; min-width: 0; overflow-y: auto; padding: 24px; }
 .admin-title { font-size: 1.3rem; font-weight: 700; color: var(--text); margin-bottom: 4px; }
 .admin-subtitle { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 20px; }
 .section-title { font-size: 1.05rem; font-weight: 700; color: var(--text); margin: 24px 0 12px; }
@@ -2564,6 +2564,37 @@ a.admin-nav-item.active, .admin-nav-item.active {
 
 .dns-check { color: var(--bongo-green); font-weight: 600; font-size: 0.85rem; }
 .dns-fail { color: var(--bongo-red); font-weight: 600; font-size: 0.85rem; }
+.dns-neutral { color: var(--text-muted); font-weight: 600; font-size: 0.85rem; }
+.dns-error { color: var(--bongo-amber, var(--text-secondary)); font-weight: 600; font-size: 0.85rem; }
+
+/* DNS check table: long, unbroken values (DKIM p= base64, SPF includes) must
+   wrap inside their cell instead of forcing horizontal page overflow. */
+.admin-table td code {
+  overflow-wrap: anywhere; word-break: break-word; max-width: 100%;
+}
+.admin-table td details > code.u-block { margin-top: 4px; }
+
+/* DNS setup guide (task 7.3): value column wraps long records; copy button
+   sits inline after the value. */
+.dns-guide-table td.dns-guide-value { display: flex; align-items: flex-start; gap: 8px; }
+.dns-guide-value code { flex: 1; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+.btn-copy {
+  flex: none; background: none; border: 1px solid var(--border); border-radius: 4px;
+  cursor: pointer; font-size: 0.85rem; line-height: 1; padding: 3px 6px; color: var(--text-secondary);
+}
+.btn-copy:hover { background: var(--bg-hover); }
+.dns-guide-notice {
+  background: var(--bongo-blue-light); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px; font-size: 0.85rem; color: var(--text-secondary);
+}
+
+/* DKIM published TXT record: wrap the base64 key rather than overflow the card. */
+.dkim-txt-record {
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+  background: var(--bg-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px; margin: 0 0 4px;
+  font-size: 0.82rem; max-width: 100%;
+}
 
 /* Domain detail page: danger-zone section has a red left border accent. */
 .domain-danger-zone { border-left: 3px solid var(--bongo-red); }
