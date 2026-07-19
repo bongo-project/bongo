@@ -1,0 +1,98 @@
+package middleware
+
+import (
+	"context"
+	"net/http"
+	"strings"
+)
+
+// AdminScope holds the computed authorization scope for an admin request.
+// Injected into the context by RequireAdminOrDomainAdmin and read by handlers
+// via AdminScopeFromContext.
+type AdminScope struct {
+	// Global is true when the caller is a global administrator.
+	// When Global is true, Domains is not populated and all resources are accessible.
+	Global bool
+
+	// Domains is the set of lower-cased domain names the caller may administer.
+	// Only meaningful when Global is false.
+	Domains map[string]bool
+}
+
+// HasDomain reports whether the caller has administrative access to domain d.
+// Global admins always return true. Domain-admins return true only for
+// domains in their Domains set.
+func (s AdminScope) HasDomain(d string) bool {
+	if s.Global {
+		return true
+	}
+	return s.Domains[strings.ToLower(d)]
+}
+
+const adminScopeKey contextKey = "adminScope"
+
+// RequireAdminOrDomainAdmin replaces RequireAdmin as the admin-group gate.
+//
+// It allows:
+//   - Global admins (isAdmin=true from RequireAuth context)
+//   - Users who administer at least one domain (authorizedFn returns ≥1 domain)
+//
+// It denies:
+//   - Regular users (not global admin, no authorized domains) → 403
+//   - Store errors → 403 (fail-closed)
+//
+// It also injects an AdminScope into the request context so downstream
+// handlers can enforce per-resource access without re-querying the store.
+//
+// authorizedFn is typically DomainAdminStore.AuthorizedDomains. It MUST NOT
+// be called for global admins (isGlobalAdmin=true) as that would scan all
+// Pebble domains unnecessarily; the middleware implements this optimization.
+func RequireAdminOrDomainAdmin(authorizedFn func(userID string, isGlobalAdmin bool) ([]string, error)) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			isAdmin := AdminFromContext(r.Context())
+			userID, _ := UserFromContext(r.Context())
+
+			scope := AdminScope{Global: isAdmin}
+
+			if !isAdmin {
+				// Non-global: check whether they administer any domains.
+				if authorizedFn == nil {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+				domains, err := authorizedFn(userID, false)
+				if err != nil {
+					// Fail closed: scope computation error → deny.
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+				if len(domains) == 0 {
+					http.Error(w, "Forbidden", http.StatusForbidden)
+					return
+				}
+				scope.Domains = make(map[string]bool, len(domains))
+				for _, d := range domains {
+					scope.Domains[strings.ToLower(d)] = true
+				}
+			}
+
+			ctx := context.WithValue(r.Context(), adminScopeKey, scope)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// AdminScopeFromContext retrieves the AdminScope from the context.
+// Returns a zero AdminScope (non-global, no domains) if not set.
+func AdminScopeFromContext(ctx context.Context) AdminScope {
+	s, _ := ctx.Value(adminScopeKey).(AdminScope)
+	return s
+}
+
+// WithAdminScopeContext injects an AdminScope into a context.
+// This is intended for use in tests; production code should use the
+// RequireAdminOrDomainAdmin middleware instead.
+func WithAdminScopeContext(ctx context.Context, scope AdminScope) context.Context {
+	return context.WithValue(ctx, adminScopeKey, scope)
+}

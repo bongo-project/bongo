@@ -17,6 +17,7 @@ import (
 )
 
 // postGrantSend posts to /admin/users/{userID}/addresses/grant-send.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func postGrantSend(t *testing.T, h *AdminHandler, userID, address string) *httptest.ResponseRecorder {
 	t.Helper()
 	form := url.Values{"address": {address}}
@@ -25,7 +26,9 @@ func postGrantSend(t *testing.T, h *AdminHandler, userID, address string) *httpt
 		strings.NewReader(form.Encode()),
 	)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "userID", userID)
 	w := httptest.NewRecorder()
 	h.GrantSend(w, r)
@@ -299,7 +302,9 @@ func TestShowUser_AddressesEnrichedWithStatus(t *testing.T) {
 	}
 
 	r := httptest.NewRequest(http.MethodGet, "/admin/users/user1", nil)
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "userID", "user1")
 	w := httptest.NewRecorder()
 	h.ShowUser(w, r)

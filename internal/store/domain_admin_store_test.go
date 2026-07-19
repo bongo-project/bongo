@@ -372,6 +372,107 @@ func TestDomainFromEmail(t *testing.T) {
 	}
 }
 
+// --- DeleteOwner tests (task 6.2 cascade) ---
+
+// TestDomainAdminStore_DeleteOwner verifies that DeleteOwner removes a previously
+// set owner and that a second call (idempotent) does not error.
+func TestDomainAdminStore_DeleteOwner(t *testing.T) {
+	ps, das := newDomainAdminTestEnv(t)
+	seedDomain(t, ps, "example.com")
+	seedUser(t, ps, "user1")
+
+	// Set owner.
+	if err := das.SetOwner("example.com", "user1"); err != nil {
+		t.Fatalf("SetOwner: %v", err)
+	}
+
+	// Verify set.
+	ownerID, ok, err := das.GetOwner("example.com")
+	if err != nil || !ok || ownerID != "user1" {
+		t.Fatalf("GetOwner after set: ok=%v id=%q err=%v", ok, ownerID, err)
+	}
+
+	// Delete owner.
+	if err := das.DeleteOwner("example.com"); err != nil {
+		t.Fatalf("DeleteOwner: %v", err)
+	}
+
+	// Verify gone.
+	_, ok, err = das.GetOwner("example.com")
+	if err != nil {
+		t.Fatalf("GetOwner after delete: %v", err)
+	}
+	if ok {
+		t.Error("owner still present after DeleteOwner")
+	}
+
+	// Idempotent: second delete should not error.
+	if err := das.DeleteOwner("example.com"); err != nil {
+		t.Errorf("DeleteOwner (idempotent): %v", err)
+	}
+}
+
+// TestDomainAdminStore_ListDomainsOwnedBy verifies that only domains where
+// userID is the owner are returned, and that other owners are excluded.
+func TestDomainAdminStore_ListDomainsOwnedBy(t *testing.T) {
+	ps, das := newDomainAdminTestEnv(t)
+	seedDomain(t, ps, "alpha.com")
+	seedDomain(t, ps, "beta.com")
+	seedDomain(t, ps, "gamma.com")
+	seedUser(t, ps, "alice")
+	seedUser(t, ps, "bob")
+
+	// Initially no domains owned.
+	domains, err := das.ListDomainsOwnedBy("alice")
+	if err != nil || len(domains) != 0 {
+		t.Fatalf("ListDomainsOwnedBy alice (empty): got %v err=%v", domains, err)
+	}
+
+	// Alice owns alpha and beta; bob owns gamma.
+	if err := das.SetOwner("alpha.com", "alice"); err != nil {
+		t.Fatalf("SetOwner alpha alice: %v", err)
+	}
+	if err := das.SetOwner("beta.com", "alice"); err != nil {
+		t.Fatalf("SetOwner beta alice: %v", err)
+	}
+	if err := das.SetOwner("gamma.com", "bob"); err != nil {
+		t.Fatalf("SetOwner gamma bob: %v", err)
+	}
+
+	aliceDomains, err := das.ListDomainsOwnedBy("alice")
+	if err != nil {
+		t.Fatalf("ListDomainsOwnedBy alice: %v", err)
+	}
+	if len(aliceDomains) != 2 {
+		t.Errorf("ListDomainsOwnedBy alice: want 2, got %v", aliceDomains)
+	}
+	for _, d := range aliceDomains {
+		if d != "alpha.com" && d != "beta.com" {
+			t.Errorf("ListDomainsOwnedBy alice: unexpected domain %q", d)
+		}
+	}
+
+	bobDomains, err := das.ListDomainsOwnedBy("bob")
+	if err != nil {
+		t.Fatalf("ListDomainsOwnedBy bob: %v", err)
+	}
+	if len(bobDomains) != 1 || bobDomains[0] != "gamma.com" {
+		t.Errorf("ListDomainsOwnedBy bob: want [gamma.com], got %v", bobDomains)
+	}
+
+	// After deleting alpha's owner, alice should only own beta.
+	if err := das.DeleteOwner("alpha.com"); err != nil {
+		t.Fatalf("DeleteOwner alpha: %v", err)
+	}
+	aliceDomains, err = das.ListDomainsOwnedBy("alice")
+	if err != nil {
+		t.Fatalf("ListDomainsOwnedBy alice after delete: %v", err)
+	}
+	if len(aliceDomains) != 1 || aliceDomains[0] != "beta.com" {
+		t.Errorf("ListDomainsOwnedBy alice after delete: want [beta.com], got %v", aliceDomains)
+	}
+}
+
 // TestDomainOwnerKey_NoCollision verifies that owner keys don't collide with domain enable keys.
 func TestDomainOwnerKey_NoCollision(t *testing.T) {
 	ownerKey := string(domainOwnerKey("example.com"))

@@ -58,12 +58,15 @@ func newDKIMTestHandler(t *testing.T) (*AdminHandler, *directApplierTags, *store
 }
 
 // generateDKIMRequest performs POST /admin/domains/{domain}/dkim/generate.
+// Uses a global-admin scope so the test is not affected by tenant isolation checks.
 func generateDKIMRequest(t *testing.T, h *AdminHandler, domain string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/domains/%s/dkim/generate", domain), nil)
 	// Apply user context first, then chi params on top (order matters: each
 	// r.WithContext call creates a new request; the last call wins).
-	r = r.WithContext(middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com"))
+	ctx := middleware.WithUserContext(r.Context(), "admin-id", "admin@example.com")
+	ctx = middleware.WithAdminScopeContext(ctx, middleware.AdminScope{Global: true})
+	r = r.WithContext(ctx)
 	r = withChiParam(r, "domain", domain)
 	w := httptest.NewRecorder()
 	h.GenerateDKIMKey(w, r)

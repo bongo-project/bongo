@@ -575,10 +575,26 @@ func (a *Agent) Run(ctx context.Context) error {
 		http.Redirect(w, r, "/mail/INBOX", http.StatusSeeOther)
 	})
 
-	// Admin routes (require auth + admin).
+	// Construct the domain-admin store before the admin group so the gate
+	// middleware (RequireAdminOrDomainAdmin) can call AuthorizedDomains.
+	// (task 6.1 / FR-8 domain ownership + tenant model;
+	//  task 6.2 / US-TENANT-2 tenant isolation gate)
+	var domainAdminStoreForAdmin *store.DomainAdminStore
+	if a.Store != nil {
+		domainAdminStoreForAdmin = store.NewDomainAdminStore(a.Store, a)
+	}
+
+	// Admin routes (require auth + global-admin or domain-admin with scope).
+	// RequireAdminOrDomainAdmin replaces RequireAdmin: it gates the group and
+	// injects an AdminScope into the context for per-handler isolation checks.
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(sessionSecret, a.userSessionState))
-		r.Use(middleware.RequireAdmin(sessionSecret))
+		r.Use(middleware.RequireAdminOrDomainAdmin(func(userID string, isGlobalAdmin bool) ([]string, error) {
+			if domainAdminStoreForAdmin == nil {
+				return nil, nil
+			}
+			return domainAdminStoreForAdmin.AuthorizedDomains(userID, isGlobalAdmin)
+		}))
 		r.Use(middleware.RequireSameOrigin())
 		// Double-submit CSRF token, defence-in-depth on top of same-origin.
 		r.Use(middleware.InjectCSRF(sessionSecret))
@@ -612,11 +628,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetCatchAllStore(store.NewCatchAllStore(a.Store, a))
 		}
 
-		// Wire the domain-admin store so SetDomainOwner, GrantDomainAdmin, and
-		// RevokeDomainAdmin can persist ownership and grant data via Raft.
-		// (task 6.1 / FR-8 domain ownership + tenant model)
-		if a.Store != nil {
-			adminH.SetDomainAdminStore(store.NewDomainAdminStore(a.Store, a))
+		// Reuse the pre-constructed domain-admin store (same instance as the
+		// gate middleware uses) for SetDomainOwner, GrantDomainAdmin, etc.
+		if domainAdminStoreForAdmin != nil {
+			adminH.SetDomainAdminStore(domainAdminStoreForAdmin)
 		}
 
 		// Wire the address store so AddAddress/RemoveAddress can manage
