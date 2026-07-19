@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -52,6 +53,7 @@ type AdminHandler struct {
 	domainAdmin  *store.DomainAdminStore
 	domainQuota  *store.DomainQuotaStore
 	startTime    time.Time
+	mailHostname string // configured SMTP hostname; used as MX expected-value hint
 }
 
 // GossipLister returns gossip member info.
@@ -133,6 +135,12 @@ func (h *AdminHandler) SetDomainAdminStore(das *store.DomainAdminStore) {
 // enforcement) and SetDomainQuota (global-admin only).
 func (h *AdminHandler) SetDomainQuotaStore(dqs *store.DomainQuotaStore) {
 	h.domainQuota = dqs
+}
+
+// SetMailHostname sets the configured SMTP hostname used as an MX expected-value
+// hint on the domain detail page. Empty string = no hint shown.
+func (h *AdminHandler) SetMailHostname(hostname string) {
+	h.mailHostname = hostname
 }
 
 // --- Dashboard ---
@@ -617,6 +625,83 @@ func (h *AdminHandler) ListDomains(w http.ResponseWriter, r *http.Request) {
 	templ.Handler(templates.AdminDomainList(domains, email, flash, scope.Global)).ServeHTTP(w, r)
 }
 
+// ShowDomain renders the per-domain detail page.
+// Domain-admins may only view domains in their authorized scope (requireDomainAccess).
+// A nonexistent domain returns 404 to a global admin; a domain-admin gets 403 for any
+// out-of-scope request (zero-leak: no existence information is revealed).
+func (h *AdminHandler) ShowDomain(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	scope := middleware.AdminScopeFromContext(r.Context())
+	_, email := middleware.UserFromContext(r.Context())
+	flash := r.URL.Query().Get("flash")
+
+	if !requireDomainAccess(w, scope, domain) {
+		return
+	}
+
+	di, found := h.loadDomain(domain)
+	if !found {
+		http.Error(w, "domain not found", http.StatusNotFound)
+		return
+	}
+
+	templ.Handler(templates.AdminDomainDetail(di, email, flash, scope.Global)).ServeHTTP(w, r)
+}
+
+// loadDomain loads and enriches a single DomainInfo by name.
+// It reads the domain record from Pebble (source of truth), performs an MX check,
+// and populates all enrichment fields (DKIM, catch-all, owner, admins, quota).
+// Returns (DomainInfo, true) if found, (zero, false) if the domain key is absent.
+func (h *AdminHandler) loadDomain(name string) (templates.DomainInfo, bool) {
+	if h.store == nil {
+		return templates.DomainInfo{}, false
+	}
+
+	key := []byte(fmt.Sprintf("/system/domain/%s", name))
+	data, err := h.store.Get(key)
+	if err != nil {
+		return templates.DomainInfo{}, false
+	}
+
+	di := templates.DomainInfo{
+		Name:    name,
+		Enabled: string(data) == "enabled",
+	}
+
+	// MX check: find what is actually configured and compare to expected.
+	// Use a short timeout so the handler is not blocked in offline/test environments.
+	var mxHosts []string
+	mxCtx, mxCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer mxCancel()
+	if mxs, err := net.DefaultResolver.LookupMX(mxCtx, name); err == nil && len(mxs) > 0 {
+		di.HasMX = true
+		for _, mx := range mxs {
+			mxHosts = append(mxHosts, strings.TrimSuffix(mx.Host, "."))
+		}
+	}
+	mxFound := strings.Join(mxHosts, ", ")
+	if mxFound == "" {
+		mxFound = "-"
+	}
+	// Populate the extensible DNS rows. SPF/DKIM/DMARC rows can be appended here
+	// later without a redesign — each row is {Label, OK, Expected, Found}.
+	di.DNSRows = []templates.DNSCheckRow{
+		{
+			Label:    "MX",
+			OK:       di.HasMX,
+			Expected: h.mailHostname,
+			Found:    mxFound,
+		},
+	}
+
+	h.enrichDomainDKIM(&di)
+	h.enrichDomainCatchAll(&di)
+	h.enrichDomainOwner(&di)
+	h.enrichDomainAdmins(&di)
+	h.enrichDomainQuota(&di)
+	return di, true
+}
+
 // CreateDomain adds a new domain.
 // This is a global-only operation: minting a new tenant is restricted to global admins.
 func (h *AdminHandler) CreateDomain(w http.ResponseWriter, r *http.Request) {
@@ -741,7 +826,9 @@ func (h *AdminHandler) DeleteDomain(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: domain deleted", "domain", domain)
 
-	http.Redirect(w, r, "/admin/domains?flash=Domain+deleted", http.StatusSeeOther)
+	// hxRedirect so the hx-post + hx-confirm delete control navigates correctly
+	// (matches DeleteUser); it also sets Location/303 for non-HTMX callers.
+	h.hxRedirect(w, "/admin/domains?flash=Domain+deleted")
 }
 
 // GenerateDKIMKey generates (or rotates) a per-domain RSA-2048 DKIM signing key.

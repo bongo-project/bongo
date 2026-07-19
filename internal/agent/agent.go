@@ -652,6 +652,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetDomainQuotaStore(a.DomainQuota)
 		}
 
+		// Wire the mail hostname so the domain detail page can hint the expected
+		// MX value. Empty string = no hint shown.
+		adminH.SetMailHostname(a.Config.SMTP.Hostname)
+
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
 		r.Get("/admin/users/new", adminH.NewUserForm)
@@ -666,6 +670,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/users/{userID}/addresses/grant-send", adminH.GrantSend)
 		r.Get("/admin/domains", adminH.ListDomains)
 		r.Post("/admin/domains", adminH.CreateDomain)
+		r.Get("/admin/domains/{domain}", adminH.ShowDomain)
 		r.Post("/admin/domains/{domain}/toggle", adminH.ToggleDomain)
 		r.Post("/admin/domains/{domain}/delete", adminH.DeleteDomain)
 		r.Post("/admin/domains/{domain}/dkim/generate", adminH.GenerateDKIMKey)

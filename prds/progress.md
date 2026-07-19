@@ -282,3 +282,15 @@ Worker: security-auditor (sonnet). Advisor REVISE (excellent guidance, folded in
 go build OK; targeted -race green; full -race suite running as the Phase-6 gate.
 PATTERN [security] The adversarial sweep's value when guards are already correct is COVERAGE (a table over every endpoint proves no endpoint was silently left unscoped) — build the table from the ACTUAL route list so nothing is omitted; assert only 'not 403' for positive controls (CreateDomain/CreateUser/DKIM have DNS/crypto/email side effects that flake on a specific 2xx).
 PHASE 6 COMPLETE: all of 6.1-6.4 done. Multi-domain epic (Phases 3-6) complete. Next: full-suite gate → collapse Phase 6 → move PRD research→done → v0.6.0 deploy (bundles 5.2 + hygiene + all Phase 6).
+
+## 2026-07-19 — Task 7.1 DONE (per-domain detail sub-screen + MX indicator) + backlog B1
+
+Worker: htmx-alpine-pro (sonnet). Advisor caught: test goes in handlers/admin_scope_test.go not middleware; ShowDomain must 404 on unknown domain (global admin); MX-expected from config not hardcoded. Code review MINOR.
+- New GET /admin/domains/{domain} → AdminHandler.ShowDomain (chi domain param, requireDomainAccess(scope,domain) — domain-admin 403 on others / 404 on unknown; global sees all), renders new templ AdminDomainDetail with stacked sections: DNS/MX status (✓/✗ + expected mail host; structured {label,ok,expected,found} so SPF/DKIM/DMARC append later), enable/disable, DKIM generate/rotate + selector + full TXT record (PROMINENT — fixes the off-screen bug), catch-all set/clear, owner (global-only), domain-admins grant/revoke, quota (global-only set + usage), delete (global-only). AdminDomainList slimmed to Domain·Status·MX·Manage (9-col overflow gone). Light <small> help blurbs; i18n ×4; CSP-safe classes.
+- ISOLATION: route in RequireAdminOrDomainAdmin group; adversarial test (admin_scope_test.go) d1-admin→/admin/domains/{d2}=403, →{d1}=not-403.
+- I FIXED 2 review MINORs: (1) added missing .u-mb-025 util class to bongo.css; (2) DeleteDomain now uses h.hxRedirect (was plain http.Redirect 303) so the worker's new hx-post+hx-confirm delete navigates correctly — matches DeleteUser (hxRedirect sets HX-Redirect + Location/303 fallback).
+go build OK; -race handlers green. Deploying as v0.6.1.
+PATTERN [admin-ui] Per-entity detail sub-screen (like ShowUser) is the pattern for admin objects with many settings — a slim list + a /{id} detail page beats a wide table; the new GET route MUST carry the same scope check (requireDomainAccess/UserAccess) as its mutations or it's a read leak.
+
+## 2026-07-19 — Backlog B1 recorded: de-brand the repo (user-requested)
+Remove ALL 157 deployment refs (deploy/ configs + node name bongo-1, .env.example, autoconfig comment, docs/, prds/ logs, tests) → repo mentions only bongo/bongo-go with generic example.com placeholders. USER-AUTHORISED git history rewrite + FORCE-PUSH if needed. CAVEAT: live /mnt/data/bongo config is not in git (keeps real values); verify no runtime code depends on literal "deployment" first. Unscheduled.
