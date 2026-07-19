@@ -1636,3 +1636,133 @@ func TestAdversarialSweep_AllEndpoints_DomainAdmin(t *testing.T) {
 		})
 	}
 }
+
+// =============================================================================
+// SHOW DOMAIN: adversarial isolation tests for the new detail route
+// GET /admin/domains/{domain}
+// =============================================================================
+
+// TestShowDomain_DomainAdmin_D2Forbidden verifies that a d1-admin requesting
+// the detail page of d2 gets 403 with no domain data in the response body.
+func TestShowDomain_DomainAdmin_D2Forbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains/"+testDomain2, nil)
+	r = withChiParam(r, "domain", testDomain2)
+	r = withDomainAdmin1(r, env.domainAdmin1ID)
+	w := httptest.NewRecorder()
+	env.h.ShowDomain(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("ShowDomain d2 (domain-admin of d1) status = %d, want 403", w.Code)
+	}
+	// Zero-leak: the response body must not contain any d2 data.
+	body := w.Body.String()
+	if strings.Contains(body, testDomain2) {
+		t.Errorf("ShowDomain d2 (domain-admin of d1) response body contains %q — data leak", testDomain2)
+	}
+}
+
+// TestShowDomain_DomainAdmin_D1NotForbidden verifies that a d1-admin CAN view
+// the detail page of their own domain (positive control — must not be 403).
+func TestShowDomain_DomainAdmin_D1NotForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains/"+testDomain1, nil)
+	r = withChiParam(r, "domain", testDomain1)
+	r = withDomainAdmin1(r, env.domainAdmin1ID)
+	w := httptest.NewRecorder()
+	env.h.ShowDomain(w, r)
+
+	if w.Code == http.StatusForbidden {
+		t.Errorf("ShowDomain d1 (domain-admin of d1) status = 403, should be allowed")
+	}
+	// The response should contain the domain name.
+	body := w.Body.String()
+	if !strings.Contains(body, testDomain1) {
+		t.Errorf("ShowDomain d1 (domain-admin of d1) response missing %q", testDomain1)
+	}
+}
+
+// TestShowDomain_GlobalAdmin_D1OK verifies that a global admin can view any
+// domain's detail page (gets 200).
+func TestShowDomain_GlobalAdmin_D1OK(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains/"+testDomain1, nil)
+	r = withChiParam(r, "domain", testDomain1)
+	r = withGlobalAdmin(r, env.globalAdminID)
+	w := httptest.NewRecorder()
+	env.h.ShowDomain(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("ShowDomain d1 (global-admin) status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, testDomain1) {
+		t.Errorf("ShowDomain d1 (global-admin) response missing domain name %q", testDomain1)
+	}
+}
+
+// TestShowDomain_GlobalAdmin_UnknownDomain404 verifies that a global admin
+// requesting a nonexistent domain gets 404 (not a silent blank page).
+func TestShowDomain_GlobalAdmin_UnknownDomain404(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains/no-such-domain.example.com", nil)
+	r = withChiParam(r, "domain", "no-such-domain.example.com")
+	r = withGlobalAdmin(r, env.globalAdminID)
+	w := httptest.NewRecorder()
+	env.h.ShowDomain(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("ShowDomain unknown (global-admin) status = %d, want 404", w.Code)
+	}
+}
+
+// TestListDomains_HasManageLink verifies that the simplified domain list renders
+// a "Manage" link pointing to /admin/domains/{domain} for each domain.
+func TestListDomains_HasManageLink(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains", nil)
+	r = withGlobalAdmin(r, env.globalAdminID)
+	w := httptest.NewRecorder()
+	env.h.ListDomains(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("ListDomains (global-admin) status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	// The Manage link must link to the detail page for each domain.
+	if !strings.Contains(body, "/admin/domains/"+testDomain1) {
+		t.Errorf("ListDomains: missing Manage link for %q", testDomain1)
+	}
+	if !strings.Contains(body, "/admin/domains/"+testDomain2) {
+		t.Errorf("ListDomains: missing Manage link for %q", testDomain2)
+	}
+	// The old 9-column overflow (DKIM, catch-all, owner, quota columns) must be gone.
+	// Check that the DomainAdmins header text is absent (it is NOT in the new 4-col list).
+	if strings.Contains(body, `admin.domainAdmins`) {
+		t.Errorf("ListDomains: old 9-column headers still present in response")
+	}
+}
+
+// TestListDomains_MXColumn verifies that the MX check column is shown for each
+// domain in the list (✓ or ✗ — the exact symbol depends on DNS; just check the
+// column structure exists).
+func TestListDomains_MXColumn(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/domains", nil)
+	r = withGlobalAdmin(r, env.globalAdminID)
+	w := httptest.NewRecorder()
+	env.h.ListDomains(w, r)
+
+	body := w.Body.String()
+	// The MX column header must be present (translated key "admin.mxRecord" resolves
+	// to "MX Record" in English, which the template renders in the thead).
+	if !strings.Contains(body, "MX Record") {
+		t.Errorf("ListDomains: MX column header missing from response")
+	}
+}

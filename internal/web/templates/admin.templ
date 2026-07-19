@@ -49,7 +49,16 @@ type AdminUserInfo struct {
 	PrimaryEmail string
 }
 
-// DomainInfo holds data for the domain management list.
+// DNSCheckRow holds one DNS verification row for the domain detail page.
+// The slice is extensible: add SPF/DKIM/DMARC rows later without redesign.
+type DNSCheckRow struct {
+	Label    string // e.g. "MX"
+	OK       bool   // true if the record was found/valid
+	Expected string // value the operator should publish (hint; may be empty)
+	Found    string // what was actually found (may be "-" if nothing)
+}
+
+// DomainInfo holds data for the domain management list and detail page.
 type DomainInfo struct {
 	Name            string
 	Enabled         bool
@@ -61,9 +70,10 @@ type DomainInfo struct {
 	OwnerUserID     string   // user ID of the domain owner (tenant); empty if not set
 	DomainAdmins    []string // user IDs granted as domain-admins; nil/empty if none
 	// Quota fields (FR-10 / US-TENANT-3). 0 = unlimited.
-	MaxUsers        int64 // per-domain user count limit
-	MaxStorageBytes int64 // per-domain aggregate storage limit in bytes
-	UsageBytes      int64 // last-recomputed aggregate usage in bytes
+	MaxUsers        int64        // per-domain user count limit
+	MaxStorageBytes int64        // per-domain aggregate storage limit in bytes
+	UsageBytes      int64        // last-recomputed aggregate usage in bytes
+	DNSRows         []DNSCheckRow // extensible DNS check rows; populated only on detail page
 }
 
 // AliasInfo holds data for the alias management list.
@@ -477,27 +487,15 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 					<thead>
 						<tr>
 							<th scope="col">{ t(ctx, "admin.domain") }</th>
-							<th scope="col">{ t(ctx, "admin.mxRecord") }</th>
 							<th scope="col">{ t(ctx, "common.status") }</th>
-							<th scope="col">{ t(ctx, "admin.dkimKey") }</th>
-							<th scope="col">{ t(ctx, "admin.catchAll") }</th>
-							<th scope="col">{ t(ctx, "admin.domainOwner") }</th>
-							<th scope="col">{ t(ctx, "admin.domainAdmins") }</th>
-							<th scope="col">{ t(ctx, "admin.domainQuota") }</th>
-							<th scope="col" class="u-width-200px">{ t(ctx, "common.actions") }</th>
+							<th scope="col">{ t(ctx, "admin.mxRecord") }</th>
+							<th scope="col" class="u-width-100px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
 					<tbody>
 						for _, d := range domains {
 							<tr>
 								<td><strong>{ d.Name }</strong></td>
-								<td>
-									if d.HasMX {
-										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
-									} else {
-										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
-									}
-								</td>
 								<td>
 									if d.Enabled {
 										<span class="badge badge-active"><span class="status-dot green"></span> { t(ctx, "common.enabled") }</span>
@@ -506,87 +504,19 @@ templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin b
 									}
 								</td>
 								<td>
-									if d.DkimEnabled && d.DkimTXTRecord != "" {
-										<span class="dns-check">&#10003; { d.DkimSelector }</span>
-										<details class="dkim-details">
-											<summary>{ t(ctx, "admin.dkimDNSRecord") }</summary>
-											<pre class="dkim-txt-record">{ d.DkimTXTRecord }</pre>
-										</details>
+									if d.HasMX {
+										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
 									} else {
-										<span class="u-text-muted">{ t(ctx, "admin.dkimKeyNone") }</span>
+										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
 									}
 								</td>
 								<td>
-									if d.CatchAllOwnerID != "" {
-										<span class="dns-check">&#10003; { d.CatchAllOwnerID }</span>
-										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/catchall/delete", d.Name)) }>
-											<button type="submit" class="btn-flush">{ t(ctx, "common.clear") }</button>
-										</form>
-									} else {
-										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/catchall", d.Name)) } class="admin-inline-form">
-											<input type="text" name="owner_user_id" placeholder={ t(ctx, "admin.catchAllOwnerPlaceholder") } class="form-input u-m0" required/>
-											<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.setCatchAll") }</button>
-										</form>
-									}
-								</td>
-								<td>
-									if d.OwnerUserID != "" {
-										<span class="u-text-small">{ d.OwnerUserID }</span>
-									}
-									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/owner", d.Name)) } class="admin-inline-form">
-										<input type="text" name="owner_user_id" placeholder={ t(ctx, "admin.domainOwnerPlaceholder") } class="form-input u-m0"/>
-										<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.setOwner") }</button>
-									</form>
-								</td>
-								<td>
-									for _, uid := range d.DomainAdmins {
-										<div class="admin-inline-form">
-											<span class="u-text-small">{ uid }</span>
-											<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/admins/revoke", d.Name)) }>
-												<input type="hidden" name="user_id" value={ uid }/>
-												<button type="submit" class="btn-flush">{ t(ctx, "common.revoke") }</button>
-											</form>
-										</div>
-									}
-									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/admins", d.Name)) } class="admin-inline-form">
-										<input type="text" name="user_id" placeholder={ t(ctx, "admin.domainAdminPlaceholder") } class="form-input u-m0"/>
-										<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.grantAdmin") }</button>
-									</form>
-								</td>
-								<td>
-									@domainQuotaCell(d, isGlobalAdmin)
-								</td>
-								<td>
-									<div class="row-actions">
-										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
-											<button type="submit" class="btn-outline">
-												if d.Enabled {
-													{ t(ctx, "common.disable") }
-												} else {
-													{ t(ctx, "common.enable") }
-												}
-											</button>
-										</form>
-										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/dkim/generate", d.Name)) }>
-											<button type="submit" class="btn-outline">
-												if d.DkimEnabled {
-													{ t(ctx, "admin.rotateDKIMKey") }
-												} else {
-													{ t(ctx, "admin.generateDKIMKey") }
-												}
-											</button>
-										</form>
-										if isGlobalAdmin {
-											<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/delete", d.Name)) }>
-												<button type="submit" class="btn-flush">{ t(ctx, "common.delete") }</button>
-											</form>
-										}
-									</div>
+									<a href={ templ.SafeURL("/admin/domains/" + d.Name) } class="btn-outline">{ t(ctx, "admin.manage") }</a>
 								</td>
 							</tr>
 						}
 						if len(domains) == 0 {
-							<tr><td colspan="9" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
+							<tr><td colspan="4" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
 						}
 					</tbody>
 				</table>
@@ -629,6 +559,194 @@ templ domainQuotaCell(d DomainInfo, isGlobalAdmin bool) {
 			</details>
 		}
 	</div>
+}
+
+// AdminDomainDetail renders the per-domain detail page.
+// Domain-admins see all sections except those gated by isGlobalAdmin.
+// Global-only sections (owner, quota-set, delete) are hidden for domain-admins
+// because the backend handlers already enforce requireGlobalAdmin — hiding is UX only.
+templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
+	@AdminLayout(t(ctx, "admin.domainDetail")+": "+d.Name, email, "domains") {
+		<div class="admin-scroll">
+			if flash != "" {
+				@FlashMessage(flash, "success")
+			}
+			<div class="admin-toolbar">
+				<a href="/admin/domains" class="btn-outline">&#8592; { t(ctx, "admin.backToDomains") }</a>
+			</div>
+			<h1 class="admin-title">{ d.Name }</h1>
+			<p class="admin-subtitle">{ t(ctx, "admin.domainDetailSubtitle") }</p>
+			<!-- DNS Configuration -->
+			<div class="form-card">
+				<h3>{ t(ctx, "admin.dnsSectionTitle") }</h3>
+				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.dnsHelp") }</small>
+				<table class="admin-table">
+					<thead>
+						<tr>
+							<th scope="col">{ t(ctx, "admin.dnsRecord") }</th>
+							<th scope="col">{ t(ctx, "common.status") }</th>
+							<th scope="col">{ t(ctx, "admin.dnsExpected") }</th>
+							<th scope="col">{ t(ctx, "admin.dnsFound") }</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, row := range d.DNSRows {
+							<tr>
+								<td><strong>{ row.Label }</strong></td>
+								<td>
+									if row.OK {
+										<span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span>
+									} else {
+										<span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span>
+									}
+								</td>
+								<td>
+									if row.Expected != "" {
+										<code class="u-font-088">{ row.Expected }</code>
+									} else {
+										<span class="u-text-muted">-</span>
+									}
+								</td>
+								<td>
+									if row.Found != "" && row.Found != "-" {
+										<code class="u-font-088">{ row.Found }</code>
+									} else {
+										<span class="u-text-muted">-</span>
+									}
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+			<!-- Enable / Disable -->
+			<div class="form-card">
+				<h3>{ t(ctx, "common.status") }</h3>
+				<div class="u-flex u-items-center u-gap-05 u-mb-075">
+					if d.Enabled {
+						<span class="badge badge-active"><span class="status-dot green"></span> { t(ctx, "common.enabled") }</span>
+					} else {
+						<span class="badge badge-disabled">{ t(ctx, "common.disabled") }</span>
+					}
+				</div>
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
+					<button type="submit" class={ adminToggleClass(!d.Enabled) }>
+						if d.Enabled {
+							{ t(ctx, "common.disable") }
+						} else {
+							{ t(ctx, "common.enable") }
+						}
+					</button>
+				</form>
+			</div>
+			<!-- DKIM Signing -->
+			<div class="form-card">
+				<h3>{ t(ctx, "admin.dkimSectionTitle") }</h3>
+				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.dkimHelp") }</small>
+				if d.DkimEnabled && d.DkimTXTRecord != "" {
+					<p class="u-text-small u-mb-05">
+						{ t(ctx, "admin.dkimKey") }: <strong>{ d.DkimSelector }</strong>
+					</p>
+					<p class="u-text-small u-text-muted u-mb-025">{ t(ctx, "admin.dkimDNSRecord") }:</p>
+					<pre class="dkim-txt-record">{ d.DkimTXTRecord }</pre>
+				} else {
+					<p class="u-text-muted u-text-small u-mb-075">{ t(ctx, "admin.dkimKeyNone") }</p>
+				}
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/dkim/generate", d.Name)) } class="u-mt-05">
+					<button type="submit" class="btn-primary">
+						if d.DkimEnabled {
+							{ t(ctx, "admin.rotateDKIMKey") }
+						} else {
+							{ t(ctx, "admin.generateDKIMKey") }
+						}
+					</button>
+				</form>
+			</div>
+			<!-- Catch-All -->
+			<div class="form-card">
+				<h3>{ t(ctx, "admin.catchAllSectionTitle") }</h3>
+				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.catchAllHelp") }</small>
+				if d.CatchAllOwnerID != "" {
+					<p class="u-text-small u-mb-05">
+						{ t(ctx, "admin.catchAll") }: <code class="u-font-088">{ d.CatchAllOwnerID }</code>
+					</p>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/catchall/delete", d.Name)) }>
+						<button type="submit" class="btn-outline">{ t(ctx, "common.clear") }</button>
+					</form>
+				} else {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/catchall", d.Name)) } class="admin-inline-form">
+						<div class="u-flex-1">
+							<label for="catchall_owner" class="admin-inline-label">{ t(ctx, "admin.catchAllOwnerPlaceholder") }</label>
+							<input type="text" name="owner_user_id" id="catchall_owner" placeholder={ t(ctx, "admin.catchAllOwnerPlaceholder") } class="form-input u-m0" required/>
+						</div>
+						<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.setCatchAll") }</button>
+					</form>
+				}
+			</div>
+			<!-- Domain Administrators -->
+			<div class="form-card">
+				<h3>{ t(ctx, "admin.domainAdminsSectionTitle") }</h3>
+				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.domainAdminHelp") }</small>
+				if len(d.DomainAdmins) > 0 {
+					for _, uid := range d.DomainAdmins {
+						<div class="admin-inline-form u-mb-05">
+							<span class="u-text-small u-flex-1">{ uid }</span>
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/admins/revoke", d.Name)) }>
+								<input type="hidden" name="user_id" value={ uid }/>
+								<button type="submit" class="btn-flush">{ t(ctx, "common.revoke") }</button>
+							</form>
+						</div>
+					}
+				} else {
+					<p class="u-text-muted u-text-small u-mb-075">{ t(ctx, "admin.noDomainAdmins") }</p>
+				}
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/admins", d.Name)) } class="admin-inline-form u-mt-05">
+					<div class="u-flex-1">
+						<label for="grant_user_id" class="admin-inline-label">{ t(ctx, "admin.domainAdminPlaceholder") }</label>
+						<input type="text" name="user_id" id="grant_user_id" placeholder={ t(ctx, "admin.domainAdminPlaceholder") } class="form-input u-m0"/>
+					</div>
+					<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.grantAdmin") }</button>
+				</form>
+			</div>
+			<!-- Domain Owner (global-admin only) -->
+			if isGlobalAdmin {
+				<div class="form-card">
+					<h3>{ t(ctx, "admin.ownerSectionTitle") }</h3>
+					<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.ownerHelp") }</small>
+					if d.OwnerUserID != "" {
+						<p class="u-text-small u-mb-05">
+							{ t(ctx, "admin.domainOwner") }: <code class="u-font-088">{ d.OwnerUserID }</code>
+						</p>
+					}
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/owner", d.Name)) } class="admin-inline-form">
+						<div class="u-flex-1">
+							<label for="owner_user_id" class="admin-inline-label">{ t(ctx, "admin.domainOwnerPlaceholder") }</label>
+							<input type="text" name="owner_user_id" id="owner_user_id" placeholder={ t(ctx, "admin.domainOwnerPlaceholder") } class="form-input u-m0"/>
+						</div>
+						<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.setOwner") }</button>
+					</form>
+				</div>
+			}
+			<!-- Quota -->
+			<div class="form-card">
+				<h3>{ t(ctx, "admin.quotaSectionTitle") }</h3>
+				<small class="u-block u-mb-075 u-text-muted">{ t(ctx, "admin.quotaHelp") }</small>
+				@domainQuotaCell(d, isGlobalAdmin)
+			</div>
+			<!-- Danger Zone (global-admin only) -->
+			if isGlobalAdmin {
+				<div class="form-card domain-danger-zone">
+					<h3>{ t(ctx, "admin.dangerZoneSectionTitle") }</h3>
+					<button
+						type="button"
+						class="btn-danger"
+						hx-post={ fmt.Sprintf("/admin/domains/%s/delete", d.Name) }
+						hx-confirm={ t(ctx, "admin.confirmDeleteDomain") }
+					>{ t(ctx, "admin.deleteDomain") }</button>
+				</div>
+			}
+		</div>
+	}
 }
 
 templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {

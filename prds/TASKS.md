@@ -35,5 +35,19 @@ compose toggle.
 
 ---
 
-**Multi-domain multi-tenant hosting epic (PRD Phases A–D / norman Phases 3–6): COMPLETE 2026-07-19.**
-PRD in [done/prd-multidomain-hosting.md](done/prd-multidomain-hosting.md). Pending: v0.6.0 deploy (bundles 5.2 verification + apple-touch/hygiene + all of Phase 6).
+**Multi-domain multi-tenant hosting epic (PRD Phases A–D / norman Phases 3–6): COMPLETE + DEPLOYED as v0.6.0 (2026-07-19).**
+PRD in [done/prd-multidomain-hosting.md](done/prd-multidomain-hosting.md).
+
+## Phase 7: Admin UX follow-ups
+
+Post-epic UI improvements (user-requested). Docs get a dedicated sprint later.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 7.1 | Per-domain detail sub-screen + DNS status: move all per-domain settings off the overflowing 9-col table onto a `/admin/domains/{domain}` page; list = Domain·Status·MX·Manage; MX-not-configured indicator (extensible to SPF/DKIM/DMARC); respect 6.2 isolation on the new route | DONE (2026-07-19) | ShowDomain (requireDomainAccess + 404-on-unknown); AdminDomainDetail stacked sections, DKIM prominent; list slimmed to 4 cols + Manage; MX ✓/✗; adversarial 403 test; I fixed 2 MINORs (u-mb-025 class, DeleteDomain→hxRedirect for hx-post delete) |
+
+## Backlog (unscheduled)
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| B1 | De-brand the repository: remove ALL `deployment` references (157 across ~23 files — deploy/ configs incl. bongo.prod.hcl + node name `bongo-1`, .env.example, autoconfig comment, docs/, prds/ logs, tests). Repo should mention only `bongo`/`bongo-go`; deployment specifics become generic placeholders (e.g. `example.com`, `mail.example.com`) driven by config/env. USER-AUTHORISED: rewrite git history + FORCE-PUSH if needed to purge it from history. | TODO | Requested 2026-07-19. CAVEAT: the LIVE server config at `/mnt/data/bongo` is NOT in git (manual scp) and keeps its real deployment values — only the REPO goes generic; verify no runtime code depends on the literal string "deployment" before scrubbing. Do as its own focused pass (grep -rniI deployment), then history-scrub (git filter-repo/BFG) + force-push. |
