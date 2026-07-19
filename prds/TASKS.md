@@ -31,14 +31,9 @@ compose toggle.
 
 ## Phase 5: Multi-Domain — Sending Identity (PRD Phase C) — 2 tasks completed 2026-07-18 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 6: Multi-Domain — Tenancy & Isolation (PRD Phase D)
+## Phase 6: Multi-Domain — Tenancy & Isolation (PRD Phase D) — 4 tasks completed 2026-07-19 (see [TASKS-archive.md](TASKS-archive.md))
 
-Source PRD: multi-domain multi-tenant hosting. Largest, security-critical. Domain ownership,
-delegated domain-admins, per-domain quotas, adversarial isolation tests. Default-deny.
+---
 
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 6.1 | FR-8 domain ownership + grants: `DomainRecord.owner_user_id` (tenant) + `domain_admins(domain,user_id)` grant table; admin UI shows/changes owner; new users/addresses associate with their domain | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-19) | DomainAdminStore: owner at /system/domain/{d}/owner (raw bytes, clobber-safe), grants at /system/domain_admin/{d}/{uid}; AuthorizedDomains helper (global→all/owner→owned/granted/none); global-admin mgmt UI; NO enforcement yet (6.2); review MINOR |
-| 6.2 | FR-9 authorization/isolation layer: scope every admin read/write for a domain-admin to granted domains — list endpoints filtered, mutations checked, cross-tenant mailbox/blob access denied; default-deny; global admin retains full access | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-19) | AdminScope middleware + requireGlobalAdmin/DomainAccess/UserAccess helpers across all endpoints; lists filtered; global-only set locked; DeleteUser cascade; review PASS; I tightened AddAddress+GrantSend to also scope the ADDRESS domain (cross-tenant allocation/spoof fix) + tests |
-| 6.3 | FR-10 per-domain quotas/policies: storage + max-users limits (within global caps); creating a user beyond max-users rejected; over-quota inbound rejected at RCPT with 5xx (no accept-then-bounce, no silent drop, no local copy) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-19) | DomainQuota proto + DomainQuotaStore (/quota,/usage); max-users at CreateUser; leader recompute job (I fixed cleared-domain reset-to-0); RCPT QuotaChecker 5xx before store; SetDomainQuota global-only, domain-admin views; review MINOR |
-| 6.4 | Adversarial tenant-isolation tests: a domain admin probing another tenant's users/addresses/catch-all/quota/DKIM/mailbox/blobs gets 403 and zero data leakage across all admin endpoints | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-19) | +12 adversarial tests (48→60) incl. 35-case master sweep; NO real gaps found (6.2/6.3 guards held); I also closed the RemoveAddress address-domain asymmetry for consistency + tests; gosec clean |
+**Multi-domain multi-tenant hosting epic (PRD Phases A–D / norman Phases 3–6): COMPLETE 2026-07-19.**
+PRD in [done/prd-multidomain-hosting.md](done/prd-multidomain-hosting.md). Pending: v0.6.0 deploy (bundles 5.2 verification + apple-touch/hygiene + all of Phase 6).

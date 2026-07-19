@@ -19,17 +19,17 @@ Append-only archive of fully-completed phases collapsed out of TASKS.md.
 
 ## Phase 3: Multi-Domain — Foundation & Quick Wins (PRD Phase A) — 3 tasks completed 2026-07-18
 
-Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Sender hygiene + per-domain DKIM.
+Source PRD: [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md). Sender hygiene + per-domain DKIM.
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
-| 3.1 | FR-11 sender hygiene: bounces use `postmaster@<relevant-domain>` (not `@localhost`) with an FQDN Message-ID; welcome email uses an FQDN Message-ID (not `@bongo`) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.ResolveServerDomain` chain; fixed all 4 bounce localhost sites + both welcome Message-ID sites; review PASS |
-| 3.2 | FR-1 per-domain DKIM signer registry: `DomainRecord` gains `dkim_selector`+`dkim_private_key`+`dkim_enabled`; refactor single global signer (`agent.go:987`, `queue/worker.go:139`) to a registry keyed by From domain; unkeyed domains send unsigned + logged (never wrong `d=`) | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.DKIMRegistry` keyed by From-header domain; new `DomainRecord`/domain.proto; worker uses registry, unkeyed→unsigned+log; single-domain seeded from config (byte-compat); review MINOR |
-| 3.3 | FR-2 admin DKIM key management: "Generate DKIM key" action per domain → store private key (never logged), display `selector._domainkey.<domain> TXT` record; rotation regenerates + updates display | [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md) | DONE (2026-07-18) | GenerateDKIMKey (RSA-2048, PKCS8) stores DomainRecord@/system/domain/{d}/dkim via Raft, Adds to shared registry (immediate signing), LoadStoredDKIMKeys at startup; TXT = public key only; key never logged/rendered; review PASS |
+| 3.1 | FR-11 sender hygiene: bounces use `postmaster@<relevant-domain>` (not `@localhost`) with an FQDN Message-ID; welcome email uses an FQDN Message-ID (not `@bongo`) | [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.ResolveServerDomain` chain; fixed all 4 bounce localhost sites + both welcome Message-ID sites; review PASS |
+| 3.2 | FR-1 per-domain DKIM signer registry: `DomainRecord` gains `dkim_selector`+`dkim_private_key`+`dkim_enabled`; refactor single global signer (`agent.go:987`, `queue/worker.go:139`) to a registry keyed by From domain; unkeyed domains send unsigned + logged (never wrong `d=`) | [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md) | DONE (2026-07-18) | `mail.DKIMRegistry` keyed by From-header domain; new `DomainRecord`/domain.proto; worker uses registry, unkeyed→unsigned+log; single-domain seeded from config (byte-compat); review MINOR |
+| 3.3 | FR-2 admin DKIM key management: "Generate DKIM key" action per domain → store private key (never logged), display `selector._domainkey.<domain> TXT` record; rotation regenerates + updates display | [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md) | DONE (2026-07-18) | GenerateDKIMKey (RSA-2048, PKCS8) stores DomainRecord@/system/domain/{d}/dkim via Raft, Adds to shared registry (immediate signing), LoadStoredDKIMKeys at startup; TXT = public key only; key never logged/rendered; review PASS |
 
 ## Phase 4: Multi-Domain — Receiving (PRD Phase B) — 5 tasks completed 2026-07-18
 
-Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Address index + alias-delivery fix + catch-all + address management.
+Source PRD: [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md). Address index + alias-delivery fix + catch-all + address management.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
@@ -41,9 +41,20 @@ Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Add
 
 ## Phase 5: Multi-Domain — Sending Identity (PRD Phase C) — 2 tasks completed 2026-07-18
 
-Source PRD: [prd-multidomain-hosting.md](active/prd-multidomain-hosting.md). Send-as owned/verified addresses + both verification paths.
+Source PRD: [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md). Send-as owned/verified addresses + both verification paths.
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 5.1 | FR-7 send-as: From-picker (owned can_send&&verified), server-side enforcement, From/envelope/Message-ID/DKIM d= alignment | DONE (2026-07-18) | server-rendered From `<select>`; tampered/unowned/unverified→403, default path bypasses (back-compat); fromAddr drives all identity sites. Commit 1f3fc74 |
 | 5.2 | FR-7b verification: admin grant + self-serve emailed one-time code | DONE (2026-07-18) | AddressVerifyStore (crypto/rand code → sha256 hash stored not plaintext, never logged, single-use, expiry, max-5-attempts, constant-time); cross-user claim rejected; emailed via queue. Commits f89ac1c |
+
+## Phase 6: Multi-Domain — Tenancy & Isolation (PRD Phase D) — 4 tasks completed 2026-07-19
+
+Source PRD: [prd-multidomain-hosting.md](done/prd-multidomain-hosting.md). Domain ownership, delegated domain-admins, per-domain quotas, adversarial isolation. Default-deny.
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 6.1 | FR-8 domain ownership + domain-admin grant model | DONE (2026-07-19) | DomainAdminStore (owner @/system/domain/{d}/owner clobber-safe, grants @/system/domain_admin/{d}/{uid}); AuthorizedDomains helper; global-admin mgmt UI; no enforcement. Commit fd27844 |
+| 6.2 | FR-9 default-deny isolation layer | DONE (2026-07-19) | AdminScope middleware + requireGlobalAdmin/DomainAccess/UserAccess across all endpoints; lists filtered (zero leak); DeleteUser cascade; AddAddress+GrantSend also scope address-domain. Commit 38a15b6 |
+| 6.3 | FR-10 per-domain max-users + storage quotas | DONE (2026-07-19) | DomainQuota proto + store; max-users at CreateUser; leader recompute job; RCPT 5xx before store; global-admin sets/domain-admin views. Commit ac9ca66 |
+| 6.4 | Adversarial isolation sweep | DONE (2026-07-19) | 35-case master sweep, NO real gaps (guards held); RemoveAddress address-domain guard added for symmetry; gosec clean. Commit f14fb3e |
