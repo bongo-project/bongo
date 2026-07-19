@@ -19,4 +19,10 @@ message DomainRecord {
   // dkim_private_key holds the PEM-encoded RSA private key used for DKIM
   // signing. This field is secret: never log it.
   string dkim_private_key = 3;
+
+  // owner_user_id is the user ID of the domain owner (tenant).
+  // NOT stored inside the /dkim record — persisted separately at
+  // /system/domain/{domain}/owner to avoid read-modify-write hazards with
+  // DKIM key rotation. This field documents the schema; see DomainAdminStore.
+  string owner_user_id = 4;
 }

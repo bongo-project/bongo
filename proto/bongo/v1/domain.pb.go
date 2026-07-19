@@ -35,8 +35,13 @@ type DomainRecord struct {
 	// dkim_private_key holds the PEM-encoded RSA private key used for DKIM
 	// signing. This field is secret: never log it.
 	DkimPrivateKey string `protobuf:"bytes,3,opt,name=dkim_private_key,json=dkimPrivateKey,proto3" json:"dkim_private_key,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// owner_user_id is the user ID of the domain owner (tenant).
+	// NOT stored inside the /dkim record — persisted separately at
+	// /system/domain/{domain}/owner to avoid read-modify-write hazards with
+	// DKIM key rotation. This field documents the schema; see DomainAdminStore.
+	OwnerUserId   string `protobuf:"bytes,4,opt,name=owner_user_id,json=ownerUserId,proto3" json:"owner_user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DomainRecord) Reset() {
@@ -90,15 +95,23 @@ func (x *DomainRecord) GetDkimPrivateKey() string {
 	return ""
 }
 
+func (x *DomainRecord) GetOwnerUserId() string {
+	if x != nil {
+		return x.OwnerUserId
+	}
+	return ""
+}
+
 var File_proto_bongo_v1_domain_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_domain_proto_rawDesc = "" +
 	"\n" +
-	"\x1bproto/bongo/v1/domain.proto\x12\bbongo.v1\"\x80\x01\n" +
+	"\x1bproto/bongo/v1/domain.proto\x12\bbongo.v1\"\xa4\x01\n" +
 	"\fDomainRecord\x12!\n" +
 	"\fdkim_enabled\x18\x01 \x01(\bR\vdkimEnabled\x12#\n" +
 	"\rdkim_selector\x18\x02 \x01(\tR\fdkimSelector\x12(\n" +
-	"\x10dkim_private_key\x18\x03 \x01(\tR\x0edkimPrivateKeyB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\x10dkim_private_key\x18\x03 \x01(\tR\x0edkimPrivateKey\x12\"\n" +
+	"\rowner_user_id\x18\x04 \x01(\tR\vownerUserIdB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_domain_proto_rawDescOnce sync.Once

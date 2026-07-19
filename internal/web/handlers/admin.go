@@ -49,6 +49,7 @@ type AdminHandler struct {
 	dkimRegistry *internalmail.DKIMRegistry
 	catchAll     *store.CatchAllStore
 	addresses    *store.AddressStore
+	domainAdmin  *store.DomainAdminStore
 	startTime    time.Time
 }
 
@@ -119,6 +120,12 @@ func (h *AdminHandler) SetCatchAllStore(cs *store.CatchAllStore) {
 // SetAddressStore sets the address store used by AddAddress and RemoveAddress.
 func (h *AdminHandler) SetAddressStore(as *store.AddressStore) {
 	h.addresses = as
+}
+
+// SetDomainAdminStore sets the domain-admin store used by SetDomainOwner,
+// GrantDomainAdmin, and RevokeDomainAdmin.
+func (h *AdminHandler) SetDomainAdminStore(das *store.DomainAdminStore) {
+	h.domainAdmin = das
 }
 
 // --- Dashboard ---
@@ -757,6 +764,111 @@ func (h *AdminHandler) ClearCatchAll(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("admin: catch-all cleared", "domain", domain)
 	http.Redirect(w, r, "/admin/domains?flash=Catch-all+cleared+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// SetDomainOwner sets the owner_user_id for a domain.
+//
+// POST /admin/domains/{domain}/owner
+// Form field: owner_user_id — the user ID that will become the domain owner.
+//
+// Both the domain and the user must exist. Changing the owner is idempotent.
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) SetDomainOwner(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	ownerUserID := strings.TrimSpace(r.FormValue("owner_user_id"))
+	if ownerUserID == "" {
+		http.Error(w, "owner_user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if h.domainAdmin == nil {
+		http.Error(w, "domain admin store not available", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.domainAdmin.SetOwner(domain, ownerUserID); err != nil {
+		h.logger.Error("admin: failed to set domain owner", "domain", domain, "owner", ownerUserID, "error", err)
+		http.Error(w, "failed to set domain owner: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	h.logger.Info("admin: domain owner set", "domain", domain, "owner_user_id", ownerUserID)
+	http.Redirect(w, r, "/admin/domains?flash=Owner+set+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// GrantDomainAdmin grants a user as a domain-admin for the given domain.
+//
+// POST /admin/domains/{domain}/admins
+// Form field: user_id — the user ID to grant domain-admin access.
+//
+// Both the domain and the user must exist. Granting an already-granted user is idempotent.
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) GrantDomainAdmin(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	userID := strings.TrimSpace(r.FormValue("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if h.domainAdmin == nil {
+		http.Error(w, "domain admin store not available", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.domainAdmin.Grant(domain, userID); err != nil {
+		h.logger.Error("admin: failed to grant domain admin", "domain", domain, "user_id", userID, "error", err)
+		http.Error(w, "failed to grant domain admin: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	h.logger.Info("admin: domain admin granted", "domain", domain, "user_id", userID)
+	http.Redirect(w, r, "/admin/domains?flash=Admin+granted+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// RevokeDomainAdmin revokes a user's domain-admin grant for the given domain.
+//
+// POST /admin/domains/{domain}/admins/revoke
+// Form field: user_id — the user ID to revoke.
+//
+// Revoking a non-existent grant is idempotent.
+// Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
+func (h *AdminHandler) RevokeDomainAdmin(w http.ResponseWriter, r *http.Request) {
+	domain := chi.URLParam(r, "domain")
+	if domain == "" {
+		http.Error(w, "domain is required", http.StatusBadRequest)
+		return
+	}
+
+	userID := strings.TrimSpace(r.FormValue("user_id"))
+	if userID == "" {
+		http.Error(w, "user_id is required", http.StatusBadRequest)
+		return
+	}
+
+	if h.domainAdmin == nil {
+		http.Error(w, "domain admin store not available", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.domainAdmin.Revoke(domain, userID); err != nil {
+		h.logger.Error("admin: failed to revoke domain admin", "domain", domain, "user_id", userID, "error", err)
+		http.Error(w, "failed to revoke domain admin: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("admin: domain admin revoked", "domain", domain, "user_id", userID)
+	http.Redirect(w, r, "/admin/domains?flash=Admin+revoked+for+"+domain, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // dkimTXTRecord derives the DKIM DNS TXT record value from a PEM-encoded private
@@ -1555,6 +1667,8 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 					}
 					h.enrichDomainDKIM(&di)
 					h.enrichDomainCatchAll(&di)
+					h.enrichDomainOwner(&di)
+					h.enrichDomainAdmins(&di)
 					domains = append(domains, di)
 				}
 			}
@@ -1583,6 +1697,8 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 				}
 				h.enrichDomainDKIM(&di)
 				h.enrichDomainCatchAll(&di)
+				h.enrichDomainOwner(&di)
+				h.enrichDomainAdmins(&di)
 				domains = append(domains, di)
 			}
 		}
@@ -1625,6 +1741,33 @@ func (h *AdminHandler) enrichDomainCatchAll(di *templates.DomainInfo) {
 		return
 	}
 	di.CatchAllOwnerID = ownerID
+}
+
+// enrichDomainOwner reads the domain owner user ID from Pebble and populates
+// OwnerUserID on the DomainInfo. Best-effort: missing key leaves OwnerUserID as "".
+func (h *AdminHandler) enrichDomainOwner(di *templates.DomainInfo) {
+	if h.domainAdmin == nil {
+		return
+	}
+	ownerID, ok, err := h.domainAdmin.GetOwner(di.Name)
+	if err != nil || !ok {
+		return
+	}
+	di.OwnerUserID = ownerID
+}
+
+// enrichDomainAdmins reads the list of domain-admin grants for a domain from
+// Pebble and populates DomainAdmins on the DomainInfo. Best-effort: errors or
+// empty results leave DomainAdmins nil.
+func (h *AdminHandler) enrichDomainAdmins(di *templates.DomainInfo) {
+	if h.domainAdmin == nil {
+		return
+	}
+	admins, err := h.domainAdmin.ListForDomain(di.Name)
+	if err != nil {
+		return
+	}
+	di.DomainAdmins = admins
 }
 
 func (h *AdminHandler) loadAliases() []templates.AliasInfo {

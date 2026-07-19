@@ -56,8 +56,10 @@ type DomainInfo struct {
 	HasMX           bool
 	DkimEnabled     bool
 	DkimSelector    string
-	DkimTXTRecord   string // full DNS TXT record to publish, derived from public key only
-	CatchAllOwnerID string // user ID configured as catch-all target, empty if not set
+	DkimTXTRecord   string   // full DNS TXT record to publish, derived from public key only
+	CatchAllOwnerID string   // user ID configured as catch-all target, empty if not set
+	OwnerUserID     string   // user ID of the domain owner (tenant); empty if not set
+	DomainAdmins    []string // user IDs granted as domain-admins; nil/empty if none
 }
 
 // AliasInfo holds data for the alias management list.
@@ -473,6 +475,8 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							<th scope="col">{ t(ctx, "common.status") }</th>
 							<th scope="col">{ t(ctx, "admin.dkimKey") }</th>
 							<th scope="col">{ t(ctx, "admin.catchAll") }</th>
+							<th scope="col">{ t(ctx, "admin.domainOwner") }</th>
+							<th scope="col">{ t(ctx, "admin.domainAdmins") }</th>
 							<th scope="col" class="u-width-200px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
@@ -519,6 +523,30 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 									}
 								</td>
 								<td>
+									if d.OwnerUserID != "" {
+										<span class="u-text-small">{ d.OwnerUserID }</span>
+									}
+									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/owner", d.Name)) } class="admin-inline-form">
+										<input type="text" name="owner_user_id" placeholder={ t(ctx, "admin.domainOwnerPlaceholder") } class="form-input u-m0"/>
+										<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.setOwner") }</button>
+									</form>
+								</td>
+								<td>
+									for _, uid := range d.DomainAdmins {
+										<div class="admin-inline-form">
+											<span class="u-text-small">{ uid }</span>
+											<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/admins/revoke", d.Name)) }>
+												<input type="hidden" name="user_id" value={ uid }/>
+												<button type="submit" class="btn-flush">{ t(ctx, "common.revoke") }</button>
+											</form>
+										</div>
+									}
+									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/admins", d.Name)) } class="admin-inline-form">
+										<input type="text" name="user_id" placeholder={ t(ctx, "admin.domainAdminPlaceholder") } class="form-input u-m0"/>
+										<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.grantAdmin") }</button>
+									</form>
+								</td>
+								<td>
 									<div class="row-actions">
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
 											<button type="submit" class="btn-outline">
@@ -546,7 +574,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							</tr>
 						}
 						if len(domains) == 0 {
-							<tr><td colspan="6" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
+							<tr><td colspan="8" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
 						}
 					</tbody>
 				</table>
