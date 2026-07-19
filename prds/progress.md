@@ -272,3 +272,13 @@ Tests: domain_quota_store_test.go, admin_quota_test.go (set global-only/domain-a
 PATTERN [quota] Per-domain quota = separate /quota + /usage keys (never the clobber-prone DKIM DomainRecord); storage attributed to the mailbox owner's PRIMARY domain; enforce max-users at create (Pebble count) + storage at RCPT (periodic-recompute value, fail-open). Recompute MUST reset cleared domains to 0 (write all managed domains, not just those with mail).
 NOTE (single-node OK, multi-node follow-up): max-users count source — verify it reads Pebble profiles (replicated) vs per-node SQLite (can under-count on a follower). deployment is single-node so not urgent.
 CHECKPOINT: stop for user review before 6.4 (adversarial isolation sweep).
+
+## 2026-07-19 — Task 6.4 DONE (adversarial tenant-isolation sweep — Phase 6 complete)
+
+Worker: security-auditor (sonnet). Advisor REVISE (excellent guidance, folded in): quarantine is a SEPARATE group gated by RequireAdmin (global-only, not through the AdminScope harness); Dashboard is a 303 REDIRECT for domain-admins (not 403 — don't break it); regular-user-at-door is covered at the middleware layer; warned against OVER-CORRECTION (fabricating gaps). Code review MINOR.
+- +12 tests (48→60) in admin_scope_test.go incl. TestAdversarialSweep_AllEndpoints_DomainAdmin (35-case table over the whole admin route group): RemoveAddress d2 403, SetCatchAll/ClearCatchAll d2 403 + d1 controls, SetDomainQuota/RetryMessage/DropMessage/LogStream global-only 403, NewUserForm domain-list leak assertion.
+- RESULT: NO real isolation gaps — every handler's 6.2/6.3 guard held under adversarial probing. gosec clean.
+- I CLOSED the RemoveAddress asymmetry the reviewer flagged: it now also requireDomainAccess(address's domain) — symmetric with AddAddress/GrantSend (an admin only mutates addresses in domains they administer; a d1-admin can't remove a d2 address even from their own d1 user). Added TestRemoveAddress_DomainAdmin_D2AddressForbidden (+D1AddressOK control).
+go build OK; targeted -race green; full -race suite running as the Phase-6 gate.
+PATTERN [security] The adversarial sweep's value when guards are already correct is COVERAGE (a table over every endpoint proves no endpoint was silently left unscoped) — build the table from the ACTUAL route list so nothing is omitted; assert only 'not 403' for positive controls (CreateDomain/CreateUser/DKIM have DNS/crypto/email side effects that flake on a specific 2xx).
+PHASE 6 COMPLETE: all of 6.1-6.4 done. Multi-domain epic (Phases 3-6) complete. Next: full-suite gate → collapse Phase 6 → move PRD research→done → v0.6.0 deploy (bundles 5.2 + hygiene + all Phase 6).

@@ -1565,6 +1565,13 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+
+	// Guard: the address's own domain must also be in scope — consistent with
+	// AddAddress/GrantSend, an admin may only mutate addresses in domains they
+	// administer (a cross-tenant address is managed by the other domain's admin).
+	if !requireDomainAccess(w, scope, domainFromEmail(address)) {
+		return
+	}
 	primaryEmail := strings.ToLower(strings.TrimSpace(profile.Email))
 
 	// Guard: prevent deletion of the primary address so the account stays reachable.
