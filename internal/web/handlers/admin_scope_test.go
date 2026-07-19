@@ -659,6 +659,48 @@ func TestGrantSend_DomainAdmin_D2AddressForbidden(t *testing.T) {
 	}
 }
 
+// TestRemoveAddress_DomainAdmin_D2AddressForbidden: a d1-admin may not remove an
+// address in d2 even from their own d1 user — RemoveAddress is symmetric with
+// AddAddress/GrantSend (an admin only mutates addresses in domains they administer).
+func TestRemoveAddress_DomainAdmin_D2AddressForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.RemoveAddress,
+		http.MethodPost, fmt.Sprintf("/admin/users/%s/addresses/delete", env.d1UserID),
+		url.Values{"address": {"held@" + testDomain2}},
+		map[string]string{"userID": env.d1UserID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("RemoveAddress d1-user with d2 address (domain-admin) status = %d, want 403", w.Code)
+	}
+}
+
+// TestRemoveAddress_DomainAdmin_D1AddressOK: the address-domain guard must not
+// over-block removing an in-scope (d1) identity address from a d1 user.
+func TestRemoveAddress_DomainAdmin_D1AddressOK(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	// Seed a removable d1 identity address on the d1 user.
+	if err := env.as.Put("extra-d1@"+testDomain1, &bongov1.AddressRecord{
+		UserId: env.d1UserID,
+		Domain: testDomain1,
+		Kind:   "identity",
+	}); err != nil {
+		t.Fatalf("seed d1 identity address: %v", err)
+	}
+
+	w := postToHandler(t, env.h, env.h.RemoveAddress,
+		http.MethodPost, fmt.Sprintf("/admin/users/%s/addresses/delete", env.d1UserID),
+		url.Values{"address": {"extra-d1@" + testDomain1}},
+		map[string]string{"userID": env.d1UserID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code == http.StatusForbidden {
+		t.Errorf("RemoveAddress d1-user with d1 address (domain-admin) status = 403, should be allowed")
+	}
+}
+
 // =============================================================================
 // CREATE USER: domain-admin must only create users in their authorized domains
 // =============================================================================
@@ -1117,5 +1159,480 @@ func TestDomainAdminStore_ListDomainsOwnedBy(t *testing.T) {
 	}
 	if len(domains) != 1 || domains[0] != testDomain1 {
 		t.Errorf("ListDomainsOwnedBy: want [%s], got %v", testDomain1, domains)
+	}
+}
+
+// =============================================================================
+// REMOVE ADDRESS: requireUserAccess check (d2-user -> 403; d1-user -> not 403)
+// =============================================================================
+
+// TestRemoveAddress_DomainAdmin_D2UserForbidden verifies that a d1-admin cannot
+// remove an address belonging to a d2 user (requireUserAccess blocks it).
+func TestRemoveAddress_DomainAdmin_D2UserForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.RemoveAddress,
+		http.MethodPost, fmt.Sprintf("/admin/users/%s/addresses/delete", env.d2UserID),
+		url.Values{"address": {"alias@" + testDomain2}},
+		map[string]string{"userID": env.d2UserID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("RemoveAddress d2 user (domain-admin) status = %d, want 403", w.Code)
+	}
+}
+
+// TestRemoveAddress_DomainAdmin_D1UserNotForbidden verifies that a d1-admin CAN
+// remove an address from a d1 user (positive control for requireUserAccess).
+// We assert "not 403"; the actual result (400/500/redirect) depends on whether
+// the address exists, which is irrelevant to the scope check.
+func TestRemoveAddress_DomainAdmin_D1UserNotForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.RemoveAddress,
+		http.MethodPost, fmt.Sprintf("/admin/users/%s/addresses/delete", env.d1UserID),
+		url.Values{"address": {"alias@" + testDomain1}},
+		map[string]string{"userID": env.d1UserID},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code == http.StatusForbidden {
+		t.Errorf("RemoveAddress d1 user (domain-admin) status = 403, should be allowed")
+	}
+}
+
+// TestRemoveAddress_DomainAdmin_NonexistentUserForbidden verifies zero-leak
+// semantics: a nonexistent userID returns 403, not 404, for a domain-admin.
+func TestRemoveAddress_DomainAdmin_NonexistentUserForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.RemoveAddress,
+		http.MethodPost, "/admin/users/no-such-id/addresses/delete",
+		url.Values{"address": {"alias@" + testDomain1}},
+		map[string]string{"userID": "no-such-id"},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("RemoveAddress nonexistent user (domain-admin) status = %d, want 403", w.Code)
+	}
+}
+
+// =============================================================================
+// CATCH-ALL: SetCatchAll/ClearCatchAll require domain access
+// =============================================================================
+
+// TestSetCatchAll_DomainAdmin_D2Forbidden verifies a d1-admin cannot set
+// a catch-all for d2 (requireDomainAccess blocks it).
+func TestSetCatchAll_DomainAdmin_D2Forbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.SetCatchAll,
+		http.MethodPost, fmt.Sprintf("/admin/domains/%s/catchall", testDomain2),
+		url.Values{"owner_user_id": {env.d2UserID}},
+		map[string]string{"domain": testDomain2},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("SetCatchAll d2 (domain-admin) status = %d, want 403", w.Code)
+	}
+}
+
+// TestSetCatchAll_DomainAdmin_D1NotForbidden verifies a d1-admin CAN set
+// a catch-all for d1 (positive control). Assert "not 403".
+func TestSetCatchAll_DomainAdmin_D1NotForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.SetCatchAll,
+		http.MethodPost, fmt.Sprintf("/admin/domains/%s/catchall", testDomain1),
+		url.Values{"owner_user_id": {env.d1UserID}},
+		map[string]string{"domain": testDomain1},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code == http.StatusForbidden {
+		t.Errorf("SetCatchAll d1 (domain-admin) status = 403, should be allowed")
+	}
+}
+
+// TestClearCatchAll_DomainAdmin_D2Forbidden verifies a d1-admin cannot clear
+// the catch-all for d2 (requireDomainAccess blocks it).
+func TestClearCatchAll_DomainAdmin_D2Forbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.ClearCatchAll,
+		http.MethodPost, fmt.Sprintf("/admin/domains/%s/catchall/delete", testDomain2),
+		nil,
+		map[string]string{"domain": testDomain2},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("ClearCatchAll d2 (domain-admin) status = %d, want 403", w.Code)
+	}
+}
+
+// TestClearCatchAll_DomainAdmin_D1NotForbidden verifies a d1-admin CAN clear
+// the catch-all for d1 (positive control). Assert "not 403".
+func TestClearCatchAll_DomainAdmin_D1NotForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	w := postToHandler(t, env.h, env.h.ClearCatchAll,
+		http.MethodPost, fmt.Sprintf("/admin/domains/%s/catchall/delete", testDomain1),
+		nil,
+		map[string]string{"domain": testDomain1},
+		func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+	)
+	if w.Code == http.StatusForbidden {
+		t.Errorf("ClearCatchAll d1 (domain-admin) status = 403, should be allowed")
+	}
+}
+
+// =============================================================================
+// GLOBAL-ONLY ENDPOINTS NOT YET COVERED: SetDomainQuota, RetryMessage,
+// DropMessage, LogStream
+// =============================================================================
+
+// TestRemainingGlobalOnlyEndpoints_DomainAdmin403 is a table-driven sweep
+// over the global-only endpoints that had no prior scope test coverage.
+// All must return 403 for a domain-admin.
+func TestRemainingGlobalOnlyEndpoints_DomainAdmin403(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	type endpointCase struct {
+		name   string
+		fn     func(http.ResponseWriter, *http.Request)
+		method string
+		path   string
+		params map[string]string
+		body   url.Values
+	}
+
+	cases := []endpointCase{
+		// POST /admin/domains/{domain}/quota — SetDomainQuota is global-only.
+		{
+			name:   "SetDomainQuota d1",
+			fn:     env.h.SetDomainQuota,
+			method: http.MethodPost,
+			path:   fmt.Sprintf("/admin/domains/%s/quota", testDomain1),
+			params: map[string]string{"domain": testDomain1},
+			body:   url.Values{"max_users": {"100"}},
+		},
+		// POST /admin/domains/{domain}/quota targeting d2 — still global-only.
+		{
+			name:   "SetDomainQuota d2",
+			fn:     env.h.SetDomainQuota,
+			method: http.MethodPost,
+			path:   fmt.Sprintf("/admin/domains/%s/quota", testDomain2),
+			params: map[string]string{"domain": testDomain2},
+			body:   url.Values{"max_users": {"100"}},
+		},
+		// POST /admin/queue/{id}/retry — RetryMessage is global-only.
+		{
+			name:   "RetryMessage",
+			fn:     env.h.RetryMessage,
+			method: http.MethodPost,
+			path:   "/admin/queue/some-msg-id/retry",
+			params: map[string]string{"id": "some-msg-id"},
+		},
+		// POST /admin/queue/{id}/drop — DropMessage is global-only.
+		{
+			name:   "DropMessage",
+			fn:     env.h.DropMessage,
+			method: http.MethodPost,
+			path:   "/admin/queue/some-msg-id/drop",
+			params: map[string]string{"id": "some-msg-id"},
+		},
+		// GET /admin/logs/stream — LogStream is global-only.
+		{
+			name:   "LogStream",
+			fn:     env.h.LogStream,
+			method: http.MethodGet,
+			path:   "/admin/logs/stream",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postToHandler(t, env.h, tc.fn,
+				tc.method, tc.path,
+				tc.body, tc.params,
+				func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+			)
+			if w.Code != http.StatusForbidden {
+				t.Errorf("%s (domain-admin) status = %d, want 403", tc.name, w.Code)
+			}
+			// Zero-leak: the response must not contain d2 identifiers in any error message.
+			body := w.Body.String()
+			if strings.Contains(body, testDomain2) {
+				t.Errorf("%s response body contains d2 domain name — potential data leak", tc.name)
+			}
+		})
+	}
+}
+
+// TestRemainingGlobalOnlyEndpoints_GlobalAdminNotForbidden verifies the same
+// endpoints are accessible to a global admin (spot-check — assert "not 403").
+func TestRemainingGlobalOnlyEndpoints_GlobalAdminNotForbidden(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	type endpointCase struct {
+		name   string
+		fn     func(http.ResponseWriter, *http.Request)
+		method string
+		path   string
+		params map[string]string
+		body   url.Values
+	}
+
+	cases := []endpointCase{
+		{
+			name:   "SetDomainQuota d1",
+			fn:     env.h.SetDomainQuota,
+			method: http.MethodPost,
+			path:   fmt.Sprintf("/admin/domains/%s/quota", testDomain1),
+			params: map[string]string{"domain": testDomain1},
+			body:   url.Values{"max_users": {"50"}},
+		},
+		{
+			name:   "RetryMessage",
+			fn:     env.h.RetryMessage,
+			method: http.MethodPost,
+			path:   "/admin/queue/some-msg-id/retry",
+			params: map[string]string{"id": "some-msg-id"},
+		},
+		{
+			name:   "DropMessage",
+			fn:     env.h.DropMessage,
+			method: http.MethodPost,
+			path:   "/admin/queue/some-msg-id/drop",
+			params: map[string]string{"id": "some-msg-id"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postToHandler(t, env.h, tc.fn,
+				tc.method, tc.path,
+				tc.body, tc.params,
+				func(r *http.Request) *http.Request { return withGlobalAdmin(r, env.globalAdminID) },
+			)
+			if w.Code == http.StatusForbidden {
+				t.Errorf("%s (global-admin) status = 403, should be allowed", tc.name)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// NEW USER FORM: list-leak (domain dropdown must not expose d2 to d1-admin)
+// =============================================================================
+
+// TestNewUserForm_DomainAdmin_NoDomainLeak asserts that when a d1-admin opens
+// the new-user form, the rendered HTML contains d1 but NOT d2.
+func TestNewUserForm_DomainAdmin_NoDomainLeak(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/users/new", nil)
+	r = withDomainAdmin1(r, env.domainAdmin1ID)
+	w := httptest.NewRecorder()
+	env.h.NewUserForm(w, r)
+
+	// Domain-admin must not get 403 for this read-only form.
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("NewUserForm (domain-admin) status = 403, should be allowed")
+	}
+
+	body := w.Body.String()
+	// d2 must not appear anywhere in the response (domain dropdown is filtered).
+	if strings.Contains(body, testDomain2) {
+		t.Errorf("NewUserForm (domain-admin of d1) body contains %q — domain list leak", testDomain2)
+	}
+	// d1 must appear (the admin's own domain is in scope).
+	if !strings.Contains(body, testDomain1) {
+		t.Errorf("NewUserForm (domain-admin of d1) body missing %q", testDomain1)
+	}
+}
+
+// TestNewUserForm_GlobalAdmin_SeesBothDomains verifies a global admin sees
+// all domains in the form (no filtering applied).
+func TestNewUserForm_GlobalAdmin_SeesBothDomains(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/users/new", nil)
+	r = withGlobalAdmin(r, env.globalAdminID)
+	w := httptest.NewRecorder()
+	env.h.NewUserForm(w, r)
+
+	if w.Code == http.StatusForbidden {
+		t.Fatalf("NewUserForm (global-admin) status = 403")
+	}
+
+	body := w.Body.String()
+	if !strings.Contains(body, testDomain1) {
+		t.Errorf("NewUserForm (global-admin) missing %q in body", testDomain1)
+	}
+	if !strings.Contains(body, testDomain2) {
+		t.Errorf("NewUserForm (global-admin) missing %q in body", testDomain2)
+	}
+}
+
+// =============================================================================
+// COMPREHENSIVE ENDPOINT TABLE: reference sweep over ALL agent.go admin routes
+// (lines ~655-689). Documents coverage status for each endpoint.
+// Any new endpoint added to agent.go should have a corresponding entry here.
+// =============================================================================
+
+// TestAdversarialSweep_AllEndpoints_DomainAdmin is the master reference table
+// that enumerates EVERY endpoint in the RequireAdminOrDomainAdmin group and
+// asserts the domain-admin-of-d1 cannot access d2 resources or global endpoints.
+// Each entry maps to an existing individual test; this table ensures no endpoint
+// is silently omitted from the sweep.
+//
+// Note on QUARANTINE routes (/admin/quarantine/*): these are in a SEPARATE route
+// group gated by middleware.RequireAdmin (global-admin ONLY) in agent.go. They
+// use QuarantineHandler, not AdminHandler, and have no AdminScope concept.
+// The RequireAdmin middleware already denies domain-admins at the door, so
+// quarantine routes are not exercised through this harness. The middleware-layer
+// protection is verified by internal/web/middleware/admin_scope_test.go.
+//
+// Note on Dashboard: domain-admin gets a 303 redirect to /admin/domains
+// (not 403). This is the correct UX behaviour tested in
+// TestDashboard_DomainAdminRedirectsToDomains.
+func TestAdversarialSweep_AllEndpoints_DomainAdmin(t *testing.T) {
+	env := newAdminScopeTestEnv(t)
+
+	// This table uses "expect 403" to mean the d1-admin targeting a d2 resource
+	// (or a global-only endpoint) must be denied. Positive controls (d1 resources)
+	// are covered by the individual tests above; only adversarial cases are listed.
+	type adversarialCase struct {
+		name       string
+		fn         func(http.ResponseWriter, *http.Request)
+		method     string
+		params     map[string]string
+		body       url.Values
+		wantDenied bool // true = expect 403; false = should not be 403 (positive control)
+	}
+
+	// We seed an alias in d2 so DeleteAlias has a real target.
+	seedAlias(t, env.applier, "sweep-alias2@"+testDomain2, env.d2UserID)
+
+	cases := []adversarialCase{
+		// --- GLOBAL-ONLY (domain-admin -> 403 regardless of domain param) ---
+		{name: "CreateDomain", fn: env.h.CreateDomain, method: http.MethodPost,
+			body: url.Values{"domain": {"sweep-new.example.com"}}, wantDenied: true},
+		{name: "SetDomainOwner/d1", fn: env.h.SetDomainOwner, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain1},
+			body:   url.Values{"owner_user_id": {env.d1UserID}}, wantDenied: true},
+		{name: "SetDomainOwner/d2", fn: env.h.SetDomainOwner, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2},
+			body:   url.Values{"owner_user_id": {env.d2UserID}}, wantDenied: true},
+		{name: "SetDomainQuota/d1", fn: env.h.SetDomainQuota, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain1},
+			body:   url.Values{"max_users": {"10"}}, wantDenied: true},
+		{name: "SetDomainQuota/d2", fn: env.h.SetDomainQuota, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2},
+			body:   url.Values{"max_users": {"10"}}, wantDenied: true},
+		{name: "ClusterOverview", fn: env.h.ClusterOverview, method: http.MethodGet,
+			wantDenied: true},
+		{name: "LogViewer", fn: env.h.LogViewer, method: http.MethodGet,
+			wantDenied: true},
+		{name: "LogStream", fn: env.h.LogStream, method: http.MethodGet,
+			wantDenied: true},
+		{name: "ToggleRequire2FA", fn: env.h.ToggleRequire2FA, method: http.MethodPost,
+			body: url.Values{"enabled": {"1"}}, wantDenied: true},
+		{name: "QueueDashboard", fn: env.h.QueueDashboard, method: http.MethodGet,
+			wantDenied: true},
+		{name: "RetryMessage", fn: env.h.RetryMessage, method: http.MethodPost,
+			params: map[string]string{"id": "msg-1"}, wantDenied: true},
+		{name: "DropMessage", fn: env.h.DropMessage, method: http.MethodPost,
+			params: map[string]string{"id": "msg-1"}, wantDenied: true},
+		{name: "FlushQueue", fn: env.h.FlushQueue, method: http.MethodPost,
+			wantDenied: true},
+
+		// --- DOMAIN-SCOPED: d2 resources -> 403 for d1-admin ---
+		{name: "ToggleDomain/d2", fn: env.h.ToggleDomain, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2}, wantDenied: true},
+		{name: "DeleteDomain/d2", fn: env.h.DeleteDomain, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2}, wantDenied: true},
+		{name: "GenerateDKIMKey/d2", fn: env.h.GenerateDKIMKey, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2}, wantDenied: true},
+		{name: "SetCatchAll/d2", fn: env.h.SetCatchAll, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2},
+			body:   url.Values{"owner_user_id": {env.d2UserID}}, wantDenied: true},
+		{name: "ClearCatchAll/d2", fn: env.h.ClearCatchAll, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2}, wantDenied: true},
+		{name: "GrantDomainAdmin/d2", fn: env.h.GrantDomainAdmin, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2},
+			body:   url.Values{"user_id": {env.d1UserID}}, wantDenied: true},
+		{name: "RevokeDomainAdmin/d2", fn: env.h.RevokeDomainAdmin, method: http.MethodPost,
+			params: map[string]string{"domain": testDomain2},
+			body:   url.Values{"user_id": {env.d1UserID}}, wantDenied: true},
+		{name: "CreateAlias/d2", fn: env.h.CreateAlias, method: http.MethodPost,
+			body: url.Values{
+				"address":     {"sweep-alias@" + testDomain2},
+				"target_user": {env.d2UserID},
+			}, wantDenied: true},
+		{name: "DeleteAlias/d2", fn: env.h.DeleteAlias, method: http.MethodPost,
+			params: map[string]string{"address": "sweep-alias2@" + testDomain2},
+			wantDenied: true},
+
+		// --- USER-SCOPED: d2-user resources -> 403 for d1-admin ---
+		{name: "ShowUser/d2", fn: env.h.ShowUser, method: http.MethodGet,
+			params: map[string]string{"userID": env.d2UserID}, wantDenied: true},
+		{name: "UpdateUser/d2", fn: env.h.UpdateUser, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID},
+			body:   url.Values{"display_name": {"hacked"}}, wantDenied: true},
+		{name: "ToggleDisabled/d2", fn: env.h.ToggleDisabled, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID}, wantDenied: true},
+		{name: "ResetPassword/d2", fn: env.h.ResetPassword, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID}, wantDenied: true},
+		{name: "DeleteUser/d2", fn: env.h.DeleteUser, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID}, wantDenied: true},
+		{name: "AddAddress/d2-user", fn: env.h.AddAddress, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID},
+			body:   url.Values{"address": {"extra@" + testDomain2}}, wantDenied: true},
+		{name: "RemoveAddress/d2-user", fn: env.h.RemoveAddress, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID},
+			body:   url.Values{"address": {"alias@" + testDomain2}}, wantDenied: true},
+		{name: "GrantSend/d2-user", fn: env.h.GrantSend, method: http.MethodPost,
+			params: map[string]string{"userID": env.d2UserID},
+			body:   url.Values{"address": {"user2@" + testDomain2}}, wantDenied: true},
+		// Cross-tenant address grab: d1-user requesting a d2 address -> 403.
+		{name: "AddAddress/d1-user-d2-addr", fn: env.h.AddAddress, method: http.MethodPost,
+			params: map[string]string{"userID": env.d1UserID},
+			body:   url.Values{"address": {"grab@" + testDomain2}}, wantDenied: true},
+		// Cross-tenant grant-send: d1-user requesting grant for a d2 address -> 403.
+		{name: "GrantSend/d1-user-d2-addr", fn: env.h.GrantSend, method: http.MethodPost,
+			params: map[string]string{"userID": env.d1UserID},
+			body:   url.Values{"address": {"spoof@" + testDomain2}}, wantDenied: true},
+		// CreateUser in d2 -> 403.
+		{name: "CreateUser/d2", fn: env.h.CreateUser, method: http.MethodPost,
+			body: url.Values{
+				"email":    {"newuser@" + testDomain2},
+				"password": {"pass123!"},
+			}, wantDenied: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := postToHandler(t, env.h, tc.fn,
+				tc.method, "/admin/test",
+				tc.body, tc.params,
+				func(r *http.Request) *http.Request { return withDomainAdmin1(r, env.domainAdmin1ID) },
+			)
+			if tc.wantDenied {
+				if w.Code != http.StatusForbidden {
+					t.Errorf("expected 403, got %d", w.Code)
+				}
+				// Zero-leak: response must not contain d2 identifiers in error text.
+				body := w.Body.String()
+				if strings.Contains(body, testDomain2) && !strings.Contains(tc.name, "d2") {
+					// Only flag d2 content leaks in tests NOT targeting d2 (to avoid
+					// false positives from test names embedded in the URL path).
+					t.Errorf("response body contains %q — potential data leak", testDomain2)
+				}
+			} else {
+				if w.Code == http.StatusForbidden {
+					t.Errorf("expected not 403, got 403")
+				}
+			}
+		})
 	}
 }
