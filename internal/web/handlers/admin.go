@@ -649,8 +649,9 @@ func (h *AdminHandler) ShowDomain(w http.ResponseWriter, r *http.Request) {
 }
 
 // loadDomain loads and enriches a single DomainInfo by name.
-// It reads the domain record from Pebble (source of truth), performs an MX check,
-// and populates all enrichment fields (DKIM, catch-all, owner, admins, quota).
+// It reads the domain record from Pebble (source of truth), performs live DNS
+// checks (MX, SPF, DKIM, DMARC) concurrently with short timeouts, and populates
+// all enrichment fields (DKIM, catch-all, owner, admins, quota).
 // Returns (DomainInfo, true) if found, (zero, false) if the domain key is absent.
 func (h *AdminHandler) loadDomain(name string) (templates.DomainInfo, bool) {
 	if h.store == nil {
@@ -668,38 +669,321 @@ func (h *AdminHandler) loadDomain(name string) (templates.DomainInfo, bool) {
 		Enabled: string(data) == "enabled",
 	}
 
-	// MX check: find what is actually configured and compare to expected.
-	// Use a short timeout so the handler is not blocked in offline/test environments.
-	var mxHosts []string
-	mxCtx, mxCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	defer mxCancel()
-	if mxs, err := net.DefaultResolver.LookupMX(mxCtx, name); err == nil && len(mxs) > 0 {
-		di.HasMX = true
-		for _, mx := range mxs {
-			mxHosts = append(mxHosts, strings.TrimSuffix(mx.Host, "."))
+	// Enrich DKIM first so we have the selector and expected TXT record for DNS checks.
+	h.enrichDomainDKIM(&di)
+
+	// Perform live DNS checks concurrently.
+	// The total deadline is 3 s; individual lookups each use a 3 s per-lookup context.
+	dnsCtx, dnsCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer dnsCancel()
+
+	dnsRows := doDNSLookups(dnsCtx, name, di.DkimSelector, h.mailHostname, di.DkimTXTRecord)
+	di.DNSRows = dnsRows
+
+	// Derive HasMX from the MX DNS check result (now means "points to us").
+	for _, row := range dnsRows {
+		if row.Label == "MX" {
+			di.HasMX = row.Status == "ok"
+			break
 		}
 	}
-	mxFound := strings.Join(mxHosts, ", ")
-	if mxFound == "" {
-		mxFound = "-"
-	}
-	// Populate the extensible DNS rows. SPF/DKIM/DMARC rows can be appended here
-	// later without a redesign — each row is {Label, OK, Expected, Found}.
-	di.DNSRows = []templates.DNSCheckRow{
-		{
-			Label:    "MX",
-			OK:       di.HasMX,
-			Expected: h.mailHostname,
-			Found:    mxFound,
-		},
-	}
 
-	h.enrichDomainDKIM(&di)
 	h.enrichDomainCatchAll(&di)
 	h.enrichDomainOwner(&di)
 	h.enrichDomainAdmins(&di)
 	h.enrichDomainQuota(&di)
 	return di, true
+}
+
+// doDNSLookups performs the four DNS lookups (MX, SPF/TXT, DKIM, DMARC) for a
+// domain concurrently under the given context and returns []DNSCheckRow.
+// Lookup failures set Status="error" rather than panicking.
+// selector and expectedDKIMTXT may be empty when no DKIM key has been generated.
+func doDNSLookups(ctx context.Context, domain, selector, mailHostname, expectedDKIMTXT string) []templates.DNSCheckRow {
+	type result struct {
+		label string
+		vals  []string
+		err   error
+	}
+
+	// Run all four lookups concurrently.
+	ch := make(chan result, 4)
+
+	lookupWithTimeout := func(label string, fn func(ctx context.Context) ([]string, error)) {
+		lCtx, lCancel := context.WithTimeout(ctx, 3*time.Second)
+		defer lCancel()
+		vals, err := fn(lCtx)
+		ch <- result{label: label, vals: vals, err: err}
+	}
+
+	go lookupWithTimeout("MX", func(lCtx context.Context) ([]string, error) {
+		mxs, err := net.DefaultResolver.LookupMX(lCtx, domain)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]string, 0, len(mxs))
+		for _, mx := range mxs {
+			out = append(out, mx.Host)
+		}
+		return out, nil
+	})
+
+	go lookupWithTimeout("SPF", func(lCtx context.Context) ([]string, error) {
+		return net.DefaultResolver.LookupTXT(lCtx, domain)
+	})
+
+	dkimHost := "_domainkey." + domain
+	if selector != "" {
+		dkimHost = selector + "._domainkey." + domain
+	}
+	go lookupWithTimeout("DKIM", func(lCtx context.Context) ([]string, error) {
+		return net.DefaultResolver.LookupTXT(lCtx, dkimHost)
+	})
+
+	go lookupWithTimeout("DMARC", func(lCtx context.Context) ([]string, error) {
+		return net.DefaultResolver.LookupTXT(lCtx, "_dmarc."+domain)
+	})
+
+	// Collect results.
+	looked := make(map[string]result, 4)
+	for range 4 {
+		r := <-ch
+		looked[r.label] = r
+	}
+
+	// Build rows using the pure function.
+	rows := buildDNSChecks(
+		domain, mailHostname, expectedDKIMTXT,
+		looked["MX"].vals, looked["SPF"].vals, looked["DKIM"].vals, looked["DMARC"].vals,
+	)
+
+	// Overlay error status for failed lookups.
+	for i, row := range rows {
+		lbl := row.Label
+		if r, ok := looked[lbl]; ok && r.err != nil && row.Status == "fail" {
+			rows[i].Status = "error"
+			rows[i].OK = false
+			rows[i].Found = "could not check"
+		}
+	}
+
+	return rows
+}
+
+// buildDNSChecks is a pure function that compares injected DNS lookup values
+// against expected values for the server and returns one DNSCheckRow per record type.
+// No network calls are made — this enables unit testing without DNS.
+//
+// Parameters:
+//   - domain: the mail domain being checked
+//   - mailHostname: the SMTP hostname we expect MX and SPF to authorise
+//   - expectedDKIMTXT: our full DKIM TXT record (e.g. "mail._domainkey.example.com TXT ..."),
+//     empty when no key has been generated yet
+//   - mx: hosts returned by LookupMX (raw with possible trailing dot)
+//   - spfTXTs: all TXT records for the domain
+//   - dkimTXTs: TXT records for <selector>._domainkey.<domain>
+//   - dmarcTXTs: TXT records for _dmarc.<domain>
+func buildDNSChecks(domain, mailHostname, expectedDKIMTXT string, mx, spfTXTs, dkimTXTs, dmarcTXTs []string) []templates.DNSCheckRow {
+	rows := make([]templates.DNSCheckRow, 0, 4)
+
+	// --- MX ---
+	// OK only if at least one MX host, after trimming trailing dot and lowercasing,
+	// equals the configured mail hostname. This prevents the OVH/example-net false-positive.
+	mxOK := false
+	var mxFoundHosts []string
+	wantMX := strings.ToLower(strings.TrimSpace(mailHostname))
+	for _, host := range mx {
+		h := strings.ToLower(strings.TrimSuffix(host, "."))
+		mxFoundHosts = append(mxFoundHosts, h)
+		if h == wantMX {
+			mxOK = true
+		}
+	}
+	mxFound := strings.Join(mxFoundHosts, ", ")
+	if mxFound == "" {
+		mxFound = "-"
+	}
+	rows = append(rows, templates.DNSCheckRow{
+		Label:    "MX",
+		OK:       mxOK,
+		Status:   statusFromBool(mxOK),
+		Expected: mailHostname,
+		Found:    mxFound,
+	})
+
+	// --- SPF ---
+	// Find the v=spf1 record. OK if it plausibly authorises this server:
+	//   - contains "mx" mechanism, or
+	//   - contains "a:<mailHostname>", or
+	//   - includes a term referencing mailHostname or its registered domain.
+	spfOK := false
+	spfFoundRecord := ""
+	for _, txt := range spfTXTs {
+		if strings.HasPrefix(strings.ToLower(txt), "v=spf1") {
+			spfFoundRecord = txt
+			spfOK = spfAuthorisesHost(txt, mailHostname)
+			break
+		}
+	}
+	spfFound := spfFoundRecord
+	if spfFound == "" {
+		spfFound = "-"
+	}
+	rows = append(rows, templates.DNSCheckRow{
+		Label:    "SPF",
+		OK:       spfOK,
+		Status:   statusFromBool(spfOK),
+		Expected: "v=spf1 mx ~all",
+		Found:    spfFound,
+	})
+
+	// --- DKIM ---
+	// Neutral when no key has been generated here yet (expectedDKIMTXT == "").
+	// OK when the published p= matches our p= exactly.
+	ourP := extractOurDKIMPublicKey(expectedDKIMTXT)
+	dkimStatus := "fail"
+	dkimFound := "-"
+
+	if expectedDKIMTXT == "" {
+		// No key generated yet — neutral state.
+		dkimStatus = "neutral"
+	} else {
+		// Concatenate all TXT strings for the DKIM record (published records may be split).
+		allDKIM := strings.Join(dkimTXTs, "")
+		if allDKIM != "" {
+			publishedP := extractDKIMPublicKey(allDKIM)
+			dkimFound = allDKIM
+			if publishedP != "" && publishedP == ourP {
+				dkimStatus = "ok"
+			}
+		}
+	}
+	rows = append(rows, templates.DNSCheckRow{
+		Label:    "DKIM",
+		OK:       dkimStatus == "ok",
+		Status:   dkimStatus,
+		Expected: expectedDKIMTXT,
+		Found:    dkimFound,
+	})
+
+	// --- DMARC ---
+	// OK if any TXT at _dmarc.<domain> starts with "v=DMARC1".
+	dmarcOK := false
+	dmarcFound := "-"
+	for _, txt := range dmarcTXTs {
+		if strings.HasPrefix(strings.ToLower(txt), "v=dmarc1") {
+			dmarcOK = true
+			dmarcFound = txt
+			break
+		}
+	}
+	rows = append(rows, templates.DNSCheckRow{
+		Label:    "DMARC",
+		OK:       dmarcOK,
+		Status:   statusFromBool(dmarcOK),
+		Expected: fmt.Sprintf("v=DMARC1; p=none; rua=mailto:postmaster@%s", domain),
+		Found:    dmarcFound,
+	})
+
+	return rows
+}
+
+// statusFromBool converts a boolean check result to a DNSCheckRow Status string.
+func statusFromBool(ok bool) string {
+	if ok {
+		return "ok"
+	}
+	return "fail"
+}
+
+// spfAuthorisesHost returns true if the SPF record txt plausibly authorises
+// the given mailHostname. It checks for:
+//   - "mx" mechanism (bare, not a modifier)
+//   - "a:<mailHostname>" or "a:<mailHostname>/<cidr>"
+//   - any include/redirect/host term containing mailHostname or its registered domain
+func spfAuthorisesHost(txt, mailHostname string) bool {
+	if mailHostname == "" {
+		return false
+	}
+	lowerHost := strings.ToLower(mailHostname)
+	// Extract the registered domain (last two labels) for broader include matching.
+	regDomain := registeredDomain(lowerHost)
+
+	lower := strings.ToLower(txt)
+	for _, term := range strings.Fields(lower) {
+		// Bare "mx" mechanism.
+		if term == "mx" || strings.HasPrefix(term, "mx/") {
+			return true
+		}
+		// a:<host> or a:<host>/<cidr>
+		if strings.HasPrefix(term, "a:") {
+			host := strings.TrimPrefix(term, "a:")
+			if idx := strings.Index(host, "/"); idx >= 0 {
+				host = host[:idx]
+			}
+			if host == lowerHost {
+				return true
+			}
+		}
+		// include:<domain>, redirect=<domain> — check if domain contains our mailHostname or regDomain.
+		if strings.HasPrefix(term, "include:") || strings.HasPrefix(term, "redirect=") {
+			val := term
+			if strings.HasPrefix(val, "include:") {
+				val = strings.TrimPrefix(val, "include:")
+			} else {
+				val = strings.TrimPrefix(val, "redirect=")
+			}
+			if strings.Contains(val, lowerHost) || (regDomain != "" && strings.Contains(val, regDomain)) {
+				return true
+			}
+		}
+		// ip4/ip6 terms: skip (would need reverse lookup, out of scope).
+	}
+	return false
+}
+
+// registeredDomain returns the last two dot-separated labels of a hostname,
+// e.g. "mail.example.com" → "example.com". Returns "" for hostnames with
+// fewer than two labels.
+func registeredDomain(hostname string) string {
+	parts := strings.Split(hostname, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// extractDKIMPublicKey extracts the p= value from a raw DKIM TXT record string.
+// The record may be the concatenated TXT strings for the DNS entry, e.g.:
+//
+//	"v=DKIM1; k=rsa; p=AAAA1234"
+//
+// Returns empty string if no p= token is found or the value is empty.
+func extractDKIMPublicKey(txt string) string {
+	// Find "p=" and extract until the next ";" or end of string.
+	// Trailing quote characters and whitespace are stripped.
+	idx := strings.Index(txt, "p=")
+	if idx < 0 {
+		return ""
+	}
+	rest := txt[idx+2:]
+	// Terminate at next semicolon.
+	if end := strings.Index(rest, ";"); end >= 0 {
+		rest = rest[:end]
+	}
+	// Strip trailing quote and whitespace.
+	rest = strings.TrimRight(rest, `"' `+"\t\r\n")
+	return strings.TrimSpace(rest)
+}
+
+// extractOurDKIMPublicKey extracts the p= value from a dkimTXTRecord-format string.
+// The format is: "selector._domainkey.domain TXT "v=DKIM1; k=rsa; p=BASE64""
+// Returns empty string if the input is empty or no p= is found.
+func extractOurDKIMPublicKey(dkimTXTRecord string) string {
+	if dkimTXTRecord == "" {
+		return ""
+	}
+	return extractDKIMPublicKey(dkimTXTRecord)
 }
 
 // CreateDomain adds a new domain.
@@ -2045,10 +2329,9 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 				var name string
 				var enabled int
 				if err := rows.Scan(&name, &enabled); err == nil {
-					hasMX := false
-					if mxs, err := net.LookupMX(name); err == nil && len(mxs) > 0 {
-						hasMX = true
-					}
+					// MX check with short per-lookup timeout and corrected comparison:
+					// HasMX is true only if an MX host matches the configured mail hostname.
+					hasMX := h.checkMXPointsToUs(name)
 					di := templates.DomainInfo{
 						Name:    name,
 						Enabled: enabled == 1,
@@ -2084,6 +2367,7 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 				di := templates.DomainInfo{
 					Name:    name,
 					Enabled: string(val) == "enabled",
+					HasMX:   h.checkMXPointsToUs(name),
 				}
 				h.enrichDomainDKIM(&di)
 				h.enrichDomainCatchAll(&di)
@@ -2095,6 +2379,28 @@ func (h *AdminHandler) loadDomains() []templates.DomainInfo {
 		}
 	}
 	return domains
+}
+
+// checkMXPointsToUs performs a single timed MX lookup and returns true only if
+// at least one MX host matches the configured mail hostname. This fixes the
+// false-positive where any existing MX record was treated as valid.
+func (h *AdminHandler) checkMXPointsToUs(domain string) bool {
+	if h.mailHostname == "" {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	mxs, err := net.DefaultResolver.LookupMX(ctx, domain)
+	if err != nil {
+		return false
+	}
+	wantHost := strings.ToLower(strings.TrimSpace(h.mailHostname))
+	for _, mx := range mxs {
+		if strings.ToLower(strings.TrimSuffix(mx.Host, ".")) == wantHost {
+			return true
+		}
+	}
+	return false
 }
 
 // enrichDomainDKIM reads the DKIM record for a domain from Pebble and populates

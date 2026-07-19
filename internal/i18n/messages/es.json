@@ -606,5 +606,12 @@
   "admin.quotaHelp": "Los limites de cuota son establecidos por el administrador global y se recalculan periodicamente.",
   "admin.dangerZoneSectionTitle": "Zona de peligro",
   "admin.deleteDomain": "Eliminar dominio",
-  "admin.confirmDeleteDomain": "Eliminar permanentemente este dominio y todos sus ajustes? Esto no se puede deshacer."
+  "admin.confirmDeleteDomain": "Eliminar permanentemente este dominio y todos sus ajustes? Esto no se puede deshacer.",
+  "admin.dnsNotGenerated": "No generado",
+  "admin.dnsCheckError": "No se pudo verificar",
+  "admin.dnsShowExpected": "Mostrar valor esperado",
+  "admin.dnsShowFound": "Mostrar valor encontrado",
+  "admin.spfRecord": "SPF",
+  "admin.dkimRecord": "DKIM",
+  "admin.dmarcRecord": "DMARC"
 }
