@@ -26,3 +26,16 @@ message DomainRecord {
   // DKIM key rotation. This field documents the schema; see DomainAdminStore.
   string owner_user_id = 4;
 }
+
+// DomainQuota holds per-domain resource limits.
+// Stored under /system/domain/{domain}/quota in Pebble via Raft.
+// 0 means unlimited for both fields.
+message DomainQuota {
+  // max_users is the maximum number of users whose primary domain is this
+  // domain. 0 = unlimited.
+  int64 max_users = 1;
+
+  // max_storage_bytes is the maximum aggregate storage (sum of raw_message
+  // blob sizes for all users in this domain). 0 = unlimited.
+  int64 max_storage_bytes = 2;
+}

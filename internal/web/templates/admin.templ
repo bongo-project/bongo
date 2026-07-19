@@ -60,6 +60,10 @@ type DomainInfo struct {
 	CatchAllOwnerID string   // user ID configured as catch-all target, empty if not set
 	OwnerUserID     string   // user ID of the domain owner (tenant); empty if not set
 	DomainAdmins    []string // user IDs granted as domain-admins; nil/empty if none
+	// Quota fields (FR-10 / US-TENANT-3). 0 = unlimited.
+	MaxUsers        int64 // per-domain user count limit
+	MaxStorageBytes int64 // per-domain aggregate storage limit in bytes
+	UsageBytes      int64 // last-recomputed aggregate usage in bytes
 }
 
 // AliasInfo holds data for the alias management list.
@@ -448,7 +452,7 @@ templ AdminUserForm(user *AdminUserInfo, domains []DomainInfo, isNew bool, email
 	}
 }
 
-templ AdminDomainList(domains []DomainInfo, email, flash string) {
+templ AdminDomainList(domains []DomainInfo, email, flash string, isGlobalAdmin bool) {
 	@AdminLayout(t(ctx, "admin.domains"), email, "domains") {
 		<div class="admin-scroll">
 			if flash != "" {
@@ -456,16 +460,18 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 			}
 			<h1 class="admin-title">{ t(ctx, "admin.domains") }</h1>
 			<p class="admin-subtitle">{ t(ctx, "admin.domainsSubtitle") }</p>
-			<div class="form-card">
-				<h3>{ t(ctx, "admin.addDomain") }</h3>
-				<form method="post" action="/admin/domains" class="admin-inline-form">
-					<div class="u-flex-1">
-						<label for="domain_name" class="admin-inline-label">{ t(ctx, "admin.domainName") }</label>
-						<input type="text" name="domain" id="domain_name" placeholder="example.com" required class="form-input u-m0"/>
-					</div>
-					<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "admin.addDomain") }</button>
-				</form>
-			</div>
+			if isGlobalAdmin {
+				<div class="form-card">
+					<h3>{ t(ctx, "admin.addDomain") }</h3>
+					<form method="post" action="/admin/domains" class="admin-inline-form">
+						<div class="u-flex-1">
+							<label for="domain_name" class="admin-inline-label">{ t(ctx, "admin.domainName") }</label>
+							<input type="text" name="domain" id="domain_name" placeholder="example.com" required class="form-input u-m0"/>
+						</div>
+						<button type="submit" class="btn-primary admin-btn-42">{ t(ctx, "admin.addDomain") }</button>
+					</form>
+				</div>
+			}
 			<div class="admin-table-card">
 				<table class="admin-table" aria-label={ t(ctx, "admin.domainList") }>
 					<thead>
@@ -477,6 +483,7 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 							<th scope="col">{ t(ctx, "admin.catchAll") }</th>
 							<th scope="col">{ t(ctx, "admin.domainOwner") }</th>
 							<th scope="col">{ t(ctx, "admin.domainAdmins") }</th>
+							<th scope="col">{ t(ctx, "admin.domainQuota") }</th>
 							<th scope="col" class="u-width-200px">{ t(ctx, "common.actions") }</th>
 						</tr>
 					</thead>
@@ -547,6 +554,9 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 									</form>
 								</td>
 								<td>
+									@domainQuotaCell(d, isGlobalAdmin)
+								</td>
+								<td>
 									<div class="row-actions">
 										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/toggle", d.Name)) }>
 											<button type="submit" class="btn-outline">
@@ -566,21 +576,59 @@ templ AdminDomainList(domains []DomainInfo, email, flash string) {
 												}
 											</button>
 										</form>
-										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/delete", d.Name)) }>
-											<button type="submit" class="btn-flush">{ t(ctx, "common.delete") }</button>
-										</form>
+										if isGlobalAdmin {
+											<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/delete", d.Name)) }>
+												<button type="submit" class="btn-flush">{ t(ctx, "common.delete") }</button>
+											</form>
+										}
 									</div>
 								</td>
 							</tr>
 						}
 						if len(domains) == 0 {
-							<tr><td colspan="8" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
+							<tr><td colspan="9" class="u-text-center u-text-muted u-p-2rem">{ t(ctx, "admin.noDomains") }</td></tr>
 						}
 					</tbody>
 				</table>
 			</div>
 		</div>
 	}
+}
+
+// domainQuotaCell renders the per-domain quota cell.
+// Global-admins see an editable form; domain-admins see read-only usage/limit.
+// No inline styles — CSP-safe.
+templ domainQuotaCell(d DomainInfo, isGlobalAdmin bool) {
+	<div class="domain-quota-cell">
+		<div class="u-text-small u-text-muted">
+			{ t(ctx, "admin.quotaUsage") }: { fmt.Sprintf("%d", d.UsageBytes) } /
+			if d.MaxStorageBytes > 0 {
+				{ fmt.Sprintf("%d", d.MaxStorageBytes) } { t(ctx, "admin.quotaBytes") }
+			} else {
+				{ t(ctx, "admin.quotaUnlimited") }
+			}
+		</div>
+		<div class="u-text-small u-text-muted">
+			{ t(ctx, "admin.quotaMaxUsers") }:
+			if d.MaxUsers > 0 {
+				{ fmt.Sprintf("%d", d.MaxUsers) }
+			} else {
+				{ t(ctx, "admin.quotaUnlimited") }
+			}
+		</div>
+		if isGlobalAdmin {
+			<details class="quota-edit-details">
+				<summary class="u-text-small">{ t(ctx, "admin.quotaEdit") }</summary>
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/domains/%s/quota", d.Name)) } class="quota-edit-form">
+					<label class="admin-inline-label">{ t(ctx, "admin.quotaMaxUsers") }</label>
+					<input type="number" name="max_users" min="0" value={ fmt.Sprintf("%d", d.MaxUsers) } class="form-input u-m0"/>
+					<label class="admin-inline-label">{ t(ctx, "admin.quotaMaxStorage") }</label>
+					<input type="number" name="max_storage_bytes" min="0" value={ fmt.Sprintf("%d", d.MaxStorageBytes) } class="form-input u-m0"/>
+					<button type="submit" class="btn-outline admin-btn-42">{ t(ctx, "admin.quotaSet") }</button>
+				</form>
+			</details>
+		}
+	</div>
 }
 
 templ AdminAliasList(aliases []AliasInfo, users []string, email, flash string) {

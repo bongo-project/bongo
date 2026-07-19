@@ -93,9 +93,10 @@ type Agent struct {
 	Contacts    *store.ContactStore
 	Events       *store.EventStore
 	Calendars    *store.CalendarStore
-	BlobSync     *cluster.BlobSyncer
-	AddressStore *store.AddressStore
-	logger       *slog.Logger
+	BlobSync        *cluster.BlobSyncer
+	AddressStore    *store.AddressStore
+	DomainQuota     *store.DomainQuotaStore
+	logger          *slog.Logger
 
 	// Inbound pipeline subsystem.
 	Spool          *pipeline.SpoolStore
@@ -323,6 +324,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			sys = a.Metadata.System
 		}
 		a.AddressStore = store.NewAddressStore(pebbleStore, a, sys)
+
+		// Domain quota store (FR-10 / US-TENANT-3): per-domain max_users and
+		// max_storage_bytes limits + recomputed usage. The Agent itself is the
+		// RaftApplier so all writes go through Raft consensus.
+		a.DomainQuota = store.NewDomainQuotaStore(pebbleStore, a)
 	}
 
 	return a, nil
@@ -640,6 +646,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			adminH.SetAddressStore(a.AddressStore)
 		}
 
+		// Wire the domain quota store (FR-10 / US-TENANT-3): max-users + storage
+		// quota enforcement for admin user creation and the quota set endpoint.
+		if a.DomainQuota != nil {
+			adminH.SetDomainQuotaStore(a.DomainQuota)
+		}
+
 		r.Get("/admin", adminH.Dashboard)
 		r.Get("/admin/users", adminH.ListUsers)
 		r.Get("/admin/users/new", adminH.NewUserForm)
@@ -662,6 +674,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		r.Post("/admin/domains/{domain}/owner", adminH.SetDomainOwner)
 		r.Post("/admin/domains/{domain}/admins", adminH.GrantDomainAdmin)
 		r.Post("/admin/domains/{domain}/admins/revoke", adminH.RevokeDomainAdmin)
+		r.Post("/admin/domains/{domain}/quota", adminH.SetDomainQuota)
 		r.Get("/admin/aliases", adminH.ListAliases)
 		r.Post("/admin/aliases", adminH.CreateAlias)
 		r.Post("/admin/aliases/{address}/delete", adminH.DeleteAlias)
@@ -1073,6 +1086,14 @@ func (a *Agent) Run(ctx context.Context) error {
 		// deliver-stage resolution are always consistent.
 		backend.SetResolver(sharedResolver)
 
+		// Storage quota enforcement at RCPT (FR-10 / US-TENANT-3): reject
+		// inbound mail permanently when the recipient's primary domain is at or
+		// over its max_storage_bytes limit. Nil when quota store is unavailable
+		// (dev/edge/agent — all nil-checked inside the SMTP session).
+		if a.DomainQuota != nil {
+			backend.SetQuotaChecker(a.DomainQuota)
+		}
+
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
 		if err := a.SMTP.Listen(); err != nil {
 			return fmt.Errorf("smtp listen: %w", err)
@@ -1273,6 +1294,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		go a.runOrphanGC(ctx, orphanGCInterval, orphanGCMinAge)
 	}
 
+	// Recompute per-domain aggregate storage usage (FR-10 / US-TENANT-3).
+	// Leader-only, periodic, idempotent. Used by the SMTP RCPT quota check.
+	if a.Raft != nil && a.DomainQuota != nil {
+		go a.runUsageRecompute(ctx, usageRecomputeInterval)
+	}
+
 	a.ready.Store(true)
 
 	a.logger.Info("bongo-go started",
@@ -1377,6 +1404,9 @@ const (
 	// orphanGCMinAge is the minimum MailMeta age before it is eligible for
 	// reclamation, guarding against racing with in-flight delivery.
 	orphanGCMinAge = time.Hour
+	// usageRecomputeInterval is how often the per-domain storage usage is
+	// recomputed. Eventual consistency is acceptable (AC explicitly allows it).
+	usageRecomputeInterval = 10 * time.Minute
 )
 
 // runOrphanGC periodically reclaims orphaned mail metadata: MailMeta records
@@ -1497,6 +1527,145 @@ func (a *Agent) sweepOrphanedMail(prev map[string]bool, minAge time.Duration) ma
 		a.logger.Info("orphan-gc: reclaimed orphaned mail metadata", "count", deleted)
 	}
 	return current
+}
+
+// runUsageRecompute periodically recomputes per-domain aggregate storage usage
+// and writes it via Raft to /system/domain/{d}/usage. Leader-only (mirrors the
+// orphan-GC scheduling pattern). Idempotent: always overwrites the stored value.
+//
+// Usage is eventually consistent: the recompute job runs on a ~10-minute ticker
+// so short-lived spikes may not be reflected immediately. The AC explicitly
+// accepts this.
+func (a *Agent) runUsageRecompute(ctx context.Context, interval time.Duration) {
+	if a.DomainQuota == nil || a.Store == nil {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.recomputeDomainUsage()
+		}
+	}
+}
+
+// recomputeDomainUsage is one pass of the usage-recompute job. It scans all
+// user profiles in Pebble, sums mail blob sizes per primary domain, and writes
+// the result via Raft. Leader-only; exits immediately on non-leader nodes.
+func (a *Agent) recomputeDomainUsage() {
+	if a.Raft == nil || !a.IsLeader() || a.Store == nil || a.DomainQuota == nil {
+		return
+	}
+	computeAndWriteDomainUsage(a.Store, a.DomainQuota, a.logger)
+}
+
+// computeAndWriteDomainUsage scans all /user/{id}/mail/{guid} MailMeta keys in
+// pebble, sums raw_message.size per primary domain (derived from the owner's
+// /user/{id}/profile), and writes the per-domain totals via quotaStore.SetUsage.
+//
+// Extracted from recomputeDomainUsage so it can be called directly in tests
+// without needing a live Raft cluster.
+//
+// Only raw_message.size is summed — attachments are extracted blobs embedded in
+// the raw message and summing both would double-count.
+func computeAndWriteDomainUsage(pebble *store.PebbleStore, quotaStore *store.DomainQuotaStore, logger *slog.Logger) {
+	iter, err := pebble.PrefixScan([]byte("/user/"))
+	if err != nil {
+		logger.Warn("usage-recompute: scan failed", "error", err)
+		return
+	}
+
+	// domainBytes accumulates bytes per lowercased primary domain.
+	domainBytes := make(map[string]int64)
+	// profileCache caches the primary domain per userID to avoid re-reading the
+	// profile for every mail key of the same user.
+	profileCache := make(map[string]string)
+
+	for iter.Next() {
+		key := string(iter.Key())
+		// We only care about /user/{id}/mail/{guid} keys.
+		rest := strings.TrimPrefix(key, "/user/")
+		parts := strings.SplitN(rest, "/", 3)
+		if len(parts) != 3 || parts[1] != "mail" {
+			continue
+		}
+		userID := parts[0]
+
+		// Derive the primary domain from the profile. Use cached value if available.
+		domain, ok := profileCache[userID]
+		if !ok {
+			profileData, pErr := pebble.Get([]byte("/user/" + userID + "/profile"))
+			if pErr != nil {
+				profileCache[userID] = "" // mark as unknown so we don't retry
+				continue
+			}
+			var profile bongov1.UserProfile
+			if uErr := proto.Unmarshal(profileData, &profile); uErr != nil {
+				profileCache[userID] = ""
+				continue
+			}
+			domain = strings.ToLower(store.DomainFromEmail(profile.Email))
+			profileCache[userID] = domain
+		}
+		if domain == "" {
+			continue
+		}
+
+		// Read the MailMeta value and sum raw_message.size (NOT attachments,
+		// which are embedded in the raw message; summing both would double-count).
+		val, vErr := iter.Value()
+		if vErr != nil {
+			continue
+		}
+		var meta bongov1.MailMeta
+		if uErr := proto.Unmarshal(val, &meta); uErr != nil {
+			continue
+		}
+		if meta.RawMessage != nil {
+			domainBytes[domain] += meta.RawMessage.Size
+		}
+	}
+	iter.Close()
+
+	// Write usage for EVERY managed domain — including those that dropped to zero
+	// mail since the last run — so a cleared domain's usage is reset to 0 rather
+	// than left stale (a stale non-zero usage would keep rejecting inbound mail
+	// forever after the domain's mail was deleted).
+	toWrite := make(map[string]int64, len(domainBytes))
+	for d, b := range domainBytes {
+		toWrite[d] = b
+	}
+	if mIter, mErr := pebble.PrefixScan([]byte("/system/domain/")); mErr == nil {
+		for mIter.Next() {
+			name := strings.TrimPrefix(string(mIter.Key()), "/system/domain/")
+			if strings.Contains(name, "/") {
+				continue // skip /dkim, /owner, /quota, /usage sub-keys
+			}
+			if _, ok := toWrite[name]; !ok {
+				toWrite[name] = 0 // managed domain with no mail → reset usage to 0
+			}
+		}
+		mIter.Close()
+	} else {
+		logger.Warn("usage-recompute: list managed domains failed", "error", mErr)
+	}
+
+	// Write the per-domain totals via Raft.
+	written := 0
+	for domain, usageBytes := range toWrite {
+		if err := quotaStore.SetUsage(domain, usageBytes); err != nil {
+			logger.Warn("usage-recompute: set usage failed", "domain", domain, "error", err)
+		} else {
+			written++
+		}
+	}
+	if written > 0 {
+		logger.Info("usage-recompute: updated domain usage", "domains", written)
+	}
 }
 
 // ensureConfiguredDomain seeds the server's configured mail domain into the
