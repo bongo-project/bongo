@@ -18,6 +18,10 @@ func TestResolveServerDomain(t *testing.T) {
 	if osHost == "" {
 		osHost = "localhost"
 	}
+	// ResolveServerDomain lowercases the OS hostname, so the expected
+	// value must too — otherwise this test fails on hosts whose name
+	// contains uppercase letters (e.g. macOS "Mac.local").
+	osHost = strings.ToLower(osHost)
 
 	tests := []struct {
 		name         string
