@@ -63,6 +63,7 @@
   "compose.newMessage": "Compose: New Message",
   "compose.reply": "Compose: Reply",
   "compose.forward": "Compose: Forward",
+  "compose.editDraft": "Compose: Edit Draft",
   "calendar.month": "Month",
   "calendar.week": "Week",
   "calendar.day": "Day",

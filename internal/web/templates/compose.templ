@@ -2,18 +2,18 @@ package templates
 
 import "fmt"
 
-templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string) {
+templ ComposePageFull(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, mailboxes []MailboxInfo, tags []SidebarTagInfo, email string, fromOptions []string, selectedFrom string, htmlBody string) {
 	@LayoutWithContent(t(ctx, "compose.compose"), email) {
 		<aside class="sidebar" id="sidebar" x-bind:class="{'open': sidebarOpen}">
 			@Sidebar(mailboxes, tags, "")
 		</aside>
 		<main class="content" id="main-content">
-			@ComposePage(mode, to, cc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom)
+			@ComposePage(mode, to, cc, subject, body, replyMailbox, replyUID, fromOptions, selectedFrom, htmlBody)
 		</main>
 	}
 }
 
-templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string) {
+templ ComposePage(mode string, to string, cc string, subject string, body string, replyMailbox string, replyUID uint32, fromOptions []string, selectedFrom string, htmlBody string) {
 	<div class="compose-area">
 		<div class="compose-card">
 			<div class="compose-header">
@@ -23,6 +23,8 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 							{ t(ctx, "compose.reply") }
 						case "forward":
 							{ t(ctx, "compose.forward") }
+						case "draft":
+							{ t(ctx, "compose.editDraft") }
 						default:
 							{ t(ctx, "compose.newMessage") }
 					}
@@ -116,7 +118,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 							/>
 						</div>
 					</div>
-					<div x-data={ `{"bodyMode":"` + composeDefaultBodyMode(mode) + `"}` }>
+					<div x-data={ `{"bodyMode":"` + composeDefaultBodyMode(mode, htmlBody) + `"}` }>
 						<div class="compose-mode-toggle">
 							<button
 								type="button"
@@ -153,7 +155,7 @@ templ ComposePage(mode string, to string, cc string, subject string, body string
 						     the HTML signature is appended server-side in buildRichMessage so
 						     that it appears exactly once in the sent mail. -->
 						<template x-if="bodyMode === 'rich'">
-							@RichEditorField("body", "", "compose")
+							@RichEditorField("body", htmlBody, "compose")
 						</template>
 					</div>
 					<div
@@ -204,8 +206,13 @@ func uintToStr(v uint32) string {
 // composeDefaultBodyMode returns "plain" for reply/forward modes and "rich" for
 // new messages. This is rendered into the Alpine x-data initial state so that
 // the body_mode form field defaults correctly without requiring JavaScript logic.
-func composeDefaultBodyMode(mode string) string {
-	if mode == "reply" || mode == "forward" {
+func composeDefaultBodyMode(mode, htmlBody string) string {
+	// A draft carrying HTML reopens in rich mode; a plain draft (and
+	// reply/forward) default to plain so quoted/plain text is submitted as-is.
+	if htmlBody != "" {
+		return "rich"
+	}
+	if mode == "reply" || mode == "forward" || mode == "draft" {
 		return "plain"
 	}
 	return "rich"

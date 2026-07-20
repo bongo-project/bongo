@@ -790,6 +790,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/compose", composeH.NewMessage)
 			r.Get("/compose/reply/{mailbox}/{uid}", composeH.Reply)
 			r.Get("/compose/forward/{mailbox}/{uid}", composeH.Forward)
+			r.Get("/compose/draft/{mailbox}/{uid}", composeH.EditDraft)
 			r.Post("/compose/send", composeH.Send)
 			r.Post("/compose/draft", composeH.SaveDraft)
 			r.Get("/api/gal", composeH.GALSearch)
