@@ -252,30 +252,14 @@ templ MessageRows(messages []MessageSummary, mailbox string) {
 				}
 			</button>
 			<span class="msg-from">
-				<a
-					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID)) }
-					data-message-link="true"
-					data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", encMailbox(mailbox), msg.UID) }
-					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID) }
-					hx-target="#main-content"
-					hx-push-url="true"
-					class="u-text-decoration-none"
-				>
+				@msgRowLink(mailbox, msg.UID) {
 					{ msg.From }
-				</a>
+				}
 			</span>
 			<span class="msg-subject">
-				<a
-					href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID)) }
-					data-message-link="true"
-					data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", encMailbox(mailbox), msg.UID) }
-					hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), msg.UID) }
-					hx-target="#main-content"
-					hx-push-url="true"
-					class="u-text-decoration-none"
-				>
+				@msgRowLink(mailbox, msg.UID) {
 					{ msg.Subject }
-				</a>
+				}
 				if mailbox == "Junk" && msg.SpamScore > 0 {
 					<span class="spam-badge" title={ t(ctx, "mail.spamScore") }>{ fmt.Sprintf("%.0f%%", msg.SpamScore*100) }</span>
 				}
@@ -385,4 +369,30 @@ func flagToggleVals(flagged bool) string {
 		return `{"action":"remove","flag":"flagged"}`
 	}
 	return `{"action":"add","flag":"flagged"}`
+}
+
+// msgRowLink renders a message-row link. In the Drafts mailbox it opens the
+// draft in the compose editor (full-page navigation); elsewhere it opens the
+// read-only message view with the HTMX pane/preview behaviour.
+templ msgRowLink(mailbox string, uid uint32) {
+	if mailbox == "Drafts" {
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/compose/draft/%s/%d", encMailbox(mailbox), uid)) }
+			class="u-text-decoration-none"
+		>
+			{ children... }
+		</a>
+	} else {
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), uid)) }
+			data-message-link="true"
+			data-pane-url={ fmt.Sprintf("/mail/%s/%d?pane=1", encMailbox(mailbox), uid) }
+			hx-get={ fmt.Sprintf("/mail/%s/%d", encMailbox(mailbox), uid) }
+			hx-target="#main-content"
+			hx-push-url="true"
+			class="u-text-decoration-none"
+		>
+			{ children... }
+		</a>
+	}
 }

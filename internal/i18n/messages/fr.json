@@ -63,6 +63,7 @@
   "compose.newMessage": "Composer : Nouveau message",
   "compose.reply": "Composer : Réponse",
   "compose.forward": "Composer : Transfert",
+  "compose.editDraft": "Composer : Modifier le brouillon",
   "calendar.month": "Mois",
   "calendar.week": "Semaine",
   "calendar.day": "Jour",

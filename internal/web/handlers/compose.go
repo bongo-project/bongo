@@ -153,12 +153,12 @@ func (h *ComposeHandler) NewMessage(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0, fromOpts, fromSel)).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("new", "", "", "", body, "", 0, fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("new", "", "", "", body, "", 0, mailboxInfos, nil, email, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 // Reply renders the reply form with pre-filled fields.
@@ -213,12 +213,12 @@ func (h *ComposeHandler) Reply(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, replyEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), fromOpts, fromSel)).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("reply", replyTo, replyCc, subject, body, mailbox, uint32(uid), mailboxInfos, nil, replyEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 // Forward renders the forward form.
@@ -250,12 +250,12 @@ func (h *ComposeHandler) Forward(w http.ResponseWriter, r *http.Request) {
 	fromOpts, fromSel := h.buildFromPickerOptions(userID, fwdEmail)
 
 	if r.Header.Get("HX-Request") == "true" {
-		templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel)).ServeHTTP(w, r)
+		templ.Handler(templates.ComposePage("forward", "", "", subject, body, mailbox, uint32(uid), fromOpts, fromSel, "")).ServeHTTP(w, r)
 		return
 	}
 
 	mailboxInfos := h.loadMailboxInfos(userID)
-	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel)).ServeHTTP(w, r)
+	templ.Handler(templates.ComposePageFull("forward", "", "", subject, body, mailbox, uint32(uid), mailboxInfos, nil, fwdEmail, fromOpts, fromSel, "")).ServeHTTP(w, r)
 }
 
 // Send processes the compose form and delivers the message.
@@ -395,7 +395,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	var searchBody string
 	if bodyMode == "rich" {
 		var buildErr error
-		rawMsg, searchBody, buildErr = h.buildRichMessage(fromAddr, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles)
+		rawMsg, searchBody, buildErr = h.buildRichMessage(fromAddr, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles, true)
 		if buildErr != nil {
 			// Reject before any user-visible writes (blob store, Sent copy, enqueue).
 			// This mirrors the attachment-size rejection pattern above (~L229).
@@ -563,8 +563,10 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	to := r.FormValue("to")
+	cc := r.FormValue("cc")
 	subject := r.FormValue("subject")
 	body := r.FormValue("body")
+	bodyMode := r.FormValue("body_mode")
 
 	// Process file attachments for draft.
 	var attachments []*bongov1.BlobRef
@@ -603,7 +605,29 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	}
 
 	draftMessageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(email))
-	rawMsg := buildRFC5322WithAttachments(email, to, "", subject, body, draftMessageID, "", "", attachmentFiles)
+
+	// body_mode='rich' stores the draft as multipart/alternative with the
+	// sanitized HTML (no signature — that is appended only on send), so the
+	// draft reopens in the rich editor rather than showing raw tags. Any other
+	// value stores plain text (byte-compatible with previous behaviour).
+	var rawMsg []byte
+	if bodyMode == "rich" {
+		built, _, buildErr := h.buildRichMessage(email, to, cc, subject, body, userID, draftMessageID, "", "", attachmentFiles, false)
+		if buildErr != nil {
+			msg := "Draft could not be built"
+			switch {
+			case errors.Is(buildErr, errInlineImageTooLarge):
+				msg = "Inline image too large (max 1MB each)"
+			case errors.Is(buildErr, errTotalInlineTooLarge):
+				msg = "Total inline images too large (max 10MB)"
+			}
+			http.Error(w, msg, http.StatusBadRequest)
+			return
+		}
+		rawMsg = built
+	} else {
+		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, draftMessageID, "", "", attachmentFiles)
+	}
 
 	hash, err := h.blobs.Put(rawMsg)
 	if err != nil {
@@ -618,6 +642,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		Subject:    subject,
 		From:       email,
 		To:         splitRecipients(to),
+		Cc:         splitRecipients(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
 			Hash: hash,
@@ -635,6 +660,57 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("web: draft saved", "user", userID, "subject", subject)
 
 	http.Redirect(w, r, "/mail/Drafts?flash=Draft+saved", http.StatusSeeOther)
+}
+
+// EditDraft reopens a saved draft in the compose form. A rich draft
+// (multipart/alternative with an HTML part) reopens in the rich editor seeded
+// with its sanitized HTML; a plain draft reopens in the plain textarea.
+// GET /compose/draft/{mailbox}/{uid}.
+func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+
+	msg, _ := h.mailboxes.GetMessage(userID, mailbox, uint32(uid))
+	if msg == nil {
+		http.Redirect(w, r, "/compose", http.StatusSeeOther)
+		return
+	}
+	meta := h.loadMailMeta(userID, msg.MailGuid)
+	if meta == nil {
+		http.Redirect(w, r, "/compose", http.StatusSeeOther)
+		return
+	}
+
+	to := strings.Join(meta.To, ", ")
+	cc := strings.Join(meta.Cc, ", ")
+	subject := meta.Subject
+
+	// Extract the body: prefer the HTML part (rich draft), else plain text.
+	// htmlBody drives the rich editor; plainBody seeds the plain textarea.
+	var htmlBody, plainBody string
+	if meta.RawMessage != nil && h.blobs != nil {
+		if rc, err := h.blobs.Get(meta.RawMessage.Hash); err == nil {
+			raw, _ := io.ReadAll(rc)
+			_ = rc.Close()
+			if env, err := enmime.ReadEnvelope(bytes.NewReader(raw)); err == nil {
+				if env.HTML != "" {
+					htmlBody = sanitize.Compose(env.HTML)
+				}
+				plainBody = env.Text
+			}
+		}
+	}
+
+	fromOpts, fromSel := h.buildFromPickerOptions(userID, email)
+
+	if r.Header.Get("HX-Request") == "true" {
+		templ.Handler(templates.ComposePage("draft", to, cc, subject, plainBody, mailbox, uint32(uid), fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
+		return
+	}
+
+	mailboxInfos := h.loadMailboxInfos(userID)
+	templ.Handler(templates.ComposePageFull("draft", to, cc, subject, plainBody, mailbox, uint32(uid), mailboxInfos, nil, email, fromOpts, fromSel, htmlBody)).ServeHTTP(w, r)
 }
 
 // GALSearch returns GAL autocomplete results as JSON.
@@ -806,9 +882,13 @@ func (h *ComposeHandler) signatureHTML(userID string) string {
 //  4. Derive plain text from the sanitized body only (not the HTML signature)
 //     using plainTextFromHTML, then append the plain signature.
 //  5. Build the message via buildMIME.
+//
+// includeSignature controls whether the user's HTML+plain signature is appended.
+// Sends append it (so it appears once in outgoing mail); drafts do NOT, so a
+// draft round-trips verbatim and re-saving never duplicates the signature.
 func (h *ComposeHandler) buildRichMessage(
 	from, to, cc, subject, rawHTML, userID, messageID, inReplyTo, references string,
-	attachments []attachmentData,
+	attachments []attachmentData, includeSignature bool,
 ) (rawMsg []byte, plainText string, err error) {
 	// 1a. Fast pre-check: estimate inline-image sizes from base64 string lengths
 	//     before running the expensive HTML sanitiser. This makes the rejection
@@ -824,7 +904,11 @@ func (h *ComposeHandler) buildRichMessage(
 
 	// 2. Append HTML signature before extracting inline images so that data:
 	//    images embedded in the signature are also converted to cid: parts.
-	combined := sanitizedBody + h.signatureHTML(userID)
+	//    Drafts skip this (includeSignature=false) so re-saving never duplicates it.
+	combined := sanitizedBody
+	if includeSignature {
+		combined += h.signatureHTML(userID)
+	}
 
 	// 3. Extract inline images (data: → cid:).
 	rewrittenHTML, inlineImgs := extractDataURIImages(combined)
@@ -839,7 +923,7 @@ func (h *ComposeHandler) buildRichMessage(
 	// 5. Derive plain text from the sanitized body (not the combined HTML — the
 	//    signature HTML is handled separately as plain text below).
 	plainText = plainTextFromHTML(sanitizedBody)
-	if h.prefs != nil {
+	if includeSignature && h.prefs != nil {
 		up := h.prefs.Get(userID)
 		if up.Signature != "" {
 			plainText += "\n\n-- \n" + up.Signature
