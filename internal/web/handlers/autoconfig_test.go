@@ -210,9 +210,9 @@ func TestDomainOf(t *testing.T) {
 	tests := map[string]string{
 		"alice@example.com": "example.com",
 		"Bob@Example.COM":   "example.com",
-		"noatsign":           "",
-		"trailing@":          "",
-		"":                   "",
+		"noatsign":          "",
+		"trailing@":         "",
+		"":                  "",
 	}
 	for in, want := range tests {
 		if got := domainOf(in); got != want {

@@ -270,7 +270,7 @@ Worker: golang-pro (sonnet). Advisor PROCEED (flagged: count from Pebble not per
 - Admin UI: global-admin quota inputs (SetDomainQuota, requireGlobalAdmin, route /admin/domains/{domain}/quota) + read-only usage/limit on the domain view (domain-admins see the read-only part); i18n ×4.
 Tests: domain_quota_store_test.go, admin_quota_test.go (set global-only/domain-admin 403+view, max-users at/under limit), recompute + RCPT over/under. go build OK; -race store+agent+handlers green.
 PATTERN [quota] Per-domain quota = separate /quota + /usage keys (never the clobber-prone DKIM DomainRecord); storage attributed to the mailbox owner's PRIMARY domain; enforce max-users at create (Pebble count) + storage at RCPT (periodic-recompute value, fail-open). Recompute MUST reset cleared domains to 0 (write all managed domains, not just those with mail).
-NOTE (single-node OK, multi-node follow-up): max-users count source — verify it reads Pebble profiles (replicated) vs per-node SQLite (can under-count on a follower). deployment is single-node so not urgent.
+NOTE (single-node OK, multi-node follow-up): max-users count source — verify it reads Pebble profiles (replicated) vs per-node SQLite (can under-count on a follower). the deployment is single-node so not urgent.
 CHECKPOINT: stop for user review before 6.4 (adversarial isolation sweep).
 
 ## 2026-07-19 — Task 6.4 DONE (adversarial tenant-isolation sweep — Phase 6 complete)
@@ -293,7 +293,7 @@ go build OK; -race handlers green. Deploying as v0.6.1.
 PATTERN [admin-ui] Per-entity detail sub-screen (like ShowUser) is the pattern for admin objects with many settings — a slim list + a /{id} detail page beats a wide table; the new GET route MUST carry the same scope check (requireDomainAccess/UserAccess) as its mutations or it's a read leak.
 
 ## 2026-07-19 — Backlog B1 recorded: de-brand the repo (user-requested)
-Remove ALL 157 deployment refs (deploy/ configs + node name bongo-1, .env.example, autoconfig comment, docs/, prds/ logs, tests) → repo mentions only bongo/bongo-go with generic example.com placeholders. USER-AUTHORISED git history rewrite + FORCE-PUSH if needed. CAVEAT: live /mnt/data/bongo config is not in git (keeps real values); verify no runtime code depends on literal "deployment" first. Unscheduled.
+Remove ALL 157 deployment-domain refs (deploy/ configs + node name bongo-1, .env.example, autoconfig comment, docs/, prds/ logs, tests) → repo mentions only bongo/bongo-go with generic example.com placeholders. USER-AUTHORISED git history rewrite + FORCE-PUSH if needed. CAVEAT: live /mnt/data/bongo config is not in git (keeps real values); verify no runtime code depends on the deployment-domain literal first. Unscheduled.
 
 ## 2026-07-19 — Task 7.2 DONE (DNS config status checks + MX false-positive fix)
 
