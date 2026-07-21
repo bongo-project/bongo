@@ -562,7 +562,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 				}
 				detail.TextBody = env.Text
 
-				for _, att := range env.Attachments {
+				for i, att := range env.Attachments {
 					a := templates.Attachment{
 						Filename:    att.FileName,
 						ContentType: att.ContentType,
@@ -578,6 +578,7 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 							break
 						}
 					}
+					a.URL = h.attachmentURL(detail.Mailbox, detail.UID, i, a.Hash)
 					detail.Attachments = append(detail.Attachments, a)
 				}
 			} else {
@@ -602,9 +603,25 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 				Hash:        blobRef.Hash,
 				ContentType: blobRef.ContentType,
 				Size:        blobRef.Size,
+				URL:         h.attachmentURL(detail.Mailbox, detail.UID, -1, blobRef.Hash),
 			})
 		}
 	}
+}
+
+// attachmentURL returns the download endpoint for an attachment. When the
+// attachment has its own content-addressed blob (as sent mail does) it points at
+// /mail/blob/{hash}. Inbound mail does not store its parts as separate blobs, so
+// it points at the message-scoped route (served by ServeAttachment) which
+// extracts the attachment from the raw message by index.
+func (h *MailHandler) attachmentURL(mailbox string, uid uint32, index int, hash string) string {
+	if hash != "" {
+		return "/mail/blob/" + hash
+	}
+	if index < 0 {
+		return ""
+	}
+	return fmt.Sprintf("/mail/%s/%d/attachment/%d", url.PathEscape(mailbox), uid, index)
 }
 
 func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1.MailboxMessage, meta *bongov1.MailMeta) templates.MessageDetail {
@@ -1163,6 +1180,73 @@ func (h *MailHandler) ServeBlob(w http.ResponseWriter, r *http.Request) {
 		if _, err := io.Copy(w, rc); err != nil {
 			return
 		}
+	}
+}
+
+// ServeAttachment streams a single attachment extracted from a message's raw
+// blob by index. Inbound mail does not store its attachments as separate
+// content-addressed blobs, so they cannot be served via /mail/blob/{hash};
+// this route parses the owning message's raw content and returns part {idx}.
+// Ownership is enforced by resolving the message for the authenticated user, so
+// a user can only reach attachments of their own messages. The bytes are always
+// served as an octet-stream download so the browser never interprets them.
+func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
+	userID, _ := middleware.UserFromContext(r.Context())
+	if userID == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid UID", http.StatusBadRequest)
+		return
+	}
+	idx, err := strconv.Atoi(chi.URLParam(r, "idx"))
+	if err != nil || idx < 0 {
+		http.Error(w, "Invalid attachment", http.StatusBadRequest)
+		return
+	}
+
+	msg, _, err := h.resolveMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+	meta := h.loadMailMeta(userID, msg.MailGuid)
+	if meta == nil || meta.RawMessage == nil || meta.RawMessage.Hash == "" || h.blobs == nil {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+
+	rc, err := h.blobs.Get(meta.RawMessage.Hash)
+	if err != nil {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+	rawMsg, err := io.ReadAll(rc)
+	if cerr := rc.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+	if err != nil || idx >= len(env.Attachments) {
+		http.Error(w, "Attachment not found", http.StatusNotFound)
+		return
+	}
+
+	// Force a download with a non-renderable type; the filename is supplied by
+	// the link's download attribute, so no user-controlled value goes into the
+	// header (avoids response-header injection).
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Disposition", "attachment")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if _, err := w.Write(env.Attachments[idx].Content); err != nil {
+		return
 	}
 }
 

@@ -13,6 +13,11 @@ type Attachment struct {
 	ContentType string
 	Size        int64
 	Hash        string
+	// URL is the download endpoint for this attachment. Sent mail points at the
+	// content-addressed blob (/mail/blob/{hash}); inbound mail, whose parts are
+	// not stored as separate blobs, points at the message-scoped attachment
+	// route (/mail/{mailbox}/{uid}/attachment/{idx}) served from the raw message.
+	URL string
 }
 
 // TagInfo holds display data for a single tag.
@@ -465,7 +470,7 @@ templ attachmentList(attachments []Attachment) {
 							<button class="lightbox-close" @click="expanded = false" type="button">X</button>
 						</div>
 					</div>
-					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
+					<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
@@ -479,7 +484,7 @@ templ attachmentList(attachments []Attachment) {
 						sandbox=""
 						title={ att.Filename }
 					></iframe>
-					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
+					<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
@@ -495,14 +500,14 @@ templ attachmentList(attachments []Attachment) {
 					>
 						{ t(ctx, "common.loading") }...
 					</div>
-					<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
+					<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
 					</a>
 				</div>
 			} else {
-				<a class="attachment-chip" href={ templ.SafeURL("/mail/blob/" + att.Hash) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
+				<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
 					<span class="attachment-icon" aria-hidden="true">&#128196;</span>
 					{ att.Filename }
 					<span class="attachment-size">{ formatSize(att.Size) }</span>
