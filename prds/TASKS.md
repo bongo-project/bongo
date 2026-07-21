@@ -45,14 +45,14 @@ across all 4 locales.
 
 Completes the original design (project PRD §5.2–5.3): store a message skeleton +
 deduplicated content-addressed attachment blobs, reconstruct byte-exact on read.
-PRD: [prd-attachment-dedup.md](backlog/prd-attachment-dedup.md). Decisions:
+PRD: [prd-attachment-dedup.md](active/prd-attachment-dedup.md). Decisions:
 encoded-bytes dedup (DKIM-safe), new mail only, default on with an ingest
 self-check + fallback, threshold-gated (32 KB default). **Start with 9.1 (spike)
 — it de-risks the whole feature before committing to the build.**
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 9.1 | (spike) Byte-exact encoded-span extraction + skeleton representation. Prototype: given a raw RFC822 message, locate the exact encoded body span of each attachment part ≥ threshold, build a skeleton, and reconstruct byte-for-byte. Prove round-trip on base64/QP, nested multipart, and a DKIM-signed message (re-verify passes). Decide the on-disk skeleton representation. | TODO | US-003; FR-1/3/6. The crux (enmime gives decoded content, not the encoded span). Produce a round-trip test even though it's a spike. Blocks everything below. |
+| 9.1 | (spike) Byte-exact encoded-span extraction + skeleton representation. Prototype: given a raw RFC822 message, locate the exact encoded body span of each attachment part ≥ threshold, build a skeleton, and reconstruct byte-for-byte. Prove round-trip on base64/QP, nested multipart, and a DKIM-signed message (re-verify passes). Decide the on-disk skeleton representation. | DONE (2026-07-21) | FEASIBLE. internal/attsplit spike: manual MIME boundary scan locates each attachment part's exact ENCODED body byte-range (no enmime decode); Split partitions the raw into an ordered sequence of literal spans + attachment refs, Reconstruct concatenates -> byte-exact by construction. 8 round-trip tests green: base64, quoted-printable, nested multipart, multiple attachments, DKIM-signed (byte-equal => sig preserved), plain passthrough, below-threshold skip, and dedup (same encoded attachment in two different messages -> same SHA-256). Recommended 9.2 on-disk form: skeleton blob = concatenated literal spans + an ordered splice index in MailMeta (segment = literal-len | attachment-hash+len). Caveats for prod: assumes CRLF; add delimiter-suffix check for boundary-prefix ambiguity; decide handling of large INLINE (non-attachment) parts and top-level single-part attachments. |
 | 9.2 | Skeleton storage + `FullRawMessage(meta)` retrieval: reconstruct for split records, passthrough for legacy whole-raw. Mark split records via splice metadata. | TODO | US-002/004, FR-3/4/10. needs: 9.1 |
 | 9.3 | Threshold config knob `dedup_min_size` (default 32 KB). | TODO | US-006, FR-9. Small; needed by 9.4/9.6. |
 | 9.4 | Inbound ingest split in `pipeline/deliver`: extract qualifying attachment blobs, store skeleton, populate `MailMeta.Attachments` hashes, with the ingest self-check + whole-raw fallback (FR-7). | TODO | US-001/005/007, FR-1/2/7. needs: 9.2, 9.3 |
