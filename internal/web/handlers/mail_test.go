@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,137 @@ import (
 	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// inboundZipRaw returns a raw multipart message carrying a zip attachment
+// (base64-encoded) and the decoded attachment bytes. It mimics inbound mail:
+// only the raw message is stored as a blob, attachments are not.
+func inboundZipRaw() (raw string, zipBytes []byte) {
+	zipBytes = []byte("PK\x03\x04 pretend-zip-payload")
+	b64 := base64.StdEncoding.EncodeToString(zipBytes)
+	raw = "From: sender@ext.test\r\n" +
+		"To: admin@example.com\r\n" +
+		"Subject: has zip\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nsee attached\r\n" +
+		"--B\r\n" +
+		"Content-Type: application/zip; name=\"archive.zip\"\r\n" +
+		"Content-Disposition: attachment; filename=\"archive.zip\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" +
+		b64 + "\r\n" +
+		"--B--\r\n"
+	return raw, zipBytes
+}
+
+// TestInboundAttachmentUsesMessageScopedURL reproduces the reported bug: an
+// inbound attachment has no blob hash, so its download link must point at the
+// message-scoped route (not the empty /mail/blob/ that failed).
+func TestInboundAttachmentUsesMessageScopedURL(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	bs, err := store.NewBlobStore(dir + "/blobs")
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	raw, _ := inboundZipRaw()
+	hash, err := bs.Put([]byte(raw))
+	if err != nil {
+		t.Fatalf("blob Put: %v", err)
+	}
+	// Inbound: attachment recorded with filename but NO hash (see deliver.go).
+	meta := &bongov1.MailMeta{
+		RawMessage:  &bongov1.BlobRef{Hash: hash},
+		Attachments: []*bongov1.BlobRef{{Filename: "archive.zip", ContentType: "application/zip"}},
+	}
+
+	h := NewMailHandler(ps, bs, nil, discardLogger())
+	detail := templates.MessageDetail{Mailbox: "INBOX", UID: 7}
+	h.applyEnvelopeBody(&detail, meta)
+
+	if len(detail.Attachments) != 1 {
+		t.Fatalf("attachments = %d, want 1", len(detail.Attachments))
+	}
+	att := detail.Attachments[0]
+	if att.Hash != "" {
+		t.Fatalf("inbound attachment should have no blob hash, got %q", att.Hash)
+	}
+	if want := "/mail/INBOX/7/attachment/0"; att.URL != want {
+		t.Fatalf("attachment URL = %q, want %q (must not be an empty /mail/blob/ link)", att.URL, want)
+	}
+}
+
+// TestServeAttachmentStreamsInboundZip verifies the message-scoped route serves
+// the attachment bytes from the raw message as a download.
+func TestServeAttachmentStreamsInboundZip(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	bs, err := store.NewBlobStore(dir + "/blobs")
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	applier := &directApplierTags{ps: ps}
+	mailboxes := store.NewMailboxStore(ps, applier)
+	if err := mailboxes.CreateMailbox("user1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+
+	raw, zipBytes := inboundZipRaw()
+	hash, err := bs.Put([]byte(raw))
+	if err != nil {
+		t.Fatalf("blob Put: %v", err)
+	}
+	meta := &bongov1.MailMeta{
+		Guid:        "m-zip-1",
+		Subject:     "has zip",
+		RawMessage:  &bongov1.BlobRef{Hash: hash},
+		Attachments: []*bongov1.BlobRef{{Filename: "archive.zip", ContentType: "application/zip"}},
+	}
+	uid, err := mailboxes.DeliverMessage("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+
+	h := NewMailHandler(ps, bs, mailboxes, discardLogger())
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := middleware.WithUserContext(req.Context(), "user1", "user1@example.test")
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.Get("/mail/{mailbox}/{uid}/attachment/{idx}", h.ServeAttachment)
+
+	rec := httptest.NewRecorder()
+	url := fmt.Sprintf("/mail/INBOX/%d/attachment/0", uid)
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, url, nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	if cd := rec.Header().Get("Content-Disposition"); cd != "attachment" {
+		t.Errorf("Content-Disposition = %q, want attachment", cd)
+	}
+	if got := rec.Body.Bytes(); string(got) != string(zipBytes) {
+		t.Errorf("body = %q, want the zip bytes %q", got, zipBytes)
+	}
+
+	// Out-of-range index is a clean 404, not a panic.
+	rec2 := httptest.NewRecorder()
+	r.ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/9", uid), nil))
+	if rec2.Code != http.StatusNotFound {
+		t.Errorf("out-of-range index status = %d, want 404", rec2.Code)
+	}
+}
 
 func TestBlockRemoteImages(t *testing.T) {
 	tests := []struct {
