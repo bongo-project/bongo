@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/observability"
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -64,6 +67,30 @@ func newWorkerTestEnv(t *testing.T, isLeader bool) (*Worker, *QueueStore, *store
 	return worker, qs, blobs
 }
 
+func TestNewWorkerPollIntervalDefault(t *testing.T) {
+	worker, _, _ := newWorkerTestEnv(t, false)
+	if worker.pollInterval != defaultPollInterval {
+		t.Fatalf("default poll interval = %v, want %v", worker.pollInterval, defaultPollInterval)
+	}
+}
+
+func TestWithPollIntervalOverridesDefault(t *testing.T) {
+	relay := bongosmtp.NewRelay(&config.SMTPRelay{}, slog.Default())
+	leader := &mockLeader{leader: false}
+
+	// A positive interval is honoured.
+	w := NewWorker(nil, relay, nil, leader, nil, nil, slog.Default(), WithPollInterval(250*time.Millisecond))
+	if w.pollInterval != 250*time.Millisecond {
+		t.Fatalf("poll interval = %v, want 250ms", w.pollInterval)
+	}
+
+	// A non-positive interval is ignored, keeping the default.
+	w2 := NewWorker(nil, relay, nil, leader, nil, nil, slog.Default(), WithPollInterval(0))
+	if w2.pollInterval != defaultPollInterval {
+		t.Fatalf("zero override should keep default, got %v", w2.pollInterval)
+	}
+}
+
 func TestWorkerNonLeaderIdles(t *testing.T) {
 	worker, qs, blobs := newWorkerTestEnv(t, false)
 	_ = blobs
@@ -90,6 +117,41 @@ func TestWorkerNonLeaderIdles(t *testing.T) {
 	ready, _ := qs.GetReady(time.Now().Add(1*time.Second), 100)
 	if len(ready) != 1 {
 		t.Errorf("expected 1 pending message (non-leader idle), got %d", len(ready))
+	}
+}
+
+func TestWorkerRecordsMetrics(t *testing.T) {
+	worker, qs, blobs := newWorkerTestEnv(t, true)
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: test\r\n\r\nHello")
+	hash, _ := blobs.Put(rawMsg)
+
+	// A pending message with CreatedAt in the past so depth/oldest gauges move.
+	if err := qs.Enqueue(&bongov1.OutboundMessage{
+		Id:          "msg-metrics-1",
+		SenderEmail: "alice@example.com",
+		Recipients:  []string{"bob@external.com"},
+		BlobHash:    hash,
+		CreatedAt:   time.Now().Add(-30 * time.Second).Unix(),
+	}); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	failedBefore := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("failed"))
+
+	// Relay fails (no SMTP server) -> transient failure -> retry scheduled.
+	worker.poll(context.Background())
+
+	// Depth gauge reflects the one pending message; oldest age is > 0.
+	if got := testutil.ToFloat64(observability.QueueDepth); got < 1 {
+		t.Errorf("QueueDepth = %v, want >= 1", got)
+	}
+	if got := testutil.ToFloat64(observability.QueueOldestPendingSeconds); got <= 0 {
+		t.Errorf("QueueOldestPendingSeconds = %v, want > 0", got)
+	}
+	failedAfter := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("failed"))
+	if failedAfter-failedBefore != 1 {
+		t.Errorf("failed counter delta = %v, want 1", failedAfter-failedBefore)
 	}
 }
 

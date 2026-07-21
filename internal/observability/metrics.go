@@ -30,6 +30,58 @@ var SMTPMessagesTotal = factory.NewCounterVec(
 	[]string{"verdict"},
 )
 
+// QueueDepth is the number of messages currently pending in the outbound queue.
+// Set by the queue worker each poll (leader only).
+var QueueDepth = factory.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "bongo_queue_depth",
+		Help: "Number of messages currently pending in the outbound delivery queue.",
+	},
+)
+
+// QueueOldestPendingSeconds is the age of the oldest pending message. A rising
+// value indicates the queue is backing up (delivery stalled).
+var QueueOldestPendingSeconds = factory.NewGauge(
+	prometheus.GaugeOpts{
+		Name: "bongo_queue_oldest_pending_seconds",
+		Help: "Age in seconds of the oldest pending message in the outbound queue.",
+	},
+)
+
+// QueueMessagesTotal counts outbound queue outcomes, labelled by result.
+//
+// Results:
+//   - "delivered": relayed successfully
+//   - "failed":    transient failure, retry scheduled
+//   - "bounced":   permanent failure or retries exhausted
+var QueueMessagesTotal = factory.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "bongo_queue_messages_total",
+		Help: "Total outbound queue outcomes, by result.",
+	},
+	[]string{"result"},
+)
+
+// QueueDeliverySeconds observes the time from enqueue to successful delivery,
+// covering retry backoff. Useful for spotting delivery latency regressions.
+var QueueDeliverySeconds = factory.NewHistogram(
+	prometheus.HistogramOpts{
+		Name:    "bongo_queue_delivery_seconds",
+		Help:    "Time from enqueue to successful outbound delivery, in seconds.",
+		Buckets: []float64{0.5, 1, 2, 5, 10, 30, 60, 300, 900, 3600},
+	},
+)
+
+// AntispamScore observes the spam score assigned to each inbound message. The
+// distribution shows how mail clusters around the junk/quarantine thresholds.
+var AntispamScore = factory.NewHistogram(
+	prometheus.HistogramOpts{
+		Name:    "bongo_antispam_score",
+		Help:    "Distribution of antispam scores assigned to inbound messages.",
+		Buckets: []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0},
+	},
+)
+
 // Handler returns an http.Handler that serves Prometheus metrics. Mount at /metrics.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(Registry, promhttp.HandlerOpts{
