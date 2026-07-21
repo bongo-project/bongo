@@ -101,9 +101,11 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 					"subject": subject,
 				})
 
-				// Send OOB badge update for sidebar unread count.
+				// Send OOB badge update for sidebar unread count. Reflects
+				// actionable INBOX mail only, not the sum across all folders
+				// (Sent/Trash/Junk), which would inflate the badge.
 				if h.mailboxes != nil {
-					unread := h.mailboxes.TotalUnreadCount(userID)
+					unread := h.mailboxes.UnreadCount(userID, "INBOX")
 					if unread > 0 {
 						fmt.Fprintf(w, "event: oob\ndata: <span id=\"unread-badge\" class=\"unread-badge\" hx-swap-oob=\"true\">%d</span>\n\n", unread)
 					} else {
