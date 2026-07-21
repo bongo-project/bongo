@@ -1334,6 +1334,22 @@ a.admin-nav-item.active, .admin-nav-item.active {
   color: var(--bongo-blue-dark);
 }
 .attachment-icon { font-size: 1rem; }
+/* Image attachments hidden until the user opts in (tracker/malware safety). */
+.attachment-chip-hidden {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg); border: 1px dashed var(--border);
+  border-radius: var(--radius); font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.attachment-reveal {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; margin-left: 8px;
+  background: var(--bg); border: 1px solid var(--bongo-blue);
+  border-radius: var(--radius); font-size: 0.8rem;
+  color: var(--bongo-blue-dark); cursor: pointer;
+}
+.attachment-reveal:hover { background: var(--bongo-blue-light); }
 .attachment-size { color: var(--text-muted); font-size: 0.75rem; }
 
 /* Blocked images banner */

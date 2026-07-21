@@ -47,6 +47,8 @@
   "mail.loadRemoteImages": "Cargar imágenes remotas",
   "mail.remoteImagesBlocked": "Las imágenes remotas han sido bloqueadas para proteger su privacidad.",
   "mail.attachments": "Archivos adjuntos",
+  "mail.showImages": "Mostrar imagenes",
+  "mail.imageHidden": "Imagen oculta: haga clic en Mostrar imagenes para mostrarla",
   "mail.addTag": "Agregar etiqueta",
   "mail.createTag": "Crear etiqueta",
   "mail.tagNamePlaceholder": "Nombre de etiqueta",

@@ -81,6 +81,104 @@ func TestInboundAttachmentUsesMessageScopedURL(t *testing.T) {
 	}
 }
 
+// inboundAttachmentRaw builds a raw multipart message carrying one attachment
+// of the given content type (base64-encoded).
+func inboundAttachmentRaw(ct, filename string, body []byte) string {
+	b64 := base64.StdEncoding.EncodeToString(body)
+	return "From: s@ext.test\r\nTo: a@example.com\r\nSubject: att\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +
+		"--B\r\nContent-Type: " + ct + "; name=\"" + filename + "\"\r\n" +
+		"Content-Disposition: attachment; filename=\"" + filename + "\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + b64 + "\r\n--B--\r\n"
+}
+
+// serveInboundAttachment delivers a one-attachment inbound message and returns a
+// router wired to ServeAttachment plus the message UID.
+func serveInboundAttachment(t *testing.T, ct, filename string, body []byte) (*chi.Mux, uint32) {
+	t.Helper()
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	bs, err := store.NewBlobStore(dir + "/blobs")
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	mailboxes := store.NewMailboxStore(ps, &directApplierTags{ps: ps})
+	if err := mailboxes.CreateMailbox("user1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+	hash, err := bs.Put([]byte(inboundAttachmentRaw(ct, filename, body)))
+	if err != nil {
+		t.Fatalf("blob Put: %v", err)
+	}
+	meta := &bongov1.MailMeta{
+		Guid: "m-att", Subject: "att",
+		RawMessage:  &bongov1.BlobRef{Hash: hash},
+		Attachments: []*bongov1.BlobRef{{Filename: filename, ContentType: ct}},
+	}
+	uid, err := mailboxes.DeliverMessage("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+	h := NewMailHandler(ps, bs, mailboxes, discardLogger())
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(middleware.WithUserContext(req.Context(), "user1", "u@example.test")))
+		})
+	})
+	r.Get("/mail/{mailbox}/{uid}/attachment/{idx}", h.ServeAttachment)
+	return r, uid
+}
+
+// TestServeAttachmentInlineImageOptIn: a PNG served with ?inline=1 renders inline
+// with its real content type; without it, it downloads.
+func TestServeAttachmentInlineImageOptIn(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\n fake png bytes")
+	r, uid := serveInboundAttachment(t, "image/png", "pic.png", png)
+
+	inline := httptest.NewRecorder()
+	r.ServeHTTP(inline, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/0?inline=1", uid), nil))
+	if inline.Code != http.StatusOK {
+		t.Fatalf("inline status = %d", inline.Code)
+	}
+	if ct := inline.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("inline Content-Type = %q, want image/png", ct)
+	}
+	if cd := inline.Header().Get("Content-Disposition"); cd != "inline" {
+		t.Errorf("inline Content-Disposition = %q, want inline", cd)
+	}
+	if inline.Body.String() != string(png) {
+		t.Errorf("inline body mismatch")
+	}
+
+	dl := httptest.NewRecorder()
+	r.ServeHTTP(dl, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/0", uid), nil))
+	if ct := dl.Header().Get("Content-Type"); ct != "application/octet-stream" {
+		t.Errorf("download Content-Type = %q, want octet-stream", ct)
+	}
+}
+
+// TestServeAttachmentSVGNeverInline: an SVG is never served inline even with
+// ?inline=1 (script/XSS carrier); it is forced to download.
+func TestServeAttachmentSVGNeverInline(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`)
+	r, uid := serveInboundAttachment(t, "image/svg+xml", "evil.svg", svg)
+
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/mail/INBOX/%d/attachment/0?inline=1", uid), nil))
+	if ct := rec.Header().Get("Content-Type"); ct != "application/octet-stream" {
+		t.Errorf("SVG Content-Type = %q, want octet-stream (never inline)", ct)
+	}
+	if cd := rec.Header().Get("Content-Disposition"); cd != "attachment" {
+		t.Errorf("SVG Content-Disposition = %q, want attachment", cd)
+	}
+}
+
 // TestServeAttachmentStreamsInboundZip verifies the message-scoped route serves
 // the attachment bytes from the raw message as a download.
 func TestServeAttachmentStreamsInboundZip(t *testing.T) {

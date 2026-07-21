@@ -452,30 +452,52 @@ func tagPaletteSafeIndexMessage(index int32) int32 {
 }
 
 templ attachmentList(attachments []Attachment) {
-	<div class="msg-attachments">
+	<div class="msg-attachments" x-data="{ showImages: false }">
 		<strong>{ t(ctx, "mail.attachments") }:</strong>
+		if hasDisplayableImages(attachments) {
+			<button
+				type="button"
+				class="attachment-reveal"
+				x-show="!showImages"
+				@click="showImages = true"
+			>
+				&#128065; { t(ctx, "mail.showImages") }
+			</button>
+		}
 		for _, att := range attachments {
-			if isImageType(att.ContentType) && att.Hash != "" {
-				<div class="attachment-preview" x-data="{expanded: false}">
-					<img
-						class="attachment-thumbnail"
-						src={ inlineBlobURL(att.Hash, att.ContentType) }
-						alt={ att.Filename }
-						loading="lazy"
-						@click="expanded = true"
-					/>
-					<div x-bind:hidden="!expanded" x-cloak class="lightbox" @click.self="expanded = false" @keydown.escape.window="expanded = false">
-						<div class="lightbox-content">
-							<img src={ inlineBlobURL(att.Hash, att.ContentType) } alt={ att.Filename }/>
-							<button class="lightbox-close" @click="expanded = false" type="button">X</button>
+			if isImageType(att.ContentType) {
+				<!-- Image attachments are not auto-loaded: a tracker or malformed
+				     image should not be fetched until the user opts in. The <img>
+				     only enters the DOM once showImages is set, via x-if. -->
+				<template x-if="showImages">
+					<div class="attachment-preview" x-data="{ expanded: false }">
+						<img
+							class="attachment-thumbnail"
+							src={ attachmentInlineURL(att) }
+							alt={ att.Filename }
+							loading="lazy"
+							@click="expanded = true"
+						/>
+						<div x-bind:hidden="!expanded" x-cloak class="lightbox" @click.self="expanded = false" @keydown.escape.window="expanded = false">
+							<div class="lightbox-content">
+								<img src={ attachmentInlineURL(att) } alt={ att.Filename }/>
+								<button class="lightbox-close" @click="expanded = false" type="button">X</button>
+							</div>
 						</div>
+						<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
+							<span class="attachment-icon" aria-hidden="true">&#128196;</span>
+							{ att.Filename }
+							<span class="attachment-size">{ formatSize(att.Size) }</span>
+						</a>
 					</div>
-					<a class="attachment-chip" href={ templ.SafeURL(att.URL) } download={ att.Filename } aria-label={ fmt.Sprintf(t(ctx, "mail.downloadAttachment"), att.Filename, formatSize(att.Size)) }>
-						<span class="attachment-icon" aria-hidden="true">&#128196;</span>
+				</template>
+				<template x-if="!showImages">
+					<span class="attachment-chip attachment-chip-hidden" title={ t(ctx, "mail.imageHidden") }>
+						<span class="attachment-icon" aria-hidden="true">&#128247;</span>
 						{ att.Filename }
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
-					</a>
-				</div>
+					</span>
+				</template>
 			} else if att.ContentType == "application/pdf" && att.Hash != "" {
 				<div class="attachment-preview">
 					<iframe
@@ -546,6 +568,28 @@ func formatQuotedText(text string) string {
 
 func isImageType(ct string) bool {
 	return ct == "image/jpeg" || ct == "image/png" || ct == "image/gif" || ct == "image/webp"
+}
+
+// hasDisplayableImages reports whether any attachment is a safe raster image, so
+// the "Show images" reveal control is only rendered when it has something to do.
+func hasDisplayableImages(attachments []Attachment) bool {
+	for _, att := range attachments {
+		if isImageType(att.ContentType) {
+			return true
+		}
+	}
+	return false
+}
+
+// attachmentInlineURL returns the inline-display URL for an image attachment.
+// Sent mail (with its own blob) uses the blob endpoint; inbound mail uses the
+// message-scoped attachment route with ?inline=1, where the server serves the
+// bytes with the safe content type derived from the parsed message.
+func attachmentInlineURL(att Attachment) string {
+	if att.Hash != "" {
+		return inlineBlobURL(att.Hash, att.ContentType)
+	}
+	return att.URL + "?inline=1"
 }
 
 func isTextType(ct string) bool {

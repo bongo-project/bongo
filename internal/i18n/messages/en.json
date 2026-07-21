@@ -47,6 +47,8 @@
   "mail.loadRemoteImages": "Load remote images",
   "mail.remoteImagesBlocked": "Remote images have been blocked for your privacy.",
   "mail.attachments": "Attachments",
+  "mail.showImages": "Show images",
+  "mail.imageHidden": "Image hidden - click Show images to display",
   "mail.addTag": "Add tag",
   "mail.createTag": "Create tag",
   "mail.tagNamePlaceholder": "Tag name",

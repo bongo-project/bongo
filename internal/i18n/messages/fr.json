@@ -47,6 +47,8 @@
   "mail.loadRemoteImages": "Charger les images distantes",
   "mail.remoteImagesBlocked": "Les images distantes ont été bloquées pour votre confidentialité.",
   "mail.attachments": "Pièces jointes",
+  "mail.showImages": "Afficher les images",
+  "mail.imageHidden": "Image masquee - cliquez sur Afficher les images pour l'afficher",
   "mail.addTag": "Ajouter un tag",
   "mail.createTag": "Créer un tag",
   "mail.tagNamePlaceholder": "Nom du tag",
