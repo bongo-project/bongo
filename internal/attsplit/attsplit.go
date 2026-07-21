@@ -59,6 +59,30 @@ func (s *Skeleton) Reconstruct() []byte {
 	return buf.Bytes()
 }
 
+// Segment describes one reconstruction step, proto-agnostic. When Attachment is
+// false it is a literal of Length bytes consumed from the skeleton; when true it
+// splices Parts[AttIndex].
+type Segment struct {
+	Attachment bool
+	Length     int
+	AttIndex   int
+}
+
+// Layout returns the skeleton (the concatenated literal spans) and the ordered
+// segments that, together with Parts, reconstruct the original message.
+func (s *Skeleton) Layout() (skeleton []byte, segments []Segment) {
+	var buf bytes.Buffer
+	for _, p := range s.pieces {
+		if p.att >= 0 {
+			segments = append(segments, Segment{Attachment: true, AttIndex: p.att})
+		} else {
+			buf.Write(p.literal)
+			segments = append(segments, Segment{Length: len(p.literal)})
+		}
+	}
+	return buf.Bytes(), segments
+}
+
 // SkeletonSize is the number of literal (non-attachment) bytes retained.
 func (s *Skeleton) SkeletonSize() int {
 	n := 0

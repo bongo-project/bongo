@@ -21,6 +21,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type MessageSegment_Kind int32
+
+const (
+	MessageSegment_KIND_UNSPECIFIED MessageSegment_Kind = 0
+	MessageSegment_LITERAL          MessageSegment_Kind = 1
+	MessageSegment_ATTACHMENT       MessageSegment_Kind = 2
+)
+
+// Enum value maps for MessageSegment_Kind.
+var (
+	MessageSegment_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "LITERAL",
+		2: "ATTACHMENT",
+	}
+	MessageSegment_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED": 0,
+		"LITERAL":          1,
+		"ATTACHMENT":       2,
+	}
+)
+
+func (x MessageSegment_Kind) Enum() *MessageSegment_Kind {
+	p := new(MessageSegment_Kind)
+	*p = x
+	return p
+}
+
+func (x MessageSegment_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MessageSegment_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_proto_bongo_v1_mail_proto_enumTypes[0].Descriptor()
+}
+
+func (MessageSegment_Kind) Type() protoreflect.EnumType {
+	return &file_proto_bongo_v1_mail_proto_enumTypes[0]
+}
+
+func (x MessageSegment_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MessageSegment_Kind.Descriptor instead.
+func (MessageSegment_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_mail_proto_rawDescGZIP(), []int{1, 0}
+}
+
 type MailMeta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Guid          string                 `protobuf:"bytes,1,opt,name=guid,proto3" json:"guid,omitempty"`
@@ -42,6 +91,12 @@ type MailMeta struct {
 	DkimDomain    string                 `protobuf:"bytes,17,opt,name=dkim_domain,json=dkimDomain,proto3" json:"dkim_domain,omitempty"`          // signing domain from d= tag
 	TargetMailbox string                 `protobuf:"bytes,18,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"` // set by filter rules, empty = default routing
 	Tags          []string               `protobuf:"bytes,19,rep,name=tags,proto3" json:"tags,omitempty"`                                        // tag names, lowercase, alphanumeric + hyphens
+	// Attachment-dedup layout (Phase 9). When non-empty, this record is "split":
+	// raw_message points at the skeleton blob (the concatenated literal spans), and
+	// these segments describe how to interleave the skeleton's literal bytes with
+	// the attachments[] blobs to rebuild the exact original RFC822 message. Empty
+	// means a legacy whole-raw record: raw_message is the full message.
+	Layout        []*MessageSegment `protobuf:"bytes,20,rep,name=layout,proto3" json:"layout,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -209,11 +264,81 @@ func (x *MailMeta) GetTags() []string {
 	return nil
 }
 
+func (x *MailMeta) GetLayout() []*MessageSegment {
+	if x != nil {
+		return x.Layout
+	}
+	return nil
+}
+
+// MessageSegment is one step in reconstructing a split message. Segments are
+// applied in order: a LITERAL consumes `length` bytes from the skeleton blob
+// (read sequentially); an ATTACHMENT splices in attachments[attachment_index].
+type MessageSegment struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Kind            MessageSegment_Kind    `protobuf:"varint,1,opt,name=kind,proto3,enum=bongo.v1.MessageSegment_Kind" json:"kind,omitempty"`
+	Length          int64                  `protobuf:"varint,2,opt,name=length,proto3" json:"length,omitempty"`                                          // literal byte length (LITERAL segments)
+	AttachmentIndex int32                  `protobuf:"varint,3,opt,name=attachment_index,json=attachmentIndex,proto3" json:"attachment_index,omitempty"` // index into MailMeta.attachments (ATTACHMENT segments)
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *MessageSegment) Reset() {
+	*x = MessageSegment{}
+	mi := &file_proto_bongo_v1_mail_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MessageSegment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MessageSegment) ProtoMessage() {}
+
+func (x *MessageSegment) ProtoReflect() protoreflect.Message {
+	mi := &file_proto_bongo_v1_mail_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MessageSegment.ProtoReflect.Descriptor instead.
+func (*MessageSegment) Descriptor() ([]byte, []int) {
+	return file_proto_bongo_v1_mail_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *MessageSegment) GetKind() MessageSegment_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return MessageSegment_KIND_UNSPECIFIED
+}
+
+func (x *MessageSegment) GetLength() int64 {
+	if x != nil {
+		return x.Length
+	}
+	return 0
+}
+
+func (x *MessageSegment) GetAttachmentIndex() int32 {
+	if x != nil {
+		return x.AttachmentIndex
+	}
+	return 0
+}
+
 var File_proto_bongo_v1_mail_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\n" +
-	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xc7\x04\n" +
+	"\x19proto/bongo/v1/mail.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\"\xf9\x04\n" +
 	"\bMailMeta\x12\x12\n" +
 	"\x04guid\x18\x01 \x01(\tR\x04guid\x12\x1d\n" +
 	"\n" +
@@ -244,7 +369,17 @@ const file_proto_bongo_v1_mail_proto_rawDesc = "" +
 	"\vdkim_domain\x18\x11 \x01(\tR\n" +
 	"dkimDomain\x12%\n" +
 	"\x0etarget_mailbox\x18\x12 \x01(\tR\rtargetMailbox\x12\x12\n" +
-	"\x04tags\x18\x13 \x03(\tR\x04tagsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"\x04tags\x18\x13 \x03(\tR\x04tags\x120\n" +
+	"\x06layout\x18\x14 \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\"\xc1\x01\n" +
+	"\x0eMessageSegment\x121\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x1d.bongo.v1.MessageSegment.KindR\x04kind\x12\x16\n" +
+	"\x06length\x18\x02 \x01(\x03R\x06length\x12)\n" +
+	"\x10attachment_index\x18\x03 \x01(\x05R\x0fattachmentIndex\"9\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\v\n" +
+	"\aLITERAL\x10\x01\x12\x0e\n" +
+	"\n" +
+	"ATTACHMENT\x10\x02B5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_mail_proto_rawDescOnce sync.Once
@@ -258,19 +393,24 @@ func file_proto_bongo_v1_mail_proto_rawDescGZIP() []byte {
 	return file_proto_bongo_v1_mail_proto_rawDescData
 }
 
-var file_proto_bongo_v1_mail_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_proto_bongo_v1_mail_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_proto_bongo_v1_mail_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
 var file_proto_bongo_v1_mail_proto_goTypes = []any{
-	(*MailMeta)(nil), // 0: bongo.v1.MailMeta
-	(*BlobRef)(nil),  // 1: bongo.v1.BlobRef
+	(MessageSegment_Kind)(0), // 0: bongo.v1.MessageSegment.Kind
+	(*MailMeta)(nil),         // 1: bongo.v1.MailMeta
+	(*MessageSegment)(nil),   // 2: bongo.v1.MessageSegment
+	(*BlobRef)(nil),          // 3: bongo.v1.BlobRef
 }
 var file_proto_bongo_v1_mail_proto_depIdxs = []int32{
-	1, // 0: bongo.v1.MailMeta.raw_message:type_name -> bongo.v1.BlobRef
-	1, // 1: bongo.v1.MailMeta.attachments:type_name -> bongo.v1.BlobRef
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	3, // 0: bongo.v1.MailMeta.raw_message:type_name -> bongo.v1.BlobRef
+	3, // 1: bongo.v1.MailMeta.attachments:type_name -> bongo.v1.BlobRef
+	2, // 2: bongo.v1.MailMeta.layout:type_name -> bongo.v1.MessageSegment
+	0, // 3: bongo.v1.MessageSegment.kind:type_name -> bongo.v1.MessageSegment.Kind
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_proto_bongo_v1_mail_proto_init() }
@@ -284,13 +424,14 @@ func file_proto_bongo_v1_mail_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_proto_bongo_v1_mail_proto_rawDesc), len(file_proto_bongo_v1_mail_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   1,
+			NumEnums:      1,
+			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_proto_bongo_v1_mail_proto_goTypes,
 		DependencyIndexes: file_proto_bongo_v1_mail_proto_depIdxs,
+		EnumInfos:         file_proto_bongo_v1_mail_proto_enumTypes,
 		MessageInfos:      file_proto_bongo_v1_mail_proto_msgTypes,
 	}.Build()
 	File_proto_bongo_v1_mail_proto = out.File
