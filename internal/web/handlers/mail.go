@@ -1238,14 +1238,32 @@ func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Attachment not found", http.StatusNotFound)
 		return
 	}
+	att := env.Attachments[idx]
 
-	// Force a download with a non-renderable type; the filename is supplied by
-	// the link's download attribute, so no user-controlled value goes into the
-	// header (avoids response-header injection).
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	// Inline display is opt-in (?inline=1) and restricted to the safe raster
+	// image and PDF allowlist — never SVG or arbitrary types — so an
+	// attacker-supplied attachment is never interpreted as active content. The
+	// content type comes from the parsed message (server-authoritative), not a
+	// client-supplied query parameter. Everything else is an octet-stream
+	// download; the filename is supplied by the link's download attribute, so no
+	// user-controlled value reaches a response header.
+	if r.URL.Query().Get("inline") == "1" && safeInlineTypes[att.ContentType] {
+		w.Header().Set("Content-Disposition", "inline")
+		w.Header().Set("Content-Type", att.ContentType)
+		if att.ContentType == "application/pdf" {
+			w.Header().Set("Content-Security-Policy", "sandbox")
+		}
+		if _, err := w.Write(att.Content); err != nil {
+			return
+		}
+		return
+	}
+
 	w.Header().Set("Content-Disposition", "attachment")
 	w.Header().Set("Content-Type", "application/octet-stream")
-	if _, err := w.Write(env.Attachments[idx].Content); err != nil {
+	if _, err := w.Write(att.Content); err != nil {
 		return
 	}
 }

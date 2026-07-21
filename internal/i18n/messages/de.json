@@ -47,6 +47,8 @@
   "mail.loadRemoteImages": "Externe Bilder laden",
   "mail.remoteImagesBlocked": "Externe Bilder wurden aus Datenschutzgründen blockiert.",
   "mail.attachments": "Anhänge",
+  "mail.showImages": "Bilder anzeigen",
+  "mail.imageHidden": "Bild ausgeblendet - klicken Sie auf Bilder anzeigen, um es anzuzeigen",
   "mail.addTag": "Tag hinzufügen",
   "mail.createTag": "Tag erstellen",
   "mail.tagNamePlaceholder": "Tag-Name",
