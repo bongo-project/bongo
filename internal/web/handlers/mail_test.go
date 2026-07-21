@@ -13,6 +13,7 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/store"
 	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-go/bongo-go/internal/web/templates"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -351,6 +352,66 @@ func TestServeBlobInlineTextPreviewIsEscaped(t *testing.T) {
 // stylesheet), while an HTMX request returns only the content fragment. This
 // guards the regression where refreshing a message view lost all styling
 // because the handler returned the bare content without the layout wrapper.
+// TestApplyEnvelopeBodyParsesOnce verifies the shared MIME-parse path populates
+// HTML/text body and attachments, and merges proto attachment hashes by filename
+// (the single ReadEnvelope path used by both ShowMessage and thread siblings).
+func TestApplyEnvelopeBodyParsesOnce(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	bs, err := store.NewBlobStore(dir + "/blobs")
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	raw := "From: sender@example.test\r\n" +
+		"To: user1@example.test\r\n" +
+		"Subject: Body test\r\n" +
+		"MIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"BOUND\"\r\n\r\n" +
+		"--BOUND\r\n" +
+		"Content-Type: text/html; charset=utf-8\r\n\r\n" +
+		"<p>Hello <b>world</b></p>\r\n" +
+		"--BOUND\r\n" +
+		"Content-Type: text/plain; name=\"notes.txt\"\r\n" +
+		"Content-Disposition: attachment; filename=\"notes.txt\"\r\n\r\n" +
+		"file contents\r\n" +
+		"--BOUND--\r\n"
+
+	hash, err := bs.Put([]byte(raw))
+	if err != nil {
+		t.Fatalf("blob Put: %v", err)
+	}
+
+	meta := &bongov1.MailMeta{
+		RawMessage: &bongov1.BlobRef{Hash: hash},
+		Attachments: []*bongov1.BlobRef{
+			{Filename: "notes.txt", Hash: "att-hash-123", ContentType: "text/plain"},
+		},
+	}
+
+	h := NewMailHandler(ps, bs, nil, discardLogger())
+	var detail templates.MessageDetail
+	h.applyEnvelopeBody(&detail, meta)
+
+	if !strings.Contains(detail.HTMLBody, "Hello") || !strings.Contains(detail.HTMLBody, "world") {
+		t.Errorf("HTMLBody missing parsed content: %q", detail.HTMLBody)
+	}
+	if len(detail.Attachments) != 1 {
+		t.Fatalf("attachments = %d, want 1 (matched by filename, not duplicated)", len(detail.Attachments))
+	}
+	att := detail.Attachments[0]
+	if att.Filename != "notes.txt" {
+		t.Errorf("attachment filename = %q, want notes.txt", att.Filename)
+	}
+	if att.Hash != "att-hash-123" {
+		t.Errorf("attachment hash = %q, want proto hash merged in by filename", att.Hash)
+	}
+}
+
 func TestShowMessageFullPageIncludesLayout(t *testing.T) {
 	dir := t.TempDir()
 	ps, err := store.NewPebbleStore(dir + "/pebble")
