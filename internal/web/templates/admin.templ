@@ -657,6 +657,13 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 						}
 					</tbody>
 				</table>
+				<!-- Status legend (task 8.1): explain each check state. -->
+				<div class="dns-legend u-mt-075">
+					<p class="u-text-small u-mb-025"><span class="dns-check">&#10003; { t(ctx, "admin.valid") }</span> &#8212; { t(ctx, "admin.dnsLegendValid") }</p>
+					<p class="u-text-small u-mb-025"><span class="dns-fail">&#10007; { t(ctx, "admin.missing") }</span> &#8212; { t(ctx, "admin.dnsLegendMissing") }</p>
+					<p class="u-text-small u-mb-025"><span class="dns-neutral">&#8212; { t(ctx, "admin.dnsNotGenerated") }</span> &#8212; { t(ctx, "admin.dnsLegendNotGenerated") }</p>
+					<p class="u-text-small u-mb-0"><span class="dns-error">&#63; { t(ctx, "admin.dnsCheckError") }</span> &#8212; { t(ctx, "admin.dnsLegendError") }</p>
+				</div>
 			</div>
 			<!-- DNS Setup Guide (task 7.3): records the owner should publish -->
 			<div class="form-card">
@@ -738,6 +745,7 @@ templ AdminDomainDetail(d DomainInfo, email, flash string, isGlobalAdmin bool) {
 						}
 					</button>
 				</form>
+				<small class="u-block u-mt-05 u-text-muted">{ t(ctx, "admin.dkimPublishNote") }</small>
 			</div>
 			<!-- Catch-All -->
 			<div class="form-card">
