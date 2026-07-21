@@ -456,67 +456,8 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		detail.IsContact = existing != nil
 	}
 
-	// Load raw message for body and attachments.
-	if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
-		rc, err := h.blobs.Get(meta.RawMessage.Hash)
-		if err == nil {
-			rawMsg, _ := io.ReadAll(rc)
-			if err := rc.Close(); err != nil {
-				rawMsg = nil
-			}
-
-			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
-			if err == nil {
-				if env.HTML != "" {
-					inlined := inlineStyleBlocks(env.HTML)
-					sanitized := h.sanitizer.Sanitize(inlined)
-					detail.HTMLBody, detail.HasBlockedImages = blockRemoteImages(sanitized)
-				}
-				detail.TextBody = env.Text
-
-				for _, att := range env.Attachments {
-					a := templates.Attachment{
-						Filename:    att.FileName,
-						ContentType: att.ContentType,
-						Size:        int64(len(att.Content)),
-					}
-					// Try to match with proto BlobRef by filename for hash.
-					for _, br := range meta.Attachments {
-						if br.Filename == att.FileName {
-							a.Hash = br.Hash
-							if br.ContentType != "" {
-								a.ContentType = br.ContentType
-							}
-							break
-						}
-					}
-					detail.Attachments = append(detail.Attachments, a)
-				}
-			} else {
-				// Fallback to raw text.
-				detail.TextBody = string(rawMsg)
-			}
-		}
-	}
-
-	// Also add attachments from proto that weren't matched above.
-	for _, blobRef := range meta.Attachments {
-		found := false
-		for _, existing := range detail.Attachments {
-			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			detail.Attachments = append(detail.Attachments, templates.Attachment{
-				Filename:    blobRef.Filename,
-				Hash:        blobRef.Hash,
-				ContentType: blobRef.ContentType,
-				Size:        blobRef.Size,
-			})
-		}
-	}
+	// Load raw message body and attachments (single MIME parse).
+	h.applyEnvelopeBody(&detail, meta)
 
 	detail.Thread = h.loadThreadMessageDetails(userID, msg.MailGuid, realMailbox)
 
@@ -596,6 +537,76 @@ func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid st
 	return "", nil
 }
 
+// applyEnvelopeBody loads the message's raw blob, parses its MIME envelope
+// exactly once, and fills detail's body (HTML/text) and attachment list. Any
+// proto-recorded attachments not present in the parsed envelope are then merged
+// in. This is the single MIME-parse path shared by ShowMessage and the thread
+// sibling rendering in messageDetailFromMeta, so each message's envelope is
+// parsed at most once per render (previously this logic was duplicated at two
+// call sites, each with its own enmime.ReadEnvelope).
+func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) {
+	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
+		rc, err := h.blobs.Get(meta.RawMessage.Hash)
+		if err == nil {
+			rawMsg, _ := io.ReadAll(rc)
+			if cerr := rc.Close(); cerr != nil {
+				rawMsg = nil
+			}
+
+			env, perr := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
+			if perr == nil {
+				if env.HTML != "" {
+					inlined := inlineStyleBlocks(env.HTML)
+					sanitized := h.sanitizer.Sanitize(inlined)
+					detail.HTMLBody, detail.HasBlockedImages = blockRemoteImages(sanitized)
+				}
+				detail.TextBody = env.Text
+
+				for _, att := range env.Attachments {
+					a := templates.Attachment{
+						Filename:    att.FileName,
+						ContentType: att.ContentType,
+						Size:        int64(len(att.Content)),
+					}
+					// Try to match with proto BlobRef by filename for hash.
+					for _, br := range meta.Attachments {
+						if br.Filename == att.FileName {
+							a.Hash = br.Hash
+							if br.ContentType != "" {
+								a.ContentType = br.ContentType
+							}
+							break
+						}
+					}
+					detail.Attachments = append(detail.Attachments, a)
+				}
+			} else {
+				// Fallback to raw text.
+				detail.TextBody = string(rawMsg)
+			}
+		}
+	}
+
+	// Also add attachments from proto that weren't matched above.
+	for _, blobRef := range meta.Attachments {
+		found := false
+		for _, existing := range detail.Attachments {
+			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			detail.Attachments = append(detail.Attachments, templates.Attachment{
+				Filename:    blobRef.Filename,
+				Hash:        blobRef.Hash,
+				ContentType: blobRef.ContentType,
+				Size:        blobRef.Size,
+			})
+		}
+	}
+}
+
 func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1.MailboxMessage, meta *bongov1.MailMeta) templates.MessageDetail {
 	detail := templates.MessageDetail{
 		UID:     msg.Uid,
@@ -618,64 +629,7 @@ func (h *MailHandler) messageDetailFromMeta(userID, mailbox string, msg *bongov1
 		}
 	}
 
-	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
-		rc, err := h.blobs.Get(meta.RawMessage.Hash)
-		if err == nil {
-			rawMsg, _ := io.ReadAll(rc)
-			if err := rc.Close(); err != nil {
-				rawMsg = nil
-			}
-
-			env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
-			if err == nil {
-				if env.HTML != "" {
-					inlined := inlineStyleBlocks(env.HTML)
-					sanitized := h.sanitizer.Sanitize(inlined)
-					detail.HTMLBody, detail.HasBlockedImages = blockRemoteImages(sanitized)
-				}
-				detail.TextBody = env.Text
-
-				for _, att := range env.Attachments {
-					a := templates.Attachment{
-						Filename:    att.FileName,
-						ContentType: att.ContentType,
-						Size:        int64(len(att.Content)),
-					}
-					for _, br := range meta.Attachments {
-						if br.Filename == att.FileName {
-							a.Hash = br.Hash
-							if br.ContentType != "" {
-								a.ContentType = br.ContentType
-							}
-							break
-						}
-					}
-					detail.Attachments = append(detail.Attachments, a)
-				}
-			} else {
-				detail.TextBody = string(rawMsg)
-			}
-		}
-	}
-
-	for _, blobRef := range meta.Attachments {
-		found := false
-		for _, existing := range detail.Attachments {
-			if existing.Hash == blobRef.Hash || (existing.Filename != "" && existing.Filename == blobRef.Filename) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			detail.Attachments = append(detail.Attachments, templates.Attachment{
-				Filename:    blobRef.Filename,
-				Hash:        blobRef.Hash,
-				ContentType: blobRef.ContentType,
-				Size:        blobRef.Size,
-			})
-		}
-	}
-
+	h.applyEnvelopeBody(&detail, meta)
 	return detail
 }
 
