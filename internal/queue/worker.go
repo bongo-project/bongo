@@ -8,16 +8,17 @@ import (
 	"time"
 
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/observability"
 	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 const (
-	maxAttempts  = 10
-	pollInterval = 5 * time.Second
-	batchSize    = 100
-	concurrency  = 5
+	maxAttempts         = 10
+	defaultPollInterval = 5 * time.Second
+	batchSize           = 100
+	concurrency         = 5
 )
 
 // LeaderChecker returns whether this node is the Raft leader.
@@ -34,6 +35,21 @@ type Worker struct {
 	bouncer  *mail.BounceGenerator
 	blobs    *store.BlobStore
 	logger   *slog.Logger
+
+	pollInterval time.Duration
+}
+
+// Option is a functional option for Worker.
+type Option func(*Worker)
+
+// WithPollInterval sets how often the worker polls the queue for ready
+// messages. Non-positive values are ignored (the default is retained).
+func WithPollInterval(d time.Duration) Option {
+	return func(w *Worker) {
+		if d > 0 {
+			w.pollInterval = d
+		}
+	}
 }
 
 // NewWorker creates a new queue worker. registry may be nil, in which case
@@ -46,16 +62,22 @@ func NewWorker(
 	bouncer *mail.BounceGenerator,
 	blobs *store.BlobStore,
 	logger *slog.Logger,
+	opts ...Option,
 ) *Worker {
-	return &Worker{
-		store:    queueStore,
-		relay:    relay,
-		registry: registry,
-		leader:   leader,
-		bouncer:  bouncer,
-		blobs:    blobs,
-		logger:   logger,
+	w := &Worker{
+		store:        queueStore,
+		relay:        relay,
+		registry:     registry,
+		leader:       leader,
+		bouncer:      bouncer,
+		blobs:        blobs,
+		logger:       logger,
+		pollInterval: defaultPollInterval,
 	}
+	for _, o := range opts {
+		o(w)
+	}
+	return w
 }
 
 // Run starts the queue worker loop. Blocks until ctx is cancelled.
@@ -63,7 +85,7 @@ func (w *Worker) Run(ctx context.Context) {
 	w.logger.Info("queue worker started")
 	defer w.logger.Info("queue worker stopped")
 
-	ticker := time.NewTicker(pollInterval)
+	ticker := time.NewTicker(w.pollInterval)
 	defer ticker.Stop()
 
 	for {
@@ -79,6 +101,12 @@ func (w *Worker) Run(ctx context.Context) {
 func (w *Worker) poll(ctx context.Context) {
 	if !w.leader.IsLeader() {
 		return
+	}
+
+	// Publish queue-depth gauges (leader-only; the leader owns delivery).
+	if stats, err := w.store.Stats(); err == nil {
+		observability.QueueDepth.Set(float64(stats.PendingCount))
+		observability.QueueOldestPendingSeconds.Set(float64(stats.OldestPendingSeconds))
 	}
 
 	msgs, err := w.store.GetReady(time.Now(), batchSize)
@@ -172,7 +200,15 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 	if err := w.store.MarkDelivered(msg.Id); err != nil {
 		w.logger.Error("queue: marking delivered", "id", msg.Id, "error", err)
 	} else {
-		w.logger.Info("queue: message delivered", "id", msg.Id, "recipients", msg.Recipients)
+		observability.QueueMessagesTotal.WithLabelValues("delivered").Inc()
+		latency := -1.0
+		if msg.CreatedAt > 0 {
+			latency = time.Since(time.Unix(msg.CreatedAt, 0)).Seconds()
+			observability.QueueDeliverySeconds.Observe(latency)
+		}
+		// latency_seconds is emitted for the Loki dashboard (unwrap); -1 means the
+		// message predates enqueue-time tracking.
+		w.logger.Info("queue: message delivered", "id", msg.Id, "recipients", msg.Recipients, "latency_seconds", latency)
 	}
 }
 
@@ -187,6 +223,8 @@ func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
 		}
 		if err := w.store.MarkBounced(msg); err != nil {
 			w.logger.Error("queue: marking bounced", "id", msg.Id, "error", err)
+		} else {
+			observability.QueueMessagesTotal.WithLabelValues("bounced").Inc()
 		}
 		return
 	}
@@ -195,6 +233,7 @@ func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
 	if err := w.store.MarkFailed(msg); err != nil {
 		w.logger.Error("queue: marking failed", "id", msg.Id, "error", err)
 	} else {
+		observability.QueueMessagesTotal.WithLabelValues("failed").Inc()
 		w.logger.Info("queue: message retry scheduled", "id", msg.Id, "attempt", msg.AttemptCount+1)
 	}
 }

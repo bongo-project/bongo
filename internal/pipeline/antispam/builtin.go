@@ -15,6 +15,7 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-go/bongo-go/internal/observability"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -218,6 +219,8 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	if p.dmarc != nil {
 		action, reasons = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
 	}
+
+	observability.AntispamScore.Observe(float64(score))
 
 	p.logger.Info("antispam: scored",
 		"score", score,

@@ -1178,7 +1178,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// Queue worker (leader-only processing).
-		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMRegistry, a, a.BounceGen, a.Blobs, a.logger)
+		a.QueueWorker = queue.NewWorker(a.QueueStore, a.Relay, a.DKIMRegistry, a, a.BounceGen, a.Blobs, a.logger,
+			queue.WithPollInterval(a.Config.Queue.QueuePollInterval()))
 		queueCtx, queueCancel := context.WithCancel(ctx)
 		a.queueWorkerCancel = queueCancel
 		go a.QueueWorker.Run(queueCtx)
