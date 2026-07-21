@@ -318,3 +318,27 @@ Also fixed 3 reported UI bugs (not tracked tasks):
 - DKIM Create/Rotate redirected to /admin/domains (list) instead of /admin/domains/{domain} — now returns to the detail page with flash.
 - Admin content overflowed right: `.admin-scroll` flex child lacked `min-width:0` (defaulted to min-width:auto, refused to shrink below widest child); added it. Plus `.dkim-txt-record` (<pre>) had no wrap CSS, and DNS <code> values didn't break — added pre-wrap/overflow-wrap; styled missing .dns-neutral/.dns-error.
 - Ctrl/Cmd+C (copy) hijacked as compose shortcut: global keydown handler (bongo.js:1487) never checked modifiers; added early return when ctrlKey/metaKey/altKey held.
+
+## 2026-07-21 — Task 9.1 (spike): byte-exact attachment extraction — DONE
+
+Built `internal/attsplit` (Split/Reconstruct) proving the de-MIME approach is
+FEASIBLE and byte-exact.
+
+- Approach: manual MIME boundary scan finds each attachment part's exact ENCODED
+  body byte-range in the raw (never decode via enmime). Split partitions the raw
+  into an ordered sequence of literal spans + attachment references; Reconstruct
+  concatenates them → byte-exact by construction (belt-and-braces vs the PRD's
+  ingest self-check).
+- 8 round-trip tests pass: base64, quoted-printable, nested multipart, multiple
+  attachments, DKIM-signed (byte-equal ⇒ signature preserved), plain passthrough,
+  below-threshold skip, and dedup (same encoded attachment in two different
+  messages → identical SHA-256 → one blob).
+- PATTERN: skeleton = partition of the raw (literal spans + attachment refs), not
+  an edited raw. Byte-exactness is automatic; dedup key = SHA-256 of the exact
+  encoded span.
+- Recommended 9.2 on-disk form: skeleton blob = concatenated literal spans + an
+  ordered splice index in MailMeta (each segment: literal-length | attachment
+  hash+length).
+- Caveats for production (feed into 9.2/9.4): assumes CRLF endings; add a
+  delimiter-suffix check to avoid boundary-prefix ambiguity; decide handling of
+  large INLINE (non-attachment) parts and top-level single-part attachments.
