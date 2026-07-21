@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	gosmtp "github.com/emersion/go-smtp"
 )
 
@@ -14,7 +15,7 @@ func throttleTestBackend(authErr error) *Backend {
 	return &Backend{
 		auth:     &fakeAuth{err: authErr},
 		perIP:    map[string]int{},
-		authFail: map[string]*authFailState{},
+		authFail: authlimit.New(maxAuthFailures, authFailWindow),
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 }
@@ -66,13 +67,13 @@ func TestAuthThrottleResetsOnSuccess(t *testing.T) {
 	s := newSessionForIP(b, "203.0.113.11")
 
 	// Pre-load some failures directly, then a success should clear them.
-	b.recordAuthFailure("203.0.113.11")
-	b.recordAuthFailure("203.0.113.11")
+	b.authFail.Record("203.0.113.11")
+	b.authFail.Record("203.0.113.11")
 
 	if err := s.AuthPlain("bob@example.com", "correct"); err != nil {
 		t.Fatalf("valid auth should succeed, got %v", err)
 	}
-	if b.authThrottled("203.0.113.11") {
+	if b.authFail.Blocked("203.0.113.11") {
 		t.Fatal("failure counter should be cleared after a successful auth")
 	}
 }

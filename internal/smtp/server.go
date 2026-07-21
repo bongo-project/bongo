@@ -18,6 +18,7 @@ import (
 	"golang.org/x/net/netutil"
 
 	"github.com/bongo-go/bongo-go/internal/auth"
+	"github.com/bongo-go/bongo-go/internal/authlimit"
 	"github.com/bongo-go/bongo-go/internal/config"
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/netx"
@@ -64,9 +65,8 @@ type Backend struct {
 
 	// authFail tracks failed AUTH attempts per source IP so a source can be
 	// temporarily locked out after too many failures (brute-force defence).
-	// Guarded by mu. nil is treated as disabled.
-	authFail      map[string]*authFailState
-	authFailSweep int // recordAuthFailure calls since the last full sweep
+	// It has its own internal locking; nil is treated as disabled.
+	authFail *authlimit.Limiter
 }
 
 // NewBackend creates a new SMTP backend.
@@ -76,7 +76,7 @@ func NewBackend(authenticator auth.Authenticator, deliverer Deliverer, logger *s
 		deliverer: deliverer,
 		logger:    logger,
 		perIP:     make(map[string]int),
-		authFail:  make(map[string]*authFailState),
+		authFail:  authlimit.New(maxAuthFailures, authFailWindow),
 	}
 }
 
@@ -171,7 +171,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	// source IP has accumulated too many failures. Returning a temporary (4xx)
 	// error keeps well-behaved clients backing off without permanently locking
 	// out a user who later provides the right password.
-	if s.authFailures >= maxAuthFailures || s.backend.authThrottled(ip) {
+	if s.authFailures >= maxAuthFailures || s.backend.authFail.Blocked(ip) {
 		s.logger.Warn("smtp: auth throttled after repeated failures", "username", username, "ip", s.remoteIP)
 		return &gosmtp.SMTPError{Code: 454, EnhancedCode: gosmtp.EnhancedCode{4, 7, 0}, Message: "Too many authentication failures; try again later"}
 	}
@@ -179,7 +179,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	userID, err := s.backend.auth.Authenticate(username, password)
 	if err != nil {
 		s.authFailures++
-		s.backend.recordAuthFailure(ip)
+		s.backend.authFail.Record(ip)
 		s.logger.Warn("smtp: auth failed", "username", username, "ip", s.remoteIP)
 		return err
 	}
@@ -187,7 +187,7 @@ func (s *Session) AuthPlain(username, password string) error {
 	s.authed = true
 	s.userID = userID
 	s.authFailures = 0
-	s.backend.resetAuthFailures(ip)
+	s.backend.authFail.Reset(ip)
 	s.logger.Debug("smtp: auth succeeded", "username", username)
 	return nil
 }
