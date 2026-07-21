@@ -342,3 +342,25 @@ FEASIBLE and byte-exact.
 - Caveats for production (feed into 9.2/9.4): assumes CRLF endings; add a
   delimiter-suffix check to avoid boundary-prefix ambiguity; decide handling of
   large INLINE (non-attachment) parts and top-level single-part attachments.
+
+## 2026-07-21 — Task 9.2: skeleton storage + FullRawMessage retrieval — DONE
+
+- proto: added `MailMeta.layout` (`repeated MessageSegment`, kinds LITERAL/
+  ATTACHMENT) via buf generate. Non-empty layout marks a split record
+  (raw_message = skeleton blob); empty = legacy whole-raw. Additive, backward
+  compatible — full store -race suite still green.
+- `attsplit.Layout()` exposes the skeleton bytes + ordered segments
+  proto-agnostically (attsplit stays free of proto imports).
+- `store.PrepareSplit(raw, minSize)` -> `SplitMessage` {skeleton, layout,
+  attachment BlobRefs, encoded bytes}; returns nil below threshold so the caller
+  keeps whole-raw storage.
+- `store.FullRawMessage(meta, get)` reconstructs split records (skeleton
+  interleaved with attachment blobs, attachment fetches cached) and passes legacy
+  records through unchanged. Fails cleanly on out-of-range/missing blobs.
+- PATTERN: the split marker is the presence of `layout`, not a content-type or
+  flag — one code path, legacy and split coexist with no migration.
+- Tests: byte-exact round-trip, legacy passthrough, below-threshold nil,
+  shared-attachment dedup (2nd message adds only its skeleton blob), corrupt
+  layout error.
+- Next (9.3 config knob, then 9.4 ingest) can now store via PrepareSplit and read
+  via FullRawMessage; 9.5 routes all full-message readers through FullRawMessage.

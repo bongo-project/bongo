@@ -26,4 +26,25 @@ message MailMeta {
   string dkim_domain = 17;     // signing domain from d= tag
   string target_mailbox = 18;  // set by filter rules, empty = default routing
   repeated string tags = 19;   // tag names, lowercase, alphanumeric + hyphens
+
+  // Attachment-dedup layout (Phase 9). When non-empty, this record is "split":
+  // raw_message points at the skeleton blob (the concatenated literal spans), and
+  // these segments describe how to interleave the skeleton's literal bytes with
+  // the attachments[] blobs to rebuild the exact original RFC822 message. Empty
+  // means a legacy whole-raw record: raw_message is the full message.
+  repeated MessageSegment layout = 20;
+}
+
+// MessageSegment is one step in reconstructing a split message. Segments are
+// applied in order: a LITERAL consumes `length` bytes from the skeleton blob
+// (read sequentially); an ATTACHMENT splices in attachments[attachment_index].
+message MessageSegment {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    LITERAL = 1;
+    ATTACHMENT = 2;
+  }
+  Kind kind = 1;
+  int64 length = 2;            // literal byte length (LITERAL segments)
+  int32 attachment_index = 3;  // index into MailMeta.attachments (ATTACHMENT segments)
 }
