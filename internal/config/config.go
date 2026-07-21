@@ -23,6 +23,7 @@ type Config struct {
 	Antispam    AntispamConfig  `hcl:"antispam,block" mapstructure:"antispam"`
 	Antivirus   AntivirusConfig `hcl:"antivirus,block" mapstructure:"antivirus"`
 	Pipeline    PipelineConfig  `hcl:"pipeline,block" mapstructure:"pipeline"`
+	Queue       *QueueConfig    `hcl:"queue,block" mapstructure:"queue"`
 	Telemetry   TelemetryConfig `hcl:"telemetry,block" mapstructure:"telemetry"`
 	AgentServer *AgentConfig    `hcl:"agent_server,block" mapstructure:"agent_server"`
 }
@@ -298,6 +299,27 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Multi-node cluster transport gate (backlog B7). A server that joins peers
+	// carries the replicated mail store over the raft and gossip transports; the
+	// security review (docs/security-review-2026-07-06.md H3/H4/M8) deferred the
+	// transport-hardening fixes because they are unreachable on a single node.
+	// This gate makes that deferral safe: refuse to form a multi-node cluster
+	// unless gossip is encrypted and raft has an mTLS trust anchor, so the
+	// plaintext/insecure paths can never go live by accident. Single-node
+	// servers (no join peers, as in the shipped prod config) are unaffected.
+	if c.Server.Role == "server" && len(c.Cluster.Join) > 0 {
+		var missing []string
+		if strings.TrimSpace(c.Cluster.Gossip.EncryptionKey) == "" {
+			missing = append(missing, "cluster.gossip.encryption_key")
+		}
+		if c.Cluster.TLS.CertFile == "" || c.Cluster.TLS.KeyFile == "" || c.Cluster.TLS.CAFile == "" {
+			missing = append(missing, "cluster.tls.{cert_file,key_file,ca_file}")
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("cluster: joining peers requires transport security before a multi-node cluster can form; set %s (see docs/multi-node-cluster-checklist.md)", strings.Join(missing, " and "))
+		}
+	}
+
 	return nil
 }
 
@@ -322,6 +344,24 @@ type PipelineConfig struct {
 	ErrorRetention      string        `hcl:"error_retention,optional" mapstructure:"error_retention"`
 	QuarantineRetention string        `hcl:"quarantine_retention,optional" mapstructure:"quarantine_retention"`
 	Stages              []StageConfig `hcl:"stage,block" mapstructure:"stage"`
+}
+
+// QueueConfig controls the outbound-delivery queue worker.
+type QueueConfig struct {
+	PollInterval string `hcl:"poll_interval,optional" mapstructure:"poll_interval"`
+}
+
+// QueuePollInterval parses PollInterval into a time.Duration. Returns 5s if the
+// block is absent (nil receiver) or the value is empty or unparseable.
+func (c *QueueConfig) QueuePollInterval() time.Duration {
+	if c == nil || c.PollInterval == "" {
+		return 5 * time.Second
+	}
+	d, err := time.ParseDuration(c.PollInterval)
+	if err != nil {
+		return 5 * time.Second
+	}
+	return d
 }
 
 // StageConfig defines a single processing stage in the inbound pipeline.
@@ -511,6 +551,9 @@ func Defaults() *Config {
 			ErrorRetention:      "30d",
 			QuarantineRetention: "30d",
 			Stages:              defaultPipelineStages(),
+		},
+		Queue: &QueueConfig{
+			PollInterval: "5s",
 		},
 		Telemetry: TelemetryConfig{
 			Prometheus: PrometheusConfig{

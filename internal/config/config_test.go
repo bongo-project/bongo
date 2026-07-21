@@ -271,6 +271,36 @@ func TestPipelinePollInterval(t *testing.T) {
 	}
 }
 
+func TestQueuePollInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  time.Duration
+	}{
+		{"empty string falls back to 5s", "", 5 * time.Second},
+		{"valid 5s", "5s", 5 * time.Second},
+		{"valid 500ms", "500ms", 500 * time.Millisecond},
+		{"valid 30s", "30s", 30 * time.Second},
+		{"invalid string falls back to 5s", "garbage", 5 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			qc := &QueueConfig{PollInterval: tt.input}
+			if got := qc.QueuePollInterval(); got != tt.want {
+				t.Errorf("QueuePollInterval(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestQueueConfigDefault(t *testing.T) {
+	cfg := Defaults()
+	if got := cfg.Queue.QueuePollInterval(); got != 5*time.Second {
+		t.Errorf("default queue poll interval = %v, want 5s", got)
+	}
+}
+
 func TestPipelineConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -433,6 +463,47 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "agent_server.address",
+		},
+		{
+			name: "single-node server without cluster security is allowed",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Cluster.Join = nil
+			},
+			wantErr: false,
+		},
+		{
+			name: "server joining peers without transport security is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+			},
+			wantErr: true,
+			errMsg:  "transport security",
+		},
+		{
+			name: "server joining peers without raft mTLS is rejected",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+			},
+			wantErr: true,
+			errMsg:  "cluster.tls",
+		},
+		{
+			name: "server joining peers with gossip encryption and raft mTLS is allowed",
+			modify: func(c *Config) {
+				c.Server.Role = "server"
+				c.Cluster.Join = []string{"10.0.0.2:8301"}
+				c.Cluster.Gossip.EncryptionKey = "aGVsbG8td29ybGQtMTYtYnl0ZXM="
+				c.Cluster.TLS = TLSConfig{
+					CertFile: "/certs/node.crt",
+					KeyFile:  "/certs/node.key",
+					CAFile:   "/certs/ca.crt",
+				}
+			},
+			wantErr: false,
 		},
 	}
 
