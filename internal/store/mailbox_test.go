@@ -457,6 +457,37 @@ func TestCountMessages(t *testing.T) {
 	}
 }
 
+func TestUnreadCountIsPerMailbox(t *testing.T) {
+	ms := newMailboxTestEnv(t)
+	userID := "user1"
+
+	ms.CreateMailbox(userID, "INBOX")
+	ms.CreateMailbox(userID, "Junk")
+
+	// Two unread + one read in INBOX.
+	for i, flags := range []uint32{0, 0, FlagSeen} {
+		uid := uint32(i + 1)
+		msg := &bongov1.MailboxMessage{Uid: uid, MailGuid: "i" + string(rune('1'+i)), Flags: flags}
+		msgBytes, _ := proto.Marshal(msg)
+		ms.store.Set(mailboxMsgKey(userID, "INBOX", uid), msgBytes)
+	}
+	// Unread mail sitting in Junk must NOT inflate the INBOX badge.
+	for i := 0; i < 5; i++ {
+		uid := uint32(i + 1)
+		msg := &bongov1.MailboxMessage{Uid: uid, MailGuid: "j" + string(rune('1'+i)), Flags: 0}
+		msgBytes, _ := proto.Marshal(msg)
+		ms.store.Set(mailboxMsgKey(userID, "Junk", uid), msgBytes)
+	}
+
+	if got := ms.UnreadCount(userID, "INBOX"); got != 2 {
+		t.Errorf("UnreadCount(INBOX) = %d, want 2 (Junk unread must not count)", got)
+	}
+	// Sanity: the all-folders total does include Junk, so the two differ.
+	if got := ms.TotalUnreadCount(userID); got != 7 {
+		t.Errorf("TotalUnreadCount = %d, want 7", got)
+	}
+}
+
 func TestSanitizeMailMeta(t *testing.T) {
 	// \xff is invalid UTF-8
 	meta := &bongov1.MailMeta{

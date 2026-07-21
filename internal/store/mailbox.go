@@ -838,6 +838,14 @@ func (ms *MailboxStore) ListMessagesByGUIDs(userID string, guidSet map[string]bo
 	return all[offset:end], total, nil
 }
 
+// UnreadCount returns the number of unread messages in a single mailbox for a
+// user. Used for the sidebar badge, which reflects actionable INBOX mail rather
+// than the sum across Sent/Trash/Junk (see TotalUnreadCount).
+func (ms *MailboxStore) UnreadCount(userID, mailbox string) int {
+	_, _, unseen, _ := ms.CountMessages(userID, mailbox)
+	return int(unseen)
+}
+
 // TotalUnreadCount returns the total number of unread messages across all mailboxes for a user.
 func (ms *MailboxStore) TotalUnreadCount(userID string) int {
 	mailboxes, err := ms.ListMailboxes(userID)
