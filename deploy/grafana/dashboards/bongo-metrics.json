@@ -7,7 +7,7 @@
   "version": 1,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
-  "description": "Prometheus-scraped bongo metrics from :9090 (bongo_* series). REQUIRES a Prometheus datasource with uid 'prometheus' scraping the bongo job; the datasource is commented out in deploy/nomad/loki-stack.nomad.hcl by default. Until then these panels show 'No data' — the log-based 'Bongo Mail' dashboard covers throughput today.",
+  "description": "Prometheus-scraped bongo metrics (bongo_* series). bongo serves /metrics on its main HTTP listener (container port 8080, path /metrics), not on the unused telemetry port 9090. REQUIRES a Prometheus datasource with uid 'prometheus' scraping bongo:8080/metrics; the datasource is commented out in deploy/nomad/loki-stack.nomad.hcl by default. Until then these panels show 'No data' — the log-based 'Bongo Mail' dashboard covers throughput today.",
   "templating": { "list": [] },
   "panels": [
     {
