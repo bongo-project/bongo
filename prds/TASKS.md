@@ -41,6 +41,26 @@ across all 4 locales.
 | 8.2 | Operator guide `docs/multi-domain-hosting.md`: end-to-end how-to — add a domain, point DNS (use the `/admin/domains/{domain}` DNS setup guide / BIND zone), generate + publish DKIM, verify SPF/DMARC, set catch-all, delegate domain-admins, set per-domain quotas (max-users + storage), client autoconfig (autoconfig/autodiscover/SRV). Link from README. | DONE (2026-07-21) | Written from a verified feature map (routes/records/DKIM/quotas/autoconfig grounded in the real code). Shared-host model up front; per-step DNS record table, status-check reading, DKIM rotation caveat, tenancy isolation, quota enforcement points, autoconfig endpoints; checklist. Linked from the new top-level README. |
 | 8.3 | Getting-started / deployment doc refresh: consolidate `deploy/README.md` + the generic example config into a top-level quickstart (single-node Docker + Traefik) so a new operator can go from clone to running server. | DONE (2026-07-21) | New top-level `README.md`: what bongo is, dev quickstart (`make dev`), single-server production quickstart distilled from deploy/README.md (names → DNS → DKIM → TLS → run → first admin), multi-domain pointer, server roles, and a docs index. Links out to deploy/README.md and the docs/ guides. |
 
+## Phase 9: Attachment deduplication (de-MIME)
+
+Completes the original design (project PRD §5.2–5.3): store a message skeleton +
+deduplicated content-addressed attachment blobs, reconstruct byte-exact on read.
+PRD: [prd-attachment-dedup.md](backlog/prd-attachment-dedup.md). Decisions:
+encoded-bytes dedup (DKIM-safe), new mail only, default on with an ingest
+self-check + fallback, threshold-gated (32 KB default). **Start with 9.1 (spike)
+— it de-risks the whole feature before committing to the build.**
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 9.1 | (spike) Byte-exact encoded-span extraction + skeleton representation. Prototype: given a raw RFC822 message, locate the exact encoded body span of each attachment part ≥ threshold, build a skeleton, and reconstruct byte-for-byte. Prove round-trip on base64/QP, nested multipart, and a DKIM-signed message (re-verify passes). Decide the on-disk skeleton representation. | TODO | US-003; FR-1/3/6. The crux (enmime gives decoded content, not the encoded span). Produce a round-trip test even though it's a spike. Blocks everything below. |
+| 9.2 | Skeleton storage + `FullRawMessage(meta)` retrieval: reconstruct for split records, passthrough for legacy whole-raw. Mark split records via splice metadata. | TODO | US-002/004, FR-3/4/10. needs: 9.1 |
+| 9.3 | Threshold config knob `dedup_min_size` (default 32 KB). | TODO | US-006, FR-9. Small; needed by 9.4/9.6. |
+| 9.4 | Inbound ingest split in `pipeline/deliver`: extract qualifying attachment blobs, store skeleton, populate `MailMeta.Attachments` hashes, with the ingest self-check + whole-raw fallback (FR-7). | TODO | US-001/005/007, FR-1/2/7. needs: 9.2, 9.3 |
+| 9.5 | Route all full-message readers through `FullRawMessage`: IMAP FETCH/BODY, web message view (`applyEnvelopeBody`), `ServeAttachment`/`ServeBlob` whole-message reads, `ExportEML`, DKIM/antispam re-parse, backup/export. | TODO | FR-5. needs: 9.2 |
+| 9.6 | Outbound unification in compose/send: store skeleton + deduped attachment blobs instead of the whole raw plus separate attachment blobs; reconstruct byte-exact (incl. DKIM on send). | TODO | US-008. needs: 9.2, 9.3 |
+| 9.7 | Blob GC / reference-counting counts `MailMeta.Attachments[].Hash` (and skeleton hashes) as live refs so shared attachments survive until the last referencing message is deleted. Verify what GC actually exists first. | TODO | US-009, FR-8. needs: 9.4 or 9.6 |
+| 9.8 | (optional) Observability: `bongo_attachment_dedup_*` counters — blobs written vs deduped, bytes saved. | TODO | Open question in the PRD; nice-to-have. |
+
 ## Backlog (unscheduled)
 
 | # | Task | Status | Notes |
