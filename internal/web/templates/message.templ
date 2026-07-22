@@ -498,10 +498,10 @@ templ attachmentList(attachments []Attachment) {
 						<span class="attachment-size">{ formatSize(att.Size) }</span>
 					</span>
 				</template>
-			} else if att.ContentType == "application/pdf" && att.Hash != "" {
+			} else if att.ContentType == "application/pdf" {
 				<div class="attachment-preview">
 					<iframe
-						src={ inlineBlobURL(att.Hash, att.ContentType) }
+						src={ attachmentInlineURL(att) }
 						class="pdf-preview"
 						sandbox=""
 						title={ att.Filename }

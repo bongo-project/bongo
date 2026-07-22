@@ -557,6 +557,13 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 				}
 				detail.TextBody = env.Text
 
+				// For a split record the per-attachment blob holds the ENCODED
+				// span (for byte-exact reconstruction), not the decoded file, so
+				// it must never be served directly. Leaving Hash empty routes the
+				// attachment through the message-scoped ServeAttachment, which
+				// reconstructs and decodes it. Non-split records (sent mail with
+				// decoded attachment blobs, or legacy whole-raw) keep the hash.
+				isSplit := len(meta.Layout) > 0
 				for i, att := range env.Attachments {
 					a := templates.Attachment{
 						Filename:    att.FileName,
@@ -566,7 +573,9 @@ func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *b
 					// Try to match with proto BlobRef by filename for hash.
 					for _, br := range meta.Attachments {
 						if br.Filename == att.FileName {
-							a.Hash = br.Hash
+							if !isSplit {
+								a.Hash = br.Hash
+							}
 							if br.ContentType != "" {
 								a.ContentType = br.ContentType
 							}
