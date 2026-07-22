@@ -1038,6 +1038,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Preferences != nil {
 			deliverProc.SetPreferences(a.Preferences)
 		}
+		// Attachment deduplication (Phase 9): store large attachments as separate
+		// content-addressed blobs + a message skeleton, reconstructed byte-exact
+		// on read. The self-check inside the deliver stage falls back to whole-raw
+		// storage for anything that cannot be reproduced exactly.
+		if a.Blobs != nil {
+			deliverProc.SetAttachmentDedup(a.Blobs, int(a.Config.Storage.AttachmentDedupMinBytes()))
+		}
 		stages = append(stages, deliverProc)
 
 		// Create blob reader adapter and start the Runner with config-driven options.
