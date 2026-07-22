@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -234,15 +233,8 @@ func (h *RulesHandler) testRuleAgainstMail(userID string, rule *bongov1.FilterRu
 		// Extract body text from raw blob for body matching.
 		var bodyText string
 		if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
-			rc, err := h.blobs.Get(meta.RawMessage.Hash)
-			if err == nil {
-				rawBytes, err := io.ReadAll(rc)
-				if closeErr := rc.Close(); err == nil {
-					err = closeErr
-				}
-				if err == nil {
-					bodyText = extractBodyText(rawBytes)
-				}
+			if rawBytes, err := store.RawMessageBytes(h.blobs, &meta); err == nil {
+				bodyText = extractBodyText(rawBytes)
 			}
 		}
 

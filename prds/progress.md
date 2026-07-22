@@ -364,3 +364,27 @@ FEASIBLE and byte-exact.
   layout error.
 - Next (9.3 config knob, then 9.4 ingest) can now store via PrepareSplit and read
   via FullRawMessage; 9.5 routes all full-message readers through FullRawMessage.
+
+## 2026-07-22 — Tasks 9.3 (threshold config) + 9.5 (route readers) — DONE
+
+9.3: config.Storage.AttachmentDedupMinSize ("attachment_dedup_min_size", default
+"32KB") + AttachmentDedupMinBytes() (empty->32KB, "0"->disabled). PrepareSplit
+guards minSize<=0 -> nil. Table test.
+
+9.5: store.RawMessageBytes(bs, meta) is the single reconstruct-or-passthrough
+entry point. Routed EVERY full-message reader through it:
+- IMAP FETCH (imap/backend.go)
+- web: applyEnvelopeBody, ExportEML, ServeAttachment, backfillThreadingFields,
+  trainBayes (mail.go); rules test-run (rules.go); retro-scan scoring (scan.go);
+  compose EditDraft + loadQuotedBody (compose.go)
+- POP3 RETR/TOP: popMsg now carries *MailMeta (unmarshal into a pointer to avoid
+  copylocks); fetchBlob removed.
+- ExportEML Content-Length now uses the reconstructed length.
+- DESIGN DECISION for 9.4: keep MailMeta.RawMessage.Size = FULL original message
+  size for split records (not skeleton size), so IMAP RFC822.SIZE, POP3 LIST/STAT
+  and quota usage (agent.go domainBytes += RawMessage.Size) stay correct with no
+  change. FullRawMessage never reads Size.
+- Behaviour-preserving today (all records are legacy -> passthrough); this
+  de-risks the read path before 9.4 turns ingest splitting on.
+- Tests: real-BlobStore round-trip (split + legacy). Full imap/pop3/config green,
+  handlers lint 0.

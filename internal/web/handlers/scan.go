@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -311,14 +310,7 @@ func (h *ScanHandler) scoreMessage(meta *bongov1.MailMeta) float32 {
 		return 0
 	}
 
-	rc, err := h.blobs.Get(meta.RawMessage.Hash)
-	if err != nil {
-		return 0
-	}
-	raw, err := io.ReadAll(rc)
-	if closeErr := rc.Close(); err == nil {
-		err = closeErr
-	}
+	raw, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
 		return 0
 	}

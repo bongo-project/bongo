@@ -68,6 +68,26 @@ type GossipConfig struct {
 type StorageConfig struct {
 	DataDir string       `hcl:"data_dir,optional" mapstructure:"data_dir"`
 	Pebble  PebbleConfig `hcl:"pebble,block" mapstructure:"pebble"`
+	// AttachmentDedupMinSize is the minimum encoded attachment size at or above
+	// which an attachment is split into its own deduplicated blob (Phase 9).
+	// Empty defaults to 32 KB; "0" disables splitting.
+	AttachmentDedupMinSize string `hcl:"attachment_dedup_min_size,optional" mapstructure:"attachment_dedup_min_size"`
+}
+
+const defaultAttachmentDedupMinSize = 32 * 1024 // 32 KB
+
+// AttachmentDedupMinBytes returns the attachment split threshold in bytes. An
+// empty or unparseable value defaults to 32 KB. A configured "0" (or negative)
+// disables splitting — callers treat <= 0 as "never split".
+func (s *StorageConfig) AttachmentDedupMinBytes() int64 {
+	if s.AttachmentDedupMinSize == "" {
+		return defaultAttachmentDedupMinSize
+	}
+	n, err := ParseSize(s.AttachmentDedupMinSize)
+	if err != nil {
+		return defaultAttachmentDedupMinSize
+	}
+	return n
 }
 
 type PebbleConfig struct {
@@ -495,6 +515,7 @@ func Defaults() *Config {
 			Pebble: PebbleConfig{
 				CacheSize: "256MB",
 			},
+			AttachmentDedupMinSize: "32KB",
 		},
 		SMTP: SMTPConfig{
 			Enabled:        true,

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"strconv"
@@ -31,6 +30,7 @@ type popMsg struct {
 	guid     string
 	blobHash string
 	size     int64
+	meta     *bongov1.MailMeta // for reconstructing split messages at RETR/TOP
 }
 
 // session handles a single POP3 connection.
@@ -421,7 +421,7 @@ func (s *session) handleRetr(args string) {
 	}
 
 	msg := &s.messages[num-1]
-	data, err := s.fetchBlob(msg.blobHash)
+	data, err := store.RawMessageBytes(s.blobs, msg.meta)
 	if err != nil {
 		s.logger.Error("pop3: failed to fetch blob", "hash", msg.blobHash, "error", err)
 		s.respond("-ERR failed to retrieve message")
@@ -460,7 +460,7 @@ func (s *session) handleTop(args string) {
 	}
 
 	msg := &s.messages[num-1]
-	data, err := s.fetchBlob(msg.blobHash)
+	data, err := store.RawMessageBytes(s.blobs, msg.meta)
 	if err != nil {
 		s.logger.Error("pop3: failed to fetch blob", "hash", msg.blobHash, "error", err)
 		s.respond("-ERR failed to retrieve message")
@@ -536,8 +536,8 @@ func (s *session) loadInboxSnapshot() error {
 			continue
 		}
 
-		var meta bongov1.MailMeta
-		if err := proto.Unmarshal(data, &meta); err != nil {
+		meta := &bongov1.MailMeta{}
+		if err := proto.Unmarshal(data, meta); err != nil {
 			s.logger.Warn("pop3: invalid mail meta", "guid", msg.MailGuid, "error", err)
 			continue
 		}
@@ -552,20 +552,11 @@ func (s *session) loadInboxSnapshot() error {
 			guid:     msg.MailGuid,
 			blobHash: meta.RawMessage.Hash,
 			size:     meta.RawMessage.Size,
+			meta:     meta,
 		})
 	}
 
 	return nil
-}
-
-// fetchBlob reads the entire blob content.
-func (s *session) fetchBlob(hash string) ([]byte, error) {
-	rc, err := s.blobs.Get(hash)
-	if err != nil {
-		return nil, err
-	}
-	defer rc.Close()
-	return io.ReadAll(rc)
 }
 
 // writeByteStuffed writes message data with POP3 byte-stuffing.
