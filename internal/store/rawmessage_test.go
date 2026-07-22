@@ -274,6 +274,34 @@ func TestStoreSplitRecordsDedupMetrics(t *testing.T) {
 	}
 }
 
+// TestStoreSplitReportsDedupBreakdown: the SplitStored result carries the
+// per-message dedup counts that deliver/compose log — first store writes the
+// attachment, the second (same attachment) reports it deduped with bytes saved.
+func TestStoreSplitReportsDedupBreakdown(t *testing.T) {
+	bs, err := NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	first, err := StoreSplit(bs, []byte(bigAttachmentMessage("breakdown one")), 1024)
+	if err != nil || first == nil {
+		t.Fatalf("StoreSplit first = (%v, %v)", first, err)
+	}
+	if first.BlobsWritten != 1 || first.BlobsDeduped != 0 || first.BytesSaved != 0 {
+		t.Fatalf("first: written=%d deduped=%d saved=%d, want 1/0/0",
+			first.BlobsWritten, first.BlobsDeduped, first.BytesSaved)
+	}
+
+	second, err := StoreSplit(bs, []byte(bigAttachmentMessage("breakdown two differs")), 1024)
+	if err != nil || second == nil {
+		t.Fatalf("StoreSplit second = (%v, %v)", second, err)
+	}
+	if second.BlobsWritten != 0 || second.BlobsDeduped != 1 || second.BytesSaved <= 0 {
+		t.Fatalf("second: written=%d deduped=%d saved=%d, want 0/1/>0",
+			second.BlobsWritten, second.BlobsDeduped, second.BytesSaved)
+	}
+}
+
 // TestFullRawMessageCorruptLayout: a layout that references a missing attachment
 // blob fails cleanly rather than panicking.
 func TestFullRawMessageCorruptLayout(t *testing.T) {

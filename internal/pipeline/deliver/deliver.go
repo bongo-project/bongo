@@ -92,8 +92,12 @@ func (p *DeliverProcessor) trySplit(raw []byte, id string) *store.SplitStored {
 		return nil
 	}
 	if split != nil {
-		p.logger.Debug("deliver: stored message as skeleton + attachment blobs",
-			"id", id, "attachments", len(split.Attachments))
+		p.logger.Info("deliver: attachment dedup",
+			"id", id,
+			"attachments", len(split.Attachments),
+			"blobs_written", split.BlobsWritten,
+			"blobs_deduped", split.BlobsDeduped,
+			"bytes_saved", split.BytesSaved)
 	}
 	return split
 }
