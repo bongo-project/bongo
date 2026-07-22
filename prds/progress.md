@@ -431,3 +431,27 @@ entry point. Routed EVERY full-message reader through it:
   "dryrun", confirm the logged candidates look right, then flip to "on".
 - Tests: planBlobSweep (referenced kept / young skipped / 2-pass grace /
   newly-referenced spared), collectReferencedBlobs, BlobGCMode.
+
+## 2026-07-22 — Task 9.6: outbound/sent-mail dedup (touches relay) — DONE
+
+- store.StoreSplit(bs, raw, minSize): shared helper = PrepareSplit + Put blobs +
+  byte-exact self-check; (result,nil)=split, (nil,nil)=whole-raw, (nil,err)=fall
+  back+log. deliver.trySplit refactored onto it (removed duplicated logic).
+- proto: OutboundMessage += layout (repeated MessageSegment) + attachments
+  (repeated BlobRef). Non-empty layout => blob_hash is a skeleton.
+- compose Send + SaveDraft: stopped storing decoded attachment blobs; StoreSplit
+  the assembled raw; meta + proto.Clone'd recipientMeta + OutboundMessage all
+  reference the split (skeleton + encoded attachment blobs + layout). Whole-raw
+  fallback on any split error. ComposeHandler.SetAttachmentDedup wired from config.
+- queue worker processMessage: when msg.Layout is non-empty, reconstruct the full
+  raw byte-exact via store.RawMessageBytes BEFORE DKIM-sign + relay, so the wire
+  message and signature are unchanged. Legacy (empty layout) reads the whole blob
+  as before.
+- KEY: unlike inbound (9.4), compose CONTROLS storage, so it stores the skeleton
+  directly instead of a whole raw -> NO orphaned raw -> immediate per-message
+  saving even before the blob GC is enabled, plus cross-message attachment dedup.
+- Tests: StoreSplit round-trip; worker reconstructs a split OutboundMessage and
+  gets past reconstruction to relay; compose SaveDraft with a large attachment
+  splits, reconstructs byte-exact, and the attachment decodes to the original
+  bytes. Full handler -race (410s), store/queue/deliver/agent -race, lint 0, gosec
+  0 new (added one justified #nosec G115 for the bounded attachment index).

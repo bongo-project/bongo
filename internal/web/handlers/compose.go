@@ -51,7 +51,15 @@ type ComposeHandler struct {
 	resolver    localRecipientResolver // unified address→userID resolver (task 4.3)
 	addresses   *store.AddressStore    // for send-as From picker and enforcement (task 5.1)
 	logger      *slog.Logger
+
+	// dedupMinSize is the attachment-dedup threshold (Phase 9). > 0 stores sent
+	// mail as a skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
+	dedupMinSize int
 }
+
+// SetAttachmentDedup sets the minimum encoded-attachment size for splitting sent
+// mail into deduplicated blobs. A non-positive value disables it.
+func (h *ComposeHandler) SetAttachmentDedup(minSize int) { h.dedupMinSize = minSize }
 
 // NewComposeHandler creates a ComposeHandler.
 func NewComposeHandler(pebble *store.PebbleStore, blobs *store.BlobStore, mailboxes *store.MailboxStore, search *store.SearchManager, applier store.RaftApplier, logger *slog.Logger) *ComposeHandler {
@@ -336,8 +344,13 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Process file attachments.
-	var attachments []*bongov1.BlobRef
+	// Process file attachments. The payloads are assembled into the RFC 5322
+	// message below; they are NOT stored as standalone decoded blobs. When the
+	// message is split (Phase 9) the encoded spans become the deduplicated
+	// attachment blobs; otherwise the whole raw is stored. attachmentMeta carries
+	// display metadata (filename/size/type, no hash) used only in the whole-raw
+	// case, where the attachment is served by reconstructing from the raw.
+	var attachmentMeta []*bongov1.BlobRef
 	var attachmentFiles []attachmentData
 	if r.MultipartForm != nil && r.MultipartForm.File["attachments"] != nil {
 		for _, fh := range r.MultipartForm.File["attachments"] {
@@ -358,12 +371,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			if contentType == "" || contentType == "application/octet-stream" {
 				contentType = http.DetectContentType(data)
 			}
-			hash, err := h.blobs.Put(data)
-			if err != nil {
-				continue
-			}
-			attachments = append(attachments, &bongov1.BlobRef{
-				Hash:        hash,
+			attachmentMeta = append(attachmentMeta, &bongov1.BlobRef{
 				Size:        fh.Size,
 				ContentType: contentType,
 				Filename:    fh.Filename,
@@ -415,14 +423,30 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		searchBody = body
 	}
 
-	// Store blob.
-	hash, err := h.blobs.Put(rawMsg)
-	if err != nil {
-		http.Error(w, "Failed to store message", http.StatusInternalServerError)
-		return
+	// Store the message: a skeleton + deduplicated attachment blobs when it
+	// carries a large attachment (Phase 9), else the whole raw. StoreSplit
+	// self-checks byte-exact reconstruction; on any split error we fall back to
+	// whole-raw so a message is never stored in a form that cannot be reproduced.
+	rawHash := ""
+	metaAttachments := attachmentMeta
+	var layout []*bongov1.MessageSegment
+	if split, serr := store.StoreSplit(h.blobs, rawMsg, h.dedupMinSize); split != nil {
+		rawHash = split.SkeletonHash
+		metaAttachments = split.Attachments
+		layout = split.Layout
+	} else {
+		if serr != nil {
+			h.logger.Warn("compose: attachment split failed, storing whole raw", "user", userID, "error", serr)
+		}
+		wh, err := h.blobs.Put(rawMsg)
+		if err != nil {
+			http.Error(w, "Failed to store message", http.StatusInternalServerError)
+			return
+		}
+		rawHash = wh
 	}
 
-	guid := fmt.Sprintf("%d-%s", time.Now().UnixNano(), hash[:8])
+	guid := fmt.Sprintf("%d-%s", time.Now().UnixNano(), rawHash[:8])
 
 	// Create MailMeta. meta.From is set to fromAddr (the chosen From address)
 	// so the stored copy reflects the actual sender identity.
@@ -435,10 +459,11 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		Cc:         splitRecipients(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
-			Hash: hash,
+			Hash: rawHash,
 			Size: int64(len(rawMsg)),
 		},
-		Attachments: attachments,
+		Attachments: metaAttachments,
+		Layout:      layout,
 		InReplyTo:   inReplyTo,
 		References:  references,
 	}
@@ -505,7 +530,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 			SenderId:    userID,
 			SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From (task 5.1)
 			Recipients:  externalRecipients,
-			BlobHash:    hash,
+			BlobHash:    rawHash, // skeleton hash when split; the queue reconstructs before relaying
+			Layout:      layout,
+			Attachments: metaAttachments,
 			MessageGuid: meta.MessageId,
 		}
 		if err := h.queueStore.Enqueue(outMsg); err != nil {
@@ -568,8 +595,10 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	body := r.FormValue("body")
 	bodyMode := r.FormValue("body_mode")
 
-	// Process file attachments for draft.
-	var attachments []*bongov1.BlobRef
+	// Process file attachments for draft. As with Send, payloads are assembled
+	// into the message rather than stored as standalone decoded blobs; the split
+	// (or whole-raw) store below handles persistence.
+	var attachmentMeta []*bongov1.BlobRef
 	var attachmentFiles []attachmentData
 	if r.MultipartForm != nil && r.MultipartForm.File["attachments"] != nil {
 		for _, fh := range r.MultipartForm.File["attachments"] {
@@ -586,12 +615,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 			if contentType == "" || contentType == "application/octet-stream" {
 				contentType = http.DetectContentType(data)
 			}
-			hash, err := h.blobs.Put(data)
-			if err != nil {
-				continue
-			}
-			attachments = append(attachments, &bongov1.BlobRef{
-				Hash:        hash,
+			attachmentMeta = append(attachmentMeta, &bongov1.BlobRef{
 				Size:        fh.Size,
 				ContentType: contentType,
 				Filename:    fh.Filename,
@@ -629,13 +653,26 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		rawMsg = buildRFC5322WithAttachments(email, to, cc, subject, body, draftMessageID, "", "", attachmentFiles)
 	}
 
-	hash, err := h.blobs.Put(rawMsg)
-	if err != nil {
-		http.Error(w, "Failed to store draft", http.StatusInternalServerError)
-		return
+	rawHash := ""
+	metaAttachments := attachmentMeta
+	var layout []*bongov1.MessageSegment
+	if split, serr := store.StoreSplit(h.blobs, rawMsg, h.dedupMinSize); split != nil {
+		rawHash = split.SkeletonHash
+		metaAttachments = split.Attachments
+		layout = split.Layout
+	} else {
+		if serr != nil {
+			h.logger.Warn("compose: draft split failed, storing whole raw", "user", userID, "error", serr)
+		}
+		wh, err := h.blobs.Put(rawMsg)
+		if err != nil {
+			http.Error(w, "Failed to store draft", http.StatusInternalServerError)
+			return
+		}
+		rawHash = wh
 	}
 
-	guid := fmt.Sprintf("draft-%d-%s", time.Now().UnixNano(), hash[:8])
+	guid := fmt.Sprintf("draft-%d-%s", time.Now().UnixNano(), rawHash[:8])
 
 	meta := &bongov1.MailMeta{
 		Guid:       guid,
@@ -645,10 +682,11 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		Cc:         splitRecipients(cc),
 		ReceivedAt: time.Now().Unix(),
 		RawMessage: &bongov1.BlobRef{
-			Hash: hash,
+			Hash: rawHash,
 			Size: int64(len(rawMsg)),
 		},
-		Attachments: attachments,
+		Attachments: metaAttachments,
+		Layout:      layout,
 	}
 	// A draft is authored by the user, not received mail: mark it Seen so it
 	// does not count as unread.

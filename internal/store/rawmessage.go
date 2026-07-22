@@ -1,12 +1,64 @@
 package store
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 
 	"github.com/bongo-go/bongo-go/internal/attsplit"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// SplitStored is the result of storing a message in split form: the skeleton blob
+// hash plus the attachment BlobRefs and layout to reconstruct the original.
+type SplitStored struct {
+	SkeletonHash string
+	Attachments  []*bongov1.BlobRef
+	Layout       []*bongov1.MessageSegment
+}
+
+// StoreSplit stores raw as a skeleton + deduplicated attachment blobs when it
+// carries an attachment of at least minSize, then verifies byte-exact
+// reconstruction. It returns:
+//   - (result, nil) when the message was split and self-checked;
+//   - (nil, nil)    when it should be stored whole (dedup disabled via minSize<=0
+//     or no qualifying attachment);
+//   - (nil, err)    when a split was attempted but a blob write or the self-check
+//     failed — the caller must fall back to whole-raw storage and log err.
+//
+// The self-check makes splitting safe to run by default: a message that cannot be
+// rebuilt byte-for-byte is never stored in split form.
+func StoreSplit(bs *BlobStore, raw []byte, minSize int) (*SplitStored, error) {
+	if bs == nil {
+		return nil, nil
+	}
+	sm := PrepareSplit(raw, minSize)
+	if sm == nil {
+		return nil, nil
+	}
+	skeletonHash, err := bs.Put(sm.Skeleton)
+	if err != nil {
+		return nil, fmt.Errorf("store skeleton: %w", err)
+	}
+	for _, enc := range sm.Encoded {
+		if _, err := bs.Put(enc); err != nil {
+			return nil, fmt.Errorf("store attachment blob: %w", err)
+		}
+	}
+	check := &bongov1.MailMeta{
+		RawMessage:  &bongov1.BlobRef{Hash: skeletonHash},
+		Attachments: sm.Attachments,
+		Layout:      sm.Layout,
+	}
+	got, err := RawMessageBytes(bs, check)
+	if err != nil {
+		return nil, fmt.Errorf("split self-check read: %w", err)
+	}
+	if !bytes.Equal(got, raw) {
+		return nil, fmt.Errorf("split self-check: reconstruction is not byte-exact")
+	}
+	return &SplitStored{SkeletonHash: skeletonHash, Attachments: sm.Attachments, Layout: sm.Layout}, nil
+}
 
 // SplitMessage is a message prepared for de-MIME'd ("split") storage: a skeleton
 // blob (the message with large attachment payloads removed) plus the attachment
@@ -38,7 +90,9 @@ func PrepareSplit(raw []byte, minSize int) *SplitMessage {
 	for _, seg := range segs {
 		if seg.Attachment {
 			sm.Layout = append(sm.Layout, &bongov1.MessageSegment{
-				Kind:            bongov1.MessageSegment_ATTACHMENT,
+				Kind: bongov1.MessageSegment_ATTACHMENT,
+				// #nosec G115 -- attachment index is bounded by the message's MIME
+				// part count (a handful), never anywhere near int32 overflow.
 				AttachmentIndex: int32(seg.AttIndex),
 			})
 		} else {

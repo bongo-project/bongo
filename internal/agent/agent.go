@@ -772,6 +772,10 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Mailboxes != nil {
 			composeH := handlers.NewComposeHandler(a.Store, a.Blobs, a.Mailboxes, a.Search, a, a.logger)
+			// Attachment dedup for sent mail / drafts (Phase 9): store a skeleton
+			// + deduplicated attachment blobs; the queue reconstructs byte-exact
+			// before relaying.
+			composeH.SetAttachmentDedup(int(a.Config.Storage.AttachmentDedupMinBytes()))
 			if a.QueueStore != nil {
 				composeH.SetQueueStore(a.QueueStore)
 			}

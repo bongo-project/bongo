@@ -4,6 +4,9 @@ package bongo.v1;
 
 option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
 
+import "proto/bongo/v1/blob.proto";
+import "proto/bongo/v1/mail.proto";
+
 enum MessageStatus {
   MESSAGE_STATUS_UNSPECIFIED = 0;
   MESSAGE_STATUS_PENDING = 1;
@@ -25,6 +28,13 @@ message OutboundMessage {
   string status_reason = 10;
   repeated string failed_recipients = 11;
   string message_guid = 12;
+
+  // Attachment-dedup (Phase 9). When layout is non-empty, blob_hash points at a
+  // message skeleton and the queue worker reconstructs the full RFC822 message
+  // from the skeleton + attachments before relaying. Empty layout means blob_hash
+  // is the whole raw message (the default / self-check fallback).
+  repeated MessageSegment layout = 13;
+  repeated BlobRef attachments = 14;
 }
 
 message QueueStats {

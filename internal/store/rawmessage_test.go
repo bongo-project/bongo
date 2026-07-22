@@ -194,6 +194,48 @@ func TestRawMessageBytesRealStore(t *testing.T) {
 	}
 }
 
+// TestStoreSplitRoundTrip: StoreSplit stores + self-checks, and the result
+// reconstructs byte-exact (this is exactly what the queue relay relies on).
+func TestStoreSplitRoundTrip(t *testing.T) {
+	bs, err := NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	raw := []byte(bigAttachmentMessage("store split"))
+
+	split, err := StoreSplit(bs, raw, 1024)
+	if err != nil {
+		t.Fatalf("StoreSplit: %v", err)
+	}
+	if split == nil {
+		t.Fatal("expected a split")
+	}
+	if len(split.Layout) == 0 || split.SkeletonHash == "" {
+		t.Fatal("split result missing skeleton/layout")
+	}
+
+	// Reconstruct exactly as the queue worker does, from the split refs.
+	meta := &bongov1.MailMeta{
+		RawMessage:  &bongov1.BlobRef{Hash: split.SkeletonHash},
+		Attachments: split.Attachments,
+		Layout:      split.Layout,
+	}
+	got, err := RawMessageBytes(bs, meta)
+	if err != nil {
+		t.Fatalf("RawMessageBytes: %v", err)
+	}
+	if !bytes.Equal(got, raw) {
+		t.Fatal("StoreSplit result did not reconstruct byte-exact")
+	}
+
+	// Below threshold: no split.
+	small := []byte("Subject: tiny\r\nContent-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n--B--\r\n")
+	if s, err := StoreSplit(bs, small, 1<<20); s != nil || err != nil {
+		t.Fatalf("below-threshold StoreSplit = (%v, %v), want (nil, nil)", s, err)
+	}
+}
+
 // TestFullRawMessageCorruptLayout: a layout that references a missing attachment
 // blob fails cleanly rather than panicking.
 func TestFullRawMessageCorruptLayout(t *testing.T) {
