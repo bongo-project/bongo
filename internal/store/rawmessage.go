@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/bongo-go/bongo-go/internal/attsplit"
+	"github.com/bongo-go/bongo-go/internal/observability"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -40,7 +41,15 @@ func StoreSplit(bs *BlobStore, raw []byte, minSize int) (*SplitStored, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store skeleton: %w", err)
 	}
-	for _, enc := range sm.Encoded {
+	for i, enc := range sm.Encoded {
+		// Record dedup before writing: a blob that already exists is a saving
+		// (the encoded bytes are not re-stored), a new one is a write.
+		if bs.Exists(sm.Attachments[i].Hash) {
+			observability.AttachmentDedupBlobsTotal.WithLabelValues("deduped").Inc()
+			observability.AttachmentDedupBytesSavedTotal.Add(float64(len(enc)))
+		} else {
+			observability.AttachmentDedupBlobsTotal.WithLabelValues("written").Inc()
+		}
 		if _, err := bs.Put(enc); err != nil {
 			return nil, fmt.Errorf("store attachment blob: %w", err)
 		}

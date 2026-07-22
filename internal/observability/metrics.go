@@ -82,6 +82,31 @@ var AntispamScore = factory.NewHistogram(
 	},
 )
 
+// AttachmentDedupBlobsTotal counts attachment blobs processed while splitting a
+// message into a skeleton + content-addressed attachment blobs, labelled by
+// result.
+//
+// Results:
+//   - "written": the attachment blob was new and stored on disk
+//   - "deduped": an identical attachment blob already existed; the write was skipped
+var AttachmentDedupBlobsTotal = factory.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "bongo_attachment_dedup_blobs_total",
+		Help: "Attachment blobs processed during message split, by result (written vs deduped).",
+	},
+	[]string{"result"},
+)
+
+// AttachmentDedupBytesSavedTotal counts the encoded attachment bytes that were
+// NOT re-stored because an identical blob already existed. It is the running
+// storage saving delivered by attachment deduplication.
+var AttachmentDedupBytesSavedTotal = factory.NewCounter(
+	prometheus.CounterOpts{
+		Name: "bongo_attachment_dedup_bytes_saved_total",
+		Help: "Total encoded attachment bytes not re-stored because an identical blob already existed.",
+	},
+)
+
 // Handler returns an http.Handler that serves Prometheus metrics. Mount at /metrics.
 func Handler() http.Handler {
 	return promhttp.HandlerFor(Registry, promhttp.HandlerOpts{
