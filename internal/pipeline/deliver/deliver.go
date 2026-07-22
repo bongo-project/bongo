@@ -52,6 +52,13 @@ type DeliverProcessor struct {
 	logger   *slog.Logger
 	queuer   ForwardQueuer
 	prefs    PreferenceProvider
+
+	// blobs and dedupMinSize enable attachment deduplication (Phase 9): when set,
+	// inbound messages with an attachment part whose encoded body is >=
+	// dedupMinSize are stored as a skeleton + separate attachment blobs. nil blobs
+	// or a non-positive threshold keeps whole-raw storage.
+	blobs        *store.BlobStore
+	dedupMinSize int
 }
 
 // SetQueuer sets the outbound queue for forwarding messages.
@@ -59,6 +66,66 @@ func (p *DeliverProcessor) SetQueuer(q ForwardQueuer) { p.queuer = q }
 
 // SetPreferences sets the preference provider for account-level forwarding.
 func (p *DeliverProcessor) SetPreferences(pp PreferenceProvider) { p.prefs = pp }
+
+// SetAttachmentDedup enables attachment splitting with the given blob store and
+// minimum encoded-attachment size in bytes. A non-positive size disables it.
+func (p *DeliverProcessor) SetAttachmentDedup(blobs *store.BlobStore, minSize int) {
+	p.blobs = blobs
+	p.dedupMinSize = minSize
+}
+
+// splitResult carries the stored skeleton hash plus the attachment refs and
+// layout for a de-MIME'd message.
+type splitResult struct {
+	skeletonHash string
+	attachments  []*bongov1.BlobRef
+	layout       []*bongov1.MessageSegment
+}
+
+// trySplit stores the message as a skeleton + deduplicated attachment blobs and
+// returns the resulting refs. It returns nil (so the caller keeps whole-raw
+// storage) when dedup is disabled, the message has no qualifying attachment, a
+// blob write fails, or — critically — the reconstruction self-check does not
+// reproduce the original bytes. This makes splitting safe to run by default: a
+// message that cannot be rebuilt byte-for-byte is never stored in the split form.
+func (p *DeliverProcessor) trySplit(raw []byte, id string) *splitResult {
+	if p.blobs == nil || p.dedupMinSize <= 0 {
+		return nil
+	}
+	sm := store.PrepareSplit(raw, p.dedupMinSize)
+	if sm == nil {
+		return nil
+	}
+
+	skeletonHash, err := p.blobs.Put(sm.Skeleton)
+	if err != nil {
+		p.logger.Warn("deliver: storing skeleton failed, keeping whole raw", "id", id, "error", err)
+		return nil
+	}
+	for _, enc := range sm.Encoded {
+		if _, err := p.blobs.Put(enc); err != nil {
+			p.logger.Warn("deliver: storing attachment blob failed, keeping whole raw", "id", id, "error", err)
+			return nil
+		}
+	}
+
+	// Self-check (FR-7): reconstruct from the stored blobs and require byte-exact
+	// equality with the original before committing to the split form.
+	check := &bongov1.MailMeta{
+		RawMessage:  &bongov1.BlobRef{Hash: skeletonHash},
+		Attachments: sm.Attachments,
+		Layout:      sm.Layout,
+	}
+	got, err := store.RawMessageBytes(p.blobs, check)
+	if err != nil || !bytes.Equal(got, raw) {
+		p.logger.Warn("deliver: attachment split self-check failed, keeping whole raw", "id", id, "error", err)
+		return nil
+	}
+
+	p.logger.Debug("deliver: stored message as skeleton + attachment blobs",
+		"id", id, "attachments", len(sm.Attachments), "skeleton_bytes", len(sm.Skeleton), "raw_bytes", len(raw))
+	return &splitResult{skeletonHash: skeletonHash, attachments: sm.Attachments, layout: sm.Layout}
+}
 
 // NewDeliverProcessor constructs a DeliverProcessor with the required dependencies.
 func NewDeliverProcessor(applier RaftApplier, resolver RecipientResolver, logger *slog.Logger) *DeliverProcessor {
@@ -153,15 +220,23 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		}
 	}
 
-	// Collect attachment BlobRefs from inline parts.
+	// Attachment handling. By default we keep the whole raw message
+	// (env.BlobHash) and record attachment metadata only. When attachment dedup
+	// is enabled and a message carries a large-enough attachment, we instead
+	// store a skeleton + separate deduplicated attachment blobs and reconstruct
+	// the original on read (Phase 9). rawHash is the blob the metadata points at.
+	rawHash := env.BlobHash
 	var attachmentRefs []*bongov1.BlobRef
-	if parsed != nil {
+	var layout []*bongov1.MessageSegment
+
+	if split := p.trySplit(raw, env.Id); split != nil {
+		rawHash = split.skeletonHash
+		attachmentRefs = split.attachments
+		layout = split.layout
+	} else if parsed != nil {
 		for _, att := range parsed.Attachments {
-			// We do not re-store blobs here: the SMTP handler already stored
-			// the raw message. Attachment content is accessible via the raw
-			// message blob. We record metadata only (no hash available without
-			// re-storing). Future work can extract attachment hashes during
-			// ingest and carry them in the envelope.
+			// Metadata only (no per-attachment blob): the payload lives inside the
+			// whole raw message blob.
 			attachmentRefs = append(attachmentRefs, &bongov1.BlobRef{
 				Size:        int64(len(att.Content)),
 				ContentType: att.ContentType,
@@ -231,11 +306,12 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			Cc:         ccAddrs,
 			ReceivedAt: receivedAt.Unix(),
 			RawMessage: &bongov1.BlobRef{
-				Hash:        env.BlobHash,
+				Hash:        rawHash,
 				Size:        int64(len(raw)),
 				ContentType: "message/rfc822",
 			},
 			Attachments:   attachmentRefs,
+			Layout:        layout,
 			InReplyTo:     inReplyTo,
 			References:    references,
 			SpamScore:     spamScore,

@@ -388,3 +388,24 @@ entry point. Routed EVERY full-message reader through it:
   de-risks the read path before 9.4 turns ingest splitting on.
 - Tests: real-BlobStore round-trip (split + legacy). Full imap/pop3/config green,
   handlers lint 0.
+
+## 2026-07-22 — Task 9.4: inbound ingest split — DONE (default on)
+
+- DeliverProcessor.SetAttachmentDedup(blobs, minSize); wired in agent.go from
+  config.Storage.AttachmentDedupMinBytes() (default 32KB, on by default).
+- trySplit(raw,id): store.PrepareSplit -> Put skeleton + each attachment blob ->
+  SELF-CHECK via store.RawMessageBytes (must byte-equal the original) -> on any
+  error or mismatch, return nil so the caller keeps whole-raw storage (+ WARN).
+  Computed once per message; skeleton/attachment refs shared across recipients.
+  meta.RawMessage -> skeleton hash, meta.Attachments carry hashes, meta.Layout
+  set. RawMessage.Size stays the FULL original size (per 9.5 decision).
+- Tests: split+byte-exact reconstruct, below-threshold whole-raw, disabled
+  whole-raw, shared-attachment dedup (2nd delivery adds only its skeleton blob).
+- IMPORTANT CAVEAT (feeds 9.7): there is NO blob GC yet (only orphan-MAIL and
+  orphan-USER sweeps; the only blob Delete is sync-integrity). So when a message
+  is split, the original whole-raw blob (env.BlobHash) becomes orphaned but is
+  NEVER collected -> per-unique-message storage temporarily INCREASES; only
+  recurring-attachment dedup saves today. Net savings require 9.7's blob GC to
+  reclaim orphaned raws. Forwarding is SAFE precisely because nothing deletes
+  env.BlobHash (the forward OutboundMessage still reads it). 9.7 GC must treat
+  BOTH mail-meta refs AND pending queue OutboundMessage.BlobHash as live.
