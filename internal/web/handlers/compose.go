@@ -434,6 +434,12 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		rawHash = split.SkeletonHash
 		metaAttachments = split.Attachments
 		layout = split.Layout
+		h.logger.Info("compose: attachment dedup",
+			"user", userID,
+			"attachments", len(split.Attachments),
+			"blobs_written", split.BlobsWritten,
+			"blobs_deduped", split.BlobsDeduped,
+			"bytes_saved", split.BytesSaved)
 	} else {
 		if serr != nil {
 			h.logger.Warn("compose: attachment split failed, storing whole raw", "user", userID, "error", serr)
@@ -660,6 +666,12 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 		rawHash = split.SkeletonHash
 		metaAttachments = split.Attachments
 		layout = split.Layout
+		h.logger.Info("compose: attachment dedup",
+			"user", userID,
+			"attachments", len(split.Attachments),
+			"blobs_written", split.BlobsWritten,
+			"blobs_deduped", split.BlobsDeduped,
+			"bytes_saved", split.BytesSaved)
 	} else {
 		if serr != nil {
 			h.logger.Warn("compose: draft split failed, storing whole raw", "user", userID, "error", serr)

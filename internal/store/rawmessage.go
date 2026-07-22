@@ -12,10 +12,18 @@ import (
 
 // SplitStored is the result of storing a message in split form: the skeleton blob
 // hash plus the attachment BlobRefs and layout to reconstruct the original.
+//
+// BlobsWritten/BlobsDeduped/BytesSaved summarise the dedup outcome for this
+// message so callers can log it (the same numbers feed the Prometheus counters
+// in observability). BytesSaved is the encoded byte total of the attachments
+// that were already present and therefore not re-stored.
 type SplitStored struct {
 	SkeletonHash string
 	Attachments  []*bongov1.BlobRef
 	Layout       []*bongov1.MessageSegment
+	BlobsWritten int
+	BlobsDeduped int
+	BytesSaved   int64
 }
 
 // StoreSplit stores raw as a skeleton + deduplicated attachment blobs when it
@@ -41,13 +49,18 @@ func StoreSplit(bs *BlobStore, raw []byte, minSize int) (*SplitStored, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store skeleton: %w", err)
 	}
+	var written, deduped int
+	var bytesSaved int64
 	for i, enc := range sm.Encoded {
 		// Record dedup before writing: a blob that already exists is a saving
 		// (the encoded bytes are not re-stored), a new one is a write.
 		if bs.Exists(sm.Attachments[i].Hash) {
+			deduped++
+			bytesSaved += int64(len(enc))
 			observability.AttachmentDedupBlobsTotal.WithLabelValues("deduped").Inc()
 			observability.AttachmentDedupBytesSavedTotal.Add(float64(len(enc)))
 		} else {
+			written++
 			observability.AttachmentDedupBlobsTotal.WithLabelValues("written").Inc()
 		}
 		if _, err := bs.Put(enc); err != nil {
@@ -66,7 +79,14 @@ func StoreSplit(bs *BlobStore, raw []byte, minSize int) (*SplitStored, error) {
 	if !bytes.Equal(got, raw) {
 		return nil, fmt.Errorf("split self-check: reconstruction is not byte-exact")
 	}
-	return &SplitStored{SkeletonHash: skeletonHash, Attachments: sm.Attachments, Layout: sm.Layout}, nil
+	return &SplitStored{
+		SkeletonHash: skeletonHash,
+		Attachments:  sm.Attachments,
+		Layout:       sm.Layout,
+		BlobsWritten: written,
+		BlobsDeduped: deduped,
+		BytesSaved:   bytesSaved,
+	}, nil
 }
 
 // SplitMessage is a message prepared for de-MIME'd ("split") storage: a skeleton
