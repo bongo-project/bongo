@@ -16,8 +16,14 @@
 
 services:
   bongo:
-    # local dev build: docker build -f deploy/Dockerfile -t ghcr.io/lhaig/bongo-go:latest ..
-    image: ghcr.io/lhaig/bongo-go:0.3.14
+    # Image is built and pushed by hand (CI is currently disabled) — from the
+    # repo root:
+    #   docker build -f deploy/Dockerfile \
+    #     --build-arg VERSION=X.Y.Z --build-arg COMMIT=$(git rev-parse --short HEAD) \
+    #     --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+    #     -t ghcr.io/lhaig/bongo-go:X.Y.Z -t ghcr.io/lhaig/bongo-go:latest .
+    #   docker push ghcr.io/lhaig/bongo-go:X.Y.Z && docker push ghcr.io/lhaig/bongo-go:latest
+    image: ghcr.io/lhaig/bongo-go:0.6.11
     container_name: bongo
     restart: unless-stopped
     mem_limit: 512m

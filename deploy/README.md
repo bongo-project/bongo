@@ -191,10 +191,23 @@ docker compose logs -f bongo        # watch startup
 docker compose restart bongo
 ```
 
-> **Image source:** CI publishes `ghcr.io/lhaig/bongo-go` on every push to `main`
-> and on version tags. If the package is private, run `docker login ghcr.io`
-> (e.g. with a GitHub personal access token that has `read:packages`) before
-> pulling, or make the package public in the GitHub repository settings.
+> **Image source:** CI publishing is currently **disabled**, so
+> `ghcr.io/lhaig/bongo-go` images are built and pushed by hand. From the repo
+> root, for version `X.Y.Z`:
+>
+> ```bash
+> docker build -f deploy/Dockerfile \
+>   --build-arg VERSION=X.Y.Z \
+>   --build-arg COMMIT=$(git rev-parse --short HEAD) \
+>   --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+>   -t ghcr.io/lhaig/bongo-go:X.Y.Z -t ghcr.io/lhaig/bongo-go:latest .
+> docker push ghcr.io/lhaig/bongo-go:X.Y.Z
+> docker push ghcr.io/lhaig/bongo-go:latest
+> ```
+>
+> Then bump the `image:` pin in `docker-compose.yml` to `X.Y.Z`. Pushing (and,
+> if the package is private, pulling) needs `docker login ghcr.io` with a GitHub
+> personal access token that has `write:packages` / `read:packages`.
 
 Confirm Traefik picked up the routers (its dashboard is on `:8080`), and that
 `certs-dumper` wrote the cert:
