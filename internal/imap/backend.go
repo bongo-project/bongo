@@ -709,13 +709,9 @@ func (s *session) loadMailContent(guid string) (*bongov1.MailMeta, []byte, error
 		return &meta, nil, nil
 	}
 
-	rc, err := s.blobs.Get(meta.RawMessage.Hash)
-	if err != nil {
-		return &meta, nil, fmt.Errorf("reading blob: %w", err)
-	}
-	defer rc.Close()
-
-	rawMsg, err := io.ReadAll(rc)
+	// Reconstruct the full message (splits are rebuilt byte-exact; legacy
+	// whole-raw records pass through unchanged).
+	rawMsg, err := store.RawMessageBytes(s.blobs, &meta)
 	if err != nil {
 		return &meta, nil, fmt.Errorf("reading raw message: %w", err)
 	}

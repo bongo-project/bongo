@@ -145,6 +145,55 @@ func TestFullRawMessageSharedAttachmentDedup(t *testing.T) {
 	}
 }
 
+// TestRawMessageBytesRealStore exercises the helper every reader uses against a
+// real BlobStore, for both a split record and a legacy whole-raw record.
+func TestRawMessageBytesRealStore(t *testing.T) {
+	bs, err := NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	// Split record.
+	raw := []byte(bigAttachmentMessage("real store"))
+	sm := PrepareSplit(raw, 1024)
+	if sm == nil {
+		t.Fatal("expected a split")
+	}
+	skHash, err := bs.Put(sm.Skeleton)
+	if err != nil {
+		t.Fatalf("put skeleton: %v", err)
+	}
+	for _, enc := range sm.Encoded {
+		if _, err := bs.Put(enc); err != nil {
+			t.Fatalf("put attachment: %v", err)
+		}
+	}
+	splitMeta := &bongov1.MailMeta{
+		RawMessage:  &bongov1.BlobRef{Hash: skHash, Size: int64(len(raw))},
+		Attachments: sm.Attachments,
+		Layout:      sm.Layout,
+	}
+	got, err := RawMessageBytes(bs, splitMeta)
+	if err != nil {
+		t.Fatalf("RawMessageBytes(split): %v", err)
+	}
+	if !bytes.Equal(got, raw) {
+		t.Fatal("split record did not reconstruct byte-exact via real store")
+	}
+
+	// Legacy record.
+	legacy := []byte("From: x@y\r\nSubject: legacy\r\n\r\nbody\r\n")
+	lh, _ := bs.Put(legacy)
+	legacyMeta := &bongov1.MailMeta{RawMessage: &bongov1.BlobRef{Hash: lh}}
+	got2, err := RawMessageBytes(bs, legacyMeta)
+	if err != nil {
+		t.Fatalf("RawMessageBytes(legacy): %v", err)
+	}
+	if !bytes.Equal(got2, legacy) {
+		t.Fatal("legacy passthrough altered the message via real store")
+	}
+}
+
 // TestFullRawMessageCorruptLayout: a layout that references a missing attachment
 // blob fails cleanly rather than panicking.
 func TestFullRawMessageCorruptLayout(t *testing.T) {

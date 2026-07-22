@@ -690,9 +690,7 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 	// htmlBody drives the rich editor; plainBody seeds the plain textarea.
 	var htmlBody, plainBody string
 	if meta.RawMessage != nil && h.blobs != nil {
-		if rc, err := h.blobs.Get(meta.RawMessage.Hash); err == nil {
-			raw, _ := io.ReadAll(rc)
-			_ = rc.Close()
+		if raw, err := store.RawMessageBytes(h.blobs, meta); err == nil {
 			if env, err := enmime.ReadEnvelope(bytes.NewReader(raw)); err == nil {
 				if env.HTML != "" {
 					htmlBody = sanitize.Compose(env.HTML)
@@ -816,13 +814,10 @@ func (h *ComposeHandler) loadQuotedBody(userID string, meta *bongov1.MailMeta) s
 		return ""
 	}
 
-	rc, err := h.blobs.Get(meta.RawMessage.Hash)
+	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
 		return ""
 	}
-	defer rc.Close()
-
-	rawMsg, _ := io.ReadAll(rc)
 	env, err := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 	if err != nil {
 		return ""

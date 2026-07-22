@@ -546,13 +546,8 @@ func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid st
 // call sites, each with its own enmime.ReadEnvelope).
 func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) {
 	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
-		rc, err := h.blobs.Get(meta.RawMessage.Hash)
+		rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 		if err == nil {
-			rawMsg, _ := io.ReadAll(rc)
-			if cerr := rc.Close(); cerr != nil {
-				rawMsg = nil
-			}
-
 			env, perr := enmime.ReadEnvelope(bytes.NewReader(rawMsg))
 			if perr == nil {
 				if env.HTML != "" {
@@ -1057,22 +1052,20 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rc, err := h.blobs.Get(meta.RawMessage.Hash)
+	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
 		http.Error(w, "Message blob not found", http.StatusNotFound)
 		return
 	}
-	defer rc.Close()
 
 	// Sanitize filename from subject.
 	filename := sanitizeFilename(meta.Subject) + ".eml"
 
 	w.Header().Set("Content-Type", "message/rfc822")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	if meta.RawMessage.Size > 0 {
-		w.Header().Set("Content-Length", strconv.FormatInt(meta.RawMessage.Size, 10))
-	}
-	if _, err := io.Copy(w, rc); err != nil {
+	// Length of the reconstructed message (skeleton size would be wrong for split records).
+	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(rawMsg)), 10))
+	if _, err := w.Write(rawMsg); err != nil {
 		return
 	}
 }
@@ -1219,15 +1212,7 @@ func (h *MailHandler) ServeAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rc, err := h.blobs.Get(meta.RawMessage.Hash)
-	if err != nil {
-		http.Error(w, "Attachment not found", http.StatusNotFound)
-		return
-	}
-	rawMsg, err := io.ReadAll(rc)
-	if cerr := rc.Close(); err == nil {
-		err = cerr
-	}
+	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
 		http.Error(w, "Attachment not found", http.StatusNotFound)
 		return
@@ -1997,14 +1982,7 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 		return
 	}
 
-	rc, err := h.blobs.Get(meta.RawMessage.Hash)
-	if err != nil {
-		return
-	}
-	rawMsg, err := io.ReadAll(rc)
-	if closeErr := rc.Close(); err == nil {
-		err = closeErr
-	}
+	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
 		return
 	}
@@ -2134,14 +2112,7 @@ func (h *MailHandler) trainBayes(userID, guid string, isSpam bool) {
 		return
 	}
 
-	rc, err := h.blobs.Get(meta.RawMessage.Hash)
-	if err != nil {
-		return
-	}
-	rawMsg, err := io.ReadAll(rc)
-	if closeErr := rc.Close(); err == nil {
-		err = closeErr
-	}
+	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
 	if err != nil {
 		return
 	}

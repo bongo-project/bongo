@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/bongo-go/bongo-go/internal/attsplit"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -24,6 +25,9 @@ type SplitMessage struct {
 // would not be split (no qualifying attachment), so the caller keeps storing the
 // whole raw as before.
 func PrepareSplit(raw []byte, minSize int) *SplitMessage {
+	if minSize <= 0 { // splitting disabled
+		return nil
+	}
 	sk := attsplit.Split(raw, minSize)
 	if len(sk.Parts) == 0 {
 		return nil
@@ -54,6 +58,25 @@ func PrepareSplit(raw []byte, minSize int) *SplitMessage {
 		sm.Encoded = append(sm.Encoded, p.Encoded)
 	}
 	return sm
+}
+
+// RawMessageBytes returns the complete original RFC822 message for meta, fetching
+// blobs from bs. It reconstructs split records and passes legacy whole-raw
+// records through unchanged. This is the single entry point every full-message
+// reader (IMAP FETCH, web view, download, export, re-parse) should use instead
+// of fetching meta.RawMessage directly.
+func RawMessageBytes(bs *BlobStore, meta *bongov1.MailMeta) ([]byte, error) {
+	if bs == nil {
+		return nil, fmt.Errorf("raw message bytes: nil blob store")
+	}
+	return FullRawMessage(meta, func(hash string) ([]byte, error) {
+		rc, err := bs.Get(hash)
+		if err != nil {
+			return nil, err
+		}
+		defer rc.Close()
+		return io.ReadAll(rc)
+	})
 }
 
 // FullRawMessage returns the complete original RFC822 bytes for meta. For a split

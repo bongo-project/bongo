@@ -301,6 +301,29 @@ func TestQueueConfigDefault(t *testing.T) {
 	}
 }
 
+func TestAttachmentDedupMinBytes(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int64
+	}{
+		{"", 32 * 1024},
+		{"32KB", 32 * 1024},
+		{"64KB", 64 * 1024},
+		{"1MB", 1024 * 1024},
+		{"0", 0}, // explicitly disabled
+		{"garbage", 32 * 1024},
+	}
+	for _, tt := range tests {
+		sc := &StorageConfig{AttachmentDedupMinSize: tt.in}
+		if got := sc.AttachmentDedupMinBytes(); got != tt.want {
+			t.Errorf("AttachmentDedupMinBytes(%q) = %d, want %d", tt.in, got, tt.want)
+		}
+	}
+	if got := Defaults().Storage.AttachmentDedupMinBytes(); got != 32*1024 {
+		t.Errorf("default = %d, want 32 KB", got)
+	}
+}
+
 func TestPipelineConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
