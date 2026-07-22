@@ -144,24 +144,43 @@ func (w *Worker) poll(ctx context.Context) {
 }
 
 func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessage) {
-	// Read raw message from blob store.
-	rc, err := w.blobs.Get(msg.BlobHash)
-	if err != nil {
-		w.logger.Error("queue: blob not found", "hash", msg.BlobHash, "error", err)
-		w.handleFailure(msg, "blob not found: "+err.Error())
-		return
-	}
-	rawMsg, err := io.ReadAll(rc)
-	closeErr := rc.Close()
-	if err != nil {
-		w.logger.Error("queue: reading blob", "error", err)
-		w.handleFailure(msg, "reading blob: "+err.Error())
-		return
-	}
-	if closeErr != nil {
-		w.logger.Error("queue: closing blob", "error", closeErr)
-		w.handleFailure(msg, "closing blob: "+closeErr.Error())
-		return
+	// Read the full raw message. A split record (Phase 9) stores a skeleton +
+	// attachment blobs; the queue reconstructs the exact original bytes here
+	// before signing/relaying, so DKIM and the wire message are unchanged.
+	var rawMsg []byte
+	if len(msg.Layout) > 0 {
+		meta := &bongov1.MailMeta{
+			RawMessage:  &bongov1.BlobRef{Hash: msg.BlobHash},
+			Attachments: msg.Attachments,
+			Layout:      msg.Layout,
+		}
+		reconstructed, err := store.RawMessageBytes(w.blobs, meta)
+		if err != nil {
+			w.logger.Error("queue: reconstructing split message", "hash", msg.BlobHash, "error", err)
+			w.handleFailure(msg, "reconstructing message: "+err.Error())
+			return
+		}
+		rawMsg = reconstructed
+	} else {
+		rc, err := w.blobs.Get(msg.BlobHash)
+		if err != nil {
+			w.logger.Error("queue: blob not found", "hash", msg.BlobHash, "error", err)
+			w.handleFailure(msg, "blob not found: "+err.Error())
+			return
+		}
+		raw, err := io.ReadAll(rc)
+		closeErr := rc.Close()
+		if err != nil {
+			w.logger.Error("queue: reading blob", "error", err)
+			w.handleFailure(msg, "reading blob: "+err.Error())
+			return
+		}
+		if closeErr != nil {
+			w.logger.Error("queue: closing blob", "error", closeErr)
+			w.handleFailure(msg, "closing blob: "+closeErr.Error())
+			return
+		}
+		rawMsg = raw
 	}
 
 	// DKIM sign — registry selects signer by From domain; unkeyed domains are

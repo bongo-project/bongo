@@ -75,56 +75,27 @@ func (p *DeliverProcessor) SetAttachmentDedup(blobs *store.BlobStore, minSize in
 }
 
 // splitResult carries the stored skeleton hash plus the attachment refs and
-// layout for a de-MIME'd message.
-type splitResult struct {
-	skeletonHash string
-	attachments  []*bongov1.BlobRef
-	layout       []*bongov1.MessageSegment
-}
+// layout for a de-MIME'd message (see store.StoreSplit).
 
-// trySplit stores the message as a skeleton + deduplicated attachment blobs and
-// returns the resulting refs. It returns nil (so the caller keeps whole-raw
-// storage) when dedup is disabled, the message has no qualifying attachment, a
-// blob write fails, or — critically — the reconstruction self-check does not
-// reproduce the original bytes. This makes splitting safe to run by default: a
-// message that cannot be rebuilt byte-for-byte is never stored in the split form.
-func (p *DeliverProcessor) trySplit(raw []byte, id string) *splitResult {
+// trySplit stores the message as a skeleton + deduplicated attachment blobs via
+// store.StoreSplit and returns the resulting refs. It returns nil (so the caller
+// keeps whole-raw storage) when dedup is disabled, the message has no qualifying
+// attachment, a blob write fails, or the reconstruction self-check does not
+// reproduce the original bytes — making splitting safe to run by default.
+func (p *DeliverProcessor) trySplit(raw []byte, id string) *store.SplitStored {
 	if p.blobs == nil || p.dedupMinSize <= 0 {
 		return nil
 	}
-	sm := store.PrepareSplit(raw, p.dedupMinSize)
-	if sm == nil {
-		return nil
-	}
-
-	skeletonHash, err := p.blobs.Put(sm.Skeleton)
+	split, err := store.StoreSplit(p.blobs, raw, p.dedupMinSize)
 	if err != nil {
-		p.logger.Warn("deliver: storing skeleton failed, keeping whole raw", "id", id, "error", err)
+		p.logger.Warn("deliver: attachment split failed, keeping whole raw", "id", id, "error", err)
 		return nil
 	}
-	for _, enc := range sm.Encoded {
-		if _, err := p.blobs.Put(enc); err != nil {
-			p.logger.Warn("deliver: storing attachment blob failed, keeping whole raw", "id", id, "error", err)
-			return nil
-		}
+	if split != nil {
+		p.logger.Debug("deliver: stored message as skeleton + attachment blobs",
+			"id", id, "attachments", len(split.Attachments))
 	}
-
-	// Self-check (FR-7): reconstruct from the stored blobs and require byte-exact
-	// equality with the original before committing to the split form.
-	check := &bongov1.MailMeta{
-		RawMessage:  &bongov1.BlobRef{Hash: skeletonHash},
-		Attachments: sm.Attachments,
-		Layout:      sm.Layout,
-	}
-	got, err := store.RawMessageBytes(p.blobs, check)
-	if err != nil || !bytes.Equal(got, raw) {
-		p.logger.Warn("deliver: attachment split self-check failed, keeping whole raw", "id", id, "error", err)
-		return nil
-	}
-
-	p.logger.Debug("deliver: stored message as skeleton + attachment blobs",
-		"id", id, "attachments", len(sm.Attachments), "skeleton_bytes", len(sm.Skeleton), "raw_bytes", len(raw))
-	return &splitResult{skeletonHash: skeletonHash, attachments: sm.Attachments, layout: sm.Layout}
+	return split
 }
 
 // NewDeliverProcessor constructs a DeliverProcessor with the required dependencies.
@@ -230,9 +201,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	var layout []*bongov1.MessageSegment
 
 	if split := p.trySplit(raw, env.Id); split != nil {
-		rawHash = split.skeletonHash
-		attachmentRefs = split.attachments
-		layout = split.layout
+		rawHash = split.SkeletonHash
+		attachmentRefs = split.Attachments
+		layout = split.Layout
 	} else if parsed != nil {
 		for _, att := range parsed.Attachments {
 			// Metadata only (no per-attachment blob): the payload lives inside the

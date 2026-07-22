@@ -90,8 +90,14 @@ type OutboundMessage struct {
 	StatusReason     string                 `protobuf:"bytes,10,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
 	FailedRecipients []string               `protobuf:"bytes,11,rep,name=failed_recipients,json=failedRecipients,proto3" json:"failed_recipients,omitempty"`
 	MessageGuid      string                 `protobuf:"bytes,12,opt,name=message_guid,json=messageGuid,proto3" json:"message_guid,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Attachment-dedup (Phase 9). When layout is non-empty, blob_hash points at a
+	// message skeleton and the queue worker reconstructs the full RFC822 message
+	// from the skeleton + attachments before relaying. Empty layout means blob_hash
+	// is the whole raw message (the default / self-check fallback).
+	Layout        []*MessageSegment `protobuf:"bytes,13,rep,name=layout,proto3" json:"layout,omitempty"`
+	Attachments   []*BlobRef        `protobuf:"bytes,14,rep,name=attachments,proto3" json:"attachments,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *OutboundMessage) Reset() {
@@ -208,6 +214,20 @@ func (x *OutboundMessage) GetMessageGuid() string {
 	return ""
 }
 
+func (x *OutboundMessage) GetLayout() []*MessageSegment {
+	if x != nil {
+		return x.Layout
+	}
+	return nil
+}
+
+func (x *OutboundMessage) GetAttachments() []*BlobRef {
+	if x != nil {
+		return x.Attachments
+	}
+	return nil
+}
+
 type QueueStats struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	PendingCount         int32                  `protobuf:"varint,1,opt,name=pending_count,json=pendingCount,proto3" json:"pending_count,omitempty"`
@@ -272,7 +292,7 @@ var File_proto_bongo_v1_queue_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\n" +
-	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\"\xac\x03\n" +
+	"\x1aproto/bongo/v1/queue.proto\x12\bbongo.v1\x1a\x19proto/bongo/v1/blob.proto\x1a\x19proto/bongo/v1/mail.proto\"\x93\x04\n" +
 	"\x0fOutboundMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1b\n" +
 	"\tsender_id\x18\x02 \x01(\tR\bsenderId\x12!\n" +
@@ -289,7 +309,9 @@ const file_proto_bongo_v1_queue_proto_rawDesc = "" +
 	"\rstatus_reason\x18\n" +
 	" \x01(\tR\fstatusReason\x12+\n" +
 	"\x11failed_recipients\x18\v \x03(\tR\x10failedRecipients\x12!\n" +
-	"\fmessage_guid\x18\f \x01(\tR\vmessageGuid\"\x8a\x01\n" +
+	"\fmessage_guid\x18\f \x01(\tR\vmessageGuid\x120\n" +
+	"\x06layout\x18\r \x03(\v2\x18.bongo.v1.MessageSegmentR\x06layout\x123\n" +
+	"\vattachments\x18\x0e \x03(\v2\x11.bongo.v1.BlobRefR\vattachments\"\x8a\x01\n" +
 	"\n" +
 	"QueueStats\x12#\n" +
 	"\rpending_count\x18\x01 \x01(\x05R\fpendingCount\x12!\n" +
@@ -320,14 +342,18 @@ var file_proto_bongo_v1_queue_proto_goTypes = []any{
 	(MessageStatus)(0),      // 0: bongo.v1.MessageStatus
 	(*OutboundMessage)(nil), // 1: bongo.v1.OutboundMessage
 	(*QueueStats)(nil),      // 2: bongo.v1.QueueStats
+	(*MessageSegment)(nil),  // 3: bongo.v1.MessageSegment
+	(*BlobRef)(nil),         // 4: bongo.v1.BlobRef
 }
 var file_proto_bongo_v1_queue_proto_depIdxs = []int32{
 	0, // 0: bongo.v1.OutboundMessage.status:type_name -> bongo.v1.MessageStatus
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	3, // 1: bongo.v1.OutboundMessage.layout:type_name -> bongo.v1.MessageSegment
+	4, // 2: bongo.v1.OutboundMessage.attachments:type_name -> bongo.v1.BlobRef
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_proto_bongo_v1_queue_proto_init() }
@@ -335,6 +361,8 @@ func file_proto_bongo_v1_queue_proto_init() {
 	if File_proto_bongo_v1_queue_proto != nil {
 		return
 	}
+	file_proto_bongo_v1_blob_proto_init()
+	file_proto_bongo_v1_mail_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

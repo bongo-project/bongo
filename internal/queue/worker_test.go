@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,6 +153,51 @@ func TestWorkerRecordsMetrics(t *testing.T) {
 	failedAfter := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("failed"))
 	if failedAfter-failedBefore != 1 {
 		t.Errorf("failed counter delta = %v, want 1", failedAfter-failedBefore)
+	}
+}
+
+// TestWorkerReconstructsSplitMessage: a split OutboundMessage (skeleton + layout
+// + attachment blobs) is reconstructed byte-exact before relay. The harness relay
+// has no SMTP server so delivery fails and the message retries — the point is it
+// gets PAST reconstruction rather than failing at it.
+func TestWorkerReconstructsSplitMessage(t *testing.T) {
+	worker, qs, blobs := newWorkerTestEnv(t, true)
+
+	att := strings.Repeat("QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5Cg", 60) // ~3 KB
+	raw := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: split relay\r\n" +
+		"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nbody\r\n" +
+		"--B\r\nContent-Type: application/pdf; name=\"a.pdf\"\r\n" +
+		"Content-Disposition: attachment; filename=\"a.pdf\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + att + "\r\n--B--\r\n")
+
+	split, err := store.StoreSplit(blobs, raw, 1024)
+	if err != nil || split == nil {
+		t.Fatalf("StoreSplit = (%v, %v), want a split", split, err)
+	}
+
+	if err := qs.Enqueue(&bongov1.OutboundMessage{
+		Id:          "split-relay-1",
+		SenderEmail: "alice@example.com",
+		Recipients:  []string{"bob@external.com"},
+		BlobHash:    split.SkeletonHash,
+		Layout:      split.Layout,
+		Attachments: split.Attachments,
+	}); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	worker.poll(context.Background())
+
+	retrieved, err := qs.Get("split-relay-1")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if strings.Contains(retrieved.StatusReason, "reconstructing") {
+		t.Fatalf("message failed at reconstruction: %q", retrieved.StatusReason)
+	}
+	if retrieved.AttemptCount != 1 {
+		t.Errorf("attempt_count = %d, want 1 (reconstructed, relayed, network-failed)", retrieved.AttemptCount)
 	}
 }
 
