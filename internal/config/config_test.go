@@ -324,6 +324,29 @@ func TestAttachmentDedupMinBytes(t *testing.T) {
 	}
 }
 
+func TestBlobGCMode(t *testing.T) {
+	cases := map[string]string{
+		"":        "off",
+		"off":     "off",
+		"garbage": "off",
+		"dryrun":  "dryrun",
+		"dry-run": "dryrun",
+		"on":      "on",
+		"ON":      "on",
+		"enabled": "on",
+	}
+	for in, want := range cases {
+		sc := &StorageConfig{BlobGC: in}
+		if got := sc.BlobGCMode(); got != want {
+			t.Errorf("BlobGCMode(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// Default config is off (opt-in).
+	if got := Defaults().Storage.BlobGCMode(); got != "off" {
+		t.Errorf("default BlobGCMode = %q, want off", got)
+	}
+}
+
 func TestPipelineConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string

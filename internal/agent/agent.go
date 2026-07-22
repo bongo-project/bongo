@@ -1448,6 +1448,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 	// their ID). Deletion only happens on a second consecutive sighting.
 	prevMail := map[string]bool{}
 	prevUsers := map[string]bool{}
+	prevBlobs := map[string]bool{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -1455,8 +1456,136 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 		case <-ticker.C:
 			prevMail = a.sweepOrphanedMail(prevMail, minAge)
 			prevUsers = a.sweepOrphanedUsers(prevUsers)
+			// Blob GC is opt-in (Phase 9): off by default, with a dry-run mode to
+			// validate before it ever deletes.
+			if mode := a.Config.Storage.BlobGCMode(); mode != "off" {
+				prevBlobs = a.sweepOrphanedBlobs(prevBlobs, minAge, mode == "dryrun")
+			}
 		}
 	}
+}
+
+// collectReferencedBlobs returns the set of blob hashes still referenced by
+// persistent state: every MailMeta (raw_message + attachments, across all users
+// and mailboxes) and every queued OutboundMessage. These are the only two Pebble
+// value types that reference the blob store, so this set is complete.
+func collectReferencedBlobs(ps *store.PebbleStore) (map[string]bool, error) {
+	ref := map[string]bool{}
+
+	mailIter, err := ps.PrefixScan([]byte("/user/"))
+	if err != nil {
+		return nil, fmt.Errorf("scanning mail: %w", err)
+	}
+	for mailIter.Next() {
+		if !bytes.Contains(mailIter.Key(), []byte("/mail/")) {
+			continue
+		}
+		val, err := mailIter.Value()
+		if err != nil {
+			continue
+		}
+		var meta bongov1.MailMeta
+		if proto.Unmarshal(val, &meta) != nil {
+			continue
+		}
+		if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
+			ref[meta.RawMessage.Hash] = true
+		}
+		for _, att := range meta.Attachments {
+			if att.Hash != "" {
+				ref[att.Hash] = true
+			}
+		}
+	}
+	if err := mailIter.Close(); err != nil {
+		return nil, fmt.Errorf("closing mail iterator: %w", err)
+	}
+
+	for _, prefix := range []string{"/queue/pending/", "/queue/bounced/"} {
+		qIter, err := ps.PrefixScan([]byte(prefix))
+		if err != nil {
+			return nil, fmt.Errorf("scanning %s: %w", prefix, err)
+		}
+		for qIter.Next() {
+			val, err := qIter.Value()
+			if err != nil {
+				continue
+			}
+			var msg bongov1.OutboundMessage
+			if proto.Unmarshal(val, &msg) != nil {
+				continue
+			}
+			if msg.BlobHash != "" {
+				ref[msg.BlobHash] = true
+			}
+		}
+		if err := qIter.Close(); err != nil {
+			return nil, fmt.Errorf("closing queue iterator: %w", err)
+		}
+	}
+	return ref, nil
+}
+
+// planBlobSweep decides which blobs to reclaim this pass. blobMTimes maps each
+// stored blob hash to its file mod time. A blob is a candidate when it is
+// unreferenced and older than cutoff; it is returned in toDelete only if it was
+// also a candidate in the previous pass (prev) — a one-interval grace so a blob
+// written just before its referencing metadata is never reclaimed. current is
+// the candidate set to carry into the next pass.
+func planBlobSweep(referenced map[string]bool, blobMTimes map[string]time.Time, prev map[string]bool, cutoff time.Time) (current map[string]bool, toDelete []string) {
+	current = map[string]bool{}
+	for h, mt := range blobMTimes {
+		if referenced[h] || mt.After(cutoff) {
+			continue
+		}
+		current[h] = true
+		if prev[h] {
+			toDelete = append(toDelete, h)
+		}
+	}
+	return current, toDelete
+}
+
+// sweepOrphanedBlobs runs one blob-GC pass: collect referenced blobs, list the
+// blob store, and reclaim blobs unreferenced for two consecutive passes and older
+// than minAge. dryRun logs candidates without deleting. Leader-only.
+func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, dryRun bool) map[string]bool {
+	if a.Raft == nil || !a.IsLeader() || a.Blobs == nil || a.Store == nil {
+		return map[string]bool{}
+	}
+	referenced, err := collectReferencedBlobs(a.Store)
+	if err != nil {
+		a.logger.Warn("blob-gc: collecting references failed", "error", err)
+		return prev
+	}
+	hashes, err := a.Blobs.List()
+	if err != nil {
+		a.logger.Warn("blob-gc: listing blobs failed", "error", err)
+		return prev
+	}
+	mtimes := make(map[string]time.Time, len(hashes))
+	for _, h := range hashes {
+		if mt, err := a.Blobs.ModTime(h); err == nil {
+			mtimes[h] = mt
+		}
+	}
+	current, toDelete := planBlobSweep(referenced, mtimes, prev, time.Now().Add(-minAge))
+	deleted := 0
+	for _, h := range toDelete {
+		if dryRun {
+			a.logger.Info("blob-gc: would delete orphaned blob (dry-run)", "hash", h)
+			continue
+		}
+		if err := a.Blobs.Delete(h); err != nil {
+			a.logger.Warn("blob-gc: deleting orphaned blob failed", "hash", h, "error", err)
+			continue
+		}
+		deleted++
+	}
+	if len(toDelete) > 0 {
+		a.logger.Info("blob-gc: swept orphaned blobs", "candidates", len(toDelete), "deleted", deleted, "dry_run", dryRun)
+	}
+	return current
 }
 
 // sweepOrphanedUsers runs one pass reconciling the SQLite users index against
