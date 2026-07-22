@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -177,6 +178,103 @@ func TestServeAttachmentSVGNeverInline(t *testing.T) {
 	if cd := rec.Header().Get("Content-Disposition"); cd != "attachment" {
 		t.Errorf("SVG Content-Disposition = %q, want attachment", cd)
 	}
+}
+
+// TestSplitAttachmentDecodedOnDownload guards the split-attachment display path:
+// a de-MIME'd record's attachment blob holds the ENCODED span, so the display
+// must route the attachment through the decoding message-scoped route (not the
+// blob hash), and downloading it must yield the DECODED file, never base64.
+func TestSplitAttachmentDecodedOnDownload(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+	bs, err := store.NewBlobStore(dir + "/blobs")
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	mailboxes := store.NewMailboxStore(ps, &directApplierTags{ps: ps})
+	if err := mailboxes.CreateMailbox("user1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox: %v", err)
+	}
+
+	decoded := bytes.Repeat([]byte("PDF-BYTES-"), 500) // ~5 KB "pdf" payload
+	b64 := strings.Join(chunk76(base64.StdEncoding.EncodeToString(decoded)), "\r\n")
+	raw := "From: s@ext.test\r\nTo: u@example.com\r\nSubject: doc\r\nMIME-Version: 1.0\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n" +
+		"--B\r\nContent-Type: application/pdf; name=\"doc.pdf\"\r\n" +
+		"Content-Disposition: attachment; filename=\"doc.pdf\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + b64 + "\r\n--B--\r\n"
+
+	sm := store.PrepareSplit([]byte(raw), 512)
+	if sm == nil {
+		t.Fatal("expected the message to split")
+	}
+	skHash, err := bs.Put(sm.Skeleton)
+	if err != nil {
+		t.Fatalf("put skeleton: %v", err)
+	}
+	for _, enc := range sm.Encoded {
+		if _, err := bs.Put(enc); err != nil {
+			t.Fatalf("put attachment: %v", err)
+		}
+	}
+	meta := &bongov1.MailMeta{
+		Guid: "g-split", Subject: "doc",
+		RawMessage:  &bongov1.BlobRef{Hash: skHash, Size: int64(len(raw))},
+		Attachments: sm.Attachments,
+		Layout:      sm.Layout,
+	}
+	uid, err := mailboxes.DeliverMessage("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+
+	h := NewMailHandler(ps, bs, mailboxes, discardLogger())
+
+	// The display must not expose the encoded-span blob hash; it must use the
+	// message-scoped (decoding) route.
+	detail := templates.MessageDetail{Mailbox: "INBOX", UID: uid}
+	h.applyEnvelopeBody(&detail, meta)
+	if len(detail.Attachments) != 1 {
+		t.Fatalf("attachments = %d, want 1", len(detail.Attachments))
+	}
+	if detail.Attachments[0].Hash != "" {
+		t.Errorf("split attachment must not carry the encoded blob hash, got %q", detail.Attachments[0].Hash)
+	}
+	wantURL := fmt.Sprintf("/mail/INBOX/%d/attachment/0", uid)
+	if detail.Attachments[0].URL != wantURL {
+		t.Errorf("split attachment URL = %q, want %q", detail.Attachments[0].URL, wantURL)
+	}
+
+	// Downloading via that route must return the DECODED file, not base64.
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			next.ServeHTTP(w, req.WithContext(middleware.WithUserContext(req.Context(), "user1", "u@example.test")))
+		})
+	})
+	r.Get("/mail/{mailbox}/{uid}/attachment/{idx}", h.ServeAttachment)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, wantURL, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("download status = %d", rec.Code)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), decoded) {
+		t.Fatalf("split attachment download did not decode: got %d bytes, want %d", rec.Body.Len(), len(decoded))
+	}
+}
+
+func chunk76(s string) []string {
+	var out []string
+	for len(s) > 76 {
+		out = append(out, s[:76])
+		s = s[76:]
+	}
+	return append(out, s)
 }
 
 // TestServeAttachmentStreamsInboundZip verifies the message-scoped route serves
