@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
+
+	"github.com/bongo-go/bongo-go/internal/observability"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -233,6 +236,41 @@ func TestStoreSplitRoundTrip(t *testing.T) {
 		"--B\r\nContent-Type: text/plain\r\n\r\nhi\r\n--B--\r\n")
 	if s, err := StoreSplit(bs, small, 1<<20); s != nil || err != nil {
 		t.Fatalf("below-threshold StoreSplit = (%v, %v), want (nil, nil)", s, err)
+	}
+}
+
+// TestStoreSplitRecordsDedupMetrics: storing two different messages that share
+// the same large attachment records one "written" blob and one "deduped" blob,
+// and the deduped one counts as bytes saved (task 9.8 observability).
+func TestStoreSplitRecordsDedupMetrics(t *testing.T) {
+	bs, err := NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	writtenBefore := testutil.ToFloat64(observability.AttachmentDedupBlobsTotal.WithLabelValues("written"))
+	dedupedBefore := testutil.ToFloat64(observability.AttachmentDedupBlobsTotal.WithLabelValues("deduped"))
+	savedBefore := testutil.ToFloat64(observability.AttachmentDedupBytesSavedTotal)
+
+	// Two distinct messages (different subjects) carrying the same attachment.
+	raw1 := []byte(bigAttachmentMessage("metrics one"))
+	raw2 := []byte(bigAttachmentMessage("metrics two is quite different"))
+
+	if _, err := StoreSplit(bs, raw1, 1024); err != nil {
+		t.Fatalf("StoreSplit raw1: %v", err)
+	}
+	if _, err := StoreSplit(bs, raw2, 1024); err != nil {
+		t.Fatalf("StoreSplit raw2: %v", err)
+	}
+
+	if d := testutil.ToFloat64(observability.AttachmentDedupBlobsTotal.WithLabelValues("written")) - writtenBefore; d != 1 {
+		t.Errorf("written delta = %v, want 1", d)
+	}
+	if d := testutil.ToFloat64(observability.AttachmentDedupBlobsTotal.WithLabelValues("deduped")) - dedupedBefore; d != 1 {
+		t.Errorf("deduped delta = %v, want 1", d)
+	}
+	if d := testutil.ToFloat64(observability.AttachmentDedupBytesSavedTotal) - savedBefore; d <= 0 {
+		t.Errorf("bytes_saved delta = %v, want > 0 (the deduped attachment's encoded size)", d)
 	}
 }
 
