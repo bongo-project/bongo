@@ -409,3 +409,25 @@ entry point. Routed EVERY full-message reader through it:
   reclaim orphaned raws. Forwarding is SAFE precisely because nothing deletes
   env.BlobHash (the forward OutboundMessage still reads it). 9.7 GC must treat
   BOTH mail-meta refs AND pending queue OutboundMessage.BlobHash as live.
+
+## 2026-07-22 — Task 9.7: blob garbage collector — DONE (opt-in, dry-run capable)
+
+- Verified the complete set of persistent blob references: MailMeta
+  (raw_message + attachments, across every user/mailbox) and queue
+  OutboundMessage.blob_hash. calendar/contacts/profile protos have NO blob
+  refs (they inline their data), so the referenced-set is complete and safe.
+- collectReferencedBlobs(ps) scans /user/*/mail/* MailMetas + /queue/pending|bounced.
+- planBlobSweep (pure, unit-tested): a blob is deleted only when unreferenced AND
+  older than minAge AND it was a candidate in the previous pass too (one-interval
+  grace, mirrors sweepOrphanedMail). BlobStore.ModTime added for the age gate.
+- sweepOrphanedBlobs is leader-only and hooked into the existing runOrphanGC
+  (15m interval, 1h min-age).
+- SAFETY POSTURE: config storage.blob_gc has three modes — "off" (DEFAULT: never
+  runs), "dryrun" (logs what it would delete, deletes nothing), "on" (deletes).
+  So no data-deleting sweep starts without the operator opting in, and dryrun
+  lets it be validated against real production data first.
+- This is the task that BANKS the 9.4 savings: it reclaims the whole-raw blobs
+  orphaned when messages are split. Recommended rollout: deploy with blob_gc =
+  "dryrun", confirm the logged candidates look right, then flip to "on".
+- Tests: planBlobSweep (referenced kept / young skipped / 2-pass grace /
+  newly-referenced spared), collectReferencedBlobs, BlobGCMode.

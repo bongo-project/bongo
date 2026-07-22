@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // ErrInvalidHash is returned when a blob hash fails validation.
@@ -160,6 +161,20 @@ func (bs *BlobStore) Exists(hash string) bool {
 	}
 	_, err := os.Stat(bs.blobPath(hash))
 	return err == nil
+}
+
+// ModTime returns the last-modified time of a blob file. Used by the blob GC to
+// avoid reclaiming a blob younger than a grace period (an in-flight write, or a
+// message still mid-pipeline whose metadata is not yet persisted).
+func (bs *BlobStore) ModTime(hash string) (time.Time, error) {
+	if !IsValidHash(hash) {
+		return time.Time{}, fmt.Errorf("blob %q: %w", hash, ErrInvalidHash)
+	}
+	fi, err := os.Stat(bs.blobPath(hash))
+	if err != nil {
+		return time.Time{}, err
+	}
+	return fi.ModTime(), nil
 }
 
 // Delete removes a blob file.

@@ -72,6 +72,26 @@ type StorageConfig struct {
 	// which an attachment is split into its own deduplicated blob (Phase 9).
 	// Empty defaults to 32 KB; "0" disables splitting.
 	AttachmentDedupMinSize string `hcl:"attachment_dedup_min_size,optional" mapstructure:"attachment_dedup_min_size"`
+	// BlobGC controls the unreferenced-blob garbage collector (Phase 9):
+	//   "off"    (default) — never runs; blobs are retained forever
+	//   "dryrun"           — logs what it WOULD delete, deletes nothing
+	//   "on"               — deletes blobs unreferenced for two consecutive passes
+	// It is opt-in so a data-deleting sweep never starts without the operator
+	// enabling it, and dryrun lets it be validated in production first.
+	BlobGC string `hcl:"blob_gc,optional" mapstructure:"blob_gc"`
+}
+
+// BlobGCMode returns the normalised blob-GC mode: "off" (default), "dryrun", or
+// "on". Unrecognised values fall back to "off".
+func (s *StorageConfig) BlobGCMode() string {
+	switch strings.ToLower(strings.TrimSpace(s.BlobGC)) {
+	case "dryrun", "dry-run", "dry_run":
+		return "dryrun"
+	case "on", "enabled", "true":
+		return "on"
+	default:
+		return "off"
+	}
 }
 
 const defaultAttachmentDedupMinSize = 32 * 1024 // 32 KB
@@ -451,7 +471,7 @@ type LogConfig struct {
 	MaxSizeMB  int  `hcl:"max_size_mb,optional" mapstructure:"max_size_mb"`   // rotate once the file reaches this size
 	MaxBackups int  `hcl:"max_backups,optional" mapstructure:"max_backups"`   // number of rotated files to retain
 	MaxAgeDays int  `hcl:"max_age_days,optional" mapstructure:"max_age_days"` // delete rotated files older than this
-	Compress   bool `hcl:"compress,optional" mapstructure:"compress"`        // gzip rotated files
+	Compress   bool `hcl:"compress,optional" mapstructure:"compress"`         // gzip rotated files
 }
 
 // Log-file rotation defaults, used when the corresponding config value is unset.
@@ -522,10 +542,10 @@ func Defaults() *Config {
 			Port:           25,
 			SubmissionPort: 587,
 			Limits: SMTPLimits{
-				MaxMessageSize:      "25MB",
-				MaxRecipients:       100,
-				MaxConnections:      1024,
-				FloodThreshold:      50,
+				MaxMessageSize:            "25MB",
+				MaxRecipients:             100,
+				MaxConnections:            1024,
+				FloodThreshold:            50,
 				MessagesPerMinute:         60,
 				MaxConnectionsPerIP:       50,
 				OutboundMessagesPerMinute: 30,
