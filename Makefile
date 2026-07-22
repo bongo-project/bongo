@@ -1,4 +1,4 @@
-.PHONY: all build generate test test-race lint sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
+.PHONY: all build dist generate test test-race lint sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
 
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
@@ -18,6 +18,11 @@ build: generate
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY) ./cmd/bongo-go
 	go build -ldflags "$(BUILD_LDFLAGS)" -o $(BUILD_DIR)/$(IMPORT_BIN) ./cmd/bongo-import
+
+## dist builds shareable standalone binary release zips (linux amd64 + arm64)
+## under dist/. Override targets with: make dist PLATFORMS="linux/amd64".
+dist:
+	scripts/package-release.sh
 
 generate:
 	@touch internal/web/templates/*.templ

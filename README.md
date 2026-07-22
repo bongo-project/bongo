@@ -37,6 +37,21 @@ make lint       # golangci-lint
 make sec        # gosec
 ```
 
+## Quick start (standalone binary)
+
+Run a real server from a single self-contained binary — no Docker, no build
+toolchain. Web assets, templates and translations are all embedded.
+
+```bash
+make dist        # build shareable release zips for linux amd64 + arm64 under dist/
+```
+
+Each zip contains the `bongo-go` and `bongo-import` binaries, a fully annotated
+[`bongo.example.hcl`](deploy/bongo.example.hcl), a `systemd` unit, and an install
+guide. Share the zip; the recipient follows
+[`docs/install.md`](docs/install.md) to install, configure (including an
+external SMTP relay), run under systemd, and create the first admin.
+
 ## Quick start (single server, production)
 
 Run Bongo as a real internet-facing mail server for one or more domains on a
@@ -104,6 +119,8 @@ mTLS configured.
 
 | Doc | What it covers |
 |-----|----------------|
+| [`docs/install.md`](docs/install.md) | Installing and running from the standalone binary zip |
+| [`deploy/bongo.example.hcl`](deploy/bongo.example.hcl) | Fully annotated example configuration (every option) |
 | [`deploy/README.md`](deploy/README.md) | Single-server production deployment (Docker + Traefik) |
 | [`docs/multi-domain-hosting.md`](docs/multi-domain-hosting.md) | Adding and configuring tenant domains |
 | [`docs/dev-quickstart.md`](docs/dev-quickstart.md) | Local development loop |
