@@ -117,7 +117,12 @@ services:
       # otherwise serves the static landing page. Higher priority peels off ONLY
       # the autoconfig paths to bongo; every other apex request still reaches the
       # website container.
-      - "traefik.http.routers.bongo-autoconfig.rule=Host(`${MAIL_DOMAIN:-example.com}`) && (PathPrefix(`/.well-known/autoconfig`) || PathPrefix(`/autodiscover`) || PathPrefix(`/Autodiscover`) || PathPrefix(`/AutoDiscover`) || Path(`/mail/config-v1.1.xml`) || Path(`/.well-known/mobileconfig`))"
+      #
+      # Multi-tenant: to also self-configure additional email domains, set
+      # AUTOCONFIG_EXTRA_HOST_RULE and AUTOCONFIG_SUB_EXTRA_HOST_RULE in .env
+      # (see .env.example). They default to empty, so single-domain deploys are
+      # unaffected.
+      - "traefik.http.routers.bongo-autoconfig.rule=(Host(`${MAIL_DOMAIN:-example.com}`)${AUTOCONFIG_EXTRA_HOST_RULE:-}) && (PathPrefix(`/.well-known/autoconfig`) || PathPrefix(`/autodiscover`) || PathPrefix(`/Autodiscover`) || PathPrefix(`/AutoDiscover`) || Path(`/mail/config-v1.1.xml`) || Path(`/.well-known/mobileconfig`))"
       - "traefik.http.routers.bongo-autoconfig.entrypoints=websecure"
       - "traefik.http.routers.bongo-autoconfig.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       - "traefik.http.routers.bongo-autoconfig.priority=200"
@@ -127,7 +132,7 @@ services:
       # first. Requires DNS A/AAAA records for autoconfig.<domain> and
       # autodiscover.<domain> pointing at this host (Let's Encrypt then issues
       # their certs on demand). Harmless when those DNS records are absent.
-      - "traefik.http.routers.bongo-autoconfig-sub.rule=Host(`autoconfig.${MAIL_DOMAIN:-example.com}`) || Host(`autodiscover.${MAIL_DOMAIN:-example.com}`)"
+      - "traefik.http.routers.bongo-autoconfig-sub.rule=Host(`autoconfig.${MAIL_DOMAIN:-example.com}`) || Host(`autodiscover.${MAIL_DOMAIN:-example.com}`)${AUTOCONFIG_SUB_EXTRA_HOST_RULE:-}"
       - "traefik.http.routers.bongo-autoconfig-sub.entrypoints=websecure"
       - "traefik.http.routers.bongo-autoconfig-sub.tls.certresolver=${TRAEFIK_CERTRESOLVER}"
       - "traefik.http.routers.bongo-autoconfig-sub.priority=200"
