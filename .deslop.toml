@@ -1,0 +1,9 @@
+# Deslop duplicate-analysis config.
+# `exclude` drops files before analysis (never parsed or fingerprinted).
+
+[defaults]
+exclude = [
+  "**/*_templ.go", # templ generate output
+  "**/*.pb.go",    # protoc output
+  "**/*.min.js",   # vendored minified assets
+]

@@ -54,3 +54,6 @@ tmp/
 
 # Local handoff artifacts
 /prds/handoff/
+
+# Deslop duplicate-analysis cache
+.deslop/

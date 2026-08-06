@@ -2039,9 +2039,25 @@ func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1
 
 // MarkSpam moves a message to Junk, updates spam score to 1.0, and trains Bayes.
 func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
+	h.setSpamStatus(w, r, true)
+}
+
+// MarkNotSpam moves a message to INBOX, updates spam score to 0.0, and trains Bayes.
+func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
+	h.setSpamStatus(w, r, false)
+}
+
+// setSpamStatus moves a message to the spam-appropriate mailbox, updates its
+// spam score, and trains the Bayes filter.
+func (h *MailHandler) setSpamStatus(w http.ResponseWriter, r *http.Request, isSpam bool) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
 	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+
+	target, score, action, flash := "INBOX", float32(0.0), "marked as not spam", "Marked+as+not+spam"
+	if isSpam {
+		target, score, action, flash = "Junk", 1.0, "marked as spam", "Marked+as+spam"
+	}
 
 	// Get the mail GUID from the mailbox message.
 	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
@@ -2050,67 +2066,26 @@ func (h *MailHandler) MarkSpam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Move to Junk.
-	if realMailbox != "Junk" {
-		if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), "Junk"); err != nil {
+	if realMailbox != target {
+		if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), target); err != nil {
 			http.Error(w, "Move failed", http.StatusInternalServerError)
 			return
 		}
 	}
 
-	// Update spam score to 1.0.
 	if h.applier != nil {
-		if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 1.0); err != nil {
+		if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, score); err != nil {
 			h.logger.Warn("web: failed to update spam score", "mailbox", mailbox, "uid", uid, "user", userID, "error", err)
 		}
 	}
 
-	// Train Bayes filter.
 	if h.bayes != nil {
-		h.trainBayes(userID, msg.MailGuid, true)
+		h.trainBayes(userID, msg.MailGuid, isSpam)
 	}
 
-	h.logger.Info("web: marked as spam", "mailbox", mailbox, "uid", uid, "user", userID)
+	h.logger.Info("web: "+action, "mailbox", mailbox, "uid", uid, "user", userID)
 
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Marked+as+spam", mailbox))
-	w.WriteHeader(http.StatusOK)
-}
-
-// MarkNotSpam moves a message to INBOX, updates spam score to 0.0, and trains Bayes.
-func (h *MailHandler) MarkNotSpam(w http.ResponseWriter, r *http.Request) {
-	userID, _ := middleware.UserFromContext(r.Context())
-	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
-	uid, _ := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
-
-	msg, realMailbox, err := h.resolveMessage(userID, mailbox, uint32(uid))
-	if err != nil {
-		http.Error(w, "Message not found", http.StatusNotFound)
-		return
-	}
-
-	// Move to INBOX.
-	if realMailbox != "INBOX" {
-		if err := h.mailboxes.MoveMessage(userID, realMailbox, uint32(uid), "INBOX"); err != nil {
-			http.Error(w, "Move failed", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// Update spam score to 0.0.
-	if h.applier != nil {
-		if err := antispam.UpdateSpamScore(h.pebble, h.applier, userID, msg.MailGuid, 0.0); err != nil {
-			h.logger.Warn("web: failed to clear spam score", "mailbox", mailbox, "uid", uid, "user", userID, "error", err)
-		}
-	}
-
-	// Train Bayes filter.
-	if h.bayes != nil {
-		h.trainBayes(userID, msg.MailGuid, false)
-	}
-
-	h.logger.Info("web: marked as not spam", "mailbox", mailbox, "uid", uid, "user", userID)
-
-	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=Marked+as+not+spam", mailbox))
+	w.Header().Set("HX-Redirect", fmt.Sprintf("/mail/%s?flash=%s", mailbox, flash))
 	w.WriteHeader(http.StatusOK)
 }
 
