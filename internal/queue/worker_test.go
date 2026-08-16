@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"log/slog"
@@ -42,6 +43,17 @@ func (m *mockDeliverer) Deliver(from string, recipients []string, r io.Reader) e
 
 func newWorkerTestEnv(t *testing.T, isLeader bool) (*Worker, *QueueStore, *store.BlobStore) {
 	t.Helper()
+	worker, qs, blobs, _ := newWorkerTestEnvWithDeliverer(t, isLeader)
+	return worker, qs, blobs
+}
+
+// newWorkerTestEnvWithDeliverer is the same setup as newWorkerTestEnv but
+// also returns the mockDeliverer underlying the worker's bouncer, so tests
+// can assert on whether a bounce was actually delivered (GenerateAndDeliver
+// unconditionally calls deliverer.Deliver — see bounce.go) rather than on
+// log text alone.
+func newWorkerTestEnvWithDeliverer(t *testing.T, isLeader bool) (*Worker, *QueueStore, *store.BlobStore, *mockDeliverer) {
+	t.Helper()
 	dir := t.TempDir()
 
 	ps, err := store.NewPebbleStore(dir + "/pebble")
@@ -65,7 +77,7 @@ func newWorkerTestEnv(t *testing.T, isLeader bool) (*Worker, *QueueStore, *store
 
 	worker := NewWorker(qs, relay, nil, leader, bouncer, blobs, slog.Default())
 
-	return worker, qs, blobs
+	return worker, qs, blobs, deliverer
 }
 
 func TestNewWorkerPollIntervalDefault(t *testing.T) {
@@ -263,5 +275,161 @@ func TestWorkerMaxRetriesBounces(t *testing.T) {
 	stats, _ := qs.Stats()
 	if stats.FailedCount != 1 {
 		t.Errorf("bounced count = %d, want 1", stats.FailedCount)
+	}
+}
+
+// logLineHasLevel reports whether any line in buf is a slog text-handler
+// record at the given level containing msgSubstr in its msg field. Parsed
+// per line (not a whole-buffer substring match) so a level string embedded
+// in an unrelated field value cannot produce a false positive.
+func logLineHasLevel(t *testing.T, buf *bytes.Buffer, level, msgSubstr string) bool {
+	t.Helper()
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if line == "" {
+			continue
+		}
+		if !strings.Contains(line, "level="+level) {
+			continue
+		}
+		// Match the msg= field specifically. A whole-line Contains would also
+		// match the string appearing inside some other record's attribute
+		// value, which is exactly the kind of assertion that passes for the
+		// wrong reason.
+		_, after, found := strings.Cut(line, " msg=")
+		if !found {
+			continue
+		}
+		if strings.Contains(after, msgSubstr) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestWorkerMaxRetriesBounceSuppressesNullSender covers the worker.go:239
+// max-retries/whole-message bounce path (RFC 3464 s6): a null (empty or
+// whitespace-only) sender must never receive a generated DSN.
+func TestWorkerMaxRetriesBounceSuppressesNullSender(t *testing.T) {
+	tests := []struct {
+		name          string
+		sender        string
+		wantSuppress  bool
+		wantDelivered int
+	}{
+		{name: "empty sender", sender: "", wantSuppress: true, wantDelivered: 0},
+		{name: "whitespace-only sender", sender: "   ", wantSuppress: true, wantDelivered: 0},
+		{name: "populated sender (positive control)", sender: "alice@example.com", wantSuppress: false, wantDelivered: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			worker, qs, blobs, deliverer := newWorkerTestEnvWithDeliverer(t, true)
+
+			var logBuf bytes.Buffer
+			worker.logger = slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			rawMsg := []byte("From: sender@example.com\r\nTo: bob@external.com\r\nSubject: test\r\n\r\nHello")
+			hash, _ := blobs.Put(rawMsg)
+
+			msg := &bongov1.OutboundMessage{
+				Id:           "msg-null-sender",
+				SenderEmail:  tt.sender,
+				Recipients:   []string{"bob@external.com"},
+				BlobHash:     hash,
+				AttemptCount: 9, // Next failure is attempt 10 (>= maxAttempts-1): max-retries bounce path.
+			}
+			if err := qs.Enqueue(msg); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+
+			worker.poll(context.Background())
+
+			// MarkBounced must still have happened regardless of DSN suppression.
+			stats, err := qs.Stats()
+			if err != nil {
+				t.Fatalf("Stats: %v", err)
+			}
+			if stats.FailedCount != 1 {
+				t.Errorf("bounced count = %d, want 1", stats.FailedCount)
+			}
+
+			close(deliverer.messages)
+			var delivered []deliveredMsg
+			for d := range deliverer.messages {
+				delivered = append(delivered, d)
+			}
+			if len(delivered) != tt.wantDelivered {
+				t.Errorf("delivered bounce messages = %d, want %d", len(delivered), tt.wantDelivered)
+			}
+			if tt.wantDelivered == 1 {
+				got := delivered[0]
+				if got.from != "" {
+					t.Errorf("bounce envelope from = %q, want empty (RFC 5321 s6.1 null sender)", got.from)
+				}
+				if len(got.recipients) != 1 || got.recipients[0] != "alice@example.com" {
+					t.Errorf("bounce recipients = %v, want [alice@example.com]", got.recipients)
+				}
+			}
+
+			if tt.wantSuppress {
+				if !logLineHasLevel(t, &logBuf, "INFO", "queue: DSN suppressed for null sender") {
+					t.Errorf("expected INFO suppression log line, got log:\n%s", logBuf.String())
+				}
+			}
+		})
+	}
+}
+
+// TestGenerateBounceGuardsNullSender directly unit-tests the shared helper
+// used by both worker.go:206 and worker.go:239, proving the RFC 3464 s6
+// guard applies identically at both call sites (there is only one copy of
+// the check for the compiler to type-check).
+func TestGenerateBounceGuardsNullSender(t *testing.T) {
+	tests := []struct {
+		name         string
+		sender       string
+		wantDelivery bool
+	}{
+		{name: "empty sender is suppressed", sender: "", wantDelivery: false},
+		{name: "whitespace-only sender is suppressed", sender: "  \t ", wantDelivery: false},
+		{name: "populated sender delivers", sender: "alice@example.com", wantDelivery: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			worker, _, _, deliverer := newWorkerTestEnvWithDeliverer(t, true)
+
+			var logBuf bytes.Buffer
+			worker.logger = slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+			msg := &bongov1.OutboundMessage{
+				Id:          "msg-helper-direct",
+				SenderEmail: tt.sender,
+			}
+
+			worker.generateBounce(msg, []string{"bob@external.com"}, "delivery permanently failed")
+
+			close(deliverer.messages)
+			var delivered []deliveredMsg
+			for d := range deliverer.messages {
+				delivered = append(delivered, d)
+			}
+
+			if tt.wantDelivery {
+				if len(delivered) != 1 {
+					t.Fatalf("delivered = %d, want 1", len(delivered))
+				}
+				if logLineHasLevel(t, &logBuf, "INFO", "queue: DSN suppressed for null sender") {
+					t.Errorf("did not expect a suppression log for a populated sender, got:\n%s", logBuf.String())
+				}
+			} else {
+				if len(delivered) != 0 {
+					t.Fatalf("delivered = %d, want 0 (null sender must not receive a DSN)", len(delivered))
+				}
+				if !logLineHasLevel(t, &logBuf, "INFO", "queue: DSN suppressed for null sender") {
+					t.Errorf("expected INFO suppression log line, got:\n%s", logBuf.String())
+				}
+			}
+		})
 	}
 }

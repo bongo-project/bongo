@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -203,9 +204,7 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		if msg.StatusReason != "" {
 			reason = msg.StatusReason
 		}
-		if err := w.bouncer.GenerateAndDeliver(msg, permanentFails, reason); err != nil {
-			w.logger.Error("queue: bounce generation failed", "error", err)
-		}
+		w.generateBounce(msg, permanentFails, reason)
 		msg.FailedRecipients = append(msg.FailedRecipients, permanentFails...)
 	}
 
@@ -236,9 +235,7 @@ func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
 		// Max retries exhausted — bounce.
 		w.logger.Warn("queue: max retries exhausted, bouncing", "id", msg.Id)
 		if w.bouncer != nil {
-			if err := w.bouncer.GenerateAndDeliver(msg, msg.Recipients, reason); err != nil {
-				w.logger.Error("queue: bounce generation failed", "error", err)
-			}
+			w.generateBounce(msg, msg.Recipients, reason)
 		}
 		if err := w.store.MarkBounced(msg); err != nil {
 			w.logger.Error("queue: marking bounced", "id", msg.Id, "error", err)
@@ -254,5 +251,27 @@ func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {
 	} else {
 		observability.QueueMessagesTotal.WithLabelValues("failed").Inc()
 		w.logger.Info("queue: message retry scheduled", "id", msg.Id, "attempt", msg.AttemptCount+1)
+	}
+}
+
+// generateBounce invokes the bounce generator, unless the failing message has
+// no sender to bounce to. RFC 3464 section 6 prohibits generating a DSN in
+// response to a null-sender message — that is what stops bounce loops between
+// two servers.
+//
+// Both current call sites already check w.bouncer != nil, but this checks too:
+// the whole point of routing both sites through one helper is that a future
+// third caller cannot get it half-right, and a caller that forgets the nil
+// check would panic on an edge node where no bounce generator is configured.
+func (w *Worker) generateBounce(msg *bongov1.OutboundMessage, recipients []string, reason string) {
+	if w.bouncer == nil {
+		return
+	}
+	if strings.TrimSpace(msg.SenderEmail) == "" {
+		w.logger.Info("queue: DSN suppressed for null sender (RFC 3464 s6)", "id", msg.Id, "failed_recipients", recipients)
+		return
+	}
+	if err := w.bouncer.GenerateAndDeliver(msg, recipients, reason); err != nil {
+		w.logger.Error("queue: bounce generation failed", "error", err)
 	}
 }
