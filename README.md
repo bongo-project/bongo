@@ -120,6 +120,7 @@ mTLS configured.
 | Doc | What it covers |
 |-----|----------------|
 | [`docs/install.md`](docs/install.md) | Installing and running from the standalone binary zip |
+| [`docs/walkthrough.md`](docs/walkthrough.md) | Complete walkthrough and troubleshooting (development) |
 | [`deploy/bongo.example.hcl`](deploy/bongo.example.hcl) | Fully annotated example configuration (every option) |
 | [`deploy/README.md`](deploy/README.md) | Single-server production deployment (Docker + Traefik) |
 | [`docs/multi-domain-hosting.md`](docs/multi-domain-hosting.md) | Adding and configuring tenant domains |
