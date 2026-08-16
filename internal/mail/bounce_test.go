@@ -339,10 +339,15 @@ func TestGenerateAndDeliverSignsBounce(t *testing.T) {
 }
 
 // TestGenerateAndDeliverNilRegistry verifies that a nil DKIM registry does not
-// panic and still delivers the bounce, unsigned.
+// panic and still delivers the bounce, unsigned, and that the no-signer
+// warning (FR-2) still fires for a nil registry (the bg.dkim == nil
+// short-circuit must not skip the warning, only the Get call).
 func TestGenerateAndDeliverNilRegistry(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
 	deliverer := &fakeDeliverer{}
-	gen := NewBounceGenerator(deliverer, nil, slog.Default(), "example.test", nil)
+	gen := NewBounceGenerator(deliverer, nil, logger, "example.test", nil)
 
 	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
 	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
@@ -354,6 +359,14 @@ func TestGenerateAndDeliverNilRegistry(t *testing.T) {
 	}
 	if strings.Contains(string(deliverer.data), "DKIM-Signature:") {
 		t.Error("bounce should be unsigned with a nil registry")
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "level=WARN") {
+		t.Errorf("expected a warning-level log entry for a nil registry, got:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, "example.test") {
+		t.Errorf("warning log should name the domain example.test, got:\n%s", logOutput)
 	}
 }
 
@@ -384,8 +397,125 @@ func TestGenerateAndDeliverUnregisteredDomainWarns(t *testing.T) {
 	if !strings.Contains(logOutput, "example.test") {
 		t.Errorf("warning log should name the domain example.test, got:\n%s", logOutput)
 	}
-	if !strings.Contains(strings.ToUpper(logOutput), "WARN") {
+	if !strings.Contains(logOutput, "level=WARN") {
 		t.Errorf("expected a warning-level log entry, got:\n%s", logOutput)
+	}
+}
+
+// TestGenerateAndDeliverUsesNullEnvelopeSender verifies FR-3 (RFC 5321 s6.1):
+// the DSN's envelope sender (the `from` argument to Deliver) must be the null
+// sender "", not MAILER-DAEMON@<domain> — a non-null return path is a
+// bounce-of-a-bounce hazard. The From: header, by contrast, must still
+// identify MAILER-DAEMON@<domain>.
+func TestGenerateAndDeliverUsesNullEnvelopeSender(t *testing.T) {
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, nil, slog.Default(), "example.test", nil)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	if deliverer.from != "" {
+		t.Errorf("envelope sender (Deliver's from argument) = %q, want empty (null sender)", deliverer.from)
+	}
+	if deliverer.data == nil {
+		t.Fatal("Deliver was not called")
+	}
+	raw := string(deliverer.data)
+	if !strings.Contains(raw, "From: MAILER-DAEMON <postmaster@example.test>") {
+		t.Errorf("From header must still be MAILER-DAEMON <postmaster@example.test>, got:\n%s", raw)
+	}
+}
+
+// TestGenerateAndDeliverWarnDomainMatchesSigner is the requirement-B
+// divergence test: it proves the no-signer warning names the domain that
+// DKIMRegistry.Sign actually uses, by constructing bg.domain with a trailing
+// dot ("example.test."). DKIMRegistry.Get only lowercases (dkim_registry.go),
+// while FromRawMessageDomain -> FromHeaderDomain -> normalizeDomain also
+// strips a trailing dot (dmarc.go). Before this change, the guard looked up
+// Get(bg.domain) == Get("example.test.") which misses a signer seeded at
+// "example.test", producing a spurious warning even though Sign (which
+// re-derives the domain from the From header) signs successfully. This test
+// fails on the pre-change code.
+//
+// A trailing-dot domain is reachable in production: ResolveServerDomain
+// returns the SMTP hostname verbatim when publicsuffix parsing fails, and a
+// hostname can be configured with a trailing dot.
+func TestGenerateAndDeliverWarnDomainMatchesSigner(t *testing.T) {
+	_, key := generateTestRSAKey(t)
+	registry := NewDKIMRegistry()
+	registry.Seed("example.test", NewDKIMSignerFromKey("test", "example.test", key))
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	deliverer := &fakeDeliverer{}
+	// bg.domain has a trailing dot; the registry is seeded without one.
+	gen := NewBounceGenerator(deliverer, nil, logger, "example.test.", registry)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	logOutput := logBuf.String()
+	if strings.Contains(logOutput, "level=WARN") {
+		t.Errorf("no warning expected: the From-header domain (example.test) has a registered signer, got log:\n%s", logOutput)
+	}
+
+	if deliverer.data == nil {
+		t.Fatal("Deliver was not called")
+	}
+	raw := string(deliverer.data)
+	if !strings.Contains(raw, "DKIM-Signature:") {
+		t.Fatalf("delivered bytes missing DKIM-Signature header:\n%s", raw)
+	}
+	sigHeader := dkimSignatureHeader(t, raw)
+	if !strings.Contains(sigHeader, "d=example.test") {
+		t.Errorf("DKIM-Signature missing d=example.test, got:\n%s", sigHeader)
+	}
+}
+
+// TestGenerateAndDeliverWarnsWhenFromUnparseable verifies that when the built
+// bounce message's From header cannot be parsed for a domain, the guard warns
+// UNCONDITIONALLY rather than consulting bg.domain. DKIMRegistry.Sign resolves
+// its signer with the same helper, so it fails identically and the message is
+// guaranteed to go out unsigned; falling back to a bg.domain that happens to
+// have a registered signer would suppress the warning on exactly the unsigned
+// delivery it exists to report.
+//
+// bg.domain = "" makes buildBounce emit "From: MAILER-DAEMON <postmaster@>",
+// whose domain component is empty, so FromRawMessageDomain errors.
+func TestGenerateAndDeliverWarnsWhenFromUnparseable(t *testing.T) {
+	_, key := generateTestRSAKey(t)
+	registry := NewDKIMRegistry()
+	// Seed a signer the fallback path WOULD have found, so a regression to
+	// "fall back to bg.domain" (here "") is not what makes this pass. The
+	// point is that no bg.domain value can suppress this warning.
+	registry.Add("example.test", NewDKIMSignerFromKey("test", "example.test", key))
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, nil, logger, "", registry)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "level=WARN") {
+		t.Errorf("expected a warning when the From domain is unparseable, got:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, "cannot determine From domain") {
+		t.Errorf("expected the unparseable-From warning message, got:\n%s", logOutput)
+	}
+	// The delivery really is unsigned, which is what the warning reports.
+	if strings.Contains(string(deliverer.data), "DKIM-Signature:") {
+		t.Error("expected an unsigned bounce when the From domain is unparseable")
 	}
 }
 

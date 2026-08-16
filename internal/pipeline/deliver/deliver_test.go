@@ -651,3 +651,88 @@ func TestForwardTargetsDropsSelfForward(t *testing.T) {
 		t.Errorf("forwardTargets = %v, want %v (self-forward alias should be dropped, dupes collapsed)", got, want)
 	}
 }
+
+// TestDeliverEmptyEnvelopeSenderUsesFromHeader is the main regression case for
+// task 10.4 (FR-3): a DSN is now delivered with a null envelope sender
+// (env.Sender == ""), but it always carries a From: header. deliver.go sets
+// headerFrom := env.Sender and only overrides it when the message carries a
+// From: header (deliver.go:152) — this proves that override path fires and
+// the stored MailMeta.From is taken from the header, not left empty.
+func TestDeliverEmptyEnvelopeSenderUsesFromHeader(t *testing.T) {
+	applier := &mockApplier{}
+	resolver := &mockResolver{
+		mapping: map[string]string{
+			"alice@example.com": "user-alice",
+		},
+	}
+
+	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
+
+	rawMsg := minimalMessage("MAILER-DAEMON <postmaster@example.test>", "alice@example.com", "Undelivered Mail Returned to Sender", "bounce body\r\n")
+	env := &bongov1.QueueEnvelope{
+		Id:         "env-dsn",
+		Sender:     "",
+		Recipients: []string{"alice@example.com"},
+		ReceivedAt: time.Now().Unix(),
+		BlobHash:   "dsnhash",
+	}
+
+	_, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	if len(applier.commands) != 1 {
+		t.Fatalf("expected 1 command, got %d", len(applier.commands))
+	}
+	meta := unmarshalMailMeta(t, applier.commands[0])
+	if meta.From == "" {
+		t.Error("meta.From is empty, want the From header value (a null envelope sender must not blank out stored sender metadata)")
+	}
+	if !strings.Contains(meta.From, "postmaster@example.test") {
+		t.Errorf("meta.From = %q, want it to contain postmaster@example.test", meta.From)
+	}
+}
+
+// TestDeliverEmptyEnvelopeSenderForwarded proves that forwarding a message
+// with a null envelope sender (the DSN case, task 10.4) does not panic or
+// fail: the enqueued OutboundMessage carries SenderEmail "" (correct for
+// relaying a DSN onward — RFC 5321 s6.1), and Enqueue still succeeds.
+func TestDeliverEmptyEnvelopeSenderForwarded(t *testing.T) {
+	applier := &mockApplier{}
+	resolver := &mockResolver{
+		mapping: map[string]string{
+			"alice@example.com": "user-alice",
+		},
+	}
+	queuer := &mockQueuer{}
+
+	proc := NewDeliverProcessor(applier, resolver, newTestLogger())
+	proc.SetQueuer(queuer)
+
+	rawMsg := minimalMessage("MAILER-DAEMON <postmaster@example.test>", "alice@example.com", "Undelivered Mail Returned to Sender", "bounce body\r\n")
+	env := &bongov1.QueueEnvelope{
+		Id:               "env-dsn-fwd",
+		Sender:           "",
+		Recipients:       []string{"alice@example.com"},
+		ReceivedAt:       time.Now().Unix(),
+		BlobHash:         "dsnfwdhash",
+		ForwardAddresses: []string{"external@other.com"},
+	}
+
+	result, err := proc.Process(context.Background(), env, strings.NewReader(rawMsg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("result.Action = %q, want %q", result.Action, "pass")
+	}
+
+	if len(queuer.messages) != 1 {
+		t.Fatalf("expected 1 enqueued forward message, got %d", len(queuer.messages))
+	}
+	fwd := queuer.messages[0]
+	if fwd.SenderEmail != "" {
+		t.Errorf("forward SenderEmail = %q, want empty (relaying a DSN keeps the null envelope sender)", fwd.SenderEmail)
+	}
+}

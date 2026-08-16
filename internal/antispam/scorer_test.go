@@ -110,10 +110,10 @@ func TestScorer_CappedAt1(t *testing.T) {
 	s := NewScorer()
 	// Trigger every check.
 	result := s.Score(&ScoringInput{
-		SPFResult:  "fail",
-		DKIMResult: "fail",
-		Headers:    map[string]string{},
-		Subject:    "Click here for free money act now limited time winner",
+		SPFResult:      "fail",
+		DKIMResult:     "fail",
+		Headers:        map[string]string{},
+		Subject:        "Click here for free money act now limited time winner",
 		EnvelopeSender: "bounce@evil.com",
 	})
 
@@ -129,6 +129,33 @@ func TestScorer_EmptyInput(t *testing.T) {
 	// Empty input should still produce a valid score.
 	if result.Score < 0 || result.Score > 1.0 {
 		t.Errorf("score = %.2f, want 0.0-1.0", result.Score)
+	}
+}
+
+// TestScorer_EmptyEnvelopeSenderNoMismatchReason is a characterisation test
+// for task 10.4 (FR-3): DSNs are now delivered with a null envelope sender
+// (EnvelopeSender ""). The mismatch check is already guarded on
+// EnvelopeSender != "", so an empty envelope sender must never add the
+// "envelope sender domain mismatch" reason, even when the From header domain
+// differs from (i.e. is unrelated to) any envelope domain.
+func TestScorer_EmptyEnvelopeSenderNoMismatchReason(t *testing.T) {
+	s := NewScorer()
+	result := s.Score(&ScoringInput{
+		SPFResult:  "pass",
+		DKIMResult: "pass",
+		Headers: map[string]string{
+			"Message-Id": "<bounce@example.test>",
+			"Date":       "Mon, 01 Jan 2024 00:00:00 +0000",
+			"From":       "MAILER-DAEMON <postmaster@example.test>",
+		},
+		Subject:        "Undelivered Mail Returned to Sender",
+		EnvelopeSender: "",
+	})
+
+	for _, reason := range result.Reasons {
+		if reason == "envelope sender domain mismatch" {
+			t.Errorf("got reason %q with an empty EnvelopeSender, want it never added; reasons: %v", reason, result.Reasons)
+		}
 	}
 }
 
