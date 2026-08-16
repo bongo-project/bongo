@@ -505,3 +505,43 @@ PATTERN: [testing] Assert protocol-level behaviour on the wire, not just the
   go-smtp populates Conn.Hostname() before NewSession, so a stub backend can
   capture the EHLO — and NewSession fires only on the first EHLO, so the
   captured value is by construction the pre-STARTTLS one.
+
+## 2026-08-16 — Task 10.2: DKIM-sign generated bounces — DONE
+
+- BounceGenerator gained a *DKIMRegistry (appended as the 5th ctor param) and
+  signs the DSN via the EXISTING DKIMRegistry.Sign before Deliver. No new
+  signing code — same helper the queue worker already uses (worker.go:198).
+- agent.go passes a.DKIMRegistry (already in scope, seeded before the call
+  site). Passing the REGISTRY not a resolved signer matters: admin-generated
+  per-domain keys added later via Add are then picked up at call time.
+- FR-2 needed an explicit pre-check (bg.dkim == nil || Get(domain) == nil)
+  because Sign only logs at Info and returns (rawMsg, nil) on the no-key path
+  — the caller cannot distinguish signed from unsigned from its return values.
+  Note bg.dkim == nil must short-circuit before Get, which is not nil-safe.
+- FR-9 honoured: NO antispam-bypass mechanism. The bounce passes the pipeline
+  on its merits; it stops being junked because it now actually aligns.
+- TEST HAZARD (flagged in the task brief, resolved properly): antispam.VerifyDKIM
+  does a live DNS TXT lookup of <selector>._domainkey.<domain>, so a naive test
+  would depend on public DNS. Solved with dkim.VerifyWithOptions + a stubbed
+  LookupTXT returning the generated test key. No network in the suite.
+- Fixed post-review: the h= assertion was vacuous — strings.Contains(raw, "from")
+  matched lowercase "from" anywhere in the DSN. Now extracts the DKIM-Signature
+  header (unfolding continuations) and checks its h= tag.
+- Documented two hazards in bounce.go for 10.3/10.4.
+
+PATTERN: [dkim] DKIMRegistry.Sign is deliberately non-failing: nil registry,
+  unknown domain, and signing error ALL return the message unsigned with a log
+  and a nil error. Callers that need to know whether signing actually happened
+  must pre-check Get(domain) — the return values do not tell you.
+PATTERN: [testing] Asserting a protocol field with strings.Contains over the
+  WHOLE message is vacuous: "d=example.test" and "from" both occur naturally in
+  a DSN body. Extract the specific header (unfold continuation lines first),
+  then assert on its tags.
+PATTERN: [testing] Verifying DKIM without live DNS: dkim.VerifyWithOptions
+  accepts a LookupTXT func; return "v=DKIM1; k=rsa; p=" + base64(PKIX pubkey)
+  for <selector>._domainkey.<domain>. Lets a test prove a signature genuinely
+  verifies rather than merely exists.
+PATTERN: [coupling] A pre-check that resolves an identity one way while the
+  helper it guards resolves it another (here: bg.domain vs the From: header)
+  agrees only by construction. Comment the invariant at the seam, or a later
+  task changing the header silently desyncs the guard from the behaviour.
