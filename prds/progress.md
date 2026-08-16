@@ -545,3 +545,54 @@ PATTERN: [coupling] A pre-check that resolves an identity one way while the
   helper it guards resolves it another (here: bg.domain vs the From: header)
   agrees only by construction. Comment the invariant at the seam, or a later
   task changing the header silently desyncs the guard from the behaviour.
+
+## 2026-08-16 — Task 10.3: RFC 3464/3834 DSN headers — DONE
+
+- buildBounce gained a 5th param originalHeaders (empty = omit part 3), so the
+  builder stays PURE and table-testable; the blob read lives in a new method
+  BounceGenerator.originalHeaderBlock. BuildBounceMessage got the same param
+  (no production callers — only tests), rather than adding a second wrapper.
+- FR-4 Auto-Submitted: auto-replied; FR-6 explicit CTE per part (QP for the
+  text part, 7bit for message/delivery-status since RFC 2045 6.4 FORBIDS
+  QP/base64 on message/*, which also means Diagnostic-Code must really be
+  ASCII, not merely declared so); FR-7 References alongside In-Reply-To, both
+  omitted when MessageGuid is empty.
+- FR-5 header retrieval: reads a bounded 64KB PREFIX of the blob, not a full
+  reconstruct. Justified in a comment: OutboundMessage.blob_hash addresses a
+  skeleton when layout is non-empty, but attachment spans only ever live
+  INSIDE the top-level body, so the first literal piece always contains the
+  complete top-level header block byte-for-byte — correct for split AND legacy
+  records without materialising a multi-MB message on the bounce path.
+  Reads one byte past the cap to tell "header-only message" (EOF, safe to use)
+  from "cap exhausted with no blank line" (truncated, omit the part).
+- ADVISOR CAUGHT A SPEC BUG IN MY BRIEF (second time this phase): I wrote
+  "class in 2/4/5" for the enhanced status code, but every code this generator
+  emits sits next to Action: failed, and RFC 3464 2.3.3 requires class 5 there.
+  "250 2.1.5 ok" would have produced Status: 2.1.5 on a failure DSN. Fixed to
+  scan for the first class-5 match — not the first match of any class, so a
+  wrapped error quoting an earlier successful RCPT still reports the real
+  failure code.
+- Two pre-existing test cases encoded the OLD class-agnostic contract
+  ("caller enforces policy" — the caller does not, it writes Status verbatim).
+  UPDATED to the corrected contract, not deleted.
+- Post-review: text/rfc822-headers now declares charset=utf-8. REVERTED one
+  cosmetic reviewer suggestion (dropping the CRLF before the close delimiter):
+  it would have made MIME framing depend on originalHeaderBlock's suffix.
+
+PATTERN: [mime] RFC 2045 6.4 forbids quoted-printable/base64 on message/* parts,
+  so message/delivery-status must be 7bit — which makes it the caller's job to
+  ensure the content really is ASCII (asciiOnly), not just to declare it.
+PATTERN: [dedup-storage] Reading only headers from a queued message does NOT
+  need store.RawMessageBytes. blob_hash addresses a skeleton for split records,
+  but attachment spans live only inside the top-level body, so a bounded prefix
+  read of the skeleton yields the exact header block for split and legacy alike.
+  Read one byte past the cap to distinguish EOF from truncation.
+PATTERN: [spec] Second spec bug caught by advisor plan review this phase. Both
+  were the same shape: a requirement I wrote that was locally plausible but
+  contradicted a constraint elsewhere (FR-20 vs FR-21; status class vs
+  Action: failed). Plan review before implementation is what catches these —
+  a worker following the FRs literally ships the contradiction.
+PATTERN: [review] Not every reviewer suggestion is an improvement. Dropping the
+  explicit CRLF before a MIME close delimiter is "cosmetic" but transfers the
+  framing guarantee to a helper's return-value suffix. Prefer the redundant
+  byte over the action at a distance.
