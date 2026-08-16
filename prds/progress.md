@@ -596,3 +596,44 @@ PATTERN: [review] Not every reviewer suggestion is an improvement. Dropping the
   explicit CRLF before a MIME close delimiter is "cosmetic" but transfers the
   framing guarantee to a helper's return-value suffix. Prefer the redundant
   byte over the action at a distance.
+
+## 2026-08-16 — Task 10.4: null envelope sender + FR-2 coupling fix — DONE
+
+- A (FR-3): Deliver("") instead of "MAILER-DAEMON@"+domain. RFC 5321 s6.1.
+  The From: header is unchanged; only the envelope sender is null. Safe
+  because 10.2's DKIM signing means the bounce passes DMARC on DKIM
+  alignment, not on anything envelope/SPF-related.
+- Regression risk PROVEN, not assumed: deliver-stage test shows an empty
+  env.Sender does not blank MailMeta.SenderEmail (deliver.go:152 lets the
+  From: header win), and a scorer test shows an empty EnvelopeSender adds no
+  "envelope sender domain mismatch" reason.
+- B: the FR-2 guard now derives its domain from the built bounceMsg via
+  FromRawMessageDomain — the same helper Sign uses — so the guard and the
+  signer cannot silently diverge.
+- THE DIVERGENCE TEST IS NON-VACUOUS. I had told the worker to say so rather
+  than write a test that cannot fail; the advisor instead found a real seam:
+  DKIMRegistry.Get only lowercases, while FromRawMessageDomain -> normalizeDomain
+  ALSO strips a trailing dot. So bg.domain "example.test." vs a registry seeded
+  at "example.test" genuinely differ, and the test was confirmed to FAIL on
+  pre-change code (spurious "no signer" warning while Sign signed happily).
+- Fixed post-review: the fallback branch had the same bug INVERTED. When
+  FromRawMessageDomain errors, Sign resolves with the same helper and fails
+  identically, so delivery is GUARANTEED unsigned — but falling back to a
+  bg.domain that has a registered signer suppressed the warning on exactly
+  that unsigned delivery. Now warns unconditionally on parse failure; the test
+  seeds a signer the old fallback would have found, so a regression fails it.
+- Follow-up filed as task 10.8 (not a 10.4 regression): worker.go:206/239 can
+  call GenerateAndDeliver with SenderEmail "" -> Deliver("", [""]), spooling
+  an envelope with an empty recipient. Already reachable via an inbound
+  external DSN hitting a forward rule; 10.4 adds a second route.
+
+PATTERN: [testing] Before accepting "these two values cannot differ, so the
+  test would be vacuous", look for a NORMALISATION seam. Two lookups of the
+  "same" identity often differ in case/trailing-dot/trimming handling — that
+  difference is exactly what makes a coupling test real.
+PATTERN: [review] When you fix a divergence between a guard and the thing it
+  guards, check the FALLBACK branch for the same divergence inverted. Fixing
+  the happy path and leaving the error path is a common half-fix.
+PATTERN: [testing] Assert slog level on "level=WARN", never
+  strings.Contains(strings.ToUpper(out), "WARN") — the latter matches "warn"
+  inside any field value, and silently breaks negative assertions.

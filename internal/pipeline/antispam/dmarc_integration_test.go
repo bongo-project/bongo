@@ -103,6 +103,12 @@ func TestDMARCAlignedPasses(t *testing.T) {
 // This encodes the production outcome of task 10.2: once BounceGenerator
 // signs the DSN, applyDMARC sees DKIMResult "pass" with an aligned domain and
 // must not route the bounce to Junk.
+//
+// env.Sender is "" (not "MAILER-DAEMON@example.test"): task 10.4 (FR-3)
+// changed the production bounce path to use the null envelope sender per
+// RFC 5321 s6.1. This test's whole point is that DKIM alignment, not
+// SPF/envelope-sender, carries the bounce through DMARC — it must still pass
+// with a null envelope sender, mirroring what BounceGenerator actually sends.
 func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 	eval := mail.NewDMARCEvaluatorWithResolver(&dmarcMockResolver{
 		txt: map[string][]string{
@@ -112,7 +118,7 @@ func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 	proc := NewBuiltinProcessor(antispam.NewScorer(), WithDMARC(eval, true))
 
 	env := &bongov1.QueueEnvelope{
-		Sender:     "MAILER-DAEMON@example.test",
+		Sender:     "",
 		Recipients: []string{"alice@example.test"},
 	}
 
