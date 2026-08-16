@@ -730,3 +730,37 @@ PATTERN: [ui] When capping attacker-controlled content for display, cap the
   RAW bytes before escaping (escaping can expand ~6x), cut on a line boundary,
   and re-validate UTF-8 after cutting — a byte-boundary cut produces invalid
   UTF-8 that then lands in the HTML page.
+
+## 2026-08-16 — Task 10.7: operator troubleshooting docs — DONE (workflow failed; finished by hand)
+
+- WORKFLOW FAILURE MODE WORTH REMEMBERING: the classify agent (stage 1) did the
+  actual work — 40 tool calls, 72k tokens, real edits to docs/walkthrough.md and
+  README.md — but never called StructuredOutput, so pipeline() dropped the item
+  and returned [null]. Result: the content existed on disk but NO advisor plan
+  review and NO code review ran on it. A "failed" workflow is not the same as a
+  workflow that changed nothing — check the tree before assuming.
+- Verified every factual claim by hand in place of the missing review. Three
+  real defects found:
+  (a) doc said "View Source" button; the user-visible label is "View Original"
+      (mail.viewSource is the i18n KEY, its VALUE is "View Original"). An
+      operator would have hunted for a control that does not exist.
+  (b) two cross-links written as ](docs/multi-domain-hosting.md...) from inside
+      docs/walkthrough.md -> resolve to docs/docs/... and 404.
+  (c) claimed a DATA-stage RBL rejection is "not retried". Wrong: that path
+      returns an error rather than a permanentFail (relay.go:145), so the relay
+      tries the remaining MX hosts and the message stays queued with backoff,
+      bouncing only when retries are exhausted.
+- Verified correct as written: HELONotQualifiedWarning and the bounce no-signer
+  WARN quoted verbatim; X-Spam-* / Authentication-Results names and formats
+  against headers.go; "mail" default DKIM selector; admin labels; both anchors.
+
+PATTERN: [docs] Quoting a UI label from the i18n KEY instead of its VALUE
+  produces confident, wrong documentation. mail.viewSource renders as "View
+  Original". Always read the locale VALUE for anything the operator will look
+  for on screen.
+PATTERN: [docs] Relative links inside docs/ must not be prefixed with docs/.
+  Grep for "](docs/" in any file already under docs/ before committing.
+PATTERN: [workflow] A workflow reporting failure may still have mutated the
+  tree. The stage that failed to return structured output can have completed
+  its side effects. Always `git status` after a failed run, and treat surviving
+  content as UNREVIEWED — the downstream review stages never saw it.

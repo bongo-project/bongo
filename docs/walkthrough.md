@@ -465,6 +465,8 @@ curl -k https://localhost:8080/health/ready
 
 ## Troubleshooting
 
+### Setup and development
+
 **"Certificate not trusted" in browser**
 This is expected with dev mode's self-signed certificate. In Chrome, type
 `thisisunsafe` on the warning page. In Firefox, click "Advanced" then "Accept
@@ -482,11 +484,251 @@ The templ compiler uses content hashing, not timestamps. If the generated
 Make sure you're connecting to the plain (non-TLS) IMAP port `1143`, not the
 TLS port `1993`. For SMTP, use submission port `2587` with authentication.
 
-**Emails not arriving**
-Check the server logs for delivery errors. In the admin panel, go to Logs and
-filter by component "smtp" to see delivery pipeline messages.
-
 **Antispam is too aggressive / not aggressive enough**
 The default spam threshold is 0.5. Over time, the Bayesian filter will learn
 from your spam/ham classifications. You can also check the rule-based scorer
 in `internal/antispam/scorer.go` to adjust phrase weights.
+
+### Outbound mail troubleshooting
+
+This section covers problems where mail your server sends is not reaching
+recipients or is being filed as spam. For help diagnosing these, see
+[Multi-domain hosting: Reading the DNS status checks](multi-domain-hosting.md#reading-the-dns-status-checks)
+for live DNS verification and the sections below for message-inspection techniques.
+
+#### Outbound mail rejected by the receiver
+
+**Symptom:** Recipients never receive mail from your server. The admin panel's
+Queue shows messages with permanent delivery failures. Logs show:
+
+```
+msg="relay: permanent recipient failure" error="504 \"5.5.2 <localhost>: Helo command rejected: need fully-qualified hostname\""
+```
+
+Or similar 5.5.2 (protocol syntax) errors at the RCPT stage. Messages fail
+immediately without retry.
+
+**Cause:** Your `smtp.hostname` is not set to a fully-qualified domain name,
+or has not been configured at all. Most large mail providers (Gmail, Outlook,
+Postfix with `reject_non_fqdn_helo_hostname`) enforce RFC 5321 section 4.1.1.1
+and reject mail from servers that do not present a qualified name in the HELO
+command. When `smtp.hostname` is missing or unqualified, Bongo falls back to
+an IP address literal (e.g. `[192.0.2.1]`), which these receivers refuse.
+
+**Check and fix:**
+
+1. Look at the server startup logs. If `smtp.hostname` is not set or not
+   qualified, you will see:
+
+   ```
+   relay: no fully-qualified HELO name could be derived; outbound mail will
+   use an address literal instead, which many strict receivers reject -- set
+   smtp.hostname to your public mail hostname
+   ```
+
+2. Set `smtp.hostname` in your configuration to your public mail hostname.
+   This should match your reverse DNS (PTR) record and ideally be the same as
+   your mail server's A record hostname. Example:
+
+   ```hcl
+   smtp {
+     hostname = "mail.example.com"
+   }
+   ```
+
+3. Restart Bongo. On startup, if the hostname is now qualified, the warning
+   will not appear.
+
+4. Send a test message to an external provider and verify delivery.
+
+#### Bounce notifications land in junk instead of the inbox
+
+**Symptom:** When a message bounces (permanent delivery failure), the bounce
+notification email lands in Junk instead of the Inbox. Users do not see that
+their messages failed.
+
+**Cause:** A bounce (Delivery Status Notification, RFC 3464) is an email from
+the server itself. For the bounce to avoid spam filters and reach the Inbox,
+it must be digitally signed with DKIM and the signature must verify at the
+recipient's mail server. If your server's DKIM public key is not published in
+DNS, bounces fail DMARC authentication and are treated as spam.
+
+**Check and fix:**
+
+1. Go to the admin panel: **Admin → Domains** and click **Manage** next to
+   the domain whose bounces are not arriving.
+
+2. Look at the **DNS Configuration** section. Find the **DKIM** row. It should
+   show one of:
+
+   - **Valid** — the published TXT record matches your server's key. Bounces
+     should verify correctly.
+   - **Missing** — no matching DKIM TXT record is published. This is why bounces
+     are failing.
+   - **Not generated** — you have not yet generated a DKIM key for this domain.
+
+3. If the status is Missing or Not generated:
+
+   - Go to **DKIM Signing** and click **Generate DKIM Key** if no key exists.
+   - Copy the exact TXT record shown (selector `mail`, domain `mail._domainkey.<your-domain>`)
+     and publish it at your DNS provider.
+   - Wait for DNS propagation (usually a few minutes, but depends on your TTL).
+   - Reload the Manage page — the DKIM status should turn Valid.
+
+4. If you see this warning in the logs when a bounce is generated:
+
+   ```
+   bounce: no DKIM signer for domain, delivering unsigned
+   ```
+
+   It means the domain still has no registered signer. Generate a key (step 3 above).
+
+5. Send a test message that will bounce (e.g. to a non-existent user) and
+   verify that the bounce arrives in the user's Inbox, not Junk. Inspect the
+   bounce's headers (see below) to confirm DKIM passed.
+
+#### How to see why a message was filed as spam
+
+**Symptom:** A message landed in Junk but you do not know why. You need to
+inspect the spam scoring decision and authentication results.
+
+**Solution:** Use the message toolbar's **View Original** button. It renders the
+full RFC 5322 raw source including all headers. Look for these headers:
+
+- **`Authentication-Results`** — records the SPF, DKIM and DMARC verdicts
+  from when the message arrived. Format:
+  ```
+  Authentication-Results: mail.example.com; spf=pass; dkim=pass header.d=sender.com; dmarc=pass
+  ```
+  Values are one of: `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror`.
+
+- **`X-Spam-Score`** — the numerical score assigned by Bongo's antispam
+  pipeline. Higher = more spam-like. Example:
+  ```
+  X-Spam-Score: 0.62
+  ```
+
+- **`X-Spam-Status`** — `Yes` if the score exceeded the threshold (0.5 by
+  default), `No` otherwise:
+  ```
+  X-Spam-Status: Yes
+  ```
+
+- **`X-Spam-Reasons`** — comma-separated list of the rules that contributed to
+  the score. Examples:
+  ```
+  X-Spam-Reasons: Missing From header, SPF softfail, No Subject line
+  ```
+
+If SPF or DKIM failed, check the sections above to ensure DNS records are
+published and match your server's configuration. If DMARC failed, check that
+sender alignment (DKIM or SPF signing domain must match the From: header
+domain) is correct.
+
+#### Mail rejected for IP reputation (RBL listing)
+
+**Symptom:** Outbound mail is rejected at one or more recipients with a
+message naming a blocklist. Logs show:
+
+```
+msg="relay: MX attempt failed, trying next" error="closing data: 554 \"5.7.1 Service unavailable; Client host [192.0.2.1] blocked using b.barracudacentral.org\""
+```
+
+The rejection happens during the DATA phase, after EHLO, MAIL FROM and RCPT TO
+all succeeded. **Where it fails is the diagnostic.** A rejection at `closing
+data` means the protocol side of your server is fine and only the sending IP's
+reputation is at issue. Contrast that with the HELO problem above, which fails
+earlier, at the RCPT stage.
+
+Bongo tries the recipient's remaining MX hosts first, and if they all refuse,
+the message stays queued and is retried with backoff rather than being
+discarded. It is only bounced back to the sender once retries are exhausted,
+so a listing that clears within a day or two may resolve itself without the
+sender ever seeing a failure.
+
+**What this means:** Your server's outbound IP address has been listed on a
+reputation blocklist (RBL) maintained by the organisation named in the error
+(Barracuda, Spamhaus, SpamCop, etc.). Receivers that consult that blocklist
+refuse the message at the final DATA phase.
+
+This is **not** a problem with your server's configuration — it is a reputation
+issue with the IP address itself. Brand-new servers, especially those on cloud
+VPS ranges, often start with inherited listings because:
+
+- Cloud providers recycle IP addresses and blocklists track the address, not
+  the owner. A previous tenant's spam activity caused the listing.
+- A large netblock may be listed, affecting all IPs in that range regardless
+  of their individual behaviour.
+- Slow delisting means even after you stop any spam, the IP may remain listed
+  for days or weeks.
+
+**Check and fix:**
+
+1. **Verify the IP and which blocklist rejected it.** The error message above
+   names `b.barracudacentral.org`. Note your server's outbound IP address
+   (the one on your MX record's A address).
+
+2. **Query the blocklist.** Reverse the IP octets and query the zone named in
+   the rejection. For example, if your IP is `192.0.2.1` and the blocklist is
+   `b.barracudacentral.org`:
+
+   ```bash
+   dig 1.2.0.192.b.barracudacentral.org A
+   ```
+
+   - If you see an answer like `127.0.0.x` (any value in the 127.0.0.0/24
+     range), you are listed.
+   - If you see `NXDOMAIN`, you are not listed on that blocklist.
+
+3. **Check other major blocklists** even if one query succeeds. Being listed
+   on one blocklist while clean on others is common and only affects receivers
+   that consult that specific list:
+
+   ```bash
+   dig 1.2.0.192.zen.spamhaus.org A          # Spamhaus Zen
+   dig 1.2.0.192.b.barracudacentral.org A    # Barracuda
+   dig 1.2.0.192.bl.spamcop.net A            # SpamCop
+   ```
+
+4. **Check alignment of reverse DNS, HELO name and authentication.**
+   Delisting requests are more likely to succeed when your server's
+   configuration is clean:
+
+   - Check your PTR (reverse DNS) record:
+     ```bash
+     dig -x 192.0.2.1
+     ```
+     It should resolve to your mail hostname (e.g. `mail.example.com`).
+
+   - Verify `smtp.hostname` in your config matches the PTR and your MX's A
+     record. They should all resolve to the same IP.
+
+   - Check that SPF, DKIM and DMARC are aligned (see
+     [Multi-domain hosting](multi-domain-hosting.md#5-verify-spf-and-dmarc)
+     for details).
+
+5. **Request delisting** from the blocklist operator. Most blocklists have a
+   web form (e.g. `barracudacentral.org/lookup`, `spamhaus.org/query/lookup`).
+   Include your IP, the domain(s) you are sending from, and evidence that your
+   server is legitimate: screenshots of SPF/DKIM/DMARC passes, your DNS
+   configuration, and a brief explanation of your mail source. Requests are
+   processed faster when alignment is clean.
+
+6. **Do not hold up mail waiting for delisting.** If a specific recipient's
+   blocklist is causing frequent rejections, consider using a third-party
+   smarthost relay (e.g. Mailgun, SendGrid, AWS SES) for outbound mail until
+   the listing is cleared. Configure `smtp.relay.host` to route through a
+   relay server instead:
+
+   ```hcl
+   smtp {
+     relay {
+       enabled = true
+       host    = "smtp.relay.example.com"
+       port    = 587
+       # ... auth credentials as needed
+     }
+   }
+   ```
+
+   Restarting Bongo will begin using the relay immediately.
