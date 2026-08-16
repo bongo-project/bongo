@@ -23,11 +23,21 @@ type Relay struct {
 	logger *slog.Logger
 	mtasts *MTASTSCache  // nil unless MTA-STS is enabled
 	dane   *daneResolver // nil unless DANE is enabled
+
+	// heloName is the fully-qualified HELO/EHLO name presented to remote SMTP
+	// servers, resolved once at startup (see ResolveHELOName). It is immutable
+	// after construction: the Relay is shared across queue-worker goroutines.
+	// Empty when no qualified name could be derived, in which case sendToHost
+	// falls back to an RFC 5321 address literal -- never to "localhost".
+	heloName string
 }
 
-// NewRelay creates a new Relay.
-func NewRelay(cfg *config.SMTPRelay, logger *slog.Logger) *Relay {
-	r := &Relay{cfg: cfg, logger: logger}
+// NewRelay creates a new Relay. heloName is the fully-qualified HELO/EHLO
+// name to present on every outbound connection (see ResolveHELOName); pass
+// "" when no qualified name could be derived, and sendToHost will fall back
+// to an address literal rather than sending "localhost".
+func NewRelay(cfg *config.SMTPRelay, heloName string, logger *slog.Logger) *Relay {
+	r := &Relay{cfg: cfg, heloName: heloName, logger: logger}
 	if cfg != nil && cfg.MTASTSEnabled {
 		r.mtasts = NewMTASTSCache()
 	}
@@ -192,6 +202,20 @@ func (r *Relay) sendToHost(ctx context.Context, addr, from string, recipients []
 		return nil, fmt.Errorf("smtp client for %s: %w", addr, errors.Join(err, conn.Close()))
 	}
 	defer client.Close()
+
+	// HELO/EHLO. Must be the first command issued -- Extension(), StartTLS(),
+	// Auth() and Mail() all trigger net/smtp's implicit EHLO with the
+	// hardcoded name "localhost" if Hello() has not already been called, and
+	// calling Hello() after any of them errors ("Hello called after other
+	// methods"). r.heloName is empty only when ResolveHELOName could derive
+	// no qualified name; addressLiteral is still never "localhost".
+	helo := r.heloName
+	if helo == "" {
+		helo = addressLiteral(conn.LocalAddr())
+	}
+	if err := client.Hello(helo); err != nil {
+		return nil, fmt.Errorf("EHLO %s to %s: %w", helo, addr, err)
+	}
 
 	// STARTTLS. Opportunistic by default; when the recipient domain's policy
 	// (DANE, or MTA-STS enforce) requires TLS, a missing or failed STARTTLS

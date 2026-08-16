@@ -11,7 +11,7 @@ import (
 
 func enforcingRelay(t *testing.T) *Relay {
 	t.Helper()
-	r := NewRelay(&config.SMTPRelay{MTASTSEnabled: true}, slog.New(slog.NewTextHandler(discardWriter{}, nil)))
+	r := NewRelay(&config.SMTPRelay{MTASTSEnabled: true}, "mail.example.test", slog.New(slog.NewTextHandler(discardWriter{}, nil)))
 	r.mtasts.now = func() time.Time { return time.Unix(1_700_000_000, 0) }
 	r.mtasts.lookupTXT = func(context.Context, string) ([]string, error) {
 		return []string{"v=STSv1; id=abc;"}, nil
@@ -43,7 +43,7 @@ func TestMTAStsPolicyForMX_Enforce(t *testing.T) {
 }
 
 func TestMTAStsPolicyForMX_DisabledIsOpportunistic(t *testing.T) {
-	r := NewRelay(&config.SMTPRelay{MTASTSEnabled: false}, slog.New(slog.NewTextHandler(discardWriter{}, nil)))
+	r := NewRelay(&config.SMTPRelay{MTASTSEnabled: false}, "mail.example.test", slog.New(slog.NewTextHandler(discardWriter{}, nil)))
 	pol := r.mtaStsPolicyForMX(context.Background(), "example.com", "mx.example.com")
 	if pol.requireTLS || !pol.mxAuthorized {
 		t.Errorf("MTA-STS disabled should be opportunistic + authorized, got %+v", pol)

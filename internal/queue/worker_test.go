@@ -57,7 +57,7 @@ func newWorkerTestEnv(t *testing.T, isLeader bool) (*Worker, *QueueStore, *store
 
 	qs := NewQueueStore(ps, &directApplier{store: ps})
 
-	relay := bongosmtp.NewRelay(&config.SMTPRelay{}, slog.Default())
+	relay := bongosmtp.NewRelay(&config.SMTPRelay{}, "mail.example.test", slog.Default())
 	leader := &mockLeader{leader: isLeader}
 
 	deliverer := &mockDeliverer{messages: make(chan deliveredMsg, 100)}
@@ -76,7 +76,7 @@ func TestNewWorkerPollIntervalDefault(t *testing.T) {
 }
 
 func TestWithPollIntervalOverridesDefault(t *testing.T) {
-	relay := bongosmtp.NewRelay(&config.SMTPRelay{}, slog.Default())
+	relay := bongosmtp.NewRelay(&config.SMTPRelay{}, "mail.example.test", slog.Default())
 	leader := &mockLeader{leader: false}
 
 	// A positive interval is honoured.

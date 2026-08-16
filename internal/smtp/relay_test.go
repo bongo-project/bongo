@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/emersion/go-sasl"
@@ -25,6 +26,36 @@ type mockRelayBackend struct {
 	authPass     string // expected password
 	lastAuthUser string // captured from last session
 	lastAuthPass string // captured from last session
+
+	// rejectDotlessHELO simulates a strict receiver enforcing RFC 5321
+	// section 4.1.1.1: any EHLO/HELO argument without a dot is refused before
+	// a session is even created.
+	rejectDotlessHELO bool
+	// capturedHELO records the EHLO/HELO argument from the connection that
+	// produced the most recent session. go-smtp populates Conn.Hostname()
+	// from the EHLO/HELO command before calling NewSession, and NewSession
+	// fires only on the first EHLO of a connection, so this is by
+	// construction the pre-STARTTLS EHLO name.
+	//
+	// Written on the go-smtp server goroutine and read from the test
+	// goroutine, so it is mutex-guarded: tests that assert on it without
+	// first receiving from b.messages (e.g. the rejection cases, where no
+	// message is ever delivered) have no other happens-before edge.
+	mu           sync.Mutex
+	capturedHELO string
+}
+
+func (b *mockRelayBackend) setCapturedHELO(s string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.capturedHELO = s
+}
+
+// helo returns the EHLO/HELO argument captured from the most recent session.
+func (b *mockRelayBackend) helo() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.capturedHELO
 }
 
 type mockRelayMessage struct {
@@ -34,6 +65,13 @@ type mockRelayMessage struct {
 }
 
 func (b *mockRelayBackend) NewSession(c *gosmtp.Conn) (gosmtp.Session, error) {
+	// c.Hostname() is populated from the EHLO/HELO command before NewSession
+	// is invoked (go-smtp conn.go handleGreet), and NewSession fires only on
+	// the first EHLO of the connection, so this is the pre-STARTTLS EHLO name.
+	b.setCapturedHELO(c.Hostname())
+	if b.rejectDotlessHELO && !strings.Contains(c.Hostname(), ".") {
+		return nil, &gosmtp.SMTPError{Code: 501, Message: "HELO/EHLO argument must be a fully-qualified domain name"}
+	}
 	return &mockRelaySession{backend: b}, nil
 }
 
@@ -112,7 +150,7 @@ func TestRelaySmartRelay(t *testing.T) {
 	backend := &mockRelayBackend{messages: make(chan mockRelayMessage, 10)}
 	addr := startMockSMTP(t, backend)
 
-	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, slog.Default())
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: test\r\n\r\nHello")
 	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
@@ -139,7 +177,7 @@ func TestRelayPermanentReject(t *testing.T) {
 	}
 	addr := startMockSMTP(t, backend)
 
-	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, slog.Default())
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bad@external.com\r\nSubject: test\r\n\r\nHello")
 	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bad@external.com"}, rawMsg)
@@ -158,7 +196,7 @@ func TestRelayTempFail(t *testing.T) {
 	}
 	addr := startMockSMTP(t, backend)
 
-	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, slog.Default())
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: test\r\n\r\nHello")
 	_, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
@@ -184,7 +222,7 @@ func TestRelayAuthSuccess(t *testing.T) {
 		Username:          "apikey",
 		Password:          "secret123",
 		AllowInsecureAuth: true,
-	}, slog.Default())
+	}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: auth test\r\n\r\nHello")
 	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
@@ -226,7 +264,7 @@ func TestRelayAuthFailure(t *testing.T) {
 		Username:          "wrong-user",
 		Password:          "wrong-pass",
 		AllowInsecureAuth: true,
-	}, slog.Default())
+	}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: auth fail\r\n\r\nHello")
 	_, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
@@ -254,7 +292,7 @@ func TestRelayAuthRefusedOverPlaintext(t *testing.T) {
 		Username: "apikey",
 		Password: "secret123",
 		// AllowInsecureAuth defaults to false
-	}, slog.Default())
+	}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: guard test\r\n\r\nHello")
 	_, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
@@ -278,7 +316,7 @@ func TestRelayNoAuthWhenNotConfigured(t *testing.T) {
 	addr := startMockSMTP(t, backend)
 
 	// No username/password set -- auth should be skipped.
-	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, slog.Default())
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "mail.example.test", slog.Default())
 
 	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: no auth\r\n\r\nHello")
 	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
@@ -294,5 +332,114 @@ func TestRelayNoAuthWhenNotConfigured(t *testing.T) {
 	// Auth should not have been attempted -- lastAuthUser stays empty.
 	if backend.lastAuthUser != "" {
 		t.Errorf("auth was attempted (user=%q) when no credentials configured", backend.lastAuthUser)
+	}
+}
+
+// TestRelaySendsQualifiedHELO verifies that Relay.sendToHost issues the
+// configured HELO name on the wire (FR-19) instead of net/smtp's hardcoded
+// "localhost", and that this happens before STARTTLS (the mock has no TLS
+// config, so NewSession only ever sees the pre-STARTTLS EHLO).
+func TestRelaySendsQualifiedHELO(t *testing.T) {
+	backend := &mockRelayBackend{messages: make(chan mockRelayMessage, 10)}
+	addr := startMockSMTP(t, backend)
+
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "mail.example.test", slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: helo test\r\n\r\nHello")
+	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if len(permFails) != 0 {
+		t.Errorf("unexpected permanent failures: %v", permFails)
+	}
+	<-backend.messages
+
+	if got := backend.helo(); got != "mail.example.test" {
+		t.Errorf("captured EHLO = %q, want %q", got, "mail.example.test")
+	}
+	if backend.helo() == "localhost" {
+		t.Error("EHLO command sent the literal localhost")
+	}
+}
+
+// TestRelaySucceedsAgainstServerRejectingDotlessHELO exercises the exact
+// acceptance scenario: a receiving server enforcing RFC 5321 4.1.1.1
+// (rejecting any HELO/EHLO argument without a dot, e.g. Postfix
+// reject_non_fqdn_helo_hostname) must still accept delivery once the relay
+// sends a fully-qualified HELO name.
+func TestRelaySucceedsAgainstServerRejectingDotlessHELO(t *testing.T) {
+	backend := &mockRelayBackend{
+		messages:          make(chan mockRelayMessage, 10),
+		rejectDotlessHELO: true,
+	}
+	addr := startMockSMTP(t, backend)
+
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "mail.example.test", slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: strict helo test\r\n\r\nHello")
+	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err != nil {
+		t.Fatalf("Deliver against a dotless-HELO-rejecting server: %v", err)
+	}
+	if len(permFails) != 0 {
+		t.Errorf("unexpected permanent failures: %v", permFails)
+	}
+}
+
+// TestRelayFailsWithDotlessHELO is the regression guard for the bug this
+// fix addresses: against a server enforcing FR-19/FR-21, a Relay carrying an
+// unqualified HELO name (as every outbound connection did before this fix,
+// which always sent the hardcoded "localhost") is rejected outright and
+// delivery fails -- it must not be silently swallowed as a permanent
+// per-recipient failure.
+func TestRelayFailsWithDotlessHELO(t *testing.T) {
+	backend := &mockRelayBackend{
+		messages:          make(chan mockRelayMessage, 10),
+		rejectDotlessHELO: true,
+	}
+	addr := startMockSMTP(t, backend)
+
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "workstation", slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: dotless helo test\r\n\r\nHello")
+	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err == nil {
+		t.Fatal("expected delivery to fail against a server rejecting a dotless HELO, got nil error")
+	}
+	if len(permFails) != 0 {
+		t.Errorf("unexpected permanent failures: %v", permFails)
+	}
+	if got := backend.helo(); got != "workstation" {
+		t.Errorf("captured EHLO = %q, want %q", got, "workstation")
+	}
+}
+
+// TestRelayFallsBackToAddressLiteralWhenHELONameEmpty verifies that a Relay
+// constructed with an empty heloName (ResolveHELOName could not derive a
+// qualified name) sends an RFC 5321 4.1.3 address literal instead of
+// net/smtp's hardcoded "localhost" -- FR-21's "never send localhost"
+// guarantee must hold even in the no-configuration fallback path.
+func TestRelayFallsBackToAddressLiteralWhenHELONameEmpty(t *testing.T) {
+	backend := &mockRelayBackend{messages: make(chan mockRelayMessage, 10)}
+	addr := startMockSMTP(t, backend)
+
+	relay := NewRelay(&config.SMTPRelay{Enabled: true, Host: addr}, "", slog.Default())
+
+	rawMsg := []byte("From: alice@example.com\r\nTo: bob@external.com\r\nSubject: fallback helo test\r\n\r\nHello")
+	permFails, err := relay.Deliver(context.Background(), "alice@example.com", []string{"bob@external.com"}, rawMsg)
+	if err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if len(permFails) != 0 {
+		t.Errorf("unexpected permanent failures: %v", permFails)
+	}
+	<-backend.messages
+
+	if got := backend.helo(); got == "localhost" || got == "" {
+		t.Errorf("captured EHLO = %q, must never be empty or the literal localhost", got)
+	}
+	if got := backend.helo(); !strings.HasPrefix(got, "[") || !strings.HasSuffix(got, "]") {
+		t.Errorf("captured EHLO = %q, want an address literal in brackets", got)
 	}
 }
