@@ -308,9 +308,16 @@ Key integration points, verified against the current tree:
    matches the sending IP's rDNS on the live host.
 2. **Queued mail already marked failed.** Messages permanently failed by the HELO bug are already
    out of the queue. Is a manual resend acceptable, or is a requeue path needed?
-3. **DMARC-publishing domain with no DKIM key.** FR-2 delivers the bounce unsigned, which means it
-   still gets junked. Should the system surface this as a startup warning or an admin health
-   check, given it silently breaks all bounces for that domain?
+3. ~~**DMARC-publishing domain with no DKIM key.**~~ **RESOLVED (2026-08-16) — no code needed.**
+   The concern was that FR-2 delivers the bounce unsigned, so it still gets junked, silently.
+   But this is already surfaced: `buildDNSChecks` (`internal/web/handlers/admin.go:839`, built in
+   task 7.2) compares ACTUAL published DNS against EXPECTED-for-this-server and marks DKIM ok only
+   when the published `p=` matches ours exactly, neutral when no key has been generated. It is
+   shown per-domain on `/admin/domains/{domain}` alongside MX/SPF/DMARC. A startup warning would
+   duplicate a weaker version of that check (local key exists) rather than the stronger one
+   (published key matches). Note the operator-visible symptom is indirect — bounces landing in
+   Junk does not obviously point at a DKIM DNS record — so a line in the operator docs tying the
+   two together is the only remaining gap. Tracked as task 10.7 (docs only, no code).
 4. **Existing stored messages.** Trace headers apply only to newly delivered mail. Confirmed as
    acceptable — no backfill — but worth stating before implementation.
 5. **`Authentication-Results` hostname.** Should the `authserv-id` be `SMTP.Hostname` or the

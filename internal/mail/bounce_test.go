@@ -13,6 +13,7 @@ import (
 	"github.com/emersion/go-msgauth/dkim"
 	"github.com/jhillyerd/enmime"
 
+	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
@@ -106,7 +107,7 @@ func TestBuildBounceDomain(t *testing.T) {
 			original := &bongov1.OutboundMessage{
 				SenderEmail: "alice@" + tt.domain,
 			}
-			out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 test", tt.domain)
+			out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 test", tt.domain, "")
 
 			raw := string(out)
 
@@ -158,6 +159,7 @@ func TestBuildBounceHeaderInjection(t *testing.T) {
 		senderEmail      string
 		failedRecipients []string
 		reason           string
+		messageGuid      string
 		// forbiddenLines are header-field strings that must not appear as
 		// complete standalone lines in the output (i.e. they must not be
 		// preceded by a CRLF in an injection position).
@@ -184,14 +186,23 @@ func TestBuildBounceHeaderInjection(t *testing.T) {
 			reason:           "550 user unknown",
 			forbiddenLines:   []string{"X-Inject: rcpt"},
 		},
+		{
+			name:             "CRLF in MessageGuid cannot inject header line (echoed into In-Reply-To and References)",
+			senderEmail:      "alice@example.com",
+			failedRecipients: []string{"bob@external.com"},
+			reason:           "550 user unknown",
+			messageGuid:      "<orig@bongo>\r\nX-Inject: guid",
+			forbiddenLines:   []string{"X-Inject: guid"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			original := &bongov1.OutboundMessage{
 				SenderEmail: tt.senderEmail,
+				MessageGuid: tt.messageGuid,
 			}
-			out := buildBounce(original, tt.failedRecipients, tt.reason, "test.local")
+			out := buildBounce(original, tt.failedRecipients, tt.reason, "test.local", "")
 
 			// Split on CRLF and check that no line equals a forbidden header.
 			lines := bytes.Split(out, []byte("\r\n"))
@@ -217,7 +228,7 @@ func TestBuildBounce(t *testing.T) {
 	failedRecipients := []string{"bob@external.com", "carol@external.com"}
 	reason := "550 User unknown"
 
-	bounceMsg := BuildBounceMessage(original, failedRecipients, reason, "example.com")
+	bounceMsg := BuildBounceMessage(original, failedRecipients, reason, "example.com", "")
 
 	// Parse with enmime to verify RFC 5322 validity.
 	env, err := enmime.ReadEnvelope(bytes.NewReader(bounceMsg))
@@ -237,6 +248,12 @@ func TestBuildBounce(t *testing.T) {
 	}
 	if irt := env.GetHeader("In-Reply-To"); irt != "<orig-123@bongo>" {
 		t.Errorf("In-Reply-To = %q, want <orig-123@bongo>", irt)
+	}
+	if refs := env.GetHeader("References"); refs != "<orig-123@bongo>" {
+		t.Errorf("References = %q, want <orig-123@bongo>", refs)
+	}
+	if as := env.GetHeader("Auto-Submitted"); as != "auto-replied" {
+		t.Errorf("Auto-Submitted = %q, want auto-replied", as)
 	}
 
 	// Verify body mentions failed recipients.
@@ -403,4 +420,406 @@ func dkimTag(sigHeader, tag string) string {
 		}
 	}
 	return ""
+}
+
+// leafParts walks an enmime part tree and returns every leaf part (a part with
+// no children), i.e. the actual MIME body parts rather than multipart
+// containers. Tests should walk the tree this way rather than assuming
+// env.Text alone reflects every part, per the acceptance criteria.
+func leafParts(root *enmime.Part) []*enmime.Part {
+	var out []*enmime.Part
+	var walk func(p *enmime.Part)
+	walk = func(p *enmime.Part) {
+		if p == nil {
+			return
+		}
+		if p.FirstChild == nil {
+			out = append(out, p)
+			return
+		}
+		for c := p.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(root)
+	return out
+}
+
+// TestBuildBounceThreeParts verifies FR-5/FR-6: given a non-empty original
+// header block, the bounce has exactly three MIME parts (text/plain,
+// message/delivery-status, text/rfc822-headers), and the first two declare an
+// explicit Content-Transfer-Encoding.
+func TestBuildBounceThreeParts(t *testing.T) {
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com", MessageGuid: "<orig@bongo>"}
+	originalHeaders := "From: alice@example.com\r\nTo: bob@external.com\r\nSubject: hi\r\n\r\n"
+
+	out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 user unknown", "example.com", originalHeaders)
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+
+	parts := leafParts(env.Root)
+	if len(parts) != 3 {
+		t.Fatalf("got %d MIME parts, want 3:\n%s", len(parts), out)
+	}
+
+	byType := make(map[string]*enmime.Part, 3)
+	for _, p := range parts {
+		byType[p.ContentType] = p
+	}
+
+	textPart, ok := byType["text/plain"]
+	if !ok {
+		t.Fatalf("missing text/plain part, got types %v", partTypes(parts))
+	}
+	if cte := textPart.Header.Get("Content-Transfer-Encoding"); cte != "quoted-printable" {
+		t.Errorf("text/plain Content-Transfer-Encoding = %q, want quoted-printable", cte)
+	}
+
+	dsPart, ok := byType["message/delivery-status"]
+	if !ok {
+		t.Fatalf("missing message/delivery-status part, got types %v", partTypes(parts))
+	}
+	if cte := dsPart.Header.Get("Content-Transfer-Encoding"); cte != "7bit" {
+		t.Errorf("message/delivery-status Content-Transfer-Encoding = %q, want 7bit", cte)
+	}
+
+	if _, ok := byType["text/rfc822-headers"]; !ok {
+		t.Fatalf("missing text/rfc822-headers part, got types %v", partTypes(parts))
+	}
+}
+
+func partTypes(parts []*enmime.Part) []string {
+	out := make([]string, len(parts))
+	for i, p := range parts {
+		out[i] = p.ContentType
+	}
+	return out
+}
+
+// TestBuildBounceOmitsThirdPartWhenNoHeaders verifies that an empty
+// originalHeaders (blob unavailable) yields exactly two parts, not three.
+func TestBuildBounceOmitsThirdPartWhenNoHeaders(t *testing.T) {
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com"}
+	out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 user unknown", "example.com", "")
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+	parts := leafParts(env.Root)
+	if len(parts) != 2 {
+		t.Fatalf("got %d MIME parts, want 2 (no rfc822-headers part): %v", len(parts), partTypes(parts))
+	}
+	for _, p := range parts {
+		if p.ContentType == "text/rfc822-headers" {
+			t.Error("text/rfc822-headers part present despite empty originalHeaders")
+		}
+	}
+}
+
+// TestBuildBounceNonASCIIReasonRoundTrips verifies FR-6: a non-ASCII reason
+// string round-trips through the human-readable part's declared
+// charset=utf-8 / Content-Transfer-Encoding: quoted-printable.
+func TestBuildBounceNonASCIIReasonRoundTrips(t *testing.T) {
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com"}
+	reason := "550 föremålet är inte tillgängligt éè中文"
+
+	out := BuildBounceMessage(original, []string{"bob@external.com"}, reason, "example.com", "")
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+	if !strings.Contains(env.Text, reason) {
+		t.Errorf("decoded text/plain body does not contain the non-ASCII reason verbatim.\nwant substring: %q\ngot body: %q", reason, env.Text)
+	}
+}
+
+// TestBuildBounceMessageGuidEmptyOmitsBothHeaders verifies FR-7: when
+// MessageGuid is empty, neither In-Reply-To nor References is emitted at all
+// (not merely empty-valued).
+func TestBuildBounceMessageGuidEmptyOmitsBothHeaders(t *testing.T) {
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com", MessageGuid: ""}
+	out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 user unknown", "example.com", "")
+
+	headerBlock, _, found := strings.Cut(string(out), "\r\n\r\n")
+	if !found {
+		t.Fatalf("no header/body separator in output:\n%s", out)
+	}
+	for _, line := range strings.Split(headerBlock, "\r\n") {
+		if strings.HasPrefix(line, "In-Reply-To:") {
+			t.Errorf("unexpected In-Reply-To header with empty MessageGuid: %q", line)
+		}
+		if strings.HasPrefix(line, "References:") {
+			t.Errorf("unexpected References header with empty MessageGuid: %q", line)
+		}
+	}
+}
+
+// TestBuildBounceMessageGuidSetEmitsBothHeaders verifies FR-7: a non-empty
+// MessageGuid produces both In-Reply-To and References with the same value.
+func TestBuildBounceMessageGuidSetEmitsBothHeaders(t *testing.T) {
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com", MessageGuid: "<abc@example.test>"}
+	out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 user unknown", "example.com", "")
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+	if irt := env.GetHeader("In-Reply-To"); irt != "<abc@example.test>" {
+		t.Errorf("In-Reply-To = %q, want <abc@example.test>", irt)
+	}
+	if refs := env.GetHeader("References"); refs != "<abc@example.test>" {
+		t.Errorf("References = %q, want <abc@example.test>", refs)
+	}
+}
+
+// TestGenerateAndDeliverIncludesOriginalHeaders (FR-5) proves that when the
+// original message's blob is available, GenerateAndDeliver's output carries a
+// third text/rfc822-headers part with the original's header lines.
+func TestGenerateAndDeliverIncludesOriginalHeaders(t *testing.T) {
+	bs, err := store.NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	rawOriginal := []byte("From: alice@example.test\r\nTo: bob@external.com\r\nSubject: original subject\r\nDate: Mon, 01 Jan 2024 00:00:00 +0000\r\n\r\nbody text\r\n")
+	hash, err := bs.Put(rawOriginal)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, bs, slog.Default(), "example.test", nil)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test", BlobHash: hash}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(deliverer.data))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+	parts := leafParts(env.Root)
+	var hdrsPart *enmime.Part
+	for _, p := range parts {
+		if p.ContentType == "text/rfc822-headers" {
+			hdrsPart = p
+		}
+	}
+	if hdrsPart == nil {
+		t.Fatalf("no text/rfc822-headers part in delivered bounce, got types %v", partTypes(parts))
+	}
+	if !bytes.Contains(hdrsPart.Content, []byte("Subject: original subject")) {
+		t.Errorf("rfc822-headers part missing original Subject line, got:\n%s", hdrsPart.Content)
+	}
+	if bytes.Contains(hdrsPart.Content, []byte("body text")) {
+		t.Errorf("rfc822-headers part must not include the original body, got:\n%s", hdrsPart.Content)
+	}
+}
+
+// TestGenerateAndDeliverMissingBlobStillDelivers (FR-5) proves that an
+// unreadable/invalid original blob hash never fails the bounce: delivery still
+// happens with two parts (no rfc822-headers part), and the omission is logged.
+func TestGenerateAndDeliverMissingBlobStillDelivers(t *testing.T) {
+	bs, err := store.NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, bs, logger, "example.test", nil)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test", BlobHash: "not-a-real-hash"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver returned an error for a missing original blob, want nil (best-effort): %v", err)
+	}
+	if deliverer.data == nil {
+		t.Fatal("Deliver was not called")
+	}
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(deliverer.data))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+	parts := leafParts(env.Root)
+	if len(parts) != 2 {
+		t.Fatalf("got %d parts, want 2 (rfc822-headers omitted): %v", len(parts), partTypes(parts))
+	}
+	if !strings.Contains(logBuf.String(), "not-a-real-hash") {
+		t.Errorf("expected omission to be logged with the blob hash, got:\n%s", logBuf.String())
+	}
+}
+
+// TestGenerateAndDeliverSplitRecordHeaders (FR-5 + Design Hazard 2) proves that
+// for a split (attachment-dedup) record, the rfc822-headers part still carries
+// the original top-level headers, read from the skeleton blob's prefix rather
+// than a full reconstruction.
+func TestGenerateAndDeliverSplitRecordHeaders(t *testing.T) {
+	bs, err := store.NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	att := strings.Repeat("QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5Cg", 60) // ~3 KB base64
+	rawOriginal := []byte("From: alice@example.test\r\nTo: bob@external.com\r\nSubject: split record subject\r\n" +
+		"MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"B\"\r\n\r\n" +
+		"--B\r\nContent-Type: text/plain\r\n\r\nhello\r\n" +
+		"--B\r\nContent-Type: application/pdf; name=\"doc.pdf\"\r\n" +
+		"Content-Disposition: attachment; filename=\"doc.pdf\"\r\n" +
+		"Content-Transfer-Encoding: base64\r\n\r\n" + att + "\r\n--B--\r\n")
+
+	split, err := store.StoreSplit(bs, rawOriginal, 1024)
+	if err != nil {
+		t.Fatalf("StoreSplit: %v", err)
+	}
+	if split == nil {
+		t.Fatal("expected a split record, got nil (message too small to split)")
+	}
+
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, bs, slog.Default(), "example.test", nil)
+
+	original := &bongov1.OutboundMessage{
+		SenderEmail: "alice@example.test",
+		BlobHash:    split.SkeletonHash,
+		Layout:      split.Layout,
+		Attachments: split.Attachments,
+	}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	env, err := enmime.ReadEnvelope(bytes.NewReader(deliverer.data))
+	if err != nil {
+		t.Fatalf("enmime parse: %v", err)
+	}
+	var hdrsPart *enmime.Part
+	for _, p := range leafParts(env.Root) {
+		if p.ContentType == "text/rfc822-headers" {
+			hdrsPart = p
+		}
+	}
+	if hdrsPart == nil {
+		t.Fatal("no text/rfc822-headers part for split record")
+	}
+	if !bytes.Contains(hdrsPart.Content, []byte("Subject: split record subject")) {
+		t.Errorf("rfc822-headers part missing original Subject line for split record, got:\n%s", hdrsPart.Content)
+	}
+	if bytes.Contains(hdrsPart.Content, []byte("application/pdf")) {
+		t.Errorf("rfc822-headers part must not include MIME body content for split record, got:\n%s", hdrsPart.Content)
+	}
+}
+
+// TestParseEnhancedStatus covers FR-8: extracting a well-formed RFC 3463
+// enhanced status code anchored to a preceding 3-digit basic reply code, with
+// the real reason-string shapes produced on both queue failure paths
+// (internal/queue/worker.go), not just a bare SMTP reply.
+func TestParseEnhancedStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason string
+		want   string
+	}{
+		{
+			// Every code this generator emits sits next to "Action: failed",
+			// so a success/transient class must never be reported verbatim
+			// (RFC 3464 2.3.3). Falls back to 5.0.0 instead.
+			name:   "success-class code is not reported on a failure DSN",
+			reason: "250 2.1.5 recipient ok",
+			want:   "5.0.0",
+		},
+		{
+			name:   "transient-class code is not reported on a failure DSN",
+			reason: "450 4.2.1 mailbox busy",
+			want:   "5.0.0",
+		},
+		{
+			// A wrapped error can quote an earlier successful command before
+			// the failing one; the class-5 code is the relevant one, not the
+			// first code that happens to appear.
+			name:   "skips an earlier success code and reports the failure",
+			reason: "250 2.0.0 accepted ... then RCPT TO: 550 5.1.1 <bob@x.com>: User unknown",
+			want:   "5.1.1",
+		},
+		{
+			name:   "task example: RCPT rejection",
+			reason: "550 5.1.1 <bob@x.com>: User unknown",
+			want:   "5.1.1",
+		},
+		{
+			name:   "task example: quoted enhanced code after HELO rejection",
+			reason: `504 "5.5.2 <localhost>: Helo command rejected: need fully-qualified hostname"`,
+			want:   "5.5.2",
+		},
+		{
+			name:   "wrapped Go error from max-retries path embeds the code mid-string",
+			reason: "all MX hosts failed for x.com: RCPT TO bob@x.com: 550 5.1.1 <bob@x.com>: User unknown",
+			want:   "5.1.1",
+		},
+		{
+			name:   "literal fallback reason from permanent-fail path",
+			reason: "delivery permanently failed",
+			want:   "5.0.0",
+		},
+		{
+			name:   "stray dotted version number is not a status code",
+			reason: "client rejected: server requires version 5.1.1 of the protocol",
+			want:   "5.0.0",
+		},
+		{
+			name:   "class mismatch between basic and enhanced code falls back",
+			reason: "250 4.1.1 queued for delivery",
+			want:   "5.0.0",
+		},
+		{
+			name:   "over-long digit group is not well-formed",
+			reason: "421 5.1234.1 too many digits",
+			want:   "5.0.0",
+		},
+		{
+			name:   "empty reason",
+			reason: "",
+			want:   "5.0.0",
+		},
+		{
+			// Superseded contract: this parser previously returned any class
+			// verbatim on the theory that the caller would enforce policy. The
+			// caller writes Status: unchanged next to Action: failed, so the
+			// class filter belongs here. Covered by the class-5 cases above.
+			name:   "non-failure class anywhere in a wrapped error still yields 5.0.0",
+			reason: "connect ok 220 2.0.0 ready; later 450 4.2.1 mailbox busy",
+			want:   "5.0.0",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseEnhancedStatus(tt.reason)
+			if got != tt.want {
+				t.Errorf("parseEnhancedStatus(%q) = %q, want %q", tt.reason, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBuildBounceStatusFromReason verifies FR-8 end-to-end: the parsed
+// enhanced status code appears in the message/delivery-status part's Status
+// field, and a reason with no parseable code falls back to 5.0.0.
+func TestBuildBounceStatusFromReason(t *testing.T) {
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com"}
+
+	out := BuildBounceMessage(original, []string{"bob@external.com"}, "550 5.1.1 <bob@external.com>: User unknown", "example.com", "")
+	if !strings.Contains(string(out), "Status: 5.1.1\r\n") {
+		t.Errorf("expected Status: 5.1.1 in output:\n%s", out)
+	}
+
+	out = BuildBounceMessage(original, []string{"bob@external.com"}, "delivery permanently failed", "example.com", "")
+	if !strings.Contains(string(out), "Status: 5.0.0\r\n") {
+		t.Errorf("expected fallback Status: 5.0.0 in output:\n%s", out)
+	}
 }
