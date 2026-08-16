@@ -2,14 +2,39 @@ package mail
 
 import (
 	"bytes"
+	"crypto/x509"
+	"encoding/base64"
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/emersion/go-msgauth/dkim"
 	"github.com/jhillyerd/enmime"
 
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
+
+// fakeDeliverer captures whatever bytes GenerateAndDeliver hands to Deliver,
+// so tests can assert on the exact wire bytes (signed vs unsigned) rather
+// than re-deriving a signature locally.
+type fakeDeliverer struct {
+	from       string
+	recipients []string
+	data       []byte
+}
+
+func (f *fakeDeliverer) Deliver(from string, recipients []string, r io.Reader) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	f.from = from
+	f.recipients = recipients
+	f.data = data
+	return nil
+}
 
 // TestResolveServerDomain verifies the domain resolution fallback chain:
 // DKIM domain -> EffectiveTLDPlusOne(smtpHostname) -> smtpHostname -> os.Hostname() -> "localhost".
@@ -225,4 +250,157 @@ func TestBuildBounce(t *testing.T) {
 	if !strings.Contains(body, "550 User unknown") {
 		t.Error("body should mention the reason")
 	}
+}
+
+// TestGenerateAndDeliverSignsBounce verifies that a bounce for a domain with a
+// registered DKIM signer is delivered with a valid DKIM-Signature header
+// (d=<domain>, h= including from) whose signature cryptographically verifies
+// against the signer's own public key. It uses a stubbed LookupTXT so the
+// crypto path is exercised end-to-end with zero network access.
+func TestGenerateAndDeliverSignsBounce(t *testing.T) {
+	_, key := generateTestRSAKey(t)
+	registry := NewDKIMRegistry()
+	registry.Seed("example.test", NewDKIMSignerFromKey("test", "example.test", key))
+
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, nil, slog.Default(), "example.test", registry)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	if deliverer.data == nil {
+		t.Fatal("Deliver was not called")
+	}
+	raw := string(deliverer.data)
+	if !strings.Contains(raw, "DKIM-Signature:") {
+		t.Fatalf("delivered bytes missing DKIM-Signature header:\n%s", raw)
+	}
+	// Assert against the DKIM-Signature header itself, not the whole message:
+	// a Contains check over `raw` would match "d=example.test" or "from"
+	// occurring anywhere in the DSN body and pass vacuously.
+	sigHeader := dkimSignatureHeader(t, raw)
+	if !strings.Contains(sigHeader, "d=example.test") {
+		t.Errorf("DKIM-Signature missing d=example.test, got:\n%s", sigHeader)
+	}
+	hTag := dkimTag(sigHeader, "h=")
+	if hTag == "" {
+		t.Fatalf("DKIM-Signature has no h= tag:\n%s", sigHeader)
+	}
+	if !strings.Contains(strings.ToLower(hTag), "from") {
+		t.Errorf("DKIM-Signature h= must cover the From header, got h=%s", hTag)
+	}
+
+	// Criterion 2 (test-hazard workaround): verify the signature cryptographically
+	// with a stubbed LookupTXT instead of a live DNS lookup, per the DKIM public key.
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey: %v", err)
+	}
+	stubTXT := "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(pubDER)
+	lookupTXT := func(domain string) ([]string, error) {
+		if strings.HasPrefix(domain, "test._domainkey.example.test") {
+			return []string{stubTXT}, nil
+		}
+		return nil, nil
+	}
+
+	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(deliverer.data), &dkim.VerifyOptions{LookupTXT: lookupTXT})
+	if err != nil {
+		t.Fatalf("dkim.VerifyWithOptions: %v", err)
+	}
+	if len(verifications) != 1 {
+		t.Fatalf("got %d verifications, want 1", len(verifications))
+	}
+	if verifications[0].Err != nil {
+		t.Errorf("DKIM verification failed: %v", verifications[0].Err)
+	}
+	if verifications[0].Domain != "example.test" {
+		t.Errorf("verified domain = %q, want example.test", verifications[0].Domain)
+	}
+}
+
+// TestGenerateAndDeliverNilRegistry verifies that a nil DKIM registry does not
+// panic and still delivers the bounce, unsigned.
+func TestGenerateAndDeliverNilRegistry(t *testing.T) {
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, nil, slog.Default(), "example.test", nil)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	if deliverer.data == nil {
+		t.Fatal("Deliver was not called")
+	}
+	if strings.Contains(string(deliverer.data), "DKIM-Signature:") {
+		t.Error("bounce should be unsigned with a nil registry")
+	}
+}
+
+// TestGenerateAndDeliverUnregisteredDomainWarns verifies that when no signer
+// is registered for the bounce domain, delivery still succeeds (unsigned) and
+// a warning naming the domain is logged (FR-2).
+func TestGenerateAndDeliverUnregisteredDomainWarns(t *testing.T) {
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+
+	registry := NewDKIMRegistry() // empty: no signer for any domain
+	deliverer := &fakeDeliverer{}
+	gen := NewBounceGenerator(deliverer, nil, logger, "example.test", registry)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	if deliverer.data == nil {
+		t.Fatal("Deliver was not called")
+	}
+	if strings.Contains(string(deliverer.data), "DKIM-Signature:") {
+		t.Error("bounce should be unsigned when no signer is registered")
+	}
+
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "example.test") {
+		t.Errorf("warning log should name the domain example.test, got:\n%s", logOutput)
+	}
+	if !strings.Contains(strings.ToUpper(logOutput), "WARN") {
+		t.Errorf("expected a warning-level log entry, got:\n%s", logOutput)
+	}
+}
+
+// dkimSignatureHeader extracts the unfolded DKIM-Signature header value from a
+// raw message. Assertions about the signature must run against this rather
+// than the whole message: a substring check over the full text matches tag
+// values that merely appear in the DSN body and passes vacuously.
+func dkimSignatureHeader(t *testing.T, raw string) string {
+	t.Helper()
+	headers, _, found := strings.Cut(raw, "\r\n\r\n")
+	if !found {
+		t.Fatalf("message has no header/body separator:\n%s", raw)
+	}
+	// Unfold continuation lines (leading space or tab) before searching.
+	unfolded := strings.ReplaceAll(strings.ReplaceAll(headers, "\r\n\t", "\t"), "\r\n ", " ")
+	for _, line := range strings.Split(unfolded, "\r\n") {
+		if after, ok := strings.CutPrefix(line, "DKIM-Signature:"); ok {
+			return strings.TrimSpace(after)
+		}
+	}
+	t.Fatalf("no DKIM-Signature header found in:\n%s", headers)
+	return ""
+}
+
+// dkimTag returns the value of a DKIM-Signature tag (e.g. "h=") from an
+// unfolded signature header value, or "" when the tag is absent.
+func dkimTag(sigHeader, tag string) string {
+	for _, part := range strings.Split(sigHeader, ";") {
+		part = strings.TrimSpace(part)
+		if after, ok := strings.CutPrefix(part, tag); ok {
+			return strings.TrimSpace(after)
+		}
+	}
+	return ""
 }

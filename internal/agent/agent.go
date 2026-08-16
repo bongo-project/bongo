@@ -1194,7 +1194,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// from SMTP hostname -> SMTP hostname -> os.Hostname() -> "localhost".
 		if smtpPipeline != nil {
 			bounceDomain := mail.ResolveServerDomain(a.Config.SMTP.DKIM.Domain, a.Config.SMTP.Hostname)
-			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain)
+			a.BounceGen = mail.NewBounceGenerator(smtpPipeline, a.Blobs, a.logger, bounceDomain, a.DKIMRegistry)
 		}
 
 		// Queue worker (leader-only processing).

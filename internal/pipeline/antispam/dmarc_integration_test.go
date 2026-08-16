@@ -94,3 +94,42 @@ func TestDMARCAlignedPasses(t *testing.T) {
 		t.Errorf("Action = reject for an aligned message, want pass")
 	}
 }
+
+// TestApplyDMARC_SignedBouncePassesQuarantinePolicy exercises the DMARC
+// alignment logic directly (bypassing antispam.VerifyDKIM, which requires a
+// live DNS TXT lookup of the signer's public key — see the package-level test
+// hazard note) to prove that a DKIM-signed bounce whose signature verifies
+// ("pass") is not escalated by a p=quarantine policy on its own From domain.
+// This encodes the production outcome of task 10.2: once BounceGenerator
+// signs the DSN, applyDMARC sees DKIMResult "pass" with an aligned domain and
+// must not route the bounce to Junk.
+func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
+	eval := mail.NewDMARCEvaluatorWithResolver(&dmarcMockResolver{
+		txt: map[string][]string{
+			"_dmarc.example.test": {"v=DMARC1; p=quarantine"},
+		},
+	})
+	proc := NewBuiltinProcessor(antispam.NewScorer(), WithDMARC(eval, true))
+
+	env := &bongov1.QueueEnvelope{
+		Sender:     "MAILER-DAEMON@example.test",
+		Recipients: []string{"alice@example.test"},
+	}
+
+	action, reasons := proc.applyDMARC(
+		context.Background(),
+		env,
+		"MAILER-DAEMON <postmaster@example.test>", // From header
+		"example.test", // DKIM signature domain (d=)
+		"pass",         // DKIM verification result
+		"pass",         // action so far (scorer found nothing)
+		nil,
+	)
+
+	if action != "pass" {
+		t.Errorf("action = %q, want pass (signed+aligned bounce must not be escalated); reasons=%v", action, reasons)
+	}
+	if env.TargetMailbox != "" {
+		t.Errorf("TargetMailbox = %q, want empty (bounce must not be routed to Junk)", env.TargetMailbox)
+	}
+}

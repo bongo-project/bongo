@@ -27,17 +27,21 @@ type BounceGenerator struct {
 	blobs     *store.BlobStore
 	logger    *slog.Logger
 	domain    string
+	dkim      *DKIMRegistry
 }
 
 // NewBounceGenerator creates a new BounceGenerator. domain is the server's
 // configured FQDN/primary domain (see ResolveServerDomain) used in bounce
-// From/Message-ID/Reporting-MTA headers.
-func NewBounceGenerator(deliverer Deliverer, blobs *store.BlobStore, logger *slog.Logger, domain string) *BounceGenerator {
+// From/Message-ID/Reporting-MTA headers. registry selects the DKIM signer by
+// the bounce's From domain (see DKIMRegistry.Sign); a nil registry is a
+// valid passthrough and bounces are delivered unsigned.
+func NewBounceGenerator(deliverer Deliverer, blobs *store.BlobStore, logger *slog.Logger, domain string, registry *DKIMRegistry) *BounceGenerator {
 	return &BounceGenerator{
 		deliverer: deliverer,
 		blobs:     blobs,
 		logger:    logger,
 		domain:    domain,
+		dkim:      registry,
 	}
 }
 
@@ -75,10 +79,39 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 		"reason", reason,
 	)
 
+	// FR-2: DKIMRegistry.Sign only logs at Info and returns the message
+	// unsigned (nil error) on the no-key path, so this pre-check is what
+	// surfaces a warning naming the domain — the caller cannot otherwise
+	// distinguish signed from unsigned by inspecting Sign's return values.
+	// bg.dkim == nil must short-circuit before Get, which is not nil-safe.
+	//
+	// This looks up bg.domain, while Sign re-derives the domain from the
+	// From: header (FromRawMessageDomain). They agree only because
+	// buildBounce writes From: postmaster@<bg.domain>. Any change to that
+	// From header must keep the two in step, or this warning silently stops
+	// matching what actually gets signed.
+	//
+	// Signing is necessary but not sufficient for the bounce to reach the
+	// inbox: the verifier resolves <selector>._domainkey.<domain> over live
+	// DNS, so a deployment with a configured signer whose public key is not
+	// published still fails DMARC and still files bounces to Junk.
+	if bg.dkim == nil || bg.dkim.Get(bg.domain) == nil {
+		bg.logger.Warn("bounce: no DKIM signer for domain, delivering unsigned", "domain", bg.domain)
+	}
+
+	// Sign the DSN so it passes our own DMARC check on delivery (mirrors
+	// internal/queue/worker.go's outbound signing step). Never fails the
+	// bounce: on a signing error, fall back to the unsigned message.
+	signed, err := bg.dkim.Sign(bounceMsg, bg.logger)
+	if err != nil {
+		bg.logger.Error("bounce: DKIM signing failed, sending unsigned", "error", err)
+		signed = bounceMsg
+	}
+
 	return bg.deliverer.Deliver(
 		"MAILER-DAEMON@"+bg.domain,
 		[]string{original.SenderEmail},
-		bytes.NewReader(bounceMsg),
+		bytes.NewReader(signed),
 	)
 }
 
