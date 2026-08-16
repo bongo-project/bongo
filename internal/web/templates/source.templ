@@ -1,0 +1,65 @@
+package templates
+
+import "fmt"
+
+// MessageSourceDetail holds data for the raw message source view (View
+// Original). Source is the (possibly truncated) raw RFC 5322 text; it is
+// rendered with plain templ interpolation inside a <pre>, which HTML-escapes
+// it -- the raw source is entirely attacker-controlled, so this is the only
+// safe context for it (never templ.Raw / @templ.Raw here).
+type MessageSourceDetail struct {
+	UID       uint32
+	Mailbox   string
+	Subject   string
+	Source    string
+	Truncated bool
+	TotalSize int64
+	ShownSize int64
+}
+
+// MessageSourceFullPage renders the raw message source as a complete
+// document (layout + <head>/CSS) for a direct navigation to
+// /mail/{mailbox}/{uid}/source. There is no HTMX fragment variant: the
+// toolbar link is a plain <a> (a real navigation, not hx-boosted), so only
+// the full-page path is needed.
+templ MessageSourceFullPage(src MessageSourceDetail, email string) {
+	@LayoutWithContent(t(ctx, "mail.sourceTitle"), email) {
+		<aside class="sidebar" id="sidebar">
+			<nav>
+				<ul class="nav-list">
+					<li>
+						<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d", encMailbox(src.Mailbox), src.UID)) }>
+							&larr; { t(ctx, "mail.back") }
+						</a>
+					</li>
+				</ul>
+			</nav>
+		</aside>
+		<main class="content" id="main-content">
+			<div class="msg-source-page u-p-20">
+				<h2 class="settings-section-title u-font-12 u-mb-20px">{ t(ctx, "mail.sourceTitle") }</h2>
+				<p class="u-text-muted">{ src.Subject }</p>
+				if src.Truncated {
+					<div class="blocked-banner" role="alert">
+						<span>
+							&#9888; { t(ctx, "mail.sourceTruncated") }
+							{ " " }
+							({ formatSize(src.ShownSize) } / { formatSize(src.TotalSize) })
+						</span>
+						<a
+							href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(src.Mailbox), src.UID)) }
+							class="tool-btn"
+						>
+							{ t(ctx, "mail.sourceDownloadFull") }
+						</a>
+					</div>
+				}
+				<pre class="msg-source">{ src.Source }</pre>
+				<button type="button" class="btn-copy" data-copy-previous="true" title={ t(ctx, "common.copy") } aria-label={ t(ctx, "common.copy") }>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+					{ t(ctx, "common.copy") }
+				</button>
+			</div>
+		</main>
+	}
+}

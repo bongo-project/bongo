@@ -1368,6 +1368,23 @@ a.admin-nav-item.active, .admin-nav-item.active {
   border-radius: var(--radius); cursor: pointer; font-size: 0.78rem;
 }
 
+/* View Original (raw message source) page */
+.msg-source-page { max-width: 900px; margin: 0 auto; }
+.msg-source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  font-family: monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  max-height: 70vh;
+  overflow: auto;
+}
+
 /* Quick reply area */
 .quick-reply {
   margin: 0 0 24px 52px;

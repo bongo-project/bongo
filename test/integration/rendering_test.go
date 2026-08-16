@@ -264,6 +264,84 @@ func TestEMLExport(t *testing.T) {
 	}
 }
 
+// TestViewSourceRoute exercises the real middleware stack (RequireAuth +
+// Require2FA) for GET /mail/{mailbox}/{uid}/source: an authenticated owner
+// gets the raw RFC 5322 source in a <pre>, while a request with no session
+// cookie is redirected to login and receives none of the message content.
+func TestViewSourceRoute(t *testing.T) {
+	a, baseURL, client, cancel := setupRenderingAgent(t)
+	defer cancel()
+
+	smtpAddr := a.SMTP.MXAddr()
+	msg := "From: sender@localhost\r\n" +
+		"To: admin@localhost\r\n" +
+		"Subject: View Source Test\r\n" +
+		"Date: Sun, 22 Feb 2026 12:00:00 +0000\r\n" +
+		"\r\n" +
+		"Test body for view source.\r\n"
+
+	if err := smtplib.SendMail(smtpAddr, nil, "sender@localhost", []string{"admin@localhost"}, []byte(msg)); err != nil {
+		t.Fatalf("SendMail: %v", err)
+	}
+
+	time.Sleep(500 * time.Millisecond)
+
+	noRedirectClient := &http.Client{
+		Jar:       client.Jar,
+		Transport: client.Transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := noRedirectClient.Get(baseURL + "/mail/INBOX/1/source")
+	if err != nil {
+		t.Fatalf("GET source (authenticated): %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("authenticated status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "<pre") {
+		t.Error("authenticated response missing <pre> element")
+	}
+	for _, header := range []string{"From:", "To:", "Subject: View Source Test"} {
+		if !strings.Contains(bodyStr, header) {
+			t.Errorf("authenticated response missing %q", header)
+		}
+	}
+
+	// A request with no session cookie must redirect to login and leak
+	// nothing of the message content.
+	anonJar, _ := cookiejar.New(nil)
+	anonClient := &http.Client{
+		Jar: anonJar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	anonResp, err := anonClient.Get(baseURL + "/mail/INBOX/1/source")
+	if err != nil {
+		t.Fatalf("GET source (anonymous): %v", err)
+	}
+	defer anonResp.Body.Close()
+
+	if anonResp.StatusCode != http.StatusSeeOther && anonResp.StatusCode != http.StatusFound {
+		t.Errorf("anonymous status = %d, want a redirect (303/302)", anonResp.StatusCode)
+	}
+	if loc := anonResp.Header.Get("Location"); loc != "/login" {
+		t.Errorf("anonymous Location = %q, want /login", loc)
+	}
+	anonBody, _ := io.ReadAll(anonResp.Body)
+	if strings.Contains(string(anonBody), "View Source Test") || strings.Contains(string(anonBody), "Test body for view source") {
+		t.Errorf("anonymous response leaked message content: %q", anonBody)
+	}
+}
+
 func TestMboxImport(t *testing.T) {
 	_, baseURL, client, cancel := setupRenderingAgent(t)
 	defer cancel()

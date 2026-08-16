@@ -702,3 +702,31 @@ PATTERN: [mime] Detect a header block's line ending by comparing the POSITIONS
 PATTERN: [pipeline] A composite/fallback processor that returns one backend's
   result verbatim drops any field only the OTHER backend populates. Adding a
   field to StageResult means auditing every place a StageResult is chosen.
+
+## 2026-08-16 — Task 10.6: View Original in the web UI — DONE
+
+- New ViewSource handler + source.templ, modelled on ExportEML: same
+  resolveMessage ownership check, same store.RawMessageBytes entry point so
+  attachment-split records reconstruct correctly.
+- Size cap 256 KiB of RAW bytes. Rationale worth keeping: the diagnostic
+  payload (Authentication-Results, X-Spam-*) is at the START of a message, so
+  head-truncation never costs it; HTML escaping can expand ~6x, so 256 KiB
+  bounds the page at ~1.5 MB versus a 25 MB max_message_size producing a
+  ~150 MB DOM. Cut at the last newline so no header/base64 line is severed,
+  then ToValidUTF8. Truncation is always visible + links to Export.
+- FIXED POST-REVIEW, VACUOUS SECURITY TEST: the cross-user 404 test built a
+  SEPARATE store per user, so user2's handler had no message at that UID and
+  the 404 proved only absence. It would have passed with the ownership check
+  deleted. Now both users share one store, and a positive control asserts the
+  owner gets 200 at the same UID before user2 is asserted to get 404.
+- Also fixed a truncation assertion that only held for ASCII.
+
+PATTERN: [testing] A cross-user/permission test that gives each user its OWN
+  fixture proves nothing — the denial comes from absence, not from the guard.
+  Share ONE dataset and add a positive control showing the legitimate user CAN
+  read the exact resource the other is denied. Without that control, the test
+  passes with the guard removed.
+PATTERN: [ui] When capping attacker-controlled content for display, cap the
+  RAW bytes before escaping (escaping can expand ~6x), cut on a line boundary,
+  and re-validate UTF-8 after cutting — a byte-boundary cut produces invalid
+  UTF-8 that then lands in the HTML page.

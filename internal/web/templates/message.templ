@@ -119,6 +119,7 @@ templ MessagePage(msg MessageDetail, mailboxes []MailboxInfo) {
 			{ t(ctx, "mail.delete") }
 		</button>
 		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/export", encMailbox(msg.Mailbox), msg.UID)) } class="tool-btn">{ t(ctx, "mail.export") }</a>
+		<a href={ templ.SafeURL(fmt.Sprintf("/mail/%s/%d/source", encMailbox(msg.Mailbox), msg.UID)) } class="tool-btn">{ t(ctx, "mail.viewSource") }</a>
 		<button type="button" class="tool-btn" data-print-page="true">{ t(ctx, "mail.print") }</button>
 		<select
 			class="move-select"

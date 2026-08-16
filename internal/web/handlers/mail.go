@@ -1079,6 +1079,95 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// messageSourceMaxBytes caps how much of a message's raw RFC 5322 source is
+// rendered by ViewSource, measured in raw bytes before HTML escaping.
+//
+// 256 KiB was chosen deliberately, not as an arbitrary round number:
+//   - Headers -- the entire diagnostic point of this view after 10.5 added
+//     Authentication-Results and X-Spam-Score/Status/Reasons -- live at the
+//     very start of the message, so a head-truncation never costs the
+//     diagnostic payload.
+//   - HTML escaping can expand a byte up to ~6x in the worst case
+//     (`<` -> `&lt;`), so 256 KiB of raw input bounds the rendered page at
+//     roughly 1.5 MB even for pathological input, versus the 25 MB default
+//     max_message_size (config.go) which could otherwise produce a ~150 MB
+//     DOM that hangs or crashes the tab.
+//   - 256 KiB is far larger than a typical message's headers plus visible
+//     text; it only bites on messages that are large because of base64
+//     attachment payloads, which are unreadable in a <pre> anyway. Those
+//     users are pointed at the existing Export route for the full message.
+const messageSourceMaxBytes = 256 << 10
+
+// ViewSource renders a message's full raw RFC 5322 source (headers and body)
+// as an HTML page for in-browser diagnosis -- e.g. reading the
+// Authentication-Results / X-Spam-* headers landed in 10.5 to see why a
+// message was filed as spam. The source is capped at messageSourceMaxBytes
+// and rendered with plain templ string interpolation inside a <pre>, which
+// HTML-escapes it: the raw source is entirely attacker-controlled, so no
+// templ.Raw / @templ.Raw is used here (see ExportEML for the byte-identical
+// download path this view links to for the untruncated message).
+func (h *MailHandler) ViewSource(w http.ResponseWriter, r *http.Request) {
+	userID, email := middleware.UserFromContext(r.Context())
+	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
+	uid, err := strconv.ParseUint(chi.URLParam(r, "uid"), 10, 32)
+	if err != nil {
+		http.Error(w, "Invalid UID", http.StatusBadRequest)
+		return
+	}
+
+	msg, _, err := h.resolveMessage(userID, mailbox, uint32(uid))
+	if err != nil {
+		http.Error(w, "Message not found", http.StatusNotFound)
+		return
+	}
+
+	meta := h.loadMailMeta(userID, msg.MailGuid)
+	if meta == nil || meta.RawMessage == nil || meta.RawMessage.Hash == "" {
+		http.Error(w, "Message data not found", http.StatusNotFound)
+		return
+	}
+
+	rawMsg, err := store.RawMessageBytes(h.blobs, meta)
+	if err != nil {
+		http.Error(w, "Message blob not found", http.StatusNotFound)
+		return
+	}
+
+	src, truncated := truncateMessageSource(rawMsg, messageSourceMaxBytes)
+
+	detail := templates.MessageSourceDetail{
+		UID:       msg.Uid,
+		Mailbox:   mailbox,
+		Subject:   meta.Subject,
+		Source:    src,
+		Truncated: truncated,
+		TotalSize: int64(len(rawMsg)),
+		ShownSize: int64(len(src)),
+	}
+
+	// The page holds full message content, including headers and body of a
+	// potentially spam/phishing sample -- avoid it lingering in a shared
+	// machine's disk cache.
+	w.Header().Set("Cache-Control", "no-store")
+	templ.Handler(templates.MessageSourceFullPage(detail, email)).ServeHTTP(w, r)
+}
+
+// truncateMessageSource caps raw at maxBytes, cutting on the last newline at
+// or before the cap so no header or base64 line is split mid-line, then
+// scrubs any invalid UTF-8 produced by the byte-boundary cut (or present in
+// an 8-bit legacy body) so the result is always safe to embed in the HTML
+// page. Returns the (possibly truncated) text and whether truncation occurred.
+func truncateMessageSource(raw []byte, maxBytes int) (string, bool) {
+	if len(raw) <= maxBytes {
+		return strings.ToValidUTF8(string(raw), "�"), false
+	}
+	cut := bytes.LastIndexByte(raw[:maxBytes], '\n')
+	if cut <= 0 {
+		cut = maxBytes
+	}
+	return strings.ToValidUTF8(string(raw[:cut]), "�"), true
+}
+
 // sanitizeFilename removes unsafe characters and limits length for use as a download filename.
 func sanitizeFilename(s string) string {
 	if s == "" {
