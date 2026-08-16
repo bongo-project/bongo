@@ -637,3 +637,68 @@ PATTERN: [review] When you fix a divergence between a guard and the thing it
 PATTERN: [testing] Assert slog level on "level=WARN", never
   strings.Contains(strings.ToUpper(out), "WARN") — the latter matches "warn"
   inside any field value, and silently breaks negative assertions.
+
+## 2026-08-16 — Task 10.8: never DSN a null-sender message — DONE (ran in PARALLEL with 10.5)
+
+- Both worker.go permanent-failure call sites route through one unexported
+  generateBounce helper, so the guard cannot be half-applied.
+- ADVISOR AVERTED A PRODUCTION PANIC. My test note said "use a fake/spy
+  bouncer". Taken literally that means making bouncer an interface — but
+  agent.go assigns BounceGen only `if smtpPipeline != nil` while passing it
+  unconditionally to NewWorker, and a nil *mail.BounceGenerator stored in an
+  interface is NON-nil, so `w.bouncer != nil` would pass and edge nodes would
+  panic. Kept the concrete type; spied one level down via the existing mock
+  deliverer (GenerateAndDeliver unconditionally calls deliverer.Deliver, so an
+  empty channel proves it was not called).
+- PARALLEL EXECUTION WORKED. 10.8 ran concurrently with 10.5 in the same
+  working tree. Disjoint files, plus an explicit concurrency notice in the
+  project rules: scope gates to your own packages, do not fix compile errors
+  in the other task's packages, report BLOCKED rather than edit outside scope.
+  Both landed clean; I verified each against a full-tree build afterwards.
+
+PATTERN: [go] A nil pointer stored in an interface is NOT nil. Converting a
+  concrete dependency to an interface "so tests can fake it" silently breaks
+  every `x != nil` guard on it. Check how the dependency is CONSTRUCTED before
+  widening its type — here it is conditionally assigned but unconditionally
+  passed.
+PATTERN: [concurrency] Two norman tasks can share a working tree safely when
+  their FILES are disjoint, but they still share the BUILD. Give the second
+  task scoped build/test commands and an explicit "these packages are not
+  yours, report BLOCKED rather than edit them" rule.
+
+## 2026-08-16 — Task 10.5: Authentication-Results + X-Spam-* trace headers — DONE
+
+- New pure headers.go (strip/prepend/fold) testable without a processor.
+- HAZARD 1 taken the honest way: added StageResult.dmarc_result to the proto so
+  the antispam stage records the REAL verdict. The alternative — inferring
+  dmarc=pass from the absence of a reason string — would have reported a pass
+  for every message where DMARC never ran.
+- Ordering: DKIM verified against ORIGINAL bytes -> strip -> prepend -> Put
+  stamped blob -> trySplit(stamped) -> Size = len(stamped). The forward/relay
+  path deliberately keeps env.BlobHash so relayed copies retain signatures.
+- FIXED POST-REVIEW, FR-12 SECURITY BYPASS: detectLineEnding returned ok=false
+  when the message had no blank-line separator, which made BOTH strip and
+  prepend no-op — so a forged "X-Spam-Status: No" survived into storage on a
+  bodyless message, the exact shape an attacker controls. A bodyless message is
+  valid RFC 5322 and is all header block; it is now stripped like any other.
+- Same function also scanned the WHOLE message for "\r\n\r\n", so an LF-only
+  header block followed by a CRLF blank line in the BODY was misdetected as
+  CRLF and headers were stamped with the wrong terminator. Now compares
+  separator POSITIONS.
+- Also fixed: composite.Process dropped DmarcResult when an external backend
+  (rspamd) won, silently removing dmarc= on every rspamd deployment.
+- Two tests encoding the old no-op contract were UPDATED, not deleted.
+- Filed 10.9 (storage doubling: stamped blob orphans the SMTP-time blob and
+  blob GC defaults to off) and 10.10 (Junk routing threshold changed from
+  hardcoded 0.5 to the configured value — out of scope, needs a decision).
+
+PATTERN: [security] A "cannot parse, return unchanged" guard is a BYPASS when
+  the function it guards is a sanitiser. Ask what an attacker gains by making
+  parsing fail — here, an unparseable (bodyless) message skipped trace-header
+  stripping entirely.
+PATTERN: [mime] Detect a header block's line ending by comparing the POSITIONS
+  of "\r\n\r\n" and "\n\n", never by testing for CRLF first: a body blank line
+  after an LF-only header block otherwise wins the vote.
+PATTERN: [pipeline] A composite/fallback processor that returns one backend's
+  result verbatim drops any field only the OTHER backend populates. Adding a
+  field to StageResult means auditing every place a StageResult is chosen.

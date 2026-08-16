@@ -15,10 +15,18 @@ import (
 // deployments realistically carry only a handful of signatures.
 const maxDKIMVerifications = 5
 
+// LookupTXT overrides the DNS TXT resolver VerifyDKIM's signature
+// verification uses to fetch the signer's public key. Production code leaves
+// this nil, which uses the standard library resolver (net.LookupTXT, per
+// dkim.VerifyOptions). Tests may set it to a stub so a "pass" verification can
+// be exercised deterministically without live DNS.
+var LookupTXT func(domain string) ([]string, error)
+
 // VerifyDKIM checks the DKIM signature of a raw email message.
 // Returns the verification result ("pass", "fail", "none") and the signing domain.
 func VerifyDKIM(rawMessage []byte) (result string, domain string, err error) {
 	verifications, err := dkim.VerifyWithOptions(bytes.NewReader(rawMessage), &dkim.VerifyOptions{
+		LookupTXT:        LookupTXT,
 		MaxVerifications: maxDKIMVerifications,
 	})
 	if err != nil {

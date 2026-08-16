@@ -459,10 +459,11 @@ func (s *Session) Reset() {
 	s.spfResult = ""
 }
 
-// sanitizeHeaderValue strips CR and LF to prevent header injection when
-// interpolating values into generated headers.
+// sanitizeHeaderValue strips control characters (including CR and LF) to
+// prevent header injection when interpolating values into generated headers.
+// Delegates to mail.SanitizeHeaderValue, the canonical implementation.
 func sanitizeHeaderValue(v string) string {
-	return strings.NewReplacer("\r", "", "\n", "").Replace(v)
+	return mail.SanitizeHeaderValue(v)
 }
 
 // buildReceivedHeader constructs the trace Received header added to every

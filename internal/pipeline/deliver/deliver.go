@@ -59,6 +59,47 @@ type DeliverProcessor struct {
 	// or a non-positive threshold keeps whole-raw storage.
 	blobs        *store.BlobStore
 	dedupMinSize int
+
+	// authservID and spamThreshold enable trace-header stamping (task 10.5):
+	// an Authentication-Results header naming authservID plus X-Spam-Score,
+	// X-Spam-Status and X-Spam-Reasons derived from the antispam StageResult.
+	// authservID is the configured SMTP hostname; empty omits
+	// Authentication-Results entirely (graceful degradation) rather than emit
+	// a header with a blank authserv-id. X-Spam-* stamping is independent of
+	// authservID: it is emitted whenever the envelope carries an antispam
+	// StageResult. spamThreshold is the score at/above which X-Spam-Status is
+	// "Yes"; it also drives Junk routing (see effectiveSpamThreshold) so the
+	// two never disagree.
+	authservID    string
+	spamThreshold float32
+}
+
+// defaultSpamThreshold is used for both Junk routing and X-Spam-Status when
+// no threshold has been configured (spamThreshold <= 0), preserving prior
+// behavior for default configuration.
+const defaultSpamThreshold float32 = 0.5
+
+// effectiveSpamThreshold returns the configured spam threshold, falling back
+// to defaultSpamThreshold when unset. Both the Junk-routing decision and the
+// X-Spam-Status header use this so a message is never routed to Junk while
+// being stamped X-Spam-Status: No, or vice versa.
+func (p *DeliverProcessor) effectiveSpamThreshold() float32 {
+	if p.spamThreshold > 0 {
+		return p.spamThreshold
+	}
+	return defaultSpamThreshold
+}
+
+// SetTraceHeaders enables stamping Authentication-Results and X-Spam-*
+// headers onto delivered messages (task 10.5), following the SetAttachmentDedup
+// setter-injection pattern. hostname is the authserv-id used in
+// Authentication-Results (the configured SMTP.Hostname); an empty hostname
+// omits that header but X-Spam-* stamping and inbound trace-header stripping
+// still happen. threshold should match the antispam stage's tag threshold; a
+// non-positive value falls back to defaultSpamThreshold.
+func (p *DeliverProcessor) SetTraceHeaders(hostname string, threshold float32) {
+	p.authservID = hostname
+	p.spamThreshold = threshold
 }
 
 // SetQueuer sets the outbound queue for forwarding messages.
@@ -195,20 +236,81 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		}
 	}
 
-	// Attachment handling. By default we keep the whole raw message
-	// (env.BlobHash) and record attachment metadata only. When attachment dedup
-	// is enabled and a message carries a large-enough attachment, we instead
-	// store a skeleton + separate deduplicated attachment blobs and reconstruct
-	// the original on read (Phase 9). rawHash is the blob the metadata points at.
+	// Determine spam score and antispam stage result from envelope stage results.
+	spamStage := antispamStage(env.Stages)
+	spamScore := spamScoreFromStages(env.Stages)
+
+	// Verify the DKIM signature once (identical for every recipient), against
+	// the ORIGINAL inbound bytes before any header mutation below, so the
+	// result reflects what the sender actually signed and is recorded on each
+	// delivered copy.
+	dkimResult, dkimDomain, dkimErr := antispam.VerifyDKIM(raw)
+	if dkimErr != nil {
+		p.logger.Debug("deliver: DKIM verification error", "id", env.Id, "error", dkimErr)
+	}
+	dmarcResult := ""
+	if spamStage != nil {
+		dmarcResult = spamStage.DmarcResult
+	}
+
+	// Stamp trace headers (FR-10/FR-11/FR-12/FR-13): strip any inbound
+	// Authentication-Results / X-Spam-* headers so a remote sender cannot
+	// forge a passing verdict, then prepend our own Authentication-Results and
+	// X-Spam-* headers above the original header set (so a DKIM signature over
+	// the original headers stays valid). This must run before trySplit so the
+	// stored skeleton contains the trace headers. The generated content has no
+	// timestamp, so a retried delivery of the same message re-derives the
+	// identical stamped bytes and blob hash.
+	stamped := stripTraceHeaders(raw)
+	var traceHdrs []string
+	if authHdr := buildAuthenticationResults(p.authservID, env.GetSpfResult(), dkimResult, dkimDomain, dmarcResult); authHdr != "" {
+		traceHdrs = append(traceHdrs, authHdr)
+	}
+	traceHdrs = append(traceHdrs, buildSpamHeaders(spamStage, p.effectiveSpamThreshold())...)
+	stamped = prependHeaders(stamped, traceHdrs)
+
+	// Persist the stamped bytes so what is actually stored (not just the
+	// in-memory raw) carries the trace headers. Content addressing makes this
+	// idempotent: a retried delivery re-derives the identical hash rather than
+	// orphaning a divergent blob. The original env.BlobHash blob is left
+	// untouched and reclaimed by the normal blob GC; the forwarding path below
+	// deliberately keeps using env.BlobHash so relayed copies retain the
+	// sender's original (and its original DKIM signature) rather than our
+	// locally-stamped copy.
+	//
+	// Attachment handling: when attachment dedup is enabled and the stamped
+	// message carries a large-enough attachment, it is stored as a skeleton +
+	// separate deduplicated attachment blobs and reconstructed on read (Phase
+	// 9); trySplit operates on the STAMPED bytes so the reconstructed message
+	// carries the trace headers too. Otherwise the stamped message is written
+	// as a single whole-raw blob. Splitting is attempted first so a message
+	// that does split is never also written a second time as a redundant
+	// whole-raw blob.
+	//
+	// When there is no blob store, or the write fails, fall back to the
+	// original raw bytes, hash, and (further below) size together so stored
+	// metadata never disagrees with stored bytes.
+	rawForStorage := raw
 	rawHash := env.BlobHash
 	var attachmentRefs []*bongov1.BlobRef
 	var layout []*bongov1.MessageSegment
 
-	if split := p.trySplit(raw, env.Id); split != nil {
+	if split := p.trySplit(stamped, env.Id); split != nil {
+		rawForStorage = stamped
 		rawHash = split.SkeletonHash
 		attachmentRefs = split.Attachments
 		layout = split.Layout
-	} else if parsed != nil {
+	} else if p.blobs != nil {
+		if h, err := p.blobs.Put(stamped); err != nil {
+			p.logger.Warn("deliver: failed to store stamped message, keeping original raw",
+				"id", env.Id, "error", err)
+		} else {
+			rawForStorage = stamped
+			rawHash = h
+		}
+	}
+
+	if len(layout) == 0 && parsed != nil {
 		for _, att := range parsed.Attachments {
 			// Metadata only (no per-attachment blob): the payload lives inside the
 			// whole raw message blob.
@@ -218,16 +320,6 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 				Filename:    att.FileName,
 			})
 		}
-	}
-
-	// Determine spam score from envelope stage results.
-	spamScore := spamScoreFromStages(env.Stages)
-
-	// Verify the DKIM signature once (identical for every recipient) so the
-	// result and signing domain are recorded on each delivered copy.
-	dkimResult, dkimDomain, dkimErr := antispam.VerifyDKIM(raw)
-	if dkimErr != nil {
-		p.logger.Debug("deliver: DKIM verification error", "id", env.Id, "error", dkimErr)
 	}
 
 	// Deliver to each recipient. Check account-level forwarding preferences.
@@ -265,7 +357,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		targetMailbox := env.TargetMailbox
 		if targetMailbox == "" {
 			targetMailbox = "INBOX"
-			if spamScore >= 0.5 {
+			if spamScore >= p.effectiveSpamThreshold() {
 				targetMailbox = "Junk"
 			}
 		}
@@ -282,7 +374,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			ReceivedAt: receivedAt.Unix(),
 			RawMessage: &bongov1.BlobRef{
 				Hash:        rawHash,
-				Size:        int64(len(raw)),
+				Size:        int64(len(rawForStorage)),
 				ContentType: "message/rfc822",
 			},
 			Attachments:   attachmentRefs,
@@ -363,17 +455,6 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		ProcessedAt: time.Now().Unix(),
 		DurationMs:  durationMs,
 	}, nil
-}
-
-// spamScoreFromStages extracts the spam score from the antispam stage result,
-// returning 0.0 if no antispam stage was found.
-func spamScoreFromStages(stages []*bongov1.StageResult) float32 {
-	for _, s := range stages {
-		if s.Stage == "antispam" {
-			return s.Score
-		}
-	}
-	return 0.0
 }
 
 // maxForwardHops caps how many Received headers a message may carry before the

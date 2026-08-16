@@ -84,9 +84,16 @@ func TestDeliverSplitsLargeAttachment(t *testing.T) {
 	}
 }
 
-// TestDeliverBelowThresholdWholeRaw: a small attachment keeps whole-raw storage.
+// TestDeliverBelowThresholdWholeRaw: a small attachment keeps whole-raw
+// storage (no split). Since task 10.5, the deliver stage always persists the
+// (trace-header-stamped) message through the blob store when one is
+// configured, rather than reusing the SMTP-time env.BlobHash placeholder, so
+// RawMessage.Hash is now a real content hash rather than "wholehash" -
+// verified here by reconstructing through store.RawMessageBytes rather than
+// comparing against the original placeholder (see task 10.5 RISK 1: any
+// assertion on stored bytes must go through the same path every reader uses).
 func TestDeliverBelowThresholdWholeRaw(t *testing.T) {
-	proc, applier, _ := dedupProc(t, 1<<20) // 1 MB threshold
+	proc, applier, bs := dedupProc(t, 1<<20) // 1 MB threshold
 	raw := multipartWithAttachment("small", "QUJDRA==")
 
 	deliver(t, proc, raw, "wholehash")
@@ -95,8 +102,15 @@ func TestDeliverBelowThresholdWholeRaw(t *testing.T) {
 	if len(meta.Layout) != 0 {
 		t.Fatal("below threshold must not split")
 	}
-	if meta.RawMessage.Hash != "wholehash" {
-		t.Errorf("RawMessage.Hash = %q, want the whole-raw blob", meta.RawMessage.Hash)
+	if meta.RawMessage.Hash == "wholehash" {
+		t.Error("RawMessage.Hash should be a real content hash of the persisted (stamped) message, not the SMTP-time placeholder")
+	}
+	got, err := store.RawMessageBytes(bs, meta)
+	if err != nil {
+		t.Fatalf("RawMessageBytes: %v", err)
+	}
+	if !bytes.Equal(got, []byte(raw)) {
+		t.Errorf("stored whole-raw message does not match the original (no trace headers were configured for this harness, so content should be unchanged):\ngot  %q\nwant %q", got, raw)
 	}
 	// Attachment metadata is still recorded, but without a blob hash.
 	if len(meta.Attachments) == 1 && meta.Attachments[0].Hash != "" {

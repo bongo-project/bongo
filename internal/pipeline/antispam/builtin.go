@@ -212,12 +212,15 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	reasons := result.Reasons
 
-	// DMARC policy enforcement. A DMARC failure on the RFC5322.From domain
-	// escalates the action so a same-domain spoof (which the heuristic scorer
-	// alone may not catch) cannot land in the inbox. This runs escalate-only:
-	// it never weakens an action the scorer already chose.
+	// DMARC policy evaluation. A DMARC failure on the RFC5322.From domain
+	// escalates the action (in enforce mode) so a same-domain spoof (which the
+	// heuristic scorer alone may not catch) cannot land in the inbox. This runs
+	// escalate-only: it never weakens an action the scorer already chose. The
+	// verdict itself (dmarcResult) is recorded regardless of enforce mode, so
+	// Authentication-Results can report it even in monitor-only deployments.
+	var dmarcResult string
 	if p.dmarc != nil {
-		action, reasons = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
+		action, reasons, dmarcResult = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
 	}
 
 	observability.AntispamScore.Observe(float64(score))
@@ -240,23 +243,36 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		Reasons:     reasons,
 		ProcessedAt: start.Unix(),
 		DurationMs:  durationMs,
+		DmarcResult: dmarcResult,
 	}, nil
 }
 
 // applyDMARC evaluates DMARC for the message and, in enforce mode, escalates
 // the action when the From domain's policy is violated. It returns the
-// (possibly escalated) action and the reason list (with a dmarc reason appended
-// when the policy caused an escalation).
-func (p *BuiltinProcessor) applyDMARC(ctx context.Context, env *bongov1.QueueEnvelope, fromHeader, dkimDomain, dkimResult, action string, reasons []string) (string, []string) {
+// (possibly escalated) action, the reason list (with a dmarc reason appended
+// when the policy caused an escalation), and the DMARC verdict itself
+// ("pass", "fail", "none", or "" when DMARC did not run for this message —
+// no From domain, or p.dmarc is nil). The verdict is computed and returned
+// before the enforce-mode check below, so it reflects what DMARC actually
+// found even when enforcement is disabled (monitor-only mode).
+func (p *BuiltinProcessor) applyDMARC(ctx context.Context, env *bongov1.QueueEnvelope, fromHeader, dkimDomain, dkimResult, action string, reasons []string) (string, []string, string) {
 	fromDomain := mail.FromHeaderDomain(fromHeader)
 	if fromDomain == "" {
-		return action, reasons
+		return action, reasons, ""
 	}
 	spfDomain := mail.FromHeaderDomain(env.GetSender())
 	res := p.dmarc.Evaluate(ctx, fromDomain, spfDomain, env.GetSpfResult(), dkimDomain, dkimResult)
 
+	dmarcResult := "fail"
+	switch {
+	case !res.RecordFound:
+		dmarcResult = "none"
+	case res.Pass:
+		dmarcResult = "pass"
+	}
+
 	if !res.RecordFound || res.Pass {
-		return action, reasons
+		return action, reasons, dmarcResult
 	}
 
 	// DMARC disposition -> pipeline action. quarantine routes to Junk ("tag");
@@ -281,7 +297,7 @@ func (p *BuiltinProcessor) applyDMARC(ctx context.Context, env *bongov1.QueueEnv
 	)
 
 	if !p.dmarcEnforce {
-		return action, reasons
+		return action, reasons, dmarcResult
 	}
 
 	if actionSeverity(dmarcAction) > actionSeverity(action) {
@@ -291,7 +307,7 @@ func (p *BuiltinProcessor) applyDMARC(ctx context.Context, env *bongov1.QueueEnv
 			env.TargetMailbox = "Junk"
 		}
 	}
-	return action, reasons
+	return action, reasons, dmarcResult
 }
 
 // actionSeverity orders pipeline actions so DMARC can escalate but never weaken

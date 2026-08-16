@@ -95,6 +95,105 @@ func TestDMARCAlignedPasses(t *testing.T) {
 	}
 }
 
+// TestDMARCResultRecordedOnStageResult verifies that StageResult.DmarcResult
+// (task 10.5, added so Authentication-Results can report a real dmarc=
+// verdict) reflects what DMARC actually found, in both enforce and
+// monitor-only mode, and is "none"/"" for the no-record / no-From-domain
+// cases where DMARC could not form a verdict.
+func TestDMARCResultRecordedOnStageResult(t *testing.T) {
+	tests := []struct {
+		name       string
+		enforce    bool
+		from       string
+		spfResult  string
+		wantAction string
+		wantDmarc  string
+	}{
+		{
+			name:       "enforce mode: fail is recorded and escalates",
+			enforce:    true,
+			from:       "CEO <ceo@example.com>",
+			spfResult:  "fail",
+			wantAction: "reject",
+			wantDmarc:  "fail",
+		},
+		{
+			// The heuristic scorer alone already tags this message (missing
+			// Message-ID/Date, SPF fail, etc.); the point of this case is that
+			// DMARC's own verdict is still recorded even though DMARC itself
+			// did not escalate the action (monitor mode).
+			name:       "monitor mode: fail is still recorded even though DMARC itself does not escalate",
+			enforce:    false,
+			from:       "CEO <ceo@example.com>",
+			spfResult:  "fail",
+			wantAction: "tag",
+			wantDmarc:  "fail",
+		},
+		{
+			name:       "aligned message records pass",
+			enforce:    true,
+			from:       "CEO <ceo@example.com>",
+			spfResult:  "pass",
+			wantAction: "pass",
+			wantDmarc:  "pass",
+		},
+		{
+			name:       "no DMARC record for the From domain records none",
+			enforce:    true,
+			from:       "Someone <person@no-dmarc-record.example>",
+			spfResult:  "fail",
+			wantAction: "tag",
+			wantDmarc:  "none",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proc := newDMARCProcessor(t, tt.enforce)
+			sender := "ceo@example.com"
+			if tt.spfResult == "fail" {
+				sender = "spammer@attacker.net"
+			}
+			env := &bongov1.QueueEnvelope{
+				Sender:     sender,
+				Recipients: []string{"victim@example.com"},
+				SpfResult:  tt.spfResult,
+			}
+			msg := "From: " + tt.from + "\r\nTo: victim@example.com\r\nSubject: hi\r\n\r\nHello.\r\n"
+
+			result, err := proc.Process(context.Background(), env, strings.NewReader(msg))
+			if err != nil {
+				t.Fatalf("Process: %v", err)
+			}
+			if result.Action != tt.wantAction {
+				t.Errorf("Action = %q, want %q", result.Action, tt.wantAction)
+			}
+			if result.DmarcResult != tt.wantDmarc {
+				t.Errorf("DmarcResult = %q, want %q", result.DmarcResult, tt.wantDmarc)
+			}
+		})
+	}
+}
+
+// TestDMARCResultEmptyWithoutFromDomain verifies that a message with no
+// parseable From header (so DMARC never evaluates) records "" rather than
+// fabricating a verdict.
+func TestDMARCResultEmptyWithoutFromDomain(t *testing.T) {
+	proc := newDMARCProcessor(t, true)
+	env := &bongov1.QueueEnvelope{
+		Sender:     "x@example.com",
+		Recipients: []string{"victim@example.com"},
+	}
+	msg := "To: victim@example.com\r\nSubject: no from header\r\n\r\nHello.\r\n"
+
+	result, err := proc.Process(context.Background(), env, strings.NewReader(msg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.DmarcResult != "" {
+		t.Errorf("DmarcResult = %q, want empty (DMARC never ran, no From domain)", result.DmarcResult)
+	}
+}
+
 // TestApplyDMARC_SignedBouncePassesQuarantinePolicy exercises the DMARC
 // alignment logic directly (bypassing antispam.VerifyDKIM, which requires a
 // live DNS TXT lookup of the signer's public key — see the package-level test
@@ -122,7 +221,7 @@ func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 		Recipients: []string{"alice@example.test"},
 	}
 
-	action, reasons := proc.applyDMARC(
+	action, reasons, dmarcResult := proc.applyDMARC(
 		context.Background(),
 		env,
 		"MAILER-DAEMON <postmaster@example.test>", // From header
@@ -134,6 +233,9 @@ func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 
 	if action != "pass" {
 		t.Errorf("action = %q, want pass (signed+aligned bounce must not be escalated); reasons=%v", action, reasons)
+	}
+	if dmarcResult != "pass" {
+		t.Errorf("dmarcResult = %q, want pass (DKIM-aligned bounce should record a DMARC pass)", dmarcResult)
 	}
 	if env.TargetMailbox != "" {
 		t.Errorf("TargetMailbox = %q, want empty (bounce must not be routed to Junk)", env.TargetMailbox)
