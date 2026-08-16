@@ -1,49 +1,111 @@
-# Verification — Rich Signatures & HTML Composer
+# Verification: Phase 10 — Outbound Deliverability and View Original
 
-Date: 2026-07-13
-Mode: `norman verify`, rigor: **adversarial** (3 lens verifiers per requirement — implementation-exists / tests-exercise-it / edge-cases — majority-combined, then a completeness critic over the full set). 34 verifier agents.
+**Date:** 2026-08-16
+**PRD:** [prd-outbound-deliverability-and-view-original.md](active/prd-outbound-deliverability-and-view-original.md)
+**Rigor:** `adversarial` — 3 independent lenses per requirement (implementation-exists /
+tests-actually-exercise-it / edge-cases), majority-combined, then a completeness critic over
+the full verdict set.
+**Scale:** 19 verifier agents, 541 tool calls.
+**Deployed as:** v0.6.13 (commit `e21b970`), live and healthy.
 
-## Reconciled results (critic downgrades applied)
+## Result
 
-| ID | Requirement | Majority vote | Final |
-|----|-------------|---------------|-------|
-| US-001 | HTML signature editor in Settings | PASS | **PASS** |
-| US-002 | Plain-text fallback preserved | PASS | **PASS** (closed by 2.12) |
-| US-003 | Rich compose with plain/rich toggle | PASS | **PASS** |
-| US-004 | Inline logo via cid: | PASS | **PASS** |
-| US-005 | Received mail renders (integration) | PASS | **PASS** (closed by 2.12) |
-| FR-3 | Server-side HTML sanitizer | PASS | **PASS** |
-| FR-5 | MIME builder tree | PASS | **PASS** |
-| FR-6 | data:->cid: extraction with stable IDs | PASS | **PASS** |
-| FR-8 | Plain/rich toggle backward-compat | PASS | **PASS** |
-| FR-10 | i18n + a11y for editor | PASS | **PASS** |
-| SEC-caps | Server-side inline image size caps | PASS | **PASS** |
+| Requirement | Lenses (exists / tested / edge) | Combined | After critic |
+|---|---|---|---|
+| US-006 Fully-qualified HELO (FR-19..22) | PASS / PASS / PASS | PASS | **PASS** |
+| US-001 DKIM-signed bounces (FR-1,2,9) | PASS / PASS / PASS | PASS | **PARTIAL** |
+| US-002 RFC 3464/3834 DSN headers (FR-4..8) | PASS / PASS / PASS | PASS | **PASS** |
+| US-003 Null envelope sender (FR-3) | PASS / PASS / PASS | PASS | **PASS** |
+| US-004 Trace headers (FR-10..13) | PASS / PARTIAL / PASS | PASS | **PARTIAL** |
+| US-005 View Original (FR-14..18) | PASS / PARTIAL / PASS | PASS | **PASS** |
 
-**11 PASS** (after task 2.12 closed the two coverage gaps; originally 9 PASS + 2 PARTIAL). All 11 requirements are *implemented* and confirmed by reading the code; the two PARTIALs are test-coverage gaps, not defects. An adversarial XSS probe against the sanitizer (mixed-case `<SCRIPT>`, nested `<scr<script>ipt>`, `<img onerror>`, `javascript:` href) found no injection leak.
+**4 PASS, 2 PARTIAL, 0 FAIL** after applying the critic's downgrades.
 
-## Gaps (test coverage only — implementation is correct)
+Note the pattern: the per-requirement sweep returned six PASSes. Every downgrade came from the
+completeness critic — the stage that looks across requirements rather than at one in isolation.
+Two of the three gaps are cross-requirement interactions that no single-requirement verifier
+could have seen.
 
-1. **US-002 — plain fallback with an *empty* signature.** The `plain_send_single_part` integration subtest runs with a non-empty HTML signature already set (the inverse of the criterion's precondition), and no test asserts the `text/plain` body *ends with the plain signature* when `signature_html` is empty and a plain `Signature` is set.
-   - *Fix:* add a case: user with empty `signature_html` + plain `Signature="Regards, Jane"`, plain send → single `text/plain` part ending with `\n\n-- \nRegards, Jane`, no `text/html`, no `multipart/alternative`.
+## Gap 1 — FR-12 and FR-13 are in direct tension, and FR-12 silently won (US-004 -> PARTIAL)
 
-2. **US-005 — inline logo in the *signature*.** Every test puts the `data:` image in the message body; none embeds it in the HTML signature and asserts it becomes a `cid:` inline part on the received message.
-   - *Fix:* set an HTML signature containing a `data:` logo, send rich, assert the logo is rewritten to `cid:` with a matching inline part (Content-ID + Content-Disposition: inline) on the sent message.
+**The criterion:** "Trace headers are prepended above existing headers and do not invalidate a
+pre-existing DKIM signature: `antispam.VerifyDKIM` still returns `pass` for a message that
+verified before the headers were added."
 
-Both are addressable with small additions to `test/integration/rich_compose_test.go` (and/or `compose_rich_send_test.go`). Tracked as task **2.12**.
+**What is actually true:** FR-12 strips inbound `Authentication-Results` and `X-Spam-*` headers
+unconditionally. If a sender oversigned — listed `x-spam-status` in their DKIM `h=` tag — the
+stored copy no longer verifies. `stripTraceHeaders` in `internal/pipeline/deliver/headers.go`
+documents this as deliberate. The two requirements cannot both hold, FR-12 was chosen, and the
+PRD was never amended to say so.
 
-## Evidence highlights
+**Why it matters beyond bookkeeping:** IMAP, POP3 and the Export route all serve the stamped
+copy, so a message that authenticated on arrival can fail DKIM in the user's own mail client.
+US-004 exists to put evidence of authenticity into the stored message; for oversigned senders it
+partly undermines that.
 
-- US-001: `preferences.go:117-120` (sanitize + derive), `preferences_signature_test.go` (Plain/ClearEmpty/ScriptStripped all pass), `richeditor.test.mjs` source-toggle round-trip (22/22).
-- FR-3: `internal/web/sanitize` bluemonday blank policy; `sanitize_test.go` 5 cases; adversarial probe clean.
-- FR-5/FR-6: `compose_mime.go` `buildMIME`/`extractDataURIImages`; `compose_mime_test.go` tree + dedup + sha256 Content-IDs.
-- SEC-caps: `checkInlineImageCaps` (1MB/10MB) → 400 before writes; `compose_rich_send_test.go`.
-- FR-10: 11 `editor.*`/`compose.bodyMode*` keys × 4 locales; `TestI18nCoverage` parity; `role=textbox` in `richeditor.templ`.
+**Why it is PARTIAL and not FAIL:** the ordinary case — a sender who did not oversign — almost
+certainly still verifies, because stamping only prepends and never touches signed headers.
+Nothing proves it. `TestDeliverDKIMSignatureCoveringStrippedHeaderStillVerifiesArrivalTime`
+(`trace_headers_test.go:242`) tests the *opposite* case and asserts only the arrival-time verdict
+on `meta.DkimResult`. No test calls `VerifyDKIM` on the stored bytes after stamping.
 
+**The machinery to prove it already exists** in the same file: `signedTestMessage` + `stubDKIMPass`
++ the exported `antispam.LookupTXT` hook.
 
-## Update 2026-07-17 — gaps closed (task 2.12)
+## Gap 2 — 10.5 doubles steady-state storage on a default deployment (US-004 -> PARTIAL)
 
-Both PARTIALs are resolved by new tests in `internal/web/handlers/compose_rich_send_test.go`:
-- `TestComposeSendPlainMode_EmptyHTMLSignature_PlainFallback` — empty `signature_html` + plain `Signature`, plain send → single `text/plain`, no `multipart/alternative`, no `text/html`, body carries the plain signature. (Caveat retained in the test comment: the plain Send path never appends a signature server-side — the plain signature is supplied via the prefilled body — so this documents plain-fallback structure rather than server-side suppression.)
-- `TestComposeSendRichMode_SignatureInlineImage_RoundTrips` — a `data:` logo embedded in the HTML **signature** (text-only body) → `multipart/related` with the `text/html` part referencing the logo via `cid:` (no `data:` remains) and a sibling inline part with Content-ID + Content-Disposition: inline.
+Every delivered message now writes a second blob (the stamped copy) and orphans the DATA-time
+blob. The code comment says the original is "reclaimed by the normal blob GC" — but `BlobGCMode()`
+defaults to **off** (`internal/config/config.go:84`), and the only `blobs.Delete` on this path is
+inside that opt-in GC.
 
-Final: **11/11 PASS.**
+Before 10.5 this orphaning happened only for messages large enough to trigger attachment
+splitting. 10.5 generalises it to **100% of inbound mail**.
+
+Not in the PRD's Technical Considerations or Open Questions, not covered by a test
+(`TestDeliverStampedBytesActuallyPersisted` asserts the new blob exists, never that the old one is
+handled), and not in the 10.7 operator docs.
+
+**Already tracked as task 10.9** — the critic found it independently, which corroborates the
+earlier analysis. The live deployment is unaffected (`blob_gc = "on"`, sweeping confirmed); the
+exposure is for *new* deployments following the example config.
+
+## Gap 3 — the phase's headline outcome is never tested end to end (US-001 -> PARTIAL)
+
+**The criterion** names `BuiltinProcessor.Process` specifically, because that is the only place
+the whole chain closes: signed DSN bytes -> `antispam.VerifyDKIM` -> dkimResult/dkimDomain ->
+`applyDMARC` -> action + TargetMailbox.
+
+**What the test does:** `TestApplyDMARC_SignedBouncePassesQuarantinePolicy`
+(`dmarc_integration_test.go:211`) never calls `Process`. It calls the unexported `proc.applyDMARC`
+directly, passing `dkimDomain="example.test"` and `dkimResult="pass"` as literal strings. The DKIM
+verdict — the entire deliverable of task 10.2 — is asserted by fiat rather than derived from the
+bytes `BounceGenerator` actually emits.
+
+**The test's own justification is stale.** It says `applyDMARC` is called directly because
+`VerifyDKIM` "requires a live DNS TXT lookup" — but commit `e21b970` (task 10.5) added the
+exported `antispam.LookupTXT` stub hook for exactly this, and `trace_headers_test.go` already uses
+it to drive a real `pass` offline.
+
+So the phase's central claim — a real generated bounce surviving our own DMARC evaluation — is
+stitched from two half-tests: `bounce_test.go` proves the signature verifies under go-msgauth, and
+`dmarc_integration_test.go` proves DMARC passes *given* a hand-typed "pass". The seam between them
+is untested, including whether `Process`'s header extraction handles a `multipart/report` DSN and
+whether `VerifyDKIM` returns pass over the exact bytes emitted after the 10.3/10.4 changes.
+
+## What was verified as genuinely solid
+
+- **US-006** — wire-level tests capture the actual pre-STARTTLS EHLO through a go-smtp stub, with
+  a negative control proving the strict-server fixture is real. Confirmed the only non-test
+  `netsmtp.NewClient` is the fixed one, so there is no second unfixed outbound path.
+- **US-002, US-003** — clean across all three lenses.
+- **US-005** — the ownership test now shares one store with a positive control, so its 404 is
+  attributable to the guard rather than to absence.
+
+## Recommended follow-ups
+
+1. Close Gap 3 with a genuine end-to-end test using the existing `LookupTXT` hook. Highest value:
+   it tests the thing the phase was actually for.
+2. Close Gap 1 with a test proving the non-oversigned case still verifies after stamping, and
+   amend the PRD to record that FR-12 takes precedence over FR-13.
+3. Gap 2 is task 10.9, plus a line in the PRD's Technical Considerations.
