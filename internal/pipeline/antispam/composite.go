@@ -124,6 +124,13 @@ func (c *CompositeProcessor) Process(ctx context.Context, env *bongov1.QueueEnve
 		} else {
 			env.TargetMailbox = savedMailbox
 		}
+		// DMARC is evaluated only by the builtin processor, and the deliver
+		// stage reads DmarcResult off whichever StageResult wins here. Carry
+		// it across, or the dmarc= token silently vanishes from
+		// Authentication-Results on every rspamd-enabled deployment.
+		if externalResult.DmarcResult == "" {
+			externalResult.DmarcResult = builtinResult.GetDmarcResult()
+		}
 		c.logger.Debug("composite antispam: external result wins",
 			"backend", externalResult.Backend,
 			"score", externalResult.Score,

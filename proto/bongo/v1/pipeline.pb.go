@@ -170,6 +170,7 @@ type StageResult struct {
 	Reasons       []string               `protobuf:"bytes,5,rep,name=reasons,proto3" json:"reasons,omitempty"`                             // Human-readable reasons
 	ProcessedAt   int64                  `protobuf:"varint,6,opt,name=processed_at,json=processedAt,proto3" json:"processed_at,omitempty"` // Unix timestamp
 	DurationMs    int32                  `protobuf:"varint,7,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`    // Processing time
+	DmarcResult   string                 `protobuf:"bytes,8,opt,name=dmarc_result,json=dmarcResult,proto3" json:"dmarc_result,omitempty"`  // "pass", "fail", "none", or "" if DMARC did not run
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -253,6 +254,13 @@ func (x *StageResult) GetDurationMs() int32 {
 	return 0
 }
 
+func (x *StageResult) GetDmarcResult() string {
+	if x != nil {
+		return x.DmarcResult
+	}
+	return ""
+}
+
 var File_proto_bongo_v1_pipeline_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
@@ -276,7 +284,7 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	" \x01(\tR\fcurrentStage\x12%\n" +
 	"\x0etarget_mailbox\x18\v \x01(\tR\rtargetMailbox\x12!\n" +
 	"\fpending_tags\x18\f \x03(\tR\vpendingTags\x12+\n" +
-	"\x11forward_addresses\x18\r \x03(\tR\x10forwardAddresses\"\xc9\x01\n" +
+	"\x11forward_addresses\x18\r \x03(\tR\x10forwardAddresses\"\xec\x01\n" +
 	"\vStageResult\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12\x16\n" +
@@ -285,7 +293,8 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\areasons\x18\x05 \x03(\tR\areasons\x12!\n" +
 	"\fprocessed_at\x18\x06 \x01(\x03R\vprocessedAt\x12\x1f\n" +
 	"\vduration_ms\x18\a \x01(\x05R\n" +
-	"durationMsB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
+	"durationMs\x12!\n" +
+	"\fdmarc_result\x18\b \x01(\tR\vdmarcResultB5Z3github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1b\x06proto3"
 
 var (
 	file_proto_bongo_v1_pipeline_proto_rawDescOnce sync.Once

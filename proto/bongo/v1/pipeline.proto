@@ -28,4 +28,5 @@ message StageResult {
   repeated string reasons = 5;           // Human-readable reasons
   int64 processed_at = 6;               // Unix timestamp
   int32 duration_ms = 7;                // Processing time
+  string dmarc_result = 8;              // "pass", "fail", "none", or "" if DMARC did not run
 }
