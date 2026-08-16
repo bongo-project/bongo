@@ -54,7 +54,7 @@ smtp {
   enabled         = true
   port            = 25    # inbound MX
   submission_port = 587   # authenticated submission
-  hostname        = "mail.example.com"   # EHLO/HELO banner (align with rDNS/SPF)
+  hostname        = "mail.example.com"   # EHLO/HELO name, inbound banner AND outbound relay (align with rDNS/SPF; must be an FQDN)
   proxy_protocol  = true  # read PROXY header from Traefik to see the real client IP (SPF)
 
   limits {

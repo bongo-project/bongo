@@ -455,3 +455,53 @@ entry point. Routed EVERY full-message reader through it:
   splits, reconstructs byte-exact, and the attachment decodes to the original
   bytes. Full handler -race (410s), store/queue/deliver/agent -race, lint 0, gosec
   0 new (added one justified #nosec G115 for the bounded attachment index).
+
+## 2026-08-16 — Task 10.1: outbound SMTP HELO must be fully qualified — DONE
+
+- ROOT CAUSE (found from a live prod log line, not a code sweep): remote MX
+  returned `504 5.5.2 <localhost>: Helo command rejected: need fully-qualified
+  hostname`. internal/smtp/relay.go:190 called netsmtp.NewClient and never
+  Hello(), so Go's hardcoded localName "localhost" (GOROOT/src/net/smtp/smtp.go:71)
+  went out as the EHLO on EVERY outbound connection. All local users' mail to
+  every FQDN-enforcing receiver was permanently rejected.
+- New internal/smtp/helo.go: ResolveHELOName -> pure resolveHELOName with
+  injected hostnameFn + resolveServerDomain so the order is testable without
+  depending on the machine's real hostname.
+- Relay gains an immutable heloName field resolved ONCE at startup (agent.go);
+  NOT per-connection — the Relay is shared across queue-worker goroutines, and
+  re-deriving per delivery adds a syscall + log spam per message.
+- client.Hello() must be the FIRST command: Extension()/StartTLS()/Auth()/Mail()
+  all trigger net/smtp's implicit EHLO, and Hello() after any of them errors
+  with "Hello called after other methods". StartTLS then re-EHLOs reusing
+  c.localName, so the post-TLS EHLO is qualified for free — do NOT call Hello
+  a second time.
+- ADVISOR CAUGHT A CONTRADICTION IN THE PRD: FR-20's step 3 said fall back to
+  mail.ResolveServerDomain, but that function itself falls back to a bare
+  os.Hostname() and then the literal "localhost" (bounce.go:62-65) — i.e. the
+  prescribed chain could produce exactly what FR-21 forbids. Fix: gate EVERY
+  candidate through isQualifiedHELO, and when nothing qualifies send an RFC 5321
+  4.1.3 address literal instead of localhost.
+- Fixed post-review (advisor PASS, but these were worth doing before commit):
+  bare IPs are bracketed into address literals rather than sent bare; the
+  startup warning became the tested const HELONotQualifiedWarning so the
+  "names the config key" criterion is actually covered; the test mock's
+  capturedHELO is mutex-guarded.
+- Tests: pure resolution table (12 cases), qualified-name gate (11), IP
+  bracketing (8), plus 4 WIRE-LEVEL tests through a go-smtp stub asserting the
+  real pre-STARTTLS EHLO and that delivery SUCCEEDS against a server that
+  rejects dotless HELO. Full -race suite green (33 pkgs), vet clean, gosec 0 new.
+
+PATTERN: [smtp-client] Go's net/smtp hardcodes localName="localhost"; NewClient's
+  `host` arg is only the TLS ServerName/AUTH name, NOT the HELO. Any outbound
+  net/smtp client MUST call client.Hello(fqdn) as its first command or it
+  silently announces itself as localhost and strict receivers reject the mail.
+PATTERN: [spec] When a PRD prescribes "fall back to helper X", verify X's OWN
+  fallback chain — ResolveServerDomain bottoming out at "localhost" made FR-20
+  and FR-21 mutually contradictory. Advisor plan review caught it before a line
+  was written; a worker following the FRs literally would have shipped the bug.
+PATTERN: [testing] Assert protocol-level behaviour on the wire, not just the
+  pure helper. A unit test of the name resolver alone would have passed while
+  the relay still sent EHLO localhost, because the defect was a MISSING CALL.
+  go-smtp populates Conn.Hostname() before NewSession, so a stub backend can
+  capture the EHLO — and NewSession fires only on the first EHLO, so the
+  captured value is by construction the pre-STARTTLS one.

@@ -1172,8 +1172,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		// that signing survives a restart (keys generated via the admin UI).
 		handlers.LoadStoredDKIMKeys(a.Store, a.DKIMRegistry, a.logger)
 
-		// Outbound relay.
-		a.Relay = bongosmtp.NewRelay(&a.Config.SMTP.Relay, a.logger)
+		// Outbound relay. The HELO/EHLO name is resolved once at startup (never
+		// per-connection: it must stay immutable while shared across
+		// queue-worker goroutines, and re-deriving it per delivery would add a
+		// syscall and log spam to every outbound message). Resolution order and
+		// the "never literal localhost" guarantee are in bongosmtp.ResolveHELOName.
+		heloName, heloOK := bongosmtp.ResolveHELOName(a.Config.SMTP.Hostname, a.Config.SMTP.DKIM.Domain)
+		if !heloOK {
+			a.logger.Warn(bongosmtp.HELONotQualifiedWarning)
+		}
+		a.Relay = bongosmtp.NewRelay(&a.Config.SMTP.Relay, heloName, a.logger)
 
 		// Rate limiter (already created before route registration; reuse it).
 		if a.RateLimiter == nil {

@@ -125,8 +125,13 @@ smtp {
   port            = 25   # inbound mail from other servers (MX)
   submission_port = 587  # authenticated submission from your users
 
-  # EHLO/HELO banner hostname. MUST match your reverse-DNS (PTR) and be covered
-  # by SPF for good deliverability.
+  # EHLO/HELO hostname, used in BOTH directions: the banner we present to
+  # inbound connections, and the EHLO name we send when relaying mail out.
+  # MUST be fully qualified -- receivers enforcing RFC 5321 4.1.1.1 (e.g.
+  # Postfix reject_non_fqdn_helo_hostname) permanently reject mail otherwise.
+  # MUST match your reverse-DNS (PTR) and be covered by SPF for deliverability.
+  # Leave it unset and the server warns at startup and falls back to an address
+  # literal for outbound, which many strict receivers still reject.
   hostname = "mail.example.com"
 
   # Set true ONLY when a trusted reverse proxy (e.g. Traefik/HAProxy) sits in
