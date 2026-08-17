@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -99,12 +100,29 @@ func (s *DomainQuotaStore) GetUsage(domain string) (int64, error) {
 	if len(data) < 8 {
 		return 0, nil
 	}
-	return int64(binary.LittleEndian.Uint64(data[:8])), nil
+	// The value is stored as a little-endian uint64. A raw value above
+	// MaxInt64 would convert to a NEGATIVE int64, and IsOverStorageQuota
+	// compares `usage >= MaxStorageBytes` — so a negative usage silently
+	// disables the quota for that domain rather than enforcing it. Clamp
+	// instead, failing closed: an implausibly large stored value is treated
+	// as "at the ceiling", never as "no usage".
+	raw := binary.LittleEndian.Uint64(data[:8])
+	if raw > math.MaxInt64 {
+		return math.MaxInt64, nil
+	}
+	return int64(raw), nil
 }
 
 // SetUsage writes the aggregate storage usage for a domain via Raft.
 // Called by the leader-only usage-recompute job. Idempotent: always overwrites.
 func (s *DomainQuotaStore) SetUsage(domain string, bytes int64) error {
+	// Usage is a byte count, so a negative value is meaningless. Storing one
+	// would round-trip through GetUsage as a huge uint64 and, before the clamp
+	// there, back to a negative int64 that makes every quota check pass. Reject
+	// it at the write side too, so the stored value is always sane.
+	if bytes < 0 {
+		bytes = 0
+	}
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], uint64(bytes))
 	cmd := &bongov1.RaftCommand{
