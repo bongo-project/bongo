@@ -205,6 +205,22 @@ can inspect headers without downloading a file.
 - FR-13: Added headers must be prepended above existing headers so that DKIM signatures over the
   original header set remain valid.
 
+> **AMENDED 2026-08-17 after adversarial verification — FR-12 takes precedence over FR-13.**
+> As originally written these two requirements are in direct tension and cannot both hold. A
+> sender who *oversigns* — listing `x-spam-status` (or `authentication-results`) in their DKIM
+> `h=` tag — binds a header FR-12 requires us to strip. Stripping it means the stored copy no
+> longer verifies; not stripping it would let a remote sender pin our own trace headers by
+> covering them with their signature, defeating the anti-forgery purpose of FR-12 entirely.
+>
+> **Resolution: strip unconditionally.** FR-13 holds for the ordinary case — stamping only
+> prepends and never alters signed headers — and is proven for that case by a test added in
+> task 11.2. For oversigned senders the stored copy will not re-verify; the arrival-time verdict
+> is already durable on `MailMeta.DkimResult`/`DkimDomain`, and relayed and forwarded copies use
+> the untouched original blob, so nothing that depends on stored-message DKIM verification is
+> affected today. The consequence to accept knowingly: IMAP, POP3 and Export all serve the
+> stamped copy, so a mail client re-verifying an oversigned message will report a DKIM failure
+> for mail that authenticated correctly on arrival.
+
 **View Original (US-005)**
 
 - FR-14: The system must expose `GET /mail/{mailbox}/{uid}/source`, authenticated as the existing
@@ -280,6 +296,25 @@ Key integration points, verified against the current tree:
   `resolveMessage` for ownership, `loadMailMeta`, then `store.RawMessageBytes`.
 - `internal/agent/agent.go:754` — route registration, next to the existing `/export` route.
 - `internal/web/templates/message.templ:121` — toolbar, where the new control goes.
+
+**Storage consequence of FR-10..FR-13 (added 2026-08-17 after adversarial verification)**
+
+Stamping trace headers changes a message's bytes, so the stored copy must be written as a NEW
+blob and the one written at SMTP DATA time is left unreferenced. This was not called out when the
+PRD was written and is a genuine cross-phase interaction with Phase 9:
+
+- Before this change, an orphaned DATA-time blob occurred only for messages large enough to
+  trigger attachment splitting. It now occurs for **100% of inbound mail**.
+- The orphan is reclaimed by the unreferenced-blob GC — but `BlobGCMode()` defaults to `off`
+  (`internal/config/config.go:84`), because a data-deleting sweep must not start on an existing
+  deployment without the operator choosing it.
+- So on a default-configured deployment, inbound mail consumes roughly **twice** the space it
+  should, indefinitely.
+
+Resolved in task 11.3 by documenting it rather than changing the compiled default: `blob_gc` is
+now set in both shipped example configs, and the operator troubleshooting guide gains a
+"storage growing faster than expected" entry. The compiled default stays `off` deliberately —
+flipping it would start deleting data on upgrade for operators who never opted in.
 
 **Constraints**
 

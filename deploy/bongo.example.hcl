@@ -112,8 +112,20 @@ storage {
   #   "off"    (default) — never runs; blobs are retained forever
   #   "dryrun"           — logs what it WOULD delete, deletes nothing
   #   "on"               — deletes blobs unreferenced for two consecutive passes
-  # Validate with "dryrun" first, then switch to "on" to reclaim space.
-  # blob_gc = "on"
+  #
+  # YOU ALMOST CERTAINLY WANT THIS ON. Delivery stamps Authentication-Results
+  # and X-Spam-* headers onto each message, which changes its bytes, so the
+  # stored copy is a new blob and the one written at SMTP DATA time is left
+  # unreferenced. With the GC off those originals are retained forever, so
+  # inbound mail consumes roughly twice the space it needs to.
+  #
+  # It is opt-in rather than on by default because it deletes data, and a
+  # sweep should never start on an existing deployment without the operator
+  # choosing it. Validate with "dryrun" first — it logs what it would remove
+  # and removes nothing — then switch to "on". The sweep only deletes blobs
+  # that have been unreferenced across two consecutive passes and are older
+  # than a minimum age, so a blob in flight is never caught.
+  blob_gc = "dryrun"
 }
 
 

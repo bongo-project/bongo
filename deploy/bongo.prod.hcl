@@ -45,6 +45,13 @@ cluster {
 storage {
   data_dir = "/data"
 
+  # Reclaims blobs left unreferenced by delivery. Delivery stamps
+  # Authentication-Results and X-Spam-* headers onto each message, so the
+  # stored copy is a new blob and the SMTP DATA-time original is orphaned;
+  # without this, inbound mail costs roughly twice the space it should.
+  # Start at "dryrun" to see what it would remove, then move to "on".
+  blob_gc = "on"
+
   pebble {
     cache_size = "256MB"
   }
