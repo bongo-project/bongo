@@ -805,3 +805,47 @@ PATTERN: [verification] Adversarial verify earned its cost: the per-requirement
   sweep returned 6/6 PASS and every downgrade came from the completeness critic,
   which looks ACROSS requirements. Two of three gaps were cross-requirement
   interactions no single-requirement verifier could see.
+
+## 2026-08-17 — CI red since ~22 July: one stale test taking out the whole suite
+
+- CORRECTION TO MY OWN EARLIER DIAGNOSIS: I told the user "CI has been dead since
+  2026-07-12, likely exhausted Actions minutes". WRONG. CI runs on every push; I
+  had polled `gh run list` within seconds and seen nothing because runs had not
+  registered yet. Reality: CI runs, `Publish image` goes GREEN, and the `CI` job
+  goes RED — which is why deploys kept working and nobody noticed.
+- MY VERIFICATION HAD THE SAME HOLE ALL SESSION: test/integration is behind
+  `//go:build integration`, so `go test -race ./...` SILENTLY SKIPS IT. Every
+  "full suite green" I reported excluded the entire integration suite.
+- Root cause: TestMailBlobRequiresMessageOwnership scraped `/mail/blob/{hash}`
+  out of a rendered message view. That URL shape is no longer emitted for new
+  mail. mail.go:577 `if !isSplit { a.Hash = br.Hash }` deliberately withholds the
+  hash for split records (the blob holds ENCODED bytes, not a servable download),
+  and task 9.6 stopped storing decoded attachment blobs on compose. So the route
+  is legacy-only now. Phase 9 landed 2026-07-22, ten days after the last green
+  run — timeline fits exactly.
+- THREE WRONG HYPOTHESES BEFORE THE RIGHT ONE, each disproved by experiment:
+  (1) attachment below the 32KB dedup threshold -> made it 56KB, got WORSE
+      (larger = split = hash withheld);
+  (2) async delivery race -> real, but the message WAS arriving;
+  (3) wrong folder (Sent vs INBOX) -> Sent uses the same message-scoped route.
+  The answer only came from dumping what the page actually rendered.
+- One failure cascaded: locally 1 failure, in CI dozens at a uniform ~15.0s then
+  a 600s binary timeout with Raft goroutines still live. Fixing the one test took
+  the whole suite green (0 failures, 366s).
+- Rewrote the test around the route attachments are ACTUALLY served from, with a
+  positive control (owner fetches the exact bytes the attacker is denied), and
+  kept a legacy /mail/blob probe using the content-addressed hash derived from
+  the payload rather than scraped from the UI.
+- Aligned Go: go.mod 1.25.12 -> 1.26.2 (CI reads it via go-version-file) and
+  deploy/Dockerfile golang:1.25 -> 1.26, whose comment states it is pinned to the
+  go.mod directive.
+
+PATTERN: [testing] `go test ./...` SKIPS build-tagged suites entirely and says
+  nothing. If a repo has //go:build tags, a bare ./... run is not "the full
+  suite" — check for tags before claiming green. Gate with -tags=integration.
+PATTERN: [debugging] When a scraping test stops finding what it expects, DUMP
+  WHAT THE PAGE ACTUALLY CONTAINS before theorising. Three plausible hypotheses
+  cost more time than one probe would have.
+PATTERN: [ci] A green deploy pipeline alongside a red test pipeline hides
+  breakage indefinitely: the artefact still ships, so nothing feels broken.
+  Check per-JOB status, not "did a run happen".

@@ -5,9 +5,9 @@ ARG COMMIT=unknown
 ARG DATE=unknown
 
 # ---- Build stage ------------------------------------------------------------
-# Pinned to the go directive in go.mod (go 1.25.x) and the templ version used
+# Pinned to the go directive in go.mod (go 1.26.x) and the templ version used
 # by the project. Pure-Go build (modernc sqlite, no cgo) -> fully static binary.
-FROM golang:1.25-bookworm AS build
+FROM golang:1.26-bookworm AS build
 ARG VERSION
 ARG COMMIT
 ARG DATE
