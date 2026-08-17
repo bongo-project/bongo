@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -1244,7 +1245,11 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 
 	// Return to the domain detail page (not the list) so the operator can copy
 	// the freshly generated TXT record and re-check DNS status in place.
-	http.Redirect(w, r, fmt.Sprintf("/admin/domains/%s?flash=DKIM+key+generated", domain), http.StatusSeeOther)
+	// PathEscape keeps the domain a single path segment, so the target cannot
+	// be anything but a relative path under /admin/domains/ regardless of what
+	// the URL parameter contained. Same treatment as the other user-derived
+	// paths in this package (cf. contacts.go, mail.go).
+	http.Redirect(w, r, fmt.Sprintf("/admin/domains/%s?flash=DKIM+key+generated", url.PathEscape(domain)), http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
 }
 
 // SetCatchAll sets the catch-all owner for a domain.

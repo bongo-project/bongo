@@ -889,3 +889,34 @@ PATTERN: [security] Treat a G115 integer-conversion finding as real until you
 PATTERN: [ci] `gosec@latest` / `govulncheck@latest` in CI means a new upstream
   rule or advisory can turn the build red with no code change. Good for
   security freshness, bad for reproducibility — worth a conscious choice.
+
+## 2026-08-17 — the last gosec finding: G710 in admin.go, and a local/CI tooling gap
+
+- After the govulncheck fix, CI's gosec found ONE more issue my local gosec did
+  NOT report: G710 open-redirect taint at internal/web/handlers/admin.go:1247.
+  CI installs gosec@latest; my local copy was older and lacked the rule. THE
+  LOCAL/CI GAP WAS THE REAL PROBLEM — I fixed it by installing gosec@latest
+  locally and reproducing the finding before touching any code, rather than
+  fixing blind against a CI round trip.
+- The finding itself: `/admin/domains/%s?flash=...` with domain from
+  chi.URLParam. Same-origin by construction (fixed prefix), so not a genuine
+  open redirect — and notably it was the ONLY such redirect in admin.go without
+  the `#nosec G710 -- fixed same-origin admin path` its eight siblings carry.
+  It was added later (7.1/7.3) and simply missed the annotation.
+- Fixed with url.PathEscape(domain) rather than annotation alone: that makes the
+  target a single path segment BY CONSTRUCTION regardless of the parameter, and
+  matches how contacts.go and mail.go already build user-derived paths. The
+  annotation is kept for consistency with the siblings.
+- Verified with the SAME gosec version CI runs: gosec 0, govulncheck 0, unit 0,
+  integration 0.
+
+PATTERN: [ci] When CI reports a finding you cannot reproduce, FIX THE TOOLING
+  GAP FIRST — install the same version CI uses and reproduce locally. Guessing
+  at a fix and pushing to see if CI agrees burns a 5-minute round trip per
+  attempt and teaches you nothing about why the versions differ.
+PATTERN: [security] Prefer making a finding untrue over annotating it away.
+  url.PathEscape makes the redirect target structurally single-segment; the
+  #nosec only asserts that someone once believed it was safe.
+PATTERN: [review] An outlier is a signal: when eight sibling call sites carry an
+  annotation and one does not, the odd one out is usually an oversight from a
+  later change, not a deliberate exception.
