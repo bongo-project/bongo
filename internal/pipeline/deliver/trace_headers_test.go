@@ -499,3 +499,66 @@ func TestDeliverForwardKeepsOriginalBlobHash(t *testing.T) {
 		t.Errorf("forwarded BlobHash = %q, want the untouched original %q", queuer.messages[0].BlobHash, "fwdoriginal")
 	}
 }
+
+// TestDeliverDKIMSignaturePreservedAfterStamping covers the ordinary case where
+// a sender's DKIM signature does NOT cover any header this stage strips
+// (Authentication-Results, X-Spam-*, etc.). It verifies that prepending trace
+// headers does not invalidate the signature: the stored bytes (what clients
+// fetch via IMAP/POP3/Export) still verify as "pass" when checked against the
+// sender's original signature.
+//
+// This is the AC acceptance criterion for US-004 Phase 10: trace headers must
+// be transparent to legitimate DKIM signatures.
+func TestDeliverDKIMSignaturePreservedAfterStamping(t *testing.T) {
+	key := newTestRSAKey(t)
+	stubDKIMPass(t, key, "example.test", "sel")
+
+	raw := minimalMessage("bob@example.test", "alice@example.com", "Hello", "Hi Alice!\r\n")
+	// Sign with h= tag that covers only standard headers, NOT the stripped ones.
+	signed := signedTestMessage(t, key, "example.test", "sel",
+		[]string{"from", "to", "subject", "date", "message-id"}, raw)
+
+	proc, _, bs := traceProc(t, "mail.example.com", 0.5)
+	env := &bongov1.QueueEnvelope{
+		Id:         "env-dkim-ordinary",
+		Sender:     "bob@example.test",
+		Recipients: []string{"alice@example.com"},
+		ReceivedAt: time.Now().Unix(),
+		BlobHash:   "originalhash",
+		SpfResult:  "pass",
+	}
+
+	meta := deliverTrace(t, proc, env, string(signed))
+
+	// Verify the arrival-time verdict recorded at delivery still passes.
+	if meta.DkimResult != "pass" {
+		t.Fatalf("meta.DkimResult = %q, want pass (signature must verify on arrival)", meta.DkimResult)
+	}
+	if meta.DkimDomain != "example.test" {
+		t.Fatalf("meta.DkimDomain = %q, want example.test", meta.DkimDomain)
+	}
+
+	// Now fetch the stored bytes—exactly what a client would see via IMAP/POP3/Export.
+	stored, err := store.RawMessageBytes(bs, meta)
+	if err != nil {
+		t.Fatalf("RawMessageBytes: %v", err)
+	}
+
+	// Verify the signature over the stored (stamped) bytes is still "pass".
+	// If stamping broke the signature, this would be "fail" or "none".
+	result, domain, err := antispam.VerifyDKIM(stored)
+	if err != nil {
+		t.Fatalf("antispam.VerifyDKIM: %v", err)
+	}
+	if result != "pass" {
+		t.Errorf("antispam.VerifyDKIM(stamped bytes) = %q, want pass (prepended headers must not invalidate the signature)", result)
+	}
+	if domain != "example.test" {
+		t.Errorf("antispam.VerifyDKIM domain = %q, want example.test", domain)
+	}
+
+	// Sanity check: trace headers were actually added to the stored bytes.
+	if !bytes.HasPrefix(stored, []byte("Authentication-Results: mail.example.com;")) {
+		t.Errorf("stored message does not begin with the expected Authentication-Results header:\n%s", stored[:min(200, len(stored))])
+	}
+}

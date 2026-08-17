@@ -2,6 +2,12 @@ package antispam
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
+	"io"
+	"log/slog"
 	"net"
 	"strings"
 	"testing"
@@ -195,13 +201,13 @@ func TestDMARCResultEmptyWithoutFromDomain(t *testing.T) {
 }
 
 // TestApplyDMARC_SignedBouncePassesQuarantinePolicy exercises the DMARC
-// alignment logic directly (bypassing antispam.VerifyDKIM, which requires a
-// live DNS TXT lookup of the signer's public key — see the package-level test
-// hazard note) to prove that a DKIM-signed bounce whose signature verifies
-// ("pass") is not escalated by a p=quarantine policy on its own From domain.
-// This encodes the production outcome of task 10.2: once BounceGenerator
-// signs the DSN, applyDMARC sees DKIMResult "pass" with an aligned domain and
-// must not route the bounce to Junk.
+// alignment logic directly (at the applyDMARC level, bypassing the full
+// BuiltinProcessor.Process pipeline — see TestBuiltinProcessorSignedBounce
+// for the end-to-end integration test) to prove that a DKIM-signed bounce
+// whose signature verifies ("pass") is not escalated by a p=quarantine policy
+// on its own From domain. This is a lower-level unit test of applyDMARC in
+// isolation; antispam.VerifyDKIM (used by the full pipeline) can stub DKIM
+// via the package-level LookupTXT hook in internal/antispam/dkim_verify.go.
 //
 // env.Sender is "" (not "MAILER-DAEMON@example.test"): task 10.4 (FR-3)
 // changed the production bounce path to use the null envelope sender per
@@ -239,5 +245,178 @@ func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 	}
 	if env.TargetMailbox != "" {
 		t.Errorf("TargetMailbox = %q, want empty (bounce must not be routed to Junk)", env.TargetMailbox)
+	}
+}
+
+// TestBuiltinProcessorSignedBounce is the end-to-end integration test for task
+// 10.2 + 10.5: a bounce produced by mail.BounceGenerator with a real DKIM
+// signature (signed by a registered DKIM signer) is fed through
+// BuiltinProcessor.Process with stubbed DNS lookups (LookupTXT for DKIM,
+// DMARC record lookup). The bytes flow through the complete verification path:
+// signed DSN -> antispam.VerifyDKIM (derives pass verdict from real signature)
+// -> applyDMARC (evaluates alignment with p=quarantine policy) -> StageResult.
+// This proves the phase's central claim: a legitimate bounce with DKIM alignment
+// is never escalated to Junk, even under a strict DMARC policy.
+func TestBuiltinProcessorSignedBounce(t *testing.T) {
+	// Generate a fresh RSA key.
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa.GenerateKey: %v", err)
+	}
+
+	// Seed a DKIM registry with the key so BounceGenerator will sign the bounce.
+	registry := mail.NewDKIMRegistry()
+	registry.Seed("example.test", mail.NewDKIMSignerFromKey("test", "example.test", key))
+
+	// Create a fake deliverer to capture the signed bounce bytes.
+	deliverer := &fakeDeliverer{}
+
+	// Create BounceGenerator with the registry.
+	gen := mail.NewBounceGenerator(deliverer, nil, slog.Default(), "example.test", registry)
+
+	// Generate a signed bounce by calling GenerateAndDeliver.
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	if deliverer.data == nil {
+		t.Fatal("GenerateAndDeliver did not call Deliver")
+	}
+	bounceBytes := deliverer.data
+
+	// Verify the bounce is actually signed (pre-test sanity check).
+	if !strings.Contains(string(bounceBytes), "DKIM-Signature:") {
+		t.Fatal("generated bounce is not DKIM-signed; cannot test the full pipeline")
+	}
+
+	// Stub antispam.LookupTXT to return the signing key's public key so DKIM
+	// verification succeeds deterministically without live DNS.
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey: %v", err)
+	}
+	dkimTXT := "v=DKIM1; k=rsa; p=" + base64.StdEncoding.EncodeToString(pubDER)
+	originalLookupTXT := antispam.LookupTXT
+	antispam.LookupTXT = func(domain string) ([]string, error) {
+		if domain == "test._domainkey.example.test" {
+			return []string{dkimTXT}, nil
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() { antispam.LookupTXT = originalLookupTXT })
+
+	// Create a mock DMARC resolver that returns a p=quarantine policy for the
+	// bounce's From domain (MAILER-DAEMON@example.test).
+	dmarcResolver := &dmarcMockResolver{
+		txt: map[string][]string{
+			"_dmarc.example.test": {"v=DMARC1; p=quarantine"},
+		},
+	}
+
+	// Create the DMARC evaluator and BuiltinProcessor.
+	eval := mail.NewDMARCEvaluatorWithResolver(dmarcResolver)
+	proc := NewBuiltinProcessor(antispam.NewScorer(), WithDMARC(eval, true))
+
+	// Create an envelope for the bounce: null sender (RFC 5321 s6.1), and a
+	// recipient in the local domain.
+	env := &bongov1.QueueEnvelope{
+		Sender:     "",
+		Recipients: []string{"alice@example.test"},
+	}
+
+	// Feed the signed bounce through Process.
+	result, err := proc.Process(context.Background(), env, io.NopCloser(strings.NewReader(string(bounceBytes))))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	// Assert the outcome: action must be "pass" and TargetMailbox must be empty
+	// (not routed to Junk). If the DKIM verdict was not derived correctly, or if
+	// alignment was not recognized, the bounce would be escalated to "tag" and
+	// TargetMailbox would be set to "Junk".
+	if result.Action != "pass" {
+		t.Errorf("StageResult.Action = %q, want pass (signed+aligned bounce should pass, even with p=quarantine); score=%f, reasons=%v",
+			result.Action, result.Score, result.Reasons)
+	}
+	if env.TargetMailbox != "" {
+		t.Errorf("env.TargetMailbox = %q, want empty (signed+aligned bounce must not be routed to Junk)", env.TargetMailbox)
+	}
+	if result.DmarcResult != "pass" {
+		t.Errorf("StageResult.DmarcResult = %q, want pass", result.DmarcResult)
+	}
+}
+
+// fakeDeliverer captures the bytes passed to Deliver so tests can assert on
+// the exact wire bytes (e.g. DKIM-signed) without running a real MTA.
+type fakeDeliverer struct {
+	from       string
+	recipients []string
+	data       []byte
+}
+
+func (f *fakeDeliverer) Deliver(from string, recipients []string, r io.Reader) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	f.from = from
+	f.recipients = recipients
+	f.data = data
+	return nil
+}
+
+// TestBuiltinProcessorUnsignedBounceIsEscalated demonstrates that the
+// TestBuiltinProcessorSignedBounce test is NOT vacuous: an unsigned bounce
+// (with the same quarantine policy) is escalated to "tag" and routed to Junk,
+// proving that signing (and DKIM alignment) is what enables the bounce to pass.
+// This test verifies the negative case: without DKIM, the message is escalated.
+func TestBuiltinProcessorUnsignedBounceIsEscalated(t *testing.T) {
+	// Create an UNSIGNED bounce (nil registry means no DKIM signing).
+	deliverer := &fakeDeliverer{}
+	gen := mail.NewBounceGenerator(deliverer, nil, slog.Default(), "example.test", nil)
+
+	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.test"}
+	if err := gen.GenerateAndDeliver(original, []string{"bob@external.com"}, "550 user unknown"); err != nil {
+		t.Fatalf("GenerateAndDeliver: %v", err)
+	}
+
+	if deliverer.data == nil {
+		t.Fatal("GenerateAndDeliver did not call Deliver")
+	}
+
+	// Verify the bounce is NOT signed (sanity check for this variant).
+	if strings.Contains(string(deliverer.data), "DKIM-Signature:") {
+		t.Fatal("this test variant requires an unsigned bounce, but got DKIM-Signature")
+	}
+
+	// Create the same processor setup as TestBuiltinProcessorSignedBounce.
+	dmarcResolver := &dmarcMockResolver{
+		txt: map[string][]string{
+			"_dmarc.example.test": {"v=DMARC1; p=quarantine"},
+		},
+	}
+	eval := mail.NewDMARCEvaluatorWithResolver(dmarcResolver)
+	proc := NewBuiltinProcessor(antispam.NewScorer(), WithDMARC(eval, true))
+
+	env := &bongov1.QueueEnvelope{
+		Sender:     "",
+		Recipients: []string{"alice@example.test"},
+	}
+
+	result, err := proc.Process(context.Background(), env, io.NopCloser(strings.NewReader(string(deliverer.data))))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+
+	// Without DKIM signing, DMARC cannot align and the p=quarantine policy
+	// escalates the unsigned bounce to "tag" (routed to Junk). This proves that
+	// the signed-bounce test (TestBuiltinProcessorSignedBounce) is validating a
+	// real difference: signing enables alignment and allows the bounce to pass.
+	if result.Action != "tag" {
+		t.Errorf("unsigned bounce Action = %q, want tag (p=quarantine should escalate unsigned mail)", result.Action)
+	}
+	if env.TargetMailbox != "Junk" {
+		t.Errorf("unsigned bounce TargetMailbox = %q, want Junk (tag action routes to Junk)", env.TargetMailbox)
 	}
 }

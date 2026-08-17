@@ -764,3 +764,44 @@ PATTERN: [workflow] A workflow reporting failure may still have mutated the
   tree. The stage that failed to return structured output can have completed
   its side effects. Always `git status` after a failed run, and treat surviving
   content as UNREVIEWED — the downstream review stages never saw it.
+
+## 2026-08-17 — Phase 11: closing the three adversarial-verification gaps — DONE
+
+- WORKFLOW FAILED AGAIN, DIFFERENT CAUSE: the Haiku classifier returned invalid
+  agentType values ('code' and 'user' — not real agent names), so BOTH implement
+  stages errored with "agent type not found". 4 of 6 agents ran (2 classify,
+  2 advise), 2 errored. Yet the classify/advisor agents had ALREADY WRITTEN the
+  tests before the pipeline died — three new test functions on disk, with no
+  implement or review stage ever running. Second time this session a "failed"
+  workflow left real work behind.
+- So both tests arrived UNREVIEWED and, critically, with nobody having proved
+  the non-vacuousness the tasks were specifically about. I verified by hand.
+- 11.1 TestBuiltinProcessorSignedBounce: real bounce from GenerateAndDeliver ->
+  BuiltinProcessor.Process, LookupTXT stubbed to the signing key, DMARC stubbed
+  p=quarantine, asserts pass/""/pass. The DKIM verdict is DERIVED from the bytes
+  instead of being a literal string. Its paired negative control asserts an
+  UNSIGNED bounce is escalated to tag/Junk on the same path — that pairing is
+  what makes it real.
+- 11.2 TestDeliverDKIMSignaturePreservedAfterStamping: reads STORED bytes via
+  store.RawMessageBytes (the IMAP/POP3/Export path), asserts VerifyDKIM=="pass",
+  plus a sanity check that stamping actually happened.
+- I PROVED 11.2 NON-VACUOUS EMPIRICALLY: sabotaged prependHeaders to mutate a
+  signed header, observed `VerifyDKIM(stamped bytes) = "fail", want pass`,
+  restored headers.go byte-exact (git diff clean).
+- 11.3 done by hand: blob_gc set in both shipped configs, storage-growth
+  troubleshooting entry, and TWO dated PRD amendments (FR-12 > FR-13 with the
+  reasoning; the storage consequence in Technical Considerations). Compiled
+  default left `off` on purpose.
+
+PATTERN: [workflow] A classifier can return an agentType that does not exist,
+  killing the implement stage while its own side effects survive on disk. Treat
+  ANY non-DONE workflow as "check the tree" — twice now the surviving content
+  was complete work that simply never got reviewed.
+PATTERN: [testing] The strongest proof a test is not vacuous is a PAIRED
+  NEGATIVE CONTROL on the same code path — signed passes / unsigned escalates —
+  not a comment claiming it was checked. Where no pairing is natural, sabotage
+  the implementation, observe the specific failure message, and restore.
+PATTERN: [verification] Adversarial verify earned its cost: the per-requirement
+  sweep returned 6/6 PASS and every downgrade came from the completeness critic,
+  which looks ACROSS requirements. Two of three gaps were cross-requirement
+  interactions no single-requirement verifier could see.

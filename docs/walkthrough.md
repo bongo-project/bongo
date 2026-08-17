@@ -732,3 +732,45 @@ VPS ranges, often start with inherited listings because:
    ```
 
    Restarting Bongo will begin using the relay immediately.
+
+#### Mail storage growing faster than expected
+
+**Symptom:** The blob store grows at roughly twice the rate you would expect
+from the volume of mail received.
+
+**Cause:** Delivery stamps `Authentication-Results` and `X-Spam-*` headers onto
+each message (see [How to see why a message was filed as
+spam](#how-to-see-why-a-message-was-filed-as-spam)). That changes the message
+bytes, so the stored copy is written as a new blob and the one written at SMTP
+DATA time is left unreferenced. The unreferenced-blob collector reclaims those
+originals, but it is **off by default** — it deletes data, so it is opt-in
+rather than something that starts on its own.
+
+With it off, every delivered message keeps two full copies indefinitely.
+
+**Check and fix:**
+
+1. Look for sweep activity in the logs. If the collector is running you will
+   see entries like:
+
+   ```
+   msg="blob-gc: swept orphaned blobs" candidates=3 deleted=3 dry_run=false
+   ```
+
+   No such entries means it has never run.
+
+2. Enable it in your configuration, starting with `dryrun` so you can see what
+   it would remove before anything is deleted:
+
+   ```hcl
+   storage {
+     blob_gc = "dryrun"
+   }
+   ```
+
+3. Restart Bongo and watch for `dry_run=true` sweep entries. Once the
+   candidates look right, switch to `blob_gc = "on"` and restart again.
+
+The sweep only deletes blobs that have been unreferenced across two consecutive
+passes and are older than a minimum age, so a blob still in flight is never
+collected.
