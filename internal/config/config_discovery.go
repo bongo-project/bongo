@@ -48,6 +48,12 @@ func DiscoverConfigFile(flagPath string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("resolving BONGO_CONFIG path %q: %w", envPath, err)
 		}
+		// #nosec G703 -- BONGO_CONFIG is operator-supplied, not attacker input.
+		// Setting it means already controlling the server process environment,
+		// at which point the config path is the least of what you can change.
+		// This only stats the path to decide whether to use it; the file is
+		// parsed as HCL, never executed. Same trust model as the --config flag
+		// above and as internal/importer/state.go.
 		if _, err := os.Stat(abs); err == nil {
 			return abs, nil
 		}

@@ -1,7 +1,10 @@
 package store
 
 import (
+	"encoding/binary"
+	"math"
 	"testing"
+	"time"
 
 	"google.golang.org/protobuf/proto"
 
@@ -227,4 +230,83 @@ func TestDomainQuotaKey_NotPickedUpByDomainScan(t *testing.T) {
 			t.Errorf("key %q: name part %q should contain '/' so domain scans skip it", key, name)
 		}
 	}
+}
+
+// TestDomainQuotaStore_UsageNeverGoesNegative covers the security-relevant edge
+// of the int64/uint64 round trip. IsOverStorageQuota returns
+// `usage >= MaxStorageBytes`, so a NEGATIVE usage does not merely report a
+// wrong number — it makes every quota check return false and silently disables
+// the quota for that domain. Both directions must therefore be clamped.
+func TestDomainQuotaStore_UsageNeverGoesNegative(t *testing.T) {
+	t.Run("a raw value above MaxInt64 reads back clamped, not negative", func(t *testing.T) {
+		ps, qs := newDomainQuotaTestEnv(t)
+
+		// Write a raw key whose uint64 has the high bit set. A plain
+		// int64(uint64) conversion would surface this as a negative number.
+		var buf [8]byte
+		binary.LittleEndian.PutUint64(buf[:], math.MaxUint64)
+		da := &directApplier{store: ps}
+		if err := da.ApplyCommand(&bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   DomainUsageKey("example.test"),
+			Value: buf[:],
+		}, 5*time.Second); err != nil {
+			t.Fatalf("seed raw usage: %v", err)
+		}
+
+		usage, err := qs.GetUsage("example.test")
+		if err != nil {
+			t.Fatalf("GetUsage: %v", err)
+		}
+		if usage < 0 {
+			t.Fatalf("GetUsage = %d, must never be negative (a negative usage disables the quota)", usage)
+		}
+		if usage != math.MaxInt64 {
+			t.Errorf("GetUsage = %d, want MaxInt64 (fail closed on an implausible stored value)", usage)
+		}
+	})
+
+	t.Run("a negative usage is not storable", func(t *testing.T) {
+		_, qs := newDomainQuotaTestEnv(t)
+
+		if err := qs.SetUsage("example.test", -1); err != nil {
+			t.Fatalf("SetUsage: %v", err)
+		}
+		usage, err := qs.GetUsage("example.test")
+		if err != nil {
+			t.Fatalf("GetUsage: %v", err)
+		}
+		if usage != 0 {
+			t.Errorf("GetUsage after SetUsage(-1) = %d, want 0", usage)
+		}
+	})
+
+	t.Run("a clamped usage still enforces the quota", func(t *testing.T) {
+		ps, qs := newDomainQuotaTestEnv(t)
+
+		if err := qs.SetQuota("example.test", &bongov1.DomainQuota{MaxStorageBytes: 1024}); err != nil {
+			t.Fatalf("SetQuota: %v", err)
+		}
+		var buf [8]byte
+		binary.LittleEndian.PutUint64(buf[:], math.MaxUint64)
+		da := &directApplier{store: ps}
+		if err := da.ApplyCommand(&bongov1.RaftCommand{
+			Op:    bongov1.Op_OP_PUT,
+			Key:   DomainUsageKey("example.test"),
+			Value: buf[:],
+		}, 5*time.Second); err != nil {
+			t.Fatalf("seed raw usage: %v", err)
+		}
+
+		// This is the behaviour that actually matters: before the clamp the
+		// same stored bytes produced a negative usage and this returned false,
+		// letting an over-quota domain keep accepting mail.
+		over, err := qs.IsOverStorageQuota("example.test")
+		if err != nil {
+			t.Fatalf("IsOverStorageQuota: %v", err)
+		}
+		if !over {
+			t.Error("IsOverStorageQuota = false for a domain whose stored usage exceeds its limit")
+		}
+	})
 }

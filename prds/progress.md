@@ -849,3 +849,43 @@ PATTERN: [debugging] When a scraping test stops finding what it expects, DUMP
 PATTERN: [ci] A green deploy pipeline alongside a red test pipeline hides
   breakage indefinitely: the artefact still ships, so nothing feels broken.
   Check per-JOB status, not "did a run happen".
+
+## 2026-08-17 — security job: 20 vulnerabilities + 3 gosec HIGH findings — FIXED
+
+- The CI `security` job had been failing independently of the integration job.
+  It runs govulncheck THEN gosec; govulncheck exited non-zero, so the step
+  aborted and GOSEC HAD NEVER ACTUALLY RUN. Fixing one exposed the other.
+- govulncheck: 20 vulnerabilities. 18 were Go stdlib, all cleared by moving the
+  go directive to 1.26.6 (aligning to 1.26.2 was NOT far enough — several
+  fixes land in later patch releases). Several were directly relevant to a mail
+  server: net/mail x2, net/textproto, mime, html/template x3, crypto/tls,
+  crypto/x509, net/http. Remaining 2 were deps: grpc v1.79.3 -> v1.82.1 and
+  x/text v0.37.0 -> v0.39.0, bumped individually rather than by a blanket -u.
+- gosec (3 HIGH, all confirmed PRE-EXISTING by re-running at the pre-Phase-10
+  commit — identical findings):
+  - G115 x2 in domain_quota_store.go. NOT a cosmetic conversion warning: a raw
+    stored uint64 above MaxInt64 converts to a NEGATIVE int64, and
+    IsOverStorageQuota returns `usage >= MaxStorageBytes` — so a negative usage
+    makes every quota check return false and SILENTLY DISABLES the quota for
+    that domain. Fixed by clamping both directions (fail closed on read,
+    reject negatives on write), not by a #nosec.
+  - G703 in config_discovery.go: os.Stat on a path from BONGO_CONFIG. Genuine
+    false positive — setting that env var requires already controlling the
+    process environment. Suppressed with a justified #nosec matching the
+    repo's existing convention (cf. importer/state.go G304).
+- Added TestDomainQuotaStore_UsageNeverGoesNegative. PROVEN NON-VACUOUS by
+  sabotage: reverting the clamp produced `GetUsage = -1, must never be
+  negative` and `IsOverStorageQuota = false for a domain whose stored usage
+  exceeds its limit`, then restored byte-exact.
+
+PATTERN: [ci] Sequential steps in one CI job MASK each other — govulncheck
+  failing meant gosec never ran, for months. When a job goes green after a fix,
+  check whether later steps were ever reached before, or you inherit a second
+  failure you did not know existed.
+PATTERN: [security] Treat a G115 integer-conversion finding as real until you
+  trace what CONSUMES the value. Here the conversion fed a `>=` comparison
+  whose failure mode was silently disabling a quota — a suppression would have
+  hidden an actual enforcement bypass.
+PATTERN: [ci] `gosec@latest` / `govulncheck@latest` in CI means a new upstream
+  rule or advisory can turn the build red with no code change. Good for
+  security freshness, bad for reproducibility — worth a conscious choice.
