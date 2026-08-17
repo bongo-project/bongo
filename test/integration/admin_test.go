@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -429,7 +430,7 @@ func TestMailBlobRequiresMessageOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFormFile: %v", err)
 	}
-	_, _ = part.Write([]byte("private attachment contents"))
+	_, _ = part.Write([]byte(privateAttachmentBody))
 	_ = writer.Close()
 
 	req, err := http.NewRequest(http.MethodPost, baseURL+"/compose/send", &body)
@@ -443,30 +444,83 @@ func TestMailBlobRequiresMessageOwnership(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	var hash string
-	for uid := 1; uid <= 5 && hash == ""; uid++ {
-		resp, err = ownerClient.Get(fmt.Sprintf("%s/mail/INBOX/%d", baseURL, uid))
-		if err != nil {
-			t.Fatalf("owner message view uid %d: %v", uid, err)
-		}
-		msgBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if strings.Contains(string(msgBody), "Private attachment") {
-			hash = extractMailBlobHash(string(msgBody))
+	// Delivery runs through the spool pipeline asynchronously, so the message is
+	// not visible the instant /compose/send returns. Poll until it lands rather
+	// than scanning once and racing the pipeline.
+	var attachmentURL string
+	var ownerUID int
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline) && attachmentURL == ""; time.Sleep(200 * time.Millisecond) {
+		for uid := 1; uid <= 5 && attachmentURL == ""; uid++ {
+			resp, err = ownerClient.Get(fmt.Sprintf("%s/mail/INBOX/%d", baseURL, uid))
+			if err != nil {
+				t.Fatalf("owner message view uid %d: %v", uid, err)
+			}
+			msgBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if strings.Contains(string(msgBody), "Private attachment") {
+				attachmentURL = extractAttachmentURL(string(msgBody))
+				ownerUID = uid
+			}
 		}
 	}
-	if hash == "" {
-		t.Fatalf("could not find attachment blob hash in message view")
+	if attachmentURL == "" {
+		t.Fatalf("could not find an attachment link in the owner's message view")
+	}
+
+	// Positive control: the owner CAN fetch their own attachment. Without this,
+	// the attacker's failure below could just mean the URL is broken for
+	// everyone, and the test would pass with ownership enforcement removed.
+	resp, err = ownerClient.Get(baseURL + attachmentURL)
+	if err != nil {
+		t.Fatalf("owner attachment fetch: %v", err)
+	}
+	ownerBody, _ := io.ReadAll(resp.Body)
+	ownerStatus := resp.StatusCode
+	resp.Body.Close()
+	if ownerStatus != http.StatusOK {
+		t.Fatalf("owner could not fetch their own attachment: status %d", ownerStatus)
+	}
+	if !bytes.Contains(ownerBody, []byte(privateAttachmentBody)) {
+		t.Fatalf("owner attachment fetch did not return the attachment contents")
 	}
 
 	attackerClient := loginAs(t, baseURL, "blob-attacker@localhost", "attackerpass")
-	resp, err = attackerClient.Get(baseURL + "/mail/blob/" + hash)
+
+	// The live path: attachments are served message-scoped, so ownership is
+	// enforced by resolving the message for the authenticated user.
+	resp, err = attackerClient.Get(baseURL + attachmentURL)
+	if err != nil {
+		t.Fatalf("attacker attachment fetch: %v", err)
+	}
+	attackerBody, _ := io.ReadAll(resp.Body)
+	attackerStatus := resp.StatusCode
+	resp.Body.Close()
+	if attackerStatus == http.StatusOK {
+		t.Fatalf("authenticated user without message ownership fetched another user's attachment (uid %d)", ownerUID)
+	}
+	if bytes.Contains(attackerBody, []byte(privateAttachmentBody)) {
+		t.Fatal("attacker response leaked the attachment contents")
+	}
+
+	// The legacy content-addressed route. Since task 9.6 the composer no longer
+	// stores decoded attachment blobs, so the message view does not link
+	// /mail/blob/{hash} for new mail and a hash cannot be scraped from it. The
+	// route still exists and still serves pre-Phase-9 messages, so probe it with
+	// the hash the attachment WOULD have: content addressing makes that
+	// derivable from the bytes without the UI exposing it.
+	blobHash := sha256.Sum256([]byte(privateAttachmentBody))
+	resp, err = attackerClient.Get(fmt.Sprintf("%s/mail/blob/%x", baseURL, blobHash))
 	if err != nil {
 		t.Fatalf("attacker blob fetch: %v", err)
 	}
+	blobBody, _ := io.ReadAll(resp.Body)
+	blobStatus := resp.StatusCode
 	resp.Body.Close()
-	if resp.StatusCode == http.StatusOK {
+	if blobStatus == http.StatusOK {
 		t.Fatal("authenticated user without message ownership could fetch another user's blob")
+	}
+	if bytes.Contains(blobBody, []byte(privateAttachmentBody)) {
+		t.Fatal("blob route leaked the attachment contents to a non-owner")
 	}
 }
 
@@ -575,13 +629,19 @@ func findUserIDByEmail(t *testing.T, client *http.Client, baseURL, email string)
 	return ""
 }
 
-func extractMailBlobHash(body string) string {
-	re := regexp.MustCompile(`/mail/blob/([a-f0-9]{64})`)
-	matches := re.FindStringSubmatch(body)
-	if len(matches) < 2 {
-		return ""
-	}
-	return matches[1]
+// privateAttachmentBody is the attachment payload. It is deliberately small:
+// staying under the attachment-dedup threshold keeps the message off the split
+// path, and the exact bytes are needed to derive the content-addressed hash for
+// the legacy /mail/blob probe.
+const privateAttachmentBody = "private attachment contents"
+
+// extractAttachmentURL pulls the first attachment link out of a rendered
+// message view. It accepts BOTH shapes MailHandler.attachmentURL can produce:
+// the message-scoped route used for inbound and split messages, and the
+// content-addressed /mail/blob/{hash} route used for legacy stored mail.
+func extractAttachmentURL(body string) string {
+	re := regexp.MustCompile(`/mail/(?:blob/[a-f0-9]{64}|[^"/]+/\d+/attachment/\d+)`)
+	return re.FindString(body)
 }
 
 func TestQueueInspection(t *testing.T) {
