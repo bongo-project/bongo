@@ -920,3 +920,23 @@ PATTERN: [security] Prefer making a finding untrue over annotating it away.
 PATTERN: [review] An outlier is a signal: when eight sibling call sites carry an
   annotation and one does not, the odd one out is usually an oversight from a
   later change, not a deliberate exception.
+
+## 2026-08-18 — decision: leave both security scanners unpinned
+
+- Operator decision: keep gosec and govulncheck at @latest so new findings
+  surface, accepting that CI can go red with no code change.
+- Worth keeping straight, because the two tools catch different things:
+  govulncheck queries the LIVE Go vulnerability database at runtime, so it
+  reports new CVEs whether or not its binary is pinned — pinning it would not
+  actually blind us to new advisories. gosec is a static analyser, so @latest
+  buys new RULE classes, not new CVEs. G710 arriving as a new rule is what
+  turned CI red yesterday with no code change.
+- Recorded as a comment in .github/workflows/ci.yml rather than only here, so
+  the next person to hit a surprise red build finds the rationale at the point
+  of confusion and does not "fix" it by pinning. The comment also carries the
+  reproduce-locally-first instruction.
+
+PATTERN: [ci] An intentionally fragile CI step needs its rationale AT THE STEP.
+  Unpinned scanners look like drift to anyone who did not choose it; without a
+  comment the natural repair is to pin them, silently removing the property the
+  team wanted.
