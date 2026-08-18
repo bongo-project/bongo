@@ -30,6 +30,21 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # Both scanners are deliberately unpinned. This job CAN go red without a
+      # code change - a new gosec rule, or a new advisory - and that is the
+      # intended behaviour, not drift to be "fixed" by pinning.
+      #
+      # They catch different things. govulncheck queries the live Go
+      # vulnerability database, so it reports new CVEs whether or not the binary
+      # is pinned; most of what it flags is fixed by moving the go directive in
+      # go.mod to a newer patch release. gosec is a static analyser, so @latest
+      # buys new RULE classes rather than new CVEs.
+      #
+      # If a finding appears that you cannot reproduce locally, install the same
+      # version before changing any code:
+      #   go install github.com/securego/gosec/v2/cmd/gosec@latest
+      # An older local copy silently lacks newer rules, and guessing at a fix
+      # costs a CI round trip per attempt.
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
       - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
       - run: govulncheck ./...
