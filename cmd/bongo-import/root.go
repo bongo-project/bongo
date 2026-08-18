@@ -5,11 +5,11 @@ import (
 )
 
 var (
-	dstHost string
-	dstPort int
-	dstTLS  bool
-	dstUser string
-	dstPass string
+	dstHost   string
+	dstPort   int
+	dstTLS    bool
+	dstUser   string
+	dstPass   string
 	stateFile string
 	dryRun    bool
 )

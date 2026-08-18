@@ -136,7 +136,7 @@ func TestOutboundRelay(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.SMTP.Relay.Enabled = true
 	cfg.SMTP.Relay.Host = mockAddr
@@ -188,7 +188,7 @@ func TestWebUIComposeExternalRecipientRelaysOutbound(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.SMTP.Relay.Enabled = true
 	cfg.SMTP.Relay.Host = mockAddr
@@ -255,7 +255,7 @@ func TestBounceGeneration(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.SMTP.Relay.Enabled = true
 	cfg.SMTP.Relay.Host = rejectAddr
@@ -322,7 +322,7 @@ func TestRateLimiting(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.SMTP.Limits.FloodThreshold = 3
 
@@ -352,7 +352,7 @@ func TestSPFInbound(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 
 	a := startDevAgent(t, cfg)

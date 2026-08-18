@@ -6,7 +6,7 @@ import "sync"
 type NotificationType int
 
 const (
-	NotifNewMail       NotificationType = iota
+	NotifNewMail NotificationType = iota
 	NotifFlagChange
 	NotifExpunge
 	NotifEventReminder

@@ -38,9 +38,9 @@ func TestCompose(t *testing.T) {
 			absent: `http://evil/x.png`,
 		},
 		{
-			name:     "cid: img src is kept",
-			input:    `<img src="cid:abc123">`,
-			contains: `<img`,
+			name:      "cid: img src is kept",
+			input:     `<img src="cid:abc123">`,
+			contains:  `<img`,
 			contains2: `cid:abc123`,
 		},
 		{

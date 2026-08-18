@@ -247,10 +247,10 @@ func TestFullUserJourney(t *testing.T) {
 		// Submit the reply.
 		replySubject := "Re: " + subject
 		status2, _ := sc.post(t, "/compose/send", url.Values{
-			"to":           {"admin@localhost"},
-			"subject":      {replySubject},
-			"body":         {"This is a reply."},
-			"in_reply_to":  {subject},
+			"to":          {"admin@localhost"},
+			"subject":     {replySubject},
+			"body":        {"This is a reply."},
+			"in_reply_to": {subject},
 		})
 		if status2 != http.StatusOK {
 			t.Fatalf("POST /compose/send (reply): status %d", status2)
@@ -541,12 +541,12 @@ func TestI18nLocaleSwitch(t *testing.T) {
 	// Switch to French.
 	t.Run("switch_to_fr", func(t *testing.T) {
 		sc.post(t, "/settings", url.Values{
-			"locale":           {"fr"},
-			"theme":            {"auto"},
-			"layout_mode":      {"list"},
-			"density":          {"comfortable"},
+			"locale":            {"fr"},
+			"theme":             {"auto"},
+			"layout_mode":       {"list"},
+			"density":           {"comfortable"},
 			"messages_per_page": {"25"},
-			"default_reply":    {"sender"},
+			"default_reply":     {"sender"},
 		})
 
 		// GET /settings should now have lang="fr".
@@ -559,12 +559,12 @@ func TestI18nLocaleSwitch(t *testing.T) {
 	// Switch back to English.
 	t.Run("switch_back_to_en", func(t *testing.T) {
 		sc.post(t, "/settings", url.Values{
-			"locale":           {"en"},
-			"theme":            {"auto"},
-			"layout_mode":      {"list"},
-			"density":          {"comfortable"},
+			"locale":            {"en"},
+			"theme":             {"auto"},
+			"layout_mode":       {"list"},
+			"density":           {"comfortable"},
 			"messages_per_page": {"25"},
-			"default_reply":    {"sender"},
+			"default_reply":     {"sender"},
 		})
 
 		_, body := sc.get(t, "/settings")
@@ -573,4 +573,3 @@ func TestI18nLocaleSwitch(t *testing.T) {
 		}
 	})
 }
-

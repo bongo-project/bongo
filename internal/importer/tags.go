@@ -13,20 +13,20 @@ import (
 // These are the standard IMAP folder names Gmail maps to, plus Gmail-specific
 // system category labels.
 var gmailSystemLabels = map[string]bool{
-	"inbox":    true,
-	"sent":     true,
-	"drafts":   true,
-	"trash":    true,
-	"spam":     true,
-	"junk":     true,
-	"all mail": true,
-	"starred":  true, // becomes \Flagged, not a tag
-	"chats":    true,
-	"category:primary":   true,
-	"category:social":    true,
+	"inbox":               true,
+	"sent":                true,
+	"drafts":              true,
+	"trash":               true,
+	"spam":                true,
+	"junk":                true,
+	"all mail":            true,
+	"starred":             true, // becomes \Flagged, not a tag
+	"chats":               true,
+	"category:primary":    true,
+	"category:social":     true,
 	"category:promotions": true,
-	"category:updates":   true,
-	"category:forums":    true,
+	"category:updates":    true,
+	"category:forums":     true,
 }
 
 // imapStandardFlags are the standard IMAP system flags that should not become tags.

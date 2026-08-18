@@ -72,6 +72,23 @@ func init() {
 	}
 }
 
+// Production defaults and their dev-mode replacements for the mail protocol
+// listeners. Dev substitutes only when the configured value is still the
+// production default, so an explicitly configured port is always honoured --
+// which is also what lets each in-process test agent bind its own ports
+// instead of every agent contending for one fixed set.
+const (
+	defaultIMAPPort    = 143
+	defaultIMAPTLSPort = 993
+	devIMAPPort        = 1143
+	devIMAPTLSPort     = 1993
+
+	defaultPOP3Port    = 110
+	defaultPOP3TLSPort = 995
+	devPOP3Port        = 1110
+	devPOP3TLSPort     = 1995
+)
+
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
 	Config       *config.Config
@@ -1254,9 +1271,15 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		imapPort := a.Config.IMAP.Port
 		imapTLSPort := a.Config.IMAP.PortTLS
+		// Dev supplies non-privileged defaults but never overrides an explicit
+		// port (same rule as SMTP in internal/smtp/server.go).
 		if isDev {
-			imapPort = 1143
-			imapTLSPort = 1993
+			if imapPort == defaultIMAPPort {
+				imapPort = devIMAPPort
+			}
+			if imapTLSPort == defaultIMAPTLSPort {
+				imapTLSPort = devIMAPTLSPort
+			}
 		}
 
 		plainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(imapPort))
@@ -1294,8 +1317,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		pop3Port := a.Config.POP3.Port
 		pop3TLSPort := a.Config.POP3.PortTLS
 		if isDev {
-			pop3Port = 1110
-			pop3TLSPort = 1995
+			if pop3Port == defaultPOP3Port {
+				pop3Port = devPOP3Port
+			}
+			if pop3TLSPort == defaultPOP3TLSPort {
+				pop3TLSPort = devPOP3TLSPort
+			}
 		}
 
 		pop3PlainAddr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(pop3Port))

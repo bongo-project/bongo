@@ -26,7 +26,7 @@ func setupRenderingAgent(t *testing.T) (*agent.Agent, string, *http.Client, cont
 	cfg.Pipeline.PollInterval = "50ms" // deliver promptly so short test waits suffice
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 

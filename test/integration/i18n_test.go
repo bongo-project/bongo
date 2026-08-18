@@ -32,7 +32,7 @@ func TestI18nTemplateRendering(t *testing.T) {
 		text string
 		desc string
 	}{
-		{"Redactar", ""},   // compose button -> wrong, this is Spanish
+		{"Redactar", ""}, // compose button -> wrong, this is Spanish
 		{"Non lu", "nav.unread sidebar label"},
 		{"Suivis", "nav.starred sidebar label"},
 		{"Contacts", "nav.contacts sidebar label"},

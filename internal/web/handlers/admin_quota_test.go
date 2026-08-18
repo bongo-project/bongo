@@ -66,7 +66,7 @@ func TestSetDomainQuota_GlobalAdmin(t *testing.T) {
 	h, _, dqs, _ := newQuotaTestEnv(t)
 
 	body := url.Values{
-		"max_users":        {"10"},
+		"max_users":         {"10"},
 		"max_storage_bytes": {"1048576"},
 	}
 	r := httptest.NewRequest(http.MethodPost, "/admin/domains/example.com/quota",
@@ -101,7 +101,7 @@ func TestSetDomainQuota_DomainAdmin(t *testing.T) {
 	h, _, _, _ := newQuotaTestEnv(t)
 
 	body := url.Values{
-		"max_users":        {"5"},
+		"max_users":         {"5"},
 		"max_storage_bytes": {"512"},
 	}
 	r := httptest.NewRequest(http.MethodPost, "/admin/domains/example.com/quota",
@@ -132,7 +132,7 @@ func TestSetDomainQuota_ZeroMeansUnlimited(t *testing.T) {
 
 	// Then reset to 0 (unlimited).
 	body := url.Values{
-		"max_users":        {"0"},
+		"max_users":         {"0"},
 		"max_storage_bytes": {"0"},
 	}
 	r := httptest.NewRequest(http.MethodPost, "/admin/domains/example.com/quota",

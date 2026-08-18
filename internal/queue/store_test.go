@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 	"github.com/bongo-go/bongo-go/internal/store"
+	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
 // directApplier applies Raft commands directly to Pebble (no Raft, for testing).
@@ -179,10 +179,10 @@ func TestBackoffMath(t *testing.T) {
 		wantMinSec int64
 		wantMaxSec int64
 	}{
-		{1, 120, 120},           // 2^1 * 60 = 120s = 2min
-		{5, 1920, 1920},         // 2^5 * 60 = 1920s = 32min
-		{10, 61440, 86400},      // 2^10 * 60 = 61440 > 86400, capped at 24h
-		{15, 86400, 86400},      // way past cap
+		{1, 120, 120},      // 2^1 * 60 = 120s = 2min
+		{5, 1920, 1920},    // 2^5 * 60 = 1920s = 32min
+		{10, 61440, 86400}, // 2^10 * 60 = 61440 > 86400, capped at 24h
+		{15, 86400, 86400}, // way past cap
 	}
 
 	for _, tt := range tests {

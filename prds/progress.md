@@ -940,3 +940,51 @@ PATTERN: [ci] An intentionally fragile CI step needs its rationale AT THE STEP.
   Unpinned scanners look like drift to anyone who did not choose it; without a
   comment the natural repair is to pin them, silently removing the property the
   team wanted.
+
+## 2026-08-18 — test-harness hardening: the conditions that let CI rot
+
+Three fixes so a broken suite cannot hide for a month again.
+
+1. GATES. `go test ./...` SKIPS build-tagged suites silently — that is why every
+   "full suite green" I reported was wrong. Added `make test-integration` and
+   `make test-all` (fmt-check + unit + integration), with the reason written at
+   the target so nobody reinstates the fast path as "the" gate.
+2. FORMATTING. 25 files were not gofmt-clean; golangci-lint does not check it in
+   this config. Added `make fmt` / `make fmt-check` and wired fmt-check into the
+   CI lint job. All changes were cosmetic (alignment + gofmt's doc-comment list
+   rule).
+3. THE CASCADE — and it was a REAL PRODUCT BUG, not just test fragility. Dev
+   mode overrode the configured SMTP/IMAP/POP3 ports UNCONDITIONALLY, so an
+   operator running dev with an explicit `smtp { port = 3000 }` silently got
+   2525. It also meant every in-process test agent fought for one fixed set of
+   ports: a failing test's agent shutdown raced the next test's startup, the
+   next agent could not bind, never became ready, and every remaining test died
+   on the 15s readiness deadline. One genuine failure read as a 600s suite
+   timeout. Dev now supplies non-privileged DEFAULTS but an explicit port always
+   wins, and each test agent gets its own ports.
+
+TWO MISTAKES OF MINE WORTH RECORDING, both caught by running rather than
+reasoning:
+- A blanket find-and-replace across test/integration also rewrote the line
+  INSIDE the new helper, so sharedAssignFreePorts called itself -> stack
+  overflow on the first run. A mechanical replace must exclude the definition
+  site.
+- The first version called sharedFreePort 7 times. It closes its listener
+  before returning, so the kernel can hand back the SAME port twice; two
+  listeners then raced, startup aborted before ready, and the suite went from
+  0 failures to 45. Fixed by holding all listeners open until every port is
+  claimed. My "fix" was briefly worse than the bug.
+
+CASCADE FIX PROVEN, NOT ASSERTED: injected a deliberate t.Fatal into one test.
+Result: exactly 1 failure, suite completed in 177s. Before: 1 failure produced
+45 failures and a 600s binary timeout.
+
+PATTERN: [testing] A helper that allocates a resource by opening-and-closing
+  cannot be called in a loop for DISTINCT resources — the kernel may reuse what
+  it just reclaimed. Hold every claim open until the batch is complete.
+PATTERN: [testing] Prove an isolation fix by INJECTING the failure it is meant
+  to contain. "The suite passes" does not demonstrate that one failure stays
+  contained; only a deliberate failure does.
+PATTERN: [config] A dev-mode convenience default that overrides configuration
+  UNCONDITIONALLY is a bug, not a shortcut: it silently discards operator
+  intent, and it forces every in-process test to share one fixed resource.

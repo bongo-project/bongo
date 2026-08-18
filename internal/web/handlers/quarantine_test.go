@@ -517,4 +517,3 @@ func TestQuarantineScoreClass(t *testing.T) {
 		})
 	}
 }
-

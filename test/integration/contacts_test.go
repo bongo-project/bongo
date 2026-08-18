@@ -374,4 +374,3 @@ func extractAllGUIDs(html string) []string {
 	}
 	return guids
 }
-

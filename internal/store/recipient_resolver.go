@@ -24,7 +24,7 @@ import (
 //     an explicit catch-all entry accept unmatched mail; others are still rejected.
 //     Skipped when pebble is nil (same nil-guard as tier 2a).
 //
-//  Reject: returns a non-nil error. Callers should map this to a 550 (no relay).
+//     Reject: returns a non-nil error. Callers should map this to a 550 (no relay).
 //
 // Address normalization (lowercase, strip angle brackets, trim whitespace) is
 // applied before every lookup so that casing differences never cause a silent miss.

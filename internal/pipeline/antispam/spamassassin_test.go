@@ -258,13 +258,13 @@ func TestSAScoreNormalisation(t *testing.T) {
 
 func TestSAParseResponse(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		wantIsSpam  bool
-		wantScore   float32
-		wantThresh  float32
-		wantRules   []string
-		wantErr     bool
+		name       string
+		input      string
+		wantIsSpam bool
+		wantScore  float32
+		wantThresh float32
+		wantRules  []string
+		wantErr    bool
 	}{
 		{
 			name: "clean message",

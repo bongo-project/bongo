@@ -9,17 +9,17 @@ import (
 
 func TestGmailFolderMap(t *testing.T) {
 	attrs := map[string][]imap.MailboxAttr{
-		"INBOX":                  {},
-		"[Gmail]":                {imap.MailboxAttrNoSelect},
-		"[Gmail]/Sent Mail":      {imap.MailboxAttrSent},
-		"[Gmail]/Drafts":         {imap.MailboxAttrDrafts},
-		"[Gmail]/Trash":          {imap.MailboxAttrTrash},
-		"[Gmail]/Spam":           {imap.MailboxAttrJunk},
-		"[Gmail]/Starred":        {imap.MailboxAttrFlagged},
-		"[Gmail]/All Mail":       {imap.MailboxAttrAll},
-		"[Gmail]/Important":      {imap.MailboxAttrImportant},
-		"Work":                   {},
-		"Personal":               {},
+		"INBOX":             {},
+		"[Gmail]":           {imap.MailboxAttrNoSelect},
+		"[Gmail]/Sent Mail": {imap.MailboxAttrSent},
+		"[Gmail]/Drafts":    {imap.MailboxAttrDrafts},
+		"[Gmail]/Trash":     {imap.MailboxAttrTrash},
+		"[Gmail]/Spam":      {imap.MailboxAttrJunk},
+		"[Gmail]/Starred":   {imap.MailboxAttrFlagged},
+		"[Gmail]/All Mail":  {imap.MailboxAttrAll},
+		"[Gmail]/Important": {imap.MailboxAttrImportant},
+		"Work":              {},
+		"Personal":          {},
 	}
 
 	folderMap, exclude, lastFolders := GmailFolderMap(attrs)
@@ -73,12 +73,12 @@ func TestGmailFolderMap(t *testing.T) {
 func TestGmailFolderMapGermanLocale(t *testing.T) {
 	// German Gmail uses [Google Mail] prefix and German names.
 	attrs := map[string][]imap.MailboxAttr{
-		"INBOX":                               {},
-		"[Google Mail]":                        {imap.MailboxAttrNoSelect},
-		"[Google Mail]/Gesendet":               {imap.MailboxAttrSent},
-		"[Google Mail]/Entwürfe":             {imap.MailboxAttrDrafts},
-		"[Google Mail]/Papierkorb":             {imap.MailboxAttrTrash},
-		"[Google Mail]/Alle Nachrichten":       {imap.MailboxAttrAll},
+		"INBOX":                          {},
+		"[Google Mail]":                  {imap.MailboxAttrNoSelect},
+		"[Google Mail]/Gesendet":         {imap.MailboxAttrSent},
+		"[Google Mail]/Entwürfe":         {imap.MailboxAttrDrafts},
+		"[Google Mail]/Papierkorb":       {imap.MailboxAttrTrash},
+		"[Google Mail]/Alle Nachrichten": {imap.MailboxAttrAll},
 	}
 
 	folderMap, exclude, lastFolders := GmailFolderMap(attrs)

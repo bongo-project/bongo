@@ -35,9 +35,9 @@ import (
 	"io"
 	"mime"
 	"mime/multipart"
-	netmail "net/mail"
 	"net/http"
 	"net/http/cookiejar"
+	netmail "net/mail"
 	"net/textproto"
 	"net/url"
 	"strings"
@@ -178,7 +178,7 @@ func TestRichComposeEndToEnd(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 

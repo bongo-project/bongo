@@ -8,8 +8,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # golangci-lint does not check gofmt in this configuration, so formatting
+      # drifted unnoticed to 25 files. This is the cheap gate that stops it.
+      - run: make fmt-check
       # golangci-lint v2 (v1 binaries are built with an older Go and refuse to
-      # analyse this go1.25 module). Pinned to a version built with Go >= 1.25.
+      # analyse this module). Pinned to a version built with a new enough Go.
       - uses: golangci/golangci-lint-action@v8
         with:
           version: v2.12.2
