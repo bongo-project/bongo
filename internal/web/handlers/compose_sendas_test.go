@@ -3,9 +3,9 @@ package handlers
 import (
 	"bytes"
 	"fmt"
-	netmail "net/mail"
 	"net/http"
 	"net/http/httptest"
+	netmail "net/mail"
 	"net/url"
 	"strings"
 	"testing"
@@ -696,4 +696,3 @@ func TestComposeSendAs_PickerExcludesOtherUserAddresses(t *testing.T) {
 		}
 	}
 }
-

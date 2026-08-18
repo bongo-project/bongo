@@ -4,6 +4,7 @@ package integration
 
 import (
 	"fmt"
+	"github.com/bongo-go/bongo-go/internal/config"
 	"io"
 	"log/slog"
 	"net"
@@ -50,6 +51,59 @@ func sharedFreePort(t *testing.T) int {
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
 	return port
+}
+
+// sharedAssignFreePorts gives cfg its own port for every listener a test agent
+// can open, so concurrent or back-to-back agents never contend for one fixed
+// set. Before this, only Web was randomised and SMTP/IMAP/POP3 used the fixed
+// dev ports: when one test failed, its agent's shutdown raced the next test's
+// startup, the next agent could not bind, never became ready, and every
+// remaining test failed on the 15s readiness deadline. One real failure then
+// read as a whole-suite timeout.
+//
+// Dev mode only substitutes its own ports when the configured value is still
+// the production default, so setting them explicitly here is honoured.
+func sharedAssignFreePorts(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	// Allocate every port BEFORE releasing any of them. sharedFreePort closes
+	// its listener before returning, so calling it repeatedly can hand back the
+	// SAME port twice - the kernel is free to reuse one it just reclaimed. Two
+	// listeners would then race for it, one would fail to bind, agent startup
+	// would abort before marking itself ready, and the test would fail on the
+	// readiness deadline looking exactly like the contention this helper exists
+	// to remove.
+	ports := sharedFreePorts(t, 7)
+	cfg.Web.Port = ports[0]
+	cfg.SMTP.Port = ports[1]
+	cfg.SMTP.SubmissionPort = ports[2]
+	cfg.IMAP.Port = ports[3]
+	cfg.IMAP.PortTLS = ports[4]
+	cfg.POP3.Port = ports[5]
+	cfg.POP3.PortTLS = ports[6]
+}
+
+// sharedFreePorts returns n distinct free ports. All listeners are held open
+// until every port has been claimed, then closed together, so no two callers
+// within this batch can receive the same port.
+func sharedFreePorts(t *testing.T, n int) []int {
+	t.Helper()
+	listeners := make([]net.Listener, 0, n)
+	ports := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			for _, held := range listeners {
+				held.Close()
+			}
+			t.Fatalf("freePorts: %v", err)
+		}
+		listeners = append(listeners, l)
+		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
+	}
+	for _, l := range listeners {
+		l.Close()
+	}
+	return ports
 }
 
 func sharedWaitForLeader(t *testing.T, nodes []*testNode, timeout time.Duration) int {

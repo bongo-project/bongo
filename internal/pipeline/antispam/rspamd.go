@@ -21,10 +21,10 @@ const (
 
 // rspamdResponse represents the JSON response from Rspamd's /checkv2 endpoint.
 type rspamdResponse struct {
-	Score         float64                   `json:"score"`
-	RequiredScore float64                   `json:"required_score"`
-	Action        string                    `json:"action"`
-	Symbols       map[string]rspamdSymbol   `json:"symbols"`
+	Score         float64                 `json:"score"`
+	RequiredScore float64                 `json:"required_score"`
+	Action        string                  `json:"action"`
+	Symbols       map[string]rspamdSymbol `json:"symbols"`
 }
 
 // rspamdSymbol represents a single symbol entry in the Rspamd response.

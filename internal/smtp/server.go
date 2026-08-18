@@ -531,14 +531,33 @@ func (s *Server) SetRelayQueue(q RelayQueuer) {
 	s.backend.SetRelayQueue(q)
 }
 
+// Production defaults and their dev-mode replacements. Dev only substitutes
+// when the configured value is still the production default, so an explicit
+// port is always honoured.
+const (
+	defaultSMTPPort       = 25
+	defaultSubmissionPort = 587
+	devSMTPPort           = 2525
+	devSubmissionPort     = 2587
+)
+
 // NewServer creates an SMTP server from config.
 func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slog.Logger) *Server {
 	mxPort := cfg.Port
 	subPort := cfg.SubmissionPort
 
+	// Dev mode supplies non-privileged DEFAULTS, but an explicitly configured
+	// port wins. Overriding unconditionally meant a dev-mode operator who set
+	// smtp.port silently got 2525 instead, and left every in-process test agent
+	// fighting for the same fixed ports: one slow shutdown and the next agent
+	// could not bind, never became ready, and the whole suite timed out.
 	if isDev {
-		mxPort = 2525
-		subPort = 2587
+		if mxPort == defaultSMTPPort {
+			mxPort = devSMTPPort
+		}
+		if subPort == defaultSubmissionPort {
+			subPort = devSubmissionPort
+		}
 	}
 
 	// Let the backend detect submission connections by local port.

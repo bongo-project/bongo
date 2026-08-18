@@ -22,13 +22,13 @@ import (
 )
 
 // startSecurityTestAgent starts a dev agent and returns the base URL and a cancel function.
-func startSecurityTestAgent(t *testing.T) (baseURL string, cancel context.CancelFunc) {
+func startSecurityTestAgent(t *testing.T) (baseURL, smtpAddr string, cancel context.CancelFunc) {
 	t.Helper()
 
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
 	cfg.IMAP.Enabled = true
 
@@ -53,7 +53,9 @@ func startSecurityTestAgent(t *testing.T) (baseURL string, cancel context.Cancel
 		t.Fatal("agent not ready in time")
 	}
 
-	return fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port), cancelFn
+	return fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port),
+		fmt.Sprintf("127.0.0.1:%d", cfg.SMTP.Port),
+		cancelFn
 }
 
 // newClient returns an http.Client with a cookie jar that follows redirects.
@@ -93,7 +95,7 @@ func doLogin(client *http.Client, baseURL, email, password string) (*http.Respon
 // TestLoginRateLimit verifies that the login rate limiter blocks requests after
 // the configured number of failed attempts.
 func TestLoginRateLimit(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, _, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
 	jar, _ := cookiejar.New(nil)
@@ -149,7 +151,7 @@ func TestLoginRateLimit(t *testing.T) {
 }
 
 func TestDAVBasicAuthFailuresAreRateLimited(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, _, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
 	for _, tc := range []struct {
@@ -184,7 +186,7 @@ func TestDAVBasicAuthFailuresAreRateLimited(t *testing.T) {
 // TestSecurityHeaders verifies that the expected security headers are present
 // on HTML pages and that static assets carry Cache-Control.
 func TestSecurityHeaders(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, _, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
 	client := newClient()
@@ -243,7 +245,7 @@ func TestSecurityHeaders(t *testing.T) {
 // TestTOTPSetupAndLogin covers TOTP setup, login with TOTP, and recovery code
 // login in one combined flow.
 func TestTOTPSetupAndLogin(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, _, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
 	client := newClient()
@@ -437,7 +439,7 @@ func TestTOTPSetupAndLogin(t *testing.T) {
 // TestPasswordChange verifies that a user can change their password and that
 // the old password no longer works afterwards.
 func TestPasswordChange(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, _, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
 	client := newClient()
@@ -530,13 +532,13 @@ func TestPasswordChange(t *testing.T) {
 // TestRemoteImageBlocking verifies that remote images in email bodies are
 // replaced with blocked-image placeholders and that cid: references survive.
 func TestRemoteImageBlocking(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, agentSMTPAddr, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
-	// Find the SMTP port by constructing the address.
-	// The agent always binds to 127.0.0.1 with the SMTP port in dev mode.
-	// We rely on the webui test pattern: after agent is ready, send via SMTP.
-	smtpAddr := "127.0.0.1:2525" // dev default MX port
+	// Use the port this agent was actually assigned. Hardcoding the dev
+	// default made the test depend on a fixed port shared by every agent in
+	// the suite.
+	smtpAddr := agentSMTPAddr
 
 	htmlBody := `<html><body>` +
 		`<p>Hello</p>` +
@@ -611,7 +613,7 @@ func TestRemoteImageBlocking(t *testing.T) {
 // requirement, users without 2FA are redirected to the setup page, and that
 // disabling the policy restores normal access.
 func TestRequire2FAPolicy(t *testing.T) {
-	baseURL, cancel := startSecurityTestAgent(t)
+	baseURL, _, cancel := startSecurityTestAgent(t)
 	defer cancel()
 
 	// Login as admin.

@@ -49,10 +49,10 @@ type SearchManager struct {
 	dataDir  string
 	usersDir string
 
-	mu       sync.Mutex
-	cache    map[string]*list.Element
-	lruList  *list.List
-	maxOpen  int
+	mu      sync.Mutex
+	cache   map[string]*list.Element
+	lruList *list.List
+	maxOpen int
 
 	gal bleve.Index
 }

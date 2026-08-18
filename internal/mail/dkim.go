@@ -108,12 +108,12 @@ func (ds *DKIMSigner) Sign(rawMsg []byte) ([]byte, error) {
 	}
 
 	opts := &dkim.SignOptions{
-		Domain:   ds.domain,
-		Selector: ds.selector,
-		Signer:   ds.key,
+		Domain:                 ds.domain,
+		Selector:               ds.selector,
+		Signer:                 ds.key,
 		HeaderCanonicalization: dkim.CanonicalizationRelaxed,
 		BodyCanonicalization:   dkim.CanonicalizationRelaxed,
-		HeaderKeys: []string{"from", "to", "subject", "date", "message-id", "content-type"},
+		HeaderKeys:             []string{"from", "to", "subject", "date", "message-id", "content-type"},
 	}
 
 	var signed bytes.Buffer

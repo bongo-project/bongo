@@ -29,7 +29,7 @@ func startDragonflyAgent(t *testing.T) (*agent.Agent, string, *http.Client, cont
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Server.BindAddr = "127.0.0.1"
-	cfg.Web.Port = sharedFreePort(t)
+	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = false
 	cfg.IMAP.Enabled = false
 	cfg.Cluster.Gossip.Port = sharedFreePort(t)
@@ -92,7 +92,7 @@ func TestPreferences(t *testing.T) {
 		"theme":             {"dark"},
 		"layout_mode":       {"two-pane"},
 		"density":           {"spacious"},
-		"messages_per_page":  {"10"},
+		"messages_per_page": {"10"},
 		"default_reply":     {"all"},
 		"signature":         {"-- Best, Alice"},
 		"timezone":          {"America/New_York"},

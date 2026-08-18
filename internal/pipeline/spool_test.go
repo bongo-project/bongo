@@ -52,8 +52,8 @@ func TestEnqueueDequeue(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		env    *bongov1.QueueEnvelope
+		name string
+		env  *bongov1.QueueEnvelope
 	}{
 		{
 			name: "simple message",

@@ -120,7 +120,7 @@ type mimeParts struct {
 	messageID   string
 	inReplyTo   string
 	references  string
-	inline      []inlineImage   // inline cid: images (requires html != "")
+	inline      []inlineImage    // inline cid: images (requires html != "")
 	attachments []attachmentData // file attachments
 }
 

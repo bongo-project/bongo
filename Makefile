@@ -1,4 +1,4 @@
-.PHONY: all build dist generate test test-race lint sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
+.PHONY: all build dist generate test test-race test-integration test-all fmt fmt-check lint sec clean run dev ui-test ui-test-headed ui-test-setup validate seed
 
 BINARY     := bongo-go
 IMPORT_BIN := bongo-import
@@ -30,6 +30,11 @@ generate:
 
 ## Test targets
 
+## NOTE: the integration suite is behind `//go:build integration`, so a plain
+## `go test ./...` SKIPS IT ENTIRELY AND SAYS NOTHING. That is how a broken
+## integration suite stayed red in CI for a month while local runs looked green.
+## `test` remains the fast inner-loop target; use `test-all` before pushing.
+
 test:
 	go test ./...
 
@@ -39,7 +44,30 @@ test-race:
 test-cover:
 	go test -race -cover ./...
 
+## The integration suite only. Slower (~6 min) and starts real servers.
+test-integration:
+	go test -race -tags=integration -timeout 800s ./test/integration/...
+
+## Everything CI runs, in CI's order. Use this before pushing.
+test-all: fmt-check test-race test-integration
+	@echo "test-all: unit + integration passed, formatting clean"
+
 ## Quality targets
+
+fmt:
+	gofmt -w $(shell gofmt -l . | grep -v '^vendor/')
+
+## Fails when any file is unformatted. golangci-lint does not check gofmt here,
+## so without this the formatting drifts silently.
+fmt-check:
+	@unformatted=$$(gofmt -l . | grep -v '^vendor/' || true); \
+	if [ -n "$$unformatted" ]; then \
+		echo "These files are not gofmt-clean:"; \
+		echo "$$unformatted"; \
+		echo "Run: make fmt"; \
+		exit 1; \
+	fi
+	@echo "fmt-check: all files gofmt-clean"
 
 lint:
 	golangci-lint run

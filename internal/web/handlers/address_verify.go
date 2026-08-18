@@ -296,9 +296,9 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 //  2. Delete challenge — performed second (best-effort).
 //
 // Ordering prevents a crash between writes from locking the user out:
-// - If Put succeeds but Delete fails → address is verified, challenge is stale.
-//   A subsequent submit finds mismatch/expired and correctly fails (idempotent).
-// - If Delete succeeds but Put had not yet run → impossible (Put is first).
+//   - If Put succeeds but Delete fails → address is verified, challenge is stale.
+//     A subsequent submit finds mismatch/expired and correctly fails (idempotent).
+//   - If Delete succeeds but Put had not yet run → impossible (Put is first).
 func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	address := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "address")))
@@ -452,4 +452,3 @@ func buildVerificationEmail(toAddress string, code []byte, domain string) []byte
 
 	return buf.Bytes()
 }
-

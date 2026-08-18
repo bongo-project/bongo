@@ -12,10 +12,10 @@ func TestMailSanitizerStripsDangerousCSS(t *testing.T) {
 	h := NewMailHandler(nil, nil, nil, discardLogger())
 
 	cases := []struct {
-		name       string
-		in         string
-		mustDrop   []string
-		mustKeep   []string
+		name     string
+		in       string
+		mustDrop []string
+		mustKeep []string
 	}{
 		{
 			name:     "remote background url stripped",
