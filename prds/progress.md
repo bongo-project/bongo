@@ -1069,3 +1069,58 @@ what makes a future widening of trust fail a test.
 PATTERN: [design] When an interface param list reaches ~5 and the next addition is a security
 boolean, introduce a metadata struct. A trailing bool is exactly how a careless caller sets a
 security flag by accident.
+
+## 2026-08-19 — Tasks 12.3 + 12.4 DONE
+
+Commits `44742a1` (12.3 antispam trust) and `049bc79` (12.4 quarantine rescan). Both advisor
+reviews: MINOR.
+
+### 12.3 — the production spam bug is fixed
+Builtin processor skips SPF interpretation, DKIM verification and applyDMARC when
+`env.GetTrusted()`. Scorer, Bayes blend and threshold routing still run.
+
+**I rejected the worker's scope-guard test and rebuilt it.** The advisor caught that
+`TestBuiltinProcessorTrustedStillScoresContent/bayes_blend_still_applies` was VACUOUS: it used a
+message already above threshold on heuristics alone (measured 0.65 heuristic-only vs 0.79 blended),
+so it asserted nothing about Bayes — a future change bypassing the blend for trusted mail would
+still have passed. Rebuilt using a message measured at 0.250 (action `pass`, below the 0.5
+threshold) with an explicit paired negative control, and Bayes trained on that message's own tokens
+carrying the blend over. Then PROVED it non-vacuous by injecting the regression
+(`if p.bayes != nil && !trusted`): the test FAILS, and passes again on restore.
+
+Also de-identified the security-boundary comment — the worker had put real production addresses in
+it, which would have undone part of the B1 de-branding pass.
+
+### 12.4 — quarantine rescan
+New `internal/pipeline/rescan.go` (`PrepareForRescan`) + a `rescan` bulk action. Clears checked
+flags, drops stale StageResults, persists, then moves `quarantine/ -> incoming/`. Test drives a stub
+stage through the runner and asserts it was actually invoked.
+
+### NEW BUG FOUND — filed as 12.8, pre-existing, blocks tester release
+The 12.4 advisor found that quarantine "Release" never delivers anything. `ReleaseMessage`
+(`quarantine.go:62`) and `BulkAction`'s release case (:128) move `quarantine/ -> deliver/`, and
+NOTHING reads `spool/deliver/`. Verified independently: the only consumers are `ClaimNext`
+(`spool.go:69`, reads `incoming/`) and `RecoverCrashed` (`spool.go:50`, rescues `processing/`).
+`runner.go:212` moves to `deliver/` as a TERMINAL state after the deliver stage already delivered
+the mail — it is an archive, not a work queue. So an admin clicks Release, sees "Message released",
+and the message is parked where nobody reads it. Silent non-delivery, which `deploy/release-README.md`
+names as the #1 bug class for testers to report. Must be fixed before sharing.
+
+Known untested gap (accepted): the `WriteEnvelope`-failure branch in the rescan handler cannot be
+stubbed — `SpoolStore` is a concrete struct with no interface. Only the read-failure path is tested.
+
+Independent verification of both tasks: gofmt clean, go vet clean, `go test -race ./...` exit 0 with
+zero FAIL lines, gosec medium+ = 2 (unchanged from HEAD), `templ generate` output stable (worker had
+regenerated correctly).
+
+PATTERN: [testing] A "still applies" guard test is vacuous unless the DISABLED case would actually
+fail. If the input already crosses the threshold without the mechanism under test, the assertion
+proves nothing. Pick an input BELOW threshold and let only the mechanism carry it over, and add the
+paired negative control asserting that.
+PATTERN: [testing] Prove a guard test is real by INJECTING the regression it claims to catch and
+watching it fail. Cheap, and the only actual evidence.
+PATTERN: [architecture] A directory in a spool/queue layout is not a work queue just because it is
+named like one. Grep for what READS it before assuming a move into it does anything. `deliver/` here
+is a terminal archive, and an admin action moving mail into it silently loses the mail.
+PATTERN: [review] Worker-written tests need the same scrutiny as worker-written code. Two of three
+substantive issues this round were test-quality, not implementation.
