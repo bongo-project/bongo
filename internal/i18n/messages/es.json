@@ -533,6 +533,7 @@
   "quarantine.subtitle": "Mensajes retenidos para revisión — libere para entregar o elimine para descartar",
   "quarantine.releaseSelected": "Liberar seleccionados",
   "quarantine.deleteSelected": "Eliminar seleccionados",
+  "quarantine.rescanSelected": "Reescanear seleccionados",
   "quarantine.tableLabel": "Mensajes en cuarentena",
   "quarantine.sender": "Remitente",
   "quarantine.reason": "Motivo",

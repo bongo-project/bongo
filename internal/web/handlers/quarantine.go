@@ -22,6 +22,7 @@ import (
 const (
 	quarantineDir = "quarantine"
 	deliverDir    = "deliver"
+	incomingDir   = "incoming"
 )
 
 // QuarantineHandler handles admin quarantine management endpoints.
@@ -143,6 +144,37 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			succeeded++
+		case "rescan":
+			// Requeue quarantine/ -> incoming/ so the message runs back through
+			// the full pipeline. Unlike release, this must clear the scanning
+			// stages' checked flags (via pipeline.PrepareForRescan) before the
+			// move, or the runner's idempotency check (runner.go) skips the
+			// stage that quarantined it in the first place — see the doc
+			// comment on PrepareForRescan for the full rationale.
+			env, err := h.spool.ReadEnvelope(quarantineDir, id)
+			if err != nil {
+				h.logger.Error("quarantine: bulk rescan read failed", "id", id, "error", err)
+				failed++
+				continue
+			}
+			pipeline.PrepareForRescan(env)
+			// Write-then-move: a crash between these two calls leaves the
+			// envelope in quarantine/ with cleared flags, still quarantined
+			// and still rescannable. The reverse order would open a window
+			// where the envelope exists in both incoming/ and quarantine/ at
+			// once — deliverable by the runner and still releasable by an
+			// admin at the same time.
+			if err := h.spool.WriteEnvelope(quarantineDir, env); err != nil {
+				h.logger.Error("quarantine: bulk rescan write failed", "id", id, "error", err)
+				failed++
+				continue
+			}
+			if err := h.spool.Move(id, quarantineDir, incomingDir); err != nil {
+				h.logger.Error("quarantine: bulk rescan move failed", "id", id, "error", err)
+				failed++
+				continue
+			}
+			succeeded++
 		default:
 			http.Error(w, "unknown action", http.StatusBadRequest)
 			return
@@ -155,11 +187,31 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 		"failed", failed,
 	)
 
-	flash := fmt.Sprintf("%d+message(s)+%sd", succeeded, action)
+	flash := fmt.Sprintf("%d+message(s)+%s", succeeded, bulkActionPastTense(action))
 	if failed > 0 {
 		flash += fmt.Sprintf("+(%d+failed)", failed)
 	}
 	http.Redirect(w, r, "/admin/quarantine?flash="+flash, http.StatusSeeOther) // #nosec G710 -- fixed same-origin admin path
+}
+
+// bulkActionPastTense maps a bulk action name to its past-tense flash text.
+// action has already passed the BulkAction switch by the time this is
+// called, so the set of inputs is closed to "release", "delete", "rescan".
+func bulkActionPastTense(action string) string {
+	switch action {
+	case "release":
+		return "released"
+	case "delete":
+		return "deleted"
+	case "rescan":
+		return "rescanned"
+	default:
+		// Fixed fallback rather than echoing the input: this string is
+		// interpolated into the redirect Location header, so a future fourth
+		// case added to the BulkAction switch without updating this mapper
+		// must not put unvalidated form input there.
+		return "processed"
+	}
 }
 
 // loadQuarantine reads all envelopes from spool/quarantine/ and extracts display info.

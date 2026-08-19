@@ -533,6 +533,7 @@
   "quarantine.subtitle": "Zur Prüfung zurückgehaltene Nachrichten — freigeben zum Zustellen oder löschen zum Verwerfen",
   "quarantine.releaseSelected": "Auswahl freigeben",
   "quarantine.deleteSelected": "Auswahl löschen",
+  "quarantine.rescanSelected": "Auswahl erneut prüfen",
   "quarantine.tableLabel": "Nachrichten in Quarantäne",
   "quarantine.sender": "Absender",
   "quarantine.reason": "Grund",

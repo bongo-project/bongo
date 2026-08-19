@@ -264,6 +264,87 @@ func TestBulkDelete(t *testing.T) {
 	}
 }
 
+func TestBulkRescan(t *testing.T) {
+	spool := newTestSpool(t)
+	env := testEnv("rescan-1", "spam@example.com", time.Now())
+	env.Flags = pipeline.MsgFlagVirusChecked | pipeline.MsgFlagVirus | pipeline.MsgFlagQuarantined
+	env.Stages = []*bongov1.StageResult{
+		{Stage: "antivirus", Action: "quarantine", Reasons: []string{"scanner unreachable"}},
+	}
+	seedQuarantine(t, spool, env)
+
+	form := url.Values{}
+	form.Set("action", "rescan")
+	form.Add("ids", "rescan-1")
+
+	h := NewQuarantineHandler(spool, nil, discardLogger())
+	req := quarantineRequest(t, http.MethodPost, "/admin/quarantine/bulk",
+		strings.NewReader(form.Encode()), nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	h.BulkAction(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if got := spoolCount(t, spool, "incoming"); got != 1 {
+		t.Errorf("incoming/ count = %d, want 1", got)
+	}
+	if got := spoolCount(t, spool, "deliver"); got != 0 {
+		t.Errorf("deliver/ count = %d, want 0 (rescan must not skip the pipeline)", got)
+	}
+	if got := spoolCount(t, spool, "quarantine"); got != 0 {
+		t.Errorf("quarantine/ count = %d, want 0 after bulk rescan", got)
+	}
+
+	requeued, err := spool.ReadEnvelope("incoming", "rescan-1")
+	if err != nil {
+		t.Fatalf("ReadEnvelope incoming: %v", err)
+	}
+	if pipeline.HasFlag(requeued.Flags, pipeline.MsgFlagVirusChecked) {
+		t.Error("expected MsgFlagVirusChecked to be cleared")
+	}
+	if pipeline.HasFlag(requeued.Flags, pipeline.MsgFlagVirus) {
+		t.Error("expected MsgFlagVirus to be cleared")
+	}
+	if pipeline.HasFlag(requeued.Flags, pipeline.MsgFlagQuarantined) {
+		t.Error("expected MsgFlagQuarantined to be cleared")
+	}
+	for _, sr := range requeued.Stages {
+		if sr.Stage == "antivirus" || sr.Stage == "antispam" {
+			t.Errorf("expected stale %s StageResult to be dropped, found %+v", sr.Stage, sr)
+		}
+	}
+}
+
+func TestBulkRescanNotFound(t *testing.T) {
+	spool := newTestSpool(t)
+
+	form := url.Values{}
+	form.Set("action", "rescan")
+	form.Add("ids", "ghost-id")
+
+	h := NewQuarantineHandler(spool, nil, discardLogger())
+	req := quarantineRequest(t, http.MethodPost, "/admin/quarantine/bulk",
+		strings.NewReader(form.Encode()), nil)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	h.BulkAction(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want %d (redirect even on per-id failure)", rec.Code, http.StatusSeeOther)
+	}
+	loc := rec.Header().Get("Location")
+	if !strings.Contains(loc, "1+failed") {
+		t.Errorf("Location = %q, want flash reporting the failure, not silent success", loc)
+	}
+	if got := spoolCount(t, spool, "incoming"); got != 0 {
+		t.Errorf("incoming/ count = %d, want 0 for a nonexistent id", got)
+	}
+}
+
 func TestBulkActionNoIDs(t *testing.T) {
 	spool := newTestSpool(t)
 	form := url.Values{}
