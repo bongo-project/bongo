@@ -122,6 +122,11 @@ can be diagnosed rather than guessed at.
   Traefik without PROXY protocol every connection appears to come from the proxy, so DNSBL would
   be checking the proxy's reputation. The docs must state that DNSBL requires
   `smtp.proxy_protocol` when behind a proxy, or it is worse than useless.
+  **Planned change (operator, 2026-08-19):** Bongo is intended to face the internet directly
+  rather than sitting behind Traefik for SMTP. That removes this caveat entirely — the connecting
+  IP becomes the real one with no PROXY protocol needed — and it also makes the existing
+  X-Forwarded-For guardrails moot for the mail path. Worth confirming which deployment shape is in
+  place before enabling DNSBL, since the two have opposite requirements.
 - **Ordering.** The lookup belongs in the antispam stage alongside the existing signals rather
   than at SMTP time, which keeps it out of the connection path and means a slow zone delays
   nothing the sender is waiting on.
