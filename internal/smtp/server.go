@@ -36,7 +36,7 @@ type Deliverer interface {
 // separately (local -> spool pipeline, external -> outbound relay queue).
 type splitDeliverer interface {
 	StoreBlob(r io.Reader) (string, error)
-	EnqueueLocal(from string, recipients []string, blobHash, spfResult, sourceIP string) error
+	EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error
 }
 
 // RelayQueuer enqueues an authenticated user's message for outbound relay.
@@ -345,6 +345,22 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 	return nil
 }
 
+// inboundMeta builds the InboundMeta for the message currently being
+// received. Trusted is derived solely from the session's own
+// authentication state (s.authed) — this is the ONLY place in the codebase
+// permitted to set it. s.authed can only be true on the submission port
+// (see AuthMechanisms, which returns nil unless s.submission), so an
+// unauthenticated MX-port session can never produce a trusted envelope.
+// A future trusted-network CIDR check (source IP allowlisting) should
+// extend the Trusted expression here rather than adding another call site.
+func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
+	return &InboundMeta{
+		SPFResult: s.spfResult,
+		SourceIP:  sourceIP,
+		Trusted:   s.authed,
+	}
+}
+
 // Data is called when the message data is received.
 func (s *Session) Data(r io.Reader) error {
 	if len(s.localRcpts)+len(s.externalRcpts) == 0 {
@@ -399,7 +415,7 @@ func (s *Session) Data(r io.Reader) error {
 			return err
 		}
 		if len(s.localRcpts) > 0 {
-			if err := sd.EnqueueLocal(s.from, s.localRcpts, blobHash, s.spfResult, sourceIP); err != nil {
+			if err := sd.EnqueueLocal(s.from, s.localRcpts, blobHash, s.inboundMeta(sourceIP)); err != nil {
 				observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 				s.logger.Error("smtp: local delivery failed", "from", s.from, "error", err)
 				return err
@@ -432,10 +448,10 @@ func (s *Session) Data(r io.Reader) error {
 
 	// Fallback path (agent role / non-split deliverer): local recipients only.
 	type spfDeliverer interface {
-		DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error
+		DeliverWithSPF(from string, recipients []string, r io.Reader, meta *InboundMeta) error
 	}
 	if sd, ok := s.backend.deliverer.(spfDeliverer); ok {
-		if err := sd.DeliverWithSPF(s.from, s.localRcpts, reader, s.spfResult, sourceIP); err != nil {
+		if err := sd.DeliverWithSPF(s.from, s.localRcpts, reader, s.inboundMeta(sourceIP)); err != nil {
 			observability.SMTPMessagesTotal.WithLabelValues("rejected").Inc()
 			s.logger.Error("smtp: delivery failed", "from", s.from, "error", err)
 			return err

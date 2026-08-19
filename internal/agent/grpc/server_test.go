@@ -317,6 +317,48 @@ func TestDepositMessage(t *testing.T) {
 	}
 }
 
+// TestDepositMessageStripsTrusted covers the security-critical part of US-001
+// AC5: a caller-supplied QueueEnvelope claiming Trusted=true must never reach
+// the spool with that value intact. The agent gRPC deposit channel has no
+// transport credentials or per-caller authentication, so trust must remain a
+// server-local decision derived from the SMTP session's own auth state, never
+// something accepted over the wire.
+func TestDepositMessageStripsTrusted(t *testing.T) {
+	srv, client, cleanup := startTestServer(t)
+	defer cleanup()
+
+	envelope := &bongov1.QueueEnvelope{
+		Id:         "msg-trust-001",
+		Sender:     "attacker@evil.com",
+		Recipients: []string{"victim@example.com"},
+		ReceivedAt: time.Now().Unix(),
+		Trusted:    true, // forged by the caller; must be stripped
+	}
+	body := []byte("From: attacker@evil.com\r\nTo: victim@example.com\r\nSubject: Test\r\n\r\nHello")
+
+	resp, err := client.DepositMessage(context.Background(), &bongov1.DepositRequest{
+		Envelope: envelope,
+		Message:  body,
+	})
+	if err != nil {
+		t.Fatalf("DepositMessage: %v", err)
+	}
+	if resp.BlobHash == "" {
+		t.Fatal("blob_hash is empty")
+	}
+
+	envs, err := srv.spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 spooled envelope, got %d", len(envs))
+	}
+	if envs[0].Trusted {
+		t.Error("caller-supplied Trusted=true on DepositMessage should be stripped before spooling")
+	}
+}
+
 func TestFetchBlob(t *testing.T) {
 	_, client, cleanup := startTestServer(t)
 	defer cleanup()
