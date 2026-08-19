@@ -50,8 +50,25 @@ for platform in ${PLATFORMS}; do
   cp "${REPO_ROOT}/deploy/bongo.example.hcl" "${stage}/bongo.example.hcl"
   cp "${REPO_ROOT}/deploy/bongo-go.service"  "${stage}/bongo-go.service"
   cp "${REPO_ROOT}/docs/install.md"          "${stage}/INSTALL.md"
+  # Tester-facing README: what this is, what is NOT finished, and where to send
+  # feedback. INSTALL.md covers installation only, which is not the same thing.
+  cp "${REPO_ROOT}/deploy/release-README.md" "${stage}/README.md"
 
   # Prefer the `zip` tool; fall back to python3's zipfile if it is not installed.
+  # The README ships with deliberate placeholders. Building a release with them
+  # still in it would hand testers a file telling them to contact
+  # FEEDBACK_CONTACT_GOES_HERE, so fail loudly instead. Set ALLOW_PLACEHOLDER_README=1
+  # to build a local package while testing the packaging itself.
+  if grep -q "GOES_HERE\|REPLACE BEFORE SHARING" "${stage}/README.md"; then
+    if [ "${ALLOW_PLACEHOLDER_README:-0}" != "1" ]; then
+      echo "ERROR: deploy/release-README.md still contains placeholders." >&2
+      echo "       Fill in the contact address and terms, or set" >&2
+      echo "       ALLOW_PLACEHOLDER_README=1 to build anyway." >&2
+      exit 1
+    fi
+    echo "  WARNING: packaging with placeholder README (ALLOW_PLACEHOLDER_README=1)"
+  fi
+
   if command -v zip >/dev/null 2>&1; then
     ( cd "${DIST}" && zip -qr "${name}.zip" "${name}" )
   elif command -v python3 >/dev/null 2>&1; then
