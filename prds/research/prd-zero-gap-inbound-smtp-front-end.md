@@ -1,5 +1,32 @@
 # PRD: Zero-Gap Inbound SMTP Front-End
 
+> ## DECISION: NOT BUILDING (operator, 2026-08-19)
+>
+> Kept for the analysis, not as a plan. Do not implement without revisiting the trigger
+> conditions below.
+>
+> **Why not.** The problem is a ~11.5s window each night at 03:05 while the backup stops the
+> container — 0.013% of the day. Measured inbound volume at the time of the decision was **one
+> message in 24 hours**, so the expected number of messages ever landing in that window is
+> effectively zero. SMTP is store-and-forward: a refused connection is retried by the sender
+> minutes later, so such a message would be delayed, not lost. Against that, this costs a
+> mandatory mTLS prerequisite, a second container, a certificate lifecycle to operate, and a new
+> component sitting in front of the only part of the system that currently works.
+>
+> **What would change the answer:**
+> - **Zero-downtime deploys.** This is the stronger argument and always was — you restart bongo
+>   far more often for upgrades than for backups, and the same front-end covers both. If
+>   uninterrupted inbound during deploys becomes a requirement, revisit this.
+> - **Inbound volume growing by orders of magnitude**, so the window stops being statistically
+>   irrelevant.
+> - **The window growing** — currently it is bounded by graceful shutdown rather than data size,
+>   so it should not grow on its own. If it does, something else changed and is worth
+>   understanding first.
+>
+> **Cheaper alternative, still available:** section 1a Option A — have the backup script copy or
+> snapshot the data directory while bongo runs instead of stopping it. That removes the window
+> entirely for almost no code, and does not require any of this.
+
 ## 1. Introduction/Overview
 
 The daily cold backup stops the bongo container. While it is down, port 25 is closed, so a
