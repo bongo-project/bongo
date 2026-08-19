@@ -1011,3 +1011,18 @@ Import-time findings that shaped the task text (verified against the code, not t
 
 PATTERN: [import] - Verify a PRD's cited call sites before turning them into tasks. Three of the
 tasks changed shape once the actual signatures and the runner's error path were read.
+
+### Decision (operator, 2026-08-19): antivirus failure policy = quarantine
+
+Operator asked whether a quarantined backlog could be bulk-rescanned. Checked: NO, and the existing
+bulk `release` is a trap — it moves `quarantine/ -> deliver/` (`quarantine.go:127`), skipping every
+remaining stage, so bulk-releasing AV-unscanned mail delivers it unscanned. No requeue path exists,
+and a naive one fails too: the runner skips stages whose checked-flag is set (`runner.go:135`) and
+the quarantine path sets `MsgFlagVirusChecked` at `runner.go:169` BEFORE acting on the verdict.
+
+Result: added 12.4 (bulk rescan) as a PREREQUISITE of the ClamAV wiring, renumbered 12.4->12.5,
+12.5->12.6, 12.6->12.7. Phase is now 7 tasks. Decision recorded in the PRD's open-questions section
+so it is not re-litigated.
+
+PATTERN: [design] - "Quarantine on failure" is only a safe policy if the quarantine is drainable.
+Check the drain path exists BEFORE choosing quarantine as a failure mode.
