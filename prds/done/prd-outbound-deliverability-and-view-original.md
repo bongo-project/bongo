@@ -338,10 +338,17 @@ flipping it would start deleting data on upgrade for operators who never opted i
 
 ## 8. Open Questions
 
-1. **HELO name in multi-domain deployments.** One server may host several domains, but HELO is
+1. ~~**HELO name in multi-domain deployments.**~~ **CLOSED (2026-08-19).** `SMTP.Hostname` is the
+   right single value: HELO identifies the SERVER, not the sending domain, while SPF/DKIM/DMARC
+   stay per-domain. Verified in production — `mail.example.net` matches forward and reverse DNS
+   in both address families, and mail from three different sending domains delivers through it
+   (confirmed accepted by Google). Original question: One server may host several domains, but HELO is
    per-connection, not per-message. Confirm `SMTP.Hostname` is the right single value and that it
    matches the sending IP's rDNS on the live host.
-2. **Queued mail already marked failed.** Messages permanently failed by the HELO bug are already
+2. ~~**Queued mail already marked failed.**~~ **CLOSED (2026-08-19) — no action taken.** No
+   requeue path was built and none was requested; the operator reported no missing mail. Note the
+   messages were permanently failed and removed from the queue, so if any turn up as missing later
+   they will need resending by hand. Original question: Messages permanently failed by the HELO bug are already
    out of the queue. Is a manual resend acceptable, or is a requeue path needed?
 3. ~~**DMARC-publishing domain with no DKIM key.**~~ **RESOLVED (2026-08-16) — no code needed.**
    The concern was that FR-2 delivers the bounce unsigned, so it still gets junked, silently.
@@ -355,7 +362,13 @@ flipping it would start deleting data on upgrade for operators who never opted i
    two together is the only remaining gap. Tracked as task 10.7 (docs only, no code).
 4. **Existing stored messages.** Trace headers apply only to newly delivered mail. Confirmed as
    acceptable — no backfill — but worth stating before implementation.
-5. **`Authentication-Results` hostname.** Should the `authserv-id` be `SMTP.Hostname` or the
+5. ~~**`Authentication-Results` hostname.**~~ **CLOSED (2026-08-19).** Settled as `SMTP.Hostname`
+   and shipped; it degrades by omitting the header rather than emitting a blank authserv-id when
+   unset. Original question: Should the `authserv-id` be `SMTP.Hostname` or the
    resolved `ResolveServerDomain` value? They differ in multi-domain deployments.
-6. **Copy button and clipboard API.** `navigator.clipboard` requires a secure context. Is a
+6. ~~**Copy button and clipboard API.**~~ **CLOSED (2026-08-19) — no fallback added.** Production
+   is HTTPS so the secure-context requirement is met; on plain-http dev mode the existing shared
+   handler already guards with `&& navigator.clipboard` and silently does nothing, matching every
+   other copy button in the app. Adding a second path would have meant a second clipboard
+   implementation. Original question: `navigator.clipboard` requires a secure context. Is a
    plaintext-HTTP dev-mode fallback needed, or is degrading silently on `http://` acceptable?

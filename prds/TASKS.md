@@ -68,7 +68,7 @@ Fixes a single failure chain: we send `EHLO localhost` on every outbound connect
 the resulting DSN then fails our own DMARC check (unsigned + no SPF, own From domain)
 and is filed to Junk; and users have no way to inspect headers to diagnose any of it.
 Net effect today: **mail is silently lost.**
-PRD: [prd-outbound-deliverability-and-view-original.md](active/prd-outbound-deliverability-and-view-original.md).
+PRD: [prd-outbound-deliverability-and-view-original.md](done/prd-outbound-deliverability-and-view-original.md).
 
 **10.1 is the root cause — do it first.** 10.2/10.3/10.4 all edit `internal/mail/bounce.go`
 and MUST run sequentially (no parallel worktrees) to avoid clobbering each other.
