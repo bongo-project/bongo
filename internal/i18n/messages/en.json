@@ -533,6 +533,7 @@
   "quarantine.subtitle": "Messages held for review — release to deliver or delete to discard",
   "quarantine.releaseSelected": "Release Selected",
   "quarantine.deleteSelected": "Delete Selected",
+  "quarantine.rescanSelected": "Rescan Selected",
   "quarantine.tableLabel": "Quarantined messages",
   "quarantine.sender": "Sender",
   "quarantine.reason": "Reason",

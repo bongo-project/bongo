@@ -34,6 +34,11 @@ templ AdminQuarantine(msgs []QuarantineEntry, email, flash string) {
 					<button type="submit" class="btn-outline">{ t(ctx, "quarantine.releaseSelected") }</button>
 				</form>
 				<form method="post" action="/admin/quarantine/bulk" class="u-m0 u-flex u-gap-05" @submit="appendIds">
+					<input type="hidden" name="action" value="rescan"/>
+					<div id="bulk-ids-rescan"></div>
+					<button type="submit" class="btn-outline">{ t(ctx, "quarantine.rescanSelected") }</button>
+				</form>
+				<form method="post" action="/admin/quarantine/bulk" class="u-m0 u-flex u-gap-05" @submit="appendIds">
 					<input type="hidden" name="action" value="delete"/>
 					<div id="bulk-ids-delete"></div>
 					<button type="submit" class="btn-flush">{ t(ctx, "quarantine.deleteSelected") }</button>
