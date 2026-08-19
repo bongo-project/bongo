@@ -988,3 +988,26 @@ PATTERN: [testing] Prove an isolation fix by INJECTING the failure it is meant
 PATTERN: [config] A dev-mode convenience default that overrides configuration
   UNCONDITIONALLY is a bug, not a shortcut: it silently discards operator
   intent, and it forces every in-process test to share one fixed resource.
+
+## 2026-08-19 — norman import: Phase 12 (trusted submission & scanner wiring)
+
+Imported `prd-trusted-submission-and-scanner-wiring.md` (research → backlog). 6 tasks extracted
+from 4 user stories / 12 functional requirements.
+
+Housekeeping: collapsed Phases 7–11 (all DONE) into TASKS-archive.md — TASKS.md went 118 → 55
+lines. Relocated the stale DONE 7.2 row out of the Backlog table into the Phase 7 archive section.
+
+Import-time findings that shaped the task text (verified against the code, not taken from the PRD):
+- `EnqueueLocal`/`DeliverWithSPF` are already 5 positional params AND an interface
+  (`internal/smtp/server.go:31,39`) with 3 implementations. A trailing `bool` for trust is the
+  exact accident FR-2 forbids, so 12.1 mandates an options struct.
+- `mail.BounceGenerator` depends on the 3-arg `Deliver` (`bounce.go:24,140`) — must keep compiling
+  and stay untrusted.
+- `runner.go:158-163` moves a message to `spool/error` on ANY stage error. So wiring ClamAV with no
+  failure policy silently makes "clamd down" == "inbound mail stranded". 12.4 is gated on that
+  decision rather than letting it fall out of the implementation.
+- Dev mode already skips DMARC (`agent.go:1040`) for the same class of reason — local test mail
+  from real p=reject domains. That precedent supports the 12.3 skip but does NOT cover it: dev-only.
+
+PATTERN: [import] - Verify a PRD's cited call sites before turning them into tasks. Three of the
+tasks changed shape once the actual signatures and the runner's error path were read.
