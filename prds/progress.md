@@ -1026,3 +1026,46 @@ so it is not re-litigated.
 
 PATTERN: [design] - "Quarantine on failure" is only a safe policy if the quarantine is drainable.
 Check the drain path exists BEFORE choosing quarantine as a failure mode.
+
+## 2026-08-19 — Task 12.1 DONE: trust indicator on QueueEnvelope
+
+Commit `3e1b67d`. Advisor review: PASS (3 MINOR notes, logged below).
+
+`bool trusted = 14` on QueueEnvelope, threaded via a new `InboundMeta{SPFResult, SourceIP, Trusted}`
+struct rather than a 6th positional param. Derived in exactly one place — `(*Session).inboundMeta`
+from `s.authed`.
+
+**Real security fix found in passing:** `AgentServer.DepositMessage` (internal/agent/grpc/server.go)
+enqueued the caller-supplied `QueueEnvelope` verbatim. The gRPC listener has neither transport
+credentials nor per-caller auth, so once 12.3 honours the flag, a wire-supplied `Trusted=true` would
+have been a direct SPF/DKIM/DMARC bypass. Now `env.Trusted = false` unconditionally at that
+boundary, with `TestDepositMessageStripsTrusted` proving it.
+
+MINOR notes carried forward (not blockers):
+1. **Input to 12.2/12.3:** because of the strip above, agent-role deployments deliver every message
+   UNTRUSTED across the hop. The DMARC skip will not apply there, and 12.2's CIDR match is discarded
+   across the same hop. Correct-and-safe today; must not be reported later as a regression.
+2. `TestAuthenticatedSubmissionArrivesTrusted` builds `Session{submission:true, authed:true}`
+   directly rather than driving AUTH. Covered structurally by `TestMXSessionCannotAuthenticate`
+   (asserts `AuthMechanisms() == nil` off the submission port). An end-to-end AUTH test would close
+   the last gap.
+3. `.codex` at repo root is untracked and not gitignored — kept out of the commit deliberately.
+
+Independent verification (NOT taken from the worker's report): `go test -race ./...` exit 0, 33
+packages; `make test-integration` exit 0, 366s; gofmt + go vet clean; gosec medium+ = 2 on both HEAD
+and the working tree (pre-existing, unchanged); `buf generate` reproducible and the pb.go diff is
+field + getter + rawDesc bump only.
+
+PATTERN: [security] Derive a trust/authz flag in exactly ONE helper and comment it as the only
+permitted writer. `grep -rn "Trusted:\|\.Trusted ="` over non-test code then becomes a cheap
+auditable proof of "nothing else may set it" instead of a manual review.
+PATTERN: [security] Trust is server-local and must never be accepted over the wire. Any RPC/HTTP
+ingress that reconstructs an internal envelope must strip server-derived security fields from the
+caller-supplied payload. Enumerate ingress points FIRST — here `grep -rn "spool.Enqueue("` showed
+exactly two, which bounded the audit.
+PATTERN: [testing] Assert the structural invariant a boundary rests on, not just forged inputs.
+Tabling plausible forged headers is good; asserting `AuthMechanisms() == nil` for MX sessions is
+what makes a future widening of trust fail a test.
+PATTERN: [design] When an interface param list reaches ~5 and the next addition is a security
+boolean, introduce a metadata struct. A trailing bool is exactly how a careless caller sets a
+security flag by accident.
