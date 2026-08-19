@@ -123,7 +123,8 @@ func TestAgentDeliveryWithSPF(t *testing.T) {
 	pipeline := NewAgentDeliveryPipeline(client, testLogger())
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SPF Test\r\n\r\nBody\r\n"
-	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass", "203.0.113.5")
+	meta := &InboundMeta{SPFResult: "pass", SourceIP: "203.0.113.5"}
+	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), meta)
 	if err != nil {
 		t.Fatalf("DeliverWithSPF: %v", err)
 	}
@@ -153,7 +154,8 @@ func TestAgentDeliveryWithSourceIP(t *testing.T) {
 	pipeline := NewAgentDeliveryPipeline(client, testLogger())
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SourceIP Test\r\n\r\nBody\r\n"
-	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "", "198.51.100.10")
+	meta := &InboundMeta{SourceIP: "198.51.100.10"}
+	err := pipeline.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), meta)
 	if err != nil {
 		t.Fatalf("DeliverWithSPF: %v", err)
 	}

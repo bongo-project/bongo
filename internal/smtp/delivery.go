@@ -14,6 +14,15 @@ import (
 	"github.com/bongo-go/bongo-go/internal/store"
 )
 
+// InboundMeta carries metadata about an inbound message including SPF results,
+// source IP, and trust status. Introduced as an options struct to avoid
+// adding more positional parameters to delivery methods.
+type InboundMeta struct {
+	SPFResult string
+	SourceIP  string
+	Trusted   bool
+}
+
 // RaftApplier applies commands through Raft consensus.
 type RaftApplier interface {
 	ApplyCommand(cmd *bongov1.RaftCommand, timeout time.Duration) error
@@ -67,18 +76,21 @@ func NewDeliveryPipeline(blobs *store.BlobStore, spool *pipeline.SpoolStore, log
 // Deliver processes an inbound message for the given recipients by storing the
 // raw message blob and enqueuing a QueueEnvelope into the spool.
 func (d *DeliveryPipeline) Deliver(from string, recipients []string, r io.Reader) error {
-	return d.DeliverWithSPF(from, recipients, r, "", "")
+	return d.DeliverWithSPF(from, recipients, r, &InboundMeta{})
 }
 
 // DeliverWithSPF stores the raw message as a blob and enqueues a QueueEnvelope
 // with SPF result and source IP metadata into the spool for asynchronous
 // pipeline processing.
-func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, spfResult, sourceIP string) error {
+func (d *DeliveryPipeline) DeliverWithSPF(from string, recipients []string, r io.Reader, meta *InboundMeta) error {
+	if meta == nil {
+		meta = &InboundMeta{}
+	}
 	blobHash, err := d.StoreBlob(r)
 	if err != nil {
 		return err
 	}
-	return d.EnqueueLocal(from, recipients, blobHash, spfResult, sourceIP)
+	return d.EnqueueLocal(from, recipients, blobHash, meta)
 }
 
 // StoreBlob streams the raw message to the content-addressable blob store and
@@ -93,15 +105,19 @@ func (d *DeliveryPipeline) StoreBlob(r io.Reader) (string, error) {
 
 // EnqueueLocal enqueues a QueueEnvelope referencing an already-stored blob into
 // the spool for asynchronous local pipeline delivery.
-func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHash, spfResult, sourceIP string) error {
+func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error {
+	if meta == nil {
+		meta = &InboundMeta{}
+	}
 	env := &bongov1.QueueEnvelope{
 		Id:         uuid.New().String(),
 		Sender:     from,
 		Recipients: recipients,
 		ReceivedAt: time.Now().Unix(),
 		BlobHash:   blobHash,
-		SpfResult:  spfResult,
-		SourceIp:   sourceIP,
+		SpfResult:  meta.SPFResult,
+		SourceIp:   meta.SourceIP,
+		Trusted:    meta.Trusted,
 	}
 
 	if err := d.spool.Enqueue(env); err != nil {
@@ -113,7 +129,8 @@ func (d *DeliveryPipeline) EnqueueLocal(from string, recipients []string, blobHa
 		"from", from,
 		"recipients", recipients,
 		"blob_hash", blobHash,
-		"source_ip", sourceIP,
+		"source_ip", meta.SourceIP,
+		"trusted", meta.Trusted,
 	)
 
 	return nil

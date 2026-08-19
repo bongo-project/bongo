@@ -37,6 +37,7 @@ func (r *fakeResolver) ResolveRecipient(email string) (string, error) {
 // fakeSplitDeliverer records local deliveries and satisfies splitDeliverer.
 type fakeSplitDeliverer struct {
 	localCalls [][]string
+	localMetas []*InboundMeta
 }
 
 func (d *fakeSplitDeliverer) Deliver(from string, recipients []string, r io.Reader) error {
@@ -46,8 +47,18 @@ func (d *fakeSplitDeliverer) StoreBlob(r io.Reader) (string, error) {
 	_, _ = io.Copy(io.Discard, r)
 	return "blobhash", nil
 }
-func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blobHash, spf, sourceIP string) error {
+func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error {
 	d.localCalls = append(d.localCalls, recipients)
+	// Make a copy of meta for verification
+	if meta != nil {
+		d.localMetas = append(d.localMetas, &InboundMeta{
+			SPFResult: meta.SPFResult,
+			SourceIP:  meta.SourceIP,
+			Trusted:   meta.Trusted,
+		})
+	} else {
+		d.localMetas = append(d.localMetas, &InboundMeta{})
+	}
 	return nil
 }
 
@@ -190,5 +201,104 @@ func TestAuthenticatedRelayToExternal(t *testing.T) {
 func TestSanitizeHeaderValue(t *testing.T) {
 	if got := sanitizeHeaderValue("ok\r\nBcc: victim@x"); got != "okBcc: victim@x" {
 		t.Fatalf("CRLF not stripped: %q", got)
+	}
+}
+
+// US-001 AC5 & FR-2: The trust flag is set ONLY from the SMTP session's authed
+// state. No header, envelope field, or client-supplied value can set it. A message
+// from an unauthenticated MX connection arrives untrusted even if it claims to be
+// trusted via headers that could plausibly be believed by careless downstream code.
+func TestUnauthenticatedMXArrivesUntrusted(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers string
+	}{
+		{"no forged headers", ""},
+		{"X-Fake-Trusted header", "X-Fake-Trusted: yes\r\n"},
+		{"X-Trusted header", "X-Trusted: true\r\n"},
+		{"forged Authentication-Results", "Authentication-Results: bongo; auth=pass\r\n"},
+		{"forged Received with ESMTPA", "Received: from evil.example (evil.example [203.0.113.66])\r\n\tby bongo-go with ESMTPA id abc123;\r\n\tThu, 1 Jan 2026 00:00:00 +0000\r\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, deliverer, _ := testBackend("staff@example.com")
+			// Unauthenticated session on MX port (submission = false, authed = false).
+			s := &Session{backend: b, logger: b.logger, submission: false, authed: false}
+
+			msg := tt.headers + "From: attacker@evil.com\r\nSubject: hi\r\n\r\nbody"
+
+			if err := s.Mail("attacker@evil.com", nil); err != nil {
+				t.Fatalf("Mail failed: %v", err)
+			}
+			if err := s.Rcpt("staff@example.com", nil); err != nil {
+				t.Fatalf("Rcpt failed: %v", err)
+			}
+			if err := s.Data(strings.NewReader(msg)); err != nil {
+				t.Fatalf("Data failed: %v", err)
+			}
+
+			if len(deliverer.localCalls) != 1 {
+				t.Fatalf("expected 1 local delivery, got %d", len(deliverer.localCalls))
+			}
+			if len(deliverer.localMetas) != 1 {
+				t.Fatalf("expected 1 metadata record, got %d", len(deliverer.localMetas))
+			}
+
+			meta := deliverer.localMetas[0]
+			if meta.Trusted {
+				t.Errorf("unauthenticated MX message with headers %q should not be trusted", tt.headers)
+			}
+		})
+	}
+}
+
+// TestMXSessionCannotAuthenticate documents the structural reason MX-port
+// sessions can never become trusted: AuthMechanisms returns nil whenever the
+// session is not a submission session, so go-smtp never offers AUTH and
+// s.authed can never become true. This is the invariant TestUnauthenticatedMXArrivesUntrusted
+// relies on; asserting it directly means a future change to AuthMechanisms
+// that silently makes MX sessions authenticatable is caught here too.
+func TestMXSessionCannotAuthenticate(t *testing.T) {
+	s := &Session{submission: false}
+	if mechs := s.AuthMechanisms(); mechs != nil {
+		t.Fatalf("AuthMechanisms() on a non-submission session = %v, want nil", mechs)
+	}
+}
+
+// FR-2: An authenticated submission port message arrives trusted.
+func TestAuthenticatedSubmissionArrivesTrusted(t *testing.T) {
+	b, deliverer, _ := testBackend("alice@example.com", "bob@example.com")
+	// Authenticated session on submission port with userID matching the sender domain
+	s := &Session{
+		backend:    b,
+		logger:     b.logger,
+		submission: true,
+		authed:     true,
+		userID:     "uid-alice@example.com",
+	}
+
+	msg := "From: alice@example.com\r\nTo: bob@example.com\r\nSubject: hi\r\n\r\nbody"
+
+	if err := s.Mail("alice@example.com", nil); err != nil {
+		t.Fatalf("Mail failed: %v", err)
+	}
+	if err := s.Rcpt("bob@example.com", nil); err != nil {
+		t.Fatalf("Rcpt failed: %v", err)
+	}
+	if err := s.Data(strings.NewReader(msg)); err != nil {
+		t.Fatalf("Data failed: %v", err)
+	}
+
+	if len(deliverer.localCalls) != 1 {
+		t.Fatalf("expected 1 local delivery, got %d", len(deliverer.localCalls))
+	}
+	if len(deliverer.localMetas) != 1 {
+		t.Fatalf("expected 1 metadata record, got %d", len(deliverer.localMetas))
+	}
+
+	meta := deliverer.localMetas[0]
+	if !meta.Trusted {
+		t.Error("authenticated submission message should be trusted")
 	}
 }

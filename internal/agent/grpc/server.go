@@ -309,6 +309,15 @@ func (s *AgentServer) DepositMessage(_ context.Context, req *DepositRequest) (*D
 	env := req.Envelope
 	env.BlobHash = hash
 
+	// Trust is a server-local decision derived from the SMTP session's own
+	// authentication state (see internal/smtp.Session.inboundMeta); it is
+	// never accepted over the wire. The agent gRPC listener has no
+	// transport credentials or per-caller authentication yet, so a
+	// caller-supplied Trusted value cannot be honoured here without
+	// becoming a trust-escalation vector. Strip it unconditionally until
+	// the agent deposit channel itself is authenticated.
+	env.Trusted = false
+
 	if err := s.spool.Enqueue(env); err != nil {
 		return nil, status.Errorf(codes.Internal, "enqueue message: %v", err)
 	}

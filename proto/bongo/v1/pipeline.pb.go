@@ -36,6 +36,7 @@ type QueueEnvelope struct {
 	TargetMailbox    string                 `protobuf:"bytes,11,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"`          // Override destination (set by rules/spam)
 	PendingTags      []string               `protobuf:"bytes,12,rep,name=pending_tags,json=pendingTags,proto3" json:"pending_tags,omitempty"`                // Tags to apply at delivery (accumulated by rules stage)
 	ForwardAddresses []string               `protobuf:"bytes,13,rep,name=forward_addresses,json=forwardAddresses,proto3" json:"forward_addresses,omitempty"` // External addresses to forward this message to
+	Trusted          bool                   `protobuf:"varint,14,opt,name=trusted,proto3" json:"trusted,omitempty"`                                          // Message arrived authenticated or from trusted network
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -161,6 +162,13 @@ func (x *QueueEnvelope) GetForwardAddresses() []string {
 	return nil
 }
 
+func (x *QueueEnvelope) GetTrusted() bool {
+	if x != nil {
+		return x.Trusted
+	}
+	return false
+}
+
 type StageResult struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Stage         string                 `protobuf:"bytes,1,opt,name=stage,proto3" json:"stage,omitempty"`                                 // "antispam", "antivirus", "rules"
@@ -265,7 +273,7 @@ var File_proto_bongo_v1_pipeline_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	"\n" +
-	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\xb2\x03\n" +
+	"\x1dproto/bongo/v1/pipeline.proto\x12\bbongo.v1\"\xcc\x03\n" +
 	"\rQueueEnvelope\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
 	"\x06sender\x18\x02 \x01(\tR\x06sender\x12\x1e\n" +
@@ -284,7 +292,8 @@ const file_proto_bongo_v1_pipeline_proto_rawDesc = "" +
 	" \x01(\tR\fcurrentStage\x12%\n" +
 	"\x0etarget_mailbox\x18\v \x01(\tR\rtargetMailbox\x12!\n" +
 	"\fpending_tags\x18\f \x03(\tR\vpendingTags\x12+\n" +
-	"\x11forward_addresses\x18\r \x03(\tR\x10forwardAddresses\"\xec\x01\n" +
+	"\x11forward_addresses\x18\r \x03(\tR\x10forwardAddresses\x12\x18\n" +
+	"\atrusted\x18\x0e \x01(\bR\atrusted\"\xec\x01\n" +
 	"\vStageResult\x12\x14\n" +
 	"\x05stage\x18\x01 \x01(\tR\x05stage\x12\x18\n" +
 	"\abackend\x18\x02 \x01(\tR\abackend\x12\x16\n" +

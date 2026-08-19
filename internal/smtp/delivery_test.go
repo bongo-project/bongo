@@ -78,7 +78,8 @@ func TestDeliveryWithSPF(t *testing.T) {
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SPF Test\r\n\r\nBody\r\n"
 
-	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "pass", "203.0.113.1")
+	meta := &InboundMeta{SPFResult: "pass", SourceIP: "203.0.113.1"}
+	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), meta)
 	if err != nil {
 		t.Fatalf("DeliverWithSPF: %v", err)
 	}
@@ -105,7 +106,8 @@ func TestDeliveryWithSourceIP(t *testing.T) {
 
 	msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: SourceIP Test\r\n\r\nBody\r\n"
 
-	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), "", "198.51.100.42")
+	meta := &InboundMeta{SourceIP: "198.51.100.42"}
+	err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), meta)
 	if err != nil {
 		t.Fatalf("DeliverWithSPF: %v", err)
 	}
@@ -182,5 +184,120 @@ func TestDeliveryBlobStoreAdapter(t *testing.T) {
 	}
 	if string(buf[:n]) != string(data) {
 		t.Errorf("blob content = %q, want %q", string(buf[:n]), string(data))
+	}
+}
+
+func TestTrustedFlagSpoolRoundTrip(t *testing.T) {
+	tests := []struct {
+		name    string
+		trusted bool
+	}{
+		{"trusted message", true},
+		{"untrusted message", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dp, _, spool := setupTestPipeline(t)
+
+			msg := "From: bob@example.com\r\nTo: alice@example.com\r\nSubject: Test\r\n\r\nBody\r\n"
+
+			meta := &InboundMeta{
+				SPFResult: "pass",
+				SourceIP:  "203.0.113.1",
+				Trusted:   tt.trusted,
+			}
+			err := dp.DeliverWithSPF("bob@example.com", []string{"alice@example.com"}, strings.NewReader(msg), meta)
+			if err != nil {
+				t.Fatalf("DeliverWithSPF: %v", err)
+			}
+
+			envs, err := spool.List("incoming")
+			if err != nil {
+				t.Fatalf("listing spool incoming: %v", err)
+			}
+			if len(envs) != 1 {
+				t.Fatalf("expected 1 envelope, got %d", len(envs))
+			}
+
+			env := envs[0]
+			if env.Trusted != tt.trusted {
+				t.Errorf("trusted = %v, want %v", env.Trusted, tt.trusted)
+			}
+			if env.SpfResult != "pass" {
+				t.Errorf("spf_result = %q, want %q", env.SpfResult, "pass")
+			}
+			if env.SourceIp != "203.0.113.1" {
+				t.Errorf("source_ip = %q, want %q", env.SourceIp, "203.0.113.1")
+			}
+		})
+	}
+}
+
+func TestEnqueueLocalTrustedFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		trusted bool
+	}{
+		{"authenticated submission", true},
+		{"inbound MX", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dp, _, spool := setupTestPipeline(t)
+
+			meta := &InboundMeta{
+				SPFResult: "pass",
+				SourceIP:  "203.0.113.1",
+				Trusted:   tt.trusted,
+			}
+
+			err := dp.EnqueueLocal("bob@example.com", []string{"alice@example.com"}, "someblobhash", meta)
+			if err != nil {
+				t.Fatalf("EnqueueLocal: %v", err)
+			}
+
+			envs, err := spool.List("incoming")
+			if err != nil {
+				t.Fatalf("listing spool incoming: %v", err)
+			}
+			if len(envs) != 1 {
+				t.Fatalf("expected 1 envelope, got %d", len(envs))
+			}
+
+			env := envs[0]
+			if env.Trusted != tt.trusted {
+				t.Errorf("trusted = %v, want %v", env.Trusted, tt.trusted)
+			}
+		})
+	}
+}
+
+// TestBouncePathDeliverArrivesUntrusted covers the 3-arg Deliver interface
+// used by mail.BounceGenerator (internal/mail/bounce.go). Bounces are
+// DKIM-signed as of task 10.2 and do not need trust; this proves the spooled
+// envelope produced via the 3-arg path always has Trusted == false, since
+// Deliver forwards to DeliverWithSPF with a zero-value InboundMeta.
+func TestBouncePathDeliverArrivesUntrusted(t *testing.T) {
+	dp, _, spool := setupTestPipeline(t)
+
+	msg := "From: mailer-daemon@example.com\r\nTo: bob@example.com\r\nSubject: Undelivered Mail Returned to Sender\r\n\r\nBounce body\r\n"
+
+	if err := dp.Deliver("mailer-daemon@example.com", []string{"bob@example.com"}, strings.NewReader(msg)); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+
+	envs, err := spool.List("incoming")
+	if err != nil {
+		t.Fatalf("listing spool incoming: %v", err)
+	}
+	if len(envs) != 1 {
+		t.Fatalf("expected 1 envelope, got %d", len(envs))
+	}
+
+	env := envs[0]
+	if env.Trusted {
+		t.Error("bounce delivered via the 3-arg Deliver path should not be trusted")
 	}
 }
