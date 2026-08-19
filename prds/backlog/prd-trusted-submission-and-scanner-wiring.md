@@ -192,10 +192,22 @@ internal, without giving it credentials.
 
 ## 8. Open Questions
 
-1. **Antivirus failure policy.** If clamd is unreachable, is mail accepted unscanned or deferred
-   with a 4xx? Accepting unscanned quietly weakens a control the operator switched on; deferring
-   means a scanner outage stops inbound mail. Postfix-style deployments usually defer. Needs an
-   explicit decision, and it should be configurable with a documented default.
+1. **Antivirus failure policy — DECIDED (operator, 2026-08-19): quarantine.** If clamd is
+   unreachable the message is quarantined: not delivered unscanned, not 4xx-deferred, and not
+   dropped into `spool/error` where nothing surfaces it. Nothing is lost, nothing unscanned reaches
+   an inbox, and the operator drains it when the scanner is back.
+
+   **This decision has a hard prerequisite.** Quarantine is only safe if it is drainable, and today
+   it is not: `BulkAction`'s `release` moves `quarantine/ → deliver/`
+   (`internal/web/handlers/quarantine.go:127`), skipping every remaining pipeline stage — so bulk
+   "releasing" AV-unscanned mail would deliver it *still unscanned*. There is no requeue path, and a
+   naive one would not work either, because the runner skips stages whose checked-flag is set
+   (`runner.go:135`) and the quarantine path sets `MsgFlagVirusChecked` before acting on the verdict
+   (`runner.go:169`). A `rescan` bulk action that clears those flags and moves back to `incoming/`
+   is therefore a prerequisite task, not a follow-up.
+
+   Made configurable (`on_failure`) with quarantine as the documented default, so the behaviour is
+   explicit rather than emergent.
 2. **Should authenticated submission skip antivirus too?** Probably not — a compromised account
    sending malware is exactly the case scanning should catch — but it deserves a deliberate
    answer rather than falling out of the implementation.
