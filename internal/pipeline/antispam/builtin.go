@@ -152,17 +152,38 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		}
 	}
 
+	// Origin-authentication signals (SPF interpretation, DKIM verification,
+	// DMARC evaluation) are skipped entirely for a Trusted envelope: the
+	// message arrived authenticated (SMTP AUTH) or from a trusted network
+	// (task 12.2), so the connecting IP's SPF/DKIM/DMARC alignment against the
+	// From domain is meaningless and was misjunking same-domain app-to-user
+	// mail (e.g. noreply@example.com -> user@example.com, SPF softfail against
+	// a container bridge IP, no DKIM signature, p=quarantine). Phrase/heuristic
+	// scoring and Bayesian classification are NOT skipped: trust removes
+	// origin-authentication interpretation only, never content filtering.
+	// Phase 10 explicitly rejected a general "local origin" flag that skipped
+	// scoring outright, because inbound internet mail enters through the same
+	// EnqueueLocal path and such a flag would be one careless caller away from
+	// a full antispam bypass — do not widen this beyond the three signals
+	// named here.
+	trusted := env.GetTrusted()
+
 	// Verify the DKIM signature so the scorer's DKIM heuristic (which reads
 	// DKIMResult) can fire; without this it was always "" and never scored.
-	dkimResult, dkimDomain, _ := antispam.VerifyDKIM(raw)
+	var dkimResult, dkimDomain string
+	if !trusted {
+		dkimResult, dkimDomain, _ = antispam.VerifyDKIM(raw)
+	}
 
 	input := &antispam.ScoringInput{
-		SPFResult:      env.GetSpfResult(),
-		DKIMResult:     dkimResult,
 		Headers:        headers,
 		Subject:        subject,
 		BodySample:     bodySample,
 		EnvelopeSender: env.GetSender(),
+	}
+	if !trusted {
+		input.SPFResult = env.GetSpfResult()
+		input.DKIMResult = dkimResult
 	}
 
 	result := p.scorer.Score(input)
@@ -219,7 +240,7 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// verdict itself (dmarcResult) is recorded regardless of enforce mode, so
 	// Authentication-Results can report it even in monitor-only deployments.
 	var dmarcResult string
-	if p.dmarc != nil {
+	if p.dmarc != nil && !trusted {
 		action, reasons, dmarcResult = p.applyDMARC(ctx, env, headers["From"], dkimDomain, dkimResult, action, reasons)
 	}
 
@@ -231,6 +252,7 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		"reasons", reasons,
 		"sender", env.GetSender(),
 		"subject", subject,
+		"trusted", trusted,
 	)
 
 	durationMs := pipeline.ClampInt32(time.Since(start).Milliseconds())

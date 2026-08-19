@@ -34,7 +34,8 @@ func newDMARCProcessor(t *testing.T, enforce bool) *BuiltinProcessor {
 	t.Helper()
 	eval := mail.NewDMARCEvaluatorWithResolver(&dmarcMockResolver{
 		txt: map[string][]string{
-			"_dmarc.example.com": {"v=DMARC1; p=reject"},
+			"_dmarc.example.com":  {"v=DMARC1; p=reject"},
+			"_dmarc.example.test": {"v=DMARC1; p=quarantine"},
 		},
 	})
 	return NewBuiltinProcessor(antispam.NewScorer(), WithDMARC(eval, enforce))
@@ -418,5 +419,55 @@ func TestBuiltinProcessorUnsignedBounceIsEscalated(t *testing.T) {
 	}
 	if env.TargetMailbox != "Junk" {
 		t.Errorf("unsigned bounce TargetMailbox = %q, want Junk (tag action routes to Junk)", env.TargetMailbox)
+	}
+}
+
+// TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine reproduces the
+// production bug (observed 2026-08-19) task 12.3 fixes: an application
+// authenticated via SMTP AUTH submits mail as registrations@example.test to
+// lance@example.test, both local accounts on a domain that publishes
+// p=quarantine. The connecting address is a Docker bridge gateway, so SPF
+// softfails against a private IP; the submitting app does not DKIM-sign.
+// Neither identifier aligns, so before this task DMARC escalated the message
+// to Junk even though it originated from an authenticated local sender.
+//
+// Reference numbers from the production log this test is built to match:
+// score 0.20 (0.10 SPF softfail + 0.10 DKIM missing), reasons
+// ["SPF softfail","DKIM missing","dmarc_quarantine"], escalated from "pass"
+// to "tag". With env.Trusted=true, none of that origin-authentication
+// interpretation should run: the message must be delivered to INBOX with
+// action "pass", empty TargetMailbox, and DmarcResult "" (DMARC did not
+// run, so it must not claim a verdict it never evaluated).
+//
+// This test fails against pre-12.3 builtin.go (escalated to "tag" / Junk /
+// DmarcResult "quarantine") and passes only once Trusted is honoured.
+func TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine(t *testing.T) {
+	proc := newDMARCProcessor(t, true)
+	env := &bongov1.QueueEnvelope{
+		Sender:     "registrations@example.test",
+		Recipients: []string{"lance@example.test"},
+		SpfResult:  "softfail",
+		Trusted:    true,
+	}
+	msg := "From: registrations@example.test\r\nTo: lance@example.test\r\nSubject: New account registered\r\nMessage-ID: <reg@example.test>\r\nDate: Thu, 01 Jan 2026 00:00:00 +0000\r\n\r\nA new user registered.\r\n"
+
+	result, err := proc.Process(context.Background(), env, strings.NewReader(msg))
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if result.Action != "pass" {
+		t.Errorf("Action = %q, want pass (authenticated local-to-local submission must not be junked; score=%.3f, reasons=%v)",
+			result.Action, result.Score, result.Reasons)
+	}
+	if env.TargetMailbox != "" {
+		t.Errorf("TargetMailbox = %q, want empty", env.TargetMailbox)
+	}
+	if result.DmarcResult != "" {
+		t.Errorf("DmarcResult = %q, want \"\" (DMARC must not run for a trusted envelope)", result.DmarcResult)
+	}
+	for _, r := range result.Reasons {
+		if r == "SPF softfail" || r == "DKIM missing" || strings.HasPrefix(r, "dmarc_") {
+			t.Errorf("reasons %v contain origin-auth reason %q, want none for a trusted envelope", result.Reasons, r)
+		}
 	}
 }
