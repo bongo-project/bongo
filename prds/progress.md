@@ -1381,3 +1381,41 @@ it. `raft.Apply(cmd, timeout)` bounds ENQUEUE only; `future.Error()` is unbounde
 at the call site read as a guarantee that does not exist.
 PATTERN: [debugging] `pkill -f <pattern>` inside a one-line shell command can match the command's own
 cmdline and kill the shell (exit 144). Use a pidfile, or a self-excluding pattern.
+
+## 2026-08-20 — B12: three real bugs fixed, headline symptom NOT fixed (~2h)
+
+Honest status: the post-restart stall persists at ~72s. Everything below is deployed, tested and
+verified, but none of it was the cause.
+
+FIXED AND BANKED (all measured, not assumed):
+1. Derived indexing ran inline inside the Raft apply path. Now on a background worker (order
+   preserved, drains on cancel, inline fallback when full). Profile indexing deliberately stays
+   inline — deferring it caused real SQLITE_BUSY failures on user creation (10 integration tests).
+   Also added `PRAGMA busy_timeout=5000`.
+2. `RaftStore.LastIndex` scanned EVERY raft log entry to return the last one. hashicorp/raft calls
+   it constantly. Benchmarked on an 8,200-entry log: 20ms/call warm vs 15.7us seeking — ~1270x.
+   Correct only because logKey zero-pads to 20 digits; tests cover digit boundaries and both
+   truncation shapes.
+3. `raftCfg.LogOutput = io.Discard` — consensus was entirely silent. Now forwarded to slog with
+   levels preserved. This is why the investigation was so slow: the one component that knew what it
+   was doing was not allowed to speak.
+
+WHERE IT ACTUALLY IS (measured, post-fixes): deliver stage 72041ms, raft_apply_ms=72040, every other
+step 0ms. `fsm: apply was slow` does NOT fire → FSM.Apply is fast. Raft logs nothing in the window.
+So it is inside hashicorp/raft between Apply() and the FSM call: log append (StoreLogs -> Pebble
+Set), commit, or the leader loop. None of those are instrumented yet.
+
+RULED OUT BY MEASUREMENT: derived indexing, recipient resolution, preference reads, blob write, DKIM
+verify, MIME parse, LastIndex scan, blob GC, search index size, Raft leadership (acquired ~1.5s in),
+usage-recompute, startup work generally (complete at +1.84s), and the mailbox count scan.
+
+NEXT: add pprof and take a goroutine dump during the stall — the container has no debug tooling and
+SIGQUIT would kill the process. Or time RaftStore.StoreLogs/Set directly. Does not reproduce locally
+(small raft log, warm cache).
+
+PATTERN: [debugging] Fixing real bugs found along the way is not the same as fixing the reported
+bug. Three genuine defects were found and none was the cause; without re-measuring after each, any
+of them could have been declared the fix.
+PATTERN: [observability] Sending a subsystem's logs to io.Discard converts a five-minute diagnosis
+into a multi-hour one. Consensus, storage and anything else that can block the write path should
+never be silent.
