@@ -150,6 +150,7 @@ type Agent struct {
 	httpServer            *http.Server
 	ready                 atomic.Bool
 	blobSyncCancel        context.CancelFunc
+	fsmIndexerCancel      context.CancelFunc
 	queueWorkerCancel     context.CancelFunc
 	reminderCancel        context.CancelFunc
 	pipelineCancel        context.CancelFunc
@@ -992,6 +993,16 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.BlobSync.SetSharedSecret(sessionSecret)
 		a.Raft.FSM.SetBlobSyncer(a.BlobSync)
 		a.Raft.FSM.SetSearchManager(a.Search)
+
+		// Move derived-index maintenance off the Raft apply path. Both index
+		// backends are wired by now, so the worker has everything it needs.
+		// Without this, opening a user's SQLite and Bleve handles happens
+		// inside the apply loop and blocks delivery — measured at 85s for the
+		// first message after a restart, against 63ms once warm.
+		indexerCtx, indexerCancel := context.WithCancel(ctx)
+		a.fsmIndexerCancel = indexerCancel
+		a.Raft.FSM.StartIndexer(indexerCtx)
+		a.logger.Info("fsm: derived index worker started")
 
 		go a.BlobSync.Run(blobSyncCtx)
 		a.logger.Info("blob syncer started")
@@ -2439,6 +2450,18 @@ func (a *Agent) Shutdown() error {
 		} else {
 			a.logger.Info("raft node shut down")
 		}
+	}
+
+	// 5b. Derived-index worker. Ordering is deliberate: after Raft so no new
+	// entries can arrive, but before the search and metadata managers close so
+	// the drain can still write. The entries in the backlog are already
+	// committed, so dropping them would silently leave the indexes behind.
+	if a.fsmIndexerCancel != nil {
+		a.fsmIndexerCancel()
+		if a.Raft != nil && a.Raft.FSM != nil {
+			a.Raft.FSM.StopIndexer()
+		}
+		a.logger.Info("fsm: derived index worker stopped")
 	}
 
 	// 6. Search manager.

@@ -48,6 +48,19 @@ func openSQLiteDB(path string) (*sql.DB, error) {
 		closeErr := db.Close()
 		return nil, errors.Join(fmt.Errorf("setting WAL mode: %w", err), closeErr)
 	}
+	// WAL allows concurrent readers but still only one writer at a time, and
+	// SQLite's default busy timeout is 0 — a second writer fails immediately
+	// with SQLITE_BUSY rather than waiting. That was survivable while every
+	// derived-index write happened inside the Raft apply loop, because callers
+	// blocked on the apply and so could not write concurrently with it. Now
+	// that indexing runs on its own worker (FSM.StartIndexer), genuine
+	// concurrent writers exist — e.g. a user-creation insert into system.db
+	// alongside the profile index write for that same user. Waiting briefly is
+	// the correct behaviour for contention this short.
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		closeErr := db.Close()
+		return nil, errors.Join(fmt.Errorf("setting busy timeout: %w", err), closeErr)
+	}
 	return db, nil
 }
 

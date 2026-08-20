@@ -1157,6 +1157,10 @@ func (ms *MailboxStore) AppendMessage(userID, mailbox, mailGuid string, flags ui
 }
 
 // DeliverMail writes a MailMeta record and appends it to a mailbox via Raft.
+//
+// The 5s below bounds only how long Raft will wait to enqueue the entry, NOT
+// how long this call can take — see cluster.ApplyCommand. Delivery latency is
+// therefore governed by how fast FSM.Apply is, not by this value.
 func DeliverMail(applier RaftApplier, userID, mailbox string, meta *bongov1.MailMeta, flags uint32) error {
 	cmd, err := BuildDeliverMailCommand(userID, mailbox, meta, flags)
 	if err != nil {

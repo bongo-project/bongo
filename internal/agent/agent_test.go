@@ -202,10 +202,16 @@ func TestEnsureConfiguredDomainSeedsOnStartup(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
 
-	// Poll until the configured domain is seeded (leadership + Raft apply are async).
+	// Poll until the configured domain is seeded (leadership + Raft apply are
+	// async). The window is deliberately generous: Raft leadership election
+	// alone has been measured at ~1.5s on a loaded machine, and this test runs
+	// alongside every other package under `go test -race ./...`. A 2.5s bound
+	// failed intermittently there while passing in isolation — a bound this
+	// test never meant to assert.
 	key := []byte("/system/domain/example.test")
 	seeded := false
-	for i := 0; i < 50; i++ {
+	deadline := time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
 		if _, err := a.Store.Get(key); err == nil {
 			seeded = true
 			break
