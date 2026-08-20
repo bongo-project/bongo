@@ -185,6 +185,10 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// envelope and then guessing. The breakdown below is logged only when the
 	// stage is slow, so it costs a few time.Since calls in the normal case.
 	var tRead, tParse, tDKIM, tStamp, tBlob, tRecipients time.Duration
+	// Within the recipient loop, split further: resolving the recipient,
+	// reading preferences, and the Raft apply are three very different
+	// dependencies (SQLite, Pebble, consensus) and only one of them is slow.
+	var tResolve, tPrefs, tApply time.Duration
 	mark := func(since time.Time) time.Duration { return time.Since(since) }
 	defer func() {
 		if total := time.Since(started); total >= slowDeliverThreshold {
@@ -197,6 +201,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 				"stamp_ms", tStamp.Milliseconds(),
 				"blob_write_ms", tBlob.Milliseconds(),
 				"recipients_ms", tRecipients.Milliseconds(),
+				"resolve_ms", tResolve.Milliseconds(),
+				"prefs_ms", tPrefs.Milliseconds(),
+				"raft_apply_ms", tApply.Milliseconds(),
 			)
 		}
 	}()
@@ -361,7 +368,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// Deliver to each recipient. Check account-level forwarding preferences.
 	stepStart = time.Now()
 	for _, rcpt := range env.Recipients {
+		rcptStart := time.Now()
 		userID, err := p.resolver.ResolveRecipient(rcpt)
+		tResolve += mark(rcptStart)
 		if err != nil {
 			p.logger.Warn("deliver: unknown recipient, skipping", "recipient", rcpt, "error", err, "id", env.Id)
 			continue
@@ -370,7 +379,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		// Check account-level forwarding preferences.
 		skipLocal := false
 		if p.prefs != nil {
+			prefsStart := time.Now()
 			prefs := p.prefs.Get(userID)
+			tPrefs += mark(prefsStart)
 			if prefs.ForwardAddress != "" {
 				env.ForwardAddresses = append(env.ForwardAddresses, prefs.ForwardAddress)
 				p.logger.Info("deliver: account-level forwarding enabled",
@@ -438,8 +449,11 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			}
 		}
 
-		if err := store.DeliverMail(p.applier, userID, targetMailbox, meta, 0); err != nil {
-			return nil, fmt.Errorf("deliver: apply delivery command for %s: %w", rcpt, err)
+		applyStart := time.Now()
+		applyErr := store.DeliverMail(p.applier, userID, targetMailbox, meta, 0)
+		tApply += mark(applyStart)
+		if applyErr != nil {
+			return nil, fmt.Errorf("deliver: apply delivery command for %s: %w", rcpt, applyErr)
 		}
 
 		p.logger.Info("deliver: mail stored",
