@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/raft"
@@ -39,7 +41,18 @@ func NewRaftNode(
 ) (*RaftNode, error) {
 	raftCfg := raft.DefaultConfig()
 	raftCfg.LocalID = raft.ServerID(cfg.Server.Name)
-	raftCfg.LogOutput = io.Discard // We use slog, not hclog.
+
+	// Forward raft's own log lines into slog rather than discarding them.
+	//
+	// These were previously sent to io.Discard, which made the consensus layer
+	// completely silent: snapshotting, log truncation, election churn and slow
+	// commits all happened with no trace. That cost real diagnostic time — an
+	// 80s stall inside raft.Apply could be measured from the outside but not
+	// explained, because the only component that knew what it was doing was
+	// not allowed to say. Consensus is the one subsystem that should never be
+	// mute.
+	raftCfg.LogOutput = &slogWriter{logger: logger}
+	raftCfg.LogLevel = "INFO"
 
 	// Tune timeouts for dev mode (faster election).
 	if cfg.Server.Role == "dev" {
@@ -319,4 +332,34 @@ func (t *TLSStreamLayer) Dial(address raft.ServerAddress, timeout time.Duration)
 		return nil, fmt.Errorf("tls dial %s: %w", address, err)
 	}
 	return conn, nil
+}
+
+// slogWriter adapts hashicorp/raft's io.Writer-based logging onto slog.
+//
+// raft formats its own lines (with a level prefix) and writes them here. The
+// prefix is parsed back out so a raft WARN stays a WARN in our logs rather
+// than being flattened, and the line is emitted under a "raft" source so it is
+// filterable.
+type slogWriter struct {
+	logger *slog.Logger
+}
+
+func (w *slogWriter) Write(p []byte) (int, error) {
+	line := strings.TrimSpace(string(p))
+	if line == "" {
+		return len(p), nil
+	}
+
+	level := slog.LevelInfo
+	switch {
+	case strings.Contains(line, "[ERROR]"):
+		level = slog.LevelError
+	case strings.Contains(line, "[WARN]"):
+		level = slog.LevelWarn
+	case strings.Contains(line, "[DEBUG]"), strings.Contains(line, "[TRACE]"):
+		level = slog.LevelDebug
+	}
+
+	w.logger.Log(context.Background(), level, "raft (internal)", "line", line)
+	return len(p), nil
 }
