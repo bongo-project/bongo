@@ -21,7 +21,6 @@ import (
 
 const (
 	quarantineDir = "quarantine"
-	deliverDir    = "deliver"
 	incomingDir   = "incoming"
 )
 
@@ -50,7 +49,10 @@ func (h *QuarantineHandler) ListQuarantine(w http.ResponseWriter, r *http.Reques
 	templ.Handler(templates.AdminQuarantine(msgs, email, flash)).ServeHTTP(w, r)
 }
 
-// ReleaseMessage moves a message from quarantine/ to deliver/ so the pipeline picks it up.
+// ReleaseMessage moves a message from quarantine/ to incoming/ to be delivered.
+// Unlike rescan, release does NOT clear the scanning checked flags or
+// re-run scanning stages. The admin has reviewed the message and overridden
+// the verdict. The message is re-queued to be delivered without re-scanning.
 func (h *QuarantineHandler) ReleaseMessage(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -59,7 +61,15 @@ func (h *QuarantineHandler) ReleaseMessage(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.spool.Move(id, quarantineDir, deliverDir); err != nil {
+	// Checked here as well as inside requeueFromQuarantine so a malformed id
+	// is reported as the client error it is, rather than as a server failure.
+	if err := validateSpoolID(id); err != nil {
+		h.logger.Warn("quarantine: release rejected invalid id", "id", id, "error", err)
+		http.Error(w, "invalid message id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.releaseMessageImpl(id); err != nil {
 		h.logger.Error("quarantine: release failed", "id", id, "error", err)
 		http.Error(w, "failed to release message", http.StatusInternalServerError)
 		return
@@ -75,6 +85,14 @@ func (h *QuarantineHandler) DeleteMessage(w http.ResponseWriter, r *http.Request
 
 	if h.spool == nil {
 		http.Error(w, "spool not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// The id reaches spool.Remove, which joins it onto a directory path, so it
+	// must be checked here for the same reason the requeue paths check it.
+	if err := validateSpoolID(id); err != nil {
+		h.logger.Warn("quarantine: delete rejected invalid id", "id", id, "error", err)
+		http.Error(w, "invalid message id", http.StatusBadRequest)
 		return
 	}
 
@@ -125,13 +143,20 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 	for _, id := range ids {
 		switch action {
 		case "release":
-			if err := h.spool.Move(id, quarantineDir, deliverDir); err != nil {
+			if err := h.releaseMessageImpl(id); err != nil {
 				h.logger.Error("quarantine: bulk release failed", "id", id, "error", err)
 				failed++
 				continue
 			}
 			succeeded++
 		case "delete":
+			// Same guard as the single-message delete route: the id is
+			// user-supplied and reaches spool.Remove's path join.
+			if err := validateSpoolID(id); err != nil {
+				h.logger.Warn("quarantine: bulk delete rejected invalid id", "id", id, "error", err)
+				failed++
+				continue
+			}
 			env, _ := h.spool.ReadEnvelope(quarantineDir, id)
 			if err := h.spool.Remove(quarantineDir, id); err != nil {
 				h.logger.Error("quarantine: bulk delete failed", "id", id, "error", err)
@@ -151,26 +176,8 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 			// move, or the runner's idempotency check (runner.go) skips the
 			// stage that quarantined it in the first place — see the doc
 			// comment on PrepareForRescan for the full rationale.
-			env, err := h.spool.ReadEnvelope(quarantineDir, id)
-			if err != nil {
-				h.logger.Error("quarantine: bulk rescan read failed", "id", id, "error", err)
-				failed++
-				continue
-			}
-			pipeline.PrepareForRescan(env)
-			// Write-then-move: a crash between these two calls leaves the
-			// envelope in quarantine/ with cleared flags, still quarantined
-			// and still rescannable. The reverse order would open a window
-			// where the envelope exists in both incoming/ and quarantine/ at
-			// once — deliverable by the runner and still releasable by an
-			// admin at the same time.
-			if err := h.spool.WriteEnvelope(quarantineDir, env); err != nil {
-				h.logger.Error("quarantine: bulk rescan write failed", "id", id, "error", err)
-				failed++
-				continue
-			}
-			if err := h.spool.Move(id, quarantineDir, incomingDir); err != nil {
-				h.logger.Error("quarantine: bulk rescan move failed", "id", id, "error", err)
+			if err := h.requeueFromQuarantine(id, pipeline.PrepareForRescan); err != nil {
+				h.logger.Error("quarantine: bulk rescan failed", "id", id, "error", err)
 				failed++
 				continue
 			}
@@ -343,6 +350,85 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(runes[:n]) + "..."
+}
+
+// releaseMessageImpl is the shared implementation for releasing a message
+// from quarantine to delivery. The message retains its scanning checked
+// flags (MsgFlagSpamChecked, etc.), so the pipeline will skip re-running
+// scanning stages. This is correct behaviour: the admin has reviewed and
+// overridden the verdict, so we do not re-scan. The message will proceed
+// directly to delivery (see PrepareForRelease for the full rationale,
+// including why the rules stage still runs and why TargetMailbox is forced
+// to INBOX).
+func (h *QuarantineHandler) releaseMessageImpl(id string) error {
+	return h.requeueFromQuarantine(id, pipeline.PrepareForRelease)
+}
+
+// requeueFromQuarantine reads the envelope for id from quarantine/, applies
+// prep (which mutates the envelope in place — pipeline.PrepareForRelease or
+// pipeline.PrepareForRescan), writes it back, and moves it to incoming/ so
+// the runner picks it up. This is the single place that implements the
+// read -> prepare -> write -> move sequence shared by release and rescan,
+// so the two code paths cannot drift.
+func (h *QuarantineHandler) requeueFromQuarantine(id string, prep func(*bongov1.QueueEnvelope)) error {
+	// id is user-supplied (URL param or bulk form field). Reject anything
+	// that looks like a path segment escape before it reaches the
+	// filesystem: ReadEnvelope/WriteEnvelope/Move all join it directly onto
+	// the spool base directory (see the #nosec G304 on ReadEnvelope, which
+	// only holds for genuinely internal spool names).
+	if err := validateSpoolID(id); err != nil {
+		return fmt.Errorf("invalid id: %w", err)
+	}
+
+	env, err := h.spool.ReadEnvelope(quarantineDir, id)
+	if err != nil {
+		return fmt.Errorf("read envelope: %w", err)
+	}
+
+	// WriteEnvelope derives its filename from env.Id, while Move (below)
+	// operates on the URL/form id. A legacy or corrupt envelope whose Id
+	// does not match the requested id would otherwise write to a different
+	// file than the one that gets moved — silently leaving the real target
+	// untouched (or, for an empty Id, writing a phantom quarantine/.env
+	// that List() would later pick up). Fail loudly instead.
+	if env.Id != id {
+		return fmt.Errorf("envelope id %q does not match requested id %q", env.Id, id)
+	}
+
+	prep(env)
+
+	// Write-then-move: a crash between these two calls leaves the envelope
+	// in quarantine/ with the prepared flags, still quarantined and still
+	// actionable by an admin. The reverse order would open a window where
+	// the envelope exists in both incoming/ and quarantine/ at once —
+	// deliverable by the runner and still releasable/rescannable by an
+	// admin at the same time.
+	if err := h.spool.WriteEnvelope(quarantineDir, env); err != nil {
+		return fmt.Errorf("write envelope: %w", err)
+	}
+
+	// Move to incoming/ so the runner picks it up for delivery (unlike
+	// deliver/ which is a terminal archive, incoming/ is where the runner
+	// dequeues messages to process).
+	if err := h.spool.Move(id, quarantineDir, incomingDir); err != nil {
+		return fmt.Errorf("move to incoming: %w", err)
+	}
+
+	return nil
+}
+
+// validateSpoolID rejects ids that are empty or contain path-traversal
+// characters. id is always derived from user-supplied input (a chi URL
+// param or a bulk-action form field) before being joined onto spool
+// directory paths, so it must not be trusted as an internal spool name.
+func validateSpoolID(id string) error {
+	if id == "" {
+		return fmt.Errorf("id must not be empty")
+	}
+	if strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+		return fmt.Errorf("id %q contains invalid path characters", id)
+	}
+	return nil
 }
 
 // quarantineScoreClass returns a CSS badge class for a spam score.
