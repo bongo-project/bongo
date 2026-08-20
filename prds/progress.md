@@ -1272,3 +1272,55 @@ needed the sentence for.
 PATTERN: [docs] The riskiest documentation sentences are the confident ones about failure modes
 ("fails to start if X"). Both false claims this task were of that shape. Trace the actual code path
 for every failure-mode claim.
+
+## 2026-08-20 — v0.6.15 DEPLOYED + trusted_networks configured on prod
+
+Deploy: pushed main, tagged v0.6.15, CI green, image published, container recreated from
+`ghcr.io/lhaig/bongo-go:0.6.15`. Healthy, all listeners up, zero ERROR lines.
+
+**Deploy-path trap found:** there are TWO docker-compose.yml on the host. `/opt/bongo/` is a stale
+decoy (`image: bongo-go:latest` + a local `build:` context — deploying from it would rebuild from
+stale source and replace the deployed image). The real one is `/mnt/data/bongo/docker-compose.yml`
+(confirm via `docker inspect bongo ... config_files`). Also the image tag is PINNED, so
+`docker compose pull` alone does not upgrade — the pin must be edited. Recorded in memory.
+
+**The deploy alone did NOT fix the reported bug**, and I said so rather than declaring victory: the
+fix only applies to mail arriving Trusted, and the app submits unauthenticated on :25 with no
+trusted_networks configured. Operator then asked for the trusted network to be added.
+
+### trusted_networks = ["172.19.0.1/32"]
+Verified before trusting, not assumed:
+- Observed source IP for local app mail is `172.19.0.1` (22 occurrences in the persistent log) —
+  the GATEWAY of the `traefik_web` bridge, not a container IP, because the app reaches bongo through
+  the host-published port and is NAT'd.
+- **Safety check that mattered:** `proxy_protocol = true`, which lets a client assert its own source
+  IP. Confirmed bongo publishes NO ports (`docker port bongo` empty); host :25 is Traefik, which
+  sets the PROXY header from the real socket. So an external sender cannot assert 172.19.0.1 — it
+  is only reachable from the host itself.
+- Scope stated honestly in the config comment: this is the gateway, so it covers every container on
+  traefik_web (app-one, trail, ramble, websites) plus host processes — acceptable on a single-tenant
+  host of the operator's own apps.
+
+**End-to-end verification** (reproduced the original bug from a throwaway container on traefik_web,
+registrations@example.com -> user@example.com):
+- `"message enqueued" ... "trusted":true`
+- `"antispam: scored","score":0.25,"action":"pass","reasons":["missing Message-ID","missing Date header"],"trusted":true`
+- `"deliver: mail stored" ... "target_mailbox":"INBOX"`
+Before the fix the same path produced `reasons:["SPF softfail","DKIM missing","dmarc_quarantine"]`
+and Junk. No dmarc_/SPF/DKIM reason now appears.
+
+Observation worth a look later, not chased: enqueue 17:07:04 -> stored 17:07:46, i.e. ~42s for an
+internal message with poll_interval=1s. Not stuck (it completed and moved to deliver/), but slower
+than expected.
+
+New backlog: B9 (SIGHUP config reload — operator raised after this change cost a restart) and B10
+(groups/mailing lists research PRD).
+
+PATTERN: [deploy] Verify WHICH compose file owns a running container before deploying —
+`docker inspect <c> --format '{{json .Config.Labels}}' | grep config_files`. A plausible-looking
+compose file in a plausible-looking directory can be a stale decoy that rebuilds from source.
+PATTERN: [deploy] Shipping the code is not the same as fixing the bug. A feature gated on config
+that is not set changes nothing in production — check the live config before reporting a fix.
+PATTERN: [security] Before trusting a source IP, check whether an external party can cause the
+server to SEE that IP. With PROXY protocol enabled the answer depends on whether the port is
+directly reachable, not just on the address being private.
