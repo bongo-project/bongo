@@ -1171,3 +1171,57 @@ authentication" would have led an operator to expect outbound sending that retur
 PATTERN: [review] A stale routing decision can outlive the action that set it. When an escalation
 path raises severity without clearing the previous branch's side effects, an "undo" that only
 handles the empty case silently preserves the thing it meant to undo.
+
+## 2026-08-20 — Task 12.6 DONE: selectable antispam backend
+
+Commit `4b2a2c8`. Review MINOR, but one MINOR was a genuine security regression — see below.
+
+Extracted `buildAntispamProcessor` into `internal/agent/antispam.go` so backend selection is
+testable without booting an Agent. Externals compose with the builtin via CompositeProcessor rather
+than replacing it, because the builtin owns DMARC evaluation, the Bayes blend and the Trusted flag.
+
+### The bypass the reviewer caught
+The worker made CompositeProcessor skip ALL external backends when `env.GetTrusted()`, with this
+justification in the doc comment: externals "run their own SPF/DKIM/DMARC checks against the
+connecting IP". I verified that claim and it is FALSE for this codebase — `rspamd.go` POSTs only the
+raw message to /checkv2, `spamassassin.go` sends only the message over SPAMC; neither receives the
+connecting IP, HELO, envelope sender or recipients, so neither can evaluate origin at all.
+
+Effect: trusted mail lost external CONTENT filtering. That directly contradicts builtin.go's
+boundary comment ("trust removes origin-authentication interpretation only, never content
+filtering... do not widen this beyond the three signals named here") and the Phase 10 decision it
+cites. Concretely, a compromised account sending spam through an authenticated session would never
+be scanned by the external backend.
+
+Removed the skip. Both tests that pinned the wrong behaviour were INVERTED, not deleted:
+`TestCompositeConsultsExternalsRegardlessOfTrust` (table over trusted true/false) and
+`TestBuildAntispamProcessorTrustedStillScanned`, plus a new behavioural test
+`TestCompositeTrustedSpamStillCaughtByExternal` asserting a trusted message an external judges spam
+is still tagged.
+
+### Other fixes applied on top of the worker's output
+- `enabled = false` now WINS over `stage.Backend` and falls back to builtin. It was warn-and-use-
+  anyway, which inverts the plain reading of the flag — an operator disabling a misbehaving scanner
+  in a hurry would have found it still running. An absent block also counts as disabled.
+- Added `RspamdConfig.RspamdURL()` so both external backends' defaults live in the config package
+  (SpamAssassin had accessors; rspamd hardcoded its default at the construction site).
+- Fixed a data race: the agent test wrote a plain bool from an httptest handler goroutine and read
+  it from the test goroutine. Now atomic.Bool, matching the composite tests' spyProcessor.
+- Corrected the stale doc comment on buildAntispamProcessor and the example-config precedence text.
+
+Verified independently: gofmt clean, vet clean, `go test -race ./...` exit 0 with zero FAIL lines,
+gosec medium+ = 2 (unchanged).
+
+PATTERN: [security] Check a code comment's factual CLAIM, not just its reasoning. "External backends
+do their own SPF/DKIM checks" was stated confidently, sounded plausible, and was false — one grep of
+the two client files disproved it. A wrong premise in a comment justifies a wrong behaviour that
+then looks deliberate to the next reader.
+PATTERN: [security] Every scope guard needs a matching test at EVERY layer that could widen it.
+12.3 pinned the boundary in builtin.go; nothing pinned it in composite.go, so the composite widened
+it one task later without a single test failing.
+PATTERN: [design] A boolean named `enabled` must actually disable. Treating it as informational
+while a different field selects behaviour inverts the operator's plain reading, and it is read at
+exactly the moment they are trying to turn something off in a hurry.
+PATTERN: [testing] When behaviour was pinned wrongly, INVERT the test rather than deleting it, and
+say in the comment what the earlier revision did and why it was wrong. The test then documents the
+trap instead of merely passing.
