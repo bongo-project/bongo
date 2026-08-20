@@ -350,6 +350,36 @@ antivirus {
   clamav {
     enabled = false
     socket  = "/var/run/clamav/clamd.ctl"
+
+    # on_failure controls what happens to a message when clamd is
+    # unreachable or returns an error response (e.g. the INSTREAM size
+    # limit). It is NOT a defer-and-retry option: the pipeline runs
+    # asynchronously after the SMTP transaction has already been accepted,
+    # so there is no 4xx left to send back to the sender.
+    #
+    #   "quarantine" (default) — the message is NOT delivered unscanned.
+    #     It is held in the admin quarantine and drained with the bulk
+    #     "rescan" action once clamd is reachable again, at which point it
+    #     is actually scanned. Choose this if you would rather inbound mail
+    #     pile up during a clamd outage than risk delivering something
+    #     unscanned. Note: during an extended outage EVERY inbound message
+    #     quarantines, which means one ERROR log line per message — there
+    #     is no rate limiting on that log, by design (so an outage is loud,
+    #     not silently swallowed).
+    #
+    #     THE RECOVERY WINDOW IS FINITE. Quarantine is auto-purged after
+    #     pipeline.quarantine_retention (default 30d), and the purge deletes
+    #     the message blob as well as the envelope — it is not recoverable
+    #     afterwards. So "quarantine" means "held safely for 30 days", not
+    #     "held indefinitely". A clamd outage that goes unnoticed past the
+    #     retention window, or a backlog nobody drains, permanently destroys
+    #     legitimate inbound mail. If you choose this policy, alert on the
+    #     ERROR log above, and raise quarantine_retention if your response
+    #     time could ever exceed it.
+    #   "accept" — deliver the message unscanned. Every occurrence is
+    #     logged at ERROR. Choose this only if availability matters more
+    #     than the guarantee that every message was scanned.
+    on_failure = "quarantine"  # or "accept"
   }
 }
 

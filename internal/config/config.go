@@ -416,6 +416,35 @@ type AntivirusConfig struct {
 type ClamAVConfig struct {
 	Enabled bool   `hcl:"enabled,optional" mapstructure:"enabled"`
 	Socket  string `hcl:"socket,optional" mapstructure:"socket"`
+	// OnFailure controls what happens to a message when clamd is unreachable
+	// or returns an error response. Valid values: "quarantine" (default —
+	// the message is not delivered unscanned; drainable later via the admin
+	// bulk rescan action) and "accept" (deliver unscanned, logged at ERROR).
+	// See FailurePolicy for the normalisation applied to this raw value.
+	OnFailure string `hcl:"on_failure,optional" mapstructure:"on_failure"`
+}
+
+// clamAVKnownFailurePolicies is the set of valid ClamAVConfig.OnFailure
+// values, used by both FailurePolicy (defensive normalisation) and Validate
+// (early operator feedback).
+var clamAVKnownFailurePolicies = map[string]bool{
+	"":           true, // unset means the default, "quarantine"
+	"quarantine": true,
+	"accept":     true,
+}
+
+// FailurePolicy returns the normalised on_failure value: "quarantine"
+// (default) or "accept". Any other value — including empty/unset — is
+// treated as "quarantine", the safer default. config.Validate() is
+// deliberately not wired into the startup path (see CLAUDE.md and
+// internal/agent/antispam.go), so this normalises defensively at the point
+// of use rather than assuming validation has run; callers that detect a
+// value outside clamAVKnownFailurePolicies should log the coercion.
+func (c ClamAVConfig) FailurePolicy() string {
+	if c.OnFailure == "accept" {
+		return "accept"
+	}
+	return "quarantine"
 }
 
 // validAgentNames is the set of valid agent type names for the "agent" role.
@@ -485,6 +514,10 @@ func (c *Config) Validate() error {
 
 	if _, err := c.SMTP.ParseTrustedNetworks(); err != nil {
 		return err
+	}
+
+	if !clamAVKnownFailurePolicies[c.Antivirus.ClamAV.OnFailure] {
+		return fmt.Errorf("antivirus.clamav.on_failure: unknown value %q (valid: quarantine, accept)", c.Antivirus.ClamAV.OnFailure)
 	}
 
 	return nil

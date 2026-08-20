@@ -2,6 +2,7 @@ package antivirus
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -16,11 +17,26 @@ import (
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
 
+// eicarTestString is the standard antivirus test signature: not a real
+// virus, but every scanner (including ClamAV) is configured to flag it as
+// one, which is what makes it safe to use in an automated test.
+const eicarTestString = `X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*`
+
 // mockClamd starts a TCP listener that implements the INSTREAM protocol and
 // responds with the provided response string after reading the full stream.
 // It returns the listener address and a WaitGroup that is done after the
-// first connection is fully handled.
+// first connection is fully handled. If received is non-nil, the bytes
+// streamed by the client (the reassembled INSTREAM chunk data) are written
+// to it so a test can assert on what was actually sent.
 func mockClamd(t *testing.T, response string) (addr string, wg *sync.WaitGroup) {
+	t.Helper()
+	addr, wg, _ = mockClamdCapture(t, response)
+	return addr, wg
+}
+
+// mockClamdCapture is mockClamd plus a *bytes.Buffer capturing the streamed
+// message bytes, safe to read after wg.Wait().
+func mockClamdCapture(t *testing.T, response string) (addr string, wg *sync.WaitGroup, received *bytes.Buffer) {
 	t.Helper()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -30,6 +46,7 @@ func mockClamd(t *testing.T, response string) (addr string, wg *sync.WaitGroup) 
 
 	wg = &sync.WaitGroup{}
 	wg.Add(1)
+	received = &bytes.Buffer{}
 
 	t.Cleanup(func() { ln.Close() })
 
@@ -62,8 +79,7 @@ func mockClamd(t *testing.T, response string) (addr string, wg *sync.WaitGroup) 
 			if chunkLen == 0 {
 				break
 			}
-			// Discard chunk data.
-			if _, err := io.CopyN(io.Discard, br, int64(chunkLen)); err != nil {
+			if _, err := io.CopyN(received, br, int64(chunkLen)); err != nil {
 				return
 			}
 		}
@@ -72,7 +88,7 @@ func mockClamd(t *testing.T, response string) (addr string, wg *sync.WaitGroup) 
 		conn.Write([]byte(response + "\n"))
 	}()
 
-	return ln.Addr().String(), wg
+	return ln.Addr().String(), wg, received
 }
 
 // newTestEnvelope returns a minimal QueueEnvelope for test use.
@@ -127,7 +143,7 @@ func TestClamAVClean(t *testing.T) {
 }
 
 func TestClamAVVirusFound(t *testing.T) {
-	addr, wg := mockClamd(t, "stream: Eicar-Test-Signature FOUND")
+	addr, wg, received := mockClamdCapture(t, "stream: Eicar-Test-Signature FOUND")
 	host, port := splitHostPort(t, addr)
 
 	p := NewClamAVProcessor(
@@ -136,11 +152,14 @@ func TestClamAVVirusFound(t *testing.T) {
 		WithLogger(silentLogger()),
 	)
 
-	result, err := p.Process(context.Background(), newTestEnvelope(), strings.NewReader("virus message body"))
+	result, err := p.Process(context.Background(), newTestEnvelope(), strings.NewReader(eicarTestString))
 	wg.Wait()
 
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
+	}
+	if got := received.String(); got != eicarTestString {
+		t.Errorf("mockClamd received %q, want the EICAR test string %q", got, eicarTestString)
 	}
 	if result.Action != "quarantine" {
 		t.Errorf("Action = %q, want %q", result.Action, "quarantine")
@@ -156,25 +175,95 @@ func TestClamAVVirusFound(t *testing.T) {
 	}
 }
 
+// TestClamAVUnreachable is the AC regression test for the on_failure policy:
+// an earlier revision always returned "pass" on scanner failure, silently
+// delivering unscanned mail. That was inverted by this task's PRD decision
+// (US-003/FR-7/FR-12): the default is now "quarantine", and "pass" is
+// reachable only by explicitly opting into OnFailureAccept.
 func TestClamAVUnreachable(t *testing.T) {
-	// Connect to a port that has no listener — guaranteed to fail immediately.
-	p := NewClamAVProcessor(
-		WithTCP("127.0.0.1", 1), // port 1 is always refused
-		WithTimeout(2*time.Second),
-		WithLogger(silentLogger()),
-	)
-
-	result, err := p.Process(context.Background(), newTestEnvelope(), strings.NewReader("some message"))
-
-	if err != nil {
-		t.Fatalf("Process() returned error = %v, want nil (graceful fallback)", err)
+	tests := []struct {
+		name       string
+		onFailure  OnFailure
+		wantAction string
+	}{
+		{"default policy (no WithOnFailure) quarantines", "", "quarantine"},
+		{"explicit quarantine", OnFailureQuarantine, "quarantine"},
+		{"explicit accept delivers unscanned", OnFailureAccept, "pass"},
 	}
-	if result.Action != "pass" {
-		t.Errorf("Action = %q, want %q (graceful fallback)", result.Action, "pass")
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := []Option{
+				WithTCP("127.0.0.1", 1), // port 1 is always refused — fails immediately
+				WithTimeout(2 * time.Second),
+				WithLogger(silentLogger()),
+			}
+			if tc.onFailure != "" {
+				opts = append(opts, WithOnFailure(tc.onFailure))
+			}
+			p := NewClamAVProcessor(opts...)
+
+			result, err := p.Process(context.Background(), newTestEnvelope(), strings.NewReader("some message"))
+
+			if err != nil {
+				t.Fatalf("Process() returned error = %v, want nil (a scan failure is a StageResult, not a Go error)", err)
+			}
+			if result.Action != tc.wantAction {
+				t.Errorf("Action = %q, want %q", result.Action, tc.wantAction)
+			}
+			if len(result.Reasons) == 0 {
+				t.Fatal("Reasons is empty, want a reason explaining clamd is unavailable")
+			}
+			if strings.Contains(result.Reasons[0], "virus detected") {
+				t.Errorf("Reasons[0] = %q must not read like a virus was found — it is a scanner outage", result.Reasons[0])
+			}
+		})
 	}
-	// Reasons should indicate unavailability.
-	if len(result.Reasons) == 0 {
-		t.Error("Reasons is empty, want a reason explaining clamd is unavailable")
+}
+
+// TestClamAVErrorResponse covers clamd responses that are neither "stream:
+// OK" nor a " FOUND" verdict — e.g. the INSTREAM size-limit response, or any
+// other internal-fault response. Before this task these fell into the
+// unconditional "pass" default branch and were delivered unscanned with only
+// a Warn log; they must now go through the same OnFailure policy as an
+// unreachable clamd.
+func TestClamAVErrorResponse(t *testing.T) {
+	tests := []struct {
+		name       string
+		response   string
+		onFailure  OnFailure
+		wantAction string
+	}{
+		{"size limit exceeded, default quarantines", "INSTREAM size limit exceeded. ERROR", "", "quarantine"},
+		{"size limit exceeded, accept delivers unscanned", "INSTREAM size limit exceeded. ERROR", OnFailureAccept, "pass"},
+		{"unrecognised response, default quarantines", "stream: some future protocol addition", "", "quarantine"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			addr, wg := mockClamd(t, tc.response)
+			host, port := splitHostPort(t, addr)
+
+			opts := []Option{
+				WithTCP(host, port),
+				WithTimeout(5 * time.Second),
+				WithLogger(silentLogger()),
+			}
+			if tc.onFailure != "" {
+				opts = append(opts, WithOnFailure(tc.onFailure))
+			}
+			p := NewClamAVProcessor(opts...)
+
+			result, err := p.Process(context.Background(), newTestEnvelope(), strings.NewReader("large or odd message"))
+			wg.Wait()
+
+			if err != nil {
+				t.Fatalf("Process() error = %v, want nil", err)
+			}
+			if result.Action != tc.wantAction {
+				t.Errorf("Action = %q, want %q", result.Action, tc.wantAction)
+			}
+		})
 	}
 }
 

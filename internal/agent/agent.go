@@ -43,7 +43,6 @@ import (
 	"github.com/bongo-go/bongo-go/internal/observability"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
-	pipelineantivirus "github.com/bongo-go/bongo-go/internal/pipeline/antivirus"
 	pipelinedeliver "github.com/bongo-go/bongo-go/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-go/bongo-go/internal/pipeline/rules"
 	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
@@ -1036,8 +1035,14 @@ func (a *Agent) Run(ctx context.Context) error {
 					stages = append(stages, rulesProc)
 				}
 			case "antivirus":
-				// Antivirus processor not yet implemented; log and skip.
-				a.logger.Warn("pipeline: antivirus stage enabled but not yet implemented, skipping")
+				// Ordering note: antispam (above) runs before antivirus, and
+				// the runner returns immediately once a stage quarantines a
+				// message (runner.go, processMessage) — a message quarantined
+				// by antispam is never virus-scanned. Do not reorder stages
+				// to "fix" this; see buildAntivirusProcessor's doc comment.
+				if antivirusProc := buildAntivirusProcessor(a.Config, stageCfg.Backend, a.logger); antivirusProc != nil {
+					stages = append(stages, antivirusProc)
+				}
 			}
 		}
 
@@ -2202,13 +2207,19 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 		}
 		proc = pipelineantispam.NewBuiltinProcessor(scorer, agentAntispamOpts...)
 	case "antivirus":
-		cfg := a.Config.Antivirus.ClamAV
-		var opts []pipelineantivirus.Option
-		if cfg.Socket != "" {
-			opts = append(opts, pipelineantivirus.WithSocket(cfg.Socket))
+		// Routed through the same builder as the server-role pipeline stage
+		// (agent.go's Pipeline.Stages loop, buildAntivirusProcessor) so an
+		// agent-role deployment cannot silently end up with different
+		// enabled/on_failure semantics than a server-role one for the same
+		// config. buildAntivirusProcessor returns nil when
+		// antivirus.clamav.enabled is false; unlike the server-role stage
+		// loop (which just omits the stage), an agent whose entire purpose
+		// is running this processor must fail to start rather than register
+		// a processor role that does nothing.
+		proc = buildAntivirusProcessor(a.Config, "clamav", a.logger)
+		if proc == nil {
+			return fmt.Errorf("agent: antivirus processor role requires antivirus.clamav.enabled = true")
 		}
-		opts = append(opts, pipelineantivirus.WithLogger(a.logger))
-		proc = pipelineantivirus.NewClamAVProcessor(opts...)
 	default:
 		return fmt.Errorf("unknown processor role: %s", role)
 	}
