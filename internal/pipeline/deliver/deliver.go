@@ -79,6 +79,10 @@ type DeliverProcessor struct {
 // behavior for default configuration.
 const defaultSpamThreshold float32 = 0.5
 
+// slowDeliverThreshold is the point at which the delivery stage logs a
+// per-step breakdown of where its time went. Normal delivery is milliseconds.
+const slowDeliverThreshold = 2 * time.Second
+
 // effectiveSpamThreshold returns the configured spam threshold, falling back
 // to defaultSpamThreshold when unset. Both the Junk-routing decision and the
 // X-Spam-Status header use this so a message is never routed to Junk while
@@ -175,17 +179,43 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	started := time.Now()
 
+	// Per-step timings. The stage records only a total in StageResult, which
+	// was enough to prove delivery was the slow stage but not which call
+	// inside it — diagnosing an 85s production stall meant decoding a spool
+	// envelope and then guessing. The breakdown below is logged only when the
+	// stage is slow, so it costs a few time.Since calls in the normal case.
+	var tRead, tParse, tDKIM, tStamp, tBlob, tRecipients time.Duration
+	mark := func(since time.Time) time.Duration { return time.Since(since) }
+	defer func() {
+		if total := time.Since(started); total >= slowDeliverThreshold {
+			p.logger.Warn("deliver: stage was slow",
+				"id", env.Id,
+				"total_ms", total.Milliseconds(),
+				"read_ms", tRead.Milliseconds(),
+				"parse_ms", tParse.Milliseconds(),
+				"dkim_verify_ms", tDKIM.Milliseconds(),
+				"stamp_ms", tStamp.Milliseconds(),
+				"blob_write_ms", tBlob.Milliseconds(),
+				"recipients_ms", tRecipients.Milliseconds(),
+			)
+		}
+	}()
+
+	stepStart := time.Now()
 	raw, err := io.ReadAll(msg)
 	if err != nil {
 		return nil, fmt.Errorf("deliver: read message: %w", err)
 	}
+	tRead = mark(stepStart)
 
 	// Parse the RFC 5322 message with enmime.
+	stepStart = time.Now()
 	parsed, err := enmime.ReadEnvelope(strings.NewReader(string(raw)))
 	if err != nil {
 		p.logger.Warn("deliver: failed to parse message envelope, using minimal metadata", "error", err, "id", env.Id)
 		parsed = nil
 	}
+	tParse = mark(stepStart)
 
 	// Extract headers.
 	subject := ""
@@ -244,7 +274,9 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// the ORIGINAL inbound bytes before any header mutation below, so the
 	// result reflects what the sender actually signed and is recorded on each
 	// delivered copy.
+	stepStart = time.Now()
 	dkimResult, dkimDomain, dkimErr := antispam.VerifyDKIM(raw)
+	tDKIM = mark(stepStart)
 	if dkimErr != nil {
 		p.logger.Debug("deliver: DKIM verification error", "id", env.Id, "error", dkimErr)
 	}
@@ -261,6 +293,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// stored skeleton contains the trace headers. The generated content has no
 	// timestamp, so a retried delivery of the same message re-derives the
 	// identical stamped bytes and blob hash.
+	stepStart = time.Now()
 	stamped := stripTraceHeaders(raw)
 	var traceHdrs []string
 	if authHdr := buildAuthenticationResults(p.authservID, env.GetSpfResult(), dkimResult, dkimDomain, dmarcResult); authHdr != "" {
@@ -268,6 +301,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	}
 	traceHdrs = append(traceHdrs, buildSpamHeaders(spamStage, p.effectiveSpamThreshold())...)
 	stamped = prependHeaders(stamped, traceHdrs)
+	tStamp = mark(stepStart)
 
 	// Persist the stamped bytes so what is actually stored (not just the
 	// in-memory raw) carries the trace headers. Content addressing makes this
@@ -295,6 +329,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	var attachmentRefs []*bongov1.BlobRef
 	var layout []*bongov1.MessageSegment
 
+	stepStart = time.Now()
 	if split := p.trySplit(stamped, env.Id); split != nil {
 		rawForStorage = stamped
 		rawHash = split.SkeletonHash
@@ -309,6 +344,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			rawHash = h
 		}
 	}
+	tBlob = mark(stepStart)
 
 	if len(layout) == 0 && parsed != nil {
 		for _, att := range parsed.Attachments {
@@ -323,6 +359,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	}
 
 	// Deliver to each recipient. Check account-level forwarding preferences.
+	stepStart = time.Now()
 	for _, rcpt := range env.Recipients {
 		userID, err := p.resolver.ResolveRecipient(rcpt)
 		if err != nil {
@@ -413,6 +450,8 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			"target_mailbox", targetMailbox,
 		)
 	}
+
+	tRecipients = mark(stepStart)
 
 	// Enqueue forwarded copies to external addresses, with loop protection.
 	if len(env.ForwardAddresses) > 0 && p.queuer != nil {
