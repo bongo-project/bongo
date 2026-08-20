@@ -248,6 +248,13 @@ type CalDAVConfig struct {
 type AntispamConfig struct {
 	Builtin AntispamBuiltin `hcl:"builtin,block" mapstructure:"builtin"`
 	Rspamd  RspamdConfig    `hcl:"rspamd,block" mapstructure:"rspamd"`
+	// SpamAssassin is a pointer block (unlike Rspamd) because hclsimple/gohcl
+	// treats a non-pointer block field as mandatory: a plain struct here would
+	// make every existing config file without a spamassassin block (including
+	// the deployed bongo.prod.hcl) fail to decode with "Missing spamassassin
+	// block". See the AgentServer (*AgentConfig) field on Config for the
+	// existing precedent of a pointer HCL block with nil-safe accessors.
+	SpamAssassin *SpamAssassinConfig `hcl:"spamassassin,block" mapstructure:"spamassassin"`
 
 	// Inbound DMARC policy evaluation checks SPF/DKIM identifier alignment
 	// against the RFC5322.From domain and honours the domain's published policy
@@ -313,6 +320,93 @@ func (b AntispamBuiltin) SpamHighThreshold() float32 {
 type RspamdConfig struct {
 	Enabled bool   `hcl:"enabled,optional" mapstructure:"enabled"`
 	URL     string `hcl:"url,optional" mapstructure:"url"`
+}
+
+// defaultRspamdURL is rspamd's stock normal-worker HTTP endpoint.
+const defaultRspamdURL = "http://localhost:11333"
+
+// RspamdURL returns the configured rspamd endpoint, or the default when unset.
+// Kept here alongside the SpamAssassin accessors so every external-backend
+// default lives in the config package rather than at the construction site.
+func (r RspamdConfig) RspamdURL() string {
+	if r.URL == "" {
+		return defaultRspamdURL
+	}
+	return r.URL
+}
+
+// SpamAssassinConfig configures the SpamAssassin (spamd) external antispam
+// backend. Fields are derived strictly from the options NewSpamAssassinProcessor
+// accepts (internal/pipeline/antispam/spamassassin.go) — there is no processor
+// option for anything beyond host/port/timeout/threshold, so none is added here.
+type SpamAssassinConfig struct {
+	Enabled bool   `hcl:"enabled,optional" mapstructure:"enabled"`
+	Host    string `hcl:"host,optional" mapstructure:"host"`
+	Port    int    `hcl:"port,optional" mapstructure:"port"`
+	// Timeout is a duration string (e.g. "30s"), parsed by SATimeout().
+	Timeout string `hcl:"timeout,optional" mapstructure:"timeout"`
+	// Threshold is the spamd raw-score threshold used to normalise its score
+	// into the pipeline's [0,1] range (WithSAThreshold). Should match the
+	// "required_score" configured in spamd's local.cf.
+	Threshold float64 `hcl:"threshold,optional" mapstructure:"threshold"`
+}
+
+// SpamAssassin backend defaults, mirroring the zero-value defaults baked into
+// NewSpamAssassinProcessor so agent.go never has to special-case an absent
+// (nil) spamassassin block.
+const (
+	saDefaultHost      = "localhost"
+	saDefaultPort      = 783
+	saDefaultTimeout   = 30 * time.Second
+	saDefaultThreshold = 5.0
+)
+
+// SAEnabled reports whether the spamassassin block explicitly enables the
+// backend. This is informational only — stage.Backend, not this flag, is what
+// selects the antispam backend (see buildAntispamProcessor in internal/agent).
+// A false Enabled with backend = "spamassassin" (or vice versa) is a
+// configuration mismatch that agent.go logs a warning for at startup.
+func (c *SpamAssassinConfig) SAEnabled() bool {
+	return c != nil && c.Enabled
+}
+
+// SAHost returns the configured spamd hostname, defaulting to "localhost"
+// when the block is absent (nil receiver) or the field is unset.
+func (c *SpamAssassinConfig) SAHost() string {
+	if c == nil || c.Host == "" {
+		return saDefaultHost
+	}
+	return c.Host
+}
+
+// SAPort returns the configured spamd TCP port, defaulting to 783.
+func (c *SpamAssassinConfig) SAPort() int {
+	if c == nil || c.Port == 0 {
+		return saDefaultPort
+	}
+	return c.Port
+}
+
+// SATimeout parses Timeout into a time.Duration, defaulting to 30s (matching
+// QueuePollInterval/PipelinePollInterval's fallback-on-parse-error pattern).
+func (c *SpamAssassinConfig) SATimeout() time.Duration {
+	if c == nil || c.Timeout == "" {
+		return saDefaultTimeout
+	}
+	d, err := time.ParseDuration(c.Timeout)
+	if err != nil {
+		return saDefaultTimeout
+	}
+	return d
+}
+
+// SAThreshold returns the configured spamd score threshold, defaulting to 5.0
+// when the block is absent or the value is unset/non-positive.
+func (c *SpamAssassinConfig) SAThreshold() float64 {
+	if c == nil || c.Threshold <= 0 {
+		return saDefaultThreshold
+	}
+	return c.Threshold
 }
 
 type AntivirusConfig struct {
@@ -405,9 +499,10 @@ var knownStageNames = map[string]bool{
 
 // knownBackends is the set of valid backend identifiers for pipeline stages.
 var knownBackends = map[string]bool{
-	"builtin": true,
-	"rspamd":  true,
-	"clamav":  true,
+	"builtin":      true,
+	"rspamd":       true,
+	"spamassassin": true,
+	"clamav":       true,
 }
 
 // PipelineConfig controls the inbound mail processing pipeline.

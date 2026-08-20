@@ -1027,21 +1027,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			case "antispam":
 				scorer := antispam.NewScorer()
 				bayesFilter := antispam.NewBayesFilter(a.Store, a)
-				builtin := a.Config.Antispam.Builtin
-				antispamOpts := []pipelineantispam.Option{
-					pipelineantispam.WithBayes(bayesFilter),
-					pipelineantispam.WithThreshold(builtin.SpamThreshold()),
-					pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
-					pipelineantispam.WithLogger(a.logger),
-				}
-				// DMARC is skipped in dev mode: it does live DNS lookups and would
-				// quarantine local test mail sent from real DMARC-reject domains
-				// (e.g. example.com). Production roles evaluate and enforce it.
-				if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
-					antispamOpts = append(antispamOpts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
-				}
-				antispamProc := pipelineantispam.NewBuiltinProcessor(scorer, antispamOpts...)
-				antispamProc.SetResolver(resolver)
+				antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger)
 				stages = append(stages, antispamProc)
 			case "rules":
 				if a.Rules != nil {
