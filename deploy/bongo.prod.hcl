@@ -161,6 +161,17 @@ antivirus {
   clamav {
     enabled = false
     socket  = "/var/run/clamav/clamd.ctl"
+
+    # What happens when clamd is unreachable or errors. "quarantine" (the
+    # default) holds the message rather than delivering it unscanned; drain
+    # the backlog with the admin quarantine page's bulk "rescan" action once
+    # clamd is back. "accept" delivers unscanned and logs at ERROR.
+    #
+    # If you enable clamav, note that quarantine is auto-purged after
+    # pipeline.quarantine_retention (30d below) and the purge deletes the
+    # message itself. An unnoticed clamd outage lasting longer than that
+    # destroys legitimate inbound mail, so alert on the ERROR log.
+    on_failure = "quarantine"
   }
 }
 

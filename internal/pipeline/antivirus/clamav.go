@@ -22,15 +22,37 @@ const (
 	instreamChunkMax = 2048
 )
 
+// OnFailure selects what a ClamAVProcessor does when it cannot get a
+// definitive clean/infected verdict from clamd — either because clamd is
+// unreachable, or because clamd returned an error response (e.g. the
+// INSTREAM size limit or an internal fault).
+type OnFailure string
+
+const (
+	// OnFailureQuarantine (the default) quarantines the message. It is not
+	// delivered unscanned. This is the safer default: a quarantined message
+	// is drainable via the admin bulk rescan action (internal/pipeline/rescan.go
+	// PrepareForRescan) once clamd is reachable again, whereas a message
+	// delivered unscanned cannot be recalled.
+	OnFailureQuarantine OnFailure = "quarantine"
+	// OnFailureAccept delivers the message unscanned. Use only when
+	// availability is valued over the guarantee that every message is
+	// scanned; every occurrence is logged at ERROR.
+	OnFailureAccept OnFailure = "accept"
+)
+
 // ClamAVProcessor implements pipeline.Processor by scanning messages via
-// the clamd INSTREAM protocol. If clamd is unreachable the processor logs a
-// warning and returns "pass" so that mail delivery is never blocked by an
-// unavailable AV service.
+// the clamd INSTREAM protocol. When clamd is unreachable or returns an error
+// response, the configured OnFailure policy decides whether the message is
+// quarantined (default) or delivered unscanned ("accept"); either way the
+// failure is logged at ERROR. Mail is never silently delivered unscanned
+// without that ERROR log line.
 type ClamAVProcessor struct {
-	network string
-	address string
-	timeout time.Duration
-	logger  *slog.Logger
+	network   string
+	address   string
+	timeout   time.Duration
+	logger    *slog.Logger
+	onFailure OnFailure
 }
 
 // Option is a functional option for ClamAVProcessor.
@@ -67,14 +89,24 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
+// WithOnFailure sets the policy applied when clamd is unreachable or returns
+// an error response. Defaults to OnFailureQuarantine.
+func WithOnFailure(policy OnFailure) Option {
+	return func(p *ClamAVProcessor) {
+		p.onFailure = policy
+	}
+}
+
 // NewClamAVProcessor returns a ClamAVProcessor configured with opts.
-// Defaults: Unix socket /var/run/clamav/clamd.ctl, 60s timeout.
+// Defaults: Unix socket /var/run/clamav/clamd.ctl, 60s timeout, on_failure
+// quarantine.
 func NewClamAVProcessor(opts ...Option) *ClamAVProcessor {
 	p := &ClamAVProcessor{
-		network: "unix",
-		address: defaultSocket,
-		timeout: defaultTimeout,
-		logger:  slog.Default(),
+		network:   "unix",
+		address:   defaultSocket,
+		timeout:   defaultTimeout,
+		logger:    slog.Default(),
+		onFailure: OnFailureQuarantine,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -90,28 +122,23 @@ func (p *ClamAVProcessor) Name() string {
 // Process connects to clamd, streams the message via the INSTREAM command,
 // and returns a StageResult with action "pass" or "quarantine".
 //
-// On connection failure the processor logs a warning and returns "pass" to
-// avoid blocking mail delivery.
+// On connection failure, or on any clamd response that is not a definitive
+// clean/infected verdict, the configured OnFailure policy decides the
+// outcome (OnFailureQuarantine by default, OnFailureAccept to deliver
+// unscanned). Either way the failure is logged at ERROR — never Warn —
+// because it means a message went through without being scanned for
+// viruses, or was quarantined without one being found. A Go error is never
+// returned for these cases: this is a scan verdict (StageResult), not a
+// pipeline stage fault, and the runner treats a returned error very
+// differently (moving the message to the unmonitored spool/error directory
+// instead of the drainable quarantine/ — see internal/pipeline/runner.go).
 func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope, msg io.Reader) (*bongov1.StageResult, error) {
 	start := time.Now()
 
 	response, err := p.scan(ctx, msg)
 	if err != nil {
-		// Graceful fallback: log and pass so delivery is never blocked.
-		p.logger.Warn("antivirus: clamd unreachable, skipping scan",
-			"network", p.network,
-			"address", p.address,
-			"error", err,
-		)
-		return &bongov1.StageResult{
-			Stage:       "antivirus",
-			Backend:     "clamav",
-			Action:      "pass",
-			Score:       0,
-			Reasons:     []string{"clamd unavailable"},
-			ProcessedAt: start.Unix(),
-			DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
-		}, nil
+		return p.failureResult(start, env, fmt.Sprintf("scanner unavailable: %v", err),
+			"network", p.network, "address", p.address, "error", err), nil
 	}
 
 	action := "pass"
@@ -135,10 +162,15 @@ func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 			"sender", env.GetSender(),
 		)
 	default:
-		p.logger.Warn("antivirus: unexpected clamd response",
-			"response", response,
-		)
-		reasons = []string{fmt.Sprintf("unexpected response: %s", response)}
+		// clamd emits an ERROR-suffixed response for conditions like the
+		// INSTREAM size limit ("INSTREAM size limit exceeded. ERROR") or an
+		// internal fault, and any other response is unrecognised. Neither is
+		// a clean verdict, so treat it as a scan failure subject to the same
+		// OnFailure policy as an unreachable clamd — silently delivering
+		// unscanned mail here is exactly the failure mode this policy exists
+		// to close.
+		return p.failureResult(start, env, fmt.Sprintf("unrecognised clamd response: %s", response),
+			"response", response), nil
 	}
 
 	p.logger.Info("antivirus: scan complete",
@@ -156,6 +188,34 @@ func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 		ProcessedAt: start.Unix(),
 		DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 	}, nil
+}
+
+// failureResult logs a scan failure at ERROR and builds the StageResult for
+// it per the configured OnFailure policy. reason is used verbatim as the
+// sole entry in Reasons — it is rendered directly in the admin quarantine UI
+// (internal/web/handlers/quarantine.go), so it must never read like a virus
+// was found (the runner sets the same MsgFlagVirus audit flag for any
+// quarantine action, scan failure or genuine infection alike; the Reasons
+// text is what tells the two apart for an operator).
+func (p *ClamAVProcessor) failureResult(start time.Time, env *bongov1.QueueEnvelope, reason string, logArgs ...any) *bongov1.StageResult {
+	action := "pass"
+	if p.onFailure != OnFailureAccept {
+		action = "quarantine"
+	}
+
+	p.logger.Error("antivirus: scan failed, applying on_failure policy",
+		append([]any{"policy", string(p.onFailure), "action", action, "sender", env.GetSender()}, logArgs...)...,
+	)
+
+	return &bongov1.StageResult{
+		Stage:       "antivirus",
+		Backend:     "clamav",
+		Action:      action,
+		Score:       0,
+		Reasons:     []string{reason},
+		ProcessedAt: start.Unix(),
+		DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
+	}
 }
 
 // scan connects to clamd, sends INSTREAM, streams msg in chunks, and returns

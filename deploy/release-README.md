@@ -36,8 +36,6 @@ Being direct about this so you do not waste time reporting things already known:
 
 - **The `agent` server role only implements SMTP.** Setting its role to `imap`, `pop3` or `caldav`
   logs "not yet implemented" and does nothing.
-- **The antivirus pipeline stage is a no-op.** If you enable it, it logs that it is skipping and
-  passes the message through. It does not scan. Spam filtering *is* implemented.
 - **Multi-node clustering is not ready to use.** A single server is the supported shape. The
   clustering code exists but the transport is not hardened, and the server deliberately refuses to
   join a cluster unless TLS and gossip encryption are configured.
