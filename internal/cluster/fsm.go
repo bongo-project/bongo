@@ -86,6 +86,11 @@ const indexQueueDepth = 4096
 // first time is the usual cause; it should still be well under this.
 const slowIndexThreshold = time.Second
 
+// slowApplyThreshold is the point at which a single FSM.Apply is considered
+// anomalous. raft handles Apply and Snapshot on the same goroutine, so a slow
+// apply blocks all writers.
+const slowApplyThreshold = 2 * time.Second
+
 // StartIndexer moves derived-index maintenance (per-user SQLite and Bleve)
 // onto a background worker so it cannot block Raft's apply loop.
 //
@@ -203,6 +208,19 @@ func (f *FSM) setAppliedIndex(idx uint64) {
 // below the persisted applied index are skipped so that log replay on restart
 // does not re-apply (and thereby resurrect deleted) data.
 func (f *FSM) Apply(log *raft.Log) interface{} {
+	// Timed so a slow apply names itself. raft serialises Apply and Snapshot on
+	// one goroutine, so anything slow here stalls every writer — and raft's own
+	// logs say nothing about time spent inside the FSM.
+	start := time.Now()
+	defer func() {
+		if elapsed := time.Since(start); elapsed >= slowApplyThreshold {
+			f.logger.Warn("fsm: apply was slow",
+				"index", log.Index,
+				"duration_ms", elapsed.Milliseconds(),
+			)
+		}
+	}()
+
 	if log.Index != 0 && log.Index <= f.appliedIndex() {
 		return nil
 	}
@@ -320,6 +338,7 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 	if f.notifier != nil {
 		// Count total messages for EXISTS response.
 		var totalMsgs uint32
+		scanStart := time.Now()
 		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/", newMail.UserID, newMail.Mailbox))
 		iter, err := f.store.PrefixScan(prefix)
 		if err == nil {
@@ -329,6 +348,16 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 			if err := iter.Close(); err != nil {
 				f.logger.Warn("fsm: failed to close mailbox count iterator", "user", newMail.UserID, "mailbox", newMail.Mailbox, "error", err)
 			}
+		}
+		if elapsed := time.Since(scanStart); elapsed >= slowApplyThreshold {
+			// This scan is O(mailbox size) and runs inside the apply path for
+			// every delivery, purely to produce an IMAP EXISTS count.
+			f.logger.Warn("fsm: mailbox message count scan was slow",
+				"user", newMail.UserID,
+				"mailbox", newMail.Mailbox,
+				"messages", totalMsgs,
+				"duration_ms", elapsed.Milliseconds(),
+			)
 		}
 		f.notifier.NotifyNewMail(newMail.UserID, newMail.Mailbox, newMail.UID, totalMsgs)
 	}
