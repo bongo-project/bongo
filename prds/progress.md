@@ -1324,3 +1324,60 @@ that is not set changes nothing in production — check the live config before r
 PATTERN: [security] Before trusting a source IP, check whether an external party can cause the
 server to SEE that IP. With PROXY protocol enabled the answer depends on whether the port is
 directly reachable, not just on the address being private.
+
+## 2026-08-20 — Investigated the 42s delivery delay. Root-caused, filed as B12.
+
+Operator asked me to chase the ~42s outlier. It is real and reproducible, but it is NOT an ongoing
+performance problem — that distinction took measurement to establish and is the main thing to
+report.
+
+### What the numbers actually say
+- Historical: 42 delivered messages, **median 0.59s**, second-slowest 2.23s.
+- Warm probes on prod after the fix: **63ms** antispam->deliver, twice.
+- First message after a restart: **42.2s**, then on a controlled repeat, **85.5s**.
+
+So: normal delivery is fast; only the first delivery after a restart stalls.
+
+### Exact attribution WITHOUT adding instrumentation
+The spool envelope persists `StageResult.DurationMs` per stage, and the envelope survives in
+`/data/spool/deliver/<id>.env`. Decoded it with a throwaway Go program against the repo's proto
+package: antispam 0ms, rules 0ms, **deliver 85510ms**. That removed all guesswork about which stage
+was responsible — no code change, no restart, no pprof.
+
+### Mechanism
+`store.DeliverMail` calls `ApplyCommand(cmd, 5*time.Second)`. That 5s looks like a bound and is not:
+`cluster.ApplyCommand` (forward.go:38) hands it to `raft.Apply(data, timeout)`, where hashicorp/raft
+uses it only to bound ENQUEUEING the entry. `future.Error()` then waits with NO timeout until the
+FSM applies it. `FSM.Apply` runs `updateDerivedIndexes` -> `indexStoreObject` -> per-user SQLite +
+Bleve synchronously (fsm.go:246,278). First write after a restart therefore pays per-user index-open
+cost inside the Raft apply path, unbounded.
+
+### Hypotheses I killed by measurement rather than reasoning
+- Raft leadership not yet acquired — no, acquired at +1.8s, message arrived at +13s.
+- Blob GC sweep holding the store — no, 35 blobs / 13.3MB.
+- Bleve/SQLite size — search 668K, metadata 1.4M. Small (so the 85s is open/init cost, not volume).
+- usage-recompute job — 10 minute interval, and read-only on the delivery path.
+- Startup work in general — startup completes at +1.84s with everything logged.
+- Cold DNS — the only DNS-capable call on the path is `VerifyDKIM`, and the probes carry no
+  DKIM-Signature so it short-circuits. SPF (which does resolve) was fast at +13s.
+
+### Reproduction notes
+Does NOT reproduce in `--dev` (160ms) nor with a prod-shaped server-role config locally (1.09s), so
+it is data/environment dependent. Local repro attempt was still useful: it confirmed the trusted-mail
+path end to end, and an untrusted local probe was correctly DMARC-quarantined (`p=reject` on
+example.com), which independently re-verified 12.3.
+
+Filed as B12 with two candidate fixes: warm the per-user handles at startup, and/or stop doing
+index work synchronously inside the Raft apply path.
+
+PATTERN: [debugging] Before adding instrumentation, check whether the system already persisted the
+measurement. `StageResult.DurationMs` sits in the spool envelope on disk and attributed this exactly,
+with no deploy and no pprof.
+PATTERN: [debugging] Establish whether an outlier is the norm before chasing it. Median over 42
+historical messages (0.59s) reframed this from "delivery is slow" to "the first delivery after a
+restart is slow", which changes both the urgency and the place to look.
+PATTERN: [correctness] A timeout argument is not a bound unless you check what the callee does with
+it. `raft.Apply(cmd, timeout)` bounds ENQUEUE only; `future.Error()` is unbounded. A `5*time.Second`
+at the call site read as a guarantee that does not exist.
+PATTERN: [debugging] `pkill -f <pattern>` inside a one-line shell command can match the command's own
+cmdline and kill the shell (exit 144). Use a pidfile, or a self-excluding pattern.
