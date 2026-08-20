@@ -102,6 +102,16 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
+	// NOTE: cfg.Validate() is deliberately NOT called here. It is currently
+	// unreachable in production (nothing outside tests calls it), and switching
+	// it on activates several dormant gates at once — including the multi-node
+	// cluster transport gate, which would stop an existing deployment that sets
+	// cluster.join without gossip encryption and TLS from booting at all.
+	// Enabling it is a deployment-affecting change that deserves its own change
+	// and its own release note, not a side effect of adding a config field.
+	// Tracked as task B8. Config that must fail startup is validated at the
+	// point of use instead — see SMTP.ParseTrustedNetworks in agent.go.
+
 	if servePlainHTTP {
 		cfg.Web.PlainHTTP = true
 	}

@@ -150,6 +150,32 @@ smtp {
   # front and sends the PROXY protocol header, so Bongo sees the real client IP.
   # proxy_protocol = false
 
+  # CIDR blocks whose connecting source IP is exempt from inbound origin
+  # authentication: SPF, DKIM alignment and DMARC policy are not applied to
+  # its mail, so a local application submitting from a container or LAN
+  # address is not filed as spam for failing checks that cannot succeed from
+  # there. Content filtering is NOT skipped -- spam scoring, the Bayesian
+  # filter and virus scanning all still run.
+  #
+  # This is NOT equivalent to authenticating. Being in a trusted network does
+  # not grant relay: a non-local recipient still returns "550 Relaying denied"
+  # without SMTP AUTH, and the submission port still rejects unauthenticated
+  # MAIL FROM outright. A trusted-network sender can therefore deliver to
+  # LOCAL recipients on port 25 only. That covers the common case (an app on
+  # the same host mailing your own users); anything that must send outward
+  # needs real credentials on the submission port.
+  #
+  # Default is empty: nothing is trusted implicitly,
+  # including loopback (127.0.0.1, ::1) and RFC 1918 private ranges
+  # (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) -- list them explicitly if
+  # you want them trusted.
+  #
+  # WARNING: if proxy_protocol = true above, trusted_networks is only as
+  # trustworthy as the set of hosts that can reach this SMTP port from a
+  # loopback/private/link-local address, because the PROXY header lets such a
+  # peer assert an arbitrary source IP (see internal/netx/proxyproto.go).
+  # trusted_networks = ["127.0.0.1/32", "10.0.5.0/24"]
+
   # TLS certificate for SMTP STARTTLS/implicit TLS. Should match `hostname`.
   # If empty, STARTTLS falls back to a self-signed cert with a warning.
   tls {
