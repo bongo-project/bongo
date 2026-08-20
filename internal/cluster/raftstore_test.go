@@ -248,3 +248,70 @@ func TestLogKeyOrdering(t *testing.T) {
 		t.Errorf("LastIndex = %d, want max uint64", last)
 	}
 }
+
+// TestLastIndexIsCorrectAcrossDigitBoundaries guards the assumption that makes
+// LastIndex a seek rather than a scan: log keys are zero-padded to a fixed
+// width, so the lexicographically greatest key is the numerically greatest
+// index. Without the padding, "9" would sort above "10" and LastIndex would
+// silently return the wrong entry — which for a raft log store means data loss,
+// not a slow query. The indices below straddle several digit boundaries.
+func TestLastIndexIsCorrectAcrossDigitBoundaries(t *testing.T) {
+	rs := newTestRaftStore(t)
+
+	indices := []uint64{1, 2, 9, 10, 11, 99, 100, 101, 999, 1000, 8194, 12345}
+	for _, idx := range indices {
+		if err := rs.StoreLog(&raft.Log{Index: idx, Term: 1, Type: raft.LogCommand, Data: []byte("x")}); err != nil {
+			t.Fatalf("StoreLog(%d): %v", idx, err)
+		}
+	}
+
+	last, err := rs.LastIndex()
+	if err != nil {
+		t.Fatalf("LastIndex: %v", err)
+	}
+	if want := uint64(12345); last != want {
+		t.Errorf("LastIndex = %d, want %d — key ordering is not numeric, so seeking to the last key is unsafe", last, want)
+	}
+
+	first, err := rs.FirstIndex()
+	if err != nil {
+		t.Fatalf("FirstIndex: %v", err)
+	}
+	if want := uint64(1); first != want {
+		t.Errorf("FirstIndex = %d, want %d", first, want)
+	}
+}
+
+// TestLastIndexAfterTruncation checks LastIndex still reports correctly after
+// the kinds of range deletion raft performs (prefix truncation after a
+// snapshot, and suffix truncation of conflicting entries). A cached last-index
+// would need explicit invalidation here; seeking derives it from the data, so
+// it cannot go stale.
+func TestLastIndexAfterTruncation(t *testing.T) {
+	rs := newTestRaftStore(t)
+
+	for i := uint64(1); i <= 100; i++ {
+		if err := rs.StoreLog(&raft.Log{Index: i, Term: 1, Type: raft.LogCommand, Data: []byte("x")}); err != nil {
+			t.Fatalf("StoreLog(%d): %v", i, err)
+		}
+	}
+
+	// Prefix truncation: raft discards entries covered by a snapshot.
+	if err := rs.DeleteRange(1, 50); err != nil {
+		t.Fatalf("DeleteRange(1,50): %v", err)
+	}
+	if first, err := rs.FirstIndex(); err != nil || first != 51 {
+		t.Errorf("FirstIndex after prefix truncation = %d (err %v), want 51", first, err)
+	}
+	if last, err := rs.LastIndex(); err != nil || last != 100 {
+		t.Errorf("LastIndex after prefix truncation = %d (err %v), want 100", last, err)
+	}
+
+	// Suffix truncation: raft discards conflicting tail entries.
+	if err := rs.DeleteRange(90, 100); err != nil {
+		t.Fatalf("DeleteRange(90,100): %v", err)
+	}
+	if last, err := rs.LastIndex(); err != nil || last != 89 {
+		t.Errorf("LastIndex after suffix truncation = %d (err %v), want 89", last, err)
+	}
+}

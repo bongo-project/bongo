@@ -99,6 +99,31 @@ func (s *PebbleStore) PrefixScan(prefix []byte) (Iterator, error) {
 	return &pebbleIterator{iter: iter, started: false}, nil
 }
 
+// LastKeyWithPrefix returns the greatest key under prefix, or ok=false when
+// the prefix is empty.
+//
+// This exists so callers that only want the highest key do not have to iterate
+// every key under the prefix to find it. Pebble can seek straight to the end of
+// the range, so this is O(log n) where the equivalent forward scan is O(n) —
+// the difference between a constant-time lookup and reading the whole raft log
+// on every call (see RaftStore.LastIndex).
+func (s *PebbleStore) LastKeyWithPrefix(prefix []byte) ([]byte, bool, error) {
+	iter, err := s.db.NewIter(&pebble.IterOptions{
+		LowerBound: prefix,
+		UpperBound: prefixUpperBound(prefix),
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("pebble last key scan: %w", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		return nil, false, nil
+	}
+	// The key is only valid until the iterator moves or closes.
+	return append([]byte(nil), iter.Key()...), true, nil
+}
+
 // DeleteRange deletes all keys in the range [start, end] (inclusive).
 func (s *PebbleStore) DeleteRange(start, end []byte) error {
 	// Pebble's DeleteRange is [start, end) exclusive on end,
