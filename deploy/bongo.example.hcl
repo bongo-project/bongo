@@ -299,12 +299,42 @@ antispam {
     # high_threshold = 0.9
   }
 
-  # Offload scoring to an external rspamd instance instead of the built-in
-  # scorer. The block must be present; set enabled = true to use it.
+  # External backends are never used instead of the builtin scorer — they are
+  # composed with it (pipeline.stage "antispam" backend, below, selects which
+  # one). The builtin always runs too, because it is the only processor that
+  # evaluates DMARC, blends the per-user Bayes classifier, and honours the
+  # Trusted flag for authenticated submissions / trusted networks. Note that
+  # external backends are consulted for trusted mail too: trust exempts a
+  # message from origin authentication (SPF/DKIM/DMARC), never from content
+  # scanning, so a compromised account cannot post spam unscanned. An
+  # unreachable or erroring external backend degrades to the builtin's own
+  # verdict and logs the failure; mail is never held up by a scanner outage.
+  #
+  # Precedence: BOTH must agree for an external backend to run.
+  # pipeline.stage "antispam" { backend = ... } selects WHICH scanner, and the
+  # matching block's enabled flag decides WHETHER it runs. If they disagree,
+  # enabled = false wins and the builtin scorer is used alone, with a startup
+  # warning naming the mismatch. So enabled = false always means off — handy
+  # when a scanner is misbehaving and you want it out of the path quickly
+  # without editing the pipeline stage as well. An absent block counts as
+  # enabled = false.
+
+  # Offload scoring to an external rspamd instance. The block must be present;
+  # set enabled = true AND select backend = "rspamd" below to use it.
   rspamd {
     enabled = false
     # url   = "http://localhost:11333"
   }
+
+  # Offload scoring to an external SpamAssassin (spamd) instance via the
+  # SPAMC/1.5 protocol. Select backend = "spamassassin" below to use it.
+  # spamassassin {
+  #   enabled   = false
+  #   host      = "localhost"
+  #   port      = 783
+  #   timeout   = "30s"
+  #   threshold = 5.0   # match spamd's local.cf required_score
+  # }
 
   # Inbound DMARC is ON and ENFORCING by default (primary defence against
   # same-domain spoofing). Uncomment to change:
@@ -335,7 +365,7 @@ pipeline {
 
   stage "antispam" {
     enabled = true
-    backend = "builtin"   # or "rspamd"
+    backend = "builtin"   # or "rspamd" or "spamassassin" (composed with builtin, see antispam block above)
   }
 
   # stage "antivirus" {

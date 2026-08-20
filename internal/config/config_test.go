@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,6 +192,167 @@ func TestAntispamBuiltinThresholds(t *testing.T) {
 				t.Errorf("SpamHighThreshold() = %.2f, want %.2f", got, tt.wantHighTher)
 			}
 		})
+	}
+}
+
+// TestSpamAssassinConfigNilSafeDefaults is the RISK-2 regression test: since
+// SpamAssassin is a *SpamAssassinConfig (pointer block), it must be nil for
+// any config that omits the block, and every accessor must still return a
+// usable default from a nil receiver rather than panicking.
+func TestSpamAssassinConfigNilSafeDefaults(t *testing.T) {
+	var c *SpamAssassinConfig // deliberately nil, as if the block was absent
+
+	if got := c.SAHost(); got != "localhost" {
+		t.Errorf("nil SAHost() = %q, want %q", got, "localhost")
+	}
+	if got := c.SAPort(); got != 783 {
+		t.Errorf("nil SAPort() = %d, want 783", got)
+	}
+	if got := c.SATimeout(); got != 30*time.Second {
+		t.Errorf("nil SATimeout() = %v, want 30s", got)
+	}
+	if got := c.SAThreshold(); got != 5.0 {
+		t.Errorf("nil SAThreshold() = %v, want 5.0", got)
+	}
+	if c.SAEnabled() {
+		t.Error("nil SAEnabled() = true, want false")
+	}
+}
+
+func TestSpamAssassinConfigAccessors(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         *SpamAssassinConfig
+		wantHost    string
+		wantPort    int
+		wantTimeout time.Duration
+		wantThresh  float64
+	}{
+		{
+			name:        "all set",
+			cfg:         &SpamAssassinConfig{Host: "spamd.internal", Port: 7830, Timeout: "10s", Threshold: 8.0},
+			wantHost:    "spamd.internal",
+			wantPort:    7830,
+			wantTimeout: 10 * time.Second,
+			wantThresh:  8.0,
+		},
+		{
+			name:        "zero values fall back to defaults",
+			cfg:         &SpamAssassinConfig{},
+			wantHost:    "localhost",
+			wantPort:    783,
+			wantTimeout: 30 * time.Second,
+			wantThresh:  5.0,
+		},
+		{
+			name:        "unparseable timeout falls back",
+			cfg:         &SpamAssassinConfig{Timeout: "not-a-duration"},
+			wantHost:    "localhost",
+			wantPort:    783,
+			wantTimeout: 30 * time.Second,
+			wantThresh:  5.0,
+		},
+		{
+			name:        "negative threshold falls back",
+			cfg:         &SpamAssassinConfig{Threshold: -1},
+			wantThresh:  5.0,
+			wantHost:    "localhost",
+			wantPort:    783,
+			wantTimeout: 30 * time.Second,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.SAHost(); got != tt.wantHost {
+				t.Errorf("SAHost() = %q, want %q", got, tt.wantHost)
+			}
+			if got := tt.cfg.SAPort(); got != tt.wantPort {
+				t.Errorf("SAPort() = %d, want %d", got, tt.wantPort)
+			}
+			if got := tt.cfg.SATimeout(); got != tt.wantTimeout {
+				t.Errorf("SATimeout() = %v, want %v", got, tt.wantTimeout)
+			}
+			if got := tt.cfg.SAThreshold(); got != tt.wantThresh {
+				t.Errorf("SAThreshold() = %v, want %v", got, tt.wantThresh)
+			}
+		})
+	}
+}
+
+// TestConfigDecodesWithSpamAssassinBlock verifies the new HCL block parses
+// all its fields correctly when present. This is deliberately a standalone
+// temp file, not an addition to test/testdata/config.hcl, so that
+// TestConfigDecodesWithoutSpamAssassinBlock (below) keeps proving the
+// absent-block case against a file that genuinely has no spamassassin block.
+func TestConfigDecodesWithSpamAssassinBlock(t *testing.T) {
+	base, err := os.ReadFile("../../test/testdata/config.hcl")
+	if err != nil {
+		t.Fatalf("read base fixture: %v", err)
+	}
+	// Inject a spamassassin block into the existing antispam block rather
+	// than hand-writing a whole file: Config has many other required
+	// (non-pointer) HCL blocks nested several levels deep, and the base
+	// fixture is already a valid, maintained instance of all of them.
+	const marker = "  rspamd {\n    enabled = false\n    url     = \"http://localhost:11333\"\n  }\n}"
+	inject := "  rspamd {\n    enabled = false\n    url     = \"http://localhost:11333\"\n  }\n\n" +
+		"  spamassassin {\n" +
+		"    enabled   = true\n" +
+		"    host      = \"spamd.internal\"\n" +
+		"    port      = 7830\n" +
+		"    timeout   = \"10s\"\n" +
+		"    threshold = 8.0\n" +
+		"  }\n}"
+	hcl := strings.Replace(string(base), marker, inject, 1)
+	if hcl == string(base) {
+		t.Fatal("marker not found in base fixture; test/testdata/config.hcl's antispam block changed shape")
+	}
+
+	dir := t.TempDir()
+	path := dir + "/config.hcl"
+	if err := os.WriteFile(path, []byte(hcl), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+	sa := cfg.Antispam.SpamAssassin
+	if sa == nil {
+		t.Fatal("Antispam.SpamAssassin = nil, want a decoded block")
+	}
+	if !sa.Enabled {
+		t.Error("Enabled = false, want true")
+	}
+	if sa.SAHost() != "spamd.internal" {
+		t.Errorf("SAHost() = %q, want %q", sa.SAHost(), "spamd.internal")
+	}
+	if sa.SAPort() != 7830 {
+		t.Errorf("SAPort() = %d, want 7830", sa.SAPort())
+	}
+	if sa.SATimeout() != 10*time.Second {
+		t.Errorf("SATimeout() = %v, want 10s", sa.SATimeout())
+	}
+	if sa.SAThreshold() != 8.0 {
+		t.Errorf("SAThreshold() = %v, want 8.0", sa.SAThreshold())
+	}
+}
+
+// TestConfigDecodesWithoutSpamAssassinBlock is the RISK-2 regression test at
+// the decode layer: hclsimple/gohcl treats a non-pointer HCL block field as
+// mandatory, so if SpamAssassin were ever changed back to a plain struct,
+// every existing config file without a spamassassin block (including
+// test/testdata/config.hcl and the shipped deploy configs) would fail to
+// decode with "Missing spamassassin block". This asserts the pointer stays
+// nil, proving decode succeeded, rather than merely checking LoadFromFile
+// returned no error (which TestLoadFromFile already does).
+func TestConfigDecodesWithoutSpamAssassinBlock(t *testing.T) {
+	cfg, err := LoadFromFile("../../test/testdata/config.hcl")
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+	if cfg.Antispam.SpamAssassin != nil {
+		t.Errorf("Antispam.SpamAssassin = %+v, want nil (no spamassassin block in testdata/config.hcl)", cfg.Antispam.SpamAssassin)
 	}
 }
 
@@ -397,6 +559,25 @@ func TestPipelineConfigValidate(t *testing.T) {
 				Stages:  []StageConfig{{Name: "antispam", Enabled: true, Backend: "unknown-backend"}},
 			},
 			wantErr: true,
+		},
+		{
+			// FR-9: config validation must accept backend = "spamassassin",
+			// which it did not before this task even though the processor
+			// (internal/pipeline/antispam/spamassassin.go) was fully implemented.
+			name: "spamassassin backend is known",
+			cfg: PipelineConfig{
+				Workers: 5,
+				Stages:  []StageConfig{{Name: "antispam", Enabled: true, Backend: "spamassassin"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "rspamd backend is known",
+			cfg: PipelineConfig{
+				Workers: 5,
+				Stages:  []StageConfig{{Name: "antispam", Enabled: true, Backend: "rspamd"}},
+			},
+			wantErr: false,
 		},
 		{
 			name: "empty backend is allowed",

@@ -141,11 +141,15 @@ func (p *RspamdProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 			"sender", env.GetSender(),
 		)
 		return &bongov1.StageResult{
-			Stage:       "antispam",
-			Backend:     "rspamd",
-			Action:      "pass",
-			Score:       0,
-			Reasons:     []string{fmt.Sprintf("rspamd returned HTTP %d", resp.StatusCode)},
+			Stage:   "antispam",
+			Backend: "rspamd",
+			Action:  "pass",
+			Score:   0,
+			// The reason must contain "unavailable" so composite.go's
+			// isUnavailable() degrades to the builtin verdict instead of
+			// treating this as an active "pass" (e.g. an auth-rejected 403
+			// or a 5xx would otherwise beat a builtin DMARC escalation).
+			Reasons:     []string{fmt.Sprintf("rspamd unavailable: HTTP %d", resp.StatusCode)},
 			ProcessedAt: start.Unix(),
 			DurationMs:  pipeline.ClampInt32(time.Since(start).Milliseconds()),
 		}, nil
