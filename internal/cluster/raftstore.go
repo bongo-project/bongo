@@ -64,22 +64,30 @@ func (r *RaftStore) FirstIndex() (uint64, error) {
 }
 
 // LastIndex returns the last log index written. 0 for no entries.
+//
+// This seeks directly to the highest key rather than iterating the whole log.
+// It used to scan every entry and keep the last one, which made the call O(n)
+// in the size of the raft log — and hashicorp/raft calls LastIndex constantly
+// (on the leader loop, on every append, when dispatching entries).
+//
+// That was the cause of an 80s stall on the first delivery after a restart:
+// with ~8,200 log entries and a cold Pebble block cache, every one of those
+// repeated full scans went to disk. Once the cache warmed the same delivery
+// took 63ms, which is why it looked like a mysterious startup-only problem.
+//
+// Seeking to the greatest key is only equivalent to the greatest index because
+// logKey zero-pads the index to a fixed 20 digits, so lexicographic order
+// matches numeric order across the whole uint64 range. Do not change that
+// encoding without revisiting this.
 func (r *RaftStore) LastIndex() (uint64, error) {
-	iter, err := r.store.PrefixScan([]byte(raftLogPrefix))
+	key, ok, err := r.store.LastKeyWithPrefix([]byte(raftLogPrefix))
 	if err != nil {
-		return 0, fmt.Errorf("last index scan: %w", err)
+		return 0, fmt.Errorf("last index lookup: %w", err)
 	}
-	defer iter.Close()
-
-	var last uint64
-	for iter.Next() {
-		idx, err := parseLogIndex(iter.Key())
-		if err != nil {
-			return 0, err
-		}
-		last = idx
+	if !ok {
+		return 0, nil
 	}
-	return last, nil
+	return parseLogIndex(key)
 }
 
 // GetLog gets a log entry at a given index.
