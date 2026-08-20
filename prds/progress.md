@@ -1225,3 +1225,50 @@ exactly the moment they are trying to turn something off in a hurry.
 PATTERN: [testing] When behaviour was pinned wrongly, INVERT the test rather than deleting it, and
 say in the comment what the earlier revision did and why it was wrong. The test then documents the
 trap instead of merely passing.
+
+## 2026-08-20 — Task 12.7 DONE. PHASE 12 COMPLETE (8/8).
+
+Commit `86741fb`. PRD moved active/ -> done/.
+
+**The workflow reported FAILED but had already mutated the tree** — the classifier returned
+agentType 'claude-code' which does not exist, so the worker never spawned, yet
+deploy/bongo.example.hcl, deploy/release-README.md and the assessment doc were all already edited
+(by the advisor, which has tool access). This is the known hazard; the important consequence is that
+the work was UNREVIEWED, because the review stage never ran either.
+
+I reviewed it myself and found two false claims plus an omission:
+1. release-README said an unreachable clamd "fails to start". FALSE — only `clamav.enabled=false`
+   fails agent-role startup (agent.go:2222). Unreachability is handled per message at delivery time.
+2. "an authenticated sender must use its own registered address" was overbroad: the 553 only fires
+   when the envelope sender RESOLVES TO A LOCAL ACCOUNT (server.go:329). Non-local senders are left
+   to relay policy and SPF.
+3. The false "antivirus is a no-op" bullet was DELETED rather than replaced, leaving testers with no
+   antivirus guidance at all. Wrote a proper section: what enabling it means, the failure policy,
+   and the bounded recovery window.
+
+Verified the remaining claims against code before keeping them: virus-found sets Action=quarantine
+(clamav.go:157); default stage order is antispam/antivirus/rules (config.go:606); AUTH is gated on
+the submission port (AuthMechanisms). Proved both sample configs still parse and load the new keys
+with a throwaway test in internal/config.
+
+### Phase 12 final gate
+`make test-all` exit 0 (unit + `-race` + integration 362s + fmt-check). gosec medium+ = 2, unchanged
+from the phase start (both pre-existing). govulncheck: nothing reachable. FR-2 trust audit still
+shows exactly one origin (`server.go:423`), two envelope pass-throughs, one gRPC strip.
+
+### What Phase 12 actually changed
+- Mail between accounts on a hosted domain reaches the inbox (the reported bug; DMARC escalation,
+  not the spam filter).
+- Quarantine "release" delivers again — it had been parking mail in a directory nothing reads.
+- ClamAV, rspamd and SpamAssassin are constructible for the first time.
+- Antivirus failure policy is explicit; it silently delivered unscanned before.
+
+PATTERN: [workflow] A workflow that reports FAILED may still have fully mutated the working tree,
+AND its output will be unreviewed because the review stage never ran. Always `git status` after a
+failure, and review whatever is there as if no review had happened — because none did.
+PATTERN: [docs] Deleting a false claim is not the same as correcting it. Removing "antivirus is a
+no-op" left testers with no guidance where they previously had wrong guidance. Ask what the reader
+needed the sentence for.
+PATTERN: [docs] The riskiest documentation sentences are the confident ones about failure modes
+("fails to start if X"). Both false claims this task were of that shape. Trace the actual code path
+for every failure-mode claim.
