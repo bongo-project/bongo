@@ -157,18 +157,34 @@ smtp {
   # there. Content filtering is NOT skipped -- spam scoring, the Bayesian
   # filter and virus scanning all still run.
   #
-  # This is NOT equivalent to authenticating. Being in a trusted network does
-  # not grant relay: a non-local recipient still returns "550 Relaying denied"
-  # without SMTP AUTH, and the submission port still rejects unauthenticated
-  # MAIL FROM outright. A trusted-network sender can therefore deliver to
-  # LOCAL recipients on port 25 only. That covers the common case (an app on
-  # the same host mailing your own users); anything that must send outward
-  # needs real credentials on the submission port.
+  # IMPORTANT: How trusted_networks differs from SMTP AUTH
+  # If you have a co-located application that must send mail (e.g. a web app
+  # on the same host), you have two choices:
   #
-  # Default is empty: nothing is trusted implicitly,
-  # including loopback (127.0.0.1, ::1) and RFC 1918 private ranges
-  # (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) -- list them explicitly if
-  # you want them trusted.
+  # 1. SMTP AUTH on the submission port (587) — PREFERRED. Authenticated
+  #    sessions grant relay: an app can deliver to any recipient using the
+  #    authenticated account's credentials. AUTH is only offered on port 587
+  #    (not on port 25/MX), so an app pointed at port 25 with credentials will
+  #    never get to use them. An authenticated session may not send AS another
+  #    local user: if the envelope sender resolves to a local account that is
+  #    not the authenticated one, the server returns 553. So give the app its
+  #    own account for the address it sends from. This survives the app's IP
+  #    changing, is per-account and revocable, and is the standard way an
+  #    application integrates with a mail server.
+  #
+  # 2. trusted_networks as a fallback. Add the app's CIDR to this list.
+  #    A trusted-network sender is NOT authenticated — it simply skips origin
+  #    checks (SPF/DKIM/DMARC). Being in a trusted network does NOT grant
+  #    relay: a non-local recipient still returns "550 Relaying denied" without
+  #    SMTP AUTH, and the submission port still rejects unauthenticated
+  #    MAIL FROM outright. A trusted-network sender can therefore deliver to
+  #    LOCAL recipients on port 25 only. Use this only for applications that
+  #    cannot hold credentials or whose IP is effectively fixed (e.g. on the
+  #    same physical host).
+  #
+  # Default is empty: nothing is trusted implicitly, including loopback
+  # (127.0.0.1, ::1) and RFC 1918 private ranges (10.0.0.0/8, 172.16.0.0/12,
+  # 192.168.0.0/16) — list them explicitly if you want them trusted.
   #
   # WARNING: if proxy_protocol = true above, trusted_networks is only as
   # trustworthy as the set of hosts that can reach this SMTP port from a
@@ -300,24 +316,26 @@ antispam {
   }
 
   # External backends are never used instead of the builtin scorer — they are
-  # composed with it (pipeline.stage "antispam" backend, below, selects which
-  # one). The builtin always runs too, because it is the only processor that
-  # evaluates DMARC, blends the per-user Bayes classifier, and honours the
-  # Trusted flag for authenticated submissions / trusted networks. Note that
-  # external backends are consulted for trusted mail too: trust exempts a
-  # message from origin authentication (SPF/DKIM/DMARC), never from content
-  # scanning, so a compromised account cannot post spam unscanned. An
-  # unreachable or erroring external backend degrades to the builtin's own
-  # verdict and logs the failure; mail is never held up by a scanner outage.
+  # composed with it. The builtin always runs too, because it is the only
+  # processor that evaluates DMARC, blends the per-user Bayes classifier, and
+  # honours the Trusted flag for authenticated submissions / trusted networks.
+  # Note that external backends are consulted for trusted mail too: trust
+  # exempts a message from origin authentication (SPF/DKIM/DMARC), never from
+  # content scanning, so a compromised account cannot post spam unscanned.
   #
-  # Precedence: BOTH must agree for an external backend to run.
-  # pipeline.stage "antispam" { backend = ... } selects WHICH scanner, and the
-  # matching block's enabled flag decides WHETHER it runs. If they disagree,
-  # enabled = false wins and the builtin scorer is used alone, with a startup
-  # warning naming the mismatch. So enabled = false always means off — handy
-  # when a scanner is misbehaving and you want it out of the path quickly
-  # without editing the pipeline stage as well. An absent block counts as
-  # enabled = false.
+  # Backend selection: pipeline.stage "antispam" { backend = "builtin" |
+  # "rspamd" | "spamassassin" } selects which external backend to COMPOSE with
+  # the builtin. The matching block's enabled flag decides WHETHER the external
+  # backend runs. An unreachable or erroring external backend degrades to the
+  # builtin's own verdict and logs the failure; mail is never held up by a
+  # scanner outage.
+  #
+  # Precedence: BOTH must agree for an external backend to run. If the stage
+  # names a backend whose own block has enabled = false, they disagree, and
+  # enabled = false WINS — the builtin is used alone and a startup warning
+  # names the mismatch. So enabled = false always means off, which lets you
+  # take a misbehaving scanner out of the path without also editing the
+  # pipeline stage. An absent backend block counts as enabled = false.
 
   # Offload scoring to an external rspamd instance. The block must be present;
   # set enabled = true AND select backend = "rspamd" below to use it.
@@ -346,6 +364,19 @@ antispam {
 # -----------------------------------------------------------------------------
 # antivirus — ClamAV scanning (off by default; requires a running clamd)
 # -----------------------------------------------------------------------------
+# ClamAV scanning is implemented and active when enabled. The pipeline scans
+# all inbound messages that reach the antivirus stage (after antispam). When
+# a message is detected as malicious, it is quarantined and listed in the admin
+# quarantine UI for review/deletion. When clamd is unreachable or returns an
+# error, the configured on_failure policy (below) controls what happens.
+#
+# For agent-role nodes (internal/agent/agent.go: the server.role = "agent"
+# config): if you list "antivirus" in the server.agents list, the node MUST
+# have clamav.enabled = true. A node cannot register as an antivirus processor
+# if clamd is not actually going to scan. This is a startup validation that
+# fails the agent rather than silently registering a processor that does
+# nothing. (Server-role nodes omit an antivirus stage if the backend is
+# disabled, so they have no such requirement.)
 antivirus {
   clamav {
     enabled = false
@@ -374,8 +405,8 @@ antivirus {
     #     "held indefinitely". A clamd outage that goes unnoticed past the
     #     retention window, or a backlog nobody drains, permanently destroys
     #     legitimate inbound mail. If you choose this policy, alert on the
-    #     ERROR log above, and raise quarantine_retention if your response
-    #     time could ever exceed it.
+    #     ERROR log above, and raise pipeline.quarantine_retention if your
+    #     response time could ever exceed it.
     #   "accept" — deliver the message unscanned. Every occurrence is
     #     logged at ERROR. Choose this only if availability matters more
     #     than the guarantee that every message was scanned.

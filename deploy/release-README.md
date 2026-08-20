@@ -41,6 +41,30 @@ Being direct about this so you do not waste time reporting things already known:
   join a cluster unless TLS and gossip encryption are configured.
 - **No upgrade path is promised between test builds.** Treat the data directory as disposable.
 
+## Antivirus, if you turn it on
+
+Antivirus scanning works, but it is off by default and needs a running ClamAV daemon. Set
+`antivirus.clamav.enabled = true`, point `socket` at your clamd, and add an `antivirus` stage to
+the `pipeline` block. With `enabled = false` no scanner is built and nothing pretends to scan.
+
+The part worth understanding before you enable it is what happens when clamd is *not* reachable,
+because the answer is deliberate and it is not "carry on":
+
+- By default (`on_failure = "quarantine"`) the message is held in the admin quarantine rather than
+  delivered unscanned. Drain the backlog with the quarantine page's bulk **rescan** action once
+  clamd is back — rescanned messages are genuinely scanned on the second pass.
+- **The recovery window is finite.** Quarantine is auto-purged after `pipeline.quarantine_retention`
+  (30 days by default) and the purge deletes the message itself. An outage nobody notices for
+  longer than that destroys real mail. Every failure logs at ERROR — alert on it.
+- `on_failure = "accept"` delivers unscanned instead, logging each occurrence at ERROR. Choose it
+  only if availability matters more than the guarantee that everything was scanned.
+
+Note that clamd being unreachable does **not** stop the server starting; it is handled per message
+at delivery time, as above. The one startup-time change: an `agent`-role node listing `antivirus`
+in `server.agents` now refuses to start unless `antivirus.clamav.enabled = true`. It previously
+started and registered a scanner that passed everything, which is worse than failing loudly — a
+node whose entire job is scanning should not run without a scanner configured.
+
 ## What feedback is most useful
 
 In rough order:
@@ -51,6 +75,8 @@ In rough order:
    documentation bug, and it is worth reporting even if you solved it.
 3. Interoperability: which mail client you used, and what it did that was wrong.
 4. Anything that surprised you about the web interface.
+5. ClamAV antivirus scanner behaviour: whether clamd scans as expected, whether quarantine
+   recovery via the admin "rescan" action works, and what log output you see during failures.
 
 Please include the version below, what you did, what you expected, and what happened. Server logs
 are useful; **redact anything sensitive first** — logs can contain email addresses and subject
