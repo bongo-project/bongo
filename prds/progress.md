@@ -1124,3 +1124,50 @@ named like one. Grep for what READS it before assuming a move into it does anyth
 is a terminal archive, and an admin action moving mail into it silently loses the mail.
 PATTERN: [review] Worker-written tests need the same scrutiny as worker-written code. Two of three
 substantive issues this round were test-quality, not implementation.
+
+## 2026-08-20 — Tasks 12.2 + 12.8 DONE
+
+Commits `f755a59` (trusted networks) and `609aca0` (release actually delivers). Both reviews MINOR.
+Both advisors returned REVISE at plan stage and were right to.
+
+### 12.2 — I reverted a scope expansion with live-deployment risk
+The worker wired `cfg.Validate()` into `runServe`. The advisor had CORRECTLY identified that
+`Config.Validate` is dead code (nothing outside tests calls it), so the "malformed CIDR fails
+startup" criterion looked unmeetable — but the fix it prescribed switches on THREE dormant gates at
+once, including the cluster transport gate at `config.go:379`. Any deployment with `cluster.join`
+set and no gossip key + TLS trio boots today and would refuse to boot after. Reverted; the criterion
+is met anyway because `ParseTrustedNetworks` is called at the point of use in agent.go and its error
+aborts startup. Filed the dead-code finding as B8 so it gets its own deliberate change.
+
+Also corrected `deploy/bongo.example.hcl`, which described trusted networks as "equivalent to an
+authenticated submission session". Verified false: relay is gated on `s.authed` (`server.go:391`,
+550 Relaying denied) and the submission port rejects unauthenticated MAIL FROM (`server.go:321`).
+A trusted-network sender can reach LOCAL recipients on port 25 only.
+
+### 12.8 — fixed a gap inside the fix
+`PrepareForRelease` forced INBOX only when `TargetMailbox` was empty. But the scorer's tag branch
+sets `"Junk"`, and `applyDMARC`'s escalation branch raises the action to reject/quarantine WITHOUT
+clearing that routing. So a message in the tag band that also failed DMARC arrived in quarantine
+already addressed to Junk, and release honoured it — admin approves the message, it goes to Junk
+anyway. Now both empty and `"Junk"` are treated as verdict-derived; any other value is a genuine
+folder target and is left alone. Added the missing test case.
+
+Also extended `validateSpoolID` to the delete routes (the worker guarded requeue only, leaving the
+sibling path unguarded — the exact divergence the task was about) and changed malformed-id responses
+from 500 to 400.
+
+Verified independently: gofmt clean, vet clean, `go test -race ./...` exit 0 with zero FAIL lines,
+gosec medium+ = 2 (unchanged), FR-2 trust audit still shows one origin + two pass-throughs + one strip.
+
+PATTERN: [review] When an advisor identifies a real problem, check its PRESCRIPTION separately from
+its diagnosis. Here the diagnosis (Validate is dead code) was correct and valuable, but the
+prescribed fix would have broken booting for a class of existing deployments.
+PATTERN: [scope] A dormant validation gate is a deployment-affecting change the moment you enable
+it. Enabling "validation that should have been running all along" is never a side effect of another
+task — it needs its own change and a look at the live config.
+PATTERN: [docs] Verify what a security/trust feature does NOT grant before documenting it. Trusted
+networks skip origin authentication but confer no relay rights; describing them as "equivalent to
+authentication" would have led an operator to expect outbound sending that returns 550.
+PATTERN: [review] A stale routing decision can outlive the action that set it. When an escalation
+path raises severity without clearing the previous branch's side effects, an "undo" that only
+handles the empty case silently preserves the thing it meant to undo.
