@@ -53,9 +53,7 @@ because changing it later breaks anyone who already imported it.
 ## Not blockers, but tell testers up front
 
 - **Unimplemented surfaces.** The `agent` role implements SMTP only — `imap`, `pop3` and `caldav`
-  log "not yet implemented" and silently do nothing. The antivirus pipeline stage is also a
-  no-op that logs and skips. A tester enabling antivirus would reasonably assume it is scanning.
-  Each is a one-line note in the README.
+  log "not yet implemented" and silently do nothing. Each is a one-line note in the README.
 - **The repo is private.** Sharing means either making it public (see the licence question) or
   adding collaborators. Note that GitHub Actions minutes are billable on private repos, and CI
   currently runs on every push.
