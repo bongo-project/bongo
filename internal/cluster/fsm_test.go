@@ -2,10 +2,15 @@ package cluster
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/raft"
 	"google.golang.org/protobuf/proto"
@@ -452,4 +457,159 @@ func TestFSMMailIndexing(t *testing.T) {
 	if objs[0].GUID != "m1" {
 		t.Errorf("guid = %q, want %q", objs[0].GUID, "m1")
 	}
+}
+
+// slowIndexer is a SearchIndexer whose IndexMail blocks until released, so a
+// test can hold derived indexing open and observe whether Apply waits for it.
+type slowIndexer struct {
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func newSlowIndexer() *slowIndexer {
+	return &slowIndexer{release: make(chan struct{})}
+}
+
+func (s *slowIndexer) IndexMail(_, _ string, _, _ string, _ []string, _ string, _ int64, _ bool, _ []string, _ ...float64) error {
+	s.calls.Add(1)
+	<-s.release
+	return nil
+}
+func (s *slowIndexer) IndexProfile(_, _, _ string) error { return nil }
+func (s *slowIndexer) DeleteMailIndex(_, _ string) error { return nil }
+
+// mailPutLog builds a committed log entry that delivers a MailMeta for userID,
+// which is what drives the derived-index path.
+func mailPutLog(t *testing.T, index uint64, userID, guid string) *raft.Log {
+	t.Helper()
+	meta := &bongov1.MailMeta{Guid: guid, Subject: "s", From: "a@example.com"}
+	value, err := proto.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal MailMeta: %v", err)
+	}
+	return makeProtoLog(index, &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   []byte("/user/" + userID + "/mail/" + guid),
+		Value: value,
+	})
+}
+
+// TestFSMApplyDoesNotBlockOnSlowIndexing is the regression test for the
+// production stall: the first delivery after a restart took 85s because
+// FSM.Apply performed per-user SQLite and Bleve index work inline, and the
+// Raft apply path has no real deadline (the 5s at the store.DeliverMail call
+// site bounds only enqueueing — see cluster.ApplyCommand).
+//
+// With the background indexer started, Apply must return while indexing is
+// still in flight. The paired sub-test below proves this is not vacuous: with
+// no indexer started, the same Apply blocks.
+func TestFSMApplyDoesNotBlockOnSlowIndexing(t *testing.T) {
+	t.Run("with indexer: Apply returns while indexing is blocked", func(t *testing.T) {
+		env := newFSMTestEnv(t)
+		idx := newSlowIndexer()
+		env.fsm.SetSearchManager(idx)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		env.fsm.StartIndexer(ctx)
+		t.Cleanup(func() {
+			close(idx.release)
+			cancel()
+			env.fsm.StopIndexer()
+		})
+
+		done := make(chan struct{})
+		go func() {
+			env.fsm.Apply(mailPutLog(t, 1, "user-a", "guid-a"))
+			close(done)
+		}()
+
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("Apply blocked on derived indexing; it must not wait for SQLite/Bleve work")
+		}
+
+		// The write itself must still be durable in Pebble before Apply returns
+		// — only the DERIVED index work is deferred.
+		if _, err := env.pebble.Get([]byte("/user/user-a/mail/guid-a")); err != nil {
+			t.Errorf("mail key not in Pebble after Apply returned: %v", err)
+		}
+	})
+
+	t.Run("without indexer: Apply blocks (proves the test is real)", func(t *testing.T) {
+		env := newFSMTestEnv(t)
+		idx := newSlowIndexer()
+		env.fsm.SetSearchManager(idx)
+		// Deliberately no StartIndexer: indexing stays inline.
+
+		done := make(chan struct{})
+		go func() {
+			env.fsm.Apply(mailPutLog(t, 1, "user-b", "guid-b"))
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			t.Fatal("expected inline indexing to block Apply; if this passes, the sub-test above proves nothing")
+		case <-time.After(300 * time.Millisecond):
+			// Still blocked, as expected.
+		}
+		close(idx.release)
+		<-done
+	})
+}
+
+// TestFSMIndexerPreservesOrderAndDrains checks the two properties the single
+// worker exists to provide: apply order is preserved (a delete must not
+// overtake the put it follows), and cancelling the worker drains what is
+// already queued rather than dropping committed work.
+func TestFSMIndexerPreservesOrderAndDrains(t *testing.T) {
+	env := newFSMTestEnv(t)
+	rec := &orderRecorder{}
+	env.fsm.SetSearchManager(rec)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	env.fsm.StartIndexer(ctx)
+
+	const n = 50
+	for i := range n {
+		env.fsm.Apply(mailPutLog(t, uint64(i+1), "user-c", fmt.Sprintf("guid-%02d", i)))
+	}
+
+	if !env.fsm.WaitIdle(10 * time.Second) {
+		t.Fatal("derived index backlog did not drain")
+	}
+	cancel()
+	env.fsm.StopIndexer()
+
+	got := rec.seen()
+	if len(got) != n {
+		t.Fatalf("indexed %d items, want %d — committed index work was dropped", len(got), n)
+	}
+	for i, guid := range got {
+		if want := fmt.Sprintf("guid-%02d", i); guid != want {
+			t.Fatalf("index order diverged at %d: got %q want %q — a single worker must preserve apply order", i, guid, want)
+		}
+	}
+}
+
+// orderRecorder records the order in which mail GUIDs were indexed.
+type orderRecorder struct {
+	mu    sync.Mutex
+	guids []string
+}
+
+func (o *orderRecorder) IndexMail(_, guid string, _, _ string, _ []string, _ string, _ int64, _ bool, _ []string, _ ...float64) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.guids = append(o.guids, guid)
+	return nil
+}
+func (o *orderRecorder) IndexProfile(_, _, _ string) error { return nil }
+func (o *orderRecorder) DeleteMailIndex(_, _ string) error { return nil }
+
+func (o *orderRecorder) seen() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]string(nil), o.guids...)
 }

@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/hashicorp/raft"
@@ -59,6 +63,94 @@ type FSM struct {
 	search   SearchIndexer
 	blobSync BlobEnqueuer
 	notifier MailboxNotifier
+
+	// indexQueue carries derived-index work off the Raft apply path. It is
+	// nil until StartIndexer is called, and while nil the work runs inline —
+	// so any caller that never starts the worker (every unit test, and any
+	// embedder that wants synchronous indexes) keeps the original behaviour.
+	indexQueue chan *bongov1.RaftCommand
+	indexWG    sync.WaitGroup
+	// indexInflight counts items queued but not yet processed, so WaitIdle
+	// can tell "drained" from "still working".
+	indexInflight atomic.Int64
+}
+
+// indexQueueDepth bounds the derived-index backlog. Sized generously: the work
+// per item is milliseconds once a user's handles are open, so the queue only
+// fills if indexing genuinely cannot keep up, at which point falling back to
+// inline indexing (see updateDerivedIndexes) is the safe answer.
+const indexQueueDepth = 4096
+
+// slowIndexThreshold is the point at which derived indexing is considered
+// anomalous and gets logged. Opening a user's SQLite and Bleve handles for the
+// first time is the usual cause; it should still be well under this.
+const slowIndexThreshold = time.Second
+
+// StartIndexer moves derived-index maintenance (per-user SQLite and Bleve)
+// onto a background worker so it cannot block Raft's apply loop.
+//
+// This matters because the apply path looks bounded and is not. Callers reach
+// it via store.DeliverMail -> ApplyCommand(cmd, 5*time.Second), but that
+// timeout only bounds ENQUEUEING the log entry (see ApplyCommand in
+// forward.go); the subsequent future.Error() waits with no deadline until the
+// FSM has applied the entry. Indexing inline therefore let a slow index open
+// stall mail delivery indefinitely — observed in production as an 85s delay on
+// the first delivery after a restart, while the same message took 63ms once
+// the user's handles were open.
+//
+// A single worker preserves apply order, which matters because a delete
+// followed by a re-index of the same GUID must not be reordered.
+//
+// Safe to skip: with no worker started, indexing stays inline.
+func (f *FSM) StartIndexer(ctx context.Context) {
+	if f.indexQueue != nil {
+		return
+	}
+	f.indexQueue = make(chan *bongov1.RaftCommand, indexQueueDepth)
+	f.indexWG.Add(1)
+	go func() {
+		defer f.indexWG.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				// Drain what is already queued before returning: the entries
+				// are committed in Raft, so dropping them would leave the
+				// derived indexes behind until the next rebuild.
+				for {
+					select {
+					case cmd := <-f.indexQueue:
+						f.runDerivedIndexes(cmd)
+						f.indexInflight.Add(-1)
+					default:
+						return
+					}
+				}
+			case cmd := <-f.indexQueue:
+				f.runDerivedIndexes(cmd)
+				f.indexInflight.Add(-1)
+			}
+		}
+	}()
+}
+
+// StopIndexer waits for the background indexer to finish draining. Call after
+// cancelling the context passed to StartIndexer.
+func (f *FSM) StopIndexer() {
+	f.indexWG.Wait()
+}
+
+// WaitIdle blocks until the derived-index backlog is empty or timeout expires,
+// and reports whether it drained. Intended for tests and shutdown, not for the
+// delivery path.
+func (f *FSM) WaitIdle(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if f.indexInflight.Load() == 0 {
+			return true
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	return f.indexInflight.Load() == 0
 }
 
 // Compile-time interface check.
@@ -243,7 +335,84 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 }
 
 // updateDerivedIndexes updates SQLite and Bleve indexes based on the applied key.
+//
+// Only per-user mail and event indexing is deferred to the background worker.
+// Profile indexing and blob-ref enqueueing stay inline, deliberately:
+//
+//   - Profile indexing writes the SHARED system.db, which callers also write
+//     directly (user creation inserts a row there). While indexing ran inside
+//     Apply those two could not overlap, because the caller was blocked on the
+//     apply; deferring it introduced real write-write contention and
+//     SQLITE_BUSY failures on user creation. Profile updates are rare, so
+//     inline costs nothing and keeps that serialisation intact.
+//   - Blob-ref enqueueing is a non-blocking channel send, so it is already fast
+//     and has nothing to gain from deferral.
+//
+// Mail indexing is the hot path and touches only per-user databases, so it is
+// the part worth moving and the part that is safe to move.
 func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
+	if f.indexQueue == nil || !isDeferrableIndexKey(cmd.Key) {
+		f.runDerivedIndexes(cmd)
+		return
+	}
+
+	// The command is retained by the queue, so hand the worker its own copy
+	// rather than a value the caller may reuse or mutate after Apply returns.
+	queued := &bongov1.RaftCommand{
+		Op:    cmd.Op,
+		Key:   append([]byte(nil), cmd.Key...),
+		Value: append([]byte(nil), cmd.Value...),
+	}
+
+	f.indexInflight.Add(1)
+	select {
+	case f.indexQueue <- queued:
+	default:
+		// Backlog full. Index inline rather than drop: a dropped update would
+		// leave a message unsearchable until the next rebuild, and the entry
+		// is already committed. This reintroduces the original blocking
+		// behaviour, so it is logged as the capacity signal it is.
+		f.indexInflight.Add(-1)
+		f.logger.Warn("fsm: derived index queue full, indexing inline",
+			"depth", indexQueueDepth,
+			"key", string(cmd.Key),
+		)
+		f.runDerivedIndexes(cmd)
+	}
+}
+
+// isDeferrableIndexKey reports whether a key's derived-index work may run on
+// the background worker. Only per-user mail and event objects qualify — see
+// updateDerivedIndexes for why profile keys must not.
+func isDeferrableIndexKey(key []byte) bool {
+	k := string(key)
+	if !strings.HasPrefix(k, "/user/") || strings.HasSuffix(k, "/profile") {
+		return false
+	}
+	parts := strings.SplitN(k, "/", 5) // ["", "user", "{id}", "{type}", "{guid}"]
+	if len(parts) < 5 {
+		return false
+	}
+	return parts[3] == "mail" || parts[3] == "event"
+}
+
+// runDerivedIndexes performs the actual derived-index maintenance. It runs on
+// the background worker when one is started, and inline otherwise.
+func (f *FSM) runDerivedIndexes(cmd *bongov1.RaftCommand) {
+	start := time.Now()
+	defer func() {
+		// Derived indexing used to be invisible, which is why an 85s stall in
+		// here could only be attributed by decoding a spool envelope after the
+		// fact. Anything above the threshold now says so at the time.
+		if elapsed := time.Since(start); elapsed >= slowIndexThreshold {
+			f.logger.Warn("fsm: derived index update was slow",
+				"key", string(cmd.Key),
+				"op", cmd.Op.String(),
+				"duration_ms", elapsed.Milliseconds(),
+			)
+		}
+	}()
+
 	key := string(cmd.Key)
 
 	if strings.HasPrefix(key, "/user/") {
