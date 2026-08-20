@@ -1144,6 +1144,20 @@ func (a *Agent) Run(ctx context.Context) error {
 			backend.SetQuotaChecker(a.DomainQuota)
 		}
 
+		// Operator-configured trusted networks (US-002): a connecting source IP
+		// inside one of these CIDRs is treated as trusted the same as an
+		// authenticated submission session (see (*smtp.Session).inboundMeta).
+		// Parsed once here and set before Listen — SetTrustedNetworks is not
+		// safe to call after Listen starts serving sessions.
+		trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
+		if err != nil {
+			return fmt.Errorf("smtp trusted networks: %w", err)
+		}
+		backend.SetTrustedNetworks(trustedNets)
+		if len(trustedNets) > 0 {
+			a.logger.Info("smtp: trusted networks configured", "count", len(trustedNets))
+		}
+
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
 		if err := a.SMTP.Listen(); err != nil {
 			return fmt.Errorf("smtp listen: %w", err)
@@ -2153,6 +2167,17 @@ func (a *Agent) startSMTPAgent() error {
 	spfChecker := mail.NewSPFChecker()
 	backend.SetSPFChecker(spfChecker)
 	a.SPFChecker = spfChecker
+
+	// Wired for future-correctness consistency only: internal/agent/grpc/server.go
+	// DepositMessage unconditionally strips Trusted (env.Trusted = false) because
+	// the deposit channel is not yet authenticated, so this has no behavioural
+	// effect today. Do not remove that strip here or in grpc/server.go — that is
+	// a separate trust-boundary change, out of scope for this task.
+	trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
+	if err != nil {
+		return fmt.Errorf("smtp trusted networks: %w", err)
+	}
+	backend.SetTrustedNetworks(trustedNets)
 
 	isDev := false // agents are never in dev mode
 	a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)

@@ -551,6 +551,74 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name:    "no trusted networks is valid",
+			modify:  func(c *Config) { c.SMTP.TrustedNetworks = nil },
+			wantErr: false,
+		},
+		{
+			name: "valid mixed v4 and v6 trusted networks",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"10.0.0.0/8", "2001:db8::/32"}
+			},
+			wantErr: false,
+		},
+		{
+			name: "trusted network with invalid prefix length is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"10.0.0.0/33"}
+			},
+			wantErr: true,
+			errMsg:  "10.0.0.0/33",
+		},
+		{
+			name: "trusted network with negative prefix length is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"10.0.0.0/-1"}
+			},
+			wantErr: true,
+			errMsg:  "10.0.0.0/-1",
+		},
+		{
+			name: "non-CIDR trusted network is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"not-a-cidr"}
+			},
+			wantErr: true,
+			errMsg:  "not-a-cidr",
+		},
+		{
+			name: "bare IP without mask is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"10.0.0.1"}
+			},
+			wantErr: true,
+			errMsg:  "10.0.0.1",
+		},
+		{
+			name: "empty string trusted network entry is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{""}
+			},
+			wantErr: true,
+			errMsg:  "smtp.trusted_networks",
+		},
+		{
+			name: "IPv6 trusted network with invalid prefix length is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"2001:db8::/129"}
+			},
+			wantErr: true,
+			errMsg:  "2001:db8::/129",
+		},
+		{
+			name: "comma-separated CIDRs in a single entry is rejected",
+			modify: func(c *Config) {
+				c.SMTP.TrustedNetworks = []string{"10.0.0.0/8, 192.168.0.0/16"}
+			},
+			wantErr: true,
+			errMsg:  "smtp.trusted_networks",
+		},
 	}
 
 	for _, tt := range tests {
@@ -636,5 +704,90 @@ func TestLoadWithConfigFile(t *testing.T) {
 	// file values should be loaded
 	if cfg.SMTP.Port != 2525 {
 		t.Errorf("expected SMTP port 2525 from file, got %d", cfg.SMTP.Port)
+	}
+}
+
+func TestSMTPConfigParseTrustedNetworks(t *testing.T) {
+	tests := []struct {
+		name     string
+		networks []string
+		wantErr  bool
+		errMsg   string
+		wantLen  int
+	}{
+		{
+			name:     "nil is disabled",
+			networks: nil,
+			wantLen:  0,
+		},
+		{
+			name:     "empty slice is disabled",
+			networks: []string{},
+			wantLen:  0,
+		},
+		{
+			name:     "single IPv4 CIDR",
+			networks: []string{"10.0.0.0/8"},
+			wantLen:  1,
+		},
+		{
+			name:     "mixed IPv4 and IPv6 CIDRs",
+			networks: []string{"10.0.0.0/8", "2001:db8::/32"},
+			wantLen:  2,
+		},
+		{
+			name:     "entry is trimmed of surrounding whitespace",
+			networks: []string{"  10.0.0.0/8  "},
+			wantLen:  1,
+		},
+		{
+			name:     "malformed CIDR names the offending value",
+			networks: []string{"10.0.0.0/33"},
+			wantErr:  true,
+			errMsg:   `invalid CIDR "10.0.0.0/33"`,
+		},
+		{
+			name:     "bare IP without mask names the offending value",
+			networks: []string{"10.0.0.1"},
+			wantErr:  true,
+			errMsg:   `invalid CIDR "10.0.0.1"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			smtpCfg := &SMTPConfig{TrustedNetworks: tt.networks}
+			nets, err := smtpCfg.ParseTrustedNetworks()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ParseTrustedNetworks() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil {
+				if tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+					t.Errorf("ParseTrustedNetworks() error = %q, want substring %q", err.Error(), tt.errMsg)
+				}
+				return
+			}
+			if len(nets) != tt.wantLen {
+				t.Errorf("ParseTrustedNetworks() returned %d networks, want %d", len(nets), tt.wantLen)
+			}
+		})
+	}
+}
+
+// TestShippedConfigsPassValidate proves cfg.Validate() is actually reachable
+// against real deployment configs, not just synthetic Defaults()-based
+// fixtures: both shipped HCL files must load and validate cleanly once
+// Validate() is wired into the startup path (runServe).
+func TestShippedConfigsPassValidate(t *testing.T) {
+	for _, path := range []string{"../../deploy/bongo.prod.hcl", "../../deploy/bongo.example.hcl"} {
+		t.Run(path, func(t *testing.T) {
+			cfg, err := LoadFromFile(path)
+			if err != nil {
+				t.Fatalf("LoadFromFile(%q) failed: %v", path, err)
+			}
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate() on %q failed: %v", path, err)
+			}
+		})
 	}
 }

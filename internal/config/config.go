@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 	"time"
@@ -122,15 +123,43 @@ type TLSConfig struct {
 }
 
 type SMTPConfig struct {
-	Enabled        bool           `hcl:"enabled,optional" mapstructure:"enabled"`
-	Port           int            `hcl:"port,optional" mapstructure:"port"`
-	SubmissionPort int            `hcl:"submission_port,optional" mapstructure:"submission_port"`
-	Hostname       string         `hcl:"hostname,optional" mapstructure:"hostname"`
-	ProxyProtocol  bool           `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
-	TLS            TLSConfig      `hcl:"tls,block" mapstructure:"tls"`
-	Limits         SMTPLimits     `hcl:"limits,block" mapstructure:"limits"`
-	Relay          SMTPRelay      `hcl:"relay,block" mapstructure:"relay"`
-	DKIM           SMTPDKIMConfig `hcl:"dkim,block" mapstructure:"dkim"`
+	Enabled        bool   `hcl:"enabled,optional" mapstructure:"enabled"`
+	Port           int    `hcl:"port,optional" mapstructure:"port"`
+	SubmissionPort int    `hcl:"submission_port,optional" mapstructure:"submission_port"`
+	Hostname       string `hcl:"hostname,optional" mapstructure:"hostname"`
+	ProxyProtocol  bool   `hcl:"proxy_protocol,optional" mapstructure:"proxy_protocol"`
+	// TrustedNetworks lists CIDR blocks whose connecting source IP is treated
+	// as an operator-trusted internal submitter (same as an authenticated
+	// submission session) without requiring SMTP AUTH. Empty by default: no
+	// address is trusted implicitly, not even loopback or RFC 1918 ranges.
+	// See SMTPConfig.ParseTrustedNetworks and (*smtp.Session).inboundMeta.
+	TrustedNetworks []string       `hcl:"trusted_networks,optional" mapstructure:"trusted_networks"`
+	TLS             TLSConfig      `hcl:"tls,block" mapstructure:"tls"`
+	Limits          SMTPLimits     `hcl:"limits,block" mapstructure:"limits"`
+	Relay           SMTPRelay      `hcl:"relay,block" mapstructure:"relay"`
+	DKIM            SMTPDKIMConfig `hcl:"dkim,block" mapstructure:"dkim"`
+}
+
+// ParseTrustedNetworks parses TrustedNetworks into net.IPNet values once, so
+// callers can hold the parsed form for the lifetime of the process instead of
+// re-parsing per connection. Returns (nil, nil) when no networks are
+// configured. A malformed entry fails with an error naming the offending
+// value, so a typo in the config file fails startup rather than silently
+// disabling trust for that entry.
+func (s *SMTPConfig) ParseTrustedNetworks() ([]*net.IPNet, error) {
+	if len(s.TrustedNetworks) == 0 {
+		return nil, nil
+	}
+	nets := make([]*net.IPNet, 0, len(s.TrustedNetworks))
+	for _, entry := range s.TrustedNetworks {
+		entry = strings.TrimSpace(entry)
+		_, ipNet, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("smtp.trusted_networks: invalid CIDR %q: %w", entry, err)
+		}
+		nets = append(nets, ipNet)
+	}
+	return nets, nil
 }
 
 type SMTPLimits struct {
@@ -358,6 +387,10 @@ func (c *Config) Validate() error {
 		if len(missing) > 0 {
 			return fmt.Errorf("cluster: joining peers requires transport security before a multi-node cluster can form; set %s (see docs/multi-node-cluster-checklist.md)", strings.Join(missing, " and "))
 		}
+	}
+
+	if _, err := c.SMTP.ParseTrustedNetworks(); err != nil {
+		return err
 	}
 
 	return nil

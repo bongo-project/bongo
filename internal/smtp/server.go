@@ -67,6 +67,13 @@ type Backend struct {
 	// temporarily locked out after too many failures (brute-force defence).
 	// It has its own internal locking; nil is treated as disabled.
 	authFail *authlimit.Limiter
+
+	// trustedNets holds the operator-configured trusted-network CIDRs, parsed
+	// once at startup by config.SMTPConfig.ParseTrustedNetworks. nil (the
+	// default) means the feature is disabled: no address is trusted
+	// implicitly. Written once before Listen/Serve start (see
+	// SetTrustedNetworks); read concurrently by sessions thereafter.
+	trustedNets []*net.IPNet
 }
 
 // NewBackend creates a new SMTP backend.
@@ -103,6 +110,51 @@ func (b *Backend) SetQuotaChecker(qc QuotaChecker) {
 // submission sessions to external recipients.
 func (b *Backend) SetRelayQueue(q RelayQueuer) {
 	b.relayQueue = q
+}
+
+// SetTrustedNetworks sets the CIDR ranges whose connecting source IP is
+// treated as an operator-trusted internal submitter, equivalent to an
+// authenticated submission session (see inboundMeta). nets should be parsed
+// once at startup via config.SMTPConfig.ParseTrustedNetworks.
+//
+// Unlike the other setters in this block, this one is NOT safe to call after
+// Listen/Serve: it writes an unsynchronized field that sessions subsequently
+// read from other goroutines. Call it before a.SMTP.Listen(), as the other
+// backend construction sites in internal/agent/agent.go do.
+//
+// Security note: when smtp.proxy_protocol is enabled, the effective source IP
+// can be asserted by any peer connecting from a loopback/private/link-local
+// address (see internal/netx/proxyproto.go). In that configuration,
+// trusted_networks is only as trustworthy as the set of hosts that can reach
+// the SMTP listener from such an address.
+func (b *Backend) SetTrustedNetworks(nets []*net.IPNet) {
+	b.trustedNets = nets
+}
+
+// isTrustedSource reports whether ip falls inside one of the configured
+// trusted networks. Fail-closed by construction: no networks configured, an
+// empty ip, or an unparseable ip all report false. This must never default to
+// true on any error path.
+func (b *Backend) isTrustedSource(ip string) bool {
+	if len(b.trustedNets) == 0 {
+		return false
+	}
+	if ip == "" {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, n := range b.trustedNets {
+		if n == nil {
+			continue
+		}
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 // NewSession is called when a new SMTP connection is established.
@@ -346,18 +398,29 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 }
 
 // inboundMeta builds the InboundMeta for the message currently being
-// received. Trusted is derived solely from the session's own
-// authentication state (s.authed) — this is the ONLY place in the codebase
-// permitted to set it. s.authed can only be true on the submission port
-// (see AuthMechanisms, which returns nil unless s.submission), so an
-// unauthenticated MX-port session can never produce a trusted envelope.
-// A future trusted-network CIDR check (source IP allowlisting) should
-// extend the Trusted expression here rather than adding another call site.
+// received. Trusted has exactly two sources, both ORed together here — this
+// is the ONLY place in the codebase permitted to set it:
+//  1. s.authed — the session's own authentication state. s.authed can only be
+//     true on the submission port (see AuthMechanisms, which returns nil
+//     unless s.submission), so an unauthenticated MX-port session can never
+//     become trusted this way.
+//  2. b.isTrustedSource(sourceIP) — the connecting source IP falls inside an
+//     operator-configured trusted_networks CIDR (config.SMTPConfig). Empty by
+//     default, so no address is trusted implicitly, not even loopback or
+//     RFC 1918 ranges.
+//
+// Any future trust source must extend the expression below rather than
+// adding another call site.
+//
+// Security note: with smtp.proxy_protocol enabled, sourceIP already reflects
+// the PROXY-protocol-asserted client address rather than the TCP peer (see
+// internal/netx/proxyproto.go), so the CIDR check above inherits that trust
+// boundary — see SetTrustedNetworks for details.
 func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 	return &InboundMeta{
 		SPFResult: s.spfResult,
 		SourceIP:  sourceIP,
-		Trusted:   s.authed,
+		Trusted:   s.authed || s.backend.isTrustedSource(sourceIP),
 	}
 }
 
