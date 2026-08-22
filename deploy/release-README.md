@@ -84,8 +84,13 @@ lines.
 
 ## Reporting a security issue
 
-Please report privately rather than in the open, and give a reasonable window to fix it before
-disclosing. See the contact address below.
+Open an issue on the private repository (see Contact below) — because the repository is private,
+that is already a closed channel rather than public disclosure. Please give a reasonable window to
+fix it before disclosing anywhere else.
+
+This is a mail server handling real messages, so security reports are especially welcome. Anything
+that lets one account reach another's mail, lets an unauthenticated sender relay, or exposes stored
+messages is worth reporting even if you are not certain.
 
 ## Version
 
@@ -94,11 +99,26 @@ build date. Please include that line in any report.
 
 ## Contact
 
-<!-- REPLACE BEFORE SHARING: put a real address here, and the same one in SECURITY reports above. -->
-FEEDBACK_CONTACT_GOES_HERE
+Report everything — bugs, confusion, and security issues — as an issue on the repository:
+
+**<https://github.com/lhaig/bongo-go/issues>**
+
+The repository is private, so you need to have been added as a collaborator before you can open an
+issue. If you were given this build but cannot reach that page, ask and you will be added.
+
+That privacy is also why security reports belong there: on a private repository, issues are visible
+only to collaborators, so a report is not public disclosure. If the repository is ever made public,
+this changes, and security issues should move to a private channel instead.
 
 ## Terms
 
-<!-- REPLACE BEFORE SHARING: state the terms you are offering this under. -->
-This build is shared for evaluation and feedback only. All rights reserved unless stated
-otherwise in an accompanying licence file.
+This is a **private build, shared directly with you for evaluation and feedback**. Please do not
+redistribute it or pass it on.
+
+No open-source licence applies to it yet. Bongo-Go is a ground-up reimplementation of the original
+Bongo mail server, and the licensing position is still being settled; a licence will accompany any
+future public release. Until then, treat this as "shared with you, for you to try" rather than as
+software you have been granted rights over.
+
+Nothing here is a warranty. It is a pre-release mail server: run it where losing its data would not
+matter to you.
