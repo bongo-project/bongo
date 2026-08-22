@@ -256,6 +256,13 @@ type AntispamConfig struct {
 	// existing precedent of a pointer HCL block with nil-safe accessors.
 	SpamAssassin *SpamAssassinConfig `hcl:"spamassassin,block" mapstructure:"spamassassin"`
 
+	// DNSBL is a pointer block for the same reason as SpamAssassin above:
+	// hclsimple/gohcl treats a non-pointer block field as mandatory, so a
+	// plain struct here would make every existing config file without a
+	// dnsbl block (including the deployed bongo.prod.hcl and every test
+	// fixture) fail to decode with "Missing dnsbl block".
+	DNSBL *DNSBLConfig `hcl:"dnsbl,block" mapstructure:"dnsbl"`
+
 	// Inbound DMARC policy evaluation checks SPF/DKIM identifier alignment
 	// against the RFC5322.From domain and honours the domain's published policy
 	// — the primary defence against same-domain sender spoofing reaching the
@@ -275,6 +282,195 @@ func (a AntispamConfig) DMARCEnabled() bool { return !a.DMARCDisabled }
 // DMARCEnforce reports whether a failing DMARC policy is applied to delivery
 // (default true). False means monitoring mode (evaluate and log only).
 func (a AntispamConfig) DMARCEnforce() bool { return !a.DMARCMonitorOnly }
+
+// DNSBLConfig configures DNS blocklist (DNSBL/RBL) checks: a global
+// enable/timeout/cache TTL plus a repeated set of zones to query, each with
+// its own scoring weight. Fields feed internal/dnsbl.NewChecker (task 13.1);
+// this package has no knowledge of dnsbl.Checker and never constructs one —
+// that wiring is task 13.3.
+type DNSBLConfig struct {
+	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`
+	// Timeout is a duration string (e.g. "5s"), parsed by DNSBLTimeout().
+	Timeout string `hcl:"timeout,optional" mapstructure:"timeout"`
+	// CacheTTL is a duration string (e.g. "10m"), parsed by DNSBLCacheTTL().
+	CacheTTL string `hcl:"cache_ttl,optional" mapstructure:"cache_ttl"`
+	// Zones is a repeated `zone "name" { weight = N }` block. gohcl replaces
+	// this slice wholesale on decode (it is not merged with any default), so
+	// all defaulting of an individual zone's weight happens in
+	// resolvedZones/DNSBLZones, not here.
+	Zones []DNSBLZone `hcl:"zone,block" mapstructure:"zone"`
+}
+
+// DNSBLZone is one blocklist zone to query, with its scoring weight. Name is
+// an HCL block label (`zone "zen.spamhaus.org" { ... }`), not an attribute,
+// so it must be declared before any hcl attribute tags for gohcl to parse it
+// as the block's label.
+type DNSBLZone struct {
+	Name   string  `hcl:"name,label"`
+	Weight float64 `hcl:"weight,optional" mapstructure:"weight"`
+}
+
+// DNSBL backend defaults.
+//
+//   - dnsblDefaultWeight is the score contribution of a zone with no explicit
+//     weight. 0.25 is meaningful but well below antispamDefaultThreshold
+//     (0.5), so a single blocklist listing alone can never tag a message as
+//     spam — it must be corroborated by another signal (a second listing, a
+//     failed DMARC check, the builtin heuristic scorer, etc).
+//   - dnsblDefaultTimeout and dnsblDefaultCacheTTL deliberately mirror the
+//     unexported defaultTimeout/defaultCacheTTL in internal/dnsbl/dnsbl.go
+//     (5s / 10m). This package cannot import those unexported constants, so
+//     the two must be kept in step by hand if either changes.
+const (
+	dnsblDefaultWeight   = 0.25
+	dnsblDefaultTimeout  = 5 * time.Second
+	dnsblDefaultCacheTTL = 10 * time.Minute
+)
+
+// DNSBLEnabled reports whether the dnsbl block is present and explicitly
+// enabled. False when the block is absent (nil receiver) or enabled = false
+// — an absent block must never silently behave as enabled.
+func (a AntispamConfig) DNSBLEnabled() bool {
+	return a.DNSBL != nil && a.DNSBL.Enabled
+}
+
+// DNSBLZones returns the configured zones with weights resolved (an explicit
+// or omitted zero weight becomes dnsblDefaultWeight; see resolvedZones).
+// Names are trimmed and lower-cased to match internal/dnsbl's own zone
+// normalisation. Returns nil when the block is absent or has no zones.
+func (a AntispamConfig) DNSBLZones() []DNSBLZone {
+	return a.DNSBL.resolvedZones()
+}
+
+// DNSBLZoneNames returns just the (normalised) zone names, for callers that
+// only need internal/dnsbl.NewChecker's zones argument.
+func (a AntispamConfig) DNSBLZoneNames() []string {
+	zones := a.DNSBLZones()
+	names := make([]string, 0, len(zones))
+	for _, z := range zones {
+		names = append(names, z.Name)
+	}
+	return names
+}
+
+// DNSBLTimeout parses Timeout into a time.Duration, defaulting to 5s
+// (dnsblDefaultTimeout) when the block is absent, unset, or unparseable.
+// The unparseable fallback is safe because DNSBLConfig.Validate is expected
+// to have already rejected an unparseable value at startup (see
+// internal/agent.Run); this accessor stays lenient so it never panics if
+// called before or without validation having run.
+func (a AntispamConfig) DNSBLTimeout() time.Duration {
+	if a.DNSBL == nil || a.DNSBL.Timeout == "" {
+		return dnsblDefaultTimeout
+	}
+	d, err := time.ParseDuration(a.DNSBL.Timeout)
+	if err != nil {
+		return dnsblDefaultTimeout
+	}
+	return d
+}
+
+// DNSBLCacheTTL parses CacheTTL into a time.Duration, defaulting to 10m
+// (dnsblDefaultCacheTTL) when the block is absent, unset, or unparseable.
+// See DNSBLTimeout for why the fallback is deliberately lenient.
+func (a AntispamConfig) DNSBLCacheTTL() time.Duration {
+	if a.DNSBL == nil || a.DNSBL.CacheTTL == "" {
+		return dnsblDefaultCacheTTL
+	}
+	d, err := time.ParseDuration(a.DNSBL.CacheTTL)
+	if err != nil {
+		return dnsblDefaultCacheTTL
+	}
+	return d
+}
+
+// normalizeDNSBLZone must match internal/dnsbl's normalizeZone exactly: trim,
+// lower-case, and strip a trailing dot. Both Validate and resolvedZones use
+// it, so the duplicate check and the names handed to the checker can never
+// disagree. Getting this wrong is not cosmetic: if config treats
+// "zen.spamhaus.org" and "zen.spamhaus.org." as distinct while dnsbl collapses
+// them, Validate passes, the same blocklist is queried twice, and its weight
+// is counted twice against the sender.
+//
+// internal/dnsbl's version is unexported and this package deliberately holds
+// no dnsbl import, so the two must be kept in step by hand.
+func normalizeDNSBLZone(name string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+}
+
+// resolvedZones normalises zone names (see normalizeDNSBLZone) and applies
+// dnsblDefaultWeight to any zone
+// whose Weight is exactly 0. HCL cannot distinguish "weight = 0" from "weight
+// omitted" on a float64 field, so the two are treated identically: a
+// zero-weight zone would never contribute to the spam score, which is
+// pointless, so "0 means use the default" is the more useful reading. This
+// also means an operator cannot configure an explicit zero weight to
+// deliberately disable one zone while keeping it listed — removing the zone
+// block is how you do that.
+func (c *DNSBLConfig) resolvedZones() []DNSBLZone {
+	if c == nil {
+		return nil
+	}
+	out := make([]DNSBLZone, 0, len(c.Zones))
+	for _, z := range c.Zones {
+		weight := z.Weight
+		if weight == 0 {
+			weight = dnsblDefaultWeight
+		}
+		out = append(out, DNSBLZone{
+			Name:   normalizeDNSBLZone(z.Name),
+			Weight: weight,
+		})
+	}
+	return out
+}
+
+// Validate checks the dnsbl block for invalid values, naming the offending
+// value in the returned error so a config typo fails startup with a clear
+// message (see internal/agent.Run, and SMTPConfig.ParseTrustedNetworks for
+// the pattern this follows). A nil receiver (no dnsbl block) is valid and
+// returns nil.
+//
+// Validation runs against the RAW zone list, before any weight defaulting:
+// resolvedZones maps an explicit 0 to dnsblDefaultWeight, and running
+// validation after that mapping would let an out-of-range weight of exactly
+// 0 slip through disguised as "omitted". A negative weight is the most
+// important case to catch here: it would SUBTRACT from the spam score,
+// making a blocklisted IP look cleaner than an unlisted one, turning an
+// operator typo into a spam-delivery mechanism.
+func (c *DNSBLConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+
+	seen := make(map[string]bool, len(c.Zones))
+	for _, z := range c.Zones {
+		name := normalizeDNSBLZone(z.Name)
+		if name == "" {
+			return fmt.Errorf("antispam.dnsbl.zone: empty zone name")
+		}
+		if seen[name] {
+			return fmt.Errorf("antispam.dnsbl.zone %q: duplicate zone", name)
+		}
+		seen[name] = true
+		if z.Weight < 0 || z.Weight > 1 {
+			return fmt.Errorf("antispam.dnsbl.zone %q: weight %v outside [0.0, 1.0]", name, z.Weight)
+		}
+	}
+
+	if c.Timeout != "" {
+		if _, err := time.ParseDuration(c.Timeout); err != nil {
+			return fmt.Errorf("antispam.dnsbl.timeout: invalid duration %q: %w", c.Timeout, err)
+		}
+	}
+	if c.CacheTTL != "" {
+		if _, err := time.ParseDuration(c.CacheTTL); err != nil {
+			return fmt.Errorf("antispam.dnsbl.cache_ttl: invalid duration %q: %w", c.CacheTTL, err)
+		}
+	}
+
+	return nil
+}
 
 type AntispamBuiltin struct {
 	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`

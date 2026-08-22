@@ -353,6 +353,17 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
+	// Validate the optional antispam.dnsbl block before anything else, so a
+	// malformed value (bad zone name, out-of-range weight, unparseable
+	// timeout/cache_ttl) fails startup with a clear message on every role,
+	// not just SMTP-enabled server nodes. This is deliberately point-of-use
+	// validation, not cfg.Validate() (see CLAUDE.md and
+	// SMTPConfig.ParseTrustedNetworks below for the same pattern). The
+	// checker itself is not constructed here — that is task 13.3.
+	if err := a.Config.Antispam.DNSBL.Validate(); err != nil {
+		return fmt.Errorf("antispam dnsbl config: %w", err)
+	}
+
 	// Agent role has a fundamentally different startup path.
 	if a.Config.Server.Role == "agent" {
 		return a.runAgent(ctx)

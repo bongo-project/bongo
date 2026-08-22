@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -968,6 +969,331 @@ func TestShippedConfigsPassValidate(t *testing.T) {
 			}
 			if err := cfg.Validate(); err != nil {
 				t.Fatalf("Validate() on %q failed: %v", path, err)
+			}
+		})
+	}
+}
+
+// TestConfigDecodesWithoutDNSBLBlock is the US-001 "no behaviour change when
+// absent" regression: an HCL file with no dnsbl block (the shared testdata
+// fixture, and every existing deployment config) must still decode, and the
+// DNSBL accessors must report the feature is off with no zones — never
+// silently enabled and never a nil-pointer panic.
+func TestConfigDecodesWithoutDNSBLBlock(t *testing.T) {
+	cfg, err := LoadFromFile("../../test/testdata/config.hcl")
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+	if cfg.Antispam.DNSBL != nil {
+		t.Errorf("Antispam.DNSBL = %+v, want nil (no dnsbl block in testdata/config.hcl)", cfg.Antispam.DNSBL)
+	}
+	if cfg.Antispam.DNSBLEnabled() {
+		t.Error("DNSBLEnabled() = true, want false when no dnsbl block is present")
+	}
+	if names := cfg.Antispam.DNSBLZoneNames(); len(names) != 0 {
+		t.Errorf("DNSBLZoneNames() = %v, want empty", names)
+	}
+	if zones := cfg.Antispam.DNSBLZones(); len(zones) != 0 {
+		t.Errorf("DNSBLZones() = %v, want empty", zones)
+	}
+	if got := cfg.Antispam.DNSBLTimeout(); got != dnsblDefaultTimeout {
+		t.Errorf("DNSBLTimeout() = %v, want default %v", got, dnsblDefaultTimeout)
+	}
+	if got := cfg.Antispam.DNSBLCacheTTL(); got != dnsblDefaultCacheTTL {
+		t.Errorf("DNSBLCacheTTL() = %v, want default %v", got, dnsblDefaultCacheTTL)
+	}
+	if err := cfg.Antispam.DNSBL.Validate(); err != nil {
+		t.Errorf("DNSBL.Validate() on nil block = %v, want nil", err)
+	}
+}
+
+// TestConfigDecodesWithAntispamBlockButNoDNSBLBlock covers the second half of
+// acceptance criterion 6: since Config.Antispam is itself a mandatory
+// non-pointer HCL block (a file with no antispam block at all cannot decode,
+// pointer or not), the meaningful case is an antispam block that omits dnsbl
+// specifically. Uses a minimal but complete fixture rather than the shared
+// testdata file, so this test does not depend on that file's shape.
+func TestConfigDecodesWithAntispamBlockButNoDNSBLBlock(t *testing.T) {
+	const hcl = `
+server {
+  role = "dev"
+}
+cluster {
+  raft {}
+  gossip {}
+  tls {}
+}
+storage {
+  pebble {}
+}
+smtp {
+  tls {}
+  limits {}
+  relay {}
+  dkim {}
+}
+imap {}
+pop3 {}
+web {
+  tls {}
+}
+caldav {}
+antispam {
+  builtin {
+    enabled = true
+  }
+  rspamd {
+    enabled = false
+  }
+}
+antivirus {
+  clamav {}
+}
+pipeline {}
+telemetry {
+  prometheus {}
+  log {}
+}
+`
+	dir := t.TempDir()
+	path := dir + "/config.hcl"
+	if err := os.WriteFile(path, []byte(hcl), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+	if cfg.Antispam.DNSBL != nil {
+		t.Errorf("Antispam.DNSBL = %+v, want nil (antispam block present, dnsbl block absent)", cfg.Antispam.DNSBL)
+	}
+	if cfg.Antispam.DNSBLEnabled() {
+		t.Error("DNSBLEnabled() = true, want false")
+	}
+}
+
+// TestConfigDecodesWithDNSBLBlock verifies the new HCL block parses all its
+// fields correctly when present, following the same temp-file injection
+// technique as TestConfigDecodesWithSpamAssassinBlock above, so the shared
+// testdata fixture stays dnsbl-free for the absent-block tests.
+func TestConfigDecodesWithDNSBLBlock(t *testing.T) {
+	base, err := os.ReadFile("../../test/testdata/config.hcl")
+	if err != nil {
+		t.Fatalf("read base fixture: %v", err)
+	}
+	const marker = "  rspamd {\n    enabled = false\n    url     = \"http://localhost:11333\"\n  }\n}"
+	inject := "  rspamd {\n    enabled = false\n    url     = \"http://localhost:11333\"\n  }\n\n" +
+		"  dnsbl {\n" +
+		"    enabled   = true\n" +
+		"    timeout   = \"3s\"\n" +
+		"    cache_ttl = \"5m\"\n" +
+		"    zone \"zen.spamhaus.org\"       { weight = 0.4 }\n" +
+		"    zone \"b.barracudacentral.org\" { weight = 0.3 }\n" +
+		"    zone \"bl.spamcop.net\"         {}\n" +
+		"  }\n}"
+	hcl := strings.Replace(string(base), marker, inject, 1)
+	if hcl == string(base) {
+		t.Fatal("marker not found in base fixture; test/testdata/config.hcl's antispam block changed shape")
+	}
+
+	dir := t.TempDir()
+	path := dir + "/config.hcl"
+	if err := os.WriteFile(path, []byte(hcl), 0o600); err != nil {
+		t.Fatalf("write temp config: %v", err)
+	}
+
+	cfg, err := LoadFromFile(path)
+	if err != nil {
+		t.Fatalf("LoadFromFile failed: %v", err)
+	}
+
+	d := cfg.Antispam.DNSBL
+	if d == nil {
+		t.Fatal("Antispam.DNSBL = nil, want a decoded block")
+	}
+	if !cfg.Antispam.DNSBLEnabled() {
+		t.Error("DNSBLEnabled() = false, want true")
+	}
+	if err := d.Validate(); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+	if got := cfg.Antispam.DNSBLTimeout(); got != 3*time.Second {
+		t.Errorf("DNSBLTimeout() = %v, want 3s", got)
+	}
+	if got := cfg.Antispam.DNSBLCacheTTL(); got != 5*time.Minute {
+		t.Errorf("DNSBLCacheTTL() = %v, want 5m", got)
+	}
+
+	wantNames := []string{"zen.spamhaus.org", "b.barracudacentral.org", "bl.spamcop.net"}
+	if names := cfg.Antispam.DNSBLZoneNames(); !slices.Equal(names, wantNames) {
+		t.Errorf("DNSBLZoneNames() = %v, want %v", names, wantNames)
+	}
+
+	zones := cfg.Antispam.DNSBLZones()
+	if len(zones) != 3 {
+		t.Fatalf("DNSBLZones() returned %d zones, want 3", len(zones))
+	}
+	wantWeights := map[string]float64{
+		"zen.spamhaus.org":       0.4,
+		"b.barracudacentral.org": 0.3,
+		"bl.spamcop.net":         dnsblDefaultWeight, // no explicit weight -> default
+	}
+	for _, z := range zones {
+		want, ok := wantWeights[z.Name]
+		if !ok {
+			t.Errorf("unexpected zone %q", z.Name)
+			continue
+		}
+		if z.Weight != want {
+			t.Errorf("zone %q weight = %v, want %v", z.Name, z.Weight, want)
+		}
+	}
+}
+
+// TestDNSBLZoneExplicitZeroWeightUsesDefault documents and pins the decided
+// behaviour for the HCL float64 ambiguity: "weight = 0" and "weight omitted"
+// are indistinguishable on the wire, so both resolve to dnsblDefaultWeight.
+// A genuinely zero-weight zone would never contribute to the score, which is
+// pointless, so treating explicit 0 as "use the default" is the more useful
+// reading (documented on DNSBLConfig.resolvedZones).
+func TestDNSBLZoneExplicitZeroWeightUsesDefault(t *testing.T) {
+	cfg := &DNSBLConfig{
+		Enabled: true,
+		Zones:   []DNSBLZone{{Name: "zen.spamhaus.org", Weight: 0}},
+	}
+	zones := cfg.resolvedZones()
+	if len(zones) != 1 {
+		t.Fatalf("resolvedZones() returned %d zones, want 1", len(zones))
+	}
+	if zones[0].Weight != dnsblDefaultWeight {
+		t.Errorf("resolvedZones()[0].Weight = %v, want default %v", zones[0].Weight, dnsblDefaultWeight)
+	}
+}
+
+// TestDNSBLConfigValidate is table-driven across every rejection case FR-2 /
+// US-001 requires, plus the happy path.
+func TestDNSBLConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *DNSBLConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "nil receiver (no dnsbl block) is valid",
+			cfg:  nil,
+		},
+		{
+			name: "empty zone list is valid",
+			cfg:  &DNSBLConfig{Enabled: true},
+		},
+		{
+			name: "happy path with explicit and defaulted weights",
+			cfg: &DNSBLConfig{
+				Enabled:  true,
+				Timeout:  "5s",
+				CacheTTL: "10m",
+				Zones: []DNSBLZone{
+					{Name: "zen.spamhaus.org", Weight: 0.4},
+					{Name: "bl.spamcop.net"},
+				},
+			},
+		},
+		{
+			name:    "empty zone name",
+			cfg:     &DNSBLConfig{Zones: []DNSBLZone{{Name: ""}}},
+			wantErr: true,
+			errMsg:  "empty zone name",
+		},
+		{
+			name:    "whitespace-only zone name",
+			cfg:     &DNSBLConfig{Zones: []DNSBLZone{{Name: "   "}}},
+			wantErr: true,
+			errMsg:  "empty zone name",
+		},
+		{
+			name: "duplicate zone name",
+			cfg: &DNSBLConfig{Zones: []DNSBLZone{
+				{Name: "zen.spamhaus.org"},
+				{Name: "zen.spamhaus.org"},
+			}},
+			wantErr: true,
+			errMsg:  `"zen.spamhaus.org": duplicate zone`,
+		},
+		{
+			name: "duplicate zone name differing only by case",
+			cfg: &DNSBLConfig{Zones: []DNSBLZone{
+				{Name: "Zen.Spamhaus.org"},
+				{Name: "zen.spamhaus.org"},
+			}},
+			wantErr: true,
+			errMsg:  "duplicate zone",
+		},
+		{
+			// internal/dnsbl's normalizeZone strips a trailing dot, so
+			// these are ONE zone downstream. If Validate let both through,
+			// the same blocklist would be queried twice and its weight
+			// counted twice against the sender.
+			name: "duplicate zone name differing only by a trailing dot",
+			cfg: &DNSBLConfig{Zones: []DNSBLZone{
+				{Name: "zen.spamhaus.org"},
+				{Name: "zen.spamhaus.org."},
+			}},
+			wantErr: true,
+			errMsg:  "duplicate zone",
+		},
+		{
+			name: "duplicate zone name differing by case, trailing dot and surrounding space",
+			cfg: &DNSBLConfig{Zones: []DNSBLZone{
+				{Name: "  Zen.Spamhaus.org.  "},
+				{Name: "zen.spamhaus.org"},
+			}},
+			wantErr: true,
+			errMsg:  "duplicate zone",
+		},
+		{
+			// A bare "." trims to empty, the same as "" — it must be
+			// rejected as an empty name rather than accepted as a zone.
+			name:    "zone name that is only a dot",
+			cfg:     &DNSBLConfig{Zones: []DNSBLZone{{Name: "."}}},
+			wantErr: true,
+			errMsg:  "empty zone name",
+		},
+		{
+			name:    "negative weight",
+			cfg:     &DNSBLConfig{Zones: []DNSBLZone{{Name: "zen.spamhaus.org", Weight: -0.1}}},
+			wantErr: true,
+			errMsg:  "outside [0.0, 1.0]",
+		},
+		{
+			name:    "weight above 1.0",
+			cfg:     &DNSBLConfig{Zones: []DNSBLZone{{Name: "zen.spamhaus.org", Weight: 1.1}}},
+			wantErr: true,
+			errMsg:  "outside [0.0, 1.0]",
+		},
+		{
+			name:    "unparseable timeout",
+			cfg:     &DNSBLConfig{Timeout: "not-a-duration"},
+			wantErr: true,
+			errMsg:  "antispam.dnsbl.timeout",
+		},
+		{
+			name:    "unparseable cache_ttl",
+			cfg:     &DNSBLConfig{CacheTTL: "not-a-duration"},
+			wantErr: true,
+			errMsg:  "antispam.dnsbl.cache_ttl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err != nil && tt.errMsg != "" && !contains(err.Error(), tt.errMsg) {
+				t.Errorf("Validate() error = %q, want substring %q", err.Error(), tt.errMsg)
 			}
 		})
 	}
