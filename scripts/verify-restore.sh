@@ -172,6 +172,23 @@ awk '
   { print }
 ' "${WORK}/verify.hcl" > "${WORK}/verify.hcl.tmp" && mv "${WORK}/verify.hcl.tmp" "${WORK}/verify.hcl"
 
+# The prod config deliberately keeps web.session_secret OUT of the file and
+# supplies it via BONGO_WEB_SESSION_SECRET, so a config derived from it has no
+# secret and the server refuses to start outside dev mode. Inject a throwaway
+# one: this instance has every listener disabled and is deleted on exit, so it
+# needs A secret, not THE secret. Reading the real one would mean handling
+# production key material for no benefit.
+if ! grep -qE '^[[:space:]]*session_secret[[:space:]]*=' "${WORK}/verify.hcl"; then
+    THROWAWAY_SECRET="$(head -c 32 /dev/urandom | base64)"
+    awk -v secret="${THROWAWAY_SECRET}" '
+      /^web[[:space:]]*\{/ { print; print "  session_secret = \"" secret "\""; next }
+      { print }
+    ' "${WORK}/verify.hcl" > "${WORK}/verify.hcl.tmp" && mv "${WORK}/verify.hcl.tmp" "${WORK}/verify.hcl"
+
+    grep -qE '^[[:space:]]*session_secret[[:space:]]*=' "${WORK}/verify.hcl" \
+        || fail "could not inject a session secret; the config template has no web { } block"
+fi
+
 grep -q "${WORK}/data" "${WORK}/verify.hcl" \
     || fail "could not rewrite data_dir in the config template; check its format"
 ok "config derived from ${TEMPLATE} (data_dir rewritten, listeners disabled, web on :${WEB_PORT})"
