@@ -364,23 +364,44 @@ antispam {
   # dmarc_monitor_only = true   # evaluate and log only, do not apply policy
 
   # DNSBL/RBL checks: query the connecting IP against DNS-based blocklists.
-  # A listing SCORES the message — it never rejects or quarantines on its
-  # own. Each zone contributes its weight to the same [0.0, 1.0] score space
-  # as builtin.threshold/high_threshold above, alongside the builtin
-  # heuristic scorer, Bayes, and DMARC. The block is entirely absent by
-  # default (equivalent to omitting this whole "dnsbl" block): no zones are
-  # queried and no time is spent on DNS lookups.
+  # A listing SCORES the message and is never a verdict on its own: it can
+  # never reject at SMTP time, so a sender is never told their mail bounced
+  # because of a blocklist. Each zone contributes its weight to the same
+  # [0.0, 1.0] score space as builtin.threshold/high_threshold above,
+  # alongside the builtin heuristic scorer, Bayes, and DMARC. The block is
+  # entirely absent by default (equivalent to omitting this whole "dnsbl"
+  # block): no zones are queried and no time is spent on DNS lookups.
+  #
+  # CHECK YOUR WEIGHTS AGAINST high_threshold. Scoring is not the same as
+  # harmless. The weights of every zone that lists an IP are SUMMED and
+  # added to the score, so enough listings reach builtin.threshold (0.5 by
+  # default, message filed as Junk) and then builtin.high_threshold (0.9 by
+  # default, message QUARANTINED). Quarantine is not a stronger form of
+  # Junk: the message is pulled out of delivery entirely, the sender is
+  # never told (they already got a 250), and it is deleted when
+  # pipeline.quarantine_retention expires. So a set of weights that can sum
+  # past high_threshold means blocklists alone can silently destroy mail
+  # after 30 days. Add up the weights you configure. Keeping the total below
+  # high_threshold keeps the worst case at "filed as Junk", where the
+  # recipient can still find it.
   #
   # BEFORE YOU ENABLE THIS, CHECK smtp.proxy_protocol ABOVE. A blocklist
   # lookup is only meaningful if the IP being looked up is the real sending
-  # client's. Behind a reverse proxy (Traefik, HAProxy) that means
-  # proxy_protocol = true, or every message is scored against your own
-  # proxy's reputation instead of the sender's — which is worse than not
-  # running these checks at all, because the verdict looks authoritative
-  # and is about the wrong host. Facing the internet directly it must be
-  # false, or the connecting IP is not recovered at all. Get this wrong in
-  # either direction and the feature is actively misleading rather than
-  # merely off.
+  # client's.
+  #
+  # Behind a reverse proxy (Traefik, HAProxy), proxy_protocol must be true.
+  # Leave it false and every message is scored against your own proxy's
+  # reputation instead of the sender's — worse than not running these checks
+  # at all, because the verdict looks authoritative and is about the wrong
+  # host.
+  #
+  # Facing the internet directly, set it false. Not because a public sender's
+  # IP would be lost — it would not; a PROXY header from any peer that is not
+  # loopback, RFC 1918 or link-local is ignored and the real socket address is
+  # used — but because leaving it on widens what a local or LAN-adjacent
+  # attacker can do: from such an address they can assert any source IP they
+  # like, and DNSBL would then judge that invented address instead of theirs.
+  # Turn it on only when something in front of you is genuinely supplying it.
   #
   # There is no shipped default zone list, and none is named here on
   # purpose. Which blocklists to consult is an operator judgement with
@@ -415,11 +436,17 @@ antispam {
   #   # block rather than setting weight = 0.
   #   # Placeholder names. Replace them with zones you have chosen and are
   #   # entitled to query — see the note above.
+  #   #
+  #   # These weights total 0.75: below high_threshold (0.9), so an IP
+  #   # listed on all three is filed as Junk rather than quarantined, and
+  #   # above threshold (0.5), so two of the three are enough to Junk it.
+  #   # That is the arithmetic to redo whenever you change a weight or add
+  #   # a zone.
   #   zone "zone1.example-blocklist.invalid" {
-  #     weight = 0.4
+  #     weight = 0.3
   #   }
   #   zone "zone2.example-blocklist.invalid" {
-  #     weight = 0.3
+  #     weight = 0.2
   #   }
   #   zone "zone3.example-blocklist.invalid" {
   #     # weight omitted -> default 0.25

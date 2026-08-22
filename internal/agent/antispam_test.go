@@ -348,44 +348,86 @@ func TestDNSBLOption_EnabledWithZonesReturnsOption(t *testing.T) {
 	}
 }
 
-// TestBuildAntispamProcessorDNSBLWiring is the end-to-end construction-site
-// check: buildAntispamProcessor (server-role) wires DNSBL from real parsed
-// config without panicking. The envelope is Trusted so applyDNSBL's own
-// skip rule fires before any lookup -- this proves the option can be built
-// and applied safely without ever making a live DNS query in this test.
+// TestBuildAntispamProcessorDNSBLWiring checks the server-role construction
+// site actually wires DNSBL, by inspecting the built processor rather than
+// by running a message through it.
+//
+// The previous version of this test drove a Trusted envelope through
+// Process and asserted only that no error came back. That passed with the
+// dnsblOption call deleted from buildAntispamProcessor, because the trusted
+// skip in applyDNSBL returns before the checker is ever consulted -- it
+// could not detect the single regression it existed to catch. Verified by
+// deleting the wiring and watching it still pass.
 func TestBuildAntispamProcessorDNSBLWiring(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.Antispam.DNSBL = &config.DNSBLConfig{
-		Enabled: true,
-		Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+	dnsblCfg := func(enabled bool) *config.Config {
+		cfg := config.Defaults()
+		cfg.Antispam.DNSBL = &config.DNSBLConfig{
+			Enabled: enabled,
+			Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+		}
+		return cfg
 	}
 
-	proc := buildAntispamProcessor(cfg, "builtin", antispam.NewScorer(), nil, nil, testLogger())
-	env := &bongov1.QueueEnvelope{Sender: "user@example.com", SourceIp: "203.0.113.9", Trusted: true}
-	msg := antispamTestMessage("user@example.com", "Hello", "Just a note.")
+	t.Run("enabled config wires a checker", func(t *testing.T) {
+		proc := buildAntispamProcessor(dnsblCfg(true), "builtin", antispam.NewScorer(), nil, nil, testLogger())
+		builtin, ok := proc.(*pipelineantispam.BuiltinProcessor)
+		if !ok {
+			t.Fatalf("buildAntispamProcessor returned %T, want *BuiltinProcessor for the builtin backend", proc)
+		}
+		if !builtin.HasDNSBL() {
+			t.Error("HasDNSBL() = false: dnsbl is enabled with a zone configured, but no checker was wired")
+		}
+	})
 
-	if _, err := proc.Process(context.Background(), env, strings.NewReader(msg)); err != nil {
-		t.Fatalf("Process: %v", err)
-	}
+	t.Run("disabled config wires nothing", func(t *testing.T) {
+		proc := buildAntispamProcessor(dnsblCfg(false), "builtin", antispam.NewScorer(), nil, nil, testLogger())
+		builtin := proc.(*pipelineantispam.BuiltinProcessor)
+		if builtin.HasDNSBL() {
+			t.Error("HasDNSBL() = true for a disabled dnsbl block: `enabled` must actually disable the thing")
+		}
+	})
+
+	t.Run("absent block wires nothing", func(t *testing.T) {
+		proc := buildAntispamProcessor(config.Defaults(), "builtin", antispam.NewScorer(), nil, nil, testLogger())
+		builtin := proc.(*pipelineantispam.BuiltinProcessor)
+		if builtin.HasDNSBL() {
+			t.Error("HasDNSBL() = true with no dnsbl block at all")
+		}
+	})
 }
 
-// TestStartProcessorAgentDNSBLWiring proves the second construction site
-// (startProcessorAgent's "antispam" case in agent.go) calls the same
-// dnsblOption helper as buildAntispamProcessor, rather than a hand-rolled
-// option list that silently omits DNSBL the way it silently omits Bayes.
-// It cannot exercise the gRPC registration machinery in a unit test, so it
-// asserts the narrower, directly testable claim: dnsblOption(cfg, logger)
-// (the exact call startProcessorAgent makes) returns a usable option for
-// the same config shape agent-role deployments use.
+// TestStartProcessorAgentDNSBLWiring covers the SECOND construction site.
+// An agent-role node builds its own processor with a different option set
+// (no Bayes), and nothing in the test suite reached that code: deleting the
+// DNSBL wiring there left the whole package green. startProcessorAgent
+// itself registers over gRPC and cannot run in a unit test, so the option
+// assembly now lives in buildAgentAntispamProcessor, which this exercises
+// directly.
 func TestStartProcessorAgentDNSBLWiring(t *testing.T) {
-	cfg := config.Defaults()
-	cfg.Server.Role = "agent"
-	cfg.Antispam.DNSBL = &config.DNSBLConfig{
-		Enabled: true,
-		Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+	newAgent := func(enabled bool) *Agent {
+		cfg := config.Defaults()
+		cfg.Server.Role = "agent"
+		cfg.Antispam.DNSBL = &config.DNSBLConfig{
+			Enabled: enabled,
+			Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+		}
+		return &Agent{Config: cfg, logger: testLogger()}
 	}
 
-	if opt := dnsblOption(cfg, testLogger()); opt == nil {
-		t.Fatal("dnsblOption = nil for an agent-role config with dnsbl enabled and zones configured")
-	}
+	t.Run("agent-role node wires a checker when enabled", func(t *testing.T) {
+		builtin, ok := newAgent(true).buildAgentAntispamProcessor().(*pipelineantispam.BuiltinProcessor)
+		if !ok {
+			t.Fatal("buildAgentAntispamProcessor did not return a *BuiltinProcessor")
+		}
+		if !builtin.HasDNSBL() {
+			t.Error("HasDNSBL() = false: an agent-role node with dnsbl enabled would run configured but never check anything")
+		}
+	})
+
+	t.Run("agent-role node wires nothing when disabled", func(t *testing.T) {
+		builtin := newAgent(false).buildAgentAntispamProcessor().(*pipelineantispam.BuiltinProcessor)
+		if builtin.HasDNSBL() {
+			t.Error("HasDNSBL() = true for a disabled dnsbl block on an agent-role node")
+		}
+	})
 }

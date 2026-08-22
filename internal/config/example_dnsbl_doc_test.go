@@ -67,6 +67,32 @@ func TestExampleDNSBLBlockParsesWhenUncommented(t *testing.T) {
 			t.Errorf("example zone %q is not a placeholder -- shipped config must not name a real blocklist", z.Name)
 		}
 	}
+
+	// The suggested weights must not be able to quarantine on their own.
+	//
+	// This started as a prose promise that was simply false: the block said a
+	// listing "never rejects or quarantines on its own" while its own
+	// weights summed to 0.95, past the 0.9 default high_threshold. An IP
+	// listed on all three suggested zones would have been quarantined --
+	// pulled from delivery, no DSN to the sender, and deleted when
+	// pipeline.quarantine_retention expires -- directly beneath a comment
+	// saying that could not happen. Shipped example weights are the numbers
+	// operators copy, so the arithmetic is asserted rather than promised.
+	var total float64
+	for _, z := range zones {
+		total += z.Weight
+	}
+	high := float64(AntispamBuiltin{}.SpamHighThreshold())
+	if total >= high {
+		t.Errorf("example zone weights sum to %.2f, at or above the default high_threshold %.2f: "+
+			"an IP listed on every suggested zone would be QUARANTINED by blocklists alone", total, high)
+	}
+	// ...and should still be able to demonstrate the tag threshold, or the
+	// example teaches that blocklists never do anything visible.
+	if tag := float64(AntispamBuiltin{}.SpamThreshold()); total < tag {
+		t.Errorf("example zone weights sum to %.2f, below the default threshold %.2f: "+
+			"the suggested config can never file anything as Junk, which makes it a poor example", total, tag)
+	}
 }
 
 // uncommentBlock strips the leading comment marker from the commented-out
