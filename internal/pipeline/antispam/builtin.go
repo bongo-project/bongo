@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"strings"
 	"time"
 
 	"github.com/jhillyerd/enmime"
 
 	"github.com/bongo-go/bongo-go/internal/antispam"
+	"github.com/bongo-go/bongo-go/internal/dnsbl"
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/observability"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
@@ -36,6 +38,8 @@ type BuiltinProcessor struct {
 	highThreshold float32               // score >= this -> quarantine
 	dmarc         *mail.DMARCEvaluator  // may be nil; inbound DMARC policy enforcement
 	dmarcEnforce  bool                  // when false, DMARC is evaluated and logged but not applied
+	dnsbl         *dnsbl.Checker        // may be nil; DNS blocklist checks (task 13.3)
+	dnsblWeights  map[string]float64    // zone name -> score contribution; written once at construction, read concurrently
 	logger        *slog.Logger
 }
 
@@ -94,6 +98,39 @@ func WithDMARC(e *mail.DMARCEvaluator, enforce bool) Option {
 	return func(p *BuiltinProcessor) {
 		p.dmarc = e
 		p.dmarcEnforce = enforce
+	}
+}
+
+// WithDNSBL enables per-message DNS blocklist checks (task 13.3). checker
+// performs the actual lookups (internal/dnsbl); weights maps each configured
+// zone's normalised name (trim, lower-case, strip trailing dot) to its
+// scoring contribution, using the same normalisation
+// internal/config.normalizeDNSBLZone and internal/dnsbl's own normalizeZone
+// both apply to the names dnsbl.ZoneResult.Zone returns, so map lookups in
+// applyDNSBL hit. The two normalisers are kept in step by hand (see the
+// comments on both) — do not add a third one here.
+//
+// Both checker and weights are read concurrently once Process starts: the
+// pipeline Runner drives many worker goroutines against one shared
+// BuiltinProcessor (internal/pipeline/runner.go). checker is documented
+// concurrency-safe by internal/dnsbl; weights must never be mutated after
+// being passed here — the caller owns a private copy.
+//
+// A caller-supplied nil checker leaves p.dnsbl nil, so the option is
+// nil-safe in the same sense as WithBayes/WithDMARC: applyDNSBL's first
+// check (p.dnsbl == nil) makes that equivalent to the option never having
+// been applied at all.
+//
+// Known limitation, not fixed here: when an external backend (rspamd,
+// spamassassin) wins in CompositeProcessor, only the builtin's DmarcResult
+// is carried across — Reasons is dropped (composite.go ~146-170), so a
+// DNSBL zone name added here can disappear from X-Spam-Reasons on those
+// deployments. The default builtin-only path is unaffected. This is a
+// composite-level gap and is intentionally out of scope for task 13.3.
+func WithDNSBL(checker *dnsbl.Checker, weights map[string]float64) Option {
+	return func(p *BuiltinProcessor) {
+		p.dnsbl = checker
+		p.dnsblWeights = weights
 	}
 }
 
@@ -219,6 +256,19 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		}
 	}
 
+	reasons := result.Reasons
+
+	// DNSBL contribution. Placed AFTER the Bayes blend and BEFORE the
+	// threshold switch, deliberately: the Bayes blend above
+	// (0.6*heuristic + 0.4*bayes) is a weighted average of two CONTENT
+	// judgements, and a DNSBL listing is evidence about the CONNECTION, not
+	// the content. Running it through that 0.6 factor would silently shrink
+	// an operator's configured zone weight of, say, 0.4 down to 0.24 — a
+	// configured weight must mean what it says. Adding it here, after the
+	// blend produces the final content score and before the threshold
+	// switch decides the action, is what makes that true.
+	score, reasons = p.applyDNSBL(ctx, env, trusted, score, reasons)
+
 	// Determine action based on thresholds.
 	action := "pass"
 	switch {
@@ -230,8 +280,6 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			env.TargetMailbox = "Junk"
 		}
 	}
-
-	reasons := result.Reasons
 
 	// DMARC policy evaluation. A DMARC failure on the RFC5322.From domain
 	// escalates the action (in enforce mode) so a same-domain spoof (which the
@@ -267,6 +315,114 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		DurationMs:  durationMs,
 		DmarcResult: dmarcResult,
 	}, nil
+}
+
+// applyDNSBL adds a DNS blocklist contribution to score and returns the
+// (possibly increased) score along with reasons, with one "dnsbl_<zone>"
+// entry appended per listed zone (multiple listings append multiple
+// reasons). See the call site in Process for why this runs after the Bayes
+// blend and before the threshold switch.
+//
+// Skip rules, cheapest-first, each a hard "no lookup at all" — not merely
+// "no score effect":
+//
+//   - p.dnsbl == nil: feature disabled (WithDNSBL was never applied, or was
+//     applied with a nil checker). Zero allocation, zero lookup.
+//   - trusted: DNSBL is an origin-reputation signal (is this stranger's
+//     connecting IP listed), not content filtering. The Trusted comment in
+//     Process above states that trust removes origin-authentication
+//     interpretation (SPF/DKIM/DMARC) but never content filtering — this is
+//     a deliberate, PRD-granted exception to that rule, not a violation of
+//     it: a listing judges the connection a trusted envelope has already had
+//     judged (SMTP AUTH, or a trusted network per task 12.2/12.3), so the
+//     blocklist question does not apply. Do not widen this to skip Bayes or
+//     the heuristic scorer — only DNSBL.
+//   - empty or unparseable SourceIp: nothing to look up.
+//   - private, loopback, link-local, or unspecified: a container or LAN
+//     address is not meaningfully listable (nothing public lists it), and
+//     querying it anyway would leak internal addressing to the blocklist
+//     operator. This is a privacy control (PRD US-003), not an
+//     optimisation — the lookup must not happen, not merely be scored as
+//     zero. IsPrivate covers RFC1918 and IPv6 ULA fc00::/7;
+//     IsLinkLocalUnicast covers 169.254/16 and fe80::/10; both mirror the
+//     stdlib predicates internal/web/middleware/request.go already uses for
+//     a related (but distinct: HTTP proxy trust, not DNSBL listability)
+//     purpose.
+//
+// No role gate is needed here (unlike WithDMARC's dev-mode skip in
+// buildAntispamProcessor): DNSBL is opt-in and off by default, and dev
+// traffic is loopback/private, so the skip rule above already excludes it.
+//
+// Operational caveat (not enforced in code, worth repeating here): DNSBL is
+// only meaningful when SourceIp is the real client IP. Behind a reverse
+// proxy without smtp.proxy_protocol configured, SourceIp is the proxy's own
+// address and every message is scored on the proxy's reputation instead of
+// the sender's.
+func (p *BuiltinProcessor) applyDNSBL(ctx context.Context, env *bongov1.QueueEnvelope, trusted bool, score float32, reasons []string) (float32, []string) {
+	if p.dnsbl == nil || trusted {
+		return score, reasons
+	}
+	raw := env.GetSourceIp()
+	if raw == "" {
+		return score, reasons
+	}
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return score, reasons
+	}
+	if ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return score, reasons
+	}
+
+	result := p.dnsbl.Check(ctx, ip)
+	listed := result.ListedZones()
+	if len(listed) == 0 {
+		return score, reasons
+	}
+
+	// Accumulate in float64 (dnsblWeights is float64) and convert back to
+	// float32 once at the end, rather than repeatedly rounding a float32
+	// accumulator across N listed zones.
+	total := float64(score)
+	for _, z := range listed {
+		w, ok := p.dnsblWeights[z.Zone]
+		if !ok {
+			// The checker listed a zone this processor has no configured
+			// weight for -- config and checker zone lists have drifted.
+			// Contribute nothing rather than guess, and warn loudly: this
+			// should never happen when buildAntispamProcessor derives both
+			// the checker's zones and this weights map from the same
+			// cfg.Antispam.DNSBLZones() call.
+			p.logger.Warn("antispam: dnsbl listed zone has no configured weight, ignoring",
+				"zone", z.Zone, "code", z.Code)
+			continue
+		}
+		// Log the running total, not the pre-DNSBL score: with two listed
+		// zones a fixed score_before makes the second line read as though
+		// that zone contributed everything both zones added together.
+		before := total
+		total += w
+		reasons = append(reasons, "dnsbl_"+z.Zone)
+		p.logger.Debug("antispam: dnsbl contribution",
+			"zone", z.Zone, "weight", w, "code", z.Code, "score_before", before, "score_after", total)
+	}
+
+	// Clamp to the score/threshold contract's [0, 1] range. score is
+	// float32 and the whole threshold space (p.threshold, p.highThreshold,
+	// the AntispamScore histogram) assumes that bound; the scorer itself
+	// already clamps for the same reason (internal/antispam/scorer.go:
+	// ~179-181), so this restores an invariant the rest of the pipeline
+	// relies on rather than inventing a new one. Without it, an operator
+	// configuring zone weights that sum past 1.0 (or, in principle, a
+	// negative weight that slipped past DNSBLConfig.Validate on a
+	// non-validating code path) would silently break both the threshold
+	// comparisons below and the histogram's assumed range.
+	if total > 1 {
+		total = 1
+	} else if total < 0 {
+		total = 0
+	}
+	return float32(total), reasons
 }
 
 // applyDMARC evaluates DMARC for the message and, in enforce mode, escalates

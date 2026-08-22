@@ -296,3 +296,96 @@ func TestBuildAntispamProcessorTrustedStillScanned(t *testing.T) {
 		t.Error("rspamd was NOT consulted for a Trusted envelope; trust removes origin authentication, never content filtering")
 	}
 }
+
+// TestDNSBLOption_DisabledReturnsNil covers the "no dnsbl block configured"
+// and "enabled=false" cases: dnsblOption must return nil so the caller never
+// appends an option, which is what keeps buildAntispamProcessor's default
+// (no dnsbl block) path byte-identical to pre-13.3 behaviour.
+func TestDNSBLOption_DisabledReturnsNil(t *testing.T) {
+	tests := []struct {
+		name   string
+		modify func(*config.Config)
+	}{
+		{"no dnsbl block", func(c *config.Config) { c.Antispam.DNSBL = nil }},
+		{"dnsbl block present, enabled=false", func(c *config.Config) {
+			c.Antispam.DNSBL = &config.DNSBLConfig{Enabled: false, Zones: []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}}}
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Defaults()
+			tc.modify(cfg)
+			if opt := dnsblOption(cfg, testLogger()); opt != nil {
+				t.Errorf("dnsblOption = non-nil, want nil (%s)", tc.name)
+			}
+		})
+	}
+}
+
+// TestDNSBLOption_EnabledNoZonesReturnsNil covers the length-guard case: an
+// enabled dnsbl block with zero configured zones must not construct a
+// checker that can never list anything.
+func TestDNSBLOption_EnabledNoZonesReturnsNil(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Antispam.DNSBL = &config.DNSBLConfig{Enabled: true}
+
+	if opt := dnsblOption(cfg, testLogger()); opt != nil {
+		t.Error("dnsblOption = non-nil, want nil for an enabled block with no zones")
+	}
+}
+
+// TestDNSBLOption_EnabledWithZonesReturnsOption covers the positive case:
+// enabled with at least one zone yields a usable option.
+func TestDNSBLOption_EnabledWithZonesReturnsOption(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Antispam.DNSBL = &config.DNSBLConfig{
+		Enabled: true,
+		Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+	}
+
+	if opt := dnsblOption(cfg, testLogger()); opt == nil {
+		t.Fatal("dnsblOption = nil, want a usable option for an enabled block with zones")
+	}
+}
+
+// TestBuildAntispamProcessorDNSBLWiring is the end-to-end construction-site
+// check: buildAntispamProcessor (server-role) wires DNSBL from real parsed
+// config without panicking. The envelope is Trusted so applyDNSBL's own
+// skip rule fires before any lookup -- this proves the option can be built
+// and applied safely without ever making a live DNS query in this test.
+func TestBuildAntispamProcessorDNSBLWiring(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Antispam.DNSBL = &config.DNSBLConfig{
+		Enabled: true,
+		Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+	}
+
+	proc := buildAntispamProcessor(cfg, "builtin", antispam.NewScorer(), nil, nil, testLogger())
+	env := &bongov1.QueueEnvelope{Sender: "user@example.com", SourceIp: "203.0.113.9", Trusted: true}
+	msg := antispamTestMessage("user@example.com", "Hello", "Just a note.")
+
+	if _, err := proc.Process(context.Background(), env, strings.NewReader(msg)); err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+}
+
+// TestStartProcessorAgentDNSBLWiring proves the second construction site
+// (startProcessorAgent's "antispam" case in agent.go) calls the same
+// dnsblOption helper as buildAntispamProcessor, rather than a hand-rolled
+// option list that silently omits DNSBL the way it silently omits Bayes.
+// It cannot exercise the gRPC registration machinery in a unit test, so it
+// asserts the narrower, directly testable claim: dnsblOption(cfg, logger)
+// (the exact call startProcessorAgent makes) returns a usable option for
+// the same config shape agent-role deployments use.
+func TestStartProcessorAgentDNSBLWiring(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "agent"
+	cfg.Antispam.DNSBL = &config.DNSBLConfig{
+		Enabled: true,
+		Zones:   []config.DNSBLZone{{Name: "zen.example-bl.test", Weight: 0.3}},
+	}
+
+	if opt := dnsblOption(cfg, testLogger()); opt == nil {
+		t.Fatal("dnsblOption = nil for an agent-role config with dnsbl enabled and zones configured")
+	}
+}

@@ -2227,6 +2227,14 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 		if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
 			agentAntispamOpts = append(agentAntispamOpts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
 		}
+		// Agent-role envelopes do carry SourceIp (see
+		// internal/smtp/agent_delivery.go), so DNSBL is wired here too, via
+		// the same dnsblOption helper buildAntispamProcessor uses
+		// (internal/agent/antispam.go) -- kept as a shared helper rather
+		// than inlined here so the two construction sites cannot drift.
+		if opt := dnsblOption(a.Config, a.logger); opt != nil {
+			agentAntispamOpts = append(agentAntispamOpts, opt)
+		}
 		proc = pipelineantispam.NewBuiltinProcessor(scorer, agentAntispamOpts...)
 	case "antivirus":
 		// Routed through the same builder as the server-role pipeline stage
