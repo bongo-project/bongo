@@ -358,6 +358,49 @@ antispam {
   # same-domain spoofing). Uncomment to change:
   # dmarc_disabled     = true   # turn DMARC evaluation off entirely
   # dmarc_monitor_only = true   # evaluate and log only, do not apply policy
+
+  # DNSBL/RBL checks: query the connecting IP against DNS-based blocklists.
+  # A listing SCORES the message — it never rejects or quarantines on its
+  # own. Each zone contributes its weight to the same [0.0, 1.0] score space
+  # as builtin.threshold/high_threshold above, alongside the builtin
+  # heuristic scorer, Bayes, and DMARC. The block is entirely absent by
+  # default (equivalent to omitting this whole "dnsbl" block): no zones are
+  # queried and no time is spent on DNS lookups.
+  #
+  # There is no shipped default zone list — you choose which blocklists to
+  # trust and their relative weight. Some public zones require registration
+  # or rate-limit unregistered high-volume queriers; check each provider's
+  # usage policy before enabling it in production.
+  # dnsbl {
+  #   enabled = false
+  #
+  #   # Per-lookup DNS timeout. Default "5s" when unset.
+  #   # timeout = "5s"
+  #
+  #   # How long a negative/positive result is cached per IP, to avoid
+  #   # re-querying every zone for repeat senders. Default "10m" when unset.
+  #   # cache_ttl = "10m"
+  #
+  #   # Repeated zone blocks. The block label is the DNSBL zone hostname.
+  #   # weight is this zone's contribution to the spam score if the
+  #   # connecting IP is listed, range [0.0, 1.0] (a negative weight is
+  #   # rejected at startup — it would make a listed IP score CLEANER than
+  #   # an unlisted one). Omitting weight (or setting it to exactly 0, which
+  #   # HCL cannot distinguish from "omitted") uses the default weight of
+  #   # 0.25 — deliberately below the 0.5 spam threshold, so a single
+  #   # blocklist listing alone can never tag a message as spam; it must be
+  #   # corroborated by another signal. To stop querying a zone, delete its
+  #   # block rather than setting weight = 0.
+  #   zone "zen.spamhaus.org" {
+  #     weight = 0.4
+  #   }
+  #   zone "b.barracudacentral.org" {
+  #     weight = 0.3
+  #   }
+  #   zone "bl.spamcop.net" {
+  #     # weight omitted -> default 0.25
+  #   }
+  # }
 }
 
 
