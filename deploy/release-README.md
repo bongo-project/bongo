@@ -14,11 +14,27 @@ files, another IMAP server, or Thunderbird.
 ./bongo-go serve --dev
 ```
 
-Dev mode needs no configuration. It uses a temporary data directory (deleted on exit), generates
-a self-signed certificate, creates `admin@localhost` / `admin`, and starts everything on
-non-privileged ports. Open <https://localhost:8080> and accept the certificate warning.
+Dev mode needs no configuration. It uses a temporary data directory (deleted on exit), creates
+`admin@localhost` / `admin`, and starts everything on non-privileged ports.
 
-This is the fastest way to form an opinion. Nothing is written outside the temporary directory.
+Open **<http://localhost:8080>** and log in as `admin@localhost` / `admin`.
+
+Note it is plain **http**, not https: dev mode deliberately runs the web interface without TLS so
+there is no certificate warning to click through. Do not run dev mode anywhere untrusted — your
+password crosses the network in clear. A real installation serves the web UI over TLS.
+
+The mail protocols run on non-privileged ports too, so you can point a mail client at it:
+
+| Protocol | Port |
+|---|---|
+| SMTP (MX) | 2525 |
+| SMTP submission | 2587 |
+| IMAP | 1143 |
+| IMAP over TLS | 1993 |
+| POP3 | 1110 |
+
+This is the fastest way to form an opinion. Nothing is written outside the temporary directory,
+and it is all deleted when you stop the server.
 
 ## Running it properly
 
