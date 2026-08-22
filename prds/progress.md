@@ -1467,3 +1467,41 @@ Also carried B8 forward into 13.2: config validation must happen at the point of
 
 PATTERN: [import] Re-check a PRD's stated dependencies at import time. This one was written two
 phases ago and its central "this field does not exist yet" caveat had since become false.
+
+## 2026-08-22 — 13.1 DNSBL lookup engine — DONE
+
+Commit: 9ddfa33. New package `internal/dnsbl` (dnsbl.go, query.go, cache.go + tests).
+Advisor plan returned REVISE (amended FR-3); code review returned MINOR with 7 findings,
+all fixed by the orchestrator before commit:
+
+1. Cache poisoning — a cancelled/expired parent context produced an all-timeout Result that
+   was cached for a full TTL, silencing DNSBL for that IP. `lookup` now returns `cacheable`,
+   false when `parent.Err() != nil`. Guard: TestCheck_CancelledParentIsNotCached.
+2. Collector could drop a buffered result — `select` picks pseudo-randomly when both
+   `<-ch` and `<-ctx.Done()` are ready. Added a non-blocking drain before writing zones off.
+3. Cached `Result.Zones` aliased one backing array across all callers. Cloned on get and set.
+4. Comment cited the 2026-08-17 barracudacentral incident as a shared-resolver policy error;
+   the PRD says it was a genuine listing of a recycled IP. Rewrote the comment to the real
+   rationale and recorded the FR-3 deviation in the PRD itself.
+5. Non-positive timeout/TTL not clamped — a missing HCL value in 13.2 would silently disable
+   DNSBL. Now clamped to defaults with a Warn.
+6. FR-4 timing assertion allowed 5x the timeout with only one hanging zone — a per-zone-timeout
+   implementation passed it. Tightened to 2x with three hanging zones.
+7. `queryName` failure path was the one silent fail-open branch. Now logs and records Err.
+
+Gate: `make test-all` green (35 packages), gosec clean, golangci-lint 0 issues.
+
+PATTERN: [testing] A latency guard can pass against a broken implementation if some OTHER
+mechanism still bounds the observable time. Injecting per-zone timeouts did NOT fail the FR-4
+test, because the collector's shared deadline still capped elapsed time; only removing the
+collector bound as well produced the 3x latency the test was written to catch. When proving a
+timing guard, check WHICH mechanism the injection actually disabled.
+
+PATTERN: [testing] Attributing a flake to the change under test needs more than "it passed
+once with the package removed". First run showed dnsbl-present FAIL / dnsbl-absent PASS, which
+looked causal; repeating at -count=1 gave pass, pass, fail with the package present. Repeat
+before attributing.
+
+PATTERN: [testing] The FSM writes Pebble and THEN updates derived indexes, so any test that
+polls Pebble for a key and then asserts the SQLite/Bleve row can observe the gap. Poll both.
+Fixed TestEnsureConfiguredDomainSeedsOnStartup, which failed ~1 run in 3.
