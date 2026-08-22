@@ -149,6 +149,19 @@ func NewBuiltinProcessor(scorer *antispam.Scorer, opts ...Option) *BuiltinProces
 }
 
 // Name returns the stage identifier for this processor.
+// HasDNSBL reports whether a DNSBL checker is wired into this processor.
+//
+// It exists so a construction site can be tested for the wiring itself
+// rather than for its effects: verifying DNSBL end to end through
+// buildAntispamProcessor would need a live DNS query, and the alternative
+// -- driving a Trusted envelope through Process and asserting no error --
+// passes just as happily when the wiring has been deleted, because the
+// trusted skip returns before the checker is consulted. That exact test
+// existed and was vacuous.
+func (p *BuiltinProcessor) HasDNSBL() bool {
+	return p != nil && p.dnsbl != nil
+}
+
 func (p *BuiltinProcessor) Name() string {
 	return "antispam"
 }

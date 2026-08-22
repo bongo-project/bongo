@@ -42,7 +42,6 @@ import (
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/observability"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
-	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
 	pipelinedeliver "github.com/bongo-go/bongo-go/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-go/bongo-go/internal/pipeline/rules"
 	bongopop3 "github.com/bongo-go/bongo-go/internal/pop3"
@@ -2214,28 +2213,7 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 
 	switch role {
 	case "antispam":
-		scorer := antispam.NewScorer()
-		builtin := a.Config.Antispam.Builtin
-		// In agent mode there is no local Pebble store or Raft, so the Bayes
-		// filter (which needs per-user trained data) is not available. The
-		// heuristic scorer runs standalone without blending.
-		agentAntispamOpts := []pipelineantispam.Option{
-			pipelineantispam.WithThreshold(builtin.SpamThreshold()),
-			pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
-			pipelineantispam.WithLogger(a.logger),
-		}
-		if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
-			agentAntispamOpts = append(agentAntispamOpts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
-		}
-		// Agent-role envelopes do carry SourceIp (see
-		// internal/smtp/agent_delivery.go), so DNSBL is wired here too, via
-		// the same dnsblOption helper buildAntispamProcessor uses
-		// (internal/agent/antispam.go) -- kept as a shared helper rather
-		// than inlined here so the two construction sites cannot drift.
-		if opt := dnsblOption(a.Config, a.logger); opt != nil {
-			agentAntispamOpts = append(agentAntispamOpts, opt)
-		}
-		proc = pipelineantispam.NewBuiltinProcessor(scorer, agentAntispamOpts...)
+		proc = a.buildAgentAntispamProcessor()
 	case "antivirus":
 		// Routed through the same builder as the server-role pipeline stage
 		// (agent.go's Pipeline.Stages loop, buildAntivirusProcessor) so an

@@ -146,3 +146,33 @@ func dnsblOption(cfg *config.Config, logger *slog.Logger) pipelineantispam.Optio
 	checker := dnsbl.NewChecker(names, cfg.Antispam.DNSBLTimeout(), cfg.Antispam.DNSBLCacheTTL(), logger)
 	return pipelineantispam.WithDNSBL(checker, weights)
 }
+
+// buildAgentAntispamProcessor constructs the antispam processor for an
+// agent-role node (startProcessorAgent's "antispam" case). It is a named
+// method rather than an inline switch case purely so it can be tested:
+// startProcessorAgent itself registers over gRPC and cannot run in a unit
+// test, which meant the DNSBL wiring here had no regression coverage at all
+// and could be deleted with the whole suite staying green.
+//
+// It deliberately differs from buildAntispamProcessor: an agent node has no
+// local Pebble store or Raft, so the Bayes filter (which needs per-user
+// trained data) is unavailable and the heuristic scorer runs standalone
+// without blending. DNSBL goes through the same dnsblOption helper both
+// sites share, so the two cannot drift in how the option is built.
+func (a *Agent) buildAgentAntispamProcessor() pipeline.Processor {
+	builtin := a.Config.Antispam.Builtin
+	opts := []pipelineantispam.Option{
+		pipelineantispam.WithThreshold(builtin.SpamThreshold()),
+		pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
+		pipelineantispam.WithLogger(a.logger),
+	}
+	if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
+		opts = append(opts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
+	}
+	// Agent-role envelopes do carry SourceIp (see
+	// internal/smtp/agent_delivery.go), so DNSBL is wired here too.
+	if opt := dnsblOption(a.Config, a.logger); opt != nil {
+		opts = append(opts, opt)
+	}
+	return pipelineantispam.NewBuiltinProcessor(antispam.NewScorer(), opts...)
+}

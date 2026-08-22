@@ -92,7 +92,7 @@ func dnsblApproxEqual(a, b float32) bool {
 	return d < dnsblEpsilon
 }
 
-// TestApplyDNSBL_ListingAddsScoreAndReason is the FR-6/FR-7 core case: a
+// TestApplyDNSBL_ListingAddsScoreAndReason is the FR-8 core case: a
 // listed zone raises the score by exactly its configured weight and adds a
 // reason naming the zone.
 func TestApplyDNSBL_ListingAddsScoreAndReason(t *testing.T) {
@@ -168,7 +168,7 @@ func TestApplyDNSBL_NotListedNoChange(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_MultipleZonesSumBothWeights is the FR-6 two-zone case: two
+// TestApplyDNSBL_MultipleZonesSumBothWeights is the FR-4/FR-8 two-zone case: two
 // zones listing the same IP contribute both weights and both reasons.
 func TestApplyDNSBL_MultipleZonesSumBothWeights(t *testing.T) {
 	const zoneA = "zen.example-bl.test"
@@ -257,7 +257,8 @@ func TestApplyDNSBL_HighWeightQuarantinesButNeverRejects(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_AfterBayesBlend_NotDiluted is the FR-7 placement test: the
+// TestApplyDNSBL_AfterBayesBlend_NotDiluted pins the score PLACEMENT decision
+// (the PRD's "Ordering" technical consideration, not an FR): the
 // same zone weight must move the score by the same amount whether or not a
 // Bayes blend ran, proving the DNSBL contribution is added AFTER the blend
 // (score + w) rather than being folded into it (0.6*score + 0.4*bayes + w,
