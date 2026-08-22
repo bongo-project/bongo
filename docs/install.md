@@ -82,9 +82,12 @@ To confirm the binary runs on your machine before doing any real setup:
 bongo-go serve --dev
 ```
 
-Dev mode uses ephemeral storage, self-signed TLS on high ports, and
-auto-creates a login of `admin@localhost` / `admin`. Open the web UI it prints
-on startup. Stop it with Ctrl-C — nothing is persisted.
+Dev mode uses ephemeral storage, runs the mail protocols on high ports, and
+auto-creates a login of `admin@localhost` / `admin`. The web UI is served over
+plain **http** (no TLS, so no certificate warning) at
+<http://localhost:8080> — do not use dev mode anywhere untrusted, since the
+password crosses the network in clear. Stop it with Ctrl-C — nothing is
+persisted.
 
 ---
 
