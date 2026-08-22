@@ -1419,3 +1419,30 @@ of them could have been declared the fix.
 PATTERN: [observability] Sending a subsystem's logs to io.Discard converts a five-minute diagnosis
 into a multi-hour one. Consensus, storage and anything else that can block the write path should
 never be silent.
+
+## 2026-08-22 — Backups VERIFIED (first real run of verify-restore.sh)
+
+All four checks pass against `bongo_2026-08-22_03-05-02.tar.gz` (9.9M): extracts with data/ +
+secrets/, sampled blob hashes to its own filename, DKIM key parses, and a real server starts
+against the restored data and reports ready. "We have backups" is now evidence rather than an
+assumption.
+
+**The first run failed on a bug in the script itself**, not the backup: `web.session_secret is
+required outside dev mode`. The prod config deliberately keeps the secret out of the file
+(BONGO_WEB_SESSION_SECRET), so a config derived from it has none. Fixed in `1a0e0b1`-era commit by
+injecting a throwaway secret — the test instance has every listener disabled and is deleted on
+exit, so it needs A secret, not THE secret. Verified end to end locally against a synthetic archive
+built from a REAL Pebble store before asking the operator to reinstall it.
+
+Host setup (see memory `deploy-example-host-test`): `/usr/local/sbin/verify-restore.sh` and
+`/usr/local/bin/bongo-go`, both root-owned, with `(root) NOPASSWD:` on the script only. Re-run with
+`ssh example-host 'sudo -n /usr/local/sbin/verify-restore.sh --latest'`.
+
+Not yet checked: DKIM key vs published DNS (`VERIFY_DKIM_DOMAIN`), which sudo's env_reset strips.
+
+PATTERN: [ops] A backup verification script is itself untested until it has run against a real
+archive. This one had a latent failure that only a production run could expose — the same class of
+problem it exists to catch.
+PATTERN: [security] A NOPASSWD sudoers rule pointing at a user-writable script is full passwordless
+root in disguise. Scoping is only real if the target is root-owned and not writable by the granted
+user.
