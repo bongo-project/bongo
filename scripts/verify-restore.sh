@@ -113,6 +113,33 @@ fi
 
 # ---- 3. DKIM key ------------------------------------------------------------
 
+# Derive the DKIM domain and selector from the server's own config rather than
+# requiring them to be passed in. Two reasons: sudo's env_reset strips
+# VERIFY_DKIM_* so a NOPASSWD invocation could never set them, and — more
+# importantly — guessing the domain is actively dangerous. The key file belongs
+# to whichever domain smtp.dkim.domain names; comparing it against a DIFFERENT
+# domain's published record fails and looks like backup corruption when nothing
+# is wrong. An explicit VERIFY_DKIM_DOMAIN still wins if set.
+DKIM_CONFIG="${VERIFY_CONFIG:-/mnt/data/bongo/bongo.prod.hcl}"
+if [[ -z "${VERIFY_DKIM_DOMAIN:-}" && -r "${DKIM_CONFIG}" ]]; then
+    VERIFY_DKIM_DOMAIN=$(awk '
+      /^[[:space:]]*dkim[[:space:]]*\{/ { inblk = 1; next }
+      inblk && /^[[:space:]]*\}/        { inblk = 0 }
+      inblk && /^[[:space:]]*domain[[:space:]]*=/ {
+          gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit
+      }
+    ' "${DKIM_CONFIG}")
+    VERIFY_DKIM_SELECTOR="${VERIFY_DKIM_SELECTOR:-$(awk '
+      /^[[:space:]]*dkim[[:space:]]*\{/ { inblk = 1; next }
+      inblk && /^[[:space:]]*\}/        { inblk = 0 }
+      inblk && /^[[:space:]]*selector[[:space:]]*=/ {
+          gsub(/.*=[[:space:]]*"/, ""); gsub(/".*/, ""); print; exit
+      }
+    ' "${DKIM_CONFIG}")}"
+    [[ -n "${VERIFY_DKIM_DOMAIN}" ]] \
+        && log "     dkim domain/selector taken from config: ${VERIFY_DKIM_SELECTOR:-mail}._domainkey.${VERIFY_DKIM_DOMAIN}"
+fi
+
 log "3/4  checking DKIM signing key"
 DKIM_KEY=$(find "${WORK}/secrets" -name '*.pem' -o -name '*dkim*' -type f 2>/dev/null | head -1 || true)
 if [[ -n "${DKIM_KEY}" ]]; then
@@ -126,7 +153,11 @@ if [[ -n "${DKIM_KEY}" ]]; then
         RESTORED_PUB=$(openssl rsa -in "${DKIM_KEY}" -pubout -outform DER 2>/dev/null | base64 -w0)
         PUBLISHED=$(dig +short TXT "${SELECTOR}._domainkey.${VERIFY_DKIM_DOMAIN}" \
                     | tr -d '"' | tr -d ' ' | sed 's/.*p=//' | head -1)
-        if [[ -n "${PUBLISHED}" && "${RESTORED_PUB}" == "${PUBLISHED}"* ]]; then
+        if [[ -z "${PUBLISHED}" ]]; then
+            # No record published is a DNS/config gap, not backup corruption.
+            # Failing here would cry wolf about a good archive.
+            ok "no DKIM record published at ${SELECTOR}._domainkey.${VERIFY_DKIM_DOMAIN} (nothing to compare against; not a backup problem)"
+        elif [[ "${RESTORED_PUB}" == "${PUBLISHED}"* ]]; then
             ok "restored key matches the DKIM record published for ${VERIFY_DKIM_DOMAIN}"
         else
             fail "restored DKIM key does NOT match ${SELECTOR}._domainkey.${VERIFY_DKIM_DOMAIN} — mail signed after a restore would fail verification"
