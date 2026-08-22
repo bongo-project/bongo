@@ -1,6 +1,7 @@
 package deliver
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -306,5 +307,111 @@ func TestAntispamStageAndSpamScoreFromStages(t *testing.T) {
 	}
 	if got := spamScoreFromStages(nil); got != 0.0 {
 		t.Errorf("spamScoreFromStages(nil) = %v, want 0.0", got)
+	}
+}
+
+// --- Task 13.4 / PRD US-004: a DNSBL verdict must be visible ---------------
+//
+// 13.3 puts a "dnsbl_<zone>" entry into StageResult.Reasons. These tests pin
+// the other half of the claim: that it survives into the delivered message's
+// X-Spam-Reasons header, and that it stays OUT of Authentication-Results.
+
+func TestDNSBLReasonReachesSpamReasonsHeader(t *testing.T) {
+	t.Run("US-004: the header names the zone that listed the IP", func(t *testing.T) {
+		stage := &bongov1.StageResult{
+			Score:   0.65,
+			Reasons: []string{"DKIM missing", "dnsbl_zen.example-bl.test"},
+		}
+		got := buildSpamHeaders(stage, 0.5)
+
+		reasonsLine := got[len(got)-1]
+		if !strings.HasPrefix(reasonsLine, "X-Spam-Reasons: ") {
+			t.Fatalf("last header = %q, want an X-Spam-Reasons line", reasonsLine)
+		}
+		if !strings.Contains(reasonsLine, "zen.example-bl.test") {
+			t.Errorf("X-Spam-Reasons = %q, want it to name the listing zone", reasonsLine)
+		}
+	})
+
+	t.Run("every listing zone is named, not just the first", func(t *testing.T) {
+		stage := &bongov1.StageResult{
+			Score: 0.8,
+			Reasons: []string{
+				"dnsbl_zen.example-bl.test",
+				"dnsbl_sbl.example-bl.test",
+			},
+		}
+		reasonsLine := buildSpamHeaders(stage, 0.5)[2]
+		for _, zone := range []string{"zen.example-bl.test", "sbl.example-bl.test"} {
+			if !strings.Contains(reasonsLine, zone) {
+				t.Errorf("X-Spam-Reasons = %q, want it to name %q", reasonsLine, zone)
+			}
+		}
+	})
+
+	t.Run("the reason survives the real stamping path, not just the builder", func(t *testing.T) {
+		raw := []byte("From: sender@example.com\r\nSubject: hello\r\n\r\nbody\r\n")
+		stage := &bongov1.StageResult{Score: 0.7, Reasons: []string{"dnsbl_zen.example-bl.test"}}
+
+		stamped := string(prependHeaders(raw, buildSpamHeaders(stage, 0.5)))
+
+		if !strings.Contains(stamped, "X-Spam-Reasons: dnsbl_zen.example-bl.test") {
+			t.Errorf("stamped message does not carry the DNSBL reason:\n%s", stamped)
+		}
+		// The trace headers must sit ahead of the original header block so a
+		// DKIM signature over the original headers stays valid (FR-13).
+		if strings.Index(stamped, "X-Spam-Reasons:") > strings.Index(stamped, "From:") {
+			t.Error("X-Spam-Reasons was stamped after the original headers, not before")
+		}
+	})
+
+	t.Run("a long list of listing zones folds instead of producing an over-long line", func(t *testing.T) {
+		// Enough zones to push the single logical line past maxHeaderLineLen,
+		// which is where an unfolded header would start approaching the RFC
+		// 5322 998-octet limit.
+		reasons := make([]string, 0, 40)
+		for i := 0; i < 40; i++ {
+			reasons = append(reasons, fmt.Sprintf("dnsbl_zone%02d.example-bl.test", i))
+		}
+		stage := &bongov1.StageResult{Score: 1.0, Reasons: reasons}
+
+		raw := []byte("From: sender@example.com\r\n\r\nbody\r\n")
+		stamped := string(prependHeaders(raw, buildSpamHeaders(stage, 0.5)))
+
+		for _, line := range strings.Split(stamped, "\r\n") {
+			if len(line) > 998 {
+				t.Errorf("physical line exceeds the RFC 5322 998-octet limit (%d octets): %q", len(line), line)
+			}
+		}
+		// Folding must not lose content.
+		if !strings.Contains(stamped, "zone39.example-bl.test") {
+			t.Error("folding dropped the last zone from X-Spam-Reasons")
+		}
+	})
+}
+
+// TestDNSBLNeverAppearsInAuthenticationResults pins the PRD's explicit
+// prohibition: DNSBL is not an authentication method, and putting it in
+// Authentication-Results would mislead downstream tooling that reads that
+// header as a statement about SPF/DKIM/DMARC. buildAuthenticationResults
+// takes only those three as parameters, so this holds by construction today
+// -- the test exists so that a future change which starts threading extra
+// signals into it has to justify itself against this requirement.
+func TestDNSBLNeverAppearsInAuthenticationResults(t *testing.T) {
+	got := buildAuthenticationResults(
+		"mail.example.com",
+		"fail",                // spf
+		"none",                // dkim
+		"zen.example-bl.test", // dkimDomain: a zone-shaped value, worst case
+		"fail",                // dmarc
+	)
+
+	if strings.Contains(strings.ToLower(got), "dnsbl") {
+		t.Errorf("Authentication-Results = %q, must never carry a dnsbl token", got)
+	}
+	// Confirm the header is otherwise well-formed, so this is not passing
+	// merely because the builder bailed out and returned "".
+	if !strings.Contains(got, "spf=fail") || !strings.Contains(got, "dmarc=fail") {
+		t.Errorf("Authentication-Results = %q, want the ordinary spf/dmarc tokens present", got)
 	}
 }
