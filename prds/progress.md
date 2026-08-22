@@ -1446,3 +1446,24 @@ problem it exists to catch.
 PATTERN: [security] A NOPASSWD sudoers rule pointing at a user-writable script is full passwordless
 root in disguise. Scoping is only real if the target is root-owned and not writable by the granted
 user.
+
+## 2026-08-22 — norman import: Phase 13 (DNSBL / blocklist checks)
+
+Imported `prd-dnsbl-blocklist-checks.md` (research -> backlog). 5 tasks from 4 user stories / 11 FRs.
+
+Verified the PRD's cited dependencies before importing rather than trusting them — it was written
+before Phase 12 and two of its assumptions had changed:
+- FR-7's trust skip is now directly implementable: `env.GetTrusted()` exists (`builtin.go:169`).
+  The PRD says "QueueEnvelope currently has no such field" and offers a fallback; that fallback is
+  no longer needed.
+- The `DNSResolver` seam is real (`internal/mail/spf.go:41`, LookupTXT + LookupIP), so DNSBL's
+  A-record queries fit without inventing an abstraction.
+- `proxy_protocol = true` on prod, so the PRD's decisive caveat is already satisfied — but it
+  inverts if bongo moves to face the internet directly, which the operator has planned. Captured
+  in 13.5 rather than left as a footnote.
+
+Also carried B8 forward into 13.2: config validation must happen at the point of use, NOT by wiring
+`cfg.Validate()` into startup.
+
+PATTERN: [import] Re-check a PRD's stated dependencies at import time. This one was written two
+phases ago and its central "this field does not exist yet" caveat had since become false.
