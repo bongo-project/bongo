@@ -294,3 +294,50 @@ second integration suite on top of a surviving one starves both under -race and 
 readiness timeouts that look like real failures. Check `ps -eo cmd | grep integration.test`
 before attributing an integration failure to the diff. Run long gates with
 `setsid nohup`, and confirm no strays before re-running.
+
+## 2026-08-22 — 13.3 DNSBL wired into antispam scoring — DONE
+
+Commit: b28121d. internal/pipeline/antispam/{builtin.go,dnsbl_test.go},
+internal/agent/{antispam.go,antispam_test.go,agent.go}.
+Advisor plan REVISE, code review MINOR with 4 findings: 3 fixed, 1 filed as B14.
+
+Advisor caught a gap in the ORCHESTRATOR'S task spec, not the worker's code: the task
+named only buildAntispamProcessor, but there is a SECOND construction site,
+startProcessorAgent in agent.go. Following the spec literally would have left agent-role
+nodes with DNSBL configured and enabled while never checking anything. Both wired.
+
+Fixed before commit:
+1. Debug log bound score_before to the pre-DNSBL score on every iteration while score_after
+   was the running total, so with two listed zones the second line implied one zone
+   contributed what both did. Logs the running value now.
+2. The "feature disabled" row in the skip-rule table built a processor with the fake
+   resolver unwired, so calls==0 held regardless of applyDNSBL's behaviour. Removed, with
+   a comment pointing at TestBuiltinDNSBLDisabled_ScoringUnaffectedBySourceIP which covers
+   it for real.
+3. Dead assertion: `Action == "reject"` checked immediately after asserting the action was
+   "quarantine". Unreachable, and implied reject is a state this stage can reach.
+
+B14 (filed, out of scope): CompositeProcessor replaces the winning StageResult wholesale
+and carries across only DmarcResult, dropping Reasons. On an rspamd/spamassassin
+deployment the dnsbl_<zone> reason never reaches X-Spam-Reasons, breaking US-004 there.
+Pre-existing. Not biting prod, which runs backend = "builtin" with rspamd disabled, so no
+composite is constructed.
+
+Gate: make test-all EXIT=0, 35 packages. gosec 2 findings, both LOW and pre-existing
+(agent.go:1857/1877 unhandled Close()). golangci-lint 0 issues.
+
+PATTERN: [scoring] Where a signal enters a blended score changes what an operator's
+configured number MEANS. Adding DNSBL before the `0.6*heuristic + 0.4*bayes` blend would
+have turned a configured weight of 0.4 into 0.24. Any new signal must state which side of
+a blend it lands on and why.
+PATTERN: [wiring] Before specifying "wire X in at <site>", grep for every construction site
+of the thing being wired. internal/agent has TWO antispam processor construction paths
+(buildAntispamProcessor and startProcessorAgent) that build different option sets. A
+single-site task spec silently disables the feature on one deployment shape.
+PATTERN: [trust] The "trust never bypasses filtering" rule admits origin-REPUTATION signals
+as a legitimate exception, distinct from content filtering. DNSBL skips on Trusted; the
+reasoning is in the comment specifically so the general rule is not eroded by the exception
+and the exception is not "fixed" away by someone applying the general rule.
+PATTERN: [review] Third instance this phase of a test that reads as evidence while asserting
+nothing (12.3 vacuous Bayes guard, 13.2 subtest named for absent data, 13.3 unwired fake +
+unreachable assertion). Check the DATA and the WIRING, not the test name or the report.
