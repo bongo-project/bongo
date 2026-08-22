@@ -247,3 +247,50 @@ before attributing.
 PATTERN: [testing] The FSM writes Pebble and THEN updates derived indexes, so any test that
 polls Pebble for a key and then asserts the SQLite/Bleve row can observe the gap. Poll both.
 Fixed TestEnsureConfiguredDomainSeedsOnStartup, which failed ~1 run in 3.
+
+## 2026-08-22 — 13.2 DNSBL config block — DONE
+
+Commit: 4c61ded. internal/config (DNSBLConfig/DNSBLZone + accessors + Validate),
+internal/agent/agent.go (startup validation), deploy/bongo.example.hcl.
+
+Workflow returned BLOCKED — not a decision blocker, the worker simply ran out of time
+before `make test-all` finished and declined to claim DONE without observing it. Correct
+call, but it meant the advisor code-review stage never ran; orchestrator reviewed instead.
+
+Defect found in review and fixed before commit: config normalised zone names with
+trim+lower-case only, while internal/dnsbl.normalizeZone ALSO strips a trailing dot.
+So `zone "zen.spamhaus.org"` and `zone "zen.spamhaus.org."` passed Validate as two
+distinct zones and then collapsed to one in the checker — the same blocklist queried
+twice, its weight counted twice against the sender. Confirmed with a throwaway probe
+(both names reached DNSBLZoneNames intact) before changing anything. Fixed with a single
+normalizeDNSBLZone helper used by both Validate and resolvedZones.
+
+The test that should have caught it was named "duplicate zone name differing only by case
+and trailing dot" but its data differed only by case. Split into real cases (trailing dot;
+case + dot + surrounding space; bare "." which must be rejected as an empty name) and
+proved non-vacuous by removing the TrimSuffix and watching all three fail.
+
+Worker did better than the task spec in one place: validation wired at the TOP of
+Agent.Run rather than the SMTP call site the task named, because the SMTP branch is
+skipped for agent-role nodes and for nodes with SMTP disabled. Covers every role.
+
+PATTERN: [config] When two packages normalise the same identifier, they must share one
+helper or be pinned to each other by an explicit test. config and internal/dnsbl each had
+their own zone-name normalisation and they disagreed on trailing dots — validation passed
+and the duplicate reappeared downstream. A mismatch between a validator's notion of
+identity and the consumer's is invisible to both packages' own tests.
+
+PATTERN: [testing] Check that a test's DATA matches its NAME. A subtest called "...differing
+by case and trailing dot" contained no trailing dot; the requirement read as covered in the
+worker's report and in the test list, but nothing asserted it.
+
+PATTERN: [testing] test/integration helpers discard the error from `a.Run(ctx)`
+(`go func() { a.Run(ctx) }()`), so a genuine startup failure and a merely slow startup both
+surface as "agent not ready in time" with no cause. Anything added early in Run() that can
+return an error will present as a readiness timeout.
+
+PATTERN: [ops] A killed background wrapper does NOT kill its `go test` child. Starting a
+second integration suite on top of a surviving one starves both under -race and produces
+readiness timeouts that look like real failures. Check `ps -eo cmd | grep integration.test`
+before attributing an integration failure to the diff. Run long gates with
+`setsid nohup`, and confirm no strays before re-running.
