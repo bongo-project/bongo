@@ -148,6 +148,10 @@ smtp {
 
   # Set true ONLY when a trusted reverse proxy (e.g. Traefik/HAProxy) sits in
   # front and sends the PROXY protocol header, so Bongo sees the real client IP.
+  # Anything that judges the connecting IP depends on this being right:
+  # trusted_networks below, per-IP rate limiting, SPF, and the antispam
+  # dnsbl block. Set it wrong and those all evaluate the proxy instead of
+  # the sender.
   # proxy_protocol = false
 
   # CIDR blocks whose connecting source IP is exempt from inbound origin
@@ -367,10 +371,28 @@ antispam {
   # default (equivalent to omitting this whole "dnsbl" block): no zones are
   # queried and no time is spent on DNS lookups.
   #
-  # There is no shipped default zone list — you choose which blocklists to
-  # trust and their relative weight. Some public zones require registration
-  # or rate-limit unregistered high-volume queriers; check each provider's
-  # usage policy before enabling it in production.
+  # BEFORE YOU ENABLE THIS, CHECK smtp.proxy_protocol ABOVE. A blocklist
+  # lookup is only meaningful if the IP being looked up is the real sending
+  # client's. Behind a reverse proxy (Traefik, HAProxy) that means
+  # proxy_protocol = true, or every message is scored against your own
+  # proxy's reputation instead of the sender's — which is worse than not
+  # running these checks at all, because the verdict looks authoritative
+  # and is about the wrong host. Facing the internet directly it must be
+  # false, or the connecting IP is not recovered at all. Get this wrong in
+  # either direction and the feature is actively misleading rather than
+  # merely off.
+  #
+  # There is no shipped default zone list, and none is named here on
+  # purpose. Which blocklists to consult is an operator judgement with
+  # consequences: naming one would be a soft endorsement, and every public
+  # zone comes with its own terms of use. Several prohibit commercial or
+  # high-volume querying without a subscription, and the free public
+  # resolvers will rate-limit a busy mail server into silence — at which
+  # point the zone answers with a policy code rather than a verdict.
+  # (Bongo handles that correctly: a 127.255.255.0/24 answer means "there
+  # is a problem with your query", never "this sender is listed". But you
+  # get no blocklist protection while it lasts, and only a log line saying
+  # so.) Read each provider's policy, and register where required.
   # dnsbl {
   #   enabled = false
   #
@@ -391,13 +413,15 @@ antispam {
   #   # blocklist listing alone can never tag a message as spam; it must be
   #   # corroborated by another signal. To stop querying a zone, delete its
   #   # block rather than setting weight = 0.
-  #   zone "zen.spamhaus.org" {
+  #   # Placeholder names. Replace them with zones you have chosen and are
+  #   # entitled to query — see the note above.
+  #   zone "zone1.example-blocklist.invalid" {
   #     weight = 0.4
   #   }
-  #   zone "b.barracudacentral.org" {
+  #   zone "zone2.example-blocklist.invalid" {
   #     weight = 0.3
   #   }
-  #   zone "bl.spamcop.net" {
+  #   zone "zone3.example-blocklist.invalid" {
   #     # weight omitted -> default 0.25
   #   }
   # }
