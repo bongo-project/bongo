@@ -224,11 +224,23 @@ func TestEnsureConfiguredDomainSeedsOnStartup(t *testing.T) {
 		t.Fatal("configured domain was not seeded into Pebble on startup")
 	}
 
-	// Derived SQLite index should carry it too.
+	// Derived SQLite index should carry it too. Poll rather than assert
+	// once: the FSM writes Pebble and *then* updates the derived indexes, so
+	// the loop above can observe the key mid-Apply, before the SQLite insert
+	// has run. Asserting immediately made this fail roughly one run in three.
 	var name string
-	if err := a.Metadata.System.DB().QueryRow(
-		"SELECT name FROM domains WHERE name = ?", "example.test").Scan(&name); err != nil {
-		t.Errorf("configured domain not in SQLite index: %v", err)
+	var indexErr error
+	deadline = time.Now().Add(20 * time.Second)
+	for time.Now().Before(deadline) {
+		indexErr = a.Metadata.System.DB().QueryRow(
+			"SELECT name FROM domains WHERE name = ?", "example.test").Scan(&name)
+		if indexErr == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if indexErr != nil {
+		t.Errorf("configured domain not in SQLite index: %v", indexErr)
 	}
 
 	cancel()
