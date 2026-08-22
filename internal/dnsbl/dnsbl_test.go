@@ -1,11 +1,13 @@
 package dnsbl
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -455,4 +457,35 @@ func TestCheck_ConcurrentUseIsRaceFree(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// TestListingIsLoggedWithIPZoneAndCode pins PRD US-004's logging criterion:
+// each listing records the IP, the zone and the returned code at INFO, so an
+// operator can answer "why was this junked" from the logs alone. It also
+// pins the constraint that goes with it -- the DNSBL path never logs message
+// content, because it never sees any.
+func TestListingIsLoggedWithIPZoneAndCode(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	ip := net.ParseIP("203.0.113.5")
+	const zone = "zen.example-bl.test"
+
+	r := newFakeResolver()
+	r.set(nameFor(t, ip, zone), []net.IP{net.ParseIP("127.0.0.4")}, nil)
+
+	c := NewCheckerWithResolver(r, []string{zone}, time.Second, time.Minute, logger)
+	if res := c.Check(context.Background(), ip); len(res.ListedZones()) != 1 {
+		t.Fatalf("precondition: expected one listing, got %+v", res.Zones)
+	}
+
+	out := buf.String()
+	for _, want := range []string{"203.0.113.5", zone, "127.0.0.4"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("INFO log = %q, want it to record %q", out, want)
+		}
+	}
+	if !strings.Contains(out, "level=INFO") {
+		t.Errorf("listing was not logged at INFO: %q", out)
+	}
 }
