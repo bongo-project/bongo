@@ -90,6 +90,13 @@ can be diagnosed rather than guessed at.
 - FR-2: A zone with no explicit weight uses a documented default.
 - FR-3: Lookups query `<reversed-ip>.<zone>` and treat any `127.0.0.0/8` answer as a listing;
   NXDOMAIN as not listed.
+  **Amended during 13.1:** `127.255.255.0/24` is carved OUT of the listing range. Major zones
+  (Spamhaus among others) reserve that sub-range to signal a problem with the *query* — "you are
+  querying via a public resolver", "query volume exceeded", "blocked client" — rather than a
+  verdict on the IP. Scoring those as listings would mark every sender as spam the moment the
+  operator's resolver setup upset a zone. Anything that cannot be interpreted is not-listed plus
+  a log line. Implemented in `internal/dnsbl/query.go:classifyAnswer`; 13.2's config docs and
+  13.3's scoring must not revert to the literal wording above.
 - FR-4: All zone lookups for a message run concurrently under one shared timeout.
 - FR-5: Any lookup error — timeout, SERVFAIL, malformed answer — is treated as not-listed and
   logged. It must never fail the message.
