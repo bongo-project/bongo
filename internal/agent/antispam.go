@@ -5,6 +5,7 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/antispam"
 	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-go/bongo-go/internal/dnsbl"
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/pipeline"
 	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
@@ -58,6 +59,9 @@ func buildAntispamProcessor(
 	if cfg.Antispam.DMARCEnabled() && cfg.Server.Role != "dev" {
 		antispamOpts = append(antispamOpts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), cfg.Antispam.DMARCEnforce()))
 	}
+	if opt := dnsblOption(cfg, logger); opt != nil {
+		antispamOpts = append(antispamOpts, opt)
+	}
 	builtin := pipelineantispam.NewBuiltinProcessor(scorer, antispamOpts...)
 	builtin.SetResolver(resolver)
 
@@ -100,4 +104,45 @@ func buildAntispamProcessor(
 		logger.Warn("pipeline: unknown antispam backend, falling back to builtin", "backend", backend)
 		return builtin
 	}
+}
+
+// dnsblOption builds the pipelineantispam.WithDNSBL option from cfg, or
+// returns nil when DNSBL is disabled or has no zones configured (task
+// 13.3). Shared by both places that construct a *BuiltinProcessor
+// (buildAntispamProcessor above, for server-role pipeline stages, and
+// startProcessorAgent's "antispam" case in agent.go, for agent-role
+// deployments) so the two can never independently drift on DNSBL wiring —
+// startProcessorAgent already hand-rolls its own option slice (it has no
+// Bayes filter, deliberately, since agent mode has no local per-user store)
+// and would otherwise silently end up with no DNSBL at all, the same class
+// of divergence the antivirus comment beside it already warns about.
+//
+// The length guard on DNSBLZoneNames matters on its own, independent of
+// DNSBLEnabled: DNSBLConfig.Validate runs from internal/agent.Run, not from
+// cfg.Validate() (see CLAUDE.md — cfg.Validate() is never wired into
+// startup), and this function has non-validating callers (unit tests
+// constructing a *config.Config by hand). An enabled=true block with zero
+// zones would otherwise construct a checker that can never list anything —
+// harmless, but pure waste on every message.
+//
+// The returned checker is constructed exactly once per call, and each of
+// the two call sites calls this exactly once at startup, so the checker
+// (and its per-IP cache) is shared for the life of the process, never
+// rebuilt per message.
+func dnsblOption(cfg *config.Config, logger *slog.Logger) pipelineantispam.Option {
+	if !cfg.Antispam.DNSBLEnabled() {
+		return nil
+	}
+	zones := cfg.Antispam.DNSBLZones()
+	if len(zones) == 0 {
+		return nil
+	}
+	weights := make(map[string]float64, len(zones))
+	names := make([]string, 0, len(zones))
+	for _, z := range zones {
+		weights[z.Name] = z.Weight
+		names = append(names, z.Name)
+	}
+	checker := dnsbl.NewChecker(names, cfg.Antispam.DNSBLTimeout(), cfg.Antispam.DNSBLCacheTTL(), logger)
+	return pipelineantispam.WithDNSBL(checker, weights)
 }
