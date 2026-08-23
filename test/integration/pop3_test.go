@@ -294,10 +294,37 @@ func TestPOP3DeleteAndQuit(t *testing.T) {
 	c.send("DELE 1")
 	c.expectOK()
 
-	// STAT still shows 1 message (not committed until QUIT).
+	// RFC 1939 section 5: a message marked deleted is not counted by STAT, so
+	// this must report 0 even though nothing has been committed yet. The
+	// deletion is only made permanent when the session enters UPDATE at QUIT,
+	// which the RSET check below relies on.
+	//
+	// This assertion used to be a t.Logf, so the behaviour was never checked --
+	// and the comment above it claimed the opposite, that STAT "still shows 1".
+	// The implementation was right (activeStats skips deleted messages) and the
+	// comment was wrong, which is exactly the sort of thing an unasserted log
+	// line hides.
 	c.send("STAT")
 	stat = c.expectOK()
-	t.Logf("STAT after DELE (before QUIT): %s", stat)
+	if !strings.HasPrefix(stat, "+OK 0 ") {
+		t.Errorf("STAT after DELE = %q, want 0 messages: RFC 1939 excludes messages "+
+			"marked deleted from STAT", stat)
+	}
+
+	// RSET clears the deletion marks, so the message is countable again. This
+	// is what proves DELE had not actually removed anything yet.
+	c.send("RSET")
+	c.expectOK()
+	c.send("STAT")
+	stat = c.expectOK()
+	if !strings.HasPrefix(stat, "+OK 1 ") {
+		t.Errorf("STAT after RSET = %q, want 1 message: RSET must unmark deletions, "+
+			"and DELE must not have removed the message before QUIT", stat)
+	}
+
+	// Re-mark it so the rest of the test exercises the commit path.
+	c.send("DELE 1")
+	c.expectOK()
 
 	c.send("QUIT")
 	c.expectOK()

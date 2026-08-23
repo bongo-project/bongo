@@ -96,22 +96,36 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 /user/{user_id}/mail/{guid}          → MailMeta protobuf + BlobRef
 /user/{user_id}/event/{guid}         → calendar event + BlobRef
 /user/{user_id}/contact/{guid}       → contact + BlobRef (vCard)
-/user/{user_id}/folder/{guid}        → folder metadata
-/user/{user_id}/config/{key}         → user preferences
+/user/{user_id}/calendar/{guid}      → calendar metadata
+/user/{user_id}/mailbox/{name}/meta  → mailbox metadata (uid_next, uid_validity)
+/user/{user_id}/mailbox/{name}/msg/{uid} → MailboxMessage (flags, tags, mail guid)
+/user/{user_id}/preferences          → user preferences
 /user/{user_id}/rule/{guid}          → mail filter rule
 /user/{user_id}/tag/{name}           → TagMeta protobuf (colour, sort_order)
-/system/config/{key}                 → system config
+/user/{user_id}/addrverify/{address} → send-as verification challenge
+/user/{user_id}/bayes/{category}/{token} → Bayes token counts
 /system/domain/{domain}              → domain config
+/system/domain_admin/{domain}/{user_id} → domain-admin grant marker
 /system/alias/{alias}                → alias → target user
-/system/acl/{resource}/{principal}   → ACL entry
-/share/{target_user}/{type}/{owner}/{guid} → shared resource
-/queue/message/{timestamp}/{guid}    → queued outbound message
+/system/catchall/{domain}            → per-domain catch-all target
+/queue/pending/{unix_ts}-{id}        → queued outbound message (zero-padded ts)
+/queue/bounced/{id}                  → bounced outbound message
 
 # Blob store (content-addressable, separate from Pebble)
 /data/blobs/{first-2-hex}/{sha256-hash} → raw file content
 ```
 
 Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs older than 1 hour.
+The GC is the ONLY component that deletes blobs. They are content-addressed and shared across
+users, so a byte-identical message delivered to several people is one blob — deleting it from any
+single owner's code path destroys everyone's copy. The reference set spans Pebble mail, the
+outbound queue, and the on-disk spool.
+
+There is no generic ACL or share key space. Sharing is three separate mechanisms: domain-admin
+delegation (`/system/domain_admin/...`), send-as grants (`AddressRecord.CanSend`/`Verified`), and
+calendar sharing (the `shared_with` field on the Calendar protobuf). An earlier revision of this
+file documented `/system/acl/{resource}/{principal}` and `/share/{target}/...`; neither was ever
+built.
 
 ## Key Technology Choices
 
