@@ -341,3 +341,45 @@ and the exception is not "fixed" away by someone applying the general rule.
 PATTERN: [review] Third instance this phase of a test that reads as evidence while asserting
 nothing (12.3 vacuous Bayes guard, 13.2 subtest named for absent data, 13.3 unwired fake +
 unreachable assertion). Check the DATA and the WIRING, not the test name or the report.
+
+## 2026-08-22 — Phase 13 verification (adversarial) — 5 findings fixed
+
+Commit: d171e73. Ran a 4-lens adversarial verification over the whole phase: PRD
+conformance, test vacuity, security/failure modes, docs-vs-code. Every finding was handed
+to a separate agent instructed to refute it. 20 raised, 15 refuted, 5 confirmed.
+
+Security lens: 0 of 6 survived. Fail-open, skip rules, cache bounds and score clamping all
+held under adversarial reading.
+
+CONFIRMED AND FIXED:
+1. (docs, the serious one) bongo.example.hcl claimed a listing "never rejects or
+   quarantines on its own" while its own suggested weights summed to 0.95 against a 0.9
+   high_threshold. An IP listed on all three suggested zones would be QUARANTINED by
+   blocklists alone -- message removed from delivery, no DSN, deleted at
+   quarantine_retention. Claim corrected to what is actually guaranteed, weights lowered to
+   total 0.75, and the arithmetic is now asserted by the doc-contract test.
+2/3. (tests) BOTH wiring tests passed with the wiring deleted.
+   TestBuildAntispamProcessorDNSBLWiring used a Trusted envelope, so applyDNSBL's trusted
+   skip returned before the checker was consulted. TestStartProcessorAgentDNSBLWiring never
+   called startProcessorAgent and merely duplicated an existing dnsblOption test. Both now
+   assert via BuiltinProcessor.HasDNSBL and were verified to fail on deletion; agent-role
+   option assembly extracted to Agent.buildAgentAntispamProcessor to be reachable at all.
+4. (comments) Three test doc comments cited FR numbers describing other requirements.
+5. (docs) The proxy_protocol justification was factually wrong -- a PROXY header from a
+   non-private peer is ignored and the real socket address used, so a public sender's IP is
+   NOT lost. Advice unchanged, reasoning replaced with the real risk (a local/LAN-adjacent
+   peer asserting an arbitrary source IP).
+
+PATTERN: [docs] Shipped example values ARE the configuration operators copy. Check the
+example's own numbers against the thresholds its prose promises: the "never quarantines"
+claim was disproved by three weights in the same file, and a test asserting the
+contradicted behaviour already existed and had been green for a day.
+PATTERN: [testing] A test whose envelope/input triggers an early-return skip in the code
+under test cannot observe anything downstream of that skip. Both DNSBL wiring tests chose
+Trusted inputs to avoid live DNS and thereby guaranteed they asserted nothing.
+PATTERN: [testing] "Cannot be unit tested" is often "is not a named function". Extracting
+an inline switch case into a method made a construction site with zero coverage testable
+in a few lines.
+PATTERN: [verify] Adversarial refutation earned its keep: 15 of 20 findings did not
+survive, including confidently-argued ones citing real line numbers. Refutation caught a
+verifier assuming every FR citation in a touched file referred to the PRD under review.
