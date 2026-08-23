@@ -542,6 +542,17 @@ func TestEnvToEntry(t *testing.T) {
 	}
 }
 
+// TestDeleteMessageWithBlob covers deleting a quarantined message that has a
+// blob.
+//
+// The expectation here was INVERTED on 2026-08-23. It previously asserted the
+// blob was deleted, which is what the handler did and what turned out to be a
+// cross-user data-loss bug: the blob store is content-addressed and shared, so
+// the hash of quarantined spam is the same hash as any byte-identical copy
+// delivered to another user, and deleting it destroyed their mail body. The
+// envelope is removed; reclaiming the blob belongs to the GC, which is the
+// only component that sees the whole reference set. See
+// TestQuarantineDeleteDoesNotDestroySharedBlob.
 func TestDeleteMessageWithBlob(t *testing.T) {
 	spool := newTestSpool(t)
 	dataDir := t.TempDir()
@@ -570,9 +581,15 @@ func TestDeleteMessageWithBlob(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	// Blob should be deleted.
-	if blobs.Exists(hash) {
-		t.Errorf("blob %s still exists after delete", hash)
+	// The envelope is gone from quarantine...
+	if got := spoolCount(t, spool, quarantineDir); got != 0 {
+		t.Errorf("quarantine still holds %d envelope(s) after delete, want 0", got)
+	}
+	// ...but the blob survives for the GC to reclaim once nothing references
+	// it. Deleting it here would destroy any other user's byte-identical copy.
+	if !blobs.Exists(hash) {
+		t.Errorf("blob %s was deleted by the handler; a byte-identical message held "+
+			"by another user would now be unreadable", hash)
 	}
 }
 
@@ -1074,4 +1091,95 @@ func TestReleaseMessageRejectsPathTraversal(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestQuarantineDeleteDoesNotDestroySharedBlob is the cross-user data-loss
+// guard.
+//
+// The blob store is content-addressed and shared across every user, so a
+// quarantined message's hash is the SAME hash as any byte-identical copy
+// delivered to somebody else. Spam is sent to many recipients at once, which
+// makes that the common case, not a corner case. Deleting the blob when an
+// admin clears quarantine therefore destroys other users' mail bodies while
+// their metadata survives, leaving them an unreadable message and no
+// indication of why.
+//
+// Reclamation belongs to the blob GC, which is the only component that sees
+// the whole reference set. These tests assert the handler leaves the blob
+// alone, for every path that removes a quarantined envelope.
+func TestQuarantineDeleteDoesNotDestroySharedBlob(t *testing.T) {
+	// The shared body: quarantined for one recipient, delivered to another.
+	sharedBody := []byte("From: spammer@example.com\r\nSubject: buy pills\r\n\r\nbuy pills\r\n")
+
+	newFixture := func(t *testing.T) (*QuarantineHandler, *store.BlobStore, string) {
+		t.Helper()
+		blobs, err := store.NewBlobStore(t.TempDir())
+		if err != nil {
+			t.Fatalf("NewBlobStore: %v", err)
+		}
+		hash, err := blobs.Put(sharedBody)
+		if err != nil {
+			t.Fatalf("Put shared blob: %v", err)
+		}
+		spool := newTestSpool(t)
+		env := testEnv("msg-shared", "spammer@example.com", time.Now())
+		env.BlobHash = hash
+		seedQuarantine(t, spool, env)
+		return NewQuarantineHandler(spool, blobs, discardLogger()), blobs, hash
+	}
+
+	assertSurvives := func(t *testing.T, blobs *store.BlobStore, hash, path string) {
+		t.Helper()
+		if !blobs.Exists(hash) {
+			t.Fatalf("%s deleted a SHARED blob: another user holding a byte-identical "+
+				"message now has metadata pointing at a blob that no longer exists", path)
+		}
+	}
+
+	t.Run("single delete", func(t *testing.T) {
+		h, blobs, hash := newFixture(t)
+		req := quarantineRequest(t, http.MethodPost, "/admin/quarantine/msg-shared/delete",
+			nil, map[string]string{"id": "msg-shared"})
+		rec := httptest.NewRecorder()
+		h.DeleteMessage(rec, req)
+
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("status = %d, want 303", rec.Code)
+		}
+		assertSurvives(t, blobs, hash, "DeleteMessage")
+	})
+
+	t.Run("bulk delete", func(t *testing.T) {
+		h, blobs, hash := newFixture(t)
+		form := url.Values{"action": {"delete"}, "ids": {"msg-shared"}}
+		req := quarantineRequest(t, http.MethodPost, "/admin/quarantine/bulk",
+			strings.NewReader(form.Encode()), nil)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		h.BulkAction(rec, req)
+
+		assertSurvives(t, blobs, hash, "BulkAction delete")
+	})
+
+	t.Run("auto-purge", func(t *testing.T) {
+		blobs, err := store.NewBlobStore(t.TempDir())
+		if err != nil {
+			t.Fatalf("NewBlobStore: %v", err)
+		}
+		hash, err := blobs.Put(sharedBody)
+		if err != nil {
+			t.Fatalf("Put shared blob: %v", err)
+		}
+		spool := newTestSpool(t)
+		// Old enough that the retention sweep takes it.
+		env := testEnv("msg-old", "spammer@example.com", time.Now().Add(-48*time.Hour))
+		env.BlobHash = hash
+		seedQuarantine(t, spool, env)
+
+		purgeQuarantine(spool, blobs, 24*time.Hour, discardLogger())
+
+		// Auto-purge is the most dangerous of the three: it runs unattended on
+		// a timer, so a destroyed blob has nobody watching.
+		assertSurvives(t, blobs, hash, "auto-purge")
+	})
 }

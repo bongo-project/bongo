@@ -1,11 +1,15 @@
 package agent
 
 import (
+	"io"
+	"log/slog"
+	"os"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-go/bongo-go/internal/pipeline"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -68,7 +72,7 @@ func TestCollectReferencedBlobs(t *testing.T) {
 		t.Fatalf("Set queue: %v", err)
 	}
 
-	ref, err := collectReferencedBlobs(ps)
+	ref, err := collectReferencedBlobs(ps, nil)
 	if err != nil {
 		t.Fatalf("collectReferencedBlobs: %v", err)
 	}
@@ -81,3 +85,86 @@ func TestCollectReferencedBlobs(t *testing.T) {
 		t.Errorf("referenced set size = %d, want 3: %v", len(ref), ref)
 	}
 }
+
+// TestCollectReferencedBlobsCountsSpoolEnvelopes covers the one reference source
+// that is not in Pebble.
+//
+// A QueueEnvelope sitting in the spool names a BlobHash and has no Pebble key,
+// so a reference set built only from Pebble scans treats its body as garbage.
+// With blob_gc enabled and the default one-hour grace, any message held longer
+// than that -- the normal state for quarantined mail awaiting admin review --
+// had its body reclaimed while the envelope survived, leaving an entry that
+// renders as an empty message.
+//
+// Every spool directory is checked, not just quarantine/: a deferred message in
+// incoming/ or a parked one in error/ is equally reclaimable and equally wrong
+// to reclaim.
+func TestCollectReferencedBlobsCountsSpoolEnvelopes(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	spool, err := pipeline.NewSpoolStore(dir+"/spool", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewSpoolStore: %v", err)
+	}
+
+	spoolDirs := []string{"incoming", "processing", "deliver", "quarantine", "error"}
+	for i, d := range spoolDirs {
+		env := &bongov1.QueueEnvelope{
+			Id:       "env-" + d,
+			BlobHash: "spoolhash-" + d,
+		}
+		if err := spool.WriteEnvelope(d, env); err != nil {
+			t.Fatalf("WriteEnvelope into %s: %v", d, err)
+		}
+		_ = i
+	}
+
+	ref, err := collectReferencedBlobs(ps, spool)
+	if err != nil {
+		t.Fatalf("collectReferencedBlobs: %v", err)
+	}
+
+	for _, d := range spoolDirs {
+		want := "spoolhash-" + d
+		if !ref[want] {
+			t.Errorf("blob referenced only by a spool envelope in %s/ was not counted as live; "+
+				"the GC would reclaim it after the grace period and leave an unreadable message "+
+				"(set: %v)", d, ref)
+		}
+	}
+}
+
+// TestCollectReferencedBlobsSurfacesSpoolReadFailure pins that a spool read
+// error is returned rather than swallowed. A reference set that silently lost
+// the spool is indistinguishable from a spool that is genuinely empty, and the
+// difference is whether the next sweep deletes live mail.
+func TestCollectReferencedBlobsSurfacesSpoolReadFailure(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	spool, err := pipeline.NewSpoolStore(dir+"/spool", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("NewSpoolStore: %v", err)
+	}
+	// Make one spool directory unreadable.
+	if err := osChmod(dir+"/spool/quarantine", 0o000); err != nil {
+		t.Skipf("cannot chmod spool dir (running as root?): %v", err)
+	}
+	t.Cleanup(func() { _ = osChmod(dir+"/spool/quarantine", 0o750) })
+
+	if _, err := collectReferencedBlobs(ps, spool); err == nil {
+		t.Error("an unreadable spool directory produced no error; the sweep would run " +
+			"against an incomplete reference set and delete live mail")
+	}
+}
+
+func osChmod(path string, mode uint32) error { return os.Chmod(path, os.FileMode(mode)) }
