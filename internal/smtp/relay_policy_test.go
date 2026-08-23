@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -38,6 +39,11 @@ func (r *fakeResolver) ResolveRecipient(email string) (string, error) {
 type fakeSplitDeliverer struct {
 	localCalls [][]string
 	localMetas []*InboundMeta
+
+	// Injected failures for the spool-failure tests. A message that cannot be
+	// stored or enqueued must never be answered with 250.
+	storeErr   error
+	enqueueErr error
 }
 
 func (d *fakeSplitDeliverer) Deliver(from string, recipients []string, r io.Reader) error {
@@ -45,9 +51,15 @@ func (d *fakeSplitDeliverer) Deliver(from string, recipients []string, r io.Read
 }
 func (d *fakeSplitDeliverer) StoreBlob(r io.Reader) (string, error) {
 	_, _ = io.Copy(io.Discard, r)
+	if d.storeErr != nil {
+		return "", d.storeErr
+	}
 	return "blobhash", nil
 }
 func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blobHash string, meta *InboundMeta) error {
+	if d.enqueueErr != nil {
+		return d.enqueueErr
+	}
 	d.localCalls = append(d.localCalls, recipients)
 	// Make a copy of meta for verification
 	if meta != nil {
@@ -62,9 +74,15 @@ func (d *fakeSplitDeliverer) EnqueueLocal(from string, recipients []string, blob
 	return nil
 }
 
-type fakeRelayQueue struct{ enqueued []*bongov1.OutboundMessage }
+type fakeRelayQueue struct {
+	enqueued   []*bongov1.OutboundMessage
+	enqueueErr error
+}
 
 func (q *fakeRelayQueue) Enqueue(msg *bongov1.OutboundMessage) error {
+	if q.enqueueErr != nil {
+		return q.enqueueErr
+	}
 	q.enqueued = append(q.enqueued, msg)
 	return nil
 }
@@ -300,5 +318,134 @@ func TestAuthenticatedSubmissionArrivesTrusted(t *testing.T) {
 	meta := deliverer.localMetas[0]
 	if !meta.Trusted {
 		t.Error("authenticated submission message should be trusted")
+	}
+}
+
+// TestOutboundRateLimitRejectsWith452 covers the wiring at the Data() guard,
+// not the limiter. inbound_ratelimit_test.go proves inboundRateLimiter counts
+// correctly and explicitly asserts submission is exempt from the INBOUND
+// limiter -- so nothing referenced outboundRL or OutboundMessagesPerMinute at
+// all. Deleting the outbound guard left the whole suite green while a single
+// compromised account could relay without bound.
+func TestOutboundRateLimitRejectsWith452(t *testing.T) {
+	b, _, _ := testBackend("alice@example.com")
+	b.outboundRL = newInboundRateLimiter(2)
+
+	send := func() error {
+		s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
+		if err := s.Mail("alice@example.com", nil); err != nil {
+			t.Fatalf("Mail: %v", err)
+		}
+		if err := s.Rcpt("outsider@example.net", nil); err != nil {
+			t.Fatalf("Rcpt to external: %v", err)
+		}
+		return s.Data(strings.NewReader("subject: hi\r\n\r\nbody"))
+	}
+
+	for i := 1; i <= 2; i++ {
+		if err := send(); err != nil {
+			t.Fatalf("message %d should be under the limit, got %v", i, err)
+		}
+	}
+
+	err := send()
+	if err == nil {
+		t.Fatal("third message was accepted; the outbound rate limit did not fire")
+	}
+	if code := smtpCode(err); code != 452 {
+		t.Errorf("status = %d, want 452 (transient, so a legitimate client retries)", code)
+	}
+}
+
+// TestOutboundRateLimitDoesNotApplyToLocalOnly pins the guard's scope. It only
+// counts sessions with EXTERNAL recipients: internal mail between colleagues
+// must not be throttled by an anti-relay control. Without this, tightening the
+// condition to cover every submission would look like a passing test.
+func TestOutboundRateLimitDoesNotApplyToLocalOnly(t *testing.T) {
+	b, _, _ := testBackend("alice@example.com", "bob@example.com")
+	b.outboundRL = newInboundRateLimiter(1)
+
+	for i := 1; i <= 5; i++ {
+		s := &Session{backend: b, logger: b.logger, submission: true, authed: true, userID: "uid-alice@example.com"}
+		if err := s.Mail("alice@example.com", nil); err != nil {
+			t.Fatalf("Mail: %v", err)
+		}
+		if err := s.Rcpt("bob@example.com", nil); err != nil {
+			t.Fatalf("Rcpt local: %v", err)
+		}
+		if err := s.Data(strings.NewReader("subject: hi\r\n\r\nbody")); err != nil {
+			t.Fatalf("local-only message %d was rate limited: %v", i, err)
+		}
+	}
+}
+
+// TestDataRejectsWhenSpoolFails is the accept-then-lose guarantee: if the
+// message cannot be stored or queued, DATA must return an error so the sending
+// MTA keeps the message and retries.
+//
+// Returning nil here is the worst failure mode a mail server has. The peer sees
+// 250, deletes its copy, and the mail is gone with no bounce and no trace --
+// which is precisely why "log the error and continue" must never creep into
+// this path.
+func TestDataRejectsWhenSpoolFails(t *testing.T) {
+	boom := errors.New("disk full")
+
+	tests := []struct {
+		name    string
+		rcpt    string
+		setup   func(*Backend, *fakeSplitDeliverer, *fakeRelayQueue)
+		wantErr string
+	}{
+		{
+			name:    "blob store fails",
+			rcpt:    "staff@example.com",
+			setup:   func(b *Backend, d *fakeSplitDeliverer, q *fakeRelayQueue) { d.storeErr = boom },
+			wantErr: "disk full",
+		},
+		{
+			name:    "local enqueue fails",
+			rcpt:    "staff@example.com",
+			setup:   func(b *Backend, d *fakeSplitDeliverer, q *fakeRelayQueue) { d.enqueueErr = boom },
+			wantErr: "disk full",
+		},
+		{
+			name:    "outbound relay enqueue fails",
+			rcpt:    "outsider@example.net",
+			setup:   func(b *Backend, d *fakeSplitDeliverer, q *fakeRelayQueue) { q.enqueueErr = boom },
+			wantErr: "disk full",
+		},
+		{
+			name:    "outbound relay unavailable",
+			rcpt:    "outsider@example.net",
+			setup:   func(b *Backend, d *fakeSplitDeliverer, q *fakeRelayQueue) { b.relayQueue = nil },
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b, deliverer, relay := testBackend("staff@example.com", "alice@example.com")
+			tt.setup(b, deliverer, relay)
+
+			s := &Session{
+				backend: b, logger: b.logger,
+				submission: true, authed: true, userID: "uid-alice@example.com",
+			}
+			if err := s.Mail("alice@example.com", nil); err != nil {
+				t.Fatalf("Mail: %v", err)
+			}
+			if err := s.Rcpt(tt.rcpt, nil); err != nil {
+				t.Fatalf("Rcpt: %v", err)
+			}
+
+			err := s.Data(strings.NewReader("subject: hi\r\n\r\nbody"))
+			if err == nil {
+				t.Fatal("DATA returned 250 for a message that was never spooled: " +
+					"the sender will delete its copy and the mail is lost")
+			}
+			if tt.wantErr != "" && !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want it to carry %q", err, tt.wantErr)
+			}
+		})
 	}
 }
