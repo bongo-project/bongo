@@ -330,6 +330,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		a.Events = store.NewEventStore(pebbleStore, a)
 		if a.Search != nil {
 			a.Events.SetSearch(a.Search)
+			a.Events.SetLogger(a.logger)
 		}
 
 		// Construct the global address index store.

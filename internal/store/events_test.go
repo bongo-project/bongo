@@ -338,3 +338,84 @@ func TestEventStore_ListByDateRange_Recurring(t *testing.T) {
 		}
 	}
 }
+
+// TestListByDateRangeKeepsEventWithUnparseableRrule covers a silent
+// data-visibility bug.
+//
+// A recurring event whose RRULE this parser rejects used to be skipped
+// outright: ExpandRecurrence returned an error and the loop moved on. The event
+// vanished from every view -- agenda, month, CalDAV -- with nothing shown to
+// the user and no log line, so it read as data loss. It is still in Pebble;
+// nobody can see it.
+//
+// The event now falls back to its base occurrence. That is wrong about the
+// repeats and right about the thing that matters: the event, its time and its
+// title stay visible.
+func TestListByDateRangeKeepsEventWithUnparseableRrule(t *testing.T) {
+	es := newEventTestEnv(t)
+
+	start := time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC)
+	ev := &bongov1.Event{
+		Guid:      "evt-bad-rrule",
+		Title:     "Standup",
+		StartTime: start.Unix(),
+		EndTime:   start.Add(30 * time.Minute).Unix(),
+		Rrule:     "FREQ=NOT_A_REAL_FREQUENCY;INTERVAL=banana",
+	}
+	if _, err := es.Create("u1", ev); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Sanity: the rule really is unparseable, so this test is exercising the
+	// fallback rather than the happy path.
+	if _, err := ExpandRecurrence(ev, start.Add(-time.Hour).Unix(), start.Add(time.Hour).Unix()); err == nil {
+		t.Fatal("the fixture RRULE parses; pick one that does not or this test proves nothing")
+	}
+
+	got, err := es.ListByDateRange("u1", start.Add(-time.Hour).Unix(), start.Add(time.Hour).Unix(), "")
+	if err != nil {
+		t.Fatalf("ListByDateRange: %v", err)
+	}
+
+	var found bool
+	for _, e := range got {
+		if e.Guid == "evt-bad-rrule" {
+			found = true
+			if e.Title != "Standup" {
+				t.Errorf("title = %q, want Standup", e.Title)
+			}
+		}
+	}
+	if !found {
+		t.Error("an event with an unparseable RRULE is invisible in its own date range; " +
+			"it is still stored but no view will ever show it")
+	}
+}
+
+// TestListByDateRangeStillExpandsValidRrule is the control: the fallback must
+// not have replaced expansion. Without this, making ExpandRecurrence's result
+// unused would leave the test above green while every recurring event collapsed
+// to a single occurrence.
+func TestListByDateRangeStillExpandsValidRrule(t *testing.T) {
+	es := newEventTestEnv(t)
+
+	start := time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
+	ev := &bongov1.Event{
+		Guid:      "evt-good-rrule",
+		Title:     "Daily",
+		StartTime: start.Unix(),
+		EndTime:   start.Add(30 * time.Minute).Unix(),
+		Rrule:     "FREQ=DAILY;COUNT=5",
+	}
+	if _, err := es.Create("u1", ev); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := es.ListByDateRange("u1", start.Add(-time.Hour).Unix(), start.Add(96*time.Hour).Unix(), "")
+	if err != nil {
+		t.Fatalf("ListByDateRange: %v", err)
+	}
+	if len(got) < 2 {
+		t.Errorf("a valid daily rule produced %d occurrence(s); expansion is not happening", len(got))
+	}
+}
