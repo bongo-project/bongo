@@ -3,6 +3,7 @@ package queue
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -428,6 +429,168 @@ func TestGenerateBounceGuardsNullSender(t *testing.T) {
 				}
 				if !logLineHasLevel(t, &logBuf, "INFO", "queue: DSN suppressed for null sender") {
 					t.Errorf("expected INFO suppression log line, got:\n%s", logBuf.String())
+				}
+			}
+		})
+	}
+}
+
+// fakeRelay lets a test drive the exact combination Deliver can return:
+// permanent failures for some recipients together with a transient error for
+// the rest.
+type fakeRelay struct {
+	calls      [][]string // recipients seen on each attempt
+	permFails  []string
+	deliverErr error
+}
+
+func (f *fakeRelay) Deliver(_ context.Context, _ string, recipients []string, _ []byte) ([]string, error) {
+	f.calls = append(f.calls, append([]string(nil), recipients...))
+	// Only report permanent failures for recipients actually presented.
+	var fails []string
+	for _, r := range recipients {
+		for _, p := range f.permFails {
+			if strings.EqualFold(r, p) {
+				fails = append(fails, r)
+			}
+		}
+	}
+	return fails, f.deliverErr
+}
+
+// TestPermanentFailuresAreNotRetriedOrRebounced covers the mixed-outcome path:
+// Deliver reports some recipients as permanently failed AND returns a transient
+// error for the rest.
+//
+// Before this, the dead recipients stayed in msg.Recipients, so every retry
+// relayed to them again and generated another DSN. The sender received up to
+// maxAttempts copies of the same bounce for the same address.
+// msg.FailedRecipients was appended to but never read by anything.
+func TestPermanentFailuresAreNotRetriedOrRebounced(t *testing.T) {
+	worker, qs, blobs, deliverer := newWorkerTestEnvWithDeliverer(t, true)
+
+	relay := &fakeRelay{
+		permFails:  []string{"dead@example.net"},
+		deliverErr: errors.New("451 temporary failure for the rest"),
+	}
+	worker.relay = relay
+
+	raw := []byte("From: alice@test.local\r\nSubject: hi\r\n\r\nbody")
+	hash, err := blobs.Put(raw)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	msg := &bongov1.OutboundMessage{
+		Id:          "msg-mixed",
+		SenderEmail: "alice@test.local",
+		Recipients:  []string{"dead@example.net", "live@example.net"},
+		BlobHash:    hash,
+	}
+	if err := qs.Enqueue(msg); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	worker.processMessage(context.Background(), msg)
+
+	// The dead recipient must be gone from the retry set...
+	if len(relay.calls) != 1 {
+		t.Fatalf("relay called %d times, want 1", len(relay.calls))
+	}
+	for _, r := range msg.Recipients {
+		if strings.EqualFold(r, "dead@example.net") {
+			t.Error("a permanently-failed recipient is still in Recipients; it will be " +
+				"relayed again on the next attempt and bounce again")
+		}
+	}
+	if len(msg.Recipients) != 1 || !strings.EqualFold(msg.Recipients[0], "live@example.net") {
+		t.Errorf("Recipients = %v, want only live@example.net", msg.Recipients)
+	}
+
+	// ...and recorded.
+	if len(msg.FailedRecipients) != 1 {
+		t.Errorf("FailedRecipients = %v, want one entry", msg.FailedRecipients)
+	}
+
+	// Exactly one bounce for the dead address.
+	select {
+	case <-deliverer.messages:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no bounce was generated for the permanently-failed recipient")
+	}
+	select {
+	case extra := <-deliverer.messages:
+		t.Errorf("a second bounce was generated in one attempt: %v", extra.recipients)
+	default:
+	}
+}
+
+// TestAllRecipientsPermanentlyFailedStopsRetrying covers the degenerate case:
+// every recipient permanently failed and Deliver still returned an error.
+// Retrying would relay a message with an empty recipient list once per attempt
+// until the retry budget ran out.
+func TestAllRecipientsPermanentlyFailedStopsRetrying(t *testing.T) {
+	worker, qs, blobs, _ := newWorkerTestEnvWithDeliverer(t, true)
+
+	relay := &fakeRelay{
+		permFails:  []string{"dead@example.net"},
+		deliverErr: errors.New("451 nothing left"),
+	}
+	worker.relay = relay
+
+	raw := []byte("From: alice@test.local\r\nSubject: hi\r\n\r\nbody")
+	hash, err := blobs.Put(raw)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	msg := &bongov1.OutboundMessage{
+		Id:          "msg-all-dead",
+		SenderEmail: "alice@test.local",
+		Recipients:  []string{"dead@example.net"},
+		BlobHash:    hash,
+	}
+	if err := qs.Enqueue(msg); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	worker.processMessage(context.Background(), msg)
+
+	// The message must be off the pending queue, not rescheduled.
+	ready, err := qs.GetReady(time.Now().Add(24*time.Hour), 10)
+	if err != nil {
+		t.Fatalf("GetReady: %v", err)
+	}
+	for _, m := range ready {
+		if m.Id == "msg-all-dead" {
+			t.Error("a message whose every recipient permanently failed was rescheduled; " +
+				"each retry would relay to an empty recipient list")
+		}
+	}
+}
+
+func TestPruneRecipients(t *testing.T) {
+	tests := []struct {
+		name   string
+		all    []string
+		remove []string
+		want   []string
+	}{
+		{"nothing to remove", []string{"a@x.test"}, nil, []string{"a@x.test"}},
+		{"removes one", []string{"a@x.test", "b@x.test"}, []string{"a@x.test"}, []string{"b@x.test"}},
+		{"case-insensitive", []string{"A@X.test"}, []string{"a@x.test"}, []string{}},
+		{"whitespace tolerant", []string{" a@x.test "}, []string{"a@x.test"}, []string{}},
+		{"unrelated removal", []string{"a@x.test"}, []string{"z@x.test"}, []string{"a@x.test"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := pruneRecipients(tt.all, tt.remove)
+			if len(got) != len(tt.want) {
+				t.Fatalf("got %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("got %v, want %v", got, tt.want)
 				}
 			}
 		})

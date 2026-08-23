@@ -10,7 +10,6 @@ import (
 
 	"github.com/bongo-go/bongo-go/internal/mail"
 	"github.com/bongo-go/bongo-go/internal/observability"
-	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
 )
@@ -30,7 +29,7 @@ type LeaderChecker interface {
 // Worker processes the outbound message queue.
 type Worker struct {
 	store    *QueueStore
-	relay    *bongosmtp.Relay
+	relay    messageRelay
 	registry *mail.DKIMRegistry
 	leader   LeaderChecker
 	bouncer  *mail.BounceGenerator
@@ -55,9 +54,21 @@ func WithPollInterval(d time.Duration) Option {
 
 // NewWorker creates a new queue worker. registry may be nil, in which case
 // all messages are sent unsigned.
+// messageRelay is the delivery surface the worker needs, declared here at the
+// consumer rather than in internal/smtp, per the repo's interface convention.
+// *smtp.Relay satisfies it.
+//
+// It also makes the mixed-outcome path testable. Deliver can return permanent
+// failures AND a non-nil error in the same call, and the handling of that
+// combination is the difference between one bounce per dead address and one per
+// delivery attempt.
+type messageRelay interface {
+	Deliver(ctx context.Context, from string, recipients []string, rawMsg []byte) (permanentFails []string, err error)
+}
+
 func NewWorker(
 	queueStore *QueueStore,
-	relay *bongosmtp.Relay,
+	relay messageRelay,
 	registry *mail.DKIMRegistry,
 	leader LeaderChecker,
 	bouncer *mail.BounceGenerator,
@@ -199,16 +210,40 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 	permanentFails, deliveryErr := w.relay.Deliver(ctx, msg.SenderEmail, msg.Recipients, signed)
 
 	// Handle permanent failures.
-	if len(permanentFails) > 0 && w.bouncer != nil {
-		reason := "delivery permanently failed"
-		if msg.StatusReason != "" {
-			reason = msg.StatusReason
+	//
+	// Deliver can return permanent failures AND a non-nil error together: some
+	// recipients 5xx at RCPT, then the transaction fails for the rest. Pruning
+	// the dead recipients here is what stops the retry below re-sending to
+	// them. Without it they were relayed again on every attempt, each one
+	// producing another DSN, so the sender received up to maxAttempts copies of
+	// the same bounce for the same address.
+	//
+	// Pruning is not conditional on having a bouncer: retrying an address that
+	// permanently failed is wrong whether or not we can tell anyone about it.
+	if len(permanentFails) > 0 {
+		if w.bouncer != nil {
+			reason := "delivery permanently failed"
+			if msg.StatusReason != "" {
+				reason = msg.StatusReason
+			}
+			w.generateBounce(msg, permanentFails, reason)
 		}
-		w.generateBounce(msg, permanentFails, reason)
 		msg.FailedRecipients = append(msg.FailedRecipients, permanentFails...)
+		msg.Recipients = pruneRecipients(msg.Recipients, permanentFails)
 	}
 
 	if deliveryErr != nil {
+		// Every remaining recipient permanently failed, so there is nothing
+		// left to retry. Rescheduling here would relay a message with an empty
+		// recipient list once per attempt until the budget ran out.
+		if len(msg.Recipients) == 0 {
+			w.logger.Info("queue: all recipients permanently failed, not retrying",
+				"id", msg.Id, "failed", msg.FailedRecipients)
+			if err := w.store.MarkDelivered(msg.Id); err != nil {
+				w.logger.Error("queue: dequeuing fully-failed message", "id", msg.Id, "error", err)
+			}
+			return
+		}
 		msg.StatusReason = deliveryErr.Error()
 		w.handleFailure(msg, deliveryErr.Error())
 		return
@@ -274,4 +309,28 @@ func (w *Worker) generateBounce(msg *bongov1.OutboundMessage, recipients []strin
 	if err := w.bouncer.GenerateAndDeliver(msg, recipients, reason); err != nil {
 		w.logger.Error("queue: bounce generation failed", "error", err)
 	}
+}
+
+// pruneRecipients returns all minus remove, comparing addresses
+// case-insensitively.
+//
+// The local part of an address is technically case-sensitive per RFC 5321, but
+// no real mail system treats it that way, and the alternative failure here is
+// to keep retrying an address the remote server has already refused outright.
+func pruneRecipients(all, remove []string) []string {
+	if len(remove) == 0 {
+		return all
+	}
+	drop := make(map[string]bool, len(remove))
+	for _, r := range remove {
+		drop[strings.ToLower(strings.TrimSpace(r))] = true
+	}
+	out := make([]string, 0, len(all))
+	for _, r := range all {
+		if drop[strings.ToLower(strings.TrimSpace(r))] {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
