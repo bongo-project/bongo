@@ -404,3 +404,60 @@ func TestSearchGALRespectsLimitAfterFiltering(t *testing.T) {
 		}
 	}
 }
+
+// TestIndexMailPreservingBodyKeepsBodySearchable covers a destructive
+// interaction between tagging and search.
+//
+// Bleve's Index replaces a document rather than merging it. The tag-update
+// paths re-indexed with "" for the body on the reasoning that the body had not
+// changed, which did not skip the body -- it deleted it. Applying a tag made
+// the message unfindable by any word in its own text, and nothing reported an
+// error because the re-index itself succeeded.
+func TestIndexMailPreservingBodyKeepsBodySearchable(t *testing.T) {
+	sm, err := NewSearchManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSearchManager: %v", err)
+	}
+
+	if err := sm.IndexMail("u1", "g1", "Lunch", "a@b.test", []string{"c@d.test"},
+		"pumpernickel", 100, false, nil); err != nil {
+		t.Fatalf("IndexMail: %v", err)
+	}
+	if got, _ := sm.Search("u1", "pumpernickel", 10); len(got) != 1 {
+		t.Fatalf("body not searchable immediately after indexing (%d hits); "+
+			"the rest of this test would prove nothing", len(got))
+	}
+
+	// A tag-only update, the shape the mail handlers use.
+	if err := sm.IndexMailPreservingBody("u1", "g1", "Lunch", "a@b.test",
+		[]string{"c@d.test"}, 100, false, []string{"work"}); err != nil {
+		t.Fatalf("IndexMailPreservingBody: %v", err)
+	}
+
+	if got, _ := sm.Search("u1", "pumpernickel", 10); len(got) != 1 {
+		t.Errorf("body is no longer searchable after a tag-only update (%d hits): "+
+			"tagging a message destroyed its own searchability", len(got))
+	}
+	// And the tag actually landed -- preserving the body must not cost the update.
+	if got, _ := sm.Search("u1", "tags:work", 10); len(got) != 1 {
+		t.Errorf("tag was not applied (%d hits); the update it exists to perform was lost", len(got))
+	}
+}
+
+// TestIndexMailPreservingBodyOnUnknownGUIDDoesNotFail pins the degraded path.
+// A message with nothing indexed yet, or an unreadable index, must still get
+// its tags written: the tag update matters more than a body that is not there.
+func TestIndexMailPreservingBodyOnUnknownGUIDDoesNotFail(t *testing.T) {
+	sm, err := NewSearchManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSearchManager: %v", err)
+	}
+
+	if err := sm.IndexMailPreservingBody("u1", "never-seen", "Subj", "a@b.test",
+		[]string{"c@d.test"}, 100, false, []string{"work"}); err != nil {
+		t.Fatalf("IndexMailPreservingBody on an unknown guid: %v", err)
+	}
+	if got, _ := sm.Search("u1", "tags:work", 10); len(got) != 1 {
+		t.Error("tags were not indexed for a message with no prior body")
+	}
+}
