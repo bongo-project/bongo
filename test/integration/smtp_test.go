@@ -211,7 +211,7 @@ func TestSMTPFullMailFlow(t *testing.T) {
 	}
 
 	// Check GAL index has the test user.
-	galResults, err := a.Search.SearchGAL("test", 10)
+	galResults, err := a.Search.SearchGAL("test", 10, "admin@localhost")
 	if err != nil {
 		t.Fatalf("SearchGAL: %v", err)
 	}
