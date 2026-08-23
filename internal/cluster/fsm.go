@@ -224,12 +224,22 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 	if log.Index != 0 && log.Index <= f.appliedIndex() {
 		return nil
 	}
-	result := f.applyEntry(log)
+	// applyEntryFn is indirected so a test can simulate a crash inside apply and
+	// observe that the watermark has NOT advanced. The ordering below is the
+	// whole guarantee: persist the entry first, record it as applied second.
+	// Reversed, a crash in the gap leaves a watermark claiming an entry is
+	// durable that was never written, and the replay-skip at the top of this
+	// function then drops it silently. See TestFSMAppliedIndexNotAdvancedOnCrash.
+	result := applyEntryFn(f, log)
 	if log.Index != 0 {
 		f.setAppliedIndex(log.Index)
 	}
 	return result
 }
+
+// applyEntryFn indirects FSM.applyEntry so tests can substitute it. Production
+// always uses the method; see the call site in Apply for why the seam exists.
+var applyEntryFn = (*FSM).applyEntry
 
 // applyEntry applies a single committed Raft log entry to the Pebble store.
 func (f *FSM) applyEntry(log *raft.Log) interface{} {

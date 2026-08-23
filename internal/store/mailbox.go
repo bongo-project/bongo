@@ -492,7 +492,13 @@ func writeMailboxMessageBatch(batch *pebble.Batch, userID, mailbox string, uid u
 	return nil
 }
 
-func commitMailboxBatch(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
+// commitMailboxBatch is a var rather than a plain func so tests can substitute
+// a commit that aborts after the batch is populated, simulating a crash in the
+// window the batch exists to close. That is the only way to observe the
+// all-or-nothing guarantee: with every write inside the batch an aborted commit
+// leaves nothing behind, and a write hoisted out of it survives and is visible.
+// See TestMailboxDeliveryIsAllOrNothing.
+var commitMailboxBatch = func(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
 	batch := ps.db.NewBatch()
 	defer batch.Close()
 	if err := fn(batch); err != nil {
