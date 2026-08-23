@@ -96,24 +96,30 @@ func (h *QuarantineHandler) DeleteMessage(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Read envelope to get blob hash before deleting.
-	env, err := h.spool.ReadEnvelope(quarantineDir, id)
-	if err != nil {
-		h.logger.Warn("quarantine: delete — could not read envelope, removing anyway", "id", id, "error", err)
-	}
-
 	if removeErr := h.spool.Remove(quarantineDir, id); removeErr != nil {
 		h.logger.Error("quarantine: delete envelope failed", "id", id, "error", removeErr)
 		http.Error(w, "failed to delete message", http.StatusInternalServerError)
 		return
 	}
 
-	// Remove blob (best-effort; GC will clean it up if this fails).
-	if env != nil && env.BlobHash != "" && h.blobs != nil {
-		if delErr := h.blobs.Delete(env.BlobHash); delErr != nil {
-			h.logger.Debug("quarantine: could not remove blob (may be referenced elsewhere)", "hash", env.BlobHash, "error", delErr)
-		}
-	}
+	// The blob is deliberately NOT deleted here. The blob store is
+	// content-addressed and shared across all users (see CLAUDE.md), so the
+	// hash for this message is the same hash as any byte-identical copy
+	// delivered to somebody else -- and for quarantined spam, which is sent to
+	// many recipients at once, that is the common case rather than the corner
+	// case. Deleting it here destroys those other users' mail bodies while
+	// their metadata survives, leaving them an unreadable message.
+	//
+	// Reclamation belongs to the blob GC, which is the only component that
+	// knows the full reference set (Pebble mail, the outbound queue, and the
+	// spool). Removing the envelope above already dropped this message's
+	// reference; the GC sweeps the blob once nothing else points at it. That
+	// is exactly how ordinary mail deletion behaves -- it never deletes blobs
+	// either -- so this is the consistent path, not a special case.
+	//
+	// With storage.blob_gc unset ("off") nothing is reclaimed, which is the
+	// operator having opted out of reclamation entirely; it is not a licence
+	// to delete a shared blob from here.
 
 	h.logger.Info("quarantine: message deleted", "id", id)
 	http.Redirect(w, r, "/admin/quarantine?flash=Message+deleted", http.StatusSeeOther)
@@ -157,17 +163,14 @@ func (h *QuarantineHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
 				failed++
 				continue
 			}
-			env, _ := h.spool.ReadEnvelope(quarantineDir, id)
 			if err := h.spool.Remove(quarantineDir, id); err != nil {
 				h.logger.Error("quarantine: bulk delete failed", "id", id, "error", err)
 				failed++
 				continue
 			}
-			if env != nil && env.BlobHash != "" && h.blobs != nil {
-				if delErr := h.blobs.Delete(env.BlobHash); delErr != nil {
-					h.logger.Debug("quarantine: bulk — could not remove blob", "hash", env.BlobHash, "error", delErr)
-				}
-			}
+			// Blob left to the GC: it is shared and content-addressed, so
+			// deleting it here can destroy a byte-identical message held by
+			// another user. See the note in the single-delete handler.
 			succeeded++
 		case "rescan":
 			// Requeue quarantine/ -> incoming/ so the message runs back through
@@ -329,11 +332,10 @@ func purgeQuarantine(spool *pipeline.SpoolStore, blobs *store.BlobStore, retenti
 				logger.Error("quarantine: auto-purge remove failed", "id", env.Id, "error", removeErr)
 				continue
 			}
-			if env.BlobHash != "" && blobs != nil {
-				if delErr := blobs.Delete(env.BlobHash); delErr != nil {
-					logger.Debug("quarantine: auto-purge blob remove failed", "hash", env.BlobHash, "error", delErr)
-				}
-			}
+			// Blob left to the GC (shared, content-addressed). Auto-purge
+			// runs unattended on a timer, so this was the most damaging of
+			// the three delete sites: it silently destroyed other users'
+			// copies of the same message with nobody watching.
 			purged++
 		}
 	}

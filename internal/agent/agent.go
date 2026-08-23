@@ -1537,10 +1537,22 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 }
 
 // collectReferencedBlobs returns the set of blob hashes still referenced by
-// persistent state: every MailMeta (raw_message + attachments, across all users
-// and mailboxes) and every queued OutboundMessage. These are the only two Pebble
-// value types that reference the blob store, so this set is complete.
-func collectReferencedBlobs(ps *store.PebbleStore) (map[string]bool, error) {
+// live state: every MailMeta (raw_message + attachments, across all users and
+// mailboxes), every queued OutboundMessage, and every envelope still sitting in
+// the on-disk spool.
+//
+// The spool is easy to forget because it is the one reference source that is
+// NOT in Pebble. A QueueEnvelope in incoming/, deferred processing, quarantine/
+// or error/ names a BlobHash and has no Pebble key at all, so a reference set
+// built only from Pebble treats those bodies as garbage. With blob_gc enabled
+// and the default one-hour grace, anything held in the spool longer than that
+// -- which is the normal state for quarantined mail awaiting admin review --
+// had its body reclaimed while the envelope survived, leaving an entry that
+// renders as an empty message.
+//
+// spool may be nil on roles that do not run a pipeline; the Pebble half of the
+// scan still applies.
+func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (map[string]bool, error) {
 	ref := map[string]bool{}
 
 	mailIter, err := ps.PrefixScan([]byte("/user/"))
@@ -1594,6 +1606,29 @@ func collectReferencedBlobs(ps *store.PebbleStore) (map[string]bool, error) {
 			return nil, fmt.Errorf("closing queue iterator: %w", err)
 		}
 	}
+
+	// On-disk spool. Every directory NewSpoolStore creates can hold an
+	// envelope that outlives the GC grace period, so all of them count --
+	// quarantine/ most obviously, but a deferred message in incoming/ or a
+	// parked one in error/ is just as reclaimable and just as wrong to
+	// reclaim. A read failure here must NOT be swallowed: a reference set
+	// that silently lost the spool is indistinguishable from a spool that is
+	// genuinely empty, and the difference is whether the sweep deletes live
+	// mail.
+	if spool != nil {
+		for _, dir := range []string{"incoming", "processing", "deliver", "quarantine", "error"} {
+			envs, err := spool.List(dir)
+			if err != nil {
+				return nil, fmt.Errorf("scanning spool %s: %w", dir, err)
+			}
+			for _, env := range envs {
+				if env.GetBlobHash() != "" {
+					ref[env.GetBlobHash()] = true
+				}
+			}
+		}
+	}
+
 	return ref, nil
 }
 
@@ -1624,7 +1659,7 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 	if a.Raft == nil || !a.IsLeader() || a.Blobs == nil || a.Store == nil {
 		return map[string]bool{}
 	}
-	referenced, err := collectReferencedBlobs(a.Store)
+	referenced, err := collectReferencedBlobs(a.Store, a.Spool)
 	if err != nil {
 		a.logger.Warn("blob-gc: collecting references failed", "error", err)
 		return prev
