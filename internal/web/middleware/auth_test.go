@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -157,26 +159,88 @@ func TestRequireAuth_DisabledUserRevoked(t *testing.T) {
 	}
 }
 
+// signedSessionCookie mints a session cookie with an arbitrary payload, signed
+// correctly with secret. CreateSessionCookie always sets a future Exp, so this
+// is the only way to build a genuinely expired cookie without sleeping.
+//
+// The valid signature is the point: an expired-but-unsigned cookie would be
+// rejected by the HMAC check at validateCookie and never reach the expiry
+// check, so a test built on one would pass even with expiry enforcement
+// deleted. It has to be a cookie the server would otherwise trust.
+func signedSessionCookie(data SessionData) *http.Cookie {
+	payload, _ := json.Marshal(data)
+	sig := sign(testSecret, payload)
+	return &http.Cookie{
+		Name: cookieName,
+		Value: base64.RawURLEncoding.EncodeToString(payload) + "." +
+			base64.RawURLEncoding.EncodeToString(sig),
+		Path: "/",
+	}
+}
+
 func TestRequireAuth_ExpiredCookie(t *testing.T) {
-	_ = RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("handler should not be called with expired cookie")
+	called := false
+	handler := RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
 	}))
 
-	// Create a cookie that's already expired by manipulating the data directly.
-	data := SessionData{
+	cookie := signedSessionCookie(SessionData{
 		UserID: "user123",
 		Email:  "test@example.com",
 		Exp:    time.Now().Add(-1 * time.Hour).Unix(),
+	})
+
+	req := httptest.NewRequest("GET", "/mail/INBOX", nil)
+	req.AddCookie(cookie)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if called {
+		t.Error("handler was called with an expired session cookie")
 	}
-	_ = data
+	if rr.Code != http.StatusSeeOther {
+		t.Errorf("status = %d, want 303 (redirect to login)", rr.Code)
+	}
+}
 
-	// Use the normal path but with a past expiry.
-	// We'll test through the real mechanism - create with tiny TTL then sleep.
-	// Instead, test with a tampered cookie is easier via validateCookie.
+// TestRequireAuth_ExpiryBoundary pins the comparison itself. The guard is
+// `time.Now().Unix() > data.Exp`, so a cookie expiring one second from now is
+// still good and one that expired a second ago is not. Without this, changing
+// the operator to >= or flipping the operands stays green.
+func TestRequireAuth_ExpiryBoundary(t *testing.T) {
+	tests := []struct {
+		name   string
+		exp    int64
+		wantOK bool
+	}{
+		{"one second in the future", time.Now().Unix() + 1, true},
+		{"one second in the past", time.Now().Unix() - 1, false},
+	}
 
-	// Actually, let's just test that an expired cookie fails validation at the middleware level.
-	// The normal CreateSessionCookie always sets future expiry, so test validateCookie directly.
-	// The middleware checks data.Exp > now.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			handler := RequireAuth(testSecret, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				called = true
+				w.WriteHeader(http.StatusOK)
+			}))
+
+			req := httptest.NewRequest("GET", "/mail/INBOX", nil)
+			req.AddCookie(signedSessionCookie(SessionData{
+				UserID: "user123",
+				Email:  "test@example.com",
+				Exp:    tt.exp,
+			}))
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if called != tt.wantOK {
+				t.Errorf("handler called = %v, want %v (Exp=%d, now=%d)",
+					called, tt.wantOK, tt.exp, time.Now().Unix())
+			}
+		})
+	}
 }
 
 func TestRequireAuth_HTMXRedirect(t *testing.T) {

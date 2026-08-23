@@ -1,9 +1,12 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/cockroachdb/pebble"
 
 	"google.golang.org/protobuf/proto"
 
@@ -640,5 +643,64 @@ func TestListVirtualMessagesAllMailExcludesTrash(t *testing.T) {
 	}
 	if total != 1 {
 		t.Errorf("all-mail total = %d, want 1 (Trash excluded)", total)
+	}
+}
+
+// TestMailboxDeliveryIsAllOrNothing pins the batch boundary in
+// applyMailboxDelivery: the MailMeta, the mailbox meta (uid_next bump) and the
+// MailboxMessage entry are written in ONE pebble batch.
+//
+// The guarantee is only observable across a failed commit, which is why no
+// existing test covers it -- the happy path looks identical whether the writes
+// share a batch or not. Hoisting any one of them out leaves the suite green
+// while a crash mid-delivery can persist a MailMeta with no mailbox entry (mail
+// that exists but is invisible) or a uid_next bump with no message (a burnt
+// UID). commitMailboxBatch is substituted here to abort at exactly that point.
+func TestMailboxDeliveryIsAllOrNothing(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	meta := &bongov1.MailMeta{
+		Guid:       "guid-atomic-1",
+		Subject:    "atomicity",
+		ReceivedAt: 1700000000,
+	}
+	cmd, err := buildMailboxDeliveryCommand("user1", "INBOX", meta, 0)
+	if err != nil {
+		t.Fatalf("buildMailboxDeliveryCommand: %v", err)
+	}
+
+	// Substitute a commit that populates the batch exactly as production does,
+	// then throws it away instead of committing -- a crash in the sync window.
+	orig := commitMailboxBatch
+	t.Cleanup(func() { commitMailboxBatch = orig })
+	commitMailboxBatch = func(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
+		batch := ps.db.NewBatch()
+		defer batch.Close()
+		if err := fn(batch); err != nil {
+			return err
+		}
+		return errors.New("simulated crash before commit")
+	}
+
+	if _, err := applyMailboxDelivery(ps, cmd); err == nil {
+		t.Fatal("applyMailboxDelivery reported success despite a failed commit")
+	}
+
+	// Nothing may have survived. Any key still readable was written outside the
+	// batch and would survive a real crash the same way.
+	for _, k := range []struct{ name, key string }{
+		{"mail meta", "/user/user1/mail/guid-atomic-1"},
+		{"mailbox meta", "/user/user1/mailbox/INBOX/meta"},
+		{"mailbox message", "/user/user1/mailbox/INBOX/msg/1"},
+	} {
+		if v, err := ps.Get([]byte(k.key)); err == nil && v != nil {
+			t.Errorf("%s at %s survived an aborted commit: it is written outside the "+
+				"delivery batch, so a crash can leave delivery half-applied", k.name, k.key)
+		}
 	}
 }

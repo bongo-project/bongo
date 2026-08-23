@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -312,5 +314,61 @@ func TestFullRawMessageCorruptLayout(t *testing.T) {
 
 	if _, err := FullRawMessage(meta, f.get); err == nil {
 		t.Fatal("expected an error when an attachment blob is missing")
+	}
+}
+
+// TestStoreSplitRejectsCorruptedReconstruction forces the byte-exactness
+// self-check to fire. Every other split test proves the happy path, so the
+// `!bytes.Equal(got, raw)` branch was never executed by any test: deleting it
+// left the suite green while StoreSplit would happily store a message it could
+// not rebuild, permanently corrupting mail on read.
+//
+// The corruption is planted the way real bit-rot would present. BlobStore.Put
+// short-circuits on Exists(hash) and never re-verifies content, so a blob file
+// whose bytes no longer match its name is served as-is. Pre-writing damaged
+// content at the skeleton's hash path makes reconstruction SUCCEED but return
+// the wrong bytes -- which is the only way to reach the equality check rather
+// than the read-error branch above it.
+func TestStoreSplitRejectsCorruptedReconstruction(t *testing.T) {
+	dir := t.TempDir()
+	bs, err := NewBlobStore(dir)
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	raw := []byte(bigAttachmentMessage("corrupt me"))
+
+	// Work out what the skeleton blob will be, then plant damaged bytes under
+	// its hash before StoreSplit gets there.
+	sm := PrepareSplit(raw, 1024)
+	if sm == nil {
+		t.Fatal("expected a split")
+	}
+	skHash := sha256Hex(sm.Skeleton)
+
+	corrupt := append([]byte(nil), sm.Skeleton...)
+	corrupt[len(corrupt)-1] ^= 0xFF // one bit is enough
+
+	path := bs.blobPath(skHash)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir blob dir: %v", err)
+	}
+	if err := os.WriteFile(path, corrupt, 0o600); err != nil {
+		t.Fatalf("plant corrupted blob: %v", err)
+	}
+	if !bs.Exists(skHash) {
+		t.Fatal("planted blob is not visible to the store; the path layout changed")
+	}
+
+	got, err := StoreSplit(bs, raw, 1024)
+	if err == nil {
+		t.Fatal("StoreSplit accepted a message it cannot reconstruct byte-exactly; " +
+			"the self-check did not fire and this mail would be corrupted on read")
+	}
+	if got != nil {
+		t.Errorf("StoreSplit returned a non-nil result alongside an error: %+v", got)
+	}
+	if !strings.Contains(err.Error(), "self-check") {
+		t.Errorf("error = %q, want it to name the self-check as the source", err)
 	}
 }
