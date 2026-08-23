@@ -1604,10 +1604,13 @@ func (h *MailHandler) UpdateMessageTags(w http.ResponseWriter, r *http.Request) 
 
 	// Update Bleve search index.
 	if h.search != nil {
-		if err := h.search.IndexMail(
+		// Tag-only update: carry the indexed body forward. Passing "" here
+		// would not merely skip the body, it would delete it -- Bleve's Index
+		// replaces the document -- so tagging a message used to make it
+		// unfindable by its own text.
+		if err := h.search.IndexMailPreservingBody(
 			userID, mailGUID,
 			meta.Subject, meta.From, meta.To,
-			"", // body re-index not needed for tag-only update
 			meta.ReceivedAt,
 			len(meta.Attachments) > 0,
 			meta.Tags,
@@ -1769,10 +1772,12 @@ func (h *MailHandler) BulkTagAction(w http.ResponseWriter, r *http.Request) {
 
 		// Update Bleve search index.
 		if h.search != nil {
-			if err := h.search.IndexMail(
+			// Same as the single-message path: preserve the indexed body, or
+			// bulk tagging silently strips every touched message out of body
+			// search.
+			if err := h.search.IndexMailPreservingBody(
 				userID, mailGUID,
 				meta.Subject, meta.From, meta.To,
-				"",
 				meta.ReceivedAt,
 				len(meta.Attachments) > 0,
 				meta.Tags,

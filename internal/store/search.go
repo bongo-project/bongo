@@ -138,6 +138,46 @@ func (sm *SearchManager) Search(userID, query string, limit int) ([]SearchResult
 	return results, nil
 }
 
+// IndexMailPreservingBody re-indexes a message, carrying over whatever body
+// text is already in the index rather than blanking it.
+//
+// Bleve's Index replaces a document; it does not merge. So a caller updating
+// only the tags, and passing "" for the body because the body has not changed,
+// silently deletes the indexed body -- after which the message is no longer
+// findable by anything in its text. Tagging a message destroyed its own
+// searchability.
+//
+// The body is read back from the index rather than re-extracted from the raw
+// message on purpose: this carries forward exactly what was there, adds no
+// blob read or MIME parse to the tagging path, and cannot start indexing
+// bodies that were never indexed in the first place.
+//
+// If the body cannot be read -- unknown guid, index error -- it falls back to
+// empty, which is the behaviour before this existed. Updating the tags matters
+// more than preserving the body, so a read failure must not fail the caller.
+func (sm *SearchManager) IndexMailPreservingBody(userID, guid string, subject, from string, to []string, receivedAt int64, hasAttachment bool, tags []string, spamScore ...float64) error {
+	return sm.IndexMail(userID, guid, subject, from, to, sm.storedBody(userID, guid),
+		receivedAt, hasAttachment, tags, spamScore...)
+}
+
+// storedBody returns the body text currently indexed for guid, or "".
+func (sm *SearchManager) storedBody(userID, guid string) string {
+	idx, err := sm.openUser(userID)
+	if err != nil {
+		return ""
+	}
+	req := bleve.NewSearchRequestOptions(bleve.NewDocIDQuery([]string{guid}), 1, 0, false)
+	req.Fields = []string{"body"}
+	res, err := idx.Search(req)
+	if err != nil || len(res.Hits) == 0 {
+		return ""
+	}
+	if v, ok := res.Hits[0].Fields["body"].(string); ok {
+		return v
+	}
+	return ""
+}
+
 // IndexProfile indexes a user profile in the Global Address List.
 func (sm *SearchManager) IndexProfile(userID, email, displayName string) error {
 	doc := galDocument{
