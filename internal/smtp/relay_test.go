@@ -336,7 +336,7 @@ func TestRelayNoAuthWhenNotConfigured(t *testing.T) {
 }
 
 // TestRelaySendsQualifiedHELO verifies that Relay.sendToHost issues the
-// configured HELO name on the wire (FR-19) instead of net/smtp's hardcoded
+// configured HELO name on the wire instead of net/smtp's hardcoded
 // "localhost", and that this happens before STARTTLS (the mock has no TLS
 // config, so NewSession only ever sees the pre-STARTTLS EHLO).
 func TestRelaySendsQualifiedHELO(t *testing.T) {
@@ -388,8 +388,8 @@ func TestRelaySucceedsAgainstServerRejectingDotlessHELO(t *testing.T) {
 }
 
 // TestRelayFailsWithDotlessHELO is the regression guard for the bug this
-// fix addresses: against a server enforcing FR-19/FR-21, a Relay carrying an
-// unqualified HELO name (as every outbound connection did before this fix,
+// fix addresses: against a server rejecting dotless HELO names, a Relay
+// carrying an unqualified HELO name (as every outbound connection did before,
 // which always sent the hardcoded "localhost") is rejected outright and
 // delivery fails -- it must not be silently swallowed as a permanent
 // per-recipient failure.
@@ -418,8 +418,8 @@ func TestRelayFailsWithDotlessHELO(t *testing.T) {
 // TestRelayFallsBackToAddressLiteralWhenHELONameEmpty verifies that a Relay
 // constructed with an empty heloName (ResolveHELOName could not derive a
 // qualified name) sends an RFC 5321 4.1.3 address literal instead of
-// net/smtp's hardcoded "localhost" -- FR-21's "never send localhost"
-// guarantee must hold even in the no-configuration fallback path.
+// net/smtp's hardcoded "localhost" -- the "never send localhost" guarantee
+// must hold even in the no-configuration fallback path.
 func TestRelayFallsBackToAddressLiteralWhenHELONameEmpty(t *testing.T) {
 	backend := &mockRelayBackend{messages: make(chan mockRelayMessage, 10)}
 	addr := startMockSMTP(t, backend)

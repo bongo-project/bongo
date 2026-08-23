@@ -144,7 +144,7 @@ leaderFound:
 	}
 	t.Log("step 7: value replicated after failover")
 
-	// Step 8: Test protobuf-encoded commands directly through Raft.
+	// Apply protobuf-encoded commands directly through Raft.
 	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
 		Key:   []byte("/test/proto-key"),

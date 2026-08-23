@@ -264,22 +264,23 @@ func TestBuiltinExtractBasicHeaders(t *testing.T) {
 	}
 }
 
-// TestBuiltinProcessorTrustedSkipsOriginAuth is the FR-3/AC4 paired test: the
-// same message and envelope are run twice, once Trusted=false and once
+// TestBuiltinProcessorTrustedSkipsOriginAuth is the paired test: the same
+// message and envelope are run twice, once Trusted=false and once
 // Trusted=true, through an identically configured processor (including a
 // DMARC evaluator so the untrusted run has a real verdict to compare
 // against). It asserts:
-//   - untrusted (AC4): SPF/DKIM/DMARC are interpreted exactly as before this
-//     task — "SPF softfail" and "DKIM missing" are recorded, and DmarcResult
-//     is a real, non-empty verdict. Any future change that breaks this half
-//     means the trusted skip leaked into the untrusted path.
-//   - trusted (FR-3): none of "SPF fail", "SPF softfail", "DKIM fail",
+//   - untrusted: SPF/DKIM/DMARC are interpreted unchanged — "SPF softfail"
+//     and "DKIM missing" are recorded, and DmarcResult is a real, non-empty
+//     verdict. Any future change that breaks this half means the trusted skip
+//     leaked into the untrusted path.
+//   - trusted: none of "SPF fail", "SPF softfail", "DKIM fail",
 //     "DKIM missing", or any "dmarc_"-prefixed reason is recorded, and
 //     DmarcResult is "" (DMARC did not run, so it must not claim a verdict
 //     it never evaluated).
 //   - "envelope sender domain mismatch" (a header-consistency heuristic, not
-//     an origin-authentication protocol) is recorded in BOTH runs: FR-3
-//     names exactly which signals trust skips, and this is not one of them.
+//     an origin-authentication protocol) is recorded in BOTH runs: the trust
+//     boundary names exactly which signals it skips, and this is not one of
+//     them.
 func TestBuiltinProcessorTrustedSkipsOriginAuth(t *testing.T) {
 	eval := mail.NewDMARCEvaluatorWithResolver(&dmarcMockResolver{
 		txt: map[string][]string{
@@ -402,10 +403,10 @@ func (identityResolver) ResolveRecipient(email string) (string, error) {
 	return email, nil
 }
 
-// TestBuiltinProcessorTrustedStillScoresContent is the AC2/FR-4 scope-guard
-// test: this is the load-bearing distinction the whole task rests on. Phase
-// 10 explicitly REJECTED a general "local origin" flag that skipped scoring
-// outright, precisely because inbound internet mail enters through the same
+// TestBuiltinProcessorTrustedStillScoresContent is the scope-guard test: this
+// is the load-bearing distinction the whole trust boundary rests on. A general
+// "local origin" flag that skipped scoring outright was explicitly REJECTED,
+// precisely because inbound internet mail enters through the same
 // EnqueueLocal path and such a flag would sit one careless caller away from a
 // full antispam bypass. Trusted must skip ORIGIN AUTHENTICATION (SPF/DKIM/
 // DMARC) only — never the phrase scorer, never the Bayesian blend, never the

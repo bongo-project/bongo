@@ -98,7 +98,7 @@ func deliverTrace(t *testing.T, proc *DeliverProcessor, env *bongov1.QueueEnvelo
 	return unmarshalMailMeta(t, applier.commands[len(applier.commands)-1])
 }
 
-// TestDeliverAuthenticationResultsHeader is the AC1 case: an envelope with
+// TestDeliverAuthenticationResultsHeader verifies that an envelope with
 // SpfResult "pass" and a message with a valid DKIM signature from
 // example.test yields a stored raw message that begins with an
 // Authentication-Results header naming the server hostname and containing
@@ -146,7 +146,7 @@ func TestDeliverAuthenticationResultsHeader(t *testing.T) {
 	}
 }
 
-// TestDeliverSpamHeaders is the AC2/AC3 case: an antispam StageResult with
+// TestDeliverSpamHeaders verifies that an antispam StageResult with
 // Score 0.62 and Reasons yields X-Spam-Score and X-Spam-Reasons on the stored
 // message, and X-Spam-Status reflects the threshold comparison.
 func TestDeliverSpamHeaders(t *testing.T) {
@@ -194,7 +194,7 @@ func TestDeliverSpamHeaders(t *testing.T) {
 	}
 }
 
-// TestDeliverStripsForgedTraceHeaders is the AC5 case: inbound
+// TestDeliverStripsForgedTraceHeaders verifies that
 // Authentication-Results and X-Spam-* headers already present on an inbound
 // message (a forged passing verdict) are removed before ours are added.
 func TestDeliverStripsForgedTraceHeaders(t *testing.T) {
@@ -234,11 +234,11 @@ func TestDeliverStripsForgedTraceHeaders(t *testing.T) {
 }
 
 // TestDeliverDKIMSignatureCoveringStrippedHeaderStillVerifiesArrivalTime
-// covers Hazard 3: a sender may include a forged trace header inside its own
-// DKIM h= tag. We verify DKIM against the ORIGINAL bytes before stripping, so
-// the arrival-time verdict (durable on MailMeta.DkimResult/DkimDomain) is
+// covers the hazard that a sender may include a forged trace header inside its
+// own DKIM h= tag. We verify DKIM against the ORIGINAL bytes before stripping,
+// so the arrival-time verdict (durable on MailMeta.DkimResult/DkimDomain) is
 // unaffected by our stripping the header afterward - and the forged header is
-// still removed from what is actually stored, per FR-12.
+// still removed from what is actually stored.
 func TestDeliverDKIMSignatureCoveringStrippedHeaderStillVerifiesArrivalTime(t *testing.T) {
 	key := newTestRSAKey(t)
 	stubDKIMPass(t, key, "example.test", "sel")
@@ -363,8 +363,9 @@ func TestDeliverSplitRoundTripAfterStamping(t *testing.T) {
 
 // TestDeliverNoBlobStoreDegradesGracefully verifies that with no blob store
 // configured (the pre-existing deliver_test.go harness), stamping is skipped
-// entirely and behavior is byte-for-byte identical to before this task:
-// meta.RawMessage.Hash stays at env.BlobHash and Size is the original length.
+// entirely and behavior is byte-for-byte identical to before trace-header
+// stamping existed: meta.RawMessage.Hash stays at env.BlobHash and Size is
+// the original length.
 func TestDeliverNoBlobStoreDegradesGracefully(t *testing.T) {
 	applier := &mockApplier{}
 	resolver := &mockResolver{mapping: map[string]string{"alice@example.com": "user-alice"}}
@@ -505,10 +506,8 @@ func TestDeliverForwardKeepsOriginalBlobHash(t *testing.T) {
 // (Authentication-Results, X-Spam-*, etc.). It verifies that prepending trace
 // headers does not invalidate the signature: the stored bytes (what clients
 // fetch via IMAP/POP3/Export) still verify as "pass" when checked against the
-// sender's original signature.
-//
-// This is the AC acceptance criterion for US-004 Phase 10: trace headers must
-// be transparent to legitimate DKIM signatures.
+// sender's original signature: trace headers must be transparent to
+// legitimate DKIM signatures.
 func TestDeliverDKIMSignaturePreservedAfterStamping(t *testing.T) {
 	key := newTestRSAKey(t)
 	stubDKIMPass(t, key, "example.test", "sel")

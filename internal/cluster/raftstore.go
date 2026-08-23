@@ -66,14 +66,13 @@ func (r *RaftStore) FirstIndex() (uint64, error) {
 // LastIndex returns the last log index written. 0 for no entries.
 //
 // This seeks directly to the highest key rather than iterating the whole log.
-// It used to scan every entry and keep the last one, which made the call O(n)
-// in the size of the raft log — and hashicorp/raft calls LastIndex constantly
-// (on the leader loop, on every append, when dispatching entries).
-//
-// That was the cause of an 80s stall on the first delivery after a restart:
-// with ~8,200 log entries and a cold Pebble block cache, every one of those
-// repeated full scans went to disk. Once the cache warmed the same delivery
-// took 63ms, which is why it looked like a mysterious startup-only problem.
+// It used to scan every entry and keep the last one, which made the call O(n) in
+// the size of the raft log — and hashicorp/raft calls LastIndex constantly (on
+// the leader loop, on every append, when dispatching entries). That caused an
+// 80s stall on the first delivery after a restart: with ~8,200 log entries and a
+// cold Pebble block cache, every one of those repeated full scans went to disk.
+// Once the cache warmed the same delivery took 63ms, which is why it looked like
+// a mysterious startup-only problem.
 //
 // Seeking to the greatest key is only equivalent to the greatest index because
 // logKey zero-pads the index to a fixed 20 digits, so lexicographic order

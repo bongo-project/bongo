@@ -33,10 +33,9 @@ const (
 	// the challenge is invalidated (brute-force guard).
 	maxVerifyAttempts = 5
 
-	// verifyRateLimit is the minimum interval between code requests for the
-	// same (user, address) pair — prevents spam generation.
-	// NOTE: enforced at the store level via the existing challenge check: if a
-	// challenge exists and has not expired, a new request is rejected.
+	// Code requests for the same (user, address) pair are rate-limited without a
+	// separate interval constant: if a challenge exists and has not expired, a
+	// new request is rejected. This prevents mail-bombing a claimed address.
 )
 
 // AddressVerifyHandler handles self-serve address ownership verification.
@@ -291,14 +290,13 @@ func (h *AddressVerifyHandler) RequestVerification(w http.ResponseWriter, r *htt
 // POST /settings/addresses/{address}/verify-submit
 // Form fields: code — the one-time code the user received by email.
 //
-// Success path (two Raft writes, non-atomic, intentional ordering):
-//  1. AddressStore.Put(Verified=true, CanSend=true) — performed first.
-//  2. Delete challenge — performed second (best-effort).
-//
-// Ordering prevents a crash between writes from locking the user out:
-//   - If Put succeeds but Delete fails → address is verified, challenge is stale.
-//     A subsequent submit finds mismatch/expired and correctly fails (idempotent).
-//   - If Delete succeeds but Put had not yet run → impossible (Put is first).
+// The success path is two non-atomic Raft writes in a deliberate order:
+// AddressStore.Put(Verified=true, CanSend=true) first, then a best-effort delete
+// of the challenge. That order prevents a crash between the writes from locking
+// the user out — if the Put succeeds and the Delete fails, the address is
+// verified with a stale challenge and a later submit correctly fails on
+// mismatch/expiry (idempotent); the reverse, a consumed challenge with an
+// unverified address, cannot happen.
 func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request) {
 	userID, _ := middleware.UserFromContext(r.Context())
 	address := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "address")))
@@ -383,7 +381,7 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Correct code: set Verified+CanSend on the address (step 1, must succeed).
+	// Correct code: set Verified+CanSend on the address (first write, must succeed).
 	rec.CanSend = true
 	rec.Verified = true
 	if err := h.addresses.Put(address, rec); err != nil {
@@ -392,8 +390,8 @@ func (h *AddressVerifyHandler) SubmitCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Delete the challenge (step 2, best-effort — see partial-failure semantics
-	// in the type-level comment on AddressVerifyStore).
+	// Delete the challenge (second write, best-effort — see partial-failure
+	// semantics in the type-level comment on AddressVerifyStore).
 	if delErr := h.verifyStore.Delete(userID, address); delErr != nil {
 		h.logger.Warn("address-verify: submit: failed to delete consumed challenge (non-fatal)", "user_id", userID, "address", address, "error", delErr)
 	}

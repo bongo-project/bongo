@@ -344,17 +344,17 @@ func dmarcEscalationFixture(t *testing.T, disposition string) (*BuiltinProcessor
 	return proc, env, msg
 }
 
-// TestCompositeDMARCEscalationSurvivesExternalPass is the RISK-1 regression
-// test: a same-domain spoof that the builtin escalates to "reject" via DMARC
-// must not be overturned by an external backend that saw nothing suspicious
-// and returned "pass" at a HIGHER score than the builtin's own (the builtin's
-// heuristic-only score is not near-zero here: SPF softfail/DKIM-missing/
-// mismatch heuristics contribute their own baseline on top of the DMARC
-// escalation). Before the severity-aware merge, composite.go's score-only
-// comparison (external.Score >= builtin.Score) would have let this external
-// "pass" win purely because its score was set higher, discarding the reject
-// action and routing a spoofed message into the inbox instead of holding it
-// out. The external's score is deliberately set above the builtin's actual
+// TestCompositeDMARCEscalationSurvivesExternalPass is the regression test for
+// the severity-aware merge: a same-domain spoof that the builtin escalates to
+// "reject" via DMARC must not be overturned by an external backend that saw
+// nothing suspicious and returned "pass" at a HIGHER score than the builtin's
+// own (the builtin's heuristic-only score is not near-zero here: SPF
+// softfail/DKIM-missing/mismatch heuristics contribute their own baseline on
+// top of the DMARC escalation). Before the severity-aware merge, composite.go's
+// score-only comparison (external.Score >= builtin.Score) would have let this
+// external "pass" win purely because its score was set higher, discarding the
+// reject action and routing a spoofed message into the inbox instead of holding
+// it out. The external's score is deliberately set above the builtin's actual
 // score (computed from a direct call below) so this test would have failed
 // under the old score-only rule and is not vacuous under the new one.
 func TestCompositeDMARCEscalationSurvivesExternalPass(t *testing.T) {
@@ -460,12 +460,12 @@ func (s *spyProcessor) Process(_ context.Context, _ *bongov1.QueueEnvelope, _ io
 // TestCompositeConsultsExternalsRegardlessOfTrust is the scope-guard test for
 // the composite, and the mirror of the one in builtin_test.go.
 //
-// Trust (task 12.3 — authenticated submission or a trusted network) exempts a
-// message from ORIGIN AUTHENTICATION interpretation (SPF, DKIM alignment,
-// DMARC) and from nothing else. It must never become a content-filtering
-// bypass: Phase 10 rejected a "local origin" flag that skipped scoring for
-// precisely this reason, and builtin.go's boundary comment says not to widen
-// the skip beyond those three signals.
+// Trust (authenticated submission or a trusted network) exempts a message from
+// ORIGIN AUTHENTICATION interpretation (SPF, DKIM alignment, DMARC) and from
+// nothing else. It must never become a content-filtering bypass: a "local
+// origin" flag that skipped scoring was rejected for precisely this reason, and
+// builtin.go's boundary comment says not to widen the skip beyond those three
+// signals.
 //
 // An earlier revision of the composite DID skip externals for trusted mail,
 // justified by the claim that external backends "run their own SPF/DKIM/DMARC
@@ -520,17 +520,17 @@ func TestCompositeTrustedSpamStillCaughtByExternal(t *testing.T) {
 	}
 }
 
-// TestCompositeRspamdHTTPErrorFallsThroughToNextExternal is the RISK-4
-// regression test. A non-200 response from rspamd (e.g. 403 password-required,
-// or a 5xx) must be treated as "unavailable" by isUnavailable() so the
-// fallback chain tries the next external instead of stopping on rspamd's
-// hardcoded "pass" result. Composed with a severity-aware merge (RISK-1's
-// fix), a stuck-on-rspamd "pass" would silently prevent SpamAssassin's real
-// quarantine verdict from ever being considered, because the loop breaks as
-// soon as it sees ANY result that isUnavailable does not recognise as
-// unavailable — regardless of that result's own action. This test used the
-// literal pre-fix reason string ("rspamd returned HTTP %d", no "unavailable")
-// to confirm it fails without the fix, before restoring the real code.
+// TestCompositeRspamdHTTPErrorFallsThroughToNextExternal is a regression test.
+// A non-200 response from rspamd (e.g. 403 password-required, or a 5xx) must be
+// treated as "unavailable" by isUnavailable() so the fallback chain tries the
+// next external instead of stopping on rspamd's hardcoded "pass" result.
+// Composed with the severity-aware merge, a stuck-on-rspamd "pass" would
+// silently prevent SpamAssassin's real quarantine verdict from ever being
+// considered, because the loop breaks as soon as it sees ANY result that
+// isUnavailable does not recognise as unavailable — regardless of that result's
+// own action. This test used the literal pre-fix reason string ("rspamd
+// returned HTTP %d", no "unavailable") to confirm it fails without the fix,
+// before restoring the real code.
 func TestCompositeRspamdHTTPErrorFallsThroughToNextExternal(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

@@ -79,15 +79,18 @@ const (
 // dnsblRange and policyErrorRange encode the response-interpretation rule as
 // named constants rather than a bare 127/8 check.
 //
-// This is a deliberate deviation from the PRD's FR-3, which says literally
-// "any 127.0.0.0/8 answer is a listing". Major zones (Spamhaus among them)
-// reserve 127.255.255.0/24 to signal a problem with the QUERY rather than a
-// verdict on the IP -- "you are querying via a public resolver", "query
-// volume exceeded", "blocked client". Reading those as listings would score
-// every message from every sender as spam the moment the operator's resolver
-// setup upset a zone. Failing open on an answer we cannot interpret is the
-// safe direction; a false listing costs a legitimate sender their mail.
-// Do not simplify this back to a single /8 comparison.
+// This is a deliberate, already-adjudicated deviation from the DNSBL PRD's
+// FR-3, which says literally "any 127.0.0.0/8 answer is a listing" -- the
+// requirement is wrong and the code is right, so a reader who finds the PRD
+// later does not need to relitigate it. Major zones (Spamhaus among them)
+// reserve 127.255.255.0/24 to
+// signal a problem with the QUERY rather than a verdict on the IP -- "you are
+// querying via a public resolver", "query volume exceeded", "blocked client".
+// Reading those as listings would score every message from every sender as spam
+// the moment the operator's resolver setup upset a zone. Failing open on an
+// answer we cannot interpret is the safe direction; a false listing costs a
+// legitimate sender their mail. Do not simplify this back to a single /8
+// comparison.
 var (
 	dnsblRange       = mustParseCIDR("127.0.0.0/8")
 	policyErrorRange = mustParseCIDR("127.255.255.0/24")

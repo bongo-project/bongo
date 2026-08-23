@@ -63,7 +63,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		},
 	}
 
-	// Step 1: Unauthenticated access should redirect to login.
 	t.Run("unauthenticated redirects to login", func(t *testing.T) {
 		// Use a client that doesn't follow redirects to verify the 303.
 		noRedirectClient := &http.Client{
@@ -85,7 +84,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 2: Login with admin credentials.
 	t.Run("login", func(t *testing.T) {
 		resp, err := client.PostForm(baseURL+"/login", url.Values{
 			"email":    {"admin@localhost"},
@@ -117,7 +115,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 3: GET /mail/INBOX should return 200 with mailbox layout.
 	t.Run("view inbox", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/mail/INBOX")
 		if err != nil {
@@ -139,7 +136,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 4: Send email via SMTP and verify it appears.
 	t.Run("send via SMTP and view", func(t *testing.T) {
 		smtpAddr := a.SMTP.MXAddr()
 
@@ -179,7 +175,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 5: View message detail.
 	t.Run("view message detail", func(t *testing.T) {
 		// Get the message UID from the inbox.
 		resp, err := client.Get(baseURL + "/mail/INBOX/1")
@@ -203,7 +198,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 6: Compose and send a message.
 	t.Run("compose and send", func(t *testing.T) {
 		resp, err := client.PostForm(baseURL+"/compose/send", url.Values{
 			"to":      {"admin@localhost"},
@@ -222,7 +216,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 7: Search.
 	t.Run("search", func(t *testing.T) {
 		resp, err := client.Get(baseURL + "/search?q=test")
 		if err != nil {
@@ -235,7 +228,6 @@ func TestWebUIFullRoundTrip(t *testing.T) {
 		}
 	})
 
-	// Step 8: Logout.
 	t.Run("logout", func(t *testing.T) {
 		// Use a no-redirect client to verify the redirect.
 		noRedirectClient := &http.Client{

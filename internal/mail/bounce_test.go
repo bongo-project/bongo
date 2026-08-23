@@ -309,8 +309,8 @@ func TestGenerateAndDeliverSignsBounce(t *testing.T) {
 		t.Errorf("DKIM-Signature h= must cover the From header, got h=%s", hTag)
 	}
 
-	// Criterion 2 (test-hazard workaround): verify the signature cryptographically
-	// with a stubbed LookupTXT instead of a live DNS lookup, per the DKIM public key.
+	// Verify the signature cryptographically with a stubbed LookupTXT instead
+	// of a live DNS lookup, so the crypto path runs with zero network access.
 	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
 	if err != nil {
 		t.Fatalf("MarshalPKIXPublicKey: %v", err)
@@ -340,8 +340,8 @@ func TestGenerateAndDeliverSignsBounce(t *testing.T) {
 
 // TestGenerateAndDeliverNilRegistry verifies that a nil DKIM registry does not
 // panic and still delivers the bounce, unsigned, and that the no-signer
-// warning (FR-2) still fires for a nil registry (the bg.dkim == nil
-// short-circuit must not skip the warning, only the Get call).
+// warning still fires for a nil registry (the bg.dkim == nil short-circuit
+// must not skip the warning, only the Get call).
 func TestGenerateAndDeliverNilRegistry(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
@@ -372,7 +372,7 @@ func TestGenerateAndDeliverNilRegistry(t *testing.T) {
 
 // TestGenerateAndDeliverUnregisteredDomainWarns verifies that when no signer
 // is registered for the bounce domain, delivery still succeeds (unsigned) and
-// a warning naming the domain is logged (FR-2).
+// a warning naming the domain is logged.
 func TestGenerateAndDeliverUnregisteredDomainWarns(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
@@ -402,8 +402,8 @@ func TestGenerateAndDeliverUnregisteredDomainWarns(t *testing.T) {
 	}
 }
 
-// TestGenerateAndDeliverUsesNullEnvelopeSender verifies FR-3 (RFC 5321 s6.1):
-// the DSN's envelope sender (the `from` argument to Deliver) must be the null
+// TestGenerateAndDeliverUsesNullEnvelopeSender verifies RFC 5321 s6.1: the
+// DSN's envelope sender (the `from` argument to Deliver) must be the null
 // sender "", not MAILER-DAEMON@<domain> — a non-null return path is a
 // bounce-of-a-bounce hazard. The From: header, by contrast, must still
 // identify MAILER-DAEMON@<domain>.
@@ -428,16 +428,15 @@ func TestGenerateAndDeliverUsesNullEnvelopeSender(t *testing.T) {
 	}
 }
 
-// TestGenerateAndDeliverWarnDomainMatchesSigner is the requirement-B
-// divergence test: it proves the no-signer warning names the domain that
-// DKIMRegistry.Sign actually uses, by constructing bg.domain with a trailing
-// dot ("example.test."). DKIMRegistry.Get only lowercases (dkim_registry.go),
+// TestGenerateAndDeliverWarnDomainMatchesSigner is the divergence test: it
+// proves the no-signer warning names the domain that DKIMRegistry.Sign
+// actually uses, by constructing bg.domain with a trailing dot
+// ("example.test."). DKIMRegistry.Get only lowercases (dkim_registry.go),
 // while FromRawMessageDomain -> FromHeaderDomain -> normalizeDomain also
-// strips a trailing dot (dmarc.go). Before this change, the guard looked up
-// Get(bg.domain) == Get("example.test.") which misses a signer seeded at
-// "example.test", producing a spurious warning even though Sign (which
-// re-derives the domain from the From header) signs successfully. This test
-// fails on the pre-change code.
+// strips a trailing dot (dmarc.go). A guard that looked up Get(bg.domain) ==
+// Get("example.test.") misses a signer seeded at "example.test" and produces a
+// spurious warning even though Sign (which re-derives the domain from the From
+// header) signs successfully; this test fails against that shape of guard.
 //
 // A trailing-dot domain is reachable in production: ResolveServerDomain
 // returns the SMTP hostname verbatim when publicsuffix parsing fails, and a
@@ -555,7 +554,7 @@ func dkimTag(sigHeader, tag string) string {
 // leafParts walks an enmime part tree and returns every leaf part (a part with
 // no children), i.e. the actual MIME body parts rather than multipart
 // containers. Tests should walk the tree this way rather than assuming
-// env.Text alone reflects every part, per the acceptance criteria.
+// env.Text alone reflects every part.
 func leafParts(root *enmime.Part) []*enmime.Part {
 	var out []*enmime.Part
 	var walk func(p *enmime.Part)
@@ -575,7 +574,7 @@ func leafParts(root *enmime.Part) []*enmime.Part {
 	return out
 }
 
-// TestBuildBounceThreeParts verifies FR-5/FR-6: given a non-empty original
+// TestBuildBounceThreeParts verifies that given a non-empty original
 // header block, the bounce has exactly three MIME parts (text/plain,
 // message/delivery-status, text/rfc822-headers), and the first two declare an
 // explicit Content-Transfer-Encoding.
@@ -650,7 +649,7 @@ func TestBuildBounceOmitsThirdPartWhenNoHeaders(t *testing.T) {
 	}
 }
 
-// TestBuildBounceNonASCIIReasonRoundTrips verifies FR-6: a non-ASCII reason
+// TestBuildBounceNonASCIIReasonRoundTrips verifies that a non-ASCII reason
 // string round-trips through the human-readable part's declared
 // charset=utf-8 / Content-Transfer-Encoding: quoted-printable.
 func TestBuildBounceNonASCIIReasonRoundTrips(t *testing.T) {
@@ -668,7 +667,7 @@ func TestBuildBounceNonASCIIReasonRoundTrips(t *testing.T) {
 	}
 }
 
-// TestBuildBounceMessageGuidEmptyOmitsBothHeaders verifies FR-7: when
+// TestBuildBounceMessageGuidEmptyOmitsBothHeaders verifies that when
 // MessageGuid is empty, neither In-Reply-To nor References is emitted at all
 // (not merely empty-valued).
 func TestBuildBounceMessageGuidEmptyOmitsBothHeaders(t *testing.T) {
@@ -689,7 +688,7 @@ func TestBuildBounceMessageGuidEmptyOmitsBothHeaders(t *testing.T) {
 	}
 }
 
-// TestBuildBounceMessageGuidSetEmitsBothHeaders verifies FR-7: a non-empty
+// TestBuildBounceMessageGuidSetEmitsBothHeaders verifies that a non-empty
 // MessageGuid produces both In-Reply-To and References with the same value.
 func TestBuildBounceMessageGuidSetEmitsBothHeaders(t *testing.T) {
 	original := &bongov1.OutboundMessage{SenderEmail: "alice@example.com", MessageGuid: "<abc@example.test>"}
@@ -707,7 +706,7 @@ func TestBuildBounceMessageGuidSetEmitsBothHeaders(t *testing.T) {
 	}
 }
 
-// TestGenerateAndDeliverIncludesOriginalHeaders (FR-5) proves that when the
+// TestGenerateAndDeliverIncludesOriginalHeaders proves that when the
 // original message's blob is available, GenerateAndDeliver's output carries a
 // third text/rfc822-headers part with the original's header lines.
 func TestGenerateAndDeliverIncludesOriginalHeaders(t *testing.T) {
@@ -751,7 +750,7 @@ func TestGenerateAndDeliverIncludesOriginalHeaders(t *testing.T) {
 	}
 }
 
-// TestGenerateAndDeliverMissingBlobStillDelivers (FR-5) proves that an
+// TestGenerateAndDeliverMissingBlobStillDelivers proves that an
 // unreadable/invalid original blob hash never fails the bounce: delivery still
 // happens with two parts (no rfc822-headers part), and the omission is logged.
 func TestGenerateAndDeliverMissingBlobStillDelivers(t *testing.T) {
@@ -786,8 +785,8 @@ func TestGenerateAndDeliverMissingBlobStillDelivers(t *testing.T) {
 	}
 }
 
-// TestGenerateAndDeliverSplitRecordHeaders (FR-5 + Design Hazard 2) proves that
-// for a split (attachment-dedup) record, the rfc822-headers part still carries
+// TestGenerateAndDeliverSplitRecordHeaders proves that for a split
+// (attachment-dedup) record, the rfc822-headers part still carries
 // the original top-level headers, read from the skeleton blob's prefix rather
 // than a full reconstruction.
 func TestGenerateAndDeliverSplitRecordHeaders(t *testing.T) {
@@ -846,7 +845,7 @@ func TestGenerateAndDeliverSplitRecordHeaders(t *testing.T) {
 	}
 }
 
-// TestParseEnhancedStatus covers FR-8: extracting a well-formed RFC 3463
+// TestParseEnhancedStatus covers extracting a well-formed RFC 3463
 // enhanced status code anchored to a preceding 3-digit basic reply code, with
 // the real reason-string shapes produced on both queue failure paths
 // (internal/queue/worker.go), not just a bare SMTP reply.
@@ -878,12 +877,12 @@ func TestParseEnhancedStatus(t *testing.T) {
 			want:   "5.1.1",
 		},
 		{
-			name:   "task example: RCPT rejection",
+			name:   "RCPT rejection",
 			reason: "550 5.1.1 <bob@x.com>: User unknown",
 			want:   "5.1.1",
 		},
 		{
-			name:   "task example: quoted enhanced code after HELO rejection",
+			name:   "quoted enhanced code after HELO rejection",
 			reason: `504 "5.5.2 <localhost>: Helo command rejected: need fully-qualified hostname"`,
 			want:   "5.5.2",
 		},
@@ -919,9 +918,11 @@ func TestParseEnhancedStatus(t *testing.T) {
 		},
 		{
 			// Superseded contract: this parser previously returned any class
-			// verbatim on the theory that the caller would enforce policy. The
-			// caller writes Status: unchanged next to Action: failed, so the
-			// class filter belongs here. Covered by the class-5 cases above.
+			// verbatim on the theory that the caller would enforce policy.
+			// The class filter belongs in the parser, not the caller: the
+			// caller writes Status: verbatim next to Action: failed, so
+			// returning any class through would emit a non-failure status
+			// on a failure DSN. Covered by the class-5 cases above.
 			name:   "non-failure class anywhere in a wrapped error still yields 5.0.0",
 			reason: "connect ok 220 2.0.0 ready; later 450 4.2.1 mailbox busy",
 			want:   "5.0.0",
@@ -937,7 +938,7 @@ func TestParseEnhancedStatus(t *testing.T) {
 	}
 }
 
-// TestBuildBounceStatusFromReason verifies FR-8 end-to-end: the parsed
+// TestBuildBounceStatusFromReason verifies end-to-end that the parsed
 // enhanced status code appears in the message/delivery-status part's Status
 // field, and a reason with no parseable code falls back to 5.0.0.
 func TestBuildBounceStatusFromReason(t *testing.T) {

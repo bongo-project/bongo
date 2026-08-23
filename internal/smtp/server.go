@@ -398,8 +398,9 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 }
 
 // inboundMeta builds the InboundMeta for the message currently being
-// received. Trusted has exactly two sources, both ORed together here — this
-// is the ONLY place in the codebase permitted to set it:
+// received. Trusted has exactly two sources, both ORed together here — this is
+// the ONLY place in the codebase permitted to set it, and any future trust
+// source must extend the expression below rather than add another call site:
 //  1. s.authed — the session's own authentication state. s.authed can only be
 //     true on the submission port (see AuthMechanisms, which returns nil
 //     unless s.submission), so an unauthenticated MX-port session can never
@@ -408,9 +409,6 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 //     operator-configured trusted_networks CIDR (config.SMTPConfig). Empty by
 //     default, so no address is trusted implicitly, not even loopback or
 //     RFC 1918 ranges.
-//
-// Any future trust source must extend the expression below rather than
-// adding another call site.
 //
 // Security note: with smtp.proxy_protocol enabled, sourceIP already reflects
 // the PROXY-protocol-asserted client address rather than the TCP peer (see

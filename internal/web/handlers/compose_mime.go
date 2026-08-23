@@ -56,17 +56,15 @@ func checkInlineImageCaps(imgs []inlineImage) error {
 	return nil
 }
 
-// preCheckInlineImageSizes fast-scans html for data: URI image sizes without
-// performing base64 decoding. It computes exact decoded byte counts by using
-// base64 string lengths minus the trailing '=' padding characters, which gives
-// the exact same result as base64.StdEncoding.Decode without allocating.
-// Returns errInlineImageTooLarge or errTotalInlineTooLarge when the raw HTML
-// exceeds the inline-image caps, allowing rejection before the expensive HTML
+// preCheckInlineImageSizes fast-scans html for data: URI image sizes, computing
+// exact decoded byte counts from the base64 string lengths instead of decoding,
+// and returns errInlineImageTooLarge or errTotalInlineTooLarge when the raw HTML
+// exceeds the inline-image caps. This allows rejection before the expensive HTML
 // sanitizer runs.
 //
-// This is an optimistic fast-path: it checks only images in the raw (unsanitised)
-// user-supplied HTML. The definitive check on extractDataURIImages output still
-// runs afterward to cover the appended signature HTML and any edge cases.
+// It is an optimistic fast-path over the raw (unsanitised) user-supplied HTML
+// only. The definitive check on extractDataURIImages output still runs afterward
+// to cover the appended signature HTML and any edge cases.
 func preCheckInlineImageSizes(html string) error {
 	var total int
 	for _, loc := range dataURIImageRe.FindAllStringSubmatchIndex(html, -1) {
@@ -279,9 +277,7 @@ func buildRelatedBody(plain, html string, imgs []inlineImage) (contentType strin
 //
 // Structure selection (in order of precedence):
 //
-//	no html, no inline, no attachments → single text/plain (byte-identical to
-//	                                       the original buildRFC5322WithAttachments
-//	                                       plain path)
+//	no html, no inline, no attachments → single text/plain
 //	no html, no inline, + attachments  → multipart/mixed { text/plain, atts… }
 //	html, no inline, no attachments    → multipart/alternative { plain, html }
 //	html + inline, no attachments      → multipart/related { multipart/alternative

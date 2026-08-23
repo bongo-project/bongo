@@ -332,7 +332,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 			a.Events.SetSearch(a.Search)
 		}
 
-		// Construct the global address index store (FR-12).
+		// Construct the global address index store.
 		// The Agent itself is the RaftApplier. sys may be nil on edge nodes
 		// (guarded inside AddressStore.Put).
 		var sys *store.SystemIndex
@@ -341,7 +341,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		}
 		a.AddressStore = store.NewAddressStore(pebbleStore, a, sys)
 
-		// Domain quota store (FR-10 / US-TENANT-3): per-domain max_users and
+		// Domain quota store: per-domain max_users and
 		// max_storage_bytes limits + recomputed usage. The Agent itself is the
 		// RaftApplier so all writes go through Raft consensus.
 		a.DomainQuota = store.NewDomainQuotaStore(pebbleStore, a)
@@ -358,7 +358,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	// not just SMTP-enabled server nodes. This is deliberately point-of-use
 	// validation, not cfg.Validate() (see CLAUDE.md and
 	// SMTPConfig.ParseTrustedNetworks below for the same pattern). The
-	// checker itself is not constructed here — that is task 13.3.
+	// checker itself is not constructed here — see dnsblOption.
 	if err := a.Config.Antispam.DNSBL.Validate(); err != nil {
 		return fmt.Errorf("antispam dnsbl config: %w", err)
 	}
@@ -371,12 +371,12 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Build the shared recipient resolver once and share it across compose,
 	// the inbound pipeline, and the SMTP backend RCPT guard. A single instance
 	// guarantees that local-send (compose) and inbound delivery agree on the
-	// address→user mapping (task 4.3 / US-RECV-1).
+	// address→user mapping.
 	//
 	// Three-tier resolution: (1) AddressStore Pebble (source of truth, all
 	// nodes), (2) legacy /system/alias Pebble key + users-table (post-boot
-	// accounts/aliases), (3) per-domain catch-all /system/catchall/{domain}
-	// (task 4.4 / US-RECV-3). Miss → reject (550).
+	// accounts/aliases), (3) per-domain catch-all /system/catchall/{domain}.
+	// Miss → reject (550).
 	// See store.RecipientResolver for full documentation.
 	var sharedSys *store.SystemIndex
 	if a.Metadata != nil {
@@ -609,9 +609,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	})
 
 	// Construct the domain-admin store before the admin group so the gate
-	// middleware (RequireAdminOrDomainAdmin) can call AuthorizedDomains.
-	// (task 6.1 / FR-8 domain ownership + tenant model;
-	//  task 6.2 / US-TENANT-2 tenant isolation gate)
+	// middleware (RequireAdminOrDomainAdmin) can call AuthorizedDomains. It
+	// backs domain ownership, the tenant model, and the tenant isolation gate.
 	var domainAdminStoreForAdmin *store.DomainAdminStore
 	if a.Store != nil {
 		domainAdminStoreForAdmin = store.NewDomainAdminStore(a.Store, a)
@@ -656,7 +655,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Wire the catch-all store so SetCatchAll/ClearCatchAll can persist
 		// per-domain catch-all configuration via Raft. The resolver reads
 		// catch-all directly from Pebble (CatchAllKey) so no separate field
-		// on the resolver is required — task 4.4 (US-RECV-3) is now complete.
+		// on the resolver is required.
 		if a.Store != nil {
 			adminH.SetCatchAllStore(store.NewCatchAllStore(a.Store, a))
 		}
@@ -668,12 +667,12 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 
 		// Wire the address store so AddAddress/RemoveAddress can manage
-		// per-user address records via Raft. (task 4.5 / FR-5)
+		// per-user address records via Raft.
 		if a.AddressStore != nil {
 			adminH.SetAddressStore(a.AddressStore)
 		}
 
-		// Wire the domain quota store (FR-10 / US-TENANT-3): max-users + storage
+		// Wire the domain quota store: max-users + storage
 		// quota enforcement for admin user creation and the quota set endpoint.
 		if a.DomainQuota != nil {
 			adminH.SetDomainQuotaStore(a.DomainQuota)
@@ -800,7 +799,7 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		if a.Mailboxes != nil {
 			composeH := handlers.NewComposeHandler(a.Store, a.Blobs, a.Mailboxes, a.Search, a, a.logger)
-			// Attachment dedup for sent mail / drafts (Phase 9): store a skeleton
+			// Attachment dedup for sent mail / drafts: store a skeleton
 			// + deduplicated attachment blobs; the queue reconstructs byte-exact
 			// before relaying.
 			composeH.SetAttachmentDedup(int(a.Config.Storage.AttachmentDedupMinBytes()))
@@ -816,7 +815,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			// Unified resolver: same instance as the inbound SMTP path so
 			// local-send and inbound delivery agree on address→user mapping.
 			composeH.SetLocalResolver(sharedResolver)
-			// Address store for From picker and server-side send-as enforcement (task 5.1).
+			// Address store for From picker and server-side send-as enforcement.
 			if a.AddressStore != nil {
 				composeH.SetAddressStore(a.AddressStore)
 			}
@@ -902,7 +901,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Delete("/api/tags/{name}", tagsH.DeleteTag)
 		}
 
-		// Self-serve send-as address verification (task 5.2 / FR-7b, PATH B).
+		// Self-serve send-as address verification.
 		// Requires the address store and verify store; degrades gracefully on
 		// edge/agent nodes where neither may be available.
 		if a.AddressStore != nil && a.Store != nil {
@@ -1072,17 +1071,17 @@ func (a *Agent) Run(ctx context.Context) error {
 		if a.Preferences != nil {
 			deliverProc.SetPreferences(a.Preferences)
 		}
-		// Attachment deduplication (Phase 9): store large attachments as separate
+		// Attachment deduplication: store large attachments as separate
 		// content-addressed blobs + a message skeleton, reconstructed byte-exact
 		// on read. The self-check inside the deliver stage falls back to whole-raw
 		// storage for anything that cannot be reproduced exactly.
 		if a.Blobs != nil {
 			deliverProc.SetAttachmentDedup(a.Blobs, int(a.Config.Storage.AttachmentDedupMinBytes()))
 		}
-		// Trace-header stamping (task 10.5): records SPF/DKIM/DMARC results and
-		// the spam decision on the stored message itself, so a raw message view
-		// (task 10.6) can show why it was filed as spam without relying solely
-		// on the antispam log line. The threshold is shared with Junk routing
+		// Trace-header stamping: records SPF/DKIM/DMARC results and the spam
+		// decision on the stored message itself, so a raw message view can show
+		// why it was filed as spam without relying solely on the antispam log
+		// line. The threshold is shared with Junk routing
 		// above so X-Spam-Status never disagrees with where the message landed.
 		deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname, a.Config.Antispam.Builtin.SpamThreshold())
 		stages = append(stages, deliverProc)
@@ -1148,7 +1147,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// deliver-stage resolution are always consistent.
 		backend.SetResolver(sharedResolver)
 
-		// Storage quota enforcement at RCPT (FR-10 / US-TENANT-3): reject
+		// Storage quota enforcement at RCPT: reject
 		// inbound mail permanently when the recipient's primary domain is at or
 		// over its max_storage_bytes limit. Nil when quota store is unavailable
 		// (dev/edge/agent — all nil-checked inside the SMTP session).
@@ -1156,7 +1155,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			backend.SetQuotaChecker(a.DomainQuota)
 		}
 
-		// Operator-configured trusted networks (US-002): a connecting source IP
+		// Operator-configured trusted networks: a connecting source IP
 		// inside one of these CIDRs is treated as trusted the same as an
 		// authenticated submission session (see (*smtp.Session).inboundMeta).
 		// Parsed once here and set before Listen — SetTrustedNetworks is not
@@ -1377,9 +1376,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// nodes and on followers.
 	a.ensureConfiguredDomain()
 
-	// Populate the global address index from existing user profiles and aliases
-	// (FR-12 / US-RECV-2). Leader-only, idempotent, additive — never deletes or
-	// modifies existing users, aliases, profiles, or mailboxes.
+	// Populate the global address index from existing user profiles and aliases.
+	// Leader-only, idempotent, additive — never deletes or modifies existing
+	// users, aliases, profiles, or mailboxes.
 	a.migrateAddressIndex()
 
 	// Reclaim orphaned metadata: MailMeta + derived indexes left behind by
@@ -1389,7 +1388,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		go a.runOrphanGC(ctx, orphanGCInterval, orphanGCMinAge)
 	}
 
-	// Recompute per-domain aggregate storage usage (FR-10 / US-TENANT-3).
+	// Recompute per-domain aggregate storage usage.
 	// Leader-only, periodic, idempotent. Used by the SMTP RCPT quota check.
 	if a.Raft != nil && a.DomainQuota != nil {
 		go a.runUsageRecompute(ctx, usageRecomputeInterval)
@@ -1500,7 +1499,7 @@ const (
 	// reclamation, guarding against racing with in-flight delivery.
 	orphanGCMinAge = time.Hour
 	// usageRecomputeInterval is how often the per-domain storage usage is
-	// recomputed. Eventual consistency is acceptable (AC explicitly allows it).
+	// recomputed. Eventual consistency is acceptable here.
 	usageRecomputeInterval = 10 * time.Minute
 )
 
@@ -1528,7 +1527,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 		case <-ticker.C:
 			prevMail = a.sweepOrphanedMail(prevMail, minAge)
 			prevUsers = a.sweepOrphanedUsers(prevUsers)
-			// Blob GC is opt-in (Phase 9): off by default, with a dry-run mode to
+			// Blob GC is opt-in: off by default, with a dry-run mode to
 			// validate before it ever deletes.
 			if mode := a.Config.Storage.BlobGCMode(); mode != "off" {
 				prevBlobs = a.sweepOrphanedBlobs(prevBlobs, minAge, mode == "dryrun")
@@ -1758,8 +1757,7 @@ func (a *Agent) sweepOrphanedMail(prev map[string]bool, minAge time.Duration) ma
 // orphan-GC scheduling pattern). Idempotent: always overwrites the stored value.
 //
 // Usage is eventually consistent: the recompute job runs on a ~10-minute ticker
-// so short-lived spikes may not be reflected immediately. The AC explicitly
-// accepts this.
+// so short-lived spikes may not be reflected immediately. That is accepted.
 func (a *Agent) runUsageRecompute(ctx context.Context, interval time.Duration) {
 	if a.DomainQuota == nil || a.Store == nil {
 		return
@@ -2184,7 +2182,7 @@ func (a *Agent) startSMTPAgent() error {
 	// DepositMessage unconditionally strips Trusted (env.Trusted = false) because
 	// the deposit channel is not yet authenticated, so this has no behavioural
 	// effect today. Do not remove that strip here or in grpc/server.go — that is
-	// a separate trust-boundary change, out of scope for this task.
+	// a separate trust-boundary change.
 	trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
 	if err != nil {
 		return fmt.Errorf("smtp trusted networks: %w", err)
@@ -2311,7 +2309,6 @@ func (a *Agent) shutdownAgent() error {
 	return nil
 }
 
-// Shutdown closes all resources held by the agent.
 // mailListenerTLS resolves the TLS config for a mail protocol listener (IMAP, POP3).
 // It implements role-aware behaviour across four cases:
 //
@@ -2358,6 +2355,7 @@ func (a *Agent) mailListenerTLS(proto, certFile, keyFile string, hosts []string)
 	return cfg, nil
 }
 
+// Shutdown closes all resources held by the agent.
 func (a *Agent) Shutdown() error {
 	var errs []error
 

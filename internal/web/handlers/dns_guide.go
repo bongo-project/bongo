@@ -14,21 +14,17 @@ const dnsGuideTTL = 3600
 // buildDNSGuide produces the canonical set of DNS records a domain owner must
 // publish so this bongo server can host `domain`. It is pure and deterministic
 // (no I/O) so the same values feed both the on-page guide and its unit tests,
-// and so the guide can never drift from the 7.2 status checks.
+// and so the guide can never drift from the DNS status checks.
 //
-// Parameters:
-//   - domain:        the hosted domain (e.g. "example.net")
-//   - mailHostname:  the server's shared SMTP hostname (SMTP.Hostname); MX and
-//     all SRV targets point here (the "shared server host" model)
-//   - serverIPv4/6:  the server's public addresses for the A/AAAA records; each
-//     is omitted from the guide when empty (lookup failed / not available)
-//   - dkimSelector:  the DKIM selector (e.g. "mail"); empty when no key exists
-//   - dkimTXTRecord: the derived DKIM record line from dkimTXTRecord(); empty
-//     when no key has been generated
+// mailHostname is the server's shared SMTP hostname (SMTP.Hostname); MX and all
+// SRV targets point here (the "shared server host" model). serverIPv4/6 are the
+// public addresses for the A/AAAA records, each omitted when empty (lookup
+// failed / not available). dkimSelector and dkimTXTRecord (the derived record
+// line from dkimTXTRecord()) are empty when no key has been generated.
 //
-// The second return value is true when DKIM is still pending (no key generated),
-// so the UI can prompt the operator to generate one instead of publishing a
-// broken empty-p= record.
+// The second return value is true when DKIM is still pending, so the UI can
+// prompt the operator to generate a key instead of publishing a broken
+// empty-p= record.
 func buildDNSGuide(domain, mailHostname, serverIPv4, serverIPv6, dkimSelector, dkimTXTRecord string) ([]templates.DNSGuideRow, bool) {
 	domain = strings.ToLower(strings.TrimSpace(domain))
 	mailHostname = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(mailHostname), "."))

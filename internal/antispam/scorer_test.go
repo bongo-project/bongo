@@ -132,12 +132,12 @@ func TestScorer_EmptyInput(t *testing.T) {
 	}
 }
 
-// TestScorer_EmptyEnvelopeSenderNoMismatchReason is a characterisation test
-// for task 10.4 (FR-3): DSNs are now delivered with a null envelope sender
-// (EnvelopeSender ""). The mismatch check is already guarded on
-// EnvelopeSender != "", so an empty envelope sender must never add the
-// "envelope sender domain mismatch" reason, even when the From header domain
-// differs from (i.e. is unrelated to) any envelope domain.
+// TestScorer_EmptyEnvelopeSenderNoMismatchReason is a characterisation test:
+// DSNs are delivered with a null envelope sender (EnvelopeSender ""). The
+// mismatch check is already guarded on EnvelopeSender != "", so an empty
+// envelope sender must never add the "envelope sender domain mismatch" reason,
+// even when the From header domain differs from (i.e. is unrelated to) any
+// envelope domain.
 func TestScorer_EmptyEnvelopeSenderNoMismatchReason(t *testing.T) {
 	s := NewScorer()
 	result := s.Score(&ScoringInput{

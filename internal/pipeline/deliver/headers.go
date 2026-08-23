@@ -70,10 +70,10 @@ func validAuthDomain(d string) bool {
 // buildAuthenticationResults constructs the Authentication-Results header
 // line (including the "Authentication-Results:" field name, excluding the
 // line terminator) recording the SPF result, the DKIM result and signing
-// domain, and the DMARC result. It returns "" when hostname is empty: per
-// the decision already made, the authserv-id is the configured SMTP
-// hostname, and a message must not be stamped with a blank authserv-id when
-// it is unset (graceful degradation instead of a malformed header).
+// domain, and the DMARC result. It returns "" when hostname is empty: the
+// authserv-id is the configured SMTP hostname, and a message must not be
+// stamped with a blank authserv-id when it is unset (graceful degradation
+// instead of a malformed header).
 func buildAuthenticationResults(hostname, spfResult, dkimResult, dkimDomain, dmarcResult string) string {
 	hostname = strings.TrimSpace(mail.SanitizeHeaderValue(hostname))
 	if hostname == "" {
@@ -213,7 +213,7 @@ func isTraceHeaderName(name string) bool {
 
 // stripTraceHeaders removes any inbound Authentication-Results or X-Spam-*
 // header field, including its folded continuation lines, from raw's header
-// block (FR-12): without this, a remote sender could include a forged
+// block: without this, a remote sender could include a forged
 // "X-Spam-Status: No" or "Authentication-Results: ...dkim=pass" and have it
 // survive into the stored message. The body (everything at and after the
 // first blank line) is never touched, so a header-looking string inside the
@@ -273,7 +273,7 @@ func stripTraceHeaders(raw []byte) []byte {
 
 // prependHeaders inserts hdrs (each a logical header line such as
 // "X-Spam-Score: 0.62", without a line terminator) at the absolute top of
-// raw, ahead of every existing header (FR-13), so a DKIM signature computed
+// raw, ahead of every existing header, so a DKIM signature computed
 // over the original header set stays valid. The line ending is auto-detected
 // from raw's own header block (CRLF if present, else LF) rather than
 // hardcoded, and long lines are folded to stay well under the 998-octet

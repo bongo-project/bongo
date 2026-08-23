@@ -188,17 +188,10 @@ func (p *RspamdProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelop
 	}, nil
 }
 
-// mapRspamdAction converts a Rspamd action string to a pipeline action.
-//
-// Mapping:
-//   - "no action"       -> "pass"
-//   - "greylist"        -> "pass"  (greylisting handled at SMTP level)
-//   - "add header"      -> "tag"   (route to Junk)
-//   - "rewrite subject" -> "tag"
-//   - "soft reject"     -> "tag"
-//   - "reject"          -> "quarantine"
-//
-// Any unknown action defaults to "pass" to avoid unintended blocking.
+// mapRspamdAction converts a Rspamd action string to a pipeline action, where
+// "tag" routes the message to Junk. "greylist" maps to "pass" because
+// greylisting is handled at the SMTP level, and any unknown action defaults to
+// "pass" to avoid unintended blocking.
 func mapRspamdAction(rspamdAction string) string {
 	switch rspamdAction {
 	case "no action", "greylist":

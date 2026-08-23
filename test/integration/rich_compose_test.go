@@ -2,31 +2,23 @@
 
 package integration
 
-// TestRichComposeEndToEnd is an end-to-end integration test for the rich
-// signature and composer feature.  It:
-//   1. Starts a dev node (agent.NewAgent + a.Run, same pattern as webui_test.go).
-//   2. Authenticates as admin@localhost via POST /login with a cookie-jar client.
-//   3. Sets an HTML signature containing text and a small inline data: PNG via
-//      POST /settings (signature_html field).  The server derives the plain-text
-//      version automatically via plainTextFromHTML.
-//   4. Sends a RICH message (body_mode=rich) that contains a formatting tag, a
-//      data: inline image, and a <script>alert(1)</script> to verify sanitization.
-//   5. Retrieves the stored Sent copy via the node's own stores (PebbleStore,
-//      MailboxStore, BlobStore) and parses it with net/mail + mime/multipart.
-//   6. Asserts the full MIME tree:
-//      * top-level Content-Type: multipart/related (because of inline images)
-//      * first related part is multipart/alternative containing both text/plain
-//        and text/html sub-parts
-//      * text/html contains the body, the HTML signature, and a cid: reference
-//        (no data: URI remains)
-//      * a sibling inline part carries Content-ID + Content-Disposition: inline
-//      * text/plain contains plain body text and the plain-text signature
-//      * "<script" and "alert(1)" are absent from text/html (sanitized)
-//   7. Sends a PLAIN message (body_mode=plain) and asserts a single text/plain
-//      part (no "multipart" anywhere in the raw message).
-//
-// Production code is NOT modified. If a real bug is found the test fails and
-// the failure is reported as-is.
+// TestRichComposeEndToEnd exercises the rich signature and composer feature end
+// to end: it starts a dev node (agent.NewAgent + a.Run, the same pattern as
+// webui_test.go), authenticates as admin@localhost via POST /login with a
+// cookie-jar client, sets an HTML signature via POST /settings (signature_html)
+// from which the server derives the plain-text version with plainTextFromHTML,
+// then sends a RICH message (body_mode=rich) carrying a formatting tag, an
+// inline data: PNG and a <script>alert(1)</script>. The stored Sent copy is read
+// back through the node's own stores (PebbleStore, MailboxStore, BlobStore) and
+// parsed with net/mail + mime/multipart, so the assertions cover the whole MIME
+// tree as stored: multipart/related at the top (because of the inline image)
+// wrapping a multipart/alternative that holds both text/plain and text/html; the
+// text/html part carries the body, the HTML signature and a cid: reference with
+// no data: URI left; a sibling inline part carries Content-ID and
+// Content-Disposition: inline; the text/plain part carries the plain body text
+// and the plain-text signature; "<script" and "alert(1)" are absent from
+// text/html (sanitized). A second send with body_mode=plain must produce a
+// single text/plain part with no multipart anywhere in the raw message.
 
 import (
 	"bytes"
@@ -174,6 +166,8 @@ func rawSentMessageBySubject(t *testing.T, a *agent.Agent, userID, subject strin
 	return nil
 }
 
+// Production code is NOT modified. If a real bug is found the test fails and
+// the failure is reported as-is.
 func TestRichComposeEndToEnd(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"

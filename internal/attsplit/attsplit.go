@@ -1,14 +1,13 @@
-// Package attsplit is the task 9.1 spike for attachment deduplication. It splits
-// a raw RFC822 message into a skeleton plus the exact ENCODED byte spans of its
-// large attachment parts, and reconstructs the original message byte-for-byte.
+// Package attsplit splits a raw RFC822 message into a skeleton plus the exact
+// ENCODED byte spans of its large attachment parts, and reconstructs the
+// original message byte-for-byte, so attachment payloads can be
+// content-addressed and deduplicated without breaking DKIM signatures.
 //
-// The design goal is byte-exact round-trip (so DKIM signatures survive a storage
-// round-trip) while extracting attachment payloads that can be content-addressed
-// and deduplicated. The key idea: never decode/re-encode. We locate each
-// attachment part's encoded body as a byte range in the original raw and cut the
-// message into an ordered sequence of literal spans and attachment references
-// that exactly tile the original. Reconstruction concatenates them, so
-// byte-exactness holds by construction.
+// The key idea: never decode/re-encode. Each attachment part's encoded body is
+// located as a byte range in the original raw, and the message is cut into an
+// ordered sequence of literal spans and attachment references that exactly tile
+// the original. Reconstruction concatenates them, so byte-exactness holds by
+// construction.
 package attsplit
 
 import (

@@ -311,16 +311,11 @@ func isPermanentError(err error) bool {
 }
 
 // shouldSendAuth decides whether AUTH credentials should be transmitted.
-//
-//   - hasCreds: a relay username/password is configured.
-//   - tlsCompleted: STARTTLS negotiation succeeded for this connection.
-//   - allowInsecure: operator opt-in to send credentials over plaintext
-//     (smtp.relay.allow_insecure_auth = true).
-//
-// Returns (true, nil) when auth should proceed, (false, nil) when no
-// credentials are configured, and (false, err) when credentials are
-// configured but the connection is unencrypted and the operator has not
-// explicitly opted in.
+// Returns (true, nil) when a relay username/password is configured and either
+// STARTTLS completed for this connection or the operator opted in to plaintext
+// credentials (smtp.relay.allow_insecure_auth = true); (false, nil) when no
+// credentials are configured; and (false, err) when credentials are configured
+// but the connection is unencrypted without that opt-in.
 func shouldSendAuth(tlsCompleted, hasCreds, allowInsecure bool) (bool, error) {
 	if !hasCreds {
 		return false, nil

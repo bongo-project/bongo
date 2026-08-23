@@ -145,7 +145,7 @@ func (w *Worker) poll(ctx context.Context) {
 }
 
 func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessage) {
-	// Read the full raw message. A split record (Phase 9) stores a skeleton +
+	// Read the full raw message. A split record stores a skeleton +
 	// attachment blobs; the queue reconstructs the exact original bytes here
 	// before signing/relaying, so DKIM and the wire message are unchanged.
 	var rawMsg []byte

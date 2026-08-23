@@ -10,36 +10,27 @@ import (
 )
 
 // PopulateAddressIndex seeds the global address index (AddressStore) from
-// existing Pebble data. It is the migration routine for FR-12 / US-RECV-2.
+// existing Pebble data.
 //
-// Phase 1 — primary records:
+// Pass 1 scans /user/*/profile, unmarshals each UserProfile and creates a
+// primary AddressRecord (kind=primary, can_send=true, verified=true) owned by
+// the user whose ID is embedded in the key, building a
+// map[loweredEmail → userID] as a side effect for pass 2.
 //
-//	Scans /user/*/profile keys in Pebble, unmarshals each UserProfile, and
-//	creates a "primary" AddressRecord (kind=primary, can_send=true,
-//	verified=true) owned by the user whose ID is embedded in the key.
-//	A map[loweredEmail → userID] is built as a side effect and reused in
-//	phase 2 for alias resolution.
+// Pass 2 scans /system/alias/{addr}. Each value is the target user's username
+// (== their email), resolved to a user_id via the pass-1 map or, failing that,
+// the SystemIndex users table. Aliases with an unresolvable target are logged
+// and skipped.
 //
-// Phase 2 — alias records:
+// Create-only: an address already present in Pebble (the source of truth) is
+// left untouched, so admin-added or admin-edited records are never overwritten
+// on restart. The emailToUserID map is still populated for EVERY primary
+// profile, including the ones whose Put is skipped — otherwise pass 2 could not
+// resolve aliases whose target primary was already in the index.
 //
-//	Scans /system/alias/{addr} keys in Pebble. Each value is the target
-//	user's username (== their email). The username is resolved to a user_id
-//	via the phase-1 map; if not found there, falls back to the SystemIndex
-//	users table. Aliases with an unresolvable target are logged and skipped.
-//
-// Create-only: this function only creates missing address records. If an
-// address already exists in Pebble (the source of truth), it is skipped so
-// that admin-added or admin-edited records are never overwritten on restart.
-// A new record is written only when as.Get returns ok=false.
-//
-// Note: the emailToUserID map is populated for EVERY primary profile (even
-// those whose Put is skipped) so that phase 2 alias resolution always works
-// correctly — this is critical for aliases whose target primary was already
-// present in the index before the migration runs.
-//
-// This function is intended to be called on the Raft leader at startup only.
-// Leadership changes after boot will NOT re-trigger the migration — the same
-// limitation as ensureConfiguredDomain.
+// Intended to run on the Raft leader at startup only. Leadership changes after
+// boot will NOT re-trigger the migration — the same limitation as
+// ensureConfiguredDomain.
 //
 // logger may be nil; slog.Default() is used in that case.
 func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, logger *slog.Logger) error {
@@ -47,10 +38,10 @@ func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, l
 		logger = slog.Default()
 	}
 
-	// --- Phase 1: enumerate /user/*/profile to create primary records. ---
+	// --- Pass 1: enumerate /user/*/profile to create primary records. ---
 
 	// emailToUserID maps a lowercased user email to the Pebble user_id.
-	// Built here and reused in phase 2 to resolve alias targets.
+	// Built here and reused in pass 2 to resolve alias targets.
 	emailToUserID := make(map[string]string)
 
 	{
@@ -104,12 +95,12 @@ func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, l
 			domain := email[atIdx+1:]
 
 			// Always populate the map — even if we skip Put below — so that
-			// phase 2 alias targets can be resolved for already-present primaries.
+			// pass 2 alias targets can be resolved for already-present primaries.
 			emailToUserID[email] = userID
 
 			// Create-only: skip Put if the record already exists in Pebble.
 			// This preserves admin-edited fields (e.g. can_send, verified toggles)
-			// across restarts. (task 4.5)
+			// across restarts.
 			if _, exists, err := as.Get(email); err != nil {
 				logger.Warn("address index migration: checking existing primary record",
 					"email", email, "user_id", userID, "error", err)
@@ -139,7 +130,7 @@ func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, l
 		}
 	}
 
-	// --- Phase 2: enumerate /system/alias/{addr} to create alias records. ---
+	// --- Pass 2: enumerate /system/alias/{addr} to create alias records. ---
 
 	{
 		iter, err := ps.PrefixScan([]byte("/system/alias/"))
@@ -179,7 +170,7 @@ func PopulateAddressIndex(ps *PebbleStore, as *AddressStore, sys *SystemIndex, l
 				continue
 			}
 
-			// Primary resolution: profile map built in phase 1.
+			// Primary resolution: profile map built in pass 1.
 			userID, ok := emailToUserID[targetUsername]
 			if !ok && sys != nil {
 				// Fallback: SystemIndex users table (handles edge cases where a profile

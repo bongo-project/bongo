@@ -15,14 +15,14 @@ import (
 )
 
 // These tests drive a real ClamAVProcessor through pipeline.Runner rather
-// than calling Process directly, because the acceptance criteria this task
-// exists to satisfy — quarantine vs error vs deliver — are runner
-// behaviour, not processor behaviour: the processor only ever returns a
-// StageResult, never a Go error, and it is the runner that decides which
-// spool directory a StageResult's Action routes to (see runner.go,
-// processMessage). A processor-only test cannot distinguish "the fix
-// works" from "the fix silently regressed back to the pre-task spool/error
-// path", because both would look identical from Process()'s return value.
+// than calling Process directly, because the behaviour under test —
+// quarantine vs error vs deliver — is runner behaviour, not processor
+// behaviour: the processor only ever returns a StageResult, never a Go
+// error, and it is the runner that decides which spool directory a
+// StageResult's Action routes to (see runner.go, processMessage). A
+// processor-only test cannot distinguish "the fix works" from "the fix
+// silently regressed back to the old spool/error path", because both would
+// look identical from Process()'s return value.
 //
 // processMessage itself is unexported, so these tests drive the public
 // Run(ctx) entry point with a short poll interval and poll the spool
@@ -119,14 +119,13 @@ func runToCompletion(t *testing.T, spool *pipeline.SpoolStore, procs []pipeline.
 	}
 }
 
-// TestRunnerQuarantinesOnScannerFailure is the acceptance-criteria test: an
-// unreachable clamd with the default (quarantine) policy must land the
-// message in quarantine/, and explicitly NOT in error/ or deliver/. Before
-// this task's wiring fix, a stage error took the runner's error/ path
-// (runner.go ~line 158) — a directory nothing reads or surfaces in any UI,
-// silently stranding inbound mail. This test would have failed against that
-// behaviour, which is what makes it a real regression guard rather than a
-// vacuous one.
+// TestRunnerQuarantinesOnScannerFailure asserts that an unreachable clamd
+// with the default (quarantine) policy lands the message in quarantine/, and
+// explicitly NOT in error/ or deliver/. Before the wiring fix, a stage error
+// took the runner's error/ path — a directory nothing reads or surfaces in
+// any UI, silently stranding inbound mail. This test would have failed
+// against that behaviour, which is what makes it a real regression guard
+// rather than a vacuous one.
 func TestRunnerQuarantinesOnScannerFailure(t *testing.T) {
 	spool := newIntegrationSpool(t)
 	env := enqueueTestEnvelope(t, spool, "msg-quarantine")
@@ -173,14 +172,13 @@ func TestRunnerAcceptsOnScannerFailureWhenConfigured(t *testing.T) {
 	}
 }
 
-// TestRunnerRescanRoundTrip is the load-bearing test the task calls out
-// explicitly: it proves quarantine-for-scanner-failure is actually
-// recoverable, which is the entire justification for choosing quarantine
-// over deliver-unscanned as the default. A message is quarantined by an
-// unreachable clamd, drained via pipeline.PrepareForRescan (task 12.4) and
-// re-enqueued, then re-run against a live mock clamd — and must actually be
-// scanned the second time (not skipped by the idempotency check, proven via
-// the mock's connection WaitGroup) and reach deliver/.
+// TestRunnerRescanRoundTrip proves quarantine-for-scanner-failure is actually
+// recoverable, which is the entire justification for choosing quarantine over
+// deliver-unscanned as the default. A message is quarantined by an
+// unreachable clamd, drained via pipeline.PrepareForRescan and re-enqueued,
+// then re-run against a live mock clamd — and must actually be scanned the
+// second time (not skipped by the idempotency check, proven via the mock's
+// connection WaitGroup) and reach deliver/.
 func TestRunnerRescanRoundTrip(t *testing.T) {
 	spool := newIntegrationSpool(t)
 	env := enqueueTestEnvelope(t, spool, "msg-rescan")

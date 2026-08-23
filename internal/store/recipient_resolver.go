@@ -10,18 +10,18 @@ import (
 // Three-tier lookup (explicit tiers run first; catch-all is always last):
 //
 //  1. AddressStore.Get(addr) reads Pebble (source of truth, correct on all nodes).
-//     Covers migrated primary addresses and aliases written by tasks 4.1/4.2.
+//     Covers migrated primary addresses and aliases in the global address index.
 //     Skipped when addresses is nil (edge/agent/degraded nodes fall through).
 //
 //  2. Legacy Pebble /system/alias/{addr} key, then direct users-table lookup.
 //     Covers accounts and aliases created after the last address index migration.
 //     Note: the users-table lookup reads per-node SQLite, which may be stale on
-//     non-leader followers and edge nodes. This is documented and acceptable
-//     within task 4.3 scope; Pebble reads (tiers 1 and 2a) are always current.
+//     non-leader followers and edge nodes; Pebble reads (tiers 1 and 2a) are
+//     always current.
 //
-//  3. Per-domain catch-all lookup (task 4.4): reads /system/catchall/{domain}
-//     from Pebble. Returns the owner's user ID when configured. Only domains with
-//     an explicit catch-all entry accept unmatched mail; others are still rejected.
+//  3. Per-domain catch-all: reads /system/catchall/{domain} from Pebble and
+//     returns the owner's user ID when configured. Only domains with an explicit
+//     catch-all entry accept unmatched mail; others are still rejected.
 //     Skipped when pebble is nil (same nil-guard as tier 2a).
 //
 //     Reject: returns a non-nil error. Callers should map this to a 550 (no relay).
@@ -78,7 +78,7 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 
 	// Tier 2a: Legacy Pebble /system/alias/{addr} key.
 	// Value is the target username (primary email of the target user).
-	// Covers aliases created after the last address index migration (task 4.2).
+	// Covers aliases created after the last address index migration.
 	if r.pebble != nil {
 		aliasData, aliasErr := r.pebble.Get([]byte("/system/alias/" + email))
 		if aliasErr == nil && len(aliasData) > 0 {
@@ -112,7 +112,7 @@ func (r *RecipientResolver) ResolveRecipient(email string) (string, error) {
 		}
 	}
 
-	// Tier 3: per-domain catch-all (task 4.4).
+	// Tier 3: per-domain catch-all.
 	// Reads /system/catchall/{domain} directly from Pebble — correct on all nodes.
 	// Open-relay guard: no key == no acceptance; domains without an explicit
 	// catch-all entry continue to reject below. pebble nil-guard mirrors tier 2a.

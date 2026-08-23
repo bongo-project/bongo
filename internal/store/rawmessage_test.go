@@ -35,7 +35,7 @@ func (f fakeBlobs) get(h string) ([]byte, error) {
 }
 
 // storeSplit stores a SplitMessage into fakeBlobs and returns the MailMeta that
-// references it, mirroring what the ingest path (task 9.4) will do.
+// references it, mirroring what the ingest path does.
 func storeSplit(f fakeBlobs, sm *SplitMessage) *bongov1.MailMeta {
 	skHash := f.put(sm.Skeleton)
 	for i := range sm.Attachments {
@@ -243,7 +243,7 @@ func TestStoreSplitRoundTrip(t *testing.T) {
 
 // TestStoreSplitRecordsDedupMetrics: storing two different messages that share
 // the same large attachment records one "written" blob and one "deduped" blob,
-// and the deduped one counts as bytes saved (task 9.8 observability).
+// and the deduped one counts as bytes saved.
 func TestStoreSplitRecordsDedupMetrics(t *testing.T) {
 	bs, err := NewBlobStore(t.TempDir())
 	if err != nil {

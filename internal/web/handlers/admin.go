@@ -502,7 +502,7 @@ func (h *AdminHandler) countAdmins() int {
 //
 // Cascade (best-effort): domain-admin grants for the deleted user are revoked,
 // and domain-owner references are cleared. Cascade failures are logged but do
-// not abort the delete (per the task 6.2 acceptance criteria).
+// not abort the delete.
 func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userID")
 	actingUserID, _ := middleware.UserFromContext(r.Context())
@@ -566,7 +566,7 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// Cascade: clear domain-owner references pointing at the deleted user
-		// so 6.1's dangling-reference issue is resolved (best-effort).
+		// so no domain is left owned by a nonexistent account (best-effort).
 		ownedDomains, oErr := h.domainAdmin.ListDomainsOwnedBy(userID)
 		if oErr != nil {
 			h.logger.Warn("admin: delete cascade: failed to list owned domains", "user_id", userID, "error", oErr)
@@ -689,9 +689,9 @@ func (h *AdminHandler) loadDomain(name string) (templates.DomainInfo, bool) {
 		}
 	}
 
-	// DNS setup guide (task 7.3): resolve the server's own addresses so the
-	// generated A/AAAA records point at us, then build the provider-agnostic
-	// record set. Reuses the same dnsCtx deadline as the status checks.
+	// DNS setup guide: resolve the server's own addresses so the generated
+	// A/AAAA records point at us, then build the provider-agnostic record set.
+	// Reuses the same dnsCtx deadline as the status checks.
 	v4, v6 := h.resolveServerIPs(dnsCtx)
 	di.MailHostname = h.mailHostname
 	di.DNSGuide, di.DKIMPending = buildDNSGuide(name, h.mailHostname, v4, v6, di.DkimSelector, di.DkimTXTRecord)
@@ -824,19 +824,16 @@ func doDNSLookups(ctx context.Context, domain, selector, mailHostname, expectedD
 	return rows
 }
 
-// buildDNSChecks is a pure function that compares injected DNS lookup values
-// against expected values for the server and returns one DNSCheckRow per record type.
-// No network calls are made — this enables unit testing without DNS.
+// buildDNSChecks compares injected DNS lookup values against the values expected
+// for this server and returns one DNSCheckRow per record type. It makes no
+// network calls, which is what makes it unit-testable without DNS.
 //
-// Parameters:
-//   - domain: the mail domain being checked
-//   - mailHostname: the SMTP hostname we expect MX and SPF to authorise
-//   - expectedDKIMTXT: our full DKIM TXT record (e.g. "mail._domainkey.example.com TXT ..."),
-//     empty when no key has been generated yet
-//   - mx: hosts returned by LookupMX (raw with possible trailing dot)
-//   - spfTXTs: all TXT records for the domain
-//   - dkimTXTs: TXT records for <selector>._domainkey.<domain>
-//   - dmarcTXTs: TXT records for _dmarc.<domain>
+// domain is the mail domain being checked; mailHostname the SMTP hostname MX and
+// SPF are expected to authorise. expectedDKIMTXT is our full DKIM TXT record
+// (e.g. "mail._domainkey.example.com TXT ..."), empty when no key has been
+// generated yet. mx holds the hosts returned by LookupMX (raw, with a possible
+// trailing dot); spfTXTs all TXT records for the domain; dkimTXTs those for
+// <selector>._domainkey.<domain>; dmarcTXTs those for _dmarc.<domain>.
 func buildDNSChecks(domain, mailHostname, expectedDKIMTXT string, mx, spfTXTs, dkimTXTs, dmarcTXTs []string) []templates.DNSCheckRow {
 	rows := make([]templates.DNSCheckRow, 0, 4)
 
@@ -1259,11 +1256,9 @@ func (h *AdminHandler) GenerateDKIMKey(w http.ResponseWriter, r *http.Request) {
 //
 // The owner must exist in the local users table (best-effort validation; the
 // SQLite read may lag on follower nodes). Requires RequireAdmin + CSRF (applied
-// at the route group level in agent.go).
-//
-// Partial-failure note: if the owner account is later deleted, the catch-all key
-// will dangle and route to a dead user_id, causing downstream delivery failure.
-// Cleanup is the administrator's responsibility.
+// at the route group level in agent.go). If the owner account is later deleted,
+// the catch-all key dangles and routes to a dead user_id, failing downstream
+// delivery; cleanup is the administrator's responsibility.
 func (h *AdminHandler) SetCatchAll(w http.ResponseWriter, r *http.Request) {
 	domain := chi.URLParam(r, "domain")
 	if domain == "" {
@@ -1896,13 +1891,10 @@ func (h *AdminHandler) ToggleRequire2FA(w http.ResponseWriter, r *http.Request) 
 // POST /admin/users/{userID}/addresses
 // Form field: address — the new email address to add.
 //
-// Validation:
-//   - address must contain '@'
-//   - if the address already exists in the index it must belong to THIS user;
-//     if it belongs to a different user, the request is rejected.
-//
-// The new address is stored with Kind=identity, CanSend=false, Verified=false.
-// Send-capability and verification are Phase 5 features.
+// The address must contain '@', and if it already exists in the index it must
+// belong to THIS user — one owned by a different user is rejected. It is stored
+// with Kind=identity, CanSend=false, Verified=false; send capability is granted
+// later via GrantSend or self-serve verification.
 //
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) AddAddress(w http.ResponseWriter, r *http.Request) {
@@ -2041,8 +2033,8 @@ func (h *AdminHandler) RemoveAddress(w http.ResponseWriter, r *http.Request) {
 // Form field: address — the address to make send-capable.
 //
 // Sets CanSend=true AND Verified=true on the AddressRecord. This is the admin
-// verification path (PATH A) from task 5.2. The address must already exist in
-// the index and be owned by the target user.
+// verification path, as opposed to self-serve code verification. The address
+// must already exist in the index and be owned by the target user.
 //
 // Requires RequireAdmin + CSRF (applied at the route group level in agent.go).
 func (h *AdminHandler) GrantSend(w http.ResponseWriter, r *http.Request) {
@@ -2566,10 +2558,9 @@ func (h *AdminHandler) loadAliases() []templates.AliasInfo {
 	return aliases
 }
 
-// createUserViaRaft creates a user using Raft consensus (mirrors auth.CreateUser).
+// createUserViaRaft creates a user using Raft consensus. It mirrors
+// auth.CreateUser rather than calling it, to avoid an import cycle.
 func createUserViaRaft(applier store.RaftApplier, metadata *store.MetadataManager, email, displayName, password string) (string, error) {
-	// Use the auth package's CreateUser function indirectly.
-	// We import it to avoid circular dependency.
 	userID := generateUserID()
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

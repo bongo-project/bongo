@@ -317,9 +317,9 @@ func TestDepositMessage(t *testing.T) {
 	}
 }
 
-// TestDepositMessageStripsTrusted covers the security-critical part of US-001
-// AC5: a caller-supplied QueueEnvelope claiming Trusted=true must never reach
-// the spool with that value intact. The agent gRPC deposit channel has no
+// TestDepositMessageStripsTrusted covers a security-critical invariant: a
+// caller-supplied QueueEnvelope claiming Trusted=true must never reach the
+// spool with that value intact. The agent gRPC deposit channel has no
 // transport credentials or per-caller authentication, so trust must remain a
 // server-local decision derived from the SMTP session's own auth state, never
 // something accepted over the wire.

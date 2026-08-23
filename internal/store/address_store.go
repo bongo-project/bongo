@@ -13,18 +13,17 @@ import (
 
 // AddressStore manages the global address index.
 //
-// Two-tier storage (non-atomic by design):
-//   - Pebble (via Raft) is the source of truth; written first.
-//   - SystemIndex SQLite is a derived index for fast lookup; written second.
+// Two-tier storage, non-atomic by design: Pebble (via Raft) is the source of
+// truth and is written first; the SystemIndex SQLite table is a derived index
+// for fast lookup and is written second. If the Raft write succeeds but the
+// SQLite write fails, Pebble transiently leads SQLite until a full index
+// rebuild heals it. Get always reads Pebble, so routing correctness never
+// depends on SQLite freshness.
 //
-// If the Raft write succeeds but the SQLite write fails, Pebble may transiently
-// lead SQLite. This self-heals on a full index rebuild (task 4.2). Get always
-// reads Pebble, so routing correctness never depends on SQLite freshness.
-//
-// Multi-node note: SQLite is only updated on the node that handles the request.
-// Other Raft voters' addresses tables stay stale until they run a rebuild. The
-// delivery path (task 4.3) must read Pebble for correctness; SQLite is for
-// admin listing and fast secondary lookups only.
+// Multi-node note: SQLite is only updated on the node that handles the request,
+// so other Raft voters' addresses tables stay stale until they run a rebuild.
+// The delivery path must read Pebble for correctness; SQLite is for admin
+// listing and fast secondary lookups only.
 type AddressStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier

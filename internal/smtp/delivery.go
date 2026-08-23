@@ -38,18 +38,14 @@ type RecipientResolver interface {
 // userID is already known (no duplicate resolution).
 //
 // RecipientOverQuota loads the owning user's profile to derive the primary
-// domain, then compares the domain's last-recomputed usage against its
-// max_storage_bytes limit.
-//
-// Returns (false, nil) when:
-//   - the user's primary domain has no storage quota configured (0 = unlimited)
-//   - usage has not yet been recomputed (first job run pending)
-//
-// Returns (true, nil) when usage >= max_storage_bytes (over or at limit).
-// The inbound message MUST be rejected at RCPT with a permanent 5xx error.
-//
-// Returns (false, err) on an unexpected store error; callers should accept the
-// message (fail open) to avoid blocking legitimate mail during transient errors.
+// domain, compares the domain's last-recomputed usage against its
+// max_storage_bytes limit, and returns:
+//   - (false, nil) when the domain has no quota configured (0 = unlimited) or
+//     usage has not yet been recomputed (first job run pending);
+//   - (true, nil) when usage >= max_storage_bytes (over or at limit); the
+//     inbound message MUST be rejected at RCPT with a permanent 5xx error;
+//   - (false, err) on an unexpected store error; callers should accept the
+//     message (fail open) so transient errors do not block legitimate mail.
 type QuotaChecker interface {
 	RecipientOverQuota(userID string) (bool, error)
 }

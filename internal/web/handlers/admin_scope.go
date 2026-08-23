@@ -32,15 +32,13 @@ func requireDomainAccess(w http.ResponseWriter, scope middleware.AdminScope, dom
 // requireUserAccess loads the profile for userID and verifies the caller has
 // access to the user's primary domain.
 //
-// Zero-leak semantics (per FR-9 acceptance criteria):
-//   - For a domain-admin: 403 for both out-of-scope AND nonexistent target users.
-//     The response reveals no information about whether the user exists.
-//   - For a global admin: (nil, false) when the user is not found, so the caller
-//     can return 404 as normal. The existing behavior is preserved.
+// Zero-leak semantics: a domain-admin gets 403 for both out-of-scope AND
+// nonexistent target users, so the response reveals nothing about whether the
+// user exists; a global admin gets an informative 404 instead.
 //
-// Returns (profile, true) when access is granted.
-// Returns (nil, false) when access is denied or profile cannot be loaded
-// (in which case the HTTP response has already been written).
+// Returns (profile, true) when access is granted, (nil, false) when access is
+// denied or the profile cannot be loaded (the HTTP response has already been
+// written in that case).
 func (h *AdminHandler) requireUserAccess(w http.ResponseWriter, scope middleware.AdminScope, userID string) (*bongov1.UserProfile, bool) {
 	profile, err := h.loadProfile(userID)
 	if err != nil {

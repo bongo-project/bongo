@@ -185,14 +185,13 @@ func (s *DomainQuotaStore) RecipientOverQuota(userID string) (bool, error) {
 // CountUsersForDomain counts the number of users whose primary domain equals
 // the given domain by scanning /user/{id}/profile entries in Pebble.
 //
-// This reads from the authoritative source (Pebble, replicated by Raft) rather
-// than the per-node SQLite users table, which may be stale on followers.
-// Used to enforce max_users at user-creation time.
+// It reads the authoritative source (Pebble, replicated by Raft) rather than
+// the per-node SQLite users table, which may be stale on followers. Used to
+// enforce max_users at user-creation time.
 //
-// NOTE: max-users enforcement is check-then-apply (not atomic). Two concurrent
-// creates can both pass the check. This matches the existing per-user aggregate
-// limit convention (e.g. 100-tags/user) documented in CLAUDE.md and is
-// acceptable within scope.
+// NOTE: that enforcement is check-then-apply, not atomic — two concurrent
+// creates can both pass the check. This matches the per-user aggregate limit
+// convention (e.g. 100-tags/user) documented in CLAUDE.md.
 func (s *DomainQuotaStore) CountUsersForDomain(domain string) (int, error) {
 	domain = strings.ToLower(domain)
 	iter, err := s.pebble.PrefixScan([]byte("/user/"))

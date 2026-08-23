@@ -94,19 +94,17 @@ const slowApplyThreshold = 2 * time.Second
 // StartIndexer moves derived-index maintenance (per-user SQLite and Bleve)
 // onto a background worker so it cannot block Raft's apply loop.
 //
-// This matters because the apply path looks bounded and is not. Callers reach
-// it via store.DeliverMail -> ApplyCommand(cmd, 5*time.Second), but that
-// timeout only bounds ENQUEUEING the log entry (see ApplyCommand in
-// forward.go); the subsequent future.Error() waits with no deadline until the
-// FSM has applied the entry. Indexing inline therefore let a slow index open
-// stall mail delivery indefinitely — observed in production as an 85s delay on
-// the first delivery after a restart, while the same message took 63ms once
-// the user's handles were open.
+// The apply path looks bounded and is not: the 5s timeout callers pass via
+// store.DeliverMail -> ApplyCommand bounds only ENQUEUEING the log entry (see
+// ApplyCommand in forward.go), while the subsequent future.Error() waits with no
+// deadline until the FSM has applied it. Indexing inline therefore let a slow
+// index open stall mail delivery indefinitely — observed in production as an 85s
+// delay on the first delivery after a restart, against 63ms for the same message
+// once the user's handles were open.
 //
-// A single worker preserves apply order, which matters because a delete
-// followed by a re-index of the same GUID must not be reordered.
-//
-// Safe to skip: with no worker started, indexing stays inline.
+// A single worker preserves apply order: a delete followed by a re-index of the
+// same GUID must not be reordered. Safe to skip — with no worker started,
+// indexing stays inline.
 func (f *FSM) StartIndexer(ctx context.Context) {
 	if f.indexQueue != nil {
 		return
@@ -241,15 +239,15 @@ func (f *FSM) Apply(log *raft.Log) interface{} {
 // always uses the method; see the call site in Apply for why the seam exists.
 var applyEntryFn = (*FSM).applyEntry
 
-// applyEntry applies a single committed Raft log entry to the Pebble store.
+// applyEntry applies a single committed Raft log entry to the Pebble store,
+// decoding it as a protobuf RaftCommand and falling back to the legacy JSON
+// format.
 func (f *FSM) applyEntry(log *raft.Log) interface{} {
-	// Try protobuf first.
 	var cmd bongov1.RaftCommand
 	if err := proto.Unmarshal(log.Data, &cmd); err == nil && cmd.Op != bongov1.Op_OP_UNSPECIFIED {
 		return f.applyProto(&cmd)
 	}
 
-	// Fall back to legacy JSON.
 	var legacyCmd Command
 	if err := json.Unmarshal(log.Data, &legacyCmd); err != nil {
 		f.logger.Error("fsm: failed to unmarshal command", "error", err)
@@ -344,9 +342,8 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 		}
 	}
 
-	// Notify IMAP sessions about the new mail.
 	if f.notifier != nil {
-		// Count total messages for EXISTS response.
+		// Count total messages for the IMAP EXISTS response.
 		var totalMsgs uint32
 		scanStart := time.Now()
 		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/", newMail.UserID, newMail.Mailbox))
@@ -373,22 +370,19 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 	}
 }
 
-// updateDerivedIndexes updates SQLite and Bleve indexes based on the applied key.
-//
-// Only per-user mail and event indexing is deferred to the background worker.
-// Profile indexing and blob-ref enqueueing stay inline, deliberately:
-//
-//   - Profile indexing writes the SHARED system.db, which callers also write
-//     directly (user creation inserts a row there). While indexing ran inside
-//     Apply those two could not overlap, because the caller was blocked on the
-//     apply; deferring it introduced real write-write contention and
-//     SQLITE_BUSY failures on user creation. Profile updates are rare, so
-//     inline costs nothing and keeps that serialisation intact.
-//   - Blob-ref enqueueing is a non-blocking channel send, so it is already fast
-//     and has nothing to gain from deferral.
-//
-// Mail indexing is the hot path and touches only per-user databases, so it is
+// updateDerivedIndexes updates SQLite and Bleve indexes based on the applied
+// key. Only per-user mail and event indexing is deferred to the background
+// worker: it is the hot path and touches only per-user databases, so it is both
 // the part worth moving and the part that is safe to move.
+//
+// Profile indexing stays inline because it writes the SHARED system.db, which
+// callers also write directly (user creation inserts a row there). While
+// indexing ran inside Apply those two could not overlap, because the caller was
+// blocked on the apply; deferring it introduced real write-write contention and
+// SQLITE_BUSY failures on user creation. Profile updates are rare, so inline
+// costs nothing and keeps that serialisation intact. Blob-ref enqueueing stays
+// inline too: it is a non-blocking channel send, already fast, with nothing to
+// gain from deferral.
 func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
 	if f.indexQueue == nil || !isDeferrableIndexKey(cmd.Key) {
 		f.runDerivedIndexes(cmd)
@@ -469,14 +463,12 @@ func (f *FSM) runDerivedIndexes(cmd *bongov1.RaftCommand) {
 			}
 		}
 
-		// Profile updates: refresh system.db + GAL index.
 		if strings.HasSuffix(key, "/profile") && len(parts) >= 4 {
 			userID := parts[2]
 			f.indexProfile(userID, cmd)
 		}
 	}
 
-	// Enqueue blob references for sync.
 	if cmd.Op == bongov1.Op_OP_PUT && f.blobSync != nil {
 		f.enqueueBlobRefs(cmd)
 	}
@@ -510,12 +502,10 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 			return
 		}
 
-		// Index into per-user SQLite.
 		if err := f.metadata.IndexMail(userID, guid, meta.Subject, meta.From, meta.ReceivedAt, meta.GetRawMessage().GetSize()); err != nil {
 			f.logger.Warn("fsm: failed to index mail in sqlite", "error", err, "user", userID, "guid", guid)
 		}
 
-		// Index into Bleve.
 		if f.search != nil {
 			hasAttachment := len(meta.Attachments) > 0
 			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
@@ -539,7 +529,6 @@ func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
 		return
 	}
 
-	// Update system.db users table.
 	if f.metadata != nil && f.metadata.System != nil {
 		_, err := f.metadata.System.DB().Exec(`
 			INSERT INTO users (id, username, display_name, enabled, created_at, modified_at)
@@ -553,7 +542,6 @@ func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
 		}
 	}
 
-	// Update GAL index.
 	if f.search != nil {
 		if err := f.search.IndexProfile(userID, profile.Email, profile.DisplayName); err != nil {
 			f.logger.Warn("fsm: failed to index profile in GAL", "error", err, "user", userID)
@@ -672,7 +660,6 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 
 	f.logger.Info("fsm: restored from snapshot", "keys", count)
 
-	// Rebuild derived indexes (SQLite + Bleve) from restored data.
 	if err := rebuildDerivedIndexes(f.store, f.metadata, f.search, f.logger); err != nil {
 		f.logger.Warn("fsm: rebuild derived indexes after restore failed", "error", err)
 	}
