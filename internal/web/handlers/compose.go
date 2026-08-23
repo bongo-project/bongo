@@ -763,6 +763,10 @@ func (h *ComposeHandler) EditDraft(w http.ResponseWriter, r *http.Request) {
 // GALSearch returns GAL autocomplete results as JSON.
 func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
+	// The GAL is a server-wide index. Scoping it to the caller's own address
+	// domain is what stops one tenant enumerating another's users through
+	// compose autocomplete.
+	_, callerEmail := middleware.UserFromContext(r.Context())
 	if q == "" || h.search == nil {
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := w.Write([]byte("[]")); err != nil {
@@ -771,7 +775,7 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := h.search.SearchGAL(q, 10)
+	entries, err := h.search.SearchGAL(q, 10, callerEmail)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := w.Write([]byte("[]")); err != nil {

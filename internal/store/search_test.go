@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/blevesearch/bleve/v2"
@@ -109,7 +110,7 @@ func TestGALIndexAndSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	results, err := sm.SearchGAL("alice", 10)
+	results, err := sm.SearchGAL("alice", 10, "alice@example.com")
 	if err != nil {
 		t.Fatalf("SearchGAL: %v", err)
 	}
@@ -275,5 +276,131 @@ func TestBleveIndexMailTagsNilIsEmpty(t *testing.T) {
 	}
 	if result.Total != 0 {
 		t.Errorf("expected 0 results for tag query on untagged message, got %d", result.Total)
+	}
+}
+
+// TestSearchGALIsScopedToCallerDomain is the tenant-isolation guard on the
+// Global Address List.
+//
+// The GAL index is server-wide: every profile on the host is in it, across
+// every hosted domain. It backs compose autocomplete, so an unscoped search
+// lets any authenticated user enumerate every address of every other tenant one
+// prefix at a time -- exactly what the multi-domain PRD's "full tenant
+// isolation" goal forbids.
+func TestSearchGALIsScopedToCallerDomain(t *testing.T) {
+	sm, err := NewSearchManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSearchManager: %v", err)
+	}
+
+	profiles := []struct{ id, email, name string }{
+		{"u1", "alice@tenant-a.test", "Alice A"},
+		{"u2", "alan@tenant-a.test", "Alan A"},
+		{"u3", "alice@tenant-b.test", "Alice B"},
+		{"u4", "alan@tenant-b.test", "Alan B"},
+	}
+	for _, p := range profiles {
+		if err := sm.IndexProfile(p.id, p.email, p.name); err != nil {
+			t.Fatalf("IndexProfile %s: %v", p.id, err)
+		}
+	}
+
+	t.Run("tenant A sees only tenant A", func(t *testing.T) {
+		got, err := sm.SearchGAL("al", 10, "alice@tenant-a.test")
+		if err != nil {
+			t.Fatalf("SearchGAL: %v", err)
+		}
+		if len(got) == 0 {
+			t.Fatal("no results for the caller's own domain; scoping should not empty the GAL")
+		}
+		for _, e := range got {
+			if addressDomain(e.Email) != "tenant-a.test" {
+				t.Errorf("cross-tenant disclosure: caller at tenant-a.test was shown %q", e.Email)
+			}
+		}
+	})
+
+	t.Run("tenant B sees only tenant B", func(t *testing.T) {
+		got, err := sm.SearchGAL("al", 10, "bob@tenant-b.test")
+		if err != nil {
+			t.Fatalf("SearchGAL: %v", err)
+		}
+		if len(got) == 0 {
+			t.Fatal("no results for the caller's own domain")
+		}
+		for _, e := range got {
+			if addressDomain(e.Email) != "tenant-b.test" {
+				t.Errorf("cross-tenant disclosure: caller at tenant-b.test was shown %q", e.Email)
+			}
+		}
+	})
+
+	t.Run("domain match is case-insensitive", func(t *testing.T) {
+		got, err := sm.SearchGAL("al", 10, "alice@TENANT-A.TEST")
+		if err != nil {
+			t.Fatalf("SearchGAL: %v", err)
+		}
+		if len(got) == 0 {
+			t.Error("an upper-cased caller domain matched nothing; DNS labels are case-insensitive")
+		}
+	})
+
+	// An unusable caller identity must fail closed. If these returned the whole
+	// index, a call site that forgot to pass the session email would silently
+	// reinstate the leak rather than showing an empty autocomplete.
+	for _, bad := range []struct{ name, email string }{
+		{"empty caller", ""},
+		{"no domain part", "alice"},
+		{"trailing at", "alice@"},
+	} {
+		t.Run("fails closed: "+bad.name, func(t *testing.T) {
+			got, err := sm.SearchGAL("al", 10, bad.email)
+			if err != nil {
+				t.Fatalf("SearchGAL: %v", err)
+			}
+			if len(got) != 0 {
+				t.Errorf("caller %q got %d entries; an unscopeable caller must see nothing, "+
+					"not everything", bad.email, len(got))
+			}
+		})
+	}
+}
+
+// TestSearchGALRespectsLimitAfterFiltering pins that the limit counts entries
+// the caller may actually see. The domain filter runs after the Bleve search,
+// so a naive implementation that asked for exactly limit hits would return
+// short results whenever another tenant's entries outranked the caller's.
+func TestSearchGALRespectsLimitAfterFiltering(t *testing.T) {
+	sm, err := NewSearchManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSearchManager: %v", err)
+	}
+
+	// Many other-tenant entries, then a few of the caller's own.
+	for i := range 30 {
+		if err := sm.IndexProfile(fmt.Sprintf("other%d", i),
+			fmt.Sprintf("alan%d@tenant-b.test", i), "Other"); err != nil {
+			t.Fatalf("IndexProfile: %v", err)
+		}
+	}
+	for i := range 5 {
+		if err := sm.IndexProfile(fmt.Sprintf("mine%d", i),
+			fmt.Sprintf("alice%d@tenant-a.test", i), "Mine"); err != nil {
+			t.Fatalf("IndexProfile: %v", err)
+		}
+	}
+
+	got, err := sm.SearchGAL("al", 5, "me@tenant-a.test")
+	if err != nil {
+		t.Fatalf("SearchGAL: %v", err)
+	}
+	if len(got) != 5 {
+		t.Errorf("got %d entries, want 5: the caller's own domain has 5 matches, so the "+
+			"limit must count post-filter results", len(got))
+	}
+	for _, e := range got {
+		if addressDomain(e.Email) != "tenant-a.test" {
+			t.Errorf("cross-tenant entry leaked: %q", e.Email)
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -146,14 +147,50 @@ func (sm *SearchManager) IndexProfile(userID, email, displayName string) error {
 	return sm.gal.Index(userID, doc)
 }
 
-// SearchGAL searches the Global Address List by prefix.
-func (sm *SearchManager) SearchGAL(prefix string, limit int) ([]GALEntry, error) {
+// galOverfetch is how many hits to ask Bleve for per requested result. The
+// domain filter below runs after the search, so asking for exactly limit hits
+// would return fewer than limit whenever other tenants' entries sort highly.
+// Bounded by galMaxFetch so a broad prefix cannot pull the whole index.
+const (
+	galOverfetch = 10
+	galMaxFetch  = 500
+)
+
+// SearchGAL searches the Global Address List by prefix, restricted to the
+// address domain of callerEmail.
+//
+// The scoping is the point. This index is global -- every user profile on the
+// server is in it, across every hosted domain -- and it backs compose
+// autocomplete, so without a filter any authenticated user could enumerate
+// every address of every other tenant one prefix at a time. That directly
+// contradicts the multi-domain PRD, whose stated goal is full tenant isolation
+// where one tenant "cannot see or touch other tenants' users".
+//
+// callerEmail rather than a bare domain string is deliberate: the caller
+// already has the session email to hand, and a signature taking a domain
+// invites a call site that passes "" and silently restores the leak. An empty
+// or domainless callerEmail returns no results, so the failure mode is an empty
+// autocomplete rather than a disclosure.
+//
+// Single-domain deployments are unaffected: every profile shares the one
+// domain, so the filter removes nothing.
+func (sm *SearchManager) SearchGAL(prefix string, limit int, callerEmail string) ([]GALEntry, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
+	callerDomain := addressDomain(callerEmail)
+	if callerDomain == "" {
+		return nil, nil
+	}
+
+	fetch := limit * galOverfetch
+	if fetch > galMaxFetch {
+		fetch = galMaxFetch
+	}
+
 	query := bleve.NewPrefixQuery(prefix)
-	searchReq := bleve.NewSearchRequestOptions(query, limit, 0, false)
+	searchReq := bleve.NewSearchRequestOptions(query, fetch, 0, false)
 	searchReq.Fields = []string{"email", "display_name"}
 	result, err := sm.gal.Search(searchReq)
 	if err != nil {
@@ -169,9 +206,28 @@ func (sm *SearchManager) SearchGAL(prefix string, limit int) ([]GALEntry, error)
 		if v, ok := hit.Fields["display_name"].(string); ok {
 			entry.DisplayName = v
 		}
+		// Drop other tenants. A hit with no usable email is dropped too: it
+		// cannot be shown to the user in any case, and a missing field must
+		// never mean "unscoped".
+		if addressDomain(entry.Email) != callerDomain {
+			continue
+		}
 		entries = append(entries, entry)
+		if len(entries) >= limit {
+			break
+		}
 	}
 	return entries, nil
+}
+
+// addressDomain returns the lower-cased domain part of an email address, or ""
+// when there is not exactly one usable domain part.
+func addressDomain(email string) string {
+	at := strings.LastIndex(email, "@")
+	if at < 0 || at == len(email)-1 {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(email[at+1:]))
 }
 
 // ContactDocument is the document structure indexed in Bleve for contact search.
