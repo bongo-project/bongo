@@ -655,7 +655,7 @@ func TestListVirtualMessagesAllMailExcludesTrash(t *testing.T) {
 // share a batch or not. Hoisting any one of them out leaves the suite green
 // while a crash mid-delivery can persist a MailMeta with no mailbox entry (mail
 // that exists but is invisible) or a uid_next bump with no message (a burnt
-// UID). commitMailboxBatch is substituted here to abort at exactly that point.
+// UID). commitSyncBatch is substituted here to abort at exactly that point.
 func TestMailboxDeliveryIsAllOrNothing(t *testing.T) {
 	dir := t.TempDir()
 	ps, err := NewPebbleStore(dir + "/pebble")
@@ -676,9 +676,9 @@ func TestMailboxDeliveryIsAllOrNothing(t *testing.T) {
 
 	// Substitute a commit that populates the batch exactly as production does,
 	// then throws it away instead of committing -- a crash in the sync window.
-	orig := commitMailboxBatch
-	t.Cleanup(func() { commitMailboxBatch = orig })
-	commitMailboxBatch = func(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
+	orig := commitSyncBatch
+	t.Cleanup(func() { commitSyncBatch = orig })
+	commitSyncBatch = func(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
 		batch := ps.db.NewBatch()
 		defer batch.Close()
 		if err := fn(batch); err != nil {

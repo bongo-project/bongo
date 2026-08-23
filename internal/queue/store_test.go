@@ -15,6 +15,13 @@ type directApplier struct {
 }
 
 func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	// Mirror the FSM's dispatch (internal/cluster/fsm.go applyProto): a queue
+	// transition arrives as one composite command and must be interpreted, not
+	// written through as a literal key. Without this the tests would exercise a
+	// different code path from production.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsQueueSyntheticCommand(cmd.Key) {
+		return store.ApplyQueueCommand(a.store, cmd)
+	}
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
 		return a.store.Set(cmd.Key, cmd.Value)
