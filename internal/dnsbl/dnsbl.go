@@ -8,8 +8,7 @@
 //
 // This package is self-contained and offline-testable: it has no knowledge
 // of HCL config, the antispam pipeline, or SMTP. It answers one question
-// safely. Callers decide what a listing means (13.2 wires config, 13.3
-// wires scoring and skip rules).
+// safely; callers decide what a listing means.
 //
 // Fail-open is a hard guarantee: Check never returns an error. Every
 // failure mode -- timeout, SERVFAIL, malformed answer, a zone with no IPv6
@@ -103,9 +102,8 @@ type Checker struct {
 // NewChecker creates a Checker using the system DNS resolver.
 //
 // zones, timeout and cacheTTL are plain Go values -- this package has no
-// knowledge of HCL config; the caller (13.2) is responsible for parsing
-// config into these arguments. logger may be nil, in which case
-// slog.Default() is used.
+// knowledge of HCL config; the caller is responsible for parsing config into
+// these arguments. logger may be nil, in which case slog.Default() is used.
 func NewChecker(zones []string, timeout, cacheTTL time.Duration, logger *slog.Logger) *Checker {
 	return newChecker(defaultResolver{}, zones, timeout, cacheTTL, logger)
 }

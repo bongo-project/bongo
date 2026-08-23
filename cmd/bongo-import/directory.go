@@ -61,7 +61,7 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 		logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 		rootDir := args[0]
 
-		// Phase 1: discover files.
+		// Discover files.
 		disc, err := scanDirectory(rootDir)
 		if err != nil {
 			return fmt.Errorf("scanning directory: %w", err)
@@ -97,7 +97,7 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 			return nil
 		}
 
-		// Phase 2: print summary and confirm.
+		// Print summary and confirm.
 		fmt.Fprintf(os.Stderr, "\nFound in %s:\n", rootDir)
 		if len(disc.mboxFiles) > 0 || emlCount > 0 || len(disc.maildirs) > 0 {
 			parts := []string{}
@@ -131,7 +131,7 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 
 		ctx := context.Background()
 
-		// Phase 3: import contacts first.
+		// Import contacts first.
 		if len(disc.vcfFiles) > 0 {
 			logger.Info("importing contacts", "count", len(disc.vcfFiles))
 			client, err := webLogin(dirWebURL, dstUser, dstPass)
@@ -150,7 +150,7 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 			}
 		}
 
-		// Phase 4: import calendar.
+		// Import calendar.
 		if len(disc.icsFiles) > 0 {
 			logger.Info("importing calendar events", "count", len(disc.icsFiles))
 			client, err := webLogin(dirWebURL, dstUser, dstPass)
@@ -169,7 +169,7 @@ Contacts and calendar files are uploaded to the bongo-go web API (--web-url flag
 			}
 		}
 
-		// Phase 5: import mail.
+		// Import mail.
 		hasMail := len(disc.mboxFiles) > 0 || emlCount > 0 || len(disc.maildirs) > 0
 		if hasMail {
 			state, err := importer.NewState(stateFile)

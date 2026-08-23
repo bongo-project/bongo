@@ -116,47 +116,36 @@ func main() {
 
 	c := &checker{}
 
-	// Phase 1: User setup.
 	fmt.Println("--- Phase 1: User Setup ---")
 	adminClient := phase1UserSetup(c, baseURL, *adminUser, *adminPass, imapAddr)
 
-	// Phase 2: SMTP delivery.
 	fmt.Println("\n--- Phase 2: SMTP Delivery ---")
 	phase2SMTPDelivery(c, smtpAddr, *adminUser, *adminPass)
 
-	// Phase 3: IMAP operations.
 	fmt.Println("\n--- Phase 3: IMAP Operations ---")
 	phase3IMAPOperations(c, imapAddr)
 
-	// Phase 3b: IMAP hierarchy.
 	fmt.Println("\n--- Phase 3b: IMAP Folder Hierarchy ---")
 	phase3bIMAPHierarchy(c, imapAddr)
 
-	// Phase 4: POP3 retrieval.
 	fmt.Println("\n--- Phase 4: POP3 Retrieval ---")
 	phase4POP3Retrieval(c, pop3Addr)
 
-	// Phase 5: Contacts.
 	fmt.Println("\n--- Phase 5: Contacts ---")
 	phase5Contacts(c, baseURL, adminClient)
 
-	// Phase 6: Calendar.
 	fmt.Println("\n--- Phase 6: Calendar ---")
 	phase6Calendar(c, baseURL, adminClient)
 
-	// Phase 7: Web auth.
 	fmt.Println("\n--- Phase 7: Web Auth ---")
 	phase7WebAuth(c, baseURL)
 
-	// Phase 8: Antispam.
 	fmt.Println("\n--- Phase 8: Antispam ---")
 	phase8Antispam(c, smtpAddr, imapAddr)
 
-	// Phase 9: Bounce/DSN.
 	fmt.Println("\n--- Phase 9: Bounce/DSN ---")
 	phase9BounceDSN(c, smtpAddr, imapAddr)
 
-	// Phase 10: Final summary.
 	printReport(c)
 
 	if c.failed > 0 {
@@ -1184,10 +1173,6 @@ func phase7WebAuth(c *checker, baseURL string) {
 		}
 	}
 }
-
-// ---------------------------------------------------------------------------
-// Phase 8: Report
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Phase 8: Antispam

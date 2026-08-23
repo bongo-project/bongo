@@ -170,16 +170,15 @@ func (sc *smokeClient) pollInbox(t *testing.T, needle string, timeout time.Durat
 
 // TestFullUserJourney runs an 18-step smoke test of the full user experience.
 func TestFullUserJourney(t *testing.T) {
-	// Step 1: start dev agent.
+	// Step 1: start dev agent. The remaining steps are the step__-named
+	// subtests below, which is why they begin at step02.
 	sc := setupSmokeAgent(t)
 
-	// Step 2: Login.
 	t.Run("step02_login", func(t *testing.T) {
 		sc.login(t, "admin@localhost", "admin")
 		t.Log("login OK")
 	})
 
-	// Step 3: Browse inbox.
 	t.Run("step03_browse_inbox", func(t *testing.T) {
 		status, body := sc.get(t, "/mail/INBOX")
 		if status != http.StatusOK {
@@ -192,7 +191,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("browse inbox OK")
 	})
 
-	// Step 4: Compose & send.
 	subject := fmt.Sprintf("Smoke-%d", time.Now().UnixMilli())
 	t.Run("step04_compose_send", func(t *testing.T) {
 		status, _ := sc.post(t, "/compose/send", url.Values{
@@ -207,7 +205,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("compose & send OK")
 	})
 
-	// Step 5: Receive — wait for delivery.
 	var inboxBody string
 	t.Run("step05_receive", func(t *testing.T) {
 		inboxBody = sc.pollInbox(t, subject, 10*time.Second)
@@ -217,7 +214,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("message delivered OK")
 	})
 
-	// Step 6: Read message.
 	t.Run("step06_read_message", func(t *testing.T) {
 		status, body := sc.get(t, "/mail/INBOX/1")
 		if status != http.StatusOK {
@@ -232,7 +228,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("read message OK")
 	})
 
-	// Step 7: Reply.
 	t.Run("step07_reply", func(t *testing.T) {
 		// The reply compose page should load.
 		status, body := sc.get(t, "/compose/reply/INBOX/1")
@@ -258,7 +253,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("reply OK")
 	})
 
-	// Step 8: Search.
 	t.Run("step08_search", func(t *testing.T) {
 		// Allow indexing time.
 		time.Sleep(500 * time.Millisecond)
@@ -273,7 +267,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("search OK")
 	})
 
-	// Step 9: Star message (toggle flagged flag).
 	t.Run("step09_star_message", func(t *testing.T) {
 		status, _ := sc.post(t, "/mail/INBOX/1/flags", url.Values{
 			"flag": {"flagged"},
@@ -285,7 +278,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("star message OK")
 	})
 
-	// Step 10: Move message to Sent (or another mailbox).
 	t.Run("step10_move_message", func(t *testing.T) {
 		status, _ := sc.post(t, "/mail/INBOX/1/move", url.Values{
 			"destination": {"Sent"},
@@ -296,7 +288,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("move message OK")
 	})
 
-	// Step 11: Create contact.
 	t.Run("step11_create_contact", func(t *testing.T) {
 		status, body := sc.post(t, "/contacts", url.Values{
 			"display_name": {"Smoke Test User"},
@@ -314,7 +305,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("create contact OK")
 	})
 
-	// Step 12: Contacts in autocomplete (GAL search).
 	t.Run("step12_gal_autocomplete", func(t *testing.T) {
 		status, body := sc.get(t, "/api/gal?q=Smoke")
 		if status != http.StatusOK {
@@ -328,7 +318,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("GAL autocomplete OK")
 	})
 
-	// Step 13: Calendar — create event.
 	now := time.Now()
 	t.Run("step13_create_event", func(t *testing.T) {
 		startDate := now.Format("2006-01-02")
@@ -349,7 +338,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("create event OK")
 	})
 
-	// Step 14: Calendar — month view.
 	t.Run("step14_calendar_month_view", func(t *testing.T) {
 		month := int(now.Month())
 		year := now.Year()
@@ -363,7 +351,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("calendar month view OK")
 	})
 
-	// Step 15: Admin dashboard.
 	t.Run("step15_admin_dashboard", func(t *testing.T) {
 		status, body := sc.get(t, "/admin")
 		if status != http.StatusOK {
@@ -375,7 +362,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("admin dashboard OK")
 	})
 
-	// Step 16: Admin user list.
 	t.Run("step16_admin_user_list", func(t *testing.T) {
 		status, body := sc.get(t, "/admin/users")
 		if status != http.StatusOK {
@@ -387,7 +373,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("admin user list OK")
 	})
 
-	// Step 17: Settings page.
 	t.Run("step17_settings", func(t *testing.T) {
 		status, body := sc.get(t, "/settings")
 		if status != http.StatusOK {
@@ -399,7 +384,6 @@ func TestFullUserJourney(t *testing.T) {
 		t.Log("settings page OK")
 	})
 
-	// Step 18: Logout.
 	t.Run("step18_logout", func(t *testing.T) {
 		status, _ := sc.post(t, "/logout", url.Values{})
 		if status != http.StatusOK {

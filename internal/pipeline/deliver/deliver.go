@@ -53,15 +53,15 @@ type DeliverProcessor struct {
 	queuer   ForwardQueuer
 	prefs    PreferenceProvider
 
-	// blobs and dedupMinSize enable attachment deduplication (Phase 9): when set,
+	// blobs and dedupMinSize enable attachment deduplication: when set,
 	// inbound messages with an attachment part whose encoded body is >=
 	// dedupMinSize are stored as a skeleton + separate attachment blobs. nil blobs
 	// or a non-positive threshold keeps whole-raw storage.
 	blobs        *store.BlobStore
 	dedupMinSize int
 
-	// authservID and spamThreshold enable trace-header stamping (task 10.5):
-	// an Authentication-Results header naming authservID plus X-Spam-Score,
+	// authservID and spamThreshold enable trace-header stamping: an
+	// Authentication-Results header naming authservID plus X-Spam-Score,
 	// X-Spam-Status and X-Spam-Reasons derived from the antispam StageResult.
 	// authservID is the configured SMTP hostname; empty omits
 	// Authentication-Results entirely (graceful degradation) rather than emit
@@ -95,7 +95,7 @@ func (p *DeliverProcessor) effectiveSpamThreshold() float32 {
 }
 
 // SetTraceHeaders enables stamping Authentication-Results and X-Spam-*
-// headers onto delivered messages (task 10.5), following the SetAttachmentDedup
+// headers onto delivered messages, following the SetAttachmentDedup
 // setter-injection pattern. hostname is the authserv-id used in
 // Authentication-Results (the configured SMTP.Hostname); an empty hostname
 // omits that header but X-Spam-* stamping and inbound trace-header stripping
@@ -118,9 +118,6 @@ func (p *DeliverProcessor) SetAttachmentDedup(blobs *store.BlobStore, minSize in
 	p.blobs = blobs
 	p.dedupMinSize = minSize
 }
-
-// splitResult carries the stored skeleton hash plus the attachment refs and
-// layout for a de-MIME'd message (see store.StoreSplit).
 
 // trySplit stores the message as a skeleton + deduplicated attachment blobs via
 // store.StoreSplit and returns the resulting refs. It returns nil (so the caller
@@ -292,14 +289,13 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		dmarcResult = spamStage.DmarcResult
 	}
 
-	// Stamp trace headers (FR-10/FR-11/FR-12/FR-13): strip any inbound
-	// Authentication-Results / X-Spam-* headers so a remote sender cannot
-	// forge a passing verdict, then prepend our own Authentication-Results and
-	// X-Spam-* headers above the original header set (so a DKIM signature over
-	// the original headers stays valid). This must run before trySplit so the
-	// stored skeleton contains the trace headers. The generated content has no
-	// timestamp, so a retried delivery of the same message re-derives the
-	// identical stamped bytes and blob hash.
+	// Stamp trace headers: strip any inbound Authentication-Results / X-Spam-*
+	// headers so a remote sender cannot forge a passing verdict, then prepend
+	// our own Authentication-Results and X-Spam-* headers above the original
+	// header set (so a DKIM signature over the original headers stays valid).
+	// This must run before trySplit so the stored skeleton contains the trace
+	// headers. The generated content has no timestamp, so a retried delivery
+	// of the same message re-derives the identical stamped bytes and blob hash.
 	stepStart = time.Now()
 	stamped := stripTraceHeaders(raw)
 	var traceHdrs []string
@@ -319,15 +315,12 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 	// sender's original (and its original DKIM signature) rather than our
 	// locally-stamped copy.
 	//
-	// Attachment handling: when attachment dedup is enabled and the stamped
-	// message carries a large-enough attachment, it is stored as a skeleton +
-	// separate deduplicated attachment blobs and reconstructed on read (Phase
-	// 9); trySplit operates on the STAMPED bytes so the reconstructed message
-	// carries the trace headers too. Otherwise the stamped message is written
-	// as a single whole-raw blob. Splitting is attempted first so a message
-	// that does split is never also written a second time as a redundant
-	// whole-raw blob.
-	//
+	// trySplit is attempted first, on the STAMPED bytes: when attachment dedup
+	// is enabled and the message carries a large-enough attachment it is stored
+	// as a skeleton + separate deduplicated attachment blobs, reconstructed on
+	// read, which therefore carry the trace headers too — and a message that
+	// does split is never also written a second time as a redundant whole-raw
+	// blob. Otherwise the stamped message is written as a single whole-raw blob.
 	// When there is no blob store, or the write fails, fall back to the
 	// original raw bytes, hash, and (further below) size together so stored
 	// metadata never disagrees with stored bytes.

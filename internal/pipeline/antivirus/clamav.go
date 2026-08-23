@@ -123,15 +123,15 @@ func (p *ClamAVProcessor) Name() string {
 // and returns a StageResult with action "pass" or "quarantine".
 //
 // On connection failure, or on any clamd response that is not a definitive
-// clean/infected verdict, the configured OnFailure policy decides the
-// outcome (OnFailureQuarantine by default, OnFailureAccept to deliver
-// unscanned). Either way the failure is logged at ERROR — never Warn —
-// because it means a message went through without being scanned for
-// viruses, or was quarantined without one being found. A Go error is never
-// returned for these cases: this is a scan verdict (StageResult), not a
-// pipeline stage fault, and the runner treats a returned error very
-// differently (moving the message to the unmonitored spool/error directory
-// instead of the drainable quarantine/ — see internal/pipeline/runner.go).
+// clean/infected verdict, the configured OnFailure policy decides the outcome (OnFailureQuarantine by
+// default, OnFailureAccept to deliver unscanned).
+// Either way the failure is logged at ERROR — never Warn — because it means a
+// message went through without being scanned for viruses, or was quarantined
+// without one being found. A Go error is never returned for these cases: this
+// is a scan verdict (StageResult), not a pipeline stage fault, and the runner
+// treats a returned error very differently (moving the message to the
+// unmonitored spool/error directory instead of the drainable quarantine/ —
+// see internal/pipeline/runner.go).
 func (p *ClamAVProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope, msg io.Reader) (*bongov1.StageResult, error) {
 	start := time.Now()
 

@@ -70,10 +70,10 @@ type StorageConfig struct {
 	DataDir string       `hcl:"data_dir,optional" mapstructure:"data_dir"`
 	Pebble  PebbleConfig `hcl:"pebble,block" mapstructure:"pebble"`
 	// AttachmentDedupMinSize is the minimum encoded attachment size at or above
-	// which an attachment is split into its own deduplicated blob (Phase 9).
+	// which an attachment is split into its own deduplicated blob.
 	// Empty defaults to 32 KB; "0" disables splitting.
 	AttachmentDedupMinSize string `hcl:"attachment_dedup_min_size,optional" mapstructure:"attachment_dedup_min_size"`
-	// BlobGC controls the unreferenced-blob garbage collector (Phase 9):
+	// BlobGC controls the unreferenced-blob garbage collector:
 	//   "off"    (default) — never runs; blobs are retained forever
 	//   "dryrun"           — logs what it WOULD delete, deletes nothing
 	//   "on"               — deletes blobs unreferenced for two consecutive passes
@@ -285,9 +285,8 @@ func (a AntispamConfig) DMARCEnforce() bool { return !a.DMARCMonitorOnly }
 
 // DNSBLConfig configures DNS blocklist (DNSBL/RBL) checks: a global
 // enable/timeout/cache TTL plus a repeated set of zones to query, each with
-// its own scoring weight. Fields feed internal/dnsbl.NewChecker (task 13.1);
-// this package has no knowledge of dnsbl.Checker and never constructs one —
-// that wiring is task 13.3.
+// its own scoring weight. Fields feed internal/dnsbl.NewChecker; this package
+// has no knowledge of dnsbl.Checker and never constructs one.
 type DNSBLConfig struct {
 	Enabled bool `hcl:"enabled,optional" mapstructure:"enabled"`
 	// Timeout is a duration string (e.g. "5s"), parsed by DNSBLTimeout().
@@ -687,9 +686,9 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// Multi-node cluster transport gate (backlog B7). A server that joins peers
-	// carries the replicated mail store over the raft and gossip transports; the
-	// security review (docs/security-review-2026-07-06.md H3/H4/M8) deferred the
+	// Multi-node cluster transport gate. A server that joins peers carries the
+	// replicated mail store over the raft and gossip transports; the security
+	// review (docs/security-review-2026-07-06.md H3/H4/M8) deferred the
 	// transport-hardening fixes because they are unreachable on a single node.
 	// This gate makes that deferral safe: refuse to form a multi-node cluster
 	// unless gossip is encrypted and raft has an mTLS trust anchor, so the

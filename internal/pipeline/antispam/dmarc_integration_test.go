@@ -103,8 +103,8 @@ func TestDMARCAlignedPasses(t *testing.T) {
 }
 
 // TestDMARCResultRecordedOnStageResult verifies that StageResult.DmarcResult
-// (task 10.5, added so Authentication-Results can report a real dmarc=
-// verdict) reflects what DMARC actually found, in both enforce and
+// (added so Authentication-Results can report a real dmarc= verdict)
+// reflects what DMARC actually found, in both enforce and
 // monitor-only mode, and is "none"/"" for the no-record / no-From-domain
 // cases where DMARC could not form a verdict.
 func TestDMARCResultRecordedOnStageResult(t *testing.T) {
@@ -210,11 +210,11 @@ func TestDMARCResultEmptyWithoutFromDomain(t *testing.T) {
 // isolation; antispam.VerifyDKIM (used by the full pipeline) can stub DKIM
 // via the package-level LookupTXT hook in internal/antispam/dkim_verify.go.
 //
-// env.Sender is "" (not "MAILER-DAEMON@example.test"): task 10.4 (FR-3)
-// changed the production bounce path to use the null envelope sender per
-// RFC 5321 s6.1. This test's whole point is that DKIM alignment, not
-// SPF/envelope-sender, carries the bounce through DMARC — it must still pass
-// with a null envelope sender, mirroring what BounceGenerator actually sends.
+// env.Sender is "" (not "MAILER-DAEMON@example.test") because the production
+// bounce path uses the null envelope sender per RFC 5321 s6.1. This test's
+// whole point is that DKIM alignment, not SPF/envelope-sender, carries the
+// bounce through DMARC — it must still pass with a null envelope sender,
+// mirroring what BounceGenerator actually sends.
 func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 	eval := mail.NewDMARCEvaluatorWithResolver(&dmarcMockResolver{
 		txt: map[string][]string{
@@ -249,15 +249,15 @@ func TestApplyDMARC_SignedBouncePassesQuarantinePolicy(t *testing.T) {
 	}
 }
 
-// TestBuiltinProcessorSignedBounce is the end-to-end integration test for task
-// 10.2 + 10.5: a bounce produced by mail.BounceGenerator with a real DKIM
-// signature (signed by a registered DKIM signer) is fed through
-// BuiltinProcessor.Process with stubbed DNS lookups (LookupTXT for DKIM,
-// DMARC record lookup). The bytes flow through the complete verification path:
-// signed DSN -> antispam.VerifyDKIM (derives pass verdict from real signature)
-// -> applyDMARC (evaluates alignment with p=quarantine policy) -> StageResult.
-// This proves the phase's central claim: a legitimate bounce with DKIM alignment
-// is never escalated to Junk, even under a strict DMARC policy.
+// TestBuiltinProcessorSignedBounce is the end-to-end integration test: a bounce
+// produced by mail.BounceGenerator with a real DKIM signature (signed by a
+// registered DKIM signer) is fed through BuiltinProcessor.Process with stubbed
+// DNS lookups (LookupTXT for DKIM, DMARC record lookup). The bytes flow through
+// the complete verification path: signed DSN -> antispam.VerifyDKIM (derives
+// pass verdict from real signature) -> applyDMARC (evaluates alignment with
+// p=quarantine policy) -> StageResult. This proves the central claim: a
+// legitimate bounce with DKIM alignment is never escalated to Junk, even under
+// a strict DMARC policy.
 func TestBuiltinProcessorSignedBounce(t *testing.T) {
 	// Generate a fresh RSA key.
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -423,13 +423,13 @@ func TestBuiltinProcessorUnsignedBounceIsEscalated(t *testing.T) {
 }
 
 // TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine reproduces the
-// production bug (observed 2026-08-19) task 12.3 fixes: an application
-// authenticated via SMTP AUTH submits mail as registrations@example.test to
-// lance@example.test, both local accounts on a domain that publishes
-// p=quarantine. The connecting address is a Docker bridge gateway, so SPF
-// softfails against a private IP; the submitting app does not DKIM-sign.
-// Neither identifier aligns, so before this task DMARC escalated the message
-// to Junk even though it originated from an authenticated local sender.
+// production bug observed 2026-08-19: an application authenticated via SMTP
+// AUTH submits mail as registrations@example.test to lance@example.test, both
+// local accounts on a domain that publishes p=quarantine. The connecting
+// address is a Docker bridge gateway, so SPF softfails against a private IP;
+// the submitting app does not DKIM-sign. Neither identifier aligns, so DMARC
+// escalated the message to Junk even though it originated from an
+// authenticated local sender.
 //
 // Reference numbers from the production log this test is built to match:
 // score 0.20 (0.10 SPF softfail + 0.10 DKIM missing), reasons
@@ -439,8 +439,9 @@ func TestBuiltinProcessorUnsignedBounceIsEscalated(t *testing.T) {
 // action "pass", empty TargetMailbox, and DmarcResult "" (DMARC did not
 // run, so it must not claim a verdict it never evaluated).
 //
-// This test fails against pre-12.3 builtin.go (escalated to "tag" / Junk /
-// DmarcResult "quarantine") and passes only once Trusted is honoured.
+// This test fails against a builtin.go that ignores Trusted (escalated to
+// "tag" / Junk / DmarcResult "quarantine") and passes only once Trusted is
+// honoured.
 func TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine(t *testing.T) {
 	proc := newDMARCProcessor(t, true)
 	env := &bongov1.QueueEnvelope{

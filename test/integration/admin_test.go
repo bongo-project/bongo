@@ -502,12 +502,12 @@ func TestMailBlobRequiresMessageOwnership(t *testing.T) {
 		t.Fatal("attacker response leaked the attachment contents")
 	}
 
-	// The legacy content-addressed route. Since task 9.6 the composer no longer
-	// stores decoded attachment blobs, so the message view does not link
-	// /mail/blob/{hash} for new mail and a hash cannot be scraped from it. The
-	// route still exists and still serves pre-Phase-9 messages, so probe it with
-	// the hash the attachment WOULD have: content addressing makes that
-	// derivable from the bytes without the UI exposing it.
+	// The legacy content-addressed route. The composer no longer stores decoded
+	// attachment blobs, so the message view does not link /mail/blob/{hash} for
+	// new mail and a hash cannot be scraped from it. The route still exists and
+	// still serves older stored messages, so probe it with the hash the
+	// attachment WOULD have: content addressing makes that derivable from the
+	// bytes without the UI exposing it.
 	blobHash := sha256.Sum256([]byte(privateAttachmentBody))
 	resp, err = attackerClient.Get(fmt.Sprintf("%s/mail/blob/%x", baseURL, blobHash))
 	if err != nil {

@@ -310,11 +310,12 @@ func TestAntispamStageAndSpamScoreFromStages(t *testing.T) {
 	}
 }
 
-// --- Task 13.4 / PRD US-004: a DNSBL verdict must be visible ---------------
+// --- A DNSBL verdict must be visible ---------------------------------------
 //
-// 13.3 puts a "dnsbl_<zone>" entry into StageResult.Reasons. These tests pin
-// the other half of the claim: that it survives into the delivered message's
-// X-Spam-Reasons header, and that it stays OUT of Authentication-Results.
+// The DNSBL check puts a "dnsbl_<zone>" entry into StageResult.Reasons. These
+// tests pin the other half of the claim: that it survives into the delivered
+// message's X-Spam-Reasons header, and that it stays OUT of
+// Authentication-Results.
 
 func TestDNSBLReasonReachesSpamReasonsHeader(t *testing.T) {
 	t.Run("US-004: the header names the zone that listed the IP", func(t *testing.T) {
@@ -359,7 +360,7 @@ func TestDNSBLReasonReachesSpamReasonsHeader(t *testing.T) {
 			t.Errorf("stamped message does not carry the DNSBL reason:\n%s", stamped)
 		}
 		// The trace headers must sit ahead of the original header block so a
-		// DKIM signature over the original headers stays valid (FR-13).
+		// DKIM signature over the original headers stays valid.
 		if strings.Index(stamped, "X-Spam-Reasons:") > strings.Index(stamped, "From:") {
 			t.Error("X-Spam-Reasons was stamped after the original headers, not before")
 		}
@@ -390,8 +391,8 @@ func TestDNSBLReasonReachesSpamReasonsHeader(t *testing.T) {
 	})
 }
 
-// TestDNSBLNeverAppearsInAuthenticationResults pins the PRD's explicit
-// prohibition: DNSBL is not an authentication method, and putting it in
+// TestDNSBLNeverAppearsInAuthenticationResults pins an explicit prohibition:
+// DNSBL is not an authentication method, and putting it in
 // Authentication-Results would mislead downstream tooling that reads that
 // header as a statement about SPF/DKIM/DMARC. buildAuthenticationResults
 // takes only those three as parameters, so this holds by construction today

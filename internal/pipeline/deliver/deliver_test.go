@@ -653,11 +653,11 @@ func TestForwardTargetsDropsSelfForward(t *testing.T) {
 }
 
 // TestDeliverEmptyEnvelopeSenderUsesFromHeader is the main regression case for
-// task 10.4 (FR-3): a DSN is now delivered with a null envelope sender
-// (env.Sender == ""), but it always carries a From: header. deliver.go sets
+// DSN delivery: a DSN arrives with a null envelope sender (env.Sender == ""),
+// but it always carries a From: header. deliver.go sets
 // headerFrom := env.Sender and only overrides it when the message carries a
-// From: header (deliver.go:152) — this proves that override path fires and
-// the stored MailMeta.From is taken from the header, not left empty.
+// From: header — this proves that override path fires and the stored
+// MailMeta.From is taken from the header, not left empty.
 func TestDeliverEmptyEnvelopeSenderUsesFromHeader(t *testing.T) {
 	applier := &mockApplier{}
 	resolver := &mockResolver{
@@ -695,7 +695,7 @@ func TestDeliverEmptyEnvelopeSenderUsesFromHeader(t *testing.T) {
 }
 
 // TestDeliverEmptyEnvelopeSenderForwarded proves that forwarding a message
-// with a null envelope sender (the DSN case, task 10.4) does not panic or
+// with a null envelope sender (the DSN case) does not panic or
 // fail: the enqueued OutboundMessage carries SenderEmail "" (correct for
 // relaying a DSN onward — RFC 5321 s6.1), and Enqueue still succeeds.
 func TestDeliverEmptyEnvelopeSenderForwarded(t *testing.T) {

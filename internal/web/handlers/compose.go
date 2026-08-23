@@ -48,12 +48,12 @@ type ComposeHandler struct {
 	queueStore  *queue.QueueStore
 	rateLimiter *mail.RateLimiter
 	prefs       *store.PreferenceStore
-	resolver    localRecipientResolver // unified address→userID resolver (task 4.3)
-	addresses   *store.AddressStore    // for send-as From picker and enforcement (task 5.1)
+	resolver    localRecipientResolver // unified address→userID resolver
+	addresses   *store.AddressStore    // for send-as From picker and enforcement
 	logger      *slog.Logger
 
-	// dedupMinSize is the attachment-dedup threshold (Phase 9). > 0 stores sent
-	// mail as a skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
+	// dedupMinSize is the attachment-dedup threshold. > 0 stores sent mail as a
+	// skeleton + deduplicated attachment blobs; <= 0 keeps whole-raw.
 	dedupMinSize int
 }
 
@@ -89,15 +89,15 @@ func (h *ComposeHandler) SetPreferences(prefs *store.PreferenceStore) {
 }
 
 // SetLocalResolver injects the shared recipient resolver used by resolveLocalUser.
-// When nil, resolveLocalUser falls back to the legacy Pebble alias+profile scan
-// (backward compatible but O(n) and should not be left nil in production).
+// When nil, resolveLocalUser treats every address as non-local, so it must not be
+// left nil in production.
 func (h *ComposeHandler) SetLocalResolver(r localRecipientResolver) {
 	h.resolver = r
 }
 
-// SetAddressStore injects the address store for send-as From picker and server-side
-// enforcement (task 5.1). When nil, the picker shows only the session email and
-// send-as enforcement is bypassed (backward-compatible for edge/pre-migration nodes).
+// SetAddressStore injects the address store for the send-as From picker and
+// server-side enforcement. When nil, the picker shows only the session email and
+// send-as enforcement is bypassed (for edge/pre-migration nodes).
 func (h *ComposeHandler) SetAddressStore(as *store.AddressStore) {
 	h.addresses = as
 }
@@ -293,10 +293,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Resolve the effective From address.
 	//
-	// Back-compat gate (RISK 1): if the submitted "from" is empty or equals
-	// the session email (case-insensitive), use the session email directly and
-	// skip AddressStore enforcement. This preserves behaviour on edge/agent nodes
-	// and pre-migration clusters where the primary may not yet be indexed.
+	// Back-compat gate: if the submitted "from" is empty or equals the session
+	// email (case-insensitive), use the session email directly and skip
+	// AddressStore enforcement. This preserves behaviour on edge/agent nodes and
+	// pre-migration clusters where the primary may not yet be indexed.
 	//
 	// Enforcement runs ONLY when "from" differs from the session email, which is
 	// the tamper/send-as case. This must happen before any blob/Sent/queue writes.
@@ -346,10 +346,10 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 
 	// Process file attachments. The payloads are assembled into the RFC 5322
 	// message below; they are NOT stored as standalone decoded blobs. When the
-	// message is split (Phase 9) the encoded spans become the deduplicated
-	// attachment blobs; otherwise the whole raw is stored. attachmentMeta carries
-	// display metadata (filename/size/type, no hash) used only in the whole-raw
-	// case, where the attachment is served by reconstructing from the raw.
+	// message is split, the encoded spans become the deduplicated attachment
+	// blobs; otherwise the whole raw is stored. attachmentMeta carries display
+	// metadata (filename/size/type, no hash) used only in the whole-raw case,
+	// where the attachment is served by reconstructing from the raw.
 	var attachmentMeta []*bongov1.BlobRef
 	var attachmentFiles []attachmentData
 	if r.MultipartForm != nil && r.MultipartForm.File["attachments"] != nil {
@@ -388,16 +388,15 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	// the outgoing message header and the stored copy's metadata so threading
 	// stays consistent. A non-FQDN Message-ID (the old "@bongo") is a negative
 	// deliverability signal. The host is derived from fromAddr (the chosen From)
-	// so that Message-ID host aligns with the From domain (task 5.1).
+	// so that Message-ID host aligns with the From domain.
 	messageID := fmt.Sprintf("<%d.%s@%s>", time.Now().UnixNano(), randomToken(), senderDomain(fromAddr))
 
 	// Build RFC 5322 message. body_mode='rich' → multipart/alternative with
 	// sanitized HTML and derived plain text. Any other value (or absent) falls
-	// through to the existing plain-text path (byte-compatible with previous
-	// behaviour).
+	// through to the plain-text path.
 	// fromAddr (not email) is used as the From header so DKIM signing via the
 	// registry (which keys on the From-header domain) automatically uses the
-	// correct d= value without any additional signing code (task 5.1).
+	// correct d= value without any additional signing code.
 	bodyMode := r.FormValue("body_mode")
 	var rawMsg []byte
 	var searchBody string
@@ -405,8 +404,8 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		var buildErr error
 		rawMsg, searchBody, buildErr = h.buildRichMessage(fromAddr, to, cc, subject, body, userID, messageID, inReplyTo, references, attachmentFiles, true)
 		if buildErr != nil {
-			// Reject before any user-visible writes (blob store, Sent copy, enqueue).
-			// This mirrors the attachment-size rejection pattern above (~L229).
+			// Reject before any user-visible writes (blob store, Sent copy, enqueue),
+			// mirroring the attachment-size rejection above.
 			// Map the lowercase sentinel errors to friendly, capitalized 400 messages.
 			msg := "Message could not be built"
 			switch {
@@ -424,9 +423,9 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store the message: a skeleton + deduplicated attachment blobs when it
-	// carries a large attachment (Phase 9), else the whole raw. StoreSplit
-	// self-checks byte-exact reconstruction; on any split error we fall back to
-	// whole-raw so a message is never stored in a form that cannot be reproduced.
+	// carries a large attachment, else the whole raw. StoreSplit self-checks
+	// byte-exact reconstruction; on any split error we fall back to whole-raw so
+	// a message is never stored in a form that cannot be reproduced.
 	rawHash := ""
 	metaAttachments := attachmentMeta
 	var layout []*bongov1.MessageSegment
@@ -534,7 +533,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 		outMsg := &bongov1.OutboundMessage{
 			Id:          guid,
 			SenderId:    userID,
-			SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From (task 5.1)
+			SenderEmail: fromAddr, // envelope MAIL FROM / return-path follows the chosen From
 			Recipients:  externalRecipients,
 			BlobHash:    rawHash, // skeleton hash when split; the queue reconstructs before relaying
 			Layout:      layout,
@@ -639,7 +638,7 @@ func (h *ComposeHandler) SaveDraft(w http.ResponseWriter, r *http.Request) {
 	// body_mode='rich' stores the draft as multipart/alternative with the
 	// sanitized HTML (no signature — that is appended only on send), so the
 	// draft reopens in the rich editor rather than showing raw tags. Any other
-	// value stores plain text (byte-compatible with previous behaviour).
+	// value stores plain text.
 	var rawMsg []byte
 	if bodyMode == "rich" {
 		built, _, buildErr := h.buildRichMessage(email, to, cc, subject, body, userID, draftMessageID, "", "", attachmentFiles, false)
@@ -819,18 +818,15 @@ func (h *ComposeHandler) GALSearch(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// resolveLocalUser maps a bare email address to a local user ID using the
-// shared recipient resolver (task 4.3). Returns "" when the address is not local.
+// resolveLocalUser maps a bare email address to a local user ID using the shared
+// recipient resolver, which checks the AddressStore Pebble key (source of truth,
+// covering migrated primaries and aliases) then the legacy /system/alias key plus
+// the users table (post-boot accounts/aliases). Returns "" when the address is
+// not local.
 //
-// The shared resolver checks (in order):
-//  1. AddressStore Pebble key (source of truth, covers migrated primaries + aliases).
-//  2. Legacy /system/alias Pebble key + users-table (post-boot accounts/aliases).
-//  3. Returns an error → not local, returns "".
-//
-// This eliminates the previous split-brain between compose.go (alias-aware but
-// O(n) profile scan, also returning a username instead of a userID from the alias
-// branch) and inbound delivery.go (users-table only, alias-blind). Both paths now
-// use the same resolver and consistently return a userID.
+// Compose and inbound delivery must share this resolver: they previously
+// disagreed, with compose alias-aware but returning a username rather than a
+// userID from its alias branch, and delivery.go users-table only and alias-blind.
 func (h *ComposeHandler) resolveLocalUser(email string) string {
 	if h.resolver == nil {
 		return ""
@@ -917,16 +913,8 @@ func (h *ComposeHandler) signatureHTML(userID string) string {
 // buildRichMessage constructs a multipart/alternative (or multipart/related /
 // multipart/mixed) RFC 5322 message from an HTML body submitted in rich mode.
 // It returns the raw message bytes and the derived plain-text string (used for
-// FTS indexing so the search index never stores raw HTML).
-//
-// Processing order (per RISK 5 guidance):
-//  1. Sanitize the submitted HTML with sanitize.Compose.
-//  2. Append the HTML signature so that any data: images inside it are also
-//     inlined — BEFORE calling extractDataURIImages.
-//  3. extractDataURIImages rewrites data: img src to cid: and returns inline parts.
-//  4. Derive plain text from the sanitized body only (not the HTML signature)
-//     using plainTextFromHTML, then append the plain signature.
-//  5. Build the message via buildMIME.
+// FTS indexing so the search index never stores raw HTML). The numbered steps in
+// the body are order-sensitive; see the comment on each.
 //
 // includeSignature controls whether the user's HTML+plain signature is appended.
 // Sends append it (so it appears once in outgoing mail); drafts do NOT, so a
@@ -999,10 +987,9 @@ type attachmentData struct {
 	Data        []byte
 }
 
-// buildRFC5322WithAttachments is a thin backward-compatible wrapper around
-// buildMIME. It constructs a plain-text message, optionally with file
-// attachments (no HTML, no inline images). Both current callers in this file
-// keep their existing signatures without modification.
+// buildRFC5322WithAttachments is a thin wrapper around buildMIME that constructs
+// a plain-text message, optionally with file attachments (no HTML, no inline
+// images).
 func buildRFC5322WithAttachments(from, to, cc, subject, body, messageID, inReplyTo, references string, attachments []attachmentData) []byte {
 	return buildMIME(mimeParts{
 		from:        from,

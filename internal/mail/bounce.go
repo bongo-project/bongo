@@ -74,8 +74,8 @@ func ResolveServerDomain(dkimDomain, smtpHostname string) string {
 
 // GenerateAndDeliver creates an RFC 3464 DSN bounce and delivers it to the sender's INBOX.
 func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage, failedRecipients []string, reason string) error {
-	// FR-5: best-effort retrieval of the original message's header block for
-	// the third (text/rfc822-headers) MIME part. Never fails the bounce: any
+	// Best-effort retrieval of the original message's header block for the
+	// third (text/rfc822-headers) MIME part. Never fails the bounce: any
 	// problem is logged inside originalHeaderBlock and it returns "", which
 	// buildBounce treats as "omit part 3".
 	originalHeaders := bg.originalHeaderBlock(original)
@@ -88,19 +88,17 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 		"reason", reason,
 	)
 
-	// FR-2: DKIMRegistry.Sign only logs at Info and returns the message
-	// unsigned (nil error) on the no-key path, so this pre-check is what
+	// DKIMRegistry.Sign only logs at Info and returns the message unsigned
+	// (nil error) on the no-key path, so this pre-check is the only thing that
 	// surfaces a warning naming the domain — the caller cannot otherwise
 	// distinguish signed from unsigned by inspecting Sign's return values.
 	// bg.dkim == nil must short-circuit before Get, which is not nil-safe.
 	//
-	// warnDomain is derived from the already-built bounceMsg's From header
-	// via FromRawMessageDomain, the same helper DKIMRegistry.Sign uses to
-	// pick a signer — so the guard and the signer share one source of truth
-	// and cannot silently diverge. Falls back to bg.domain if the From
-	// header is missing or unparseable (should not happen for a
-	// self-constructed bounce, but the warning must still fire rather than
-	// be silently skipped).
+	// warnDomain comes from the already-built bounceMsg's From header via
+	// FromRawMessageDomain, the same helper Sign uses to pick a signer, so the
+	// guard and the signer cannot silently diverge; it falls back to bg.domain
+	// if that header is missing or unparseable (should not happen for a
+	// self-constructed bounce, but the warning must still fire).
 	//
 	// Signing is necessary but not sufficient for the bounce to reach the
 	// inbox: the verifier resolves <selector>._domainkey.<domain> over live
@@ -146,23 +144,22 @@ func (bg *BounceGenerator) GenerateAndDeliver(original *bongov1.OutboundMessage,
 
 // originalHeaderBlock returns the header block (normalized to CRLF, with a
 // trailing CRLF) of the original outbound message's blob, for use as the DSN's
-// FR-5 text/rfc822-headers part. It returns "" whenever the block cannot be
-// safely obtained — a nil blob store, an empty blob hash, a read error, or no
+// text/rfc822-headers part. It returns "" whenever the block cannot be safely
+// obtained — a nil blob store, an empty blob hash, a read error, or no
 // header/body boundary within the prefix cap — and never propagates an error:
-// FR-5 is explicitly best-effort and must never fail bounce delivery.
+// this part is best-effort and must never fail bounce delivery.
 //
 // Only a bounded prefix of the blob is read. msg.BlobHash always addresses a
-// skeleton blob (Phase 9 attachment dedup: proto/bongo/v1/queue.proto), whose
-// first reconstruction piece is raw[0:firstAttachmentSpanStart] (see
-// attsplit.Split, internal/attsplit/attsplit.go). Attachment spans are only
-// ever located inside the top-level MIME body (attsplit.collect walks the
-// body region returned by topHeaders), so that first literal piece always
-// contains the complete top-level header block byte-for-byte — for both split
-// records (msg.Layout non-empty, blob_hash is the skeleton) and legacy
-// records (msg.Layout empty, blob_hash is the whole raw message). A bounded
-// prefix read of blob_hash is therefore correct in both cases, and it avoids
-// reconstructing/materializing a multi-MB message (via store.RawMessageBytes)
-// just to read its headers on the bounce path.
+// skeleton blob (attachment dedup: proto/bongo/v1/queue.proto), whose first
+// reconstruction piece is raw[0:firstAttachmentSpanStart] (see attsplit.Split,
+// internal/attsplit/attsplit.go). Attachment spans are only ever located
+// inside the top-level MIME body (attsplit.collect walks the body region
+// returned by topHeaders), so that first literal piece always contains the
+// complete top-level header block byte-for-byte — for both split records
+// (msg.Layout non-empty, blob_hash is the skeleton) and legacy records
+// (msg.Layout empty, blob_hash is the whole raw message). A bounded prefix
+// read is therefore correct in both cases, and it avoids reconstructing a
+// multi-MB message (via store.RawMessageBytes) just to read its headers.
 func (bg *BounceGenerator) originalHeaderBlock(msg *bongov1.OutboundMessage) string {
 	if bg.blobs == nil || msg.BlobHash == "" {
 		return ""
@@ -223,14 +220,15 @@ var enhancedStatusRe = regexp.MustCompile(`(?:^|[^0-9A-Za-z.])([2-5])[0-9]{2}[ \
 
 // parseEnhancedStatus extracts a well-formed RFC 3463 enhanced status code
 // (class.subject.detail, class in {2,4,5}) from a free-form delivery failure
-// reason string. reason is not always a bare SMTP reply: on the max-retries
-// path (internal/queue/worker.go) it is a wrapped Go error such as
-// "all MX hosts failed for x.com: RCPT TO bob@x.com: 550 5.1.1 <bob@x.com>:
-// User unknown", so the enhanced code is usually embedded mid-string rather
-// than at the front. The match requires the enhanced code's class digit to
-// equal the preceding basic reply code's first digit, which they always do in
-// a well-formed SMTP reply and rejects mismatched or spurious matches. Falls
-// back to "5.0.0" when no such anchored code is found.
+// reason string,
+// falling back to "5.0.0" when none is found. reason is not always a bare SMTP
+// reply: on the max-retries path (internal/queue/worker.go) it is a wrapped Go
+// error such as "all MX hosts failed for x.com: RCPT TO bob@x.com: 550 5.1.1
+// <bob@x.com>: User unknown", so the enhanced code is usually embedded
+// mid-string rather than at the front. A match requires the enhanced code's
+// class digit to equal the preceding basic reply code's first digit — always
+// true in a well-formed SMTP reply, and it rejects spurious matches.
+//
 // Every code this generator emits accompanies "Action: failed", and RFC 3464
 // section 2.3.3 ties Status to Action: a permanent-failure report must carry a
 // class-5 code. A reason string can legitimately contain a 2.x.x or 4.x.x code
@@ -258,7 +256,7 @@ func normalizeCRLF(b []byte) string {
 
 // asciiOnly replaces every byte/rune above the 7-bit ASCII range with '?'. Used
 // for MIME parts that declare a 7bit Content-Transfer-Encoding, where emitting
-// raw non-ASCII would be an interop bug (see FR-6).
+// raw non-ASCII would be an interop bug.
 func asciiOnly(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r > unicode7BitMax {
@@ -310,10 +308,10 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	buf.WriteString("Subject: Undelivered Mail Returned to Sender\r\n")
 	fmt.Fprintf(&buf, "Date: %s\r\n", now.Format(time.RFC1123Z))
 	fmt.Fprintf(&buf, "Message-ID: <bounce-%s@%s>\r\n", uuid.New().String(), domain)
-	// FR-4 (RFC 3834 section 5): mark this message as machine-generated so
+	// RFC 3834 section 5: mark this message as machine-generated so
 	// compliant auto-responders / vacation-reply systems do not reply to it.
 	buf.WriteString("Auto-Submitted: auto-replied\r\n")
-	// FR-7: In-Reply-To/References are emitted together, or neither — an
+	// In-Reply-To/References are emitted together, or neither — an
 	// empty-value header must never be produced. MessageGuid is sanitized and
 	// defensively bracketed even though the compose path (compose.go:392) and
 	// address_verify.go already produce a bracketed msg-id; the bounce path
@@ -329,7 +327,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	fmt.Fprintf(&buf, "Content-Type: multipart/report; report-type=delivery-status; boundary=\"%s\"\r\n", boundary)
 	buf.WriteString("\r\n")
 
-	// Part 1: human-readable. FR-6: quoted-printable is the honest CTE for a
+	// Part 1: human-readable. Quoted-printable is the honest CTE for a
 	// UTF-8 body that may contain a non-ASCII Diagnostic-Code/reason; it also
 	// keeps line lengths within the SMTP 998-octet limit for a long relay
 	// error string.
@@ -348,7 +346,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 	_ = writeQuotedPrintable(&buf, part1.String())
 	buf.WriteString("\r\n")
 
-	// Part 2: machine-readable DSN. FR-6/RFC 2045 section 6.4 forbids
+	// Part 2: machine-readable DSN. RFC 2045 section 6.4 forbids
 	// QP/base64 on a message/* part, so this must stay 7bit — which means the
 	// Diagnostic-Code value must actually be ASCII, not merely declared so.
 	fmt.Fprintf(&buf, "--%s\r\n", boundary)
@@ -366,7 +364,7 @@ func buildBounce(original *bongov1.OutboundMessage, failedRecipients []string, r
 		buf.WriteString("\r\n")
 	}
 
-	// Part 3 (FR-5): the original message's header block, when available.
+	// Part 3: the original message's header block, when available.
 	// Best-effort — omitted entirely when originalHeaders is "" (retrieval
 	// failure or unavailable blob store, logged by the caller).
 	if hdrs := originalHeaders; hdrs != "" && !containsBoundaryLine(hdrs, boundary) {
@@ -428,7 +426,7 @@ func isASCII(s string) bool {
 
 // BuildBounceMessage builds a bounce message (exported for testing). domain is
 // the server's configured FQDN/primary domain (see ResolveServerDomain).
-// originalHeaders is the original message's header block for the FR-5
+// originalHeaders is the original message's header block for the
 // text/rfc822-headers MIME part; pass "" to omit that part.
 func BuildBounceMessage(original *bongov1.OutboundMessage, failedRecipients []string, reason, domain, originalHeaders string) []byte {
 	return buildBounce(original, failedRecipients, reason, domain, originalHeaders)

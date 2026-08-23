@@ -33,7 +33,7 @@ func domainAdminPrefixForDomain(domain string) []byte {
 }
 
 // DomainAdminStore manages domain ownership and domain-admin grants in Pebble
-// via Raft. It provides the data model for FR-8 (domain ownership + tenant model).
+// via Raft. It provides the data model for domain ownership and the tenant model.
 //
 // Two key spaces are used (neither collides with existing keys):
 //   - /system/domain/{domain}/owner    → raw bytes (owner user ID string)
@@ -254,9 +254,6 @@ func (s *DomainAdminStore) allManagedDomains() ([]string, error) {
 //
 // The owner and granted sets are merged and deduplicated so a user who is both
 // owner and granted admin of the same domain sees it listed only once.
-//
-// This helper is the foundation for 6.2 enforcement and is tested here; it is
-// NOT wired into any existing endpoint guard in 6.1 (that is 6.2 scope).
 func (s *DomainAdminStore) AuthorizedDomains(userID string, isGlobalAdmin bool) ([]string, error) {
 	if isGlobalAdmin {
 		return s.allManagedDomains()

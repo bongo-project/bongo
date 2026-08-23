@@ -17,16 +17,13 @@ import (
 // (Pebble source of truth). The plaintext code is NEVER stored — only its SHA-256
 // hash. Challenges are single-use, time-limited, and attempt-limited.
 //
-// Partial-failure semantics (two Raft writes on success):
-//
-//  1. AddressStore.Put (sets Verified+CanSend) — performed first.
-//  2. Delete challenge — performed second (best-effort).
-//
-// Ordering is intentional: a crash between the two writes leaves the address
-// correctly verified with a stale challenge. A subsequent submit will find
-// "not found" (if the challenge key was deleted) or a mismatch (attempts
-// exhausted), both of which safely fail. The reverse order would consume the
-// code yet leave the address unverified, locking the user out permanently.
+// Partial-failure semantics: success takes two Raft writes -- AddressStore.Put (sets Verified+CanSend)
+// first, then a best-effort Delete of the challenge. The order is intentional —
+// a crash between the two leaves the address correctly verified with a stale
+// challenge, and a subsequent submit then fails safely ("not found" if the
+// challenge key was deleted, or a mismatch once attempts are exhausted). The
+// reverse order would consume the code yet leave the address unverified,
+// locking the user out permanently.
 type AddressVerifyStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier

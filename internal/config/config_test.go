@@ -339,8 +339,8 @@ func TestConfigDecodesWithSpamAssassinBlock(t *testing.T) {
 	}
 }
 
-// TestConfigDecodesWithoutSpamAssassinBlock is the RISK-2 regression test at
-// the decode layer: hclsimple/gohcl treats a non-pointer HCL block field as
+// TestConfigDecodesWithoutSpamAssassinBlock is the regression test at the
+// decode layer: hclsimple/gohcl treats a non-pointer HCL block field as
 // mandatory, so if SpamAssassin were ever changed back to a plain struct,
 // every existing config file without a spamassassin block (including
 // test/testdata/config.hcl and the shipped deploy configs) would fail to
@@ -562,8 +562,8 @@ func TestPipelineConfigValidate(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			// FR-9: config validation must accept backend = "spamassassin",
-			// which it did not before this task even though the processor
+			// Config validation must accept backend = "spamassassin": it
+			// once rejected it even though the processor
 			// (internal/pipeline/antispam/spamassassin.go) was fully implemented.
 			name: "spamassassin backend is known",
 			cfg: PipelineConfig{
@@ -974,7 +974,7 @@ func TestShippedConfigsPassValidate(t *testing.T) {
 	}
 }
 
-// TestConfigDecodesWithoutDNSBLBlock is the US-001 "no behaviour change when
+// TestConfigDecodesWithoutDNSBLBlock is the "no behaviour change when
 // absent" regression: an HCL file with no dnsbl block (the shared testdata
 // fixture, and every existing deployment config) must still decode, and the
 // DNSBL accessors must report the feature is off with no zones — never
@@ -1171,8 +1171,8 @@ func TestDNSBLZoneExplicitZeroWeightUsesDefault(t *testing.T) {
 	}
 }
 
-// TestDNSBLConfigValidate is table-driven across every rejection case FR-2 /
-// US-001 requires, plus the happy path.
+// TestDNSBLConfigValidate is table-driven across every rejection case
+// Validate must catch, plus the happy path.
 func TestDNSBLConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -31,22 +31,19 @@ func (s AdminScope) HasDomain(d string) bool {
 
 const adminScopeKey contextKey = "adminScope"
 
-// RequireAdminOrDomainAdmin replaces RequireAdmin as the admin-group gate.
+// RequireAdminOrDomainAdmin is the admin-group gate, and replaces RequireAdmin
+// for that purpose -- RequireAdmin still exists and is still exported, so mount
+// this one on admin-group routes. It admits global admins
+// (isAdmin=true from RequireAuth context) and users who administer at least one
+// domain (authorizedFn returns ≥1 domain); regular users and store errors both
+// get 403 (fail-closed). It injects an AdminScope into the request context so
+// downstream handlers can enforce per-resource access without re-querying the
+// store.
 //
-// It allows:
-//   - Global admins (isAdmin=true from RequireAuth context)
-//   - Users who administer at least one domain (authorizedFn returns ≥1 domain)
-//
-// It denies:
-//   - Regular users (not global admin, no authorized domains) → 403
-//   - Store errors → 403 (fail-closed)
-//
-// It also injects an AdminScope into the request context so downstream
-// handlers can enforce per-resource access without re-querying the store.
-//
-// authorizedFn is typically DomainAdminStore.AuthorizedDomains. It MUST NOT
-// be called for global admins (isGlobalAdmin=true) as that would scan all
-// Pebble domains unnecessarily; the middleware implements this optimization.
+// authorizedFn is typically DomainAdminStore.AuthorizedDomains. It MUST NOT be
+// called for global admins (isGlobalAdmin=true) as that would scan all Pebble
+// domains unnecessarily; the middleware already implements this optimization,
+// so this is a property it guarantees rather than an obligation on the caller.
 func RequireAdminOrDomainAdmin(authorizedFn func(userID string, isGlobalAdmin bool) ([]string, error)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -14,24 +14,21 @@ import (
 // of external antispam backends (e.g. Rspamd, SpamAssassin) followed by the
 // built-in heuristic scorer, which always runs as a baseline.
 //
-// External backends run for EVERY message, including Trusted ones. The
-// Trusted flag (task 12.3) exempts a message from origin-authentication
-// interpretation — SPF, DKIM alignment, DMARC — and from nothing else. It is
-// not a content-filtering bypass; builtin.go's boundary comment states that
-// explicitly, and Phase 10 rejected a "local origin" flag that skipped
-// scoring for exactly this reason.
-//
-// Skipping externals for Trusted mail would also rest on a false premise:
-// neither rspamd.go nor spamassassin.go sends the connecting IP, HELO,
-// envelope sender or recipients to the backend — both transmit only the raw
-// message — so an external backend here cannot evaluate origin at all. There
-// is nothing origin-related to protect Trusted mail from, and skipping them
-// would remove genuine content filtering.
+// External backends run for EVERY message, including Trusted ones. Trust
+// exempts a message from origin-authentication interpretation — SPF, DKIM
+// alignment, DMARC — and from nothing else; it is not a content-filtering
+// bypass, and a "local origin" flag that skipped scoring outright was rejected
+// for exactly this reason (see builtin.go's boundary comment). Skipping
+// externals for Trusted mail would also rest on a false premise: neither
+// rspamd.go nor spamassassin.go sends the connecting IP, HELO, envelope sender
+// or recipients to the backend — both transmit only the raw message — so an
+// external backend here cannot evaluate origin at all. There is nothing
+// origin-related to protect Trusted mail from, and skipping them would remove
+// genuine content filtering.
 //
 // Fallback logic:
-//  1. Try each external processor in order. If a processor reports that it is
-//     unavailable (any reason contains "unavailable"), skip it and try the
-//     next.
+//  1. Try each external processor in order, skipping any that reports itself
+//     unavailable (any reason contains "unavailable").
 //  2. Always run the builtin processor for a baseline score.
 //  3. The winner is chosen by severity, not raw score: actionSeverity ranks
 //     pass < tag < reject/quarantine. The external result wins only if its
@@ -90,7 +87,6 @@ func (c *CompositeProcessor) Name() string {
 // Process runs the fallback chain and returns a StageResult. The message body
 // is buffered once so that it can be replayed for each processor.
 func (c *CompositeProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelope, msg io.Reader) (*bongov1.StageResult, error) {
-	// Buffer the message so we can pass it to multiple processors.
 	raw, err := io.ReadAll(msg)
 	if err != nil {
 		return nil, err
@@ -119,7 +115,6 @@ func (c *CompositeProcessor) Process(ctx context.Context, env *bongov1.QueueEnve
 				)
 				continue
 			}
-			// This external processor produced an active result.
 			externalResult = result
 			break
 		}

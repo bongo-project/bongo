@@ -27,7 +27,7 @@ func antispamTestMessage(from, subject, body string) string {
 	return sb.String()
 }
 
-// TestBuildAntispamProcessorBuiltinDefault is the AC5 regression test:
+// TestBuildAntispamProcessorBuiltinDefault is a regression test:
 // backend "" and "builtin" (the deployed configuration) must return the bare
 // *BuiltinProcessor, not a CompositeProcessor wrapping zero externals - the
 // latter would add a full-message buffer copy per message on the default
@@ -124,7 +124,7 @@ func TestBuildAntispamProcessorUnknownBackendFallsBackToBuiltin(t *testing.T) {
 	}
 }
 
-// TestBuildAntispamProcessorHonoursResolver is the AC5 resolver assertion:
+// TestBuildAntispamProcessorHonoursResolver asserts resolver wiring:
 // the builtin processor built for every backend must have SetResolver called
 // with the given resolver, proven behaviourally via a spy resolver whose
 // ResolveRecipient is only reached through the Bayes-blend path.
@@ -191,7 +191,7 @@ func (f *fakeBayesStore) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration)
 	return nil
 }
 
-// TestBuildAntispamProcessorDMARCWiring is the AC5 DMARC assertion. It does
+// TestBuildAntispamProcessorDMARCWiring asserts DMARC wiring. It does
 // not assert on a specific verdict from a live DNS record (that would be
 // flaky and environment-dependent) - only on whether DmarcResult is empty
 // ("" - DMARC not wired/evaluated) or non-empty (wired and evaluated;
@@ -258,9 +258,9 @@ func TestBuildAntispamProcessorDMARCWiring(t *testing.T) {
 }
 
 // TestBuildAntispamProcessorTrustedStillScanned proves the trust boundary
-// holds end to end through the composed rspamd backend: a Trusted envelope
-// (task 12.3) is exempt from ORIGIN AUTHENTICATION only, so the external
-// content scanner must still be consulted.
+// holds end to end through the composed rspamd backend: a Trusted envelope is
+// exempt from ORIGIN AUTHENTICATION only, so the external content scanner must
+// still be consulted.
 //
 // An earlier revision skipped externals for trusted mail, on the false
 // premise that they perform their own origin checks. They cannot — rspamd.go
@@ -300,7 +300,7 @@ func TestBuildAntispamProcessorTrustedStillScanned(t *testing.T) {
 // TestDNSBLOption_DisabledReturnsNil covers the "no dnsbl block configured"
 // and "enabled=false" cases: dnsblOption must return nil so the caller never
 // appends an option, which is what keeps buildAntispamProcessor's default
-// (no dnsbl block) path byte-identical to pre-13.3 behaviour.
+// (no dnsbl block) path byte-identical to the behaviour before DNSBL existed.
 func TestDNSBLOption_DisabledReturnsNil(t *testing.T) {
 	tests := []struct {
 		name   string

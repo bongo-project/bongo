@@ -92,9 +92,9 @@ func dnsblApproxEqual(a, b float32) bool {
 	return d < dnsblEpsilon
 }
 
-// TestApplyDNSBL_ListingAddsScoreAndReason is the FR-8 core case: a
-// listed zone raises the score by exactly its configured weight and adds a
-// reason naming the zone.
+// TestApplyDNSBL_ListingAddsScoreAndReason is the core case: a listed zone
+// raises the score by exactly its configured weight and adds a reason naming
+// the zone.
 func TestApplyDNSBL_ListingAddsScoreAndReason(t *testing.T) {
 	const zone = "zen.example-bl.test"
 	const weight = 0.3
@@ -133,7 +133,7 @@ func TestApplyDNSBL_ListingAddsScoreAndReason(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_NotListedNoChange covers the negative FR-6 case: an IP
+// TestApplyDNSBL_NotListedNoChange covers the negative case: an IP
 // listed in no zone leaves the score unchanged and adds no reason, even
 // though the lookup did happen (proving this is "queried and clean", not
 // "skipped").
@@ -168,7 +168,7 @@ func TestApplyDNSBL_NotListedNoChange(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_MultipleZonesSumBothWeights is the FR-4/FR-8 two-zone case: two
+// TestApplyDNSBL_MultipleZonesSumBothWeights is the two-zone case: two
 // zones listing the same IP contribute both weights and both reasons.
 func TestApplyDNSBL_MultipleZonesSumBothWeights(t *testing.T) {
 	const zoneA = "zen.example-bl.test"
@@ -208,7 +208,7 @@ func TestApplyDNSBL_MultipleZonesSumBothWeights(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_ClampToOne pins FR-8: a weight sum that would exceed 1.0
+// TestApplyDNSBL_ClampToOne pins the clamp: a weight sum that would exceed 1.0
 // clamps at 1.0 rather than overflowing the score/threshold contract.
 func TestApplyDNSBL_ClampToOne(t *testing.T) {
 	const zoneA = "zen.example-bl.test"
@@ -227,7 +227,7 @@ func TestApplyDNSBL_ClampToOne(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_HighWeightQuarantinesButNeverRejects pins FR-9 / US-004's
+// TestApplyDNSBL_HighWeightQuarantinesButNeverRejects pins the
 // "never rejects at SMTP time" requirement. A maximum-weight listing crosses
 // the high (quarantine) threshold, but the returned action must still come
 // from the ordinary "pass"/"tag"/"quarantine" set the pipeline stage
@@ -257,9 +257,8 @@ func TestApplyDNSBL_HighWeightQuarantinesButNeverRejects(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_AfterBayesBlend_NotDiluted pins the score PLACEMENT decision
-// (the PRD's "Ordering" technical consideration, not an FR): the
-// same zone weight must move the score by the same amount whether or not a
+// TestApplyDNSBL_AfterBayesBlend_NotDiluted pins the score PLACEMENT decision:
+// the same zone weight must move the score by the same amount whether or not a
 // Bayes blend ran, proving the DNSBL contribution is added AFTER the blend
 // (score + w) rather than being folded into it (0.6*score + 0.4*bayes + w,
 // or worse, blended at the 0.6 factor -- which would shrink a configured
@@ -355,7 +354,7 @@ func TestApplyDNSBL_AfterBayesBlend_NotDiluted(t *testing.T) {
 }
 
 // TestApplyDNSBL_UnknownZoneContributesNothing covers the config/checker
-// drift case from the revised task definition: a zone the checker reports
+// drift case: a zone the checker reports
 // as listed but that has no entry in the weights map (because config and
 // checker zone lists have drifted) must contribute nothing, not panic, and
 // not silently guess a weight.
@@ -388,8 +387,8 @@ func TestApplyDNSBL_UnknownZoneContributesNothing(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_DeadZoneFailsOpen pins that 13.1's fail-open guarantee
-// survives the 13.3 wiring: a zone that never answers (simulating a
+// TestApplyDNSBL_DeadZoneFailsOpen pins that the checker's fail-open guarantee
+// survives this wiring: a zone that never answers (simulating a
 // dead/timing-out resolver) must leave the message accepted and scored as
 // not-listed, not stuck or erroring.
 func TestApplyDNSBL_DeadZoneFailsOpen(t *testing.T) {
@@ -454,8 +453,8 @@ func TestBuiltinDNSBLDisabled_ScoringUnaffectedBySourceIP(t *testing.T) {
 	}
 }
 
-// TestApplyDNSBL_SkipRules covers every "zero resolver calls" case from
-// US-003: each of these must return before the checker is ever consulted.
+// TestApplyDNSBL_SkipRules covers every "zero resolver calls" skip case: each
+// of these must return before the checker is ever consulted.
 // Every case configures a resolver that WOULD answer "listed" for the
 // configured zone, so a call count of zero really does prove the lookup was
 // skipped, not merely that this particular IP happens to be clean.

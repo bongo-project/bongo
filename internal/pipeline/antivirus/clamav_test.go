@@ -175,11 +175,11 @@ func TestClamAVVirusFound(t *testing.T) {
 	}
 }
 
-// TestClamAVUnreachable is the AC regression test for the on_failure policy:
-// an earlier revision always returned "pass" on scanner failure, silently
-// delivering unscanned mail. That was inverted by this task's PRD decision
-// (US-003/FR-7/FR-12): the default is now "quarantine", and "pass" is
-// reachable only by explicitly opting into OnFailureAccept.
+// TestClamAVUnreachable is the regression test for the on_failure policy: an
+// earlier revision always returned "pass" on scanner failure, silently
+// delivering unscanned mail. That was inverted: the default is now
+// "quarantine", and "pass" is reachable only by explicitly opting into
+// OnFailureAccept.
 func TestClamAVUnreachable(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -223,10 +223,9 @@ func TestClamAVUnreachable(t *testing.T) {
 
 // TestClamAVErrorResponse covers clamd responses that are neither "stream:
 // OK" nor a " FOUND" verdict — e.g. the INSTREAM size-limit response, or any
-// other internal-fault response. Before this task these fell into the
-// unconditional "pass" default branch and were delivered unscanned with only
-// a Warn log; they must now go through the same OnFailure policy as an
-// unreachable clamd.
+// other internal-fault response. These once fell into the unconditional
+// "pass" default branch and were delivered unscanned with only a Warn log;
+// they must now go through the same OnFailure policy as an unreachable clamd.
 func TestClamAVErrorResponse(t *testing.T) {
 	tests := []struct {
 		name       string

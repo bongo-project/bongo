@@ -411,7 +411,8 @@ func (h *MailHandler) ShowMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Lazy backfill: populate threading fields from raw blob for pre-sprint-08 messages.
+	// Lazy backfill: populate threading fields from the raw blob for messages
+	// stored before threading metadata was recorded.
 	if meta.InReplyTo == "" && meta.RawMessage != nil && meta.RawMessage.Hash != "" {
 		h.backfillThreadingFields(userID, msg.MailGuid, meta)
 	}
@@ -542,8 +543,7 @@ func (h *MailHandler) findMailboxMessageByGUID(userID, preferredMailbox, guid st
 // proto-recorded attachments not present in the parsed envelope are then merged
 // in. This is the single MIME-parse path shared by ShowMessage and the thread
 // sibling rendering in messageDetailFromMeta, so each message's envelope is
-// parsed at most once per render (previously this logic was duplicated at two
-// call sites, each with its own enmime.ReadEnvelope).
+// parsed at most once per render.
 func (h *MailHandler) applyEnvelopeBody(detail *templates.MessageDetail, meta *bongov1.MailMeta) {
 	if meta.RawMessage != nil && meta.RawMessage.Hash != "" && h.blobs != nil {
 		rawMsg, err := store.RawMessageBytes(h.blobs, meta)
@@ -1082,30 +1082,28 @@ func (h *MailHandler) ExportEML(w http.ResponseWriter, r *http.Request) {
 // messageSourceMaxBytes caps how much of a message's raw RFC 5322 source is
 // rendered by ViewSource, measured in raw bytes before HTML escaping.
 //
-// 256 KiB was chosen deliberately, not as an arbitrary round number:
-//   - Headers -- the entire diagnostic point of this view after 10.5 added
-//     Authentication-Results and X-Spam-Score/Status/Reasons -- live at the
-//     very start of the message, so a head-truncation never costs the
-//     diagnostic payload.
-//   - HTML escaping can expand a byte up to ~6x in the worst case
-//     (`<` -> `&lt;`), so 256 KiB of raw input bounds the rendered page at
-//     roughly 1.5 MB even for pathological input, versus the 25 MB default
-//     max_message_size (config.go) which could otherwise produce a ~150 MB
-//     DOM that hangs or crashes the tab.
-//   - 256 KiB is far larger than a typical message's headers plus visible
-//     text; it only bites on messages that are large because of base64
-//     attachment payloads, which are unreadable in a <pre> anyway. Those
-//     users are pointed at the existing Export route for the full message.
+// 256 KiB was chosen deliberately, not as an arbitrary round number. The
+// headers -- Authentication-Results and X-Spam-Score/Status/Reasons, the whole
+// diagnostic point of this view -- live at the very start of the message, so
+// head-truncation never costs the diagnostic payload. HTML escaping can expand a
+// byte up to ~6x in the worst case (`<` -> `&lt;`), so 256 KiB of raw input
+// bounds the rendered page at roughly 1.5 MB even for pathological input,
+// versus the 25 MB default max_message_size (config.go) which could otherwise
+// produce a ~150 MB DOM that hangs or crashes the tab. The cap is far larger
+// than a typical message's headers plus visible text; it only bites on messages
+// that are large because of base64 attachment payloads, which are unreadable in
+// a <pre> anyway -- those users are pointed at the Export route for the full
+// message.
 const messageSourceMaxBytes = 256 << 10
 
 // ViewSource renders a message's full raw RFC 5322 source (headers and body)
 // as an HTML page for in-browser diagnosis -- e.g. reading the
-// Authentication-Results / X-Spam-* headers landed in 10.5 to see why a
-// message was filed as spam. The source is capped at messageSourceMaxBytes
-// and rendered with plain templ string interpolation inside a <pre>, which
-// HTML-escapes it: the raw source is entirely attacker-controlled, so no
-// templ.Raw / @templ.Raw is used here (see ExportEML for the byte-identical
-// download path this view links to for the untruncated message).
+// Authentication-Results / X-Spam-* headers to see why a message was filed as
+// spam. The source is capped at messageSourceMaxBytes and rendered with plain
+// templ string interpolation inside a <pre>, which HTML-escapes it: the raw
+// source is entirely attacker-controlled, so no templ.Raw / @templ.Raw is used
+// here (see ExportEML for the byte-identical download path this view links to
+// for the untruncated message).
 func (h *MailHandler) ViewSource(w http.ResponseWriter, r *http.Request) {
 	userID, email := middleware.UserFromContext(r.Context())
 	mailbox := decodeMailbox(chi.URLParam(r, "mailbox"))
@@ -2074,7 +2072,8 @@ func (h *MailHandler) loadSidebarTags(userID, selected string) []templates.Sideb
 }
 
 // backfillThreadingFields parses In-Reply-To, References, and Cc from the raw
-// blob and updates the Pebble key via Raft. This handles pre-sprint-08 messages.
+// blob and updates the Pebble key via Raft. This handles messages stored before
+// threading metadata was recorded.
 func (h *MailHandler) backfillThreadingFields(userID, guid string, meta *bongov1.MailMeta) {
 	if h.applier == nil {
 		return

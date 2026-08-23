@@ -38,7 +38,7 @@ type BuiltinProcessor struct {
 	highThreshold float32               // score >= this -> quarantine
 	dmarc         *mail.DMARCEvaluator  // may be nil; inbound DMARC policy enforcement
 	dmarcEnforce  bool                  // when false, DMARC is evaluated and logged but not applied
-	dnsbl         *dnsbl.Checker        // may be nil; DNS blocklist checks (task 13.3)
+	dnsbl         *dnsbl.Checker        // may be nil; DNS blocklist checks
 	dnsblWeights  map[string]float64    // zone name -> score contribution; written once at construction, read concurrently
 	logger        *slog.Logger
 }
@@ -101,14 +101,13 @@ func WithDMARC(e *mail.DMARCEvaluator, enforce bool) Option {
 	}
 }
 
-// WithDNSBL enables per-message DNS blocklist checks (task 13.3). checker
-// performs the actual lookups (internal/dnsbl); weights maps each configured
-// zone's normalised name (trim, lower-case, strip trailing dot) to its
-// scoring contribution, using the same normalisation
-// internal/config.normalizeDNSBLZone and internal/dnsbl's own normalizeZone
-// both apply to the names dnsbl.ZoneResult.Zone returns, so map lookups in
-// applyDNSBL hit. The two normalisers are kept in step by hand (see the
-// comments on both) — do not add a third one here.
+// WithDNSBL enables per-message DNS blocklist checks. checker performs the
+// lookups (internal/dnsbl); weights maps each zone's normalised name (trim,
+// lower-case, strip trailing dot) to its score contribution. That
+// normalisation must match what internal/config.normalizeDNSBLZone and
+// internal/dnsbl's own normalizeZone apply to the names dnsbl.ZoneResult.Zone
+// returns, or applyDNSBL's map lookups miss; those two normalisers are kept in
+// step by hand — do not add a third one here.
 //
 // Both checker and weights are read concurrently once Process starts: the
 // pipeline Runner drives many worker goroutines against one shared
@@ -116,17 +115,14 @@ func WithDMARC(e *mail.DMARCEvaluator, enforce bool) Option {
 // concurrency-safe by internal/dnsbl; weights must never be mutated after
 // being passed here — the caller owns a private copy.
 //
-// A caller-supplied nil checker leaves p.dnsbl nil, so the option is
-// nil-safe in the same sense as WithBayes/WithDMARC: applyDNSBL's first
-// check (p.dnsbl == nil) makes that equivalent to the option never having
-// been applied at all.
+// A nil checker leaves p.dnsbl nil, which applyDNSBL's first check treats as
+// the option never having been applied — nil-safe like WithBayes/WithDMARC.
 //
-// Known limitation, not fixed here: when an external backend (rspamd,
-// spamassassin) wins in CompositeProcessor, only the builtin's DmarcResult
-// is carried across — Reasons is dropped (composite.go ~146-170), so a
-// DNSBL zone name added here can disappear from X-Spam-Reasons on those
-// deployments. The default builtin-only path is unaffected. This is a
-// composite-level gap and is intentionally out of scope for task 13.3.
+// Known limitation: when an external backend (rspamd, spamassassin) wins in
+// CompositeProcessor, only the builtin's DmarcResult is carried across and
+// Reasons is dropped (composite.go), so a DNSBL zone name added here can
+// disappear from X-Spam-Reasons on those deployments. The default
+// builtin-only path is unaffected; this is a composite-level gap.
 func WithDNSBL(checker *dnsbl.Checker, weights map[string]float64) Option {
 	return func(p *BuiltinProcessor) {
 		p.dnsbl = checker
@@ -148,7 +144,6 @@ func NewBuiltinProcessor(scorer *antispam.Scorer, opts ...Option) *BuiltinProces
 	return p
 }
 
-// Name returns the stage identifier for this processor.
 // HasDNSBL reports whether a DNSBL checker is wired into this processor.
 //
 // It exists so a construction site can be tested for the wiring itself
@@ -162,6 +157,7 @@ func (p *BuiltinProcessor) HasDNSBL() bool {
 	return p != nil && p.dnsbl != nil
 }
 
+// Name returns the stage identifier for this processor.
 func (p *BuiltinProcessor) Name() string {
 	return "antispam"
 }
@@ -204,18 +200,17 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 	// Origin-authentication signals (SPF interpretation, DKIM verification,
 	// DMARC evaluation) are skipped entirely for a Trusted envelope: the
-	// message arrived authenticated (SMTP AUTH) or from a trusted network
-	// (task 12.2), so the connecting IP's SPF/DKIM/DMARC alignment against the
-	// From domain is meaningless and was misjunking same-domain app-to-user
-	// mail (e.g. noreply@example.com -> user@example.com, SPF softfail against
-	// a container bridge IP, no DKIM signature, p=quarantine). Phrase/heuristic
-	// scoring and Bayesian classification are NOT skipped: trust removes
-	// origin-authentication interpretation only, never content filtering.
-	// Phase 10 explicitly rejected a general "local origin" flag that skipped
-	// scoring outright, because inbound internet mail enters through the same
-	// EnqueueLocal path and such a flag would be one careless caller away from
-	// a full antispam bypass — do not widen this beyond the three signals
-	// named here.
+	// message arrived authenticated (SMTP AUTH) or from a trusted network,
+	// so the connecting IP's SPF/DKIM/DMARC alignment against the From domain
+	// is meaningless and was misjunking same-domain app-to-user mail (e.g.
+	// noreply@example.com -> user@example.com, SPF softfail against a container
+	// bridge IP, no DKIM signature, p=quarantine). Phrase/heuristic scoring and
+	// Bayesian classification are NOT skipped: trust removes
+	// origin-authentication interpretation only, never content filtering. A
+	// general "local origin" flag that skipped scoring outright was rejected,
+	// because inbound internet mail enters through the same EnqueueLocal path
+	// and such a flag would be one careless caller away from a full antispam
+	// bypass — do not widen this beyond the three signals named here.
 	trusted := env.GetTrusted()
 
 	// Verify the DKIM signature so the scorer's DKIM heuristic (which reads
@@ -342,35 +337,30 @@ func (p *BuiltinProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 //   - p.dnsbl == nil: feature disabled (WithDNSBL was never applied, or was
 //     applied with a nil checker). Zero allocation, zero lookup.
 //   - trusted: DNSBL is an origin-reputation signal (is this stranger's
-//     connecting IP listed), not content filtering. The Trusted comment in
-//     Process above states that trust removes origin-authentication
-//     interpretation (SPF/DKIM/DMARC) but never content filtering — this is
-//     a deliberate, PRD-granted exception to that rule, not a violation of
-//     it: a listing judges the connection a trusted envelope has already had
-//     judged (SMTP AUTH, or a trusted network per task 12.2/12.3), so the
-//     blocklist question does not apply. Do not widen this to skip Bayes or
-//     the heuristic scorer — only DNSBL.
+//     connecting IP listed), not content filtering, so it is a deliberate
+//     exception to the Trusted rule in Process that trust never removes
+//     content filtering: a listing judges a connection a trusted envelope has
+//     already had judged (SMTP AUTH, or a trusted network), so the blocklist
+//     question does not apply. Do not widen this to skip Bayes or the
+//     heuristic scorer — only DNSBL.
 //   - empty or unparseable SourceIp: nothing to look up.
 //   - private, loopback, link-local, or unspecified: a container or LAN
 //     address is not meaningfully listable (nothing public lists it), and
 //     querying it anyway would leak internal addressing to the blocklist
-//     operator. This is a privacy control (PRD US-003), not an
-//     optimisation — the lookup must not happen, not merely be scored as
-//     zero. IsPrivate covers RFC1918 and IPv6 ULA fc00::/7;
+//     operator. That leak is why the lookup must not happen at all rather
+//     than merely score zero. IsPrivate covers RFC1918 and IPv6 ULA fc00::/7;
 //     IsLinkLocalUnicast covers 169.254/16 and fe80::/10; both mirror the
-//     stdlib predicates internal/web/middleware/request.go already uses for
-//     a related (but distinct: HTTP proxy trust, not DNSBL listability)
-//     purpose.
+//     stdlib predicates internal/web/middleware/request.go uses for a related
+//     but distinct purpose (HTTP proxy trust, not DNSBL listability).
 //
 // No role gate is needed here (unlike WithDMARC's dev-mode skip in
 // buildAntispamProcessor): DNSBL is opt-in and off by default, and dev
-// traffic is loopback/private, so the skip rule above already excludes it.
+// traffic is loopback/private, so the skip rules already exclude it.
 //
-// Operational caveat (not enforced in code, worth repeating here): DNSBL is
-// only meaningful when SourceIp is the real client IP. Behind a reverse
-// proxy without smtp.proxy_protocol configured, SourceIp is the proxy's own
-// address and every message is scored on the proxy's reputation instead of
-// the sender's.
+// Operational caveat, not enforced in code: DNSBL is only meaningful when
+// SourceIp is the real client IP. Behind a reverse proxy without
+// smtp.proxy_protocol configured, SourceIp is the proxy's own address and
+// every message is scored on the proxy's reputation instead of the sender's.
 func (p *BuiltinProcessor) applyDNSBL(ctx context.Context, env *bongov1.QueueEnvelope, trusted bool, score float32, reasons []string) (float32, []string) {
 	if p.dnsbl == nil || trusted {
 		return score, reasons

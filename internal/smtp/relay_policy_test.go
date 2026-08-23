@@ -114,7 +114,7 @@ func smtpCode(err error) int {
 
 // --- tests ----------------------------------------------------------------
 
-// B2: an unauthenticated sender may deliver to a local recipient but is refused
+// An unauthenticated sender may deliver to a local recipient but is refused
 // relay to an external recipient.
 func TestRcptUnauthenticatedRelayDenied(t *testing.T) {
 	b, deliverer, _ := testBackend("staff@example.com")
@@ -135,7 +135,7 @@ func TestRcptUnauthenticatedRelayDenied(t *testing.T) {
 	}
 }
 
-// B1: the submission port rejects MAIL FROM before authentication.
+// The submission port rejects MAIL FROM before authentication.
 func TestSubmissionRequiresAuth(t *testing.T) {
 	b, _, _ := testBackend("staff@example.com")
 	s := &Session{backend: b, logger: b.logger, submission: true}
@@ -182,7 +182,7 @@ func TestSMTPAuthFailuresAreRateLimited(t *testing.T) {
 	}
 }
 
-// B3: an authenticated session may relay to external recipients, which are
+// An authenticated session may relay to external recipients, which are
 // enqueued for outbound delivery rather than dropped.
 func TestAuthenticatedRelayToExternal(t *testing.T) {
 	b, deliverer, relay := testBackend("staff@example.com")
@@ -222,9 +222,9 @@ func TestSanitizeHeaderValue(t *testing.T) {
 	}
 }
 
-// US-001 AC5 & FR-2: The trust flag is set ONLY from the SMTP session's authed
-// state. No header, envelope field, or client-supplied value can set it. A message
-// from an unauthenticated MX connection arrives untrusted even if it claims to be
+// The trust flag is set ONLY from the SMTP session's authed state. No header,
+// envelope field, or client-supplied value can set it. A message from an
+// unauthenticated MX connection arrives untrusted even if it claims to be
 // trusted via headers that could plausibly be believed by careless downstream code.
 func TestUnauthenticatedMXArrivesUntrusted(t *testing.T) {
 	tests := []struct {
@@ -284,7 +284,7 @@ func TestMXSessionCannotAuthenticate(t *testing.T) {
 	}
 }
 
-// FR-2: An authenticated submission port message arrives trusted.
+// An authenticated submission port message arrives trusted.
 func TestAuthenticatedSubmissionArrivesTrusted(t *testing.T) {
 	b, deliverer, _ := testBackend("alice@example.com", "bob@example.com")
 	// Authenticated session on submission port with userID matching the sender domain

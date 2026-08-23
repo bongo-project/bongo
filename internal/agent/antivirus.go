@@ -14,23 +14,21 @@ import (
 // antispam.go) so both stage builders can be tested without booting an
 // Agent, and so an operator reading one understands the other.
 //
-// Precedence, matching buildAntispamProcessor: enabled = false on the
-// backend's own config block WINS over the stage being enabled, and no
-// scanner is constructed. A stage that is enabled but backed by nothing
-// usable must not silently pretend to scan — so this returns a typed nil
-// (an untyped `nil` pipeline.Processor, not a nil *ClamAVProcessor wrapped
-// in the interface, which the runner would call Process on and panic) and
-// logs at ERROR, because "the operator asked for AV scanning and none is
-// happening" is materially different from "the operator turned AV off".
-// Callers must check the returned value against nil before appending it to
-// the stage list.
+// Precedence, matching buildAntispamProcessor: enabled = false on the backend's
+// own config block WINS over the stage being enabled, and no scanner is
+// constructed. A stage that is enabled but backed by nothing usable must not
+// silently pretend to scan, so this returns an untyped `nil` pipeline.Processor
+// — not a nil *ClamAVProcessor wrapped in the interface, which the runner would
+// call Process on and panic — and logs at ERROR, because "the operator asked for
+// AV scanning and none is happening" is materially different from "the operator
+// turned AV off". Callers must check the returned value against nil before
+// appending it to the stage list.
 //
 // Ordering note: in the default stage list (config.go defaultPipelineStages)
 // antispam runs before antivirus, and the runner returns immediately once a
-// stage's result is a quarantine action (runner.go, processMessage). A
-// message quarantined by antispam is therefore never virus-scanned. That is
-// intentional and out of scope for this task — do not reorder the stages to
-// "fix" it.
+// stage's result is a quarantine action (runner.go, processMessage). A message
+// quarantined by antispam is therefore never virus-scanned. That is intentional
+// — do not reorder the stages to "fix" it.
 func buildAntivirusProcessor(cfg *config.Config, backend string, logger *slog.Logger) pipeline.Processor {
 	switch backend {
 	case "", "clamav":

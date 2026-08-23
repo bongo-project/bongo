@@ -61,7 +61,7 @@ func (f *fakeResolver) LookupIP(ctx context.Context, host string) ([]net.IP, err
 	if hang {
 		// Select on ctx.Done() rather than time.Sleep(arbitraryDuration):
 		// this fake must respect the shared deadline exactly, or the
-		// FR-4 concurrency test becomes timing-flaky under load.
+		// shared-timeout concurrency test becomes timing-flaky under load.
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
@@ -194,12 +194,12 @@ func TestCheck_ErrorShapesAllTreatedAsNotListed(t *testing.T) {
 	}
 }
 
-// TestCheck_ConcurrentZonesUnderSharedTimeout is the FR-4 test: five zones,
-// THREE of which never respond, must still cost one timeout's worth of
-// latency rather than three, and the two healthy zones' verdicts must
-// survive. Three hanging zones is the point of the shape -- with only one,
-// a per-zone-timeout implementation (the exact thing FR-4 forbids) also
-// finishes in one timeout and the test passes vacuously.
+// TestCheck_ConcurrentZonesUnderSharedTimeout checks that five zones, THREE
+// of which never respond, still cost one timeout's worth of latency rather
+// than three, and that the two healthy zones' verdicts survive. Three hanging
+// zones is the point of the shape -- with only one, a per-zone-timeout
+// implementation (the exact thing the shared timeout rules out) also finishes
+// in one timeout and the test passes vacuously.
 func TestCheck_ConcurrentZonesUnderSharedTimeout(t *testing.T) {
 	ip := net.ParseIP("203.0.113.5")
 	const (
@@ -459,8 +459,8 @@ func TestCheck_ConcurrentUseIsRaceFree(t *testing.T) {
 	wg.Wait()
 }
 
-// TestListingIsLoggedWithIPZoneAndCode pins PRD US-004's logging criterion:
-// each listing records the IP, the zone and the returned code at INFO, so an
+// TestListingIsLoggedWithIPZoneAndCode pins the logging criterion: each
+// listing records the IP, the zone and the returned code at INFO, so an
 // operator can answer "why was this junked" from the logs alone. It also
 // pins the constraint that goes with it -- the DNSBL path never logs message
 // content, because it never sees any.

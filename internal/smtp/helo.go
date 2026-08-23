@@ -22,7 +22,7 @@ const HELONotQualifiedWarning = "relay: no fully-qualified HELO name could be de
 // and the caller must fall back to an address literal (see addressLiteral)
 // rather than sending an empty or unqualified argument.
 //
-// Resolution order (FR-20):
+// Resolution order:
 //  1. smtpHostname (SMTP.Hostname config), when it passes the qualified-name
 //     gate.
 //  2. os.Hostname(), when it contains a dot and passes the gate.
@@ -35,8 +35,8 @@ func ResolveHELOName(smtpHostname, dkimDomain string) (name string, ok bool) {
 }
 
 // resolveHELOName is the testable core of ResolveHELOName: hostnameFn and
-// resolveServerDomain are injected so the resolution order (FR-20/FR-21) can
-// be exercised deterministically, independent of the machine's real hostname.
+// resolveServerDomain are injected so the resolution order can be exercised
+// deterministically, independent of the machine's real hostname.
 func resolveHELOName(smtpHostname, dkimDomain string, hostnameFn func() (string, error), resolveServerDomain func(dkimDomain, smtpHostname string) string) (name string, ok bool) {
 	if h, qualified := qualifyHELOCandidate(smtpHostname); qualified {
 		return h, true
