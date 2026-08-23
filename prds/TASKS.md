@@ -31,34 +31,7 @@ PRD in [done/prd-multidomain-hosting.md](done/prd-multidomain-hosting.md).
 
 ## Phase 12: Trusted submission & scanner wiring — 8 tasks completed 2026-08-20 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 13: DNSBL / blocklist checks
-
-PRD: [prd-dnsbl-blocklist-checks.md](active/prd-dnsbl-blocklist-checks.md).
-Adds configurable DNS blocklist lookups on inbound mail — the cheapest reputation signal there is,
-and currently absent: inbound scoring never consults the connecting IP at all.
-
-**A listing SCORES, it never rejects.** That is not timidity, it is experience: on 2026-08-17 this
-server was listed on `b.barracudacentral.org` having never sent a single message, purely because the
-hosting provider recycled the IP. A receiver configured to reject on that listing would have
-silently discarded legitimate mail with only a 5xx to show for it. Blocklists are useful evidence
-and poor verdicts.
-
-**Verified before import (the PRD predates two of these):**
-- FR-7's trust skip is now directly implementable — `env.GetTrusted()` exists as of Phase 12
-  (`builtin.go:169`). The PRD was written when it did not.
-- The `DNSResolver` seam the PRD wants to reuse exists at `internal/mail/spf.go:41` with
-  `LookupTXT` and `LookupIP`, so DNSBL's A-record queries fit it without a new abstraction.
-- `proxy_protocol = true` on prod, so the connecting IP really is the client's. This is the
-  PRD's decisive caveat and it is already satisfied — but see 13.5, because it stops being true
-  if bongo is moved to face the internet directly without clearing that flag.
-
-| # | Task | Status | Notes |
-|---|------|--------|-------|
-| 13.1 | US-001/US-002 core / FR-3, FR-4, FR-5, FR-10, FR-11: the lookup engine, as a self-contained package with an injected resolver (follow `internal/mail/spf.go`'s `DNSResolver`). Build the query as `<reversed-ip>.<zone>` — reversed octets for IPv4, reversed nibbles for IPv6 — and treat any `127.0.0.0/8` answer as a listing, NXDOMAIN as not listed. All configured zones queried CONCURRENTLY under ONE shared timeout, so N zones cost one timeout rather than N. Any error at all — timeout, SERVFAIL, malformed answer, a zone that does not support IPv6 — is not-listed plus a log, never a failure. Per-IP result cache with a configurable TTL so a sender delivering several messages is looked up once. NO test may touch the network. | DONE (2026-08-22) | `internal/dnsbl`. FR-3 amended: 127.255.255.0/24 carved out as policy-error, recorded in the PRD. Advisor review MINOR, all 7 findings fixed. |
-| 13.2 | US-001 / FR-1, FR-2: config. A `dnsbl` block under `antispam` holding a global enable, a shared timeout, a cache TTL, and a list of zones each with a name and an optional weight (documented default when omitted). Parse and validate at startup, at the POINT OF USE — do NOT wire `cfg.Validate()` into the startup path (see B8; it is unreachable in production and enabling it activates dormant gates that would stop existing deployments booting). Follow `SMTP.ParseTrustedNetworks` for the pattern. A malformed zone or weight fails startup naming the offending value. Default is empty/disabled. Needs: 13.1. | DONE (2026-08-22) | Pointer block, so existing configs still decode. Validated at top of Agent.Run (all roles). Default weight 0.25. |
-| 13.3 | US-003 / FR-6, FR-7, FR-8, FR-9: wire into the antispam stage. A listing adds its weight to the score and appends a reason naming the zone; it must NEVER trigger an SMTP rejection regardless of weight. Skip the lookup entirely for: private (RFC 1918), loopback and link-local source addresses — a container or LAN address is not meaningfully listable and querying it leaks internal addressing to the blocklist operator; an empty or unparseable source IP; and any envelope with `GetTrusted()` set, since blocklists judge strangers, not your own users. Ordering: this belongs in the antispam stage alongside the other signals, NOT at SMTP time, so a slow zone delays nothing the sender is waiting on. Tests must cover both halves — a listed IP scores higher, and each skip case performs NO lookup at all (assert on the injected resolver, not just the score). Needs: 13.1, 13.2. | DONE (2026-08-22) | Contribution applied after the Bayes blend so a configured weight is not diluted; clamped to 1.0. Wired at BOTH construction sites. Reasons-drop-on-external-win filed as B14. |
-| 13.4 | US-004 / FR-8: make the verdict visible. The delivered message's `X-Spam-Reasons` names the zone that listed the IP, so "why was this junked" stays answerable. Explicitly do NOT put it in `Authentication-Results` — DNSBL is not an authentication method and overloading that header would be misleading to downstream tooling. One INFO log per listing recording IP, zone and returned code; never log message content. Trace-header stamping lives in `internal/pipeline/deliver/headers.go` (`buildSpamHeaders`). Needs: 13.3. | DONE (2026-08-22) | No production code needed - existing generic machinery already satisfied both halves. Added the missing proof: 5 tests, each injection-verified. |
-| 13.5 | (docs) Document it in `deploy/bongo.example.hcl` in place. Cover: the shape of the zone list with a PLACEHOLDER zone rather than real ones — naming real blocklists is a soft endorsement and carries their terms of use, several prohibit commercial or high-volume querying without a subscription, and the public resolvers will rate-limit a busy server into silence (PRD open question 1; go with the placeholder unless the operator says otherwise). Explain that a listing scores and never rejects, and why. **And state the proxy-protocol dependency plainly**: DNSBL is only meaningful if the connecting IP is the real client's. Behind a proxy that needs `smtp.proxy_protocol = true`; facing the internet directly it needs to be FALSE. Get that wrong and every lookup either checks the proxy's reputation or fails — worse than not running it. Needs: 13.4. | DONE (2026-08-22) | Placeholder zones (replaced the real names 13.2 shipped), proxy-protocol caveat both ways, plus a doc-contract test - the block ships commented out so its syntax was never exercised. |
+## Phase 13: DNSBL / blocklist checks — 5 tasks completed 2026-08-22 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Backlog (unscheduled)
 
