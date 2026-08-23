@@ -183,7 +183,7 @@ func applyMailboxAppend(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxComm
 	meta.UidNext = uid + 1
 
 	msg.Uid = uid
-	if err := commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	if err := commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, mailbox, meta); err != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ func applyMailboxDelivery(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCo
 		Tags:         append([]string(nil), meta.Tags...),
 	}
 
-	if err := commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	if err := commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := batch.Set([]byte(fmt.Sprintf("/user/%s/mail/%s", userID, meta.Guid)), payload.Meta, nil); err != nil {
 			return fmt.Errorf("writing mail meta: %w", err)
 		}
@@ -284,7 +284,7 @@ func applyMailboxCopy(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		InternalDate: srcMsg.InternalDate,
 		Tags:         append([]string(nil), srcMsg.Tags...),
 	}
-	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.DstMailbox, dstMeta); err != nil {
 			return err
 		}
@@ -305,7 +305,7 @@ func applyMailboxDelete(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 	if err != nil {
 		return fmt.Errorf("listing messages for delete: %w", err)
 	}
-	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		for _, msg := range msgs {
 			if err := batch.Delete(mailboxMsgKey(userID, mailbox, msg.Uid), nil); err != nil {
 				return fmt.Errorf("deleting message %d: %w", msg.Uid, err)
@@ -328,7 +328,7 @@ func applyMailboxExpunge(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 	if err != nil {
 		return fmt.Errorf("listing for expunge: %w", err)
 	}
-	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		for _, msg := range msgs {
 			if msg.Flags&FlagDeleted == 0 {
 				continue
@@ -366,7 +366,7 @@ func applyMailboxMove(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		InternalDate: srcMsg.InternalDate,
 		Tags:         append([]string(nil), srcMsg.Tags...),
 	}
-	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.DstMailbox, dstMeta); err != nil {
 			return err
 		}
@@ -403,7 +403,7 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 	if err != nil {
 		return fmt.Errorf("listing messages for rename: %w", err)
 	}
-	return commitMailboxBatch(ps, func(batch *pebble.Batch) error {
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.NewName, newMeta); err != nil {
 			return err
 		}
@@ -492,13 +492,17 @@ func writeMailboxMessageBatch(batch *pebble.Batch, userID, mailbox string, uid u
 	return nil
 }
 
-// commitMailboxBatch is a var rather than a plain func so tests can substitute
+// commitSyncBatch runs fn against one Pebble batch and commits it with
+// pebble.Sync, so every write fn makes lands together or not at all. It is the
+// shared primitive behind the synthetic mailbox and queue commands.
+//
+// It is a var rather than a plain func so tests can substitute
 // a commit that aborts after the batch is populated, simulating a crash in the
 // window the batch exists to close. That is the only way to observe the
 // all-or-nothing guarantee: with every write inside the batch an aborted commit
 // leaves nothing behind, and a write hoisted out of it survives and is visible.
 // See TestMailboxDeliveryIsAllOrNothing.
-var commitMailboxBatch = func(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
+var commitSyncBatch = func(ps *PebbleStore, fn func(batch *pebble.Batch) error) error {
 	batch := ps.db.NewBatch()
 	defer batch.Close()
 	if err := fn(batch); err != nil {

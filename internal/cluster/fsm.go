@@ -302,6 +302,20 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		return nil
 	}
 
+	// Queue transitions (retry backoff, bounce, retry-now) arrive as a single
+	// composite command so the delete of the old key and the write of the new
+	// one commit together. Done as two separate commands, a crash between them
+	// removed the message from the queue without writing it back: silent mail
+	// loss with no error to act on.
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsQueueSyntheticCommand(cmd.Key) {
+		if err := store.ApplyQueueCommand(f.store, cmd); err != nil {
+			f.logger.Error("fsm: queue synthetic command failed", "key", string(cmd.Key), "error", err)
+			return err
+		}
+		f.logger.Debug("fsm: queue synthetic command applied", "key", string(cmd.Key))
+		return nil
+	}
+
 	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:

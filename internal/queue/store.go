@@ -119,16 +119,6 @@ func (qs *QueueStore) MarkFailed(msg *bongov1.OutboundMessage) error {
 		return err
 	}
 
-	// Delete old key.
-	delCmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: oldKey,
-	}
-	if err := qs.applier.ApplyCommand(delCmd, 5*time.Second); err != nil {
-		return fmt.Errorf("deleting old queue key: %w", err)
-	}
-
-	// Update message.
 	msg.AttemptCount++
 	msg.Status = bongov1.MessageStatus_MESSAGE_STATUS_FAILED
 	msg.NextRetryAt = backoff(msg.AttemptCount)
@@ -138,12 +128,7 @@ func (qs *QueueStore) MarkFailed(msg *bongov1.OutboundMessage) error {
 		return fmt.Errorf("marshaling updated message: %w", err)
 	}
 
-	putCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   pendingKey(msg.NextRetryAt, msg.Id),
-		Value: data,
-	}
-	return qs.applier.ApplyCommand(putCmd, 5*time.Second)
+	return qs.applyMove(msg.Id, oldKey, pendingKey(msg.NextRetryAt, msg.Id), data)
 }
 
 // MarkBounced moves a message from pending to bounced namespace via Raft.
@@ -153,28 +138,13 @@ func (qs *QueueStore) MarkBounced(msg *bongov1.OutboundMessage) error {
 		return err
 	}
 
-	// Delete from pending.
-	delCmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: oldKey,
-	}
-	if err := qs.applier.ApplyCommand(delCmd, 5*time.Second); err != nil {
-		return fmt.Errorf("deleting pending key: %w", err)
-	}
-
-	// Write to bounced namespace.
 	msg.Status = bongov1.MessageStatus_MESSAGE_STATUS_BOUNCED
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshaling bounced message: %w", err)
 	}
 
-	putCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   bouncedKey(msg.Id),
-		Value: data,
-	}
-	return qs.applier.ApplyCommand(putCmd, 5*time.Second)
+	return qs.applyMove(msg.Id, oldKey, bouncedKey(msg.Id), data)
 }
 
 // Stats returns queue statistics.
@@ -268,28 +238,13 @@ func (qs *QueueStore) RetryNow(id string) error {
 		return err
 	}
 
-	// Delete old key.
-	delCmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: oldKey,
-	}
-	if err := qs.applier.ApplyCommand(delCmd, 5*time.Second); err != nil {
-		return fmt.Errorf("deleting old key: %w", err)
-	}
-
-	// Write with current timestamp.
 	msg.NextRetryAt = time.Now().Unix()
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshaling message: %w", err)
 	}
 
-	putCmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   pendingKey(msg.NextRetryAt, msg.Id),
-		Value: data,
-	}
-	return qs.applier.ApplyCommand(putCmd, 5*time.Second)
+	return qs.applyMove(msg.Id, oldKey, pendingKey(msg.NextRetryAt, msg.Id), data)
 }
 
 // ListPending returns up to limit pending messages.
@@ -397,4 +352,22 @@ func backoff(attempt int32) int64 {
 	}
 	seconds := (int64(1) << attempt) * 60 // 2^attempt * 60 seconds
 	return time.Now().Unix() + seconds
+}
+
+// applyMove commits one queue transition -- drop the message from oldKey, write
+// it at newKey -- as a single composite Raft command.
+//
+// These three transitions (retry backoff, bounce, retry-now) were previously
+// two ApplyCommand calls each: delete, then put. Consensus can accept the first
+// and reject the second, and a leader can die between them; either way the
+// message was gone from the queue and written back nowhere. Silent mail loss,
+// no error returned, nothing left to retry from. CLAUDE.md's guardrail on
+// multi-step Raft mutations names a composite command as the first remedy and
+// that is what this is: the FSM applies both writes in one Pebble batch.
+func (qs *QueueStore) applyMove(id string, oldKey, newKey, value []byte) error {
+	cmd, err := store.BuildQueueMoveCommand(id, oldKey, newKey, value)
+	if err != nil {
+		return err
+	}
+	return qs.applier.ApplyCommand(cmd, 5*time.Second)
 }
