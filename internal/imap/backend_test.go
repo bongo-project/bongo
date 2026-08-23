@@ -1,7 +1,11 @@
 package imap
 
 import (
+	"errors"
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 
@@ -476,5 +480,164 @@ func TestBuildBodyStructureIsWritableAsExtended(t *testing.T) {
 		if sp.Extended == nil {
 			t.Error("built single-part structure missing Extended")
 		}
+	}
+}
+
+// imapDirectApplier applies Raft commands straight to Pebble, mirroring the
+// FSM's dispatch so synthetic mailbox commands are interpreted rather than
+// written through as literal keys.
+type imapDirectApplier struct{ store *store.PebbleStore }
+
+func (a *imapDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
+		_, err := store.ApplyMailboxCommand(a.store, cmd)
+		return err
+	}
+	switch cmd.Op {
+	case bongov1.Op_OP_PUT:
+		return a.store.Set(cmd.Key, cmd.Value)
+	case bongov1.Op_OP_DELETE:
+		return a.store.Delete(cmd.Key)
+	}
+	return nil
+}
+
+// newReadOnlyTestSession builds a session over a real MailboxStore holding one
+// message in INBOX, opened either read-only (EXAMINE) or read-write (SELECT).
+func newReadOnlyTestSession(t *testing.T, readOnly bool) *session {
+	t.Helper()
+
+	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	ms := store.NewMailboxStore(ps, &imapDirectApplier{store: ps})
+	if err := ms.CreateMailbox("u1", "INBOX"); err != nil {
+		t.Fatalf("CreateMailbox INBOX: %v", err)
+	}
+	if err := ms.CreateMailbox("u1", "Archive"); err != nil {
+		t.Fatalf("CreateMailbox Archive: %v", err)
+	}
+	if _, err := ms.DeliverMessage("u1", "INBOX", &bongov1.MailMeta{
+		Guid:       "guid-1",
+		Subject:    "hello",
+		ReceivedAt: time.Now().Unix(),
+	}, 0); err != nil {
+		t.Fatalf("DeliverMessage: %v", err)
+	}
+
+	msgs, err := ms.ListMessages("u1", "INBOX")
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+
+	return &session{
+		mailboxes:       ms,
+		logger:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		userID:          "u1",
+		selectedMailbox: "INBOX",
+		readOnly:        readOnly,
+		cachedMsgs:      msgs,
+	}
+}
+
+// errMutationAttempted stands in for a panic. These commands are called with
+// nil response writers, which is fine while the read-only guard returns first
+// -- and panics the moment it does not. Recovering turns that into an ordinary
+// failure, so each case is judged on "was the command refused?" rather than on
+// whether a nil writer happened to blow up, and one case cannot abort the
+// others by taking the process down.
+var errMutationAttempted = errors.New("mutation was attempted rather than refused")
+
+func callAndRecover(fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errMutationAttempted
+		}
+	}()
+	return fn()
+}
+
+// TestReadOnlyMailboxRefusesMutations covers EXAMINE.
+//
+// RFC 3501 6.3.2: EXAMINE is identical to SELECT except that no changes to the
+// mailbox's permanent state are permitted. s.readOnly recorded which command
+// opened the mailbox but was consulted in exactly one place -- suppressing the
+// implicit \Seen on FETCH -- so STORE, EXPUNGE and MOVE all mutated a mailbox
+// the client had been told was read-only. go-imap does not enforce it either;
+// the library only emits the READ-ONLY code at select time.
+func TestReadOnlyMailboxRefusesMutations(t *testing.T) {
+	uidSet := imap.UIDSet{}
+	uidSet.AddNum(1)
+
+	tests := []struct {
+		name string
+		call func(s *session) error
+	}{
+		{"STORE", func(s *session) error {
+			return s.Store(nil, uidSet, &imap.StoreFlags{
+				Op:    imap.StoreFlagsAdd,
+				Flags: []imap.Flag{imap.FlagSeen},
+			}, nil)
+		}},
+		{"EXPUNGE", func(s *session) error {
+			return s.Expunge(nil, &uidSet)
+		}},
+		{"MOVE", func(s *session) error {
+			return s.Move(nil, uidSet, "Archive")
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+" is refused on a read-only mailbox", func(t *testing.T) {
+			s := newReadOnlyTestSession(t, true)
+			err := callAndRecover(func() error { return tt.call(s) })
+			if err == nil {
+				t.Fatalf("%s succeeded against a mailbox opened with EXAMINE", tt.name)
+			}
+			if !errors.Is(err, errMailboxReadOnly) {
+				t.Errorf("%s error = %v, want the read-only refusal", tt.name, err)
+			}
+			// The message must still be there, unmodified.
+			msgs, lerr := s.mailboxes.ListMessages("u1", "INBOX")
+			if lerr != nil {
+				t.Fatalf("ListMessages: %v", lerr)
+			}
+			if len(msgs) != 1 {
+				t.Errorf("INBOX holds %d messages after a refused %s, want 1", len(msgs), tt.name)
+			}
+		})
+	}
+}
+
+// TestReadWriteMailboxStillAllowsMutations is the control. Without it, the
+// guards above would still pass if they refused every session rather than only
+// read-only ones -- which would break ordinary IMAP clients entirely.
+func TestReadWriteMailboxStillAllowsMutations(t *testing.T) {
+	uidSet := imap.UIDSet{}
+	uidSet.AddNum(1)
+
+	s := newReadOnlyTestSession(t, false)
+	if err := callAndRecover(func() error { return s.Expunge(nil, &uidSet) }); errors.Is(err, errMailboxReadOnly) {
+		t.Error("EXPUNGE was refused as read-only on a mailbox opened with SELECT")
+	}
+}
+
+// TestCopyIsAllowedFromReadOnlyMailbox pins the deliberate asymmetry with MOVE.
+// COPY only writes to the destination and leaves the selected mailbox
+// untouched, which EXAMINE permits; MOVE deletes from the source (RFC 6851) and
+// must be refused. Gating COPY too would be a plausible-looking overreach that
+// breaks a legal client operation.
+func TestCopyIsAllowedFromReadOnlyMailbox(t *testing.T) {
+	uidSet := imap.UIDSet{}
+	uidSet.AddNum(1)
+
+	s := newReadOnlyTestSession(t, true)
+	err := callAndRecover(func() error { _, e := s.Copy(uidSet, "Archive"); return e })
+	if errors.Is(err, errMailboxReadOnly) {
+		t.Error("COPY from a read-only mailbox was refused; it writes only to the " +
+			"destination and is permitted under EXAMINE")
 	}
 }

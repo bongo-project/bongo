@@ -66,6 +66,24 @@ var errAuthRateLimited = &imap.Error{
 	Text: "Too many failed login attempts; rate limit exceeded, try again later",
 }
 
+// errMailboxReadOnly is returned for a command that would modify a mailbox
+// selected with EXAMINE rather than SELECT.
+//
+// RFC 3501 section 6.3.2: EXAMINE is identical to SELECT except that "no
+// changes to the permanent state of the mailbox, including per-user state, are
+// permitted". s.readOnly records which of the two opened the mailbox; before
+// this it was consulted in exactly one place -- suppressing the implicit \Seen
+// on FETCH -- so STORE, EXPUNGE and MOVE all happily mutated a mailbox the
+// client had been told was read-only. go-imap does not enforce it either: the
+// library only emits the READ-ONLY response code at select time.
+//
+// TRYCREATE is deliberately not used; the correct code here is none, with a NO
+// response, since retrying will not help until the client re-SELECTs.
+var errMailboxReadOnly = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Text: "Mailbox is read-only (opened with EXAMINE)",
+}
+
 // Login authenticates the user, throttling brute-force attempts per source IP.
 func (s *session) Login(username, password string) error {
 	ip := ""
@@ -500,6 +518,9 @@ func (s *session) Unselect() error {
 
 // Expunge removes messages marked as deleted.
 func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error {
+	if s.readOnly {
+		return errMailboxReadOnly
+	}
 	expunged, err := s.mailboxes.Expunge(s.userID, s.selectedMailbox)
 	if err != nil {
 		return err
@@ -992,6 +1013,9 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 	if s.selectedMailbox == "" {
 		return fmt.Errorf("no mailbox selected")
 	}
+	if s.readOnly {
+		return errMailboxReadOnly
+	}
 
 	// Refresh cache.
 	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
@@ -1198,6 +1222,12 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string) error {
 	if s.selectedMailbox == "" {
 		return fmt.Errorf("no mailbox selected")
+	}
+	// MOVE deletes from the source (RFC 6851), so a read-only source forbids
+	// it. COPY deliberately has no such check: it only writes to dest and
+	// leaves the selected mailbox untouched, which EXAMINE permits.
+	if s.readOnly {
+		return errMailboxReadOnly
 	}
 
 	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
