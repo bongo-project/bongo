@@ -2,6 +2,7 @@ package store
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -16,11 +17,26 @@ type EventStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier
 	search  *SearchManager
+	logger  *slog.Logger
 }
 
 // NewEventStore creates an EventStore.
 func NewEventStore(pebble *PebbleStore, applier RaftApplier) *EventStore {
 	return &EventStore{pebble: pebble, applier: applier}
+}
+
+// SetLogger sets the logger. Optional: a nil logger is tolerated everywhere,
+// following the setter-injection pattern used for the other optional
+// dependencies here.
+func (s *EventStore) SetLogger(logger *slog.Logger) {
+	s.logger = logger
+}
+
+// warn logs at warning level when a logger has been injected.
+func (s *EventStore) warn(msg string, args ...any) {
+	if s.logger != nil {
+		s.logger.Warn(msg, args...)
+	}
 }
 
 // SetSearch sets the search manager for indexing events.
@@ -222,13 +238,22 @@ func (s *EventStore) ListByDateRange(userID string, start, end int64, calendarID
 		}
 
 		// Expand recurring events.
+		//
+		// A recurrence that will not parse falls back to the base occurrence
+		// rather than being skipped. Skipping meant an event with an RRULE this
+		// parser rejects vanished from every view -- agenda, month, CalDAV --
+		// with no error to the user and no log line, so it read as data loss.
+		// Showing the single base occurrence is wrong about the repeats but
+		// keeps the event, its time and its title visible, which is the far
+		// better failure.
 		if event.Rrule != "" {
 			expanded, err := ExpandRecurrence(&event, start, end)
-			if err != nil {
+			if err == nil {
+				events = append(events, expanded...)
 				continue
 			}
-			events = append(events, expanded...)
-			continue
+			s.warn("calendar: recurrence rule did not parse, showing base occurrence only",
+				"event", event.Guid, "rrule", event.Rrule, "error", err)
 		}
 
 		// Check time range overlap: event overlaps range if event.start < range.end AND event.end > range.start.
