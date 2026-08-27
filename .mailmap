@@ -1,0 +1,10 @@
+# Canonical author identity.
+#
+# Early commits were authored as "lhaig" (the GitHub username, applied to
+# commits made outside a workstation with a configured git identity) and
+# others as "Lance Haig". Both carry the same address, so this single entry
+# maps every commit from that address onto the proper name.
+#
+# See gitmailmap(5).
+
+Lance Haig <lnhaig@gmail.com>
