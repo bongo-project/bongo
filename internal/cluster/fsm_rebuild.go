@@ -13,7 +13,7 @@ import (
 
 // rebuildDerivedIndexes scans all Pebble keys and rebuilds SQLite and Bleve indexes.
 // Called after Restore() to ensure derived indexes are consistent with the primary store.
-func rebuildDerivedIndexes(ps *store.PebbleStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) error {
+func rebuildDerivedIndexes(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) error {
 	// Rebuild user profiles into system.db.
 	profileCount, err := rebuildProfiles(ps, metadata, search, logger)
 	if err != nil {
@@ -21,7 +21,7 @@ func rebuildDerivedIndexes(ps *store.PebbleStore, metadata *store.MetadataManage
 	}
 
 	// Rebuild mail indexes.
-	mailCount, err := rebuildMail(ps, metadata, search, logger)
+	mailCount, err := rebuildMail(ps, blobs, metadata, search, logger)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, sea
 	return count, nil
 }
 
-func rebuildMail(ps *store.PebbleStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) (int, error) {
+func rebuildMail(ps *store.PebbleStore, blobs *store.BlobStore, metadata *store.MetadataManager, search SearchIndexer, logger *slog.Logger) (int, error) {
 	iter, err := ps.PrefixScan([]byte("/user/"))
 	if err != nil {
 		return 0, err
@@ -129,7 +129,11 @@ func rebuildMail(ps *store.PebbleStore, metadata *store.MetadataManager, search 
 		// Index into Bleve.
 		if search != nil {
 			hasAttachment := len(meta.Attachments) > 0
-			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, meta.Tags); err != nil {
+			// Same body extraction as the live indexer, so a rebuilt index is
+			// equivalent to one built incrementally. Without this a restore
+			// silently produced an index that could not answer body searches.
+			body := mailBodyText(blobs, &meta, logger)
+			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags); err != nil {
 				logger.Warn("fsm rebuild: failed to index mail in bleve", "user", userID, "guid", guid, "error", err)
 			}
 		}

@@ -522,7 +522,12 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 
 		if f.search != nil {
 			hasAttachment := len(meta.Attachments) > 0
-			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, "", meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
+			// Body text lives only in the blob, so indexing it costs a read
+			// and a MIME parse. That is affordable here and nowhere else:
+			// runDerivedIndexes is the background indexer, off the Raft apply
+			// path (see StartIndexer), so this cannot stall delivery.
+			body := mailBodyText(f.blobs, &meta, f.logger)
+			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
 				f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
 			}
 		}
@@ -674,7 +679,7 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 
 	f.logger.Info("fsm: restored from snapshot", "keys", count)
 
-	if err := rebuildDerivedIndexes(f.store, f.metadata, f.search, f.logger); err != nil {
+	if err := rebuildDerivedIndexes(f.store, f.blobs, f.metadata, f.search, f.logger); err != nil {
 		f.logger.Warn("fsm: rebuild derived indexes after restore failed", "error", err)
 	}
 
