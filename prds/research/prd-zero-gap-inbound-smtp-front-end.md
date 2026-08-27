@@ -43,7 +43,7 @@ visible, some senders treat refusals worse than tempfails, and the window grows 
 
 Backups land in `/mnt/data/backups/bongo_<date>_03-05-01.tar.gz`, daily, root-owned. The trigger is
 `/etc/cron.d/ops-backup-extras` running `/opt/ops/backup/backup-extras.sh` — a **host-level**
-job that also backs up an unrelated `trail` database in the same 03:05 slot. It is not named after
+job that also backs up an unrelated application's database in the same 03:05 slot. It is not named after
 bongo, which is why searching for a "bongo cronjob" turns up nothing. The script is careful: it
 restarts the container from a `trap ... EXIT` even if the tar fails, and aborts on an empty
 archive.
