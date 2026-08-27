@@ -18,9 +18,9 @@ import (
 	"github.com/hashicorp/raft"
 	"google.golang.org/protobuf/proto"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // raftAppliedIndexKey stores the highest Raft log index already applied to

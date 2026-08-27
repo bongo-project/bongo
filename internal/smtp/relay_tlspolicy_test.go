@@ -19,7 +19,7 @@ import (
 
 	gosmtp "github.com/emersion/go-smtp"
 
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // selfSignedFor mints a throwaway certificate for host, used by the STARTTLS

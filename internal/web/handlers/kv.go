@@ -8,9 +8,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bongo-go/bongo-go/internal/cluster"
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/cluster"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // RaftApplier is the interface needed by KVHandler to apply commands and read state.

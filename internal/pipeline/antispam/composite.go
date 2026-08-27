@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // CompositeProcessor implements pipeline.Processor by running a fallback chain

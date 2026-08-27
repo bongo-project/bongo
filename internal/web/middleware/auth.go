@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/security"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 type contextKey string

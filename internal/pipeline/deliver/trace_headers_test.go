@@ -16,9 +16,9 @@ import (
 
 	"github.com/emersion/go-msgauth/dkim"
 
-	"github.com/bongo-go/bongo-go/internal/antispam"
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // signedTestMessage signs raw with a freshly generated key for domain/selector,

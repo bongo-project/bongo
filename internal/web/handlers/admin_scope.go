@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/web/middleware"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // requireGlobalAdmin checks that the request scope is global (i.e., the caller

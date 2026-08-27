@@ -4,7 +4,7 @@ BINARY     := bongo-go
 IMPORT_BIN := bongo-import
 BUILD_DIR  := bin
 SEC_GOCACHE ?= /tmp/bongo-gocache-security
-VERSION_PKG := github.com/bongo-go/bongo-go/internal/version
+VERSION_PKG := github.com/bongo-project/bongo/internal/version
 BUILD_VERSION ?= $(shell git describe --tags --exact-match 2>/dev/null || echo dev)
 BUILD_COMMIT ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)

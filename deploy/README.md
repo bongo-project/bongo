@@ -183,7 +183,7 @@ openssl rand -base64 32
 mkdir -p logs
 test -f secrets/dkim.key || echo "!! generate secrets/dkim.key first (see §4)"
 
-docker compose pull                 # pull the image from ghcr.io/lhaig/bongo-go
+docker compose pull                 # pull the image from ghcr.io/bongo-project/bongo
 docker compose up -d
 docker compose logs -f bongo        # watch startup
 
@@ -192,7 +192,7 @@ docker compose restart bongo
 ```
 
 > **Image source:** CI publishing is currently **disabled**, so
-> `ghcr.io/lhaig/bongo-go` images are built and pushed by hand. From the repo
+> `ghcr.io/bongo-project/bongo` images are built and pushed by hand. From the repo
 > root, for version `X.Y.Z`:
 >
 > ```bash
@@ -200,9 +200,9 @@ docker compose restart bongo
 >   --build-arg VERSION=X.Y.Z \
 >   --build-arg COMMIT=$(git rev-parse --short HEAD) \
 >   --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
->   -t ghcr.io/lhaig/bongo-go:X.Y.Z -t ghcr.io/lhaig/bongo-go:latest .
-> docker push ghcr.io/lhaig/bongo-go:X.Y.Z
-> docker push ghcr.io/lhaig/bongo-go:latest
+>   -t ghcr.io/bongo-project/bongo:X.Y.Z -t ghcr.io/bongo-project/bongo:latest .
+> docker push ghcr.io/bongo-project/bongo:X.Y.Z
+> docker push ghcr.io/bongo-project/bongo:latest
 > ```
 >
 > Then bump the `image:` pin in `docker-compose.yml` to `X.Y.Z`. Pushing (and,

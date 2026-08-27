@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/agent"
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/agent"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // startInternalRoutesAgent brings up a real dev-role agent and returns its base

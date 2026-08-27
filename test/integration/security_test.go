@@ -17,8 +17,8 @@ import (
 
 	"github.com/pquerna/otp/totp"
 
-	"github.com/bongo-go/bongo-go/internal/agent"
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/agent"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // startSecurityTestAgent starts a dev agent and returns the base URL and a cancel function.

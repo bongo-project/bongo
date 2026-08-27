@@ -73,7 +73,7 @@ The short version:
    ```bash
    cd deploy
    cp .env.example .env          # set BONGO_WEB_SESSION_SECRET (openssl rand -base64 32)
-   docker compose pull           # ghcr.io/lhaig/bongo-go
+   docker compose pull           # ghcr.io/bongo-project/bongo
    docker compose up -d
    docker compose restart bongo  # once Traefik has issued the mail cert
    ```

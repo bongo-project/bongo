@@ -15,11 +15,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jhillyerd/enmime"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-	"github.com/bongo-go/bongo-go/internal/antispam"
-	"github.com/bongo-go/bongo-go/internal/pipeline"
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/pipeline"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // RaftApplier applies commands through Raft consensus.

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/web/sanitize"
+	"github.com/bongo-project/bongo/internal/web/sanitize"
 )
 
 func TestCompose(t *testing.T) {

@@ -15,7 +15,7 @@ just the foundation.
 
 ### 1. Initialize Go module and project structure
 
-Create `go.mod` with module path `github.com/bongo-go/bongo-go` (or your preferred path).
+Create `go.mod` with module path `github.com/bongo-project/bongo` (or your preferred path).
 Create the directory structure from CLAUDE.md. Add a `.gitignore` for Go projects.
 
 **Done when:** `go build ./cmd/bongo-go` produces a binary (even if it does nothing).

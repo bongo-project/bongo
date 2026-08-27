@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/i18n"
+	"github.com/bongo-project/bongo/internal/i18n"
 )
 
 // initI18nForTest initialises the global i18n instance once so that t(ctx, ...)

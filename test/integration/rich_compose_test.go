@@ -38,9 +38,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bongo-go/bongo-go/internal/agent"
-	"github.com/bongo-go/bongo-go/internal/config"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/agent"
+	"github.com/bongo-project/bongo/internal/config"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // richComposeSamplePNG is a minimal valid 1×1 PNG, base64-encoded.

@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/bongo-go/bongo-go/internal/cluster"
+	"github.com/bongo-project/bongo/internal/cluster"
 )
 
 // ClusterMemberLister returns the current cluster members.

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
+	bongoimap "github.com/bongo-project/bongo/internal/imap"
 )
 
 // runReminderChecker scans events every 60 seconds and fires SSE reminders

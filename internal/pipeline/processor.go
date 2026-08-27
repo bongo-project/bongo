@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // Processor handles one stage of the message pipeline.

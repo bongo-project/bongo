@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"net/http"
 
-	"github.com/bongo-go/bongo-go/internal/security"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 const csrfCtxKey contextKey = "csrfToken"

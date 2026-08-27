@@ -12,8 +12,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/bongo-go/bongo-go/internal/observability"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/observability"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // fakeBlobs is an in-memory content-addressed store for tests.

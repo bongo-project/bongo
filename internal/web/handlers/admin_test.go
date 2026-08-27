@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/web/templates"
+	"github.com/bongo-project/bongo/internal/web/templates"
 )
 
 // ---------------------------------------------------------------------------

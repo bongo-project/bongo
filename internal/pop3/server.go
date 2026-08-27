@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/auth"
-	"github.com/bongo-go/bongo-go/internal/authlimit"
-	"github.com/bongo-go/bongo-go/internal/netx"
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/auth"
+	"github.com/bongo-project/bongo/internal/authlimit"
+	"github.com/bongo-project/bongo/internal/netx"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // POP3 auth brute-force defence: block a source IP after this many failed

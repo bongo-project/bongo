@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 func newVerifyTestEnv(t *testing.T) *AddressVerifyStore {

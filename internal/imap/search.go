@@ -9,7 +9,7 @@ import (
 	"github.com/blevesearch/bleve/v2/search/query"
 	"github.com/emersion/go-imap/v2"
 
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // hasTextCriteria returns true if the search criteria contains any text-based

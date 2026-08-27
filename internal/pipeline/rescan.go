@@ -1,6 +1,6 @@
 package pipeline
 
-import bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+import bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
 // PrepareForRescan resets the scanning state on a quarantined envelope so the
 // runner's idempotency check (processMessage, see runner.go) does not skip the

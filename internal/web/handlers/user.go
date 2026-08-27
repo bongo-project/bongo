@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-	"github.com/bongo-go/bongo-go/internal/auth"
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/auth"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // UserApplier is the interface for creating users via Raft.

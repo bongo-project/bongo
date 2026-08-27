@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-	rulesprocessor "github.com/bongo-go/bongo-go/internal/pipeline/rules"
+	rulesprocessor "github.com/bongo-project/bongo/internal/pipeline/rules"
 )
 
 // mockRuleProvider returns predefined rules keyed by userID.

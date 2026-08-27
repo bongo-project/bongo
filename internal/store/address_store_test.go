@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // newAddressTestEnv creates an AddressStore backed by a fresh Pebble and SystemIndex.

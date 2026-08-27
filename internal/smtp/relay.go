@@ -14,7 +14,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // Relay delivers outbound messages to external SMTP servers.

@@ -13,9 +13,9 @@ import (
 
 	"github.com/jhillyerd/enmime"
 
-	"github.com/bongo-go/bongo-go/internal/pipeline"
-	"github.com/bongo-go/bongo-go/internal/rules"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/pipeline"
+	"github.com/bongo-project/bongo/internal/rules"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // RuleProvider is a minimal interface for fetching a user's filter rules.

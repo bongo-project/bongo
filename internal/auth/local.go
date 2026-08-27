@@ -6,9 +6,9 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/protobuf/proto"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // ErrBadCredentials indicates invalid username or password.

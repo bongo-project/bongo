@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bongo-go/bongo-go/internal/attsplit"
-	"github.com/bongo-go/bongo-go/internal/observability"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/attsplit"
+	"github.com/bongo-project/bongo/internal/observability"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // SplitStored is the result of storing a message in split form: the skeleton blob

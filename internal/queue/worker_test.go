@@ -12,12 +12,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
-	"github.com/bongo-go/bongo-go/internal/config"
-	"github.com/bongo-go/bongo-go/internal/mail"
-	"github.com/bongo-go/bongo-go/internal/observability"
-	bongosmtp "github.com/bongo-go/bongo-go/internal/smtp"
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/observability"
+	bongosmtp "github.com/bongo-project/bongo/internal/smtp"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 type mockLeader struct {

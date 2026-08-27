@@ -9,8 +9,8 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 func TestFlagsToIMAP(t *testing.T) {

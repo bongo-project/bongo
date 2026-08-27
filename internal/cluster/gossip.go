@@ -12,7 +12,7 @@ import (
 
 	"github.com/hashicorp/memberlist"
 
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // NodeMeta is the metadata each node broadcasts via memberlist gossip.

@@ -13,7 +13,7 @@ import (
 
 	"github.com/emersion/go-msgauth/dkim"
 
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // DKIMSigner signs outbound messages with DKIM.

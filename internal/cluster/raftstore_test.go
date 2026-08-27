@@ -5,7 +5,7 @@ import (
 
 	"github.com/hashicorp/raft"
 
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 func newTestRaftStore(t *testing.T) *RaftStore {

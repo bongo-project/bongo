@@ -8,7 +8,7 @@ import (
 
 	"github.com/miekg/dns"
 
-	"github.com/bongo-go/bongo-go/internal/dnssec"
+	"github.com/bongo-project/bongo/internal/dnssec"
 )
 
 // daneResolver authenticates DANE TLSA records for outbound SMTP (RFC 7672)

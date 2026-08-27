@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/viper"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 
-	"github.com/bongo-go/bongo-go/internal/agent"
-	"github.com/bongo-go/bongo-go/internal/config"
-	"github.com/bongo-go/bongo-go/internal/web/handlers"
+	"github.com/bongo-project/bongo/internal/agent"
+	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/web/handlers"
 )
 
 var (

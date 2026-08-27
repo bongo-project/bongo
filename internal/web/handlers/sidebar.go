@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bongo-go/bongo-go/internal/store"
-	"github.com/bongo-go/bongo-go/internal/web/templates"
+	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/templates"
 )
 
 // maxSidebarTags is the maximum number of tags shown in the sidebar.

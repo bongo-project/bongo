@@ -1,6 +1,6 @@
 [Unit]
 Description=Bongo-Go mail and calendar server
-Documentation=https://github.com/lhaig/bongo-go
+Documentation=https://github.com/bongo-project/bongo
 After=network-online.target
 Wants=network-online.target
 

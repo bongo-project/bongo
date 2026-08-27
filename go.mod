@@ -1,4 +1,4 @@
-module github.com/bongo-go/bongo-go
+module github.com/bongo-project/bongo
 
 go 1.26.6
 

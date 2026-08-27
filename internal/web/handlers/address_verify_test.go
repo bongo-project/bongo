@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/queue"
-	"github.com/bongo-go/bongo-go/internal/store"
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/queue"
+	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // verifyTestEnv holds all stores needed for AddressVerifyHandler tests.

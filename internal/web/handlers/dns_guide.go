@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bongo-go/bongo-go/internal/web/templates"
+	"github.com/bongo-project/bongo/internal/web/templates"
 )
 
 // dnsGuideTTL is the TTL emitted for every generated record. 3600s (1h) is a

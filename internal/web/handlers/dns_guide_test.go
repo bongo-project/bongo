@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/web/templates"
+	"github.com/bongo-project/bongo/internal/web/templates"
 )
 
 // findRow returns the first row matching type+host, or a zero row and false.

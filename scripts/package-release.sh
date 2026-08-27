@@ -20,7 +20,7 @@ REPO_ROOT="$(pwd)"
 VERSION="${1:-$(git describe --tags --exact-match 2>/dev/null || echo dev)}"
 COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-VERSION_PKG="github.com/bongo-go/bongo-go/internal/version"
+VERSION_PKG="github.com/bongo-project/bongo/internal/version"
 LDFLAGS="-s -w -X ${VERSION_PKG}.Version=${VERSION} -X ${VERSION_PKG}.Commit=${COMMIT} -X ${VERSION_PKG}.Date=${DATE}"
 
 # Linux amd64 and arm64 by default; override with PLATFORMS="linux/amd64 ...".

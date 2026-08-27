@@ -3,12 +3,12 @@ package agent
 import (
 	"log/slog"
 
-	"github.com/bongo-go/bongo-go/internal/antispam"
-	"github.com/bongo-go/bongo-go/internal/config"
-	"github.com/bongo-go/bongo-go/internal/dnsbl"
-	"github.com/bongo-go/bongo-go/internal/mail"
-	"github.com/bongo-go/bongo-go/internal/pipeline"
-	pipelineantispam "github.com/bongo-go/bongo-go/internal/pipeline/antispam"
+	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/dnsbl"
+	"github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/pipeline"
+	pipelineantispam "github.com/bongo-project/bongo/internal/pipeline/antispam"
 )
 
 // buildAntispamProcessor constructs the antispam pipeline stage processor for

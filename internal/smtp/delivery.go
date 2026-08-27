@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/uuid"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
-	"github.com/bongo-go/bongo-go/internal/pipeline"
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/pipeline"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // InboundMeta carries metadata about an inbound message including SPF results,

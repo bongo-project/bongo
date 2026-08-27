@@ -117,7 +117,7 @@ build date. Please include that line in any report.
 
 Report everything — bugs, confusion, and security issues — as an issue on the repository:
 
-**<https://github.com/lhaig/bongo-go/issues>**
+**<https://github.com/bongo-project/bongo/issues>**
 
 The repository is private, so you need to have been added as a collaborator before you can open an
 issue. If you were given this build but cannot reach that page, ask and you will be added.

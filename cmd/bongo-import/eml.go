@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bongo-go/bongo-go/internal/importer"
+	"github.com/bongo-project/bongo/internal/importer"
 )
 
 var emlFolder string

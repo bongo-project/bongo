@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/cluster"
+	"github.com/bongo-project/bongo/internal/cluster"
 )
 
 type mockMemberLister struct {

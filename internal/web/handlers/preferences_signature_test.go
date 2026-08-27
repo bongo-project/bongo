@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/store"
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
 // prefsTestEnv holds a wired-up PreferencesHandler backed by a real PebbleStore

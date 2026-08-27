@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/security"
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/security"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // maxBlobSyncBytes bounds a single blob pulled from a peer, so a compromised
