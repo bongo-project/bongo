@@ -168,3 +168,68 @@ func TestCollectReferencedBlobsSurfacesSpoolReadFailure(t *testing.T) {
 }
 
 func osChmod(path string, mode uint32) error { return os.Chmod(path, os.FileMode(mode)) }
+
+// TestDryRunDeletesNothing pins the dryrun contract.
+//
+// dryrun is what the documentation tells operators to run before enabling the
+// sweep, and it is what this deployment fell back to on 2026-08-27 when the GC
+// had to be made safe quickly. Until this test existed nothing anywhere
+// asserted that it does not delete: the only occurrence of "dryrun" in any test
+// file was a config string-normalisation case. The branch was correct, but a
+// regression in it would have removed the one control operators reach for when
+// they do not trust the sweep -- and the summary line would still have reported
+// dry_run=true while blobs disappeared.
+func TestDryRunDeletesNothing(t *testing.T) {
+	dir := t.TempDir()
+	blobs, err := store.NewBlobStore(dir)
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	hashes := make([]string, 0, 3)
+	for _, body := range []string{"one", "two", "three"} {
+		h, err := blobs.Put([]byte(body))
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		hashes = append(hashes, h)
+	}
+
+	a := &Agent{Blobs: blobs, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	deleted := a.deleteSweptBlobs(hashes, true)
+	if deleted != 0 {
+		t.Errorf("dryrun reported %d deletions, want 0", deleted)
+	}
+	for _, h := range hashes {
+		if !blobs.Exists(h) {
+			t.Errorf("dryrun deleted blob %s; the mode that exists to delete nothing "+
+				"deleted something, and the summary log would still say dry_run=true", h)
+		}
+	}
+}
+
+// TestNonDryRunDeletes is the control. Without it, a change that made
+// deleteSweptBlobs never delete anything would satisfy the test above while
+// silently disabling reclamation entirely -- the failure would be unbounded
+// disk growth rather than lost mail, and nothing would report it.
+func TestNonDryRunDeletes(t *testing.T) {
+	dir := t.TempDir()
+	blobs, err := store.NewBlobStore(dir)
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	h, err := blobs.Put([]byte("reclaim me"))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	a := &Agent{Blobs: blobs, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	if deleted := a.deleteSweptBlobs([]string{h}, false); deleted != 1 {
+		t.Errorf("deleted = %d, want 1", deleted)
+	}
+	if blobs.Exists(h) {
+		t.Error("blob survived a non-dryrun sweep; reclamation is not happening")
+	}
+}

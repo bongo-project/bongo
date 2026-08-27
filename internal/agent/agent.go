@@ -1633,6 +1633,32 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 	return ref, nil
 }
 
+// deleteSweptBlobs reclaims the planned blobs and returns how many were
+// actually removed. In dryrun it removes nothing.
+//
+// Split out of sweepOrphanedBlobs so the dryrun contract can be tested without
+// standing up a Raft leader. That contract is load-bearing beyond the obvious:
+// dryrun is what the docs tell operators to run first, and it is what this
+// deployment falls back to when the GC has to be made safe in a hurry. If it
+// ever deleted, the one setting people reach for when they do not trust the
+// sweep would be the destructive one -- and the summary line would still say
+// dry_run=true.
+func (a *Agent) deleteSweptBlobs(toDelete []string, dryRun bool) int {
+	deleted := 0
+	for _, h := range toDelete {
+		if dryRun {
+			a.logger.Info("blob-gc: would delete orphaned blob (dry-run)", "hash", h)
+			continue
+		}
+		if err := a.Blobs.Delete(h); err != nil {
+			a.logger.Warn("blob-gc: deleting orphaned blob failed", "hash", h, "error", err)
+			continue
+		}
+		deleted++
+	}
+	return deleted
+}
+
 // planBlobSweep decides which blobs to reclaim this pass. blobMTimes maps each
 // stored blob hash to its file mod time. A blob is a candidate when it is
 // unreferenced and older than cutoff; it is returned in toDelete only if it was
@@ -1677,18 +1703,7 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 		}
 	}
 	current, toDelete := planBlobSweep(referenced, mtimes, prev, time.Now().Add(-minAge))
-	deleted := 0
-	for _, h := range toDelete {
-		if dryRun {
-			a.logger.Info("blob-gc: would delete orphaned blob (dry-run)", "hash", h)
-			continue
-		}
-		if err := a.Blobs.Delete(h); err != nil {
-			a.logger.Warn("blob-gc: deleting orphaned blob failed", "hash", h, "error", err)
-			continue
-		}
-		deleted++
-	}
+	deleted := a.deleteSweptBlobs(toDelete, dryRun)
 	if len(toDelete) > 0 {
 		a.logger.Info("blob-gc: swept orphaned blobs", "candidates", len(toDelete), "deleted", deleted, "dry_run", dryRun)
 	}
