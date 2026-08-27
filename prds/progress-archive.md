@@ -1298,7 +1298,7 @@ Verified before trusting, not assumed:
   sets the PROXY header from the real socket. So an external sender cannot assert 172.19.0.1 — it
   is only reachable from the host itself.
 - Scope stated honestly in the config comment: this is the gateway, so it covers every container on
-  traefik_web (app-one, trail, ramble, websites) plus host processes — acceptable on a single-tenant
+  traefik_web (the operator's other unrelated apps) plus host processes — acceptable on a single-tenant
   host of the operator's own apps.
 
 **End-to-end verification** (reproduced the original bug from a throwaway container on traefik_web,

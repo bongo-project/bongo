@@ -2,7 +2,7 @@
 
 Date: 2026-07-03
 Context: readiness to run as a real, internet-facing mail server for **example.com**
-(single node, Docker, behind the existing Traefik `hostbox` stack).
+(single node, Docker, behind an existing Traefik reverse proxy).
 Method: 4 parallel focused security reviews (SMTP open-relay, mail DoS/injection,
 IMAP/POP3/TLS, web UI + deployment) plus direct code tracing.
 
