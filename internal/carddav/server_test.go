@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
@@ -241,9 +240,27 @@ func TestCardDAVListingIsScopedToPrincipal(t *testing.T) {
 	if err != nil {
 		return // refusing outright is correctly scoped
 	}
+
+	// Assert on the DATA, not on o.Path.
+	//
+	// An earlier version of this test checked strings.Contains(o.Path, victim)
+	// and was vacuous. contactToAddressObject builds the response path from
+	// whichever userID is in scope, so a leak that changes only the store
+	// lookup returns the victim's contact under the ATTACKER's path: the
+	// substring never matches and the test passes while contacts are being
+	// enumerated across accounts. It survived its own injection check only
+	// because that break happened to corrupt the path as well.
+	//
+	// The attacker owns no contacts in this fixture, so any object at all is a
+	// leak, and the card contents are checked too in case the fixture ever
+	// grows one.
+	if len(objs) != 0 {
+		t.Errorf("attacker listed %d object(s) from the victim's address book; "+
+			"their own address book is empty, so every one of these is a leak", len(objs))
+	}
 	for _, o := range objs {
-		if strings.Contains(o.Path, victim) {
-			t.Errorf("attacker listed a contact from the victim's address book: %s", o.Path)
+		if fn := o.Card.PreferredValue(vcard.FieldFormattedName); fn == "Victim Private Contact" {
+			t.Errorf("attacker enumerated the victim's contact %q (served at %s)", fn, o.Path)
 		}
 	}
 }
