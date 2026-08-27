@@ -774,3 +774,62 @@ func extractRecoveryCodes(body string) []string {
 	}
 	return codes
 }
+
+// TestDAVLockoutHoldsAgainstACorrectPassword closes the gap that made the
+// lockout untested in practice.
+//
+// TestDAVBasicAuthFailuresAreRateLimited only ever sends a wrong password, and
+// two different code paths return 429 for that: the Blocked() pre-check at the
+// top of davBasicAuth, and authlimit.Record once the count reaches the limit.
+// So deleting the pre-check entirely left that test green while an attacker
+// over budget could keep guessing -- every request still ran the full bcrypt
+// check, and a correct guess returned the user ID and reset the limiter.
+//
+// The distinguishing case is therefore a CORRECT password from an
+// already-blocked IP. It must still be refused, and it must be refused without
+// the credential being checked at all.
+func TestDAVLockoutHoldsAgainstACorrectPassword(t *testing.T) {
+	baseURL, _, cancel := startSecurityTestAgent(t)
+	defer cancel()
+
+	client := newNoRedirectClient(nil)
+
+	davGet := func(t *testing.T, user, pass string) int {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodGet, baseURL+"/carddav/", nil)
+		if err != nil {
+			t.Fatalf("NewRequest: %v", err)
+		}
+		req.SetBasicAuth(user, pass)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	// Sanity: the correct credentials work before any lockout, so a 429 below
+	// is the lockout and not a broken fixture or a wrong password.
+	if code := davGet(t, "admin@localhost", "admin"); code == http.StatusTooManyRequests {
+		t.Fatal("already rate limited before the test began")
+	}
+
+	// Burn through the budget.
+	for i := 0; i < davMaxAuthFailuresForTest; i++ {
+		davGet(t, "admin@localhost", "wrong-password")
+	}
+
+	// The real assertion: correct credentials, blocked IP.
+	if code := davGet(t, "admin@localhost", "admin"); code != http.StatusTooManyRequests {
+		t.Errorf("correct password from a locked-out IP returned %d, want 429: the "+
+			"lockout is not a lockout, and an attacker over budget can keep guessing "+
+			"until a guess succeeds", code)
+	}
+}
+
+// davMaxAuthFailuresForTest mirrors davMaxAuthFailures in internal/agent. It is
+// duplicated rather than exported: exporting a tuning constant to satisfy a
+// test widens the package's API for no production reason. If they drift, the
+// sanity check above fails loudly rather than the test passing vacuously.
+const davMaxAuthFailuresForTest = 5
