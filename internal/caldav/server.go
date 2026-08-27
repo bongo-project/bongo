@@ -3,12 +3,15 @@ package caldav
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/emersion/go-ical"
+	webdav "github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/caldav"
 
 	"github.com/bongo-go/bongo-go/internal/store"
@@ -255,6 +258,15 @@ func (b *Backend) PutCalendarObject(ctx context.Context, path string, calendar *
 
 	// Check if event exists (update vs create).
 	existing, _ := b.events.Get(userID, guid)
+
+	// Honour the conditional headers before writing anything. go-webdav parses
+	// If-Match/If-None-Match into opts; ignoring them made every concurrent
+	// edit a silent last-write-wins, which is the failure mode these headers
+	// exist to prevent.
+	if err := checkPreconditions(opts, existing); err != nil {
+		return nil, err
+	}
+
 	if existing != nil {
 		event.CreatedAt = existing.CreatedAt
 		if err := b.events.Update(userID, guid, event); err != nil {
@@ -420,7 +432,7 @@ func eventToCalendarObject(userID, calID string, e *bongov1.Event) (*caldav.Cale
 		Path:          objectPath(userID, calID, e.Guid),
 		ModTime:       modTime,
 		ContentLength: int64(buf.Len()),
-		ETag:          fmt.Sprintf(`"%d"`, e.UpdatedAt),
+		ETag:          store.ContentETag(e.IcalRaw, e.UpdatedAt),
 		Data:          cal,
 	}, nil
 }
@@ -457,4 +469,57 @@ func calIDFromObjectPath(path string) string {
 		return parts[4]
 	}
 	return ""
+}
+
+// ErrPreconditionFailed is the cause wrapped into every 412 this backend
+// returns. go-webdav's HTTPError lives in its internal package, so its status
+// code cannot be inspected from outside the library; wrapping a sentinel gives
+// callers and tests something stable to match with errors.Is without depending
+// on message text.
+var ErrPreconditionFailed = errors.New("precondition failed")
+
+// checkPreconditions enforces If-Match and If-None-Match for a PUT.
+//
+// If-None-Match: * means "create only" -- fail if the resource exists.
+// If-Match: <etag> means "update only this version" -- fail if the resource is
+// gone or has moved on. Both answer 412 so the client re-reads and retries
+// rather than silently clobbering somebody else's edit.
+//
+// A malformed header value is treated as a failed precondition rather than
+// ignored: a client that sent a condition it meant must never have the write
+// applied unconditionally.
+func checkPreconditions(opts *caldav.PutCalendarObjectOptions, existing *bongov1.Event) error {
+	if opts == nil {
+		return nil
+	}
+
+	if opts.IfNoneMatch.IsSet() {
+		if !opts.IfNoneMatch.IsWildcard() {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-None-Match supports only *", ErrPreconditionFailed))
+		}
+		if existing != nil {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-None-Match: * but the object already exists", ErrPreconditionFailed))
+		}
+	}
+
+	if opts.IfMatch.IsSet() {
+		if existing == nil {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-Match on an object that does not exist", ErrPreconditionFailed))
+		}
+		want := store.ContentETagValue(existing.IcalRaw, existing.UpdatedAt)
+		ok, err := opts.IfMatch.MatchETag(want)
+		if err != nil {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: malformed If-Match: %v", ErrPreconditionFailed, err))
+		}
+		if !ok {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-Match does not match the current object", ErrPreconditionFailed))
+		}
+	}
+
+	return nil
 }

@@ -3,11 +3,14 @@ package carddav
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/emersion/go-vcard"
+	webdav "github.com/emersion/go-webdav"
 	"github.com/emersion/go-webdav/carddav"
 
 	"github.com/bongo-go/bongo-go/internal/store"
@@ -203,6 +206,13 @@ func (b *Backend) PutAddressObject(ctx context.Context, path string, card vcard.
 
 	// Check if contact exists (update vs create).
 	existing, _ := b.contacts.Get(userID, guid)
+
+	// Conditional headers are enforced before any write. See the CalDAV
+	// backend for the reasoning; the failure was identical here.
+	if err := checkPreconditions(opts, existing); err != nil {
+		return nil, err
+	}
+
 	if existing != nil {
 		contact.CreatedAt = existing.CreatedAt
 		if err := b.contacts.Update(userID, guid, contact); err != nil {
@@ -279,7 +289,7 @@ func contactToAddressObject(userID string, c *bongov1.Contact) (*carddav.Address
 		Path:    objectPath(userID, c.Guid),
 		Card:    card,
 		ModTime: modTime,
-		ETag:    fmt.Sprintf(`"%d"`, c.UpdatedAt),
+		ETag:    store.ContentETag(c.VcardRaw, c.UpdatedAt),
 	}, nil
 }
 
@@ -294,4 +304,54 @@ func guidFromPath(path string) string {
 		}
 	}
 	return path
+}
+
+// ErrPreconditionFailed is the cause wrapped into every 412 this backend
+// returns. go-webdav's HTTPError lives in its internal package, so its status
+// code cannot be inspected from outside the library; wrapping a sentinel gives
+// callers and tests something stable to match with errors.Is without depending
+// on message text.
+var ErrPreconditionFailed = errors.New("precondition failed")
+
+// checkPreconditions enforces If-Match and If-None-Match for a PUT.
+//
+// If-None-Match: * is create-only; If-Match pins the version being replaced.
+// Both answer 412 so the client re-reads and retries instead of silently
+// overwriting another client's edit. A malformed condition fails rather than
+// being ignored: a client that sent a condition it meant must never have the
+// write applied unconditionally.
+func checkPreconditions(opts *carddav.PutAddressObjectOptions, existing *bongov1.Contact) error {
+	if opts == nil {
+		return nil
+	}
+
+	if opts.IfNoneMatch.IsSet() {
+		if !opts.IfNoneMatch.IsWildcard() {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-None-Match supports only *", ErrPreconditionFailed))
+		}
+		if existing != nil {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-None-Match: * but the object already exists", ErrPreconditionFailed))
+		}
+	}
+
+	if opts.IfMatch.IsSet() {
+		if existing == nil {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-Match on an object that does not exist", ErrPreconditionFailed))
+		}
+		want := store.ContentETagValue(existing.VcardRaw, existing.UpdatedAt)
+		ok, err := opts.IfMatch.MatchETag(want)
+		if err != nil {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: malformed If-Match: %v", ErrPreconditionFailed, err))
+		}
+		if !ok {
+			return webdav.NewHTTPError(http.StatusPreconditionFailed,
+				fmt.Errorf("%w: If-Match does not match the current object", ErrPreconditionFailed))
+		}
+	}
+
+	return nil
 }
