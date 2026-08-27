@@ -1,3 +1,19 @@
+# Observability and Self-Improvement — Captured Planning Discussion
+
+**Status:** Raw transcript of a design conversation, 2026-04-11. Unedited, and it
+reads like a conversation because that is what it is — it begins mid-thread, in
+reply to a question about which piece to build first.
+
+Kept because the phased breakdown (Phases 0–6 below) is the most concrete plan
+anyone has written for this, and nothing here has been built. The distilled,
+readable version is in `docs/continuous-improvement-loop.md`; **read that first**
+and treat this as the appendix it is.
+
+Nothing in here is a commitment. Phase numbering is local to this document and
+unrelated to the project's sprint or phase numbering.
+
+---
+
 Agreed — this is the right next step. Everything downstream (spam analysis, code improvement
   loop, Nomad rollout watcher) depends on having real data flowing through a clean, well-scoped
   observability layer. If we get this wrong, everything built on top inherits the mess.

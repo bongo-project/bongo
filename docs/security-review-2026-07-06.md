@@ -1,5 +1,13 @@
 # Security Review — bongo-go (internet-facing)
 
+> **Status: historical, with three items still open.** A point-in-time snapshot
+> from 2026-07-06. All findings were fixed except three multi-node cluster
+> transport items — H4 (Raft plaintext fallback and peer-certificate
+> verification), M8 (TLS for blob-sync and peer-join HTTP) and L6 (dedicated
+> private cluster bind address). Those are not reachable in a single-node
+> deployment but become live when a cluster is formed. See `SECURITY.md` for what
+> that means if you are running Bongo across more than one node.
+
 **Date:** 2026-07-06
 **Scope:** Whole codebase (~50k LoC, `internal/` + `cmd/`), as deployed live at `mail.example.com`.
 **Method:** Six parallel adversarial code auditors, one per attack surface (SMTP/pipeline; IMAP/POP3/DAV; web auth/session; web data/XSS; cluster/control-plane/TLS; storage/import). Each read the real code, traced data flow, and reported only plausibly-exploitable issues with `file:line` evidence. Findings were then deduplicated and re-calibrated against the actual deployment topology.

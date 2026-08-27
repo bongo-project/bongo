@@ -210,8 +210,9 @@ propagation.
 ## Sprint 14: Visual UI Matching — Old Bongo Dragonfly/Hawkeye ✅ DONE (CSS infrastructure)
 Use browser agent to view the old Bongo UI screenshots from
 https://github.com/bongo-project/bongo-project/tree/gh-pages/images (11 Dragonfly
-screens + 13 Hawkeye screens at various resolutions). Also try running the old UI from
-bongo.original/src/www/ static HTML/JS sources. Compare side-by-side with the new
+screens + 13 Hawkeye screens at various resolutions). Also try running the old UI from the
+original project's `src/www/` static HTML/JS sources (a separate checkout of
+bongo-project/bongo-project, not vendored here). Compare side-by-side with the new
 bongo-go web UI. Iterate on CSS, layout, spacing, colours, iconography, and interaction
 patterns to match the original look and feel as closely as possible while keeping the
 modern stack (HTMX, Alpine.js, Pico CSS, Open Props). Focus on: mail list density,

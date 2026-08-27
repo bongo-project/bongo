@@ -9,9 +9,35 @@ embedded storage (no standalone database), and Raft-based clustering. Single Go 
 
 ## Reference Documents
 
-- `../bongo-go-prd.md` — Full PRD with architecture decisions, rationale, and phase plan
-- `../bongo.original/` — Original C/Python Bongo source (reference only, do not modify)
-- `docs/sprints/` — Current and past sprint files with task details
+- `prds/` — Requirements, task list and progress for current work (see Development Workflow)
+- `docs/sprints/` — Past sprint files with task details, kept as a historical record
+- `docs/walkthrough.md` — End-to-end tour of the running server
+- `SECURITY.md` — Reporting policy and known limitations
+
+The original C/Python Bongo, which this reimplements, is not vendored here. It is
+at <https://github.com/bongo-project/bongo-project> if you want to consult it.
+
+## Development Workflow
+
+This repository ships the workflow it is built with, in `.claude/`. Claude Code
+picks it up automatically — there is nothing to install.
+
+- `.claude/skills/` — `norman` (plan, execute, verify with crash recovery), `prd`
+  (requirements documents) and `sweep` (post-implementation cleanup)
+- `.claude/agents/` — 16 specialist subagents, trimmed to this project's stack
+
+```bash
+norman prd        # write requirements into prds/research/
+norman import     # move the PRD to backlog, extract tasks into prds/TASKS.md
+norman            # execute the next task
+norman verify     # validate the implementation against the PRD
+norman sweep      # prove tests guard their invariants; tidy stale comments
+```
+
+For a small change, skip the PRD and go straight to `norman plan`. For a one-file
+fix with obvious scope, just make the change.
+
+See `.claude/skills/README.md` for provenance. Other assistants: see `AGENTS.md`.
 
 ## Build & Test Commands
 

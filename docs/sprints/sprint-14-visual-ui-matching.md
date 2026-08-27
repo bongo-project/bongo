@@ -116,7 +116,7 @@ Take screenshots of each view for side-by-side comparison with bongo-go.
 This is far more valuable than static screenshots — you can see hover states, active
 states, transitions, and the full conversation thread bubble view with real messages.
 
-### Old Bongo compiled source — `bongo.original/src/www/`
+### Old Bongo compiled source — `src/www/` in a bongo-project/bongo-project checkout
 Same CSS files as above but this is the packaged version. 160+ image assets in `img/`.
 Use `tmp/dragonfly-python/` as the primary reference (easier to navigate).
 
@@ -255,7 +255,7 @@ Match the top bar and sidebar to the original Dragonfly layout.
 - Sidebar width: keep 240px (close to old 14.5em ≈ 232px)
 
 **Add Bongo logo/favicon:**
-- Copy `bongo.original/src/www/img/bongo-favicon.png` to `internal/web/static/img/`
+- Copy `src/www/img/bongo-favicon.png` from a bongo-project/bongo-project checkout to `internal/web/static/img/`
 - Copy or recreate logo for brand area
 - Add `<link rel="icon">` in layout.templ
 - Reference logo in PWA manifest if applicable
