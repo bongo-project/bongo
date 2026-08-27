@@ -51,11 +51,11 @@ func TestBuildDNSChecks(t *testing.T) {
 			wantDMARCStatus: "ok",
 		},
 		{
-			name:            "MX points elsewhere - OVH/example-net case",
+			name:            "MX points elsewhere - external provider case",
 			mailHostname:    mailHost,
 			expectedDKIMTXT: ourDKIMTXT,
-			mx:              []string{"mx1.mail.ovh.net."},
-			spfTXTs:         []string{"v=spf1 include:mx.ovh.com -all"},
+			mx:              []string{"mx1.mail.provider.example."},
+			spfTXTs:         []string{"v=spf1 include:mx.provider.example -all"},
 			dkimTXTs:        nil,
 			dmarcTXTs:       nil,
 			wantMXStatus:    "fail",
@@ -278,7 +278,7 @@ func TestExtractOurDKIMPublicKey(t *testing.T) {
 }
 
 // TestMXCheckCorrectness specifically tests the MX comparison logic to ensure
-// the OVH/example-net false-positive bug is fixed.
+// the external-provider false-positive bug is fixed.
 func TestMXCheckCorrectness(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -295,9 +295,9 @@ func TestMXCheckCorrectness(t *testing.T) {
 			wantHasMX:    true,
 		},
 		{
-			name:         "MX points to OVH - not ok",
+			name:         "MX points to an external provider - not ok",
 			mailHostname: "mail.example.com",
-			mx:           []string{"mx1.mail.ovh.net."},
+			mx:           []string{"mx1.mail.provider.example."},
 			wantOK:       false,
 			wantHasMX:    false,
 		},

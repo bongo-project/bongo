@@ -424,7 +424,7 @@ func TestBuiltinProcessorUnsignedBounceIsEscalated(t *testing.T) {
 
 // TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine reproduces the
 // production bug observed 2026-08-19: an application authenticated via SMTP
-// AUTH submits mail as registrations@example.test to lance@example.test, both
+// AUTH submits mail as registrations@example.test to user@example.test, both
 // local accounts on a domain that publishes p=quarantine. The connecting
 // address is a Docker bridge gateway, so SPF softfails against a private IP;
 // the submitting app does not DKIM-sign. Neither identifier aligns, so DMARC
@@ -446,11 +446,11 @@ func TestBuiltinProcessorTrustedSubmissionBypassesDMARCQuarantine(t *testing.T) 
 	proc := newDMARCProcessor(t, true)
 	env := &bongov1.QueueEnvelope{
 		Sender:     "registrations@example.test",
-		Recipients: []string{"lance@example.test"},
+		Recipients: []string{"user@example.test"},
 		SpfResult:  "softfail",
 		Trusted:    true,
 	}
-	msg := "From: registrations@example.test\r\nTo: lance@example.test\r\nSubject: New account registered\r\nMessage-ID: <reg@example.test>\r\nDate: Thu, 01 Jan 2026 00:00:00 +0000\r\n\r\nA new user registered.\r\n"
+	msg := "From: registrations@example.test\r\nTo: user@example.test\r\nSubject: New account registered\r\nMessage-ID: <reg@example.test>\r\nDate: Thu, 01 Jan 2026 00:00:00 +0000\r\n\r\nA new user registered.\r\n"
 
 	result, err := proc.Process(context.Background(), env, strings.NewReader(msg))
 	if err != nil {

@@ -6,7 +6,7 @@ warn_at_tasks: 12
 
 ## Project
 name: bongo-go
-repo: /home/user/dev/bongo-project/bongo-go/bongo-go
+repo: .
 created: 2026-07-03
 
 ## Commands

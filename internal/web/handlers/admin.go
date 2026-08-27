@@ -839,7 +839,8 @@ func buildDNSChecks(domain, mailHostname, expectedDKIMTXT string, mx, spfTXTs, d
 
 	// --- MX ---
 	// OK only if at least one MX host, after trimming trailing dot and lowercasing,
-	// equals the configured mail hostname. This prevents the OVH/example-net false-positive.
+	// equals the configured mail hostname. This prevents a false positive when the
+	// domain's MX points at an external mail provider rather than at this server.
 	mxOK := false
 	var mxFoundHosts []string
 	wantMX := strings.ToLower(strings.TrimSpace(mailHostname))

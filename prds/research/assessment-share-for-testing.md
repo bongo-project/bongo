@@ -30,14 +30,14 @@ The B1 de-branding pass missed these, or they were re-added afterwards:
 
 | Location | Content |
 |---|---|
-| `internal/web/handlers/dns_guide_test.go:22-26` | `example.net`, **the production IP `192.0.2.1`**, a DKIM public-key fragment |
+| `internal/web/handlers/dns_guide_test.go:22-26` | a real domain, **the production IP**, a DKIM public-key fragment |
 | `test/integration/alias_delivery_test.go:96,115` | `lance@example.net` — a real personal address |
 | `internal/web/handlers/dns_guide.go:20` | `example.net` in a doc comment |
-| `internal/web/handlers/admin_test.go:54,281` | comments referencing "the OVH/example-net case" |
+| `internal/web/handlers/admin_test.go:54,281` | comments referencing the external mail provider by name |
 
 None is a secret — the IP and DKIM record are public DNS. But shipping your production IP and a
 personal address in test fixtures tells every tester exactly which host to point at, and the
-"OVH/example-net case" comments are meaningless to anyone outside your head. Replace with
+provider-specific comments are meaningless to anyone outside your head. Replace with
 `example.com` / `192.0.2.1` (RFC 5737 documentation range), which is what the rest of the repo
 already uses.
 

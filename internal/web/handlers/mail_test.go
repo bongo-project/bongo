@@ -587,7 +587,7 @@ func TestListMessagesPaginatesAfterThreadGrouping(t *testing.T) {
 		guid := fmt.Sprintf("thread-message-%02d", i)
 		meta := &bongov1.MailMeta{
 			Guid:       guid,
-			Subject:    "Re: test Lance",
+			Subject:    "Re: test message",
 			From:       "admin@example.com",
 			MessageId:  fmt.Sprintf("<message-%02d@example.test>", i),
 			ReceivedAt: time.Unix(1_700_000_000+int64(i), 0).Unix(),

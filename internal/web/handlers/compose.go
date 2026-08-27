@@ -479,7 +479,7 @@ func (h *ComposeHandler) Send(w http.ResponseWriter, r *http.Request) {
 	var localRecipients, externalRecipients []string
 	for _, rcpt := range allRecipients {
 		// Reduce to the bare local@domain address: the To/Cc fields may carry a
-		// display name or angle brackets ("Lance <a@b.com>"), which must not
+		// display name or angle brackets ("Alice <a@b.com>"), which must not
 		// leak into the SMTP envelope or the MX-lookup domain ("b.com>").
 		rcpt = normalizeRecipient(rcpt)
 		if rcpt == "" {
@@ -1028,7 +1028,7 @@ func randomToken() string {
 
 // normalizeRecipient extracts the bare local@domain address from a recipient
 // field that may include a display name or angle brackets (e.g.
-// "Lance <a@b.com>" or "<a@b.com>"). It falls back to the trimmed input when
+// "Alice <a@b.com>" or "<a@b.com>"). It falls back to the trimmed input when
 // the value cannot be parsed as an address.
 func normalizeRecipient(rcpt string) string {
 	rcpt = strings.TrimSpace(rcpt)

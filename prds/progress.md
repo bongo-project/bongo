@@ -176,9 +176,9 @@ injecting a throwaway secret — the test instance has every listener disabled a
 exit, so it needs A secret, not THE secret. Verified end to end locally against a synthetic archive
 built from a REAL Pebble store before asking the operator to reinstall it.
 
-Host setup (see memory `deploy-example-host-test`): `/usr/local/sbin/verify-restore.sh` and
-`/usr/local/bin/bongo-go`, both root-owned, with `(root) NOPASSWD:` on the script only. Re-run with
-`ssh example-host 'sudo -n /usr/local/sbin/verify-restore.sh --latest'`.
+Host setup: `/usr/local/sbin/verify-restore.sh` and `/usr/local/bin/bongo-go`, both
+root-owned, with `(root) NOPASSWD:` on the script only. Re-run over ssh with
+`sudo -n /usr/local/sbin/verify-restore.sh --latest`.
 
 Not yet checked: DKIM key vs published DNS (`VERIFY_DKIM_DOMAIN`), which sudo's env_reset strips.
 
