@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/pipeline"
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/pipeline"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 func testLogger() *slog.Logger {

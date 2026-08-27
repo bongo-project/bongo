@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/version"
+	"github.com/bongo-project/bongo/internal/version"
 )
 
 func TestVersion(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/bongo-go/bongo-go/internal/i18n"
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-project/bongo/internal/i18n"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
 // jsMessageIDs are the translation keys that bongo.js needs at runtime. They

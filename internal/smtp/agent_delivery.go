@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // AgentDeliveryPipeline implements the Deliverer interface for agent-role nodes.

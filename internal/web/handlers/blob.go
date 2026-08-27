@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bongo-go/bongo-go/internal/store"
+	"github.com/bongo-project/bongo/internal/store"
 )
 
 // BlobGetter provides read access to the blob store.

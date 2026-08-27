@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // dummyRFC5322 is a minimal valid RFC 5322 message used in tests.

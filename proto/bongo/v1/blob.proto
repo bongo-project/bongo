@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package bongo.v1;
 
-option go_package = "github.com/bongo-go/bongo-go/proto/bongo/v1;bongov1";
+option go_package = "github.com/bongo-project/bongo/proto/bongo/v1;bongov1";
 
 message BlobRef {
   string hash = 1;

@@ -23,7 +23,7 @@ deploy/Dockerfile, entrypoint.sh (new), docker-compose.yml, README.md. Non-root 
 PATTERN: [container] no-new-privileges and setcap file-caps are mutually exclusive for non-root privileged-port binding; omit no-new-privileges when using setcap+su-exec.
 
 ## 2026-07-03 — 1.9 DONE (CI publish to GHCR)
-.github/workflows/publish-image.yml (new), deploy/docker-compose.yml (image: ghcr.io/lhaig/bongo-go:latest, build block removed), README §6 (pull instead of build). Triggers push main + v*.*.* tags. commit a82e670.
+.github/workflows/publish-image.yml (new), deploy/docker-compose.yml (image: ghcr.io/bongo-project/bongo:latest, build block removed), README §6 (pull instead of build). Triggers push main + v*.*.* tags. commit a82e670.
 
 ## 2026-07-03 — 1.2 DONE (M1 CRLF header hardening)
 internal/mail/header.go (+test), bounce.go (+test), handlers/compose.go (+compose_inject_test.go). Shared SanitizeHeaderValue/SanitizeHeaderFilename in internal/mail. commit pending.
@@ -1276,7 +1276,7 @@ for every failure-mode claim.
 ## 2026-08-20 — v0.6.15 DEPLOYED + trusted_networks configured on prod
 
 Deploy: pushed main, tagged v0.6.15, CI green, image published, container recreated from
-`ghcr.io/lhaig/bongo-go:0.6.15`. Healthy, all listeners up, zero ERROR lines.
+`ghcr.io/bongo-project/bongo:0.6.15`. Healthy, all listeners up, zero ERROR lines.
 
 **Deploy-path trap found:** a host can end up with more than one docker-compose.yml, one of them a
 stale decoy (`image: bongo-go:latest` + a local `build:` context — deploying from it would rebuild

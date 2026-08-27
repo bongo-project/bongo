@@ -43,9 +43,10 @@ already uses.
 
 ### 3. The module path does not match the repository
 
-`go.mod` declares `module github.com/bongo-go/bongo-go`, but the repo is `github.com/lhaig/bongo-go`.
+`go.mod` declared a module path that matched neither the repository it lived in nor any
+resolvable location. Now set to `github.com/bongo-project/bongo`, the destination org and name.
 
-A tester running `go install github.com/bongo-go/bongo-go/cmd/bongo-go@latest` gets a failure,
+A tester running `go install github.com/bongo-project/bongo/cmd/bongo-go@latest` gets a failure,
 and `go get` of the module path will not resolve. Either move the repo to a `bongo-go` org, set up
 a vanity import path, or change the module to match. Worth deciding before people start cloning,
 because changing it later breaks anyone who already imported it.

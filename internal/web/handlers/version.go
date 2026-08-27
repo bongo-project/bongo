@@ -3,7 +3,7 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/bongo-go/bongo-go/internal/version"
+	"github.com/bongo-project/bongo/internal/version"
 )
 
 // Version returns build metadata for authenticated administrators.

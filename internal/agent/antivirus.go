@@ -3,9 +3,9 @@ package agent
 import (
 	"log/slog"
 
-	"github.com/bongo-go/bongo-go/internal/config"
-	"github.com/bongo-go/bongo-go/internal/pipeline"
-	pipelineantivirus "github.com/bongo-go/bongo-go/internal/pipeline/antivirus"
+	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/pipeline"
+	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 )
 
 // buildAntivirusProcessor constructs the antivirus pipeline stage processor

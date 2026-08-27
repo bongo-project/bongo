@@ -1,6 +1,6 @@
 package templates
 
-import bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+import bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 
 templ SettingsPage(prefs *bongov1.UserPreferences, email string, flash string) {
 	@LayoutWithContent(t(ctx, "settings.settings"), email) {

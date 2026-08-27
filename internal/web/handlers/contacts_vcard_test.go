@@ -10,7 +10,7 @@ import (
 
 	"github.com/emersion/go-vcard"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 func TestBuildVCardFromForm(t *testing.T) {

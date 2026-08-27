@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"time"
 
-	bongoimap "github.com/bongo-go/bongo-go/internal/imap"
-	"github.com/bongo-go/bongo-go/internal/store"
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	bongoimap "github.com/bongo-project/bongo/internal/imap"
+	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 
 	"google.golang.org/protobuf/proto"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // disableStreamTimeouts clears the server's read/write deadlines for a

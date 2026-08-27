@@ -6,7 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bongo-go/bongo-go/internal/queue"
+	"github.com/bongo-project/bongo/internal/queue"
 )
 
 // QueueHandler provides HTTP endpoints for queue management.

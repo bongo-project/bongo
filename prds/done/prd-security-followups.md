@@ -75,11 +75,11 @@ beyond the "safe to expose" baseline, without regressing existing behaviour.
 
 ### T9 — CI: build and publish container image to GHCR
 - Add a GitHub Actions workflow that builds `deploy/Dockerfile` and pushes to
-  `ghcr.io/lhaig/bongo-go` on push to `main` and on version tags. Login via the
+  `ghcr.io/bongo-project/bongo` on push to `main` and on version tags. Login via the
   built-in `GITHUB_TOKEN` (packages: write). Tags: `latest`, the commit SHA, and
   semver on tag pushes. Target `linux/amd64` (the deploy target).
 - Update `deploy/docker-compose.yml` so the remote server PULLS the image
-  (`image: ghcr.io/lhaig/bongo-go:latest`) instead of building locally (the repo
+  (`image: ghcr.io/bongo-project/bongo:latest`) instead of building locally (the repo
   isn't on the server). Keep a documented way to build locally for dev.
 - Update `deploy/README.md` deploy steps: `docker compose pull && docker compose
   up -d` instead of `--build`.

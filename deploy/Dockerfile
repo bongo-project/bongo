@@ -29,8 +29,8 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     templ generate && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-go/bongo-go/internal/version.Version=${VERSION} -X github.com/bongo-go/bongo-go/internal/version.Commit=${COMMIT} -X github.com/bongo-go/bongo-go/internal/version.Date=${DATE}" -o /out/bongo-go     ./cmd/bongo-go && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-go/bongo-go/internal/version.Version=${VERSION} -X github.com/bongo-go/bongo-go/internal/version.Commit=${COMMIT} -X github.com/bongo-go/bongo-go/internal/version.Date=${DATE}" -o /out/bongo-import ./cmd/bongo-import
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-project/bongo/internal/version.Version=${VERSION} -X github.com/bongo-project/bongo/internal/version.Commit=${COMMIT} -X github.com/bongo-project/bongo/internal/version.Date=${DATE}" -o /out/bongo-go     ./cmd/bongo-go && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X github.com/bongo-project/bongo/internal/version.Version=${VERSION} -X github.com/bongo-project/bongo/internal/version.Commit=${COMMIT} -X github.com/bongo-project/bongo/internal/version.Date=${DATE}" -o /out/bongo-import ./cmd/bongo-import
 
 # ---- Runtime stage ----------------------------------------------------------
 # Alpine keeps a shell for debugging and ships ca-certificates + tzdata, both

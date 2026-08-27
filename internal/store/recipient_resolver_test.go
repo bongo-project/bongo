@@ -3,7 +3,7 @@ package store
 import (
 	"testing"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // insertUser is a test helper that inserts a user directly into the SQLite users

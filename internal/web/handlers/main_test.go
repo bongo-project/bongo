@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/i18n"
+	"github.com/bongo-project/bongo/internal/i18n"
 )
 
 // TestMain initializes the i18n catalogue so that templates rendered in tests

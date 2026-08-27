@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
 // logStreamHandlerWithGlobalScope wraps h.LogStream in a global-admin scope context

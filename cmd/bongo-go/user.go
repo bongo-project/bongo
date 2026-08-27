@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/bongo-go/bongo-go/internal/security"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 var (

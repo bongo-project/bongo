@@ -7,7 +7,7 @@ import (
 
 	"github.com/cockroachdb/pebble"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // queueMovePrefix marks a synthetic queue-move command, following the same

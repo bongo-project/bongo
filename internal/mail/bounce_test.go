@@ -13,8 +13,8 @@ import (
 	"github.com/emersion/go-msgauth/dkim"
 	"github.com/jhillyerd/enmime"
 
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // fakeDeliverer captures whatever bytes GenerateAndDeliver hands to Deliver,

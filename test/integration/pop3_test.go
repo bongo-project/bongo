@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/agent"
-	"github.com/bongo-go/bongo-go/internal/auth"
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/agent"
+	"github.com/bongo-project/bongo/internal/auth"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // pop3Client is a simple POP3 client for integration testing.

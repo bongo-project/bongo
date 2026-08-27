@@ -9,10 +9,10 @@ import (
 	"github.com/a-h/templ"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/bongo-go/bongo-go/internal/store"
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
-	"github.com/bongo-go/bongo-go/internal/web/templates"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/store"
+	"github.com/bongo-project/bongo/internal/web/middleware"
+	"github.com/bongo-project/bongo/internal/web/templates"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 const searchResultsPerPage = 25

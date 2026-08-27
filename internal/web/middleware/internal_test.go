@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/security"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 func TestRequireInternalAuth(t *testing.T) {

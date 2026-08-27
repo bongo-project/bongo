@@ -21,9 +21,9 @@ services:
     #   docker build -f deploy/Dockerfile \
     #     --build-arg VERSION=X.Y.Z --build-arg COMMIT=$(git rev-parse --short HEAD) \
     #     --build-arg DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ) \
-    #     -t ghcr.io/lhaig/bongo-go:X.Y.Z -t ghcr.io/lhaig/bongo-go:latest .
-    #   docker push ghcr.io/lhaig/bongo-go:X.Y.Z && docker push ghcr.io/lhaig/bongo-go:latest
-    image: ghcr.io/lhaig/bongo-go:0.6.20
+    #     -t ghcr.io/bongo-project/bongo:X.Y.Z -t ghcr.io/bongo-project/bongo:latest .
+    #   docker push ghcr.io/bongo-project/bongo:X.Y.Z && docker push ghcr.io/bongo-project/bongo:latest
+    image: ghcr.io/bongo-project/bongo:0.6.20
     container_name: bongo
     restart: unless-stopped
     mem_limit: 512m

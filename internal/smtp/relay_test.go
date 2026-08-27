@@ -13,7 +13,7 @@ import (
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 // mockRelayBackend captures delivered messages for test assertions.

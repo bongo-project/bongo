@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/antispam"
-	"github.com/bongo-go/bongo-go/internal/mail"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/mail"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // testMessage builds a minimal RFC 5322 message for testing.

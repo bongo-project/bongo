@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-project/bongo/internal/mail"
 )
 
 // perInlineImageCapBytes is the server-side cap for a single decoded inline image

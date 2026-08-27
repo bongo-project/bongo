@@ -6,9 +6,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	internalmail "github.com/bongo-go/bongo-go/internal/mail"
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	internalmail "github.com/bongo-project/bongo/internal/mail"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // LoadStoredDKIMKeys scans /system/domain/ in Pebble and registers a per-domain

@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/bongo-go/bongo-go/internal/security"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 // RequireInternalAuth validates internal control-plane requests.

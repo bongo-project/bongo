@@ -5,8 +5,8 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/bongo-go/bongo-go/internal/version"
-	"github.com/bongo-go/bongo-go/internal/web/static"
+	"github.com/bongo-project/bongo/internal/version"
+	"github.com/bongo-project/bongo/internal/web/static"
 )
 
 // StaticHandler serves embedded static files with cache headers.

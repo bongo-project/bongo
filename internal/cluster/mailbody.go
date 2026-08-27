@@ -6,8 +6,8 @@ import (
 
 	"github.com/jhillyerd/enmime"
 
-	"github.com/bongo-go/bongo-go/internal/store"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/store"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // maxIndexedBodyBytes caps how much body text is handed to Bleve for a single

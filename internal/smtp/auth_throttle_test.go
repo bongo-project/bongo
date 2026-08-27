@@ -6,8 +6,8 @@ import (
 	"net"
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/auth"
-	"github.com/bongo-go/bongo-go/internal/authlimit"
+	"github.com/bongo-project/bongo/internal/auth"
+	"github.com/bongo-project/bongo/internal/authlimit"
 	gosmtp "github.com/emersion/go-smtp"
 )
 

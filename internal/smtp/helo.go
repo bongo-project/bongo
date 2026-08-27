@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-project/bongo/internal/mail"
 )
 
 // HELONotQualifiedWarning is logged at startup when ResolveHELOName cannot

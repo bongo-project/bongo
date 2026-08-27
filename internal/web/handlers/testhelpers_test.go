@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/bongo-go/bongo-go/internal/web/middleware"
+	"github.com/bongo-project/bongo/internal/web/middleware"
 )
 
 // errNotFound is a sentinel error for use in test fakes.

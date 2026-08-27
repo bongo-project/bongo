@@ -28,7 +28,7 @@ Optional (for testing with a real mail client):
 ## Step 1: Clone and Build
 
 ```bash
-git clone https://github.com/bongo-go/bongo-go.git
+git clone https://github.com/bongo-project/bongo.git
 cd bongo-go
 ```
 

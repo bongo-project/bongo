@@ -3,7 +3,7 @@ package mail_test
 import (
 	"testing"
 
-	"github.com/bongo-go/bongo-go/internal/mail"
+	"github.com/bongo-project/bongo/internal/mail"
 )
 
 func TestSanitizeHeaderValue(t *testing.T) {

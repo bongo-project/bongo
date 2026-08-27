@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/antispam"
-	"github.com/bongo-go/bongo-go/internal/dnsbl"
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	"github.com/bongo-project/bongo/internal/antispam"
+	"github.com/bongo-project/bongo/internal/dnsbl"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // fakeDNSBLResolver is a minimal dnsbl.Resolver double, used so every test in

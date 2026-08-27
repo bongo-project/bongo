@@ -9,7 +9,7 @@ import (
 	"github.com/teambition/rrule-go"
 	"google.golang.org/protobuf/proto"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // EventStore manages user calendar events in Pebble via Raft.

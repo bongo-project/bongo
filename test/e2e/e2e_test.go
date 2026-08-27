@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bongo-go/bongo-go/internal/agent"
-	"github.com/bongo-go/bongo-go/internal/config"
+	"github.com/bongo-project/bongo/internal/agent"
+	"github.com/bongo-project/bongo/internal/config"
 )
 
 func freePort(t *testing.T) int {

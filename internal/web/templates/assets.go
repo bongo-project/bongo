@@ -1,6 +1,6 @@
 package templates
 
-import "github.com/bongo-go/bongo-go/internal/version"
+import "github.com/bongo-project/bongo/internal/version"
 
 // assetVersion returns a token appended to static asset URLs (?v=...) so that a
 // new build invalidates browser caches. Static assets are served at fixed paths

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/bongo-go/bongo-go/internal/version"
+	"github.com/bongo-project/bongo/internal/version"
 	"github.com/spf13/cobra"
 )
 

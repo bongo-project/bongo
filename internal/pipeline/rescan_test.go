@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
+	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
 )
 
 // TestPrepareForRescan verifies the flag/stage reset in isolation.
