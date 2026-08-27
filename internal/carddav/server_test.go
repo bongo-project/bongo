@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,4 +167,83 @@ func TestCardDAVIfMatchOnMissingObject(t *testing.T) {
 		testCard("Ghost", "g@example.com"),
 		&carddav.PutAddressObjectOptions{IfMatch: webdav.ConditionalMatch(`"deadbeef"`)})
 	assertPreconditionFailed(t, err, "If-Match on a nonexistent object")
+}
+
+// --- Cross-account scoping -------------------------------------------------
+//
+// The CardDAV URL contains a {userID} segment which the backend deliberately
+// ignores: the owner comes from the Basic-Auth principal in the request
+// context. go-webdav hands REPORT multiget hrefs straight to
+// GetAddressObject with no path validation, so that convention is the entire
+// cross-account boundary for contact data. It had no test.
+
+func twoUserBackend(t *testing.T) (*Backend, string, string, string) {
+	t.Helper()
+	backend, attacker := newTestBackend(t)
+	victim := "victim-user"
+
+	victimCtx := WithUserID(context.Background(), victim)
+	if _, err := backend.PutAddressObject(victimCtx, objectPath(victim, "secret-1"),
+		testCard("Victim Private Contact", "private@victim.test"), nil); err != nil {
+		t.Fatalf("seeding victim contact: %v", err)
+	}
+	return backend, attacker, victim, "secret-1"
+}
+
+func TestCardDAVReadIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, guid := twoUserBackend(t)
+
+	// Control first: the victim can read their own contact.
+	if _, err := backend.GetAddressObject(WithUserID(context.Background(), victim),
+		objectPath(victim, guid), nil); err != nil {
+		t.Fatalf("victim cannot read their own contact: %v", err)
+	}
+
+	obj, err := backend.GetAddressObject(WithUserID(context.Background(), attacker),
+		objectPath(victim, guid), nil)
+	if err == nil {
+		t.Fatalf("attacker read the victim's contact by requesting its URL path: %+v", obj)
+	}
+}
+
+func TestCardDAVWriteIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, guid := twoUserBackend(t)
+
+	_, err := backend.PutAddressObject(WithUserID(context.Background(), attacker),
+		objectPath(victim, guid), testCard("Overwritten", "attacker@evil.test"), nil)
+
+	got, gerr := backend.contacts.Get(victim, guid)
+	if gerr != nil {
+		t.Fatalf("victim's contact disappeared entirely (put err was %v): %v", err, gerr)
+	}
+	if got.DisplayName != "Victim Private Contact" {
+		t.Errorf("attacker overwrote the victim's contact via its URL path: name is now %q",
+			got.DisplayName)
+	}
+}
+
+func TestCardDAVDeleteIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, guid := twoUserBackend(t)
+
+	_ = backend.DeleteAddressObject(WithUserID(context.Background(), attacker),
+		objectPath(victim, guid))
+
+	if _, err := backend.contacts.Get(victim, guid); err != nil {
+		t.Errorf("attacker deleted the victim's contact by requesting its URL path: %v", err)
+	}
+}
+
+func TestCardDAVListingIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, _ := twoUserBackend(t)
+
+	objs, err := backend.ListAddressObjects(WithUserID(context.Background(), attacker),
+		"/carddav/"+victim+"/addressbooks/default/", nil)
+	if err != nil {
+		return // refusing outright is correctly scoped
+	}
+	for _, o := range objs {
+		if strings.Contains(o.Path, victim) {
+			t.Errorf("attacker listed a contact from the victim's address book: %s", o.Path)
+		}
+	}
 }

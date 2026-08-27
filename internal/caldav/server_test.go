@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -308,4 +309,151 @@ func TestCalDAVIfMatchOnMissingObject(t *testing.T) {
 		t.Fatal("If-Match against a nonexistent object was accepted")
 	}
 	assertPreconditionFailed(t, err, "conditional write")
+}
+
+// --- Cross-account scoping -------------------------------------------------
+//
+// Every CalDAV URL contains a {userID} segment, and the backend deliberately
+// ignores it: the owner comes from the Basic-Auth principal in the request
+// context, and response paths are re-synthesised from that. Nothing else
+// enforces the boundary -- go-webdav hands REPORT multiget hrefs straight to
+// GetCalendarObject with no path validation -- so that one convention is the
+// whole cross-account guarantee for calendar data.
+//
+// It had no test. These cover each verb: a request from victim's own session
+// works, and the identical request made by an attacker who simply points at
+// the victim's URL must not reach the victim's data.
+
+// twoUserBackend returns a backend plus an event owned by "victim".
+func twoUserBackend(t *testing.T) (*Backend, string, string, string) {
+	t.Helper()
+	backend, attacker := newTestBackend(t)
+	victim := "victim-user"
+
+	if _, err := backend.calendars.EnsureDefault(victim); err != nil {
+		t.Fatalf("EnsureDefault for victim: %v", err)
+	}
+	victimCtx := WithUserID(context.Background(), victim)
+	if _, err := backend.PutCalendarObject(victimCtx,
+		objectPath(victim, "default", "secret-1"),
+		testCalendar("secret-1", "Victim private meeting"), nil); err != nil {
+		t.Fatalf("seeding victim event: %v", err)
+	}
+	return backend, attacker, victim, "secret-1"
+}
+
+func TestCalDAVReadIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, guid := twoUserBackend(t)
+
+	// Control: the victim can read their own event, so a failure below means
+	// scoping and not a broken fixture.
+	if _, err := backend.GetCalendarObject(WithUserID(context.Background(), victim),
+		objectPath(victim, "default", guid), nil); err != nil {
+		t.Fatalf("victim cannot read their own event: %v", err)
+	}
+
+	// The attack: authenticated as attacker, ask for the victim's URL.
+	obj, err := backend.GetCalendarObject(WithUserID(context.Background(), attacker),
+		objectPath(victim, "default", guid), nil)
+	if err == nil {
+		t.Fatalf("attacker read the victim's event by requesting its URL path: %+v", obj)
+	}
+}
+
+func TestCalDAVWriteIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, guid := twoUserBackend(t)
+
+	// Overwrite attempt against the victim's existing event.
+	_, err := backend.PutCalendarObject(WithUserID(context.Background(), attacker),
+		objectPath(victim, "default", guid),
+		testCalendar(guid, "Overwritten by attacker"), nil)
+
+	// Whether the PUT errors or is redirected into the attacker's own
+	// keyspace, what must never happen is the victim's event changing.
+	victimEvent, gerr := backend.events.Get(victim, guid)
+	if gerr != nil {
+		t.Fatalf("victim's event disappeared entirely (put err was %v): %v", err, gerr)
+	}
+	if victimEvent.Title != "Victim private meeting" {
+		t.Errorf("attacker overwrote the victim's event via its URL path: title is now %q",
+			victimEvent.Title)
+	}
+}
+
+func TestCalDAVDeleteIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, guid := twoUserBackend(t)
+
+	_ = backend.DeleteCalendarObject(WithUserID(context.Background(), attacker),
+		objectPath(victim, "default", guid))
+
+	if _, err := backend.events.Get(victim, guid); err != nil {
+		t.Errorf("attacker deleted the victim's event by requesting its URL path: %v", err)
+	}
+}
+
+func TestCalDAVCalendarMetadataIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, _ := twoUserBackend(t)
+
+	// GetCalendar has no direct test anywhere in the repo; it is reachable via
+	// PROPFIND and would leak calendar existence and naming across accounts.
+	//
+	// Note what correct looks like here: the request is NOT refused. The
+	// backend ignores the URL's user segment and re-synthesises the response
+	// path from the session, so the attacker is answered with their OWN
+	// calendar. The assertion is therefore about identity, not about getting
+	// an error -- an earlier version of this test checked only for a non-nil
+	// result and failed against correct code.
+	cal, err := backend.GetCalendar(WithUserID(context.Background(), attacker),
+		calPath(victim, "default"))
+	if err != nil {
+		return // refusing outright is also correctly scoped
+	}
+	if strings.Contains(cal.Path, victim) {
+		t.Errorf("attacker was served a calendar under the victim's path: %+v", cal)
+	}
+	if !strings.Contains(cal.Path, attacker) {
+		t.Errorf("returned calendar path %q belongs to neither party; the owner is not "+
+			"being taken from the authenticated session", cal.Path)
+	}
+}
+
+func TestCalDAVListingIsScopedToPrincipal(t *testing.T) {
+	backend, attacker, victim, _ := twoUserBackend(t)
+
+	objs, err := backend.ListCalendarObjects(WithUserID(context.Background(), attacker),
+		calPath(victim, "default"), nil)
+	if err != nil {
+		return // refusing outright is a valid way to be scoped
+	}
+	for _, o := range objs {
+		t.Errorf("attacker listed an object from the victim's calendar: %s", o.Path)
+	}
+}
+
+// TestCalDAVServesStoredRawICal covers fidelity rather than scoping: a client's
+// own ATTENDEE, VALARM, RRULE and X- properties must come back as stored. The
+// backend keeps the raw iCal precisely so a round-trip does not silently
+// discard everything the proto has no field for.
+func TestCalDAVServesStoredRawICal(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+	path := objectPath(userID, "default", "e1")
+
+	cal := testCalendar("e1", "With extras")
+	cal.Children[0].Props.SetText("X-CUSTOM-MARKER", "keep-me")
+
+	if _, err := backend.PutCalendarObject(ctx, path, cal, nil); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	got, err := backend.GetCalendarObject(ctx, path, nil)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+
+	marker, _ := got.Data.Events()[0].Props.Text("X-CUSTOM-MARKER")
+	if marker != "keep-me" {
+		t.Errorf("X-CUSTOM-MARKER = %q, want keep-me: the server synthesised the event "+
+			"from its proto fields instead of serving the stored iCal, which drops every "+
+			"property the proto has no field for", marker)
+	}
 }
