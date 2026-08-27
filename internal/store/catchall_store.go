@@ -26,7 +26,6 @@ func CatchAllKey(domain string) []byte {
 // Partial-failure note: if an owner account is deleted after being configured as
 // a catch-all target, the key remains and routes to the deleted user_id, causing
 // downstream delivery failure. Cleanup is the administrator's responsibility.
-// This is documented behaviour within task 4.4 scope.
 type CatchAllStore struct {
 	pebble  *PebbleStore
 	applier RaftApplier

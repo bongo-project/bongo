@@ -16,7 +16,7 @@ import (
 )
 
 // TestSaveDraftLargeAttachmentSplitsAndReconstructs exercises the outbound split
-// (task 9.6): a composed message with a large attachment is stored as a skeleton
+// a composed message with a large attachment is stored as a skeleton
 // + deduplicated attachment blob, and reconstructs byte-exact with the attachment
 // decoding back to the original bytes.
 func TestSaveDraftLargeAttachmentSplitsAndReconstructs(t *testing.T) {

@@ -232,7 +232,7 @@ func TestPrependHeaders(t *testing.T) {
 		}
 	})
 
-	t.Run("headers are prepended above every existing header (FR-13)", func(t *testing.T) {
+	t.Run("headers are prepended above every existing header", func(t *testing.T) {
 		raw := "DKIM-Signature: v=1; h=from:subject\r\nFrom: a@b.com\r\n\r\nbody\r\n"
 		got := string(prependHeaders([]byte(raw), []string{"Authentication-Results: mail.example.com; spf=pass"}))
 		if !strings.HasPrefix(got, "Authentication-Results:") {
@@ -318,7 +318,7 @@ func TestAntispamStageAndSpamScoreFromStages(t *testing.T) {
 // Authentication-Results.
 
 func TestDNSBLReasonReachesSpamReasonsHeader(t *testing.T) {
-	t.Run("US-004: the header names the zone that listed the IP", func(t *testing.T) {
+	t.Run("the header names the zone that listed the IP", func(t *testing.T) {
 		stage := &bongov1.StageResult{
 			Score:   0.65,
 			Reasons: []string{"DKIM missing", "dnsbl_zen.example-bl.test"},

@@ -90,7 +90,7 @@ type OutboundMessage struct {
 	StatusReason     string                 `protobuf:"bytes,10,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
 	FailedRecipients []string               `protobuf:"bytes,11,rep,name=failed_recipients,json=failedRecipients,proto3" json:"failed_recipients,omitempty"`
 	MessageGuid      string                 `protobuf:"bytes,12,opt,name=message_guid,json=messageGuid,proto3" json:"message_guid,omitempty"`
-	// Attachment-dedup (Phase 9). When layout is non-empty, blob_hash points at a
+	// Attachment-dedup. When layout is non-empty, blob_hash points at a
 	// message skeleton and the queue worker reconstructs the full RFC822 message
 	// from the skeleton + attachments before relaying. Empty layout means blob_hash
 	// is the whole raw message (the default / self-check fallback).

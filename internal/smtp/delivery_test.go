@@ -276,7 +276,7 @@ func TestEnqueueLocalTrustedFlag(t *testing.T) {
 
 // TestBouncePathDeliverArrivesUntrusted covers the 3-arg Deliver interface
 // used by mail.BounceGenerator (internal/mail/bounce.go). Bounces are
-// DKIM-signed as of task 10.2 and do not need trust; this proves the spooled
+// DKIM-signed and do not need trust; this proves the spooled
 // envelope produced via the 3-arg path always has Trusted == false, since
 // Deliver forwards to DeliverWithSPF with a zero-value InboundMeta.
 func TestBouncePathDeliverArrivesUntrusted(t *testing.T) {

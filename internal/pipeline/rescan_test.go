@@ -73,7 +73,7 @@ func TestPrepareForRescan_EmptyStages(t *testing.T) {
 }
 
 // TestRunnerRescan_AntivirusStageActuallyReRuns is the load-bearing test for
-// task 12.4: it proves that after PrepareForRescan, the antivirus stage is
+// It proves that after PrepareForRescan, the antivirus stage is
 // actually invoked by the runner rather than skipped by the idempotency
 // check in processMessage. A test that only asserted the file moved
 // directories would pass even if the flag-clearing were missing entirely —

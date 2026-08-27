@@ -85,13 +85,13 @@ func TestDeliverSplitsLargeAttachment(t *testing.T) {
 }
 
 // TestDeliverBelowThresholdWholeRaw: a small attachment keeps whole-raw
-// storage (no split). Since task 10.5, the deliver stage always persists the
+// storage (no split). The deliver stage always persists the
 // (trace-header-stamped) message through the blob store when one is
 // configured, rather than reusing the SMTP-time env.BlobHash placeholder, so
 // RawMessage.Hash is now a real content hash rather than "wholehash" -
 // verified here by reconstructing through store.RawMessageBytes rather than
-// comparing against the original placeholder (see task 10.5 RISK 1: any
-// assertion on stored bytes must go through the same path every reader uses).
+// comparing against the original placeholder: any assertion on stored bytes
+// must go through the same path every reader uses.
 func TestDeliverBelowThresholdWholeRaw(t *testing.T) {
 	proc, applier, bs := dedupProc(t, 1<<20) // 1 MB threshold
 	raw := multipartWithAttachment("small", "QUJDRA==")

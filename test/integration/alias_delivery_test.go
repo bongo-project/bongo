@@ -58,7 +58,7 @@ func startAgentForAliasTest(t *testing.T) (*agent.Agent, context.CancelFunc, <-c
 // TestAliasDelivery_InboundSMTP drives the real inbound SMTP path end-to-end:
 //   - External sender → RCPT to alias address → message lands in account's INBOX.
 //
-// US-RECV-1 acceptance criterion.
+// Acceptance criterion for alias delivery.
 func TestAliasDelivery_InboundSMTP(t *testing.T) {
 	a, cancel, done := startAgentForAliasTest(t)
 	defer func() {

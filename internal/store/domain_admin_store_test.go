@@ -372,7 +372,7 @@ func TestDomainFromEmail(t *testing.T) {
 	}
 }
 
-// --- DeleteOwner tests (task 6.2 cascade) ---
+// --- DeleteOwner cascade tests ---
 
 // TestDomainAdminStore_DeleteOwner verifies that DeleteOwner removes a previously
 // set owner and that a second call (idempotent) does not error.

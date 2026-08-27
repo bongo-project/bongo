@@ -27,7 +27,7 @@ message MailMeta {
   string target_mailbox = 18;  // set by filter rules, empty = default routing
   repeated string tags = 19;   // tag names, lowercase, alphanumeric + hyphens
 
-  // Attachment-dedup layout (Phase 9). When non-empty, this record is "split":
+  // Attachment-dedup layout. When non-empty, this record is "split":
   // raw_message points at the skeleton blob (the concatenated literal spans), and
   // these segments describe how to interleave the skeleton's literal bytes with
   // the attachments[] blobs to rebuild the exact original RFC822 message. Empty

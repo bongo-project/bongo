@@ -252,14 +252,14 @@ func TestPopulateAddressIndex_EmptyEmail_Skipped(t *testing.T) {
 	}
 }
 
-// --- Create-only test (task 4.5) ---
+// --- Create-only test ---
 
 // TestPopulateAddressIndex_CreateOnly proves that PopulateAddressIndex does not
 // clobber an existing address record (e.g. one edited by the admin), while still
 // creating records for addresses that are genuinely missing.
 //
 // This validates the CAUTION that was documented in address_migrate.go before
-// task 4.5 — get-before-put is now implemented.
+// get-before-put is implemented.
 func TestPopulateAddressIndex_CreateOnly(t *testing.T) {
 	ps, as, sys := newMigrateTestEnv(t)
 

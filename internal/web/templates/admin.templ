@@ -65,7 +65,7 @@ type DNSCheckRow struct {
 	Found    string // what was actually found (may be "-" if nothing)
 }
 
-// DNSGuideRow is one record in the domain-owner DNS setup guide (task 7.3).
+// DNSGuideRow is one record in the domain-owner DNS setup guide.
 // It describes a record the operator should publish, in provider-agnostic form.
 type DNSGuideRow struct {
 	Type  string // "A" | "AAAA" | "MX" | "TXT" | "SRV"
@@ -85,12 +85,12 @@ type DomainInfo struct {
 	CatchAllOwnerID string   // user ID configured as catch-all target, empty if not set
 	OwnerUserID     string   // user ID of the domain owner (tenant); empty if not set
 	DomainAdmins    []string // user IDs granted as domain-admins; nil/empty if none
-	// Quota fields (FR-10 / US-TENANT-3). 0 = unlimited.
+	// Quota fields. 0 = unlimited.
 	MaxUsers        int64        // per-domain user count limit
 	MaxStorageBytes int64        // per-domain aggregate storage limit in bytes
 	UsageBytes      int64        // last-recomputed aggregate usage in bytes
 	DNSRows         []DNSCheckRow // extensible DNS check rows; populated only on detail page
-	// DNS setup guide (task 7.3); populated only on the detail page.
+	// DNS setup guide; populated only on the detail page.
 	DNSGuide     []DNSGuideRow // records the owner should publish
 	DKIMPending  bool          // true when no DKIM key exists yet (guide omits the DKIM record)
 	MailHostname string        // shared server hostname the guide points MX/SRV at

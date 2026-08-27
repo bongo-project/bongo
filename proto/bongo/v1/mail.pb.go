@@ -91,7 +91,7 @@ type MailMeta struct {
 	DkimDomain    string                 `protobuf:"bytes,17,opt,name=dkim_domain,json=dkimDomain,proto3" json:"dkim_domain,omitempty"`          // signing domain from d= tag
 	TargetMailbox string                 `protobuf:"bytes,18,opt,name=target_mailbox,json=targetMailbox,proto3" json:"target_mailbox,omitempty"` // set by filter rules, empty = default routing
 	Tags          []string               `protobuf:"bytes,19,rep,name=tags,proto3" json:"tags,omitempty"`                                        // tag names, lowercase, alphanumeric + hyphens
-	// Attachment-dedup layout (Phase 9). When non-empty, this record is "split":
+	// Attachment-dedup layout. When non-empty, this record is "split":
 	// raw_message points at the skeleton blob (the concatenated literal spans), and
 	// these segments describe how to interleave the skeleton's literal bytes with
 	// the attachments[] blobs to rebuild the exact original RFC822 message. Empty

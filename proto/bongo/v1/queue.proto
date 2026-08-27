@@ -29,7 +29,7 @@ message OutboundMessage {
   repeated string failed_recipients = 11;
   string message_guid = 12;
 
-  // Attachment-dedup (Phase 9). When layout is non-empty, blob_hash points at a
+  // Attachment-dedup. When layout is non-empty, blob_hash points at a
   // message skeleton and the queue worker reconstructs the full RFC822 message
   // from the skeleton + attachments before relaying. Empty layout means blob_hash
   // is the whole raw message (the default / self-check fallback).

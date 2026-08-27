@@ -8,7 +8,7 @@ import (
 )
 
 // TestAdminDomainDetailRendersDNSStatusLegend verifies the domain Manage page
-// includes the DNS status legend (task 8.1) explaining the ok/fail/neutral/error
+// includes the DNS status legend explaining the ok/fail/neutral/error
 // check states, plus the DKIM publish reminder. It asserts on the static CSS
 // classes so it is independent of the active locale.
 func TestAdminDomainDetailRendersDNSStatusLegend(t *testing.T) {
