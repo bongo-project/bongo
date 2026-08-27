@@ -2,11 +2,14 @@ package caldav
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/emersion/go-ical"
+	webdav "github.com/emersion/go-webdav"
+	"github.com/emersion/go-webdav/caldav"
 
 	"github.com/bongo-go/bongo-go/internal/store"
 	bongov1 "github.com/bongo-go/bongo-go/proto/bongo/v1"
@@ -149,4 +152,160 @@ func TestDeleteCalendarObject(t *testing.T) {
 	if err == nil {
 		t.Error("GetCalendarObject should fail after delete")
 	}
+}
+
+// testCalendar builds a minimal iCal object with the given uid and summary.
+func testCalendar(uid, summary string) *ical.Calendar {
+	cal := ical.NewCalendar()
+	cal.Props.SetText(ical.PropVersion, "2.0")
+	cal.Props.SetText(ical.PropProductID, "-//Test//Test//EN")
+
+	vevent := ical.NewEvent()
+	vevent.Props.SetText(ical.PropUID, uid)
+	vevent.Props.SetText(ical.PropSummary, summary)
+	vevent.Props.SetDateTime(ical.PropDateTimeStart, time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC))
+	vevent.Props.SetDateTime(ical.PropDateTimeEnd, time.Date(2024, 1, 15, 11, 0, 0, 0, time.UTC))
+	vevent.Props.SetDateTime(ical.PropDateTimeStamp, time.Date(2024, 1, 15, 9, 0, 0, 0, time.UTC))
+	cal.Children = append(cal.Children, vevent.Component)
+	return cal
+}
+
+// assertPreconditionFailed checks the error is the 412 this backend returns.
+// go-webdav's HTTPError is in its internal package so the status code is not
+// inspectable here; ErrPreconditionFailed is wrapped into every one of them
+// precisely so this assertion does not depend on message text.
+func assertPreconditionFailed(t *testing.T, err error, what string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("%s: expected a 412, got nil", what)
+	}
+	if !errors.Is(err, ErrPreconditionFailed) {
+		t.Errorf("%s: error = %v, want a precondition failure", what, err)
+	}
+}
+
+// TestCalDAVETagChangesWithContent is the foundation the conditional requests
+// below rest on.
+//
+// The ETag used to be the record's UpdatedAt in whole seconds. Two edits
+// landing in the same second produced identical ETags, so a client could not
+// see the second change and an If-Match built on it could be satisfied by a
+// version the client had never seen. Honouring If-Match on top of that would
+// have looked correct and protected nothing.
+func TestCalDAVETagChangesWithContent(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+	path := "/caldav/" + userID + "/calendars/default/e1.ics"
+
+	first, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Original"), nil)
+	if err != nil {
+		t.Fatalf("first put: %v", err)
+	}
+	// Same second, different content.
+	second, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Changed"), nil)
+	if err != nil {
+		t.Fatalf("second put: %v", err)
+	}
+
+	if first.ETag == "" || second.ETag == "" {
+		t.Fatal("ETag is empty")
+	}
+	if first.ETag == second.ETag {
+		t.Errorf("ETag did not change after an edit in the same second (%q): "+
+			"a second-resolution ETag cannot support If-Match", first.ETag)
+	}
+}
+
+// TestCalDAVIfMatchRejectsStaleWrite covers the lost-update case: two clients
+// hold the same event, both edit it, and the second write must be refused
+// rather than silently overwriting the first.
+func TestCalDAVIfMatchRejectsStaleWrite(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+	path := "/caldav/" + userID + "/calendars/default/e1.ics"
+
+	original, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Original"), nil)
+	if err != nil {
+		t.Fatalf("seed put: %v", err)
+	}
+	staleETag := original.ETag
+
+	// Client A writes, moving the resource on.
+	if _, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "From A"), nil); err != nil {
+		t.Fatalf("client A put: %v", err)
+	}
+
+	// Client B still holds the original ETag.
+	_, err = backend.PutCalendarObject(ctx, path, testCalendar("e1", "From B"),
+		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(staleETag)})
+	if err == nil {
+		t.Fatal("a stale If-Match was accepted: client B silently overwrote client A's edit")
+	}
+	assertPreconditionFailed(t, err, "conditional write")
+
+	// Client A's version must still be there.
+	got, err := backend.GetCalendarObject(ctx, path, nil)
+	if err != nil {
+		t.Fatalf("get after refused write: %v", err)
+	}
+	summary, _ := got.Data.Events()[0].Props.Text(ical.PropSummary)
+	if summary != "From A" {
+		t.Errorf("stored summary = %q, want \"From A\": the refused write was applied anyway", summary)
+	}
+}
+
+// TestCalDAVIfMatchAcceptsCurrentETag is the control. Without it, refusing
+// every conditional write would satisfy the test above while breaking all
+// well-behaved clients.
+func TestCalDAVIfMatchAcceptsCurrentETag(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+	path := "/caldav/" + userID + "/calendars/default/e1.ics"
+
+	original, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Original"), nil)
+	if err != nil {
+		t.Fatalf("seed put: %v", err)
+	}
+
+	if _, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Updated"),
+		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(original.ETag)}); err != nil {
+		t.Fatalf("a current If-Match was refused: %v", err)
+	}
+}
+
+// TestCalDAVIfNoneMatchWildcard covers create-only semantics: the header exists
+// so two clients cannot both believe they created the same event.
+func TestCalDAVIfNoneMatchWildcard(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+	path := "/caldav/" + userID + "/calendars/default/e1.ics"
+
+	// Creating something new is allowed.
+	if _, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "New"),
+		&caldav.PutCalendarObjectOptions{IfNoneMatch: webdav.ConditionalMatch("*")}); err != nil {
+		t.Fatalf("If-None-Match: * on a new object was refused: %v", err)
+	}
+
+	// Doing it again must fail: the object now exists.
+	_, err := backend.PutCalendarObject(ctx, path, testCalendar("e1", "Clobber"),
+		&caldav.PutCalendarObjectOptions{IfNoneMatch: webdav.ConditionalMatch("*")})
+	if err == nil {
+		t.Fatal("If-None-Match: * overwrote an existing object")
+	}
+	assertPreconditionFailed(t, err, "conditional write")
+}
+
+// TestCalDAVIfMatchOnMissingObject: a conditional update of something that has
+// been deleted must fail rather than quietly recreating it.
+func TestCalDAVIfMatchOnMissingObject(t *testing.T) {
+	backend, userID := newTestBackend(t)
+	ctx := WithUserID(context.Background(), userID)
+	path := "/caldav/" + userID + "/calendars/default/gone.ics"
+
+	_, err := backend.PutCalendarObject(ctx, path, testCalendar("gone", "Ghost"),
+		&caldav.PutCalendarObjectOptions{IfMatch: webdav.ConditionalMatch(`"deadbeef"`)})
+	if err == nil {
+		t.Fatal("If-Match against a nonexistent object was accepted")
+	}
+	assertPreconditionFailed(t, err, "conditional write")
 }
