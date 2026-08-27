@@ -55,5 +55,14 @@ tmp/
 # Local handoff artifacts
 /prds/handoff/
 
+# Claude Code: the shared skills and agents in .claude/ ARE committed, so that
+# contributors get the same workflow. Per-developer local state is not.
+/.claude/settings.local.json
+/.claude/settings.json
+/.claude/projects/
+/.claude/todos/
+/.claude/shell-snapshots/
+/.claude/statsig/
+
 # Deslop duplicate-analysis cache
 .deslop/

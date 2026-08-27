@@ -1,5 +1,13 @@
 # Internet-Exposure Security Review — bongo-go
 
+> **Status: historical.** This is a point-in-time snapshot from 2026-07-03, kept
+> as an engineering record. Every Blocker, High, Medium and Low finding below was
+> remediated — see *Remediation status* and *Follow-up remediation* at the end of
+> this document. The verdict in the next paragraph describes the code as it stood
+> on that date, **not** as it stands now. It was superseded by
+> `docs/security-review-2026-07-06.md`. For current known limitations, see
+> `SECURITY.md`.
+
 Date: 2026-07-03
 Context: readiness to run as a real, internet-facing mail server for **example.com**
 (single node, Docker, behind an existing Traefik reverse proxy).

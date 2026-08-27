@@ -703,7 +703,7 @@ Things deliberately left unresolved from the first discussion:
 ## Reference
 
 - CLAUDE.md — architecture, Pebble key space, conventions
-- `../bongo-go-prd.md` — original PRD
+- `prds/` — requirements and task history
 - `internal/agent/agent.go` — the orchestrator that would host most of this
 - `internal/pipeline/antispam/` — where the spam work lands
 - `docs/sprints/sprint-12b-antispam.md` — original antispam sprint, for context
