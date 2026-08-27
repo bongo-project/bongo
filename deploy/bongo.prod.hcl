@@ -49,8 +49,21 @@ storage {
   # Authentication-Results and X-Spam-* headers onto each message, so the
   # stored copy is a new blob and the SMTP DATA-time original is orphaned;
   # without this, inbound mail costs roughly twice the space it should.
-  # Start at "dryrun" to see what it would remove, then move to "on".
-  blob_gc = "on"
+  #
+  # HELD AT "dryrun" 2026-08-27 after this destroyed live mail in production.
+  # The reference set did not include the on-disk spool, so a blob referenced
+  # only by a spool envelope -- quarantined mail awaiting review, or anything
+  # deferred past the one-hour grace -- was reclaimed while the envelope
+  # survived. The observed symptom was an outbound forward failing with
+  # "blob not found"; deliver.go reuses the spool envelope's BlobHash when it
+  # enqueues a forward, so the queue entry pointed at a body that had been
+  # swept. The message content is not recoverable in that state.
+  #
+  # Return this to "on" ONLY once the fix is deployed (collectReferencedBlobs
+  # scanning all five spool directories). Until then "dryrun" logs what would
+  # have been removed without removing it; the cost of leaving it here is the
+  # duplicate-blob growth described above, which is disk, not data loss.
+  blob_gc = "dryrun"
 
   pebble {
     cache_size = "256MB"
