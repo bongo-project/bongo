@@ -879,7 +879,7 @@ func waitForSpoolEntry(spool *pipeline.SpoolStore, dir, id string, timeout time.
 	return false
 }
 
-// TestReleaseAndRescanThroughRunner is the load-bearing test for task 12.8:
+// TestReleaseAndRescanThroughRunner is the load-bearing test for release-and-rescan:
 // it proves a released message is actually picked up and delivered by the
 // pipeline runner, not merely moved to a directory nobody reads. It also
 // proves the critical release/rescan distinction: release must skip the

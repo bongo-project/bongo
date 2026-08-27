@@ -9,7 +9,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// DNS check tests (task 7.2)
+// DNS check tests
 // ---------------------------------------------------------------------------
 
 // TestBuildDNSChecks tests the pure buildDNSChecks function with injected

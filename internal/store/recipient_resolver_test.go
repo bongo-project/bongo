@@ -302,7 +302,7 @@ func seedCatchAll(t *testing.T, ps *PebbleStore, domain, ownerID string) {
 }
 
 // TestRecipientResolver_CatchAll_Hit verifies that an unmatched address on a domain
-// with a catch-all configured resolves to the catch-all owner (US-RECV-3).
+// with a catch-all configured resolves to the catch-all owner.
 func TestRecipientResolver_CatchAll_Hit(t *testing.T) {
 	ps, _, _, resolver := newResolverTestEnv(t)
 
@@ -319,7 +319,7 @@ func TestRecipientResolver_CatchAll_Hit(t *testing.T) {
 }
 
 // TestRecipientResolver_CatchAll_Miss verifies that without a catch-all,
-// unmatched mail is still rejected — no open relay (US-RECV-3).
+// unmatched mail is still rejected — no open relay.
 func TestRecipientResolver_CatchAll_Miss(t *testing.T) {
 	_, _, _, resolver := newResolverTestEnv(t)
 
@@ -330,7 +330,7 @@ func TestRecipientResolver_CatchAll_Miss(t *testing.T) {
 }
 
 // TestRecipientResolver_ExplicitBeats_CatchAll verifies that an explicit user
-// or alias always wins over the catch-all (US-RECV-3 explicit-wins requirement).
+// or alias always wins over the catch-all.
 func TestRecipientResolver_ExplicitBeats_CatchAll(t *testing.T) {
 	ps, as, sys, resolver := newResolverTestEnv(t)
 
