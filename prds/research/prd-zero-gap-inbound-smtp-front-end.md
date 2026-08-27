@@ -41,7 +41,7 @@ visible, some senders treat refusals worse than tempfails, and the window grows 
 03:05:15.251  "config loaded"   (restarted)
 ```
 
-Backups land in `/mnt/data/backups/bongo_<date>_03-05-01.tar.gz`, daily, root-owned. The trigger is
+Backups land in `<backup-dir>/bongo_<date>_<time>.tar.gz`, daily, root-owned. The trigger is
 `/etc/cron.d/ops-backup-extras` running `/opt/ops/backup/backup-extras.sh` — a **host-level**
 job that also backs up an unrelated application's database in the same 03:05 slot. It is not named after
 bongo, which is why searching for a "bongo cronjob" turns up nothing. The script is careful: it
@@ -79,8 +79,8 @@ zero-downtime deploys possible later.
 deploys is wanted. This PRD specifies B; it does not depend on A having been done.
 
 **A note on the backup as it stands (found while measuring, not part of either option):** the
-archives contain `secrets` — the DKIM private keys — and are written `-rw-r--r--` into a
-world-readable `/mnt/data/backups`. Any local user on that host can read the signing keys.
+archives contain `secrets` — the DKIM private keys — and may be written `-rw-r--r--` into a
+world-readable backup directory, where any local user on that host can read the signing keys.
 Tightening to `0700`/`0600` is worth doing regardless of which option is chosen.
 
 ## 1b. The front-end design

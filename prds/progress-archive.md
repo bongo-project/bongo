@@ -1278,10 +1278,10 @@ for every failure-mode claim.
 Deploy: pushed main, tagged v0.6.15, CI green, image published, container recreated from
 `ghcr.io/lhaig/bongo-go:0.6.15`. Healthy, all listeners up, zero ERROR lines.
 
-**Deploy-path trap found:** there are TWO docker-compose.yml on the host. `/opt/bongo/` is a stale
-decoy (`image: bongo-go:latest` + a local `build:` context — deploying from it would rebuild from
-stale source and replace the deployed image). The real one is `/mnt/data/bongo/docker-compose.yml`
-(confirm via `docker inspect bongo ... config_files`). Also the image tag is PINNED, so
+**Deploy-path trap found:** a host can end up with more than one docker-compose.yml, one of them a
+stale decoy (`image: bongo-go:latest` + a local `build:` context — deploying from it would rebuild
+from stale source and replace the deployed image). Confirm which file is live via
+`docker inspect bongo ... config_files`. Also the image tag is PINNED, so
 `docker compose pull` alone does not upgrade — the pin must be edited. Recorded in memory.
 
 **The deploy alone did NOT fix the reported bug**, and I said so rather than declaring victory: the
@@ -1434,9 +1434,9 @@ injecting a throwaway secret — the test instance has every listener disabled a
 exit, so it needs A secret, not THE secret. Verified end to end locally against a synthetic archive
 built from a REAL Pebble store before asking the operator to reinstall it.
 
-Host setup (see memory `deploy-example-host-test`): `/usr/local/sbin/verify-restore.sh` and
-`/usr/local/bin/bongo-go`, both root-owned, with `(root) NOPASSWD:` on the script only. Re-run with
-`ssh example-host 'sudo -n /usr/local/sbin/verify-restore.sh --latest'`.
+Host setup: `/usr/local/sbin/verify-restore.sh` and `/usr/local/bin/bongo-go`, both
+root-owned, with `(root) NOPASSWD:` on the script only. Re-run over ssh with
+`sudo -n /usr/local/sbin/verify-restore.sh --latest`.
 
 Not yet checked: DKIM key vs published DNS (`VERIFY_DKIM_DOMAIN`), which sudo's env_reset strips.
 

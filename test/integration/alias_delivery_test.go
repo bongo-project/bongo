@@ -74,8 +74,8 @@ func TestAliasDelivery_InboundSMTP(t *testing.T) {
 	}()
 
 	// Create the account that the alias will point to.
-	ownerEmail := "lance@example.com"
-	ownerID, err := auth.CreateUser(a, a.Metadata, ownerEmail, "Lance Haig", "testpass", false)
+	ownerEmail := "owner@example.com"
+	ownerID, err := auth.CreateUser(a, a.Metadata, ownerEmail, "Test User", "testpass", false)
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestAliasDelivery_InboundSMTP(t *testing.T) {
 	// Populate the AddressStore with:
 	// 1. The owner's primary address (so tier 1 resolves it directly).
 	// 2. An alias address that points to the owner.
-	aliasEmail := "lance@example.net"
+	aliasEmail := "user@example.net"
 	if a.AddressStore == nil {
 		t.Fatal("AddressStore not available")
 	}

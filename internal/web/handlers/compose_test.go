@@ -14,10 +14,10 @@ func TestNormalizeRecipient(t *testing.T) {
 		want string
 	}{
 		{"bare address", "user@example.com", "user@example.com"},
-		{"display name with angle brackets", "Lance <user@example.com>", "user@example.com"},
+		{"display name with angle brackets", "Test <user@example.com>", "user@example.com"},
 		{"angle brackets only", "<user@example.com>", "user@example.com"},
 		{"surrounding whitespace", "  admin@example.com  ", "admin@example.com"},
-		{"quoted display name", "\"Lance Haig\" <user@example.com>", "user@example.com"},
+		{"quoted display name", "\"Test User\" <user@example.com>", "user@example.com"},
 		{"empty", "", ""},
 		{"whitespace only", "   ", ""},
 		{"unparseable falls back to trimmed input", "not-an-address", "not-an-address"},

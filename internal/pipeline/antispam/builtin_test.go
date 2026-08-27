@@ -425,7 +425,7 @@ func TestBuiltinProcessorTrustedStillScoresContent(t *testing.T) {
 	// a trusted envelope. No testMessage() helper here: it stamps
 	// Message-ID/Date, which would remove that corroborating signal.
 	msg := "From: registrations@example.test\r\n" +
-		"To: lance@example.test\r\n" +
+		"To: user@example.test\r\n" +
 		"Subject: FREE MONEY WINNER ACT NOW\r\n" +
 		"Content-Type: text/plain\r\n" +
 		"\r\n" +
@@ -435,7 +435,7 @@ func TestBuiltinProcessorTrustedStillScoresContent(t *testing.T) {
 		proc := NewBuiltinProcessor(antispam.NewScorer(), WithThreshold(0.5), WithHighThreshold(0.9))
 		env := &bongov1.QueueEnvelope{
 			Sender:     "registrations@example.test",
-			Recipients: []string{"lance@example.test"},
+			Recipients: []string{"user@example.test"},
 			SpfResult:  "pass",
 			Trusted:    true,
 		}
