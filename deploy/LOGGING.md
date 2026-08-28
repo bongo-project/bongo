@@ -5,9 +5,9 @@ logs to Docker as usual. `deploy/ship-logs.sh` pulls the JSON log file from a
 server to your machine for local inspection.
 
 Shipping logs to a central store is left to you: this repository ships no
-collector, no Loki or Grafana job, and no dashboards beyond
-`deploy/grafana/dashboards/bongo-metrics.json`, which you can import into your
-own Grafana once you have a Prometheus datasource scraping bongo's `/metrics`.
+collector, no Loki or Grafana job, and no dashboards. Bongo exposes Prometheus
+metrics at `/metrics` (on the private listener only) for you to scrape and
+build your own dashboards on.
 
 If you want log shipping, run a collector such as
 [Grafana Alloy](https://grafana.com/docs/alloy/) alongside Bongo and point it at
