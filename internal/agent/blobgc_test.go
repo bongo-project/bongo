@@ -1,14 +1,17 @@
 package agent
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/pipeline"
 	"github.com/bongo-project/bongo/internal/store"
 	bongov1 "github.com/bongo-project/bongo/proto/bongo/v1"
@@ -231,5 +234,77 @@ func TestNonDryRunDeletes(t *testing.T) {
 	}
 	if blobs.Exists(h) {
 		t.Error("blob survived a non-dryrun sweep; reclamation is not happening")
+	}
+}
+
+// --- GC observability -------------------------------------------------------
+//
+// Every other log line in the orphan/blob GC is gated on an action or an error,
+// so a sweep that is enabled, running, and correctly finding nothing to reclaim
+// produced exactly the same output as one that never started: none at all. That
+// cost a live investigation -- with blob_gc flipped to "on" in production, 40
+// minutes of log watching could not distinguish "healthy, no orphans" from
+// "never ran". Both start-up outcomes must announce themselves.
+
+// captureLogs returns a logger writing to buf at Debug level.
+func captureLogs(buf *strings.Builder) *slog.Logger {
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+func TestOrphanGCAnnouncesBlobGCModeOnStart(t *testing.T) {
+	dir := t.TempDir()
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	meta, err := store.NewMetadataManager(dir + "/metadata")
+	if err != nil {
+		t.Fatalf("NewMetadataManager: %v", err)
+	}
+	t.Cleanup(func() { meta.Close() })
+
+	cfg := config.Defaults()
+	cfg.Storage.BlobGC = "on"
+
+	var buf strings.Builder
+	a := &Agent{
+		Mailboxes: store.NewMailboxStore(ps, &testApplier{store: ps}),
+		Metadata:  meta,
+		Config:    cfg,
+		logger:    captureLogs(&buf),
+	}
+
+	// Already-cancelled context: the announcement happens before the loop, so
+	// runOrphanGC logs and then returns without ever ticking.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	a.runOrphanGC(ctx, time.Hour, time.Hour)
+
+	got := buf.String()
+	if !strings.Contains(got, "orphan-gc: started") {
+		t.Errorf("GC start was not logged; an operator cannot tell it is running.\nlogs:\n%s", got)
+	}
+	if !strings.Contains(got, "blob_gc=on") {
+		t.Errorf("start line does not report the configured blob_gc mode, which is the "+
+			"setting an operator flips and needs to confirm.\nlogs:\n%s", got)
+	}
+}
+
+func TestOrphanGCAnnouncesWhenItDoesNotStart(t *testing.T) {
+	var buf strings.Builder
+	// No Mailboxes/Metadata: the nil guard trips, as on an edge or agent role.
+	a := &Agent{Config: config.Defaults(), logger: captureLogs(&buf)}
+
+	a.runOrphanGC(context.Background(), time.Hour, time.Hour)
+
+	got := buf.String()
+	if !strings.Contains(got, "not started") {
+		t.Errorf("GC bailed out silently; a configured blob_gc would do nothing with no "+
+			"trace of why.\nlogs:\n%s", got)
+	}
+	if strings.Contains(got, "orphan-gc: started") {
+		t.Errorf("GC claimed to have started when it returned early.\nlogs:\n%s", got)
 	}
 }
