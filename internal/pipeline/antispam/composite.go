@@ -38,6 +38,9 @@ import (
 //     enforcement (applyDMARC) can escalate the builtin to "reject" at a low
 //     score, which a naive score-only comparison would let a "no action"
 //     external result overturn.
+//  4. The loser's evidence — Reasons, and the builtin-only DmarcResult — is
+//     merged onto the winner, so a verdict from one backend never discards
+//     what the other found. Score and Action remain the winner's alone.
 type CompositeProcessor struct {
 	externals []processor // ordered: rspamd first, then spamassassin
 	builtin   *BuiltinProcessor
@@ -139,6 +142,7 @@ func (c *CompositeProcessor) Process(ctx context.Context, env *bongov1.QueueEnve
 	// escalated by DMARC enforcement (builtin.go applyDMARC) at a low score.
 	// actionSeverity ranks pass(0) < tag(1) < reject/quarantine(3).
 	winner := builtinResult
+	var loser *bongov1.StageResult
 	if externalResult != nil {
 		extSeverity := actionSeverity(externalResult.Action)
 		builtinSeverity := actionSeverity(builtinResult.Action)
@@ -153,14 +157,36 @@ func (c *CompositeProcessor) Process(ctx context.Context, env *bongov1.QueueEnve
 			externalWins = externalResult.Score >= builtinResult.Score
 		}
 		if externalWins {
-			winner = externalResult
-			// DMARC is evaluated only by the builtin processor, and the
-			// deliver stage reads DmarcResult off whichever StageResult wins
-			// here. Carry it across, or the dmarc= token silently vanishes
-			// from Authentication-Results on every rspamd-enabled deployment.
-			if winner.DmarcResult == "" {
-				winner.DmarcResult = builtinResult.GetDmarcResult()
-			}
+			winner, loser = externalResult, builtinResult
+		} else {
+			loser = externalResult
+		}
+	}
+
+	// Both processors ran, so both gathered evidence; only one of them gets
+	// to decide the action. Carry the loser's findings onto the winner so
+	// they still reach the recipient, in either direction:
+	//
+	//   - Reasons become X-Spam-Reasons (deliver/headers.go) and the
+	//     quarantine entry's Reason. Replacing rather than merging meant that
+	//     on an rspamd/spamassassin deployment where the external verdict
+	//     outranked the builtin, none of the builtin's evidence survived --
+	//     no dnsbl_<zone>, no heuristic reason, no dmarc_<disposition> --
+	//     leaving "why was this junked" unanswerable for exactly the
+	//     deployments running two scanners.
+	//   - DmarcResult is evaluated ONLY by the builtin, and the deliver stage
+	//     reads it off whichever StageResult wins here, so without the carry
+	//     the dmarc= token vanishes from Authentication-Results.
+	//
+	// Score and Action are deliberately NOT merged: they stay the winner's
+	// alone. Combining them would change verdicts, and would break the
+	// "an external result can strengthen but never weaken the builtin"
+	// invariant that the severity comparison above exists to enforce. This
+	// merge moves evidence, not judgements.
+	if loser != nil {
+		winner.Reasons = mergeReasons(winner.GetReasons(), loser.GetReasons())
+		if winner.DmarcResult == "" {
+			winner.DmarcResult = loser.GetDmarcResult()
 		}
 	}
 
@@ -191,6 +217,40 @@ func (c *CompositeProcessor) Process(ctx context.Context, env *bongov1.QueueEnve
 	}
 
 	return winner, nil
+}
+
+// mergeReasons returns primary's reasons followed by any of secondary's that
+// are not already present, preserving order of first occurrence. Neither input
+// slice is modified: the result is always a fresh allocation, so merging onto a
+// winner cannot mutate the loser's backing array.
+//
+// Reason strings are merged verbatim rather than being prefixed with their
+// backend, because the namespaces are already distinct and self-describing:
+// the builtin emits "dnsbl_<zone>" and "dmarc_<disposition>", rspamd emits its
+// symbol names, SpamAssassin its rule names. Prefixing would also break the
+// DNSBL requirement that the header name the zone that listed the sender.
+//
+// Deduplication makes the merge idempotent, so re-merging an already-merged
+// result is harmless.
+func mergeReasons(primary, secondary []string) []string {
+	if len(secondary) == 0 {
+		return primary
+	}
+	seen := make(map[string]bool, len(primary)+len(secondary))
+	out := make([]string, 0, len(primary)+len(secondary))
+	for _, r := range primary {
+		if !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	for _, r := range secondary {
+		if !seen[r] {
+			seen[r] = true
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // isUnavailable reports whether a StageResult indicates that the backend was
