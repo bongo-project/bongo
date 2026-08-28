@@ -1511,10 +1511,20 @@ const (
 // message briefly between MailMeta and mailbox-entry writes is never reclaimed.
 func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration) {
 	if a.Mailboxes == nil || a.Metadata == nil || a.Metadata.System == nil {
+		// Say so rather than returning mutely: this is the branch that makes a
+		// configured blob_gc silently do nothing, and it is invisible otherwise.
+		a.logger.Info("orphan-gc: not started, no local metadata store on this role")
 		return
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	// Announce the blob-GC mode once. Every other line in this path is gated on
+	// an action or an error, so an enabled sweep that correctly finds nothing is
+	// indistinguishable from one that never started -- which leaves an operator
+	// who has just changed blob_gc with no way to confirm the change took.
+	a.logger.Info("orphan-gc: started", "interval", interval, "min_age", minAge,
+		"blob_gc", a.Config.Storage.BlobGCMode())
 
 	// Orphans seen in the previous pass (mail GUIDs as "userID/guid"; users as
 	// their ID). Deletion only happens on a second consecutive sighting.
@@ -1659,6 +1669,18 @@ func (a *Agent) deleteSweptBlobs(toDelete []string, dryRun bool) int {
 	return deleted
 }
 
+// logBlobSweepPass records that a sweep ran, at Debug so a quiet sweep stays
+// quiet at Info. A pass that reclaims nothing is the expected steady state, and
+// every other line in this path is gated on an action or an error, so without
+// this there is no way to confirm the sweep is running at all.
+//
+// Split out for the same reason as deleteSweptBlobs: it makes the contract
+// testable without standing up a Raft leader.
+func (a *Agent) logBlobSweepPass(mtimes map[string]time.Time, referenced, current map[string]bool, deleted int, dryRun bool) {
+	a.logger.Debug("blob-gc: pass complete", "stored", len(mtimes), "referenced", len(referenced),
+		"candidates", len(current), "deleted", deleted, "dry_run", dryRun)
+}
+
 // planBlobSweep decides which blobs to reclaim this pass. blobMTimes maps each
 // stored blob hash to its file mod time. A blob is a candidate when it is
 // unreferenced and older than cutoff; it is returned in toDelete only if it was
@@ -1707,6 +1729,7 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 	if len(toDelete) > 0 {
 		a.logger.Info("blob-gc: swept orphaned blobs", "candidates", len(toDelete), "deleted", deleted, "dry_run", dryRun)
 	}
+	a.logBlobSweepPass(mtimes, referenced, current, deleted, dryRun)
 	return current
 }
 
