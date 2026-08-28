@@ -15,7 +15,7 @@ jobs:
       # analyse this module). Pinned to a version built with a new enough Go.
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.12.2
+          version: v2.13.2
 
   test:
     runs-on: ubuntu-latest
