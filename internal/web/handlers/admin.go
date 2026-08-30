@@ -51,6 +51,7 @@ type AdminHandler struct {
 	dkimRegistry *internalmail.DKIMRegistry
 	catchAll     *store.CatchAllStore
 	addresses    *store.AddressStore
+	search       *store.SearchManager
 	domainAdmin  *store.DomainAdminStore
 	domainQuota  *store.DomainQuotaStore
 	startTime    time.Time
@@ -122,6 +123,13 @@ func (h *AdminHandler) SetCatchAllStore(cs *store.CatchAllStore) {
 }
 
 // SetAddressStore sets the address store used by AddAddress and RemoveAddress.
+// SetSearchManager provides the per-user search indexes so account deletion can
+// remove them. Nil on roles without local search (edge/agent): DeleteUser
+// nil-checks before use, matching the other injected stores.
+func (h *AdminHandler) SetSearchManager(sm *store.SearchManager) {
+	h.search = sm
+}
+
 func (h *AdminHandler) SetAddressStore(as *store.AddressStore) {
 	h.addresses = as
 }
@@ -602,6 +610,23 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 					h.logger.Warn("admin: delete cascade: failed to clear domain owner", "user_id", userID, "domain", domain, "error", dErr)
 				}
 			}
+		}
+	}
+
+	// Cascade: drop the per-user metadata database and search index. Neither
+	// lives under /user/{id}/, so the prefix delete above leaves both on disk;
+	// without this every deleted account leaks a SQLite database and a Bleve
+	// index, and anything still resolving to the dead ID keeps writing to them.
+	// Best-effort and logged: the account is gone either way, and orphan-gc
+	// reclaims what fails here.
+	if h.metadata != nil {
+		if err := h.metadata.DeleteUser(userID); err != nil {
+			h.logger.Warn("admin: delete cascade: failed to remove user metadata index", "user_id", userID, "error", err)
+		}
+	}
+	if h.search != nil {
+		if err := h.search.DeleteUser(userID); err != nil {
+			h.logger.Warn("admin: delete cascade: failed to remove user search index", "user_id", userID, "error", err)
 		}
 	}
 
