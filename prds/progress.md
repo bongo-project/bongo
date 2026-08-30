@@ -584,3 +584,28 @@ PATTERN: [testing] - `Run()` launches `go a.runOrphanGC(...)` without joining it
 in quick succession let a leaked goroutine's `Config.Storage.BlobGCMode()` read race the next
 test's allocation at the same freed heap address. Worked around by sharing one Agent across
 subtests; the durable fix is joining Run()'s background workers on shutdown.
+
+## 2026-08-30 — Task 14.4: queue attachments enter the reference set
+
+Verified the gap against source before implementing rather than taking the audit's word:
+`attachments` is field 14 on `OutboundMessage` (`proto/bongo/v1/queue.proto:37`) and the
+queue worker reassembles the message from skeleton + attachments before relaying
+(`internal/queue/worker.go:166`). `collectReferencedBlobs` took only `BlobHash`, so every
+attachment of every queued message was unreferenced.
+
+Consequence, which is worse than it first looks: the queue entry stays healthy throughout.
+The GC reclaims the attachment blobs after the grace period and the message then relays with
+its attachments missing — outbound mail damaged in flight with nothing in the queue to show
+for it.
+
+Both `/queue/pending/` and `/queue/bounced/` are covered. A bounced message is still readable
+in the admin UI and can be retried, so its attachments are just as live as a pending one's.
+Empty-hash entries are guarded, matching how the mail scan treats the same field.
+
+**Mutations (3, none survived):** remove the attachment loop (the pre-fix behaviour); drop the
+empty-hash guard; scan only `/queue/pending/`. The single test catches all three because it
+asserts membership per prefix, absence of the empty hash, and total set size.
+
+Ran `golangci-lint run` before pushing this time. 14.3's first CI run failed on `ineffassign`
+alone, having passed gofmt/vet/gosec/-race locally — the linter is what CI runs and it was the
+one check not being run locally.
