@@ -720,3 +720,44 @@ validation; `Size` swallowing the stat error and returning 0.
 The size test uses a 1237-byte body deliberately — not a round number — so an implementation
 returning a block size, a constant, or the hash length cannot pass by coincidence. (Same trap as
 the 255-byte truncation test in the global learnings.)
+
+## 2026-08-31 — Task 14.10: spool scan ordering, and two deliberate non-changes
+
+**Fixed: the backward-move race.** An envelope moves between spool directories by rename, which
+is atomic, so a move crossing the scan's own position is invisible to it. Reading in pipeline
+order makes a FORWARD move safe but leaves a BACKWARD move exposed — an admin releasing a
+message from quarantine moves it to `incoming`, and if that lands after `incoming` was read and
+before `quarantine` is, the envelope appears in neither listing while the message is still alive.
+No single ordering fixes this; reversing it just exposes forward moves instead. The scan now runs
+twice and unions.
+
+**Made it provable.** Written inline, "delete the second pass" would have survived — the same
+untestable-guard problem that forced 14.2's redesign. Extracted `collectSpoolBlobs` behind a
+consumer-side `spoolLister` interface (idiomatic here: CLAUDE.md says define interfaces at the
+consumer), so a fake can move an envelope between passes deterministically while preserving the
+real invariant that it is in exactly one directory at every instant. Added a CONTROL test running
+the same scenario over a single pass and asserting the blob IS missed — without it, the two-pass
+test could pass for reasons unrelated to the fix.
+
+**Corrected CLAUDE.md.** `Event.ical_raw` and `Contact.vcard_raw` are inline `bytes`, not BlobRefs.
+Independently confirmed by 14.6's descriptor walk. Noted why it matters rather than just fixing
+the line: a maintainer who believes events pin blobs will either add pointless GC scanning or
+reason wrongly about what the reference set must contain — the exact class of error behind this
+whole phase. Pointed the table at `knownBlobBearingFields` as the authoritative, test-enforced list.
+
+**NOT changed (1): interleaving the sweeps.** The task proposed separating the mail and blob
+sweeps onto different ticks. Declined. The 14.1 audit explicitly cleared the shared tick, and a
+freshly orphaned blob is already protected three times over — the minAge cutoff, the two-pass
+rule, and 14.2's fresh reference check immediately before deletion. Separating them adds
+scheduling complexity for no correctness gain, on a path where complexity is the risk. Documented
+at the call site so the next reader does not re-propose it.
+
+**NOT changed (2): the node-local spool.** Blob GC is leader-only and the spool is not replicated,
+so on a multi-node cluster the leader would build a reference set blind to other nodes' in-flight
+mail. Real, but the deployment is single-node, where leader and spool are the same machine.
+Closing it is a design decision — replicate spool state, restrict GC to what the leader can
+account for, or gate GC on single-node — and it belongs with the multi-node work in B7. Recorded
+as a KNOWN GAP in the code rather than left implicit.
+
+**Mutations (3, none survived):** single pass (the pre-fix behaviour); second pass treated as
+best-effort so its read errors are swallowed; a directory dropped from the scan list.

@@ -1498,3 +1498,147 @@ func TestSweepCandidateLogSurvivesAStatFailure(t *testing.T) {
 		t.Errorf("the stat failure was not reported alongside the candidate:\n%s", out)
 	}
 }
+
+// movingSpool is a spoolLister that relocates one envelope partway through the
+// scan, reproducing the race collectSpoolBlobs's second pass exists to close.
+//
+// A real move is a rename: the envelope is in exactly one directory at every
+// instant, never both and never neither. This fake preserves that invariant --
+// which is what makes the test meaningful rather than a construction that
+// could never happen.
+type movingSpool struct {
+	// dir -> envelopes currently in it.
+	contents map[string][]*bongov1.QueueEnvelope
+	// after this many List calls, move `id` from `from` to `to`.
+	moveAfter  int
+	from, to   string
+	id         string
+	calls      int
+	moved      bool
+	failOnCall int // 1-based; 0 disables
+}
+
+func (m *movingSpool) List(dir string) ([]*bongov1.QueueEnvelope, error) {
+	m.calls++
+	if m.failOnCall == m.calls {
+		return nil, fmt.Errorf("simulated spool read failure on call %d", m.calls)
+	}
+	out := append([]*bongov1.QueueEnvelope(nil), m.contents[dir]...)
+	if !m.moved && m.calls >= m.moveAfter {
+		m.moved = true
+		src := m.contents[m.from]
+		kept := src[:0:0]
+		for _, e := range src {
+			if e.GetId() == m.id {
+				m.contents[m.to] = append(m.contents[m.to], e)
+				continue
+			}
+			kept = append(kept, e)
+		}
+		m.contents[m.from] = kept
+	}
+	return out, nil
+}
+
+// TestCollectSpoolBlobsSurvivesABackwardMove is the acceptance test for the
+// backward-move blind spot.
+//
+// An admin releasing a message from quarantine moves it to incoming. The scan
+// reads in pipeline order, so incoming is read FIRST and quarantine LAST: if
+// the release lands between those two reads, a single-pass scan sees the
+// envelope in neither directory and treats a live message's body as garbage.
+// The second pass finds it at rest in incoming.
+func TestCollectSpoolBlobsSurvivesABackwardMove(t *testing.T) {
+	env := &bongov1.QueueEnvelope{Id: "released", BlobHash: "released-body"}
+
+	// Move after the first List call -- incoming has just been read and
+	// quarantine has not -- which is exactly the window that loses it.
+	m := &movingSpool{
+		contents:  map[string][]*bongov1.QueueEnvelope{"quarantine": {env}},
+		moveAfter: 1,
+		from:      "quarantine",
+		to:        "incoming",
+		id:        "released",
+	}
+
+	ref := map[string]bool{}
+	if err := collectSpoolBlobs(m, ref); err != nil {
+		t.Fatalf("collectSpoolBlobs: %v", err)
+	}
+
+	if !ref["released-body"] {
+		t.Error("an envelope released from quarantine during the scan was missed, so blob GC " +
+			"would reclaim the body of a message that is still in the pipeline")
+	}
+
+	// Guard against passing for the wrong reason: the envelope must genuinely
+	// have moved, and must have been absent from the first pass's view of both
+	// directories. If moveAfter ever stops straddling the window, this test
+	// would pass without exercising anything.
+	if !m.moved {
+		t.Fatal("the envelope never moved, so the race was not exercised at all")
+	}
+	if len(m.contents["quarantine"]) != 0 || len(m.contents["incoming"]) != 1 {
+		t.Fatalf("move did not land as intended: quarantine=%d incoming=%d",
+			len(m.contents["quarantine"]), len(m.contents["incoming"]))
+	}
+}
+
+// TestCollectSpoolBlobsSinglePassWouldMissIt is the control. It runs the same
+// scenario over one pass only and asserts the blob IS missed, proving the
+// scenario is genuinely a race and that the second pass is what saves it --
+// not some incidental property of the fake.
+func TestCollectSpoolBlobsSinglePassWouldMissIt(t *testing.T) {
+	env := &bongov1.QueueEnvelope{Id: "released", BlobHash: "released-body"}
+	m := &movingSpool{
+		contents:  map[string][]*bongov1.QueueEnvelope{"quarantine": {env}},
+		moveAfter: 1,
+		from:      "quarantine",
+		to:        "incoming",
+		id:        "released",
+	}
+
+	ref := map[string]bool{}
+	for _, dir := range spoolScanDirs {
+		envs, err := m.List(dir)
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		for _, e := range envs {
+			if e.GetBlobHash() != "" {
+				ref[e.GetBlobHash()] = true
+			}
+		}
+	}
+
+	if ref["released-body"] {
+		t.Fatal("a single pass caught the released envelope, so this scenario does not " +
+			"reproduce the backward-move race and the two-pass test above proves nothing")
+	}
+}
+
+// TestCollectSpoolBlobsAbortsOnReadFailureInEitherPass pins that neither pass
+// may swallow a read error. A reference set that silently lost the spool is
+// indistinguishable from a spool that is genuinely empty, and the difference
+// is whether the sweep deletes live mail. The second pass is the easier one to
+// get wrong, since a naive implementation might treat it as best-effort.
+func TestCollectSpoolBlobsAbortsOnReadFailureInEitherPass(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		call int
+	}{
+		{"first pass", 1},
+		{"second pass", len(spoolScanDirs) + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &movingSpool{
+				contents:   map[string][]*bongov1.QueueEnvelope{},
+				failOnCall: tc.call,
+			}
+			if err := collectSpoolBlobs(m, map[string]bool{}); err == nil {
+				t.Error("a spool read failure was swallowed; an under-reported reference set " +
+					"is indistinguishable from an empty one, and the sweep would delete on it")
+			}
+		})
+	}
+}
