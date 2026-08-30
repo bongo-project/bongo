@@ -552,6 +552,32 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		deleted++
 	}
 
+	// Cascade: remove this user's entries from the global address index.
+	// These live under /system/address/, NOT /user/{id}/, so the prefix delete
+	// above does not touch them -- and RecipientResolver consults the address
+	// index BEFORE aliases, the users table and the catch-all. A record left
+	// behind therefore outranks any alias later created for the same address
+	// and resolves mail to this deleted account: delivery "succeeds" into
+	// /user/{deleted-id}/, which no profile or users row makes reachable, so
+	// the mail is neither bounced nor visible anywhere.
+	//
+	// Best-effort by the repo's own rule: the user IS deleted either way, the
+	// failure is logged with the address, and `bongo-go address repair` exists
+	// to sweep up anything missed here.
+	if h.addresses != nil {
+		addrs, aErr := h.addresses.ListByUser(userID)
+		if aErr != nil {
+			h.logger.Warn("admin: delete cascade: failed to list addresses", "user_id", userID, "error", aErr)
+		} else {
+			for _, addr := range addrs {
+				if dErr := h.addresses.Delete(addr); dErr != nil {
+					h.logger.Warn("admin: delete cascade: failed to remove address index record",
+						"user_id", userID, "address", addr, "error", dErr)
+				}
+			}
+		}
+	}
+
 	// Cascade: revoke domain-admin grants held by the deleted user (best-effort).
 	// This prevents dangling grants from granting access after account deletion.
 	if h.domainAdmin != nil {
