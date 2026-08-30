@@ -918,8 +918,10 @@ func TestBlobGCFailureAndModeChangeReset(t *testing.T) {
 		// Pass 4: second consecutive good pass after the reset -- now it
 		// deletes. Control: without this, a fix that discarded prev on EVERY
 		// pass (not just failed ones) would also pass the assertion above
-		// while silently disabling the GC.
-		prev = a.sweepOrphanedBlobs(prev, time.Hour, false)
+		// while silently disabling the GC. The return is not threaded
+		// anywhere: this is the last pass, and the assertion below reads the
+		// blob store, not the candidate set.
+		a.sweepOrphanedBlobs(prev, time.Hour, false)
 		if a.Blobs.Exists(hash) {
 			t.Fatal("blob should be deleted after two fresh consecutive confirmations post-failure")
 		}
