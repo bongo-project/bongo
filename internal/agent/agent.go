@@ -1377,6 +1377,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	// nodes and on followers.
 	a.ensureConfiguredDomain()
 
+	// Report addresses stored with upper-case characters before the migration
+	// runs. Every lookup path lower-cases before reading, so these were
+	// unreachable from creation until this boot — and an unresolvable recipient
+	// on an authenticated submission session is relayed off-server rather than
+	// rejected, so the mail did not bounce either. Reporting only; the operator
+	// decides whether to recreate them.
+	a.reportMixedCaseAddresses()
+
 	// Populate the global address index from existing user profiles and aliases.
 	// Leader-only, idempotent, additive — never deletes or modifies existing
 	// users, aliases, profiles, or mailboxes.
@@ -2024,6 +2032,38 @@ func (a *Agent) indexConfiguredDomain(domain string) {
 	); err != nil {
 		a.logger.Warn("startup: failed to index configured domain", "domain", domain, "error", err)
 	}
+}
+
+// reportMixedCaseAddresses logs any alias or account address stored with
+// upper-case characters. Read-only and safe on every role: it needs nothing but
+// Pebble, so unlike migrateAddressIndex it is NOT leader-gated — a follower or
+// edge node reading a replicated key space should still surface the problem.
+//
+// See store.ReportMixedCaseAddresses for why these addresses are unreachable
+// and why they are reported rather than rewritten.
+func (a *Agent) reportMixedCaseAddresses() {
+	if a.Store == nil {
+		return
+	}
+	found, err := store.ReportMixedCaseAddresses(a.Store, a.logger)
+	if err != nil {
+		a.logger.Warn("startup: mixed-case address report failed", "error", err)
+		return
+	}
+	if len(found) == 0 {
+		return
+	}
+	for _, f := range found {
+		a.logger.Warn("startup: address stored with upper-case characters is not resolvable as stored",
+			"kind", f.Kind,
+			"stored", f.Stored,
+			"expected", f.Normalised,
+			"target", f.Target,
+			"impact", "mail to this address was relayed off-server instead of delivered locally",
+			"fix", "recreate it in the admin UI using the lower-case form",
+		)
+	}
+	a.logger.Warn("startup: mixed-case address report", "count", len(found))
 }
 
 // migrateAddressIndex populates the global address index (AddressStore) from

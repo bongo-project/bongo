@@ -1582,8 +1582,21 @@ func (h *AdminHandler) ListAliases(w http.ResponseWriter, r *http.Request) {
 // CreateAlias creates a new alias.
 // Domain-admins may only create aliases in their authorized domains.
 func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
-	address := strings.TrimSpace(r.FormValue("address"))
-	targetUser := r.FormValue("target_user")
+	// Lower-case the alias address before it is used as a key. RecipientResolver
+	// lower-cases every address before looking it up (recipient_resolver.go), and
+	// AddressStore lower-cases on both read and write, so an alias stored with any
+	// upper-case character is written to a key nothing ever asks for. It then fails
+	// to resolve, and -- because an authenticated submission session treats an
+	// unresolvable recipient as external rather than rejecting it (smtp/server.go
+	// Rcpt) -- mail to it is silently relayed off-server instead of delivered
+	// locally. Normalising here is what keeps the write path in step with the read.
+	//
+	// targetUser is deliberately NOT lower-cased: it is stored verbatim and later
+	// used as an exact `users.username` match, and account creation does not
+	// normalise the address either, so forcing case here could break the lookup for
+	// a user whose username genuinely contains capitals.
+	address := strings.ToLower(strings.TrimSpace(r.FormValue("address")))
+	targetUser := strings.TrimSpace(r.FormValue("target_user"))
 
 	if address == "" || targetUser == "" {
 		http.Error(w, "address and target_user are required", http.StatusBadRequest)
@@ -1630,26 +1643,41 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 // DeleteAlias removes an alias.
 // Domain-admins may only delete aliases in their authorized domains.
 func (h *AdminHandler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
-	address := chi.URLParam(r, "address")
+	address := strings.TrimSpace(chi.URLParam(r, "address"))
 
 	scope := middleware.AdminScopeFromContext(r.Context())
 	if !requireDomainAccess(w, scope, domainFromEmail(address)) {
 		return
 	}
 
-	key := []byte(fmt.Sprintf("/system/alias/%s", address))
-	cmd := &bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: key,
+	// Delete the address BOTH as given and lower-cased. Aliases created before
+	// CreateAlias normalised its input are stored under a mixed-case key, and the
+	// admin list renders that key verbatim -- so the delete request arrives with the
+	// capitals intact. Deleting only the normalised form would leave exactly those
+	// broken aliases undeletable through the UI, which is the one operation an
+	// operator needs in order to clean them up. Deleting only the raw form would
+	// strand nothing today but would break the moment the list is normalised.
+	// Both are attempted; a DELETE for a key that does not exist is a no-op.
+	keys := []string{address}
+	if lowered := strings.ToLower(address); lowered != address {
+		keys = append(keys, lowered)
 	}
-	if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-		http.Error(w, "failed to delete alias", http.StatusInternalServerError)
-		return
+	for _, k := range keys {
+		cmd := &bongov1.RaftCommand{
+			Op:  bongov1.Op_OP_DELETE,
+			Key: []byte(fmt.Sprintf("/system/alias/%s", k)),
+		}
+		if err := h.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+			http.Error(w, "failed to delete alias", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	if h.metadata != nil && h.metadata.System != nil {
-		if _, err := h.metadata.System.DB().Exec("DELETE FROM aliases WHERE address = ?", address); err != nil {
-			h.logger.Warn("admin: failed to delete alias from sqlite", "alias", address, "error", err)
+		for _, k := range keys {
+			if _, err := h.metadata.System.DB().Exec("DELETE FROM aliases WHERE address = ?", k); err != nil {
+				h.logger.Warn("admin: failed to delete alias from sqlite", "alias", k, "error", err)
+			}
 		}
 	}
 
