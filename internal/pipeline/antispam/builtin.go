@@ -117,12 +117,6 @@ func WithDMARC(e *mail.DMARCEvaluator, enforce bool) Option {
 //
 // A nil checker leaves p.dnsbl nil, which applyDNSBL's first check treats as
 // the option never having been applied — nil-safe like WithBayes/WithDMARC.
-//
-// Known limitation: when an external backend (rspamd, spamassassin) wins in
-// CompositeProcessor, only the builtin's DmarcResult is carried across and
-// Reasons is dropped (composite.go), so a DNSBL zone name added here can
-// disappear from X-Spam-Reasons on those deployments. The default
-// builtin-only path is unaffected; this is a composite-level gap.
 func WithDNSBL(checker *dnsbl.Checker, weights map[string]float64) Option {
 	return func(p *BuiltinProcessor) {
 		p.dnsbl = checker
