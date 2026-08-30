@@ -1676,6 +1676,19 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 			if msg.BlobHash != "" {
 				ref[msg.BlobHash] = true
 			}
+			// Attachment-dedup splits an outbound message in two: BlobHash
+			// points at a skeleton and the attachment bodies live in separate
+			// blobs, which the queue worker reassembles before relaying
+			// (queue/worker.go). Counting only BlobHash therefore leaves every
+			// attachment of every queued message unreferenced, so the GC
+			// reclaims them and the message relays with its attachments
+			// missing -- outbound mail damaged in flight, with the queue entry
+			// still looking healthy.
+			for _, att := range msg.Attachments {
+				if att.Hash != "" {
+					ref[att.Hash] = true
+				}
+			}
 		}
 		if err := qIter.Close(); err != nil {
 			return nil, fmt.Errorf("closing queue iterator: %w", err)

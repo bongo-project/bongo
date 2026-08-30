@@ -1057,3 +1057,84 @@ func TestOrphanGCAnnouncesWhenItDoesNotStart(t *testing.T) {
 		t.Errorf("GC claimed to have started when it returned early.\nlogs:\n%s", got)
 	}
 }
+
+// TestCollectReferencedBlobsCountsQueueAttachments pins the attachment-dedup
+// half of a queued outbound message.
+//
+// Attachment-dedup splits an OutboundMessage in two: BlobHash points at a
+// skeleton, and the attachment bodies live in separate blobs listed in
+// Attachments, which the queue worker reassembles before relaying
+// (queue/worker.go). A reference scan that counted only BlobHash left every
+// attachment of every queued message unreferenced, so the GC reclaimed them
+// after the grace period and the message relayed with its attachments missing.
+// The queue entry looks healthy throughout, which is why this damages outbound
+// mail silently.
+//
+// Both queue prefixes are covered: a bounced message is still readable in the
+// admin UI and can be retried, so its attachments are just as live as a
+// pending one's.
+func TestCollectReferencedBlobsCountsQueueAttachments(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	cases := []struct {
+		prefix   string
+		key      string
+		skeleton string
+		atts     []string
+	}{
+		{"pending", "/queue/pending/00000000000000000001-o1", "skeleton-pending", []string{"att-pending-1", "att-pending-2"}},
+		{"bounced", "/queue/bounced/o2", "skeleton-bounced", []string{"att-bounced-1"}},
+	}
+
+	for _, c := range cases {
+		refs := make([]*bongov1.BlobRef, 0, len(c.atts))
+		for _, h := range c.atts {
+			refs = append(refs, &bongov1.BlobRef{Hash: h})
+		}
+		// An empty-hash entry must not pollute the set, mirroring how the
+		// mail scan guards the same field.
+		refs = append(refs, &bongov1.BlobRef{Hash: ""})
+
+		om := &bongov1.OutboundMessage{
+			Id:          "o-" + c.prefix,
+			BlobHash:    c.skeleton,
+			Attachments: refs,
+			Layout:      []*bongov1.MessageSegment{{}},
+		}
+		b, err := proto.Marshal(om)
+		if err != nil {
+			t.Fatalf("Marshal %s: %v", c.prefix, err)
+		}
+		if err := ps.Set([]byte(c.key), b); err != nil {
+			t.Fatalf("Set %s: %v", c.prefix, err)
+		}
+	}
+
+	ref, err := collectReferencedBlobs(ps, nil)
+	if err != nil {
+		t.Fatalf("collectReferencedBlobs: %v", err)
+	}
+
+	for _, c := range cases {
+		if !ref[c.skeleton] {
+			t.Errorf("%s: skeleton blob %q not referenced (set: %v)", c.prefix, c.skeleton, ref)
+		}
+		for _, h := range c.atts {
+			if !ref[h] {
+				t.Errorf("%s: attachment blob %q was not counted as referenced, so the GC "+
+					"would reclaim it and the message would relay with the attachment "+
+					"missing (set: %v)", c.prefix, h, ref)
+			}
+		}
+	}
+	if ref[""] {
+		t.Error("empty attachment hash must not enter the reference set")
+	}
+	if len(ref) != 5 {
+		t.Errorf("referenced set size = %d, want 5: %v", len(ref), ref)
+	}
+}
