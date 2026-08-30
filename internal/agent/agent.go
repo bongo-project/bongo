@@ -652,6 +652,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Wire the DKIM registry so GenerateDKIMKey can register signers
 		// immediately after key generation (registry was created above).
 		adminH.SetDKIMRegistry(a.DKIMRegistry)
+		adminH.SetSearchManager(a.Search)
 
 		// Wire the catch-all store so SetCatchAll/ClearCatchAll can persist
 		// per-domain catch-all configuration via Raft. The resolver reads
@@ -1547,6 +1548,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 	// their ID). Deletion only happens on a second consecutive sighting.
 	prevMail := map[string]bool{}
 	prevUsers := map[string]bool{}
+	prevGhosts := map[string]bool{}
 	prevBlobs := map[string]bool{}
 	for {
 		select {
@@ -1555,6 +1557,7 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 		case <-ticker.C:
 			prevMail = a.sweepOrphanedMail(prevMail, minAge)
 			prevUsers = a.sweepOrphanedUsers(prevUsers)
+			prevGhosts = a.sweepGhostUserTrees(prevGhosts)
 			// Blob GC is opt-in: off by default, with a dry-run mode to
 			// validate before it ever deletes.
 			if mode := a.Config.Storage.BlobGCMode(); mode != "off" {
@@ -1798,6 +1801,122 @@ func (a *Agent) sweepOrphanedUsers(prev map[string]bool) map[string]bool {
 		a.logger.Info("orphan-gc: reclaimed orphaned user rows", "count", deleted)
 	}
 	return current
+}
+
+// sweepGhostUserTrees reclaims /user/{id}/ key trees whose owner does not
+// exist -- no profile AND no users row.
+//
+// sweepOrphanedUsers cannot see these. It iterates ListUserIDs(), i.e. the
+// users table, so it only catches the opposite orphan: a row whose profile is
+// gone. A tree with no row at all is invisible to it, and that is exactly what
+// deleting an account produced while a stale address-index record still routed
+// mail to the dead ID -- delivery kept writing fresh keys under a user nothing
+// lists. Those keys also pin blobs, because collectReferencedBlobs counts every
+// /user/*/mail/* entry as a live reference, so blob GC can never reclaim them
+// either.
+//
+// Two consecutive sightings before deleting, matching the other sweeps: one
+// pass proves nothing if a user is mid-creation, with the profile write not yet
+// applied while mailbox keys already exist.
+//
+// Leader-only. Deletes go through Raft; the per-user metadata database and
+// search index are removed afterwards, and a failure there is logged rather
+// than fatal -- the next pass retries, since both deletes are idempotent.
+func (a *Agent) sweepGhostUserTrees(prev map[string]bool) map[string]bool {
+	if a.Raft == nil || !a.IsLeader() || a.Store == nil || a.Metadata == nil || a.Metadata.System == nil {
+		return map[string]bool{}
+	}
+
+	// Every user ID appearing under /user/, from the key structure alone.
+	iter, err := a.Store.PrefixScan([]byte("/user/"))
+	if err != nil {
+		a.logger.Warn("orphan-gc: scanning user trees failed", "error", err)
+		return prev
+	}
+	treeIDs := map[string]bool{}
+	for iter.Next() {
+		parts := strings.Split(string(iter.Key()), "/")
+		if len(parts) >= 3 && parts[2] != "" {
+			treeIDs[parts[2]] = true
+		}
+	}
+	if err := iter.Close(); err != nil {
+		a.logger.Warn("orphan-gc: closing user tree iterator", "error", err)
+		return prev
+	}
+
+	rows, err := a.Metadata.System.ListUserIDs()
+	if err != nil {
+		a.logger.Warn("orphan-gc: listing users failed", "error", err)
+		return prev
+	}
+	hasRow := make(map[string]bool, len(rows))
+	for _, id := range rows {
+		hasRow[id] = true
+	}
+
+	current := map[string]bool{}
+	for userID := range treeIDs {
+		if hasRow[userID] {
+			continue
+		}
+		if _, err := a.Store.Get([]byte("/user/" + userID + "/profile")); err == nil {
+			continue // a profile exists: real user, just missing its row (sweepOrphanedUsers' job)
+		} else if !errors.Is(err, store.ErrNotFound) {
+			a.logger.Warn("orphan-gc: ghost profile check failed", "user", userID, "error", err)
+			continue
+		}
+
+		current[userID] = true
+		if !prev[userID] {
+			a.logger.Warn("orphan-gc: ghost user tree seen; will reclaim next pass if still orphaned",
+				"user", userID)
+			continue
+		}
+		a.reclaimGhostUserTree(userID)
+	}
+	return current
+}
+
+// reclaimGhostUserTree deletes one confirmed ghost's Pebble keys, metadata
+// database and search index.
+func (a *Agent) reclaimGhostUserTree(userID string) {
+	iter, err := a.Store.PrefixScan([]byte("/user/" + userID + "/"))
+	if err != nil {
+		a.logger.Warn("orphan-gc: scanning ghost tree failed", "user", userID, "error", err)
+		return
+	}
+	var keys [][]byte
+	for iter.Next() {
+		k := make([]byte, len(iter.Key()))
+		copy(k, iter.Key())
+		keys = append(keys, k)
+	}
+	if err := iter.Close(); err != nil {
+		a.logger.Warn("orphan-gc: closing ghost tree iterator", "user", userID, "error", err)
+		return
+	}
+
+	deleted := 0
+	for _, k := range keys {
+		if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: k}, 5*time.Second); err != nil {
+			a.logger.Warn("orphan-gc: deleting ghost key failed", "user", userID, "key", string(k), "error", err)
+			continue
+		}
+		deleted++
+	}
+
+	if err := a.Metadata.DeleteUser(userID); err != nil {
+		a.logger.Warn("orphan-gc: removing ghost metadata index failed", "user", userID, "error", err)
+	}
+	if a.Search != nil {
+		if err := a.Search.DeleteUser(userID); err != nil {
+			a.logger.Warn("orphan-gc: removing ghost search index failed", "user", userID, "error", err)
+		}
+	}
+
+	a.logger.Warn("orphan-gc: reclaimed ghost user tree",
+		"user", userID, "keys_deleted", deleted, "keys_found", len(keys))
 }
 
 // sweepOrphanedMail runs one orphan-reclamation pass and returns the set of

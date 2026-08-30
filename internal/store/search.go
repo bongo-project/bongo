@@ -515,6 +515,36 @@ func (sm *SearchManager) openUser(userID string) (bleve.Index, error) {
 	return idx, nil
 }
 
+// DeleteUser closes the user's search index and removes its directory.
+//
+// Bleve holds file handles and a directory lock, so the index must leave the
+// LRU cache before the directory is removed; otherwise a later flush recreates
+// segment files under a half-deleted directory. Idempotent: a user that was
+// never opened, or whose directory is already gone, is not an error.
+func (sm *SearchManager) DeleteUser(userID string) error {
+	if !IsValidUserID(userID) {
+		return fmt.Errorf("invalid user id")
+	}
+
+	sm.mu.Lock()
+	if elem, ok := sm.cache[userID]; ok {
+		entry := elem.Value.(*searchEntry)
+		sm.lruList.Remove(elem)
+		delete(sm.cache, userID)
+		if err := entry.index.Close(); err != nil {
+			sm.mu.Unlock()
+			return fmt.Errorf("closing search index %q: %w", userID, err)
+		}
+	}
+	sm.mu.Unlock()
+
+	idxDir := filepath.Join(sm.usersDir, userID)
+	if err := os.RemoveAll(idxDir); err != nil {
+		return fmt.Errorf("removing search index %q: %w", idxDir, err)
+	}
+	return nil
+}
+
 func (sm *SearchManager) evictOldestLocked() error {
 	elem := sm.lruList.Back()
 	if elem == nil {
