@@ -1611,6 +1611,45 @@ func blobGCCandidatesAcrossModeChange(prev map[string]bool, mode, prevMode strin
 	return prev
 }
 
+// parseMailMetaKey reports whether key is a direct /user/{id}/mail/{guid}
+// entry -- a MailMeta record -- as opposed to some other key living under a
+// user's tree. Both {id} and {guid} must be non-empty and contain no further
+// "/", the same structural shape MailboxStore.OrphanedMailGUIDs uses to
+// distinguish a MailMeta key from everything else under a user (mailbox.go).
+//
+// This replaces a substring test (bytes.Contains(key, []byte("/mail/"))).
+// Mailbox message keys are /user/{id}/mailbox/{name}/msg/{uid}
+// (store/mailbox.go); a mailbox literally named "mail" produces keys like
+// /user/u1/mailbox/mail/msg/0000000001, which CONTAIN "/mail/" and so passed
+// the substring test even though the value is a MailboxMessage, not a
+// MailMeta. The two protobufs collide at the wire level too:
+// MailboxMessage.uid is field 1 (varint) while MailMeta.guid is field 1
+// (string, length-delimited), so proto.Unmarshal genuinely fails on these
+// values rather than silently decoding a zero-value MailMeta.
+func parseMailMetaKey(key []byte) (userID, guid string, ok bool) {
+	const prefix = "/user/"
+	s := string(key)
+	if !strings.HasPrefix(s, prefix) {
+		return "", "", false
+	}
+	rest := s[len(prefix):]
+	sep := strings.IndexByte(rest, '/')
+	if sep <= 0 {
+		return "", "", false
+	}
+	userID, rest = rest[:sep], rest[sep+1:]
+
+	const mailSeg = "mail/"
+	if !strings.HasPrefix(rest, mailSeg) {
+		return "", "", false
+	}
+	guid = rest[len(mailSeg):]
+	if guid == "" || strings.Contains(guid, "/") {
+		return "", "", false
+	}
+	return userID, guid, true
+}
+
 // collectReferencedBlobs returns the set of blob hashes still referenced by
 // live state: every MailMeta (raw_message + attachments, across all users and
 // mailboxes), every queued OutboundMessage, and every envelope still sitting in
@@ -1635,16 +1674,26 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 		return nil, fmt.Errorf("scanning mail: %w", err)
 	}
 	for mailIter.Next() {
-		if !bytes.Contains(mailIter.Key(), []byte("/mail/")) {
+		key := mailIter.Key()
+		if _, _, ok := parseMailMetaKey(key); !ok {
 			continue
 		}
+		// Value()'s error is not swallowed here: pebbleIterator.Value() calls
+		// Pebble's ValueAndErr, which records any error on the iterator itself
+		// (pebble@v1.1.5/iterator.go:2199-2208) rather than only returning it
+		// here. mailIter.Close() below re-surfaces that same error, and this
+		// function returns it -- so a Value() failure still aborts the pass,
+		// it just does so via the Close() check rather than at this line. Do
+		// not "fix" this by returning here; the two checks are redundant by
+		// design, not a gap.
 		val, err := mailIter.Value()
 		if err != nil {
 			continue
 		}
 		var meta bongov1.MailMeta
-		if proto.Unmarshal(val, &meta) != nil {
-			continue
+		if err := proto.Unmarshal(val, &meta); err != nil {
+			_ = mailIter.Close() // best-effort: we are already returning an error
+			return nil, fmt.Errorf("unmarshaling mail meta at %q: %w", key, err)
 		}
 		if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
 			ref[meta.RawMessage.Hash] = true
@@ -1665,13 +1714,15 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 			return nil, fmt.Errorf("scanning %s: %w", prefix, err)
 		}
 		for qIter.Next() {
+			key := qIter.Key()
 			val, err := qIter.Value()
 			if err != nil {
 				continue
 			}
 			var msg bongov1.OutboundMessage
-			if proto.Unmarshal(val, &msg) != nil {
-				continue
+			if err := proto.Unmarshal(val, &msg); err != nil {
+				_ = qIter.Close() // best-effort: we are already returning an error
+				return nil, fmt.Errorf("unmarshaling queue entry at %q: %w", key, err)
 			}
 			if msg.BlobHash != "" {
 				ref[msg.BlobHash] = true

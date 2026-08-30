@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -774,13 +775,25 @@ func TestOrphanGCAnnouncesBlobGCModeOnStart(t *testing.T) {
 // assigned.
 func blobGCLeaderTestAgent(t *testing.T) *Agent {
 	t.Helper()
+	return blobGCLeaderTestAgentWithLogger(t, testLogger())
+}
+
+// blobGCLeaderTestAgentWithLogger is blobGCLeaderTestAgent but wires in the
+// given logger at construction, instead of always using testLogger(). The
+// logger must be set before Run() launches its background goroutines
+// (runOrphanGC included) -- assigning a.logger afterwards would race against
+// those goroutines' own reads of the field, which is why a test that wants to
+// capture log output (e.g. to assert a WARN line) needs this rather than
+// mutating a.logger on an already-running Agent.
+func blobGCLeaderTestAgentWithLogger(t *testing.T, logger *slog.Logger) *Agent {
+	t.Helper()
 	cfg := config.Defaults()
 	cfg.Server.Role = "dev"
 	cfg.Web.Port = freePort(t)
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
 
-	a, err := NewAgent(cfg, testLogger())
+	a, err := NewAgent(cfg, logger)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)
 	}
@@ -1136,5 +1149,223 @@ func TestCollectReferencedBlobsCountsQueueAttachments(t *testing.T) {
 	}
 	if len(ref) != 5 {
 		t.Errorf("referenced set size = %d, want 5: %v", len(ref), ref)
+	}
+}
+
+// --- Structural mail-key filter (14.5) --------------------------------------
+//
+// collectReferencedBlobs used to decide "is this a MailMeta key" with
+// bytes.Contains(key, []byte("/mail/")), a substring test. Mailbox message
+// keys are /user/{id}/mailbox/{name}/msg/{uid} (store/mailbox.go); a user who
+// names an IMAP mailbox "mail" produces keys like
+// /user/u1/mailbox/mail/msg/0000000001, which CONTAIN "/mail/" and so passed
+// the old filter, even though the value is a MailboxMessage, not a MailMeta.
+// MailboxMessage.Uid is field 1 (varint); MailMeta.Guid is field 1 (string,
+// length-delimited) -- a genuine wire-type mismatch, so proto.Unmarshal
+// actually fails on these values, not merely produces a zero-value struct.
+
+// TestParseMailMetaKey pins the structural parse in isolation, independent of
+// Pebble, so every edge case is cheap to enumerate.
+func TestParseMailMetaKey(t *testing.T) {
+	tests := []struct {
+		name       string
+		key        string
+		wantUserID string
+		wantGUID   string
+		wantOK     bool
+	}{
+		{"plain mail key", "/user/u1/mail/g1", "u1", "g1", true},
+		{"mailbox literally named mail", "/user/u1/mailbox/mail/msg/0000000001", "", "", false},
+		{"mailbox named mail, meta key", "/user/u1/mailbox/mail/meta", "", "", false},
+		{"non-mail user key", "/user/u1/config/theme", "", "", false},
+		{"empty guid", "/user/u1/mail/", "", "", false},
+		{"exactly /user/", "/user/", "", "", false},
+		{"empty user segment", "/user//mail/g1", "", "", false},
+		{"guid containing a slash", "/user/u1/mail/g1/extra", "", "", false},
+		{"user id containing mail", "/user/mail/mail/g1", "mail", "g1", true},
+		{"segment prefix collision (mailer, not mail)", "/user/u1/mailer/g1", "", "", false},
+		{"no leading /user/ prefix", "/other/u1/mail/g1", "", "", false},
+		{"root only", "/", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotUserID, gotGUID, gotOK := parseMailMetaKey([]byte(tt.key))
+			if gotOK != tt.wantOK || gotUserID != tt.wantUserID || gotGUID != tt.wantGUID {
+				t.Errorf("parseMailMetaKey(%q) = (%q, %q, %v), want (%q, %q, %v)",
+					tt.key, gotUserID, gotGUID, gotOK, tt.wantUserID, tt.wantGUID, tt.wantOK)
+			}
+		})
+	}
+}
+
+// TestCollectReferencedBlobsIgnoresMailboxNamedMail is the acceptance test for
+// AC2: given a mailbox named "mail" containing a message, collectReferencedBlobs
+// must not treat that key as a MailMeta and must raise no error. Under the old
+// substring filter this key was handed to proto.Unmarshal as a MailMeta and
+// failed (wire-type mismatch); combined with 14.5's second change (unmarshal
+// failure is now fatal), that would let any user permanently disable blob GC
+// for the whole node just by naming a mailbox "mail".
+func TestCollectReferencedBlobsIgnoresMailboxNamedMail(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	// A mailbox message living under a mailbox named "mail" -- contains the
+	// substring "/mail/" but is a MailboxMessage, not a MailMeta.
+	mbMsg := &bongov1.MailboxMessage{Uid: 1, MailGuid: "g1"}
+	mbBytes, err := proto.Marshal(mbMsg)
+	if err != nil {
+		t.Fatalf("Marshal MailboxMessage: %v", err)
+	}
+	if err := ps.Set([]byte("/user/u1/mailbox/mail/msg/0000000001"), mbBytes); err != nil {
+		t.Fatalf("Set mailbox message: %v", err)
+	}
+	// The mailbox's own meta key, also under the "mail" mailbox name.
+	if err := ps.Set([]byte("/user/u1/mailbox/mail/meta"), []byte("whatever")); err != nil {
+		t.Fatalf("Set mailbox meta: %v", err)
+	}
+
+	// A genuine MailMeta for the same user, so the test also proves real mail
+	// keys are still recognised once the mailbox-shaped keys are excluded.
+	meta := &bongov1.MailMeta{RawMessage: &bongov1.BlobRef{Hash: "realhash"}}
+	metaBytes, err := proto.Marshal(meta)
+	if err != nil {
+		t.Fatalf("Marshal MailMeta: %v", err)
+	}
+	if err := ps.Set([]byte("/user/u1/mail/g2"), metaBytes); err != nil {
+		t.Fatalf("Set mail: %v", err)
+	}
+
+	ref, err := collectReferencedBlobs(ps, nil)
+	if err != nil {
+		t.Fatalf("collectReferencedBlobs returned an error for a mailbox named "+
+			"\"mail\": %v -- this is the user-triggerable DoS the structural filter "+
+			"exists to prevent", err)
+	}
+	if !ref["realhash"] {
+		t.Errorf("real mail reference was lost: %v", ref)
+	}
+	if len(ref) != 1 {
+		t.Errorf("referenced set = %v, want exactly {realhash}: a mailbox-message key "+
+			"leaked into the reference set", ref)
+	}
+}
+
+// TestCollectReferencedBlobsSurfacesMailUnmarshalFailure is the acceptance
+// test for AC3: a /user/{id}/mail/{guid} value that fails proto.Unmarshal
+// must make collectReferencedBlobs return a non-nil error naming the
+// offending key, not silently drop the reference.
+func TestCollectReferencedBlobsSurfacesMailUnmarshalFailure(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	const badKey = "/user/u1/mail/g1"
+	// A malformed varint: proto.Unmarshal genuinely fails on this, it is not
+	// merely decoded as a zero-value message.
+	if err := ps.Set([]byte(badKey), []byte{0xFF, 0xFF, 0xFF}); err != nil {
+		t.Fatalf("Set corrupt mail meta: %v", err)
+	}
+
+	_, err = collectReferencedBlobs(ps, nil)
+	if err == nil {
+		t.Fatal("a corrupt MailMeta value produced no error; the reference set silently " +
+			"under-counted, and the difference is whether live mail gets deleted")
+	}
+	if !strings.Contains(err.Error(), badKey) {
+		t.Errorf("error %q does not name the offending key %q", err.Error(), badKey)
+	}
+}
+
+// TestCollectReferencedBlobsSurfacesQueueUnmarshalFailure is the acceptance
+// test for AC4, kept as a SEPARATE test from
+// TestCollectReferencedBlobsSurfacesMailUnmarshalFailure so a half-revert
+// (fixing only the mail scan or only the queue scan) cannot hide behind a
+// single shared assertion.
+func TestCollectReferencedBlobsSurfacesQueueUnmarshalFailure(t *testing.T) {
+	ps, err := store.NewPebbleStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	const badKey = "/queue/pending/00000000000000000001-bad"
+	if err := ps.Set([]byte(badKey), []byte{0xFF, 0xFF, 0xFF}); err != nil {
+		t.Fatalf("Set corrupt queue entry: %v", err)
+	}
+
+	_, err = collectReferencedBlobs(ps, nil)
+	if err == nil {
+		t.Fatal("a corrupt OutboundMessage value produced no error; the reference set " +
+			"silently under-counted, and the difference is whether live outbound mail " +
+			"gets deleted")
+	}
+	if !strings.Contains(err.Error(), badKey) {
+		t.Errorf("error %q does not name the offending key %q", err.Error(), badKey)
+	}
+}
+
+// syncBuffer is a concurrency-safe io.Writer, needed because a real leader
+// Agent (raft, gossip, queue worker, ...) logs from many goroutines at once;
+// a plain strings.Builder is not safe for that and races under -race.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestSweepOrphanedBlobsAbortsOnMailUnmarshalFailure is the acceptance test
+// for AC5: when collectReferencedBlobs fails, sweepOrphanedBlobs must delete
+// nothing and log at WARN. Exercised through a real leader Agent so the full
+// call path (not just collectReferencedBlobs in isolation) is proven.
+//
+// The logger is wired in at construction (blobGCLeaderTestAgentWithLogger),
+// not assigned onto a.logger afterwards -- Run() has already launched
+// runOrphanGC and other goroutines that read a.logger by the time the agent
+// is returned, and reassigning the field concurrently with those reads is
+// itself a race.
+func TestSweepOrphanedBlobsAbortsOnMailUnmarshalFailure(t *testing.T) {
+	buf := &syncBuffer{}
+	a := blobGCLeaderTestAgentWithLogger(t, slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+
+	hash, err := a.Blobs.Put([]byte("must survive an aborted pass"))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	old := time.Now().Add(-365 * 24 * time.Hour)
+	if err := os.Chtimes(blobFilePath(a.dataDir, hash), old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	const badKey = "/user/u1/mail/g1"
+	if err := a.Store.Set([]byte(badKey), []byte{0xFF, 0xFF, 0xFF}); err != nil {
+		t.Fatalf("Set corrupt mail meta: %v", err)
+	}
+
+	got := a.sweepOrphanedBlobs(map[string]bool{"stale-candidate": true}, time.Hour, false)
+	if len(got) != 0 {
+		t.Errorf("candidate set after an aborted pass = %v, want empty", got)
+	}
+	if !a.Blobs.Exists(hash) {
+		t.Error("blob was deleted despite an aborted collectReferencedBlobs pass -- " +
+			"the reference set was known incomplete")
+	}
+	if !strings.Contains(buf.String(), "WARN") {
+		t.Errorf("no WARN-level log line for the aborted pass:\n%s", buf.String())
 	}
 }
