@@ -609,3 +609,48 @@ asserts membership per prefix, absence of the empty hash, and total set size.
 Ran `golangci-lint run` before pushing this time. 14.3's first CI run failed on `ineffassign`
 alone, having passed gofmt/vet/gosec/-race locally — the linter is what CI runs and it was the
 one check not being run locally.
+
+## 2026-08-31 — Task 14.5: structural mail-key filter, then fatal unmarshal
+
+Verified the collision at the wire level before implementing: `MailboxMessage.uid` is field 1
+`uint32` (varint), `MailMeta.guid` is field 1 `string` (length-delimited), so a mailbox named
+`mail` (key `/user/{id}/mailbox/mail/msg/{uid}`, which contains `/mail/`) genuinely fails
+`proto.Unmarshal` rather than decoding a harmless zero value.
+
+That is why the order was load-bearing. Making unmarshal fatal while the substring filter was
+still in place would let ANY user permanently disable blob GC for the whole node by creating a
+mailbox called `mail` — converting a silent under-count into a user-triggerable denial of
+service on a background job. `parseMailMetaKey` (structural `/user/{id}/mail/{guid}`, both
+segments non-empty and separator-free, matching `OrphanedMailGUIDs`) landed first.
+
+Queue writers audited before making queue unmarshal fatal too: only `internal/queue/store.go`
+writes `/queue/pending/` and `/queue/bounced/`, always marshalling `OutboundMessage`. No hidden
+second value type, so the risk profile matches the mail scan.
+
+`Value()`'s error path now carries a comment recording why `continue` is safe there — Pebble
+records the error on the iterator and `Close()` re-surfaces it. An earlier PRD revision (mine)
+claimed it was a silent skip; the comment exists so the next reader neither "fixes" a non-bug
+nor copies the pattern somewhere it is not safe.
+
+**Mutations (4, none survived, re-verified independently):** revert to `bytes.Contains`; mail
+unmarshal back to `continue`; queue unmarshal back to `continue`; an off-by-one that makes the
+parser reject every valid key. The mail and queue reverts fail DISJOINT tests, so a half-revert
+cannot hide. Note one intermediate mutation was rejected as invalid rather than counted: it
+corrupted only the returned `guid`, which `collectReferencedBlobs` never consumes, so it did not
+exercise the dangerous "silently empties the reference set" direction.
+
+PATTERN: [go] - returning an error from inside a Pebble-iterator loop bypasses the loop's own
+`Close()` and leaks the iterator. Under `-race` this surfaces as a leaked-iterator panic on
+store shutdown plus a genuine data race on the leaked iterator's state, not merely a resource
+leak. Close explicitly before any early return.
+
+PATTERN: [testing] - assigning `a.logger` on an Agent after `Run()` has started races every
+background goroutine that reads it. Pass the logger into `NewAgent` before `Run()`. A plain
+`strings.Builder` is also unsafe as a sink when the subject is a real multi-goroutine Agent.
+
+FLAKE MEASUREMENT (for B16): `TestHealthEndpoints` fails "Run did not return after context
+cancellation" at 3/6 runs on clean main and 2/6 on this branch — pre-existing and NOT aggravated
+by 14.5, contrary to the initial suspicion. Local only; CI has been green throughout. Root cause
+is already documented in-file: `Run()` launches its background workers without joining them, so
+`cancel(); <-done` does not guarantee they have exited. Worth noting this is arguably a
+production shutdown-ordering issue and not only a test problem.
