@@ -60,6 +60,17 @@ type FSM struct {
 	metadata *store.MetadataManager
 	logger   *slog.Logger
 
+	// search, blobSync and notifier are injected by Agent.Run AFTER the FSM is
+	// constructed and handed to Raft, so Raft's apply goroutine can already be
+	// reading them while Run is still writing them -- a data race the race
+	// detector reports as SetBlobSyncer against runDerivedIndexes. They are
+	// interfaces, so an atomic.Pointer would need a wrapper per field; an
+	// RWMutex read through the accessors below is simpler and the read side is
+	// uncontended in practice.
+	//
+	// Read them ONLY via searchIndexer/blobSyncer/mailboxNotifier, never
+	// directly: a direct read reintroduces the race silently.
+	depsMu   sync.RWMutex
 	search   SearchIndexer
 	blobSync BlobEnqueuer
 	notifier MailboxNotifier
@@ -171,17 +182,46 @@ func NewFSM(s *store.PebbleStore, blobs *store.BlobStore, meta *store.MetadataMa
 
 // SetSearchManager sets the search indexer (initialized after FSM).
 func (f *FSM) SetSearchManager(s SearchIndexer) {
+	f.depsMu.Lock()
+	defer f.depsMu.Unlock()
 	f.search = s
 }
 
 // SetBlobSyncer sets the blob syncer (initialized after FSM).
 func (f *FSM) SetBlobSyncer(bs BlobEnqueuer) {
+	f.depsMu.Lock()
+	defer f.depsMu.Unlock()
 	f.blobSync = bs
 }
 
 // SetNotifier sets the mailbox notifier (initialized after FSM).
 func (f *FSM) SetNotifier(n MailboxNotifier) {
+	f.depsMu.Lock()
+	defer f.depsMu.Unlock()
 	f.notifier = n
+}
+
+// searchIndexer returns the current search indexer, or nil if none is set.
+// Callers snapshot once and use the returned value: re-reading mid-operation
+// could observe a different indexer partway through.
+func (f *FSM) searchIndexer() SearchIndexer {
+	f.depsMu.RLock()
+	defer f.depsMu.RUnlock()
+	return f.search
+}
+
+// blobSyncer returns the current blob syncer, or nil if none is set.
+func (f *FSM) blobSyncer() BlobEnqueuer {
+	f.depsMu.RLock()
+	defer f.depsMu.RUnlock()
+	return f.blobSync
+}
+
+// mailboxNotifier returns the current notifier, or nil if none is set.
+func (f *FSM) mailboxNotifier() MailboxNotifier {
+	f.depsMu.RLock()
+	defer f.depsMu.RUnlock()
+	return f.notifier
 }
 
 // appliedIndex returns the highest Raft index already applied to Pebble, or 0.
@@ -356,7 +396,7 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 		}
 	}
 
-	if f.notifier != nil {
+	if notifier := f.mailboxNotifier(); notifier != nil {
 		// Count total messages for the IMAP EXISTS response.
 		var totalMsgs uint32
 		scanStart := time.Now()
@@ -380,7 +420,7 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 				"duration_ms", elapsed.Milliseconds(),
 			)
 		}
-		f.notifier.NotifyNewMail(newMail.UserID, newMail.Mailbox, newMail.UID, totalMsgs)
+		notifier.NotifyNewMail(newMail.UserID, newMail.Mailbox, newMail.UID, totalMsgs)
 	}
 }
 
@@ -483,7 +523,7 @@ func (f *FSM) runDerivedIndexes(cmd *bongov1.RaftCommand) {
 		}
 	}
 
-	if cmd.Op == bongov1.Op_OP_PUT && f.blobSync != nil {
+	if cmd.Op == bongov1.Op_OP_PUT && f.blobSyncer() != nil {
 		f.enqueueBlobRefs(cmd)
 	}
 }
@@ -500,8 +540,8 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 			if err := f.metadata.DeleteMail(userID, guid); err != nil {
 				f.logger.Warn("fsm: failed to delete mail from sqlite index", "error", err, "user", userID, "guid", guid)
 			}
-			if f.search != nil {
-				if err := f.search.DeleteMailIndex(userID, guid); err != nil {
+			if search := f.searchIndexer(); search != nil {
+				if err := search.DeleteMailIndex(userID, guid); err != nil {
 					f.logger.Warn("fsm: failed to delete mail from bleve", "error", err, "user", userID, "guid", guid)
 				}
 			}
@@ -520,14 +560,14 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 			f.logger.Warn("fsm: failed to index mail in sqlite", "error", err, "user", userID, "guid", guid)
 		}
 
-		if f.search != nil {
+		if search := f.searchIndexer(); search != nil {
 			hasAttachment := len(meta.Attachments) > 0
 			// Body text lives only in the blob, so indexing it costs a read
 			// and a MIME parse. That is affordable here and nowhere else:
 			// runDerivedIndexes is the background indexer, off the Raft apply
 			// path (see StartIndexer), so this cannot stall delivery.
 			body := mailBodyText(f.blobs, &meta, f.logger)
-			if err := f.search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
+			if err := search.IndexMail(userID, guid, meta.Subject, meta.From, meta.To, body, meta.ReceivedAt, hasAttachment, meta.Tags, float64(meta.SpamScore)); err != nil {
 				f.logger.Warn("fsm: failed to index mail in bleve", "error", err, "user", userID, "guid", guid)
 			}
 		}
@@ -561,8 +601,8 @@ func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
 		}
 	}
 
-	if f.search != nil {
-		if err := f.search.IndexProfile(userID, profile.Email, profile.DisplayName); err != nil {
+	if search := f.searchIndexer(); search != nil {
+		if err := search.IndexProfile(userID, profile.Email, profile.DisplayName); err != nil {
 			f.logger.Warn("fsm: failed to index profile in GAL", "error", err, "user", userID)
 		}
 	}
@@ -582,12 +622,16 @@ func (f *FSM) enqueueBlobRefs(cmd *bongov1.RaftCommand) {
 		return
 	}
 
+	blobSync := f.blobSyncer()
+	if blobSync == nil {
+		return
+	}
 	if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
-		f.blobSync.Enqueue(meta.RawMessage.Hash)
+		blobSync.Enqueue(meta.RawMessage.Hash)
 	}
 	for _, att := range meta.Attachments {
 		if att.Hash != "" {
-			f.blobSync.Enqueue(att.Hash)
+			blobSync.Enqueue(att.Hash)
 		}
 	}
 }
@@ -679,7 +723,7 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 
 	f.logger.Info("fsm: restored from snapshot", "keys", count)
 
-	if err := rebuildDerivedIndexes(f.store, f.blobs, f.metadata, f.search, f.logger); err != nil {
+	if err := rebuildDerivedIndexes(f.store, f.blobs, f.metadata, f.searchIndexer(), f.logger); err != nil {
 		f.logger.Warn("fsm: rebuild derived indexes after restore failed", "error", err)
 	}
 
