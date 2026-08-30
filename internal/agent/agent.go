@@ -1560,6 +1560,16 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// All four sweeps share a tick, mail first and blobs last, so a
+			// blob orphaned by the metadata reclaim above is evaluated by the
+			// blob sweep in the same pass. That ordering was suspected during
+			// the 2026-08-30 investigation and cleared: it is safe, and
+			// separating the ticks would add scheduling complexity for no
+			// correctness gain. A freshly orphaned blob is protected three
+			// times over -- it must survive the minAge cutoff, be a candidate
+			// on two consecutive passes, and pass a fresh reference check
+			// immediately before deletion. Do not split these onto separate
+			// timers without a reason this list does not already cover.
 			prevMail = a.sweepOrphanedMail(prevMail, minAge)
 			prevUsers = a.sweepOrphanedUsers(prevUsers)
 			prevGhosts = a.sweepGhostUserTrees(prevGhosts)
@@ -1746,19 +1756,80 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 		}
 	}
 
-	// On-disk spool. Every directory NewSpoolStore creates can hold an
-	// envelope that outlives the GC grace period, so all of them count --
-	// quarantine/ most obviously, but a deferred message in incoming/ or a
-	// parked one in error/ is just as reclaimable and just as wrong to
-	// reclaim. A read failure here must NOT be swallowed: a reference set
-	// that silently lost the spool is indistinguishable from a spool that is
-	// genuinely empty, and the difference is whether the sweep deletes live
-	// mail.
+	// On-disk spool. The one reference source with no Pebble key at all, so a
+	// set built only from Pebble treats those bodies as garbage. See
+	// collectSpoolBlobs.
+	//
+	// The nil check stays on the concrete type: a nil *SpoolStore assigned to
+	// an interface parameter yields a NON-nil interface, so passing it through
+	// would turn "no spool on this role" into a nil dereference.
 	if spool != nil {
-		for _, dir := range []string{"incoming", "processing", "deliver", "quarantine", "error"} {
+		if err := collectSpoolBlobs(spool, ref); err != nil {
+			return nil, err
+		}
+	}
+
+	return ref, nil
+}
+
+// spoolLister is the part of pipeline.SpoolStore the reference scan needs,
+// declared at the consumer. It exists so the two-pass behaviour in
+// collectSpoolBlobs can be driven by a lister that moves an envelope between
+// passes -- the race that behaviour closes cannot otherwise be reproduced
+// deterministically, and an untestable guard is one nobody can tell has been
+// removed.
+type spoolLister interface {
+	List(dir string) ([]*bongov1.QueueEnvelope, error)
+}
+
+// spoolScanDirs are the spool directories that can hold an envelope, in
+// pipeline order. Every one counts: quarantine/ most obviously, but a deferred
+// message in incoming/ or a parked one in error/ is just as reclaimable and
+// just as wrong to reclaim.
+var spoolScanDirs = []string{"incoming", "processing", "deliver", "quarantine", "error"}
+
+// spoolScanPasses is 2 deliberately. See collectSpoolBlobs.
+const spoolScanPasses = 2
+
+// collectSpoolBlobs adds every blob named by an envelope in the on-disk spool
+// to ref.
+//
+// It reads every directory twice and unions the results, because a single
+// ordered pass has a blind spot. An envelope moves between directories by
+// rename, which is atomic -- it is in exactly one directory at every instant
+// -- so a move that crosses the scan's own position is invisible to it.
+// Reading in pipeline order makes a FORWARD move safe: incoming -> processing
+// is caught either in incoming before the move or in processing after it. A
+// BACKWARD move is not. An admin releasing a message from quarantine moves it
+// to incoming, and if that lands after incoming was read and before quarantine
+// is, the envelope appears in neither listing and its body looks unreferenced
+// -- with the message itself still very much alive.
+//
+// No single ordering fixes this; reversing it just exposes forward moves
+// instead. A second pass does, because the envelope has come to rest by then.
+// Re-reading five directories is cheap next to the cost of being wrong.
+//
+// A read failure in either pass aborts the scan rather than under-reporting: a
+// reference set that silently lost the spool is indistinguishable from a spool
+// that is genuinely empty, and the difference is whether the sweep deletes
+// live mail.
+//
+// KNOWN GAP, deliberately not fixed here: this reads only the NODE-LOCAL
+// spool, and the spool is not replicated. Blob GC is leader-only, so on a
+// multi-node cluster the leader would build a reference set blind to every
+// other node's in-flight mail and could reclaim a body another node is still
+// holding. The current deployment is single-node, where leader and spool are
+// the same machine, so the gap is not live. Closing it needs a design decision
+// -- replicate spool state, restrict GC to blobs the leader can account for,
+// or gate GC on single-node -- not a patch, and it belongs with the wider
+// multi-node work in backlog B7.
+func collectSpoolBlobs(spool spoolLister, ref map[string]bool) error {
+	for pass := range spoolScanPasses {
+		for _, dir := range spoolScanDirs {
 			envs, err := spool.List(dir)
 			if err != nil {
-				return nil, fmt.Errorf("scanning spool %s: %w", dir, err)
+				return fmt.Errorf("scanning spool %s (pass %d of %d): %w",
+					dir, pass+1, spoolScanPasses, err)
 			}
 			for _, env := range envs {
 				if env.GetBlobHash() != "" {
@@ -1767,8 +1838,7 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 			}
 		}
 	}
-
-	return ref, nil
+	return nil
 }
 
 // logSweepCandidate records one blob the sweep is about to reclaim, with the

@@ -120,8 +120,8 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 ```
 /user/{user_id}/profile              → UserProfile protobuf
 /user/{user_id}/mail/{guid}          → MailMeta protobuf + BlobRef
-/user/{user_id}/event/{guid}         → calendar event + BlobRef
-/user/{user_id}/contact/{guid}       → contact + BlobRef (vCard)
+/user/{user_id}/event/{guid}         → Event protobuf (ical_raw inline, NOT a blob)
+/user/{user_id}/contact/{guid}       → Contact protobuf (vcard_raw inline, NOT a blob)
 /user/{user_id}/calendar/{guid}      → calendar metadata
 /user/{user_id}/mailbox/{name}/meta  → mailbox metadata (uid_next, uid_validity)
 /user/{user_id}/mailbox/{name}/msg/{uid} → MailboxMessage (flags, tags, mail guid)
@@ -140,6 +140,15 @@ func (h *MailHandler) SetThreadStore(ts *store.ThreadStore) { h.threads = ts }
 # Blob store (content-addressable, separate from Pebble)
 /data/blobs/{first-2-hex}/{sha256-hash} → raw file content
 ```
+
+Only MailMeta and the outbound queue reference blobs. An earlier revision of this table said
+events and contacts carried BlobRefs; they do not. `Event.ical_raw` and `Contact.vcard_raw` are
+inline `bytes` in the protobuf. This is not a cosmetic correction: a maintainer who believes
+events and contacts pin blobs will either add pointless scanning to the GC or, worse, assume
+coverage that was never needed and reason wrongly about what the reference set must contain.
+The authoritative list is `knownBlobBearingFields` in `internal/agent/blobref_enumeration_test.go`,
+which is checked against the proto descriptors at test time and fails if a new blob-bearing field
+appears without being classified.
 
 Blob lifecycle: background GC does mark-and-sweep, deletes unreferenced blobs older than 1 hour.
 The GC is the ONLY component that deletes blobs. They are content-addressed and shared across
