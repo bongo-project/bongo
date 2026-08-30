@@ -491,3 +491,51 @@ the one I brought.
 PATTERN: [agents] Verify an agent's load-bearing claims against source before acting. All
 three checked out here, but one of them reversed a conclusion I had already written into a
 PRD and a merged PR description.
+
+## 2026-08-30 — Task 14.2: re-validate blob GC candidates before deleting
+
+Closes the write-after-scan class, including the deduped-blob case the 14.1 audit
+identified as the actual cause of the 2026-08-30 loss.
+
+**Change.** `revalidateSweepCandidates` re-collects the reference set and drops any
+candidate that reappeared; `reconfirmSweep` is the pure filter underneath it.
+
+**The design decision that matters.** The first implementation put the barrier at the
+`sweepOrphanedBlobs` call site, guarding a later `deleteSweptBlobs` call. Mutation
+testing showed that deleting those six lines left every test green — the fix would
+have gone inert and silent, the same class as the incomplete FSM race fix that only
+CI caught. No test could distinguish wired-from-unwired at that level without either
+a genuine concurrent writer (flaky by construction) or a test-only injection seam.
+
+Fixed by changing the shape rather than adding tests: the re-validation now lives
+inside `deleteSweptBlobs` itself, so it is unbypassable — removing it is not
+"forgetting a call site", it is editing the body every caller goes through, and
+`deleteSweptBlobs`'s own tests become the wiring proof. Also matches the acceptance
+criterion more literally ("immediately before deleting").
+
+Re-validation runs in dryrun too; `dryRun` gates only `Blobs.Delete`. A dryrun list
+that skipped re-validation would over-report and mislead exactly the operator doing
+the 14.9 verification.
+
+**Mutations (6, none survived):** filter never spares; failed scan returns stale
+candidates; re-validation drops everything; short-circuit removed; barrier removed
+from `deleteSweptBlobs`; `dryRun` no longer gates the delete.
+
+PATTERN: [testing] - a barrier at a call site is untestable wiring; a barrier inside
+the function it guards is covered by that function's existing tests. Prefer
+unbypassable placement over a correct call site when the failure mode is silent.
+
+PATTERN: [testing] - polling `a.IsLeader()` is NOT sufficient synchronisation for
+fields `Agent.Run()` assigns after leadership resolves (`a.Spool`, agent.go:1037,
+vs the leader wait ~line 968). Under -race a test calling a leader-gated method can
+read a still-initialising Agent. Poll `a.Ready()`, set only after Run()'s synchronous
+setup completes.
+
+PATTERN: [testing] - "add the reference between call N and N+1" is not equivalent to
+"between two scans inside one call". Code that re-scans on entry is already safe
+against the former, so such a test is vacuous for a same-pass guard.
+
+NOTE (flake, for B16): `TestLoginRateLimit` in test/integration fails at ~15s when run
+alongside other auth integration tests, on the unmodified tree as well as this branch.
+Passes alone. Shared per-IP rate-limiter state across tests in one process is the
+likely cause. Pre-existing, not caused by 14.2.

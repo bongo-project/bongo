@@ -1663,32 +1663,6 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 	return ref, nil
 }
 
-// deleteSweptBlobs reclaims the planned blobs and returns how many were
-// actually removed. In dryrun it removes nothing.
-//
-// Split out of sweepOrphanedBlobs so the dryrun contract can be tested without
-// standing up a Raft leader. That contract is load-bearing beyond the obvious:
-// dryrun is what the docs tell operators to run first, and it is what this
-// deployment falls back to when the GC has to be made safe in a hurry. If it
-// ever deleted, the one setting people reach for when they do not trust the
-// sweep would be the destructive one -- and the summary line would still say
-// dry_run=true.
-func (a *Agent) deleteSweptBlobs(toDelete []string, dryRun bool) int {
-	deleted := 0
-	for _, h := range toDelete {
-		if dryRun {
-			a.logger.Info("blob-gc: would delete orphaned blob (dry-run)", "hash", h)
-			continue
-		}
-		if err := a.Blobs.Delete(h); err != nil {
-			a.logger.Warn("blob-gc: deleting orphaned blob failed", "hash", h, "error", err)
-			continue
-		}
-		deleted++
-	}
-	return deleted
-}
-
 // logBlobSweepPass records that a sweep ran, at Debug so a quiet sweep stays
 // quiet at Info. A pass that reclaims nothing is the expected steady state, and
 // every other line in this path is gated on an action or an error, so without
@@ -1721,9 +1695,114 @@ func planBlobSweep(referenced map[string]bool, blobMTimes map[string]time.Time, 
 	return current, toDelete
 }
 
+// reconfirmSweep re-checks each deletion candidate against a freshly collected
+// reference set, splitting toDelete into survivors (still safe to delete) and
+// spared (referenced since the original scan). Order is preserved in both
+// slices so the sweep log stays deterministic.
+//
+// This is the barrier for the dedup gap in the minAge grace: BlobStore.Put and
+// PutReader early-return without touching the file when Exists(hash) is true,
+// so a deduplicated write leaves the blob's mtime at its ORIGINAL write time.
+// A year-old blob that becomes referenced again during the scan is therefore
+// simultaneously absent from the reference snapshot, older than the cutoff,
+// and a two-pass candidate -- exactly the combination that deleted a live mail
+// body on 2026-08-30. Re-checking immediately before delete closes that
+// window regardless of how the reference reappeared.
+func reconfirmSweep(toDelete []string, fresh map[string]bool) (survivors, spared []string) {
+	for _, h := range toDelete {
+		if fresh[h] {
+			spared = append(spared, h)
+			continue
+		}
+		survivors = append(survivors, h)
+	}
+	return survivors, spared
+}
+
+// revalidateSweepCandidates re-scans references and applies reconfirmSweep,
+// but only when there is something to lose: an empty toDelete returns
+// immediately without touching Pebble or the spool, so a quiet steady-state
+// pass costs nothing extra. A failed re-scan returns an error and no
+// survivors -- under-counting references is exactly the failure mode that
+// loses mail, so the caller must delete nothing rather than fall back to the
+// (necessarily stale) candidate list.
+//
+// Split out of deleteSweptBlobs, like collectReferencedBlobs itself, so the
+// re-validation barrier is testable against a real PebbleStore/SpoolStore
+// without standing up a Raft leader.
+func revalidateSweepCandidates(ps *store.PebbleStore, spool *pipeline.SpoolStore, toDelete []string) (survivors, spared []string, err error) {
+	if len(toDelete) == 0 {
+		return nil, nil, nil
+	}
+	fresh, err := collectReferencedBlobs(ps, spool)
+	if err != nil {
+		return nil, nil, fmt.Errorf("re-validating sweep candidates: %w", err)
+	}
+	survivors, spared = reconfirmSweep(toDelete, fresh)
+	return survivors, spared, nil
+}
+
+// deleteSweptBlobs re-validates every candidate against a FRESH reference scan
+// and then reclaims (or in dryrun, only logs) whatever survives, returning how
+// many were actually removed and which candidates were spared by
+// re-validation. This is the barrier for the dedup gap in the minAge grace:
+// BlobStore.Put/PutReader leave a deduplicated write's mtime untouched, so a
+// blob that is re-referenced during the sweep is simultaneously absent from
+// the ORIGINAL reference scan, older than the cutoff, and a two-pass
+// candidate -- exactly the combination that deleted a live mail body on
+// 2026-08-30.
+//
+// The re-validation lives HERE, inside the only function that calls
+// Blobs.Delete, rather than at the sweepOrphanedBlobs call site. A call-site
+// check is a barrier someone can forget to wire up (and a refactor can
+// silently drop); a check inside the delete path itself cannot be bypassed by
+// any caller, present or future. Folding it in also matches the acceptance
+// criterion literally: re-validate each candidate "immediately before
+// deleting" it.
+//
+// dryRun gates ONLY the Blobs.Delete call below -- re-validation and the
+// spared list are computed either way. The dryrun candidate list is what an
+// operator reviews to decide whether to trust the sweep before re-enabling
+// deletion (task 14.9); a list that skipped re-validation would over-report
+// exactly what it exists to let the operator verify.
+//
+// An empty toDelete returns immediately without touching Pebble or the spool
+// (via revalidateSweepCandidates), so a quiet steady-state pass costs nothing
+// extra. A failed re-scan returns an error and deletes nothing -- under-
+// counting references is exactly the failure mode that loses mail, so this
+// must not fall back to the (necessarily stale) candidate list it was handed.
+//
+// Split out of sweepOrphanedBlobs so the dryrun contract -- and now the
+// re-validation barrier -- can be tested without standing up a Raft leader.
+// The dryrun contract is load-bearing beyond the obvious: dryrun is what the
+// docs tell operators to run first, and it is what this deployment falls back
+// to when the GC has to be made safe in a hurry. If it ever deleted, the one
+// control people reach for when they do not trust the sweep would be the
+// destructive one -- and the summary line would still say dry_run=true.
+func (a *Agent) deleteSweptBlobs(toDelete []string, dryRun bool) (deleted int, spared []string, err error) {
+	survivors, spared, err := revalidateSweepCandidates(a.Store, a.Spool, toDelete)
+	if err != nil {
+		return 0, nil, fmt.Errorf("re-validating before delete: %w", err)
+	}
+	for _, h := range survivors {
+		if dryRun {
+			a.logger.Info("blob-gc: would delete orphaned blob (dry-run)", "hash", h)
+			continue
+		}
+		if err := a.Blobs.Delete(h); err != nil {
+			a.logger.Warn("blob-gc: deleting orphaned blob failed", "hash", h, "error", err)
+			continue
+		}
+		deleted++
+	}
+	return deleted, spared, nil
+}
+
 // sweepOrphanedBlobs runs one blob-GC pass: collect referenced blobs, list the
 // blob store, and reclaim blobs unreferenced for two consecutive passes and older
-// than minAge. dryRun logs candidates without deleting. Leader-only.
+// than minAge. deleteSweptBlobs re-checks candidates against a fresh reference
+// scan immediately before deleting (or, in dryrun, before reporting them), so a
+// reference created during the pass cannot be missed. Leader-only.
 func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, dryRun bool) map[string]bool {
 	if a.Raft == nil || !a.IsLeader() || a.Blobs == nil || a.Store == nil {
 		return map[string]bool{}
@@ -1745,9 +1824,19 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 		}
 	}
 	current, toDelete := planBlobSweep(referenced, mtimes, prev, time.Now().Add(-minAge))
-	deleted := a.deleteSweptBlobs(toDelete, dryRun)
-	if len(toDelete) > 0 {
-		a.logger.Info("blob-gc: swept orphaned blobs", "candidates", len(toDelete), "deleted", deleted, "dry_run", dryRun)
+	candidates := len(toDelete)
+
+	deleted, spared, err := a.deleteSweptBlobs(toDelete, dryRun)
+	if err != nil {
+		a.logger.Warn("blob-gc: re-validation scan failed, deleting nothing this pass",
+			"error", err, "candidates", candidates)
+	} else if len(spared) > 0 {
+		a.logger.Info("blob-gc: spared blob(s) referenced since the initial scan",
+			"hashes", spared, "count", len(spared))
+	}
+
+	if candidates > 0 {
+		a.logger.Info("blob-gc: swept orphaned blobs", "candidates", candidates, "deleted", deleted, "dry_run", dryRun)
 	}
 	a.logBlobSweepPass(mtimes, referenced, current, deleted, dryRun)
 	return current
