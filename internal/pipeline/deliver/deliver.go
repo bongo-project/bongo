@@ -378,6 +378,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 			if prefs.ForwardAddress != "" {
 				env.ForwardAddresses = append(env.ForwardAddresses, prefs.ForwardAddress)
 				p.logger.Info("deliver: account-level forwarding enabled",
+					"recipient", rcpt,
 					"user", userID,
 					"forward_to", prefs.ForwardAddress,
 					"keep_copy", prefs.ForwardKeepCopy,
@@ -390,7 +391,7 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 
 		if skipLocal {
 			p.logger.Info("deliver: skipping local delivery (forward_keep_copy=false)",
-				"user", userID, "id", env.Id)
+				"recipient", rcpt, "user", userID, "id", env.Id)
 			continue
 		}
 
@@ -450,6 +451,10 @@ func (p *DeliverProcessor) Process(ctx context.Context, env *bongov1.QueueEnvelo
 		}
 
 		p.logger.Info("deliver: mail stored",
+			// The envelope recipient, not just the resolved user ID: an alias and
+			// its target share one UUID, so a UUID alone cannot say which address
+			// the mail was actually addressed to.
+			"recipient", rcpt,
 			"user", userID,
 			"guid", guid,
 			"subject", subject,
