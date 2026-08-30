@@ -43,8 +43,24 @@ and there is no undo. `blob_gc` is `"dryrun"` on production until 14.9.
 
 Re-scoped after the 14.1 audit, which found eight gaps. The original 14.2-14.7 assumed the
 queue-attachments gap was the cause; the audit identified a different and more likely one
-(dedup defeats the mtime grace), corrected half of the silent-skip claim, and found that
-re-enabling deletion is itself unsafe today.
+(dedup defeats the mtime grace) and corrected half of the silent-skip claim. Its third
+headline claim -- that re-enabling deletion was unsafe today -- was WRONG, and was relayed
+here unchecked; see 14.3's note. There is no config reload, so a mode change implies a
+restart, which already clears the candidate set.
+
+**Status 2026-08-31: 8 of 10 done. Every code change is merged.** 14.2, 14.3, 14.4 and 14.5
+are the ones that lose mail; 14.6 is the guard against a third recurrence; 14.7 makes a sweep
+auditable; 14.10 fixes the quarantine-release race and corrects the key-space table.
+
+**The two that remain both need the operator, and are blocked on a deploy:**
+
+- **14.8** is an investigation on the live node plus a deletion of dangling metadata there.
+- **14.9** cannot start until 14.7 is deployed, because the check it defines reads the
+  per-candidate log lines 14.7 added. Sequence: cut a release, run >=24h on `dryrun`, confirm
+  from the candidate logs that nothing reachable is listed, then flip `blob_gc` to `"on"` in
+  its own commit.
+
+`blob_gc` stays `"dryrun"` on production until 14.9 signs it off.
 
 | # | Task | PRD | Status | Notes |
 |---|------|-----|--------|-------|
