@@ -567,6 +567,33 @@ func (m *MetadataManager) CloseUser(userID string) error {
 	return entry.index.Close()
 }
 
+// DeleteUser closes the user's database and removes its files from disk.
+//
+// Closing first is load-bearing: the index is held open in the LRU cache and
+// SQLite keeps -wal and -shm sidecars beside the main file. Unlinking an open
+// database leaves the handle writing to a deleted inode, so a later flush can
+// recreate the sidecars and leave a partial database behind.
+//
+// Safe to call for a user that was never opened (CloseUser is a no-op then) and
+// for one whose files are already gone: a missing file is not an error, so the
+// call is idempotent and can be retried by a GC pass.
+func (m *MetadataManager) DeleteUser(userID string) error {
+	if !IsValidUserID(userID) {
+		return fmt.Errorf("invalid user id")
+	}
+	if err := m.CloseUser(userID); err != nil {
+		return fmt.Errorf("closing user index %q: %w", userID, err)
+	}
+
+	dbPath := filepath.Join(m.usersDir, userID+".db")
+	for _, path := range []string{dbPath, dbPath + "-wal", dbPath + "-shm"} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("removing %q: %w", path, err)
+		}
+	}
+	return nil
+}
+
 // IndexObject opens the user's database and indexes the object.
 func (m *MetadataManager) IndexObject(userID string, obj StoreObject) error {
 	idx, err := m.OpenUser(userID)

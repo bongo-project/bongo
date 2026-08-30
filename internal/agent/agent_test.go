@@ -416,3 +416,109 @@ func waitForHTTPS(t *testing.T, client *http.Client, url string, timeout time.Du
 	}
 	t.Fatalf("HTTPS server not ready at %s after %v", url, timeout)
 }
+
+// TestSweepGhostUserTrees covers the shape sweepOrphanedUsers structurally
+// cannot see: a /user/{id}/ tree with NO users row and no profile. That is what
+// the ghost-mailbox incident produced -- an account was deleted while a stale
+// address-index record still routed mail to the dead ID, so delivery kept
+// writing fresh keys under a user nothing lists.
+func TestSweepGhostUserTrees(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Web.Port = freePort(t)
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.SMTP.Enabled = false
+
+	a, err := NewAgent(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+	defer func() { cancel(); <-done }()
+
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !a.IsLeader() {
+		t.Fatal("agent did not acquire leadership")
+	}
+
+	// A ghost: mail keys under a user with neither profile nor users row.
+	const ghost = "33333333-3333-3333-3333-333333333333"
+	ghostKey := []byte("/user/" + ghost + "/mail/guid-1")
+	if err := a.ApplyCommand(&bongov1.RaftCommand{
+		Op: bongov1.Op_OP_PUT, Key: ghostKey, Value: []byte("x"),
+	}, 5*time.Second); err != nil {
+		t.Fatalf("seed ghost key: %v", err)
+	}
+
+	// A real user must survive every pass -- this is the guard that matters,
+	// since the sweep deletes stored mail.
+	liveID, err := auth.CreateUser(a, a.Metadata, "live@localhost", "Live", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	// A user with a users ROW but no profile belongs to sweepOrphanedUsers,
+	// which deletes only the row. This sweep must leave its mail alone, or the
+	// two sweeps race and this one destroys mail the other never intended to
+	// touch. Without this case the hasRow check is unfalsifiable: a healthy
+	// live user is already excluded by the profile check that follows it.
+	rowOnlyID, err := auth.CreateUser(a, a.Metadata, "rowonly@localhost", "RowOnly", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	rowOnlyMail := []byte("/user/" + rowOnlyID + "/mail/guid-keep")
+	if err := a.ApplyCommand(&bongov1.RaftCommand{
+		Op: bongov1.Op_OP_PUT, Key: rowOnlyMail, Value: []byte("keep"),
+	}, 5*time.Second); err != nil {
+		t.Fatalf("seed row-only mail: %v", err)
+	}
+	if err := a.ApplyCommand(&bongov1.RaftCommand{
+		Op: bongov1.Op_OP_DELETE, Key: []byte("/user/" + rowOnlyID + "/profile"),
+	}, 5*time.Second); err != nil {
+		t.Fatalf("delete row-only profile: %v", err)
+	}
+
+	ghostExists := func() bool {
+		_, gErr := a.Store.Get(ghostKey)
+		return gErr == nil
+	}
+	liveExists := func() bool {
+		_, gErr := a.Store.Get([]byte("/user/" + liveID + "/profile"))
+		return gErr == nil
+	}
+
+	if !ghostExists() {
+		t.Fatal("fixture invalid: ghost key was not written")
+	}
+
+	// First pass marks only.
+	prev := a.sweepGhostUserTrees(map[string]bool{})
+	if !prev[ghost] {
+		t.Fatal("ghost should be marked on the first pass")
+	}
+	if prev[liveID] {
+		t.Fatal("a live user must never be marked as a ghost")
+	}
+	if prev[rowOnlyID] {
+		t.Fatal("a user with a users row must never be marked as a ghost - that orphan belongs to sweepOrphanedUsers")
+	}
+	if !ghostExists() {
+		t.Fatal("ghost must NOT be deleted on the first pass")
+	}
+
+	// Second consecutive pass reclaims it.
+	a.sweepGhostUserTrees(prev)
+	if ghostExists() {
+		t.Error("ghost user tree should be reclaimed on the second pass")
+	}
+	if !liveExists() {
+		t.Error("BUG: the live user's profile was deleted by the ghost sweep")
+	}
+	if _, gErr := a.Store.Get(rowOnlyMail); gErr != nil {
+		t.Error("BUG: mail belonging to a row-only orphan was deleted by the ghost sweep")
+	}
+}
