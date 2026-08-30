@@ -692,3 +692,31 @@ make. A genuinely pinning field marked `transient` with a plausible `why` passes
 guard cannot prevent that — what it does is refuse to let a new field pass unnoticed and force a
 written claim about what pins the blob instead, which a reviewer can check. A new transient entry
 is the part of a diff deserving most attention.
+
+## 2026-08-31 — Task 14.7: per-candidate audit logging
+
+What the 2026-08-30 incident lacked. Its only record was `blob-gc: swept orphaned blobs
+candidates:17 deleted:17`, so the seventeen hashes were unrecoverable afterwards and attributing
+the two lost bodies meant decoding spool envelopes by hand. Per-blob detail existed but only at
+Debug, which the default configuration drops.
+
+**Logs at Info in BOTH modes, not only dryrun.** Dryrun is what 14.9's operator review reads, but
+a DELETING pass is the one whose record cannot be reconstructed later — the blob is gone. A
+dryrun-only fix would leave the incident's own scenario exactly as unauditable as it was. Mutation
+M1 is precisely that half-fix, and it fails only the `deleting` subtest.
+
+**Added `BlobStore.Size(hash)`**, mirroring `ModTime`. Only aggregate `Stats()` existed. Size and
+mtime are in the line because a hash alone does not tell a reviewer whether a candidate is a few
+hundred bytes of debris or a message body, and mtime says how long it sat unreferenced.
+
+**A failed stat never suppresses the line** — an unreadable candidate is more interesting than a
+readable one, not less, and suppressing it would hide exactly the anomaly an audit looks for.
+Size and mtime report -1 and the zero time with the error alongside.
+
+**Mutations (6, none survived):** log only in dryrun; drop to Debug (what the incident had);
+suppress the line on stat failure; drop size and mtime keeping the hash; `Size` without hash
+validation; `Size` swallowing the stat error and returning 0.
+
+The size test uses a 1237-byte body deliberately — not a round number — so an implementation
+returning a block size, a constant, or the hash length cannot pass by coincidence. (Same trap as
+the 255-byte truncation test in the global learnings.)
