@@ -494,3 +494,44 @@ func TestIsValidUserID(t *testing.T) {
 		}
 	}
 }
+
+// TestBlobSize covers the accessor the blob GC uses to record what a sweep is
+// about to reclaim. A hash alone does not tell an operator reviewing a
+// candidate list whether a deletion costs a few hundred bytes of debris or a
+// real message body.
+func TestBlobSize(t *testing.T) {
+	bs, err := NewBlobStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+
+	// A length that is not a round number, so an implementation returning a
+	// block size, a constant, or the hash length cannot pass by coincidence.
+	body := bytes.Repeat([]byte("x"), 1237)
+	hash, err := bs.Put(body)
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	got, err := bs.Size(hash)
+	if err != nil {
+		t.Fatalf("Size: %v", err)
+	}
+	if got != int64(len(body)) {
+		t.Errorf("Size = %d, want %d", got, len(body))
+	}
+
+	// An absent blob must report an error rather than a zero size: the GC
+	// distinguishes "empty" from "could not stat", and logs the difference.
+	absent := strings.Repeat("ab", 32)
+	if _, err := bs.Size(absent); err == nil {
+		t.Error("Size of an absent blob returned no error, so a stat failure would be " +
+			"indistinguishable from a zero-length blob")
+	}
+
+	// Path validation matches the other accessors: never build a filesystem
+	// path from an unvalidated hash.
+	if _, err := bs.Size("../../etc/passwd"); !errors.Is(err, ErrInvalidHash) {
+		t.Errorf("Size of an invalid hash: err = %v, want ErrInvalidHash", err)
+	}
+}

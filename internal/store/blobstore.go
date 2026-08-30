@@ -177,6 +177,21 @@ func (bs *BlobStore) ModTime(hash string) (time.Time, error) {
 	return fi.ModTime(), nil
 }
 
+// Size returns the on-disk size of a blob in bytes. Used by the blob GC to
+// record what a sweep is about to reclaim: a hash alone does not tell an
+// operator reviewing a candidate list whether a deletion would cost a few
+// hundred bytes of debris or a real message body.
+func (bs *BlobStore) Size(hash string) (int64, error) {
+	if !IsValidHash(hash) {
+		return 0, fmt.Errorf("blob %q: %w", hash, ErrInvalidHash)
+	}
+	fi, err := os.Stat(bs.blobPath(hash))
+	if err != nil {
+		return 0, err
+	}
+	return fi.Size(), nil
+}
+
 // Delete removes a blob file.
 // Returns ErrInvalidHash if hash is not a valid 64-char lowercase hex string.
 func (bs *BlobStore) Delete(hash string) error {

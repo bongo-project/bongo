@@ -1771,6 +1771,52 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 	return ref, nil
 }
 
+// logSweepCandidate records one blob the sweep is about to reclaim, with the
+// size and mtime that let an operator judge it.
+//
+// This is what the 2026-08-30 incident lacked. The only line it left was
+// "swept orphaned blobs candidates:17 deleted:17", so the seventeen hashes
+// were unrecoverable after the fact and attributing the two lost bodies meant
+// decoding spool envelopes. Per-blob detail existed but only at Debug, which
+// the default configuration drops.
+//
+// It logs at Info in BOTH modes, not only dryrun. A deleting pass is the one
+// whose record you cannot reconstruct afterwards -- the blob is gone -- so it
+// is the pass that most needs the hashes written down. Size and mtime are
+// there because a hash alone does not tell a reviewer whether a candidate is a
+// few hundred bytes of debris or a message body, and mtime says how long it
+// sat unreferenced.
+//
+// A failed stat never suppresses the line: an unreadable candidate is more
+// interesting than a readable one, not less. Size and mtime are reported as
+// -1 and the zero time, with the error alongside.
+func (a *Agent) logSweepCandidate(hash string, dryRun bool) {
+	var size int64 = -1
+	var mtime time.Time
+	var statErr error
+	if s, err := a.Blobs.Size(hash); err == nil {
+		size = s
+	} else {
+		statErr = err
+	}
+	if mt, err := a.Blobs.ModTime(hash); err == nil {
+		mtime = mt
+	} else if statErr == nil {
+		statErr = err
+	}
+
+	attrs := []any{
+		"hash", hash,
+		"size_bytes", size,
+		"mtime", mtime.UTC().Format(time.RFC3339),
+		"dry_run", dryRun,
+	}
+	if statErr != nil {
+		attrs = append(attrs, "stat_error", statErr)
+	}
+	a.logger.Info("blob-gc: reclaiming unreferenced blob", attrs...)
+}
+
 // logBlobSweepPass records that a sweep ran, at Debug so a quiet sweep stays
 // quiet at Info. A pass that reclaims nothing is the expected steady state, and
 // every other line in this path is gated on an action or an error, so without
@@ -1893,8 +1939,8 @@ func (a *Agent) deleteSweptBlobs(toDelete []string, dryRun bool) (deleted int, s
 		return 0, nil, fmt.Errorf("re-validating before delete: %w", err)
 	}
 	for _, h := range survivors {
+		a.logSweepCandidate(h, dryRun)
 		if dryRun {
-			a.logger.Info("blob-gc: would delete orphaned blob (dry-run)", "hash", h)
 			continue
 		}
 		if err := a.Blobs.Delete(h); err != nil {

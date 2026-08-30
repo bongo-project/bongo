@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -1367,5 +1368,133 @@ func TestSweepOrphanedBlobsAbortsOnMailUnmarshalFailure(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "WARN") {
 		t.Errorf("no WARN-level log line for the aborted pass:\n%s", buf.String())
+	}
+}
+
+// TestSweepCandidatesAreLoggedIndividually covers US-003: a sweep must record
+// which blobs it reclaimed, not just how many.
+//
+// The 2026-08-30 incident logged "candidates:17 deleted:17" and nothing else,
+// so the seventeen hashes were unrecoverable afterwards and attributing the
+// two lost bodies meant decoding spool envelopes by hand. Per-blob detail
+// existed but only at Debug, which the default configuration drops.
+//
+// Both modes are asserted. Dryrun is what task 14.9's operator review reads,
+// but a DELETING pass is the one whose record cannot be reconstructed later --
+// the blob is gone -- so it is the pass that most needs the hashes written
+// down. A fix that logged only in dryrun would leave the incident's own
+// scenario exactly as unauditable as it was.
+func TestSweepCandidatesAreLoggedIndividually(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		dryRun bool
+	}{
+		{"dryrun", true},
+		{"deleting", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf syncBuffer
+			logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+			dir := t.TempDir()
+			blobs, err := store.NewBlobStore(dir)
+			if err != nil {
+				t.Fatalf("NewBlobStore: %v", err)
+			}
+			ps, err := store.NewPebbleStore(dir + "/pebble")
+			if err != nil {
+				t.Fatalf("NewPebbleStore: %v", err)
+			}
+			t.Cleanup(func() { ps.Close() })
+
+			a := &Agent{Blobs: blobs, Store: ps, logger: logger}
+
+			hashes := make([]string, 0, 3)
+			for i := range 3 {
+				h, err := blobs.Put([]byte(fmt.Sprintf("candidate body %d", i)))
+				if err != nil {
+					t.Fatalf("Put: %v", err)
+				}
+				hashes = append(hashes, h)
+			}
+
+			deleted, spared, err := a.deleteSweptBlobs(hashes, tc.dryRun)
+			if err != nil {
+				t.Fatalf("deleteSweptBlobs: %v", err)
+			}
+			if len(spared) != 0 {
+				t.Fatalf("nothing is referenced, so nothing should be spared, got %v", spared)
+			}
+			wantDeleted := len(hashes)
+			if tc.dryRun {
+				wantDeleted = 0
+			}
+			if deleted != wantDeleted {
+				t.Fatalf("deleted = %d, want %d", deleted, wantDeleted)
+			}
+
+			out := buf.String()
+
+			// Every candidate is individually identifiable, at a level the
+			// default configuration keeps.
+			for _, h := range hashes {
+				if !strings.Contains(out, h) {
+					t.Errorf("candidate %s does not appear in the log at Info; a sweep that "+
+						"reports only a count cannot be audited after the fact:\n%s", h, out)
+				}
+			}
+
+			// Size and mtime: a hash alone does not tell a reviewer whether a
+			// candidate is debris or a message body.
+			if got := strings.Count(out, "size_bytes="); got != len(hashes) {
+				t.Errorf("size_bytes appears %d times, want %d:\n%s", got, len(hashes), out)
+			}
+			if got := strings.Count(out, "mtime="); got != len(hashes) {
+				t.Errorf("mtime appears %d times, want %d:\n%s", got, len(hashes), out)
+			}
+
+			// The sizes must be real, not a placeholder. "candidate body N" is
+			// 16 bytes, so a stat failure reported as -1 would be caught here.
+			if strings.Contains(out, "size_bytes=-1") {
+				t.Errorf("a candidate logged size_bytes=-1, meaning stat failed:\n%s", out)
+			}
+		})
+	}
+}
+
+// TestSweepCandidateLogSurvivesAStatFailure pins that an unreadable candidate
+// still produces a line. An unreadable blob is more interesting than a
+// readable one, not less, and suppressing the line would hide exactly the
+// anomalous case an audit is looking for.
+func TestSweepCandidateLogSurvivesAStatFailure(t *testing.T) {
+	var buf syncBuffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	dir := t.TempDir()
+	blobs, err := store.NewBlobStore(dir)
+	if err != nil {
+		t.Fatalf("NewBlobStore: %v", err)
+	}
+	ps, err := store.NewPebbleStore(dir + "/pebble")
+	if err != nil {
+		t.Fatalf("NewPebbleStore: %v", err)
+	}
+	t.Cleanup(func() { ps.Close() })
+
+	a := &Agent{Blobs: blobs, Store: ps, logger: logger}
+
+	// A well-formed hash that names no file on disk: stat fails, but the
+	// candidate must still be recorded.
+	missing := strings.Repeat("ab", 32)
+	if _, _, err := a.deleteSweptBlobs([]string{missing}, true); err != nil {
+		t.Fatalf("deleteSweptBlobs: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, missing) {
+		t.Errorf("a candidate whose stat failed was not logged at all:\n%s", out)
+	}
+	if !strings.Contains(out, "stat_error") {
+		t.Errorf("the stat failure was not reported alongside the candidate:\n%s", out)
 	}
 }
