@@ -1,5 +1,21 @@
 name: CI
-on: [push, pull_request]
+
+# `on: [push, pull_request]` ran this workflow TWICE for every branch that has
+# an open PR -- once for each event, on the same commit -- doubling runner
+# minutes and, because both runs compete for runners, slowing each of them down.
+# Scoping push to main keeps a direct run on the default branch after a merge
+# while branch pushes are covered by the pull_request event alone.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Supersede in-flight runs for the same ref: without this, pushing a fixup left
+# the previous run going to completion alongside the new one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
