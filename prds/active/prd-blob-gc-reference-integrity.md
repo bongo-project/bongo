@@ -59,22 +59,96 @@ be counted as referenced, so the sweep never proposes a live blob for deletion.
       `proto/bongo/v1/` is exercised by at least one of the cases above, so a
       new blob-bearing field cannot be added without this test failing.
 
-### US-002: A reference scan that cannot read its inputs fails, it does not under-report
+### US-002: A reference scan that cannot parse a record fails, it does not under-report
 
-**Description:** As an operator, I want a reference scan that hits an error to
-abort the sweep, because an under-counted reference set and a genuinely empty
-one are indistinguishable to the caller — and the difference is whether live
-mail gets deleted.
+**Description:** As an operator, I want a reference scan that cannot parse a
+record to abort the sweep, because an under-counted reference set and a
+genuinely empty one are indistinguishable to the caller — and the difference is
+whether live mail gets deleted.
+
+**CORRECTED by the 14.1 audit.** This story originally also covered `Value()`
+read errors. That half was wrong: `pebbleIterator.Value()` calls Pebble's
+`ValueAndErr`, which sets `i.err` on the iterator
+(`pebble@v1.1.5/iterator.go:2199-2208`); `collectReferencedBlobs` checks both
+iterator `Close()` calls and returns the error, and `sweepOrphanedBlobs` then
+aborts the pass. A value-read failure already aborts the sweep. Only the
+`proto.Unmarshal` path silently drops references.
+
+**Prerequisite:** the key filter must be tightened FIRST. `agent.go` matches
+`bytes.Contains(key, "/mail/")`, so a user-created IMAP mailbox literally named
+`mail` yields `/user/{id}/mailbox/mail/msg/...`, whose `MailboxMessage` value
+fails to unmarshal as `MailMeta` on a wire-type mismatch. Making unmarshal fatal
+without tightening the filter lets any user permanently disable the GC by
+creating a mailbox called `mail`.
 
 **Acceptance Criteria:**
-- [ ] Given a `/user/{id}/mail/{guid}` value that fails `proto.Unmarshal`, when
-      `collectReferencedBlobs` runs, then it returns a non-nil error naming the
-      offending key, rather than skipping the record.
+- [ ] The mail-key filter parses structurally (`/user/{id}/mail/{guid}`, no
+      further separator) as `OrphanedMailGUIDs` already does, rather than
+      substring-matching `/mail/`.
+- [ ] Given a mailbox named `mail` containing a message, when
+      `collectReferencedBlobs` runs, then that key is not treated as a `MailMeta`
+      and no error is raised.
+- [ ] Given a `/user/{id}/mail/{guid}` value that fails `proto.Unmarshal`, then
+      `collectReferencedBlobs` returns a non-nil error naming the offending key.
 - [ ] Given a queue value that fails `proto.Unmarshal`, same.
-- [ ] Given `collectReferencedBlobs` returns an error, when `sweepOrphanedBlobs`
-      runs, then it deletes nothing and logs at WARN.
-- [ ] A test proves the sweep deletes nothing on a reference-collection error,
-      by asserting blob count is unchanged.
+- [ ] Given `collectReferencedBlobs` returns an error, `sweepOrphanedBlobs`
+      deletes nothing, logs at WARN, and a test asserts the blob count is
+      unchanged.
+- [ ] A comment records why the `Value()` error path is safe, since it reads as
+      if it swallows the error and is only safe by a non-obvious property of
+      Pebble.
+
+### US-006: A blob is re-validated immediately before it is deleted
+
+**Description:** As an operator, I want the sweep to re-check a candidate against
+a fresh reference set just before deleting it, so a reference created during the
+scan cannot be missed.
+
+**Rationale (14.1 audit, the headline finding).** The `minAge` grace exists so
+"a blob written just before its referencing metadata is never reclaimed". That
+guarantee does NOT hold for a deduplicated write. `BlobStore.Put` and `PutReader`
+return early when `Exists(hash)` is true and never touch the file, so the mtime
+stays at the ORIGINAL write time. A year-old blob that becomes referenced again
+during a scan is therefore both unreferenced-in-the-snapshot and older than the
+cutoff, so it is deleted while a brand-new `MailMeta` points at it. The stamped-
+message path makes this deterministic: `deliver.go` notes that a redelivery
+re-derives identical stamped bytes and the same hash. This produces exactly the
+observed symptom — metadata present, body missing, small count.
+
+**Acceptance Criteria:**
+- [ ] Given a blob whose mtime is older than the cutoff and which was a candidate
+      in the previous pass, when a reference to it is created after
+      `collectReferencedBlobs` returns but before deletion, then the blob is NOT
+      deleted.
+- [ ] The re-validation runs only on passes that would delete something, so a
+      steady-state quiet pass costs nothing extra.
+- [ ] A test writes a blob, ages its mtime past the cutoff, marks it a candidate,
+      then adds a reference between scan and sweep, and asserts it survives.
+- [ ] A test proves a genuinely unreferenced blob is still deleted, so the
+      re-validation does not disable the GC.
+
+### US-007: The candidate set does not survive a mode change or a failed pass
+
+**Description:** As an operator, I want the two-pass rule to mean two consecutive
+GOOD passes under the CURRENT mode, so re-enabling deletion cannot act on stale
+evidence.
+
+**Rationale (14.1 audit).** Two separate holes. First, `prevBlobs` is assigned on
+every non-`off` pass, so `dryrun` accumulates a live candidate set — flipping
+`blob_gc` back to `"on"` makes the FIRST pass delete everything the last dry-run
+pass proposed, with no fresh confirmation interval. This directly affects the
+production node, which is on `dryrun` now. Second, on a scan failure
+`sweepOrphanedBlobs` returns `prev` unchanged rather than an empty set, so a
+candidate marked hours ago can be deleted after an arbitrary run of failed
+passes — the "one-interval grace" is not bounded to one interval.
+
+**Acceptance Criteria:**
+- [ ] Changing `blob_gc` between `off`, `dryrun` and `on` resets the candidate
+      set, so the next deletion needs two fresh passes.
+- [ ] On a `collectReferencedBlobs` or `Blobs.List()` error, `sweepOrphanedBlobs`
+      returns an empty set, matching the non-leader path.
+- [ ] A test proves a candidate seen only in dry-run is not deleted on the first
+      pass after switching to `on`.
 
 ### US-003: The sweep can be audited before it is trusted
 
@@ -130,7 +204,16 @@ candidate list has been proven correct on real data.
 - **FR-5:** Dryrun mode must log every candidate hash with size and mtime.
 - **FR-6:** The two dangling `MailMeta` records must be removed.
 - **FR-7:** `blob_gc` must be returned to `"on"` in `deploy/bongo.prod.hcl`
-  after the verification in US-005.
+  after the verification in US-005, and only after FR-9.
+- **FR-8:** `sweepOrphanedBlobs` must re-validate each candidate against a fresh
+  reference set immediately before deleting it (US-006).
+- **FR-9:** The candidate set must reset on a `blob_gc` mode change, and must be
+  emptied rather than carried forward on a failed pass (US-007).
+- **FR-10:** The mail-key filter must parse `/user/{id}/mail/{guid}`
+  structurally instead of substring-matching `/mail/` (US-002 prerequisite).
+- **FR-11:** Any pass that deletes must log each deleted hash at INFO. The
+  existing per-pass detail is Debug-only, which is why the 2026-08-30 incident
+  left counts and no hashes.
 
 ## 5. Non-Goals (Out of Scope)
 
@@ -147,17 +230,47 @@ candidate list has been proven correct on real data.
 Findings from a first pass over `internal/agent/agent.go`, to be confirmed
 during implementation:
 
+**Audited in 14.1 (2026-08-30). Eight gaps found; findings below supersede the
+initial reading where they conflict.**
+
+0. **Headline (HIGH) — dedup defeats the mtime grace, and there is no barrier
+   between the scan and the delete.** See US-006. This is the only gap that
+   produces exactly the observed symptom and it is a whole class, not one field.
+   Fix first.
+
 1. **Confirmed gap — queue attachments.** `OutboundMessage` carries two blob
    references: `blob_hash = 5` and `repeated BlobRef attachments = 14`,
    populated at `internal/queue/worker.go:166`. The queue branch of
    `collectReferencedBlobs` reads only `msg.BlobHash`. Any queued message using
    attachment-dedup (non-empty `layout`) therefore has its attachment blobs
    uncounted.
-2. **Silent skips.** Both the mail and queue loops `continue` on a `Value()`
-   error and on a failed `proto.Unmarshal`. A record that cannot be read
-   contributes no references and says nothing, so corruption or schema drift
-   silently widens the delete list. Contrast the spool branch, whose comment
-   explicitly argues the opposite and returns an error.
+2. **Silent skips — HALF REFUTED by the audit.** The `proto.Unmarshal`
+   `continue` is a real gap. The `Value()` `continue` is NOT: the error is
+   recorded on the Pebble iterator and surfaced by `Close()`, which
+   `collectReferencedBlobs` checks, so a value-read failure aborts the sweep.
+   It reads like a bug and is safe only by a non-obvious library property —
+   worth a comment, not a fix. See US-002.
+
+2b. **Ordering answered.** All four sweeps run sequentially in ONE 15-minute
+   tick, `sweepOrphanedMail` first and `sweepOrphanedBlobs` last, which explains
+   the 14-minute gap between the `count:21` reclaim and the 17 deletions: the
+   metadata reclaim supplied the candidates, and the two-pass rule correctly
+   held them for one interval. This is correct behaviour and NOT the fault —
+   something re-referenced 2 of those blobs between the two scans, which is
+   gap 0. Worth changing anyway: running the two sweeps in the same tick
+   collapses a full interval of safety margin for free.
+
+2c. **Lower-severity gaps** (full detail in progress.md): the spool scan lists
+   its five directories in a fixed order, so an envelope moving BACKWARD
+   (quarantine→incoming on admin release, processing→incoming on shutdown) can
+   be missed by a single pass; and the reference scan reads only the node-local
+   spool, which is not replicated, so a blob referenced solely by a peer's
+   quarantine envelope is invisible to the leader.
+
+2d. **Over-retention, not loss:** nothing removes envelopes from `spool/deliver/`,
+   so every delivered message's pre-stamp original stays pinned forever. Useful
+   forensics: the 17 deleted blobs were therefore almost certainly stamped
+   bodies, split attachments or compose/Sent blobs, not inbound originals.
 3. **Interaction to check.** `orphan-gc: reclaimed orphaned mail metadata
    count:21` was logged at 08:27 on 2026-08-30, 14 minutes before the sweep that
    deleted 17 blobs. Determine whether metadata reclamation can strand a blob
@@ -166,9 +279,10 @@ during implementation:
 4. **Scope of the `/mail/` filter.** The mail branch matches keys containing
    `/mail/`. Confirmed that `BlobRef` appears only in `MailMeta` and
    `OutboundMessage`, so calendar events and contacts do not hold blobs —
-   `Contact.vcard_raw` is inline `bytes`. Note the key-space table in CLAUDE.md
-   claims `contact/{guid} → contact + BlobRef (vCard)`, which is stale and
-   should be corrected.
+   `Contact.vcard_raw` and `CalendarEvent.ical_raw` are inline `bytes`, and no
+   calendar or contact path calls `blobs.Put`. Note the key-space table in
+   CLAUDE.md claims a `BlobRef` on BOTH `event/{guid}` and `contact/{guid}`;
+   both are stale and should be corrected.
 5. The sweep is leader-only and two-pass (`prev`), with a `minAge` grace of 1h.
    Neither is suspected; do not change them.
 
