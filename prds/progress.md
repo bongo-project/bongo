@@ -654,3 +654,41 @@ by 14.5, contrary to the initial suspicion. Local only; CI has been green throug
 is already documented in-file: `Run()` launches its background workers without joining them, so
 `cancel(); <-done` does not guarantee they have exited. Worth noting this is arguably a
 production shutdown-ordering issue and not only a test problem.
+
+## 2026-08-31 — Task 14.6: enumeration guard over blob-bearing proto fields
+
+The guard against a third round of this bug. Twice a field that pins a blob was absent from
+`collectReferencedBlobs` — `QueueEnvelope.blob_hash` (the spool) and `OutboundMessage.attachments`
+(14.4). Both were found only after the fact, and the failure is structural: nothing connects a
+protobuf edit to a garbage collector in another package that must learn about it.
+
+**Design.** A runtime walk of the `bongo.v1` descriptors via `protoregistry`, not a hardcoded
+list, so a new field is discovered rather than needing to be remembered. Every discovered field
+must have an entry classifying it `pinning` or `transient`; an entry naming a field that no
+longer exists fails too, so the table cannot decay into stale claims of coverage.
+
+**Detects both shapes, which is the load-bearing detail.** A `BlobRef`-typed field is the obvious
+one, but `QueueEnvelope` and `OutboundMessage` name blobs with bare `blob_hash` strings — so a
+walk looking only for the `BlobRef` type would have missed precisely the two fields that caused
+both incidents. Mutation M5 pins this.
+
+**Coverage is demonstrated, not asserted.** Each pinning entry carries a populate func writing a
+real record through the real key layout with a hash unique to that field; the test then asserts
+`collectReferencedBlobs` returns every one. So removing the attachments loop fails this file even
+though the table is untouched, and a failure names the responsible field rather than reporting a
+count mismatch.
+
+**Survey findings.** Only seven blob-bearing fields exist. Two are gRPC-only
+(`DepositResponse.blob_hash`, `FetchBlobRequest.blob_hash`) and never at rest. Calendar events and
+contacts bear NO blob fields at all, independently confirming that CLAUDE.md's key-space table is
+wrong to claim they carry BlobRefs — the 14.10 item.
+
+**Mutations (5, none survived):** drop `OutboundMessage.attachments` (the 14.4 bug); drop the spool
+envelope collection (the earlier bug); remove a table entry to simulate a new undeclared field;
+add an entry naming a non-existent field; restrict the walk to `BlobRef`-typed fields only.
+
+**Known limit, recorded in the file rather than hidden:** classification is a judgement no test can
+make. A genuinely pinning field marked `transient` with a plausible `why` passes everything. The
+guard cannot prevent that — what it does is refuse to let a new field pass unnoticed and force a
+written claim about what pins the blob instead, which a reviewer can check. A new transient entry
+is the part of a diff deserving most attention.
