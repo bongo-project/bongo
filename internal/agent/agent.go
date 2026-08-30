@@ -1550,6 +1550,11 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 	prevUsers := map[string]bool{}
 	prevGhosts := map[string]bool{}
 	prevBlobs := map[string]bool{}
+	// "" is a sentinel BlobGCMode() never returns (it normalises everything to
+	// off/dryrun/on), so blobGCPass treats tick one as a mode change too.
+	// That is harmless -- prevBlobs is already empty on tick one regardless --
+	// and it avoids reading Config before the loop even starts.
+	prevBlobMode := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -1558,13 +1563,52 @@ func (a *Agent) runOrphanGC(ctx context.Context, interval, minAge time.Duration)
 			prevMail = a.sweepOrphanedMail(prevMail, minAge)
 			prevUsers = a.sweepOrphanedUsers(prevUsers)
 			prevGhosts = a.sweepGhostUserTrees(prevGhosts)
-			// Blob GC is opt-in: off by default, with a dry-run mode to
-			// validate before it ever deletes.
-			if mode := a.Config.Storage.BlobGCMode(); mode != "off" {
-				prevBlobs = a.sweepOrphanedBlobs(prevBlobs, minAge, mode == "dryrun")
-			}
+			prevBlobs, prevBlobMode = a.blobGCPass(prevBlobs, prevBlobMode, minAge)
 		}
 	}
+}
+
+// blobGCPass runs one blob-GC tick: reads the currently configured mode,
+// discards the candidate set if the mode differs from the previous pass (see
+// blobGCCandidatesAcrossModeChange), and runs the sweep unless GC is off.
+// Returns the candidate set and mode to carry into the next pass.
+//
+// Split out of runOrphanGC's loop body, like sweepOrphanedUsers and the other
+// sweeps before it, so the mode-change reset is exercised by calling this
+// directly and threading state across calls -- the same way those sweeps are
+// tested -- rather than only by driving the real ticker.
+func (a *Agent) blobGCPass(prev map[string]bool, prevMode string, minAge time.Duration) (current map[string]bool, mode string) {
+	mode = a.Config.Storage.BlobGCMode()
+	prev = blobGCCandidatesAcrossModeChange(prev, mode, prevMode)
+	if mode == "off" {
+		return prev, mode
+	}
+	// Blob GC is opt-in: off by default, with a dry-run mode to validate
+	// before it ever deletes.
+	return a.sweepOrphanedBlobs(prev, minAge, mode == "dryrun"), mode
+}
+
+// blobGCCandidatesAcrossModeChange discards the candidate set carried from
+// the previous pass when the configured blob_gc mode has changed since then,
+// so the two-pass grace means two consecutive confirmations under the SAME
+// mode, not one confirmation each under two different ones.
+//
+// This is defence-in-depth, not a fix for a live bug: BlobGCMode() is read
+// from Config, which is assigned once in NewAgent (agent.go:240) and never
+// mutated outside tests; the only signal.Notify in the tree is SIGINT/SIGTERM
+// for shutdown (cmd/bongo-go/agent.go:178); there is no SIGHUP config reload.
+// So the mode is constant for the life of a process, changing it requires a
+// restart, and a restart already gives runOrphanGC a fresh empty prevBlobs --
+// this guard cannot currently fire. It exists for backlog item B9, which
+// proposes exactly that reload: if B9 lands, a mode flip happens mid-process
+// and, without this, a candidate confirmed under one mode (e.g. dryrun) would
+// be deleted on the first pass under a newly-enabled one, with no fresh
+// confirmation. Implementing it now means B9 does not have to remember to.
+func blobGCCandidatesAcrossModeChange(prev map[string]bool, mode, prevMode string) map[string]bool {
+	if mode != prevMode {
+		return map[string]bool{}
+	}
+	return prev
 }
 
 // collectReferencedBlobs returns the set of blob hashes still referenced by
@@ -1810,12 +1854,23 @@ func (a *Agent) sweepOrphanedBlobs(prev map[string]bool, minAge time.Duration, d
 	referenced, err := collectReferencedBlobs(a.Store, a.Spool)
 	if err != nil {
 		a.logger.Warn("blob-gc: collecting references failed", "error", err)
-		return prev
+		// Discard the candidate set rather than carrying it forward, matching
+		// the non-leader early-return above. The two failure modes are not
+		// symmetric: an empty set costs at most one extra grace interval
+		// before a real orphan is reclaimed, while a carried-forward set lets
+		// "unreferenced for two consecutive passes" be satisfied by evidence
+		// from an arbitrary run of failed passes ago, with no recent
+		// confirmation -- and on a path with no undo (blobs are
+		// content-addressed and shared across users; GC is the only
+		// deleter), a delayed deletion is recoverable and an unconfirmed one
+		// is not.
+		return map[string]bool{}
 	}
 	hashes, err := a.Blobs.List()
 	if err != nil {
 		a.logger.Warn("blob-gc: listing blobs failed", "error", err)
-		return prev
+		// Same reasoning as the collectReferencedBlobs failure above.
+		return map[string]bool{}
 	}
 	mtimes := make(map[string]time.Time, len(hashes))
 	for _, h := range hashes {

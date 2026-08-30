@@ -747,6 +747,300 @@ func TestOrphanGCAnnouncesBlobGCModeOnStart(t *testing.T) {
 	}
 }
 
+// --- US-007: candidate set integrity across failures and mode changes ------
+//
+// The two-pass rule ("unreferenced for two consecutive passes") is only
+// meaningful if both passes are good ones under the same mode. Two gaps
+// undermined that: a failed pass used to carry the stale candidate set
+// forward unchanged (return prev), so "two consecutive passes" could mean
+// "one real sighting, then an arbitrary run of failures, then one more real
+// sighting with no fresh confirmation between them"; and nothing reset the
+// set across a blob_gc mode change, so (if a future config-reload feature
+// landed) a candidate confirmed under dryrun could be deleted on the very
+// first pass after switching to "on".
+
+// blobGCLeaderTestAgent starts a real dev-mode Agent with Raft, waits for it
+// to become ready, and returns it. sweepOrphanedBlobs self-gates on
+// a.Raft != nil && a.IsLeader(), so exercising the failure paths below for
+// real (rather than constructing an Agent by hand, as blobGCTestAgent does
+// for the delete barrier) needs a real leader.
+//
+// Polling a.Ready() rather than a.IsLeader() matters: Run() calls
+// WaitForLeader and only assigns a.Spool afterwards, so a test goroutine
+// polling IsLeader() directly could observe leadership before Run()'s own
+// goroutine has gotten around to setting a.Spool, racing
+// collectReferencedBlobs against a nil-vs-set Spool. a.ready is set true only
+// at the very end of Run()'s startup sequence, well after a.Spool is
+// assigned.
+func blobGCLeaderTestAgent(t *testing.T) *Agent {
+	t.Helper()
+	cfg := config.Defaults()
+	cfg.Server.Role = "dev"
+	cfg.Web.Port = freePort(t)
+	cfg.Server.BindAddr = "127.0.0.1"
+	cfg.SMTP.Enabled = false
+
+	a, err := NewAgent(cfg, testLogger())
+	if err != nil {
+		t.Fatalf("NewAgent: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run returned error: %v", err)
+		}
+	})
+
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) && !a.Ready() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !a.Ready() {
+		t.Fatal("agent did not become ready")
+	}
+	return a
+}
+
+// TestBlobGCFailureAndModeChangeReset groups every US-007 scenario that needs
+// a real leader Agent (Raft, Pebble, spool, blob store) under ONE Agent
+// instance, exercised as subtests rather than one-Agent-per-test.
+//
+// Each subtest is still an independent, individually red/green test -- run
+// selectively via "go test -run TestBlobGCFailureAndModeChangeReset/name" --
+// so covering both `return prev` sites in one shared parent does not let a
+// half-revert survive; only the subtest for the reverted path goes red.
+//
+// Sharing one Agent is not just an optimisation: `go test -race` reliably
+// found a genuine goroutine leak when this was four separate
+// blobGCLeaderTestAgent(t) calls in a row. Run() launches
+// `go a.runOrphanGC(ctx, ...)` without joining it, so a test's
+// "cancel(); <-done" cleanup does not guarantee that goroutine has actually
+// observed ctx.Done() and returned by the time the next test's NewAgent()
+// runs. Back-to-back Agents let the next Agent's Pebble allocation reuse the
+// address of the previous Agent's freed Config struct while that leaked
+// goroutine was still mid-read of Config.Storage.BlobGCMode() for its startup
+// log line -- a real, if narrow, pre-existing race in the test harness's
+// shutdown sequencing, not in the blob-GC logic this task changed. One Agent
+// per test file section avoids re-triggering it; a durable fix would join
+// runOrphanGC (and the other `go a.sweepX(...)`-style workers) in Run()'s
+// shutdown path, which is out of this task's scope.
+func TestBlobGCFailureAndModeChangeReset(t *testing.T) {
+	a := blobGCLeaderTestAgent(t)
+
+	// TestSweepOrphanedBlobsFailedCollectReferencesReturnsEmptySet is the
+	// isolated acceptance test for the collectReferencedBlobs failure path.
+	t.Run("collect references failure returns empty set", func(t *testing.T) {
+		quarantineDir := a.dataDir + "/spool/quarantine"
+		if err := osChmod(quarantineDir, 0o000); err != nil {
+			t.Skipf("cannot chmod spool dir (running as root?): %v", err)
+		}
+		t.Cleanup(func() { _ = osChmod(quarantineDir, 0o750) })
+
+		got := a.sweepOrphanedBlobs(map[string]bool{"stale-candidate": true}, time.Hour, false)
+		if len(got) != 0 {
+			t.Fatalf("candidate set after a failed collectReferencedBlobs = %v, want empty: "+
+				"a failed pass must not carry stale evidence forward", got)
+		}
+	})
+
+	// TestSweepOrphanedBlobsFailedListReturnsEmptySet is the isolated
+	// acceptance test for the Blobs.List() failure path, kept separate from
+	// the subtest above for the same reason.
+	t.Run("list failure returns empty set", func(t *testing.T) {
+		blobsDir := a.dataDir + "/blobs"
+		if err := osChmod(blobsDir, 0o000); err != nil {
+			t.Skipf("cannot chmod blobs dir (running as root?): %v", err)
+		}
+		t.Cleanup(func() { _ = osChmod(blobsDir, 0o750) })
+
+		got := a.sweepOrphanedBlobs(map[string]bool{"stale-candidate": true}, time.Hour, false)
+		if len(got) != 0 {
+			t.Fatalf("candidate set after a failed Blobs.List = %v, want empty: "+
+				"a failed pass must not carry stale evidence forward", got)
+		}
+	})
+
+	// TestSweepOrphanedBlobsFailedPassDoesNotCarryStaleCandidate is the
+	// direct acceptance test for the AC: "a candidate seen before a failed
+	// pass is NOT deleted on the next successful pass without a fresh
+	// confirmation pass." Drives four real passes: sighted, failed,
+	// re-sighted (must not delete), confirmed (must delete).
+	t.Run("failed pass does not carry stale candidate forward", func(t *testing.T) {
+		hash, err := a.Blobs.Put([]byte("candidate blob for failed-pass test"))
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		old := time.Now().Add(-365 * 24 * time.Hour)
+		if err := os.Chtimes(blobFilePath(a.dataDir, hash), old, old); err != nil {
+			t.Fatalf("Chtimes: %v", err)
+		}
+
+		// Pass 1: successful, unreferenced and old -> first-sighting candidate.
+		prev := a.sweepOrphanedBlobs(map[string]bool{}, time.Hour, false)
+		if !prev[hash] {
+			t.Fatalf("blob should be a candidate after the first successful pass, got %v", prev)
+		}
+		if !a.Blobs.Exists(hash) {
+			t.Fatal("blob must not be deleted on the first sighting")
+		}
+
+		// Pass 2: forced failure via an unreadable spool directory. Must
+		// discard prev, not carry the pass-1 sighting forward as evidence.
+		quarantineDir := a.dataDir + "/spool/quarantine"
+		if err := osChmod(quarantineDir, 0o000); err != nil {
+			t.Skipf("cannot chmod spool dir (running as root?): %v", err)
+		}
+		prev = a.sweepOrphanedBlobs(prev, time.Hour, false)
+		if err := osChmod(quarantineDir, 0o750); err != nil {
+			t.Fatalf("restoring spool dir permissions: %v", err)
+		}
+		if len(prev) != 0 {
+			t.Fatalf("candidate set after a failed pass = %v, want empty", prev)
+		}
+
+		// Pass 3: first successful pass after the failure. Without a fresh
+		// confirmation this must NOT delete -- the failed pass must cost a
+		// full grace interval, not zero.
+		prev = a.sweepOrphanedBlobs(prev, time.Hour, false)
+		if !a.Blobs.Exists(hash) {
+			t.Fatal("blob was deleted on the first pass after a failure, using stale " +
+				"pre-failure evidence with no fresh confirmation -- this is exactly the " +
+				"unconfirmed-evidence deletion the fix exists to prevent")
+		}
+		if !prev[hash] {
+			t.Fatalf("blob should be re-marked as a fresh candidate on pass 3, got %v", prev)
+		}
+
+		// Pass 4: second consecutive good pass after the reset -- now it
+		// deletes. Control: without this, a fix that discarded prev on EVERY
+		// pass (not just failed ones) would also pass the assertion above
+		// while silently disabling the GC. The return is not threaded
+		// anywhere: this is the last pass, and the assertion below reads the
+		// blob store, not the candidate set.
+		a.sweepOrphanedBlobs(prev, time.Hour, false)
+		if a.Blobs.Exists(hash) {
+			t.Fatal("blob should be deleted after two fresh consecutive confirmations post-failure")
+		}
+	})
+
+	// TestBlobGCPassResetsCandidatesOnModeChange is the acceptance test for
+	// the AC: "a candidate seen only in dry-run is not deleted on the first
+	// pass after switching to on." It calls a.blobGCPass directly, threading
+	// state across calls the same way runOrphanGC's loop does -- this is the
+	// actual function the loop calls each tick, not a re-implementation of
+	// its logic in the test, so a reset removed from runOrphanGC's wiring (as
+	// opposed to from blobGCCandidatesAcrossModeChange itself) is caught here
+	// too.
+	t.Run("candidate confirmed only under dryrun is not deleted on first pass after switching to on", func(t *testing.T) {
+		t.Cleanup(func() { a.Config.Storage.BlobGC = "off" })
+		a.Config.Storage.BlobGC = "dryrun"
+
+		hash, err := a.Blobs.Put([]byte("dryrun-only candidate"))
+		if err != nil {
+			t.Fatalf("Put: %v", err)
+		}
+		old := time.Now().Add(-time.Hour)
+		if err := os.Chtimes(blobFilePath(a.dataDir, hash), old, old); err != nil {
+			t.Fatalf("Chtimes: %v", err)
+		}
+
+		prev := map[string]bool{}
+		prevMode := a.Config.Storage.BlobGCMode() // "dryrun"
+
+		// Pass 1 under dryrun: first sighting.
+		prev, prevMode = a.blobGCPass(prev, prevMode, time.Hour)
+		if !prev[hash] {
+			t.Fatalf("blob should be a first-sighting candidate, got %v", prev)
+		}
+
+		// Pass 2 under dryrun: second sighting -- would delete, but dryrun
+		// never does.
+		prev, prevMode = a.blobGCPass(prev, prevMode, time.Hour)
+		if !a.Blobs.Exists(hash) {
+			t.Fatal("dryrun must never delete")
+		}
+		if !prev[hash] {
+			t.Fatalf("blob should still be a candidate after the second dryrun pass, got %v", prev)
+		}
+
+		// Mode switches to "on" mid-process -- what backlog B9's SIGHUP
+		// reload would do. Mutating Config directly here is single-threaded
+		// (blobGCPass is only ever called from this same test goroutine), so
+		// it simulates a reload without needing a live config-reload feature
+		// or racing the background runOrphanGC goroutine this same Agent is
+		// running (which only re-reads Config on its own, much longer,
+		// ticks).
+		a.Config.Storage.BlobGC = "on"
+
+		// Pass 3: first pass under "on". Without the reset this deletes
+		// immediately, using a candidate confirmed only under dryrun.
+		prev, prevMode = a.blobGCPass(prev, prevMode, time.Hour)
+		if !a.Blobs.Exists(hash) {
+			t.Fatal("blob was deleted on the first pass after switching to \"on\": a dryrun-only " +
+				"confirmation was carried across the mode change with no fresh confirmation")
+		}
+		if prevMode != "on" {
+			t.Fatalf("prevMode = %q, want \"on\"", prevMode)
+		}
+
+		// Pass 4: second consecutive good pass under "on" -- now it deletes.
+		// Control: without this, the reset could be permanently disabling
+		// deletion instead of correctly gating it.
+		_, _ = a.blobGCPass(prev, prevMode, time.Hour)
+		if a.Blobs.Exists(hash) {
+			t.Fatal("blob was never deleted after two fresh confirmations under \"on\": the " +
+				"mode-change reset must not permanently disable deletion")
+		}
+	})
+}
+
+// TestBlobGCCandidatesAcrossModeChange is the direct acceptance test for
+// blobGCCandidatesAcrossModeChange in isolation, cheap and precise. The
+// wiring into runOrphanGC's actual loop is proven separately by the
+// TestBlobGCFailureAndModeChangeReset subtest above, via blobGCPass -- the
+// same function the loop calls.
+func TestBlobGCCandidatesAcrossModeChange(t *testing.T) {
+	tests := []struct {
+		name     string
+		mode     string
+		prevMode string
+		prev     map[string]bool
+		want     map[string]bool
+	}{
+		{"same mode keeps candidates", "on", "on", map[string]bool{"h": true}, map[string]bool{"h": true}},
+		{"dryrun to on resets", "on", "dryrun", map[string]bool{"h": true}, map[string]bool{}},
+		{"on to dryrun resets", "dryrun", "on", map[string]bool{"h": true}, map[string]bool{}},
+		{"off to dryrun resets", "dryrun", "off", map[string]bool{"h": true}, map[string]bool{}},
+		{"dryrun to off resets", "off", "dryrun", map[string]bool{"h": true}, map[string]bool{}},
+		{"same mode, empty prev stays empty", "off", "off", map[string]bool{}, map[string]bool{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := blobGCCandidatesAcrossModeChange(tt.prev, tt.mode, tt.prevMode)
+			if !mapsEqual(got, tt.want) {
+				t.Errorf("blobGCCandidatesAcrossModeChange(%v, %q, %q) = %v, want %v",
+					tt.prev, tt.mode, tt.prevMode, got, tt.want)
+			}
+		})
+	}
+}
+
+func mapsEqual(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
 func TestOrphanGCAnnouncesWhenItDoesNotStart(t *testing.T) {
 	var buf strings.Builder
 	// No Mailboxes/Metadata: the nil guard trips, as on an edge or agent role.
