@@ -383,3 +383,36 @@ in a few lines.
 PATTERN: [verify] Adversarial refutation earned its keep: 15 of 20 findings did not
 survive, including confidently-argued ones citing real line numbers. Refutation caught a
 verifier assuming every FR citation in a touched file referred to the PRD under review.
+
+## 2026-08-30 — norman import: B15 → Phase 14 (blob GC reference integrity)
+
+Imported B15 from the backlog. B15 had no PRD (it was a one-row backlog entry for an
+investigation with an unknown root cause), so a PRD was written first per the documented
+PRD → import → continue workflow, then imported to backlog/ and extracted into Phase 14
+(7 tasks).
+
+Operator decisions taken at PRD time:
+- Investigate AND fix in one PRD, rather than splitting diagnosis from repair.
+- Returning `blob_gc` to "on" IS part of done (14.7), so dryrun is explicitly temporary.
+- The two already-deleted blobs get attributed but NOT recovered (US-004, Non-Goals).
+
+Grounding done during PRD authoring, so 14.1 does not start from zero:
+- CONFIRMED GAP: `OutboundMessage` carries blob refs in two fields — `blob_hash = 5` and
+  `repeated BlobRef attachments = 14` (populated at internal/queue/worker.go:166) — and
+  `collectReferencedBlobs` reads only `msg.BlobHash`. Queued mail using attachment-dedup
+  has its attachment blobs uncounted. This is 14.2.
+- Two silent-skip paths in the same function: both the mail and queue loops `continue` on
+  a `Value()` error and on a failed `proto.Unmarshal`, so an unreadable record contributes
+  no references and says nothing. The spool branch argues the opposite in its own comment
+  and returns an error. This is 14.3.
+- RULED OUT: blobs are not held by calendar events or contacts. `BlobRef` appears only in
+  mail.proto (MailMeta.raw_message, .attachments) and queue.proto (OutboundMessage), and
+  `Contact.vcard_raw` is inline bytes. NOTE: the key-space table in CLAUDE.md claims
+  `contact/{guid} → contact + BlobRef (vCard)`, which is stale and should be corrected.
+
+PATTERN: [investigation] A proto-field census beats reading the consumer. Grepping BlobRef
+across proto/ bounded the problem in one step — it both found the uncollected queue field
+and ruled out the events/contacts hypothesis that reading the key-space docs had suggested.
+PATTERN: [docs] The key-space table in CLAUDE.md described a BlobRef on contacts that does
+not exist in the proto. Architecture docs drift; confirm against the schema before treating
+them as the reference set.
