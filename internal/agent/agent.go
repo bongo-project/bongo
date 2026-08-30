@@ -1262,6 +1262,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/internal/queue/{id}/retry", queueH.Retry)
 			r.Delete("/internal/queue/{id}", queueH.Drop)
 		})
+
+		// Address-index repair routes. Same private/internal gate as the queue
+		// routes above: these mutate mail routing and must never be public.
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireInternalAuth(sessionSecret))
+			addrRepairH := handlers.NewAddressRepairHandler(a.Store, a.AddressStore, a.logger)
+			r.Get("/internal/addresses/orphaned", addrRepairH.List)
+			r.Post("/internal/addresses/repair", addrRepairH.Repair)
+		})
 	}
 
 	// Start event reminder checker.
