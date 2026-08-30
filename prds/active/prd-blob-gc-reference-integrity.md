@@ -133,14 +133,32 @@ observed symptom — metadata present, body missing, small count.
 GOOD passes under the CURRENT mode, so re-enabling deletion cannot act on stale
 evidence.
 
-**Rationale (14.1 audit).** Two separate holes. First, `prevBlobs` is assigned on
-every non-`off` pass, so `dryrun` accumulates a live candidate set — flipping
-`blob_gc` back to `"on"` makes the FIRST pass delete everything the last dry-run
-pass proposed, with no fresh confirmation interval. This directly affects the
-production node, which is on `dryrun` now. Second, on a scan failure
-`sweepOrphanedBlobs` returns `prev` unchanged rather than an empty set, so a
-candidate marked hours ago can be deleted after an arbitrary run of failed
-passes — the "one-interval grace" is not bounded to one interval.
+**Rationale (14.1 audit, HALF CORRECTED during 14.3.)**
+
+The audit reported two holes. The first was **wrong, and the error was mine for
+relaying it without checking**: it claimed `dryrun` accumulates a candidate set
+that a flip to `"on"` would delete on the first pass, and that this put the
+production node at risk right now. It does not. `a.Config` is assigned once in
+`NewAgent` (`agent.go:240`), `Storage.BlobGC` is never written outside tests, and
+the only `signal.Notify` in the tree is SIGINT/SIGTERM for shutdown
+(`cmd/bongo-go/agent.go:178`) — there is no SIGHUP reload (that is backlog B9).
+So `BlobGCMode()` returns a constant for the life of a process: changing the mode
+requires a restart, and a restart gives `runOrphanGC` a fresh empty `prevBlobs`.
+Flipping to `"on"` therefore gets the normal two-pass grace. **14.9 is not blocked
+by this**, and production was never in the state the audit described.
+
+The mode-change reset is still worth implementing, but as defence-in-depth rather
+than a live fix: it costs a few lines and becomes load-bearing the moment B9 lands
+a config reload, at which point the hole would be real and silent.
+
+The second hole is **real and reachable today**. On a `collectReferencedBlobs` or
+`Blobs.List()` failure, `sweepOrphanedBlobs` returns `prev` unchanged, so the
+candidate set survives an arbitrary run of failed passes. "Unreferenced for two
+consecutive passes" then no longer means two consecutive *good* passes: a
+candidate marked long ago can be deleted on the first pass that succeeds after a
+gap of failures. 14.2's re-validation now bounds the damage — a blob referenced in
+the meantime is spared at the delete barrier — but the grace should still mean
+what its comment says.
 
 **Acceptance Criteria:**
 - [ ] Changing `blob_gc` between `off`, `dryrun` and `on` resets the candidate

@@ -539,3 +539,48 @@ NOTE (flake, for B16): `TestLoginRateLimit` in test/integration fails at ~15s wh
 alongside other auth integration tests, on the unmodified tree as well as this branch.
 Passes alone. Shared per-IP rate-limiter state across tests in one process is the
 likely cause. Pre-existing, not caused by 14.2.
+
+## 2026-08-30 — Task 14.3: candidate set does not survive a failed pass or a mode change
+
+**Correction first.** The 14.1 audit claimed `dryrun` accumulates a candidate set that a
+flip to `"on"` would delete on the first pass, and that production was therefore at risk.
+That is wrong, and I relayed it to the operator unchecked. Verified: `a.Config` is assigned
+once in `NewAgent` (agent.go:240), `Storage.BlobGC` is never written outside tests, and the
+only `signal.Notify` is SIGINT/SIGTERM (cmd/bongo-go/agent.go:178) — no SIGHUP reload. So
+`BlobGCMode()` is constant per process; a mode change needs a restart, which already gives
+`runOrphanGC` a fresh empty `prevBlobs`. 14.9's dependency on 14.3 removed.
+
+This is the same anchoring failure the audit was briefed to catch in me, displaced one level:
+I checked the audit's claims about Pebble and BlobStore against source, but took its
+reachability conclusion on trust.
+
+**Real half, fixed.** Both `sweepOrphanedBlobs` error paths returned `prev`, so the candidate
+set survived an arbitrary run of failed passes and "two consecutive passes" stopped meaning
+two consecutive GOOD passes. Both now return an empty set, with a comment on why the failure
+modes are asymmetric: an empty set costs one grace interval, a stale set deletes on
+unconfirmed evidence, and only one of those is recoverable.
+
+**Defence-in-depth half, kept but labelled.** `blobGCCandidatesAcrossModeChange` resets on a
+mode change. Its comment states outright that it cannot fire today and cites the three facts
+above, so a future reader is not misled into thinking it fixes something live. It exists so
+B9 (SIGHUP reload) does not have to remember to.
+
+`blobGCPass` extracts the loop body, matching how the other three sweeps are structured and
+tested.
+
+**Mutations (4, none survived, all re-verified independently of the worker):** revert each
+`return prev` (caught by SEPARATE subtests, so a half-revert cannot hide); reset never fires;
+reset fires every tick (caught by `same_mode_keeps_candidates`, proving the test distinguishes
+a correct reset from one that permanently disables deletion).
+
+NOTE (flake, for B16): the integration suite is unreliable on this dev machine — each run fails
+a different random subset at exactly the 15s readiness deadline that every test file uses
+(`deadline := time.Now().Add(15 * time.Second)`). Reproduced on clean main at 84ac4a6 with CI
+green on that same commit, so it is local contention, not a regression. The deadline is too
+tight for a loaded machine. Worth raising the readiness budget or serialising server startup.
+
+PATTERN: [testing] - `Run()` launches `go a.runOrphanGC(...)` without joining it, so a test's
+`cancel(); <-done` does not guarantee the goroutine has exited. Several leader Agents created
+in quick succession let a leaked goroutine's `Config.Storage.BlobGCMode()` read race the next
+test's allocation at the same freed heap address. Worked around by sharing one Agent across
+subtests; the durable fix is joining Run()'s background workers on shutdown.
