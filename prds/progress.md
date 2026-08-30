@@ -761,3 +761,38 @@ as a KNOWN GAP in the code rather than left implicit.
 
 **Mutations (3, none survived):** single pass (the pre-fix behaviour); second pass treated as
 best-effort so its read errors are swallowed; a directory dropped from the scan list.
+
+## 2026-08-31 — Phase 14 status: 8 of 10, all code merged
+
+Merged as PRs #8 through #15. Deployed: nothing yet — production still runs v0.6.24 with
+`blob_gc = "dryrun"`.
+
+What the phase actually fixed, in order of how much mail each one loses:
+
+1. **14.2** — no re-validation between the reference scan and the delete. The dedup case
+   defeats BOTH existing guards at once, because `BlobStore.Put` early-returns on an existing
+   hash and never touches the mtime. This is the one that matches the observed symptom.
+2. **14.4** — queued outbound attachments were never referenced. Loses attachments in flight,
+   and leaves the queue entry looking healthy the whole time, so it produces no evidence at all.
+3. **14.5** — a mail-key substring filter that a user could trip by naming a mailbox `mail`,
+   plus silent `proto.Unmarshal` skips. Fixed in that order, because the reverse would have let
+   any user disable the GC node-wide.
+4. **14.3** — the candidate set survived failed passes, so "two consecutive passes" did not mean
+   two consecutive GOOD passes.
+5. **14.10** — an admin releasing a message from quarantine could have its body reclaimed, because
+   the move crosses the scan's own position.
+
+And two that add no fixes but change what happens next time: **14.6** fails the build when a new
+blob-bearing proto field appears unclassified, and **14.7** makes a sweep leave a per-blob record
+instead of a count.
+
+Two process notes worth carrying forward:
+
+- The recurring failure mode this phase was **untestable guards**, not wrong logic. 14.2's barrier
+  and 14.10's second pass both started as code that every test would still pass without. Both were
+  fixed by changing the shape — put the guard inside the function it protects, or behind a seam a
+  fake can drive — rather than by writing more tests around it.
+- I relayed an audit conclusion to the operator without checking its reachability, and it was
+  wrong (see 14.3). I had verified that same audit's claims about Pebble and BlobStore against
+  source. The lesson is that verifying a report's FACTS is not the same as verifying its
+  CONCLUSIONS, and the conclusion is what reaches the operator.
