@@ -416,3 +416,78 @@ and ruled out the events/contacts hypothesis that reading the key-space docs had
 PATTERN: [docs] The key-space table in CLAUDE.md described a BlobRef on contacts that does
 not exist in the proto. Architecture docs drift; confirm against the schema before treating
 them as the reference set.
+
+## 2026-08-30 — 14.1 DONE: blob GC reference-set audit
+
+Read-only audit on the advisor model, briefed AGAINST the two gaps already identified so it
+would not re-derive them and was told explicitly that the value was in finding what the
+prior reading had anchored past. Eight gaps found, three of them HIGH.
+
+VERIFIED THE THREE LOAD-BEARING CLAIMS AGAINST SOURCE before accepting the report:
+- blobstore.go Put early-returns on Exists without touching the file: confirmed.
+- pebble ValueAndErr sets i.err (pebble@v1.1.5/iterator.go:2199-2208): confirmed.
+- prevBlobs is assigned on every non-"off" pass, so dryrun accumulates: confirmed.
+
+HEADLINE (new, HIGH) — dedup defeats the mtime grace. BlobStore.Put/PutReader return early
+when Exists(hash), never touching the file, so a deduped write leaves the ORIGINAL mtime.
+planBlobSweep's only time protection is mt.After(cutoff). A year-old unreferenced blob that
+becomes referenced again DURING the reference scan is therefore both absent from the
+snapshot and older than the cutoff, and is deleted while a brand-new MailMeta points at it.
+The stamped-message path makes this deterministic: deliver.go notes a redelivery re-derives
+identical stamped bytes and hash. Produces exactly the observed symptom - metadata present,
+body missing, small count. Root cause is the absence of any barrier between the scan and
+the delete; fix is to re-validate candidates immediately before deleting.
+
+MY CLAIM HALF WRONG. The proto.Unmarshal continue is a real gap. The Value() continue is
+NOT: the error is recorded on the Pebble iterator and surfaced by Close(), which
+collectReferencedBlobs checks, so a value-read failure already aborts the sweep. It reads
+like a bug and is safe only by a non-obvious library property. PRD and PR #7 description
+both corrected.
+
+OPERATIONALLY URGENT — prevBlobs is not reset on a mode change, and dryrun still populates
+it. Flipping blob_gc back to "on" would delete the entire accumulated dry-run candidate set
+on the FIRST pass, with no fresh two-pass confirmation. Production is on dryrun right now,
+so this must land before 14.9.
+
+ALSO: prev survives a failed pass (returns prev, not empty), so "two consecutive passes" can
+span hours. Making unmarshal fatal REQUIRES tightening the key filter first - it matches
+bytes.Contains(key, "/mail/"), so a user-created mailbox named `mail` yields a
+MailboxMessage that fails to unmarshal as MailMeta; fatal-without-filter lets any user
+disable the GC. Spool scan order can miss an envelope moving backward. The scan reads only
+the node-local spool, which is not replicated.
+
+ORDERING QUESTION ANSWERED: all four sweeps run sequentially in ONE tick, mail first and
+blobs last, which explains the 14-minute gap - the metadata reclaim supplied the 17
+candidates and the two-pass rule correctly held them one interval. Correct behaviour, NOT
+the fault. Worth changing anyway since sharing a tick collapses a full interval of margin.
+
+FORENSIC NARROWING: nothing ever removes envelopes from spool/deliver/, so every delivered
+message's pre-stamp original stays pinned forever. The 17 deleted blobs were therefore
+almost certainly stamped bodies, split attachments or compose/Sent blobs, not inbound
+originals.
+
+13 hypotheses ruled out with evidence, including my own leading one (mailbox rename/delete
+stranding msg/ keys without /meta - refuted: both are single commitSyncBatch operations).
+Also confirmed only two blobs.Delete call sites exist, so CLAUDE.md's "the GC is the ONLY
+component that deletes blobs" holds.
+
+Phase 14 re-scoped from 7 tasks to 10; 14.2 is now the re-validation fix, not the queue
+field.
+
+PATTERN: [gc] A mark-and-sweep whose mark phase is a point-in-time snapshot must
+re-validate at the sweep, not rely on an age heuristic. Content-addressed dedup breaks the
+"old object = safe to delete" proxy outright: a dedup hit creates a brand-new logical
+reference with an arbitrarily old physical timestamp.
+PATTERN: [storage] In content-addressed dedup, the write that does nothing is the write
+that needs the bookkeeping. Short-circuiting on Exists is correct for bytes and wrong for
+liveness, and it makes the cheap path the unsafe one.
+PATTERN: [proto] A field added to a message is not automatically added to every consumer
+that SCANS it. attachments=14 was wired into its writer and its reader and missed in the
+third consumer, the reference scanner. Blob-bearing fields need a census of every scanner.
+PATTERN: [review] Briefing an auditor with your own hypotheses AND an explicit instruction
+to refute them is worth more than withholding them. It refuted half of one, confirmed the
+other, and spent its effort on ground I had not covered - finding a better root cause than
+the one I brought.
+PATTERN: [agents] Verify an agent's load-bearing claims against source before acting. All
+three checked out here, but one of them reversed a conclusion I had already written into a
+PRD and a merged PR description.
