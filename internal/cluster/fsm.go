@@ -75,7 +75,10 @@ type FSM struct {
 	blobSync BlobEnqueuer
 	notifier MailboxNotifier
 
-	// indexQueue carries derived-index work off the Raft apply path. It is
+	// indexQueue carries derived-index work off the Raft apply path. Guarded by
+	// depsMu for the same reason as the fields above: StartIndexer assigns it
+	// from Agent.Run while the apply goroutine is already reading it. Read it
+	// only via indexChan. It is
 	// nil until StartIndexer is called, and while nil the work runs inline —
 	// so any caller that never starts the worker (every unit test, and any
 	// embedder that wants synchronous indexes) keeps the original behaviour.
@@ -117,10 +120,20 @@ const slowApplyThreshold = 2 * time.Second
 // same GUID must not be reordered. Safe to skip — with no worker started,
 // indexing stays inline.
 func (f *FSM) StartIndexer(ctx context.Context) {
+	// Check-and-set under the lock: Agent.Run calls this while Raft's apply
+	// goroutine is already reading indexQueue on every command, and the bare
+	// check-then-assign was both a data race and a double-start window.
+	f.depsMu.Lock()
 	if f.indexQueue != nil {
+		f.depsMu.Unlock()
 		return
 	}
-	f.indexQueue = make(chan *bongov1.RaftCommand, indexQueueDepth)
+	queue := make(chan *bongov1.RaftCommand, indexQueueDepth)
+	f.indexQueue = queue
+	f.depsMu.Unlock()
+
+	// The worker closes over `queue` rather than reading f.indexQueue, so it
+	// never touches the guarded field at all.
 	f.indexWG.Add(1)
 	go func() {
 		defer f.indexWG.Done()
@@ -132,14 +145,14 @@ func (f *FSM) StartIndexer(ctx context.Context) {
 				// derived indexes behind until the next rebuild.
 				for {
 					select {
-					case cmd := <-f.indexQueue:
+					case cmd := <-queue:
 						f.runDerivedIndexes(cmd)
 						f.indexInflight.Add(-1)
 					default:
 						return
 					}
 				}
-			case cmd := <-f.indexQueue:
+			case cmd := <-queue:
 				f.runDerivedIndexes(cmd)
 				f.indexInflight.Add(-1)
 			}
@@ -215,6 +228,14 @@ func (f *FSM) blobSyncer() BlobEnqueuer {
 	f.depsMu.RLock()
 	defer f.depsMu.RUnlock()
 	return f.blobSync
+}
+
+// indexChan returns the derived-index queue, or nil while the indexer has not
+// been started (in which case callers index inline).
+func (f *FSM) indexChan() chan *bongov1.RaftCommand {
+	f.depsMu.RLock()
+	defer f.depsMu.RUnlock()
+	return f.indexQueue
 }
 
 // mailboxNotifier returns the current notifier, or nil if none is set.
@@ -438,7 +459,8 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 // inline too: it is a non-blocking channel send, already fast, with nothing to
 // gain from deferral.
 func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
-	if f.indexQueue == nil || !isDeferrableIndexKey(cmd.Key) {
+	queue := f.indexChan()
+	if queue == nil || !isDeferrableIndexKey(cmd.Key) {
 		f.runDerivedIndexes(cmd)
 		return
 	}
@@ -453,7 +475,7 @@ func (f *FSM) updateDerivedIndexes(cmd *bongov1.RaftCommand) {
 
 	f.indexInflight.Add(1)
 	select {
-	case f.indexQueue <- queued:
+	case queue <- queued:
 	default:
 		// Backlog full. Index inline rather than drop: a dropped update would
 		// leave a message unsearchable until the next rebuild, and the entry

@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -26,6 +27,8 @@ func (raceBlobEnqueuer) Enqueue(hash string) {}
 // Meaningful only under -race, which is how the suite runs.
 func TestFSMDependencySettersAreRaceFree(t *testing.T) {
 	env := newFSMTestEnv(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	meta := &bongov1.MailMeta{
 		Subject:    "race",
@@ -65,6 +68,12 @@ func TestFSMDependencySettersAreRaceFree(t *testing.T) {
 			env.fsm.SetBlobSyncer(raceBlobEnqueuer{})
 			env.fsm.SetSearchManager(nil)
 			env.fsm.SetNotifier(nil)
+			// StartIndexer assigns indexQueue, which the apply path reads on
+			// every command. It was missed by the first pass of this fix and
+			// raced in CI on its own, so it belongs in the same test. Repeat
+			// calls after the first are no-ops, which is the point: the check
+			// and the assignment must be atomic together.
+			env.fsm.StartIndexer(ctx)
 		}
 	}()
 
