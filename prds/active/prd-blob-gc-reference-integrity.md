@@ -181,7 +181,37 @@ re-enabling deletion.
 - [ ] Given a dryrun sweep with 3 candidates, the log contains 3 identifiable
       candidate lines plus the existing summary line.
 
-### US-004: The two deleted blobs are attributed
+### US-004: The lost blobs are attributed
+
+**SCOPE CORRECTED 2026-08-31: eight messages, not two.** Checked directly on the
+production node after deploying v0.6.25. Eight distinct message GUIDs log
+`index: could not read message body for indexing` on every restart, and all
+eight of their blob hashes are confirmed absent from `/mnt/data/bongo/data/blobs`
+-- genuinely deleted, not merely unreadable:
+
+```
+0f1a639c-9c76-4210-b8d7-e5dbe07bcf85   1c136290-5e0f-4102-8c05-830da2db0005
+2c1ec4ce-60a3-4298-bf61-90e64f806ec4   850a29c6-2ba3-4c83-9b00-33981958ede8
+bce1ebfd-bf01-4191-a3e6-a935f73d3afb   c19d1d4d-2188-441b-b5c6-156926dc8d19
+c5773e08-aa6f-49a0-b2fa-56a6e344ce32   e50e6a74-69aa-4845-88a2-745cd518ea32
+```
+
+This PRD said two because two were all that appeared in the log excerpt the
+original investigation read. The other six were in the same logs throughout. The
+warnings only fire during startup indexing, so they arrive in a burst per restart
+and are silent otherwise, and nothing surfaces in the UI -- the messages still
+list, they render empty. That is why the operator reported seeing no further
+problems.
+
+Still consistent with the single 2026-08-30 sweep, which deleted 17 blobs: eight
+dangling references is a subset of that. No evidence of a second loss event, and
+no blob-gc activity at all since `blob_gc` went to `dryrun`. But the container log
+only reaches back to the most recent restart, so the sweep itself is outside the
+window and single-cause cannot be confirmed from logs alone.
+
+The acceptance criteria below apply to all eight.
+
+### US-004 (original text, retained for the criteria)
 
 **Description:** As an operator, I want to know whether the two lost blobs were
 real user mail or debris, so I know the severity of what already happened.
