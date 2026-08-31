@@ -796,3 +796,31 @@ Two process notes worth carrying forward:
   wrong (see 14.3). I had verified that same audit's claims about Pebble and BlobStore against
   source. The lesson is that verifying a report's FACTS is not the same as verifying its
   CONCLUSIONS, and the conclusion is what reaches the operator.
+
+## 2026-08-31 — v0.6.25 released and deployed; 14.8 scope corrected to eight messages
+
+**Deployed.** Tag `v0.6.25` cut, image published to GHCR, `docker-compose.yml` on the production
+node bumped 0.6.24 -> 0.6.25 (previous file kept as `docker-compose.yml.bak-0.6.24`), container
+recreated. Healthy, no ERROR or FATAL lines on startup. Confirmed live:
+`orphan-gc: started interval=15m min_age=1h blob_gc=dryrun`. The >=24h dryrun window for 14.9
+starts here.
+
+**Scope correction: eight messages have missing bodies, not two.** Checked on the node rather
+than inferred. Eight distinct GUIDs log `could not read message body for indexing` on every
+restart, and all eight hashes are confirmed absent from `/mnt/data/bongo/data/blobs`.
+
+This PRD said two because two were all that appeared in the log excerpt the original
+investigation read; the other six were in the same logs the whole time. Nobody noticed because
+the warnings fire only during startup indexing -- a burst per restart, silent otherwise -- and
+nothing surfaces in the UI: the messages still list, they just render empty. The operator
+reasonably reported seeing no further problems.
+
+Still consistent with the single 2026-08-30 sweep, which deleted 17 blobs. No evidence of a
+second loss event and no blob-gc activity since dryrun. But the container log only reaches back
+to the most recent restart, so the sweep is outside the window and single-cause cannot be
+confirmed from logs alone.
+
+LESSON: the earlier investigation generalised "two messages" from a log excerpt without ever
+counting distinct GUIDs across the full log. Two `grep -c` calls would have caught it on day one.
+When a number describes production damage, get it from production, not from the excerpt that
+first surfaced the problem.
