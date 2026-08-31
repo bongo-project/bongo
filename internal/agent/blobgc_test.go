@@ -1161,51 +1161,21 @@ func TestCollectReferencedBlobsCountsQueueAttachments(t *testing.T) {
 // names an IMAP mailbox "mail" produces keys like
 // /user/u1/mailbox/mail/msg/0000000001, which CONTAIN "/mail/" and so passed
 // the old filter, even though the value is a MailboxMessage, not a MailMeta.
-// MailboxMessage.Uid is field 1 (varint); MailMeta.Guid is field 1 (string,
-// length-delimited) -- a genuine wire-type mismatch, so proto.Unmarshal
-// actually fails on these values, not merely produces a zero-value struct.
-
-// TestParseMailMetaKey pins the structural parse in isolation, independent of
-// Pebble, so every edge case is cheap to enumerate.
-func TestParseMailMetaKey(t *testing.T) {
-	tests := []struct {
-		name       string
-		key        string
-		wantUserID string
-		wantGUID   string
-		wantOK     bool
-	}{
-		{"plain mail key", "/user/u1/mail/g1", "u1", "g1", true},
-		{"mailbox literally named mail", "/user/u1/mailbox/mail/msg/0000000001", "", "", false},
-		{"mailbox named mail, meta key", "/user/u1/mailbox/mail/meta", "", "", false},
-		{"non-mail user key", "/user/u1/config/theme", "", "", false},
-		{"empty guid", "/user/u1/mail/", "", "", false},
-		{"exactly /user/", "/user/", "", "", false},
-		{"empty user segment", "/user//mail/g1", "", "", false},
-		{"guid containing a slash", "/user/u1/mail/g1/extra", "", "", false},
-		{"user id containing mail", "/user/mail/mail/g1", "mail", "g1", true},
-		{"segment prefix collision (mailer, not mail)", "/user/u1/mailer/g1", "", "", false},
-		{"no leading /user/ prefix", "/other/u1/mail/g1", "", "", false},
-		{"root only", "/", "", "", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			gotUserID, gotGUID, gotOK := parseMailMetaKey([]byte(tt.key))
-			if gotOK != tt.wantOK || gotUserID != tt.wantUserID || gotGUID != tt.wantGUID {
-				t.Errorf("parseMailMetaKey(%q) = (%q, %q, %v), want (%q, %q, %v)",
-					tt.key, gotUserID, gotGUID, gotOK, tt.wantUserID, tt.wantGUID, tt.wantOK)
-			}
-		})
-	}
-}
+// The value does not announce itself: protobuf-go skips a wire-type mismatch
+// on a known field number as an unknown field, so decoding a MailboxMessage as
+// a MailMeta SUCCEEDS and produces a plausible struct (mail_guid, field 2,
+// lands on MailMeta.message_id). It is the misread key -- guid
+// "msg/0000000001" -- and not a decode error that gives the bug away. The
+// structural parse itself is pinned by TestParseMailMetaKey in
+// internal/store, next to the parser.
 
 // TestCollectReferencedBlobsIgnoresMailboxNamedMail is the acceptance test for
 // AC2: given a mailbox named "mail" containing a message, collectReferencedBlobs
 // must not treat that key as a MailMeta and must raise no error. Under the old
 // substring filter this key was handed to proto.Unmarshal as a MailMeta and
-// failed (wire-type mismatch); combined with 14.5's second change (unmarshal
-// failure is now fatal), that would let any user permanently disable blob GC
-// for the whole node just by naming a mailbox "mail".
+// decoded as a zero-value MailMeta and contributed no blob references, so the
+// message's real body blob could go unreferenced and be reclaimed while the
+// mailbox entry survived.
 func TestCollectReferencedBlobsIgnoresMailboxNamedMail(t *testing.T) {
 	ps, err := store.NewPebbleStore(t.TempDir())
 	if err != nil {

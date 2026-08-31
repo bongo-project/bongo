@@ -1272,6 +1272,15 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Get("/internal/addresses/orphaned", addrRepairH.List)
 			r.Post("/internal/addresses/repair", addrRepairH.Repair)
 		})
+
+		// Dangling-mail routes: metadata whose body blob is missing. Same
+		// private/internal gate -- the purge destroys mail metadata.
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireInternalAuth(sessionSecret))
+			danglingH := handlers.NewDanglingMailHandler(a.Store, a.Blobs, a, a.logger)
+			r.Get("/internal/mail/dangling", danglingH.List)
+			r.Post("/internal/mail/purge-dangling", danglingH.Purge)
+		})
 	}
 
 	// Start event reminder checker.
@@ -1621,45 +1630,6 @@ func blobGCCandidatesAcrossModeChange(prev map[string]bool, mode, prevMode strin
 	return prev
 }
 
-// parseMailMetaKey reports whether key is a direct /user/{id}/mail/{guid}
-// entry -- a MailMeta record -- as opposed to some other key living under a
-// user's tree. Both {id} and {guid} must be non-empty and contain no further
-// "/", the same structural shape MailboxStore.OrphanedMailGUIDs uses to
-// distinguish a MailMeta key from everything else under a user (mailbox.go).
-//
-// This replaces a substring test (bytes.Contains(key, []byte("/mail/"))).
-// Mailbox message keys are /user/{id}/mailbox/{name}/msg/{uid}
-// (store/mailbox.go); a mailbox literally named "mail" produces keys like
-// /user/u1/mailbox/mail/msg/0000000001, which CONTAIN "/mail/" and so passed
-// the substring test even though the value is a MailboxMessage, not a
-// MailMeta. The two protobufs collide at the wire level too:
-// MailboxMessage.uid is field 1 (varint) while MailMeta.guid is field 1
-// (string, length-delimited), so proto.Unmarshal genuinely fails on these
-// values rather than silently decoding a zero-value MailMeta.
-func parseMailMetaKey(key []byte) (userID, guid string, ok bool) {
-	const prefix = "/user/"
-	s := string(key)
-	if !strings.HasPrefix(s, prefix) {
-		return "", "", false
-	}
-	rest := s[len(prefix):]
-	sep := strings.IndexByte(rest, '/')
-	if sep <= 0 {
-		return "", "", false
-	}
-	userID, rest = rest[:sep], rest[sep+1:]
-
-	const mailSeg = "mail/"
-	if !strings.HasPrefix(rest, mailSeg) {
-		return "", "", false
-	}
-	guid = rest[len(mailSeg):]
-	if guid == "" || strings.Contains(guid, "/") {
-		return "", "", false
-	}
-	return userID, guid, true
-}
-
 // collectReferencedBlobs returns the set of blob hashes still referenced by
 // live state: every MailMeta (raw_message + attachments, across all users and
 // mailboxes), every queued OutboundMessage, and every envelope still sitting in
@@ -1685,7 +1655,7 @@ func collectReferencedBlobs(ps *store.PebbleStore, spool *pipeline.SpoolStore) (
 	}
 	for mailIter.Next() {
 		key := mailIter.Key()
-		if _, _, ok := parseMailMetaKey(key); !ok {
+		if _, _, ok := store.ParseMailMetaKey(key); !ok {
 			continue
 		}
 		// Value()'s error is not swallowed here: pebbleIterator.Value() calls
