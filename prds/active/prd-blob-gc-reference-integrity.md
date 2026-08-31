@@ -225,7 +225,42 @@ no blob-gc activity at all since `blob_gc` went to `dryrun`. But the container l
 only reaches back to the most recent restart, so the sweep itself is outside the
 window and single-cause cannot be confirmed from logs alone.
 
-The acceptance criteria below apply to all eight.
+**DIAGNOSIS CORRECTED AGAIN 2026-08-31, after deploying the report tooling.**
+There is no dangling metadata to remove. `bongo-go mail dangling` reports
+"every message body blob is present" while the same restart still logs all
+eight warnings. Both are true, and the reason is a stale Raft snapshot.
+
+The newest snapshot is `141-16388`, dated **2026-08-23** -- eight days BEFORE the
+incident. On every startup the FSM restores from it (`fsm: restored from
+snapshot keys=132`), rebuilds derived indexes for the 35 mails that existed at
+that point (`fsm: derived indexes rebuilt mails=35`), and the background indexer
+then tries to read all 35 bodies. Eight of those blobs no longer exist, so eight
+warnings appear roughly 30 seconds in, as the indexer queue drains. Raft then
+replays the log past the snapshot, applying the `orphan-gc` deletions that
+already reclaimed those records, so the CURRENT state contains no dangling
+metadata at all.
+
+So the warnings are startup noise from indexing a stale snapshot, not evidence
+of live dangling records. They will stop by themselves at the next Raft
+snapshot, which will post-date the deletions.
+
+This also answers the debris-versus-live-mail question definitively, and the
+answer is debris. `sweepOrphanedMail` only reclaims `MailMeta` that NO mailbox
+entry references. It reclaimed these, so by construction none of the eight was
+in anybody's mailbox: they were unreachable ghost deliveries from the alias
+incident, exactly like the five blob candidates inspected separately. Nothing a
+user could open was lost by the GC.
+
+Consequences for this task:
+- The purge has no target. `DeleteDanglingMail` is correct and tested, and there
+  is nothing for it to delete. That is the right outcome, not a failure.
+- The tombstone proposal is moot: there is no `MailMeta` left to tombstone.
+- US-004's criterion "a restart no longer logs could not read message body" is
+  NOT achievable by deleting metadata. It needs a fresh Raft snapshot, or an
+  indexer that treats a missing blob during a snapshot rebuild more quietly.
+
+The acceptance criteria below applied to all eight, and are now answered by the
+above rather than by a deletion.
 
 ### US-004 (original text, retained for the criteria)
 

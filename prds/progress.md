@@ -824,3 +824,40 @@ LESSON: the earlier investigation generalised "two messages" from a log excerpt 
 counting distinct GUIDs across the full log. Two `grep -c` calls would have caught it on day one.
 When a number describes production damage, get it from production, not from the excerpt that
 first surfaced the problem.
+
+## 2026-08-31 — Task 14.8: no deletion needed. The warnings are a stale-snapshot artifact
+
+Deployed the report tooling as v0.6.26 and ran it. `bongo-go mail dangling` reports
+"every message body blob is present" -- while the SAME restart logs all eight
+`could not read message body for indexing` warnings. Both statements are true.
+
+**Cause.** The newest Raft snapshot is `141-16388`, dated 2026-08-23, eight days before the
+incident. Every startup restores from it (`fsm: restored from snapshot keys=132`), rebuilds
+derived indexes for the 35 mails alive at that point (`fsm: derived indexes rebuilt mails=35`),
+and the background indexer then reads all 35 bodies. Eight of those blobs no longer exist, so
+eight warnings appear ~30s in as the queue drains. Raft then replays the log past the snapshot,
+applying the `orphan-gc` deletions that already reclaimed those records. Current state has no
+dangling metadata at all.
+
+**The debris-versus-live question is settled, and the answer is debris.** `sweepOrphanedMail`
+only reclaims `MailMeta` that NO mailbox entry references. It reclaimed these, so by
+construction none of the eight sat in anyone's mailbox. They were unreachable ghost deliveries
+from the alias incident -- the same category as the five blob candidates inspected separately,
+two of which were real sign-in links from a hosted application delivered into a deleted account.
+
+**So nothing a user could open was lost by the GC.** The bodies are gone, but they were already
+unreachable before the sweep ran.
+
+Consequences:
+- The purge has no target. `DeleteDanglingMail` is correct and tested; there is nothing to
+  delete. That is the right outcome, not a failure, and the tool stays for the next time.
+- The tombstone proposal is moot -- no `MailMeta` remains to tombstone.
+- US-004's "a restart no longer logs..." criterion is not achievable by deleting metadata. It
+  needs a fresh Raft snapshot, or an indexer that is quieter about a missing blob during a
+  snapshot rebuild.
+
+LESSON, and this is the third correction in this phase. I escalated "two lost messages" to
+"eight lost messages" from a log count, and both framings were wrong in the same way: a log line
+is evidence that something was ATTEMPTED, not that a record currently exists. The decisive check
+was reading current state with a tool, not counting warnings. Counting log lines tells you about
+the past; it takes a query to learn about the present.
