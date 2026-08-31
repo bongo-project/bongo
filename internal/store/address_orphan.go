@@ -70,8 +70,7 @@ func FindOrphanedAddresses(ps *PebbleStore) ([]OrphanedAddress, error) {
 
 		exists, cached := seen[rec.UserId]
 		if !cached {
-			data, gErr := ps.Get([]byte("/user/" + rec.UserId + "/profile"))
-			exists = gErr == nil && len(data) > 0
+			exists = userProfileExists(ps, rec.UserId)
 			seen[rec.UserId] = exists
 		}
 		if exists {
@@ -102,11 +101,8 @@ func DeleteOrphanedAddresses(ps *PebbleStore, as *AddressStore, orphans []Orphan
 
 	var deleted []string
 	for _, o := range orphans {
-		if ps != nil {
-			data, err := ps.Get([]byte("/user/" + o.UserID + "/profile"))
-			if err == nil && len(data) > 0 {
-				continue // owner exists again; not an orphan
-			}
+		if ps != nil && userProfileExists(ps, o.UserID) {
+			continue // owner exists again; not an orphan
 		}
 		if err := as.Delete(o.Address); err != nil {
 			return deleted, fmt.Errorf("deleting address %s: %w", o.Address, err)
@@ -114,4 +110,16 @@ func DeleteOrphanedAddresses(ps *PebbleStore, as *AddressStore, orphans []Orphan
 		deleted = append(deleted, o.Address)
 	}
 	return deleted, nil
+}
+
+// userProfileExists reports whether a user account is still live, which is the
+// only durable proof of it: deleting a user removes /user/{id}/profile. Shared
+// by the orphaned-address scan and the dangling-mail report so the two cannot
+// drift on what "the owner is gone" means.
+func userProfileExists(ps *PebbleStore, userID string) bool {
+	if ps == nil || userID == "" {
+		return false
+	}
+	data, err := ps.Get([]byte("/user/" + userID + "/profile"))
+	return err == nil && len(data) > 0
 }

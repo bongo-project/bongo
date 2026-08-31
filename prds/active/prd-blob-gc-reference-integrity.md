@@ -74,10 +74,26 @@ iterator `Close()` calls and returns the error, and `sweepOrphanedBlobs` then
 aborts the pass. A value-read failure already aborts the sweep. Only the
 `proto.Unmarshal` path silently drops references.
 
-**Prerequisite:** the key filter must be tightened FIRST. `agent.go` matches
-`bytes.Contains(key, "/mail/")`, so a user-created IMAP mailbox literally named
-`mail` yields `/user/{id}/mailbox/mail/msg/...`, whose `MailboxMessage` value
-fails to unmarshal as `MailMeta` on a wire-type mismatch. Making unmarshal fatal
+**Prerequisite CORRECTED 2026-08-31.** The original claim here was that a
+mailbox named `mail` yields a `MailboxMessage` value that FAILS to unmarshal as
+`MailMeta` on a wire-type clash at field 1, and that making unmarshal fatal
+first would therefore let any user disable blob GC node-wide. **That claim was
+wrong, and it was asserted as verified.** Checked directly: protobuf-go treats a
+wire-type mismatch on a known field number as an unknown field and skips it, so
+the decode SUCCEEDS with no error. `MailboxMessage{Uid:42, MailGuid:"g"}`
+decodes into `MailMeta{MessageId:"g"}`, and `MailboxMeta{Name:"mail"}` decodes
+into `MailMeta{Guid:"mail"}`. The denial-of-service never existed.
+
+The ordering was still the right call and the code is unaffected, but for a
+different and less dramatic reason: those foreign values decode into a `MailMeta`
+with no `raw_message`, so they contribute nothing to the reference set and are
+harmless -- they are simply not MailMeta records and should not be read as such.
+The structural parse is correct because unmarshal success is not evidence a
+value is the type you expected; the key filter has to do that work.
+
+Original text, retained: the key filter must be tightened FIRST. `agent.go`
+matches `bytes.Contains(key, "/mail/")`, so a user-created IMAP mailbox literally
+named `mail` yields `/user/{id}/mailbox/mail/msg/...`. Making unmarshal fatal
 without tightening the filter lets any user permanently disable the GC by
 creating a mailbox called `mail`.
 
