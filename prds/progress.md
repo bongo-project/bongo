@@ -861,3 +861,53 @@ LESSON, and this is the third correction in this phase. I escalated "two lost me
 is evidence that something was ATTEMPTED, not that a record currently exists. The decisive check
 was reading current state with a tool, not counting warnings. Counting log lines tells you about
 the past; it takes a query to learn about the present.
+
+## 2026-09-01 — Task 14.9: dryrun evidence collected, check written, flip NOT performed
+
+~36h of dryrun on v0.6.25/v0.6.26. Every 15-minute pass proposed the same five candidates and
+never grew: `candidates:5 deleted:0 dry_run:true`, identical across every sweep. 66 blobs on
+disk. Zero `spared` lines, so 14.2's re-validation barrier never had to save anything.
+
+Wrote `scripts/verify-blob-candidates.sh` — the repeatable check US-005 asks for. It
+deliberately avoids re-running `collectReferencedBlobs`, which would only show the GC agreeing
+with itself, and instead uses three independent paths: the derived per-user SQLite indexes
+(looked up by Message-ID read from the blob itself), the on-disk spool, and the blob's own
+headers for identification. All five candidates clean on every path.
+
+Identity: three are test probes I sent during the alias investigation; two are genuine Havencast
+sign-in links delivered into deleted user `6ccf299f` and never reachable by anyone. All five are
+the tail of the alias incident, not new loss.
+
+**Flip not performed.** Deliberately left to the operator, and the PRD records why in plain
+terms: 36 hours of ONE pattern is not 36 hours of varied traffic. The candidate set never
+changed, so the window exercised no new deliveries, no attachment dedup, no quarantine releases
+and no blob sync. The fix is confirmed on the case we understood. The decision to accept that is
+a judgement, not a test result.
+
+Access note: SSH on the public IP stopped responding partway through this work (port 22 timing
+out while HTTPS answered normally), most likely an SSH rate-limiter reacting to the volume of
+connections made during the deploy and investigation. Resolved by the operator connecting
+Tailscale; the host is `wander-prod` and the login is root. Worth using fewer, batched SSH
+invocations in future rather than many small ones.
+
+### Config drift found while closing 14.9
+
+`deploy/bongo.prod.hcl` still said `blob_gc = "on"` while the live node ran `"dryrun"`. The
+mitigation applied on 2026-08-30 was made on the node only and never landed in the repo, so a
+redeploy from this file would have silently re-enabled deletion — reintroducing the incident
+with no one intending it. Now `"dryrun"` in both places, with a comment pointing at
+`scripts/verify-blob-candidates.sh` as the gate before it ever goes back to `"on"`.
+
+Worth generalising: an urgent production mitigation applied by hand is only half done. The
+config in the repo is what the next deploy believes, and a value that decides whether a
+collector can destroy data is exactly the one that must not drift.
+
+### 2026-09-01 — blob_gc returned to "on" by operator decision
+
+The caveat above was put to the operator and they authorised the flip. Recording that the
+decision was informed rather than incidental: the evidence covers the failure mode we
+understood, and the dryrun window exercised one traffic pattern rather than many.
+
+Both the repo config and the node now say `"on"`. The comment in `deploy/bongo.prod.hcl` carries
+the evidence, the decision, and the rollback instruction, so the next person to read that line
+learns why it says what it says without needing this file.

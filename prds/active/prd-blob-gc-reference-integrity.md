@@ -283,12 +283,57 @@ real user mail or debris, so I know the severity of what already happened.
 candidate list has been proven correct on real data.
 
 **Acceptance Criteria:**
-- [ ] A dryrun period of at least 24h on the production node produces candidate
+- [x] A dryrun period of at least 24h on the production node produces candidate
       lists that a documented check confirms contain no blob reachable from live
-      state.
-- [ ] The check is written down and repeatable, not a one-off inspection.
-- [ ] `blob_gc` is set back to `"on"` in `deploy/bongo.prod.hcl` only after that
-      check passes, in its own commit referencing this PRD.
+      state. **Done: ~36h on v0.6.25/v0.6.26, 2026-08-31 08:49 to 2026-09-01
+      20:21.**
+- [x] The check is written down and repeatable, not a one-off inspection.
+      **`scripts/verify-blob-candidates.sh`.**
+- [x] `blob_gc` is set back to `"on"` in `deploy/bongo.prod.hcl` only after that
+      check passes, in its own commit referencing this PRD. **Done 2026-09-01.
+      The check passed on all five candidates; the operator took the documented
+      risk below and authorised the flip.**
+
+#### Dryrun result, 2026-09-01
+
+Every 15-minute pass over ~36 hours proposed the SAME five candidates and never
+grew: `candidates:5 deleted:0 dry_run:true`, unchanged across every sweep. 66
+blobs on disk, so 61 are referenced and stayed that way. Zero `spared` lines,
+meaning the 14.2 re-validation barrier never had to save anything -- no candidate
+became referenced mid-pass.
+
+`scripts/verify-blob-candidates.sh` confirms all five are unreachable, using
+evidence independent of the GC's own reference scan:
+
+| Blob | Size | Identity | Index hits | In spool |
+|---|---|---|---|---|
+| `c2da4a14acea` | 620 B | "Alias routing verification after v0.6.23 repair" | 0 | no |
+| `016525675111` | 811 B | "Your Havencast sign-in link" | 0 | no |
+| `e4ea32b06da9` | 811 B | "Your Havencast sign-in link" | 0 | no |
+| `f334b2863970` | 581 B | "Delivery check after v0.6.24 deploy" | 0 | no |
+| `38410862b62a` | 600 B | "Delivery check after blob_gc dryrun" | 0 | no |
+
+Three are test probes sent during the alias investigation. Two are genuine
+Havencast sign-in links that were delivered into deleted user `6ccf299f` during
+the alias incident and were never reachable by anyone. All five are the tail of
+that incident, not new loss.
+
+#### The caveat, stated because the decision is irreversible
+
+This is 36 hours of ONE pattern: the orphan-gc-then-blob-gc sequence that caused
+the original incident. It came out right, which is the single most relevant thing
+we could have tested. But the candidate set never changed, so the window
+exercised no new deliveries, no attachment dedup, no quarantine releases and no
+blob-sync activity. We have confirmed the fix on the case we understood; we have
+not exercised the cases we did not.
+
+The bar for flipping is an operator judging that acceptable, not a test passing.
+That judgement was made on 2026-09-01 and the flip authorised. The risk is
+recorded here rather than in a commit message so it stays findable if a future
+sweep surprises someone: **the fix is proven against the failure we understood,
+not against traffic patterns the dryrun window never saw.** If a sweep proposes
+an unexpected candidate, set `blob_gc` back to `"dryrun"` and run
+`scripts/verify-blob-candidates.sh` before anything else.
 
 ## 4. Functional Requirements
 
