@@ -289,9 +289,10 @@ candidate list has been proven correct on real data.
       20:21.**
 - [x] The check is written down and repeatable, not a one-off inspection.
       **`scripts/verify-blob-candidates.sh`.**
-- [ ] `blob_gc` is set back to `"on"` in `deploy/bongo.prod.hcl` only after that
-      check passes, in its own commit referencing this PRD. **Awaiting operator
-      decision -- see the evidence and the caveat below.**
+- [x] `blob_gc` is set back to `"on"` in `deploy/bongo.prod.hcl` only after that
+      check passes, in its own commit referencing this PRD. **Done 2026-09-01.
+      The check passed on all five candidates; the operator took the documented
+      risk below and authorised the flip.**
 
 #### Dryrun result, 2026-09-01
 
@@ -327,6 +328,12 @@ blob-sync activity. We have confirmed the fix on the case we understood; we have
 not exercised the cases we did not.
 
 The bar for flipping is an operator judging that acceptable, not a test passing.
+That judgement was made on 2026-09-01 and the flip authorised. The risk is
+recorded here rather than in a commit message so it stays findable if a future
+sweep surprises someone: **the fix is proven against the failure we understood,
+not against traffic patterns the dryrun window never saw.** If a sweep proposes
+an unexpected candidate, set `blob_gc` back to `"dryrun"` and run
+`scripts/verify-blob-candidates.sh` before anything else.
 
 ## 4. Functional Requirements
 

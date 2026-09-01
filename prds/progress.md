@@ -901,3 +901,13 @@ with no one intending it. Now `"dryrun"` in both places, with a comment pointing
 Worth generalising: an urgent production mitigation applied by hand is only half done. The
 config in the repo is what the next deploy believes, and a value that decides whether a
 collector can destroy data is exactly the one that must not drift.
+
+### 2026-09-01 — blob_gc returned to "on" by operator decision
+
+The caveat above was put to the operator and they authorised the flip. Recording that the
+decision was informed rather than incidental: the evidence covers the failure mode we
+understood, and the dryrun window exercised one traffic pattern rather than many.
+
+Both the repo config and the node now say `"on"`. The comment in `deploy/bongo.prod.hcl` carries
+the evidence, the decision, and the rollback instruction, so the next person to read that line
+learns why it says what it says without needing this file.

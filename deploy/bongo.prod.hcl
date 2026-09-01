@@ -63,23 +63,35 @@ storage {
   # that function too -- a reference source it does not know about is
   # indistinguishable from garbage.
   #
-  # BACK TO DRYRUN 2026-09-01. That re-enable was premature: on 2026-08-30 a
-  # sweep deleted 17 blobs, some still referenced, and eight message bodies were
-  # lost. The audit found the reference set had several more gaps, all fixed in
-  # Phase 14 (v0.6.25/v0.6.26) -- the decisive one being that a deduplicated
-  # write leaves the ORIGINAL mtime, so the minAge grace and the two-pass rule
-  # can BOTH miss a blob that becomes referenced again during the scan.
+  # That first re-enable was premature. On 2026-08-30 a sweep deleted 17 blobs,
+  # some still referenced, and eight message bodies were lost. It went to
+  # "dryrun" on the node the same day -- but NOT here, so this file said "on"
+  # for two days while production said "dryrun", and any redeploy from it would
+  # have silently re-enabled deletion. Whatever this line says is what the next
+  # deploy believes, so it must match the node.
   #
-  # This value was left at "on" here while the live node ran "dryrun", which
-  # meant a redeploy from this file would have silently re-enabled deletion.
-  # Keeping the two in sync is the point: this line is the one that decides
-  # whether the collector can destroy data, so it must say what production
-  # actually does.
+  # Back to "on" 2026-09-01, deliberately and with evidence this time. Phase 14
+  # fixed every gap the audit found; the decisive one was that a deduplicated
+  # write leaves the blob's ORIGINAL mtime, so the minAge grace and the two-pass
+  # rule could BOTH miss a blob that became referenced again during the scan.
+  # Candidates are now re-validated against a fresh reference set immediately
+  # before deletion, inside deleteSweptBlobs so nothing can reach a delete
+  # without passing through it.
   #
-  # Before changing it back to "on", run scripts/verify-blob-candidates.sh on
-  # the node and confirm every proposed candidate is unreachable. See US-005 in
-  # prds/active/prd-blob-gc-reference-integrity.md.
-  blob_gc = "dryrun"
+  # Evidence: ~36h of dryrun on v0.6.25/v0.6.26 proposed the same five
+  # candidates on every pass and never grew, with zero re-validation saves. All
+  # five were confirmed unreachable by scripts/verify-blob-candidates.sh, which
+  # checks the derived SQLite indexes, the spool, and the blob's own headers --
+  # deliberately NOT the GC's own reference scan, which would only show the
+  # collector agreeing with itself.
+  #
+  # Operator decision, 2026-09-01, taking the documented risk that the window
+  # exercised one traffic pattern rather than many.
+  #
+  # If a sweep ever proposes a candidate you did not expect, set this back to
+  # "dryrun" and run scripts/verify-blob-candidates.sh before anything else.
+  # See US-005 in prds/active/prd-blob-gc-reference-integrity.md.
+  blob_gc = "on"
 
   pebble {
     cache_size = "256MB"
