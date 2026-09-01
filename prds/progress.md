@@ -889,3 +889,15 @@ out while HTTPS answered normally), most likely an SSH rate-limiter reacting to 
 connections made during the deploy and investigation. Resolved by the operator connecting
 Tailscale; the host is `wander-prod` and the login is root. Worth using fewer, batched SSH
 invocations in future rather than many small ones.
+
+### Config drift found while closing 14.9
+
+`deploy/bongo.prod.hcl` still said `blob_gc = "on"` while the live node ran `"dryrun"`. The
+mitigation applied on 2026-08-30 was made on the node only and never landed in the repo, so a
+redeploy from this file would have silently re-enabled deletion — reintroducing the incident
+with no one intending it. Now `"dryrun"` in both places, with a comment pointing at
+`scripts/verify-blob-candidates.sh` as the gate before it ever goes back to `"on"`.
+
+Worth generalising: an urgent production mitigation applied by hand is only half done. The
+config in the repo is what the next deploy believes, and a value that decides whether a
+collector can destroy data is exactly the one that must not drift.

@@ -62,7 +62,24 @@ storage {
   # directories. Anything that adds a new way to reference a blob must extend
   # that function too -- a reference source it does not know about is
   # indistinguishable from garbage.
-  blob_gc = "on"
+  #
+  # BACK TO DRYRUN 2026-09-01. That re-enable was premature: on 2026-08-30 a
+  # sweep deleted 17 blobs, some still referenced, and eight message bodies were
+  # lost. The audit found the reference set had several more gaps, all fixed in
+  # Phase 14 (v0.6.25/v0.6.26) -- the decisive one being that a deduplicated
+  # write leaves the ORIGINAL mtime, so the minAge grace and the two-pass rule
+  # can BOTH miss a blob that becomes referenced again during the scan.
+  #
+  # This value was left at "on" here while the live node ran "dryrun", which
+  # meant a redeploy from this file would have silently re-enabled deletion.
+  # Keeping the two in sync is the point: this line is the one that decides
+  # whether the collector can destroy data, so it must say what production
+  # actually does.
+  #
+  # Before changing it back to "on", run scripts/verify-blob-candidates.sh on
+  # the node and confirm every proposed candidate is unreachable. See US-005 in
+  # prds/active/prd-blob-gc-reference-integrity.md.
+  blob_gc = "dryrun"
 
   pebble {
     cache_size = "256MB"
