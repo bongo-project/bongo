@@ -47,7 +47,9 @@ var clusterSnapshotCmd = &cobra.Command{
 
 func init() {
 	clusterCmd.PersistentFlags().StringVar(&clusterHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
-	clusterSnapshotCmd.Flags().StringVar(&clusterSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
+	// Persistent on clusterCmd: both subcommands call auth-gated /internal/
+	// endpoints, so the flag belongs to the group rather than one member.
+	clusterCmd.PersistentFlags().StringVar(&clusterSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 
 	clusterCmd.AddCommand(clusterStatusCmd)
 	clusterCmd.AddCommand(clusterSnapshotCmd)
@@ -60,9 +62,13 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 	}
 	url := fmt.Sprintf("http://%s/internal/cluster/members", clusterHTTPAddr)
 
-	resp, err := http.Get(url) // #nosec G107 -- CLI queries an operator-supplied local node address
+	// Signed, not a bare http.Get. /internal/cluster/members sits behind
+	// RequireInternalAuth, so an unsigned request returns 401 on any node with
+	// web.session_secret set -- which is every production node. This command
+	// was unusable there until the signing was added.
+	resp, err := clusterRequest(http.MethodGet, url)
 	if err != nil {
-		return fmt.Errorf("connecting to %s: %w", clusterHTTPAddr, err)
+		return err
 	}
 	defer resp.Body.Close()
 
