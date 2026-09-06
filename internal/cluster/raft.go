@@ -62,9 +62,8 @@ func NewRaftNode(
 		raftCfg.CommitTimeout = 200 * time.Millisecond
 	}
 
-	// Set snapshot threshold from config.
-	if cfg.Cluster.Raft.SnapshotThreshold > 0 {
-		raftCfg.SnapshotThreshold = uint64(cfg.Cluster.Raft.SnapshotThreshold)
+	if err := applyRaftTuning(raftCfg, &cfg.Cluster.Raft, logger); err != nil {
+		return nil, err
 	}
 
 	fsm := NewFSM(pebbleStore, blobs, metadata, logger)
@@ -182,6 +181,48 @@ func NewRaftNode(
 	logger.Info("raft node created", "role", cfg.Server.Role, "id", string(raftCfg.LocalID), "addr", string(raftAddr))
 
 	return node, nil
+}
+
+// applyRaftTuning copies the configured snapshot and log-retention settings
+// onto a raft.Config.
+//
+// This is a separate function because the bug it fixes was not faulty logic.
+// snapshot_interval was a documented, defaulted, settable key that the shipped
+// production config set — and NewRaftNode never assigned it to raft.Config at
+// all, so it silently did nothing for the lifetime of the deployment. A value
+// that is read and then dropped is invisible from the outside: the only way to
+// notice is a test that asserts the destination struct, which needs the
+// assignments in one addressable place.
+func applyRaftTuning(raftCfg *raft.Config, rc *config.RaftConfig, logger *slog.Logger) error {
+	if rc == nil {
+		rc = &config.RaftConfig{}
+	}
+	// Enforced here rather than relying on config.Validate(), which is not
+	// wired into the startup path (task B8) -- see cmd/bongo-go/agent.go.
+	if err := rc.Validate(); err != nil {
+		return err
+	}
+
+	if rc.SnapshotThreshold > 0 {
+		raftCfg.SnapshotThreshold = uint64(rc.SnapshotThreshold)
+	}
+	raftCfg.SnapshotInterval = rc.RaftSnapshotInterval()
+	if rc.TrailingLogs > 0 {
+		raftCfg.TrailingLogs = uint64(rc.TrailingLogs)
+	}
+
+	// Warn rather than fail when the pairing comes from the defaults: raft's
+	// own TrailingLogs default (10240) exceeds our snapshot_threshold default
+	// (8192), so a node that leaves trailing_logs unset retains everything the
+	// snapshot was meant to reclaim. Changing those defaults would alter
+	// behaviour for existing deployments, so this says so loudly instead.
+	if raftCfg.TrailingLogs >= raftCfg.SnapshotThreshold {
+		logger.Warn("raft: trailing_logs is not below snapshot_threshold, so snapshots will not truncate the log; set cluster.raft.trailing_logs below cluster.raft.snapshot_threshold",
+			"trailing_logs", raftCfg.TrailingLogs,
+			"snapshot_threshold", raftCfg.SnapshotThreshold)
+	}
+
+	return nil
 }
 
 // bootstrapSingle bootstraps this node as a single-node cluster.
