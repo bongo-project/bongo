@@ -122,6 +122,13 @@ arrives and as I read it, so the sidebar is not quietly wrong.
       of its own, `count-Work` reads `2`.
 - [ ] A count reaching zero emits an empty or hidden badge rather than the text
       `0`, matching how `#unread-badge` behaves today.
+- [ ] Count fragments are debounced per folder at approximately 250ms, emitting
+      the latest value. Given three changes to `INBOX` within that window, one
+      fragment is emitted carrying the final count, not three.
+- [ ] Debouncing counts is safe precisely because a count fragment carries the
+      current value rather than a delta, so a dropped intermediate can only be
+      late, never wrong. A test asserts the emitted value equals the count a fresh
+      page load would render.
 
 ### US-004: Changes from another client are reflected
 
@@ -180,6 +187,35 @@ mouse, so a zero-inbox pass is a sequence of keystrokes.
       PRD adds.
 - [ ] Every shortcut has an equivalent pointer action; nothing is keyboard-only.
 
+### US-009: A diverged view is resynced rather than patched
+
+**Description:** As a user, I want the list to be correct after a bulk change or
+a dropped connection, rather than quietly stale, and I do not want the browser to
+convulse through five hundred individual updates to get there.
+
+**Rationale.** Two situations leave the client unable to catch up by patching: a
+bulk operation (an IMAP move of a whole folder, or a `bongo-import` run
+delivering thousands of messages) and a reconnect, after which the client cannot
+know what it missed. Both are the same problem — the view has diverged too far to
+patch incrementally — so both use one `resync` event rather than two mechanisms
+that drift apart. Note that a re-fetch here is not the thing this design avoids:
+it avoids re-fetching on every change, not once when the connection has
+demonstrably lost events.
+
+**Acceptance criteria:**
+- [ ] Given more than 20 row-affecting changes to the subscribed mailbox within a
+      500ms window, the handler emits a single `resync` event naming the mailbox
+      and emits no further row fragments for that window.
+- [ ] Given 20 or fewer changes in that window, individual row fragments are
+      emitted and no `resync` is sent — the precise path is the default, not the
+      exception.
+- [ ] On `EventSource` reconnect the client requests a resync for the folder on
+      screen, and the resulting list matches what a fresh page load would render.
+- [ ] After a resync the previously selected message is still selected, located
+      by UID rather than by position.
+- [ ] A test drives a bulk delivery through the real pipeline and asserts exactly
+      one `resync` frame rather than N row frames.
+
 ### US-008: The mechanism is testable in CI
 
 **Description:** As a maintainer, I want the reactivity proven by an automated
@@ -217,7 +253,15 @@ silently.
   extending the hand-rolled swap.
 - **FR-6:** The handler must subscribe to `NotifFlagChange` and `NotifExpunge` in
   addition to `NotifNewMail`, and emit the corresponding fragments.
-- **FR-7:** Updates must not replace or re-render `#msg-list` as a whole.
+- **FR-7:** Updates must not replace or re-render `#msg-list` as a whole, except
+  in response to a `resync` (FR-11).
+- **FR-11:** The handler must emit a single `resync` event instead of row
+  fragments when row-affecting changes exceed a threshold within a window
+  (starting point: 20 changes / 500ms, tunable). The client must treat `resync`
+  as "re-read this folder", and must also request one after an `EventSource`
+  reconnect. One mechanism serves both cases; do not add a second.
+- **FR-12:** Count fragments must be debounced per folder (starting point: 250ms)
+  and carry the current absolute value, never a delta.
 - **FR-8:** Keyboard handlers must be inert while focus is in an editable field.
 - **FR-9:** The shortcut-help modal must be generated from the same source as the
   bindings, so it cannot drift out of date.
@@ -280,18 +324,32 @@ silently.
 - **Insert position for a new row.** `afterbegin` is correct for a newest-first
   list, which is the default, but a list sorted oldest-first or by sender would
   need the position computed. Is non-default sorting in scope?
-- **Rate limiting.** A bulk delivery or an IMAP move of 500 messages would emit
-  500 fragments. Should the handler coalesce, and if so on what interval?
+- ~~**Rate limiting.**~~ **Decided 2026-09-06.** Split by payload type: counts
+  debounce last-value-wins (idempotent, so a dropped intermediate is only late);
+  rows emit individually up to a threshold, then fall back to a single `resync`.
+  Beyond a certain volume, 500 fragments do not serve the user anyway — the
+  browser thrashes and precision buys nothing, since scroll and selection
+  preservation is meaningless when half the folder moved. See US-009, FR-11,
+  FR-12. The thresholds are starting points to tune under load, not constants
+  derived from anything.
 - **What happens to a row that no longer matches the current filter?** Marking a
   message read while viewing an unread-only view should presumably remove it, but
   that is a product decision.
+- **Debounce and threshold state is per session.** Both timers live with the
+  subscription, not globally, so they scale with concurrent web sessions rather
+  than with mail volume. At single-node with a handful of users that is a couple
+  of timers; it becomes worth measuring if concurrent sessions grow.
 - **Two concerns, one stream.** Notifications and list updates want different
   scopes: notifications care about INBOX always, list updates care about the
   folder on screen. Options are a second `EventSource`, a `notify=INBOX`
   parameter alongside `mailbox=`, or having the server always include INBOX
   arrivals as `newmail` while scoping row fragments to the subscription. The last
   keeps one connection, which matters given the per-origin limit noted above.
-- **Reconnection.** `EventSource` reconnects automatically, but events during the
-  gap are lost and the list is then silently stale. Should reconnect trigger a
-  one-shot resync, and does that reintroduce the full-list re-fetch this design
-  otherwise avoids?
+- ~~**Reconnection.**~~ **Decided 2026-09-06.** Reconnect requests a `resync`,
+  the same event the bulk case uses. Rejected `Last-Event-ID` replay: it is the
+  textbook answer but needs a per-user server-side event buffer with a retention
+  and expiry policy, which is disproportionate here. It does NOT reintroduce what
+  this design avoids — the design avoids re-fetching on every change, not once
+  when the connection has provably lost events. Reconnects are less rare than
+  they sound (laptop sleep, network blips), which is why selection must be
+  restored by UID afterwards. See US-009.
