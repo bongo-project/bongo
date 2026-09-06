@@ -596,3 +596,116 @@ func TestPruneRecipients(t *testing.T) {
 		})
 	}
 }
+
+// TestWorkerBouncesImmediatelyWhenBodyBlobIsGone covers the fail-fast path.
+//
+// A message enqueued before the 2026-08-30 blob-GC incident spent seven days
+// cycling through attempts that each failed identically, because handleFailure
+// treats every error as worth retrying and only bounces once maxAttempts is
+// spent. A missing body is not a transient condition: the bytes are gone, and
+// the ninth attempt fails exactly as the first did.
+//
+// The control below matters as much as the assertion. Without it, an
+// implementation that bounced on EVERY failure would pass this test while
+// destroying the retry behaviour that transient failures depend on.
+func TestWorkerBouncesImmediatelyWhenBodyBlobIsGone(t *testing.T) {
+	worker, qs, _, deliverer := newWorkerTestEnvWithDeliverer(t, true)
+
+	// A well-formed hash naming a blob that was never written.
+	missing := strings.Repeat("ab", 32)
+	if err := qs.Enqueue(&bongov1.OutboundMessage{
+		Id:          "msg-missing-blob",
+		SenderEmail: "alice@example.com",
+		Recipients:  []string{"bob@external.com"},
+		BlobHash:    missing,
+		CreatedAt:   time.Now().Unix(),
+	}); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	bouncedBefore := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("bounced"))
+
+	worker.poll(context.Background())
+
+	bouncedAfter := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("bounced"))
+	if bouncedAfter-bouncedBefore != 1 {
+		t.Errorf("bounced counter delta = %v, want 1 on the FIRST attempt; a missing body "+
+			"cannot be fixed by retrying, so the message must not consume its retries",
+			bouncedAfter-bouncedBefore)
+	}
+
+	// It must be gone from pending, not merely counted.
+	pending, err := qs.ListPending(10)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	for _, m := range pending {
+		if m.Id == "msg-missing-blob" {
+			t.Error("message with a missing body is still pending after a permanent failure")
+		}
+	}
+
+	// The sender is told, and told the real reason.
+	select {
+	case d := <-deliverer.messages:
+		if !strings.Contains(strings.ToLower(string(d.data)), "blob store") {
+			t.Errorf("bounce does not say the body is gone, so the sender cannot tell "+
+				"resending is the remedy; got: %s", truncateForLog(d.data))
+		}
+	default:
+		t.Error("no bounce was delivered to the sender")
+	}
+}
+
+// TestWorkerRetriesWhenRelayFailsRatherThanBouncing is the control for the test
+// above: a transient failure must still consume a retry rather than bouncing on
+// the first attempt. Without this, "bounce on every failure" passes the
+// fail-fast test and silently removes the backoff that real delivery depends on.
+func TestWorkerRetriesWhenRelayFailsRatherThanBouncing(t *testing.T) {
+	worker, qs, blobs := newWorkerTestEnv(t, true)
+
+	// A body that exists: the only failure here is the relay, which is transient.
+	hash, err := blobs.Put([]byte("From: alice@example.com\r\nTo: bob@external.com\r\n\r\nHi"))
+	if err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	if err := qs.Enqueue(&bongov1.OutboundMessage{
+		Id:          "msg-transient",
+		SenderEmail: "alice@example.com",
+		Recipients:  []string{"bob@external.com"},
+		BlobHash:    hash,
+		CreatedAt:   time.Now().Unix(),
+	}); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	bouncedBefore := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("bounced"))
+	worker.poll(context.Background())
+	bouncedAfter := testutil.ToFloat64(observability.QueueMessagesTotal.WithLabelValues("bounced"))
+
+	if bouncedAfter != bouncedBefore {
+		t.Errorf("a relay failure bounced on the first attempt (delta %v); transient failures "+
+			"must keep their retries", bouncedAfter-bouncedBefore)
+	}
+
+	pending, err := qs.ListPending(10)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	found := false
+	for _, m := range pending {
+		if m.Id == "msg-transient" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("message disappeared from pending after a transient failure")
+	}
+}
+
+func truncateForLog(b []byte) string {
+	if len(b) > 200 {
+		return string(b[:200])
+	}
+	return string(b)
+}

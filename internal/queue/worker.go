@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -169,6 +170,12 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		reconstructed, err := store.RawMessageBytes(w.blobs, meta)
 		if err != nil {
 			w.logger.Error("queue: reconstructing split message", "hash", msg.BlobHash, "error", err)
+			// A missing skeleton or attachment blob is permanent: the bytes are
+			// gone and no later attempt can reassemble them.
+			if errors.Is(err, store.ErrNotFound) {
+				w.handlePermanentFailure(msg, "message body no longer in the blob store: "+err.Error())
+				return
+			}
 			w.handleFailure(msg, "reconstructing message: "+err.Error())
 			return
 		}
@@ -177,6 +184,14 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		rc, err := w.blobs.Get(msg.BlobHash)
 		if err != nil {
 			w.logger.Error("queue: blob not found", "hash", msg.BlobHash, "error", err)
+			// Distinguish "the body is gone" from "the blob store is unwell".
+			// Only the first is permanent. An I/O error, a permissions problem
+			// or a store that has not finished starting are all transient and
+			// must keep their retries.
+			if errors.Is(err, store.ErrNotFound) {
+				w.handlePermanentFailure(msg, "message body no longer in the blob store: "+err.Error())
+				return
+			}
 			w.handleFailure(msg, "blob not found: "+err.Error())
 			return
 		}
@@ -263,6 +278,34 @@ func (w *Worker) processMessage(ctx context.Context, msg *bongov1.OutboundMessag
 		// message predates enqueue-time tracking.
 		w.logger.Info("queue: message delivered", "id", msg.Id, "recipients", msg.Recipients, "latency_seconds", latency)
 	}
+}
+
+// handlePermanentFailure bounces a message immediately, without consuming the
+// remaining retries, for a condition no later attempt can change.
+//
+// The case this exists for is a body blob that no longer exists. A message
+// enqueued before the 2026-08-30 blob-GC incident spent seven days cycling
+// through attempts that each failed identically, because handleFailure treats
+// every error as worth retrying and only bounces once maxAttempts is spent.
+// Nine wasted deliveries is the smaller cost; the larger one is that the DSN
+// the sender eventually receives blames delivery, when the truth is that the
+// body is gone and resending is the only remedy.
+//
+// Reserve this for genuinely unrecoverable conditions. Anything that might
+// succeed later -- a peer that is down, a blob store mid-startup, a transient
+// I/O error -- belongs in handleFailure, where the backoff can do its job.
+func (w *Worker) handlePermanentFailure(msg *bongov1.OutboundMessage, reason string) {
+	w.logger.Warn("queue: permanent failure, bouncing without further retries",
+		"id", msg.Id, "reason", reason, "attempts_used", msg.AttemptCount)
+
+	if w.bouncer != nil {
+		w.generateBounce(msg, msg.Recipients, reason)
+	}
+	if err := w.store.MarkBounced(msg); err != nil {
+		w.logger.Error("queue: marking bounced", "id", msg.Id, "error", err)
+		return
+	}
+	observability.QueueMessagesTotal.WithLabelValues("bounced").Inc()
 }
 
 func (w *Worker) handleFailure(msg *bongov1.OutboundMessage, reason string) {

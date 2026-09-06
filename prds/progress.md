@@ -946,3 +946,50 @@ unproven.
 Also corrected in the same session: the stuck message is NOT retrying forever. `maxAttempts = 10`
 means it bounces at attempt 9. Every attempt until then is wasted and the bounce reason will be
 wrong, but it terminates.
+
+## 2026-09-06 — B19: fail fast when a body blob is gone
+
+A message enqueued before the 2026-08-30 incident spent seven days cycling through attempts that
+each failed identically, because `handleFailure` treats every error as worth retrying and only
+bounces once `maxAttempts` is spent. The bytes are gone; the ninth attempt fails exactly as the
+first did.
+
+`handlePermanentFailure` bounces immediately without consuming retries. It fires only on
+`errors.Is(err, store.ErrNotFound)` -- the distinction that matters is "the body is gone" versus
+"the blob store is unwell". An I/O error, a permissions problem or a store still starting are all
+transient and keep their backoff.
+
+Both blob paths are covered: the plain `Get`, and `RawMessageBytes` for split messages, where a
+missing skeleton or attachment is equally unrecoverable.
+
+The DSN now says the body is no longer in the blob store, so the sender can tell that resending
+is the remedy rather than assuming a delivery problem.
+
+**Mutations (3, none survived):** revert to always-retry; treat EVERY failure as permanent; skip
+`MarkBounced` so the message stays pending. The second is the one worth having -- an
+implementation that bounced on everything would pass the fail-fast test while silently destroying
+the retry behaviour real delivery depends on. `TestWorkerRetriesWhenRelayFailsRatherThanBouncing`
+exists solely to kill it.
+## 2026-09-06 — B19 re-scoped: the duplicate-key symptom was my measurement artifact
+
+Re-inspected the live queue. Pebble now shows **1 pending, 0 bounced**, matching `queue status`
+exactly. The earlier "same id in both namespaces" reading came from copying Pebble while raft was
+still replaying its log after the 08:31 restart -- a window in which both keys legitimately exist,
+because the composite move is applied as part of replay. Once replay finished, state converged.
+
+**The queue is not corrupt.** The atomic composite move works as designed.
+
+That is the third measurement error of this shape in this phase: counting log warnings across two
+restarts, reading `no logs to truncate` as failure, and now inspecting a store mid-replay. The
+common fault is sampling a system while it is converging and reporting the sample as the state.
+When inspecting a store copy, wait for replay to finish first, and cross-check against an
+independent reading -- `queue status` disagreed with me and was right.
+
+**What is real:** `c22cdaa4` (`login@havencast.eu` -> `lnhaig@gmail.com`, enqueued 2026-08-30)
+references blob `0382dca98c5b...`, destroyed by the incident sweep. Every attempt fails
+identically. It is bounded at `maxAttempts = 10`, so it bounces at attempt 9 and self-resolves,
+but it burns nine attempts over days and the eventual DSN blames delivery rather than saying the
+body is gone.
+
+Worth fixing as fail-fast: a missing body blob is not a transient condition and no retry can
+change it.
