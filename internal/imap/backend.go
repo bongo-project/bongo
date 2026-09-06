@@ -42,8 +42,51 @@ type session struct {
 	selectedMailbox string
 	readOnly        bool
 
-	// Cached message list for sequence number mapping.
+	// Cached message list for sequence number mapping. This is the SERVER's
+	// view. Any handler may refresh it at will, and most do, because a command
+	// needs current sequence numbers to resolve the message set it was given.
 	cachedMsgs []*bongov1.MailboxMessage
+
+	// reportedUIDs is the mailbox as the CLIENT believes it to be: the UIDs it
+	// has actually been sent, in order, so index i is sequence number i+1.
+	//
+	// This is deliberately not cachedMsgs. Poll reports the difference between
+	// what the client has been told and what is really there, so its baseline
+	// has to be the client's view; if it reads a field that handlers refresh,
+	// the difference is erased before Poll ever runs and the update is dropped
+	// rather than delayed. That was the bug: FETCH, STORE and SEARCH each
+	// refresh cachedMsgs, go-imap calls Poll after the handler returns, and so
+	// a message that arrived from another connection was never announced.
+	//
+	// Write here only where the client has actually been sent an untagged
+	// EXISTS or EXPUNGE -- Select, Poll, Idle, Expunge and Move. Refreshing a
+	// cache is not telling the client anything. A handler that assigns to this
+	// field re-creates the original bug.
+	reportedUIDs []uint32
+}
+
+// setReported records that the client has now been shown exactly these
+// messages. Callers must have written the corresponding EXISTS first.
+func (s *session) setReported(msgs []*bongov1.MailboxMessage) {
+	uids := make([]uint32, len(msgs))
+	for i, msg := range msgs {
+		uids[i] = msg.Uid
+	}
+	s.reportedUIDs = uids
+}
+
+// dropReported records that the client has been sent an EXPUNGE for uid.
+//
+// It removes one UID rather than resetting the whole baseline, because the
+// client may still be owed an EXISTS for messages that arrived and have not
+// been announced yet. Resetting here would swallow those.
+func (s *session) dropReported(uid uint32) {
+	for i, reported := range s.reportedUIDs {
+		if reported == uid {
+			s.reportedUIDs = append(s.reportedUIDs[:i], s.reportedUIDs[i+1:]...)
+			return
+		}
+	}
 }
 
 // Compile-time interface checks.
@@ -125,6 +168,10 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 	if err != nil {
 		return nil, fmt.Errorf("listing messages: %w", err)
 	}
+
+	// SELECT is the moment the client is told the whole truth about a mailbox,
+	// so it is also where the client's view is (re)established.
+	s.setReported(s.cachedMsgs)
 
 	total, recent, unseen, err := s.mailboxes.CountMessages(s.userID, mailbox)
 	if err != nil {
@@ -455,8 +502,94 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 	}, nil
 }
 
-// Poll checks for updates (no-op, we use IDLE).
+// updateWriter is the part of *imapserver.UpdateWriter that pollUpdates needs.
+// Declared at the consumer both because that is the house style and because
+// imapserver.UpdateWriter has only unexported fields, so a test cannot build
+// one; an interface is the only way to observe what Poll emits without
+// standing up a whole server and client.
+type updateWriter interface {
+	WriteNumMessages(n uint32) error
+	WriteExpunge(seqNum uint32) error
+}
+
+// Poll reports mailbox changes the client has not been told about yet.
+//
+// go-imap calls this after every command once the connection is authenticated
+// or selected (imapserver/conn.go), which makes it the delivery path for
+// untagged EXISTS and EXPUNGE to a client that polls with NOOP. It used to
+// return nil on the assumption that IDLE was the only channel that mattered.
+// It is not: Thunderbird IDLEs on INBOX and NOOP-polls every other folder, so a
+// message appended to Sent was stored correctly and then stayed invisible until
+// the client restarted and issued a fresh SELECT.
 func (s *session) Poll(w *imapserver.UpdateWriter, allowExpunge bool) error {
+	return s.pollUpdates(w, allowExpunge)
+}
+
+// pollUpdates diffs the mailbox against s.cachedMsgs -- the sequence-number map
+// the client was last shown -- and writes the difference.
+func (s *session) pollUpdates(w updateWriter, allowExpunge bool) error {
+	if s.selectedMailbox == "" {
+		return nil
+	}
+
+	msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
+	if err != nil {
+		return fmt.Errorf("polling mailbox %q: %w", s.selectedMailbox, err)
+	}
+
+	present := make(map[uint32]struct{}, len(msgs))
+	for _, msg := range msgs {
+		present[msg.Uid] = struct{}{}
+	}
+
+	// Sequence numbers are positions in the list the client currently holds, so
+	// they are derived from the client's view rather than from the fresh list.
+	var expungedSeqNums []uint32
+	for i, uid := range s.reportedUIDs {
+		if _, ok := present[uid]; !ok {
+			expungedSeqNums = append(expungedSeqNums, uint32(i+1))
+		}
+	}
+
+	if len(expungedSeqNums) > 0 && !allowExpunge {
+		// FETCH, STORE and SEARCH forbid EXPUNGE mid-command (RFC 3501 7.4.1):
+		// the client is still resolving the message set it named, and
+		// renumbering underneath it would silently retarget the command.
+		// WriteExpunge would reject the call anyway. Report nothing at all --
+		// an EXISTS describing a mailbox whose removals the client has not been
+		// told about would leave it with a count it cannot reconcile -- and
+		// leave the client's view untouched so the next expunge-allowing Poll
+		// still reports these removals instead of losing them.
+		return nil
+	}
+
+	// Highest sequence number first. Each EXPUNGE the client applies shifts
+	// every higher sequence number down by one, so descending order lets the
+	// client apply them verbatim; ascending order would leave every later
+	// number in this batch pointing one message too high.
+	for i := len(expungedSeqNums) - 1; i >= 0; i-- {
+		if err := w.WriteExpunge(expungedSeqNums[i]); err != nil {
+			return fmt.Errorf("writing expunge for mailbox %q: %w", s.selectedMailbox, err)
+		}
+	}
+
+	// After applying the expunges above, this is the count the client believes.
+	// Anything else means messages arrived, which is what EXISTS announces.
+	clientCount := len(s.reportedUIDs) - len(expungedSeqNums)
+	if len(msgs) != clientCount {
+		if err := w.WriteNumMessages(clampUint32(len(msgs))); err != nil {
+			return fmt.Errorf("writing exists for mailbox %q: %w", s.selectedMailbox, err)
+		}
+	}
+
+	// The client is now in step with msgs. Without this the next Poll would
+	// re-diff against the stale view and repeat every report.
+	s.setReported(msgs)
+
+	// Refreshing the server-side cache here is incidental: the fresh list is
+	// already in hand, and it keeps EXPUNGE's sequence-number lookup current
+	// across a run of NOOPs.
+	s.cachedMsgs = msgs
 	return nil
 }
 
@@ -484,6 +617,9 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 				msgs, err := s.mailboxes.ListMessages(s.userID, s.selectedMailbox)
 				if err == nil {
 					s.cachedMsgs = msgs
+					// The EXISTS below tells the client about these, so the
+					// next Poll must not announce them a second time.
+					s.setReported(msgs)
 				}
 				if err := w.WriteNumMessages(notif.ExistsCount); err != nil {
 					return err
@@ -492,6 +628,10 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 				if err := w.WriteExpunge(notif.SeqNum); err != nil {
 					return err
 				}
+				// Nothing emits this notification yet. Kept in step anyway, so
+				// that whoever wires up a producer does not also have to
+				// discover that Poll would re-report the removal.
+				s.dropReported(notif.UID)
 			case NotifFlagChange:
 				// Fetch the message to include tag-derived keywords in the flags response.
 				updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, notif.UID)
@@ -513,6 +653,7 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 func (s *session) Unselect() error {
 	s.selectedMailbox = ""
 	s.cachedMsgs = nil
+	s.reportedUIDs = nil
 	return nil
 }
 
@@ -540,6 +681,10 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 			}
 		}
 		s.removeFromCache(uid)
+		// The client has been sent the EXPUNGE, so its view has changed too.
+		// Without this a following Poll re-sends the same sequence number and
+		// the client drops a message it should have kept.
+		s.dropReported(uid)
 	}
 
 	return nil
@@ -829,7 +974,7 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 		return &imap.BodyStructureSinglePart{
 			Type:    "text",
 			Subtype: "plain",
-			Size:    bodyPartSize(len(rawMsg)),
+			Size:    clampUint32(len(rawMsg)),
 		}
 	}
 
@@ -855,14 +1000,14 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 			children = append(children, &imap.BodyStructureSinglePart{
 				Type:    "text",
 				Subtype: "plain",
-				Size:    bodyPartSize(len(env.Text)),
+				Size:    clampUint32(len(env.Text)),
 			})
 		}
 		if env.HTML != "" {
 			children = append(children, &imap.BodyStructureSinglePart{
 				Type:    "text",
 				Subtype: "html",
-				Size:    bodyPartSize(len(env.HTML)),
+				Size:    clampUint32(len(env.HTML)),
 			})
 		}
 		for _, att := range env.Attachments {
@@ -876,7 +1021,7 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 			children = append(children, &imap.BodyStructureSinglePart{
 				Type:    attType,
 				Subtype: attSub,
-				Size:    bodyPartSize(len(att.Content)),
+				Size:    clampUint32(len(att.Content)),
 			})
 		}
 		if len(children) == 0 {
@@ -894,7 +1039,7 @@ func (s *session) buildBodyStructure(rawMsg []byte) imap.BodyStructure {
 	return &imap.BodyStructureSinglePart{
 		Type:    mainType,
 		Subtype: subType,
-		Size:    bodyPartSize(len(rawMsg)),
+		Size:    clampUint32(len(rawMsg)),
 	}
 }
 
@@ -918,7 +1063,7 @@ func ensureExtendedBodyStructure(bs imap.BodyStructure) {
 	}
 }
 
-func bodyPartSize(n int) uint32 {
+func clampUint32(n int) uint32 {
 	if n <= 0 {
 		return 0
 	}
@@ -1238,6 +1383,7 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 
 	var srcUIDs, dstUIDs imap.UIDSet
 	var expungeSeqNums []uint32
+	var movedUIDs []uint32
 
 	for seqNum, msg := range msgs {
 		seqNum := uint32(seqNum + 1)
@@ -1257,6 +1403,7 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 			dstUIDs.AddNum(imap.UID(dstMeta.UidNext - 1))
 		}
 		expungeSeqNums = append(expungeSeqNums, seqNum)
+		movedUIDs = append(movedUIDs, msg.Uid)
 	}
 
 	dstMeta, _ := s.mailboxes.GetMailbox(s.userID, dest)
@@ -1282,6 +1429,12 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 		if err := w.WriteExpunge(expungeSeqNums[i]); err != nil {
 			return err
 		}
+	}
+
+	// MOVE deletes from the source (RFC 6851) and has just told the client so,
+	// which changes the client's view as well as the cache.
+	for _, uid := range movedUIDs {
+		s.dropReported(uid)
 	}
 
 	// Refresh cache.
