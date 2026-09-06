@@ -74,6 +74,7 @@ func TestInternalRoutesRequireAuth(t *testing.T) {
 		{http.MethodDelete, "/internal/kv/test%2Fkey"},
 		{http.MethodGet, "/internal/cluster/members"},
 		{http.MethodPost, "/internal/cluster/join"},
+		{http.MethodPost, "/internal/cluster/snapshot"},
 		{http.MethodGet, "/internal/blob/" + strings.Repeat("a", 64)},
 		{http.MethodHead, "/internal/blob/" + strings.Repeat("a", 64)},
 		{http.MethodPost, "/internal/user/create"},

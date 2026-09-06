@@ -12,10 +12,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bongo-project/bongo/internal/cluster"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 var (
-	clusterHTTPAddr string
+	clusterHTTPAddr      string
+	clusterSessionSecret string
 )
 
 var clusterCmd = &cobra.Command{
@@ -30,10 +32,25 @@ var clusterStatusCmd = &cobra.Command{
 	RunE:  runClusterStatus,
 }
 
+// A snapshot is otherwise only taken when the raft log passes
+// cluster.raft.snapshot_threshold. On a low-volume node that threshold can be
+// weeks of writes away, so every restart restores from a long-stale snapshot
+// and replays a log that never truncates. This forces one on demand.
+var clusterSnapshotCmd = &cobra.Command{
+	Use:   "snapshot",
+	Short: "Force the leader to take a Raft snapshot now",
+	Long: "Trigger an immediate Raft snapshot on the leader, without waiting for\n" +
+		"cluster.raft.snapshot_threshold to be reached. Must be run against the\n" +
+		"leader node; a follower reports which state it is in instead.",
+	RunE: runClusterSnapshot,
+}
+
 func init() {
-	clusterStatusCmd.Flags().StringVar(&clusterHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
+	clusterCmd.PersistentFlags().StringVar(&clusterHTTPAddr, "http-addr", "127.0.0.1:8080", "HTTP address of the local node")
+	clusterSnapshotCmd.Flags().StringVar(&clusterSessionSecret, "session-secret", "", "web.session_secret of the node, required to authenticate the internal request (falls back to BONGO_WEB_SESSION_SECRET)")
 
 	clusterCmd.AddCommand(clusterStatusCmd)
+	clusterCmd.AddCommand(clusterSnapshotCmd)
 	rootCmd.AddCommand(clusterCmd)
 }
 
@@ -74,5 +91,74 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("flushing output: %w", err)
 	}
 
+	return nil
+}
+
+// clusterRequest performs an HMAC-signed call to an /internal/ endpoint on the
+// local node, following the same shape as addressRequest and queueRequest.
+//
+// Deliberately a fourth copy rather than a shared helper: keeping this change
+// confined to the raft fix was worth more than the deduplication, and each
+// command owns its own --session-secret and --http-addr flags. If these are
+// ever unified, all four should move together.
+func clusterRequest(method, url string) (*http.Response, error) {
+	secret := clusterSessionSecret
+	if secret == "" {
+		secret = os.Getenv("BONGO_WEB_SESSION_SECRET")
+	}
+
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	if secret != "" {
+		security.SignInternalRequest(req, []byte(secret))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %s: %w", clusterHTTPAddr, err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		if err := resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("closing response body: %w", err)
+		}
+		return nil, fmt.Errorf("server returned 401 Unauthorized: pass --session-secret (or set BONGO_WEB_SESSION_SECRET) matching the node's web.session_secret")
+	}
+	return resp, nil
+}
+
+func runClusterSnapshot(cmd *cobra.Command, args []string) error {
+	if _, _, err := net.SplitHostPort(clusterHTTPAddr); err != nil {
+		return fmt.Errorf("invalid --http-addr %q: %w", clusterHTTPAddr, err)
+	}
+	url := fmt.Sprintf("http://%s/internal/cluster/snapshot", clusterHTTPAddr)
+
+	resp, err := clusterRequest(http.MethodPost, url)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading response: %w", err)
+	}
+
+	var out struct {
+		Status     string `json:"status"`
+		Error      string `json:"error"`
+		DurationMS int64  `json:"duration_ms"`
+	}
+	// A non-JSON body (a proxy error page, say) should still surface the
+	// status line rather than a decode error.
+	if jsonErr := json.Unmarshal(body, &out); jsonErr != nil {
+		return fmt.Errorf("server returned %s: %s", resp.Status, string(body))
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("snapshot not taken (%s): %s", resp.Status, out.Error)
+	}
+
+	fmt.Printf("Snapshot: %s (%dms)\n", out.Status, out.DurationMS)
 	return nil
 }

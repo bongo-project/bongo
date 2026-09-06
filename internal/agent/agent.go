@@ -1273,6 +1273,14 @@ func (a *Agent) Run(ctx context.Context) error {
 			r.Post("/internal/addresses/repair", addrRepairH.Repair)
 		})
 
+		// Forced raft snapshot. Same private/internal gate: this drives the
+		// leader's state machine and truncates the raft log.
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireInternalAuth(sessionSecret))
+			snapH := handlers.NewClusterSnapshotHandler(a.Raft.Raft, a.logger)
+			r.Post("/internal/cluster/snapshot", snapH.Snapshot)
+		})
+
 		// Dangling-mail routes: metadata whose body blob is missing. Same
 		// private/internal gate -- the purge destroys mail metadata.
 		r.Group(func(r chi.Router) {

@@ -59,6 +59,53 @@ type RaftConfig struct {
 	Port              int    `hcl:"port,optional" mapstructure:"port"`
 	SnapshotThreshold int    `hcl:"snapshot_threshold,optional" mapstructure:"snapshot_threshold"`
 	SnapshotInterval  string `hcl:"snapshot_interval,optional" mapstructure:"snapshot_interval"`
+	// TrailingLogs is how many raft log entries are kept after a snapshot, so a
+	// lagging follower can still be caught up from the log instead of being
+	// shipped the whole snapshot.
+	//
+	// Unset (0) leaves hashicorp/raft's own default of 10240, which is larger
+	// than our default snapshot_threshold of 8192: a snapshot fires and then
+	// retains more entries than the threshold that triggered it, so the log
+	// never truncates and grows without bound. Set this below
+	// snapshot_threshold to make snapshots actually reclaim the log.
+	TrailingLogs int `hcl:"trailing_logs,optional" mapstructure:"trailing_logs"`
+}
+
+// defaultRaftSnapshotInterval matches the snapshot_interval shipped by
+// Defaults(); both must move together.
+const defaultRaftSnapshotInterval = 120 * time.Second
+
+// RaftSnapshotInterval parses SnapshotInterval into a time.Duration. Returns
+// 120s if the block is absent (nil receiver) or the value is empty or
+// unparseable, mirroring QueuePollInterval/PipelinePollInterval.
+func (c *RaftConfig) RaftSnapshotInterval() time.Duration {
+	if c == nil || c.SnapshotInterval == "" {
+		return defaultRaftSnapshotInterval
+	}
+	d, err := time.ParseDuration(c.SnapshotInterval)
+	if err != nil {
+		return defaultRaftSnapshotInterval
+	}
+	return d
+}
+
+// Validate rejects a trailing_logs/snapshot_threshold pairing that can never
+// truncate the raft log.
+//
+// Retaining at least as many entries as the threshold that triggers a snapshot
+// means every snapshot reclaims nothing: the log grows forever, restart replay
+// gets slower, and the symptom (a snapshot weeks out of date) only shows up
+// long after the config was written. Catch it at load time instead.
+func (c *RaftConfig) Validate() error {
+	if c == nil {
+		return nil
+	}
+	if c.TrailingLogs > 0 && c.SnapshotThreshold > 0 && c.TrailingLogs >= c.SnapshotThreshold {
+		return fmt.Errorf(
+			"cluster.raft: trailing_logs (%d) must be less than snapshot_threshold (%d), otherwise a snapshot never truncates the log",
+			c.TrailingLogs, c.SnapshotThreshold)
+	}
+	return nil
 }
 
 type GossipConfig struct {
@@ -705,6 +752,10 @@ func (c *Config) Validate() error {
 		if len(missing) > 0 {
 			return fmt.Errorf("cluster: joining peers requires transport security before a multi-node cluster can form; set %s (see docs/multi-node-cluster-checklist.md)", strings.Join(missing, " and "))
 		}
+	}
+
+	if err := c.Cluster.Raft.Validate(); err != nil {
+		return err
 	}
 
 	if _, err := c.SMTP.ParseTrustedNetworks(); err != nil {

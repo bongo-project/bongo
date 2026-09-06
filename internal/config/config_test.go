@@ -1298,3 +1298,138 @@ func TestDNSBLConfigValidate(t *testing.T) {
 		})
 	}
 }
+
+// TestRaftSnapshotInterval covers the accessor added because
+// cluster.raft.snapshot_interval was a documented, defaulted, settable key
+// that was parsed and then never applied to the raft config.
+func TestRaftSnapshotInterval(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  time.Duration
+	}{
+		{"explicit seconds", "30s", 30 * time.Second},
+		{"explicit minutes", "5m", 5 * time.Minute},
+		{"empty falls back to default", "", 120 * time.Second},
+		{"unparseable falls back to default", "not-a-duration", 120 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc := &RaftConfig{SnapshotInterval: tt.input}
+			if got := rc.RaftSnapshotInterval(); got != tt.want {
+				t.Errorf("RaftSnapshotInterval(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRaftSnapshotIntervalNilReceiver(t *testing.T) {
+	var rc *RaftConfig
+	if got := rc.RaftSnapshotInterval(); got != 120*time.Second {
+		t.Errorf("RaftSnapshotInterval() on nil = %v, want 120s", got)
+	}
+}
+
+func TestRaftDefaults(t *testing.T) {
+	cfg := Defaults()
+
+	if got := cfg.Cluster.Raft.RaftSnapshotInterval(); got != 120*time.Second {
+		t.Errorf("default snapshot_interval = %v, want 120s", got)
+	}
+	// TrailingLogs is deliberately left unset so hashicorp/raft's own default
+	// applies; changing it is a deployment-affecting decision made per-config,
+	// not a code default. Defaults() must therefore also pass Validate().
+	if cfg.Cluster.Raft.TrailingLogs != 0 {
+		t.Errorf("default trailing_logs = %d, want 0 (unset)", cfg.Cluster.Raft.TrailingLogs)
+	}
+	if err := cfg.Cluster.Raft.Validate(); err != nil {
+		t.Errorf("Validate() on defaults = %v, want nil", err)
+	}
+}
+
+func TestRaftConfigParsesFromHCL(t *testing.T) {
+	tests := []struct {
+		name          string
+		path          string
+		wantThreshold int
+		wantTrailing  int
+		wantInterval  time.Duration
+	}{
+		// The shipped production config is the file the bug was found in: it
+		// set snapshot_interval, and nothing applied it. Assert the real file
+		// rather than a synthetic one so a bad edit to it fails here.
+		{"prod config", "../../deploy/bongo.prod.hcl", 256, 128, 120 * time.Second},
+		// trailing_logs absent: stays 0 so hashicorp/raft's default applies.
+		{"testdata config without trailing_logs", "../../test/testdata/config.hcl", 4096, 0, 60 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := LoadFromFile(tt.path)
+			if err != nil {
+				t.Fatalf("LoadFromFile(%q): %v", tt.path, err)
+			}
+			if got := cfg.Cluster.Raft.SnapshotThreshold; got != tt.wantThreshold {
+				t.Errorf("snapshot_threshold = %d, want %d", got, tt.wantThreshold)
+			}
+			if got := cfg.Cluster.Raft.TrailingLogs; got != tt.wantTrailing {
+				t.Errorf("trailing_logs = %d, want %d", got, tt.wantTrailing)
+			}
+			if got := cfg.Cluster.Raft.RaftSnapshotInterval(); got != tt.wantInterval {
+				t.Errorf("snapshot_interval = %v, want %v", got, tt.wantInterval)
+			}
+		})
+	}
+}
+
+func TestRaftConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		rc      *RaftConfig
+		wantErr bool
+	}{
+		{"trailing below threshold", &RaftConfig{SnapshotThreshold: 256, TrailingLogs: 128}, false},
+		{"trailing equals threshold", &RaftConfig{SnapshotThreshold: 256, TrailingLogs: 256}, true},
+		{"trailing above threshold", &RaftConfig{SnapshotThreshold: 256, TrailingLogs: 512}, true},
+		{"trailing one below threshold", &RaftConfig{SnapshotThreshold: 256, TrailingLogs: 255}, false},
+		{"trailing unset", &RaftConfig{SnapshotThreshold: 256}, false},
+		{"threshold unset", &RaftConfig{TrailingLogs: 128}, false},
+		{"both unset", &RaftConfig{}, false},
+		{"nil receiver", nil, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.rc.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), "trailing_logs") {
+				t.Errorf("Validate() error = %q, want it to name trailing_logs", err.Error())
+			}
+		})
+	}
+}
+
+// TestConfigValidateRejectsRaftPairing proves the raft check is reached
+// through the top-level Config.Validate(), not only when called directly.
+func TestConfigValidateRejectsRaftPairing(t *testing.T) {
+	cfg := Defaults()
+	cfg.Server.Role = "server"
+	cfg.Cluster.Raft.SnapshotThreshold = 256
+	cfg.Cluster.Raft.TrailingLogs = 256
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() = nil, want an error for trailing_logs >= snapshot_threshold")
+	}
+	if !strings.Contains(err.Error(), "trailing_logs") {
+		t.Errorf("Validate() error = %q, want it to name trailing_logs", err.Error())
+	}
+
+	cfg.Cluster.Raft.TrailingLogs = 128
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() with a valid pairing = %v, want nil", err)
+	}
+}
