@@ -225,13 +225,23 @@ func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) e
 	return nil
 }
 
-// Subscribe is a no-op (we don't track subscriptions).
+// Subscribe adds a mailbox to the user's subscription set.
 func (s *session) Subscribe(mailbox string) error {
+	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, true); err != nil {
+		s.logger.Warn("imap: subscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
+		return err
+	}
+	s.logger.Info("imap: mailbox subscribed", "mailbox", mailbox, "user", s.userID)
 	return nil
 }
 
-// Unsubscribe is a no-op.
+// Unsubscribe removes a mailbox from the user's subscription set.
 func (s *session) Unsubscribe(mailbox string) error {
+	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, false); err != nil {
+		s.logger.Warn("imap: unsubscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
+		return err
+	}
+	s.logger.Info("imap: mailbox unsubscribed", "mailbox", mailbox, "user", s.userID)
 	return nil
 }
 
@@ -255,6 +265,22 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 			continue
 		}
 
+		// SelectSubscribed is a filter, not a hint: RFC 5258 3.1 has the
+		// option list subscribed names "rather than the existing mailboxes",
+		// so an unsubscribed mailbox is dropped here rather than reported
+		// without \Subscribed. This path is also how LSUB is served — go-imap
+		// dispatches LSUB as List with SelectSubscribed set
+		// (imapserver/list.go) — so getting it wrong returns every folder to
+		// an LSUB, which is what it used to do.
+		//
+		// SelectRecursiveMatch is not implemented: such a LIST gets the plain
+		// subscribed set with no CHILDINFO annotations on unsubscribed
+		// parents.
+		subscribed := !mb.Unsubscribed
+		if options != nil && options.SelectSubscribed && !subscribed {
+			continue
+		}
+
 		// Determine hierarchy attribute.
 		hasChildren := false
 		for _, other := range mailboxes {
@@ -268,6 +294,12 @@ func (s *session) List(w *imapserver.ListWriter, ref string, patterns []string, 
 			attrs = append(attrs, imap.MailboxAttrHasChildren)
 		} else {
 			attrs = append(attrs, imap.MailboxAttrHasNoChildren)
+		}
+
+		// RFC 5258 3.1: the SUBSCRIBED selection option implies the SUBSCRIBED
+		// return option, so \Subscribed is emitted under either one.
+		if subscribed && options != nil && (options.ReturnSubscribed || options.SelectSubscribed) {
+			attrs = append(attrs, imap.MailboxAttrSubscribed)
 		}
 
 		// Add special-use attributes.
