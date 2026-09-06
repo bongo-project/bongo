@@ -175,13 +175,20 @@ func TestParseAddressList(t *testing.T) {
 	})
 }
 
-func TestSessionUIDToSeqNum(t *testing.T) {
+func TestSessionReportedSeqNum(t *testing.T) {
 	s := &session{
+		// The client's view and the server's DIVERGE here on purpose: the
+		// server has seen UID 15 arrive, the client has not been told. That is
+		// the ordinary steady state between an append and the next poll, and
+		// it is exactly when a sequence number computed from the wrong list
+		// addresses the wrong message.
 		cachedMsgs: []*bongov1.MailboxMessage{
 			{Uid: 10},
+			{Uid: 15},
 			{Uid: 20},
 			{Uid: 30},
 		},
+		reportedUIDs: []uint32{10, 20, 30},
 	}
 
 	tests := []struct {
@@ -189,15 +196,18 @@ func TestSessionUIDToSeqNum(t *testing.T) {
 		want uint32
 	}{
 		{10, 1},
+		// 2 in the client's view, 3 in the server's. Reading from cachedMsgs
+		// returns 3 and the client expunges or reports the wrong message.
 		{20, 2},
 		{30, 3},
-		{99, 0}, // not found
+		{15, 0}, // on the server, never announced -- the client cannot address it
+		{99, 0}, // not present anywhere
 	}
 
 	for _, tt := range tests {
-		got := s.uidToSeqNum(tt.uid)
+		got := s.reportedSeqNum(tt.uid)
 		if got != tt.want {
-			t.Errorf("uidToSeqNum(%d) = %d, want %d", tt.uid, got, tt.want)
+			t.Errorf("reportedSeqNum(%d) = %d, want %d", tt.uid, got, tt.want)
 		}
 	}
 }
