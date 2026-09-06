@@ -19,6 +19,18 @@ message MailboxMeta {
   string name = 1;
   uint32 uid_validity = 2;
   uint32 uid_next = 3;
+
+  // Subscription state is stored INVERTED on purpose: this is "unsubscribed",
+  // not "subscribed". Do not "tidy" it into the positive form.
+  //
+  // Every mailbox written before this field existed decodes it as the proto3
+  // zero value, false. False here means "still subscribed", so an upgrade
+  // leaves every existing folder exactly as it behaved before and only an
+  // explicit IMAP UNSUBSCRIBE changes anything. Stored positively, that same
+  // zero value would read as "not subscribed" and silently unsubscribe every
+  // folder of every user on upgrade — LSUB would go empty and clients would
+  // stop showing mail.
+  bool unsubscribed = 4;
 }
 
 message MailboxMessage {

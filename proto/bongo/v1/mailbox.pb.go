@@ -33,10 +33,21 @@ const (
 // If profiling shows prefix scans are too slow for large mailboxes, counters
 // can be added as cached fields with invalidation on message insert/delete/flag.
 type MailboxMeta struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	UidValidity   uint32                 `protobuf:"varint,2,opt,name=uid_validity,json=uidValidity,proto3" json:"uid_validity,omitempty"`
-	UidNext       uint32                 `protobuf:"varint,3,opt,name=uid_next,json=uidNext,proto3" json:"uid_next,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Name        string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	UidValidity uint32                 `protobuf:"varint,2,opt,name=uid_validity,json=uidValidity,proto3" json:"uid_validity,omitempty"`
+	UidNext     uint32                 `protobuf:"varint,3,opt,name=uid_next,json=uidNext,proto3" json:"uid_next,omitempty"`
+	// Subscription state is stored INVERTED on purpose: this is "unsubscribed",
+	// not "subscribed". Do not "tidy" it into the positive form.
+	//
+	// Every mailbox written before this field existed decodes it as the proto3
+	// zero value, false. False here means "still subscribed", so an upgrade
+	// leaves every existing folder exactly as it behaved before and only an
+	// explicit IMAP UNSUBSCRIBE changes anything. Stored positively, that same
+	// zero value would read as "not subscribed" and silently unsubscribe every
+	// folder of every user on upgrade — LSUB would go empty and clients would
+	// stop showing mail.
+	Unsubscribed  bool `protobuf:"varint,4,opt,name=unsubscribed,proto3" json:"unsubscribed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -90,6 +101,13 @@ func (x *MailboxMeta) GetUidNext() uint32 {
 		return x.UidNext
 	}
 	return 0
+}
+
+func (x *MailboxMeta) GetUnsubscribed() bool {
+	if x != nil {
+		return x.Unsubscribed
+	}
+	return false
 }
 
 type MailboxMessage struct {
@@ -172,11 +190,12 @@ var File_proto_bongo_v1_mailbox_proto protoreflect.FileDescriptor
 
 const file_proto_bongo_v1_mailbox_proto_rawDesc = "" +
 	"\n" +
-	"\x1cproto/bongo/v1/mailbox.proto\x12\bbongo.v1\"_\n" +
+	"\x1cproto/bongo/v1/mailbox.proto\x12\bbongo.v1\"\x83\x01\n" +
 	"\vMailboxMeta\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fuid_validity\x18\x02 \x01(\rR\vuidValidity\x12\x19\n" +
-	"\buid_next\x18\x03 \x01(\rR\auidNext\"\x8e\x01\n" +
+	"\buid_next\x18\x03 \x01(\rR\auidNext\x12\"\n" +
+	"\funsubscribed\x18\x04 \x01(\bR\funsubscribed\"\x8e\x01\n" +
 	"\x0eMailboxMessage\x12\x10\n" +
 	"\x03uid\x18\x01 \x01(\rR\x03uid\x12\x1b\n" +
 	"\tmail_guid\x18\x02 \x01(\tR\bmailGuid\x12\x14\n" +

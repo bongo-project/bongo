@@ -40,6 +40,8 @@ const (
 	mailboxExpungePrefix = "/__mailbox_expunge__/"
 	mailboxMovePrefix    = "/__mailbox_move__/"
 	mailboxRenamePrefix  = "/__mailbox_rename__/"
+
+	mailboxSubscribePrefix = "/__mailbox_subscribe__/"
 )
 
 type mailboxTransferPayload struct {
@@ -56,6 +58,14 @@ type mailboxRenamePayload struct {
 type mailboxDeliveryPayload struct {
 	Meta  []byte `json:"meta"`
 	Flags uint32 `json:"flags"`
+}
+
+// mailboxSubscribePayload carries the state the client asked for, in the
+// positive sense the IMAP commands use. The inversion to MailboxMeta's
+// unsubscribed field happens at apply time, so the wire payload of a
+// SUBSCRIBE reads as "subscribed": true.
+type mailboxSubscribePayload struct {
+	Subscribed bool `json:"subscribed"`
 }
 
 type MailboxCommandResult struct {
@@ -114,6 +124,10 @@ func mailboxRenameKey(userID string) []byte {
 	return []byte(mailboxRenamePrefix + userID)
 }
 
+func mailboxSubscribeKey(userID, mailbox string) []byte {
+	return []byte(mailboxSubscribePrefix + userID + "/" + mailbox)
+}
+
 // IsMailboxAppendCommand reports whether the key represents a synthetic
 // single-command mailbox append operation.
 func IsMailboxAppendCommand(key []byte) bool {
@@ -130,7 +144,8 @@ func IsMailboxSyntheticCommand(key []byte) bool {
 		strings.HasPrefix(keyStr, mailboxDeliverPrefix) ||
 		strings.HasPrefix(keyStr, mailboxExpungePrefix) ||
 		strings.HasPrefix(keyStr, mailboxMovePrefix) ||
-		strings.HasPrefix(keyStr, mailboxRenamePrefix)
+		strings.HasPrefix(keyStr, mailboxRenamePrefix) ||
+		strings.HasPrefix(keyStr, mailboxSubscribePrefix)
 }
 
 // ApplyMailboxCommand applies a synthetic mailbox command directly to the
@@ -151,6 +166,8 @@ func ApplyMailboxCommand(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCom
 		return nil, applyMailboxMove(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxRenamePrefix):
 		return nil, applyMailboxRename(ps, cmd)
+	case strings.HasPrefix(string(cmd.Key), mailboxSubscribePrefix):
+		return nil, applyMailboxSubscribe(ps, cmd)
 	default:
 		return nil, fmt.Errorf("not a synthetic mailbox command")
 	}
@@ -398,6 +415,9 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		Name:        payload.NewName,
 		UidValidity: oldMeta.UidValidity,
 		UidNext:     oldMeta.UidNext,
+		// Carried over so a rename does not silently resubscribe a folder the
+		// user had unsubscribed. It is the same mailbox under a new name.
+		Unsubscribed: oldMeta.Unsubscribed,
 	}
 	msgs, err := listMailboxMessages(ps, userID, payload.OldName)
 	if err != nil {
@@ -419,6 +439,34 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 			return fmt.Errorf("deleting old mailbox meta: %w", err)
 		}
 		return nil
+	})
+}
+
+// applyMailboxSubscribe records a mailbox's subscription state.
+//
+// It is a synthetic command rather than a plain PUT of a client-marshalled
+// MailboxMeta because the read-modify-write has to happen here, inside the FSM
+// apply that Raft serialises. A SUBSCRIBE that marshalled the whole meta on the
+// session's side would carry a stale uid_next and could roll back a delivery
+// that committed in between, handing the next message a duplicate UID.
+func applyMailboxSubscribe(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+	userID, mailbox, err := parseMailboxScopedKey(cmd.Key, mailboxSubscribePrefix)
+	if err != nil {
+		return err
+	}
+	var payload mailboxSubscribePayload
+	if err := json.Unmarshal(cmd.Value, &payload); err != nil {
+		return fmt.Errorf("parsing mailbox subscribe payload: %w", err)
+	}
+
+	meta, err := readMailboxMeta(ps, userID, mailbox)
+	if err != nil {
+		return fmt.Errorf("reading mailbox for subscribe: %w", err)
+	}
+	meta.Unsubscribed = !payload.Subscribed
+
+	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
+		return writeMailboxMetaBatch(batch, userID, mailbox, meta)
 	})
 }
 
@@ -662,6 +710,36 @@ func (ms *MailboxStore) RenameMailbox(userID, oldName, newName string) error {
 	cmd := &bongov1.RaftCommand{
 		Op:    bongov1.Op_OP_PUT,
 		Key:   mailboxRenameKey(userID),
+		Value: payload,
+	}
+	return ms.applier.ApplyCommand(cmd, 5*time.Second)
+}
+
+// SetSubscribed records the IMAP subscription state of a mailbox via Raft.
+//
+// A mailbox that does not exist is an error. RFC 3501 6.3.6 makes that
+// optional for SUBSCRIBE ("a server MAY validate the mailbox argument") and
+// expects UNSUBSCRIBE to succeed on a name whose mailbox is gone, but
+// subscription state is stored on the mailbox meta here, so there is nowhere
+// to record an answer for a mailbox that is not there. The same design means a
+// subscription can never outlive its mailbox, so there is never a stale one
+// left for UNSUBSCRIBE to remove either.
+//
+// The check is duplicated in applyMailboxSubscribe, which is the one that
+// holds under a race with DELETE and on a follower replaying the log. This one
+// fails fast with the mailbox name in the message and spares the cluster a
+// Raft round trip for a command that cannot apply.
+func (ms *MailboxStore) SetSubscribed(userID, name string, subscribed bool) error {
+	if _, err := ms.GetMailbox(userID, name); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(mailboxSubscribePayload{Subscribed: subscribed})
+	if err != nil {
+		return fmt.Errorf("marshaling mailbox subscribe payload: %w", err)
+	}
+	cmd := &bongov1.RaftCommand{
+		Op:    bongov1.Op_OP_PUT,
+		Key:   mailboxSubscribeKey(userID, name),
 		Value: payload,
 	}
 	return ms.applier.ApplyCommand(cmd, 5*time.Second)
