@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 var (
@@ -45,7 +48,30 @@ func init() {
 }
 
 func addressRequest(method, url string) (*http.Response, error) {
-	return signedInternalRequest(method, url, addressHTTPAddr, addressSessionSecret)
+	secret := addressSessionSecret
+	if secret == "" {
+		secret = os.Getenv("BONGO_WEB_SESSION_SECRET")
+	}
+
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	if secret != "" {
+		security.SignInternalRequest(req, []byte(secret))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %s: %w", addressHTTPAddr, err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		if err := resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("closing response body: %w", err)
+		}
+		return nil, fmt.Errorf("server returned 401 Unauthorized: pass --session-secret (or set BONGO_WEB_SESSION_SECRET) matching the node's web.session_secret")
+	}
+	return resp, nil
 }
 
 type orphanedAddressesResponse struct {

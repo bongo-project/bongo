@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/bongo-project/bongo/internal/cluster"
+	"github.com/bongo-project/bongo/internal/security"
 )
 
 var (
@@ -93,13 +94,47 @@ func runClusterStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// clusterRequest performs an HMAC-signed call to an /internal/ endpoint on the
+// local node, following the same shape as addressRequest and queueRequest.
+//
+// Deliberately a fourth copy rather than a shared helper: keeping this change
+// confined to the raft fix was worth more than the deduplication, and each
+// command owns its own --session-secret and --http-addr flags. If these are
+// ever unified, all four should move together.
+func clusterRequest(method, url string) (*http.Response, error) {
+	secret := clusterSessionSecret
+	if secret == "" {
+		secret = os.Getenv("BONGO_WEB_SESSION_SECRET")
+	}
+
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("building request: %w", err)
+	}
+	if secret != "" {
+		security.SignInternalRequest(req, []byte(secret))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("connecting to %s: %w", clusterHTTPAddr, err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		if err := resp.Body.Close(); err != nil {
+			return nil, fmt.Errorf("closing response body: %w", err)
+		}
+		return nil, fmt.Errorf("server returned 401 Unauthorized: pass --session-secret (or set BONGO_WEB_SESSION_SECRET) matching the node's web.session_secret")
+	}
+	return resp, nil
+}
+
 func runClusterSnapshot(cmd *cobra.Command, args []string) error {
 	if _, _, err := net.SplitHostPort(clusterHTTPAddr); err != nil {
 		return fmt.Errorf("invalid --http-addr %q: %w", clusterHTTPAddr, err)
 	}
 	url := fmt.Sprintf("http://%s/internal/cluster/snapshot", clusterHTTPAddr)
 
-	resp, err := signedInternalRequest(http.MethodPost, url, clusterHTTPAddr, clusterSessionSecret)
+	resp, err := clusterRequest(http.MethodPost, url)
 	if err != nil {
 		return err
 	}
