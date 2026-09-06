@@ -706,7 +706,7 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 	// Write expunge notifications (sequence numbers, from highest to lowest).
 	for i := len(expunged) - 1; i >= 0; i-- {
 		uid := expunged[i]
-		seqNum := s.uidToSeqNum(uid)
+		seqNum := s.reportedSeqNum(uid)
 		if seqNum > 0 {
 			if err := w.WriteExpunge(seqNum); err != nil {
 				return err
@@ -773,7 +773,7 @@ func (s *session) Search(kind imapserver.NumKind, criteria *imap.SearchCriteria,
 		// Convert UIDs to sequence numbers.
 		var seqNums imap.SeqSet
 		for _, uid := range matchedUIDs {
-			seqNum := s.uidToSeqNum(uint32(uid))
+			seqNum := s.reportedSeqNum(uint32(uid))
 			if seqNum > 0 {
 				seqNums.AddNum(seqNum)
 			}
@@ -1556,9 +1556,26 @@ func numSetContains(numSet imap.NumSet, seqNum uint32, uid imap.UID) bool {
 	return false
 }
 
-func (s *session) uidToSeqNum(uid uint32) uint32 {
-	for i, msg := range s.cachedMsgs {
-		if msg.Uid == uid {
+// reportedSeqNum maps a UID to the sequence number the CLIENT would use for
+// it, which is its position in reportedUIDs -- not its position in cachedMsgs.
+//
+// A sequence number is only meaningful relative to what the client has been
+// told the mailbox contains. The two views agree most of the time, because the
+// usual divergence is an append the client has not been told about yet, and
+// appends land at the end in UID order without shifting anything before them.
+// They stop agreeing the moment another connection removes a message between
+// the client's last update and this command: the server list then shortens
+// while the client's has not, every position after the removal shifts by one,
+// and a number computed from the server view addresses the wrong message.
+//
+// That matters most for EXPUNGE, where the wrong number makes the client drop
+// a message it should have kept, and for SEARCH, where it returns hits the
+// client cannot resolve. Returns 0 for a UID the client has never been told
+// about, which both callers treat as "skip" -- correct, since the client
+// cannot act on a message it does not know exists.
+func (s *session) reportedSeqNum(uid uint32) uint32 {
+	for i, reported := range s.reportedUIDs {
+		if reported == uid {
 			return uint32(i + 1)
 		}
 	}
