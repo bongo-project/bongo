@@ -428,6 +428,7 @@ func TestSessionUnselect(t *testing.T) {
 		cachedMsgs: []*bongov1.MailboxMessage{
 			{Uid: 1},
 		},
+		reportedUIDs: []uint32{1},
 	}
 	if err := s.Unselect(); err != nil {
 		t.Errorf("Unselect() error = %v", err)
@@ -437,6 +438,14 @@ func TestSessionUnselect(t *testing.T) {
 	}
 	if s.cachedMsgs != nil {
 		t.Error("cachedMsgs should be nil after Unselect")
+	}
+	// Nothing can currently observe a stale client view across an
+	// UNSELECT/CLOSE -- Poll returns early with no mailbox selected, and the
+	// next SELECT overwrites it. Pinned anyway so the two views are cleared
+	// together, because a future reader of reportedUIDs would inherit a
+	// mailbox's worth of UIDs belonging to a mailbox that is no longer open.
+	if s.reportedUIDs != nil {
+		t.Error("reportedUIDs should be nil after Unselect")
 	}
 }
 
