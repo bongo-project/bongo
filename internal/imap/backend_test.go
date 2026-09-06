@@ -315,15 +315,10 @@ func TestSessionClose(t *testing.T) {
 	}
 }
 
-func TestSessionSubscribeUnsubscribe(t *testing.T) {
-	s := &session{}
-	if err := s.Subscribe("INBOX"); err != nil {
-		t.Errorf("Subscribe() error = %v", err)
-	}
-	if err := s.Unsubscribe("INBOX"); err != nil {
-		t.Errorf("Unsubscribe() error = %v", err)
-	}
-}
+// TestSessionSubscribeUnsubscribe used to live here. It asserted that
+// Subscribe and Unsubscribe on a bare session returned nil, which was only
+// true while both were no-ops -- the bug itself. Subscriptions are now
+// persisted and are covered over the wire in subscription_e2e_test.go.
 
 func TestSeparateFlags(t *testing.T) {
 	tests := []struct {
