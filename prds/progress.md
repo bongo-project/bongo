@@ -946,3 +946,27 @@ unproven.
 Also corrected in the same session: the stuck message is NOT retrying forever. `maxAttempts = 10`
 means it bounces at attempt 9. Every attempt until then is wasted and the bounce reason will be
 wrong, but it terminates.
+
+## 2026-09-06 — B19: fail fast when a body blob is gone
+
+A message enqueued before the 2026-08-30 incident spent seven days cycling through attempts that
+each failed identically, because `handleFailure` treats every error as worth retrying and only
+bounces once `maxAttempts` is spent. The bytes are gone; the ninth attempt fails exactly as the
+first did.
+
+`handlePermanentFailure` bounces immediately without consuming retries. It fires only on
+`errors.Is(err, store.ErrNotFound)` -- the distinction that matters is "the body is gone" versus
+"the blob store is unwell". An I/O error, a permissions problem or a store still starting are all
+transient and keep their backoff.
+
+Both blob paths are covered: the plain `Get`, and `RawMessageBytes` for split messages, where a
+missing skeleton or attachment is equally unrecoverable.
+
+The DSN now says the body is no longer in the blob store, so the sender can tell that resending
+is the remedy rather than assuming a delivery problem.
+
+**Mutations (3, none survived):** revert to always-retry; treat EVERY failure as permanent; skip
+`MarkBounced` so the message stays pending. The second is the one worth having -- an
+implementation that bounced on everything would pass the fail-fast test while silently destroying
+the retry behaviour real delivery depends on. `TestWorkerRetriesWhenRelayFailsRatherThanBouncing`
+exists solely to kill it.
