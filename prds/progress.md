@@ -911,3 +911,38 @@ understood, and the dryrun window exercised one traffic pattern rather than many
 Both the repo config and the node now say `"on"`. The comment in `deploy/bongo.prod.hcl` carries
 the evidence, the decision, and the rollback instruction, so the next person to read that line
 learns why it says what it says without needing this file.
+
+## 2026-09-06 — v0.6.27 deployed: raft snapshots fixed, verified; B19 opened
+
+**Deployed and verified.** Snapshot went from `141-16388` (2026-08-23) to `167-22544` (today).
+Boot warnings 14 -> **0**. Blobsync failures 14 -> **0**. Time to healthy ~46s -> **16s**.
+Live config updated alongside the repo (`snapshot_threshold = 256`, `trailing_logs = 128`,
+`snapshot_interval = "120s"`) -- applying it only in git is the drift that bit us with `blob_gc`.
+
+**The log DID truncate; "no logs to truncate" was me misreading it.** Inspected a copy of the
+live Pebble store with a throwaway read-only tool: the raft log now holds **131 entries**, first
+`22417`, last `22547`. That is exactly `22544 - 128`, so `trailing_logs` is working. The line I
+read as failure came from a LATER snapshot call finding nothing left to do after an earlier one
+had already truncated. Replay went from ~6000 entries to 131, which is what turned 46s into 16s
+and is the most direct thing available for B12.
+
+Pebble's 9.5M was also misleading: the copied directory is 84K once opened and obsolete files
+are cleaned. The real key data was always small.
+
+**A measurement error worth remembering.** I reported "14 boot warnings after the fresh snapshot,
+worse than before" and nearly concluded the fix had failed. The `--since 5m` window covered BOTH
+restarts. Measured against the post-snapshot restart alone: zero. Pick the window to match the
+event, not a round number.
+
+**B19 opened** for queue integrity: the same message id in both `/queue/pending/` and
+`/queue/bounced/`, and a pending message referencing a blob that no longer exists. Ruled out by
+reading the code -- non-atomic moves (the transitions are a composite command committed in one
+synced Pebble batch), a silent copy (`findPendingKey` errors rather than returning empty), and
+blob GC (that hash appears in no sweep). Most likely legacy from before the composite command
+existed; `applyMove`'s own comment describes the two-call era that would produce exactly this.
+Not losing mail, but the queue is in a state the code says is impossible and the cause is
+unproven.
+
+Also corrected in the same session: the stuck message is NOT retrying forever. `maxAttempts = 10`
+means it bounces at attempt 9. Every attempt until then is wasted and the bounce reason will be
+wrong, but it terminates.
