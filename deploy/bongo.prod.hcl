@@ -23,9 +23,24 @@ server {
 cluster {
   # Single node: no peers to join.
   raft {
-    data_dir           = "/data/raft"
-    port               = 8300
-    snapshot_threshold = 8192
+    data_dir = "/data/raft"
+    port     = 8300
+
+    # Tuned for a low-volume single node (a few tens of raft entries a day).
+    # At the code default of 8192 the threshold is effectively never reached,
+    # so the node keeps restoring from a snapshot weeks out of date and replays
+    # an ever-growing log on every restart.
+    #
+    # trailing_logs MUST stay below snapshot_threshold: it is how many entries
+    # survive a snapshot, so a value at or above the threshold means each
+    # snapshot reclaims nothing and the log never truncates. Config load rejects
+    # an inverted pair.
+    #
+    # A busier deployment should raise both, keeping the same ordering --
+    # trailing_logs is the catch-up window for a lagging follower, and a
+    # too-small value forces a full snapshot transfer instead of a log replay.
+    snapshot_threshold = 256
+    trailing_logs      = 128
     snapshot_interval  = "120s"
   }
 
