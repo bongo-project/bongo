@@ -319,11 +319,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		// Create MailboxStore, Notifier, PreferenceStore, and ThreadStore.
 		a.Mailboxes = store.NewMailboxStore(pebbleStore, a)
 		a.Notifier = bongoimap.NewNotifier()
-		// Let mailbox mutations announce themselves. Without this only IMAP
-		// APPEND and Raft-applied delivery reach an idling client, so a flag
-		// change or an expunge made from the web UI -- or from a second IMAP
-		// connection -- stayed invisible until the client re-SELECTed.
-		a.Mailboxes.SetNotifier(bongoimap.NewStoreNotifier(a.Notifier))
+		// The notifier is wired to the Raft FSM rather than to the MailboxStore
+		// (see the SetNotifier call in Run). Every write here goes through Raft,
+		// and only the FSM's apply runs on every node, so emitting from the FSM
+		// is what lets a client idling on one node learn about a change made
+		// through another.
 		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
 		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)
@@ -2526,15 +2526,42 @@ func (a *Agent) migrateAddressIndex() {
 	a.logger.Info("startup: address index migration complete")
 }
 
-// NotifyNewMail implements the MailboxNotifier interface for the FSM.
+// The three methods below implement store.MailboxNotifier, which the Raft FSM
+// calls after applying a committed entry. They publish into the process-wide
+// hub that IMAP IDLE sessions and the web SSE stream subscribe to.
+
+// NotifyNewMail announces a message that has arrived in a mailbox.
 func (a *Agent) NotifyNewMail(userID, mailbox string, uid, existsCount uint32) {
-	if a.Notifier != nil {
-		a.Notifier.Notify(userID, mailbox, bongoimap.Notification{
-			Type:        bongoimap.NotifNewMail,
-			UID:         uid,
-			ExistsCount: existsCount,
-		})
+	a.notify(userID, mailbox, bongoimap.Notification{
+		Type:        bongoimap.NotifNewMail,
+		UID:         uid,
+		ExistsCount: existsCount,
+	})
+}
+
+// NotifyFlagChange announces a message whose flags have changed.
+func (a *Agent) NotifyFlagChange(userID, mailbox string, uid, flags uint32) {
+	a.notify(userID, mailbox, bongoimap.Notification{
+		Type:  bongoimap.NotifFlagChange,
+		UID:   uid,
+		Flags: flags,
+	})
+}
+
+// NotifyExpunge announces a message that has left a mailbox. It carries no
+// sequence number; see store.MailboxNotifier for why.
+func (a *Agent) NotifyExpunge(userID, mailbox string, uid uint32) {
+	a.notify(userID, mailbox, bongoimap.Notification{
+		Type: bongoimap.NotifExpunge,
+		UID:  uid,
+	})
+}
+
+func (a *Agent) notify(userID, mailbox string, notif bongoimap.Notification) {
+	if a.Notifier == nil {
+		return
 	}
+	a.Notifier.Notify(userID, mailbox, notif)
 }
 
 // autoJoinRaft finds the Raft leader via gossip metadata and sends a join request.

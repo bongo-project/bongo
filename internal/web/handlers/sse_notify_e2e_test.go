@@ -67,7 +67,12 @@ func newCrossEnv(t *testing.T) *crossEnv {
 		t.Fatalf("NewBlobStore: %v", err)
 	}
 
-	mailboxes := store.NewMailboxStore(ps, &directApplierTags{ps: ps})
+	// The applier needs the store back, because that is where it finds the
+	// notifier installed below: notifications are emitted by the apply, not by
+	// the mutation method that issued the command.
+	applier := &directApplierTags{ps: ps}
+	mailboxes := store.NewMailboxStore(ps, applier)
+	applier.mailboxes = mailboxes
 	if err := mailboxes.CreateMailbox(crossUser, "INBOX"); err != nil {
 		t.Fatalf("CreateMailbox INBOX: %v", err)
 	}

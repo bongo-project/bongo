@@ -62,7 +62,7 @@ func newPollTestStore(t *testing.T, mailbox string) (*store.MailboxStore, *store
 	}
 	t.Cleanup(func() { ps.Close() })
 
-	ms := store.NewMailboxStore(ps, &imapDirectApplier{store: ps})
+	ms := newDirectMailboxStore(ps)
 	if err := ms.CreateMailbox(pollTestUser, mailbox); err != nil {
 		t.Fatalf("CreateMailbox(%q): %v", mailbox, err)
 	}

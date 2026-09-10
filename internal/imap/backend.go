@@ -512,14 +512,10 @@ func (s *session) Append(mailbox string, r imap.LiteralReader, options *imap.App
 		}
 	}
 
-	// Notify IDLE watchers.
-	if s.notifier != nil {
-		total, _, _, _ := s.mailboxes.CountMessages(s.userID, mailbox)
-		s.notifier.Notify(s.userID, mailbox, Notification{
-			Type:        NotifNewMail,
-			ExistsCount: total,
-		})
-	}
+	// IDLE watchers are told by the apply of the delivery itself, which runs on
+	// every node. Announcing it here as well sent an idling client two EXISTS
+	// for one APPEND -- it reads the second as further new mail -- and told
+	// nobody on any other node.
 
 	// Get mailbox UIDValidity.
 	mbMeta, _ := s.mailboxes.GetMailbox(s.userID, mailbox)

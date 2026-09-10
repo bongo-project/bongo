@@ -464,12 +464,18 @@ func TestNotificationForUnknownMessageIsSkipped(t *testing.T) {
 		t.Fatalf("IDLE: %v", err)
 	}
 
-	// Delivery does not notify -- the Raft FSM announces arrivals, and this
-	// store is driven by a direct applier -- so the message lands without the
-	// idling client hearing about it. That is precisely the state the guard is
-	// for: the client's view is empty, so no sequence number addresses this
-	// message.
-	uid := deliverPollTestMessage(t, ms, "INBOX", "guid-1")
+	// Delivered through a second store over the same Pebble with no hub
+	// attached, so the arrival announces itself to nobody and the message lands
+	// without the idling client hearing about it. That is precisely the state
+	// the guard is for: the client's view is empty, so no sequence number
+	// addresses this message.
+	//
+	// The detour is necessary because the apply itself now announces arrivals
+	// on every node. Delivering through ms -- which the server shares -- would
+	// send this client an EXISTS, and a client that has been told the mailbox
+	// grew is no longer a client that was never shown the message.
+	silent := newDirectMailboxStore(ps)
+	uid := deliverPollTestMessage(t, silent, "INBOX", "guid-1")
 
 	if err := ms.SetFlags(pollTestUser, "INBOX", uid, store.FlagDeleted); err != nil {
 		t.Fatalf("SetFlags \\Deleted: %v", err)

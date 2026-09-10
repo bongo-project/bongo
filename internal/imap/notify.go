@@ -101,16 +101,22 @@ func (n *Notifier) Notify(userID, mailbox string, notif Notification) {
 	}
 }
 
-// StoreNotifier lets the store publish mailbox events into this hub without
+// StoreNotifier lets a store publish mailbox events into this hub without
 // importing it. internal/imap imports internal/store, so the arrow can only
 // point this way; store.MailboxNotifier is the interface at that consumer and
-// this is the adapter the agent injects.
+// this is the adapter.
 //
-// Emitting from the store rather than from the IMAP session is what makes a
-// change visible whichever protocol made it: marking a message read in the web
-// UI, in CalDAV-adjacent tooling or over IMAP all funnel through the same
-// MailboxStore methods, whereas a session-level producer would only ever see
-// its own protocol's traffic.
+// It is the wiring for a MailboxStore whose applier writes to Pebble directly
+// (store.MailboxStore.SetNotifier). A clustered agent wires the hub to the Raft
+// FSM instead, and implements store.MailboxNotifier itself -- see Agent's
+// NotifyNewMail, NotifyFlagChange and NotifyExpunge.
+//
+// Emitting from the apply rather than from the IMAP session is what makes a
+// change visible whichever protocol made it, and on whichever node the watcher
+// is connected to: marking a message read in the web UI, in CalDAV-adjacent
+// tooling or over IMAP all end up as the same replicated command, whereas a
+// session-level producer would only ever see its own protocol's traffic on its
+// own node.
 type StoreNotifier struct {
 	notifier *Notifier
 }
