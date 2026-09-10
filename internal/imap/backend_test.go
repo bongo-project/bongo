@@ -499,20 +499,42 @@ func TestBuildBodyStructureIsWritableAsExtended(t *testing.T) {
 
 // imapDirectApplier applies Raft commands straight to Pebble, mirroring the
 // FSM's dispatch so synthetic mailbox commands are interpreted rather than
-// written through as literal keys.
-type imapDirectApplier struct{ store *store.PebbleStore }
+// written through as literal keys, and so the notifications a client sees are
+// the ones the FSM would emit. Both go through the same shared dispatch, which
+// is the point: a divergent copy here would let every notification test pass
+// against a cluster that notifies nobody.
+type imapDirectApplier struct {
+	store     *store.PebbleStore
+	mailboxes *store.MailboxStore
+}
 
 func (a *imapDirectApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
-	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
-		_, err := store.ApplyMailboxCommand(a.store, cmd)
-		return err
+	var notifier store.MailboxNotifier
+	if a.mailboxes != nil {
+		notifier = a.mailboxes.Notifier()
 	}
+	pending := store.PrepareNotify(a.store, notifier, cmd, nil)
+
+	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
+		result, err := store.ApplyMailboxCommand(a.store, cmd)
+		if err != nil {
+			return err
+		}
+		pending.Emit(result)
+		return nil
+	}
+
+	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
-		return a.store.Set(cmd.Key, cmd.Value)
+		err = a.store.Set(cmd.Key, cmd.Value)
 	case bongov1.Op_OP_DELETE:
-		return a.store.Delete(cmd.Key)
+		err = a.store.Delete(cmd.Key)
 	}
+	if err != nil {
+		return err
+	}
+	pending.Emit(nil)
 	return nil
 }
 
@@ -527,7 +549,7 @@ func newReadOnlyTestSession(t *testing.T, readOnly bool) *session {
 	}
 	t.Cleanup(func() { ps.Close() })
 
-	ms := store.NewMailboxStore(ps, &imapDirectApplier{store: ps})
+	ms := newDirectMailboxStore(ps)
 	if err := ms.CreateMailbox("u1", "INBOX"); err != nil {
 		t.Fatalf("CreateMailbox INBOX: %v", err)
 	}
@@ -654,4 +676,13 @@ func TestCopyIsAllowedFromReadOnlyMailbox(t *testing.T) {
 		t.Error("COPY from a read-only mailbox was refused; it writes only to the " +
 			"destination and is permitted under EXAMINE")
 	}
+}
+
+// newDirectMailboxStore builds a MailboxStore whose applier writes straight to
+// ps and reports back through whatever notifier the store is later given.
+func newDirectMailboxStore(ps *store.PebbleStore) *store.MailboxStore {
+	applier := &imapDirectApplier{store: ps}
+	ms := store.NewMailboxStore(ps, applier)
+	applier.mailboxes = ms
+	return ms
 }

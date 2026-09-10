@@ -1,6 +1,10 @@
 package imap
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/bongo-project/bongo/internal/store"
+)
 
 // NotificationType identifies the kind of mailbox event.
 type NotificationType int
@@ -13,11 +17,19 @@ const (
 )
 
 // Notification represents a mailbox event for IDLE.
+//
+// It identifies a message by UID and carries no sequence number on purpose.
+// Sequence numbers are positions in the list a particular client has been told
+// the mailbox contains, so they are a property of a session, not of the event:
+// two clients whose views have diverged hold different numbers for this same
+// message. A producer -- which is the store, and so has no session -- cannot
+// compute one that is right for more than one recipient, and a wrong one makes
+// a client expunge a message it should have kept. Each consumer translates the
+// UID against its own view when it delivers (see session.reportedSeqNum).
 type Notification struct {
 	Type        NotificationType
 	UID         uint32
 	Flags       uint32
-	SeqNum      uint32
 	ExistsCount uint32
 
 	// Event reminder fields (only set when Type == NotifEventReminder).
@@ -87,4 +99,66 @@ func (n *Notifier) Notify(userID, mailbox string, notif Notification) {
 			// Drop if the subscriber's buffer is full.
 		}
 	}
+}
+
+// StoreNotifier lets a store publish mailbox events into this hub without
+// importing it. internal/imap imports internal/store, so the arrow can only
+// point this way; store.MailboxNotifier is the interface at that consumer and
+// this is the adapter.
+//
+// It is the wiring for a MailboxStore whose applier writes to Pebble directly
+// (store.MailboxStore.SetNotifier). A clustered agent wires the hub to the Raft
+// FSM instead, and implements store.MailboxNotifier itself -- see Agent's
+// NotifyNewMail, NotifyFlagChange and NotifyExpunge.
+//
+// Emitting from the apply rather than from the IMAP session is what makes a
+// change visible whichever protocol made it, and on whichever node the watcher
+// is connected to: marking a message read in the web UI, in CalDAV-adjacent
+// tooling or over IMAP all end up as the same replicated command, whereas a
+// session-level producer would only ever see its own protocol's traffic on its
+// own node.
+type StoreNotifier struct {
+	notifier *Notifier
+}
+
+// Compile-time check that the adapter still satisfies the store's interface.
+var _ store.MailboxNotifier = (*StoreNotifier)(nil)
+
+// NewStoreNotifier wraps n. A nil n is accepted and yields a silent sink, so a
+// role that never starts an IMAP hub needs no special-casing at the call site.
+func NewStoreNotifier(n *Notifier) *StoreNotifier {
+	return &StoreNotifier{notifier: n}
+}
+
+func (sn *StoreNotifier) publish(userID, mailbox string, notif Notification) {
+	if sn == nil || sn.notifier == nil {
+		return
+	}
+	sn.notifier.Notify(userID, mailbox, notif)
+}
+
+// NotifyNewMail implements store.MailboxNotifier.
+func (sn *StoreNotifier) NotifyNewMail(userID, mailbox string, uid, existsCount uint32) {
+	sn.publish(userID, mailbox, Notification{
+		Type:        NotifNewMail,
+		UID:         uid,
+		ExistsCount: existsCount,
+	})
+}
+
+// NotifyFlagChange implements store.MailboxNotifier.
+func (sn *StoreNotifier) NotifyFlagChange(userID, mailbox string, uid, flags uint32) {
+	sn.publish(userID, mailbox, Notification{
+		Type:  NotifFlagChange,
+		UID:   uid,
+		Flags: flags,
+	})
+}
+
+// NotifyExpunge implements store.MailboxNotifier.
+func (sn *StoreNotifier) NotifyExpunge(userID, mailbox string, uid uint32) {
+	sn.publish(userID, mailbox, Notification{
+		Type: NotifExpunge,
+		UID:  uid,
+	})
 }

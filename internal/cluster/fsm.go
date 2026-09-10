@@ -48,11 +48,6 @@ type BlobEnqueuer interface {
 	Enqueue(hash string)
 }
 
-// MailboxNotifier is the interface for notifying IMAP sessions of new mail.
-type MailboxNotifier interface {
-	NotifyNewMail(userID, mailbox string, uid, existsCount uint32)
-}
-
 // FSM implements raft.FSM, applying committed log entries to Pebble.
 type FSM struct {
 	store    *store.PebbleStore
@@ -73,7 +68,7 @@ type FSM struct {
 	depsMu   sync.RWMutex
 	search   SearchIndexer
 	blobSync BlobEnqueuer
-	notifier MailboxNotifier
+	notifier store.MailboxNotifier
 
 	// indexQueue carries derived-index work off the Raft apply path. Guarded by
 	// depsMu for the same reason as the fields above: StartIndexer assigns it
@@ -208,7 +203,12 @@ func (f *FSM) SetBlobSyncer(bs BlobEnqueuer) {
 }
 
 // SetNotifier sets the mailbox notifier (initialized after FSM).
-func (f *FSM) SetNotifier(n MailboxNotifier) {
+//
+// The FSM is where mailbox events are emitted, because it is the one component
+// that runs on EVERY node: a client idling on a follower has to learn about a
+// change made through the leader, and only the apply of the replicated log
+// entry happens on both.
+func (f *FSM) SetNotifier(n store.MailboxNotifier) {
 	f.depsMu.Lock()
 	defer f.depsMu.Unlock()
 	f.notifier = n
@@ -239,7 +239,7 @@ func (f *FSM) indexChan() chan *bongov1.RaftCommand {
 }
 
 // mailboxNotifier returns the current notifier, or nil if none is set.
-func (f *FSM) mailboxNotifier() MailboxNotifier {
+func (f *FSM) mailboxNotifier() store.MailboxNotifier {
 	f.depsMu.RLock()
 	defer f.depsMu.RUnlock()
 	return f.notifier
@@ -352,6 +352,10 @@ func opStringToProto(op string) bongov1.Op {
 
 // applyProto handles a protobuf-encoded RaftCommand.
 func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
+	// Snapshot before anything is written: deciding whether a message write is a
+	// flag change needs the flags it replaces, and the write destroys them.
+	pending := store.PrepareNotify(f.store, f.mailboxNotifier(), cmd, f.logger)
+
 	if cmd.Op == bongov1.Op_OP_PUT && store.IsMailboxSyntheticCommand(cmd.Key) {
 		result, err := store.ApplyMailboxCommand(f.store, cmd)
 		if err != nil {
@@ -360,6 +364,7 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 		}
 		f.logger.Debug("fsm: mailbox synthetic command applied", "key", string(cmd.Key))
 		f.handleMailboxCommandResult(result)
+		pending.Emit(result)
 		return nil
 	}
 
@@ -395,9 +400,15 @@ func (f *FSM) applyProto(cmd *bongov1.RaftCommand) interface{} {
 	f.logger.Debug("fsm: applied", "op", cmd.Op.String(), "key", string(cmd.Key))
 
 	f.updateDerivedIndexes(cmd)
+	pending.Emit(nil)
 	return nil
 }
 
+// handleMailboxCommandResult feeds a delivered message into the derived
+// indexes. Notifications are NOT emitted here -- they go through
+// store.PendingNotify, which every applier shares -- because this function only
+// has a delivery to work with, and expunges, moves and flag changes need
+// announcing too.
 func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 	if result == nil || result.NewMail == nil {
 		return
@@ -415,33 +426,6 @@ func (f *FSM) handleMailboxCommandResult(result *store.MailboxCommandResult) {
 				Value: metaBytes,
 			})
 		}
-	}
-
-	if notifier := f.mailboxNotifier(); notifier != nil {
-		// Count total messages for the IMAP EXISTS response.
-		var totalMsgs uint32
-		scanStart := time.Now()
-		prefix := []byte(fmt.Sprintf("/user/%s/mailbox/%s/msg/", newMail.UserID, newMail.Mailbox))
-		iter, err := f.store.PrefixScan(prefix)
-		if err == nil {
-			for iter.Next() {
-				totalMsgs++
-			}
-			if err := iter.Close(); err != nil {
-				f.logger.Warn("fsm: failed to close mailbox count iterator", "user", newMail.UserID, "mailbox", newMail.Mailbox, "error", err)
-			}
-		}
-		if elapsed := time.Since(scanStart); elapsed >= slowApplyThreshold {
-			// This scan is O(mailbox size) and runs inside the apply path for
-			// every delivery, purely to produce an IMAP EXISTS count.
-			f.logger.Warn("fsm: mailbox message count scan was slow",
-				"user", newMail.UserID,
-				"mailbox", newMail.Mailbox,
-				"messages", totalMsgs,
-				"duration_ms", elapsed.Milliseconds(),
-			)
-		}
-		notifier.NotifyNewMail(newMail.UserID, newMail.Mailbox, newMail.UID, totalMsgs)
 	}
 }
 
