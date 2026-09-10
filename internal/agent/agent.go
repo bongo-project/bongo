@@ -319,6 +319,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		// Create MailboxStore, Notifier, PreferenceStore, and ThreadStore.
 		a.Mailboxes = store.NewMailboxStore(pebbleStore, a)
 		a.Notifier = bongoimap.NewNotifier()
+		// Let mailbox mutations announce themselves. Without this only IMAP
+		// APPEND and Raft-applied delivery reach an idling client, so a flag
+		// change or an expunge made from the web UI -- or from a second IMAP
+		// connection -- stayed invisible until the client re-SELECTed.
+		a.Mailboxes.SetNotifier(bongoimap.NewStoreNotifier(a.Notifier))
 		a.Preferences = store.NewPreferenceStore(pebbleStore, a)
 		a.Rules = rules.NewRuleStore(pebbleStore, a)
 		a.Threads = store.NewThreadStore(pebbleStore, a.Mailboxes)

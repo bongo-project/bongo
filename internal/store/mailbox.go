@@ -20,8 +20,9 @@ type RaftApplier interface {
 
 // MailboxStore provides IMAP mailbox operations on top of PebbleStore + Raft.
 type MailboxStore struct {
-	store   *PebbleStore
-	applier RaftApplier
+	store    *PebbleStore
+	applier  RaftApplier
+	notifier MailboxNotifier
 }
 
 // NewMailboxStore creates a new MailboxStore.
@@ -1014,7 +1015,11 @@ func (ms *MailboxStore) SetFlags(userID, mailbox string, uid, flags uint32) erro
 		return err
 	}
 	msg.Flags = flags
-	return ms.writeMessage(userID, mailbox, uid, msg)
+	if err := ms.writeMessage(userID, mailbox, uid, msg); err != nil {
+		return err
+	}
+	ms.notifyFlagChange(userID, mailbox, uid, msg.Flags)
+	return nil
 }
 
 // AddFlags adds (OR) flags to a message via Raft.
@@ -1024,7 +1029,11 @@ func (ms *MailboxStore) AddFlags(userID, mailbox string, uid, flags uint32) erro
 		return err
 	}
 	msg.Flags |= flags
-	return ms.writeMessage(userID, mailbox, uid, msg)
+	if err := ms.writeMessage(userID, mailbox, uid, msg); err != nil {
+		return err
+	}
+	ms.notifyFlagChange(userID, mailbox, uid, msg.Flags)
+	return nil
 }
 
 // RemoveFlags clears (AND NOT) flags from a message via Raft.
@@ -1034,7 +1043,11 @@ func (ms *MailboxStore) RemoveFlags(userID, mailbox string, uid, flags uint32) e
 		return err
 	}
 	msg.Flags &^= flags
-	return ms.writeMessage(userID, mailbox, uid, msg)
+	if err := ms.writeMessage(userID, mailbox, uid, msg); err != nil {
+		return err
+	}
+	ms.notifyFlagChange(userID, mailbox, uid, msg.Flags)
+	return nil
 }
 
 // CopyMessage copies a message from one mailbox to another via Raft.
@@ -1070,7 +1083,16 @@ func (ms *MailboxStore) MoveMessage(userID, srcMailbox string, uid uint32, dstMa
 		Key:   mailboxMoveKey(userID),
 		Value: payload,
 	}
-	return ms.applier.ApplyCommand(cmd, 5*time.Second)
+	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
+		return err
+	}
+
+	// A move is a removal and an arrival, and watchers of each mailbox care
+	// about only their half. Announcing just the source expunge would leave a
+	// client idling on the destination showing a stale count.
+	ms.notifyExpunge(userID, srcMailbox, uid)
+	ms.notifyArrival(userID, dstMailbox)
+	return nil
 }
 
 // OrphanedMailGUIDs returns mail GUIDs whose MailMeta exists in Pebble but which
@@ -1154,6 +1176,14 @@ func (ms *MailboxStore) Expunge(userID, mailbox string) ([]uint32, error) {
 	}
 	if err := ms.applier.ApplyCommand(cmd, 5*time.Second); err != nil {
 		return expunged, fmt.Errorf("expunging mailbox: %w", err)
+	}
+
+	// One notification per UID rather than one for the batch: each consumer
+	// translates a UID into its own sequence number and renumbers as it goes,
+	// so a per-UID stream needs no agreement on ordering between producer and
+	// consumer.
+	for _, uid := range expunged {
+		ms.notifyExpunge(userID, mailbox, uid)
 	}
 	return expunged, nil
 }

@@ -657,14 +657,35 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 					return err
 				}
 			case NotifExpunge:
-				if err := w.WriteExpunge(notif.SeqNum); err != nil {
+				// Translate to THIS client's numbering. The notification comes
+				// from the store, which has no idea what any one client has
+				// been shown, so the UID is the only thing it can say that is
+				// true for every recipient.
+				//
+				// A zero means the client was never told about this message --
+				// or was already told to expunge it, because dropReported below
+				// removes it from the baseline. Skipping is right in both
+				// cases, and makes a repeated notification a no-op rather than
+				// an EXPUNGE that renumbers the client twice for one removal.
+				seqNum := s.reportedSeqNum(notif.UID)
+				if seqNum == 0 {
+					continue
+				}
+				if err := w.WriteExpunge(seqNum); err != nil {
 					return err
 				}
-				// Nothing emits this notification yet. Kept in step anyway, so
-				// that whoever wires up a producer does not also have to
-				// discover that Poll would re-report the removal.
+				// The client's view has changed, so the next Poll must not
+				// diff against the old one and report the removal again.
 				s.dropReported(notif.UID)
 			case NotifFlagChange:
+				// Same translation, same reason. A client that has not been
+				// sent this message cannot be sent a FETCH for it either; it
+				// will learn the flags with the message when the next EXISTS
+				// prompts it to fetch.
+				seqNum := s.reportedSeqNum(notif.UID)
+				if seqNum == 0 {
+					continue
+				}
 				// Fetch the message to include tag-derived keywords in the flags response.
 				updated, _ := s.mailboxes.GetMessage(s.userID, s.selectedMailbox, notif.UID)
 				var imapFlags []imap.Flag
@@ -673,7 +694,7 @@ func (s *session) Idle(w *imapserver.UpdateWriter, stop <-chan struct{}) error {
 				} else {
 					imapFlags = flagsToIMAP(notif.Flags)
 				}
-				if err := w.WriteMessageFlags(notif.SeqNum, imap.UID(notif.UID), imapFlags); err != nil {
+				if err := w.WriteMessageFlags(seqNum, imap.UID(notif.UID), imapFlags); err != nil {
 					return err
 				}
 			}

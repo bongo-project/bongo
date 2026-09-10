@@ -48,7 +48,12 @@ func (w *recordingUpdateWriter) silent() bool {
 // newPollTestStore builds a MailboxStore over a fresh Pebble holding one empty
 // mailbox. It is shared by every session in a test, which is what makes the
 // sessions independent connections to the same server rather than copies.
-func newPollTestStore(t *testing.T, mailbox string) *store.MailboxStore {
+// The Pebble store is returned alongside because a session needs it too: a
+// STORE that REPLACES flags reads MailMeta to reconcile keywords, and a
+// session built with a nil one dies on the first such command. Production
+// always passes it (internal/agent/agent.go), so a harness that does not is
+// testing a shape that never ships.
+func newPollTestStore(t *testing.T, mailbox string) (*store.MailboxStore, *store.PebbleStore) {
 	t.Helper()
 
 	ps, err := store.NewPebbleStore(t.TempDir() + "/pebble")
@@ -61,7 +66,7 @@ func newPollTestStore(t *testing.T, mailbox string) *store.MailboxStore {
 	if err := ms.CreateMailbox(pollTestUser, mailbox); err != nil {
 		t.Fatalf("CreateMailbox(%q): %v", mailbox, err)
 	}
-	return ms
+	return ms, ps
 }
 
 // newPollTestSession opens mailbox through the real Select, so the cached
@@ -131,7 +136,7 @@ func assertSeqNums(t *testing.T, got, want []uint32, what string) {
 // on INBOX and NOOP-polls every other folder, and go-imap delivers a NOOP's
 // untagged EXISTS through Session.Poll, which was a stub returning nil.
 func TestPollReportsMessageAppendedByAnotherConnection(t *testing.T) {
-	ms := newPollTestStore(t, "Sent")
+	ms, _ := newPollTestStore(t, "Sent")
 
 	// The polling client selects Sent while it is still empty.
 	poller := newPollTestSession(t, ms, "Sent")
@@ -182,7 +187,7 @@ func TestPollWithNoMailboxSelectedIsSilent(t *testing.T) {
 // second poll re-diffs against the message list from SELECT and repeats the
 // EXISTS, which clients read as further new mail.
 func TestPollRepeatedWithNoChangesIsSilent(t *testing.T) {
-	ms := newPollTestStore(t, "Sent")
+	ms, _ := newPollTestStore(t, "Sent")
 	s := newPollTestSession(t, ms, "Sent")
 	deliverPollTestMessage(t, ms, "Sent", "guid-1")
 
@@ -210,7 +215,7 @@ func TestPollRepeatedWithNoChangesIsSilent(t *testing.T) {
 //
 // The trailing silent poll pins the cache refresh on this path too.
 func TestPollWritesExpungesHighestSequenceNumberFirst(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
+	ms, _ := newPollTestStore(t, "INBOX")
 	for _, guid := range []string{"guid-1", "guid-2", "guid-3", "guid-4"} {
 		deliverPollTestMessage(t, ms, "INBOX", guid)
 	}
@@ -257,7 +262,7 @@ func TestPollWritesExpungesHighestSequenceNumberFirst(t *testing.T) {
 // TestPollReportsBothExpungesAndArrivals covers the mixed case, where the
 // remaining count differs from what the expunges alone imply.
 func TestPollReportsBothExpungesAndArrivals(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
+	ms, _ := newPollTestStore(t, "INBOX")
 	for _, guid := range []string{"guid-1", "guid-2"} {
 		deliverPollTestMessage(t, ms, "INBOX", guid)
 	}
@@ -281,7 +286,7 @@ func TestPollReportsBothExpungesAndArrivals(t *testing.T) {
 // renumbering while the client is still resolving the message set it named, and
 // the library's UpdateWriter refuses the write outright.
 func TestPollWithoutExpungePermissionWithholdsExpunges(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
+	ms, _ := newPollTestStore(t, "INBOX")
 	for _, guid := range []string{"guid-1", "guid-2"} {
 		deliverPollTestMessage(t, ms, "INBOX", guid)
 	}
@@ -318,7 +323,7 @@ func TestPollWithoutExpungePermissionWithholdsExpunges(t *testing.T) {
 // EXISTS is legal at any time, and suppressing it would leave a client that
 // only ever issues FETCH blind to new mail.
 func TestPollWithoutExpungePermissionStillReportsArrivals(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
+	ms, _ := newPollTestStore(t, "INBOX")
 	s := newPollTestSession(t, ms, "INBOX")
 	deliverPollTestMessage(t, ms, "INBOX", "guid-1")
 
