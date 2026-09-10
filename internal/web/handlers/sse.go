@@ -113,10 +113,12 @@ func (h *SSEHandler) Events(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case bongoimap.NotifExpunge:
+				// UID only. A sequence number would have to be relative to
+				// some client's view of the mailbox, and a browser tab has no
+				// such view -- it addresses messages by UID throughout.
 				writeSSEJSON(w, "expunge", map[string]any{
 					"mailbox": mailbox,
 					"uid":     notif.UID,
-					"seq":     notif.SeqNum,
 				})
 			case bongoimap.NotifFlagChange:
 				writeSSEJSON(w, "flagchange", map[string]any{

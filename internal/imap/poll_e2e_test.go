@@ -33,7 +33,7 @@ func (stubAuthenticator) Authenticate(username, password string) (string, error)
 // startPollTestServer runs the real IMAP server over a loopback listener. It is
 // built through NewServer rather than by assembling an imapserver.Options by
 // hand, so the session wiring under test is the wiring that ships.
-func startPollTestServer(t *testing.T, ms *store.MailboxStore) string {
+func startPollTestServer(t *testing.T, ms *store.MailboxStore, ps *store.PebbleStore) string {
 	t.Helper()
 
 	blobs, err := store.NewBlobStore(t.TempDir())
@@ -42,7 +42,16 @@ func startPollTestServer(t *testing.T, ms *store.MailboxStore) string {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := NewServer(stubAuthenticator{}, nil, blobs, ms, nil, nil, nil, NewNotifier(), nil, true, logger)
+
+	// One hub, shared between the server's sessions and the store, wired the
+	// way internal/agent/agent.go wires it. Building the notifier inline and
+	// leaving the store unattached -- which is what this helper used to do --
+	// would leave every store-level producer silent, so the tests below would
+	// pass against a server that tells an idling client nothing.
+	notifier := NewNotifier()
+	ms.SetNotifier(NewStoreNotifier(notifier))
+
+	srv := NewServer(stubAuthenticator{}, ps, blobs, ms, nil, nil, nil, notifier, nil, true, logger)
 	if err := srv.Listen("127.0.0.1:0", "", nil, false); err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
@@ -59,6 +68,15 @@ type mailboxUpdates struct {
 	mu          sync.Mutex
 	numMessages []uint32
 	expunged    []uint32
+	flagUpdates []flagUpdate
+}
+
+// flagUpdate is an untagged FETCH carrying flags, which is how a server tells a
+// client that some other connection changed a message it holds.
+type flagUpdate struct {
+	seqNum uint32
+	uid    imap.UID
+	flags  []imap.Flag
 }
 
 func (u *mailboxUpdates) handler() *imapclient.UnilateralDataHandler {
@@ -76,6 +94,22 @@ func (u *mailboxUpdates) handler() *imapclient.UnilateralDataHandler {
 			defer u.mu.Unlock()
 			u.expunged = append(u.expunged, seqNum)
 		},
+		Fetch: func(msg *imapclient.FetchMessageData) {
+			// Collect drains the item channel. Skipping it stalls the client's
+			// read goroutine, so this is not optional even when the buffer is
+			// discarded.
+			buf, err := msg.Collect()
+			if err != nil {
+				return
+			}
+			u.mu.Lock()
+			defer u.mu.Unlock()
+			u.flagUpdates = append(u.flagUpdates, flagUpdate{
+				seqNum: buf.SeqNum,
+				uid:    buf.UID,
+				flags:  buf.Flags,
+			})
+		},
 	}
 }
 
@@ -91,6 +125,12 @@ func (u *mailboxUpdates) expunges() []uint32 {
 	return append([]uint32(nil), u.expunged...)
 }
 
+func (u *mailboxUpdates) flags() []flagUpdate {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]flagUpdate(nil), u.flagUpdates...)
+}
+
 // reset discards what has been collected so far, so an assertion can speak
 // about the responses to one specific command rather than the whole session.
 func (u *mailboxUpdates) reset() {
@@ -98,6 +138,7 @@ func (u *mailboxUpdates) reset() {
 	defer u.mu.Unlock()
 	u.numMessages = nil
 	u.expunged = nil
+	u.flagUpdates = nil
 }
 
 func dialPollTestClient(t *testing.T, addr string, updates *mailboxUpdates) *imapclient.Client {
@@ -129,8 +170,8 @@ func dialPollTestClient(t *testing.T, addr string, updates *mailboxUpdates) *ima
 // Thunderbird IDLEs on INBOX and NOOP-polls every other folder. Nothing here
 // idles, for the same reason.
 func TestNoopReportsMessageAppendedByAnotherConnection(t *testing.T) {
-	ms := newPollTestStore(t, "Sent")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newPollTestStore(t, "Sent")
+	addr := startPollTestServer(t, ms, ps)
 
 	updates := &mailboxUpdates{}
 	poller := dialPollTestClient(t, addr, updates)
@@ -181,8 +222,8 @@ func TestNoopReportsMessageAppendedByAnotherConnection(t *testing.T) {
 // Thunderbird does continuously, so re-announcing the same EXISTS every time
 // would be a fresh bug rather than a fix.
 func TestRepeatedNoopDoesNotRepeatExists(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newPollTestStore(t, "INBOX")
+	addr := startPollTestServer(t, ms, ps)
 
 	updates := &mailboxUpdates{}
 	poller := dialPollTestClient(t, addr, updates)
@@ -209,9 +250,9 @@ func TestRepeatedNoopDoesNotRepeatExists(t *testing.T) {
 func selectWithOneMessage(t *testing.T, mailbox string) (*store.MailboxStore, *imapclient.Client, *mailboxUpdates) {
 	t.Helper()
 
-	ms := newPollTestStore(t, mailbox)
+	ms, ps := newPollTestStore(t, mailbox)
 	deliverPollTestMessage(t, ms, mailbox, "guid-1")
-	addr := startPollTestServer(t, ms)
+	addr := startPollTestServer(t, ms, ps)
 
 	updates := &mailboxUpdates{}
 	c := dialPollTestClient(t, addr, updates)
@@ -311,11 +352,11 @@ func TestSearchThenNoopStillReportsNewMessage(t *testing.T) {
 // drops a message it should have kept. Re-reporting a removal is worse than
 // missing an arrival.
 func TestExpungeThenNoopDoesNotRepeatTheExpunge(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
+	ms, ps := newPollTestStore(t, "INBOX")
 	for _, guid := range []string{"guid-1", "guid-2", "guid-3"} {
 		deliverPollTestMessage(t, ms, "INBOX", guid)
 	}
-	addr := startPollTestServer(t, ms)
+	addr := startPollTestServer(t, ms, ps)
 
 	updates := &mailboxUpdates{}
 	c := dialPollTestClient(t, addr, updates)
@@ -363,14 +404,14 @@ func TestExpungeThenNoopDoesNotRepeatTheExpunge(t *testing.T) {
 // TestMoveThenNoopDoesNotRepeatTheExpunge is the same guard for MOVE, which
 // also writes its own untagged EXPUNGEs.
 func TestMoveThenNoopDoesNotRepeatTheExpunge(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
+	ms, ps := newPollTestStore(t, "INBOX")
 	if err := ms.CreateMailbox(pollTestUser, "Archive"); err != nil {
 		t.Fatalf("CreateMailbox Archive: %v", err)
 	}
 	for _, guid := range []string{"guid-1", "guid-2"} {
 		deliverPollTestMessage(t, ms, "INBOX", guid)
 	}
-	addr := startPollTestServer(t, ms)
+	addr := startPollTestServer(t, ms, ps)
 
 	updates := &mailboxUpdates{}
 	c := dialPollTestClient(t, addr, updates)
@@ -404,8 +445,8 @@ func TestMoveThenNoopDoesNotRepeatTheExpunge(t *testing.T) {
 // it does not record what it announced, the first command after DONE re-sends
 // the same EXISTS. Thunderbird IDLEs on INBOX, so this is its main folder.
 func TestIdleDeliveredExistsIsNotRepeatedByPoll(t *testing.T) {
-	ms := newPollTestStore(t, "INBOX")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newPollTestStore(t, "INBOX")
+	addr := startPollTestServer(t, ms, ps)
 
 	updates := &mailboxUpdates{}
 	poller := dialPollTestClient(t, addr, updates)

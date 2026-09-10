@@ -20,8 +20,9 @@ type RaftApplier interface {
 
 // MailboxStore provides IMAP mailbox operations on top of PebbleStore + Raft.
 type MailboxStore struct {
-	store   *PebbleStore
-	applier RaftApplier
+	store    *PebbleStore
+	applier  RaftApplier
+	notifier MailboxNotifier
 }
 
 // NewMailboxStore creates a new MailboxStore.
@@ -68,8 +69,34 @@ type mailboxSubscribePayload struct {
 	Subscribed bool `json:"subscribed"`
 }
 
+// MailboxCommandResult reports what a synthetic mailbox command changed. It is
+// produced inside the apply, which runs on EVERY node, so anything derived from
+// it -- derived indexes, notifications -- happens cluster-wide rather than only
+// on the node whose client issued the command.
 type MailboxCommandResult struct {
+	// NewMail describes a delivery or an append. It is distinct from Arrivals
+	// because it carries the GUID and MailMeta the caller needs for derived
+	// indexing, not just the mailbox position a watcher needs.
 	NewMail *MailboxNewMail
+
+	// Arrivals lists messages that appeared in a mailbox without a new MailMeta
+	// being written: the destination half of a move or a copy. Nothing else
+	// announces those, so a client watching the destination would otherwise see
+	// a mailbox that silently gained a message.
+	Arrivals []MailboxMessageRef
+
+	// Expunged lists messages that are no longer in their mailbox: the ones an
+	// EXPUNGE removed, and the source half of a move.
+	Expunged []MailboxMessageRef
+}
+
+// MailboxMessageRef names one message by its position in a mailbox. It carries
+// no sequence number for the reason set out on MailboxNotifier.NotifyExpunge:
+// a sequence number belongs to a session's view, not to the message.
+type MailboxMessageRef struct {
+	UserID  string
+	Mailbox string
+	UID     uint32
 }
 
 type MailboxNewMail struct {
@@ -155,15 +182,15 @@ func ApplyMailboxCommand(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCom
 	case IsMailboxAppendCommand(cmd.Key):
 		return applyMailboxAppend(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxCopyPrefix):
-		return nil, applyMailboxCopy(ps, cmd)
+		return applyMailboxCopy(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxDeletePrefix):
 		return nil, applyMailboxDelete(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxDeliverPrefix):
 		return applyMailboxDelivery(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxExpungePrefix):
-		return nil, applyMailboxExpunge(ps, cmd)
+		return applyMailboxExpunge(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxMovePrefix):
-		return nil, applyMailboxMove(ps, cmd)
+		return applyMailboxMove(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxRenamePrefix):
 		return nil, applyMailboxRename(ps, cmd)
 	case strings.HasPrefix(string(cmd.Key), mailboxSubscribePrefix):
@@ -276,20 +303,20 @@ func applyMailboxDelivery(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCo
 	}, nil
 }
 
-func applyMailboxCopy(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+func applyMailboxCopy(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCommandResult, error) {
 	userID, payload, err := parseMailboxTransferCommand(cmd.Key, cmd.Value, mailboxCopyPrefix)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	srcMsg, err := readMailboxMessage(ps, userID, payload.SrcMailbox, payload.SrcUID)
 	if err != nil {
-		return fmt.Errorf("reading source message: %w", err)
+		return nil, fmt.Errorf("reading source message: %w", err)
 	}
 
 	dstMeta, err := readMailboxMeta(ps, userID, payload.DstMailbox)
 	if err != nil {
-		return fmt.Errorf("reading dest mailbox: %w", err)
+		return nil, fmt.Errorf("reading dest mailbox: %w", err)
 	}
 	newUID := dstMeta.UidNext
 	dstMeta.UidNext = newUID + 1
@@ -301,12 +328,18 @@ func applyMailboxCopy(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		InternalDate: srcMsg.InternalDate,
 		Tags:         append([]string(nil), srcMsg.Tags...),
 	}
-	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
+	if err := commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.DstMailbox, dstMeta); err != nil {
 			return err
 		}
 		return writeMailboxMessageBatch(batch, userID, payload.DstMailbox, newUID, newMsg)
-	})
+	}); err != nil {
+		return nil, err
+	}
+
+	return &MailboxCommandResult{
+		Arrivals: []MailboxMessageRef{{UserID: userID, Mailbox: payload.DstMailbox, UID: newUID}},
+	}, nil
 }
 
 func applyMailboxDelete(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
@@ -335,17 +368,23 @@ func applyMailboxDelete(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 	})
 }
 
-func applyMailboxExpunge(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+func applyMailboxExpunge(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCommandResult, error) {
 	userID, mailbox, err := parseMailboxScopedKey(cmd.Key, mailboxExpungePrefix)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	msgs, err := listMailboxMessages(ps, userID, mailbox)
 	if err != nil {
-		return fmt.Errorf("listing for expunge: %w", err)
+		return nil, fmt.Errorf("listing for expunge: %w", err)
 	}
-	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
+	// Which UIDs go is decided here and nowhere else: the flags are read on this
+	// node, inside the serialised apply. A caller that recomputed the set before
+	// issuing the command could disagree with what actually happened, and every
+	// other node has no caller at all.
+	var removed []MailboxMessageRef
+	if err := commitSyncBatch(ps, func(batch *pebble.Batch) error {
+		removed = removed[:0]
 		for _, msg := range msgs {
 			if msg.Flags&FlagDeleted == 0 {
 				continue
@@ -353,25 +392,30 @@ func applyMailboxExpunge(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 			if err := batch.Delete(mailboxMsgKey(userID, mailbox, msg.Uid), nil); err != nil {
 				return fmt.Errorf("expunging uid %d: %w", msg.Uid, err)
 			}
+			removed = append(removed, MailboxMessageRef{UserID: userID, Mailbox: mailbox, UID: msg.Uid})
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
+
+	return &MailboxCommandResult{Expunged: removed}, nil
 }
 
-func applyMailboxMove(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
+func applyMailboxMove(ps *PebbleStore, cmd *bongov1.RaftCommand) (*MailboxCommandResult, error) {
 	userID, payload, err := parseMailboxTransferCommand(cmd.Key, cmd.Value, mailboxMovePrefix)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	srcMsg, err := readMailboxMessage(ps, userID, payload.SrcMailbox, payload.SrcUID)
 	if err != nil {
-		return fmt.Errorf("reading source message: %w", err)
+		return nil, fmt.Errorf("reading source message: %w", err)
 	}
 
 	dstMeta, err := readMailboxMeta(ps, userID, payload.DstMailbox)
 	if err != nil {
-		return fmt.Errorf("reading dest mailbox: %w", err)
+		return nil, fmt.Errorf("reading dest mailbox: %w", err)
 	}
 	newUID := dstMeta.UidNext
 	dstMeta.UidNext = newUID + 1
@@ -383,7 +427,7 @@ func applyMailboxMove(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		InternalDate: srcMsg.InternalDate,
 		Tags:         append([]string(nil), srcMsg.Tags...),
 	}
-	return commitSyncBatch(ps, func(batch *pebble.Batch) error {
+	if err := commitSyncBatch(ps, func(batch *pebble.Batch) error {
 		if err := writeMailboxMetaBatch(batch, userID, payload.DstMailbox, dstMeta); err != nil {
 			return err
 		}
@@ -394,7 +438,17 @@ func applyMailboxMove(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 			return fmt.Errorf("deleting source message: %w", err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, err
+	}
+
+	// A move is a removal and an arrival, and watchers of each mailbox care
+	// about only their half. The destination UID is the one allocated here, not
+	// one guessed from the mailbox's uid_next after the fact.
+	return &MailboxCommandResult{
+		Expunged: []MailboxMessageRef{{UserID: userID, Mailbox: payload.SrcMailbox, UID: payload.SrcUID}},
+		Arrivals: []MailboxMessageRef{{UserID: userID, Mailbox: payload.DstMailbox, UID: newUID}},
+	}, nil
 }
 
 func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {

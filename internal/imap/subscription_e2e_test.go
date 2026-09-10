@@ -142,8 +142,8 @@ func newSubscriptionTestStore(t *testing.T, mailboxes ...string) (*store.Mailbox
 // Unsubscribe were no-ops and List ignored SelectSubscribed, so LSUB returned
 // every mailbox and an unsubscribed folder came straight back.
 func TestLsubOmitsUnsubscribedMailbox(t *testing.T) {
-	ms, _ := newSubscriptionTestStore(t, "INBOX", "Archive")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newSubscriptionTestStore(t, "INBOX", "Archive")
+	addr := startPollTestServer(t, ms, ps)
 
 	c := dialPollTestClient(t, addr, nil)
 	if err := c.Unsubscribe("Archive").Wait(); err != nil {
@@ -168,8 +168,8 @@ func TestLsubOmitsUnsubscribedMailbox(t *testing.T) {
 // TestSubscribeReturnsMailboxToLsub is the other direction, and the one that
 // catches a Subscribe left as a no-op while Unsubscribe works.
 func TestSubscribeReturnsMailboxToLsub(t *testing.T) {
-	ms, _ := newSubscriptionTestStore(t, "INBOX", "Archive")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newSubscriptionTestStore(t, "INBOX", "Archive")
+	addr := startPollTestServer(t, ms, ps)
 
 	raw := dialRawIMAP(t, addr)
 	raw.exec("UNSUBSCRIBE Archive")
@@ -188,8 +188,8 @@ func TestSubscribeReturnsMailboxToLsub(t *testing.T) {
 // TestListReturnSubscribedMarksOnlySubscribedMailboxes covers the LIST-EXTENDED
 // half: RETURN (SUBSCRIBED) lists everything but flags only what is subscribed.
 func TestListReturnSubscribedMarksOnlySubscribedMailboxes(t *testing.T) {
-	ms, _ := newSubscriptionTestStore(t, "INBOX", "Archive")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newSubscriptionTestStore(t, "INBOX", "Archive")
+	addr := startPollTestServer(t, ms, ps)
 
 	raw := dialRawIMAP(t, addr)
 	raw.exec("UNSUBSCRIBE Archive")
@@ -219,8 +219,8 @@ func TestListReturnSubscribedMarksOnlySubscribedMailboxes(t *testing.T) {
 // the SUBSCRIBED selection option implies the SUBSCRIBED return option, so the
 // mailboxes it selects also carry \Subscribed.
 func TestListSelectSubscribedFiltersAndAnnotates(t *testing.T) {
-	ms, _ := newSubscriptionTestStore(t, "INBOX", "Archive")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newSubscriptionTestStore(t, "INBOX", "Archive")
+	addr := startPollTestServer(t, ms, ps)
 
 	raw := dialRawIMAP(t, addr)
 	raw.exec("UNSUBSCRIBE Archive")
@@ -235,8 +235,8 @@ func TestListSelectSubscribedFiltersAndAnnotates(t *testing.T) {
 }
 
 func TestSubscribeUnknownMailboxIsRejected(t *testing.T) {
-	ms, _ := newSubscriptionTestStore(t, "INBOX")
-	addr := startPollTestServer(t, ms)
+	ms, ps := newSubscriptionTestStore(t, "INBOX")
+	addr := startPollTestServer(t, ms, ps)
 
 	c := dialPollTestClient(t, addr, nil)
 	if err := c.Subscribe("NoSuchMailbox").Wait(); err == nil {
@@ -261,7 +261,7 @@ func TestSubscribeUnknownMailboxIsRejected(t *testing.T) {
 // sense purely because the test wrote the field it was meant to be missing.
 func TestLegacyMailboxStaysSubscribed(t *testing.T) {
 	ms, ps := newSubscriptionTestStore(t, "INBOX")
-	addr := startPollTestServer(t, ms)
+	addr := startPollTestServer(t, ms, ps)
 
 	// Written straight to Pebble, in the key layout MailboxStore uses, because
 	// no code path in the current build can produce this record.

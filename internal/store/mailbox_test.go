@@ -14,22 +14,47 @@ import (
 )
 
 // directApplier applies Raft commands directly to Pebble (no Raft, for testing).
+//
+// It mirrors cluster.FSM.applyProto, including the notification dispatch: the
+// dispatch is shared code (PrepareNotify), so a test driven through this
+// applier exercises the same emission the FSM performs rather than a second
+// implementation that can drift away from it.
 type directApplier struct {
-	store *PebbleStore
+	store     *PebbleStore
+	mailboxes *MailboxStore
 }
 
 func (a *directApplier) ApplyCommand(cmd *bongov1.RaftCommand, _ time.Duration) error {
+	pending := PrepareNotify(a.store, a.notifier(), cmd, nil)
+
 	if cmd.Op == bongov1.Op_OP_PUT && IsMailboxSyntheticCommand(cmd.Key) {
-		_, err := ApplyMailboxCommand(a.store, cmd)
-		return err
+		result, err := ApplyMailboxCommand(a.store, cmd)
+		if err != nil {
+			return err
+		}
+		pending.Emit(result)
+		return nil
 	}
+
+	var err error
 	switch cmd.Op {
 	case bongov1.Op_OP_PUT:
-		return a.store.Set(cmd.Key, cmd.Value)
+		err = a.store.Set(cmd.Key, cmd.Value)
 	case bongov1.Op_OP_DELETE:
-		return a.store.Delete(cmd.Key)
+		err = a.store.Delete(cmd.Key)
 	}
+	if err != nil {
+		return err
+	}
+	pending.Emit(nil)
 	return nil
+}
+
+func (a *directApplier) notifier() MailboxNotifier {
+	if a.mailboxes == nil {
+		return nil
+	}
+	return a.mailboxes.Notifier()
 }
 
 func newMailboxTestEnv(t *testing.T) *MailboxStore {
@@ -41,7 +66,10 @@ func newMailboxTestEnv(t *testing.T) *MailboxStore {
 	}
 	t.Cleanup(func() { ps.Close() })
 
-	return NewMailboxStore(ps, &directApplier{store: ps})
+	applier := &directApplier{store: ps}
+	ms := NewMailboxStore(ps, applier)
+	applier.mailboxes = ms
+	return ms
 }
 
 func TestMailboxCRUD(t *testing.T) {
