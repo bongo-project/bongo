@@ -993,3 +993,37 @@ body is gone.
 
 Worth fixing as fail-fast: a missing body blob is not a transient condition and no retry can
 change it.
+
+## 2026-09-06 — B12 closed on measurement
+
+The accepted 42-85s first-delivery stall is gone. Measured on v0.6.30 rather than inferred.
+
+**Server-side, SMTP accept -> mail stored:** warm ~30ms; **first delivery after a restart ~0.93s.**
+No `stage was slow`, no `apply was slow`, no `raft_apply_ms` warnings. Startup to healthy fell from
+46s to 16s in the same window.
+
+The original root cause was right -- it scaled with raft log replay -- and v0.6.27 removed the
+mechanism. Three separate faults, only one of which was tuning: `snapshot_interval` was parsed and
+never applied; `TrailingLogs` was not configurable and raft's default of 10240 exceeded the 8192
+threshold, so the threshold was inert and the log never truncated; and 8192 was far too high for
+~5 messages/day. Production runs 256/128 now, and the log went from ~6000 entries to 131.
+
+**A false alarm I raised and then retracted.** The probe showed a constant ~10.00s before the SMTP
+banner, on warm and cold alike, and I reported it as a possible deliverability problem affecting
+every inbound connection. It is not. `netx.MaybeProxyProtocol` sets `ReadHeaderTimeout: 10s`, and
+Traefik sends `proxyProtocol.version=2` to port 25; my probe connected straight to the container
+IP, bypassing Traefik, so it sent no PROXY header and the listener waited the full timeout. Real
+mail pays none of it, and nothing was logged because bongo's own code had not started yet.
+
+Two lessons, both about method:
+
+- **Bypassing the proxy changes what you are measuring.** Connecting direct to a container is not
+  the production path when the production path adds a protocol header the listener requires.
+- **The false alarm did not invalidate the result**, because warm and cold probes paid the same
+  10s and it cancels. Worth noticing when a constant is shared by both arms of a comparison: it is
+  noise in the delta even when it is alarming on its own.
+
+To answer the operator's question, recorded here because it will come up again: the server DOES
+check sending IPs against DNS blocklists, but in the antispam pipeline stage AFTER the message is
+accepted (`smtp: message accepted` at :05.167, `antispam: scored` at :06.026), not on connect. A
+slow or unreachable blocklist cannot delay the SMTP banner or stall a connection.
