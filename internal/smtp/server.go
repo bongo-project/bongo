@@ -658,6 +658,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 		mx.MaxRecipients = 100
 	}
 	mx.AllowInsecureAuth = isDev
+	mx.ErrorLog = observability.SMTPLibraryLogger(logger)
 
 	submission := gosmtp.NewServer(backend)
 	submission.Addr = fmt.Sprintf(":%d", subPort)
@@ -667,6 +668,7 @@ func NewServer(cfg *config.SMTPConfig, backend *Backend, isDev bool, logger *slo
 	submission.MaxMessageBytes = mx.MaxMessageBytes
 	submission.MaxRecipients = mx.MaxRecipients
 	submission.AllowInsecureAuth = isDev
+	submission.ErrorLog = mx.ErrorLog
 
 	// Configure TLS if cert files are provided. Pin TLS 1.2 as the floor so it
 	// does not depend on the toolchain default.
