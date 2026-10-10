@@ -61,6 +61,9 @@ what that gate is guarding — work through it before forming a cluster.
    - raft refuses to start clustered without mTLS instead of falling back to
      plaintext; peer certs are verified against `ca_file`.
    - blob-sync and raft join use `https://` (or tunnel over the raft TLS link).
+   - agent gRPC (`internal/agent/grpc`, server and processor) uses mTLS from the
+     cluster CA and rejects unauthenticated clients (TASKS.md B20); its logger
+     goes through slog (15.4).
 
 5. **Form the quorum with 3 or 5 nodes.** Never run 2 or 4 (no fault tolerance /
    split-brain risk). Only the first node bootstraps; the rest set `cluster.join`.
