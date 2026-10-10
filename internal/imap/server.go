@@ -13,6 +13,7 @@ import (
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/authlimit"
 	"github.com/bongo-project/bongo/internal/netx"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/store"
 )
 
@@ -90,6 +91,7 @@ func NewServer(
 		Caps:         caps,
 		TLSConfig:    tlsCfg,
 		InsecureAuth: isDev,
+		Logger:       observability.IMAPLibraryLogger(logger),
 	}
 
 	s := &Server{
@@ -103,6 +105,7 @@ func NewServer(
 			NewSession:   newSession,
 			Caps:         caps,
 			InsecureAuth: true, // Already on TLS
+			Logger:       opts.Logger,
 		}
 		s.tlsServer = imapserver.New(tlsOpts)
 	}
