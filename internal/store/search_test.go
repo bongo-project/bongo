@@ -288,10 +288,7 @@ func TestBleveIndexMailTagsNilIsEmpty(t *testing.T) {
 // prefix at a time -- exactly what the multi-domain PRD's "full tenant
 // isolation" goal forbids.
 func TestSearchGALIsScopedToCallerDomain(t *testing.T) {
-	sm, err := NewSearchManager(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewSearchManager: %v", err)
-	}
+	sm := newTestSearchManager(t)
 
 	profiles := []struct{ id, email, name string }{
 		{"u1", "alice@tenant-a.test", "Alice A"},
@@ -371,10 +368,7 @@ func TestSearchGALIsScopedToCallerDomain(t *testing.T) {
 // so a naive implementation that asked for exactly limit hits would return
 // short results whenever another tenant's entries outranked the caller's.
 func TestSearchGALRespectsLimitAfterFiltering(t *testing.T) {
-	sm, err := NewSearchManager(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewSearchManager: %v", err)
-	}
+	sm := newTestSearchManager(t)
 
 	// Many other-tenant entries, then a few of the caller's own.
 	for i := range 30 {
@@ -414,10 +408,7 @@ func TestSearchGALRespectsLimitAfterFiltering(t *testing.T) {
 // the message unfindable by any word in its own text, and nothing reported an
 // error because the re-index itself succeeded.
 func TestIndexMailPreservingBodyKeepsBodySearchable(t *testing.T) {
-	sm, err := NewSearchManager(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewSearchManager: %v", err)
-	}
+	sm := newTestSearchManager(t)
 
 	if err := sm.IndexMail("u1", "g1", "Lunch", "a@b.test", []string{"c@d.test"},
 		"pumpernickel", 100, false, nil); err != nil {
@@ -448,10 +439,7 @@ func TestIndexMailPreservingBodyKeepsBodySearchable(t *testing.T) {
 // A message with nothing indexed yet, or an unreadable index, must still get
 // its tags written: the tag update matters more than a body that is not there.
 func TestIndexMailPreservingBodyOnUnknownGUIDDoesNotFail(t *testing.T) {
-	sm, err := NewSearchManager(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewSearchManager: %v", err)
-	}
+	sm := newTestSearchManager(t)
 
 	if err := sm.IndexMailPreservingBody("u1", "never-seen", "Subj", "a@b.test",
 		[]string{"c@d.test"}, 100, false, []string{"work"}); err != nil {

@@ -270,17 +270,22 @@ func TestCheck_CancelledParentIsNotCached(t *testing.T) {
 
 	dead, cancel := context.WithCancel(context.Background())
 	cancel()
-	if res := c.Check(dead, ip); len(res.Zones) != 1 || res.Zones[0].Listed {
-		t.Fatalf("cancelled parent: got %+v, want a single not-listed zone", res.Zones)
+	// The verdict of this call is not asserted: the fake answers without
+	// looking at ctx, so whether its answer beats ctx.Done() is up to the
+	// scheduler (CI saw both). What must hold either way is that it is not
+	// cached.
+	if res := c.Check(dead, ip); len(res.Zones) != 1 {
+		t.Fatalf("cancelled parent: got %+v, want a single zone", res.Zones)
 	}
+	callsAfterDead := r.calls.Load()
 
 	// The next healthy call must reach the resolver and see the listing.
 	res := c.Check(context.Background(), ip)
 	if len(res.Zones) != 1 || !res.Zones[0].Listed {
 		t.Errorf("after cancelled parent: got %+v, want the zone listed", res.Zones)
 	}
-	if r.calls.Load() == 0 {
-		t.Errorf("resolver call count = 0: the poisoned Result was served from cache")
+	if r.calls.Load() == callsAfterDead {
+		t.Errorf("healthy call made no resolver call: the cancelled call's Result was served from cache")
 	}
 }
 
