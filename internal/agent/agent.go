@@ -934,14 +934,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
-	a.httpServer = &http.Server{
-		Addr:              addr,
-		Handler:           r,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	a.httpServer = newHTTPServer(addr, r, a.logger)
 
 	// Configure TLS for the web server (skip when plain_http is enabled).
 	var webTLSCfg *tls.Config
@@ -1457,14 +1450,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			http.Redirect(w, r, target, http.StatusMovedPermanently) // #nosec G710 -- target host is server config, path/query preserve same request URI
 		})
 		go func() {
-			redirectSrv := &http.Server{
-				Addr:              redirectAddr,
-				Handler:           redirectHandler,
-				ReadHeaderTimeout: 10 * time.Second,
-				ReadTimeout:       15 * time.Second,
-				WriteTimeout:      15 * time.Second,
-				IdleTimeout:       30 * time.Second,
-			}
+			redirectSrv := newRedirectServer(redirectAddr, redirectHandler, a.logger)
 			if err := redirectSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				a.logger.Error("web: redirect server error", "error", err)
 			}
@@ -2642,14 +2628,7 @@ func (a *Agent) runAgent(ctx context.Context) error {
 
 	port := a.Config.Web.Port
 	addr := net.JoinHostPort(a.Config.Server.BindAddr, strconv.Itoa(port))
-	a.httpServer = &http.Server{
-		Addr:              addr,
-		Handler:           r,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
+	a.httpServer = newHTTPServer(addr, r, a.logger)
 
 	// Separate processor roles (antispam, antivirus) from other agent roles.
 	// Processor roles each start their own local gRPC server and register
@@ -3181,4 +3160,31 @@ func (h *caldavHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Prefix:  "/caldav",
 	}
 	handler.ServeHTTP(w, r)
+}
+
+// newHTTPServer builds the web/health listener. ErrorLog routes net/http's
+// own messages (TLS handshake failures, handler panics) into slog.
+func newHTTPServer(addr string, h http.Handler, logger *slog.Logger) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ErrorLog:          observability.HTTPLibraryLogger(logger),
+	}
+}
+
+// newRedirectServer builds the plain-HTTP to HTTPS redirect listener.
+func newRedirectServer(addr string, h http.Handler, logger *slog.Logger) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       30 * time.Second,
+		ErrorLog:          observability.HTTPLibraryLogger(logger),
+	}
 }

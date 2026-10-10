@@ -75,6 +75,22 @@ auditable; 14.10 fixes the quarantine-release race and corrects the key-space ta
 | 14.9 | FR-7 / US-005: >=24h dryrun on production, confirm via a written repeatable check that no candidate is reachable from live state, then return `blob_gc` to `"on"`. | [prd-blob-gc-reference-integrity.md](active/prd-blob-gc-reference-integrity.md) | DONE (2026-09-01) | ~36h dryrun proposed the SAME 5 candidates every pass, never grew, zero re-validation saves. All 5 confirmed unreachable by `scripts/verify-blob-candidates.sh`, which uses the SQLite indexes, the spool and the blob headers -- deliberately NOT the GC's own scan. Also fixed config drift: the repo said `"on"` while the node said `"dryrun"`, so a redeploy would have silently re-enabled deletion. Operator authorised the flip, accepting the documented risk that the window exercised one traffic pattern |
 | 14.10 | Lower-severity gaps from the audit: spool scan order can miss an envelope moving backward (quarantine->incoming on admin release); the scan reads only the node-local spool, which is not replicated. Also: interleave the mail and blob sweeps so they no longer share a tick, and correct the stale `BlobRef` claims for events and contacts in CLAUDE.md's key-space table. | [prd-blob-gc-reference-integrity.md](active/prd-blob-gc-reference-integrity.md) | DONE (2026-08-31) | Backward-move race FIXED: spool scanned twice and unioned, since no single ordering is safe in both directions. Extracted `collectSpoolBlobs` behind a consumer-side `spoolLister` so the race is deterministically testable -- with a CONTROL test proving a single pass really does miss it. CLAUDE.md corrected: events/contacts store `ical_raw`/`vcard_raw` inline, never blobs. Two items deliberately NOT changed and documented instead: the shared tick (audit cleared it; three independent guards already cover it) and the node-local spool (needs a design decision, filed against B7). 3 mutations, none survive |
 
+## Phase 15: Production logging
+
+Source: the deployment repository `docs/prod-logging.md` item 3 (survey 2026-10-09). bongo's own
+JSONL log (`{job="bongo"}` in Loki) is all slog JSON, but container stdout
+(`{job="docker"}`) carried ~1,000 text lines/day from libraries given no logger: go-imap
+(`handling SELECT command: mailbox "Notes" not found` every 5 min), net/http TLS handshake
+noise, go-smtp. Standard: one JSON object per line, stable `msg` keys, client noise at DEBUG.
+
+| # | Task | PRD | Status | Notes |
+|---|------|-----|--------|-------|
+| 15.1 | Route go-imap, go-smtp and net/http library loggers through slog (`observability.LibraryLogger` + IMAP/SMTP/HTTP presets; prefix rules pick level + `msg`, text in `line`); wired on IMAP, IMAPS, SMTP MX + submission, web, health-only and redirect HTTP servers | infra `docs/prod-logging.md` | DONE on branch (2026-10-09) | Branch `fix/library-logs-to-slog` (5a6aac9, 46a61d3), not merged. Unit tests, vet, gofmt, `make sec` gosec clean, re-run independently. 8 wiring mutations red. |
+| 15.2 | Merge 15.1, release; infra bumps `mail/bongo/docker-compose.yml` (infra task 4.8). Verify `{job="docker"} !~ "^\\{"` drops to near zero | infra `docs/prod-logging.md` | TODO | OPERATOR: release + deploy. (needs: 15.1) |
+| 15.3 | IMAP missing mailbox returns a plain error, so go-imap answers `NO internal server error` and logs it. `internal/imap/backend.go` `Select` (~:160) and `statusForMailbox` (~:347) wrap every `GetMailbox` error as `fmt.Errorf("mailbox %q not found")`. Return `&imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeNonExistent}` for not-found only, and keep real store errors as errors (today a DB failure is reported as "not found"). Audit other session methods for the same pattern | infra `docs/prod-logging.md` | TODO | Client-visible bug; also the single biggest stdout line in prod (Apple Notes polling `Notes`). Tests: missing mailbox -> NONEXISTENT; store error -> not NONEXISTENT. |
+| 15.4 | Route gRPC's logger (`grpc.NewServer()` in `internal/agent/grpc`, grpclog default stderr) through slog with the same adapter | infra `docs/prod-logging.md` | TODO | Not seen in the prod sample; consistency. (needs: 15.1) |
+| 15.5 | Decide whether to auto-create a `Notes` mailbox for Apple Notes over IMAP | infra `docs/prod-logging.md` | TODO | Product decision; 15.3 alone fixes the response and the log line. |
+
 ## Backlog (unscheduled)
 
 | # | Task | Status | Notes |
