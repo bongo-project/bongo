@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/config"
@@ -538,5 +539,92 @@ func TestSweepGhostUserTrees(t *testing.T) {
 	}
 	if _, gErr := a.Store.Get(rowOnlyMail); gErr != nil {
 		t.Error("BUG: mail belonging to a row-only orphan was deleted by the ghost sweep")
+	}
+}
+
+// orphanLogLines returns the decoded JSON log lines whose msg equals msg.
+func orphanLogLines(t *testing.T, buf *syncBuffer, msg string) []map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader([]byte(buf.String())))
+	var out []map[string]any
+	for dec.More() {
+		var m map[string]any
+		if err := dec.Decode(&m); err != nil {
+			t.Fatalf("decode log line: %v", err)
+		}
+		if m["msg"] == msg {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func TestSweepOrphanedUsersLogsReclaimedUser(t *testing.T) {
+	buf := &syncBuffer{}
+	a := blobGCLeaderTestAgentWithLogger(t, slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "ghost2@localhost", "Ghost", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: []byte("/user/" + uid + "/profile")}, 5*time.Second); err != nil {
+		t.Fatalf("delete profile: %v", err)
+	}
+
+	const msg = "orphan-gc: user row reclaimed"
+	prev := a.sweepOrphanedUsers(map[string]bool{})
+	if n := len(orphanLogLines(t, buf, msg)); n != 0 {
+		t.Fatalf("per-item line after first pass: %d, want 0", n)
+	}
+	a.sweepOrphanedUsers(prev)
+	lines := orphanLogLines(t, buf, msg)
+	if len(lines) != 1 || lines[0]["user"] != uid {
+		t.Fatalf("lines after second pass = %v, want one for user %s", lines, uid)
+	}
+	if lines[0]["level"] != "INFO" {
+		t.Errorf("level = %v, want INFO", lines[0]["level"])
+	}
+	if _, ok := lines[0]["aliases_deleted"]; !ok {
+		t.Error("aliases_deleted missing")
+	}
+	if n := len(orphanLogLines(t, buf, "orphan-gc: reclaimed orphaned user rows")); n != 1 {
+		t.Errorf("summary line count = %d, want 1 (unchanged)", n)
+	}
+}
+
+func TestSweepOrphanedMailLogsReclaimedGUID(t *testing.T) {
+	buf := &syncBuffer{}
+	a := blobGCLeaderTestAgentWithLogger(t, slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	for i := 0; i < 100 && !a.IsLeader(); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	uid, err := auth.CreateUser(a, a.Metadata, "ghost3@localhost", "Ghost", "pass1234", false)
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	const guid = "orphan-guid-1"
+	key := "/user/" + uid + "/mail/" + guid
+	val, err := proto.Marshal(&bongov1.MailMeta{Guid: guid})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_PUT, Key: []byte(key), Value: val}, 5*time.Second); err != nil {
+		t.Fatalf("put meta: %v", err)
+	}
+
+	const msg = "orphan-gc: mail meta reclaimed"
+	prev := a.sweepOrphanedMail(map[string]bool{}, 0)
+	if !prev[uid+"/"+guid] {
+		t.Fatalf("orphan not detected on first pass: %v", prev)
+	}
+	if n := len(orphanLogLines(t, buf, msg)); n != 0 {
+		t.Fatalf("per-item line after first pass: %d, want 0", n)
+	}
+	a.sweepOrphanedMail(prev, 0)
+	lines := orphanLogLines(t, buf, msg)
+	if len(lines) != 1 || lines[0]["user"] != uid || lines[0]["guid"] != guid || lines[0]["key"] != key {
+		t.Fatalf("lines after second pass = %v", lines)
 	}
 }

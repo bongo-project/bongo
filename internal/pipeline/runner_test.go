@@ -3,11 +3,14 @@ package pipeline
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -342,5 +345,142 @@ func TestRunnerEmptyQueue(t *testing.T) {
 
 	if err := runner.Run(ctx); err != nil {
 		t.Fatalf("Run returned error on empty queue: %v", err)
+	}
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func jsonLogger(buf *lockedBuffer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+func logLines(t *testing.T, buf *lockedBuffer) []map[string]any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader([]byte(buf.String())))
+	var out []map[string]any
+	for dec.More() {
+		var m map[string]any
+		if err := dec.Decode(&m); err != nil {
+			t.Fatalf("decode log line: %v", err)
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// runUntil drives the real Run loop until the envelope appears in dir, then
+// stops it and waits for Run to return so the log buffer is safe to read.
+func runUntil(t *testing.T, spool *SpoolStore, stage Processor, logger *slog.Logger, dir, id string) {
+	t.Helper()
+	runner := NewRunner(spool, &mockBlobReader{}, []Processor{stage}, logger,
+		WithWorkers(1), WithPollInterval(10*time.Millisecond))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for !fileExistsIn(t, spool, dir, id) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	// Give the worker time to emit the terminal line after the move.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done
+	if !fileExistsIn(t, spool, dir, id) {
+		t.Fatalf("envelope never reached %s/", dir)
+	}
+}
+
+func TestRunnerTerminalLogsCarryIdentity(t *testing.T) {
+	tests := []struct {
+		name      string
+		result    *bongov1.StageResult
+		err       error
+		dir       string
+		msg       string
+		wantStage bool
+		wantErr   bool
+	}{
+		{"pass", &bongov1.StageResult{Stage: "antispam", Action: "pass"}, nil, "deliver", "pipeline: message ready for delivery", false, false},
+		{"quarantine", &bongov1.StageResult{Stage: "antispam", Action: "quarantine"}, nil, "quarantine", "pipeline: message quarantined", true, false},
+		{"reject", &bongov1.StageResult{Stage: "antispam", Action: "reject"}, nil, "quarantine", "pipeline: message quarantined", true, false},
+		{"stage error", nil, fmt.Errorf("boom"), "error", "pipeline: process message failed", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spool := newTestSpool(t)
+			rcpts := []string{"a@example.com", "b@example.com"}
+			env := &bongov1.QueueEnvelope{Id: "msg-" + tt.name, Sender: "sender@example.com", Recipients: rcpts, BlobHash: "deadbeef"}
+			if err := spool.Enqueue(env); err != nil {
+				t.Fatalf("Enqueue: %v", err)
+			}
+			buf := &lockedBuffer{}
+			runUntil(t, spool, &mockProcessor{name: "antispam", result: tt.result, err: tt.err}, jsonLogger(buf), tt.dir, env.Id)
+
+			var line map[string]any
+			for _, l := range logLines(t, buf) {
+				if l["msg"] == tt.msg {
+					line = l
+				}
+			}
+			if line == nil {
+				t.Fatalf("no %q line in logs:\n%s", tt.msg, buf.String())
+			}
+			if line["id"] != env.Id || line["sender"] != "sender@example.com" {
+				t.Errorf("id/sender wrong: %v", line)
+			}
+			got, _ := line["recipients"].([]any)
+			if !reflect.DeepEqual(got, []any{"a@example.com", "b@example.com"}) {
+				t.Errorf("recipients = %v", line["recipients"])
+			}
+			if line["recipient_count"] != float64(2) {
+				t.Errorf("recipient_count = %v", line["recipient_count"])
+			}
+			if _, ok := line["subject"]; ok {
+				t.Error("subject must not be logged")
+			}
+			if tt.wantStage && (line["stage"] != "antispam" || line["action"] != tt.result.Action) {
+				t.Errorf("stage/action = %v/%v", line["stage"], line["action"])
+			}
+			if s, _ := line["error"].(string); tt.wantErr && s == "" {
+				t.Errorf("error missing: %v", line)
+			}
+		})
+	}
+}
+
+func TestRunnerLogCapsRecipients(t *testing.T) {
+	env := &bongov1.QueueEnvelope{Id: "x", Sender: "s@example.com"}
+	for i := range 25 {
+		env.Recipients = append(env.Recipients, fmt.Sprintf("r%d@example.com", i))
+	}
+	buf := &lockedBuffer{}
+	jsonLogger(buf).Info("t", envIdentity(env)...)
+	lines := logLines(t, buf)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %d", len(lines))
+	}
+	if got := lines[0]["recipients"].([]any); len(got) != 20 {
+		t.Errorf("len(recipients) = %d, want 20", len(got))
+	}
+	if lines[0]["recipient_count"] != float64(25) {
+		t.Errorf("recipient_count = %v", lines[0]["recipient_count"])
+	}
+	if len(env.Recipients) != 25 {
+		t.Error("envelope recipients mutated")
 	}
 }

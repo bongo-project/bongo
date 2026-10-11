@@ -2091,9 +2091,13 @@ func (a *Agent) sweepOrphanedUsers(prev map[string]bool) map[string]bool {
 			continue
 		}
 		// Aliases pointing at a now-gone user are undeliverable; drop them too.
-		if _, err := db.Exec("DELETE FROM aliases WHERE target_user_id = ?", userID); err != nil {
+		aliasesDeleted := int64(0)
+		if res, err := db.Exec("DELETE FROM aliases WHERE target_user_id = ?", userID); err != nil {
 			a.logger.Warn("orphan-gc: deleting aliases for orphaned user failed", "user", userID, "error", err)
+		} else if n, err := res.RowsAffected(); err == nil {
+			aliasesDeleted = n
 		}
+		a.logger.Info("orphan-gc: user row reclaimed", "user", userID, "aliases_deleted", aliasesDeleted)
 		deleted++
 	}
 	if deleted > 0 {
@@ -2252,6 +2256,7 @@ func (a *Agent) sweepOrphanedMail(prev map[string]bool, minAge time.Duration) ma
 				a.logger.Warn("orphan-gc: deleting mail meta failed", "user", userID, "guid", guid, "error", err)
 				continue
 			}
+			a.logger.Info("orphan-gc: mail meta reclaimed", "user", userID, "guid", guid, "key", string(key))
 			deleted++
 		}
 	}
