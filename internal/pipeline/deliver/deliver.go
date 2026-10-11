@@ -115,6 +115,10 @@ func (p *DeliverProcessor) SetTraceHeaders(hostname string) {
 // routing and X-Spam-Status. Nil keeps defaultSpamThreshold.
 func (p *DeliverProcessor) SetSpamThresholds(src ThresholdSource) { p.spamThresholds = src }
 
+// ThresholdSource returns the source set by SetSpamThresholds, or nil. Tests
+// use it to prove the deliver and antispam stages share one holder.
+func (p *DeliverProcessor) ThresholdSource() ThresholdSource { return p.spamThresholds }
+
 // SetQueuer sets the outbound queue for forwarding messages.
 func (p *DeliverProcessor) SetQueuer(q ForwardQueuer) { p.queuer = q }
 

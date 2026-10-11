@@ -13,6 +13,7 @@ import (
 
 	"google.golang.org/grpc/grpclog"
 
+	"github.com/bongo-project/bongo/internal/config"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 )
 
@@ -74,7 +75,7 @@ func TestNewServeLoggerStartupLevel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.in, func(t *testing.T) {
-			logger, lv := newServeLogger("json", parseLogLevel(tt.in), io.Discard, handlers.NewLogSink())
+			logger, lv := newServeLogger("json", config.LogConfig{Level: tt.in}.SlogLevel(), io.Discard, handlers.NewLogSink())
 			if lv.Level() != tt.want {
 				t.Fatalf("lv.Level() = %v, want %v", lv.Level(), tt.want)
 			}

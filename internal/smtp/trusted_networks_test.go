@@ -26,7 +26,7 @@ func trustedNetworksTestBackend(nets []*net.IPNet) *Backend {
 	return b
 }
 
-// TestIsTrustedSource covers the fail-closed contract of Backend.isTrustedSource:
+// TestIsTrustedSource covers the fail-closed contract of Backend.IsTrustedSource:
 // only an IP that parses and falls inside a configured CIDR is trusted; every
 // other input (no networks configured, empty/unparseable IP, out-of-range IP)
 // must report false.
@@ -135,8 +135,8 @@ func TestIsTrustedSource(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := trustedNetworksTestBackend(tt.nets)
-			if got := b.isTrustedSource(tt.ip); got != tt.want {
-				t.Errorf("isTrustedSource(%q) with nets=%v = %v, want %v", tt.ip, tt.nets, got, tt.want)
+			if got := b.IsTrustedSource(tt.ip); got != tt.want {
+				t.Errorf("IsTrustedSource(%q) with nets=%v = %v, want %v", tt.ip, tt.nets, got, tt.want)
 			}
 		})
 	}
@@ -215,11 +215,11 @@ func TestInboundMetaTrustedNetworkOR(t *testing.T) {
 // silently disabled regardless of config.
 func TestSetTrustedNetworks(t *testing.T) {
 	b := trustedNetworksTestBackend(nil)
-	if b.isTrustedSource("10.1.2.3") {
+	if b.IsTrustedSource("10.1.2.3") {
 		t.Fatal("expected untrusted before SetTrustedNetworks")
 	}
 	b.SetTrustedNetworks([]*net.IPNet{mustParseCIDR(t, "10.0.0.0/8")})
-	if !b.isTrustedSource("10.1.2.3") {
+	if !b.IsTrustedSource("10.1.2.3") {
 		t.Fatal("expected trusted after SetTrustedNetworks with a matching CIDR")
 	}
 }
@@ -247,8 +247,8 @@ func TestSetTrustedNetworksFailClosed(t *testing.T) {
 			b := &Backend{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 			tt.setup(b)
 			for _, ip := range []string{"10.1.2.3", "127.0.0.1", "::1"} {
-				if b.isTrustedSource(ip) {
-					t.Errorf("isTrustedSource(%q) = true, want false", ip)
+				if b.IsTrustedSource(ip) {
+					t.Errorf("IsTrustedSource(%q) = true, want false", ip)
 				}
 				s := &Session{backend: b, logger: b.logger}
 				if s.inboundMeta(ip).Trusted {
@@ -265,23 +265,23 @@ func TestSetTrustedNetworksCopies(t *testing.T) {
 	nets := []*net.IPNet{mustParseCIDR(t, "10.0.0.0/8")}
 	b := trustedNetworksTestBackend(nets)
 	nets[0] = mustParseCIDR(t, "192.168.0.0/16")
-	if !b.isTrustedSource("10.1.2.3") {
+	if !b.IsTrustedSource("10.1.2.3") {
 		t.Error("10.1.2.3 no longer trusted after caller mutated its slice")
 	}
-	if b.isTrustedSource("192.168.1.1") {
+	if b.IsTrustedSource("192.168.1.1") {
 		t.Error("192.168.1.1 trusted after caller mutated its slice")
 	}
 }
 
 // TestSetTrustedNetworksConcurrent swaps between two sets while readers
-// decide trust through both isTrustedSource and inboundMeta. Run under -race.
+// decide trust through both IsTrustedSource and inboundMeta. Run under -race.
 // 203.0.113.5 is in both sets (a torn or empty read would show false) and
 // 172.16.0.1 is in neither.
 func TestSetTrustedNetworksConcurrent(t *testing.T) {
 	setA := []*net.IPNet{mustParseCIDR(t, "203.0.113.0/24"), mustParseCIDR(t, "10.0.0.0/8")}
 	setB := []*net.IPNet{mustParseCIDR(t, "203.0.113.0/24"), mustParseCIDR(t, "192.168.0.0/16")}
 	b := trustedNetworksTestBackend(setA)
-	if !b.isTrustedSource("203.0.113.5") {
+	if !b.IsTrustedSource("203.0.113.5") {
 		t.Fatal("pre-check: 203.0.113.5 should be trusted")
 	}
 
@@ -310,12 +310,12 @@ func TestSetTrustedNetworksConcurrent(t *testing.T) {
 			s := &Session{backend: b, logger: b.logger}
 			<-start
 			for range iterations {
-				if !b.isTrustedSource("203.0.113.5") {
-					t.Error("isTrustedSource(203.0.113.5) = false, want true")
+				if !b.IsTrustedSource("203.0.113.5") {
+					t.Error("IsTrustedSource(203.0.113.5) = false, want true")
 					return
 				}
-				if b.isTrustedSource("172.16.0.1") {
-					t.Error("isTrustedSource(172.16.0.1) = true, want false")
+				if b.IsTrustedSource("172.16.0.1") {
+					t.Error("IsTrustedSource(172.16.0.1) = true, want false")
 					return
 				}
 				if !s.inboundMeta("203.0.113.5").Trusted {
@@ -326,8 +326,8 @@ func TestSetTrustedNetworksConcurrent(t *testing.T) {
 					t.Error("inboundMeta(172.16.0.1).Trusted = true, want false")
 					return
 				}
-				_ = b.isTrustedSource("10.1.2.3")
-				_ = b.isTrustedSource("192.168.1.1")
+				_ = b.IsTrustedSource("10.1.2.3")
+				_ = b.IsTrustedSource("192.168.1.1")
 			}
 		}()
 	}

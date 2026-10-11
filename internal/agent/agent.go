@@ -13,8 +13,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -42,6 +44,7 @@ import (
 	"github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/pipeline"
+	pipelineantivirus "github.com/bongo-project/bongo/internal/pipeline/antivirus"
 	pipelinedeliver "github.com/bongo-project/bongo/internal/pipeline/deliver"
 	pipelinerules "github.com/bongo-project/bongo/internal/pipeline/rules"
 	bongopop3 "github.com/bongo-project/bongo/internal/pop3"
@@ -94,6 +97,15 @@ type Agent struct {
 	// spamThresholds is the one tag/quarantine holder shared by every antispam
 	// stage and the deliver stage; see spamThresholdHolder.
 	spamThresholds *pipeline.SpamThresholdHolder
+
+	// reloadMu guards the consumer lists below. Run registers consumers on
+	// its own goroutine while a reload may already be running, so both sides
+	// take it.
+	reloadMu     sync.Mutex
+	smtpBackends []*bongosmtp.Backend
+	clamavProcs  []*pipelineantivirus.ClamAVProcessor
+	// reloader is set by EnableReload; nil means reload is not configured.
+	reloader *Reloader
 
 	Store        *store.PebbleStore
 	Blobs        *store.BlobStore
@@ -258,6 +270,14 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		logger: logger,
 	}
 
+	// Create the shared threshold holder now, before any goroutine can reach
+	// it, so a reload never races a lazy first use in Run.
+	holder, err := newSpamThresholdHolder(cfg)
+	if err != nil {
+		return nil, err
+	}
+	a.spamThresholds = holder
+
 	// Agent role does not use local storage -- return early.
 	if cfg.Server.Role == "agent" {
 		logger.Info("agent mode: skipping local storage initialization",
@@ -373,6 +393,114 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 	return a, nil
 }
 
+// buildPipelineStages constructs the inbound pipeline stages from
+// Pipeline.Stages, with the deliver processor as the final stage. It is a
+// named method so a test can prove the deliver and antispam stages share the
+// agent's one SpamThresholdHolder.
+func (a *Agent) buildPipelineStages(resolver *store.RecipientResolver) ([]pipeline.Processor, *pipelinedeliver.DeliverProcessor) {
+	var stages []pipeline.Processor
+
+	for _, stageCfg := range a.Config.Pipeline.Stages {
+		if !stageCfg.Enabled {
+			continue
+		}
+		switch stageCfg.Name {
+		case "antispam":
+			scorer := antispam.NewScorer()
+			bayesFilter := antispam.NewBayesFilter(a.Store, a)
+			antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder())
+			stages = append(stages, antispamProc)
+		case "rules":
+			if a.Rules != nil {
+				rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
+				rulesProc.SetResolver(resolver)
+				stages = append(stages, rulesProc)
+			}
+		case "antivirus":
+			// Ordering note: antispam (above) runs before antivirus, and
+			// the runner returns immediately once a stage quarantines a
+			// message (runner.go, processMessage) — a message quarantined
+			// by antispam is never virus-scanned. Do not reorder stages
+			// to "fix" this; see buildAntivirusProcessor's doc comment.
+			if antivirusProc := buildAntivirusProcessor(a.Config, stageCfg.Backend, a.logger); antivirusProc != nil {
+				a.registerClamAV(antivirusProc)
+				stages = append(stages, antivirusProc)
+			}
+		}
+	}
+
+	// Deliver processor is always the final stage.
+	deliverProc := pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
+	if a.Preferences != nil {
+		deliverProc.SetPreferences(a.Preferences)
+	}
+	// Attachment deduplication: store large attachments as separate
+	// content-addressed blobs + a message skeleton, reconstructed byte-exact
+	// on read. The self-check inside the deliver stage falls back to whole-raw
+	// storage for anything that cannot be reproduced exactly.
+	if a.Blobs != nil {
+		deliverProc.SetAttachmentDedup(a.Blobs, int(a.Config.Storage.AttachmentDedupMinBytes()))
+	}
+	// Trace-header stamping: records SPF/DKIM/DMARC results and the spam
+	// decision on the stored message itself, so a raw message view can show
+	// why it was filed as spam without relying solely on the antispam log
+	// line. The tag threshold comes from the same
+	// holder as the antispam stages and drives Junk routing, so X-Spam-Status
+	// never disagrees with where the message landed.
+	deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname)
+	if h := a.spamThresholdHolder(); h != nil {
+		deliverProc.SetSpamThresholds(h)
+	}
+	stages = append(stages, deliverProc)
+	return stages, deliverProc
+}
+
+// validateSessionSecret applies the session-secret rules shared by startup
+// and reload. Every session/2FA/setup cookie is HMAC'd with a key derived from
+// this value; a weak secret is offline-guessable from a single observed
+// cookie, after which an attacker can forge any cookie. Outside dev a secret
+// is required and must be at least minSessionSecretLen bytes. The error never
+// contains the secret.
+func validateSessionSecret(role, secret string) error {
+	const minSessionSecretLen = 32
+	if secret == "" {
+		if role != "dev" {
+			return fmt.Errorf("web.session_secret is required outside dev mode")
+		}
+		return nil
+	}
+	if role != "dev" && len(secret) < minSessionSecretLen {
+		return fmt.Errorf("web.session_secret must be at least %d bytes (got %d); generate one with `openssl rand -base64 32`", minSessionSecretLen, len(secret))
+	}
+	return nil
+}
+
+// registerSMTPBackend records a backend so a reload reaches it.
+func (a *Agent) registerSMTPBackend(b *bongosmtp.Backend) {
+	a.reloadMu.Lock()
+	defer a.reloadMu.Unlock()
+	a.smtpBackends = append(a.smtpBackends, b)
+}
+
+// registerClamAV records a ClamAV processor so a reload reaches it. Other
+// processor types (and a nil interface) are ignored.
+func (a *Agent) registerClamAV(proc pipeline.Processor) {
+	cp, ok := proc.(*pipelineantivirus.ClamAVProcessor)
+	if !ok || cp == nil {
+		return
+	}
+	a.reloadMu.Lock()
+	defer a.reloadMu.Unlock()
+	a.clamavProcs = append(a.clamavProcs, cp)
+}
+
+// reloadConsumers returns copies of the registered consumer lists.
+func (a *Agent) reloadConsumers() ([]*bongosmtp.Backend, []*pipelineantivirus.ClamAVProcessor) {
+	a.reloadMu.Lock()
+	defer a.reloadMu.Unlock()
+	return slices.Clone(a.smtpBackends), slices.Clone(a.clamavProcs)
+}
+
 // Run starts the HTTP server and blocks until the context is cancelled.
 func (a *Agent) Run(ctx context.Context) error {
 	// Validate the optional antispam.dnsbl block before anything else, so a
@@ -422,19 +550,16 @@ func (a *Agent) Run(ctx context.Context) error {
 	// derived from this value; a weak secret is offline-guessable from a single
 	// observed cookie, after which an attacker can forge any cookie. Require a
 	// meaningful minimum length outside dev.
-	const minSessionSecretLen = 32
+	if err := validateSessionSecret(a.Config.Server.Role, a.Config.Web.SessionSecret); err != nil {
+		return err
+	}
 	sessionSecret := []byte(a.Config.Web.SessionSecret)
 	if len(sessionSecret) == 0 {
-		if a.Config.Server.Role != "dev" {
-			return fmt.Errorf("web.session_secret is required outside dev mode")
-		}
 		sessionSecret = make([]byte, 32)
 		if _, err := rand.Read(sessionSecret); err != nil {
 			return fmt.Errorf("generating session secret: %w", err)
 		}
 		a.logger.Info("web: auto-generated session secret for dev mode")
-	} else if a.Config.Server.Role != "dev" && len(sessionSecret) < minSessionSecretLen {
-		return fmt.Errorf("web.session_secret must be at least %d bytes (got %d); generate one with `openssl rand -base64 32`", minSessionSecretLen, len(sessionSecret))
 	}
 
 	// The outbound queue store and rate limiter must exist before any HTTP
@@ -1052,60 +1177,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.Spool = spool
 
 		// Build pipeline processors from PipelineConfig stage list.
-		resolver := sharedResolver
 		var stages []pipeline.Processor
-
-		for _, stageCfg := range a.Config.Pipeline.Stages {
-			if !stageCfg.Enabled {
-				continue
-			}
-			switch stageCfg.Name {
-			case "antispam":
-				scorer := antispam.NewScorer()
-				bayesFilter := antispam.NewBayesFilter(a.Store, a)
-				antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder())
-				stages = append(stages, antispamProc)
-			case "rules":
-				if a.Rules != nil {
-					rulesProc := pipelinerules.NewRulesProcessor(a.Rules, a.logger)
-					rulesProc.SetResolver(resolver)
-					stages = append(stages, rulesProc)
-				}
-			case "antivirus":
-				// Ordering note: antispam (above) runs before antivirus, and
-				// the runner returns immediately once a stage quarantines a
-				// message (runner.go, processMessage) — a message quarantined
-				// by antispam is never virus-scanned. Do not reorder stages
-				// to "fix" this; see buildAntivirusProcessor's doc comment.
-				if antivirusProc := buildAntivirusProcessor(a.Config, stageCfg.Backend, a.logger); antivirusProc != nil {
-					stages = append(stages, antivirusProc)
-				}
-			}
-		}
-
-		// Deliver processor is always the final stage.
-		deliverProc = pipelinedeliver.NewDeliverProcessor(a, resolver, a.logger)
-		if a.Preferences != nil {
-			deliverProc.SetPreferences(a.Preferences)
-		}
-		// Attachment deduplication: store large attachments as separate
-		// content-addressed blobs + a message skeleton, reconstructed byte-exact
-		// on read. The self-check inside the deliver stage falls back to whole-raw
-		// storage for anything that cannot be reproduced exactly.
-		if a.Blobs != nil {
-			deliverProc.SetAttachmentDedup(a.Blobs, int(a.Config.Storage.AttachmentDedupMinBytes()))
-		}
-		// Trace-header stamping: records SPF/DKIM/DMARC results and the spam
-		// decision on the stored message itself, so a raw message view can show
-		// why it was filed as spam without relying solely on the antispam log
-		// line. The tag threshold comes from the same
-		// holder as the antispam stages and drives Junk routing, so X-Spam-Status
-		// never disagrees with where the message landed.
-		deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname)
-		if h := a.spamThresholdHolder(); h != nil {
-			deliverProc.SetSpamThresholds(h)
-		}
-		stages = append(stages, deliverProc)
+		stages, deliverProc = a.buildPipelineStages(sharedResolver)
 
 		// Create blob reader adapter and start the Runner with config-driven options.
 		blobReader := &bongosmtp.BlobStoreAdapter{Blobs: a.Blobs}
@@ -1157,6 +1230,7 @@ func (a *Agent) Run(ctx context.Context) error {
 	if a.Config.SMTP.Enabled && a.Raft != nil && smtpPipeline != nil {
 		isDev := a.Config.Server.Role == "dev"
 		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
+		a.registerSMTPBackend(backend)
 
 		// SPF checker for inbound mail.
 		a.SPFChecker = mail.NewSPFChecker()
@@ -2753,6 +2827,7 @@ func (a *Agent) startSMTPAgent() error {
 	// Agent mode: no local auth required for inbound MX; use nil authenticator.
 	// Submission port authentication is handled by the server after deposit.
 	backend := bongosmtp.NewBackend(nil, pipeline, a.logger)
+	a.registerSMTPBackend(backend)
 
 	spfChecker := mail.NewSPFChecker()
 	backend.SetSPFChecker(spfChecker)
@@ -2806,6 +2881,7 @@ func (a *Agent) startProcessorAgent(ctx context.Context, role string) error {
 		if proc == nil {
 			return fmt.Errorf("agent: antivirus processor role requires antivirus.clamav.enabled = true")
 		}
+		a.registerClamAV(proc)
 	default:
 		return fmt.Errorf("unknown processor role: %s", role)
 	}

@@ -60,6 +60,10 @@ func WithThresholdSource(src ThresholdSource) Option {
 	}
 }
 
+// ThresholdSource returns the source set by WithThresholdSource, or nil.
+// Tests use it to prove the antispam and deliver stages share one holder.
+func (p *BuiltinProcessor) ThresholdSource() ThresholdSource { return p.thresholds }
+
 // currentThresholds returns the pair to apply to one message.
 func (p *BuiltinProcessor) currentThresholds() pipeline.SpamThresholds {
 	if p.thresholds != nil {

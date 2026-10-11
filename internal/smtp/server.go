@@ -140,11 +140,11 @@ func (b *Backend) SetTrustedNetworks(nets []*net.IPNet) {
 	b.trustedNets.Store(&cp)
 }
 
-// isTrustedSource reports whether ip falls inside one of the configured
+// IsTrustedSource reports whether ip falls inside one of the configured
 // trusted networks. Fail-closed by construction: no networks configured, an
 // empty ip, or an unparseable ip all report false. This must never default to
 // true on any error path.
-func (b *Backend) isTrustedSource(ip string) bool {
+func (b *Backend) IsTrustedSource(ip string) bool {
 	p := b.trustedNets.Load()
 	if p == nil || len(*p) == 0 {
 		return false
@@ -415,7 +415,7 @@ func (s *Session) Rcpt(to string, opts *gosmtp.RcptOptions) error {
 //     true on the submission port (see AuthMechanisms, which returns nil
 //     unless s.submission), so an unauthenticated MX-port session can never
 //     become trusted this way.
-//  2. b.isTrustedSource(sourceIP) — the connecting source IP falls inside an
+//  2. b.IsTrustedSource(sourceIP) — the connecting source IP falls inside an
 //     operator-configured trusted_networks CIDR (config.SMTPConfig). Empty by
 //     default, so no address is trusted implicitly, not even loopback or
 //     RFC 1918 ranges.
@@ -428,7 +428,7 @@ func (s *Session) inboundMeta(sourceIP string) *InboundMeta {
 	return &InboundMeta{
 		SPFResult: s.spfResult,
 		SourceIP:  sourceIP,
-		Trusted:   s.authed || s.backend.isTrustedSource(sourceIP),
+		Trusted:   s.authed || s.backend.IsTrustedSource(sourceIP),
 	}
 }
 

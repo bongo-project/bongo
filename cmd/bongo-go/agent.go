@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -110,8 +111,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 		cfg.Web.PlainHTTP = true
 	}
 
+	// Pin the config file and snapshot the running config for the reloader.
+	// The baseline is taken here, before NewAgent mutates cfg (dev mode sets
+	// Web.PlainHTTP), so those startup-only changes never show up as diffs.
+	var reloadBaseline *config.Config
+	var reloadFile string
+	if configFile != "" {
+		abs, err := filepath.Abs(configFile)
+		if err != nil {
+			abs = configFile
+		}
+		reloadFile = abs
+		v.Set("config", abs)
+		reloadBaseline = config.Clone(cfg)
+	}
+
 	// Set up structured logger with LogSink for admin UI streaming.
-	logLevel := parseLogLevel(cfg.Telemetry.Log.Level)
+	logLevel := cfg.Telemetry.Log.SlogLevel()
 	logSink := handlers.NewLogSink()
 
 	// Logs always go to stdout (so `docker logs`/journald still work). When
@@ -156,6 +172,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 	a.LogSink = logSink
 	a.LogLevel = logLevelVar
+	if reloadBaseline != nil {
+		a.EnableReload(v, reloadFile, servePlainHTTP, reloadBaseline)
+	}
 
 	// Set up signal-based cancellation.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,19 +211,6 @@ func newServeLogger(format string, level slog.Level, out io.Writer, sink *handle
 	logger := slog.New(sink.SlogHandler(base))
 	observability.InstallGRPCLogger(logger)
 	return logger, lv
-}
-
-func parseLogLevel(level string) slog.Level {
-	switch level {
-	case "debug":
-		return slog.LevelDebug
-	case "warn":
-		return slog.LevelWarn
-	case "error":
-		return slog.LevelError
-	default:
-		return slog.LevelInfo
-	}
 }
 
 // loadServeConfig loads the merged configuration and validates it. Serve is

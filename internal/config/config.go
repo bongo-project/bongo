@@ -1033,6 +1033,38 @@ func Load(v *viper.Viper) (*Config, error) {
 	return cfg, err
 }
 
+// ApplyOverrides applies the flag and environment overrides held by v onto
+// cfg, in place: BONGO_* env vars bind through viper, then role, bind, join,
+// log-level and web.session_secret replace the file values when set. Startup
+// and the config reloader both call it so the precedence (CLI flags > env >
+// file > defaults) cannot drift between them. v is not goroutine-safe.
+func ApplyOverrides(v *viper.Viper, cfg *Config) {
+	// Override from env vars (BONGO_SERVER_ROLE, etc.)
+	v.SetEnvPrefix("BONGO")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
+
+	// Override specific fields from viper (CLI flags and env vars)
+	if v.IsSet("role") {
+		cfg.Server.Role = v.GetString("role")
+	}
+	if v.IsSet("bind") {
+		cfg.Server.BindAddr = v.GetString("bind")
+	}
+	if v.IsSet("join") {
+		cfg.Cluster.Join = strings.Split(v.GetString("join"), ",")
+	}
+	// bootstrap-expect is reserved for future multi-node bootstrap logic; no action needed here.
+	if v.IsSet("log-level") {
+		cfg.Telemetry.Log.Level = v.GetString("log-level")
+	}
+	// Allow the session secret to be injected via BONGO_WEB_SESSION_SECRET so it
+	// can be kept out of the config file (e.g. Docker/12-factor deployments).
+	if s := v.GetString("web.session_secret"); s != "" {
+		cfg.Web.SessionSecret = s
+	}
+}
+
 // LoadWithDiscovery runs config file discovery, loads the file if found, applies viper overrides,
 // and returns the config together with the resolved config file path (empty string means defaults only).
 func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
@@ -1058,30 +1090,7 @@ func LoadWithDiscovery(v *viper.Viper) (*Config, string, error) {
 		cfg = fileCfg
 	}
 
-	// Override from env vars (BONGO_SERVER_ROLE, etc.)
-	v.SetEnvPrefix("BONGO")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	// Override specific fields from viper (CLI flags and env vars)
-	if v.IsSet("role") {
-		cfg.Server.Role = v.GetString("role")
-	}
-	if v.IsSet("bind") {
-		cfg.Server.BindAddr = v.GetString("bind")
-	}
-	if v.IsSet("join") {
-		cfg.Cluster.Join = strings.Split(v.GetString("join"), ",")
-	}
-	// bootstrap-expect is reserved for future multi-node bootstrap logic; no action needed here.
-	if v.IsSet("log-level") {
-		cfg.Telemetry.Log.Level = v.GetString("log-level")
-	}
-	// Allow the session secret to be injected via BONGO_WEB_SESSION_SECRET so it
-	// can be kept out of the config file (e.g. Docker/12-factor deployments).
-	if s := v.GetString("web.session_secret"); s != "" {
-		cfg.Web.SessionSecret = s
-	}
+	ApplyOverrides(v, cfg)
 
 	return cfg, configFile, nil
 }
