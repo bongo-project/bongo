@@ -77,10 +77,22 @@ func goroutineDump() string {
 // test may read it after cancel to assert on shutdown and a later cleanup read
 // still returns instead of blocking. On error the agent is returned (when it
 // was constructed) so the caller can release what Run left open.
-func sharedStartAgentErr(cfg *config.Config, logger *slog.Logger, timeout time.Duration) (*agent.Agent, context.CancelFunc, <-chan error, error) {
+//
+// Each beforeRun hook runs after NewAgent and before Run starts, for setup that
+// must precede Run (Run reads some fields without a lock). A hook error is
+// returned with the agent so the caller can Shutdown it.
+func sharedStartAgentErr(cfg *config.Config, logger *slog.Logger, timeout time.Duration, beforeRun ...func(*agent.Agent) error) (*agent.Agent, context.CancelFunc, <-chan error, error) {
 	a, err := agent.NewAgent(cfg, logger)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("NewAgent: %w", err)
+	}
+	for _, hook := range beforeRun {
+		if hook == nil {
+			continue
+		}
+		if err := hook(a); err != nil {
+			return a, nil, nil, fmt.Errorf("beforeRun: %w", err)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -128,6 +140,18 @@ func sharedStartAgentErr(cfg *config.Config, logger *slog.Logger, timeout time.D
 // once.
 func sharedStartAgent(t *testing.T, cfg *config.Config) (*agent.Agent, context.CancelFunc, <-chan error) {
 	t.Helper()
+	return sharedStartAgentWith(t, cfg, nil, nil)
+}
+
+// sharedStartAgentWith is sharedStartAgent with a caller-chosen logger (nil
+// means sharedTestLogger) and an optional hook run on every start attempt
+// between NewAgent and Run. The hook runs again on a port-race retry, after
+// sharedAssignFreePorts has changed cfg.
+func sharedStartAgentWith(t *testing.T, cfg *config.Config, logger *slog.Logger, beforeRun func(*agent.Agent) error) (*agent.Agent, context.CancelFunc, <-chan error) {
+	t.Helper()
+	if logger == nil {
+		logger = sharedTestLogger()
+	}
 	const attempts = 3
 	var (
 		a      *agent.Agent
@@ -136,7 +160,7 @@ func sharedStartAgent(t *testing.T, cfg *config.Config) (*agent.Agent, context.C
 		err    error
 	)
 	for attempt := 1; attempt <= attempts; attempt++ {
-		a, cancel, done, err = sharedStartAgentErr(cfg, sharedTestLogger(), 15*time.Second)
+		a, cancel, done, err = sharedStartAgentErr(cfg, logger, 15*time.Second, beforeRun)
 		if err == nil {
 			break
 		}
