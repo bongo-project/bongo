@@ -677,9 +677,8 @@ var clamAVKnownFailurePolicies = map[string]bool{
 
 // FailurePolicy returns the normalised on_failure value: "quarantine"
 // (default) or "accept". Any other value — including empty/unset — is
-// treated as "quarantine", the safer default. config.Validate() is
-// deliberately not wired into the startup path (see CLAUDE.md and
-// internal/agent/antispam.go), so this normalises defensively at the point
+// treated as "quarantine", the safer default. config.Validate() runs on
+// the serve startup path, but this still normalises defensively at the point
 // of use rather than assuming validation has run; callers that detect a
 // value outside clamAVKnownFailurePolicies should log the coercion.
 func (c ClamAVConfig) FailurePolicy() string {

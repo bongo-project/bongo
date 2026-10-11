@@ -96,8 +96,8 @@ func buildAntispamProcessor(
 
 	default:
 		// Config validation (knownBackends) should have already rejected an
-		// unknown backend, but Validate() is not wired into the startup path
-		// (deliberately — see CLAUDE.md). Fail safe: never drop mail because
+		// unknown backend, but keep this fallback as defence in depth in case
+		// Validate() was bypassed. Fail safe: never drop mail because
 		// of a bad config value, fall back to the builtin.
 		logger.Warn("pipeline: unknown antispam backend, falling back to builtin", "backend", backend)
 		return builtin
@@ -114,8 +114,8 @@ func buildAntispamProcessor(
 // all, the same class of divergence the antivirus comment beside it warns about.
 //
 // The length guard on the zone list matters on its own, independent of
-// DNSBLEnabled: DNSBLConfig.Validate runs from internal/agent.Run, not from
-// cfg.Validate() (see CLAUDE.md — cfg.Validate() is never wired into startup),
+// DNSBLEnabled: DNSBLConfig.Validate runs from internal/agent.Run, separately from
+// cfg.Validate() (which serve also runs at startup),
 // and this function has non-validating callers (unit tests constructing a
 // *config.Config by hand). An enabled=true block with zero zones would
 // otherwise construct a checker that can never list anything — harmless, but

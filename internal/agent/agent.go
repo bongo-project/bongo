@@ -367,8 +367,8 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Validate the optional antispam.dnsbl block before anything else, so a
 	// malformed value (bad zone name, out-of-range weight, unparseable
 	// timeout/cache_ttl) fails startup with a clear message on every role,
-	// not just SMTP-enabled server nodes. This is deliberately point-of-use
-	// validation, not cfg.Validate() (see CLAUDE.md and
+	// not just SMTP-enabled server nodes. This is point-of-use
+	// validation, separate from cfg.Validate() (see
 	// SMTPConfig.ParseTrustedNetworks below for the same pattern). The
 	// checker itself is not constructed here — see dnsblOption.
 	if err := a.Config.Antispam.DNSBL.Validate(); err != nil {

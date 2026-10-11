@@ -98,20 +98,13 @@ func runServe(cmd *cobra.Command, args []string) error {
 		v.Set("skip-discovery", "true")
 	}
 
-	cfg, configFile, err := config.LoadWithDiscovery(v)
+	// Validate before the logger, storage or any listener exists, so a bad
+	// config refuses to start. The error reaches stderr via cobra, not the
+	// JSON log, because the logger is not built yet.
+	cfg, configFile, err := loadServeConfig(v)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return err
 	}
-
-	// NOTE: cfg.Validate() is deliberately NOT called here. It is currently
-	// unreachable in production (nothing outside tests calls it), and switching
-	// it on activates several dormant gates at once — including the multi-node
-	// cluster transport gate, which would stop an existing deployment that sets
-	// cluster.join without gossip encryption and TLS from booting at all.
-	// Enabling it is a deployment-affecting change that deserves its own change
-	// and its own release note, not a side effect of adding a config field.
-	// Tracked as task B8. Config that must fail startup is validated at the
-	// point of use instead — see SMTP.ParseTrustedNetworks in agent.go.
 
 	if servePlainHTTP {
 		cfg.Web.PlainHTTP = true
@@ -206,4 +199,18 @@ func parseLogLevel(level string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// loadServeConfig loads the merged configuration and validates it. Serve is
+// the only entrypoint that validates: LoadWithDiscovery stays a pure merge so
+// tools needing only part of the config are not subject to server-only gates.
+func loadServeConfig(v *viper.Viper) (*config.Config, string, error) {
+	cfg, configFile, err := config.LoadWithDiscovery(v)
+	if err != nil {
+		return nil, "", fmt.Errorf("loading config: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return nil, "", fmt.Errorf("invalid config: %w", err)
+	}
+	return cfg, configFile, nil
 }

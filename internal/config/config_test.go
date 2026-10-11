@@ -958,8 +958,8 @@ func TestSMTPConfigParseTrustedNetworks(t *testing.T) {
 
 // TestShippedConfigsPassValidate proves cfg.Validate() is actually reachable
 // against real deployment configs, not just synthetic Defaults()-based
-// fixtures: both shipped HCL files must load and validate cleanly once
-// Validate() is wired into the startup path (runServe).
+// fixtures: both shipped HCL files must load and validate cleanly, since
+// Validate() runs on the serve startup path (loadServeConfig in cmd/bongo-go).
 func TestShippedConfigsPassValidate(t *testing.T) {
 	for _, path := range []string{"../../deploy/bongo.prod.hcl", "../../deploy/bongo.example.hcl"} {
 		t.Run(path, func(t *testing.T) {
@@ -1431,5 +1431,13 @@ func TestConfigValidateRejectsRaftPairing(t *testing.T) {
 	cfg.Cluster.Raft.TrailingLogs = 128
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() with a valid pairing = %v, want nil", err)
+	}
+}
+
+func TestDefaultsDevRoleValidates(t *testing.T) {
+	cfg := Defaults()
+	cfg.Server.Role = "dev"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Defaults() with role dev must validate: %v", err)
 	}
 }
