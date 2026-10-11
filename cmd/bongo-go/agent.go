@@ -132,7 +132,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logOut = io.MultiWriter(os.Stdout, rotator)
 	}
 
-	logger := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
+	logger, logLevelVar := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
 
 	if configFile != "" {
 		logger.Info("config loaded",
@@ -155,6 +155,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting server: %w", err)
 	}
 	a.LogSink = logSink
+	a.LogLevel = logLevelVar
 
 	// Set up signal-based cancellation.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -175,17 +176,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 // newServeLogger builds the process logger and routes gRPC's global logger
 // through it. It must run before agent.NewAgent creates any gRPC server or
 // client, because grpclog.SetLoggerV2 is not goroutine-safe.
-func newServeLogger(format string, level slog.Level, out io.Writer, sink *handlers.LogSink) *slog.Logger {
+//
+// The returned LevelVar is the live level: Set on it changes the logger, the
+// admin log sink and every With child at once.
+func newServeLogger(format string, level slog.Level, out io.Writer, sink *handlers.LogSink) (*slog.Logger, *slog.LevelVar) {
+	lv := new(slog.LevelVar)
+	lv.Set(level)
 	var base slog.Handler
 	if format == "text" {
-		base = slog.NewTextHandler(out, &slog.HandlerOptions{Level: level})
+		base = slog.NewTextHandler(out, &slog.HandlerOptions{Level: lv})
 	} else {
-		base = slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})
+		base = slog.NewJSONHandler(out, &slog.HandlerOptions{Level: lv})
 	}
 	// Wrap base handler so log entries are also sent to the admin log viewer.
 	logger := slog.New(sink.SlogHandler(base))
 	observability.InstallGRPCLogger(logger)
-	return logger
+	return logger, lv
 }
 
 func parseLogLevel(level string) slog.Level {

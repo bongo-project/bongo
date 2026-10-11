@@ -291,7 +291,7 @@ TLS as well as raft transport.
 | Key | Consumer | How read today | Class |
 |---|---|---|---|
 | `telemetry.prometheus.enabled`, `.port` | none (metrics are served on the web router at `/metrics`, `agent.go:408`) | none | NO-OP |
-| `telemetry.log.level` | `cmd/bongo-go/agent.go:121` (`parseLogLevel`, `:198`) -> `slog.HandlerOptions{Level: level}` (`newServeLogger`, `:185-190`): a FIXED `slog.Level` value | ctor | HOT-1 |
+| `telemetry.log.level` | `cmd/bongo-go/agent.go` `runServe` (`parseLogLevel`) -> `newServeLogger`, which holds it in a `*slog.LevelVar` stored on `Agent.LogLevel` (16.7) | ctor | HOT-1 |
 | `telemetry.log.format` | `cmd/bongo-go/agent.go:186-190` | ctor, picks the handler type | RESTART |
 | `telemetry.log.file` | `cmd/bongo-go/agent.go:129` | ctor, opens a lumberjack writer | RESTART |
 | `telemetry.log.max_size_mb`, `.max_backups`, `.max_age_days`, `.compress` | `cmd/bongo-go/agent.go:130-135` | ctor | RESTART |
@@ -363,12 +363,13 @@ single atomic store each. None of the following mutates `a.Config`.
 
 ### 5.1 `telemetry.log.level`: `*slog.LevelVar`
 
-Today a fixed `slog.Level` is baked into `slog.HandlerOptions`
-(`cmd/bongo-go/agent.go:185-190`, `newServeLogger`). `slog.LevelVar`
-(stdlib; implements `slog.Leveler`; `Set` is atomic) replaces it: construct
-`var lv slog.LevelVar; lv.Set(parseLogLevel(...))` and pass `Level: &lv`.
-`newServeLogger` returns or exposes the `*slog.LevelVar` so `runServe` can hand
-it to the reloader.
+Implemented in 16.7. `newServeLogger` (`cmd/bongo-go/agent.go`) builds the
+handler with a `*slog.LevelVar` (stdlib; implements `slog.Leveler`; `Set` is
+atomic), set from `parseLogLevel(...)`, instead of the fixed `slog.Level` it
+used before.
+`newServeLogger` returns the `*slog.LevelVar`; `runServe` stores it on
+`Agent.LogLevel` for the reloader, which must call `Set` on it and never swap
+the pointer.
 
 Downstream follows automatically:
 
@@ -377,15 +378,19 @@ Downstream follows automatically:
   new level with no change.
 - Child loggers created with `logger.With(...)` share the same handler and
   therefore the same `LevelVar`.
-- The raft hclog bridge classifies lines by their `[ERROR]`/`[WARN]`/`[DEBUG]`
-  text at `cluster/raft.go:394-401` and logs through the same logger, so it is
-  subject to the `LevelVar`.
+- The raft hclog bridge only partly follows. `cluster/raft.go:55` sets
+  `raftCfg.LogLevel = "INFO"` and raft v1.7.3 `config.go:257` builds hclog at
+  that level, so raft DEBUG/TRACE lines are filtered inside hclog before
+  `slogWriter` sees them. Raising the slog level above INFO does filter raft
+  lines; lowering it to DEBUG shows no raft debug output. Raft is deliberately
+  unchanged.
 
 Not covered, and stated so the doc is not read as "log level fully reloads":
 
 - `observability.InstallGRPCLogger` fixes verbosity at 0 (`grpclog.go:36-37`)
-  and `V(l)` compares against that fixed field (`:101`). It is independent of
-  the slog level and stays so.
+  and `V(l)` compares against that fixed field (`:101`), so verbosity stays
+  fixed. grpclog Info lines are emitted at slog DEBUG, so they do follow the
+  `LevelVar`.
 - `--log-level` shadows the file (section 2).
 
 ### 5.2 `antispam.builtin.threshold` + `high_threshold`: one shared holder

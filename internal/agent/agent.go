@@ -130,6 +130,12 @@ type Agent struct {
 	// Log streaming for admin UI.
 	LogSink *handlers.LogSink
 
+	// LogLevel is the live process log level. Set changes it for the logger,
+	// the admin log sink and all With children. It is assigned before Run, so
+	// it is read without a lock; a reloader must call Set on this LevelVar and
+	// never replace the pointer.
+	LogLevel *slog.LevelVar
+
 	// AgentGRPC is the gRPC client used to register with and heartbeat the server.
 	// In agent mode this is the primary registration client. For processor roles
 	// (antispam, antivirus) each role gets its own client; AgentGRPC holds the
