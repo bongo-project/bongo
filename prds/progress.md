@@ -1148,3 +1148,38 @@ PATTERN: [raft] A new refusal inside FSM apply changes how OLD log entries repla
 apply path starts rejecting something it used to accept.
 PATTERN: [testing] A worker's claim that a guard is "redundant, so not mutation-tested" must itself be
 tested; here removing the "redundant" guard turned four subtests red.
+
+## 2026-10-11 — Phase 16 complete: config reload increment 1 and the gap fixes
+
+Reload increment 1 shipped as 16.7-16.14: holders for log level, trusted networks, the spam threshold
+pair and the ClamAV policy; `config.Diff` with a reflection-checked classification; `Agent.Reload`
+(validate, prepare, apply all-or-nothing, report); SIGHUP wiring with registration that applies the
+reloader's current values; and an end-to-end integration test. Operator decisions: widened trusted
+networks apply with a WARN; blob_gc stays restart-only; unread group-1 keys connected (16.18-16.20),
+group 2 left alone, group 3 kept for future features (B21).
+
+Gaps closed: 16.15 duplicate accounts refused before any write, 16.16 alias normalisation, 16.17
+failure-path log tests, 16.21 FSM cleans up users rows and GAL entries on profile delete (plus the
+orchestrator's exact-match fix in rebuildProfiles).
+
+Final gate on cd27b9a: fmt, vet (with integration tag), `go test -race ./...`, uncached integration
+343.1s, all green. gosec: 68 findings, all pre-existing, none on lines this branch changed.
+
+Process notes:
+- Twice, agents treated a mid-run user message (a question) as the whole request and refused the
+  scheduled work. Quoting the user's actual instruction in the agent context fixed it; telling agents
+  to "ignore" a user message was correctly blocked by the safety classifier and must not be repeated.
+- 16.21 changed a behaviour three older tests relied on (a Raft profile delete left an orphan row).
+  The tests were changed to build the orphan the way a pre-16.21 node left it, not loosened.
+
+PATTERN: [norman] When the user sends a message mid-run, agents may read it as the latest and only
+request. Give agents the user's own words for the task they are running; never instruct them to
+disregard a user message.
+PATTERN: [testing] When a fix removes the way a test manufactured its precondition, rebuild the
+precondition the way real legacy state arises (here: delete the Pebble key directly), rather than
+deleting or weakening the test.
+PATTERN: [reload] Registration of a reloadable consumer must apply the reloader's current values under
+the reload lock; setting values from the startup config after registering re-opens a race.
+
+Open backlog from this phase: B21 (reserved config keys), B22 (follower orphan rows), B23 (log config
+mtime on reload), B24 (bounded signal-test teardown), B25 (SMTP ignores bind_addr).
