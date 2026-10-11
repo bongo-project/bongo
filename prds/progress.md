@@ -1027,3 +1027,32 @@ To answer the operator's question, recorded here because it will come up again: 
 check sending IPs against DNS blocklists, but in the antispam pipeline stage AFTER the message is
 accepted (`smtp: message accepted` at :05.167, `antispam: scored` at :06.026), not on connect. A
 slow or unreachable blocklist cannot delay the SMTP banner or stall a connection.
+
+## 2026-10-11 — 15.3: IMAP missing mailbox answers NONEXISTENT / TRYCREATE
+
+`mailboxLookupError` maps only `store.ErrNotFound` to an `*imap.Error`; every other store error is
+wrapped with %w, so a corrupt record is no longer blamed on the client as "not found". go-imap sends
+an `*imap.Error` as-is and logs nothing, which removes the biggest stdout line in prod (Apple Notes
+polling SELECT "Notes"). Existence is pre-checked in the session before any Raft write rather than
+by classifying errors returned through `ApplyCommand`, whose error chain may not survive leader
+forwarding. The pre-check plus write is not atomic; a racing delete just surfaces as a generic error.
+
+Two client-visible changes, both required by RFC 3501: APPEND to a missing mailbox returns TRYCREATE
+instead of silently creating it, and DELETE of a missing mailbox is NO instead of OK. SMTP delivery
+still auto-creates via `readOrInitMailboxMeta`.
+
+Advisor review: MINOR. Orchestrator mutation re-check: restoring the blanket wrap turned four tests
+red (TestMailboxLookupError, TestMissingMailboxIsNonexistent, TestMissingDestinationIsTryCreate,
+TestSelectNonexistentDoesNotLogServerError).
+
+15.5 decided by the operator: do nothing. No auto-create of Notes.
+
+PATTERN: [imap] Map to an IMAP status only on errors.Is(err, store.ErrNotFound); wrap everything else.
+PATTERN: [raft] Pre-check existence before ApplyCommand rather than classifying errors returned through
+Raft; the chain may not survive forwarding to the leader.
+PATTERN: [testing] An e2e test asserting a log line is ABSENT needs a positive control at the same
+level (here a corrupt-meta SELECT that does produce imap.command_error) or it passes vacuously.
+PATTERN: [norman] Parallel worktree workers running the integration suite at once starve each other
+("agent not ready in time") and one ran pkill on integration.test. Run the integration gate once,
+from the orchestrator, after merging. Locally the full suite also flakes on this Mac on clean main
+(6 readiness timeouts, each passing alone) while Linux CI is green.

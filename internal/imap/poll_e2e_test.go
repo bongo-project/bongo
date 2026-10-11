@@ -35,13 +35,18 @@ func (stubAuthenticator) Authenticate(username, password string) (string, error)
 // hand, so the session wiring under test is the wiring that ships.
 func startPollTestServer(t *testing.T, ms *store.MailboxStore, ps *store.PebbleStore) string {
 	t.Helper()
+	return startTestServerWithLogger(t, ms, ps, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
+// startTestServerWithLogger is startPollTestServer with a caller-supplied
+// logger, for tests that assert on what the server logs.
+func startTestServerWithLogger(t *testing.T, ms *store.MailboxStore, ps *store.PebbleStore, logger *slog.Logger) string {
+	t.Helper()
 
 	blobs, err := store.NewBlobStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewBlobStore: %v", err)
 	}
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	// One hub, shared between the server's sessions and the store, wired the
 	// way internal/agent/agent.go wires it. Building the notifier inline and

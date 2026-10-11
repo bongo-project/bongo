@@ -409,8 +409,11 @@ func TestSeparateFlags(t *testing.T) {
 }
 
 func TestSessionAppendRequiresBlobs(t *testing.T) {
-	// Append without blob store should panic (nil pointer), which we recover from.
-	s := &session{}
+	// Append without a blob store should panic (nil pointer), which we recover
+	// from. The destination exists, so the missing-mailbox pre-check cannot be
+	// what stops the call early.
+	s := newReadOnlyTestSession(t, false)
+	s.blobs = nil
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("expected panic from Append with nil blobs")
