@@ -40,7 +40,11 @@ func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, sea
 	count := 0
 	for iter.Next() {
 		key := string(iter.Key())
-		if !strings.HasSuffix(key, "/profile") {
+		// Exactly /user/{id}/profile, as in runDerivedIndexes. A suffix match
+		// would also take /user/{id}/tag/profile and
+		// /user/{id}/bayes/{cat}/profile and index them as the user's profile.
+		parts := strings.SplitN(key, "/", 5)
+		if len(parts) != 4 || parts[3] != "profile" {
 			continue
 		}
 
@@ -50,11 +54,6 @@ func rebuildProfiles(ps *store.PebbleStore, metadata *store.MetadataManager, sea
 			continue
 		}
 
-		// Extract user ID: /user/{id}/profile
-		parts := strings.SplitN(key, "/", 5)
-		if len(parts) < 4 {
-			continue
-		}
 		userID := parts[2]
 
 		var profile bongov1.UserProfile

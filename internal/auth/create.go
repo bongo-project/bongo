@@ -81,8 +81,10 @@ func checkAddressFree(applier RaftApplier, metadata *store.MetadataManager, emai
 // is check-then-act and only as current as this node's SQLite (stale on
 // followers), so it narrows rather than closes the race. The profile PUT is
 // then followed by the system.db insert. If that insert fails, the profile is
-// deleted via Raft and the users row removed by id (the FSM inserts it inline
-// on PUT and ignores DELETE). A duplicate lost in a race returns
+// deleted via Raft; applying that delete makes the FSM remove the users row and
+// GAL entry on every node, inline on the leader before ApplyCommand returns
+// (writes are leader-only and profile keys are not deferred; if profile keys
+// ever become deferrable, compensation must delete the row itself). A duplicate lost in a race returns
 // ErrAccountExists. An orphan profile remains only if the compensating delete
 // itself fails, and that is reported through the joined error. Pre-existing
 // duplicate data is left untouched (report-only).
@@ -148,8 +150,6 @@ func compensateCreate(applier RaftApplier, metadata *store.MetadataManager, user
 		Op:  bongov1.Op_OP_DELETE,
 		Key: []byte(fmt.Sprintf("/user/%s/profile", userID)),
 	}, 5*time.Second)
-	// Best effort: the FSM may have inserted the users row inline on PUT.
-	_, _ = metadata.System.DB().Exec(`DELETE FROM users WHERE id = ?`, userID)
 
 	// Tell a race-lost duplicate from other failures by re-running the SQLite
 	// checks (nil applier skips the Pebble ones).

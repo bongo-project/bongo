@@ -40,6 +40,7 @@ type Command struct {
 type SearchIndexer interface {
 	IndexMail(userID, guid string, subject, from string, to []string, body string, receivedAt int64, hasAttachment bool, tags []string, spamScore ...float64) error
 	IndexProfile(userID, email, displayName string) error
+	DeleteProfile(userID string) error
 	DeleteMailIndex(userID, guid string) error
 }
 
@@ -523,7 +524,9 @@ func (f *FSM) runDerivedIndexes(cmd *bongov1.RaftCommand) {
 			}
 		}
 
-		if strings.HasSuffix(key, "/profile") && len(parts) >= 4 {
+		// Exactly /user/{id}/profile. A looser suffix match would also catch
+		// /user/{id}/tag/profile and /user/{id}/bayes/{cat}/profile.
+		if len(parts) == 4 && parts[3] == "profile" {
 			userID := parts[2]
 			f.indexProfile(userID, cmd)
 		}
@@ -585,6 +588,7 @@ func (f *FSM) indexStoreObject(userID, guid string, docType int, cmd *bongov1.Ra
 // indexProfile updates system.db and GAL index on profile changes.
 func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
 	if cmd.Op == bongov1.Op_OP_DELETE {
+		f.removeProfile(userID)
 		return
 	}
 
@@ -610,6 +614,25 @@ func (f *FSM) indexProfile(userID string, cmd *bongov1.RaftCommand) {
 	if search := f.searchIndexer(); search != nil {
 		if err := search.IndexProfile(userID, profile.Email, profile.DisplayName); err != nil {
 			f.logger.Warn("fsm: failed to index profile in GAL", "error", err, "user", userID)
+		}
+	}
+}
+
+// removeProfile drops the users row and GAL entry for a deleted profile. It
+// deletes by id only (the username is not known on DELETE) and is idempotent:
+// a missing row or GAL entry is not an error.
+func (f *FSM) removeProfile(userID string) {
+	if userID == "" {
+		return
+	}
+	if f.metadata != nil && f.metadata.System != nil {
+		if _, err := f.metadata.System.DB().Exec(`DELETE FROM users WHERE id = ?`, userID); err != nil {
+			f.logger.Warn("fsm: failed to delete system.db user", "error", err, "user", userID)
+		}
+	}
+	if search := f.searchIndexer(); search != nil {
+		if err := search.DeleteProfile(userID); err != nil {
+			f.logger.Warn("fsm: failed to remove profile from GAL", "error", err, "user", userID)
 		}
 	}
 }

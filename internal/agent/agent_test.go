@@ -164,11 +164,10 @@ func TestSweepOrphanedUsers(t *testing.T) {
 		t.Fatal("user row should exist after creation")
 	}
 
-	// Orphan the user: remove only its Pebble profile, leaving the SQLite row.
-	if err := a.ApplyCommand(&bongov1.RaftCommand{
-		Op:  bongov1.Op_OP_DELETE,
-		Key: []byte("/user/" + uid + "/profile"),
-	}, 5*time.Second); err != nil {
+	// Orphan the user the way a pre-16.21 node left it: remove only the Pebble
+	// profile, bypassing the FSM. A profile delete through Raft now also
+	// removes the users row on every node, so it can no longer make an orphan.
+	if err := a.Store.Delete([]byte("/user/" + uid + "/profile")); err != nil {
 		t.Fatalf("delete profile: %v", err)
 	}
 
@@ -495,9 +494,10 @@ func TestSweepGhostUserTrees(t *testing.T) {
 	}, 5*time.Second); err != nil {
 		t.Fatalf("seed row-only mail: %v", err)
 	}
-	if err := a.ApplyCommand(&bongov1.RaftCommand{
-		Op: bongov1.Op_OP_DELETE, Key: []byte("/user/" + rowOnlyID + "/profile"),
-	}, 5*time.Second); err != nil {
+	// Orphan the user the way a pre-16.21 node left it: remove only the Pebble
+	// profile, bypassing the FSM. A profile delete through Raft now also
+	// removes the users row on every node, so it can no longer make an orphan.
+	if err := a.Store.Delete([]byte("/user/" + rowOnlyID + "/profile")); err != nil {
 		t.Fatalf("delete row-only profile: %v", err)
 	}
 
@@ -569,7 +569,10 @@ func TestSweepOrphanedUsersLogsReclaimedUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if err := a.ApplyCommand(&bongov1.RaftCommand{Op: bongov1.Op_OP_DELETE, Key: []byte("/user/" + uid + "/profile")}, 5*time.Second); err != nil {
+	// Orphan the user the way a pre-16.21 node left it: remove only the Pebble
+	// profile, bypassing the FSM. A profile delete through Raft now also
+	// removes the users row on every node, so it can no longer make an orphan.
+	if err := a.Store.Delete([]byte("/user/" + uid + "/profile")); err != nil {
 		t.Fatalf("delete profile: %v", err)
 	}
 

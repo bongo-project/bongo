@@ -638,8 +638,10 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Remove the system.db users row (not cleaned by key deletes) so the account
-	// disappears from the user list and cannot authenticate.
+	// Remove the system.db users row so the account disappears from the user
+	// list and cannot authenticate. The FSM already does this on every node
+	// when the profile key is deleted above, so this is a cheap no-op kept as
+	// belt and braces.
 	if h.metadata != nil && h.metadata.System != nil {
 		if _, err := h.metadata.System.DB().Exec("DELETE FROM users WHERE id = ?", userID); err != nil {
 			h.logger.Warn("admin: failed to delete user from sqlite", "user_id", userID, "error", err)
