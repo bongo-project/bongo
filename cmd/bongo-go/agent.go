@@ -15,6 +15,7 @@ import (
 
 	"github.com/bongo-project/bongo/internal/agent"
 	"github.com/bongo-project/bongo/internal/config"
+	"github.com/bongo-project/bongo/internal/observability"
 	"github.com/bongo-project/bongo/internal/web/handlers"
 )
 
@@ -138,15 +139,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		logOut = io.MultiWriter(os.Stdout, rotator)
 	}
 
-	var baseHandler slog.Handler
-	if cfg.Telemetry.Log.Format == "text" {
-		baseHandler = slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: logLevel})
-	} else {
-		baseHandler = slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: logLevel})
-	}
-	// Wrap base handler so log entries are also sent to the admin log viewer.
-	handler := logSink.SlogHandler(baseHandler)
-	logger := slog.New(handler)
+	logger := newServeLogger(cfg.Telemetry.Log.Format, logLevel, logOut, logSink)
 
 	if configFile != "" {
 		logger.Info("config loaded",
@@ -184,6 +177,22 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	return a.Run(ctx)
+}
+
+// newServeLogger builds the process logger and routes gRPC's global logger
+// through it. It must run before agent.NewAgent creates any gRPC server or
+// client, because grpclog.SetLoggerV2 is not goroutine-safe.
+func newServeLogger(format string, level slog.Level, out io.Writer, sink *handlers.LogSink) *slog.Logger {
+	var base slog.Handler
+	if format == "text" {
+		base = slog.NewTextHandler(out, &slog.HandlerOptions{Level: level})
+	} else {
+		base = slog.NewJSONHandler(out, &slog.HandlerOptions{Level: level})
+	}
+	// Wrap base handler so log entries are also sent to the admin log viewer.
+	logger := slog.New(sink.SlogHandler(base))
+	observability.InstallGRPCLogger(logger)
+	return logger
 }
 
 func parseLogLevel(level string) slog.Level {

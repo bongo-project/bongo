@@ -1056,3 +1056,16 @@ PATTERN: [norman] Parallel worktree workers running the integration suite at onc
 ("agent not ready in time") and one ran pkill on integration.test. Run the integration gate once,
 from the orchestrator, after merging. Locally the full suite also flakes on this Mac on clean main
 (6 readiness timeouts, each passing alone) while Linux CI is green.
+
+## 2026-10-11 — 15.4: gRPC logs through slog
+
+`observability.GRPCLogger` implements grpclog.LoggerV2 with stable msg keys and the text in
+`line`. It is installed once in `newServeLogger`, extracted from `runServe` so the wiring is testable
+and runs before `agent.NewAgent` constructs any gRPC object (SetLoggerV2 is not goroutine-safe).
+The Depth variants are deliberately not implemented so grpclog falls back to the *ln methods, which
+carry `[component] text`. Advisor review: MINOR (infra doc should note GRPC_GO_LOG_* env vars stop
+applying). Orchestrator mutation re-check: replacing the install call with a no-op turned
+TestNewServeLoggerInstallsGRPCLogger red.
+
+PATTERN: [testing] Deleting a call to mutation-test wiring often just fails the build on an unused
+import. Replace it with a harmless no-op instead, so the test, not the compiler, goes red.
