@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 
 	"github.com/cockroachdb/pebble"
@@ -35,6 +36,17 @@ type Option func(*pebble.Options)
 func WithCacheSize(size int64) Option {
 	return func(opts *pebble.Options) {
 		opts.Cache = pebble.NewCache(size)
+	}
+}
+
+// WithLogger routes Pebble's log output through the given slog logger. A nil
+// logger is a programming error; it is ignored and Pebble keeps its default.
+func WithLogger(l *slog.Logger) Option {
+	return func(opts *pebble.Options) {
+		if l == nil {
+			return
+		}
+		opts.Logger = newPebbleLogger(l)
 	}
 }
 

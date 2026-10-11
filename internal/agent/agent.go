@@ -229,6 +229,12 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 	return a.Store.Get(key)
 }
 
+// pebbleStoreOptions returns the options the agent opens its Pebble store with.
+// Pebble's own log output goes through the process logger, not stdlib log.
+func pebbleStoreOptions(logger *slog.Logger) []store.Option {
+	return []store.Option{store.WithLogger(logger.With("component", "pebble"))}
+}
+
 // NewAgent creates and initializes an Agent with the given config.
 // In dev mode, storage is opened in a temporary directory.
 // In agent mode, no local storage is initialized.
@@ -269,7 +275,7 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		return nil, fmt.Errorf("creating pebble dir: %w", err)
 	}
 
-	pebbleStore, err := store.NewPebbleStore(pebbleDir)
+	pebbleStore, err := store.NewPebbleStore(pebbleDir, pebbleStoreOptions(logger)...)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble store: %w", err)
 	}

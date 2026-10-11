@@ -1069,3 +1069,25 @@ TestNewServeLoggerInstallsGRPCLogger red.
 
 PATTERN: [testing] Deleting a call to mutation-test wiring often just fails the build on an unused
 import. Replace it with a harmless no-op instead, so the test, not the compiler, goes red.
+
+## 2026-10-11 — 15.6: Pebble logs through slog; Phase 15 complete
+
+`store.WithLogger` wires an slog adapter into `pebble.Options.Logger` at both construction sites.
+The advisor revised the task: Pebble v1.1.5's Logger has no Errorf, and background errors arrive
+through Infof, so the adapter classifies on the compile-time format string and promotes
+`background error:` to ERROR. Advisor review: MINOR (the NewAgent call site is covered by the
+extracted `pebbleStoreOptions` test, not by a full Agent). Orchestrator mutation re-check:
+`pebbleStoreOptions` returning nil turned TestPebbleStoreOptionsRouteLogsThroughSlog red.
+
+Gate with 15.3, 15.4 and 15.6 applied: fmt-check clean; `go test -race ./...` green (TestHealthEndpoints
+passed this time); integration had 3 "agent not ready in time" timeouts (TestI18nFallback,
+TestLoginRateLimit, TestRemoteImageBlocking). The clean baseline had 6 of the same kind, the set
+changes run to run, and each passes alone. Linux CI on main is green.
+
+PATTERN: [pebble] v1.1.5 Logger is Infof + Fatalf only; classify on the format string, not the
+formatted text, and assert with log.SetOutput (the default logger uses stdlib log, stderr).
+PATTERN: [pebble] Under -race, invariants finalizers exit the process on an unclosed DB; every test
+must Close its stores.
+NOTE (for B16): integration startup readiness flakes locally under the full suite, beyond the three
+tests B16 names. The integration helpers discard Run()'s error (`go func() { a.Run(ctx) }()`), so a
+failed start shows only as a 15s timeout. Surfacing that error is the first step to diagnosing it.

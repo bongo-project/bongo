@@ -685,7 +685,7 @@ func (f *FSM) Restore(rc io.ReadCloser) error {
 		return fmt.Errorf("extracting snapshot: %w", err)
 	}
 
-	restored, err := store.NewPebbleStore(pebbleDir)
+	restored, err := store.NewPebbleStore(pebbleDir, store.WithLogger(f.logger))
 	if err != nil {
 		return fmt.Errorf("opening restored pebble: %w", err)
 	}

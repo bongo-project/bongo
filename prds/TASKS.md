@@ -35,22 +35,7 @@ PRD in [done/prd-multidomain-hosting.md](done/prd-multidomain-hosting.md).
 
 ## Phase 14: Blob GC reference integrity (B15) — 10 tasks completed 2026-09-01 (see [TASKS-archive.md](TASKS-archive.md)). PRD in [done/prd-blob-gc-reference-integrity.md](done/prd-blob-gc-reference-integrity.md).
 
-## Phase 15: Production logging
-
-Source: TydeWhatMay/infra `docs/prod-logging.md` item 3 (survey 2026-10-09). bongo's own
-JSONL log (`{job="bongo"}` in Loki) is all slog JSON, but container stdout
-(`{job="docker"}`) carried ~1,000 text lines/day from libraries given no logger: go-imap
-(`handling SELECT command: mailbox "Notes" not found` every 5 min), net/http TLS handshake
-noise, go-smtp. Standard: one JSON object per line, stable `msg` keys, client noise at DEBUG.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 15.1 | Route go-imap, go-smtp and net/http library loggers through slog (`observability.LibraryLogger` + IMAP/SMTP/HTTP presets; prefix rules pick level + `msg`, text in `line`); wired on IMAP, IMAPS, SMTP MX + submission, web, health-only and redirect HTTP servers | infra `docs/prod-logging.md` | DONE on branch (2026-10-09) | Branch `fix/library-logs-to-slog` (5a6aac9, 46a61d3), not merged. Unit tests, vet, gofmt, `make sec` gosec clean, re-run independently. 8 wiring mutations red. |
-| 15.2 | Merge 15.1, release; infra bumps `mail/bongo/docker-compose.yml` (infra task 4.8). Verify `{job="docker"} !~ "^\\{"` drops to near zero | infra `docs/prod-logging.md` | DONE | Released v0.6.31, deployed 2026-10-10 21:03 (infra 4.8). No text lines from the new container after startup except Pebble (15.6). Infra 4.8 still confirms the next IMAP IDLE errors land as JSON. |
-| 15.3 | IMAP missing mailbox returns a plain error, so go-imap answers `NO internal server error` and logs it. `internal/imap/backend.go` `Select` (~:160) and `statusForMailbox` (~:347) wrap every `GetMailbox` error as `fmt.Errorf("mailbox %q not found")`. Return `&imap.Error{Type: imap.StatusResponseTypeNo, Code: imap.ResponseCodeNonExistent}` for not-found only, and keep real store errors as errors (today a DB failure is reported as "not found"). Audit other session methods for the same pattern | infra `docs/prod-logging.md` | DONE (2026-10-11) | Missing mailbox -> NO [NONEXISTENT] on SELECT/EXAMINE, STATUS, SUBSCRIBE/UNSUBSCRIBE, RENAME, DELETE; missing COPY/MOVE/APPEND destination -> NO [TRYCREATE]. Real store errors stay wrapped. **Client-visible:** APPEND to a missing mailbox no longer auto-creates it, and DELETE of a missing mailbox is now NO instead of OK (both RFC 3501). SMTP delivery auto-create untouched. E2E test proves go-imap no longer logs it. Follow-ups: UNSUBSCRIBE of a vanished name could return OK (RFC 3501 6.3.7); RENAME onto an existing mailbox overwrites it and CREATE of an existing one is an internal error (both should be [ALREADYEXISTS]). |
-| 15.4 | Route gRPC's logger (`grpc.NewServer()` in `internal/agent/grpc`, grpclog default stderr) through slog with the same adapter | infra `docs/prod-logging.md` | DONE (2026-10-11) | `observability.GRPCLogger` (grpclog.LoggerV2) installed once by `newServeLogger` in `runServe`, before `agent.NewAgent`; only `bongo-go serve` reaches gRPC. Info->DEBUG `grpc.info`, Warning->WARN, Error->ERROR, Fatal->ERROR `grpc.fatal` then exit(1); V(l) is l<=0; Depth methods omitted so component lines reach the *ln methods. Once installed, the GRPC_GO_LOG_* env vars no longer apply; gRPC info is filtered by `telemetry.log.level`. Infra `docs/prod-logging.md` should say so. Still required before multi-node: B20 (mTLS). |
-| 15.5 | Decide whether to auto-create a `Notes` mailbox for Apple Notes over IMAP | infra `docs/prod-logging.md` | DONE (2026-10-11) | Decision: do nothing. No auto-create, and Notes stays out of DefaultMailboxes. 15.3 makes the reply a proper NO [NONEXISTENT]; a user who wants Apple Notes over IMAP creates the folder themselves, or turns Notes off for the account on the device. |
-| 15.6 | Give Pebble a logger (`pebble.Options.Logger`) that routes through slog; its WAL-replay lines at startup still go to stdout as text | infra `docs/prod-logging.md` | ACTIVE | Two lines per start in prod, seen after 15.2. Same adapter pattern as 15.1. |
+## Phase 15: Production logging — 6 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Backlog (unscheduled)
 
