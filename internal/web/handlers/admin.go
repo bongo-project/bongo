@@ -26,6 +26,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bongo-project/bongo/internal/auth"
 	"github.com/bongo-project/bongo/internal/cluster"
 	internalmail "github.com/bongo-project/bongo/internal/mail"
 	"github.com/bongo-project/bongo/internal/queue"
@@ -272,6 +273,8 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Store and compare the canonical form everywhere below.
+	newEmail = store.NormaliseAddress(newEmail)
 
 	// Scope check: domain-admins may only create users in their domains.
 	if !requireDomainAccess(w, scope, domainFromEmail(newEmail)) {
@@ -312,7 +315,7 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create user via auth package.
-	userID, err := createUserViaRaft(h.applier, h.metadata, newEmail, displayName, password)
+	userID, err := auth.CreateUser(h.applier, h.metadata, newEmail, displayName, password, false)
 	if err != nil {
 		http.Error(w, "failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -2636,52 +2639,4 @@ func (h *AdminHandler) loadAliases() []templates.AliasInfo {
 		}
 	}
 	return aliases
-}
-
-// createUserViaRaft creates a user using Raft consensus. It mirrors
-// auth.CreateUser rather than calling it, to avoid an import cycle.
-func createUserViaRaft(applier store.RaftApplier, metadata *store.MetadataManager, email, displayName, password string) (string, error) {
-	userID := generateUserID()
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("hashing password: %w", err)
-	}
-
-	profile := &bongov1.UserProfile{
-		Email:        email,
-		DisplayName:  displayName,
-		PasswordHash: hash,
-	}
-	profileBytes, err := proto.Marshal(profile)
-	if err != nil {
-		return "", fmt.Errorf("marshaling profile: %w", err)
-	}
-
-	cmd := &bongov1.RaftCommand{
-		Op:    bongov1.Op_OP_PUT,
-		Key:   []byte(fmt.Sprintf("/user/%s/profile", userID)),
-		Value: profileBytes,
-	}
-	if err := applier.ApplyCommand(cmd, 5*time.Second); err != nil {
-		return "", fmt.Errorf("applying user profile: %w", err)
-	}
-
-	if metadata != nil && metadata.System != nil {
-		if _, err := metadata.System.DB().Exec(
-			"INSERT INTO users (id, username, display_name, enabled, created_at, modified_at) VALUES (?, ?, ?, 1, ?, ?) ON CONFLICT(id) DO UPDATE SET display_name = excluded.display_name, modified_at = excluded.modified_at",
-			userID, email, displayName, time.Now().Unix(), time.Now().Unix(),
-		); err != nil {
-			slog.Warn("admin: failed to insert user into sqlite", "user_id", userID, "error", err)
-		}
-	}
-
-	return userID, nil
-}
-
-func generateUserID() string {
-	buf := make([]byte, 16)
-	rand.Read(buf)
-	// Format as UUID-like string.
-	return fmt.Sprintf("%x-%x-%x-%x-%x", buf[0:4], buf[4:6], buf[6:8], buf[8:10], buf[10:16])
 }

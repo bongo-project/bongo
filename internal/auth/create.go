@@ -23,6 +23,11 @@ type RaftApplier interface {
 // applies it via Raft, and inserts the user into system.db. When isAdmin is
 // true the profile is marked as an administrator.
 func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, displayName, password string, isAdmin bool) (string, error) {
+	email = store.NormaliseAddress(email)
+	if email == "" {
+		return "", fmt.Errorf("email is required")
+	}
+
 	userID := uuid.New().String()
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
