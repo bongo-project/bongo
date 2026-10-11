@@ -3,7 +3,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net"
@@ -95,38 +94,7 @@ func (s *mockRejectSMTPSession) Logout() error                              { re
 
 func startDevAgent(t *testing.T, cfg *config.Config) *agent.Agent {
 	t.Helper()
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		done <- a.Run(ctx)
-	}()
-
-	// Wait for ready.
-	deadline := time.Now().Add(10 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		cancel()
-		t.Fatal("agent not ready in time")
-	}
-
-	t.Cleanup(func() {
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Log("agent did not stop in time")
-		}
-	})
-
+	a, _, _ := sharedStartAgent(t, cfg)
 	return a
 }
 
@@ -354,6 +322,7 @@ func TestSPFInbound(t *testing.T) {
 	cfg.Server.BindAddr = "127.0.0.1"
 	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = true
+	cfg.Pipeline.PollInterval = "50ms" // deliver promptly
 
 	a := startDevAgent(t, cfg)
 
@@ -381,23 +350,25 @@ func TestSPFInbound(t *testing.T) {
 		t.Fatalf("SendMail: %v", err)
 	}
 
-	time.Sleep(1 * time.Second)
-
-	// Read delivered message from Pebble and check for Received-SPF header.
+	// Delivery runs on the pipeline's poll loop, so a fixed sleep races it:
+	// under -race load the message landed after the check ran. Poll for the
+	// header instead.
 	mailPrefix := fmt.Sprintf("/user/%s/mail/", userID)
-	iter, err := a.Store.PrefixScan([]byte(mailPrefix))
-	if err != nil {
-		t.Fatalf("PrefixScan: %v", err)
-	}
-
-	spfFound := false
-	for iter.Next() {
-		val, _ := iter.Value()
-		var meta bongov1.MailMeta
-		if err := proto.Unmarshal(val, &meta); err != nil {
-			continue
+	hasSPF := func() bool {
+		iter, err := a.Store.PrefixScan([]byte(mailPrefix))
+		if err != nil {
+			t.Fatalf("PrefixScan: %v", err)
 		}
-		if meta.RawMessage != nil && meta.RawMessage.Hash != "" {
+		defer iter.Close()
+		for iter.Next() {
+			val, _ := iter.Value()
+			var meta bongov1.MailMeta
+			if err := proto.Unmarshal(val, &meta); err != nil {
+				continue
+			}
+			if meta.RawMessage == nil || meta.RawMessage.Hash == "" {
+				continue
+			}
 			rc, err := a.Blobs.Get(meta.RawMessage.Hash)
 			if err != nil {
 				continue
@@ -405,15 +376,18 @@ func TestSPFInbound(t *testing.T) {
 			rawData, _ := io.ReadAll(rc)
 			rc.Close()
 			if strings.Contains(string(rawData), "Received-SPF:") {
-				spfFound = true
-				t.Log("Received-SPF header found in inbound message")
-				break
+				return true
 			}
 		}
+		return false
 	}
-	iter.Close()
 
-	if !spfFound {
-		t.Error("Received-SPF header not found in delivered message")
+	deadline := time.Now().Add(15 * time.Second)
+	for !hasSPF() {
+		if time.Now().After(deadline) {
+			t.Fatal("Received-SPF header not found in delivered message")
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
+	t.Log("Received-SPF header found in inbound message")
 }

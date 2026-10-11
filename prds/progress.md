@@ -1091,3 +1091,31 @@ must Close its stores.
 NOTE (for B16): integration startup readiness flakes locally under the full suite, beyond the three
 tests B16 names. The integration helpers discard Run()'s error (`go func() { a.Run(ctx) }()`), so a
 failed start shows only as a 15s timeout. Surfacing that error is the first step to diagnosing it.
+
+## 2026-10-11 — 16.1 (B16): the integration flakes were a fixed port, hidden by a discarded error
+
+Every dev-mode agent bound memberlist's default gossip port 8301 (`sharedAssignFreePorts` randomised
+every port but that one). Tests cancelled their agent without waiting for Run to return, so the next
+test's agent started while 8301 was still held; gossip is the first step after "leadership
+acquired", Run returned the bind error, and 14 helpers discarded it. The symptom was a 15s "agent
+not ready" whose victim set changed run to run -- indistinguishable from load flakiness.
+
+Evidence, not inference: with the new fail-fast helper and the fix reverted, ~15 tests failed in
+under a second with `listen tcp 127.0.0.1:8301: bind: address already in use`.
+
+TestHealthEndpoints was a different mechanism: the client transport parked an unused connection,
+which the server sees in StateNew, and `http.Server.Shutdown` only treats StateNew as idle after 5s.
+Measured 7/25 failures under load before, 0/25 after `client.CloseIdleConnections()`.
+
+Advisor review: MINOR (port-race retry could hide an intermittent overlap; agent-package tests still
+use fixed IMAP/POP3 ports). Orchestrator gate: `go test -race ./...` and uncached integration both
+green (345.8s), the first clean local integration run of the day.
+
+PATTERN: [testing] A helper that discards a goroutine's error turns every failure into the same
+timeout. Before diagnosing a "flaky timeout", make the thing that failed report why.
+PATTERN: [testing] "Randomise every port" must include library-default ports (memberlist 8301) the
+config struct sets on your behalf.
+PATTERN: [testing] Wait for the previous test's server to stop (Cleanup waiting on Run) before the
+next starts; cancelling is not stopping.
+PATTERN: [testing] http.Server.Shutdown waits up to 5s on a client connection that sent nothing;
+call CloseIdleConnections on the test client before shutting the server down.

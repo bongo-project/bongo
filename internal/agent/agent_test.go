@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime/pprof"
 	"testing"
 	"time"
 
@@ -256,6 +258,7 @@ func TestHealthEndpoints(t *testing.T) {
 	cfg.Web.Port = port
 	cfg.Server.BindAddr = "127.0.0.1"
 	cfg.SMTP.Enabled = false
+	cfg.Cluster.Gossip.Port = freePort(t)
 
 	a, err := NewAgent(cfg, testLogger())
 	if err != nil {
@@ -280,13 +283,13 @@ func TestHealthEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health/live: %v", err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("/health/live status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 
 	var body map[string]string
 	json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
 	if body["status"] != "alive" {
 		t.Errorf("/health/live status = %q, want %q", body["status"], "alive")
 	}
@@ -296,20 +299,35 @@ func TestHealthEndpoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health/ready: %v", err)
 	}
-	defer resp2.Body.Close()
+	resp2.Body.Close()
 	if resp2.StatusCode != http.StatusOK {
 		t.Errorf("/health/ready status = %d, want %d", resp2.StatusCode, http.StatusOK)
 	}
 
+	// net/http only treats a server connection that has not yet received a
+	// request (StateNew) as idle once it is 5s old, and Server.Shutdown waits
+	// for every connection to go idle. The client transport can dial a spare
+	// connection while waitForHTTPS and the GETs above race for one, then park
+	// it unused in its idle pool. Left open, that connection makes Shutdown
+	// block ~5s - exactly this test's budget - so Run overran it under load
+	// (observed 5.1-7.3s against ~9ms when the machine is quiet), and the late
+	// shutdown still held the fixed IMAP/POP3 ports when the next test started.
+	// Closing the client's idle connections lets Shutdown return immediately.
+	client.CloseIdleConnections()
+
+	cancelAt := time.Now()
 	cancel()
 
 	select {
 	case err := <-done:
+		t.Logf("Run returned %s after cancel", time.Since(cancelAt))
 		if err != nil {
 			t.Fatalf("Run returned error: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("Run did not return after context cancellation")
+		var buf bytes.Buffer
+		_ = pprof.Lookup("goroutine").WriteTo(&buf, 1)
+		t.Fatalf("Run did not return after context cancellation; goroutines:\n%s", buf.String())
 	}
 }
 

@@ -32,29 +32,8 @@ func startDragonflyAgent(t *testing.T) (*agent.Agent, string, *http.Client, cont
 	sharedAssignFreePorts(t, cfg)
 	cfg.SMTP.Enabled = false
 	cfg.IMAP.Enabled = false
-	cfg.Cluster.Gossip.Port = sharedFreePort(t)
 
-	logger := sharedTestLogger()
-
-	a, err := agent.NewAgent(cfg, logger)
-	if err != nil {
-		t.Fatalf("NewAgent: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	go func() {
-		_ = a.Run(ctx)
-	}()
-
-	deadline := time.Now().Add(15 * time.Second)
-	for !a.Ready() && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !a.Ready() {
-		cancel()
-		t.Fatal("agent not ready in time")
-	}
+	a, cancel, _ := sharedStartAgent(t, cfg)
 
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", cfg.Web.Port)
 
