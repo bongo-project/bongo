@@ -1650,12 +1650,12 @@ func (h *AdminHandler) CreateAlias(w http.ResponseWriter, r *http.Request) {
 	// Rcpt) -- mail to it is silently relayed off-server instead of delivered
 	// locally. Normalising here is what keeps the write path in step with the read.
 	//
-	// targetUser is deliberately NOT lower-cased: it is stored verbatim and later
-	// used as an exact `users.username` match, and account creation does not
-	// normalise the address either, so forcing case here could break the lookup for
-	// a user whose username genuinely contains capitals.
-	address := strings.ToLower(strings.TrimSpace(r.FormValue("address")))
-	targetUser := strings.TrimSpace(r.FormValue("target_user"))
+	// targetUser is normalised for the same reason: auth.CreateUser stores
+	// usernames normalised, and resolver tier 2a matches `users.username`
+	// exactly, so a target typed with capitals would miss the account (and the
+	// SQLite lookup below would find nothing). Existing aliases are not rewritten.
+	address := store.NormaliseAddress(r.FormValue("address"))
+	targetUser := store.NormaliseAddress(r.FormValue("target_user"))
 
 	if address == "" || targetUser == "" {
 		http.Error(w, "address and target_user are required", http.StatusBadRequest)
