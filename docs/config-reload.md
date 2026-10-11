@@ -509,9 +509,30 @@ applies.
 
 ## 6. Reload flow
 
-Trigger: SIGHUP, on its OWN `signal.Notify` channel. The existing goroutine
-(`cmd/bongo-go/agent.go:171-177`) registers SIGINT and SIGTERM and calls
-`cancel()` on the first signal; SIGHUP must not be added to that channel.
+Trigger: SIGHUP, on its OWN `signal.Notify` channel, built by
+`watchSignals(ctx, cancel, reload, logger)` in `cmd/bongo-go/agent.go`. It
+registers both channels before returning: SIGINT and SIGTERM call `cancel()`,
+SIGHUP calls `Agent.Reload` and never cancels. The returned `stop` calls
+`signal.Stop` on both channels, cancels its inner context and waits for both
+goroutines. `runServe` defers `stop` around `Run`; it is deliberately not run
+on `ctx.Done`, so a SIGHUP or second SIGTERM during graceful shutdown is still
+swallowed rather than restoring the default terminate action. Reload errors are
+not logged again by the watcher: `Reload` logs its own failure.
+
+Registration and reload (implemented): `registerSMTPBackend` and
+`registerClamAV` take the reloader's lock (`Reloader.mu`, then `reloadMu`, the
+order `Reload` uses) and apply the reloader's baseline, the current hot values,
+to the consumer while joining the list. A reload therefore cannot land between
+"registered" and "initial value set", and a consumer registered after a reload
+starts on the reloaded value, not on `a.Config`. With no reloader they read
+`a.Config`. The SMTP backends are built by `newServerSMTPBackend` and
+`newAgentSMTPBackend`, which `Run` and `startSMTPAgent` call, so tests can see
+registration.
+
+Nil holders: a hot key whose holder is nil (`LogLevel`, spam thresholds; only
+tests produce this) is dropped before apply with WARN `config reload: key has no
+live consumer, not applied`. It is not listed under `applied` and its baseline
+does not move.
 
 Serialise: a `sync.Mutex` held for the whole reload. Two SIGHUPs arriving close
 together run one after the other (or the second is coalesced; the channel has
@@ -620,8 +641,9 @@ did not audit each). Therefore:
   mount pointing at the old inode. This is general Docker behaviour that I
   have not tested against this stack; the deployment doc for 16.7 should
   say "edit in place or verify with `docker compose exec bongo cat
-  /etc/bongo/bongo.hcl` before sending SIGHUP", and the reload log line
-  includes the file's mtime so a stale read is visible.
+  /etc/bongo/bongo.hcl` before sending SIGHUP". The design proposed logging the
+  file's mtime so a stale read is visible; `reloadLocked` does not log it, so
+  the README gives only the manual check. Adding the mtime is not done.
 
 ## 7. Cluster considerations
 
@@ -772,13 +794,13 @@ mutation-check each.
   key logs shadowed and does not apply; (v) a second reload after a
   restart-required change still warns (baseline rule, step 8); (vi) a
   reload under `-race` while holders are being read.
-- **(g) SIGHUP wiring.** In `cmd/bongo-go/agent.go`: a separate
+- **(g) SIGHUP wiring (done, 16.13; see section 6 for the final shape).** In `cmd/bongo-go/agent.go`: a separate
   `signal.Notify(hupCh, syscall.SIGHUP)`, goroutine calling the reloader, torn
   down with the context. Test: send SIGHUP to the test process (via the
   extracted wiring function) and assert the reload ran and `ctx` was NOT
   cancelled; send SIGTERM and assert `ctx` is cancelled. Mutation: add SIGHUP to
   the existing channel; the first assertion goes red.
-- **(h) Deployment.** `deploy/bongo-go.service`: add
+- **(h) Deployment (done, 16.13).** `deploy/bongo-go.service`: add
   `ExecReload=/bin/kill -HUP $MAINPID`. `deploy/README.md`: document `docker
   compose kill -s HUP bongo`, the bind-mount caveat, that env/flag overrides
   win, that `bongo.env` needs a restart, and the per-node rule. No Go test; a

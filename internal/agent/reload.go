@@ -155,17 +155,18 @@ func (a *Agent) reloadLocked(r *Reloader) error {
 	hot, restart, noop := config.Diff(r.baseline, merged)
 
 	// (f) Apply the changed hot keys. prepare made each step infallible.
+	// A key whose holder is nil has no live consumer: it is neither applied
+	// nor reported as applied, and its baseline does not move.
+	hot = a.dropUnheld(hot)
 	hotSet := keySet(hot)
 	backends, clamavs := a.reloadConsumers()
-	if hotSet["telemetry.log.level"] && a.LogLevel != nil {
+	if hotSet["telemetry.log.level"] {
 		a.LogLevel.Set(p.level)
 	}
 	if hotSet["antispam.builtin.threshold"] || hotSet["antispam.builtin.high_threshold"] {
-		if a.spamThresholds != nil {
-			if err := a.spamThresholds.Store(p.thresh); err != nil {
-				// Unreachable: prepare validated the pair.
-				a.logger.Error("config reload: applying spam thresholds", "error", err)
-			}
+		if err := a.spamThresholds.Store(p.thresh); err != nil {
+			// Unreachable: prepare validated the pair.
+			a.logger.Error("config reload: applying spam thresholds", "error", err)
 		}
 	}
 	if hotSet["smtp.trusted_networks"] {
@@ -222,6 +223,23 @@ func (a *Agent) reloadLocked(r *Reloader) error {
 	}
 	r.baseline = nb
 	return nil
+}
+
+// dropUnheld removes the hot keys that have no live holder on this agent (a
+// nil LevelVar or spam threshold holder, which only tests produce) and warns
+// once per dropped key, so the omission is visible.
+func (a *Agent) dropUnheld(hot []config.KeyChange) []config.KeyChange {
+	out := make([]config.KeyChange, 0, len(hot))
+	for _, k := range hot {
+		switch {
+		case k.Key == "telemetry.log.level" && a.LogLevel == nil,
+			(k.Key == "antispam.builtin.threshold" || k.Key == "antispam.builtin.high_threshold") && a.spamThresholds == nil:
+			a.logger.Warn("config reload: key has no live consumer, not applied", "key", k.Key)
+			continue
+		}
+		out = append(out, k)
+	}
+	return out
 }
 
 // prepare builds and validates every hot value from cfg.

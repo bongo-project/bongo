@@ -230,6 +230,46 @@ smtp {
 }
 ```
 
+### Reloading configuration (SIGHUP)
+
+Some settings can change without a restart. Edit `bongo.prod.hcl`, then send
+SIGHUP to bongo:
+
+```bash
+docker compose kill -s HUP bongo     # Docker: the entrypoint execs bongo-go, so it gets the signal
+systemctl reload bongo-go            # systemd: the unit's ExecReload sends SIGHUP
+docker compose logs --tail 30 bongo  # look for "config reload complete"
+```
+
+SIGHUP no longer stops the server; it reloads. That includes a closed
+controlling terminal on a foreground `serve`, and a process started under
+`nohup`, which used to ignore SIGHUP and now reloads.
+
+- **Keys that reload:** `telemetry.log.level`, the
+  `antispam.builtin.threshold` / `high_threshold` pair, `smtp.trusted_networks`
+  and `antivirus.clamav.on_failure`. A widened `smtp.trusted_networks` is
+  applied and logged at WARN with the old and new lists.
+- **Everything else needs a restart.** A changed restart-only key logs
+  `config reload: key needs restart` (names only, never values) on every
+  reload until you restart. A few keys that nothing reads appear only under
+  `no_effect` in the `config reload complete` line.
+- **Flags and environment win.** A key set by a command-line flag or a
+  `BONGO_*` variable keeps that value; the file value is ignored and logged as
+  `key shadowed by flag or env`.
+- **Environment changes need a restart.** `/etc/bongo/bongo.env` (systemd) and
+  `.env` / `environment:` (Compose) are read when the process starts. With
+  Compose use `docker compose up -d` so the container is recreated;
+  `docker compose restart` keeps the old environment.
+- **A bad file changes nothing.** If the file does not parse or validate, the
+  reload fails with `config reload failed` and every running value stays.
+- **Single-file bind mount:** `./bongo.prod.hcl` is mounted as one file. An
+  editor that saves by writing a new file and renaming it creates a new inode,
+  which the container does not see until it restarts. Edit in place, or check
+  what the container sees before sending the signal:
+  `docker compose exec bongo cat /etc/bongo/bongo.hcl`.
+- **Config is per node.** SIGHUP reloads the node that receives it. In a
+  cluster, edit the file and send the signal on every node.
+
 ---
 
 ## 7. Create the first admin user

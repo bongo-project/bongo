@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -180,16 +181,56 @@ func runServe(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigCh
-		logger.Info("received signal", "signal", sig.String())
-		cancel()
-	}()
+	stop := watchSignals(ctx, cancel, a.Reload, logger)
+	defer stop()
 
 	return a.Run(ctx)
+}
+
+// watchSignals routes process signals: SIGINT and SIGTERM call cancel, SIGHUP
+// calls reload without cancelling. Both handlers are registered before it
+// returns. The returned stop unregisters them and waits for the goroutines to
+// exit; it is meant to be deferred around Run, not called on ctx.Done, so a
+// second signal during graceful shutdown is still swallowed instead of
+// restoring the default terminate action. A burst of SIGHUPs coalesces into
+// one pending reload; Reload serialises and logs its own failures.
+func watchSignals(ctx context.Context, cancel context.CancelFunc, reload func(context.Context) error, logger *slog.Logger) (stop func()) {
+	termCh := make(chan os.Signal, 1)
+	signal.Notify(termCh, syscall.SIGINT, syscall.SIGTERM)
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+
+	wctx, wcancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		select {
+		case sig := <-termCh:
+			logger.Info("received signal", "signal", sig.String())
+			cancel()
+		case <-wctx.Done():
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-wctx.Done():
+				return
+			case sig := <-hupCh:
+				logger.Info("received signal", "signal", sig.String())
+				_ = reload(ctx)
+			}
+		}
+	}()
+
+	return func() {
+		signal.Stop(hupCh)
+		signal.Stop(termCh)
+		wcancel()
+		wg.Wait()
+	}
 }
 
 // newServeLogger builds the process logger and routes gRPC's global logger

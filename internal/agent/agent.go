@@ -475,23 +475,120 @@ func validateSessionSecret(role, secret string) error {
 	return nil
 }
 
-// registerSMTPBackend records a backend so a reload reaches it.
-func (a *Agent) registerSMTPBackend(b *bongosmtp.Backend) {
-	a.reloadMu.Lock()
-	defer a.reloadMu.Unlock()
-	a.smtpBackends = append(a.smtpBackends, b)
+// currentHotConfig runs fn with the config that holds the live hot values.
+// With reload enabled that is the reloader's baseline, read under the lock
+// Reload holds for its whole run, so a registration cannot interleave with a
+// reload: it sees either the values before it or the values after it, and a
+// reload that follows finds the consumer already in the list. Without reload
+// it is a.Config, which never changes after startup. Lock order is r.mu then
+// reloadMu, the same as Reload; fn must not call Reload.
+func (a *Agent) currentHotConfig(fn func(src *config.Config) error) error {
+	if r := a.reloader; r != nil {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return fn(r.baseline)
+	}
+	return fn(a.Config)
 }
 
-// registerClamAV records a ClamAV processor so a reload reaches it. Other
-// processor types (and a nil interface) are ignored.
+// registerSMTPBackend records a backend so a reload reaches it and gives it
+// the current trusted networks. It returns how many networks were applied.
+func (a *Agent) registerSMTPBackend(b *bongosmtp.Backend) (int, error) {
+	var n int
+	err := a.currentHotConfig(func(src *config.Config) error {
+		nets, err := src.SMTP.ParseTrustedNetworks()
+		if err != nil {
+			return fmt.Errorf("smtp trusted networks: %w", err)
+		}
+		b.SetTrustedNetworks(nets)
+		n = len(nets)
+		a.reloadMu.Lock()
+		defer a.reloadMu.Unlock()
+		a.smtpBackends = append(a.smtpBackends, b)
+		return nil
+	})
+	return n, err
+}
+
+// registerClamAV records a ClamAV processor so a reload reaches it and gives
+// it the current on_failure policy. Other processor types (and a nil
+// interface) are ignored.
 func (a *Agent) registerClamAV(proc pipeline.Processor) {
 	cp, ok := proc.(*pipelineantivirus.ClamAVProcessor)
 	if !ok || cp == nil {
 		return
 	}
-	a.reloadMu.Lock()
-	defer a.reloadMu.Unlock()
-	a.clamavProcs = append(a.clamavProcs, cp)
+	_ = a.currentHotConfig(func(src *config.Config) error {
+		policy := pipelineantivirus.OnFailure(src.Antivirus.ClamAV.FailurePolicy())
+		if err := cp.SetOnFailure(policy); err != nil {
+			// Startup and reload validation make this unreachable; keep the
+			// policy the processor was built with.
+			a.logger.Error("antivirus: applying on_failure policy", "error", err)
+		}
+		a.reloadMu.Lock()
+		defer a.reloadMu.Unlock()
+		a.clamavProcs = append(a.clamavProcs, cp)
+		return nil
+	})
+}
+
+// newServerSMTPBackend builds the server-role SMTP backend and registers it as
+// a reload consumer (which also sets its trusted networks).
+func (a *Agent) newServerSMTPBackend(deliverer bongosmtp.Deliverer, resolver *store.RecipientResolver) (*bongosmtp.Backend, error) {
+	backend := bongosmtp.NewBackend(a.Auth, deliverer, a.logger)
+	// Operator-configured trusted networks: a connecting source IP inside one
+	// of these CIDRs is treated as trusted the same as an authenticated
+	// submission session (see (*smtp.Session).inboundMeta). Registration
+	// applies the current set atomically with joining the reload list.
+	n, err := a.registerSMTPBackend(backend)
+	if err != nil {
+		return nil, err
+	}
+	if n > 0 {
+		a.logger.Info("smtp: trusted networks configured", "count", n)
+	}
+
+	// SPF checker for inbound mail.
+	a.SPFChecker = mail.NewSPFChecker()
+	backend.SetSPFChecker(a.SPFChecker)
+
+	// Relay policy: accept mail for local recipients from anyone (inbound MX),
+	// but only relay to external recipients for authenticated submission.
+	// Uses the same shared resolver as the pipeline so RCPT accept and
+	// deliver-stage resolution are always consistent.
+	backend.SetResolver(resolver)
+
+	// Storage quota enforcement at RCPT: reject inbound mail permanently when
+	// the recipient's primary domain is at or over its max_storage_bytes
+	// limit. Nil when quota store is unavailable (dev/edge/agent — all
+	// nil-checked inside the SMTP session).
+	if a.DomainQuota != nil {
+		backend.SetQuotaChecker(a.DomainQuota)
+	}
+	return backend, nil
+}
+
+// newAgentSMTPBackend builds the agent-role SMTP backend and registers it as a
+// reload consumer.
+func (a *Agent) newAgentSMTPBackend(deliverer bongosmtp.Deliverer) (*bongosmtp.Backend, error) {
+	// Agent mode: no local auth required for inbound MX; use nil authenticator.
+	// Submission port authentication is handled by the server after deposit.
+	backend := bongosmtp.NewBackend(nil, deliverer, a.logger)
+
+	// Trusted networks are wired for future-correctness consistency only:
+	// internal/agent/grpc/server.go DepositMessage unconditionally strips
+	// Trusted (env.Trusted = false) because the deposit channel is not yet
+	// authenticated, so this has no behavioural effect today. Do not remove
+	// that strip here or in grpc/server.go; that is a separate trust-boundary
+	// change.
+	if _, err := a.registerSMTPBackend(backend); err != nil {
+		return nil, err
+	}
+
+	spfChecker := mail.NewSPFChecker()
+	backend.SetSPFChecker(spfChecker)
+	a.SPFChecker = spfChecker
+	return backend, nil
 }
 
 // reloadConsumers returns copies of the registered consumer lists.
@@ -1228,38 +1325,9 @@ func (a *Agent) Run(ctx context.Context) error {
 	// Start SMTP server.
 	if a.Config.SMTP.Enabled && a.Raft != nil && smtpPipeline != nil {
 		isDev := a.Config.Server.Role == "dev"
-		backend := bongosmtp.NewBackend(a.Auth, smtpPipeline, a.logger)
-		a.registerSMTPBackend(backend)
-
-		// SPF checker for inbound mail.
-		a.SPFChecker = mail.NewSPFChecker()
-		backend.SetSPFChecker(a.SPFChecker)
-
-		// Relay policy: accept mail for local recipients from anyone (inbound MX),
-		// but only relay to external recipients for authenticated submission.
-		// Uses the same shared resolver as the pipeline so RCPT accept and
-		// deliver-stage resolution are always consistent.
-		backend.SetResolver(sharedResolver)
-
-		// Storage quota enforcement at RCPT: reject
-		// inbound mail permanently when the recipient's primary domain is at or
-		// over its max_storage_bytes limit. Nil when quota store is unavailable
-		// (dev/edge/agent — all nil-checked inside the SMTP session).
-		if a.DomainQuota != nil {
-			backend.SetQuotaChecker(a.DomainQuota)
-		}
-
-		// Operator-configured trusted networks: a connecting source IP
-		// inside one of these CIDRs is treated as trusted the same as an
-		// authenticated submission session (see (*smtp.Session).inboundMeta).
-		// Parsed once here; SetTrustedNetworks swaps the set atomically.
-		trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
+		backend, err := a.newServerSMTPBackend(smtpPipeline, sharedResolver)
 		if err != nil {
-			return fmt.Errorf("smtp trusted networks: %w", err)
-		}
-		backend.SetTrustedNetworks(trustedNets)
-		if len(trustedNets) > 0 {
-			a.logger.Info("smtp: trusted networks configured", "count", len(trustedNets))
+			return err
 		}
 
 		a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
@@ -2823,25 +2891,10 @@ func (a *Agent) startSMTPAgent() error {
 
 	pipeline := bongosmtp.NewAgentDeliveryPipeline(grpcClient, a.logger)
 
-	// Agent mode: no local auth required for inbound MX; use nil authenticator.
-	// Submission port authentication is handled by the server after deposit.
-	backend := bongosmtp.NewBackend(nil, pipeline, a.logger)
-	a.registerSMTPBackend(backend)
-
-	spfChecker := mail.NewSPFChecker()
-	backend.SetSPFChecker(spfChecker)
-	a.SPFChecker = spfChecker
-
-	// Wired for future-correctness consistency only: internal/agent/grpc/server.go
-	// DepositMessage unconditionally strips Trusted (env.Trusted = false) because
-	// the deposit channel is not yet authenticated, so this has no behavioural
-	// effect today. Do not remove that strip here or in grpc/server.go — that is
-	// a separate trust-boundary change.
-	trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
+	backend, err := a.newAgentSMTPBackend(pipeline)
 	if err != nil {
-		return fmt.Errorf("smtp trusted networks: %w", err)
+		return err
 	}
-	backend.SetTrustedNetworks(trustedNets)
 
 	isDev := false // agents are never in dev mode
 	a.SMTP = bongosmtp.NewServer(&a.Config.SMTP, backend, isDev, a.logger)
