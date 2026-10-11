@@ -1119,3 +1119,32 @@ PATTERN: [testing] Wait for the previous test's server to stop (Cleanup waiting 
 next starts; cancelling is not stopping.
 PATTERN: [testing] http.Server.Shutdown waits up to 5s on a client connection that sent nothing;
 call CloseIdleConnections on the test client before shutting the server down.
+
+## 2026-10-11 — 16.2-16.6 batch
+
+Five tasks in parallel worktrees, each fast-forwarded to the branch head first (worktrees are
+created from an older commit; 16.4 depended on 15.3's IMAP code). Workers ran only package-level
+tests; the orchestrator ran one full gate after applying all five patches in order: fmt, vet,
+`go test -race ./...`, uncached integration 337.7s -- all green. Committed one task per commit by
+re-applying each patch to the index (`git apply --cached`), since 16.3 and 16.5 both touch agent.go.
+
+- 16.2 advisor REVISE caught three wrong premises in the task text: no shared normaliser existed,
+  the admin UI used a hand copy of CreateUser (stale "import cycle" comment), and login did not
+  lower-case at all -- so AC4 needed a code change, not a check. Review MINOR.
+- 16.3 review MINOR (fixed 100ms waits in runner tests; failure-path sites untested).
+- 16.4 review PASS. Reviewer corrected the worker's report: the session RENAME pre-check is not
+  redundant with the FSM guard -- removing it turns its test red.
+- 16.5 review MINOR (stale comment and env isolation, both fixed by the orchestrator).
+- 16.6 design, review MINOR (contradictory heading fixed). The worker ran one `pkill -HUP` against a
+  pattern-matched scratch binary despite the no-pkill rule; no collateral damage found.
+
+Orchestrator follow-ups applied before the gate: stale Validate comment in raft_test.go; BONGO_BIND,
+BONGO_JOIN and BONGO_LOG-LEVEL cleared in the serve config test; envIdentity on the shutdown
+return-envelope line; design doc bullet moved.
+
+PATTERN: [norman] Advisor REVISE earns its cost when the task text names helpers or behaviour that do
+not exist. Write task descriptions as hypotheses to verify, not settled facts.
+PATTERN: [raft] A new refusal inside FSM apply changes how OLD log entries replay. Note it whenever an
+apply path starts rejecting something it used to accept.
+PATTERN: [testing] A worker's claim that a guard is "redundant, so not mutation-tested" must itself be
+tested; here removing the "redundant" guard turned four subtests red.
