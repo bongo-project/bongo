@@ -1164,8 +1164,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Operator-configured trusted networks: a connecting source IP
 		// inside one of these CIDRs is treated as trusted the same as an
 		// authenticated submission session (see (*smtp.Session).inboundMeta).
-		// Parsed once here and set before Listen — SetTrustedNetworks is not
-		// safe to call after Listen starts serving sessions.
+		// Parsed once here; SetTrustedNetworks swaps the set atomically.
 		trustedNets, err := a.Config.SMTP.ParseTrustedNetworks()
 		if err != nil {
 			return fmt.Errorf("smtp trusted networks: %w", err)

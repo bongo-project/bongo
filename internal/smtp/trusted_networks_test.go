@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"sync"
 	"testing"
 )
 
@@ -17,11 +18,12 @@ func mustParseCIDR(t *testing.T, s string) *net.IPNet {
 }
 
 func trustedNetworksTestBackend(nets []*net.IPNet) *Backend {
-	return &Backend{
-		perIP:       map[string]int{},
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		trustedNets: nets,
+	b := &Backend{
+		perIP:  map[string]int{},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
+	b.SetTrustedNetworks(nets)
+	return b
 }
 
 // TestIsTrustedSource covers the fail-closed contract of Backend.isTrustedSource:
@@ -220,4 +222,115 @@ func TestSetTrustedNetworks(t *testing.T) {
 	if !b.isTrustedSource("10.1.2.3") {
 		t.Fatal("expected trusted after SetTrustedNetworks with a matching CIDR")
 	}
+}
+
+// TestSetTrustedNetworksFailClosed pins that a never-set, nil and empty
+// network set all trust nothing.
+func TestSetTrustedNetworksFailClosed(t *testing.T) {
+	cidr := mustParseCIDR(t, "0.0.0.0/0")
+	tests := []struct {
+		name  string
+		setup func(b *Backend)
+	}{
+		{"never set", func(b *Backend) {}},
+		{"set then nil", func(b *Backend) {
+			b.SetTrustedNetworks([]*net.IPNet{cidr})
+			b.SetTrustedNetworks(nil)
+		}},
+		{"set then empty", func(b *Backend) {
+			b.SetTrustedNetworks([]*net.IPNet{cidr})
+			b.SetTrustedNetworks([]*net.IPNet{})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &Backend{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+			tt.setup(b)
+			for _, ip := range []string{"10.1.2.3", "127.0.0.1", "::1"} {
+				if b.isTrustedSource(ip) {
+					t.Errorf("isTrustedSource(%q) = true, want false", ip)
+				}
+				s := &Session{backend: b, logger: b.logger}
+				if s.inboundMeta(ip).Trusted {
+					t.Errorf("inboundMeta(%q).Trusted = true, want false", ip)
+				}
+			}
+		})
+	}
+}
+
+// TestSetTrustedNetworksCopies pins that the setter does not alias the
+// caller's slice: mutating it afterwards must not change the live set.
+func TestSetTrustedNetworksCopies(t *testing.T) {
+	nets := []*net.IPNet{mustParseCIDR(t, "10.0.0.0/8")}
+	b := trustedNetworksTestBackend(nets)
+	nets[0] = mustParseCIDR(t, "192.168.0.0/16")
+	if !b.isTrustedSource("10.1.2.3") {
+		t.Error("10.1.2.3 no longer trusted after caller mutated its slice")
+	}
+	if b.isTrustedSource("192.168.1.1") {
+		t.Error("192.168.1.1 trusted after caller mutated its slice")
+	}
+}
+
+// TestSetTrustedNetworksConcurrent swaps between two sets while readers
+// decide trust through both isTrustedSource and inboundMeta. Run under -race.
+// 203.0.113.5 is in both sets (a torn or empty read would show false) and
+// 172.16.0.1 is in neither.
+func TestSetTrustedNetworksConcurrent(t *testing.T) {
+	setA := []*net.IPNet{mustParseCIDR(t, "203.0.113.0/24"), mustParseCIDR(t, "10.0.0.0/8")}
+	setB := []*net.IPNet{mustParseCIDR(t, "203.0.113.0/24"), mustParseCIDR(t, "192.168.0.0/16")}
+	b := trustedNetworksTestBackend(setA)
+	if !b.isTrustedSource("203.0.113.5") {
+		t.Fatal("pre-check: 203.0.113.5 should be trusted")
+	}
+
+	const iterations = 2000
+	const readers = 8
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := range iterations {
+			if i%2 == 0 {
+				b.SetTrustedNetworks(setB)
+			} else {
+				b.SetTrustedNetworks(setA)
+			}
+		}
+	}()
+
+	for range readers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s := &Session{backend: b, logger: b.logger}
+			<-start
+			for range iterations {
+				if !b.isTrustedSource("203.0.113.5") {
+					t.Error("isTrustedSource(203.0.113.5) = false, want true")
+					return
+				}
+				if b.isTrustedSource("172.16.0.1") {
+					t.Error("isTrustedSource(172.16.0.1) = true, want false")
+					return
+				}
+				if !s.inboundMeta("203.0.113.5").Trusted {
+					t.Error("inboundMeta(203.0.113.5).Trusted = false, want true")
+					return
+				}
+				if s.inboundMeta("172.16.0.1").Trusted {
+					t.Error("inboundMeta(172.16.0.1).Trusted = true, want false")
+					return
+				}
+				_ = b.isTrustedSource("10.1.2.3")
+				_ = b.isTrustedSource("192.168.1.1")
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
 }
