@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -317,6 +318,10 @@ func (h *AdminHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 	// Create user via auth package.
 	userID, err := auth.CreateUser(h.applier, h.metadata, newEmail, displayName, password, false)
 	if err != nil {
+		if errors.Is(err, auth.ErrAccountExists) {
+			http.Error(w, "an account or alias already uses that address", http.StatusConflict)
+			return
+		}
 		http.Error(w, "failed to create user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
