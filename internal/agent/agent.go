@@ -1200,11 +1200,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			"poll_interval", a.Config.Pipeline.PollInterval,
 		)
 
-		// Start quarantine auto-purge (default 30-day retention, hourly checks).
+		// Start quarantine auto-purge (pipeline.quarantine_retention, hourly checks).
 		purgeCtx, purgeCancel := context.WithCancel(ctx)
 		a.quarantinePurgeCancel = purgeCancel
-		go handlers.RunAutoPurge(purgeCtx, spool, a.Blobs, 30*24*time.Hour, time.Hour, a.logger)
-		a.logger.Info("quarantine: auto-purge started")
+		startQuarantinePurge(purgeCtx, spool, a.Blobs, a.Config, a.logger, handlers.RunAutoPurge)
 
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
@@ -3288,4 +3287,15 @@ func newRedirectServer(addr string, h http.Handler, logger *slog.Logger) *http.S
 		IdleTimeout:       30 * time.Second,
 		ErrorLog:          observability.HTTPLibraryLogger(logger),
 	}
+}
+
+// autoPurgeFunc is the shape of handlers.RunAutoPurge, injectable for tests.
+type autoPurgeFunc func(context.Context, *pipeline.SpoolStore, *store.BlobStore, time.Duration, time.Duration, *slog.Logger)
+
+// startQuarantinePurge launches the quarantine auto-purge with the configured
+// retention. Blobs are left to the blob GC.
+func startQuarantinePurge(ctx context.Context, spool *pipeline.SpoolStore, blobs *store.BlobStore, cfg *config.Config, logger *slog.Logger, run autoPurgeFunc) {
+	retention := cfg.Pipeline.QuarantineRetentionDuration()
+	go run(ctx, spool, blobs, retention, time.Hour, logger)
+	logger.Info("quarantine: auto-purge started", "retention", retention.String())
 }

@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -765,6 +767,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("antivirus.clamav.on_failure: unknown value %q (valid: quarantine, accept)", c.Antivirus.ClamAV.OnFailure)
 	}
 
+	if v := c.Pipeline.QuarantineRetention; v != "" {
+		if _, err := parseRetention(v); err != nil {
+			return fmt.Errorf("pipeline.quarantine_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
+		}
+	}
+
 	return nil
 }
 
@@ -827,6 +835,50 @@ func (c *PipelineConfig) PipelinePollInterval() time.Duration {
 	d, err := time.ParseDuration(c.PollInterval)
 	if err != nil {
 		return time.Second
+	}
+	return d
+}
+
+// defaultQuarantineRetention is used when pipeline.quarantine_retention is unset.
+const defaultQuarantineRetention = 30 * 24 * time.Hour
+
+// parseRetention parses a retention period: whole days with a "d" suffix
+// ("30d") or any time.ParseDuration string ("720h"). The result is always
+// positive. Errors do not name the config key; the caller adds it.
+func parseRetention(s string) (time.Duration, error) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.Atoi(days)
+		if err != nil {
+			return 0, fmt.Errorf("invalid day count %q", days)
+		}
+		if n <= 0 {
+			return 0, fmt.Errorf("must be positive")
+		}
+		if int64(n) > math.MaxInt64/int64(24*time.Hour) {
+			return 0, fmt.Errorf("too large")
+		}
+		return time.Duration(n) * 24 * time.Hour, nil
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("must be positive")
+	}
+	return d, nil
+}
+
+// QuarantineRetentionDuration returns how long quarantined mail is kept.
+// Empty, unparseable or non-positive values fall back to 30 days; Validate
+// rejects bad values at startup.
+func (c *PipelineConfig) QuarantineRetentionDuration() time.Duration {
+	if c.QuarantineRetention == "" {
+		return defaultQuarantineRetention
+	}
+	d, err := parseRetention(c.QuarantineRetention)
+	if err != nil {
+		return defaultQuarantineRetention
 	}
 	return d
 }
