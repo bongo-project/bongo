@@ -1301,6 +1301,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		purgeCtx, purgeCancel := context.WithCancel(ctx)
 		a.quarantinePurgeCancel = purgeCancel
 		startQuarantinePurge(purgeCtx, spool, a.Blobs, a.Config, a.logger, handlers.RunAutoPurge)
+		// Error-spool purge (pipeline.error_retention). Per node, like the
+		// quarantine purge: the spool is local disk. Stopped by the same cancel.
+		startErrorPurge(purgeCtx, spool, a.Config, a.logger, pipeline.RunErrorPurge)
 
 		// Register quarantine admin routes (spool is now available).
 		r.Group(func(r chi.Router) {
@@ -3351,4 +3354,15 @@ func startQuarantinePurge(ctx context.Context, spool *pipeline.SpoolStore, blobs
 	retention := cfg.Pipeline.QuarantineRetentionDuration()
 	go run(ctx, spool, blobs, retention, time.Hour, logger)
 	logger.Info("quarantine: auto-purge started", "retention", retention.String())
+}
+
+// errorPurgeFunc is the shape of pipeline.RunErrorPurge, injectable for tests.
+type errorPurgeFunc func(context.Context, *pipeline.SpoolStore, time.Duration, time.Duration, *slog.Logger)
+
+// startErrorPurge launches the error-spool auto-purge with the configured
+// retention. Blobs are left to the blob GC.
+func startErrorPurge(ctx context.Context, spool *pipeline.SpoolStore, cfg *config.Config, logger *slog.Logger, run errorPurgeFunc) {
+	retention := cfg.Pipeline.ErrorRetentionDuration()
+	go run(ctx, spool, retention, time.Hour, logger)
+	logger.Info("pipeline: error-spool purge started", "retention", retention.String())
 }

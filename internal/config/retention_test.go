@@ -84,3 +84,51 @@ func TestValidateQuarantineRetention(t *testing.T) {
 		})
 	}
 }
+
+func TestErrorRetentionDuration(t *testing.T) {
+	tests := []struct {
+		in   string
+		want time.Duration
+	}{
+		{"", 720 * time.Hour},
+		{"12h", 12 * time.Hour},
+		{"7d", 168 * time.Hour},
+		{"0d", 720 * time.Hour},
+		{"-1h", 720 * time.Hour},
+		{"junk", 720 * time.Hour},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			p := PipelineConfig{ErrorRetention: tt.in}
+			if got := p.ErrorRetentionDuration(); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateErrorRetention(t *testing.T) {
+	tests := []struct {
+		in      string
+		wantErr bool
+	}{
+		{"0d", true}, {"0s", true}, {"-5d", true}, {"-1h", true}, {"abc", true},
+		{"", false}, {"30d", false}, {"720h", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			cfg := Defaults()
+			cfg.Pipeline.ErrorRetention = tt.in
+			err := cfg.Validate()
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "pipeline.error_retention") {
+					t.Fatalf("want error naming key, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}

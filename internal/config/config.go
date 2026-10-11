@@ -767,6 +767,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("antivirus.clamav.on_failure: unknown value %q (valid: quarantine, accept)", c.Antivirus.ClamAV.OnFailure)
 	}
 
+	if v := c.Pipeline.ErrorRetention; v != "" {
+		if _, err := parseRetention(v); err != nil {
+			return fmt.Errorf("pipeline.error_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
+		}
+	}
+
 	if v := c.Pipeline.QuarantineRetention; v != "" {
 		if _, err := parseRetention(v); err != nil {
 			return fmt.Errorf("pipeline.quarantine_retention: invalid value %q (use whole days like \"30d\" or a duration like \"720h\", must be positive): %w", v, err)
@@ -879,6 +885,23 @@ func (c *PipelineConfig) QuarantineRetentionDuration() time.Duration {
 	d, err := parseRetention(c.QuarantineRetention)
 	if err != nil {
 		return defaultQuarantineRetention
+	}
+	return d
+}
+
+// defaultErrorRetention is used when pipeline.error_retention is unset.
+const defaultErrorRetention = 30 * 24 * time.Hour
+
+// ErrorRetentionDuration returns how long failed envelopes are kept in the
+// spool error/ directory. Empty, unparseable or non-positive values fall back
+// to 30 days; Validate rejects bad values at startup.
+func (c *PipelineConfig) ErrorRetentionDuration() time.Duration {
+	if c.ErrorRetention == "" {
+		return defaultErrorRetention
+	}
+	d, err := parseRetention(c.ErrorRetention)
+	if err != nil {
+		return defaultErrorRetention
 	}
 	return d
 }

@@ -516,6 +516,11 @@ antivirus {
 pipeline {
   workers              = 5
   poll_interval        = "1s"
+  # Envelopes that failed pipeline processing (spool error/) are removed once
+  # older than this, measured from receipt time. Same format as
+  # quarantine_retention; default 30d; must be positive. The message blob is
+  # left to the blob GC, which reclaims it once nothing references it. Checked
+  # hourly on each server node; changing it needs a restart.
   error_retention      = "30d"
   # Format: whole days with "d" ("30d") or a Go duration ("720h"). Default 30d; must be positive.
   quarantine_retention = "30d"
