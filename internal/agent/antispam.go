@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/bongo-project/bongo/internal/antispam"
@@ -43,6 +44,7 @@ func buildAntispamProcessor(
 	bayesFilter *antispam.BayesFilter,
 	resolver pipelineantispam.RecipientResolver,
 	logger *slog.Logger,
+	thresholds *pipeline.SpamThresholdHolder,
 ) pipeline.Processor {
 	builtinCfg := cfg.Antispam.Builtin
 	antispamOpts := []pipelineantispam.Option{
@@ -50,6 +52,10 @@ func buildAntispamProcessor(
 		pipelineantispam.WithThreshold(builtinCfg.SpamThreshold()),
 		pipelineantispam.WithHighThreshold(builtinCfg.SpamHighThreshold()),
 		pipelineantispam.WithLogger(logger),
+	}
+	// The shared holder, when given, supersedes the fixed values above.
+	if thresholds != nil {
+		antispamOpts = append(antispamOpts, pipelineantispam.WithThresholdSource(thresholds))
 	}
 	// DMARC is skipped in dev mode: it does live DNS lookups and would
 	// quarantine local test mail sent from real DMARC-reject domains
@@ -161,6 +167,9 @@ func (a *Agent) buildAgentAntispamProcessor() pipeline.Processor {
 		pipelineantispam.WithHighThreshold(builtin.SpamHighThreshold()),
 		pipelineantispam.WithLogger(a.logger),
 	}
+	if thresholds := a.spamThresholdHolder(); thresholds != nil {
+		opts = append(opts, pipelineantispam.WithThresholdSource(thresholds))
+	}
 	if a.Config.Antispam.DMARCEnabled() && a.Config.Server.Role != "dev" {
 		opts = append(opts, pipelineantispam.WithDMARC(mail.NewDMARCEvaluator(), a.Config.Antispam.DMARCEnforce()))
 	}
@@ -170,4 +179,34 @@ func (a *Agent) buildAgentAntispamProcessor() pipeline.Processor {
 		opts = append(opts, opt)
 	}
 	return pipelineantispam.NewBuiltinProcessor(antispam.NewScorer(), opts...)
+}
+
+// newSpamThresholdHolder builds the process-wide holder from config. The
+// accessors clamp, so a valid pair always results; the error path guards
+// future changes to either side.
+func newSpamThresholdHolder(cfg *config.Config) (*pipeline.SpamThresholdHolder, error) {
+	b := cfg.Antispam.Builtin
+	h, err := pipeline.NewSpamThresholdHolder(pipeline.SpamThresholds{
+		Tag:  b.SpamThreshold(),
+		High: b.SpamHighThreshold(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("antispam thresholds: %w", err)
+	}
+	return h, nil
+}
+
+// spamThresholdHolder returns the one per-process holder, creating it on
+// first use. Called only during single-goroutine startup.
+func (a *Agent) spamThresholdHolder() *pipeline.SpamThresholdHolder {
+	if a.spamThresholds == nil {
+		h, err := newSpamThresholdHolder(a.Config)
+		if err != nil {
+			// Unreachable: config accessors always yield a valid pair.
+			a.logger.Error("antispam: threshold holder", "error", err)
+			return nil
+		}
+		a.spamThresholds = h
+	}
+	return a.spamThresholds
 }

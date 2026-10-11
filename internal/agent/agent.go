@@ -89,7 +89,12 @@ const (
 
 // Agent manages the bongo-go server lifecycle.
 type Agent struct {
-	Config       *config.Config
+	Config *config.Config
+
+	// spamThresholds is the one tag/quarantine holder shared by every antispam
+	// stage and the deliver stage; see spamThresholdHolder.
+	spamThresholds *pipeline.SpamThresholdHolder
+
 	Store        *store.PebbleStore
 	Blobs        *store.BlobStore
 	Metadata     *store.MetadataManager
@@ -1058,7 +1063,7 @@ func (a *Agent) Run(ctx context.Context) error {
 			case "antispam":
 				scorer := antispam.NewScorer()
 				bayesFilter := antispam.NewBayesFilter(a.Store, a)
-				antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger)
+				antispamProc := buildAntispamProcessor(a.Config, stageCfg.Backend, scorer, bayesFilter, resolver, a.logger, a.spamThresholdHolder())
 				stages = append(stages, antispamProc)
 			case "rules":
 				if a.Rules != nil {
@@ -1093,9 +1098,13 @@ func (a *Agent) Run(ctx context.Context) error {
 		// Trace-header stamping: records SPF/DKIM/DMARC results and the spam
 		// decision on the stored message itself, so a raw message view can show
 		// why it was filed as spam without relying solely on the antispam log
-		// line. The threshold is shared with Junk routing
-		// above so X-Spam-Status never disagrees with where the message landed.
-		deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname, a.Config.Antispam.Builtin.SpamThreshold())
+		// line. The tag threshold comes from the same
+		// holder as the antispam stages and drives Junk routing, so X-Spam-Status
+		// never disagrees with where the message landed.
+		deliverProc.SetTraceHeaders(a.Config.SMTP.Hostname)
+		if h := a.spamThresholdHolder(); h != nil {
+			deliverProc.SetSpamThresholds(h)
+		}
 		stages = append(stages, deliverProc)
 
 		// Create blob reader adapter and start the Runner with config-driven options.
