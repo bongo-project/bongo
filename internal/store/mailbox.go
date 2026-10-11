@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -465,6 +466,19 @@ func applyMailboxRename(ps *PebbleStore, cmd *bongov1.RaftCommand) error {
 		return fmt.Errorf("reading old mailbox: %w", err)
 	}
 
+	// Refuse to overwrite. Writing oldMeta over an existing target would
+	// orphan its messages under a mismatched uid_next, and new == old would
+	// write then delete the same keys, wiping the mailbox. This runs inside
+	// the FSM so it holds under races and on followers.
+	if strings.EqualFold(payload.NewName, "INBOX") || payload.NewName == payload.OldName {
+		return fmt.Errorf("mailbox %q already exists", payload.NewName)
+	}
+	if _, err := ps.Get(mailboxMetaKey(userID, payload.NewName)); err == nil {
+		return fmt.Errorf("mailbox %q already exists", payload.NewName)
+	} else if !errors.Is(err, ErrNotFound) {
+		return fmt.Errorf("checking rename target: %w", err)
+	}
+
 	newMeta := &bongov1.MailboxMeta{
 		Name:        payload.NewName,
 		UidValidity: oldMeta.UidValidity,
@@ -771,13 +785,12 @@ func (ms *MailboxStore) RenameMailbox(userID, oldName, newName string) error {
 
 // SetSubscribed records the IMAP subscription state of a mailbox via Raft.
 //
-// A mailbox that does not exist is an error. RFC 3501 6.3.6 makes that
-// optional for SUBSCRIBE ("a server MAY validate the mailbox argument") and
-// expects UNSUBSCRIBE to succeed on a name whose mailbox is gone, but
-// subscription state is stored on the mailbox meta here, so there is nowhere
-// to record an answer for a mailbox that is not there. The same design means a
-// subscription can never outlive its mailbox, so there is never a stale one
-// left for UNSUBSCRIBE to remove either.
+// A mailbox that does not exist is an error here. RFC 3501 section 6.3.6 makes
+// that optional for SUBSCRIBE ("a server MAY validate the mailbox argument"),
+// and section 6.3.7 expects UNSUBSCRIBE to succeed on a name whose mailbox is
+// gone, so the IMAP session maps ErrNotFound to OK for UNSUBSCRIBE. State is
+// stored on the mailbox meta, so a subscription can never outlive its mailbox
+// and there is never a stale one left to remove.
 //
 // The check is duplicated in applyMailboxSubscribe, which is the one that
 // holds under a race with DELETE and on a follower replaying the log. This one

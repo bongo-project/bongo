@@ -91,7 +91,8 @@ func TestMissingMailboxIsNonexistent(t *testing.T) {
 			return e
 		}},
 		{"subscribe", func(s *session) error { return s.Subscribe("Notes") }},
-		{"unsubscribe", func(s *session) error { return s.Unsubscribe("Notes") }},
+		// UNSUBSCRIBE of a missing mailbox deliberately succeeds (RFC 3501
+		// 6.3.7); see TestUnsubscribeNonexistentSucceeds.
 		{"rename", func(s *session) error { return s.Rename("Notes", "Other", nil) }},
 		{"delete", func(s *session) error { return s.Delete("Notes") }},
 	}

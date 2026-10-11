@@ -139,6 +139,15 @@ var errNoSuchMailbox = &imap.Error{
 	Text: "No such mailbox",
 }
 
+// errAlreadyExists answers CREATE or RENAME naming a mailbox that already
+// exists (RFC 3501 sections 6.3.3 and 6.3.5, RFC 5530 ALREADYEXISTS). The text
+// is fixed so the client-supplied name is never echoed.
+var errAlreadyExists = &imap.Error{
+	Type: imap.StatusResponseTypeNo,
+	Code: imap.ResponseCodeAlreadyExists,
+	Text: "Mailbox already exists",
+}
+
 // errTryCreate answers APPEND, COPY and MOVE to a destination that does not
 // exist (RFC 3501 section 6.3.11). Clients react by sending CREATE and
 // retrying.
@@ -173,6 +182,25 @@ func (s *session) requireMailbox(name string, notFound *imap.Error) error {
 		return mailboxLookupError(name, err, notFound)
 	}
 	return nil
+}
+
+// requireNoMailbox returns errAlreadyExists when the named mailbox exists
+// (INBOX in any case always does), nil when it is genuinely absent, and a
+// wrapped error for any other lookup failure. Sessions are called directly in
+// tests without the decoder's INBOX normalisation, hence the EqualFold.
+func (s *session) requireNoMailbox(name string) error {
+	if strings.EqualFold(name, "INBOX") {
+		return errAlreadyExists
+	}
+	_, err := s.mailboxes.GetMailbox(s.userID, name)
+	switch {
+	case err == nil:
+		return errAlreadyExists
+	case errors.Is(err, store.ErrNotFound):
+		return nil
+	default:
+		return fmt.Errorf("looking up mailbox %q: %w", name, err)
+	}
 }
 
 // Login authenticates the user, throttling brute-force attempts per source IP.
@@ -245,6 +273,9 @@ func (s *session) Select(mailbox string, options *imap.SelectOptions) (*imap.Sel
 
 // Create creates a new mailbox.
 func (s *session) Create(mailbox string, options *imap.CreateOptions) error {
+	if err := s.requireNoMailbox(mailbox); err != nil {
+		return err
+	}
 	if err := s.mailboxes.CreateMailbox(s.userID, mailbox); err != nil {
 		s.logger.Warn("imap: create mailbox failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
@@ -270,6 +301,11 @@ func (s *session) Delete(mailbox string) error {
 // Rename renames a mailbox.
 func (s *session) Rename(mailbox, newName string, options *imap.RenameOptions) error {
 	if err := s.requireMailbox(mailbox, errNoSuchMailbox); err != nil {
+		return err
+	}
+	// The store refuses to overwrite too; this pre-check is what yields the
+	// ALREADYEXISTS code, which cannot be recovered from a Raft apply error.
+	if err := s.requireNoMailbox(newName); err != nil {
 		return err
 	}
 	if err := s.mailboxes.RenameMailbox(s.userID, mailbox, newName); err != nil {
@@ -298,8 +334,9 @@ func (s *session) Subscribe(mailbox string) error {
 func (s *session) Unsubscribe(mailbox string) error {
 	if err := s.mailboxes.SetSubscribed(s.userID, mailbox, false); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			// Client error, not worth a WARN.
-			return errNoSuchMailbox
+			// RFC 3501 section 6.3.7: UNSUBSCRIBE of a name that no longer
+			// exists succeeds. There is no subscription left to remove.
+			return nil
 		}
 		s.logger.Warn("imap: unsubscribe failed", "mailbox", mailbox, "user", s.userID, "error", err)
 		return err
