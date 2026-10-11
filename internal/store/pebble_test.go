@@ -276,3 +276,23 @@ func TestWithCacheSize(t *testing.T) {
 		t.Errorf("got %q, want %q", got, "v")
 	}
 }
+
+// TestNewPebbleStoreWithCacheSizeOpenClose is a smoke test only: the cache
+// reference count is not observable here (Pebble's leak finalizer is off
+// under -race), so correctness of the Unref is established by reading
+// NewPebbleStore.
+func TestNewPebbleStoreWithCacheSizeOpenClose(t *testing.T) {
+	dir := t.TempDir()
+	for range 2 {
+		s, err := NewPebbleStore(dir, WithCacheSize(1<<20))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Set([]byte("k"), []byte("v")); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

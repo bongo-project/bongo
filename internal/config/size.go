@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -49,7 +50,27 @@ func ParseSize(s string) (int64, error) {
 	if n < 0 {
 		return 0, fmt.Errorf("parseSize: negative size %q", s)
 	}
+	if n > math.MaxInt64/multiplier {
+		return 0, fmt.Errorf("parseSize: size %q overflows int64", s)
+	}
 	return n * multiplier, nil
+}
+
+// CacheBytes returns the configured Pebble block cache size in bytes. An
+// empty value returns (0, nil), meaning unset: Pebble keeps its default.
+// Zero, negative, unparseable and overflowing values are errors.
+func (p *PebbleConfig) CacheBytes() (int64, error) {
+	if p.CacheSize == "" {
+		return 0, nil
+	}
+	n, err := ParseSize(p.CacheSize)
+	if err != nil {
+		return 0, err
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("cache size must be positive, got %q", p.CacheSize)
+	}
+	return n, nil
 }
 
 const defaultMaxMessageSize = 25 * 1024 * 1024 // 25 MB

@@ -57,6 +57,13 @@ func NewPebbleStore(dataDir string, opts ...Option) (*PebbleStore, error) {
 		o(pebbleOpts)
 	}
 
+	// pebble.NewCache hands the creator one reference. Open takes its own
+	// (and Close drops it), so release ours once Open returns, on success or
+	// failure. Dropping it earlier would free the cache before Open's Ref.
+	if pebbleOpts.Cache != nil {
+		defer pebbleOpts.Cache.Unref()
+	}
+
 	db, err := pebble.Open(dataDir, pebbleOpts)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble store: %w", err)

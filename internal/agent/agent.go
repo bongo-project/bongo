@@ -254,8 +254,13 @@ func (a *Agent) GetKey(key []byte) ([]byte, error) {
 
 // pebbleStoreOptions returns the options the agent opens its Pebble store with.
 // Pebble's own log output goes through the process logger, not stdlib log.
-func pebbleStoreOptions(logger *slog.Logger) []store.Option {
-	return []store.Option{store.WithLogger(logger.With("component", "pebble"))}
+// A cacheBytes of zero leaves Pebble's built-in default block cache.
+func pebbleStoreOptions(logger *slog.Logger, cacheBytes int64) []store.Option {
+	opts := []store.Option{store.WithLogger(logger.With("component", "pebble"))}
+	if cacheBytes > 0 {
+		opts = append(opts, store.WithCacheSize(cacheBytes))
+	}
+	return opts
 }
 
 // NewAgent creates and initializes an Agent with the given config.
@@ -306,7 +311,11 @@ func NewAgent(cfg *config.Config, logger *slog.Logger) (*Agent, error) {
 		return nil, fmt.Errorf("creating pebble dir: %w", err)
 	}
 
-	pebbleStore, err := store.NewPebbleStore(pebbleDir, pebbleStoreOptions(logger)...)
+	cacheBytes, err := cfg.Storage.Pebble.CacheBytes()
+	if err != nil {
+		return nil, fmt.Errorf("storage.pebble.cache_size: %w", err)
+	}
+	pebbleStore, err := store.NewPebbleStore(pebbleDir, pebbleStoreOptions(logger, cacheBytes)...)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble store: %w", err)
 	}

@@ -779,6 +779,10 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if _, err := c.Storage.Pebble.CacheBytes(); err != nil {
+		return fmt.Errorf("storage.pebble.cache_size: invalid value %q (use a positive size like \"256MB\" or \"1GB\"): %w", c.Storage.Pebble.CacheSize, err)
+	}
+
 	return nil
 }
 

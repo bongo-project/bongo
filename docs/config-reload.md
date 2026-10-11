@@ -186,7 +186,7 @@ TLS as well as raft transport.
 | Key | Consumer | How read today | Class |
 |---|---|---|---|
 | `storage.data_dir` | `agent.go:258,273` (Pebble dir), `cluster/raft.go:135` | ctor | RESTART |
-| `storage.pebble.cache_size` | none (`pebbleStoreOptions`, `agent.go:234`, passes only a logger; `store.WithCacheSize` has no caller) | none | NO-OP |
+| `storage.pebble.cache_size` | `NewAgent` -> `PebbleConfig.CacheBytes()` -> `pebbleStoreOptions` -> `store.WithCacheSize` (16.20) | ctor | RESTART |
 | `storage.pebble.wal_dir` | none | none | NO-OP |
 | `storage.attachment_dedup_min_size` | `agent.go:818` (`composeH.SetAttachmentDedup`), `agent.go:1085` (`deliverProc.SetAttachmentDedup`) | ctor, int copied into two handlers | RESTART (HOT-3 candidate: two setters, both plain fields) |
 | `storage.blob_gc` | `agent.go:1559` (log), `agent.go:1605` (`blobGCPass`) | tick: reads `a.Config.Storage.BlobGCMode()` every 15 min (`orphanGCInterval`, `agent.go:1530`) | RESTART in increment 1 (see 4.3) |
@@ -282,7 +282,7 @@ TLS as well as raft transport.
 | `pipeline.workers` | `agent.go:1098,1111` -> `pipeline.WithWorkers`; worker goroutines are spawned at `Run` start (`pipeline/runner.go`, loop before `:88`) | ctor | RESTART |
 | `pipeline.poll_interval` | `agent.go:1099` -> `runner.go:27`; consumed ONCE by `time.NewTicker(r.pollInterval)` at `runner.go:88` | ctor, then ticker fixed | HOT-2 (needs `Ticker.Reset` plumbing) |
 | `pipeline.error_retention` | `agent.go` `startErrorPurge` -> `pipeline.RunErrorPurge` (`pipeline/errorpurge.go`), retention fixed at start | ctor | RESTART |
-| `pipeline.quarantine_retention` | none: `RunAutoPurge` is called with a hard-coded `30*24*time.Hour` (`agent.go:1118`) | none | NO-OP |
+| `pipeline.quarantine_retention` | `agent.go` `startQuarantinePurge` -> `handlers.RunAutoPurge`, retention fixed at start (16.18) | ctor | RESTART |
 | `pipeline.stage "<name>"` label `name`, `enabled`, `backend` | `agent.go:1047-1073` builds the ordered `[]pipeline.Processor` once | ctor | RESTART (stage re-ordering and add/remove is out of scope) |
 | `queue.poll_interval` | `agent.go:1257` -> `queue.WithPollInterval`; `queue/worker.go:40`, ONE `time.NewTicker(w.pollInterval)` at `:101` | ctor, then ticker fixed | HOT-2 (needs `Ticker.Reset` plumbing) |
 

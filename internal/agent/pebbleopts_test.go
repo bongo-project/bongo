@@ -7,8 +7,42 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cockroachdb/pebble"
+
 	"github.com/bongo-project/bongo/internal/store"
 )
+
+func TestPebbleStoreOptionsApplyCacheSize(t *testing.T) {
+	tests := []struct {
+		name      string
+		cacheSize int64
+		wantCache bool
+	}{
+		{"256MB", 256 << 20, true},
+		{"unset", 0, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &pebble.Options{}
+			for _, o := range pebbleStoreOptions(slog.New(slog.DiscardHandler), tt.cacheSize) {
+				o(opts)
+			}
+			if !tt.wantCache {
+				if opts.Cache != nil {
+					t.Fatal("Cache set, want nil")
+				}
+				return
+			}
+			if opts.Cache == nil {
+				t.Fatal("Cache not set")
+			}
+			if got := opts.Cache.MaxSize(); got != tt.cacheSize {
+				t.Fatalf("MaxSize = %d, want %d", got, tt.cacheSize)
+			}
+			opts.Cache.Unref() // release the creator reference; no DB holds it
+		})
+	}
+}
 
 // TestPebbleStoreOptionsRouteLogsThroughSlog opens a real store with the
 // agent's options and reopens it to force a WAL replay, which must arrive on
@@ -19,7 +53,7 @@ func TestPebbleStoreOptionsRouteLogsThroughSlog(t *testing.T) {
 	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
 	dir := t.TempDir()
-	s, err := store.NewPebbleStore(dir, pebbleStoreOptions(logger)...)
+	s, err := store.NewPebbleStore(dir, pebbleStoreOptions(logger, 0)...)
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -33,7 +67,7 @@ func TestPebbleStoreOptionsRouteLogsThroughSlog(t *testing.T) {
 	// Pebble logs synchronously during Open, so the builder is only touched
 	// from this goroutine until the store is reopened.
 	buf.Reset()
-	s2, err := store.NewPebbleStore(dir, pebbleStoreOptions(logger)...)
+	s2, err := store.NewPebbleStore(dir, pebbleStoreOptions(logger, 0)...)
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
