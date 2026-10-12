@@ -18,7 +18,7 @@ build: go build ./...
 # (fmt-check + race + integration, ~6 min), so a worker that passes locally
 # passes CI.
 test: make test-all
-lint: gosec ./...
+lint: make lint && gosec ./...   # golangci-lint is what CI runs; gosec alone missed a govet finding (2026-10-12)
 # Not a canonical norman key — kept deliberately. templ compiles .templ files to
 # Go, so a build after touching any template fails without it.
 generate: templ generate
