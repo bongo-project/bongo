@@ -84,8 +84,8 @@ func checkAddressFree(applier RaftApplier, metadata *store.MetadataManager, emai
 // deleted via Raft; applying that delete makes the FSM remove the users row and
 // GAL entry on every node, inline on the leader before ApplyCommand returns
 // (writes are leader-only and profile keys are not deferred; if profile keys
-// ever become deferrable, compensation must delete the row itself). A duplicate lost in a race returns
-// ErrAccountExists. An orphan profile remains only if the compensating delete
+// ever become deferrable, compensation must delete the row itself). A
+// duplicate lost in a race returns ErrAccountExists. An orphan profile remains only if the compensating delete
 // itself fails, and that is reported through the joined error. Pre-existing
 // duplicate data is left untouched (report-only).
 func CreateUser(applier RaftApplier, metadata *store.MetadataManager, email, displayName, password string, isAdmin bool) (string, error) {

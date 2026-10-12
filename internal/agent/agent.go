@@ -1785,16 +1785,14 @@ func (a *Agent) blobGCPass(prev map[string]bool, prevMode string, minAge time.Du
 // mode, not one confirmation each under two different ones.
 //
 // This is defence-in-depth, not a fix for a live bug: BlobGCMode() is read
-// from Config, which is assigned once in NewAgent (agent.go:240) and never
-// mutated outside tests; the only signal.Notify in the tree is SIGINT/SIGTERM
-// for shutdown (cmd/bongo-go/agent.go:178); there is no SIGHUP config reload.
-// So the mode is constant for the life of a process, changing it requires a
-// restart, and a restart already gives runOrphanGC a fresh empty prevBlobs --
-// this guard cannot currently fire. It exists for backlog item B9, which
-// proposes exactly that reload: if B9 lands, a mode flip happens mid-process
-// and, without this, a candidate confirmed under one mode (e.g. dryrun) would
-// be deleted on the first pass under a newly-enabled one, with no fresh
-// confirmation. Implementing it now means B9 does not have to remember to.
+// from Config, which is assigned once in NewAgent and never mutated outside
+// tests, and the SIGHUP config reload deliberately treats storage.blob_gc as
+// restart-only (config.Diff classifies it so). The mode is therefore constant
+// for the life of a process, and a restart already gives runOrphanGC a fresh
+// empty prevBlobs, so this guard cannot currently fire. It exists so that if
+// blob_gc ever becomes reloadable, a candidate confirmed under one mode (e.g.
+// dryrun) is not deleted on the first pass under a newly-enabled one with no
+// fresh confirmation.
 func blobGCCandidatesAcrossModeChange(prev map[string]bool, mode, prevMode string) map[string]bool {
 	if mode != prevMode {
 		return map[string]bool{}

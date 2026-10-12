@@ -1183,3 +1183,38 @@ the reload lock; setting values from the startup config after registering re-ope
 
 Open backlog from this phase: B21 (reserved config keys), B22 (follower orphan rows), B23 (log config
 mtime on reload), B24 (bounded signal-test teardown), B25 (SMTP ignores bind_addr).
+
+## 2026-10-12 — Sweep of Phase 16 (invariants + comments)
+
+**Invariants.** 22 Phase 16 guarantees broken one at a time through `go test -overlay` (working tree
+never touched; clean after every run). Harness proven first by hand: breaking the error-purge cutoff
+turned TestPurgeErrorSpool red. Result: 20 fully guarded, 2 partially unguarded (confirmed by an
+independent refuter), 0 refuted, 1 structural (cannot break).
+
+Confirmed gaps (coverage, not bugs):
+1. **register-applies-current-values, the locking half (medium).** Removing `r.mu.Lock()` from
+   `currentHotConfig` (internal/agent/agent.go) passes the agent package under -race and the
+   integration reload test. Without the lock a backend registered while a reload is in flight can
+   read the old baseline, miss the reload's consumer snapshot, and keep stale trusted networks until
+   the next change. The value half (registration applies the reloader's current values) IS guarded.
+   A test needs a deterministic interleaving (a seam pausing reloadLocked after reloadConsumers()).
+2. **diff-flags-secrets, smtp.relay.username only (low).** Dropping it from `secretKeys` keeps every
+   test green: TestSecretLookingKeysAreFlagged matches by name pattern and "username" matches none.
+   A table over the exact required secret set would close it.
+
+Structural: the error purge cannot delete a blob; it holds no blob store handle (TestPurgeErrorSpoolLeavesBlob
+also asserts it).
+
+**Comments.** Phase 16 left little scaffolding: three test comments citing "pre-16.21" reworded; one
+over-long line reflowed in auth/create.go; and the blob-GC mode-change comment in agent.go corrected,
+since it said there was no SIGHUP reload and pointed at backlog B9; it now gives the real reason the
+guard cannot fire (blob_gc is restart-only under reload). Three long Phase 16 blocks (shared start
+helper, CreateUser partial-failure semantics, SetSubscribed) left alone: each carries distinct claims.
+Out-of-scope references left: `task 14.9` and `B7` in agent.go, `B21` in diff.go (open backlog).
+Comment ratio across the 82 Phase 16 files: 0.18.
+
+PATTERN: [sweep] Run the whole owning package under a break, not a -run filter: test names rarely
+match the feature (`-run ErrorPurge` missed TestPurgeErrorSpool and reported a false gap).
+PATTERN: [sweep] Locking guarantees survive -race when both sides already share another mutex; the
+race detector sees happens-before edges and the bad interleaving is logical, not a data race. They
+need a deterministic interleaving test, not a stress loop.

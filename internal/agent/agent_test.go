@@ -164,7 +164,7 @@ func TestSweepOrphanedUsers(t *testing.T) {
 		t.Fatal("user row should exist after creation")
 	}
 
-	// Orphan the user the way a pre-16.21 node left it: remove only the Pebble
+	// Orphan the user the way older nodes left it: remove only the Pebble
 	// profile, bypassing the FSM. A profile delete through Raft now also
 	// removes the users row on every node, so it can no longer make an orphan.
 	if err := a.Store.Delete([]byte("/user/" + uid + "/profile")); err != nil {
@@ -494,7 +494,7 @@ func TestSweepGhostUserTrees(t *testing.T) {
 	}, 5*time.Second); err != nil {
 		t.Fatalf("seed row-only mail: %v", err)
 	}
-	// Orphan the user the way a pre-16.21 node left it: remove only the Pebble
+	// Orphan the user the way older nodes left it: remove only the Pebble
 	// profile, bypassing the FSM. A profile delete through Raft now also
 	// removes the users row on every node, so it can no longer make an orphan.
 	if err := a.Store.Delete([]byte("/user/" + rowOnlyID + "/profile")); err != nil {
@@ -569,7 +569,7 @@ func TestSweepOrphanedUsersLogsReclaimedUser(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	// Orphan the user the way a pre-16.21 node left it: remove only the Pebble
+	// Orphan the user the way older nodes left it: remove only the Pebble
 	// profile, bypassing the FSM. A profile delete through Raft now also
 	// removes the users row on every node, so it can no longer make an orphan.
 	if err := a.Store.Delete([]byte("/user/" + uid + "/profile")); err != nil {
