@@ -25,7 +25,7 @@ func deepCopy(dst, src reflect.Value) {
 		for i := range src.NumField() {
 			deepCopy(dst.Field(i), src.Field(i))
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if src.IsNil() {
 			return
 		}

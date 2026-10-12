@@ -47,7 +47,7 @@ func configLeaves(t *testing.T) []string {
 			switch {
 			case ft.Kind() == reflect.Struct:
 				walk(path, ft)
-			case ft.Kind() == reflect.Ptr && ft.Elem().Kind() == reflect.Struct:
+			case ft.Kind() == reflect.Pointer && ft.Elem().Kind() == reflect.Struct:
 				walk(path, ft.Elem())
 			case ft.Kind() == reflect.Slice && ft.Elem().Kind() == reflect.Struct:
 				walk(path, ft.Elem())
@@ -126,7 +126,7 @@ func setLeaf(t *testing.T, v reflect.Value, parts []string) {
 		fv := v.Field(i)
 		if len(parts) > 1 {
 			switch fv.Kind() {
-			case reflect.Ptr:
+			case reflect.Pointer:
 				if fv.IsNil() {
 					fv.Set(reflect.New(fv.Type().Elem()))
 				}

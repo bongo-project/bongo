@@ -1228,3 +1228,12 @@ orchestrator through overlays. Release gate on the final tree: fmt, vet (with in
 
 PATTERN: [testing] To prove a goroutine is blocked on a specific lock without sleeping, poll
 runtime.Stack(buf, true), split per goroutine, and match the lock frame plus the calling function.
+
+## 2026-10-12 — Release PR #34: CI lint caught what the local gate skipped
+
+CI failed only on golangci-lint (govet inline: `reflect.Ptr` should be `reflect.Pointer`, three sites
+from 16.11/16.12). Tests, integration, security and build were green on Linux. The local gate ran
+fmt, vet, race and integration but never `make lint`, and config.md names gosec as the lint command.
+
+PATTERN: [gate] The release gate must include `make lint` (golangci-lint), which CI runs and which
+catches things `go vet` alone does not.

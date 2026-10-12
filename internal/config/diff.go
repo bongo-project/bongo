@@ -204,7 +204,7 @@ func diffValue(path string, a, b reflect.Value, out map[string]struct{}) {
 			name, _, _ := strings.Cut(t.Field(i).Tag.Get("hcl"), ",")
 			diffValue(joinPath(path, name), a.Field(i), b.Field(i), out)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if a.IsNil() && b.IsNil() {
 			return
 		}

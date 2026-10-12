@@ -13,7 +13,7 @@ func fill(v reflect.Value, n *int) {
 		for i := range v.NumField() {
 			fill(v.Field(i), n)
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		v.Set(reflect.New(v.Type().Elem()))
 		fill(v.Elem(), n)
 	case reflect.Slice:
@@ -45,7 +45,7 @@ func shared(path string, a, b reflect.Value) string {
 				return p
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if a.IsNil() {
 			return ""
 		}
