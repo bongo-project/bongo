@@ -1218,3 +1218,13 @@ match the feature (`-run ErrorPurge` missed TestPurgeErrorSpool and reported a f
 PATTERN: [sweep] Locking guarantees survive -race when both sides already share another mutex; the
 race detector sees happens-before edges and the bad interleaving is logical, not a data race. They
 need a deterministic interleaving test, not a stress loop.
+
+## 2026-10-12 — Phase 17: both sweep gaps closed
+
+17.1 reload-lock test (deterministic: test-only hook pauses the reload, runtime.Stack proves the
+registration is parked on the lock) and 17.2 exact secret-key table. Both mutation-checked by the
+orchestrator through overlays. Release gate on the final tree: fmt, vet (with integration tag),
+`go test -race ./...`, uncached integration 341.8s, all green.
+
+PATTERN: [testing] To prove a goroutine is blocked on a specific lock without sleeping, poll
+runtime.Stack(buf, true), split per goroutine, and match the lock frame plus the calling function.

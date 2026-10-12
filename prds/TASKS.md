@@ -39,15 +39,7 @@ PRD in [done/prd-multidomain-hosting.md](done/prd-multidomain-hosting.md).
 
 ## Phase 16: Backlog hardening, config reload and gap fixes — 21 tasks completed 2026-10-11 (see [TASKS-archive.md](TASKS-archive.md))
 
-## Phase 17: Sweep follow-ups
-
-From the Phase 16 sweep (2026-10-12, progress.md). The operator chose both gaps for tests before the
-release.
-
-| # | Task | PRD | Status | Notes |
-|---|------|-----|--------|-------|
-| 17.1 | Guard the reload lock on consumer registration. Removing `r.mu.Lock()` from `currentHotConfig` (internal/agent/agent.go) passes every test, including under -race, because registration and the reload's consumer snapshot already share `a.reloadMu`, so the race detector sees no data race; the bad interleaving is logical. Add a deterministic test: a minimal test seam in `reloadLocked` that pauses after `reloadConsumers()` and before the baseline is published, a registration started on another goroutine during the pause, and an assertion that the late backend ends up on the reloaded trusted networks (or that registration blocks until the reload finishes). | sweep | DONE (2026-10-12) | `TestReload_RegisterDuringReloadWaitsForNewBaseline` pauses a reload via a test-only `afterSnapshot` hook (unexported, nil in production, called once after `reloadConsumers()`), proves the registration goroutine is parked in `currentHotConfig` by polling `runtime.Stack`, then releases and asserts the late backend trusts the reloaded network only. No fixed sleeps. Orchestrator re-check: lock removed via overlay 5/5 fail; intact 20/20 pass. Review PASS. |
-| 17.2 | Guard the exact secret-key set in `config.Diff`. Dropping `smtp.relay.username` from `secretKeys` passes every test, because `TestSecretLookingKeysAreFlagged` matches key names by pattern. Add a table test over the exact required set (web.session_secret, cluster.gossip.encryption_key, smtp.relay.password, smtp.relay.username) that sets each leaf, calls Diff and asserts Secret == true, without looping over `secretKeys` itself. | sweep | DONE (2026-10-12) | `TestDiffRequiredSecretKeys` tables the exact four secret keys and asserts Diff flags each, without reading `secretKeys`. Orchestrator re-check: removing each key from `secretKeys` via overlay fails the test (all four, including smtp.relay.username, previously unguarded). Review PASS. |
+## Phase 17: Sweep follow-ups — 2 tasks completed 2026-10-12 (see [TASKS-archive.md](TASKS-archive.md))
 
 ## Backlog (unscheduled)
 
